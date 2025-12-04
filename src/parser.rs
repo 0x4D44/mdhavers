@@ -485,6 +485,14 @@ impl Parser {
                         span,
                     });
                 }
+                Expr::Index { object, index, .. } => {
+                    return Ok(Expr::IndexSet {
+                        object,
+                        index,
+                        value: Box::new(value),
+                        span,
+                    });
+                }
                 _ => {
                     return Err(HaversError::ParseError {
                         message: "Invalid assignment target".to_string(),

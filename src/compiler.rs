@@ -613,6 +613,21 @@ impl Compiler {
                 self.output.push(']');
             }
 
+            Expr::IndexSet {
+                object,
+                index,
+                value,
+                ..
+            } => {
+                self.output.push('(');
+                self.compile_expr(object)?;
+                self.output.push('[');
+                self.compile_expr(index)?;
+                self.output.push_str("] = ");
+                self.compile_expr(value)?;
+                self.output.push(')');
+            }
+
             Expr::List { elements, .. } => {
                 self.output.push('[');
                 for (i, elem) in elements.iter().enumerate() {
