@@ -229,6 +229,14 @@ pub enum Expr {
         span: Span,
     },
 
+    /// Index assignment: arr[0] = value
+    IndexSet {
+        object: Box<Expr>,
+        index: Box<Expr>,
+        value: Box<Expr>,
+        span: Span,
+    },
+
     /// List literal: [1, 2, 3]
     List {
         elements: Vec<Expr>,
@@ -374,6 +382,7 @@ impl Expr {
             Expr::Get { span, .. } => *span,
             Expr::Set { span, .. } => *span,
             Expr::Index { span, .. } => *span,
+            Expr::IndexSet { span, .. } => *span,
             Expr::List { span, .. } => *span,
             Expr::Dict { span, .. } => *span,
             Expr::Range { span, .. } => *span,

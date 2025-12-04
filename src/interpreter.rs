@@ -952,6 +952,55 @@ impl Interpreter {
                 }
             }
 
+            Expr::IndexSet {
+                object,
+                index,
+                value,
+                span,
+            } => {
+                let obj = self.evaluate(object)?;
+                let idx = self.evaluate(index)?;
+                let val = self.evaluate(value)?;
+
+                match (&obj, &idx) {
+                    (Value::List(list), Value::Integer(i)) => {
+                        let mut list_mut = list.borrow_mut();
+                        let idx = if *i < 0 {
+                            list_mut.len() as i64 + *i
+                        } else {
+                            *i
+                        };
+                        if idx < 0 || idx as usize >= list_mut.len() {
+                            return Err(HaversError::IndexOutOfBounds {
+                                index: *i,
+                                size: list_mut.len(),
+                                line: span.line,
+                            });
+                        }
+                        list_mut[idx as usize] = val.clone();
+                        Ok(val)
+                    }
+                    (Value::Dict(dict), Value::String(key)) => {
+                        dict.borrow_mut().insert(key.clone(), val.clone());
+                        Ok(val)
+                    }
+                    (Value::Dict(dict), key) => {
+                        // Convert non-string key to string
+                        let key_str = format!("{}", key);
+                        dict.borrow_mut().insert(key_str, val.clone());
+                        Ok(val)
+                    }
+                    _ => Err(HaversError::TypeError {
+                        message: format!(
+                            "Cannae set index on a {} wi' a {}",
+                            obj.type_name(),
+                            idx.type_name()
+                        ),
+                        line: span.line,
+                    }),
+                }
+            }
+
             Expr::List { elements, .. } => {
                 let mut items = Vec::new();
                 for elem in elements {
