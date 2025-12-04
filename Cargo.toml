@@ -1,6 +1,24 @@
 [package]
 name = "mdhavers"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+description = "A Scots programming language - pure havers, but working havers!"
+authors = ["Arthur"]
+license = "MIT"
+readme = "README.md"
+keywords = ["scots", "programming-language", "interpreter", "compiler"]
+
+[[bin]]
+name = "mdhavers"
+path = "src/main.rs"
 
 [dependencies]
+clap = { version = "4.4", features = ["derive"] }
+thiserror = "1.0"
+colored = "2.1"
+logos = "0.14"
+rustyline = "14.0"
+
+[dev-dependencies]
+pretty_assertions = "1.4"
+tempfile = "3.10"
