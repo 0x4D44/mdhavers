@@ -332,3 +332,87 @@ pub fn format_error_context(source: &str, line: usize) -> String {
 
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_suggestions() {
+        // Test common keyword misspellings
+        let err = HaversError::UndefinedVariable {
+            name: "true".to_string(),
+            line: 1,
+        };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+        assert!(suggestion.unwrap().contains("aye"));
+
+        let err = HaversError::UndefinedVariable {
+            name: "print".to_string(),
+            line: 1,
+        };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+        assert!(suggestion.unwrap().contains("blether"));
+
+        let err = HaversError::UndefinedVariable {
+            name: "null".to_string(),
+            line: 1,
+        };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+        assert!(suggestion.unwrap().contains("naething"));
+
+        let err = HaversError::UndefinedVariable {
+            name: "function".to_string(),
+            line: 1,
+        };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+        assert!(suggestion.unwrap().contains("dae"));
+    }
+
+    #[test]
+    fn test_error_suggestions_other_errors() {
+        // Test division by zero suggestion
+        let err = HaversError::DivisionByZero { line: 1 };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+        assert!(suggestion.unwrap().contains("zero"));
+
+        // Test stack overflow suggestion
+        let err = HaversError::StackOverflow { line: 1 };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+        assert!(suggestion.unwrap().contains("recursion"));
+
+        // Test index out of bounds for empty list
+        let err = HaversError::IndexOutOfBounds {
+            index: 0,
+            size: 0,
+            line: 1,
+        };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+        assert!(suggestion.unwrap().contains("empty"));
+    }
+
+    #[test]
+    fn test_scots_phrases() {
+        // Test that random phrases return valid strings
+        let phrase = random_scots_exclamation();
+        assert!(!phrase.is_empty());
+
+        let encouragement = scots_encouragement();
+        assert!(!encouragement.is_empty());
+    }
+
+    #[test]
+    fn test_format_error_context() {
+        let source = "ken x = 1\nken y = 2\nken z = 3";
+        let context = format_error_context(source, 2);
+        assert!(context.contains("ken y = 2"));
+        assert!(context.contains("> 2 |"));
+    }
+}

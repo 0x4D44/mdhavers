@@ -248,6 +248,16 @@ fn run_repl() -> Result<(), String> {
     println!();
 
     let mut rl = DefaultEditor::new().map_err(|e| e.to_string())?;
+
+    // Try to load history from file
+    let history_path = dirs::home_dir()
+        .map(|h| h.join(".mdhavers_history"))
+        .unwrap_or_else(|| std::path::PathBuf::from(".mdhavers_history"));
+
+    if history_path.exists() {
+        let _ = rl.load_history(&history_path);
+    }
+
     let mut interpreter = Interpreter::new();
     let mut trace_enabled = false;
     let mut verbose_trace = false;
@@ -377,6 +387,11 @@ fn run_repl() -> Result<(), String> {
                 break;
             }
         }
+    }
+
+    // Save history on exit
+    if let Err(e) = rl.save_history(&history_path) {
+        eprintln!("{}: Couldnae save history: {}", "Warning".yellow(), e);
     }
 
     Ok(())
