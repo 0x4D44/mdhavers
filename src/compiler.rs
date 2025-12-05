@@ -5,6 +5,7 @@ use crate::error::HaversResult;
 pub struct Compiler {
     indent: usize,
     output: String,
+    match_counter: usize,
 }
 
 impl Compiler {
@@ -12,6 +13,7 @@ impl Compiler {
         Compiler {
             indent: 0,
             output: String::new(),
+            match_counter: 0,
         }
     }
 
@@ -169,12 +171,107 @@ impl Compiler {
         self.indent -= 1;
         self.emit_line("},");
 
+        // Scots-flavored functions
+
+        // heid - first element
+        self.emit_line("heid: (x) => {");
+        self.indent += 1;
+        self.emit_line("if (typeof x === 'string' || Array.isArray(x)) {");
+        self.indent += 1;
+        self.emit_line("if (x.length === 0) throw new Error('Cannae get heid o\\' an empty list!');");
+        self.emit_line("return x[0];");
+        self.indent -= 1;
+        self.emit_line("}");
+        self.emit_line("throw new Error('heid() expects a list or string');");
+        self.indent -= 1;
+        self.emit_line("},");
+
+        // tail - all but first
+        self.emit_line("tail: (x) => {");
+        self.indent += 1;
+        self.emit_line("if (typeof x === 'string') return x.slice(1);");
+        self.emit_line("if (Array.isArray(x)) return x.slice(1);");
+        self.emit_line("throw new Error('tail() expects a list or string');");
+        self.indent -= 1;
+        self.emit_line("},");
+
+        // bum - last element
+        self.emit_line("bum: (x) => {");
+        self.indent += 1;
+        self.emit_line("if (typeof x === 'string' || Array.isArray(x)) {");
+        self.indent += 1;
+        self.emit_line("if (x.length === 0) throw new Error('Cannae get bum o\\' an empty list!');");
+        self.emit_line("return x[x.length - 1];");
+        self.indent -= 1;
+        self.emit_line("}");
+        self.emit_line("throw new Error('bum() expects a list or string');");
+        self.indent -= 1;
+        self.emit_line("},");
+
+        // scran - slice
+        self.emit_line("scran: (x, start, end) => {");
+        self.indent += 1;
+        self.emit_line("if (typeof x === 'string' || Array.isArray(x)) return x.slice(start, end);");
+        self.emit_line("throw new Error('scran() expects a list or string');");
+        self.indent -= 1;
+        self.emit_line("},");
+
+        // slap - concatenate
+        self.emit_line("slap: (a, b) => {");
+        self.indent += 1;
+        self.emit_line("if (typeof a === 'string' && typeof b === 'string') return a + b;");
+        self.emit_line("if (Array.isArray(a) && Array.isArray(b)) return [...a, ...b];");
+        self.emit_line("throw new Error('slap() expects two lists or two strings');");
+        self.indent -= 1;
+        self.emit_line("},");
+
+        // sumaw - sum all
+        self.emit_line("sumaw: (arr) => {");
+        self.indent += 1;
+        self.emit_line("if (!Array.isArray(arr)) throw new Error('sumaw() expects a list');");
+        self.emit_line("return arr.reduce((a, b) => a + b, 0);");
+        self.indent -= 1;
+        self.emit_line("},");
+
+        // coont - count occurrences
+        self.emit_line("coont: (x, item) => {");
+        self.indent += 1;
+        self.emit_line("if (typeof x === 'string') return x.split(item).length - 1;");
+        self.emit_line("if (Array.isArray(x)) return x.filter(e => e === item).length;");
+        self.emit_line("throw new Error('coont() expects a list or string');");
+        self.indent -= 1;
+        self.emit_line("},");
+
+        // wheesht - trim whitespace
+        self.emit_line("wheesht: (str) => String(str).trim(),");
+
+        // upper - uppercase
+        self.emit_line("upper: (str) => String(str).toUpperCase(),");
+
+        // lower - lowercase
+        self.emit_line("lower: (str) => String(str).toLowerCase(),");
+
+        // shuffle - randomly shuffle
+        self.emit_line("shuffle: (arr) => {");
+        self.indent += 1;
+        self.emit_line("if (!Array.isArray(arr)) throw new Error('shuffle() expects a list');");
+        self.emit_line("const result = [...arr];");
+        self.emit_line("for (let i = result.length - 1; i > 0; i--) {");
+        self.indent += 1;
+        self.emit_line("const j = Math.floor(Math.random() * (i + 1));");
+        self.emit_line("[result[i], result[j]] = [result[j], result[i]];");
+        self.indent -= 1;
+        self.emit_line("}");
+        self.emit_line("return result;");
+        self.indent -= 1;
+        self.emit_line("},");
+
         self.indent -= 1;
         self.emit_line("};");
         self.emit_line("");
 
         // Import runtime functions to global scope
-        self.emit_line("const { len, whit_kind, tae_string, tae_int, tae_float, shove, yank, keys, values, range, abs, min, max, floor, ceil, round, sqrt, split, join, contains, reverse, sort, blether, speir } = __havers;");
+        self.emit_line("const { len, whit_kind, tae_string, tae_int, tae_float, shove, yank, keys, values, range, abs, min, max, floor, ceil, round, sqrt, split, join, contains, reverse, sort, blether, speir, heid, tail, bum, scran, slap, sumaw, coont, wheesht, upper, lower, shuffle } = __havers;");
         self.emit_line("");
     }
 
@@ -386,8 +483,12 @@ impl Compiler {
 
             Stmt::Match { value, arms, .. } => {
                 // Compile match as switch or if-else chain
+                // Use unique variable name for each match statement
+                let match_var = format!("__match_val_{}", self.match_counter);
+                self.match_counter += 1;
+
                 self.emit_indent();
-                self.output.push_str("const __match_val = ");
+                self.output.push_str(&format!("const {} = ", match_var));
                 self.compile_expr(value)?;
                 self.output.push_str(";\n");
 
@@ -396,26 +497,36 @@ impl Compiler {
                     if i == 0 {
                         self.output.push_str("if (");
                     } else {
-                        self.output.push_str("} else if (");
+                        self.output.push_str("else if (");
                     }
-                    self.compile_pattern(&arm.pattern, "__match_val")?;
-                    self.output.push_str(") ");
+                    self.compile_pattern(&arm.pattern, &match_var)?;
+                    self.output.push_str(") {\n");
+                    self.indent += 1;
 
                     // Bind pattern variable if identifier
                     if let Pattern::Identifier(name) = &arm.pattern {
-                        self.output.push_str("{\n");
-                        self.indent += 1;
-                        self.emit_line(&format!("const {} = __match_val;", name));
-                        self.compile_stmt(&arm.body)?;
-                        self.indent -= 1;
-                        self.emit_indent();
-                    } else {
-                        self.compile_stmt_inline(&arm.body)?;
+                        self.emit_line(&format!("const {} = {};", name, match_var));
                     }
+
+                    // Compile the body - unwrap block to avoid double braces
+                    match &arm.body {
+                        Stmt::Block { statements, .. } => {
+                            for s in statements {
+                                self.compile_stmt(s)?;
+                            }
+                        }
+                        other => {
+                            self.compile_stmt(other)?;
+                        }
+                    }
+
+                    self.indent -= 1;
+                    self.emit_indent();
+                    self.output.push_str("} ");
                 }
 
                 if !arms.is_empty() {
-                    self.output.push_str(" else {\n");
+                    self.output.push_str("else {\n");
                     self.indent += 1;
                     self.emit_line("throw new Error('Nae match found!');");
                     self.indent -= 1;
@@ -681,6 +792,33 @@ impl Compiler {
                 self.output.push_str("speir(");
                 self.compile_expr(prompt)?;
                 self.output.push(')');
+            }
+
+            Expr::FString { parts, .. } => {
+                // Compile to JavaScript template literal
+                self.output.push('`');
+                for part in parts {
+                    match part {
+                        FStringPart::Text(text) => {
+                            // Escape backticks in the text
+                            for c in text.chars() {
+                                if c == '`' {
+                                    self.output.push_str("\\`");
+                                } else if c == '$' {
+                                    self.output.push_str("\\$");
+                                } else {
+                                    self.output.push(c);
+                                }
+                            }
+                        }
+                        FStringPart::Expr(expr) => {
+                            self.output.push_str("${");
+                            self.compile_expr(expr)?;
+                            self.output.push('}');
+                        }
+                    }
+                }
+                self.output.push('`');
             }
         }
 

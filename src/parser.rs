@@ -355,8 +355,17 @@ impl Parser {
         self.expect(&TokenKind::Arrow, "->")?;
         self.skip_newlines();
 
+        // Match arms can have blocks, statements, or expressions
         let body = if self.check(&TokenKind::LeftBrace) {
             self.block()?
+        } else if self.check(&TokenKind::Blether) {
+            self.print_statement()?
+        } else if self.check(&TokenKind::Gie) {
+            self.return_statement()?
+        } else if self.check(&TokenKind::Brak) {
+            self.break_statement()?
+        } else if self.check(&TokenKind::Haud) {
+            self.continue_statement()?
         } else {
             let expr = self.expression()?;
             Stmt::Expression {
@@ -397,7 +406,7 @@ impl Parser {
                 Ok(Pattern::Literal(Literal::Float(n)))
             }
             TokenKind::String(s) => {
-                let s = s.clone();
+                let s = process_escapes(s);
                 self.advance();
                 Ok(Pattern::Literal(Literal::String(s)))
             }
@@ -750,6 +759,7 @@ impl Parser {
                 | TokenKind::Naething
                 | TokenKind::Masel
                 | TokenKind::Speir
+                | TokenKind::Pipe
         )
     }
 
@@ -828,12 +838,17 @@ impl Parser {
                 })
             }
             TokenKind::String(s) => {
-                let s = s.clone();
+                let s = process_escapes(s);
                 self.advance();
                 Ok(Expr::Literal {
                     value: Literal::String(s),
                     span,
                 })
+            }
+            TokenKind::FString(s) => {
+                let s = s.clone();
+                self.advance();
+                self.parse_fstring(&s, span)
             }
             TokenKind::Aye => {
                 self.advance();
@@ -916,6 +931,26 @@ impl Parser {
                 }
                 self.expect(&TokenKind::RightBrace, "}")?;
                 Ok(Expr::Dict { pairs, span })
+            }
+            // Lambda expressions: |x, y| x + y
+            TokenKind::Pipe => {
+                self.advance();
+                let mut params = Vec::new();
+                if !self.check(&TokenKind::Pipe) {
+                    loop {
+                        params.push(self.expect_identifier("parameter name")?);
+                        if !self.match_token(&TokenKind::Comma) {
+                            break;
+                        }
+                    }
+                }
+                self.expect(&TokenKind::Pipe, "|")?;
+                let body = self.expression()?;
+                Ok(Expr::Lambda {
+                    params,
+                    body: Box::new(body),
+                    span,
+                })
             }
             _ => Err(HaversError::ParseError {
                 message: format!("Unexpected token: {}", token.kind),
@@ -1077,6 +1112,102 @@ impl Parser {
     fn current_line(&self) -> usize {
         self.peek().line
     }
+
+    /// Parse an f-string like f"Hello {name}!" into parts
+    fn parse_fstring(&mut self, content: &str, span: Span) -> HaversResult<Expr> {
+        let mut parts = Vec::new();
+        let mut current_text = String::new();
+        let mut chars = content.chars().peekable();
+
+        while let Some(c) = chars.next() {
+            if c == '{' {
+                // Check for escaped brace {{
+                if chars.peek() == Some(&'{') {
+                    chars.next();
+                    current_text.push('{');
+                    continue;
+                }
+
+                // Save current text if any (process escapes)
+                if !current_text.is_empty() {
+                    parts.push(FStringPart::Text(process_escapes(&current_text)));
+                    current_text.clear();
+                }
+
+                // Extract expression inside {}
+                let mut expr_str = String::new();
+                let mut brace_depth = 1;
+                while let Some(c) = chars.next() {
+                    if c == '{' {
+                        brace_depth += 1;
+                        expr_str.push(c);
+                    } else if c == '}' {
+                        brace_depth -= 1;
+                        if brace_depth == 0 {
+                            break;
+                        }
+                        expr_str.push(c);
+                    } else {
+                        expr_str.push(c);
+                    }
+                }
+
+                // Parse the expression
+                let expr_tokens = crate::lexer::lex(&expr_str)?;
+                let mut expr_parser = Parser::new(expr_tokens);
+                let expr = expr_parser.expression()?;
+                parts.push(FStringPart::Expr(Box::new(expr)));
+            } else if c == '}' {
+                // Check for escaped brace }}
+                if chars.peek() == Some(&'}') {
+                    chars.next();
+                    current_text.push('}');
+                    continue;
+                }
+                // Single } without matching { - just add it
+                current_text.push(c);
+            } else {
+                current_text.push(c);
+            }
+        }
+
+        // Don't forget remaining text (process escapes)
+        if !current_text.is_empty() {
+            parts.push(FStringPart::Text(process_escapes(&current_text)));
+        }
+
+        Ok(Expr::FString { parts, span })
+    }
+}
+
+/// Process escape sequences in a string
+/// Handles \n, \t, \r, \\, \", etc.
+fn process_escapes(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => result.push('\n'),
+                Some('t') => result.push('\t'),
+                Some('r') => result.push('\r'),
+                Some('\\') => result.push('\\'),
+                Some('"') => result.push('"'),
+                Some('0') => result.push('\0'),
+                Some(other) => {
+                    // Unknown escape - keep as-is
+                    result.push('\\');
+                    result.push(other);
+                }
+                None => result.push('\\'),
+            }
+        } else {
+            result.push(c);
+        }
+    }
+
+    result
 }
 
 /// Convenience function tae parse source code

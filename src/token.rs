@@ -134,6 +134,13 @@ pub enum TokenKind {
     })]
     String(String),
 
+    // F-string (format string) with interpolation: f"Hello {name}!"
+    #[regex(r#"f"([^"\\]|\\.)*""#, |lex| {
+        let s = lex.slice();
+        Some(s[2..s.len()-1].to_string())  // Skip 'f"' and '"'
+    })]
+    FString(String),
+
     // Identifiers
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
     Identifier(String),
@@ -229,6 +236,9 @@ pub enum TokenKind {
     #[token("->")]
     Arrow,
 
+    #[token("|")]
+    Pipe,
+
     // Newlines are significant in mdhavers (like Python)
     #[token("\n")]
     Newline,
@@ -275,6 +285,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Integer(n) => write!(f, "{}", n),
             TokenKind::Float(n) => write!(f, "{}", n),
             TokenKind::String(s) => write!(f, "\"{}\"", s),
+            TokenKind::FString(s) => write!(f, "f\"{}\"", s),
             TokenKind::Identifier(s) => write!(f, "{}", s),
             TokenKind::Plus => write!(f, "+"),
             TokenKind::Minus => write!(f, "-"),
@@ -305,6 +316,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Colon => write!(f, ":"),
             TokenKind::Semicolon => write!(f, ";"),
             TokenKind::Arrow => write!(f, "->"),
+            TokenKind::Pipe => write!(f, "|"),
             TokenKind::Newline => write!(f, "newline"),
             TokenKind::Comment => write!(f, "comment"),
             TokenKind::Eof => write!(f, "end of file"),

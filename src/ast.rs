@@ -278,6 +278,21 @@ pub enum Expr {
         prompt: Box<Expr>,
         span: Span,
     },
+
+    /// Format string: f"Hullo {name}!"
+    FString {
+        parts: Vec<FStringPart>,
+        span: Span,
+    },
+}
+
+/// Parts of an f-string
+#[derive(Debug, Clone)]
+pub enum FStringPart {
+    /// Literal text
+    Text(String),
+    /// Interpolated expression
+    Expr(Box<Expr>),
 }
 
 /// Literal values
@@ -390,6 +405,7 @@ impl Expr {
             Expr::Lambda { span, .. } => *span,
             Expr::Masel { span } => *span,
             Expr::Input { span, .. } => *span,
+            Expr::FString { span, .. } => *span,
         }
     }
 }
