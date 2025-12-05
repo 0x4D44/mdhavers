@@ -339,6 +339,205 @@ impl Interpreter {
             }))),
         );
 
+        // slap - append lists together (like a friendly slap on the back!)
+        globals.borrow_mut().define(
+            "slap".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("slap", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::List(a), Value::List(b)) => {
+                        let mut result = a.borrow().clone();
+                        result.extend(b.borrow().clone());
+                        Ok(Value::List(Rc::new(RefCell::new(result))))
+                    }
+                    (Value::String(a), Value::String(b)) => {
+                        Ok(Value::String(format!("{}{}", a, b)))
+                    }
+                    _ => Err("slap() expects two lists or two strings".to_string()),
+                }
+            }))),
+        );
+
+        // heid - get the first element (head)
+        globals.borrow_mut().define(
+            "heid".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("heid", 1, |args| {
+                match &args[0] {
+                    Value::List(list) => {
+                        list.borrow().first().cloned().ok_or("Cannae get heid o' empty list!".to_string())
+                    }
+                    Value::String(s) => {
+                        s.chars().next().map(|c| Value::String(c.to_string())).ok_or("Cannae get heid o' empty string!".to_string())
+                    }
+                    _ => Err("heid() expects a list or string".to_string()),
+                }
+            }))),
+        );
+
+        // tail - get everything except the first (like a tail!)
+        globals.borrow_mut().define(
+            "tail".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("tail", 1, |args| {
+                match &args[0] {
+                    Value::List(list) => {
+                        let list = list.borrow();
+                        if list.is_empty() {
+                            Ok(Value::List(Rc::new(RefCell::new(Vec::new()))))
+                        } else {
+                            Ok(Value::List(Rc::new(RefCell::new(list[1..].to_vec()))))
+                        }
+                    }
+                    Value::String(s) => {
+                        Ok(Value::String(s.chars().skip(1).collect()))
+                    }
+                    _ => Err("tail() expects a list or string".to_string()),
+                }
+            }))),
+        );
+
+        // bum - get the last element (backside!)
+        globals.borrow_mut().define(
+            "bum".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("bum", 1, |args| {
+                match &args[0] {
+                    Value::List(list) => {
+                        list.borrow().last().cloned().ok_or("Cannae get bum o' empty list!".to_string())
+                    }
+                    Value::String(s) => {
+                        s.chars().last().map(|c| Value::String(c.to_string())).ok_or("Cannae get bum o' empty string!".to_string())
+                    }
+                    _ => Err("bum() expects a list or string".to_string()),
+                }
+            }))),
+        );
+
+        // scran - slice a list or string (grab a portion, like grabbing scran/food)
+        globals.borrow_mut().define(
+            "scran".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("scran", 3, |args| {
+                let start = args[1].as_integer().ok_or("scran() needs integer indices")?;
+                let end = args[2].as_integer().ok_or("scran() needs integer indices")?;
+                match &args[0] {
+                    Value::List(list) => {
+                        let list = list.borrow();
+                        let start = start.max(0) as usize;
+                        let end = end.min(list.len() as i64) as usize;
+                        Ok(Value::List(Rc::new(RefCell::new(list[start..end].to_vec()))))
+                    }
+                    Value::String(s) => {
+                        let start = start.max(0) as usize;
+                        let end = end.min(s.len() as i64) as usize;
+                        Ok(Value::String(s.chars().skip(start).take(end - start).collect()))
+                    }
+                    _ => Err("scran() expects a list or string".to_string()),
+                }
+            }))),
+        );
+
+        // sumaw - sum all numbers in a list (sum aw = sum all)
+        globals.borrow_mut().define(
+            "sumaw".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("sumaw", 1, |args| {
+                if let Value::List(list) = &args[0] {
+                    let mut sum: f64 = 0.0;
+                    let mut is_float = false;
+                    for item in list.borrow().iter() {
+                        match item {
+                            Value::Integer(n) => sum += *n as f64,
+                            Value::Float(f) => { sum += f; is_float = true; }
+                            _ => return Err("sumaw() expects a list of numbers".to_string()),
+                        }
+                    }
+                    if is_float {
+                        Ok(Value::Float(sum))
+                    } else {
+                        Ok(Value::Integer(sum as i64))
+                    }
+                } else {
+                    Err("sumaw() expects a list".to_string())
+                }
+            }))),
+        );
+
+        // coont - count occurrences in list or string
+        globals.borrow_mut().define(
+            "coont".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("coont", 2, |args| {
+                match &args[0] {
+                    Value::List(list) => {
+                        let count = list.borrow().iter().filter(|&x| x == &args[1]).count();
+                        Ok(Value::Integer(count as i64))
+                    }
+                    Value::String(s) => {
+                        if let Value::String(needle) = &args[1] {
+                            let count = s.matches(needle.as_str()).count();
+                            Ok(Value::Integer(count as i64))
+                        } else {
+                            Err("coont() on string needs a string tae count".to_string())
+                        }
+                    }
+                    _ => Err("coont() expects a list or string".to_string()),
+                }
+            }))),
+        );
+
+        // wheesht - remove whitespace (be quiet/silent!)
+        globals.borrow_mut().define(
+            "wheesht".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("wheesht", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    Ok(Value::String(s.trim().to_string()))
+                } else {
+                    Err("wheesht() expects a string".to_string())
+                }
+            }))),
+        );
+
+        // upper - to uppercase (shout it oot!)
+        globals.borrow_mut().define(
+            "upper".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("upper", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    Ok(Value::String(s.to_uppercase()))
+                } else {
+                    Err("upper() expects a string".to_string())
+                }
+            }))),
+        );
+
+        // lower - to lowercase (calm doon!)
+        globals.borrow_mut().define(
+            "lower".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("lower", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    Ok(Value::String(s.to_lowercase()))
+                } else {
+                    Err("lower() expects a string".to_string())
+                }
+            }))),
+        );
+
+        // shuffle - randomly shuffle a list (like a ceilidh!)
+        globals.borrow_mut().define(
+            "shuffle".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("shuffle", 1, |args| {
+                if let Value::List(list) = &args[0] {
+                    use std::time::{SystemTime, UNIX_EPOCH};
+                    let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64;
+                    let mut shuffled = list.borrow().clone();
+                    // Simple Fisher-Yates shuffle with basic RNG
+                    let mut rng = seed;
+                    for i in (1..shuffled.len()).rev() {
+                        rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
+                        let j = (rng as usize) % (i + 1);
+                        shuffled.swap(i, j);
+                    }
+                    Ok(Value::List(Rc::new(RefCell::new(shuffled))))
+                } else {
+                    Err("shuffle() expects a list".to_string())
+                }
+            }))),
+        );
+
         // sort - sort a list
         globals.borrow_mut().define(
             "sort".to_string(),
@@ -358,6 +557,376 @@ impl Interpreter {
                     Err("sort() expects a list".to_string())
                 }
             }))),
+        );
+
+        // jammy - random number (Scots: lucky!)
+        globals.borrow_mut().define(
+            "jammy".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("jammy", 2, |args| {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let min = args[0].as_integer().ok_or("jammy() needs integer bounds")?;
+                let max = args[1].as_integer().ok_or("jammy() needs integer bounds")?;
+                if min >= max {
+                    return Err("jammy() needs min < max, ya numpty!".to_string());
+                }
+                let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64;
+                let rng = seed.wrapping_mul(1103515245).wrapping_add(12345);
+                let range = (max - min) as u64;
+                let result = min + ((rng % range) as i64);
+                Ok(Value::Integer(result))
+            }))),
+        );
+
+        // the_noo - current timestamp in seconds (Scots: "the now")
+        globals.borrow_mut().define(
+            "the_noo".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("the_noo", 0, |_args| {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let secs = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+                Ok(Value::Integer(secs as i64))
+            }))),
+        );
+
+        // clype - debug print with type info (Scots: tell/inform/snitch)
+        globals.borrow_mut().define(
+            "clype".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("clype", 1, |args| {
+                let val = &args[0];
+                Ok(Value::String(format!("[{}] {}", val.type_name(), val)))
+            }))),
+        );
+
+        // is_a - type checking (returns aye/nae)
+        globals.borrow_mut().define(
+            "is_a".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("is_a", 2, |args| {
+                let type_name = match &args[1] {
+                    Value::String(s) => s.as_str(),
+                    _ => return Err("is_a() needs a type name string".to_string()),
+                };
+                let matches = match type_name {
+                    "integer" | "int" => matches!(args[0], Value::Integer(_)),
+                    "float" => matches!(args[0], Value::Float(_)),
+                    "string" | "str" => matches!(args[0], Value::String(_)),
+                    "bool" => matches!(args[0], Value::Bool(_)),
+                    "list" => matches!(args[0], Value::List(_)),
+                    "dict" => matches!(args[0], Value::Dict(_)),
+                    "function" | "dae" => matches!(args[0], Value::Function(_) | Value::NativeFunction(_)),
+                    "naething" | "nil" => matches!(args[0], Value::Nil),
+                    "range" => matches!(args[0], Value::Range(_)),
+                    _ => false,
+                };
+                Ok(Value::Bool(matches))
+            }))),
+        );
+
+        // tae_bool - convert to boolean
+        globals.borrow_mut().define(
+            "tae_bool".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("tae_bool", 1, |args| {
+                Ok(Value::Bool(args[0].is_truthy()))
+            }))),
+        );
+
+        // char_at - get character at index (returns string of length 1)
+        globals.borrow_mut().define(
+            "char_at".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("char_at", 2, |args| {
+                let s = match &args[0] {
+                    Value::String(s) => s,
+                    _ => return Err("char_at() needs a string".to_string()),
+                };
+                let idx = args[1].as_integer().ok_or("char_at() needs an integer index")?;
+                let idx = if idx < 0 { s.len() as i64 + idx } else { idx } as usize;
+                s.chars().nth(idx)
+                    .map(|c| Value::String(c.to_string()))
+                    .ok_or_else(|| format!("Index {} oot o' bounds fer string o' length {}", idx, s.len()))
+            }))),
+        );
+
+        // replace - replace occurrences in string
+        globals.borrow_mut().define(
+            "replace".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("replace", 3, |args| {
+                match (&args[0], &args[1], &args[2]) {
+                    (Value::String(s), Value::String(from), Value::String(to)) => {
+                        Ok(Value::String(s.replace(from.as_str(), to.as_str())))
+                    }
+                    _ => Err("replace() needs three strings".to_string()),
+                }
+            }))),
+        );
+
+        // starts_wi - check if string starts with prefix (Scots: starts with)
+        globals.borrow_mut().define(
+            "starts_wi".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("starts_wi", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::String(s), Value::String(prefix)) => {
+                        Ok(Value::Bool(s.starts_with(prefix.as_str())))
+                    }
+                    _ => Err("starts_wi() needs two strings".to_string()),
+                }
+            }))),
+        );
+
+        // ends_wi - check if string ends with suffix
+        globals.borrow_mut().define(
+            "ends_wi".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("ends_wi", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::String(s), Value::String(suffix)) => {
+                        Ok(Value::Bool(s.ends_with(suffix.as_str())))
+                    }
+                    _ => Err("ends_wi() needs two strings".to_string()),
+                }
+            }))),
+        );
+
+        // repeat - repeat a string n times
+        globals.borrow_mut().define(
+            "repeat".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("repeat", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::String(s), Value::Integer(n)) => {
+                        if *n < 0 {
+                            Err("Cannae repeat a negative number o' times!".to_string())
+                        } else {
+                            Ok(Value::String(s.repeat(*n as usize)))
+                        }
+                    }
+                    _ => Err("repeat() needs a string and an integer".to_string()),
+                }
+            }))),
+        );
+
+        // index_of - find index of substring (returns -1 if not found)
+        globals.borrow_mut().define(
+            "index_of".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("index_of", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::String(s), Value::String(needle)) => {
+                        Ok(Value::Integer(s.find(needle.as_str()).map(|i| i as i64).unwrap_or(-1)))
+                    }
+                    (Value::List(list), val) => {
+                        let list = list.borrow();
+                        for (i, item) in list.iter().enumerate() {
+                            if item == val {
+                                return Ok(Value::Integer(i as i64));
+                            }
+                        }
+                        Ok(Value::Integer(-1))
+                    }
+                    _ => Err("index_of() needs a string/list and a value".to_string()),
+                }
+            }))),
+        );
+
+        // flatten - flatten nested lists one level
+        globals.borrow_mut().define(
+            "flatten".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("flatten", 1, |args| {
+                if let Value::List(list) = &args[0] {
+                    let mut result = Vec::new();
+                    for item in list.borrow().iter() {
+                        if let Value::List(inner) = item {
+                            result.extend(inner.borrow().clone());
+                        } else {
+                            result.push(item.clone());
+                        }
+                    }
+                    Ok(Value::List(Rc::new(RefCell::new(result))))
+                } else {
+                    Err("flatten() needs a list".to_string())
+                }
+            }))),
+        );
+
+        // zip - combine two lists into list of pairs
+        globals.borrow_mut().define(
+            "zip".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("zip", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::List(a), Value::List(b)) => {
+                        let a = a.borrow();
+                        let b = b.borrow();
+                        let result: Vec<Value> = a.iter().zip(b.iter())
+                            .map(|(x, y)| Value::List(Rc::new(RefCell::new(vec![x.clone(), y.clone()]))))
+                            .collect();
+                        Ok(Value::List(Rc::new(RefCell::new(result))))
+                    }
+                    _ => Err("zip() needs two lists".to_string()),
+                }
+            }))),
+        );
+
+        // enumerate - return list of [index, value] pairs
+        globals.borrow_mut().define(
+            "enumerate".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("enumerate", 1, |args| {
+                if let Value::List(list) = &args[0] {
+                    let result: Vec<Value> = list.borrow().iter().enumerate()
+                        .map(|(i, v)| Value::List(Rc::new(RefCell::new(vec![Value::Integer(i as i64), v.clone()]))))
+                        .collect();
+                    Ok(Value::List(Rc::new(RefCell::new(result))))
+                } else {
+                    Err("enumerate() needs a list".to_string())
+                }
+            }))),
+        );
+
+        // unique - remove duplicates from list (keeps first occurrence)
+        globals.borrow_mut().define(
+            "unique".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("unique", 1, |args| {
+                if let Value::List(list) = &args[0] {
+                    let mut seen = Vec::new();
+                    let mut result = Vec::new();
+                    for item in list.borrow().iter() {
+                        if !seen.contains(item) {
+                            seen.push(item.clone());
+                            result.push(item.clone());
+                        }
+                    }
+                    Ok(Value::List(Rc::new(RefCell::new(result))))
+                } else {
+                    Err("unique() needs a list".to_string())
+                }
+            }))),
+        );
+
+        // === File I/O Functions ===
+
+        // scrieve - write to file (Scots: "write")
+        globals.borrow_mut().define(
+            "scrieve".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("scrieve", 2, |args| {
+                use std::fs::File;
+                use std::io::Write as IoWrite;
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("scrieve() needs a file path string".to_string()),
+                };
+                let content = args[1].to_string();
+                let mut file = File::create(&path)
+                    .map_err(|e| format!("Couldnae open '{}' fer writin': {}", path, e))?;
+                file.write_all(content.as_bytes())
+                    .map_err(|e| format!("Couldnae write tae '{}': {}", path, e))?;
+                Ok(Value::Nil)
+            }))),
+        );
+
+        // read_file - read entire file (Scots: readie would be good but let's be clear)
+        globals.borrow_mut().define(
+            "read_file".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("read_file", 1, |args| {
+                use std::fs;
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("read_file() needs a file path string".to_string()),
+                };
+                let content = fs::read_to_string(&path)
+                    .map_err(|e| format!("Couldnae read '{}': {}", path, e))?;
+                Ok(Value::String(content))
+            }))),
+        );
+
+        // read_lines - read file as list of lines
+        globals.borrow_mut().define(
+            "read_lines".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("read_lines", 1, |args| {
+                use std::fs;
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("read_lines() needs a file path string".to_string()),
+                };
+                let content = fs::read_to_string(&path)
+                    .map_err(|e| format!("Couldnae read '{}': {}", path, e))?;
+                let lines: Vec<Value> = content.lines()
+                    .map(|l| Value::String(l.to_string()))
+                    .collect();
+                Ok(Value::List(Rc::new(RefCell::new(lines))))
+            }))),
+        );
+
+        // file_exists - check if file exists
+        globals.borrow_mut().define(
+            "file_exists".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("file_exists", 1, |args| {
+                use std::path::Path;
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("file_exists() needs a file path string".to_string()),
+                };
+                Ok(Value::Bool(Path::new(&path).exists()))
+            }))),
+        );
+
+        // append_file - append to file
+        globals.borrow_mut().define(
+            "append_file".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("append_file", 2, |args| {
+                use std::fs::OpenOptions;
+                use std::io::Write as IoWrite;
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("append_file() needs a file path string".to_string()),
+                };
+                let content = args[1].to_string();
+                let mut file = OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&path)
+                    .map_err(|e| format!("Couldnae open '{}' fer appendin': {}", path, e))?;
+                file.write_all(content.as_bytes())
+                    .map_err(|e| format!("Couldnae append tae '{}': {}", path, e))?;
+                Ok(Value::Nil)
+            }))),
+        );
+
+        // Higher-order functions are defined as marker values
+        // They get special handling in call_value
+
+        // gaun - map function over list (Scots: "going")
+        globals.borrow_mut().define(
+            "gaun".to_string(),
+            Value::String("__builtin_gaun__".to_string()),
+        );
+
+        // sieve - filter list (keep elements that pass)
+        globals.borrow_mut().define(
+            "sieve".to_string(),
+            Value::String("__builtin_sieve__".to_string()),
+        );
+
+        // tumble - reduce/fold list (Scots: tumble together)
+        globals.borrow_mut().define(
+            "tumble".to_string(),
+            Value::String("__builtin_tumble__".to_string()),
+        );
+
+        // ilk - for each (Scots: each/every)
+        globals.borrow_mut().define(
+            "ilk".to_string(),
+            Value::String("__builtin_ilk__".to_string()),
+        );
+
+        // hunt - find first matching element
+        globals.borrow_mut().define(
+            "hunt".to_string(),
+            Value::String("__builtin_hunt__".to_string()),
+        );
+
+        // ony - check if any element matches (Scots: any)
+        globals.borrow_mut().define(
+            "ony".to_string(),
+            Value::String("__builtin_ony__".to_string()),
+        );
+
+        // aw - check if all elements match (Scots: all)
+        globals.borrow_mut().define(
+            "aw".to_string(),
+            Value::String("__builtin_aw__".to_string()),
         );
     }
 
@@ -1082,6 +1651,20 @@ impl Interpreter {
 
                 Ok(Value::String(input.trim().to_string()))
             }
+
+            Expr::FString { parts, .. } => {
+                let mut result = String::new();
+                for part in parts {
+                    match part {
+                        FStringPart::Text(text) => result.push_str(text),
+                        FStringPart::Expr(expr) => {
+                            let val = self.evaluate(expr)?;
+                            result.push_str(&val.to_string());
+                        }
+                    }
+                }
+                Ok(Value::String(result))
+            }
         }
     }
 
@@ -1245,6 +1828,10 @@ impl Interpreter {
                 }
                 (native.func)(args).map_err(|e| HaversError::InternalError(e))
             }
+            // Higher-order function builtins
+            Value::String(ref s) if s.starts_with("__builtin_") => {
+                self.call_builtin_hof(s, args, line)
+            }
             Value::Class(class) => {
                 // Create new instance
                 let instance = Rc::new(RefCell::new(HaversInstance::new(class.clone())));
@@ -1282,6 +1869,200 @@ impl Interpreter {
             }
             _ => Err(HaversError::NotCallable {
                 name: format!("{}", callee),
+                line,
+            }),
+        }
+    }
+
+    /// Handle higher-order function builtins
+    fn call_builtin_hof(&mut self, name: &str, args: Vec<Value>, line: usize) -> HaversResult<Value> {
+        match name {
+            // gaun(list, func) - map function over list
+            "__builtin_gaun__" => {
+                if args.len() != 2 {
+                    return Err(HaversError::WrongArity {
+                        name: "gaun".to_string(),
+                        expected: 2,
+                        got: args.len(),
+                        line,
+                    });
+                }
+                let list = match &args[0] {
+                    Value::List(l) => l.borrow().clone(),
+                    _ => return Err(HaversError::TypeError {
+                        message: "gaun() expects a list as first argument".to_string(),
+                        line,
+                    }),
+                };
+                let func = args[1].clone();
+                let mut result = Vec::new();
+                for item in list {
+                    let mapped = self.call_value(func.clone(), vec![item], line)?;
+                    result.push(mapped);
+                }
+                Ok(Value::List(Rc::new(RefCell::new(result))))
+            }
+
+            // sieve(list, func) - filter list by predicate
+            "__builtin_sieve__" => {
+                if args.len() != 2 {
+                    return Err(HaversError::WrongArity {
+                        name: "sieve".to_string(),
+                        expected: 2,
+                        got: args.len(),
+                        line,
+                    });
+                }
+                let list = match &args[0] {
+                    Value::List(l) => l.borrow().clone(),
+                    _ => return Err(HaversError::TypeError {
+                        message: "sieve() expects a list as first argument".to_string(),
+                        line,
+                    }),
+                };
+                let func = args[1].clone();
+                let mut result = Vec::new();
+                for item in list {
+                    let keep = self.call_value(func.clone(), vec![item.clone()], line)?;
+                    if keep.is_truthy() {
+                        result.push(item);
+                    }
+                }
+                Ok(Value::List(Rc::new(RefCell::new(result))))
+            }
+
+            // tumble(list, initial, func) - reduce/fold
+            "__builtin_tumble__" => {
+                if args.len() != 3 {
+                    return Err(HaversError::WrongArity {
+                        name: "tumble".to_string(),
+                        expected: 3,
+                        got: args.len(),
+                        line,
+                    });
+                }
+                let list = match &args[0] {
+                    Value::List(l) => l.borrow().clone(),
+                    _ => return Err(HaversError::TypeError {
+                        message: "tumble() expects a list as first argument".to_string(),
+                        line,
+                    }),
+                };
+                let mut acc = args[1].clone();
+                let func = args[2].clone();
+                for item in list {
+                    acc = self.call_value(func.clone(), vec![acc, item], line)?;
+                }
+                Ok(acc)
+            }
+
+            // ilk(list, func) - for each (side effects)
+            "__builtin_ilk__" => {
+                if args.len() != 2 {
+                    return Err(HaversError::WrongArity {
+                        name: "ilk".to_string(),
+                        expected: 2,
+                        got: args.len(),
+                        line,
+                    });
+                }
+                let list = match &args[0] {
+                    Value::List(l) => l.borrow().clone(),
+                    _ => return Err(HaversError::TypeError {
+                        message: "ilk() expects a list as first argument".to_string(),
+                        line,
+                    }),
+                };
+                let func = args[1].clone();
+                for item in list {
+                    self.call_value(func.clone(), vec![item], line)?;
+                }
+                Ok(Value::Nil)
+            }
+
+            // hunt(list, func) - find first matching element
+            "__builtin_hunt__" => {
+                if args.len() != 2 {
+                    return Err(HaversError::WrongArity {
+                        name: "hunt".to_string(),
+                        expected: 2,
+                        got: args.len(),
+                        line,
+                    });
+                }
+                let list = match &args[0] {
+                    Value::List(l) => l.borrow().clone(),
+                    _ => return Err(HaversError::TypeError {
+                        message: "hunt() expects a list as first argument".to_string(),
+                        line,
+                    }),
+                };
+                let func = args[1].clone();
+                for item in list {
+                    let matches = self.call_value(func.clone(), vec![item.clone()], line)?;
+                    if matches.is_truthy() {
+                        return Ok(item);
+                    }
+                }
+                Ok(Value::Nil)
+            }
+
+            // ony(list, func) - check if any element matches
+            "__builtin_ony__" => {
+                if args.len() != 2 {
+                    return Err(HaversError::WrongArity {
+                        name: "ony".to_string(),
+                        expected: 2,
+                        got: args.len(),
+                        line,
+                    });
+                }
+                let list = match &args[0] {
+                    Value::List(l) => l.borrow().clone(),
+                    _ => return Err(HaversError::TypeError {
+                        message: "ony() expects a list as first argument".to_string(),
+                        line,
+                    }),
+                };
+                let func = args[1].clone();
+                for item in list {
+                    let matches = self.call_value(func.clone(), vec![item], line)?;
+                    if matches.is_truthy() {
+                        return Ok(Value::Bool(true));
+                    }
+                }
+                Ok(Value::Bool(false))
+            }
+
+            // aw(list, func) - check if all elements match
+            "__builtin_aw__" => {
+                if args.len() != 2 {
+                    return Err(HaversError::WrongArity {
+                        name: "aw".to_string(),
+                        expected: 2,
+                        got: args.len(),
+                        line,
+                    });
+                }
+                let list = match &args[0] {
+                    Value::List(l) => l.borrow().clone(),
+                    _ => return Err(HaversError::TypeError {
+                        message: "aw() expects a list as first argument".to_string(),
+                        line,
+                    }),
+                };
+                let func = args[1].clone();
+                for item in list {
+                    let matches = self.call_value(func.clone(), vec![item], line)?;
+                    if !matches.is_truthy() {
+                        return Ok(Value::Bool(false));
+                    }
+                }
+                Ok(Value::Bool(true))
+            }
+
+            _ => Err(HaversError::NotCallable {
+                name: name.to_string(),
                 line,
             }),
         }
@@ -1504,5 +2285,110 @@ d["a"]
     #[test]
     fn test_undefined_variable() {
         assert!(run("undefined_var").is_err());
+    }
+
+    #[test]
+    fn test_lambda() {
+        // Basic lambda
+        assert_eq!(
+            run("ken double = |x| x * 2\ndouble(5)").unwrap(),
+            Value::Integer(10)
+        );
+        // Lambda with multiple params
+        assert_eq!(
+            run("ken add = |a, b| a + b\nadd(3, 4)").unwrap(),
+            Value::Integer(7)
+        );
+        // No-param lambda
+        assert_eq!(
+            run("ken always_five = || 5\nalways_five()").unwrap(),
+            Value::Integer(5)
+        );
+    }
+
+    #[test]
+    fn test_gaun_map() {
+        let result = run("ken nums = [1, 2, 3]\ngaun(nums, |x| x * 2)").unwrap();
+        if let Value::List(list) = result {
+            let items = list.borrow();
+            assert_eq!(items.len(), 3);
+            assert_eq!(items[0], Value::Integer(2));
+            assert_eq!(items[1], Value::Integer(4));
+            assert_eq!(items[2], Value::Integer(6));
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_sieve_filter() {
+        let result = run("ken nums = [1, 2, 3, 4, 5]\nsieve(nums, |x| x % 2 == 0)").unwrap();
+        if let Value::List(list) = result {
+            let items = list.borrow();
+            assert_eq!(items.len(), 2);
+            assert_eq!(items[0], Value::Integer(2));
+            assert_eq!(items[1], Value::Integer(4));
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_tumble_reduce() {
+        assert_eq!(
+            run("ken nums = [1, 2, 3, 4, 5]\ntumble(nums, 0, |acc, x| acc + x)").unwrap(),
+            Value::Integer(15)
+        );
+    }
+
+    #[test]
+    fn test_ony_any() {
+        assert_eq!(
+            run("ken nums = [1, 2, 3]\nony(nums, |x| x > 2)").unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            run("ken nums = [1, 2, 3]\nony(nums, |x| x > 10)").unwrap(),
+            Value::Bool(false)
+        );
+    }
+
+    #[test]
+    fn test_aw_all() {
+        assert_eq!(
+            run("ken nums = [1, 2, 3]\naw(nums, |x| x > 0)").unwrap(),
+            Value::Bool(true)
+        );
+        assert_eq!(
+            run("ken nums = [1, 2, 3]\naw(nums, |x| x > 1)").unwrap(),
+            Value::Bool(false)
+        );
+    }
+
+    #[test]
+    fn test_hunt_find() {
+        assert_eq!(
+            run("ken nums = [1, 2, 3, 4, 5]\nhunt(nums, |x| x > 3)").unwrap(),
+            Value::Integer(4)
+        );
+        assert_eq!(
+            run("ken nums = [1, 2, 3]\nhunt(nums, |x| x > 10)").unwrap(),
+            Value::Nil
+        );
+    }
+
+    #[test]
+    fn test_pattern_matching() {
+        let result = run(r#"
+ken x = 2
+ken result = naething
+keek x {
+    whan 1 -> result = "one"
+    whan 2 -> result = "two"
+    whan _ -> result = "other"
+}
+result
+"#).unwrap();
+        assert_eq!(result, Value::String("two".to_string()));
     }
 }
