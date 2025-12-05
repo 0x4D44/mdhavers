@@ -510,12 +510,21 @@ Modules are resolved relative to the current file's directory. The `.braw` exten
 | `bonnie(x)` | pretty | Decorate value: "~~~ x ~~~" |
 | `is_wee(x)` | is wee | Check if value is small |
 | `is_muckle(x)` | is big | Check if value is large |
-| `crabbit(str)` | grumpy | Uppercase with "!": shout |
+| `crabbit(n)` | grumpy | Check if number is negative |
+| `roar(str)` | shout | Uppercase with "!": shout |
 | `cannie(x)` | careful | Check if value is safe/valid |
-| `glaikit(x, type)` | silly | Check if wrong type |
+| `glaikit(x)` | silly | Check if value is empty/zero/invalid |
+| `wrang_sort(x, type)` | wrong sort | Check if wrong type |
 | `tattie_scone(s, n)` | potato scone | Repeat string with \| separator |
 | `haggis_hunt(s, needle)` | haggis hunt | Find all occurrences of substring |
 | `sporran_fill(s, w, c)` | sporran fill | Center-pad string |
+| `blether_format(s, d)` | format | Format string with dict placeholders |
+| `ceilidh(l1, l2)` | dance | Interleave two lists like dancers |
+| `dram(list)` | wee drink | Get random element from list |
+| `birl(list, n)` | spin | Rotate list by n positions |
+| `stooshie(str)` | chaos | Shuffle string characters |
+| `clype(x)` | tell tales | Get debug info about a value |
+| `sclaff(list)` | hit flat | Fully flatten nested lists |
 
 **Scottish Exclamation Functions**:
 
@@ -646,6 +655,92 @@ mdhavers tokens program.braw
 
 # Show AST (debug)
 mdhavers ast program.braw
+
+# Trace execution (step-by-step with Scottish commentary!)
+mdhavers trace program.braw        # statements only
+mdhavers trace program.braw -v     # verbose mode (shows values too)
+```
+
+## Debugger/Tracer
+
+mdhavers includes a tracer mode that shows step-by-step execution with Scottish commentary. It's pure dead brilliant for debugging!
+
+```bash
+# Basic trace - shows statements as they execute
+mdhavers trace program.braw
+
+# Verbose trace - shows values and more detail
+mdhavers trace program.braw -v
+```
+
+Example output:
+```
+════════════════════════════════════════════════════════════
+  🏴󠁧󠁢󠁳󠁣󠁴󠁿 mdhavers Tracer - Watchin' Yer Code Like a Hawk!
+  Mode: Verbose (showin' everything)
+════════════════════════════════════════════════════════════
+
+🏴󠁧󠁢󠁳󠁣󠁴󠁿 [line 5] ken name = ...
+   → name is noo Hamish
+🏴󠁧󠁢󠁳󠁣󠁴󠁿 [line 6] gin (if) statement
+   → condition is aye
+🏴󠁧󠁢󠁳󠁣󠁴󠁿 [line 6] condition is aye - takin' then branch
+🏴󠁧󠁢󠁳󠁣󠁴󠁿 [line 6] enterin' block
+🏴󠁧󠁢󠁳󠁣󠁴󠁿   [line 7] blether (print): Welcome!
+🏴󠁧󠁢󠁳󠁣󠁴󠁿 [line 6] leavin' block
+🏴󠁧󠁢󠁳󠁣󠁴󠁿 [line 10] fer (for) loop: i in ...
+   → iteratin' ower 3 items
+   → iteration 1: i = 1
+🏴󠁧󠁢󠁳󠁣󠁴󠁿 [line 10] fer loop done after 3 iterations
+
+════════════════════════════════════════════════════════════
+  🏴󠁧󠁢󠁳󠁣󠁴󠁿 Trace complete - Pure dead brilliant!
+════════════════════════════════════════════════════════════
+```
+
+The tracer shows:
+- Variable declarations with their values
+- Control flow (if/gin, loops with iteration counts)
+- Function calls and returns
+- Try/catch blocks with error details
+- Pattern matching with which arm matched
+
+## Interactive REPL
+
+The REPL (Read-Eval-Print Loop) provides an interactive environment for experimenting with mdhavers:
+
+```bash
+mdhavers repl    # Start the REPL
+mdhavers         # Also starts REPL if no file given
+```
+
+### REPL Commands
+
+| Command | Description |
+|---------|-------------|
+| `help` | Show help message |
+| `quit` / `haud yer wheesht` | Exit the REPL |
+| `clear` | Clear the screen |
+| `reset` | Reset interpreter (clear all variables) |
+| `wisdom` | Get a Scottish proverb |
+| `examples` | Show example code snippets |
+| `trace` | Toggle trace mode (see execution step-by-step) |
+| `trace v` | Toggle verbose trace mode |
+| `vars` / `env` | Show all defined variables |
+
+### REPL Tracing
+
+You can enable tracing directly in the REPL to debug code interactively:
+
+```
+mdhavers> trace
+🏴󠁧󠁢󠁳󠁣󠁴󠁿 Trace mode ON - watchin' yer code like a hawk!
+
+mdhavers[trace]> ken x = 42
+🏴󠁧󠁢󠁳󠁣󠁴󠁿 [line 1] ken x = ...
+
+mdhavers[trace]> trace
+Trace mode OFF - back tae normal.
 ```
 
 ## Error Messages
@@ -693,6 +788,7 @@ See the `examples/` directory for sample programs:
 - `spread.braw` - Spread operator (...) examples
 - `pipe.braw` - Pipe operator (|>) examples
 - `defaults.braw` - Default parameter values (staundart values)
+- `trace_demo.braw` - Demo file for the tracer (try `mdhavers trace`)
 - `destructure.braw` - Destructuring assignment examples
 - `scots_fun.braw` - New Scots vocabulary functions demo
 - `lib/maths.braw` - Mathematics utility library
