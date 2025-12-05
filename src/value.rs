@@ -1,9 +1,9 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::Rc;
 
-use crate::ast::Stmt;
+use crate::ast::{Expr, Stmt};
 
 /// Runtime values in mdhavers
 #[derive(Debug, Clone)]
@@ -22,6 +22,8 @@ pub enum Value {
     List(Rc<RefCell<Vec<Value>>>),
     /// Dictionary/Map
     Dict(Rc<RefCell<HashMap<String, Value>>>),
+    /// Set (creel = basket/set in Scots)
+    Set(Rc<RefCell<HashSet<String>>>),
     /// Function
     Function(Rc<HaversFunction>),
     /// Native/built-in function
@@ -46,6 +48,7 @@ impl Value {
             Value::Nil => "naething",
             Value::List(_) => "list",
             Value::Dict(_) => "dict",
+            Value::Set(_) => "creel",
             Value::Function(_) => "function",
             Value::NativeFunction(_) => "native function",
             Value::Class(_) => "class",
@@ -63,6 +66,7 @@ impl Value {
             Value::Float(f) if *f == 0.0 => false,
             Value::String(s) if s.is_empty() => false,
             Value::List(l) if l.borrow().is_empty() => false,
+            Value::Set(s) if s.borrow().is_empty() => false,
             _ => true,
         }
     }
@@ -113,6 +117,12 @@ impl fmt::Display for Value {
                     .collect();
                 write!(f, "{{{}}}", strs.join(", "))
             }
+            Value::Set(set) => {
+                let set = set.borrow();
+                let mut strs: Vec<&String> = set.iter().collect();
+                strs.sort(); // Sort fer consistent display
+                write!(f, "creel{{{}}}", strs.iter().map(|s| format!("\"{}\"", s)).collect::<Vec<_>>().join(", "))
+            }
             Value::Function(func) => write!(f, "<dae {}>", func.name),
             Value::NativeFunction(func) => write!(f, "<native dae {}>", func.name),
             Value::Class(class) => write!(f, "<kin {}>", class.name),
@@ -139,11 +149,18 @@ impl PartialEq for Value {
     }
 }
 
+/// A function parameter with optional default value (fer runtime)
+#[derive(Debug, Clone)]
+pub struct FunctionParam {
+    pub name: String,
+    pub default: Option<Expr>,
+}
+
 /// A user-defined function
 #[derive(Debug)]
 pub struct HaversFunction {
     pub name: String,
-    pub params: Vec<String>,
+    pub params: Vec<FunctionParam>,
     pub body: Vec<Stmt>,
     pub closure: Option<Rc<RefCell<Environment>>>,
 }
@@ -151,7 +168,7 @@ pub struct HaversFunction {
 impl HaversFunction {
     pub fn new(
         name: String,
-        params: Vec<String>,
+        params: Vec<FunctionParam>,
         body: Vec<Stmt>,
         closure: Option<Rc<RefCell<Environment>>>,
     ) -> Self {
@@ -161,6 +178,16 @@ impl HaversFunction {
             body,
             closure,
         }
+    }
+
+    /// Count the minimum number of required arguments (those wi'oot defaults)
+    pub fn min_arity(&self) -> usize {
+        self.params.iter().filter(|p| p.default.is_none()).count()
+    }
+
+    /// Maximum number of arguments (all params)
+    pub fn max_arity(&self) -> usize {
+        self.params.len()
     }
 }
 
@@ -358,6 +385,12 @@ impl Environment {
             return enclosing.borrow_mut().assign(name, value);
         }
         false
+    }
+
+    /// Get all values defined in this environment (not including enclosing)
+    /// Used fer module exports
+    pub fn get_exports(&self) -> HashMap<String, Value> {
+        self.values.clone()
     }
 }
 

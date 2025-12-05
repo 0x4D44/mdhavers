@@ -19,6 +19,10 @@ pub enum TokenKind {
     #[token("ither")]
     Ither,
 
+    /// than - then (for ternary expressions: gin x than y ither z)
+    #[token("than")]
+    Than,
+
     /// whiles - while loop
     #[token("whiles")]
     Whiles,
@@ -119,6 +123,10 @@ pub enum TokenKind {
     #[token("whan")]
     Whan,
 
+    /// assert - mak_siccar (make sure - famously said by Robert the Bruce!)
+    #[token("mak_siccar")]
+    MakSiccar,
+
     // === Literals ===
 
     #[regex(r"[0-9]+", |lex| lex.slice().parse::<i64>().ok())]
@@ -133,6 +141,13 @@ pub enum TokenKind {
         Some(s[1..s.len()-1].to_string())
     })]
     String(String),
+
+    // String with single quotes (fer use inside f-strings and general convenience)
+    #[regex(r#"'([^'\\]|\\.)*'"#, |lex| {
+        let s = lex.slice();
+        Some(s[1..s.len()-1].to_string())
+    })]
+    SingleQuoteString(String),
 
     // F-string (format string) with interpolation: f"Hello {name}!"
     #[regex(r#"f"([^"\\]|\\.)*""#, |lex| {
@@ -198,11 +213,17 @@ pub enum TokenKind {
     #[token("/=")]
     SlashEquals,
 
+    #[token("...")]
+    DotDotDot,  // Spread operator (skail = scatter in Scots)
+
     #[token("..")]
     DotDot,
 
     #[token(".")]
     Dot,
+
+    #[token("_", priority = 3)]
+    Underscore,  // Wildcard/ignore pattern
 
     // === Delimiters ===
 
@@ -236,6 +257,9 @@ pub enum TokenKind {
     #[token("->")]
     Arrow,
 
+    #[token("|>")]
+    PipeForward,  // Pipe operator fer chaining: x |> f means f(x)
+
     #[token("|")]
     Pipe,
 
@@ -257,6 +281,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Ken => write!(f, "ken"),
             TokenKind::Gin => write!(f, "gin"),
             TokenKind::Ither => write!(f, "ither"),
+            TokenKind::Than => write!(f, "than"),
             TokenKind::Whiles => write!(f, "whiles"),
             TokenKind::Fer => write!(f, "fer"),
             TokenKind::Gie => write!(f, "gie"),
@@ -282,9 +307,11 @@ impl fmt::Display for TokenKind {
             TokenKind::GinItGangsWrang => write!(f, "gin_it_gangs_wrang"),
             TokenKind::Keek => write!(f, "keek"),
             TokenKind::Whan => write!(f, "whan"),
+            TokenKind::MakSiccar => write!(f, "mak_siccar"),
             TokenKind::Integer(n) => write!(f, "{}", n),
             TokenKind::Float(n) => write!(f, "{}", n),
             TokenKind::String(s) => write!(f, "\"{}\"", s),
+            TokenKind::SingleQuoteString(s) => write!(f, "'{}'", s),
             TokenKind::FString(s) => write!(f, "f\"{}\"", s),
             TokenKind::Identifier(s) => write!(f, "{}", s),
             TokenKind::Plus => write!(f, "+"),
@@ -304,8 +331,10 @@ impl fmt::Display for TokenKind {
             TokenKind::MinusEquals => write!(f, "-="),
             TokenKind::StarEquals => write!(f, "*="),
             TokenKind::SlashEquals => write!(f, "/="),
+            TokenKind::DotDotDot => write!(f, "..."),
             TokenKind::DotDot => write!(f, ".."),
             TokenKind::Dot => write!(f, "."),
+            TokenKind::Underscore => write!(f, "_"),
             TokenKind::LeftParen => write!(f, "("),
             TokenKind::RightParen => write!(f, ")"),
             TokenKind::LeftBrace => write!(f, "{{"),
@@ -316,6 +345,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Colon => write!(f, ":"),
             TokenKind::Semicolon => write!(f, ";"),
             TokenKind::Arrow => write!(f, "->"),
+            TokenKind::PipeForward => write!(f, "|>"),
             TokenKind::Pipe => write!(f, "|"),
             TokenKind::Newline => write!(f, "newline"),
             TokenKind::Comment => write!(f, "comment"),

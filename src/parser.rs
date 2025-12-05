@@ -49,6 +49,11 @@ impl Parser {
         let span = self.current_span();
         self.advance(); // consume 'ken'
 
+        // Check fer destructuring pattern: ken [a, b, c] = ...
+        if self.check(&TokenKind::LeftBracket) {
+            return self.destructure_declaration(span);
+        }
+
         let name = self.expect_identifier("variable name")?;
 
         let initializer = if self.match_token(&TokenKind::Equals) {
@@ -66,6 +71,53 @@ impl Parser {
         })
     }
 
+    /// Parse a destructuring pattern: ken [a, b, ...rest] = list
+    fn destructure_declaration(&mut self, span: Span) -> HaversResult<Stmt> {
+        self.expect(&TokenKind::LeftBracket, "[")?;
+
+        let mut patterns = Vec::new();
+        let mut seen_rest = false;
+
+        while !self.check(&TokenKind::RightBracket) && !self.is_at_end() {
+            // Check fer rest pattern: ...name
+            if self.match_token(&TokenKind::DotDotDot) {
+                if seen_rest {
+                    return Err(HaversError::ParseError {
+                        message: "Ye can only hae ane rest pattern (...) in a destructure".to_string(),
+                        line: span.line,
+                    });
+                }
+                let name = self.expect_identifier("rest variable name")?;
+                patterns.push(DestructPattern::Rest(name));
+                seen_rest = true;
+            } else if self.match_token(&TokenKind::Underscore) {
+                // Ignore pattern: _
+                patterns.push(DestructPattern::Ignore);
+            } else {
+                // Regular variable
+                let name = self.expect_identifier("variable name")?;
+                patterns.push(DestructPattern::Variable(name));
+            }
+
+            if !self.match_token(&TokenKind::Comma) {
+                break;
+            }
+        }
+
+        self.expect(&TokenKind::RightBracket, "]")?;
+        self.expect(&TokenKind::Equals, "=")?;
+
+        let value = self.expression()?;
+
+        self.expect_statement_end()?;
+
+        Ok(Stmt::Destructure {
+            patterns,
+            value,
+            span,
+        })
+    }
+
     fn function_declaration(&mut self) -> HaversResult<Stmt> {
         let span = self.current_span();
         self.advance(); // consume 'dae'
@@ -74,9 +126,32 @@ impl Parser {
         self.expect(&TokenKind::LeftParen, "(")?;
 
         let mut params = Vec::new();
+        let mut seen_default = false;
+
         if !self.check(&TokenKind::RightParen) {
             loop {
-                params.push(self.expect_identifier("parameter name")?);
+                let param_name = self.expect_identifier("parameter name")?;
+
+                // Check for default value: param = value
+                let default = if self.match_token(&TokenKind::Equals) {
+                    seen_default = true;
+                    Some(self.expression()?)
+                } else {
+                    // Params wi' defaults must come efter params wi'oot
+                    if seen_default {
+                        return Err(HaversError::ParseError {
+                            message: "Och! Params wi'oot defaults cannae come efter params wi' defaults".to_string(),
+                            line: span.line,
+                        });
+                    }
+                    None
+                };
+
+                params.push(Param {
+                    name: param_name,
+                    default,
+                });
+
                 if !self.match_token(&TokenKind::Comma) {
                     break;
                 }
@@ -198,6 +273,8 @@ impl Parser {
             self.try_catch_statement()
         } else if self.check(&TokenKind::Keek) {
             self.match_statement()
+        } else if self.check(&TokenKind::MakSiccar) {
+            self.assert_statement()
         } else if self.check(&TokenKind::LeftBrace) {
             self.block()
         } else {
@@ -347,6 +424,26 @@ impl Parser {
         Ok(Stmt::Match { value, arms, span })
     }
 
+    fn assert_statement(&mut self) -> HaversResult<Stmt> {
+        let span = self.current_span();
+        self.advance(); // consume 'mak_siccar'
+
+        let condition = self.expression()?;
+
+        // Optional message after comma
+        let message = if self.match_token(&TokenKind::Comma) {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+
+        Ok(Stmt::Assert {
+            condition,
+            message,
+            span,
+        })
+    }
+
     fn match_arm(&mut self) -> HaversResult<MatchArm> {
         let span = self.current_span();
         self.expect(&TokenKind::Whan, "whan")?;
@@ -405,7 +502,7 @@ impl Parser {
                 self.advance();
                 Ok(Pattern::Literal(Literal::Float(n)))
             }
-            TokenKind::String(s) => {
+            TokenKind::String(s) | TokenKind::SingleQuoteString(s) => {
                 let s = process_escapes(s);
                 self.advance();
                 Ok(Pattern::Literal(Literal::String(s)))
@@ -421,6 +518,10 @@ impl Parser {
             TokenKind::Naething => {
                 self.advance();
                 Ok(Pattern::Literal(Literal::Nil))
+            }
+            TokenKind::Underscore => {
+                self.advance();
+                Ok(Pattern::Wildcard)
             }
             TokenKind::Identifier(name) if name == "_" => {
                 self.advance();
@@ -472,7 +573,7 @@ impl Parser {
     }
 
     fn assignment(&mut self) -> HaversResult<Expr> {
-        let expr = self.or()?;
+        let expr = self.pipe_expr()?;
 
         if self.match_token(&TokenKind::Equals) {
             let span = self.current_span();
@@ -554,6 +655,55 @@ impl Parser {
         }
 
         Ok(expr)
+    }
+
+    /// Pipe expression: left |> right (means call right with left as argument)
+    fn pipe_expr(&mut self) -> HaversResult<Expr> {
+        let mut expr = self.ternary()?;
+
+        while self.match_token(&TokenKind::PipeForward) {
+            let span = self.current_span();
+            let right = self.ternary()?;
+            expr = Expr::Pipe {
+                left: Box::new(expr),
+                right: Box::new(right),
+                span,
+            };
+        }
+
+        Ok(expr)
+    }
+
+    /// Ternary expression: gin condition than truthy ither falsy
+    fn ternary(&mut self) -> HaversResult<Expr> {
+        // Check fer ternary expression starting wi' 'gin'
+        if self.match_token(&TokenKind::Gin) {
+            let span = self.previous().map(|t| Span::new(t.line, t.column)).unwrap_or(self.current_span());
+
+            // Parse the condition
+            let condition = self.or()?;
+
+            // Expect 'than'
+            self.expect(&TokenKind::Than, "than")?;
+
+            // Parse the 'then' expression (truthy case)
+            let then_expr = self.or()?;
+
+            // Expect 'ither'
+            self.expect(&TokenKind::Ither, "ither")?;
+
+            // Parse the 'else' expression (falsy case)
+            let else_expr = self.ternary()?;  // Right-associative
+
+            return Ok(Expr::Ternary {
+                condition: Box::new(condition),
+                then_expr: Box::new(then_expr),
+                else_expr: Box::new(else_expr),
+                span,
+            });
+        }
+
+        self.or()
     }
 
     fn or(&mut self) -> HaversResult<Expr> {
@@ -749,6 +899,7 @@ impl Parser {
             TokenKind::Integer(_)
                 | TokenKind::Float(_)
                 | TokenKind::String(_)
+                | TokenKind::SingleQuoteString(_)
                 | TokenKind::Identifier(_)
                 | TokenKind::LeftParen
                 | TokenKind::LeftBracket
@@ -779,13 +930,78 @@ impl Parser {
                 };
             } else if self.match_token(&TokenKind::LeftBracket) {
                 let span = self.current_span();
-                let index = self.expression()?;
-                self.expect(&TokenKind::RightBracket, "]")?;
-                expr = Expr::Index {
-                    object: Box::new(expr),
-                    index: Box::new(index),
-                    span,
-                };
+
+                // Check fer slice syntax: [start:end:step], [:end], [start:], [::step], etc.
+                if self.check(&TokenKind::Colon) {
+                    // [:end] or [:] or [:end:step] or [::step]
+                    self.advance(); // consume the first colon
+
+                    let end = if self.check(&TokenKind::Colon) || self.check(&TokenKind::RightBracket) {
+                        None
+                    } else {
+                        Some(Box::new(self.expression()?))
+                    };
+
+                    // Check fer step
+                    let step = if self.match_token(&TokenKind::Colon) {
+                        if self.check(&TokenKind::RightBracket) {
+                            None
+                        } else {
+                            Some(Box::new(self.expression()?))
+                        }
+                    } else {
+                        None
+                    };
+
+                    self.expect(&TokenKind::RightBracket, "]")?;
+                    expr = Expr::Slice {
+                        object: Box::new(expr),
+                        start: None,
+                        end,
+                        step,
+                        span,
+                    };
+                } else {
+                    // Could be [index] or [start:end] or [start:] or [start:end:step]
+                    let first = self.expression()?;
+
+                    if self.match_token(&TokenKind::Colon) {
+                        // It's a slice: [start:end] or [start:] or [start:end:step] or [start::step]
+                        let end = if self.check(&TokenKind::Colon) || self.check(&TokenKind::RightBracket) {
+                            None
+                        } else {
+                            Some(Box::new(self.expression()?))
+                        };
+
+                        // Check fer step
+                        let step = if self.match_token(&TokenKind::Colon) {
+                            if self.check(&TokenKind::RightBracket) {
+                                None
+                            } else {
+                                Some(Box::new(self.expression()?))
+                            }
+                        } else {
+                            None
+                        };
+
+                        self.expect(&TokenKind::RightBracket, "]")?;
+                        expr = Expr::Slice {
+                            object: Box::new(expr),
+                            start: Some(Box::new(first)),
+                            end,
+                            step,
+                            span,
+                        };
+                    } else {
+                        // Regular index access
+                        self.expect(&TokenKind::RightBracket, "]")?;
+                        expr = Expr::Index {
+                            object: Box::new(expr),
+                            index: Box::new(first),
+                            span,
+                        };
+                    }
+                }
             } else {
                 break;
             }
@@ -800,7 +1016,17 @@ impl Parser {
 
         if !self.check(&TokenKind::RightParen) {
             loop {
-                arguments.push(self.expression()?);
+                // Check for spread operator in function arguments
+                if self.match_token(&TokenKind::DotDotDot) {
+                    let spread_span = self.current_span();
+                    let expr = self.expression()?;
+                    arguments.push(Expr::Spread {
+                        expr: Box::new(expr),
+                        span: spread_span,
+                    });
+                } else {
+                    arguments.push(self.expression()?);
+                }
                 if !self.match_token(&TokenKind::Comma) {
                     break;
                 }
@@ -837,7 +1063,7 @@ impl Parser {
                     span,
                 })
             }
-            TokenKind::String(s) => {
+            TokenKind::String(s) | TokenKind::SingleQuoteString(s) => {
                 let s = process_escapes(s);
                 self.advance();
                 Ok(Expr::Literal {
@@ -903,7 +1129,17 @@ impl Parser {
                 let mut elements = Vec::new();
                 if !self.check(&TokenKind::RightBracket) {
                     loop {
-                        elements.push(self.expression()?);
+                        // Check for spread operator (skail = scatter)
+                        if self.match_token(&TokenKind::DotDotDot) {
+                            let spread_span = self.current_span();
+                            let expr = self.expression()?;
+                            elements.push(Expr::Spread {
+                                expr: Box::new(expr),
+                                span: spread_span,
+                            });
+                        } else {
+                            elements.push(self.expression()?);
+                        }
                         if !self.match_token(&TokenKind::Comma) {
                             break;
                         }
@@ -1046,7 +1282,7 @@ impl Parser {
 
     fn expect_string(&mut self, context: &str) -> HaversResult<String> {
         let token = self.peek().clone();
-        if let TokenKind::String(s) = &token.kind {
+        if let TokenKind::String(s) | TokenKind::SingleQuoteString(s) = &token.kind {
             let s = s.clone();
             self.advance();
             Ok(s)

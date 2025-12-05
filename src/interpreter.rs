@@ -1,6 +1,7 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use crate::ast::*;
@@ -20,6 +21,12 @@ pub struct Interpreter {
     pub globals: Rc<RefCell<Environment>>,
     environment: Rc<RefCell<Environment>>,
     output: Vec<String>,
+    /// Track loaded modules tae prevent circular imports
+    loaded_modules: HashSet<PathBuf>,
+    /// Current working directory fer resolving relative imports
+    current_dir: PathBuf,
+    /// Whether the prelude has been loaded
+    prelude_loaded: bool,
 }
 
 impl Interpreter {
@@ -33,11 +40,82 @@ impl Interpreter {
             globals: globals.clone(),
             environment: globals,
             output: Vec::new(),
+            loaded_modules: HashSet::new(),
+            current_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            prelude_loaded: false,
         }
     }
 
+    /// Create an interpreter with a specific working directory
+    pub fn with_dir<P: AsRef<Path>>(dir: P) -> Self {
+        let mut interp = Self::new();
+        interp.current_dir = dir.as_ref().to_path_buf();
+        interp
+    }
+
+    /// Set the current directory fer module resolution
+    pub fn set_current_dir<P: AsRef<Path>>(&mut self, dir: P) {
+        self.current_dir = dir.as_ref().to_path_buf();
+    }
+
+    /// Load the standard prelude (automatically loaded unless disabled)
+    /// The prelude provides common utility functions written in mdhavers
+    pub fn load_prelude(&mut self) -> HaversResult<()> {
+        if self.prelude_loaded {
+            return Ok(());
+        }
+
+        // Try tae find the prelude in these locations:
+        // 1. stdlib/prelude.braw relative tae the executable
+        // 2. stdlib/prelude.braw relative tae current directory
+        // 3. Embedded prelude as fallback
+
+        let prelude_locations = [
+            // Next tae the executable
+            std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.join("stdlib/prelude.braw"))),
+            // In the current directory
+            Some(PathBuf::from("stdlib/prelude.braw")),
+            // In the project root (fer development)
+            Some(PathBuf::from("../stdlib/prelude.braw")),
+        ];
+
+        for maybe_path in prelude_locations.iter().flatten() {
+            if let Ok(source) = std::fs::read_to_string(maybe_path) {
+                match crate::parser::parse(&source) {
+                    Ok(program) => {
+                        // Execute prelude in globals
+                        for stmt in &program.statements {
+                            self.execute_stmt(stmt)?;
+                        }
+                        self.prelude_loaded = true;
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        // Prelude has syntax error - this is a bug
+                        return Err(HaversError::ParseError {
+                            message: format!("Prelude has errors (this shouldnae happen!): {}", e),
+                            line: 1,
+                        });
+                    }
+                }
+            }
+        }
+
+        // If nae prelude file found, that's okay - just continue without it
+        // The language still works, just without the convenience functions
+        self.prelude_loaded = true;
+        Ok(())
+    }
+
+    /// Check if prelude is loaded
+    pub fn has_prelude(&self) -> bool {
+        self.prelude_loaded
+    }
+
     fn define_natives(globals: &Rc<RefCell<Environment>>) {
-        // len - get length of list or string
+        // len - get length of list, string, dict, or set
         globals.borrow_mut().define(
             "len".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("len", 1, |args| {
@@ -45,7 +123,8 @@ impl Interpreter {
                     Value::String(s) => Ok(Value::Integer(s.len() as i64)),
                     Value::List(l) => Ok(Value::Integer(l.borrow().len() as i64)),
                     Value::Dict(d) => Ok(Value::Integer(d.borrow().len() as i64)),
-                    _ => Err("len() expects a string, list, or dict".to_string()),
+                    Value::Set(s) => Ok(Value::Integer(s.borrow().len() as i64)),
+                    _ => Err("len() expects a string, list, dict, or creel".to_string()),
                 }
             }))),
         );
@@ -722,6 +801,205 @@ impl Interpreter {
             }))),
         );
 
+        // === More String Functions ===
+
+        // pad_left - pad string on the left to reach target length
+        globals.borrow_mut().define(
+            "pad_left".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("pad_left", 3, |args| {
+                match (&args[0], &args[1], &args[2]) {
+                    (Value::String(s), Value::Integer(width), Value::String(pad_char)) => {
+                        let width = *width as usize;
+                        if s.len() >= width {
+                            Ok(Value::String(s.clone()))
+                        } else {
+                            let pad = pad_char.chars().next().unwrap_or(' ');
+                            let padding: String = std::iter::repeat(pad).take(width - s.len()).collect();
+                            Ok(Value::String(format!("{}{}", padding, s)))
+                        }
+                    }
+                    _ => Err("pad_left() needs a string, integer width, and pad character".to_string()),
+                }
+            }))),
+        );
+
+        // pad_right - pad string on the right to reach target length
+        globals.borrow_mut().define(
+            "pad_right".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("pad_right", 3, |args| {
+                match (&args[0], &args[1], &args[2]) {
+                    (Value::String(s), Value::Integer(width), Value::String(pad_char)) => {
+                        let width = *width as usize;
+                        if s.len() >= width {
+                            Ok(Value::String(s.clone()))
+                        } else {
+                            let pad = pad_char.chars().next().unwrap_or(' ');
+                            let padding: String = std::iter::repeat(pad).take(width - s.len()).collect();
+                            Ok(Value::String(format!("{}{}", s, padding)))
+                        }
+                    }
+                    _ => Err("pad_right() needs a string, integer width, and pad character".to_string()),
+                }
+            }))),
+        );
+
+        // lines - split string into lines (on newlines)
+        globals.borrow_mut().define(
+            "lines".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("lines", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    let line_list: Vec<Value> = s
+                        .lines()
+                        .map(|line| Value::String(line.to_string()))
+                        .collect();
+                    Ok(Value::List(Rc::new(RefCell::new(line_list))))
+                } else {
+                    Err("lines() needs a string".to_string())
+                }
+            }))),
+        );
+
+        // words - split string into words (on whitespace)
+        globals.borrow_mut().define(
+            "words".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("words", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    let word_list: Vec<Value> = s
+                        .split_whitespace()
+                        .map(|word| Value::String(word.to_string()))
+                        .collect();
+                    Ok(Value::List(Rc::new(RefCell::new(word_list))))
+                } else {
+                    Err("words() needs a string".to_string())
+                }
+            }))),
+        );
+
+        // is_digit - check if string contains only digits
+        globals.borrow_mut().define(
+            "is_digit".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("is_digit", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    Ok(Value::Bool(!s.is_empty() && s.chars().all(|c| c.is_ascii_digit())))
+                } else {
+                    Err("is_digit() needs a string".to_string())
+                }
+            }))),
+        );
+
+        // is_alpha - check if string contains only letters
+        globals.borrow_mut().define(
+            "is_alpha".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("is_alpha", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    Ok(Value::Bool(!s.is_empty() && s.chars().all(|c| c.is_alphabetic())))
+                } else {
+                    Err("is_alpha() needs a string".to_string())
+                }
+            }))),
+        );
+
+        // is_space - check if string contains only whitespace
+        globals.borrow_mut().define(
+            "is_space".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("is_space", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    Ok(Value::Bool(!s.is_empty() && s.chars().all(|c| c.is_whitespace())))
+                } else {
+                    Err("is_space() needs a string".to_string())
+                }
+            }))),
+        );
+
+        // capitalize - capitalize first letter
+        globals.borrow_mut().define(
+            "capitalize".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("capitalize", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    let mut chars = s.chars();
+                    let result = match chars.next() {
+                        Some(first) => format!("{}{}", first.to_uppercase(), chars.collect::<String>()),
+                        None => String::new(),
+                    };
+                    Ok(Value::String(result))
+                } else {
+                    Err("capitalize() needs a string".to_string())
+                }
+            }))),
+        );
+
+        // title - capitalize each word
+        globals.borrow_mut().define(
+            "title".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("title", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    let result = s
+                        .split_whitespace()
+                        .map(|word| {
+                            let mut chars = word.chars();
+                            match chars.next() {
+                                Some(first) => format!("{}{}", first.to_uppercase(), chars.collect::<String>().to_lowercase()),
+                                None => String::new(),
+                            }
+                        })
+                        .collect::<Vec<String>>()
+                        .join(" ");
+                    Ok(Value::String(result))
+                } else {
+                    Err("title() needs a string".to_string())
+                }
+            }))),
+        );
+
+        // chars - split string into list of characters
+        globals.borrow_mut().define(
+            "chars".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("chars", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    let char_list: Vec<Value> = s
+                        .chars()
+                        .map(|c| Value::String(c.to_string()))
+                        .collect();
+                    Ok(Value::List(Rc::new(RefCell::new(char_list))))
+                } else {
+                    Err("chars() needs a string".to_string())
+                }
+            }))),
+        );
+
+        // ord - get ASCII/Unicode code of first character
+        globals.borrow_mut().define(
+            "ord".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("ord", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    s.chars()
+                        .next()
+                        .map(|c| Value::Integer(c as i64))
+                        .ok_or_else(|| "Cannae get ord o' empty string!".to_string())
+                } else {
+                    Err("ord() needs a string".to_string())
+                }
+            }))),
+        );
+
+        // chr - get character from ASCII/Unicode code
+        globals.borrow_mut().define(
+            "chr".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("chr", 1, |args| {
+                if let Value::Integer(n) = &args[0] {
+                    if *n >= 0 && *n <= 0x10FFFF {
+                        char::from_u32(*n as u32)
+                            .map(|c| Value::String(c.to_string()))
+                            .ok_or_else(|| format!("Invalid Unicode codepoint: {}", n))
+                    } else {
+                        Err(format!("chr() needs a valid Unicode codepoint (0 to 1114111), got {}", n))
+                    }
+                } else {
+                    Err("chr() needs an integer".to_string())
+                }
+            }))),
+        );
+
         // flatten - flatten nested lists one level
         globals.borrow_mut().define(
             "flatten".to_string(),
@@ -771,6 +1049,737 @@ impl Interpreter {
                     Ok(Value::List(Rc::new(RefCell::new(result))))
                 } else {
                     Err("enumerate() needs a list".to_string())
+                }
+            }))),
+        );
+
+        // === More List Manipulation Functions ===
+
+        // uniq - remove duplicates from a list (keeping first occurrence)
+        globals.borrow_mut().define(
+            "uniq".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("uniq", 1, |args| {
+                if let Value::List(list) = &args[0] {
+                    let mut seen = Vec::new();
+                    let mut result = Vec::new();
+                    for item in list.borrow().iter() {
+                        let item_str = format!("{:?}", item);
+                        if !seen.contains(&item_str) {
+                            seen.push(item_str);
+                            result.push(item.clone());
+                        }
+                    }
+                    Ok(Value::List(Rc::new(RefCell::new(result))))
+                } else {
+                    Err("uniq() needs a list".to_string())
+                }
+            }))),
+        );
+
+        // chynge - insert at index (Scots: change)
+        globals.borrow_mut().define(
+            "chynge".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("chynge", 3, |args| {
+                if let Value::List(list) = &args[0] {
+                    let idx = args[1].as_integer().ok_or("chynge() needs an integer index")?;
+                    let mut new_list = list.borrow().clone();
+                    let idx = if idx < 0 {
+                        (new_list.len() as i64 + idx) as usize
+                    } else {
+                        idx as usize
+                    };
+                    if idx > new_list.len() {
+                        return Err(format!("Index {} oot o' bounds fer list o' length {}", idx, new_list.len()));
+                    }
+                    new_list.insert(idx, args[2].clone());
+                    Ok(Value::List(Rc::new(RefCell::new(new_list))))
+                } else {
+                    Err("chynge() needs a list".to_string())
+                }
+            }))),
+        );
+
+        // dicht - remove at index (Scots: wipe/clean)
+        globals.borrow_mut().define(
+            "dicht".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("dicht", 2, |args| {
+                if let Value::List(list) = &args[0] {
+                    let idx = args[1].as_integer().ok_or("dicht() needs an integer index")?;
+                    let mut new_list = list.borrow().clone();
+                    let idx = if idx < 0 {
+                        (new_list.len() as i64 + idx) as usize
+                    } else {
+                        idx as usize
+                    };
+                    if idx >= new_list.len() {
+                        return Err(format!("Index {} oot o' bounds fer list o' length {}", idx, new_list.len()));
+                    }
+                    new_list.remove(idx);
+                    Ok(Value::List(Rc::new(RefCell::new(new_list))))
+                } else {
+                    Err("dicht() needs a list".to_string())
+                }
+            }))),
+        );
+
+        // tak - take first n elements (Scots: take)
+        globals.borrow_mut().define(
+            "tak".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("tak", 2, |args| {
+                let n = args[1].as_integer().ok_or("tak() needs an integer count")?;
+                let n = n.max(0) as usize;
+                match &args[0] {
+                    Value::List(list) => {
+                        let list = list.borrow();
+                        let result: Vec<Value> = list.iter().take(n).cloned().collect();
+                        Ok(Value::List(Rc::new(RefCell::new(result))))
+                    }
+                    Value::String(s) => {
+                        let taken: String = s.chars().take(n).collect();
+                        Ok(Value::String(taken))
+                    }
+                    _ => Err("tak() needs a list or string".to_string()),
+                }
+            }))),
+        );
+
+        // drap - drop first n elements (Scots: drop)
+        globals.borrow_mut().define(
+            "drap".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("drap", 2, |args| {
+                let n = args[1].as_integer().ok_or("drap() needs an integer count")?;
+                let n = n.max(0) as usize;
+                match &args[0] {
+                    Value::List(list) => {
+                        let list = list.borrow();
+                        let result: Vec<Value> = list.iter().skip(n).cloned().collect();
+                        Ok(Value::List(Rc::new(RefCell::new(result))))
+                    }
+                    Value::String(s) => {
+                        let dropped: String = s.chars().skip(n).collect();
+                        Ok(Value::String(dropped))
+                    }
+                    _ => Err("drap() needs a list or string".to_string()),
+                }
+            }))),
+        );
+
+        // redd_up - remove nil values from list (Scots: tidy up)
+        globals.borrow_mut().define(
+            "redd_up".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("redd_up", 1, |args| {
+                if let Value::List(list) = &args[0] {
+                    let result: Vec<Value> = list.borrow()
+                        .iter()
+                        .filter(|v| !matches!(v, Value::Nil))
+                        .cloned()
+                        .collect();
+                    Ok(Value::List(Rc::new(RefCell::new(result))))
+                } else {
+                    Err("redd_up() needs a list".to_string())
+                }
+            }))),
+        );
+
+        // pairty - partition list based on predicate result (returns [truthy, falsy])
+        // Note: This is a simpler version - returns [evens, odds] for integers
+        globals.borrow_mut().define(
+            "split_by".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("split_by", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::List(list), Value::String(pred)) => {
+                        let mut truthy = Vec::new();
+                        let mut falsy = Vec::new();
+                        for item in list.borrow().iter() {
+                            let is_match = match pred.as_str() {
+                                "even" => matches!(item, Value::Integer(n) if n % 2 == 0),
+                                "odd" => matches!(item, Value::Integer(n) if n % 2 != 0),
+                                "positive" => matches!(item, Value::Integer(n) if *n > 0) || matches!(item, Value::Float(f) if *f > 0.0),
+                                "negative" => matches!(item, Value::Integer(n) if *n < 0) || matches!(item, Value::Float(f) if *f < 0.0),
+                                "truthy" => item.is_truthy(),
+                                "nil" => matches!(item, Value::Nil),
+                                "string" => matches!(item, Value::String(_)),
+                                "number" => matches!(item, Value::Integer(_) | Value::Float(_)),
+                                _ => return Err(format!("Unknown predicate '{}'. Try: even, odd, positive, negative, truthy, nil, string, number", pred)),
+                            };
+                            if is_match {
+                                truthy.push(item.clone());
+                            } else {
+                                falsy.push(item.clone());
+                            }
+                        }
+                        Ok(Value::List(Rc::new(RefCell::new(vec![
+                            Value::List(Rc::new(RefCell::new(truthy))),
+                            Value::List(Rc::new(RefCell::new(falsy))),
+                        ]))))
+                    }
+                    _ => Err("split_by() needs a list and a predicate string".to_string()),
+                }
+            }))),
+        );
+
+        // grup_runs - group consecutive equal elements (like run-length encoding)
+        globals.borrow_mut().define(
+            "grup_runs".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("grup_runs", 1, |args| {
+                if let Value::List(list) = &args[0] {
+                    let list = list.borrow();
+                    let mut result: Vec<Value> = Vec::new();
+                    let mut current_group: Vec<Value> = Vec::new();
+
+                    for item in list.iter() {
+                        if current_group.is_empty() || &current_group[0] == item {
+                            current_group.push(item.clone());
+                        } else {
+                            result.push(Value::List(Rc::new(RefCell::new(current_group))));
+                            current_group = vec![item.clone()];
+                        }
+                    }
+                    if !current_group.is_empty() {
+                        result.push(Value::List(Rc::new(RefCell::new(current_group))));
+                    }
+
+                    Ok(Value::List(Rc::new(RefCell::new(result))))
+                } else {
+                    Err("grup_runs() needs a list".to_string())
+                }
+            }))),
+        );
+
+        // chunks - split list into chunks of size n
+        globals.borrow_mut().define(
+            "chunks".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("chunks", 2, |args| {
+                if let Value::List(list) = &args[0] {
+                    let n = args[1].as_integer().ok_or("chunks() needs an integer size")?;
+                    if n <= 0 {
+                        return Err("chunks() size must be positive".to_string());
+                    }
+                    let n = n as usize;
+                    let list = list.borrow();
+                    let result: Vec<Value> = list.chunks(n)
+                        .map(|chunk| Value::List(Rc::new(RefCell::new(chunk.to_vec()))))
+                        .collect();
+                    Ok(Value::List(Rc::new(RefCell::new(result))))
+                } else {
+                    Err("chunks() needs a list".to_string())
+                }
+            }))),
+        );
+
+        // interleave - alternate elements from two lists
+        globals.borrow_mut().define(
+            "interleave".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("interleave", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::List(a), Value::List(b)) => {
+                        let a = a.borrow();
+                        let b = b.borrow();
+                        let mut result = Vec::new();
+                        let max_len = a.len().max(b.len());
+                        for i in 0..max_len {
+                            if i < a.len() {
+                                result.push(a[i].clone());
+                            }
+                            if i < b.len() {
+                                result.push(b[i].clone());
+                            }
+                        }
+                        Ok(Value::List(Rc::new(RefCell::new(result))))
+                    }
+                    _ => Err("interleave() needs two lists".to_string()),
+                }
+            }))),
+        );
+
+        // === More Mathematical Functions ===
+
+        // pooer - power/exponent (Scots: power)
+        globals.borrow_mut().define(
+            "pooer".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("pooer", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::Integer(base), Value::Integer(exp)) => {
+                        if *exp < 0 {
+                            Ok(Value::Float((*base as f64).powi(*exp as i32)))
+                        } else {
+                            Ok(Value::Integer(base.pow(*exp as u32)))
+                        }
+                    }
+                    (Value::Float(base), Value::Integer(exp)) => {
+                        Ok(Value::Float(base.powi(*exp as i32)))
+                    }
+                    (Value::Float(base), Value::Float(exp)) => {
+                        Ok(Value::Float(base.powf(*exp)))
+                    }
+                    (Value::Integer(base), Value::Float(exp)) => {
+                        Ok(Value::Float((*base as f64).powf(*exp)))
+                    }
+                    _ => Err("pooer() needs twa numbers".to_string()),
+                }
+            }))),
+        );
+
+        // sin - sine (trigonometry)
+        globals.borrow_mut().define(
+            "sin".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("sin", 1, |args| {
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.sin())),
+                    Value::Integer(n) => Ok(Value::Float((*n as f64).sin())),
+                    _ => Err("sin() needs a number".to_string()),
+                }
+            }))),
+        );
+
+        // cos - cosine
+        globals.borrow_mut().define(
+            "cos".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("cos", 1, |args| {
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.cos())),
+                    Value::Integer(n) => Ok(Value::Float((*n as f64).cos())),
+                    _ => Err("cos() needs a number".to_string()),
+                }
+            }))),
+        );
+
+        // tan - tangent
+        globals.borrow_mut().define(
+            "tan".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("tan", 1, |args| {
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.tan())),
+                    Value::Integer(n) => Ok(Value::Float((*n as f64).tan())),
+                    _ => Err("tan() needs a number".to_string()),
+                }
+            }))),
+        );
+
+        // log - natural logarithm
+        globals.borrow_mut().define(
+            "log".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("log", 1, |args| {
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.ln())),
+                    Value::Integer(n) => Ok(Value::Float((*n as f64).ln())),
+                    _ => Err("log() needs a number".to_string()),
+                }
+            }))),
+        );
+
+        // log10 - base 10 logarithm
+        globals.borrow_mut().define(
+            "log10".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("log10", 1, |args| {
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.log10())),
+                    Value::Integer(n) => Ok(Value::Float((*n as f64).log10())),
+                    _ => Err("log10() needs a number".to_string()),
+                }
+            }))),
+        );
+
+        // PI constant
+        globals.borrow_mut().define(
+            "PI".to_string(),
+            Value::Float(std::f64::consts::PI),
+        );
+
+        // E constant (Euler's number)
+        globals.borrow_mut().define(
+            "E".to_string(),
+            Value::Float(std::f64::consts::E),
+        );
+
+        // === Time Functions ===
+
+        // snooze - sleep for milliseconds (Scots: have a wee rest)
+        globals.borrow_mut().define(
+            "snooze".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("snooze", 1, |args| {
+                let ms = args[0].as_integer().ok_or("snooze() needs an integer (milliseconds)")?;
+                if ms < 0 {
+                    return Err("Cannae snooze fer negative time, ya daftie!".to_string());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(ms as u64));
+                Ok(Value::Nil)
+            }))),
+        );
+
+        // === String Functions ===
+
+        // roar - convert to uppercase (shout it oot even louder than upper!)
+        globals.borrow_mut().define(
+            "roar".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("roar", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    // Add exclamation for extra emphasis!
+                    Ok(Value::String(format!("{}!", s.to_uppercase())))
+                } else {
+                    Err("roar() expects a string".to_string())
+                }
+            }))),
+        );
+
+        // mutter - whisper text (lowercase with dots)
+        globals.borrow_mut().define(
+            "mutter".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("mutter", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    Ok(Value::String(format!("...{}...", s.to_lowercase())))
+                } else {
+                    Err("mutter() expects a string".to_string())
+                }
+            }))),
+        );
+
+        // blooter - scramble a string randomly (Scots: hit/strike messily)
+        globals.borrow_mut().define(
+            "blooter".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("blooter", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    use std::time::{SystemTime, UNIX_EPOCH};
+                    let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64;
+                    let mut chars: Vec<char> = s.chars().collect();
+                    // Fisher-Yates shuffle
+                    let mut rng = seed;
+                    for i in (1..chars.len()).rev() {
+                        rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
+                        let j = (rng as usize) % (i + 1);
+                        chars.swap(i, j);
+                    }
+                    Ok(Value::String(chars.into_iter().collect()))
+                } else {
+                    Err("blooter() expects a string".to_string())
+                }
+            }))),
+        );
+
+        // pad_left - pad string on left
+        globals.borrow_mut().define(
+            "pad_left".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("pad_left", 3, |args| {
+                match (&args[0], &args[1], &args[2]) {
+                    (Value::String(s), Value::Integer(width), Value::String(pad)) => {
+                        let pad_char = pad.chars().next().unwrap_or(' ');
+                        let w = *width as usize;
+                        if s.len() >= w {
+                            Ok(Value::String(s.clone()))
+                        } else {
+                            Ok(Value::String(format!("{}{}", pad_char.to_string().repeat(w - s.len()), s)))
+                        }
+                    }
+                    _ => Err("pad_left() needs (string, width, pad_char)".to_string()),
+                }
+            }))),
+        );
+
+        // pad_right - pad string on right
+        globals.borrow_mut().define(
+            "pad_right".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("pad_right", 3, |args| {
+                match (&args[0], &args[1], &args[2]) {
+                    (Value::String(s), Value::Integer(width), Value::String(pad)) => {
+                        let pad_char = pad.chars().next().unwrap_or(' ');
+                        let w = *width as usize;
+                        if s.len() >= w {
+                            Ok(Value::String(s.clone()))
+                        } else {
+                            Ok(Value::String(format!("{}{}", s, pad_char.to_string().repeat(w - s.len()))))
+                        }
+                    }
+                    _ => Err("pad_right() needs (string, width, pad_char)".to_string()),
+                }
+            }))),
+        );
+
+        // === List Functions ===
+
+        // drap - drop first n elements from list (Scots: drop)
+        globals.borrow_mut().define(
+            "drap".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("drap", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::List(list), Value::Integer(n)) => {
+                        let n = *n as usize;
+                        let items = list.borrow();
+                        let result: Vec<Value> = items.iter().skip(n).cloned().collect();
+                        Ok(Value::List(Rc::new(RefCell::new(result))))
+                    }
+                    _ => Err("drap() needs a list and an integer".to_string()),
+                }
+            }))),
+        );
+
+        // tak - take first n elements from list (Scots: take)
+        globals.borrow_mut().define(
+            "tak".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("tak", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::List(list), Value::Integer(n)) => {
+                        let n = *n as usize;
+                        let items = list.borrow();
+                        let result: Vec<Value> = items.iter().take(n).cloned().collect();
+                        Ok(Value::List(Rc::new(RefCell::new(result))))
+                    }
+                    _ => Err("tak() needs a list and an integer".to_string()),
+                }
+            }))),
+        );
+
+        // grup - group elements into chunks (Scots: grip/group)
+        globals.borrow_mut().define(
+            "grup".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("grup", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::List(list), Value::Integer(size)) => {
+                        if *size <= 0 {
+                            return Err("grup() needs a positive chunk size".to_string());
+                        }
+                        let size = *size as usize;
+                        let items = list.borrow();
+                        let result: Vec<Value> = items.chunks(size)
+                            .map(|chunk| Value::List(Rc::new(RefCell::new(chunk.to_vec()))))
+                            .collect();
+                        Ok(Value::List(Rc::new(RefCell::new(result))))
+                    }
+                    _ => Err("grup() needs a list and an integer".to_string()),
+                }
+            }))),
+        );
+
+        // pair_up - create pairs from a list [a,b,c,d] -> [[a,b], [c,d]]
+        globals.borrow_mut().define(
+            "pair_up".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("pair_up", 1, |args| {
+                if let Value::List(list) = &args[0] {
+                    let items = list.borrow();
+                    let result: Vec<Value> = items.chunks(2)
+                        .map(|chunk| Value::List(Rc::new(RefCell::new(chunk.to_vec()))))
+                        .collect();
+                    Ok(Value::List(Rc::new(RefCell::new(result))))
+                } else {
+                    Err("pair_up() needs a list".to_string())
+                }
+            }))),
+        );
+
+        // fankle - interleave two lists (Scots: tangle)
+        globals.borrow_mut().define(
+            "fankle".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("fankle", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::List(a), Value::List(b)) => {
+                        let a = a.borrow();
+                        let b = b.borrow();
+                        let mut result = Vec::new();
+                        let mut ai = a.iter();
+                        let mut bi = b.iter();
+                        loop {
+                            match (ai.next(), bi.next()) {
+                                (Some(x), Some(y)) => {
+                                    result.push(x.clone());
+                                    result.push(y.clone());
+                                }
+                                (Some(x), None) => result.push(x.clone()),
+                                (None, Some(y)) => result.push(y.clone()),
+                                (None, None) => break,
+                            }
+                        }
+                        Ok(Value::List(Rc::new(RefCell::new(result))))
+                    }
+                    _ => Err("fankle() needs two lists".to_string()),
+                }
+            }))),
+        );
+
+        // === Fun Scottish Functions ===
+
+        // och - express disappointment or frustration
+        globals.borrow_mut().define(
+            "och".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("och", 1, |args| {
+                Ok(Value::String(format!("Och! {}", args[0])))
+            }))),
+        );
+
+        // jings - express surprise (like "gosh!" or "goodness!")
+        globals.borrow_mut().define(
+            "jings".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("jings", 1, |args| {
+                Ok(Value::String(format!("Jings! {}", args[0])))
+            }))),
+        );
+
+        // crivvens - express astonishment (from Oor Wullie)
+        globals.borrow_mut().define(
+            "crivvens".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("crivvens", 1, |args| {
+                Ok(Value::String(format!("Crivvens! {}", args[0])))
+            }))),
+        );
+
+        // help_ma_boab - express extreme surprise (Scottish exclamation)
+        globals.borrow_mut().define(
+            "help_ma_boab".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("help_ma_boab", 1, |args| {
+                Ok(Value::String(format!("Help ma boab! {}", args[0])))
+            }))),
+        );
+
+        // haud_yer_wheesht - tell someone to be quiet (returns empty string)
+        globals.borrow_mut().define(
+            "haud_yer_wheesht".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("haud_yer_wheesht", 0, |_args| {
+                Ok(Value::String("".to_string()))
+            }))),
+        );
+
+        // braw - check if something is good/excellent
+        globals.borrow_mut().define(
+            "braw".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("braw", 1, |args| {
+                // Everything is braw in Scotland!
+                let val = &args[0];
+                let is_braw = match val {
+                    Value::Nil => false,
+                    Value::Bool(b) => *b,
+                    Value::Integer(n) => *n > 0,
+                    Value::Float(f) => *f > 0.0,
+                    Value::String(s) => !s.is_empty(),
+                    Value::List(l) => !l.borrow().is_empty(),
+                    Value::Dict(d) => !d.borrow().is_empty(),
+                    _ => true,
+                };
+                Ok(Value::Bool(is_braw))
+            }))),
+        );
+
+        // clarty - check if something is messy/dirty (has duplicates in list)
+        globals.borrow_mut().define(
+            "clarty".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("clarty", 1, |args| {
+                if let Value::List(list) = &args[0] {
+                    let items = list.borrow();
+                    let mut seen = Vec::new();
+                    for item in items.iter() {
+                        if seen.contains(item) {
+                            return Ok(Value::Bool(true)); // Has duplicates = clarty
+                        }
+                        seen.push(item.clone());
+                    }
+                    Ok(Value::Bool(false))
+                } else if let Value::String(s) = &args[0] {
+                    // String is clarty if it has repeated characters
+                    let chars: Vec<char> = s.chars().collect();
+                    let unique: std::collections::HashSet<char> = chars.iter().cloned().collect();
+                    Ok(Value::Bool(chars.len() != unique.len()))
+                } else {
+                    Err("clarty() needs a list or string".to_string())
+                }
+            }))),
+        );
+
+        // dreich - check if a string is boring/dull (all same character or empty)
+        globals.borrow_mut().define(
+            "dreich".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("dreich", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    if s.is_empty() {
+                        return Ok(Value::Bool(true)); // Empty is dreich
+                    }
+                    let first = s.chars().next().unwrap();
+                    let is_dreich = s.chars().all(|c| c == first);
+                    Ok(Value::Bool(is_dreich))
+                } else {
+                    Err("dreich() needs a string".to_string())
+                }
+            }))),
+        );
+
+        // stoater - get a particularly good/outstanding element (max for numbers)
+        globals.borrow_mut().define(
+            "stoater".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("stoater", 1, |args| {
+                if let Value::List(list) = &args[0] {
+                    let items = list.borrow();
+                    if items.is_empty() {
+                        return Err("Cannae find a stoater in an empty list!".to_string());
+                    }
+                    // Find the "best" element (max for numbers, longest for strings)
+                    let mut best = items[0].clone();
+                    for item in items.iter().skip(1) {
+                        match (&best, item) {
+                            (Value::Integer(a), Value::Integer(b)) => {
+                                if *b > *a { best = item.clone(); }
+                            }
+                            (Value::Float(a), Value::Float(b)) => {
+                                if *b > *a { best = item.clone(); }
+                            }
+                            (Value::String(a), Value::String(b)) => {
+                                if b.len() > a.len() { best = item.clone(); }
+                            }
+                            _ => {}
+                        }
+                    }
+                    Ok(best)
+                } else {
+                    Err("stoater() needs a list".to_string())
+                }
+            }))),
+        );
+
+        // numpty_check - validate input isn't empty/nil
+        globals.borrow_mut().define(
+            "numpty_check".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("numpty_check", 1, |args| {
+                match &args[0] {
+                    Value::Nil => Ok(Value::String("That's naething, ya numpty!".to_string())),
+                    Value::String(s) if s.is_empty() => Ok(Value::String("Empty string, ya numpty!".to_string())),
+                    Value::List(l) if l.borrow().is_empty() => Ok(Value::String("Empty list, ya numpty!".to_string())),
+                    _ => Ok(Value::String("That's braw!".to_string())),
+                }
+            }))),
+        );
+
+        // scottify - add Scottish flair to text
+        globals.borrow_mut().define(
+            "scottify".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("scottify", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    let scottified = s
+                        .replace("yes", "aye")
+                        .replace("Yes", "Aye")
+                        .replace("no", "nae")
+                        .replace("No", "Nae")
+                        .replace("know", "ken")
+                        .replace("Know", "Ken")
+                        .replace("not", "nae")
+                        .replace("from", "fae")
+                        .replace("to", "tae")
+                        .replace("do", "dae")
+                        .replace("myself", "masel")
+                        .replace("yourself", "yersel")
+                        .replace("small", "wee")
+                        .replace("little", "wee")
+                        .replace("child", "bairn")
+                        .replace("children", "bairns")
+                        .replace("church", "kirk")
+                        .replace("beautiful", "bonnie")
+                        .replace("Beautiful", "Bonnie")
+                        .replace("going", "gaun")
+                        .replace("have", "hae")
+                        .replace("nothing", "naething")
+                        .replace("something", "somethin")
+                        .replace("everything", "awthing")
+                        .replace("everyone", "awbody")
+                        .replace("about", "aboot")
+                        .replace("out", "oot")
+                        .replace("house", "hoose");
+                    Ok(Value::String(scottified))
+                } else {
+                    Err("scottify() needs a string".to_string())
                 }
             }))),
         );
@@ -884,6 +1893,391 @@ impl Interpreter {
             }))),
         );
 
+        // === More Scots-Themed Functions ===
+
+        // haver - generate random nonsense (Scots: talk rubbish)
+        globals.borrow_mut().define(
+            "haver".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("haver", 0, |_args| {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let havers = [
+                    "Och, yer bum's oot the windae!",
+                    "Awa' an bile yer heid!",
+                    "Haud yer wheesht, ya numpty!",
+                    "Dinnae fash yersel!",
+                    "Whit's fer ye'll no go by ye!",
+                    "Lang may yer lum reek!",
+                    "Yer a wee scunner, so ye are!",
+                    "Haste ye back!",
+                    "It's a dreich day the day!",
+                    "Pure dead brilliant!",
+                    "Ah'm fair puckled!",
+                    "Gie it laldy!",
+                    "Whit a stoater!",
+                    "That's pure mince!",
+                    "Jings, crivvens, help ma boab!",
+                ];
+                let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64;
+                let rng = seed.wrapping_mul(1103515245).wrapping_add(12345);
+                let idx = (rng as usize) % havers.len();
+                Ok(Value::String(havers[idx].to_string()))
+            }))),
+        );
+
+        // slainte - return a Scottish toast (Scots: health/cheers)
+        globals.borrow_mut().define(
+            "slainte".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("slainte", 0, |_args| {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let toasts = [
+                    "Slàinte mhath! (Good health!)",
+                    "Here's tae us, wha's like us? Gey few, and they're a' deid!",
+                    "May the best ye've ever seen be the worst ye'll ever see!",
+                    "Lang may yer lum reek wi' ither fowk's coal!",
+                    "May ye aye be happy, an' never drink frae a toom glass!",
+                    "Here's tae the heath, the hill and the heather!",
+                ];
+                let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64;
+                let rng = seed.wrapping_mul(1103515245).wrapping_add(12345);
+                let idx = (rng as usize) % toasts.len();
+                Ok(Value::String(toasts[idx].to_string()))
+            }))),
+        );
+
+        // braw_time - format current time in a nice Scottish way
+        globals.borrow_mut().define(
+            "braw_time".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("braw_time", 0, |_args| {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let secs = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                // Simple hour/minute calculation (UTC)
+                let hours = (secs / 3600) % 24;
+                let minutes = (secs / 60) % 60;
+                let time_str = match hours {
+                    0..=5 => format!("It's the wee small hours ({:02}:{:02})", hours, minutes),
+                    6..=11 => format!("It's the mornin' ({:02}:{:02})", hours, minutes),
+                    12 => format!("It's high noon ({:02}:{:02})", hours, minutes),
+                    13..=17 => format!("It's the efternoon ({:02}:{:02})", hours, minutes),
+                    18..=21 => format!("It's the evenin' ({:02}:{:02})", hours, minutes),
+                    _ => format!("It's gettin' late ({:02}:{:02})", hours, minutes),
+                };
+                Ok(Value::String(time_str))
+            }))),
+        );
+
+        // wheesht_aw - trim and clean up a string (more thorough than wheesht)
+        globals.borrow_mut().define(
+            "wheesht_aw".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("wheesht_aw", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    // Collapse multiple spaces and trim
+                    let cleaned: String = s
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    Ok(Value::String(cleaned))
+                } else {
+                    Err("wheesht_aw() needs a string".to_string())
+                }
+            }))),
+        );
+
+        // scunner_check - validate that a value meets expectations (returns descriptive error)
+        globals.borrow_mut().define(
+            "scunner_check".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("scunner_check", 2, |args| {
+                let val = &args[0];
+                let expected_type = match &args[1] {
+                    Value::String(s) => s.as_str(),
+                    _ => return Err("scunner_check() needs type name as second arg".to_string()),
+                };
+                let actual_type = val.type_name();
+                if actual_type == expected_type {
+                    Ok(Value::Bool(true))
+                } else {
+                    Ok(Value::String(format!(
+                        "Och, ya scunner! Expected {} but got {}",
+                        expected_type, actual_type
+                    )))
+                }
+            }))),
+        );
+
+        // bampot_mode - deliberately cause chaos (scramble list order)
+        globals.borrow_mut().define(
+            "bampot_mode".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("bampot_mode", 1, |args| {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                if let Value::List(list) = &args[0] {
+                    let mut items: Vec<Value> = list.borrow().clone();
+                    let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64;
+                    let mut rng = seed;
+                    // Double shuffle for extra chaos!
+                    for _ in 0..2 {
+                        for i in (1..items.len()).rev() {
+                            rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
+                            let j = (rng as usize) % (i + 1);
+                            items.swap(i, j);
+                        }
+                    }
+                    items.reverse(); // And reverse for good measure!
+                    Ok(Value::List(Rc::new(RefCell::new(items))))
+                } else {
+                    Err("bampot_mode() needs a list".to_string())
+                }
+            }))),
+        );
+
+        // crabbit - check if a number is negative (Scots: grumpy/bad-tempered)
+        globals.borrow_mut().define(
+            "crabbit".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("crabbit", 1, |args| {
+                match &args[0] {
+                    Value::Integer(n) => Ok(Value::Bool(*n < 0)),
+                    Value::Float(f) => Ok(Value::Bool(*f < 0.0)),
+                    _ => Err("crabbit() needs a number".to_string()),
+                }
+            }))),
+        );
+
+        // gallus - check if a value is bold/impressive (non-empty/non-zero)
+        globals.borrow_mut().define(
+            "gallus".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("gallus", 1, |args| {
+                let is_gallus = match &args[0] {
+                    Value::Integer(n) => *n != 0 && (*n > 100 || *n < -100),
+                    Value::Float(f) => *f != 0.0 && (*f > 100.0 || *f < -100.0),
+                    Value::String(s) => s.len() > 20,
+                    Value::List(l) => l.borrow().len() > 10,
+                    _ => false,
+                };
+                Ok(Value::Bool(is_gallus))
+            }))),
+        );
+
+        // drookit - check if list has duplicates (Scots: soaking wet/full)
+        globals.borrow_mut().define(
+            "drookit".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("drookit", 1, |args| {
+                if let Value::List(list) = &args[0] {
+                    let items = list.borrow();
+                    let mut seen = Vec::new();
+                    for item in items.iter() {
+                        if seen.contains(item) {
+                            return Ok(Value::Bool(true));
+                        }
+                        seen.push(item.clone());
+                    }
+                    Ok(Value::Bool(false))
+                } else {
+                    Err("drookit() needs a list".to_string())
+                }
+            }))),
+        );
+
+        // glaikit - check if something looks "stupid" (empty, zero, or invalid)
+        globals.borrow_mut().define(
+            "glaikit".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("glaikit", 1, |args| {
+                let is_glaikit = match &args[0] {
+                    Value::Nil => true,
+                    Value::Integer(0) => true,
+                    Value::Float(f) if *f == 0.0 => true,
+                    Value::String(s) if s.is_empty() || s.trim().is_empty() => true,
+                    Value::List(l) if l.borrow().is_empty() => true,
+                    Value::Dict(d) if d.borrow().is_empty() => true,
+                    _ => false,
+                };
+                Ok(Value::Bool(is_glaikit))
+            }))),
+        );
+
+        // cannie - check if a value is "careful"/safe (within reasonable bounds)
+        globals.borrow_mut().define(
+            "cannie".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("cannie", 1, |args| {
+                let is_cannie = match &args[0] {
+                    Value::Integer(n) => *n >= -1000 && *n <= 1000,
+                    Value::Float(f) => *f >= -1000.0 && *f <= 1000.0 && f.is_finite(),
+                    Value::String(s) => s.len() <= 1000 && !s.contains(|c: char| c.is_control()),
+                    Value::List(l) => l.borrow().len() <= 1000,
+                    Value::Dict(d) => d.borrow().len() <= 100,
+                    _ => true,
+                };
+                Ok(Value::Bool(is_cannie))
+            }))),
+        );
+
+        // geggie - get the "mouth" (first and last chars) of a string
+        globals.borrow_mut().define(
+            "geggie".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("geggie", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    if s.is_empty() {
+                        return Ok(Value::String("".to_string()));
+                    }
+                    let first = s.chars().next().unwrap();
+                    let last = s.chars().last().unwrap();
+                    Ok(Value::String(format!("{}{}", first, last)))
+                } else {
+                    Err("geggie() needs a string".to_string())
+                }
+            }))),
+        );
+
+        // banter - interleave two strings
+        globals.borrow_mut().define(
+            "banter".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("banter", 2, |args| {
+                let s1 = match &args[0] {
+                    Value::String(s) => s,
+                    _ => return Err("banter() needs two strings".to_string()),
+                };
+                let s2 = match &args[1] {
+                    Value::String(s) => s,
+                    _ => return Err("banter() needs two strings".to_string()),
+                };
+                let mut result = String::new();
+                let mut chars1 = s1.chars();
+                let mut chars2 = s2.chars();
+                loop {
+                    match (chars1.next(), chars2.next()) {
+                        (Some(c1), Some(c2)) => {
+                            result.push(c1);
+                            result.push(c2);
+                        }
+                        (Some(c1), None) => result.push(c1),
+                        (None, Some(c2)) => result.push(c2),
+                        (None, None) => break,
+                    }
+                }
+                Ok(Value::String(result))
+            }))),
+        );
+
+        // skelp - split a string into chunks of n chars (Scots: slap/hit)
+        globals.borrow_mut().define(
+            "skelp".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("skelp", 2, |args| {
+                let s = match &args[0] {
+                    Value::String(s) => s,
+                    _ => return Err("skelp() needs a string and size".to_string()),
+                };
+                let size = args[1].as_integer().ok_or("skelp() needs integer size")?;
+                if size <= 0 {
+                    return Err("skelp() size must be positive".to_string());
+                }
+                let chunks: Vec<Value> = s
+                    .chars()
+                    .collect::<Vec<_>>()
+                    .chunks(size as usize)
+                    .map(|chunk| Value::String(chunk.iter().collect()))
+                    .collect();
+                Ok(Value::List(Rc::new(RefCell::new(chunks))))
+            }))),
+        );
+
+        // indices_o - find all indices of a value (Scots: indices of)
+        globals.borrow_mut().define(
+            "indices_o".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("indices_o", 2, |args| {
+                match &args[0] {
+                    Value::List(list) => {
+                        let items = list.borrow();
+                        let needle = &args[1];
+                        let indices: Vec<Value> = items.iter()
+                            .enumerate()
+                            .filter(|(_, item)| *item == needle)
+                            .map(|(i, _)| Value::Integer(i as i64))
+                            .collect();
+                        Ok(Value::List(Rc::new(RefCell::new(indices))))
+                    }
+                    Value::String(s) => {
+                        let needle = match &args[1] {
+                            Value::String(n) => n,
+                            _ => return Err("indices_o() on string needs a string needle".to_string()),
+                        };
+                        if needle.is_empty() {
+                            return Err("Cannae search fer an empty string, ya numpty!".to_string());
+                        }
+                        let indices: Vec<Value> = s.match_indices(needle.as_str())
+                            .map(|(i, _)| Value::Integer(i as i64))
+                            .collect();
+                        Ok(Value::List(Rc::new(RefCell::new(indices))))
+                    }
+                    _ => Err("indices_o() needs a list or string".to_string()),
+                }
+            }))),
+        );
+
+        // braw_date - format a timestamp or current time in Scottish style
+        globals.borrow_mut().define(
+            "braw_date".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("braw_date", 1, |args| {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let secs = match &args[0] {
+                    Value::Integer(n) => *n as u64,
+                    Value::Nil => SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+                    _ => return Err("braw_date() needs a timestamp or naething".to_string()),
+                };
+                // Calculate date components (simplified, doesn't handle leap years perfectly)
+                let days_since_epoch = secs / 86400;
+                let day_of_week = ((days_since_epoch + 4) % 7) as usize; // Jan 1, 1970 was Thursday
+
+                let scots_day_names = [
+                    "the Sabbath", "Monday", "Tuesday", "Wednesday",
+                    "Thursday", "Friday", "Setterday"
+                ];
+
+                // Simple month/day calculation
+                let mut remaining_days = days_since_epoch as i64;
+                let mut year = 1970i64;
+                loop {
+                    let days_in_year = if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 { 366 } else { 365 };
+                    if remaining_days < days_in_year {
+                        break;
+                    }
+                    remaining_days -= days_in_year;
+                    year += 1;
+                }
+
+                let scots_months = [
+                    "Januar", "Februar", "Mairch", "Aprile", "Mey", "Juin",
+                    "Julie", "August", "September", "October", "November", "December"
+                ];
+                let days_in_months: [i64; 12] = if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 {
+                    [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+                } else {
+                    [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+                };
+
+                let mut month = 0usize;
+                for (i, &days) in days_in_months.iter().enumerate() {
+                    if remaining_days < days {
+                        month = i;
+                        break;
+                    }
+                    remaining_days -= days;
+                }
+                let day = remaining_days + 1;
+
+                let ordinal = match day {
+                    1 | 21 | 31 => "st",
+                    2 | 22 => "nd",
+                    3 | 23 => "rd",
+                    _ => "th",
+                };
+
+                Ok(Value::String(format!(
+                    "{}, the {}{} o' {}, {}",
+                    scots_day_names[day_of_week], day, ordinal, scots_months[month], year
+                )))
+            }))),
+        );
+
         // Higher-order functions are defined as marker values
         // They get special handling in call_value
 
@@ -928,6 +2322,380 @@ impl Interpreter {
             "aw".to_string(),
             Value::String("__builtin_aw__".to_string()),
         );
+
+        // grup_up - group list elements by function result (Scots: group up)
+        globals.borrow_mut().define(
+            "grup_up".to_string(),
+            Value::String("__builtin_grup_up__".to_string()),
+        );
+
+        // pairt_by - partition list by predicate into [true, false] lists
+        globals.borrow_mut().define(
+            "pairt_by".to_string(),
+            Value::String("__builtin_pairt_by__".to_string()),
+        );
+
+        // === More Scots-Flavoured Functions ===
+
+        // haverin - check if a string is empty/nonsense (talking havers!)
+        globals.borrow_mut().define(
+            "haverin".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("haverin", 1, |args| {
+                match &args[0] {
+                    Value::String(s) => {
+                        let trimmed = s.trim();
+                        Ok(Value::Bool(trimmed.is_empty() || trimmed.len() < 2))
+                    }
+                    Value::Nil => Ok(Value::Bool(true)),
+                    Value::List(l) => Ok(Value::Bool(l.borrow().is_empty())),
+                    _ => Ok(Value::Bool(false)),
+                }
+            }))),
+        );
+
+        // scunner - check if value is "disgusting" (negative or empty)
+        globals.borrow_mut().define(
+            "scunner".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("scunner", 1, |args| {
+                match &args[0] {
+                    Value::Integer(n) => Ok(Value::Bool(*n < 0)),
+                    Value::Float(f) => Ok(Value::Bool(*f < 0.0)),
+                    Value::String(s) => Ok(Value::Bool(s.is_empty())),
+                    Value::List(l) => Ok(Value::Bool(l.borrow().is_empty())),
+                    Value::Bool(b) => Ok(Value::Bool(!*b)),
+                    Value::Nil => Ok(Value::Bool(true)),
+                    _ => Ok(Value::Bool(false)),
+                }
+            }))),
+        );
+
+        // bonnie - pretty print a value with decoration
+        globals.borrow_mut().define(
+            "bonnie".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("bonnie", 1, |args| {
+                let val_str = format!("{}", args[0]);
+                Ok(Value::String(format!("~~~ {} ~~~", val_str)))
+            }))),
+        );
+
+        // is_wee - check if value is small (< 10 for numbers, < 5 chars for strings)
+        globals.borrow_mut().define(
+            "is_wee".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("is_wee", 1, |args| {
+                match &args[0] {
+                    Value::Integer(n) => Ok(Value::Bool(n.abs() < 10)),
+                    Value::Float(f) => Ok(Value::Bool(f.abs() < 10.0)),
+                    Value::String(s) => Ok(Value::Bool(s.len() < 5)),
+                    Value::List(l) => Ok(Value::Bool(l.borrow().len() < 5)),
+                    _ => Ok(Value::Bool(true)),
+                }
+            }))),
+        );
+
+        // is_muckle - check if value is big (opposite of is_wee)
+        globals.borrow_mut().define(
+            "is_muckle".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("is_muckle", 1, |args| {
+                match &args[0] {
+                    Value::Integer(n) => Ok(Value::Bool(n.abs() >= 100)),
+                    Value::Float(f) => Ok(Value::Bool(f.abs() >= 100.0)),
+                    Value::String(s) => Ok(Value::Bool(s.len() >= 50)),
+                    Value::List(l) => Ok(Value::Bool(l.borrow().len() >= 50)),
+                    _ => Ok(Value::Bool(false)),
+                }
+            }))),
+        );
+
+        // crabbit - make string all uppercase and grumpy (add !)
+        globals.borrow_mut().define(
+            "crabbit".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("crabbit", 1, |args| {
+                match &args[0] {
+                    Value::String(s) => {
+                        Ok(Value::String(format!("{}!", s.to_uppercase())))
+                    }
+                    _ => Err("crabbit() needs a string tae shout!".to_string()),
+                }
+            }))),
+        );
+
+        // cannie - check if value is safe/valid (not nil, not empty, not negative)
+        globals.borrow_mut().define(
+            "cannie".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("cannie", 1, |args| {
+                match &args[0] {
+                    Value::Nil => Ok(Value::Bool(false)),
+                    Value::Integer(n) => Ok(Value::Bool(*n >= 0)),
+                    Value::Float(f) => Ok(Value::Bool(*f >= 0.0 && !f.is_nan())),
+                    Value::String(s) => Ok(Value::Bool(!s.is_empty())),
+                    Value::List(l) => Ok(Value::Bool(!l.borrow().is_empty())),
+                    Value::Bool(b) => Ok(Value::Bool(*b)),
+                    _ => Ok(Value::Bool(true)),
+                }
+            }))),
+        );
+
+        // glaikit - check if value is silly/wrong type for context
+        globals.borrow_mut().define(
+            "glaikit".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("glaikit", 2, |args| {
+                let expected_type = match &args[1] {
+                    Value::String(s) => s.as_str(),
+                    _ => return Err("Second arg must be a type name string".to_string()),
+                };
+                let actual_type = args[0].type_name();
+                Ok(Value::Bool(actual_type != expected_type))
+            }))),
+        );
+
+        // tattie_scone - repeat string n times with | separator (like stacking scones!)
+        globals.borrow_mut().define(
+            "tattie_scone".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("tattie_scone", 2, |args| {
+                let s = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("tattie_scone needs a string".to_string()),
+                };
+                let n = match &args[1] {
+                    Value::Integer(n) => *n as usize,
+                    _ => return Err("tattie_scone needs a number".to_string()),
+                };
+                let result = vec![s; n].join(" | ");
+                Ok(Value::String(result))
+            }))),
+        );
+
+        // haggis_hunt - find all occurrences of substring in string
+        globals.borrow_mut().define(
+            "haggis_hunt".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("haggis_hunt", 2, |args| {
+                let haystack = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("haggis_hunt needs a string tae search".to_string()),
+                };
+                let needle = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("haggis_hunt needs a string tae find".to_string()),
+                };
+                let positions: Vec<Value> = haystack
+                    .match_indices(&needle)
+                    .map(|(i, _)| Value::Integer(i as i64))
+                    .collect();
+                Ok(Value::List(Rc::new(RefCell::new(positions))))
+            }))),
+        );
+
+        // sporran_fill - pad both sides of string (like a sporran!)
+        globals.borrow_mut().define(
+            "sporran_fill".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("sporran_fill", 3, |args| {
+                let s = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("sporran_fill needs a string".to_string()),
+                };
+                let width = match &args[1] {
+                    Value::Integer(n) => *n as usize,
+                    _ => return Err("sporran_fill needs a width".to_string()),
+                };
+                let fill = match &args[2] {
+                    Value::String(c) => c.chars().next().unwrap_or(' '),
+                    _ => return Err("sporran_fill needs a fill character".to_string()),
+                };
+                if s.len() >= width {
+                    return Ok(Value::String(s));
+                }
+                let padding = width - s.len();
+                let left_pad = padding / 2;
+                let right_pad = padding - left_pad;
+                let result = format!(
+                    "{}{}{}",
+                    fill.to_string().repeat(left_pad),
+                    s,
+                    fill.to_string().repeat(right_pad)
+                );
+                Ok(Value::String(result))
+            }))),
+        );
+
+        // ============================================================
+        // SET (CREEL) FUNCTIONS - A creel is a basket in Scots!
+        // ============================================================
+
+        // creel - create a new set from a list
+        globals.borrow_mut().define(
+            "creel".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("creel", 1, |args| {
+                match &args[0] {
+                    Value::List(list) => {
+                        let items: HashSet<String> = list
+                            .borrow()
+                            .iter()
+                            .map(|v| format!("{}", v))
+                            .collect();
+                        Ok(Value::Set(Rc::new(RefCell::new(items))))
+                    }
+                    Value::Set(s) => Ok(Value::Set(s.clone())), // Already a set
+                    _ => Err("creel() needs a list tae make a set fae".to_string()),
+                }
+            }))),
+        );
+
+        // toss_in - add item to set (toss it intae the creel!)
+        globals.borrow_mut().define(
+            "toss_in".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("toss_in", 2, |args| {
+                if let Value::Set(set) = &args[0] {
+                    let item = format!("{}", args[1]);
+                    set.borrow_mut().insert(item);
+                    Ok(Value::Set(set.clone()))
+                } else {
+                    Err("toss_in() needs a creel (set)".to_string())
+                }
+            }))),
+        );
+
+        // heave_oot - remove item from set (heave it oot the creel!)
+        globals.borrow_mut().define(
+            "heave_oot".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("heave_oot", 2, |args| {
+                if let Value::Set(set) = &args[0] {
+                    let item = format!("{}", args[1]);
+                    set.borrow_mut().remove(&item);
+                    Ok(Value::Set(set.clone()))
+                } else {
+                    Err("heave_oot() needs a creel (set)".to_string())
+                }
+            }))),
+        );
+
+        // is_in_creel - check if item is in set
+        globals.borrow_mut().define(
+            "is_in_creel".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("is_in_creel", 2, |args| {
+                if let Value::Set(set) = &args[0] {
+                    let item = format!("{}", args[1]);
+                    Ok(Value::Bool(set.borrow().contains(&item)))
+                } else {
+                    Err("is_in_creel() needs a creel (set)".to_string())
+                }
+            }))),
+        );
+
+        // creels_thegither - union of two sets (put them thegither!)
+        globals.borrow_mut().define(
+            "creels_thegither".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("creels_thegither", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::Set(a), Value::Set(b)) => {
+                        let union: HashSet<String> = a
+                            .borrow()
+                            .union(&*b.borrow())
+                            .cloned()
+                            .collect();
+                        Ok(Value::Set(Rc::new(RefCell::new(union))))
+                    }
+                    _ => Err("creels_thegither() needs two creels".to_string()),
+                }
+            }))),
+        );
+
+        // creels_baith - intersection of two sets (what's in baith!)
+        globals.borrow_mut().define(
+            "creels_baith".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("creels_baith", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::Set(a), Value::Set(b)) => {
+                        let intersection: HashSet<String> = a
+                            .borrow()
+                            .intersection(&*b.borrow())
+                            .cloned()
+                            .collect();
+                        Ok(Value::Set(Rc::new(RefCell::new(intersection))))
+                    }
+                    _ => Err("creels_baith() needs two creels".to_string()),
+                }
+            }))),
+        );
+
+        // creels_differ - difference of two sets (what's in a but no in b)
+        globals.borrow_mut().define(
+            "creels_differ".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("creels_differ", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::Set(a), Value::Set(b)) => {
+                        let difference: HashSet<String> = a
+                            .borrow()
+                            .difference(&*b.borrow())
+                            .cloned()
+                            .collect();
+                        Ok(Value::Set(Rc::new(RefCell::new(difference))))
+                    }
+                    _ => Err("creels_differ() needs two creels".to_string()),
+                }
+            }))),
+        );
+
+        // creel_tae_list - convert set to sorted list
+        globals.borrow_mut().define(
+            "creel_tae_list".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("creel_tae_list", 1, |args| {
+                if let Value::Set(set) = &args[0] {
+                    let mut items: Vec<String> = set.borrow().iter().cloned().collect();
+                    items.sort();
+                    let values: Vec<Value> = items.into_iter().map(Value::String).collect();
+                    Ok(Value::List(Rc::new(RefCell::new(values))))
+                } else {
+                    Err("creel_tae_list() needs a creel".to_string())
+                }
+            }))),
+        );
+
+        // is_subset - check if one set is a subset of another (is a inside b?)
+        globals.borrow_mut().define(
+            "is_subset".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("is_subset", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::Set(a), Value::Set(b)) => {
+                        Ok(Value::Bool(a.borrow().is_subset(&*b.borrow())))
+                    }
+                    _ => Err("is_subset() needs two creels".to_string()),
+                }
+            }))),
+        );
+
+        // is_superset - check if one set is a superset of another (does a contain aw o b?)
+        globals.borrow_mut().define(
+            "is_superset".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("is_superset", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::Set(a), Value::Set(b)) => {
+                        Ok(Value::Bool(a.borrow().is_superset(&*b.borrow())))
+                    }
+                    _ => Err("is_superset() needs two creels".to_string()),
+                }
+            }))),
+        );
+
+        // is_disjoint - check if two sets have nae overlap
+        globals.borrow_mut().define(
+            "is_disjoint".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("is_disjoint", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::Set(a), Value::Set(b)) => {
+                        Ok(Value::Bool(a.borrow().is_disjoint(&*b.borrow())))
+                    }
+                    _ => Err("is_disjoint() needs two creels".to_string()),
+                }
+            }))),
+        );
+
+        // empty_creel - create an empty set
+        globals.borrow_mut().define(
+            "empty_creel".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("empty_creel", 0, |_args| {
+                Ok(Value::Set(Rc::new(RefCell::new(HashSet::new()))))
+            }))),
+        );
     }
 
     /// Run a program
@@ -947,6 +2715,102 @@ impl Interpreter {
     /// Clear captured output
     pub fn clear_output(&mut self) {
         self.output.clear();
+    }
+
+    /// Load a module fae a file
+    fn load_module(
+        &mut self,
+        path: &str,
+        alias: Option<&str>,
+        span: Span,
+    ) -> Result<Result<Value, ControlFlow>, HaversError> {
+        // Resolve the module path
+        let module_path = self.resolve_module_path(path)?;
+
+        // Check fer circular imports
+        if self.loaded_modules.contains(&module_path) {
+            // Already loaded, that's fine - skip
+            return Ok(Ok(Value::Nil));
+        }
+
+        // Read the module file
+        let source = std::fs::read_to_string(&module_path).map_err(|_| {
+            HaversError::ModuleNotFound {
+                name: path.to_string(),
+            }
+        })?;
+
+        // Parse the module
+        let program = crate::parser::parse(&source).map_err(|e| {
+            HaversError::ParseError {
+                message: format!("Error in module '{}': {}", path, e),
+                line: span.line,
+            }
+        })?;
+
+        // Mark as loaded tae prevent circular imports
+        self.loaded_modules.insert(module_path.clone());
+
+        // Save the current directory and switch tae the module's directory
+        let old_dir = self.current_dir.clone();
+        if let Some(parent) = module_path.parent() {
+            self.current_dir = parent.to_path_buf();
+        }
+
+        // Execute the module in a new environment that inherits fae globals
+        let module_env = Rc::new(RefCell::new(Environment::with_enclosing(self.globals.clone())));
+        let old_env = self.environment.clone();
+        self.environment = module_env.clone();
+
+        // Execute the module
+        for stmt in &program.statements {
+            self.execute_stmt(stmt)?;
+        }
+
+        // Restore environment and directory
+        self.environment = old_env;
+        self.current_dir = old_dir;
+
+        // If there's an alias, create a namespace object
+        // Otherwise, export all defined names tae the current environment
+        if let Some(alias_name) = alias {
+            // Create a dictionary wi' the module's exports
+            let exports = module_env.borrow().get_exports();
+            let module_dict = Value::Dict(Rc::new(RefCell::new(exports)));
+            self.environment
+                .borrow_mut()
+                .define(alias_name.to_string(), module_dict);
+        } else {
+            // Import all names directly
+            let exports = module_env.borrow().get_exports();
+            for (name, value) in exports {
+                self.environment.borrow_mut().define(name, value);
+            }
+        }
+
+        Ok(Ok(Value::Nil))
+    }
+
+    /// Resolve a module path relative tae the current directory
+    fn resolve_module_path(&self, path: &str) -> HaversResult<PathBuf> {
+        let mut module_path = PathBuf::from(path);
+
+        // Add .braw extension if not present
+        if module_path.extension().is_none() {
+            module_path.set_extension("braw");
+        }
+
+        // If it's a relative path, resolve it fae the current directory
+        if module_path.is_relative() {
+            module_path = self.current_dir.join(module_path);
+        }
+
+        // Canonicalize the path
+        module_path.canonicalize().map_err(|_| {
+            HaversError::ModuleNotFound {
+                name: path.to_string(),
+            }
+        })
     }
 
     fn execute_stmt(&mut self, stmt: &Stmt) -> HaversResult<Value> {
@@ -1063,9 +2927,18 @@ impl Interpreter {
                 body,
                 ..
             } => {
+                // Convert AST Param tae runtime FunctionParam
+                let runtime_params: Vec<FunctionParam> = params
+                    .iter()
+                    .map(|p| FunctionParam {
+                        name: p.name.clone(),
+                        default: p.default.clone(),
+                    })
+                    .collect();
+
                 let func = HaversFunction::new(
                     name.clone(),
-                    params.clone(),
+                    runtime_params,
                     body.clone(),
                     Some(self.environment.clone()),
                 );
@@ -1134,9 +3007,18 @@ impl Interpreter {
                         ..
                     } = method
                     {
+                        // Convert AST Param tae runtime FunctionParam
+                        let runtime_params: Vec<FunctionParam> = params
+                            .iter()
+                            .map(|p| FunctionParam {
+                                name: p.name.clone(),
+                                default: p.default.clone(),
+                            })
+                            .collect();
+
                         let func = HaversFunction::new(
                             method_name.clone(),
-                            params.clone(),
+                            runtime_params,
                             body.clone(),
                             Some(self.environment.clone()),
                         );
@@ -1158,12 +3040,8 @@ impl Interpreter {
                 Ok(Ok(Value::Nil))
             }
 
-            Stmt::Import { path, alias, span: _ } => {
-                // For now, just a placeholder - would need file system access
-                let _module_name = alias.clone().unwrap_or_else(|| path.clone());
-                Err(HaversError::ModuleNotFound {
-                    name: path.clone(),
-                })
+            Stmt::Import { path, alias, span } => {
+                self.load_module(path, alias.as_deref(), *span)
             }
 
             Stmt::TryCatch {
@@ -1204,6 +3082,118 @@ impl Interpreter {
                     message: format!("Nae match found fer {}", val),
                     line: span.line,
                 })
+            }
+
+            Stmt::Assert {
+                condition,
+                message,
+                span,
+            } => {
+                let cond_value = self.evaluate(condition)?;
+                if !cond_value.is_truthy() {
+                    let msg = if let Some(msg_expr) = message {
+                        let msg_val = self.evaluate(msg_expr)?;
+                        msg_val.to_string()
+                    } else {
+                        "Assertion failed".to_string()
+                    };
+                    return Err(HaversError::AssertionFailed {
+                        message: msg,
+                        line: span.line,
+                    });
+                }
+                Ok(Ok(Value::Nil))
+            }
+
+            Stmt::Destructure {
+                patterns,
+                value,
+                span,
+            } => {
+                let val = self.evaluate(value)?;
+
+                // The value must be a list
+                let items = match &val {
+                    Value::List(list) => list.borrow().clone(),
+                    Value::String(s) => {
+                        // Strings can be destructured intae characters
+                        s.chars().map(|c| Value::String(c.to_string())).collect()
+                    }
+                    _ => {
+                        return Err(HaversError::TypeError {
+                            message: format!(
+                                "Ye can only destructure lists and strings, no' {}",
+                                val.type_name()
+                            ),
+                            line: span.line,
+                        });
+                    }
+                };
+
+                // Find the rest pattern position if any
+                let rest_pos = patterns.iter().position(|p| matches!(p, DestructPattern::Rest(_)));
+
+                // Calculate positions
+                let before_rest = rest_pos.unwrap_or(patterns.len());
+                let after_rest = if rest_pos.is_some() {
+                    patterns.len() - rest_pos.unwrap() - 1
+                } else {
+                    0
+                };
+
+                // Check we have enough elements
+                let min_required = before_rest + after_rest;
+                if items.len() < min_required {
+                    return Err(HaversError::TypeError {
+                        message: format!(
+                            "Cannae destructure: need at least {} elements but got {}",
+                            min_required,
+                            items.len()
+                        ),
+                        line: span.line,
+                    });
+                }
+
+                // Bind the variables
+                let mut item_idx = 0;
+                for (pat_idx, pattern) in patterns.iter().enumerate() {
+                    match pattern {
+                        DestructPattern::Variable(name) => {
+                            if pat_idx < before_rest {
+                                // Before rest: take from start
+                                self.environment
+                                    .borrow_mut()
+                                    .define(name.clone(), items[item_idx].clone());
+                                item_idx += 1;
+                            } else {
+                                // After rest: take from end
+                                let from_end = patterns.len() - pat_idx - 1;
+                                let end_idx = items.len() - from_end - 1;
+                                self.environment
+                                    .borrow_mut()
+                                    .define(name.clone(), items[end_idx].clone());
+                            }
+                        }
+                        DestructPattern::Rest(name) => {
+                            // Capture all elements in the middle
+                            let rest_end = items.len() - after_rest;
+                            let rest_items: Vec<Value> = items[item_idx..rest_end].to_vec();
+                            self.environment.borrow_mut().define(
+                                name.clone(),
+                                Value::List(Rc::new(RefCell::new(rest_items))),
+                            );
+                            item_idx = rest_end;
+                        }
+                        DestructPattern::Ignore => {
+                            if pat_idx < before_rest {
+                                item_idx += 1;
+                            }
+                            // Just skip this element
+                        }
+                    }
+                }
+
+                Ok(Ok(Value::Nil))
             }
         }
     }
@@ -1302,6 +3292,21 @@ impl Interpreter {
             } => {
                 let left_val = self.evaluate(left)?;
                 let right_val = self.evaluate(right)?;
+
+                // Check for operator overloading on instances
+                if let Value::Instance(ref inst) = left_val {
+                    let method_name = self.operator_method_name(operator);
+                    if let Some(method) = inst.borrow().class.find_method(&method_name) {
+                        // Call the overloaded operator method
+                        return self.call_method_on_instance(
+                            inst.clone(),
+                            method,
+                            vec![right_val],
+                            span.line,
+                        );
+                    }
+                }
+
                 self.binary_op(&left_val, operator, &right_val, span.line)
             }
 
@@ -1365,10 +3370,7 @@ impl Interpreter {
                             borrowed.class.find_method(property)
                         };
                         if let Some(method) = method_opt {
-                            let mut args = Vec::new();
-                            for arg in arguments {
-                                args.push(self.evaluate(arg)?);
-                            }
+                            let args = self.evaluate_call_args(arguments, span.line)?;
                             let env = Rc::new(RefCell::new(Environment::with_enclosing(
                                 method.closure.clone().unwrap_or(self.globals.clone()),
                             )));
@@ -1382,10 +3384,7 @@ impl Interpreter {
                             borrowed.fields.get(property).cloned()
                         };
                         if let Some(field_val) = field_val_opt {
-                            let mut args = Vec::new();
-                            for arg in arguments {
-                                args.push(self.evaluate(arg)?);
-                            }
+                            let args = self.evaluate_call_args(arguments, span.line)?;
                             return self.call_value(field_val, args, span.line);
                         }
                         return Err(HaversError::UndefinedVariable {
@@ -1396,10 +3395,7 @@ impl Interpreter {
                 }
 
                 let callee_val = self.evaluate(callee)?;
-                let mut args = Vec::new();
-                for arg in arguments {
-                    args.push(self.evaluate(arg)?);
-                }
+                let args = self.evaluate_call_args(arguments, span.line)?;
                 self.call_value(callee_val, args, span.line)
             }
 
@@ -1570,10 +3566,205 @@ impl Interpreter {
                 }
             }
 
+            Expr::Slice {
+                object,
+                start,
+                end,
+                step,
+                span,
+            } => {
+                let obj = self.evaluate(object)?;
+
+                // Get start index, handling None as default
+                let start_idx = if let Some(s) = start {
+                    let val = self.evaluate(s)?;
+                    match val {
+                        Value::Integer(i) => Some(i),
+                        _ => {
+                            return Err(HaversError::TypeError {
+                                message: "Slice start must be an integer".to_string(),
+                                line: span.line,
+                            })
+                        }
+                    }
+                } else {
+                    None
+                };
+
+                // Get end index
+                let end_idx = if let Some(e) = end {
+                    let val = self.evaluate(e)?;
+                    match val {
+                        Value::Integer(i) => Some(i),
+                        _ => {
+                            return Err(HaversError::TypeError {
+                                message: "Slice end must be an integer".to_string(),
+                                line: span.line,
+                            })
+                        }
+                    }
+                } else {
+                    None
+                };
+
+                // Get step value (default is 1)
+                let step_val = if let Some(st) = step {
+                    let val = self.evaluate(st)?;
+                    match val {
+                        Value::Integer(i) => {
+                            if i == 0 {
+                                return Err(HaversError::TypeError {
+                                    message: "Slice step cannae be zero, ya dafty!".to_string(),
+                                    line: span.line,
+                                });
+                            }
+                            i
+                        }
+                        _ => {
+                            return Err(HaversError::TypeError {
+                                message: "Slice step must be an integer".to_string(),
+                                line: span.line,
+                            })
+                        }
+                    }
+                } else {
+                    1
+                };
+
+                match obj {
+                    Value::List(list) => {
+                        let list = list.borrow();
+                        let len = list.len() as i64;
+
+                        // Handle defaults based on step direction
+                        let (start, end) = if step_val > 0 {
+                            let s = start_idx.unwrap_or(0);
+                            let e = end_idx.unwrap_or(len);
+                            (s, e)
+                        } else {
+                            // Negative step: default start is -1 (end), default end is before start
+                            let s = start_idx.unwrap_or(-1);
+                            let e = end_idx.unwrap_or(-(len + 1));
+                            (s, e)
+                        };
+
+                        // Normalize negative indices
+                        let start = if start < 0 {
+                            (len + start).max(0) as usize
+                        } else {
+                            (start as usize).min(list.len())
+                        };
+
+                        let end = if end < 0 {
+                            (len + end).max(-1) as i64
+                        } else {
+                            (end as usize).min(list.len()) as i64
+                        };
+
+                        let mut sliced: Vec<Value> = Vec::new();
+                        if step_val > 0 {
+                            let mut i = start as i64;
+                            while i < end && i < len {
+                                if i >= 0 {
+                                    sliced.push(list[i as usize].clone());
+                                }
+                                i += step_val;
+                            }
+                        } else {
+                            // Negative step: go backwards
+                            let mut i = start as i64;
+                            while i > end && i >= 0 {
+                                if (i as usize) < list.len() {
+                                    sliced.push(list[i as usize].clone());
+                                }
+                                i += step_val; // step_val is negative
+                            }
+                        }
+                        Ok(Value::List(Rc::new(RefCell::new(sliced))))
+                    }
+                    Value::String(s) => {
+                        let chars: Vec<char> = s.chars().collect();
+                        let len = chars.len() as i64;
+
+                        // Handle defaults based on step direction
+                        let (start, end) = if step_val > 0 {
+                            let st = start_idx.unwrap_or(0);
+                            let en = end_idx.unwrap_or(len);
+                            (st, en)
+                        } else {
+                            // Negative step: default start is -1 (end), default end is before start
+                            let st = start_idx.unwrap_or(-1);
+                            let en = end_idx.unwrap_or(-(len + 1));
+                            (st, en)
+                        };
+
+                        // Normalize negative indices
+                        let start = if start < 0 {
+                            (len + start).max(0) as usize
+                        } else {
+                            (start as usize).min(chars.len())
+                        };
+
+                        let end = if end < 0 {
+                            (len + end).max(-1) as i64
+                        } else {
+                            (end as usize).min(chars.len()) as i64
+                        };
+
+                        let mut sliced = String::new();
+                        if step_val > 0 {
+                            let mut i = start as i64;
+                            while i < end && i < len {
+                                if i >= 0 {
+                                    sliced.push(chars[i as usize]);
+                                }
+                                i += step_val;
+                            }
+                        } else {
+                            // Negative step: go backwards
+                            let mut i = start as i64;
+                            while i > end && i >= 0 {
+                                if (i as usize) < chars.len() {
+                                    sliced.push(chars[i as usize]);
+                                }
+                                i += step_val; // step_val is negative
+                            }
+                        }
+                        Ok(Value::String(sliced))
+                    }
+                    _ => Err(HaversError::TypeError {
+                        message: format!("Cannae slice a {}, ya numpty!", obj.type_name()),
+                        line: span.line,
+                    }),
+                }
+            }
+
             Expr::List { elements, .. } => {
                 let mut items = Vec::new();
                 for elem in elements {
-                    items.push(self.evaluate(elem)?);
+                    // Handle spread operator (...) - skail the elements intae the list
+                    if let Expr::Spread { expr, span } = elem {
+                        let spread_value = self.evaluate(expr)?;
+                        match spread_value {
+                            Value::List(list) => {
+                                items.extend(list.borrow().clone());
+                            }
+                            Value::String(s) => {
+                                // Spread string into characters
+                                for c in s.chars() {
+                                    items.push(Value::String(c.to_string()));
+                                }
+                            }
+                            _ => {
+                                return Err(HaversError::TypeError {
+                                    message: "Cannae skail (spread) somethin' that isnae a list or string!".to_string(),
+                                    line: span.line,
+                                });
+                            }
+                        }
+                    } else {
+                        items.push(self.evaluate(elem)?);
+                    }
                 }
                 Ok(Value::List(Rc::new(RefCell::new(items))))
             }
@@ -1616,10 +3807,19 @@ impl Interpreter {
                 body,
                 span,
             } => {
+                // Convert lambda params tae FunctionParams (lambdas dinnae hae defaults)
+                let runtime_params: Vec<FunctionParam> = params
+                    .iter()
+                    .map(|name| FunctionParam {
+                        name: name.clone(),
+                        default: None,
+                    })
+                    .collect();
+
                 // Create a function from the lambda
                 let func = HaversFunction::new(
                     "<lambda>".to_string(),
-                    params.clone(),
+                    runtime_params,
                     vec![Stmt::Return {
                         value: Some((**body).clone()),
                         span: *span,
@@ -1664,6 +3864,36 @@ impl Interpreter {
                     }
                 }
                 Ok(Value::String(result))
+            }
+
+            // Spread is only valid in specific contexts (lists, function calls)
+            // If we get here, it's an error
+            Expr::Spread { span, .. } => Err(HaversError::TypeError {
+                message: "The spread operator (...) can only be used in lists or function calls, ya numpty!".to_string(),
+                line: span.line,
+            }),
+
+            // Pipe forward: left |> right means call right(left)
+            Expr::Pipe { left, right, span } => {
+                let left_val = self.evaluate(left)?;
+                let right_val = self.evaluate(right)?;
+                // Call the right side as a function with left as the argument
+                self.call_value(right_val, vec![left_val], span.line)
+            }
+
+            Expr::Ternary {
+                condition,
+                then_expr,
+                else_expr,
+                ..
+            } => {
+                // Evaluate condition and pick the appropriate branch
+                let cond_val = self.evaluate(condition)?;
+                if cond_val.is_truthy() {
+                    self.evaluate(then_expr)
+                } else {
+                    self.evaluate(else_expr)
+                }
             }
         }
     }
@@ -1812,6 +4042,107 @@ impl Interpreter {
                 line,
             }),
         }
+    }
+
+    /// Get the method name for operator overloading
+    /// Uses Scots-flavored names:
+    /// - __pit_thegither__ = add (put together)
+    /// - __tak_awa__ = subtract (take away)
+    /// - __times__ = multiply
+    /// - __pairt__ = divide (part/divide)
+    /// - __lave__ = modulo (what's left)
+    /// - __same_as__ = equal
+    /// - __differs_fae__ = not equal
+    /// - __wee_er__ = less than (smaller)
+    /// - __wee_er_or_same__ = less or equal
+    /// - __muckle_er__ = greater than (bigger)
+    /// - __muckle_er_or_same__ = greater or equal
+    fn operator_method_name(&self, op: &BinaryOp) -> String {
+        match op {
+            BinaryOp::Add => "__pit_thegither__".to_string(),
+            BinaryOp::Subtract => "__tak_awa__".to_string(),
+            BinaryOp::Multiply => "__times__".to_string(),
+            BinaryOp::Divide => "__pairt__".to_string(),
+            BinaryOp::Modulo => "__lave__".to_string(),
+            BinaryOp::Equal => "__same_as__".to_string(),
+            BinaryOp::NotEqual => "__differs_fae__".to_string(),
+            BinaryOp::Less => "__wee_er__".to_string(),
+            BinaryOp::LessEqual => "__wee_er_or_same__".to_string(),
+            BinaryOp::Greater => "__muckle_er__".to_string(),
+            BinaryOp::GreaterEqual => "__muckle_er_or_same__".to_string(),
+        }
+    }
+
+    /// Call a method on an instance with the given arguments
+    fn call_method_on_instance(
+        &mut self,
+        instance: Rc<RefCell<HaversInstance>>,
+        method: Rc<HaversFunction>,
+        args: Vec<Value>,
+        line: usize,
+    ) -> HaversResult<Value> {
+        // Check arity
+        if method.params.len() != args.len() {
+            return Err(HaversError::WrongArity {
+                name: method.name.clone(),
+                expected: method.params.len(),
+                got: args.len(),
+                line,
+            });
+        }
+
+        // Create a new environment for the method
+        let method_env = if let Some(closure) = &method.closure {
+            Environment::with_enclosing(closure.clone())
+        } else {
+            Environment::with_enclosing(self.globals.clone())
+        };
+        let method_env = Rc::new(RefCell::new(method_env));
+
+        // Bind 'masel' to the instance
+        method_env
+            .borrow_mut()
+            .define("masel".to_string(), Value::Instance(instance));
+
+        // Bind the parameters
+        for (param, arg) in method.params.iter().zip(args) {
+            method_env.borrow_mut().define(param.name.clone(), arg);
+        }
+
+        // Execute the method body with our custom environment
+        let result = self.execute_block(&method.body, Some(method_env));
+
+        match result {
+            Ok(Ok(val)) => Ok(val),
+            Ok(Err(ControlFlow::Return(val))) => Ok(val),
+            Ok(Err(ControlFlow::Break)) => Ok(Value::Nil),
+            Ok(Err(ControlFlow::Continue)) => Ok(Value::Nil),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Evaluate function arguments, handling spread operator (...args)
+    fn evaluate_call_args(&mut self, arguments: &[Expr], _line: usize) -> HaversResult<Vec<Value>> {
+        let mut args = Vec::new();
+        for arg in arguments {
+            if let Expr::Spread { expr, span } = arg {
+                let spread_value = self.evaluate(expr)?;
+                match spread_value {
+                    Value::List(list) => {
+                        args.extend(list.borrow().clone());
+                    }
+                    _ => {
+                        return Err(HaversError::TypeError {
+                            message: "Cannae skail (spread) somethin' that isnae a list in function call!".to_string(),
+                            line: span.line,
+                        });
+                    }
+                }
+            } else {
+                args.push(self.evaluate(arg)?);
+            }
+        }
+        Ok(args)
     }
 
     fn call_value(&mut self, callee: Value, args: Vec<Value>, line: usize) -> HaversResult<Value> {
@@ -2061,6 +4392,74 @@ impl Interpreter {
                 Ok(Value::Bool(true))
             }
 
+            // grup_up(list, func) - group elements by function result
+            "__builtin_grup_up__" => {
+                if args.len() != 2 {
+                    return Err(HaversError::WrongArity {
+                        name: "grup_up".to_string(),
+                        expected: 2,
+                        got: args.len(),
+                        line,
+                    });
+                }
+                let list = match &args[0] {
+                    Value::List(l) => l.borrow().clone(),
+                    _ => return Err(HaversError::TypeError {
+                        message: "grup_up() expects a list as first argument".to_string(),
+                        line,
+                    }),
+                };
+                let func = args[1].clone();
+                // Result is a dict where keys are the function results, values are lists
+                let result = Rc::new(RefCell::new(std::collections::HashMap::new()));
+                for item in list {
+                    let key = self.call_value(func.clone(), vec![item.clone()], line)?;
+                    let key_str = format!("{}", key);
+                    let mut dict = result.borrow_mut();
+                    let group = dict.entry(key_str).or_insert_with(|| {
+                        Value::List(Rc::new(RefCell::new(Vec::new())))
+                    });
+                    if let Value::List(l) = group {
+                        l.borrow_mut().push(item);
+                    }
+                }
+                Ok(Value::Dict(result))
+            }
+
+            // pairt_by(list, func) - partition into [matches, non_matches]
+            "__builtin_pairt_by__" => {
+                if args.len() != 2 {
+                    return Err(HaversError::WrongArity {
+                        name: "pairt_by".to_string(),
+                        expected: 2,
+                        got: args.len(),
+                        line,
+                    });
+                }
+                let list = match &args[0] {
+                    Value::List(l) => l.borrow().clone(),
+                    _ => return Err(HaversError::TypeError {
+                        message: "pairt_by() expects a list as first argument".to_string(),
+                        line,
+                    }),
+                };
+                let func = args[1].clone();
+                let mut matches = Vec::new();
+                let mut non_matches = Vec::new();
+                for item in list {
+                    let result = self.call_value(func.clone(), vec![item.clone()], line)?;
+                    if result.is_truthy() {
+                        matches.push(item);
+                    } else {
+                        non_matches.push(item);
+                    }
+                }
+                Ok(Value::List(Rc::new(RefCell::new(vec![
+                    Value::List(Rc::new(RefCell::new(matches))),
+                    Value::List(Rc::new(RefCell::new(non_matches))),
+                ]))))
+            }
+
             _ => Err(HaversError::NotCallable {
                 name: name.to_string(),
                 line,
@@ -2074,13 +4473,27 @@ impl Interpreter {
         args: Vec<Value>,
         line: usize,
     ) -> HaversResult<Value> {
-        if args.len() != func.params.len() {
-            return Err(HaversError::WrongArity {
-                name: func.name.clone(),
-                expected: func.params.len(),
-                got: args.len(),
-                line,
-            });
+        let min_arity = func.min_arity();
+        let max_arity = func.max_arity();
+
+        // Check arity: need at least min_arity, but no more than max_arity
+        if args.len() < min_arity || args.len() > max_arity {
+            if min_arity == max_arity {
+                return Err(HaversError::WrongArity {
+                    name: func.name.clone(),
+                    expected: max_arity,
+                    got: args.len(),
+                    line,
+                });
+            } else {
+                return Err(HaversError::TypeError {
+                    message: format!(
+                        "Function '{}' expects {} tae {} arguments but ye gave it {}",
+                        func.name, min_arity, max_arity, args.len()
+                    ),
+                    line,
+                });
+            }
         }
 
         let env = Rc::new(RefCell::new(Environment::with_enclosing(
@@ -2097,10 +4510,26 @@ impl Interpreter {
         env: Rc<RefCell<Environment>>,
         _line: usize,
     ) -> HaversResult<Value> {
-        // Bind parameters
-        for (param, arg) in func.params.iter().zip(args) {
-            env.borrow_mut().define(param.clone(), arg);
+        // Set up closure environment fer evaluating default values
+        let old_env = self.environment.clone();
+        self.environment = env.clone();
+
+        // Bind parameters, using defaults where nae argument was provided
+        for (i, param) in func.params.iter().enumerate() {
+            let value = if i < args.len() {
+                args[i].clone()
+            } else if let Some(default_expr) = &param.default {
+                // Evaluate the default value in the function's closure
+                self.evaluate(default_expr)?
+            } else {
+                // This shouldnae happen if arity checking worked
+                Value::Nil
+            };
+            env.borrow_mut().define(param.name.clone(), value);
         }
+
+        // Restore the environment
+        self.environment = old_env;
 
         match self.execute_block(&func.body, Some(env))? {
             Ok(v) => Ok(v),
@@ -2390,5 +4819,273 @@ keek x {
 result
 "#).unwrap();
         assert_eq!(result, Value::String("two".to_string()));
+    }
+
+    #[test]
+    fn test_ternary_expression() {
+        // Basic ternary - used in expression context
+        assert_eq!(
+            run("ken x = gin 5 > 3 than 1 ither 0\nx").unwrap(),
+            Value::Integer(1)
+        );
+        assert_eq!(
+            run("ken x = gin 5 < 3 than 1 ither 0\nx").unwrap(),
+            Value::Integer(0)
+        );
+        // With strings
+        assert_eq!(
+            run(r#"ken x = gin aye than "yes" ither "no"
+x"#).unwrap(),
+            Value::String("yes".to_string())
+        );
+        // Nested ternary
+        assert_eq!(
+            run("ken x = 5
+ken result = gin x > 10 than 1 ither gin x > 3 than 2 ither 3
+result").unwrap(),
+            Value::Integer(2)
+        );
+    }
+
+    #[test]
+    fn test_slice_list() {
+        // Basic slicing
+        let result = run("ken x = [0, 1, 2, 3, 4]\nx[1:3]").unwrap();
+        if let Value::List(list) = result {
+            let list = list.borrow();
+            assert_eq!(list.len(), 2);
+            assert_eq!(list[0], Value::Integer(1));
+            assert_eq!(list[1], Value::Integer(2));
+        } else {
+            panic!("Expected list");
+        }
+
+        // Slice to end
+        let result = run("ken x = [0, 1, 2, 3, 4]\nx[3:]").unwrap();
+        if let Value::List(list) = result {
+            let list = list.borrow();
+            assert_eq!(list.len(), 2);
+            assert_eq!(list[0], Value::Integer(3));
+            assert_eq!(list[1], Value::Integer(4));
+        } else {
+            panic!("Expected list");
+        }
+
+        // Slice from start
+        let result = run("ken x = [0, 1, 2, 3, 4]\nx[:2]").unwrap();
+        if let Value::List(list) = result {
+            let list = list.borrow();
+            assert_eq!(list.len(), 2);
+            assert_eq!(list[0], Value::Integer(0));
+            assert_eq!(list[1], Value::Integer(1));
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_slice_string() {
+        assert_eq!(
+            run("ken s = \"Hello\"\ns[0:2]").unwrap(),
+            Value::String("He".to_string())
+        );
+        assert_eq!(
+            run("ken s = \"Hello\"\ns[3:]").unwrap(),
+            Value::String("lo".to_string())
+        );
+        assert_eq!(
+            run("ken s = \"Hello\"\ns[:3]").unwrap(),
+            Value::String("Hel".to_string())
+        );
+    }
+
+    #[test]
+    fn test_slice_negative() {
+        // Negative indices
+        let result = run("ken x = [0, 1, 2, 3, 4]\nx[-2:]").unwrap();
+        if let Value::List(list) = result {
+            let list = list.borrow();
+            assert_eq!(list.len(), 2);
+            assert_eq!(list[0], Value::Integer(3));
+            assert_eq!(list[1], Value::Integer(4));
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_slice_step() {
+        // Every second element
+        let result = run("ken x = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]\nx[::2]").unwrap();
+        if let Value::List(list) = result {
+            let list = list.borrow();
+            assert_eq!(list.len(), 5);
+            assert_eq!(list[0], Value::Integer(0));
+            assert_eq!(list[1], Value::Integer(2));
+            assert_eq!(list[4], Value::Integer(8));
+        } else {
+            panic!("Expected list");
+        }
+
+        // Every third element from 1 to 8
+        let result = run("ken x = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]\nx[1:8:3]").unwrap();
+        if let Value::List(list) = result {
+            let list = list.borrow();
+            assert_eq!(list.len(), 3); // 1, 4, 7
+            assert_eq!(list[0], Value::Integer(1));
+            assert_eq!(list[1], Value::Integer(4));
+            assert_eq!(list[2], Value::Integer(7));
+        } else {
+            panic!("Expected list");
+        }
+
+        // Reverse a list with negative step
+        let result = run("ken x = [0, 1, 2, 3, 4]\nx[::-1]").unwrap();
+        if let Value::List(list) = result {
+            let list = list.borrow();
+            assert_eq!(list.len(), 5);
+            assert_eq!(list[0], Value::Integer(4));
+            assert_eq!(list[4], Value::Integer(0));
+        } else {
+            panic!("Expected list");
+        }
+
+        // String with step
+        let result = run("ken s = \"Hello\"\ns[::2]").unwrap();
+        assert_eq!(result, Value::String("Hlo".to_string())); // H, l, o
+
+        // String reversed
+        let result = run("ken s = \"Hello\"\ns[::-1]").unwrap();
+        assert_eq!(result, Value::String("olleH".to_string()));
+    }
+
+    #[test]
+    fn test_new_list_functions() {
+        // uniq
+        let result = run("uniq([1, 2, 2, 3, 3, 3])").unwrap();
+        if let Value::List(list) = result {
+            let list = list.borrow();
+            assert_eq!(list.len(), 3);
+        } else {
+            panic!("Expected list");
+        }
+
+        // redd_up
+        let result = run("redd_up([1, naething, 2, naething, 3])").unwrap();
+        if let Value::List(list) = result {
+            let list = list.borrow();
+            assert_eq!(list.len(), 3);
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_new_string_functions() {
+        // capitalize
+        assert_eq!(
+            run(r#"capitalize("hello")"#).unwrap(),
+            Value::String("Hello".to_string())
+        );
+
+        // title
+        assert_eq!(
+            run(r#"title("hello world")"#).unwrap(),
+            Value::String("Hello World".to_string())
+        );
+
+        // words
+        let result = run(r#"words("one two three")"#).unwrap();
+        if let Value::List(list) = result {
+            let list = list.borrow();
+            assert_eq!(list.len(), 3);
+        } else {
+            panic!("Expected list");
+        }
+
+        // ord and chr
+        assert_eq!(run(r#"ord("A")"#).unwrap(), Value::Integer(65));
+        assert_eq!(run("chr(65)").unwrap(), Value::String("A".to_string()));
+    }
+
+    #[test]
+    fn test_creel_set() {
+        // Create a set from a list
+        let result = run("creel([1, 2, 2, 3, 3, 3])").unwrap();
+        if let Value::Set(set) = result {
+            let set = set.borrow();
+            assert_eq!(set.len(), 3); // Duplicates removed
+        } else {
+            panic!("Expected creel");
+        }
+
+        // Create empty set
+        let result = run("empty_creel()").unwrap();
+        if let Value::Set(set) = result {
+            assert!(set.borrow().is_empty());
+        } else {
+            panic!("Expected empty creel");
+        }
+
+        // Check membership
+        let result = run(r#"
+            ken s = creel(["apple", "banana", "cherry"])
+            is_in_creel(s, "banana")
+        "#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+
+        let result = run(r#"
+            ken s = creel(["apple", "banana", "cherry"])
+            is_in_creel(s, "mango")
+        "#).unwrap();
+        assert_eq!(result, Value::Bool(false));
+
+        // Union
+        let result = run(r#"
+            ken a = creel([1, 2, 3])
+            ken b = creel([3, 4, 5])
+            len(creels_thegither(a, b))
+        "#).unwrap();
+        assert_eq!(result, Value::Integer(5)); // 1, 2, 3, 4, 5
+
+        // Intersection
+        let result = run(r#"
+            ken a = creel([1, 2, 3])
+            ken b = creel([2, 3, 4])
+            len(creels_baith(a, b))
+        "#).unwrap();
+        assert_eq!(result, Value::Integer(2)); // 2, 3
+
+        // Difference
+        let result = run(r#"
+            ken a = creel([1, 2, 3])
+            ken b = creel([2, 3, 4])
+            len(creels_differ(a, b))
+        "#).unwrap();
+        assert_eq!(result, Value::Integer(1)); // just 1
+
+        // Subset
+        let result = run(r#"
+            ken a = creel([1, 2])
+            ken b = creel([1, 2, 3])
+            is_subset(a, b)
+        "#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+
+        // Convert to list
+        let result = run(r#"
+            ken s = creel([3, 1, 2])
+            creel_tae_list(s)
+        "#).unwrap();
+        if let Value::List(list) = result {
+            let list = list.borrow();
+            assert_eq!(list.len(), 3);
+            // Should be sorted
+            assert_eq!(list[0], Value::String("1".to_string()));
+            assert_eq!(list[1], Value::String("2".to_string()));
+            assert_eq!(list[2], Value::String("3".to_string()));
+        } else {
+            panic!("Expected list");
+        }
     }
 }
