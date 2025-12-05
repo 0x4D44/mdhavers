@@ -2754,6 +2754,64 @@ impl Interpreter {
         );
 
         // ============================================================
+        // TIMING/BENCHMARKING FUNCTIONS - Measure yer code's speed!
+        // ============================================================
+
+        // noo - get current timestamp in milliseconds (like "now")
+        globals.borrow_mut().define(
+            "noo".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("noo", 0, |_args| {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let duration = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap();
+                Ok(Value::Integer(duration.as_millis() as i64))
+            }))),
+        );
+
+        // tick - high precision nanoseconds timestamp
+        globals.borrow_mut().define(
+            "tick".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("tick", 0, |_args| {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let duration = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap();
+                Ok(Value::Integer(duration.as_nanos() as i64))
+            }))),
+        );
+
+        // bide - sleep for milliseconds (bide = wait in Scots)
+        globals.borrow_mut().define(
+            "bide".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("bide", 1, |args| {
+                let ms = match &args[0] {
+                    Value::Integer(n) => *n as u64,
+                    Value::Float(f) => *f as u64,
+                    _ => return Err("bide() needs a number o' milliseconds".to_string()),
+                };
+                std::thread::sleep(std::time::Duration::from_millis(ms));
+                Ok(Value::Nil)
+            }))),
+        );
+
+        // stopwatch - time a function call and return [result, time_ms]
+        globals.borrow_mut().define(
+            "stopwatch".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("stopwatch", 1, |args| {
+                // This is a placeholder - actual timing requires interpreter access
+                // For now, just return the function info
+                match &args[0] {
+                    Value::Function(f) => Ok(Value::String(format!(
+                        "Use 'noo()' before and after callin' '{}' tae time it!",
+                        f.name
+                    ))),
+                    _ => Err("stopwatch() needs a function".to_string()),
+                }
+            }))),
+        );
+
+        // ============================================================
         // SET (CREEL) FUNCTIONS - A creel is a basket in Scots!
         // ============================================================
 
@@ -5619,5 +5677,32 @@ f"The answer is {x * 2}"
         let name_var = vars.iter().find(|(n, _, _)| n == "name");
         assert!(name_var.is_some());
         assert_eq!(name_var.unwrap().1, "string");
+    }
+
+    #[test]
+    fn test_timing_functions() {
+        // noo() returns a timestamp
+        let result = run("noo()").unwrap();
+        if let Value::Integer(ts) = result {
+            assert!(ts > 0); // Should be a positive timestamp
+        } else {
+            panic!("Expected integer timestamp");
+        }
+
+        // tick() returns high-precision timestamp
+        let result = run("tick()").unwrap();
+        if let Value::Integer(ts) = result {
+            assert!(ts > 0);
+        } else {
+            panic!("Expected integer timestamp");
+        }
+
+        // Time difference works
+        let result = run(r#"
+            ken start = noo()
+            ken finish = noo()
+            finish >= start
+        "#).unwrap();
+        assert_eq!(result, Value::Bool(true));
     }
 }

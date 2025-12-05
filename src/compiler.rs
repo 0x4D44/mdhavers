@@ -290,12 +290,42 @@ impl Compiler {
         self.indent -= 1;
         self.emit_line("},");
 
+        // Timing functions
+        self.emit_line("// Timing functions");
+        self.emit_line("noo: () => Date.now(),");
+        self.emit_line("tick: () => {");
+        self.indent += 1;
+        self.emit_line("if (typeof process !== 'undefined' && process.hrtime) {");
+        self.indent += 1;
+        self.emit_line("const [s, ns] = process.hrtime();");
+        self.emit_line("return s * 1e9 + ns;");
+        self.indent -= 1;
+        self.emit_line("}");
+        self.emit_line("return Date.now() * 1e6; // Fallback for browser");
+        self.indent -= 1;
+        self.emit_line("},");
+        self.emit_line("bide: (ms) => {");
+        self.indent += 1;
+        self.emit_line("const end = Date.now() + ms;");
+        self.emit_line("while (Date.now() < end) {} // Busy wait (sync)");
+        self.indent -= 1;
+        self.emit_line("},");
+
+        // Higher-order functions
+        self.emit_line("// Higher-order functions");
+        self.emit_line("gaun: (arr, fn) => arr.map(fn),");
+        self.emit_line("sieve: (arr, fn) => arr.filter(fn),");
+        self.emit_line("tumble: (arr, init, fn) => arr.reduce(fn, init),");
+        self.emit_line("aw: (arr, fn) => arr.every(fn),");
+        self.emit_line("ony: (arr, fn) => arr.some(fn),");
+        self.emit_line("hunt: (arr, fn) => arr.find(fn),");
+
         self.indent -= 1;
         self.emit_line("};");
         self.emit_line("");
 
         // Import runtime functions to global scope
-        self.emit_line("const { len, whit_kind, tae_string, tae_int, tae_float, shove, yank, keys, values, range, abs, min, max, floor, ceil, round, sqrt, split, join, contains, reverse, sort, blether, speir, heid, tail, bum, scran, slap, sumaw, coont, wheesht, upper, lower, shuffle } = __havers;");
+        self.emit_line("const { len, whit_kind, tae_string, tae_int, tae_float, shove, yank, keys, values, range, abs, min, max, floor, ceil, round, sqrt, split, join, contains, reverse, sort, blether, speir, heid, tail, bum, scran, slap, sumaw, coont, wheesht, upper, lower, shuffle, noo, tick, bide, gaun, sieve, tumble, aw, ony, hunt } = __havers;");
         self.emit_line("");
     }
 

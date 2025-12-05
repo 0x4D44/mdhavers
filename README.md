@@ -539,6 +539,14 @@ Modules are resolved relative to the current file's directory. The `.braw` exten
 | `blooter(str)` | Scramble string randomly |
 | `numpty_check(x)` | Validate input with Scots feedback |
 
+**Timing/Benchmarking Functions**:
+
+| Function | Description |
+|----------|-------------|
+| `noo()` | Current timestamp in milliseconds ("now") |
+| `tick()` | High-precision timestamp in nanoseconds |
+| `bide(ms)` | Sleep for milliseconds ("bide" = wait) |
+
 **File I/O Functions**:
 
 | Function | Description |
@@ -789,6 +797,7 @@ See the `examples/` directory for sample programs:
 - `pipe.braw` - Pipe operator (|>) examples
 - `defaults.braw` - Default parameter values (staundart values)
 - `trace_demo.braw` - Demo file for the tracer (try `mdhavers trace`)
+- `benchmark.braw` - Timing and benchmarking demo (noo, tick, bide)
 - `destructure.braw` - Destructuring assignment examples
 - `scots_fun.braw` - New Scots vocabulary functions demo
 - `lib/maths.braw` - Mathematics utility library
