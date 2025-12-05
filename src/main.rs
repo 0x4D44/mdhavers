@@ -16,6 +16,7 @@ mod lexer;
 mod parser;
 mod token;
 mod value;
+mod wasm_compiler;
 
 use crate::compiler::compile;
 use crate::error::{format_error_context, random_scots_exclamation};
@@ -97,6 +98,16 @@ enum Commands {
         #[arg(short, long)]
         verbose: bool,
     },
+
+    /// Compile a .braw program to WebAssembly (WAT format)
+    Wasm {
+        /// The .braw file to compile
+        file: PathBuf,
+
+        /// Output file (defaults to <input>.wat)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 fn main() {
@@ -111,6 +122,7 @@ fn main() {
         Some(Commands::Tokens { file }) => show_tokens(&file),
         Some(Commands::Ast { file }) => show_ast(&file),
         Some(Commands::Trace { file, verbose }) => trace_file(&file, verbose),
+        Some(Commands::Wasm { file, output }) => compile_wasm(&file, output),
         None => {
             // If a file is provided directly, run it
             if let Some(file) = cli.file {
@@ -230,6 +242,41 @@ fn compile_file(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
     Ok(())
 }
 
+fn compile_wasm(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
+    let source = read_file(path)?;
+    let wat_code = wasm_compiler::compile_to_wat(&source)
+        .map_err(|e| format_parse_error(&source, e))?;
+
+    let output_path = output.unwrap_or_else(|| {
+        let mut p = path.clone();
+        p.set_extension("wat");
+        p
+    });
+
+    fs::write(&output_path, &wat_code)
+        .map_err(|e| format!("Cannae write tae {}: {}", output_path.display(), e))?;
+
+    println!(
+        "{} Compiled {} tae WebAssembly (WAT)",
+        "Braw!".green().bold(),
+        path.display()
+    );
+    println!(
+        "  {} {}",
+        "Output:".dimmed(),
+        output_path.display()
+    );
+    println!();
+    println!("{}", "Tae convert tae binary WASM, use:".dimmed());
+    println!(
+        "  {} wat2wasm {}",
+        "$".dimmed(),
+        output_path.display()
+    );
+
+    Ok(())
+}
+
 fn run_repl() -> Result<(), String> {
     use interpreter::TraceMode;
 
@@ -322,6 +369,11 @@ fn run_repl() -> Result<(), String> {
                     ":wisdom" | "wisdom" => {
                         // Print a wee bit of Scots wisdom
                         print_scots_wisdom();
+                        continue;
+                    }
+                    ":codewisdom" | "codewisdom" => {
+                        // Print programming-specific Scottish wisdom
+                        print_programming_wisdom();
                         continue;
                     }
                     ":examples" | "examples" => {
@@ -447,6 +499,7 @@ fn print_repl_help() {
     println!("  {}          - clear the screen", "clear".green());
     println!("  {}          - reset the interpreter", "reset".green());
     println!("  {}         - get some Scots wisdom", "wisdom".green());
+    println!("  {}     - get programming wisdom", "codewisdom".green());
     println!("  {}       - see example code", "examples".green());
     println!("  {}          - toggle trace mode (debugger)", "trace".green());
     println!("  {}       - verbose trace mode", "trace v".green());
@@ -472,6 +525,16 @@ fn print_scots_wisdom() {
         ("Guid gear comes in sma' bulk", "Good things come in wee packages"),
         ("A blate cat maks a prood moose", "Shyness invites boldness in others"),
         ("Facts are chiels that winna ding", "Ye cannae argue wi' facts"),
+        ("Ae man's meat is anither man's poison", "What works fer one may no' work fer anither"),
+        ("It's a lang road that has nae turnin'", "Things will improve eventually"),
+        ("Better bend than brek", "It's better tae compromise than tae break"),
+        ("Frae savin' comes havin'", "Save now, prosper later"),
+        ("They that dance maun pay the fiddler", "Ye must pay fer yer pleasures"),
+        ("Oot o' sicht, oot o' mind", "We forget whit we dinnae see"),
+        ("A fool an' his money are soon parted", "Dinnae be wasteful"),
+        ("There's nae fool like an auld fool", "Age doesnae always bring wisdom"),
+        ("Ye cannae mak a silk purse oot o' a soo's lug", "Ye cannae improve on poor materials"),
+        ("Birds o' a feather flock thegither", "Like attracts like"),
     ];
 
     let (proverb, meaning) = proverbs[seed % proverbs.len()];
@@ -483,6 +546,17 @@ fn print_scots_wisdom() {
     println!("  \"{}\"", proverb.yellow().italic());
     println!();
     println!("  {}: {}", "Meaning".dimmed(), meaning.dimmed());
+    println!();
+}
+
+fn print_programming_wisdom() {
+    let wisdom = crate::error::scots_programming_wisdom();
+    println!();
+    println!("{}", "═══════════════════════════════════════════════════".cyan());
+    println!("{}", "  Scottish Programming Wisdom".cyan().bold());
+    println!("{}", "═══════════════════════════════════════════════════".cyan());
+    println!();
+    println!("  \"{}\"", wisdom.yellow().italic());
     println!();
 }
 

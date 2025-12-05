@@ -12,6 +12,10 @@ keywords = ["scots", "programming-language", "interpreter", "compiler"]
 name = "mdhavers"
 path = "src/main.rs"
 
+[[bin]]
+name = "mdhavers-lsp"
+path = "src/lsp/main.rs"
+
 [dependencies]
 clap = { version = "4.4", features = ["derive"] }
 thiserror = "1.0"
@@ -19,6 +23,10 @@ colored = "2.1"
 logos = "0.14"
 rustyline = "14.0"
 dirs = "5.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+lsp-types = "0.97"
+lsp-server = "0.7"
 
 [dev-dependencies]
 pretty_assertions = "1.4"

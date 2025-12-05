@@ -110,6 +110,48 @@ pub enum HaversError {
 
     #[error("Yer pattern's aw wrang at line {line}: {message}")]
     PatternError { message: String, line: usize },
+
+    #[error("Wheesht! Yer number's too muckle at line {line} - it's overflowed!")]
+    IntegerOverflow { line: usize },
+
+    #[error("By the bonnie banks! Negative index {index} is oot o' range at line {line}")]
+    NegativeIndexOutOfBounds { index: i64, line: usize },
+
+    #[error("Haud yer wheesht! Empty list at line {line} - ye cannae {operation} on naething!")]
+    EmptyCollection { operation: String, line: usize },
+
+    #[error("Yer regex is mince at line {line}: {message}")]
+    InvalidRegex { message: String, line: usize },
+
+    #[error("That format string's a guddle at line {line}: {message}")]
+    FormatError { message: String, line: usize },
+
+    #[error("The JSON's aw wrang at line {line}: {message}")]
+    JsonError { message: String, line: usize },
+
+    #[error("Ye cannae compare {left_type} wi' {right_type} at line {line} - they're like chalk an' cheese!")]
+    IncomparableTypes { left_type: String, right_type: String, line: usize },
+
+    #[error("That number's nae use at line {line}: {message}")]
+    InvalidNumberOperation { message: String, line: usize },
+
+    #[error("Yer match hasnae covered aw the cases at line {line}!")]
+    NonExhaustiveMatch { line: usize },
+
+    #[error("Ye've got duplicate keys in yer dict at line {line}: '{key}'")]
+    DuplicateKey { key: String, line: usize },
+
+    #[error("Timeout! Yer code took too lang at line {line} - maybe an infinite loop?")]
+    ExecutionTimeout { line: usize },
+
+    #[error("Memory's fair scunnered! Ran oot o' space at line {line}")]
+    OutOfMemory { line: usize },
+
+    #[error("That's a private member! Ye cannae access '{member}' fae ootside the class at line {line}")]
+    PrivateMemberAccess { member: String, line: usize },
+
+    #[error("Immutable! Ye cannae change '{name}' at line {line} - it's set in stone!")]
+    ImmutableVariable { name: String, line: usize },
 }
 
 impl HaversError {
@@ -141,6 +183,20 @@ impl HaversError {
             HaversError::ReturnOutsideFunction { line } => Some(*line),
             HaversError::NotIterable { line, .. } => Some(*line),
             HaversError::PatternError { line, .. } => Some(*line),
+            HaversError::IntegerOverflow { line } => Some(*line),
+            HaversError::NegativeIndexOutOfBounds { line, .. } => Some(*line),
+            HaversError::EmptyCollection { line, .. } => Some(*line),
+            HaversError::InvalidRegex { line, .. } => Some(*line),
+            HaversError::FormatError { line, .. } => Some(*line),
+            HaversError::JsonError { line, .. } => Some(*line),
+            HaversError::IncomparableTypes { line, .. } => Some(*line),
+            HaversError::InvalidNumberOperation { line, .. } => Some(*line),
+            HaversError::NonExhaustiveMatch { line } => Some(*line),
+            HaversError::DuplicateKey { line, .. } => Some(*line),
+            HaversError::ExecutionTimeout { line } => Some(*line),
+            HaversError::OutOfMemory { line } => Some(*line),
+            HaversError::PrivateMemberAccess { line, .. } => Some(*line),
+            HaversError::ImmutableVariable { line, .. } => Some(*line),
             _ => None,
         }
     }
@@ -173,6 +229,47 @@ pub fn random_scots_exclamation() -> &'static str {
         "Sakes alive!",
         "Whit in the name o' the wee man!",
         "For ony favour!",
+        "Haud yer horses!",
+        "Whit's aw this then?",
+        "Och, here we go again!",
+        "By the bonnie banks!",
+        "Fit like? No' guid!",
+        "Awa' an' dinnae come back!",
+        "Yer aff yer heid!",
+        "Pure radge!",
+        "Whit a palaver!",
+        "Gonnae no' dae that!",
+        "Gie's peace!",
+        "Yer havin' a laugh!",
+        "Stone the crows!",
+        "Sakes o' mercy!",
+        "Whit a fankle!",
+        "Heavens tae Betsy!",
+        "Lang may yer lum reek... but no' the day!",
+        "By ma grannie's tartan knickers!",
+        "Haud me back!",
+        "Whit in tarnation!",
+        "Yer code's gone doolally!",
+        "Bletherin' bogles!",
+        "Sufferin' sporrans!",
+        "Nessie's nostrils!",
+        "Haggis tae Highlands!",
+        "Tatties an' neeps!",
+        "By the Loch Ness Monster!",
+        "Burns wid be birlin' in his grave!",
+        "Haud yer weesht an' fix it!",
+        "Whit's aw the stooshie?",
+        "Yer code's fair glaikit!",
+        "By the ghost o' Robert Bruce!",
+        "Awa' wi' the fairies!",
+        "That's a real howler!",
+        "Och, fit a cairry on!",
+        "Nae messin' aboot!",
+        "Yer code's in a right fankle!",
+        "Guid heavens above!",
+        "Whit's the malky?",
+        "By the beard o' Rob Roy!",
+        "Cannae believe ma een!",
     ];
 
     PHRASES[seed % PHRASES.len()]
@@ -194,9 +291,59 @@ pub fn scots_encouragement() -> &'static str {
         "Haud on - ye're nearly there!",
         "Gie it anither bash!",
         "Chin up, it's nae the end o' the warld!",
+        "Rome wisnae built in a day, an' neither is guid code!",
+        "Every maister wis once a disaster!",
+        "Yer code's getting' better - keep goin'!",
+        "Bugs are just features ye didnae plan fer!",
+        "Even the best programmers get scunnered sometimes!",
+        "A wee setback isnae a defeat!",
+        "Whit doesnae kill yer code makes it stronger!",
+        "The best debugging is done efter a cup o' tea!",
+        "Ye're daein' braw - dinnae gie up!",
+        "Mony a mickle maks a muckle - keep at it!",
+        "Practice maks perfect, an' bugs mak ye smarter!",
     ];
 
     PHRASES[(seed / 2) % PHRASES.len()]
+}
+
+/// Get a Scottish programming proverb
+pub fn scots_programming_wisdom() -> &'static str {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as usize;
+
+    const PROVERBS: &[&str] = &[
+        "A guid programmer kens when tae ask fer help.",
+        "Mony a guid tune is played on an auld fiddle - an' auld code can still work!",
+        "Better a wee error noo than a muckle disaster later.",
+        "Test early, test often, or ye'll be greetin'.",
+        "Comments are like shortbread - ye can never hae too many.",
+        "Readable code is worth its weight in haggis.",
+        "Dinnae optimize afore yer time.",
+        "A bug in the hand is worth two in production.",
+        "When in doubt, blether it oot (print debugging)!",
+        "Keep yer functions wee, like a dram o' whisky.",
+        "Git commit early an' often - save yer work!",
+        "The best code is the code ye dinnae hae tae write.",
+        "Variable names should tell a story, no' a riddle.",
+        "If it works, dinnae touch it. If it doesnae, fix it!",
+        "A rubber duck debugging session is worth a thousand breakpoints.",
+        "Fools look tae tomorrow - wise coders push tae main today.",
+        "He that winna be ruled by the compiler must be ruled by the debugger.",
+        "A stitch in time saves nine - an' a unit test saves ninety!",
+        "What's fer ye'll no go past ye - but ye still hae tae write the code.",
+        "Be happy while ye're livin', fer ye're a lang time debuggin'.",
+        "The proof o' the puddin' is in the eatin' - the proof o' the code is in the testin'.",
+        "Ye cannae make a silk purse oot o' a soo's lug - or guid code fae bad requirements.",
+        "A nod's as guid as a wink tae a blind horse - but explicit code is better than implicit!",
+        "Mony mickles mak a muckle - an' mony wee functions mak guid code.",
+        "Gie a man a fish an' ye feed him fer a day; teach a man tae code an' he'll hae bugs forever.",
+    ];
+
+    PROVERBS[(seed / 3) % PROVERBS.len()]
 }
 
 pub type HaversResult<T> = Result<T, HaversError>;
@@ -239,6 +386,68 @@ pub fn get_error_suggestion(error: &HaversError) -> Option<&'static str> {
                 "pop" | "remove" => Some("💡 Did ye mean 'yank'? Use 'yank(list)' tae remove fae a list!"),
                 "input" | "read" | "readline" => Some("💡 Did ye mean 'speir'? Use 'speir(\"prompt\")' tae get input!"),
                 "struct" => Some("💡 Did ye mean 'thing'? Use 'thing Name { fields }' fer structs!"),
+                "trim" => Some("💡 Did ye mean 'wheesht'? Use 'wheesht(str)' tae trim whitespace!"),
+                "slice" | "substring" | "substr" => Some("💡 Did ye mean 'scran'? Use 'scran(str, start, end)' tae slice!"),
+                "find" | "indexof" => Some("💡 Did ye mean 'index_of'? Use 'index_of(str, substr)' tae find!"),
+                "random" | "rand" => Some("💡 Did ye mean 'jammy'? Use 'jammy(min, max)' fer random numbers!"),
+                "sleep" | "wait" | "delay" => Some("💡 Did ye mean 'snooze'? Use 'snooze(ms)' tae pause!"),
+                "now" | "time" | "timestamp" => Some("💡 Did ye mean 'noo' or 'the_noo'? That's how we get the time!"),
+                "exit" | "quit" => Some("💡 Did ye mean 'awa'? Use 'awa(code)' tae exit the program!"),
+                "throw" | "raise" => Some("💡 Did ye mean 'fling'? Use 'fling \"error message\"' tae throw errors!"),
+                "lambda" | "arrow" => Some("💡 Use '|x| x * 2' fer lambdas - nae need fer a keyword!"),
+                "extends" | "inherit" => Some("💡 Use 'kin Child frae Parent { }' fer inheritance!"),
+                "in" => Some("💡 Use 'contains(list, item)' tae check if an item is in a list!"),
+                "or" | "||" => Some("💡 Use 'or' fer logical OR: 'x or y'"),
+                "array" | "list" | "vec" => Some("💡 Use square brackets: '[1, 2, 3]' tae create a list!"),
+                "dict" | "hash" | "hashmap" | "object" => Some("💡 Use curly braces: '{\"key\": value}' tae create a dict!"),
+                "first" | "head" => Some("💡 Did ye mean 'heid'? Use 'heid(list)' tae get the first element!"),
+                "last" => Some("💡 Did ye mean 'bum'? Use 'bum(list)' tae get the last element!"),
+                "rest" | "tail" => Some("💡 Did ye mean 'tail'? Use 'tail(list)' tae get all but the first!"),
+                "sort" => Some("💡 Use 'sort(list)' tae sort a list!"),
+                "reverse" => Some("💡 Use 'reverse(list)' tae reverse a list!"),
+                "join" => Some("💡 Use 'join(list, sep)' tae join a list intae a string!"),
+                "split" => Some("💡 Use 'split(str, sep)' tae split a string intae a list!"),
+                "format" => Some("💡 Use f-strings: f\"Hello {name}!\" fer string formatting!"),
+                "debug" | "inspect" => Some("💡 Use 'clype(x)' tae print debug info aboot a value!"),
+                "range" => Some("💡 Use 'start..end' fer ranges! E.g., 'fer i in 0..10 { }'"),
+                "foreach" => Some("💡 Use 'fer item in list { }' tae iterate over items!"),
+                "async" | "await" => Some("💡 mdhavers doesnae support async yet - stick tae synchronous code!"),
+                "match" => Some("💡 Did ye mean 'keek'? Use 'keek value { whan x -> ... }'!"),
+                "enum" => Some("💡 Use dictionaries or constants fer enum-like patterns!"),
+                "interface" | "trait" | "protocol" => Some("💡 Use classes (kin) - mdhavers doesnae have interfaces!"),
+                "static" => Some("💡 All functions at module level are like static - nae need fer a keyword!"),
+                "public" | "private" | "protected" => Some("💡 mdhavers doesnae have access modifiers - everything's public!"),
+                "new" => Some("💡 Just call the class like a function: 'MyClass()' - nae 'new' needed!"),
+                "super" => Some("💡 Did ye mean 'auld'? Use 'auld.method()' tae call parent class methods!"),
+                "final" | "readonly" => Some("💡 Use 'ken' fer all variables - they're mutable by default!"),
+                "void" => Some("💡 Functions wi' nae return value automatically return 'naething'!"),
+                "boolean" | "bool" => Some("💡 Booleans are 'aye' (true) an' 'nae' (false) in mdhavers!"),
+                "String" => Some("💡 Strings are created wi' quotes: \"hello\" or 'hello'!"),
+                "char" | "character" => Some("💡 Use 'char_at(str, index)' tae get a character fae a string!"),
+                "float" | "double" | "decimal" => Some("💡 Just use numbers wi' decimal points: '3.14'!"),
+                "byte" | "bytes" => Some("💡 Strings handle text - fer binary, use lists o' integers!"),
+                "set" => Some("💡 Use the Set class fae the structures module, or a dict wi' dummy values!"),
+                "tuple" => Some("💡 Use lists fer tuples: '[1, \"hello\", aye]'!"),
+                "global" => Some("💡 Variables at module level are global - nae keyword needed!"),
+                "do" => Some("💡 Did ye mean 'dae'? Use 'dae name() { }' fer functions!"),
+                "end" | "endif" | "endfor" | "endwhile" => Some("💡 Use curly braces { } tae end blocks - nae 'end' keyword!"),
+                "then" => Some("💡 Nae 'then' keyword - use 'gin condition { ... }'!"),
+                "begin" => Some("💡 Use { tae start a block - nae 'begin' keyword!"),
+                "puts" | "write" | "output" => Some("💡 Did ye mean 'blether'? Use 'blether \"text\"' tae print!"),
+                "gets" => Some("💡 Did ye mean 'speir'? Use 'speir(\"prompt\")' tae get input!"),
+                "sprintf" | "printf" => Some("💡 Use f-strings: f\"Value is {x}\" fer formatting!"),
+                "len" => Some("💡 'len' is built-in! Use 'len(list)' or 'len(string)'!"),
+                "abs" | "absolute" => Some("💡 Use 'abs(x)' fer absolute value - it's built-in!"),
+                "max" | "maximum" => Some("💡 Use 'max(a, b)' or 'max(list)' - it's built-in!"),
+                "min" | "minimum" => Some("💡 Use 'min(a, b)' or 'min(list)' - it's built-in!"),
+                "floor" | "ceil" | "round" => Some("💡 Use 'floor(x)', 'ceil(x)', or 'round(x)' - they're built-in!"),
+                "sqrt" | "squareroot" => Some("💡 Use the maths module: 'fetch \"lib/maths\"' fer sqrt!"),
+                "sin" | "cos" | "tan" => Some("💡 Use the maths module: 'fetch \"lib/maths\"' fer trig functions!"),
+                "log" | "exp" => Some("💡 Use the maths module: 'fetch \"lib/maths\"' fer logarithms!"),
+                "open" | "fopen" => Some("💡 Use 'read_file(path)' or 'write_file(path, content)' fer files!"),
+                "close" | "fclose" => Some("💡 File handles close automatically - nae need tae close manually!"),
+                "module" | "package" | "namespace" => Some("💡 Modules are just .braw files! Use 'fetch \"lib/name\"' tae import!"),
+                "from" => Some("💡 Did ye mean 'frae'? Use 'kin Child frae Parent { }' fer inheritance!"),
                 _ => None,
             }
         }

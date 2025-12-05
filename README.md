@@ -798,6 +798,7 @@ See the `examples/` directory for sample programs:
 - `defaults.braw` - Default parameter values (staundart values)
 - `trace_demo.braw` - Demo file for the tracer (try `mdhavers trace`)
 - `benchmark.braw` - Timing and benchmarking demo (noo, tick, bide)
+- `prelude_showcase.braw` - Demo of prelude functions (greetings, debug, validation)
 - `destructure.braw` - Destructuring assignment examples
 - `scots_fun.braw` - New Scots vocabulary functions demo
 - `lib/maths.braw` - Mathematics utility library
@@ -819,6 +820,82 @@ cargo build --release
 # Run tests
 cargo test
 ```
+
+## Editor Support
+
+mdhavers includes a **Language Server Protocol (LSP)** implementation for rich editor features:
+
+- Real-time error diagnostics
+- Hover documentation for keywords and built-ins
+- Auto-completion with Scottish-flavored suggestions
+- Syntax highlighting
+
+### Installing the LSP Server
+
+```bash
+# Build the LSP server
+cargo build --release
+
+# The binary will be at target/release/mdhavers-lsp
+# Add it to your PATH or configure your editor to find it
+```
+
+### VS Code (Full LSP Support)
+
+1. Copy the `editor/vscode` folder to your VS Code extensions directory
+2. Install dependencies: `cd editor/vscode && npm install && npm run compile`
+3. Reload VS Code
+4. The extension will automatically start the LSP server
+
+Configuration options in VS Code settings:
+- `mdhavers.lsp.path` - Path to mdhavers-lsp executable (default: "mdhavers-lsp")
+- `mdhavers.lsp.enable` - Enable/disable the language server (default: true)
+
+### Vim/Neovim (Syntax Highlighting + Optional LSP)
+
+Add to your vim config:
+
+```vim
+" Add to your .vimrc or init.vim
+au BufNewFile,BufRead *.braw set filetype=mdhavers
+```
+
+Then copy the syntax files:
+
+```bash
+cp -r editor/vim/* ~/.vim/
+# Or for Neovim:
+cp -r editor/vim/* ~/.config/nvim/
+```
+
+For LSP support in Neovim, add to your config (requires nvim-lspconfig):
+
+```lua
+local lspconfig = require('lspconfig')
+local configs = require('lspconfig.configs')
+
+configs.mdhavers = {
+  default_config = {
+    cmd = { 'mdhavers-lsp' },
+    filetypes = { 'mdhavers' },
+    root_dir = lspconfig.util.find_git_ancestor,
+    single_file_support = true,
+  },
+}
+
+lspconfig.mdhavers.setup({})
+```
+
+### TextMate/Sublime Text
+
+Use the TextMate grammar file at `editor/mdhavers.tmLanguage.json`.
+
+### Other Editors
+
+Any editor with LSP support can use mdhavers-lsp. Configure it to:
+- Run command: `mdhavers-lsp`
+- File types: `*.braw`
+- Communication: stdio
 
 ## License
 

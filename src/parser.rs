@@ -1441,7 +1441,7 @@ impl Parser {
 }
 
 /// Process escape sequences in a string
-/// Handles \n, \t, \r, \\, \", etc.
+/// Handles \n, \t, \r, \\, \", \0, \xNN (hex), etc.
 fn process_escapes(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
@@ -1454,7 +1454,34 @@ fn process_escapes(s: &str) -> String {
                 Some('r') => result.push('\r'),
                 Some('\\') => result.push('\\'),
                 Some('"') => result.push('"'),
+                Some('\'') => result.push('\''),
                 Some('0') => result.push('\0'),
+                Some('x') | Some('X') => {
+                    // Hex escape: \xNN where NN is two hex digits
+                    let mut hex = String::new();
+                    for _ in 0..2 {
+                        if let Some(&c) = chars.peek() {
+                            if c.is_ascii_hexdigit() {
+                                hex.push(chars.next().unwrap());
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    if hex.len() == 2 {
+                        if let Ok(byte) = u8::from_str_radix(&hex, 16) {
+                            result.push(byte as char);
+                        } else {
+                            // Invalid hex - keep as-is
+                            result.push_str("\\x");
+                            result.push_str(&hex);
+                        }
+                    } else {
+                        // Not enough hex digits - keep as-is
+                        result.push_str("\\x");
+                        result.push_str(&hex);
+                    }
+                }
                 Some(other) => {
                     // Unknown escape - keep as-is
                     result.push('\\');
