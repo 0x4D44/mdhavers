@@ -79,6 +79,7 @@ impl Value {
         }
     }
 
+    #[allow(dead_code)]
     pub fn as_float(&self) -> Option<f64> {
         match self {
             Value::Float(f) => Some(*f),
@@ -87,6 +88,7 @@ impl Value {
         }
     }
 
+    #[allow(dead_code)]
     pub fn as_string(&self) -> Option<&str> {
         match self {
             Value::String(s) => Some(s),

@@ -1127,6 +1127,7 @@ impl Parser {
             TokenKind::LeftBracket => {
                 self.advance();
                 let mut elements = Vec::new();
+                self.skip_newlines(); // Allow newline after [
                 if !self.check(&TokenKind::RightBracket) {
                     loop {
                         // Check for spread operator (skail = scatter)
@@ -1140,9 +1141,11 @@ impl Parser {
                         } else {
                             elements.push(self.expression()?);
                         }
+                        self.skip_newlines(); // Allow newline after element
                         if !self.match_token(&TokenKind::Comma) {
                             break;
                         }
+                        self.skip_newlines(); // Allow newline after comma
                     }
                 }
                 self.expect(&TokenKind::RightBracket, "]")?;
@@ -1383,6 +1386,27 @@ impl Parser {
                             break;
                         }
                         expr_str.push(c);
+                    } else if c == '\\' {
+                        // Handle escape sequences in the expression part
+                        // This allows things like f"test {func(\"hello\")}"
+                        if let Some(&next) = chars.peek() {
+                            match next {
+                                '"' => {
+                                    chars.next();
+                                    expr_str.push('"');
+                                }
+                                '\\' => {
+                                    chars.next();
+                                    expr_str.push('\\');
+                                }
+                                _ => {
+                                    // Keep the backslash for other escapes
+                                    expr_str.push(c);
+                                }
+                            }
+                        } else {
+                            expr_str.push(c);
+                        }
                     } else {
                         expr_str.push(c);
                     }
@@ -1508,6 +1532,74 @@ mod tests {
     #[test]
     fn test_dict_literal() {
         let program = parse("ken d = {\"a\": 1, \"b\": 2}").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_multiline_list() {
+        let program = parse("ken arr = [\n  1,\n  2,\n  3\n]").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        if let Stmt::VarDecl { initializer: Some(expr), .. } = &program.statements[0] {
+            assert!(matches!(expr, Expr::List { elements, .. } if elements.len() == 3));
+        } else {
+            panic!("Expected VarDecl with List");
+        }
+    }
+
+    #[test]
+    fn test_multiline_dict() {
+        let program = parse("ken d = {\n  \"a\": 1,\n  \"b\": 2\n}").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_fstring_with_escaped_quotes() {
+        // The lexer handles escapes in f-strings, parser should handle the interpolation
+        let program = parse(r#"blether f"test {\"hello\"}""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_lambda_expression() {
+        let program = parse("ken f = |x| x * 2").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_ternary_expression() {
+        let program = parse("ken x = gin aye than 1 ither 2").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_match_statement() {
+        let program = parse("keek x {\n  whan 1 -> { blether \"one\" }\n  whan _ -> { blether \"other\" }\n}").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(program.statements[0], Stmt::Match { .. }));
+    }
+
+    #[test]
+    fn test_class_declaration() {
+        let program = parse("kin Dug {\n  dae init(name) {\n    masel.name = name\n  }\n}").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(program.statements[0], Stmt::Class { .. }));
+    }
+
+    #[test]
+    fn test_spread_operator() {
+        let program = parse("ken arr = [...other, 4, 5]").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_slice_syntax() {
+        let program = parse("ken slice = arr[1:3]").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_pipe_operator() {
+        let program = parse("ken result = x |> f |> g").unwrap();
         assert_eq!(program.statements.len(), 1);
     }
 }

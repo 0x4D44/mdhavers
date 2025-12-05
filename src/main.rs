@@ -87,6 +87,16 @@ enum Commands {
         /// The .braw file to parse
         file: PathBuf,
     },
+
+    /// Trace a .braw program (step-by-step execution wi' Scottish commentary)
+    Trace {
+        /// The .braw file to trace
+        file: PathBuf,
+
+        /// Verbose mode - shows expressions and values too
+        #[arg(short, long)]
+        verbose: bool,
+    },
 }
 
 fn main() {
@@ -100,6 +110,7 @@ fn main() {
         Some(Commands::Format { file, check }) => format_file(&file, check),
         Some(Commands::Tokens { file }) => show_tokens(&file),
         Some(Commands::Ast { file }) => show_ast(&file),
+        Some(Commands::Trace { file, verbose }) => trace_file(&file, verbose),
         None => {
             // If a file is provided directly, run it
             if let Some(file) = cli.file {
@@ -141,6 +152,61 @@ fn run_file(path: &PathBuf) -> Result<(), String> {
     Ok(())
 }
 
+fn trace_file(path: &PathBuf, verbose: bool) -> Result<(), String> {
+    use interpreter::TraceMode;
+
+    let source = read_file(path)?;
+    let program = parse(&source).map_err(|e| format_parse_error(&source, e))?;
+    let mut interpreter = Interpreter::new();
+
+    // Set the trace mode
+    interpreter.set_trace_mode(if verbose {
+        TraceMode::Verbose
+    } else {
+        TraceMode::Statements
+    });
+
+    // Set the current directory fer module resolution
+    if let Some(parent) = path.parent() {
+        if parent.as_os_str().len() > 0 {
+            interpreter.set_current_dir(parent);
+        }
+    }
+
+    println!("{}", "═".repeat(60).yellow());
+    println!(
+        "{}",
+        "  🏴󠁧󠁢󠁳󠁣󠁴󠁿 mdhavers Tracer - Watchin' Yer Code Like a Hawk!".yellow().bold()
+    );
+    if verbose {
+        println!("{}", "  Mode: Verbose (showin' everything)".yellow());
+    } else {
+        println!("{}", "  Mode: Statements only".yellow());
+    }
+    println!("{}", "═".repeat(60).yellow());
+    println!();
+
+    // Load the prelude (but without tracing it - too noisy)
+    let saved_mode = interpreter.trace_mode();
+    interpreter.set_trace_mode(TraceMode::Off);
+    interpreter
+        .load_prelude()
+        .map_err(|e| format!("Error loading prelude: {}", e))?;
+    interpreter.set_trace_mode(saved_mode);
+
+    // Now run with tracing
+    interpreter
+        .interpret(&program)
+        .map_err(|e| format_runtime_error(&source, e))?;
+
+    println!();
+    println!("{}", "═".repeat(60).yellow());
+    println!("{}", "  🏴󠁧󠁢󠁳󠁣󠁴󠁿 Trace complete - Pure dead brilliant!".yellow().bold());
+    println!("{}", "═".repeat(60).yellow());
+
+    Ok(())
+}
+
 fn compile_file(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
     let source = read_file(path)?;
     let js_code = compile(&source).map_err(|e| format_parse_error(&source, e))?;
@@ -165,6 +231,8 @@ fn compile_file(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
 }
 
 fn run_repl() -> Result<(), String> {
+    use interpreter::TraceMode;
+
     println!("{}", "═".repeat(50).cyan());
     println!(
         "{}",
@@ -181,6 +249,8 @@ fn run_repl() -> Result<(), String> {
 
     let mut rl = DefaultEditor::new().map_err(|e| e.to_string())?;
     let mut interpreter = Interpreter::new();
+    let mut trace_enabled = false;
+    let mut verbose_trace = false;
 
     // Load the prelude fer REPL users
     if let Err(e) = interpreter.load_prelude() {
@@ -192,7 +262,17 @@ fn run_repl() -> Result<(), String> {
     }
 
     loop {
-        let readline = rl.readline(&format!("{} ", "mdhavers>".green().bold()));
+        // Update prompt to show trace mode
+        let prompt = if trace_enabled {
+            if verbose_trace {
+                format!("{} ", "mdhavers[trace:v]>".yellow().bold())
+            } else {
+                format!("{} ", "mdhavers[trace]>".yellow().bold())
+            }
+        } else {
+            format!("{} ", "mdhavers>".green().bold())
+        };
+        let readline = rl.readline(&prompt);
 
         match readline {
             Ok(line) => {
@@ -214,8 +294,54 @@ fn run_repl() -> Result<(), String> {
                         print_repl_help();
                         continue;
                     }
-                    "clear" => {
+                    "clear" | "cls" => {
                         print!("\x1B[2J\x1B[1;1H");
+                        continue;
+                    }
+                    ":reset" | "reset" => {
+                        interpreter = Interpreter::new();
+                        if let Err(e) = interpreter.load_prelude() {
+                            eprintln!("{}: Couldnae load prelude: {}", "Warning".yellow(), e);
+                        }
+                        trace_enabled = false;
+                        verbose_trace = false;
+                        interpreter.set_trace_mode(TraceMode::Off);
+                        println!("{}", "Interpreter reset - fresh as a daisy!".green());
+                        continue;
+                    }
+                    ":wisdom" | "wisdom" => {
+                        // Print a wee bit of Scots wisdom
+                        print_scots_wisdom();
+                        continue;
+                    }
+                    ":examples" | "examples" => {
+                        print_repl_examples();
+                        continue;
+                    }
+                    ":trace" | "trace" => {
+                        trace_enabled = !trace_enabled;
+                        verbose_trace = false;
+                        interpreter.set_trace_mode(if trace_enabled {
+                            TraceMode::Statements
+                        } else {
+                            TraceMode::Off
+                        });
+                        if trace_enabled {
+                            println!("{}", "🏴󠁧󠁢󠁳󠁣󠁴󠁿 Trace mode ON - watchin' yer code like a hawk!".yellow());
+                        } else {
+                            println!("{}", "Trace mode OFF - back tae normal.".dimmed());
+                        }
+                        continue;
+                    }
+                    ":trace v" | "trace v" | ":trace verbose" | "trace verbose" => {
+                        trace_enabled = true;
+                        verbose_trace = true;
+                        interpreter.set_trace_mode(TraceMode::Verbose);
+                        println!("{}", "🏴󠁧󠁢󠁳󠁣󠁴󠁿 Verbose trace mode ON - showin' ye EVERYTHING!".yellow());
+                        continue;
+                    }
+                    ":vars" | "vars" | ":env" | "env" => {
+                        print_environment(&interpreter);
                         continue;
                     }
                     _ => {}
@@ -304,6 +430,135 @@ fn print_repl_help() {
     println!("  {}           - show this help", "help".green());
     println!("  {} - exit the REPL", "quit / haud yer wheesht".green());
     println!("  {}          - clear the screen", "clear".green());
+    println!("  {}          - reset the interpreter", "reset".green());
+    println!("  {}         - get some Scots wisdom", "wisdom".green());
+    println!("  {}       - see example code", "examples".green());
+    println!("  {}          - toggle trace mode (debugger)", "trace".green());
+    println!("  {}       - verbose trace mode", "trace v".green());
+    println!("  {}     - show defined variables", "vars / env".green());
+    println!();
+}
+
+fn print_scots_wisdom() {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as usize;
+
+    let proverbs = [
+        ("Mony a mickle maks a muckle", "Many small things add up tae something big"),
+        ("Lang may yer lum reek", "May ye always hae fuel fer yer fire (prosperity)"),
+        ("Whit's fer ye willnae go by ye", "What's meant fer ye will find ye"),
+        ("A nod's as guid as a wink tae a blind horse", "Some hints are pointless"),
+        ("Dinnae teach yer granny tae suck eggs", "Dinnae give advice tae experts"),
+        ("He wha daes the deil's wark gets the deil's wage", "Bad deeds bring bad consequences"),
+        ("Better a wee fire that warms than a muckle fire that burns", "Moderation is best"),
+        ("Guid gear comes in sma' bulk", "Good things come in wee packages"),
+        ("A blate cat maks a prood moose", "Shyness invites boldness in others"),
+        ("Facts are chiels that winna ding", "Ye cannae argue wi' facts"),
+    ];
+
+    let (proverb, meaning) = proverbs[seed % proverbs.len()];
+    println!();
+    println!("{}", "═══════════════════════════════════════════════════".cyan());
+    println!("{}", "  A Wee Bit o' Scots Wisdom".cyan().bold());
+    println!("{}", "═══════════════════════════════════════════════════".cyan());
+    println!();
+    println!("  \"{}\"", proverb.yellow().italic());
+    println!();
+    println!("  {}: {}", "Meaning".dimmed(), meaning.dimmed());
+    println!();
+}
+
+fn print_repl_examples() {
+    println!();
+    println!("{}", "═══════════════════════════════════════════════════".cyan());
+    println!("{}", "  mdhavers Examples".cyan().bold());
+    println!("{}", "═══════════════════════════════════════════════════".cyan());
+    println!();
+
+    println!("{}", "Variables:".yellow().bold());
+    println!("  {}", "ken name = \"Hamish\"".green());
+    println!("  {}", "ken age = 42".green());
+    println!("  {}", "ken is_braw = aye".green());
+    println!();
+
+    println!("{}", "Conditionals:".yellow().bold());
+    println!("  {}", "gin age > 18 { blether \"Ye're auld enough!\" }".green());
+    println!("  {}", "gin score > 90 { \"A\" } ither gin score > 70 { \"B\" } ither { \"C\" }".green());
+    println!();
+
+    println!("{}", "Loops:".yellow().bold());
+    println!("  {}", "fer i in 1..5 { blether i }".green());
+    println!("  {}", "whiles x < 10 { x = x + 1 }".green());
+    println!();
+
+    println!("{}", "Functions:".yellow().bold());
+    println!("  {}", "dae greet(name) { gie \"Hullo, \" + name + \"!\" }".green());
+    println!("  {}", "greet(\"Scotland\")".green());
+    println!();
+
+    println!("{}", "Lists & Dicts:".yellow().bold());
+    println!("  {}", "ken fruits = [\"apple\", \"banana\", \"cherry\"]".green());
+    println!("  {}", "ken person = {\"name\": \"Morag\", \"age\": 28}".green());
+    println!();
+
+    println!("{}", "Functional:".yellow().bold());
+    println!("  {}", "gaun([1, 2, 3], |x| x * 2)".green());
+    println!("  {}", "sieve([1, 2, 3, 4], |x| x % 2 == 0)".green());
+    println!("  {}", "tumble([1, 2, 3, 4], 0, |acc, x| acc + x)".green());
+    println!();
+}
+
+fn print_environment(interpreter: &Interpreter) {
+    let vars = interpreter.get_user_variables();
+
+    println!();
+    println!("{}", "═══════════════════════════════════════════════════".cyan());
+    println!("{}", "  Yer Variables (Environment)".cyan().bold());
+    println!("{}", "═══════════════════════════════════════════════════".cyan());
+    println!();
+
+    if vars.is_empty() {
+        println!("  {}", "Nae variables defined yet - use 'ken x = 42' tae create one!".dimmed());
+    } else {
+        // Separate user values from prelude functions
+        let user_vars: Vec<_> = vars.iter()
+            .filter(|(_, t, _)| t != "function")
+            .collect();
+        let user_funcs: Vec<_> = vars.iter()
+            .filter(|(_, t, _)| t == "function")
+            .collect();
+
+        if !user_vars.is_empty() {
+            println!("{}", "  Values:".yellow().bold());
+            for (name, type_name, value) in &user_vars {
+                // Truncate long values
+                let display_value = if value.len() > 50 {
+                    format!("{}...", &value[..47])
+                } else {
+                    value.clone()
+                };
+                println!("    {} : {} = {}", name.green(), type_name.dimmed(), display_value.yellow());
+            }
+            println!();
+        }
+
+        if !user_funcs.is_empty() {
+            // Only show first few user functions, hide prelude
+            let show_funcs: Vec<_> = user_funcs.iter().take(10).collect();
+            let hidden = user_funcs.len().saturating_sub(10);
+
+            println!("{}", "  Functions:".yellow().bold());
+            for (name, _, _) in show_funcs {
+                println!("    {}", name.green());
+            }
+            if hidden > 0 {
+                println!("    {} ... and {} more functions", "".dimmed(), hidden);
+            }
+        }
+    }
     println!();
 }
 
@@ -439,6 +694,12 @@ fn format_parse_error(source: &str, error: error::HaversError) -> String {
         msg.push_str(&format_error_context(source, line));
     }
 
+    // Add helpful suggestion if available
+    if let Some(suggestion) = error::get_error_suggestion(&error) {
+        msg.push_str("\n");
+        msg.push_str(suggestion);
+    }
+
     msg
 }
 
@@ -448,6 +709,12 @@ fn format_runtime_error(source: &str, error: error::HaversError) -> String {
     if let Some(line) = error.line() {
         msg.push_str("\n\n");
         msg.push_str(&format_error_context(source, line));
+    }
+
+    // Add helpful suggestion if available
+    if let Some(suggestion) = error::get_error_suggestion(&error) {
+        msg.push_str("\n");
+        msg.push_str(suggestion);
     }
 
     msg

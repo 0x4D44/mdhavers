@@ -165,12 +165,151 @@ pub fn random_scots_exclamation() -> &'static str {
         "By the wee man!",
         "Guid grief!",
         "Haud the bus!",
+        "Help ma boab!",
+        "Crivvens!",
+        "Whit a scunner!",
+        "Aw naw!",
+        "Dearie me!",
+        "Sakes alive!",
+        "Whit in the name o' the wee man!",
+        "For ony favour!",
     ];
 
     PHRASES[seed % PHRASES.len()]
 }
 
+/// Get a wee bit o' encouragement after an error
+#[allow(dead_code)]
+pub fn scots_encouragement() -> &'static str {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as usize;
+
+    const PHRASES: &[&str] = &[
+        "Dinnae fash yersel - hae anither go!",
+        "Keep the heid an' try again!",
+        "Ye'll get it next time, nae bother!",
+        "Haud on - ye're nearly there!",
+        "Gie it anither bash!",
+        "Chin up, it's nae the end o' the warld!",
+    ];
+
+    PHRASES[(seed / 2) % PHRASES.len()]
+}
+
 pub type HaversResult<T> = Result<T, HaversError>;
+
+/// Get a helpful suggestion fer common errors
+pub fn get_error_suggestion(error: &HaversError) -> Option<&'static str> {
+    match error {
+        HaversError::UndefinedVariable { name, .. } => {
+            // Check for common misspellings of keywords
+            let name_lower = name.to_lowercase();
+            match name_lower.as_str() {
+                "true" | "false" => Some("💡 Did ye mean 'aye' or 'nae'? In mdhavers we use Scots words fer booleans!"),
+                "if" | "else" => Some("💡 Did ye mean 'gin' (if) or 'ither' (else)? We speak Scots here!"),
+                "while" => Some("💡 Did ye mean 'whiles'? That's how we say 'while' in Scots!"),
+                "for" => Some("💡 Did ye mean 'fer'? That's the Scots way tae loop!"),
+                "let" | "var" | "const" => Some("💡 Did ye mean 'ken'? Use 'ken x = 42' tae declare variables!"),
+                "print" | "println" | "console" | "echo" => Some("💡 Did ye mean 'blether'? That's how we print in mdhavers!"),
+                "return" => Some("💡 Did ye mean 'gie'? Use 'gie value' tae return fae a function!"),
+                "function" | "func" | "fn" | "def" => Some("💡 Did ye mean 'dae'? Use 'dae name() { }' tae define functions!"),
+                "null" | "nil" | "none" | "undefined" => Some("💡 Did ye mean 'naething'? That's oor word fer null!"),
+                "class" => Some("💡 Did ye mean 'kin'? Use 'kin ClassName { }' tae define classes!"),
+                "self" | "this" => Some("💡 Did ye mean 'masel'? Use 'masel.property' inside classes!"),
+                "try" => Some("💡 Did ye mean 'hae_a_bash'? That's how we try things in Scots!"),
+                "catch" | "except" => Some("💡 Did ye mean 'gin_it_gangs_wrang'? That's oor catch block!"),
+                "import" | "require" | "include" => Some("💡 Did ye mean 'fetch'? Use 'fetch \"module\"' tae import!"),
+                "break" => Some("💡 Did ye mean 'brak'? That's how we break oot o' loops!"),
+                "continue" => Some("💡 Did ye mean 'haud'? That's how we continue tae the next iteration!"),
+                "switch" | "case" => Some("💡 Did ye mean 'keek' and 'whan'? Use 'keek value { whan 1 -> ... }'!"),
+                "assert" => Some("💡 Did ye mean 'mak_siccar'? Like Robert the Bruce said!"),
+                "and" | "&&" => Some("💡 Did ye mean 'an'? Use 'x an y' fer logical AND!"),
+                "not" | "!" => Some("💡 Did ye mean 'nae'? Use 'nae x' fer logical NOT!"),
+                "map" => Some("💡 Did ye mean 'gaun'? Use 'gaun(list, |x| x * 2)' tae map!"),
+                "filter" => Some("💡 Did ye mean 'sieve'? Use 'sieve(list, |x| x > 0)' tae filter!"),
+                "reduce" | "fold" => Some("💡 Did ye mean 'tumble'? Use 'tumble(list, init, |acc, x| acc + x)'!"),
+                "length" | "size" | "count" => Some("💡 Did ye mean 'len'? Use 'len(list)' tae get the length!"),
+                "type" | "typeof" => Some("💡 Did ye mean 'whit_kind'? Use 'whit_kind(x)' tae get the type!"),
+                "str" | "string" | "tostring" => Some("💡 Did ye mean 'tae_string'? Use 'tae_string(x)' tae convert!"),
+                "int" | "integer" | "toint" => Some("💡 Did ye mean 'tae_int'? Use 'tae_int(x)' tae convert!"),
+                "push" | "append" | "add" => Some("💡 Did ye mean 'shove'? Use 'shove(list, item)' tae add tae a list!"),
+                "pop" | "remove" => Some("💡 Did ye mean 'yank'? Use 'yank(list)' tae remove fae a list!"),
+                "input" | "read" | "readline" => Some("💡 Did ye mean 'speir'? Use 'speir(\"prompt\")' tae get input!"),
+                "struct" => Some("💡 Did ye mean 'thing'? Use 'thing Name { fields }' fer structs!"),
+                _ => None,
+            }
+        }
+        HaversError::UnexpectedToken { found, expected, .. } => {
+            if found == "}" && expected.contains("expression") {
+                Some("💡 Ye might be missin' an expression before the closing brace!")
+            } else if found == "=" && expected.contains("expression") {
+                Some("💡 Did ye mean '==' fer comparison? Single '=' is fer assignment!")
+            } else if found == ")" {
+                Some("💡 Check yer brackets - ye might hae an extra ')' or be missin' something!")
+            } else {
+                None
+            }
+        }
+        HaversError::TypeError { message, .. } => {
+            if message.contains("add") && message.contains("string") {
+                Some("💡 Use 'tae_string(x)' tae convert numbers tae strings before concatenatin'!")
+            } else if message.contains("integer") && message.contains("index") {
+                Some("💡 List indices must be integers. Use 'tae_int(x)' if needed!")
+            } else {
+                None
+            }
+        }
+        HaversError::WrongArity { expected, got, .. } => {
+            if *expected == 0 && *got > 0 {
+                Some("💡 This function takes nae arguments - remove the bits in the brackets!")
+            } else if *got == 0 && *expected > 0 {
+                Some("💡 This function needs arguments - check the function definition!")
+            } else {
+                None
+            }
+        }
+        HaversError::IndexOutOfBounds { index, size, .. } => {
+            if *index < 0 {
+                Some("💡 Negative indices count fae the end. -1 is the last element!")
+            } else if *size == 0 {
+                Some("💡 The list is empty! Check ye've added items before accessin' them.")
+            } else {
+                Some("💡 Remember, indices start at 0! The last valid index is len - 1.")
+            }
+        }
+        HaversError::DivisionByZero { .. } => {
+            Some("💡 Check yer divisor - ye cannae divide by zero! Maybe add a 'gin x != 0' check?")
+        }
+        HaversError::StackOverflow { .. } => {
+            Some("💡 Yer recursion needs a base case! Make sure ye're returnin' somewhere.")
+        }
+        HaversError::NotCallable { .. } => {
+            Some("💡 Ye can only call functions wi' brackets. Check the variable type wi' 'whit_kind(x)'!")
+        }
+        HaversError::KeyNotFound { .. } => {
+            Some("💡 Use 'keys(dict)' tae see whit keys exist, or check wi' 'has_key(dict, key)'!")
+        }
+        HaversError::UnterminatedString { .. } => {
+            Some("💡 Ye forgot tae close yer string! Add a \" at the end.")
+        }
+        HaversError::CircularImport { .. } => {
+            Some("💡 Module A imports B which imports A - that's a loop! Reorganise yer imports.")
+        }
+        HaversError::BreakOutsideLoop { .. } => {
+            Some("💡 'brak' only works inside 'whiles' or 'fer' loops!")
+        }
+        HaversError::ContinueOutsideLoop { .. } => {
+            Some("💡 'haud' only works inside 'whiles' or 'fer' loops!")
+        }
+        HaversError::ReturnOutsideFunction { .. } => {
+            Some("💡 'gie' only works inside functions! Define a function wi' 'dae name() { }'")
+        }
+        _ => None,
+    }
+}
 
 /// A wee helper tae format errors bonnie-like
 pub fn format_error_context(source: &str, line: usize) -> String {

@@ -16,6 +16,23 @@ enum ControlFlow {
     Continue,
 }
 
+/// Trace mode fer debugging - shows step-by-step execution
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TraceMode {
+    /// Nae tracing at aw
+    Off,
+    /// Show statement execution only
+    Statements,
+    /// Show everything (statements, expressions, values)
+    Verbose,
+}
+
+impl Default for TraceMode {
+    fn default() -> Self {
+        TraceMode::Off
+    }
+}
+
 /// The interpreter - runs mdhavers programs
 pub struct Interpreter {
     pub globals: Rc<RefCell<Environment>>,
@@ -27,6 +44,10 @@ pub struct Interpreter {
     current_dir: PathBuf,
     /// Whether the prelude has been loaded
     prelude_loaded: bool,
+    /// Trace mode fer debugging
+    trace_mode: TraceMode,
+    /// Current trace indentation level
+    trace_depth: usize,
 }
 
 impl Interpreter {
@@ -43,10 +64,40 @@ impl Interpreter {
             loaded_modules: HashSet::new(),
             current_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             prelude_loaded: false,
+            trace_mode: TraceMode::Off,
+            trace_depth: 0,
+        }
+    }
+
+    /// Enable trace mode fer debugging
+    pub fn set_trace_mode(&mut self, mode: TraceMode) {
+        self.trace_mode = mode;
+    }
+
+    /// Get current trace mode
+    #[allow(dead_code)]
+    pub fn trace_mode(&self) -> TraceMode {
+        self.trace_mode
+    }
+
+    /// Print a trace message with proper indentation and Scottish flair
+    fn trace(&self, msg: &str) {
+        if self.trace_mode != TraceMode::Off {
+            let indent = "  ".repeat(self.trace_depth);
+            eprintln!("\x1b[33m🏴󠁧󠁢󠁳󠁣󠁴󠁿 {}{}\x1b[0m", indent, msg);
+        }
+    }
+
+    /// Print a verbose trace message (only in verbose mode)
+    fn trace_verbose(&self, msg: &str) {
+        if self.trace_mode == TraceMode::Verbose {
+            let indent = "  ".repeat(self.trace_depth);
+            eprintln!("\x1b[36m   {}{}\x1b[0m", indent, msg);
         }
     }
 
     /// Create an interpreter with a specific working directory
+    #[allow(dead_code)]
     pub fn with_dir<P: AsRef<Path>>(dir: P) -> Self {
         let mut interp = Self::new();
         interp.current_dir = dir.as_ref().to_path_buf();
@@ -56,6 +107,40 @@ impl Interpreter {
     /// Set the current directory fer module resolution
     pub fn set_current_dir<P: AsRef<Path>>(&mut self, dir: P) {
         self.current_dir = dir.as_ref().to_path_buf();
+    }
+
+    /// Get all user-defined variables (fer REPL environment inspection)
+    pub fn get_user_variables(&self) -> Vec<(String, String, String)> {
+        let env = self.environment.borrow();
+        let exports = env.get_exports();
+        let mut vars = Vec::new();
+
+        // Get all variables that aren't native functions
+        for (name, value) in exports.iter() {
+            // Skip native functions
+            if matches!(value, Value::NativeFunction(_)) {
+                continue;
+            }
+            // Skip prelude functions (they have specific patterns)
+            if matches!(value, Value::Function(_)) {
+                // Include user-defined functions but mark them
+                vars.push((
+                    name.clone(),
+                    "function".to_string(),
+                    format!("{}", value),
+                ));
+            } else {
+                vars.push((
+                    name.clone(),
+                    value.type_name().to_string(),
+                    format!("{}", value),
+                ));
+            }
+        }
+
+        // Sort by name for consistent display
+        vars.sort_by(|a, b| a.0.cmp(&b.0));
+        vars
     }
 
     /// Load the standard prelude (automatically loaded unless disabled)
@@ -110,6 +195,7 @@ impl Interpreter {
     }
 
     /// Check if prelude is loaded
+    #[allow(dead_code)]
     pub fn has_prelude(&self) -> bool {
         self.prelude_loaded
     }
@@ -2406,19 +2492,6 @@ impl Interpreter {
             }))),
         );
 
-        // crabbit - make string all uppercase and grumpy (add !)
-        globals.borrow_mut().define(
-            "crabbit".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("crabbit", 1, |args| {
-                match &args[0] {
-                    Value::String(s) => {
-                        Ok(Value::String(format!("{}!", s.to_uppercase())))
-                    }
-                    _ => Err("crabbit() needs a string tae shout!".to_string()),
-                }
-            }))),
-        );
-
         // cannie - check if value is safe/valid (not nil, not empty, not negative)
         globals.borrow_mut().define(
             "cannie".to_string(),
@@ -2435,10 +2508,10 @@ impl Interpreter {
             }))),
         );
 
-        // glaikit - check if value is silly/wrong type for context
+        // wrang_sort - check if value is the wrong type (sort = kind/type in Scots)
         globals.borrow_mut().define(
-            "glaikit".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("glaikit", 2, |args| {
+            "wrang_sort".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("wrang_sort", 2, |args| {
                 let expected_type = match &args[1] {
                     Value::String(s) => s.as_str(),
                     _ => return Err("Second arg must be a type name string".to_string()),
@@ -2514,6 +2587,169 @@ impl Interpreter {
                     fill.to_string().repeat(right_pad)
                 );
                 Ok(Value::String(result))
+            }))),
+        );
+
+        // ============================================================
+        // MORE SCOTS FUN FUNCTIONS
+        // ============================================================
+
+        // blether_format - format a string with named placeholders
+        // blether_format("Hullo {name}, ye are {age} years auld", {"name": "Hamish", "age": 42})
+        globals.borrow_mut().define(
+            "blether_format".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("blether_format", 2, |args| {
+                let template = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("blether_format needs a template string".to_string()),
+                };
+                let dict = match &args[1] {
+                    Value::Dict(d) => d.borrow().clone(),
+                    _ => return Err("blether_format needs a dictionary o' values".to_string()),
+                };
+                let mut result = template;
+                for (key, value) in dict {
+                    let placeholder = format!("{{{}}}", key);
+                    result = result.replace(&placeholder, &format!("{}", value));
+                }
+                Ok(Value::String(result))
+            }))),
+        );
+
+        // ceilidh - shuffle and interleave two lists like dancers at a ceilidh!
+        globals.borrow_mut().define(
+            "ceilidh".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("ceilidh", 2, |args| {
+                let list1 = match &args[0] {
+                    Value::List(l) => l.borrow().clone(),
+                    _ => return Err("ceilidh needs two lists".to_string()),
+                };
+                let list2 = match &args[1] {
+                    Value::List(l) => l.borrow().clone(),
+                    _ => return Err("ceilidh needs two lists".to_string()),
+                };
+                let mut result = Vec::new();
+                let max_len = list1.len().max(list2.len());
+                for i in 0..max_len {
+                    if i < list1.len() { result.push(list1[i].clone()); }
+                    if i < list2.len() { result.push(list2[i].clone()); }
+                }
+                Ok(Value::List(Rc::new(RefCell::new(result))))
+            }))),
+        );
+
+        // dram - get a random element from a list (like pouring a wee dram!)
+        globals.borrow_mut().define(
+            "dram".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("dram", 1, |args| {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let list = match &args[0] {
+                    Value::List(l) => l.borrow().clone(),
+                    _ => return Err("dram needs a list tae pick fae".to_string()),
+                };
+                if list.is_empty() {
+                    return Ok(Value::Nil);
+                }
+                let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as usize;
+                let idx = seed % list.len();
+                Ok(list[idx].clone())
+            }))),
+        );
+
+        // birl - rotate a list (birl = spin/rotate in Scots)
+        globals.borrow_mut().define(
+            "birl".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("birl", 2, |args| {
+                let list = match &args[0] {
+                    Value::List(l) => l.borrow().clone(),
+                    _ => return Err("birl needs a list".to_string()),
+                };
+                let n = match &args[1] {
+                    Value::Integer(n) => *n,
+                    _ => return Err("birl needs a rotation count".to_string()),
+                };
+                if list.is_empty() {
+                    return Ok(Value::List(Rc::new(RefCell::new(list))));
+                }
+                let len = list.len() as i64;
+                let n = ((n % len) + len) % len; // Handle negative rotation
+                let n = n as usize;
+                let mut result = list.clone();
+                result.rotate_left(n);
+                Ok(Value::List(Rc::new(RefCell::new(result))))
+            }))),
+        );
+
+        // stooshie - create chaos/noise (shuffle a string's characters)
+        globals.borrow_mut().define(
+            "stooshie".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("stooshie", 1, |args| {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let s = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("stooshie needs a string".to_string()),
+                };
+                let mut chars: Vec<char> = s.chars().collect();
+                // Simple Fisher-Yates shuffle
+                let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64;
+                let mut rng = seed;
+                for i in (1..chars.len()).rev() {
+                    rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
+                    let j = (rng as usize) % (i + 1);
+                    chars.swap(i, j);
+                }
+                Ok(Value::String(chars.into_iter().collect()))
+            }))),
+        );
+
+        // clype - report on a value (like telling tales!) - returns debug info
+        globals.borrow_mut().define(
+            "clype".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("clype", 1, |args| {
+                let val = &args[0];
+                let type_name = val.type_name();
+                let info = match val {
+                    Value::List(l) => format!("list wi' {} items", l.borrow().len()),
+                    Value::Dict(d) => format!("dict wi' {} entries", d.borrow().len()),
+                    Value::Set(s) => format!("creel wi' {} items", s.borrow().len()),
+                    Value::String(s) => format!("string o' {} characters", s.len()),
+                    Value::Integer(n) => format!("integer: {}", n),
+                    Value::Float(f) => format!("float: {}", f),
+                    Value::Bool(b) => format!("boolean: {}", if *b { "aye" } else { "nae" }),
+                    Value::Nil => "naething".to_string(),
+                    Value::Function(f) => format!("function '{}'", f.name),
+                    Value::NativeFunction(f) => format!("native function '{}'", f.name),
+                    Value::Class(c) => format!("class '{}'", c.name),
+                    Value::Instance(inst) => format!("instance o' '{}'", inst.borrow().class.name),
+                    _ => format!("{}", type_name),
+                };
+                Ok(Value::String(format!("[{}] {}", type_name, info)))
+            }))),
+        );
+
+        // sclaff - flatten nested lists (sclaff = hit flat in golf)
+        globals.borrow_mut().define(
+            "sclaff".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("sclaff", 1, |args| {
+                fn flatten_recursive(val: &Value, result: &mut Vec<Value>) {
+                    match val {
+                        Value::List(l) => {
+                            for item in l.borrow().iter() {
+                                flatten_recursive(item, result);
+                            }
+                        }
+                        other => result.push(other.clone()),
+                    }
+                }
+                let list = match &args[0] {
+                    Value::List(l) => l.clone(),
+                    _ => return Err("sclaff needs a list".to_string()),
+                };
+                let mut result = Vec::new();
+                for item in list.borrow().iter() {
+                    flatten_recursive(item, &mut result);
+                }
+                Ok(Value::List(Rc::new(RefCell::new(result))))
             }))),
         );
 
@@ -2708,11 +2944,13 @@ impl Interpreter {
     }
 
     /// Get captured output (for testing)
+    #[allow(dead_code)]
     pub fn get_output(&self) -> &[String] {
         &self.output
     }
 
     /// Clear captured output
+    #[allow(dead_code)]
     pub fn clear_output(&mut self) {
         self.output.clear();
     }
@@ -2832,53 +3070,80 @@ impl Interpreter {
     ) -> HaversResult<Result<Value, ControlFlow>> {
         match stmt {
             Stmt::VarDecl {
-                name, initializer, ..
+                name, initializer, span,
             } => {
+                self.trace(&format!("[line {}] ken {} = ...", span.line, name));
                 let value = if let Some(init) = initializer {
-                    self.evaluate(init)?
+                    let v = self.evaluate(init)?;
+                    self.trace_verbose(&format!("→ {} is noo {}", name, v));
+                    v
                 } else {
+                    self.trace_verbose(&format!("→ {} is noo naething", name));
                     Value::Nil
                 };
                 self.environment.borrow_mut().define(name.clone(), value);
                 Ok(Ok(Value::Nil))
             }
 
-            Stmt::Expression { expr, .. } => {
+            Stmt::Expression { expr, span } => {
+                self.trace(&format!("[line {}] evaluatin' expression", span.line));
                 let value = self.evaluate(expr)?;
+                self.trace_verbose(&format!("→ result: {}", value));
                 Ok(Ok(value))
             }
 
-            Stmt::Block { statements, .. } => {
-                self.execute_block(statements, None)
+            Stmt::Block { statements, span } => {
+                self.trace(&format!("[line {}] enterin' block", span.line));
+                self.trace_depth += 1;
+                let result = self.execute_block(statements, None);
+                self.trace_depth = self.trace_depth.saturating_sub(1);
+                self.trace(&format!("[line {}] leavin' block", span.line));
+                result
             }
 
             Stmt::If {
                 condition,
                 then_branch,
                 else_branch,
-                ..
+                span,
             } => {
+                self.trace(&format!("[line {}] gin (if) statement", span.line));
                 let cond_value = self.evaluate(condition)?;
+                self.trace_verbose(&format!("→ condition is {}", cond_value));
                 if cond_value.is_truthy() {
+                    self.trace(&format!("[line {}] condition is aye - takin' then branch", span.line));
                     self.execute_stmt_with_control(then_branch)
                 } else if let Some(else_br) = else_branch {
+                    self.trace(&format!("[line {}] condition is nae - takin' ither branch", span.line));
                     self.execute_stmt_with_control(else_br)
                 } else {
+                    self.trace_verbose("→ condition is nae, nae ither branch");
                     Ok(Ok(Value::Nil))
                 }
             }
 
             Stmt::While {
-                condition, body, ..
+                condition, body, span,
             } => {
+                self.trace(&format!("[line {}] whiles (while) loop startin'", span.line));
+                let mut iteration = 0;
                 while self.evaluate(condition)?.is_truthy() {
+                    iteration += 1;
+                    self.trace_verbose(&format!("→ loop iteration {}", iteration));
                     match self.execute_stmt_with_control(body)? {
                         Ok(_) => {}
-                        Err(ControlFlow::Break) => break,
-                        Err(ControlFlow::Continue) => continue,
+                        Err(ControlFlow::Break) => {
+                            self.trace(&format!("[line {}] brak! (break) - leavin' loop", span.line));
+                            break;
+                        }
+                        Err(ControlFlow::Continue) => {
+                            self.trace_verbose("→ haud! (continue)");
+                            continue;
+                        }
                         Err(ControlFlow::Return(v)) => return Ok(Err(ControlFlow::Return(v))),
                     }
                 }
+                self.trace(&format!("[line {}] whiles loop done after {} iterations", span.line, iteration));
                 Ok(Ok(Value::Nil))
             }
 
@@ -2888,6 +3153,7 @@ impl Interpreter {
                 body,
                 span,
             } => {
+                self.trace(&format!("[line {}] fer (for) loop: {} in ...", span.line, variable));
                 let iter_value = self.evaluate(iterable)?;
 
                 let items: Vec<Value> = match iter_value {
@@ -2907,17 +3173,28 @@ impl Interpreter {
                     }
                 };
 
+                self.trace_verbose(&format!("→ iteratin' ower {} items", items.len()));
+                let mut iteration = 0;
                 for item in items {
+                    iteration += 1;
+                    self.trace_verbose(&format!("→ iteration {}: {} = {}", iteration, variable, item));
                     self.environment
                         .borrow_mut()
                         .define(variable.clone(), item);
                     match self.execute_stmt_with_control(body)? {
                         Ok(_) => {}
-                        Err(ControlFlow::Break) => break,
-                        Err(ControlFlow::Continue) => continue,
+                        Err(ControlFlow::Break) => {
+                            self.trace(&format!("[line {}] brak! (break) - leavin' fer loop", span.line));
+                            break;
+                        }
+                        Err(ControlFlow::Continue) => {
+                            self.trace_verbose("→ haud! (continue)");
+                            continue;
+                        }
                         Err(ControlFlow::Return(v)) => return Ok(Err(ControlFlow::Return(v))),
                     }
                 }
+                self.trace(&format!("[line {}] fer loop done after {} iterations", span.line, iteration));
                 Ok(Ok(Value::Nil))
             }
 
@@ -2925,8 +3202,9 @@ impl Interpreter {
                 name,
                 params,
                 body,
-                ..
+                span,
             } => {
+                self.trace(&format!("[line {}] dae (function) {} wi' {} params", span.line, name, params.len()));
                 // Convert AST Param tae runtime FunctionParam
                 let runtime_params: Vec<FunctionParam> = params
                     .iter()
@@ -2948,26 +3226,36 @@ impl Interpreter {
                 Ok(Ok(Value::Nil))
             }
 
-            Stmt::Return { value, .. } => {
+            Stmt::Return { value, span } => {
                 let ret_val = if let Some(expr) = value {
-                    self.evaluate(expr)?
+                    let v = self.evaluate(expr)?;
+                    self.trace(&format!("[line {}] gie (return) {}", span.line, v));
+                    v
                 } else {
+                    self.trace(&format!("[line {}] gie (return) naething", span.line));
                     Value::Nil
                 };
                 Ok(Err(ControlFlow::Return(ret_val)))
             }
 
-            Stmt::Print { value, .. } => {
+            Stmt::Print { value, span } => {
                 let val = self.evaluate(value)?;
+                self.trace(&format!("[line {}] blether (print): {}", span.line, val));
                 let output = format!("{}", val);
                 println!("{}", output);
                 self.output.push(output);
                 Ok(Ok(Value::Nil))
             }
 
-            Stmt::Break { .. } => Ok(Err(ControlFlow::Break)),
+            Stmt::Break { span } => {
+                self.trace(&format!("[line {}] brak! (break)", span.line));
+                Ok(Err(ControlFlow::Break))
+            }
 
-            Stmt::Continue { .. } => Ok(Err(ControlFlow::Continue)),
+            Stmt::Continue { span } => {
+                self.trace(&format!("[line {}] haud! (continue)", span.line));
+                Ok(Err(ControlFlow::Continue))
+            }
 
             Stmt::Class {
                 name,
@@ -2975,6 +3263,7 @@ impl Interpreter {
                 methods,
                 span,
             } => {
+                self.trace(&format!("[line {}] kin (class) {} defined", span.line, name));
                 let super_class = if let Some(super_name) = superclass {
                     let super_val = self
                         .environment
@@ -3032,7 +3321,8 @@ impl Interpreter {
                 Ok(Ok(Value::Nil))
             }
 
-            Stmt::Struct { name, fields, .. } => {
+            Stmt::Struct { name, fields, span } => {
+                self.trace(&format!("[line {}] thing (struct) {} defined wi' {} fields", span.line, name, fields.len()));
                 let structure = HaversStruct::new(name.clone(), fields.clone());
                 self.environment
                     .borrow_mut()
@@ -3041,6 +3331,8 @@ impl Interpreter {
             }
 
             Stmt::Import { path, alias, span } => {
+                let alias_str = alias.as_ref().map(|a| format!(" as {}", a)).unwrap_or_default();
+                self.trace(&format!("[line {}] fetch (import) \"{}\"{}", span.line, path, alias_str));
                 self.load_module(path, alias.as_deref(), *span)
             }
 
@@ -3048,11 +3340,16 @@ impl Interpreter {
                 try_block,
                 error_name,
                 catch_block,
-                ..
+                span,
             } => {
+                self.trace(&format!("[line {}] hae_a_bash (try) startin'", span.line));
                 match self.execute_stmt_with_control(try_block) {
-                    Ok(result) => Ok(result),
+                    Ok(result) => {
+                        self.trace(&format!("[line {}] try block succeeded - nae bother!", span.line));
+                        Ok(result)
+                    }
                     Err(e) => {
+                        self.trace(&format!("[line {}] gin_it_gangs_wrang (catch) - caught: {}", span.line, e));
                         // Bind the error to the catch variable
                         self.environment
                             .borrow_mut()
@@ -3063,10 +3360,13 @@ impl Interpreter {
             }
 
             Stmt::Match { value, arms, span } => {
+                self.trace(&format!("[line {}] keek (match) statement", span.line));
                 let val = self.evaluate(value)?;
+                self.trace_verbose(&format!("→ matchin' against: {}", val));
 
-                for arm in arms {
+                for (i, arm) in arms.iter().enumerate() {
                     if self.pattern_matches(&arm.pattern, &val)? {
+                        self.trace(&format!("[line {}] matched arm {}", span.line, i + 1));
                         // Bind pattern variables if needed
                         if let Pattern::Identifier(name) = &arm.pattern {
                             self.environment
@@ -3078,6 +3378,7 @@ impl Interpreter {
                 }
 
                 // No match found
+                self.trace(&format!("[line {}] nae match found!", span.line));
                 Err(HaversError::TypeError {
                     message: format!("Nae match found fer {}", val),
                     line: span.line,
@@ -3089,7 +3390,9 @@ impl Interpreter {
                 message,
                 span,
             } => {
+                self.trace(&format!("[line {}] mak_siccar (assert)", span.line));
                 let cond_value = self.evaluate(condition)?;
+                self.trace_verbose(&format!("→ condition is {}", cond_value));
                 if !cond_value.is_truthy() {
                     let msg = if let Some(msg_expr) = message {
                         let msg_val = self.evaluate(msg_expr)?;
@@ -3097,11 +3400,13 @@ impl Interpreter {
                     } else {
                         "Assertion failed".to_string()
                     };
+                    self.trace(&format!("[line {}] assertion FAILED: {}", span.line, msg));
                     return Err(HaversError::AssertionFailed {
                         message: msg,
                         line: span.line,
                     });
                 }
+                self.trace_verbose("→ assertion passed - braw!");
                 Ok(Ok(Value::Nil))
             }
 
@@ -3110,7 +3415,9 @@ impl Interpreter {
                 value,
                 span,
             } => {
+                self.trace(&format!("[line {}] destructurin' intae {} variables", span.line, patterns.len()));
                 let val = self.evaluate(value)?;
+                self.trace_verbose(&format!("→ unpackin': {}", val));
 
                 // The value must be a list
                 let items = match &val {
@@ -5087,5 +5394,230 @@ result").unwrap(),
         } else {
             panic!("Expected list");
         }
+    }
+
+    #[test]
+    fn test_classes() {
+        // Basic class creation and instantiation
+        let result = run(r#"
+kin Dug {
+    dae init(name) {
+        masel.name = name
+    }
+    dae bark() {
+        gie "Woof! Ah'm " + masel.name
+    }
+}
+ken fido = Dug("Fido")
+fido.bark()
+"#).unwrap();
+        assert_eq!(result, Value::String("Woof! Ah'm Fido".to_string()));
+    }
+
+    #[test]
+    fn test_inheritance() {
+        let result = run(r#"
+kin Animal {
+    dae init(name) {
+        masel.name = name
+    }
+    dae speak() {
+        gie "..."
+    }
+}
+kin Dug fae Animal {
+    dae speak() {
+        gie "Woof!"
+    }
+}
+ken d = Dug("Rex")
+d.speak()
+"#).unwrap();
+        assert_eq!(result, Value::String("Woof!".to_string()));
+    }
+
+    #[test]
+    fn test_try_catch() {
+        // Try-catch basic - using Scots keywords!
+        let result = run(r#"
+ken result = "untouched"
+hae_a_bash {
+    result = 1 / 0
+} gin_it_gangs_wrang e {
+    result = "caught"
+}
+result
+"#).unwrap();
+        assert_eq!(result, Value::String("caught".to_string()));
+    }
+
+    #[test]
+    fn test_destructuring() {
+        // Basic destructuring
+        let result = run(r#"
+ken [a, b, c] = [1, 2, 3]
+b
+"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+
+        // Rest destructuring
+        let result = run(r#"
+ken [first, ...rest] = [1, 2, 3, 4]
+len(rest)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_default_params() {
+        let result = run(r#"
+dae greet(name, greeting = "Hullo") {
+    gie greeting + ", " + name + "!"
+}
+greet("Hamish")
+"#).unwrap();
+        assert_eq!(result, Value::String("Hullo, Hamish!".to_string()));
+
+        let result = run(r#"
+dae greet(name, greeting = "Hullo") {
+    gie greeting + ", " + name + "!"
+}
+greet("Hamish", "Guid day")
+"#).unwrap();
+        assert_eq!(result, Value::String("Guid day, Hamish!".to_string()));
+    }
+
+    #[test]
+    fn test_fstring() {
+        let result = run(r#"
+ken name = "Scotland"
+f"Hello, {name}!"
+"#).unwrap();
+        assert_eq!(result, Value::String("Hello, Scotland!".to_string()));
+
+        // F-string with expression
+        let result = run(r#"
+ken x = 5
+f"The answer is {x * 2}"
+"#).unwrap();
+        assert_eq!(result, Value::String("The answer is 10".to_string()));
+    }
+
+    #[test]
+    fn test_scots_vocabulary_functions() {
+        // Test crabbit (negative check)
+        assert_eq!(run("crabbit(-5)").unwrap(), Value::Bool(true));
+        assert_eq!(run("crabbit(5)").unwrap(), Value::Bool(false));
+
+        // Test glaikit (empty/invalid check)
+        assert_eq!(run("glaikit(\"\")").unwrap(), Value::Bool(true));
+        assert_eq!(run("glaikit(0)").unwrap(), Value::Bool(true));
+        assert_eq!(run("glaikit(42)").unwrap(), Value::Bool(false));
+
+        // Test roar (uppercase shout)
+        assert_eq!(
+            run(r#"roar("hello")"#).unwrap(),
+            Value::String("HELLO!".to_string())
+        );
+
+        // Test wrang_sort (type check)
+        assert_eq!(
+            run(r#"wrang_sort(42, "integer")"#).unwrap(),
+            Value::Bool(false) // Not wrong - 42 IS an integer
+        );
+        assert_eq!(
+            run(r#"wrang_sort(42, "string")"#).unwrap(),
+            Value::Bool(true) // Wrong - 42 is NOT a string
+        );
+    }
+
+    #[test]
+    fn test_new_scots_functions() {
+        // blether_format
+        assert_eq!(
+            run(r#"blether_format("Hullo {name}!", {"name": "Hamish"})"#).unwrap(),
+            Value::String("Hullo Hamish!".to_string())
+        );
+
+        // ceilidh (interleave)
+        let result = run("ceilidh([1, 2], [3, 4])").unwrap();
+        if let Value::List(list) = result {
+            let list = list.borrow();
+            assert_eq!(list.len(), 4);
+            assert_eq!(list[0], Value::Integer(1));
+            assert_eq!(list[1], Value::Integer(3));
+            assert_eq!(list[2], Value::Integer(2));
+            assert_eq!(list[3], Value::Integer(4));
+        } else {
+            panic!("Expected list");
+        }
+
+        // birl (rotate)
+        let result = run("birl([1, 2, 3, 4, 5], 2)").unwrap();
+        if let Value::List(list) = result {
+            let list = list.borrow();
+            assert_eq!(list[0], Value::Integer(3));
+            assert_eq!(list[4], Value::Integer(2));
+        } else {
+            panic!("Expected list");
+        }
+
+        // clype (debug info)
+        let result = run("clype([1, 2, 3])").unwrap();
+        if let Value::String(s) = result {
+            assert!(s.contains("list"));
+            assert!(s.contains("3 items"));
+        } else {
+            panic!("Expected string");
+        }
+
+        // sclaff (flatten)
+        let result = run("sclaff([[1, 2], [3, [4, 5]]])").unwrap();
+        if let Value::List(list) = result {
+            let list = list.borrow();
+            assert_eq!(list.len(), 5); // Fully flattened
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_trace_mode() {
+        // Test that trace mode can be set without breaking execution
+        let mut interp = Interpreter::new();
+
+        // Set trace mode
+        interp.set_trace_mode(TraceMode::Off);
+        assert_eq!(interp.trace_mode(), TraceMode::Off);
+
+        interp.set_trace_mode(TraceMode::Statements);
+        assert_eq!(interp.trace_mode(), TraceMode::Statements);
+
+        interp.set_trace_mode(TraceMode::Verbose);
+        assert_eq!(interp.trace_mode(), TraceMode::Verbose);
+
+        // Code should still execute correctly with trace on
+        interp.set_trace_mode(TraceMode::Off); // Turn off to avoid stderr output
+        let program = crate::parser::parse("ken x = 42\ngin x > 10 { x = x * 2 }\nx").unwrap();
+        let result = interp.interpret(&program).unwrap();
+        assert_eq!(result, Value::Integer(84));
+    }
+
+    #[test]
+    fn test_get_user_variables() {
+        let mut interp = Interpreter::new();
+        let program = crate::parser::parse("ken x = 42\nken name = \"Hamish\"").unwrap();
+        interp.interpret(&program).unwrap();
+
+        let vars = interp.get_user_variables();
+
+        // Should have x and name (and possibly prelude functions if loaded)
+        let x_var = vars.iter().find(|(n, _, _)| n == "x");
+        assert!(x_var.is_some());
+        assert_eq!(x_var.unwrap().1, "integer");
+
+        let name_var = vars.iter().find(|(n, _, _)| n == "name");
+        assert!(name_var.is_some());
+        assert_eq!(name_var.unwrap().1, "string");
     }
 }
