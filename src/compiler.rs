@@ -266,6 +266,30 @@ impl Compiler {
         self.indent -= 1;
         self.emit_line("},");
 
+        // slice - slice with step (fer [start:end:step] syntax)
+        self.emit_line("slice: (x, start, end, step) => {");
+        self.indent += 1;
+        self.emit_line("const len = x.length;");
+        self.emit_line("const isStr = typeof x === 'string';");
+        self.emit_line("const arr = isStr ? x.split('') : x;");
+        self.emit_line("if (step === 0) throw new Error('Slice step cannae be zero, ya dafty!');");
+        self.emit_line("// Handle defaults based on step direction");
+        self.emit_line("const s = start !== null ? (start < 0 ? Math.max(len + start, 0) : Math.min(start, len)) : (step > 0 ? 0 : len - 1);");
+        self.emit_line("const e = end !== null ? (end < 0 ? Math.max(len + end, step > 0 ? 0 : -1) : Math.min(end, len)) : (step > 0 ? len : -len - 1);");
+        self.emit_line("const result = [];");
+        self.emit_line("if (step > 0) {");
+        self.indent += 1;
+        self.emit_line("for (let i = s; i < e; i += step) result.push(arr[i]);");
+        self.indent -= 1;
+        self.emit_line("} else {");
+        self.indent += 1;
+        self.emit_line("for (let i = s; i > e; i += step) result.push(arr[i]);");
+        self.indent -= 1;
+        self.emit_line("}");
+        self.emit_line("return isStr ? result.join('') : result;");
+        self.indent -= 1;
+        self.emit_line("},");
+
         self.indent -= 1;
         self.emit_line("};");
         self.emit_line("");
@@ -356,8 +380,9 @@ impl Compiler {
                 ..
             } => {
                 self.emit_indent();
+                let params_str = self.compile_params(params)?;
                 self.output
-                    .push_str(&format!("function {}({}) {{\n", name, params.join(", ")));
+                    .push_str(&format!("function {}({}) {{\n", name, params_str));
                 self.indent += 1;
                 for stmt in body {
                     self.compile_stmt(stmt)?;
@@ -419,8 +444,9 @@ impl Compiler {
                         } else {
                             method_name
                         };
+                        let params_str = self.compile_params(params)?;
                         self.output
-                            .push_str(&format!("{}({}) {{\n", js_name, params.join(", ")));
+                            .push_str(&format!("{}({}) {{\n", js_name, params_str));
                         self.indent += 1;
                         for stmt in body {
                             self.compile_stmt(stmt)?;
@@ -533,6 +559,56 @@ impl Compiler {
                     self.emit_line("}");
                 }
             }
+
+            Stmt::Assert {
+                condition,
+                message,
+                ..
+            } => {
+                self.emit_indent();
+                self.output.push_str("if (!(");
+                self.compile_expr(condition)?;
+                self.output.push_str(")) {\n");
+                self.indent += 1;
+                self.emit_indent();
+                if let Some(msg) = message {
+                    self.output.push_str("throw new Error(");
+                    self.compile_expr(msg)?;
+                    self.output.push_str(");\n");
+                } else {
+                    self.emit_line("throw new Error('Assertion failed');");
+                }
+                self.indent -= 1;
+                self.emit_line("}");
+            }
+
+            Stmt::Destructure {
+                patterns,
+                value,
+                ..
+            } => {
+                // JavaScript destructuring: const [a, b, ...rest] = value
+                self.emit_indent();
+                self.output.push_str("const [");
+
+                for (i, pattern) in patterns.iter().enumerate() {
+                    if i > 0 {
+                        self.output.push_str(", ");
+                    }
+                    match pattern {
+                        DestructPattern::Variable(name) => self.output.push_str(name),
+                        DestructPattern::Rest(name) => {
+                            self.output.push_str("...");
+                            self.output.push_str(name);
+                        }
+                        DestructPattern::Ignore => self.output.push('_'),
+                    }
+                }
+
+                self.output.push_str("] = ");
+                self.compile_expr(value)?;
+                self.output.push_str(";\n");
+            }
         }
 
         Ok(())
@@ -584,6 +660,23 @@ impl Compiler {
             }
         }
         Ok(())
+    }
+
+    /// Compile function parameters, handling default values
+    fn compile_params(&mut self, params: &[Param]) -> HaversResult<String> {
+        let mut result = Vec::new();
+        for param in params {
+            if let Some(default_expr) = &param.default {
+                // Compile the default value
+                let old_output = std::mem::take(&mut self.output);
+                self.compile_expr(default_expr)?;
+                let default_js = std::mem::replace(&mut self.output, old_output);
+                result.push(format!("{} = {}", param.name, default_js));
+            } else {
+                result.push(param.name.clone());
+            }
+        }
+        Ok(result.join(", "))
     }
 
     fn compile_expr(&mut self, expr: &Expr) -> HaversResult<()> {
@@ -739,6 +832,52 @@ impl Compiler {
                 self.output.push(')');
             }
 
+            Expr::Slice {
+                object,
+                start,
+                end,
+                step,
+                ..
+            } => {
+                // JavaScript: Use helper function fer step slices, or .slice() fer simple ones
+                if step.is_some() {
+                    // Need to use a helper function fer step slices
+                    self.output.push_str("__havers.slice(");
+                    self.compile_expr(object)?;
+                    self.output.push_str(", ");
+                    if let Some(s) = start {
+                        self.compile_expr(s)?;
+                    } else {
+                        self.output.push_str("null");
+                    }
+                    self.output.push_str(", ");
+                    if let Some(e) = end {
+                        self.compile_expr(e)?;
+                    } else {
+                        self.output.push_str("null");
+                    }
+                    self.output.push_str(", ");
+                    if let Some(st) = step {
+                        self.compile_expr(st)?;
+                    }
+                    self.output.push(')');
+                } else {
+                    // Simple slice: obj.slice(start, end)
+                    self.compile_expr(object)?;
+                    self.output.push_str(".slice(");
+                    if let Some(s) = start {
+                        self.compile_expr(s)?;
+                    } else {
+                        self.output.push('0');
+                    }
+                    if let Some(e) = end {
+                        self.output.push_str(", ");
+                        self.compile_expr(e)?;
+                    }
+                    self.output.push(')');
+                }
+            }
+
             Expr::List { elements, .. } => {
                 self.output.push('[');
                 for (i, elem) in elements.iter().enumerate() {
@@ -819,6 +958,35 @@ impl Compiler {
                     }
                 }
                 self.output.push('`');
+            }
+
+            Expr::Spread { expr, .. } => {
+                self.output.push_str("...");
+                self.compile_expr(expr)?;
+            }
+
+            Expr::Pipe { left, right, .. } => {
+                // In JavaScript, we transform left |> right to right(left)
+                self.compile_expr(right)?;
+                self.output.push('(');
+                self.compile_expr(left)?;
+                self.output.push(')');
+            }
+
+            Expr::Ternary {
+                condition,
+                then_expr,
+                else_expr,
+                ..
+            } => {
+                // JavaScript ternary: condition ? then : else
+                self.output.push('(');
+                self.compile_expr(condition)?;
+                self.output.push_str(" ? ");
+                self.compile_expr(then_expr)?;
+                self.output.push_str(" : ");
+                self.compile_expr(else_expr)?;
+                self.output.push(')');
             }
         }
 

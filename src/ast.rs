@@ -71,9 +71,10 @@ pub enum Stmt {
     },
 
     /// Function definition: dae greet(name) { ... }
+    /// Supports default parameter values: dae greet(name, greeting = "Hullo") { ... }
     Function {
         name: String,
-        params: Vec<String>,
+        params: Vec<Param>,
         body: Vec<Stmt>,
         span: Span,
     },
@@ -132,10 +133,25 @@ pub enum Stmt {
         arms: Vec<MatchArm>,
         span: Span,
     },
+
+    /// Assert statement: mak_siccar condition, "message"
+    Assert {
+        condition: Expr,
+        message: Option<Expr>,
+        span: Span,
+    },
+
+    /// Destructuring assignment: ken [a, b, ...rest] = list
+    Destructure {
+        patterns: Vec<DestructPattern>,
+        value: Expr,
+        span: Span,
+    },
 }
 
 /// A match arm: whan pattern -> body
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct MatchArm {
     pub pattern: Pattern,
     pub body: Stmt,
@@ -153,6 +169,24 @@ pub enum Pattern {
     Wildcard,
     /// Range pattern: 1..10
     Range { start: Box<Expr>, end: Box<Expr> },
+}
+
+/// A function parameter with optional default value
+#[derive(Debug, Clone)]
+pub struct Param {
+    pub name: String,
+    pub default: Option<Expr>,
+}
+
+/// Destructuring pattern fer unpacking lists
+#[derive(Debug, Clone)]
+pub enum DestructPattern {
+    /// Single variable: x
+    Variable(String),
+    /// Rest pattern: ...rest (captures remaining elements)
+    Rest(String),
+    /// Ignore: _ (skip this element)
+    Ignore,
 }
 
 /// Expressions in mdhavers
@@ -237,6 +271,15 @@ pub enum Expr {
         span: Span,
     },
 
+    /// Slice expression: arr[1:3] or arr[:3] or arr[1:] or arr[::2]
+    Slice {
+        object: Box<Expr>,
+        start: Option<Box<Expr>>,
+        end: Option<Box<Expr>>,
+        step: Option<Box<Expr>>,
+        span: Span,
+    },
+
     /// List literal: [1, 2, 3]
     List {
         elements: Vec<Expr>,
@@ -282,6 +325,27 @@ pub enum Expr {
     /// Format string: f"Hullo {name}!"
     FString {
         parts: Vec<FStringPart>,
+        span: Span,
+    },
+
+    /// Spread expression: ...list (skail = scatter in Scots)
+    Spread {
+        expr: Box<Expr>,
+        span: Span,
+    },
+
+    /// Pipe forward: x |> f means f(x) - fer fluent chaining
+    Pipe {
+        left: Box<Expr>,
+        right: Box<Expr>,
+        span: Span,
+    },
+
+    /// Ternary/conditional expression: gin condition than truthy ither falsy
+    Ternary {
+        condition: Box<Expr>,
+        then_expr: Box<Expr>,
+        else_expr: Box<Expr>,
         span: Span,
     },
 }
@@ -398,6 +462,7 @@ impl Expr {
             Expr::Set { span, .. } => *span,
             Expr::Index { span, .. } => *span,
             Expr::IndexSet { span, .. } => *span,
+            Expr::Slice { span, .. } => *span,
             Expr::List { span, .. } => *span,
             Expr::Dict { span, .. } => *span,
             Expr::Range { span, .. } => *span,
@@ -406,6 +471,9 @@ impl Expr {
             Expr::Masel { span } => *span,
             Expr::Input { span, .. } => *span,
             Expr::FString { span, .. } => *span,
+            Expr::Spread { span, .. } => *span,
+            Expr::Pipe { span, .. } => *span,
+            Expr::Ternary { span, .. } => *span,
         }
     }
 }
@@ -429,6 +497,8 @@ impl Stmt {
             Stmt::Import { span, .. } => *span,
             Stmt::TryCatch { span, .. } => *span,
             Stmt::Match { span, .. } => *span,
+            Stmt::Assert { span, .. } => *span,
+            Stmt::Destructure { span, .. } => *span,
         }
     }
 }

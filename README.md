@@ -39,7 +39,7 @@ ken nothing = naething
 
 - **Integers**: `42`, `-17`, `0`
 - **Floats**: `3.14`, `-0.5`
-- **Strings**: `"Hello, Scotland!"`
+- **Strings**: `"Hello, Scotland!"` or `'single quotes too'`
 - **Booleans**: `aye` (true), `nae` (false)
 - **Null**: `naething`
 - **Lists**: `[1, 2, 3]`
@@ -123,6 +123,70 @@ blether add(5, 3)
 blether factorial(5)
 ```
 
+#### Default Parameters
+
+Functions can hae default values fer parameters (staundart values):
+
+```scots
+# Parameter with default value
+dae greet(name, greeting = "Hullo") {
+    blether f"{greeting}, {name}!"
+}
+
+greet("Hamish")              # Uses default: "Hullo, Hamish!"
+greet("Morag", "Och aye")    # Custom: "Och aye, Morag!"
+
+# Multiple defaults
+dae make_order(item, quantity = 1, price = 10) {
+    gie quantity * price
+}
+
+make_order("haggis")           # 1 * 10 = 10
+make_order("whisky", 3)        # 3 * 10 = 30
+make_order("shortbread", 5, 2) # 5 * 2 = 10
+
+# Defaults with lambda values
+dae process(items, transform = |x| x) {
+    gie gaun(items, transform)
+}
+```
+
+Note: Parameters wi' defaults must come efter parameters wi'oot defaults.
+
+### Destructuring
+
+Unpack lists and strings intae individual variables:
+
+```scots
+# Basic destructuring
+ken [a, b, c] = [1, 2, 3]
+blether a  # 1
+
+# With rest pattern (...) tae capture remaining elements
+ken [first, ...rest] = [1, 2, 3, 4, 5]
+blether first  # 1
+blether rest   # [2, 3, 4, 5]
+
+# Rest in the middle
+ken [head, ...middle, tail] = [1, 2, 3, 4, 5]
+blether middle  # [2, 3, 4]
+
+# Ignore elements with _
+ken [_, second, _] = ["skip", "take", "skip"]
+blether second  # "take"
+
+# Destructure strings intae characters
+ken [a, b, c] = "ABC"
+blether a  # "A"
+
+# Practical: process function returns
+dae get_bounds(list) {
+    ken sorted = sort(list)
+    gie [heid(sorted), bum(sorted)]
+}
+ken [min_val, max_val] = get_bounds([5, 2, 8, 1])
+```
+
 ### Classes
 
 Use `kin` (meaning "family/type") to define classes:
@@ -169,6 +233,46 @@ kin Dog fae Animal {
 ken rex = Dog("Rex")
 rex.speak()  # Rex says: Woof!
 rex.wag()    # Rex wags tail!
+```
+
+#### Operator Overloading
+
+Define special methods tae customise how operators work wi' yer classes:
+
+| Method | Operator | Scots Meaning |
+|--------|----------|---------------|
+| `__pit_thegither__(that)` | `+` | Put together (add) |
+| `__tak_awa__(that)` | `-` | Take away (subtract) |
+| `__times__(that)` | `*` | Multiply |
+| `__pairt__(that)` | `/` | Divide |
+| `__lave__(that)` | `%` | Remainder (what's left) |
+| `__same_as__(that)` | `==` | Equal |
+| `__differs_fae__(that)` | `!=` | Not equal |
+| `__wee_er__(that)` | `<` | Smaller (less than) |
+| `__wee_er_or_same__(that)` | `<=` | Smaller or same |
+| `__muckle_er__(that)` | `>` | Bigger (greater than) |
+| `__muckle_er_or_same__(that)` | `>=` | Bigger or same |
+
+```scots
+kin Vector {
+    dae init(x, y) {
+        masel.x = x
+        masel.y = y
+    }
+
+    dae __pit_thegither__(that) {
+        gie Vector(masel.x + that.x, masel.y + that.y)
+    }
+
+    dae __times__(scalar) {
+        gie Vector(masel.x * scalar, masel.y * scalar)
+    }
+}
+
+ken v1 = Vector(3, 4)
+ken v2 = Vector(1, 2)
+ken v3 = v1 + v2      # Vector(4, 6)
+ken v4 = v1 * 2       # Vector(6, 8)
 ```
 
 ### Error Handling
@@ -242,6 +346,57 @@ blether add(3, 4)    # 7
 blether square(5)    # 25
 ```
 
+### Spread Operator
+
+Use `...` tae skail (scatter/spread) lists and strings:
+
+```scots
+# Combine lists
+ken a = [1, 2, 3]
+ken b = [4, 5, 6]
+ken combined = [...a, ...b]      # [1, 2, 3, 4, 5, 6]
+
+# Insert elements
+ken middle = [0, ...a, 99]       # [0, 1, 2, 3, 99]
+
+# Spread in function calls
+dae sum_three(x, y, z) {
+    gie x + y + z
+}
+ken nums = [10, 20, 30]
+blether sum_three(...nums)       # 60
+
+# Spread strings intae characters
+ken letters = [..."abc"]         # ["a", "b", "c"]
+```
+
+### Pipe Operator
+
+Use `|>` fer fluent function chaining. The value on the left gets passed as the argument tae the function on the right:
+
+```scots
+# Basic pipe: value |> function
+ken result = 5 |> |x| x * 2      # 10
+
+# Chain multiple operations
+dae add_one(x) { gie x + 1 }
+dae triple(x) { gie x * 3 }
+
+ken chained = 5 |> add_one |> triple |> add_one  # 19
+# Same as: add_one(triple(add_one(5)))
+
+# Works with built-in functions
+ken text = "  hello  " |> wheesht |> upper  # "HELLO"
+
+# Data processing pipeline
+ken numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+dae get_evens(list) { gie sieve(list, |x| x % 2 == 0) }
+dae double_all(list) { gie gaun(list, |x| x * 2) }
+
+ken total = numbers |> get_evens |> double_all |> sumaw  # 60
+```
+
 ### Higher-Order Functions
 
 Scots-named functional programming:
@@ -260,6 +415,22 @@ ken sum = tumble(nums, 0, |acc, x| acc + x)  # 15
 
 # ilk - for-each (Scots: "each")
 ilk(nums, print_func)
+```
+
+### Assertions
+
+Use `mak_siccar` (meaning "make sure" - famously said by Robert the Bruce!) for testing and validation:
+
+```scots
+ken x = 5
+mak_siccar x == 5, "x should be 5"
+mak_siccar x > 0   # without message
+
+dae factorial(n) {
+    mak_siccar n >= 0, "n must be non-negative"
+    gin n <= 1 { gie 1 }
+    gie n * factorial(n - 1)
+}
 ```
 
 ### F-Strings
@@ -285,6 +456,22 @@ ken name = speir "Whit's yer name? "
 blether "Nice tae meet ye, " + name
 ```
 
+### Modules
+
+Use `fetch` to import other `.braw` files:
+
+```scots
+# Import a module (all exports available directly)
+fetch "lib/maths"
+blether square(5)  # 25
+
+# Import with an alias (namespace)
+fetch "lib/strings" tae str
+blether str["capitalize"]("hello")  # "Hello"
+```
+
+Modules are resolved relative to the current file's directory. The `.braw` extension is optional.
+
 ### Built-in Functions
 
 **Scots-Flavored Functions** (the guid stuff!):
@@ -303,6 +490,45 @@ blether "Nice tae meet ye, " + name
 | `jammy(min, max)` | lucky | Random integer in range |
 | `the_noo()` | the now | Current timestamp |
 | `clype(x)` | tell/snitch | Debug print with type |
+| `drap(list, n)` | drop | Drop first n elements |
+| `tak(list, n)` | take | Take first n elements |
+| `grup(list, n)` | grip/group | Group into chunks of n |
+| `pair_up(list)` | - | Create pairs from list |
+| `fankle(a, b)` | tangle | Interleave two lists |
+| `stoater(list)` | great one | Get best/max element |
+| `braw(x)` | good/fine | Check if value is "good" |
+| `clarty(x)` | dirty/messy | Check for duplicates |
+| `dreich(str)` | dull/boring | Check if string is monotonous |
+| `scottify(str)` | - | Convert English to Scots |
+| `snooze(ms)` | - | Sleep for milliseconds |
+| `indices_o(x, val)` | indices of | Find all indices of value |
+| `braw_date(ts)` | braw date | Format date in Scottish style |
+| `grup_up(list, fn)` | group up | Group elements by function |
+| `pairt_by(list, fn)` | part by | Partition by predicate |
+| `haverin(x)` | talking havers | Check if value is empty/nonsense |
+| `scunner(x)` | disgusting | Check if value is negative/empty |
+| `bonnie(x)` | pretty | Decorate value: "~~~ x ~~~" |
+| `is_wee(x)` | is wee | Check if value is small |
+| `is_muckle(x)` | is big | Check if value is large |
+| `crabbit(str)` | grumpy | Uppercase with "!": shout |
+| `cannie(x)` | careful | Check if value is safe/valid |
+| `glaikit(x, type)` | silly | Check if wrong type |
+| `tattie_scone(s, n)` | potato scone | Repeat string with \| separator |
+| `haggis_hunt(s, needle)` | haggis hunt | Find all occurrences of substring |
+| `sporran_fill(s, w, c)` | sporran fill | Center-pad string |
+
+**Scottish Exclamation Functions**:
+
+| Function | Description |
+|----------|-------------|
+| `och(msg)` | Express disappointment: "Och! {msg}" |
+| `jings(msg)` | Express surprise: "Jings! {msg}" |
+| `crivvens(msg)` | Express astonishment: "Crivvens! {msg}" |
+| `help_ma_boab(msg)` | Express extreme surprise: "Help ma boab! {msg}" |
+| `roar(str)` | Shout: uppercase with "!" |
+| `mutter(str)` | Whisper: "...{lowercase}..." |
+| `blooter(str)` | Scramble string randomly |
+| `numpty_check(x)` | Validate input with Scots feedback |
 
 **File I/O Functions**:
 
@@ -323,6 +549,7 @@ blether "Nice tae meet ye, " + name
 | `tae_string(x)` | Convert to string |
 | `tae_int(x)` | Convert to integer |
 | `tae_float(x)` | Convert to float |
+| `tae_bool(x)` | Convert to boolean |
 | `shove(list, x)` | Append to list (push) |
 | `yank(list)` | Pop from list |
 | `keys(dict)` | Get dictionary keys |
@@ -334,6 +561,14 @@ blether "Nice tae meet ye, " + name
 | `join(list, delim)` | Join list to string |
 | `upper(str)` | Convert to uppercase |
 | `lower(str)` | Convert to lowercase |
+| `pad_left(s, w, c)` | Pad string on left |
+| `pad_right(s, w, c)` | Pad string on right |
+| `is_a(x, type)` | Type checking |
+
+**Math Functions**:
+
+| Function | Description |
+|----------|-------------|
 | `abs(n)` | Absolute value |
 | `min(a, b)` | Minimum value |
 | `max(a, b)` | Maximum value |
@@ -341,6 +576,14 @@ blether "Nice tae meet ye, " + name
 | `floor(n)` | Floor |
 | `ceil(n)` | Ceiling |
 | `round(n)` | Round |
+| `pooer(x, y)` | Power/exponent (x^y) |
+| `sin(n)` | Sine (radians) |
+| `cos(n)` | Cosine (radians) |
+| `tan(n)` | Tangent (radians) |
+| `log(n)` | Natural logarithm |
+| `log10(n)` | Base 10 logarithm |
+| `PI` | Pi constant (3.14159...) |
+| `E` | Euler's number (2.71828...) |
 
 ## Keyword Reference
 
@@ -370,6 +613,11 @@ blether "Nice tae meet ye, " + name
 | `gin_it_gangs_wrang` | if it goes wrong | Catch block |
 | `keek` | peek/look | Match statement |
 | `whan` | when | Match case |
+| `fetch` | fetch | Import module |
+| `tae` | to | Module alias (fetch ... tae name) |
+| `mak_siccar` | make sure | Assert (like Robert the Bruce!) |
+| `...` | skail (scatter) | Spread operator fer lists |
+| `\|>` | pipe | Pipe operator fer chaining |
 
 ## CLI Commands
 
@@ -388,6 +636,10 @@ mdhavers compile program.braw -o output.js
 
 # Check for errors
 mdhavers check program.braw
+
+# Format code (makes it look braw!)
+mdhavers fmt program.braw
+mdhavers fmt program.braw --check  # check only, dinnae modify
 
 # Show tokens (debug)
 mdhavers tokens program.braw
@@ -429,6 +681,25 @@ See the `examples/` directory for sample programs:
 - `fstrings.braw` - F-string interpolation examples
 - `inheritance.braw` - Class inheritance with `fae`
 - `file_io.braw` - File I/O operations
+- `scottish_pub.braw` - A wee Scottish pub simulation (classes, dicts, HOF)
+- `ceilidh.braw` - Scottish dance party (math functions, lists, shuffling)
+- `modules_demo.braw` - Demonstrating the module import system
+- `operator_overload.braw` - Operator overloading with classes
+- `assert_demo.braw` - Assertions with mak_siccar
+- `test_example.braw` - Testing library demonstration
+- `scots_words.braw` - Scottish vocabulary functions demo
+- `prelude_demo.braw` - Auto-loaded prelude functions demo
+- `new_functions.braw` - New higher-order functions demo
+- `spread.braw` - Spread operator (...) examples
+- `pipe.braw` - Pipe operator (|>) examples
+- `defaults.braw` - Default parameter values (staundart values)
+- `destructure.braw` - Destructuring assignment examples
+- `scots_fun.braw` - New Scots vocabulary functions demo
+- `lib/maths.braw` - Mathematics utility library
+- `lib/strings.braw` - String manipulation library
+- `lib/collections.braw` - Data structures (stacks, queues, sets)
+- `lib/functional.braw` - Functional programming utilities
+- `lib/testing.braw` - Testing framework with assertions
 
 ## Building from Source
 

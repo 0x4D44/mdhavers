@@ -10,6 +10,7 @@ use rustyline::DefaultEditor;
 mod ast;
 mod compiler;
 mod error;
+mod formatter;
 mod interpreter;
 mod lexer;
 mod parser;
@@ -17,7 +18,7 @@ mod token;
 mod value;
 
 use crate::compiler::compile;
-use crate::error::format_error_context;
+use crate::error::{format_error_context, random_scots_exclamation};
 use crate::interpreter::Interpreter;
 use crate::parser::parse;
 
@@ -69,6 +70,10 @@ enum Commands {
     Format {
         /// The .braw file to format
         file: PathBuf,
+
+        /// Just check if formatting is needed (dinnae modify)
+        #[arg(long)]
+        check: bool,
     },
 
     /// Show tokens from lexer (for debugging)
@@ -92,7 +97,7 @@ fn main() {
         Some(Commands::Compile { file, output }) => compile_file(&file, output),
         Some(Commands::Repl) => run_repl(),
         Some(Commands::Check { file }) => check_file(&file),
-        Some(Commands::Format { file }) => format_file(&file),
+        Some(Commands::Format { file, check }) => format_file(&file, check),
         Some(Commands::Tokens { file }) => show_tokens(&file),
         Some(Commands::Ast { file }) => show_ast(&file),
         None => {
@@ -107,7 +112,7 @@ fn main() {
     };
 
     if let Err(e) = result {
-        eprintln!("{}: {}", "Och naw!".red().bold(), e);
+        eprintln!("{}: {}", random_scots_exclamation().red().bold(), e);
         process::exit(1);
     }
 }
@@ -116,6 +121,18 @@ fn run_file(path: &PathBuf) -> Result<(), String> {
     let source = read_file(path)?;
     let program = parse(&source).map_err(|e| format_parse_error(&source, e))?;
     let mut interpreter = Interpreter::new();
+
+    // Set the current directory tae the file's directory fer module resolution
+    if let Some(parent) = path.parent() {
+        if parent.as_os_str().len() > 0 {
+            interpreter.set_current_dir(parent);
+        }
+    }
+
+    // Load the prelude (standard utility functions)
+    interpreter
+        .load_prelude()
+        .map_err(|e| format!("Error loading prelude: {}", e))?;
 
     interpreter
         .interpret(&program)
@@ -164,6 +181,15 @@ fn run_repl() -> Result<(), String> {
 
     let mut rl = DefaultEditor::new().map_err(|e| e.to_string())?;
     let mut interpreter = Interpreter::new();
+
+    // Load the prelude fer REPL users
+    if let Err(e) = interpreter.load_prelude() {
+        eprintln!(
+            "{}: Couldnae load prelude: {}",
+            "Warning".yellow(),
+            e
+        );
+    }
 
     loop {
         let readline = rl.readline(&format!("{} ", "mdhavers>".green().bold()));
@@ -305,19 +331,43 @@ fn check_file(path: &PathBuf) -> Result<(), String> {
     Ok(())
 }
 
-fn format_file(path: &PathBuf) -> Result<(), String> {
-    // For now, just validate it parses
+fn format_file(path: &PathBuf, check_only: bool) -> Result<(), String> {
     let source = read_file(path)?;
-    let _program = parse(&source).map_err(|e| format_parse_error(&source, e))?;
 
-    // TODO: Implement actual pretty printing
-    println!(
-        "{} Formatting no' implemented yet, but {} parses fine!",
-        "Sorry!".yellow(),
-        path.display()
-    );
+    // Format the code
+    let formatted = formatter::format_source(&source)
+        .map_err(|e| format_parse_error(&source, e))?;
 
-    Ok(())
+    if check_only {
+        // Just check if formatting would change anything
+        if source == formatted {
+            println!(
+                "{} {} is already formatted braw!",
+                "✓".green(),
+                path.display()
+            );
+            Ok(())
+        } else {
+            println!(
+                "{} {} needs formattin'!",
+                "✗".red(),
+                path.display()
+            );
+            Err("File needs formattin'".to_string())
+        }
+    } else {
+        // Write back to file
+        fs::write(path, &formatted)
+            .map_err(|e| format!("Cannae write tae {}: {}", path.display(), e))?;
+
+        println!(
+            "{} Formatted {} - lookin' braw!",
+            "Bonnie!".green().bold(),
+            path.display()
+        );
+
+        Ok(())
+    }
 }
 
 fn show_tokens(path: &PathBuf) -> Result<(), String> {

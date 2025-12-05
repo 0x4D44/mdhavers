@@ -2,6 +2,7 @@ use thiserror::Error;
 
 /// Scots error messages - gie the user a guid tellin' aff!
 #[derive(Error, Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum HaversError {
     #[error("Och! Ah dinnae ken whit '{lexeme}' is at line {line}, column {column}")]
     UnkentToken {
@@ -53,16 +54,16 @@ pub enum HaversError {
     #[error("Jings! Something went awfy wrang: {0}")]
     InternalError(String),
 
-    #[error("Wheesht! Break statement ootside a loop at line {line}")]
+    #[error("Wheesht! Break statement ootside a loop at line {line} - ye can only brak fae inside a whiles or fer loop!")]
     BreakOutsideLoop { line: usize },
 
-    #[error("Haud on! Continue statement ootside a loop at line {line}")]
+    #[error("Haud on there! Continue statement ootside a loop at line {line} - ye can only haud inside a whiles or fer loop!")]
     ContinueOutsideLoop { line: usize },
 
-    #[error("Stack's fair puggled! Too many nested calls at line {line}")]
+    #[error("Stack's fair puggled! Too many nested calls at line {line} - yer recursion's gone radge!")]
     StackOverflow { line: usize },
 
-    #[error("Cannae find module '{name}' - hae ye checked it exists?")]
+    #[error("Cannae find module '{name}' - hae ye checked the path is richt?")]
     ModuleNotFound { name: String },
 
     #[error("That string's no' finished! Missin' closing quote at line {line}")]
@@ -70,6 +71,45 @@ pub enum HaversError {
 
     #[error("Yer number's aw wrang at line {line}: {value}")]
     InvalidNumber { value: String, line: usize },
+
+    #[error("Haud yer horses! '{name}' is awready defined at line {line}")]
+    AlreadyDefined { name: String, line: usize },
+
+    #[error("Whit are ye playin' at? '{name}' isnae an object at line {line}")]
+    NotAnObject { name: String, line: usize },
+
+    #[error("Och away! '{property}' doesnae exist on this object at line {line}")]
+    UndefinedProperty { property: String, line: usize },
+
+    #[error("Yer loop's gone doolally! Infinite loop detected at line {line}")]
+    InfiniteLoop { line: usize },
+
+    #[error("That's no' a list, ya bampot! Expected a list at line {line}")]
+    NotAList { line: usize },
+
+    #[error("That's no' a dictionary! Expected a dict at line {line}")]
+    NotADict { line: usize },
+
+    #[error("Key '{key}' doesnae exist in the dictionary at line {line}")]
+    KeyNotFound { key: String, line: usize },
+
+    #[error("Ye cannae dae that! {operation} is no' allowed at line {line}")]
+    InvalidOperation { operation: String, line: usize },
+
+    #[error("The import's gone in a fankle! Circular import detected: {path}")]
+    CircularImport { path: String },
+
+    #[error("Mak siccar failed at line {line}! {message}")]
+    AssertionFailed { message: String, line: usize },
+
+    #[error("Ye've fair scunnered it! Return statement ootside a function at line {line}")]
+    ReturnOutsideFunction { line: usize },
+
+    #[error("Haud on! Cannae iterate over a {type_name} at line {line} - need a list or range")]
+    NotIterable { type_name: String, line: usize },
+
+    #[error("Yer pattern's aw wrang at line {line}: {message}")]
+    PatternError { message: String, line: usize },
 }
 
 impl HaversError {
@@ -89,9 +129,45 @@ impl HaversError {
             HaversError::StackOverflow { line } => Some(*line),
             HaversError::UnterminatedString { line } => Some(*line),
             HaversError::InvalidNumber { line, .. } => Some(*line),
+            HaversError::AlreadyDefined { line, .. } => Some(*line),
+            HaversError::NotAnObject { line, .. } => Some(*line),
+            HaversError::UndefinedProperty { line, .. } => Some(*line),
+            HaversError::InfiniteLoop { line } => Some(*line),
+            HaversError::NotAList { line } => Some(*line),
+            HaversError::NotADict { line } => Some(*line),
+            HaversError::KeyNotFound { line, .. } => Some(*line),
+            HaversError::InvalidOperation { line, .. } => Some(*line),
+            HaversError::AssertionFailed { line, .. } => Some(*line),
+            HaversError::ReturnOutsideFunction { line } => Some(*line),
+            HaversError::NotIterable { line, .. } => Some(*line),
+            HaversError::PatternError { line, .. } => Some(*line),
             _ => None,
         }
     }
+}
+
+/// Scots phrases fer random error decoration
+pub fn random_scots_exclamation() -> &'static str {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as usize;
+
+    const PHRASES: &[&str] = &[
+        "Och naw!",
+        "Jings crivvens!",
+        "Haud yer wheesht!",
+        "Michty me!",
+        "Hoots mon!",
+        "Blimey!",
+        "Ach, fer cryin' oot loud!",
+        "By the wee man!",
+        "Guid grief!",
+        "Haud the bus!",
+    ];
+
+    PHRASES[seed % PHRASES.len()]
 }
 
 pub type HaversResult<T> = Result<T, HaversError>;
