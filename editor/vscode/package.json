@@ -1,0 +1,64 @@
+{
+  "name": "mdhavers",
+  "displayName": "mdhavers - Scots Programming Language",
+  "description": "Full language support for mdhavers (.braw) files - pure havers, but working havers!",
+  "version": "0.1.0",
+  "publisher": "mdhavers",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:mdhavers"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "mdhavers",
+        "aliases": ["mdhavers", "Scots", "braw"],
+        "extensions": [".braw"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "mdhavers",
+        "scopeName": "source.mdhavers",
+        "path": "./syntaxes/mdhavers.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "mdhavers",
+      "properties": {
+        "mdhavers.lsp.path": {
+          "type": "string",
+          "default": "mdhavers-lsp",
+          "description": "Path to the mdhavers-lsp executable"
+        },
+        "mdhavers.lsp.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the mdhavers language server"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.70.0",
+    "typescript": "^5.0.0",
+    "vscode-languageclient": "^9.0.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.0"
+  }
+}

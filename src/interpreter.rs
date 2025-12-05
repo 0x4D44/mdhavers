@@ -1478,6 +1478,138 @@ impl Interpreter {
             Value::Float(std::f64::consts::E),
         );
 
+        // TAU constant (2*PI)
+        globals.borrow_mut().define(
+            "TAU".to_string(),
+            Value::Float(std::f64::consts::TAU),
+        );
+
+        // exp - e raised to the power
+        globals.borrow_mut().define(
+            "exp".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("exp", 1, |args| {
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.exp())),
+                    Value::Integer(n) => Ok(Value::Float((*n as f64).exp())),
+                    _ => Err("exp() needs a number".to_string()),
+                }
+            }))),
+        );
+
+        // pow - raise to a power (Scottish: mak it muckle!)
+        globals.borrow_mut().define(
+            "pow".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("pow", 2, |args| {
+                let base = match &args[0] {
+                    Value::Float(f) => *f,
+                    Value::Integer(n) => *n as f64,
+                    _ => return Err("pow() needs numbers".to_string()),
+                };
+                let exponent = match &args[1] {
+                    Value::Float(f) => *f,
+                    Value::Integer(n) => *n as f64,
+                    _ => return Err("pow() needs numbers".to_string()),
+                };
+                Ok(Value::Float(base.powf(exponent)))
+            }))),
+        );
+
+        // asin - arc sine
+        globals.borrow_mut().define(
+            "asin".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("asin", 1, |args| {
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.asin())),
+                    Value::Integer(n) => Ok(Value::Float((*n as f64).asin())),
+                    _ => Err("asin() needs a number".to_string()),
+                }
+            }))),
+        );
+
+        // acos - arc cosine
+        globals.borrow_mut().define(
+            "acos".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("acos", 1, |args| {
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.acos())),
+                    Value::Integer(n) => Ok(Value::Float((*n as f64).acos())),
+                    _ => Err("acos() needs a number".to_string()),
+                }
+            }))),
+        );
+
+        // atan - arc tangent
+        globals.borrow_mut().define(
+            "atan".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("atan", 1, |args| {
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.atan())),
+                    Value::Integer(n) => Ok(Value::Float((*n as f64).atan())),
+                    _ => Err("atan() needs a number".to_string()),
+                }
+            }))),
+        );
+
+        // atan2 - two-argument arc tangent
+        globals.borrow_mut().define(
+            "atan2".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("atan2", 2, |args| {
+                let y = match &args[0] {
+                    Value::Float(f) => *f,
+                    Value::Integer(n) => *n as f64,
+                    _ => return Err("atan2() needs numbers".to_string()),
+                };
+                let x = match &args[1] {
+                    Value::Float(f) => *f,
+                    Value::Integer(n) => *n as f64,
+                    _ => return Err("atan2() needs numbers".to_string()),
+                };
+                Ok(Value::Float(y.atan2(x)))
+            }))),
+        );
+
+        // hypot - hypotenuse (sqrt(x² + y²))
+        globals.borrow_mut().define(
+            "hypot".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("hypot", 2, |args| {
+                let x = match &args[0] {
+                    Value::Float(f) => *f,
+                    Value::Integer(n) => *n as f64,
+                    _ => return Err("hypot() needs numbers".to_string()),
+                };
+                let y = match &args[1] {
+                    Value::Float(f) => *f,
+                    Value::Integer(n) => *n as f64,
+                    _ => return Err("hypot() needs numbers".to_string()),
+                };
+                Ok(Value::Float(x.hypot(y)))
+            }))),
+        );
+
+        // degrees - convert radians to degrees
+        globals.borrow_mut().define(
+            "degrees".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("degrees", 1, |args| {
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.to_degrees())),
+                    Value::Integer(n) => Ok(Value::Float((*n as f64).to_degrees())),
+                    _ => Err("degrees() needs a number".to_string()),
+                }
+            }))),
+        );
+
+        // radians - convert degrees to radians
+        globals.borrow_mut().define(
+            "radians".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("radians", 1, |args| {
+                match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.to_radians())),
+                    Value::Integer(n) => Ok(Value::Float((*n as f64).to_radians())),
+                    _ => Err("radians() needs a number".to_string()),
+                }
+            }))),
+        );
+
         // === Time Functions ===
 
         // snooze - sleep for milliseconds (Scots: have a wee rest)
@@ -2990,6 +3122,34 @@ impl Interpreter {
                 Ok(Value::Set(Rc::new(RefCell::new(HashSet::new()))))
             }))),
         );
+
+        // json_parse - parse a JSON string intae a value
+        globals.borrow_mut().define(
+            "json_parse".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("json_parse", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    parse_json_value(s)
+                } else {
+                    Err("json_parse() expects a string, ya numpty!".to_string())
+                }
+            }))),
+        );
+
+        // json_stringify - convert a value tae JSON string
+        globals.borrow_mut().define(
+            "json_stringify".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("json_stringify", 1, |args| {
+                Ok(Value::String(value_to_json(&args[0])))
+            }))),
+        );
+
+        // json_pretty - convert a value tae pretty-printed JSON string
+        globals.borrow_mut().define(
+            "json_pretty".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("json_pretty", 1, |args| {
+                Ok(Value::String(value_to_json_pretty(&args[0], 0)))
+            }))),
+        );
     }
 
     /// Run a program
@@ -4376,16 +4536,17 @@ impl Interpreter {
             BinaryOp::Equal => Ok(Value::Bool(left == right)),
             BinaryOp::NotEqual => Ok(Value::Bool(left != right)),
 
-            BinaryOp::Less => self.compare(left, right, |a, b| a < b, line),
-            BinaryOp::LessEqual => self.compare(left, right, |a, b| a <= b, line),
-            BinaryOp::Greater => self.compare(left, right, |a, b| a > b, line),
-            BinaryOp::GreaterEqual => self.compare(left, right, |a, b| a >= b, line),
+            BinaryOp::Less => self.compare(left, right, |a, b| a < b, |a, b| a < b, line),
+            BinaryOp::LessEqual => self.compare(left, right, |a, b| a <= b, |a, b| a <= b, line),
+            BinaryOp::Greater => self.compare(left, right, |a, b| a > b, |a, b| a > b, line),
+            BinaryOp::GreaterEqual => self.compare(left, right, |a, b| a >= b, |a, b| a >= b, line),
         }
     }
 
-    fn compare<F>(&self, left: &Value, right: &Value, cmp: F, line: usize) -> HaversResult<Value>
+    fn compare<F, S>(&self, left: &Value, right: &Value, cmp: F, str_cmp: S, line: usize) -> HaversResult<Value>
     where
         F: Fn(f64, f64) -> bool,
+        S: Fn(&str, &str) -> bool,
     {
         match (left, right) {
             (Value::Integer(a), Value::Integer(b)) => {
@@ -4394,10 +4555,7 @@ impl Interpreter {
             (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(cmp(*a, *b))),
             (Value::Integer(a), Value::Float(b)) => Ok(Value::Bool(cmp(*a as f64, *b))),
             (Value::Float(a), Value::Integer(b)) => Ok(Value::Bool(cmp(*a, *b as f64))),
-            (Value::String(a), Value::String(b)) => Ok(Value::Bool(cmp(
-                a.len() as f64,
-                b.len() as f64,
-            ))),
+            (Value::String(a), Value::String(b)) => Ok(Value::Bool(str_cmp(a, b))),
             _ => Err(HaversError::TypeError {
                 message: format!(
                     "Cannae compare {} wi' {}",
@@ -4909,6 +5067,347 @@ impl Default for Interpreter {
     fn default() -> Self {
         Self::new()
     }
+}
+
+// ========================================
+// JSON Helper Functions
+// ========================================
+
+/// Parse a JSON string into a mdhavers Value
+fn parse_json_value(s: &str) -> Result<Value, String> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Err("Empty JSON string".to_string());
+    }
+
+    let chars: Vec<char> = s.chars().collect();
+    let mut pos = 0;
+    parse_json_inner(&chars, &mut pos)
+}
+
+fn skip_json_whitespace(chars: &[char], pos: &mut usize) {
+    while *pos < chars.len() && chars[*pos].is_whitespace() {
+        *pos += 1;
+    }
+}
+
+fn parse_json_inner(chars: &[char], pos: &mut usize) -> Result<Value, String> {
+    skip_json_whitespace(chars, pos);
+    if *pos >= chars.len() {
+        return Err("Unexpected end of JSON".to_string());
+    }
+
+    match chars[*pos] {
+        '{' => parse_json_object(chars, pos),
+        '[' => parse_json_array(chars, pos),
+        '"' => parse_json_string(chars, pos),
+        't' => parse_json_true(chars, pos),
+        'f' => parse_json_false(chars, pos),
+        'n' => parse_json_null(chars, pos),
+        c if c == '-' || c.is_ascii_digit() => parse_json_number(chars, pos),
+        c => Err(format!("Unexpected character '{}' in JSON", c)),
+    }
+}
+
+fn parse_json_object(chars: &[char], pos: &mut usize) -> Result<Value, String> {
+    *pos += 1; // skip '{'
+    skip_json_whitespace(chars, pos);
+
+    let map: HashMap<String, Value> = HashMap::new();
+    let dict = Rc::new(RefCell::new(map));
+
+    if *pos < chars.len() && chars[*pos] == '}' {
+        *pos += 1;
+        return Ok(Value::Dict(dict));
+    }
+
+    loop {
+        skip_json_whitespace(chars, pos);
+
+        // Parse key
+        if *pos >= chars.len() || chars[*pos] != '"' {
+            return Err("Expected string key in JSON object".to_string());
+        }
+        let key = parse_json_string(chars, pos)?;
+        let key = if let Value::String(s) = key { s } else { return Err("Invalid key".to_string()); };
+
+        skip_json_whitespace(chars, pos);
+
+        // Expect ':'
+        if *pos >= chars.len() || chars[*pos] != ':' {
+            return Err("Expected ':' in JSON object".to_string());
+        }
+        *pos += 1;
+
+        // Parse value
+        let value = parse_json_inner(chars, pos)?;
+        dict.borrow_mut().insert(key, value);
+
+        skip_json_whitespace(chars, pos);
+
+        if *pos >= chars.len() {
+            return Err("Unterminated JSON object".to_string());
+        }
+
+        match chars[*pos] {
+            '}' => {
+                *pos += 1;
+                break;
+            }
+            ',' => {
+                *pos += 1;
+            }
+            c => return Err(format!("Expected '}}' or ',' in JSON object, got '{}'", c)),
+        }
+    }
+
+    Ok(Value::Dict(dict))
+}
+
+fn parse_json_array(chars: &[char], pos: &mut usize) -> Result<Value, String> {
+    *pos += 1; // skip '['
+    skip_json_whitespace(chars, pos);
+
+    let items: Vec<Value> = Vec::new();
+    let list = Rc::new(RefCell::new(items));
+
+    if *pos < chars.len() && chars[*pos] == ']' {
+        *pos += 1;
+        return Ok(Value::List(list));
+    }
+
+    loop {
+        let value = parse_json_inner(chars, pos)?;
+        list.borrow_mut().push(value);
+
+        skip_json_whitespace(chars, pos);
+
+        if *pos >= chars.len() {
+            return Err("Unterminated JSON array".to_string());
+        }
+
+        match chars[*pos] {
+            ']' => {
+                *pos += 1;
+                break;
+            }
+            ',' => {
+                *pos += 1;
+            }
+            c => return Err(format!("Expected ']' or ',' in JSON array, got '{}'", c)),
+        }
+    }
+
+    Ok(Value::List(list))
+}
+
+fn parse_json_string(chars: &[char], pos: &mut usize) -> Result<Value, String> {
+    *pos += 1; // skip opening '"'
+    let mut result = String::new();
+
+    while *pos < chars.len() {
+        let c = chars[*pos];
+        if c == '"' {
+            *pos += 1;
+            return Ok(Value::String(result));
+        }
+        if c == '\\' {
+            *pos += 1;
+            if *pos >= chars.len() {
+                return Err("Unterminated string escape".to_string());
+            }
+            let escaped = chars[*pos];
+            match escaped {
+                'n' => result.push('\n'),
+                't' => result.push('\t'),
+                'r' => result.push('\r'),
+                '"' => result.push('"'),
+                '\\' => result.push('\\'),
+                '/' => result.push('/'),
+                'u' => {
+                    // Unicode escape \uXXXX
+                    if *pos + 4 >= chars.len() {
+                        return Err("Invalid unicode escape".to_string());
+                    }
+                    let hex: String = chars[*pos+1..*pos+5].iter().collect();
+                    if let Ok(code) = u32::from_str_radix(&hex, 16) {
+                        if let Some(ch) = char::from_u32(code) {
+                            result.push(ch);
+                        }
+                    }
+                    *pos += 4;
+                }
+                _ => result.push(escaped),
+            }
+        } else {
+            result.push(c);
+        }
+        *pos += 1;
+    }
+
+    Err("Unterminated JSON string".to_string())
+}
+
+fn parse_json_number(chars: &[char], pos: &mut usize) -> Result<Value, String> {
+    let start = *pos;
+    let mut has_dot = false;
+    let mut has_exp = false;
+
+    if *pos < chars.len() && chars[*pos] == '-' {
+        *pos += 1;
+    }
+
+    while *pos < chars.len() {
+        let c = chars[*pos];
+        if c.is_ascii_digit() {
+            *pos += 1;
+        } else if c == '.' && !has_dot && !has_exp {
+            has_dot = true;
+            *pos += 1;
+        } else if (c == 'e' || c == 'E') && !has_exp {
+            has_exp = true;
+            *pos += 1;
+            if *pos < chars.len() && (chars[*pos] == '+' || chars[*pos] == '-') {
+                *pos += 1;
+            }
+        } else {
+            break;
+        }
+    }
+
+    let num_str: String = chars[start..*pos].iter().collect();
+
+    if has_dot || has_exp {
+        num_str.parse::<f64>()
+            .map(Value::Float)
+            .map_err(|_| format!("Invalid number: {}", num_str))
+    } else {
+        num_str.parse::<i64>()
+            .map(Value::Integer)
+            .map_err(|_| format!("Invalid integer: {}", num_str))
+    }
+}
+
+fn parse_json_true(chars: &[char], pos: &mut usize) -> Result<Value, String> {
+    if *pos + 4 <= chars.len() && chars[*pos..*pos+4].iter().collect::<String>() == "true" {
+        *pos += 4;
+        Ok(Value::Bool(true))
+    } else {
+        Err("Invalid JSON value 'true'".to_string())
+    }
+}
+
+fn parse_json_false(chars: &[char], pos: &mut usize) -> Result<Value, String> {
+    if *pos + 5 <= chars.len() && chars[*pos..*pos+5].iter().collect::<String>() == "false" {
+        *pos += 5;
+        Ok(Value::Bool(false))
+    } else {
+        Err("Invalid JSON value 'false'".to_string())
+    }
+}
+
+fn parse_json_null(chars: &[char], pos: &mut usize) -> Result<Value, String> {
+    if *pos + 4 <= chars.len() && chars[*pos..*pos+4].iter().collect::<String>() == "null" {
+        *pos += 4;
+        Ok(Value::Nil)
+    } else {
+        Err("Invalid JSON value 'null'".to_string())
+    }
+}
+
+/// Convert a mdhavers Value to a JSON string
+fn value_to_json(value: &Value) -> String {
+    match value {
+        Value::Nil => "null".to_string(),
+        Value::Bool(true) => "true".to_string(),
+        Value::Bool(false) => "false".to_string(),
+        Value::Integer(n) => n.to_string(),
+        Value::Float(f) => {
+            if f.is_nan() {
+                "null".to_string()
+            } else if f.is_infinite() {
+                "null".to_string()
+            } else {
+                f.to_string()
+            }
+        }
+        Value::String(s) => json_escape_string(s),
+        Value::List(l) => {
+            let items: Vec<String> = l.borrow().iter().map(value_to_json).collect();
+            format!("[{}]", items.join(", "))
+        }
+        Value::Dict(d) => {
+            let pairs: Vec<String> = d.borrow().iter()
+                .map(|(k, v)| format!("{}: {}", json_escape_string(k), value_to_json(v)))
+                .collect();
+            format!("{{{}}}", pairs.join(", "))
+        }
+        _ => format!("\"{}\"", format!("{}", value).replace('\"', "\\\""))
+    }
+}
+
+/// Convert a mdhavers Value to a pretty-printed JSON string
+fn value_to_json_pretty(value: &Value, indent: usize) -> String {
+    let ws = "  ".repeat(indent);
+    let ws_inner = "  ".repeat(indent + 1);
+
+    match value {
+        Value::Nil => "null".to_string(),
+        Value::Bool(true) => "true".to_string(),
+        Value::Bool(false) => "false".to_string(),
+        Value::Integer(n) => n.to_string(),
+        Value::Float(f) => {
+            if f.is_nan() || f.is_infinite() {
+                "null".to_string()
+            } else {
+                f.to_string()
+            }
+        }
+        Value::String(s) => json_escape_string(s),
+        Value::List(l) => {
+            let items = l.borrow();
+            if items.is_empty() {
+                "[]".to_string()
+            } else {
+                let formatted: Vec<String> = items.iter()
+                    .map(|v| format!("{}{}", ws_inner, value_to_json_pretty(v, indent + 1)))
+                    .collect();
+                format!("[\n{}\n{}]", formatted.join(",\n"), ws)
+            }
+        }
+        Value::Dict(d) => {
+            let dict = d.borrow();
+            if dict.is_empty() {
+                "{}".to_string()
+            } else {
+                let formatted: Vec<String> = dict.iter()
+                    .map(|(k, v)| format!("{}{}: {}", ws_inner, json_escape_string(k), value_to_json_pretty(v, indent + 1)))
+                    .collect();
+                format!("{{\n{}\n{}}}", formatted.join(",\n"), ws)
+            }
+        }
+        _ => format!("\"{}\"", format!("{}", value).replace('\"', "\\\""))
+    }
+}
+
+/// Escape a string for JSON output
+fn json_escape_string(s: &str) -> String {
+    let mut result = String::from("\"");
+    for c in s.chars() {
+        match c {
+            '"' => result.push_str("\\\""),
+            '\\' => result.push_str("\\\\"),
+            '\n' => result.push_str("\\n"),
+            '\t' => result.push_str("\\t"),
+            '\r' => result.push_str("\\r"),
+            c if c.is_control() => {
+                result.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => result.push(c),
+        }
+    }
+    result.push('"');
+    result
 }
 
 #[cfg(test)]
