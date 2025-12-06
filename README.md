@@ -597,10 +597,90 @@ Modules are resolved relative to the current file's directory. The `.braw` exten
 | `sin(n)` | Sine (radians) |
 | `cos(n)` | Cosine (radians) |
 | `tan(n)` | Tangent (radians) |
+| `asin(n)` | Arc sine |
+| `acos(n)` | Arc cosine |
+| `atan(n)` | Arc tangent |
+| `atan2(y, x)` | Two-argument arc tangent |
+| `hypot(x, y)` | Hypotenuse (sqrt(x² + y²)) |
 | `log(n)` | Natural logarithm |
 | `log10(n)` | Base 10 logarithm |
+| `exp(n)` | e raised to the power |
+| `degrees(rad)` | Convert radians to degrees |
+| `radians(deg)` | Convert degrees to radians |
+| `sign(n)` | Sign of number (-1, 0, or 1) |
+| `clamp(n, min, max)` | Constrain value between min and max |
+| `lerp(a, b, t)` | Linear interpolation |
+| `gcd(a, b)` | Greatest common divisor |
+| `lcm(a, b)` | Least common multiple |
+| `factorial(n)` | Calculate factorial (max 20) |
+| `is_even(n)` | Check if number is even |
+| `is_odd(n)` | Check if number is odd |
+| `is_prime(n)` | Check if number is prime |
 | `PI` | Pi constant (3.14159...) |
 | `E` | Euler's number (2.71828...) |
+| `TAU` | Tau constant (2π) |
+
+**Bitwise Operations**:
+
+| Function | Description |
+|----------|-------------|
+| `bit_an(a, b)` | Bitwise AND |
+| `bit_or(a, b)` | Bitwise OR |
+| `bit_xor(a, b)` | Bitwise XOR |
+| `bit_nae(n)` | Bitwise NOT |
+| `bit_shove_left(n, shift)` | Left shift |
+| `bit_shove_right(n, shift)` | Right shift |
+| `bit_coont(n)` | Count set bits (popcount) |
+| `tae_binary(n)` | Convert to binary string |
+| `tae_hex(n)` | Convert to hexadecimal string |
+| `tae_octal(n)` | Convert to octal string |
+| `fae_binary(s)` | Parse binary string to integer |
+| `fae_hex(s)` | Parse hex string to integer |
+
+**Dictionary Functions**:
+
+| Function | Description |
+|----------|-------------|
+| `dict_merge(d1, d2)` | Merge two dictionaries |
+| `dict_get(d, key, default)` | Get value with default |
+| `dict_has(d, key)` | Check if key exists |
+| `dict_remove(d, key)` | Remove key from dictionary |
+| `dict_invert(d)` | Swap keys and values |
+| `items(d)` | Get list of [key, value] pairs |
+| `fae_pairs(list)` | Create dict from pairs |
+
+**List Statistics**:
+
+| Function | Description |
+|----------|-------------|
+| `average(list)` | Calculate mean |
+| `median(list)` | Calculate median |
+| `product(list)` | Multiply all numbers |
+| `minaw(list)` | Find minimum in list |
+| `maxaw(list)` | Find maximum in list |
+| `range_o(list)` | Calculate range (max - min) |
+
+**Assertion Functions**:
+
+| Function | Description |
+|----------|-------------|
+| `assert(cond, msg)` | Assert condition is true |
+| `assert_equal(a, b)` | Assert two values are equal |
+| `assert_nae_equal(a, b)` | Assert two values are not equal |
+| `mak_siccar(cond, msg)` | Assert (like Robert the Bruce!) |
+
+**More String Functions**:
+
+| Function | Description |
+|----------|-------------|
+| `center(s, width, fill)` | Center string in field |
+| `is_upper(s)` | Check if all uppercase |
+| `is_lower(s)` | Check if all lowercase |
+| `swapcase(s)` | Swap case of letters |
+| `strip_left(s, chars)` | Strip leading characters |
+| `strip_right(s, chars)` | Strip trailing characters |
+| `replace_first(s, from, to)` | Replace first occurrence |
+| `substr_between(s, start, end)` | Get substring between markers |
 
 ## Keyword Reference
 

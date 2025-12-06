@@ -3150,6 +3150,823 @@ impl Interpreter {
                 Ok(Value::String(value_to_json_pretty(&args[0], 0)))
             }))),
         );
+
+        // ============================================================
+        // BITWISE OPERATIONS - Fer aw yer binary fiddlin' needs!
+        // ============================================================
+
+        // bit_an - bitwise AND (Scots: "an" = and)
+        globals.borrow_mut().define(
+            "bit_an".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("bit_an", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(*a & *b)),
+                    _ => Err("bit_an() needs two integers".to_string()),
+                }
+            }))),
+        );
+
+        // bit_or - bitwise OR
+        globals.borrow_mut().define(
+            "bit_or".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("bit_or", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(*a | *b)),
+                    _ => Err("bit_or() needs two integers".to_string()),
+                }
+            }))),
+        );
+
+        // bit_xor - bitwise XOR
+        globals.borrow_mut().define(
+            "bit_xor".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("bit_xor", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(*a ^ *b)),
+                    _ => Err("bit_xor() needs two integers".to_string()),
+                }
+            }))),
+        );
+
+        // bit_nae - bitwise NOT (Scots: nae = not)
+        globals.borrow_mut().define(
+            "bit_nae".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("bit_nae", 1, |args| {
+                match &args[0] {
+                    Value::Integer(n) => Ok(Value::Integer(!*n)),
+                    _ => Err("bit_nae() needs an integer".to_string()),
+                }
+            }))),
+        );
+
+        // bit_shove_left - left shift (shove left!)
+        globals.borrow_mut().define(
+            "bit_shove_left".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("bit_shove_left", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::Integer(a), Value::Integer(b)) => {
+                        if *b < 0 || *b > 63 {
+                            return Err("Shift amount must be 0-63, ya numpty!".to_string());
+                        }
+                        Ok(Value::Integer(*a << *b))
+                    }
+                    _ => Err("bit_shove_left() needs two integers".to_string()),
+                }
+            }))),
+        );
+
+        // bit_shove_right - right shift (shove right!)
+        globals.borrow_mut().define(
+            "bit_shove_right".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("bit_shove_right", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::Integer(a), Value::Integer(b)) => {
+                        if *b < 0 || *b > 63 {
+                            return Err("Shift amount must be 0-63, ya numpty!".to_string());
+                        }
+                        Ok(Value::Integer(*a >> *b))
+                    }
+                    _ => Err("bit_shove_right() needs two integers".to_string()),
+                }
+            }))),
+        );
+
+        // bit_coont - count number of set bits (popcount)
+        globals.borrow_mut().define(
+            "bit_coont".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("bit_coont", 1, |args| {
+                match &args[0] {
+                    Value::Integer(n) => Ok(Value::Integer(n.count_ones() as i64)),
+                    _ => Err("bit_coont() needs an integer".to_string()),
+                }
+            }))),
+        );
+
+        // tae_binary - convert to binary string
+        globals.borrow_mut().define(
+            "tae_binary".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("tae_binary", 1, |args| {
+                match &args[0] {
+                    Value::Integer(n) => Ok(Value::String(format!("{:b}", n))),
+                    _ => Err("tae_binary() needs an integer".to_string()),
+                }
+            }))),
+        );
+
+        // tae_hex - convert to hexadecimal string
+        globals.borrow_mut().define(
+            "tae_hex".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("tae_hex", 1, |args| {
+                match &args[0] {
+                    Value::Integer(n) => Ok(Value::String(format!("{:x}", n))),
+                    _ => Err("tae_hex() needs an integer".to_string()),
+                }
+            }))),
+        );
+
+        // tae_octal - convert to octal string
+        globals.borrow_mut().define(
+            "tae_octal".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("tae_octal", 1, |args| {
+                match &args[0] {
+                    Value::Integer(n) => Ok(Value::String(format!("{:o}", n))),
+                    _ => Err("tae_octal() needs an integer".to_string()),
+                }
+            }))),
+        );
+
+        // fae_binary - parse binary string to integer
+        globals.borrow_mut().define(
+            "fae_binary".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("fae_binary", 1, |args| {
+                match &args[0] {
+                    Value::String(s) => {
+                        i64::from_str_radix(s.trim_start_matches("0b"), 2)
+                            .map(Value::Integer)
+                            .map_err(|_| format!("Cannae parse '{}' as binary", s))
+                    }
+                    _ => Err("fae_binary() needs a string".to_string()),
+                }
+            }))),
+        );
+
+        // fae_hex - parse hexadecimal string to integer
+        globals.borrow_mut().define(
+            "fae_hex".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("fae_hex", 1, |args| {
+                match &args[0] {
+                    Value::String(s) => {
+                        i64::from_str_radix(s.trim_start_matches("0x"), 16)
+                            .map(Value::Integer)
+                            .map_err(|_| format!("Cannae parse '{}' as hex", s))
+                    }
+                    _ => Err("fae_hex() needs a string".to_string()),
+                }
+            }))),
+        );
+
+        // ============================================================
+        // MORE DICTIONARY FUNCTIONS - Fer managin' yer dicts!
+        // ============================================================
+
+        // dict_merge - merge two dictionaries (second overrides first)
+        globals.borrow_mut().define(
+            "dict_merge".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("dict_merge", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::Dict(a), Value::Dict(b)) => {
+                        let mut result = a.borrow().clone();
+                        for (k, v) in b.borrow().iter() {
+                            result.insert(k.clone(), v.clone());
+                        }
+                        Ok(Value::Dict(Rc::new(RefCell::new(result))))
+                    }
+                    _ => Err("dict_merge() needs two dictionaries".to_string()),
+                }
+            }))),
+        );
+
+        // dict_get - get value with default (avoids crashes!)
+        globals.borrow_mut().define(
+            "dict_get".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("dict_get", 3, |args| {
+                match &args[0] {
+                    Value::Dict(d) => {
+                        let key = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            _ => return Err("dict_get() key must be a string".to_string()),
+                        };
+                        Ok(d.borrow().get(&key).cloned().unwrap_or_else(|| args[2].clone()))
+                    }
+                    _ => Err("dict_get() needs a dictionary".to_string()),
+                }
+            }))),
+        );
+
+        // dict_has - check if dictionary has a key
+        globals.borrow_mut().define(
+            "dict_has".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("dict_has", 2, |args| {
+                match &args[0] {
+                    Value::Dict(d) => {
+                        let key = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            _ => return Err("dict_has() key must be a string".to_string()),
+                        };
+                        Ok(Value::Bool(d.borrow().contains_key(&key)))
+                    }
+                    _ => Err("dict_has() needs a dictionary".to_string()),
+                }
+            }))),
+        );
+
+        // dict_remove - remove a key from dictionary (returns new dict)
+        globals.borrow_mut().define(
+            "dict_remove".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("dict_remove", 2, |args| {
+                match &args[0] {
+                    Value::Dict(d) => {
+                        let key = match &args[1] {
+                            Value::String(s) => s.clone(),
+                            _ => return Err("dict_remove() key must be a string".to_string()),
+                        };
+                        let mut new_dict = d.borrow().clone();
+                        new_dict.remove(&key);
+                        Ok(Value::Dict(Rc::new(RefCell::new(new_dict))))
+                    }
+                    _ => Err("dict_remove() needs a dictionary".to_string()),
+                }
+            }))),
+        );
+
+        // dict_invert - swap keys and values
+        globals.borrow_mut().define(
+            "dict_invert".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("dict_invert", 1, |args| {
+                match &args[0] {
+                    Value::Dict(d) => {
+                        let mut inverted = HashMap::new();
+                        for (k, v) in d.borrow().iter() {
+                            let new_key = format!("{}", v);
+                            inverted.insert(new_key, Value::String(k.clone()));
+                        }
+                        Ok(Value::Dict(Rc::new(RefCell::new(inverted))))
+                    }
+                    _ => Err("dict_invert() needs a dictionary".to_string()),
+                }
+            }))),
+        );
+
+        // items - get dictionary as list of [key, value] pairs
+        globals.borrow_mut().define(
+            "items".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("items", 1, |args| {
+                match &args[0] {
+                    Value::Dict(d) => {
+                        let pairs: Vec<Value> = d.borrow().iter()
+                            .map(|(k, v)| Value::List(Rc::new(RefCell::new(vec![
+                                Value::String(k.clone()),
+                                v.clone()
+                            ]))))
+                            .collect();
+                        Ok(Value::List(Rc::new(RefCell::new(pairs))))
+                    }
+                    _ => Err("items() needs a dictionary".to_string()),
+                }
+            }))),
+        );
+
+        // fae_pairs - create dictionary from list of [key, value] pairs
+        globals.borrow_mut().define(
+            "fae_pairs".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("fae_pairs", 1, |args| {
+                match &args[0] {
+                    Value::List(list) => {
+                        let mut dict = HashMap::new();
+                        for item in list.borrow().iter() {
+                            if let Value::List(pair) = item {
+                                let pair = pair.borrow();
+                                if pair.len() >= 2 {
+                                    let key = format!("{}", pair[0]);
+                                    dict.insert(key, pair[1].clone());
+                                }
+                            }
+                        }
+                        Ok(Value::Dict(Rc::new(RefCell::new(dict))))
+                    }
+                    _ => Err("fae_pairs() needs a list o' pairs".to_string()),
+                }
+            }))),
+        );
+
+        // ============================================================
+        // STRING UTILITIES - More ways tae wrangle yer strings!
+        // ============================================================
+
+        // center - center a string in a field of given width
+        globals.borrow_mut().define(
+            "center".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("center", 3, |args| {
+                let s = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("center() needs a string".to_string()),
+                };
+                let width = match &args[1] {
+                    Value::Integer(n) => *n as usize,
+                    _ => return Err("center() needs a width".to_string()),
+                };
+                let fill = match &args[2] {
+                    Value::String(c) => c.chars().next().unwrap_or(' '),
+                    _ => return Err("center() needs a fill character".to_string()),
+                };
+                if s.len() >= width {
+                    return Ok(Value::String(s));
+                }
+                let padding = width - s.len();
+                let left_pad = padding / 2;
+                let right_pad = padding - left_pad;
+                Ok(Value::String(format!(
+                    "{}{}{}",
+                    fill.to_string().repeat(left_pad),
+                    s,
+                    fill.to_string().repeat(right_pad)
+                )))
+            }))),
+        );
+
+        // is_upper - check if string is all uppercase
+        globals.borrow_mut().define(
+            "is_upper".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("is_upper", 1, |args| {
+                match &args[0] {
+                    Value::String(s) => {
+                        let has_letters = s.chars().any(|c| c.is_alphabetic());
+                        Ok(Value::Bool(has_letters && s.chars().all(|c| !c.is_alphabetic() || c.is_uppercase())))
+                    }
+                    _ => Err("is_upper() needs a string".to_string()),
+                }
+            }))),
+        );
+
+        // is_lower - check if string is all lowercase
+        globals.borrow_mut().define(
+            "is_lower".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("is_lower", 1, |args| {
+                match &args[0] {
+                    Value::String(s) => {
+                        let has_letters = s.chars().any(|c| c.is_alphabetic());
+                        Ok(Value::Bool(has_letters && s.chars().all(|c| !c.is_alphabetic() || c.is_lowercase())))
+                    }
+                    _ => Err("is_lower() needs a string".to_string()),
+                }
+            }))),
+        );
+
+        // swapcase - swap case of all letters
+        globals.borrow_mut().define(
+            "swapcase".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("swapcase", 1, |args| {
+                match &args[0] {
+                    Value::String(s) => {
+                        let swapped: String = s.chars().map(|c| {
+                            if c.is_uppercase() {
+                                c.to_lowercase().next().unwrap_or(c)
+                            } else if c.is_lowercase() {
+                                c.to_uppercase().next().unwrap_or(c)
+                            } else {
+                                c
+                            }
+                        }).collect();
+                        Ok(Value::String(swapped))
+                    }
+                    _ => Err("swapcase() needs a string".to_string()),
+                }
+            }))),
+        );
+
+        // strip_left - remove leading characters
+        globals.borrow_mut().define(
+            "strip_left".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("strip_left", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::String(s), Value::String(chars)) => {
+                        let char_set: Vec<char> = chars.chars().collect();
+                        Ok(Value::String(s.trim_start_matches(|c| char_set.contains(&c)).to_string()))
+                    }
+                    _ => Err("strip_left() needs two strings".to_string()),
+                }
+            }))),
+        );
+
+        // strip_right - remove trailing characters
+        globals.borrow_mut().define(
+            "strip_right".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("strip_right", 2, |args| {
+                match (&args[0], &args[1]) {
+                    (Value::String(s), Value::String(chars)) => {
+                        let char_set: Vec<char> = chars.chars().collect();
+                        Ok(Value::String(s.trim_end_matches(|c| char_set.contains(&c)).to_string()))
+                    }
+                    _ => Err("strip_right() needs two strings".to_string()),
+                }
+            }))),
+        );
+
+        // replace_first - replace only first occurrence
+        globals.borrow_mut().define(
+            "replace_first".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("replace_first", 3, |args| {
+                match (&args[0], &args[1], &args[2]) {
+                    (Value::String(s), Value::String(from), Value::String(to)) => {
+                        Ok(Value::String(s.replacen(from.as_str(), to.as_str(), 1)))
+                    }
+                    _ => Err("replace_first() needs three strings".to_string()),
+                }
+            }))),
+        );
+
+        // substr_between - get substring between two markers
+        globals.borrow_mut().define(
+            "substr_between".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("substr_between", 3, |args| {
+                match (&args[0], &args[1], &args[2]) {
+                    (Value::String(s), Value::String(start), Value::String(end)) => {
+                        if let Some(start_idx) = s.find(start.as_str()) {
+                            let after_start = start_idx + start.len();
+                            if let Some(end_idx) = s[after_start..].find(end.as_str()) {
+                                return Ok(Value::String(s[after_start..after_start + end_idx].to_string()));
+                            }
+                        }
+                        Ok(Value::Nil)
+                    }
+                    _ => Err("substr_between() needs three strings".to_string()),
+                }
+            }))),
+        );
+
+        // ============================================================
+        // MORE MATHEMATICAL FUNCTIONS
+        // ============================================================
+
+        // sign - get sign of number (-1, 0, or 1)
+        globals.borrow_mut().define(
+            "sign".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("sign", 1, |args| {
+                match &args[0] {
+                    Value::Integer(n) => Ok(Value::Integer(if *n > 0 { 1 } else if *n < 0 { -1 } else { 0 })),
+                    Value::Float(f) => Ok(Value::Integer(if *f > 0.0 { 1 } else if *f < 0.0 { -1 } else { 0 })),
+                    _ => Err("sign() needs a number".to_string()),
+                }
+            }))),
+        );
+
+        // clamp - constrain a value between min and max
+        globals.borrow_mut().define(
+            "clamp".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("clamp", 3, |args| {
+                match (&args[0], &args[1], &args[2]) {
+                    (Value::Integer(n), Value::Integer(min), Value::Integer(max)) => {
+                        Ok(Value::Integer((*n).max(*min).min(*max)))
+                    }
+                    (Value::Float(n), Value::Float(min), Value::Float(max)) => {
+                        Ok(Value::Float(n.max(*min).min(*max)))
+                    }
+                    _ => Err("clamp() needs three numbers o' the same type".to_string()),
+                }
+            }))),
+        );
+
+        // lerp - linear interpolation between two values
+        globals.borrow_mut().define(
+            "lerp".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("lerp", 3, |args| {
+                let a = match &args[0] {
+                    Value::Float(f) => *f,
+                    Value::Integer(n) => *n as f64,
+                    _ => return Err("lerp() needs numbers".to_string()),
+                };
+                let b = match &args[1] {
+                    Value::Float(f) => *f,
+                    Value::Integer(n) => *n as f64,
+                    _ => return Err("lerp() needs numbers".to_string()),
+                };
+                let t = match &args[2] {
+                    Value::Float(f) => *f,
+                    Value::Integer(n) => *n as f64,
+                    _ => return Err("lerp() needs numbers".to_string()),
+                };
+                Ok(Value::Float(a + (b - a) * t))
+            }))),
+        );
+
+        // gcd - greatest common divisor
+        globals.borrow_mut().define(
+            "gcd".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("gcd", 2, |args| {
+                fn gcd_calc(a: i64, b: i64) -> i64 {
+                    if b == 0 { a.abs() } else { gcd_calc(b, a % b) }
+                }
+                match (&args[0], &args[1]) {
+                    (Value::Integer(a), Value::Integer(b)) => {
+                        Ok(Value::Integer(gcd_calc(*a, *b)))
+                    }
+                    _ => Err("gcd() needs two integers".to_string()),
+                }
+            }))),
+        );
+
+        // lcm - least common multiple
+        globals.borrow_mut().define(
+            "lcm".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("lcm", 2, |args| {
+                fn gcd_calc(a: i64, b: i64) -> i64 {
+                    if b == 0 { a.abs() } else { gcd_calc(b, a % b) }
+                }
+                match (&args[0], &args[1]) {
+                    (Value::Integer(a), Value::Integer(b)) => {
+                        if *a == 0 || *b == 0 {
+                            Ok(Value::Integer(0))
+                        } else {
+                            Ok(Value::Integer((*a * *b).abs() / gcd_calc(*a, *b)))
+                        }
+                    }
+                    _ => Err("lcm() needs two integers".to_string()),
+                }
+            }))),
+        );
+
+        // factorial - calculate factorial
+        globals.borrow_mut().define(
+            "factorial".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("factorial", 1, |args| {
+                match &args[0] {
+                    Value::Integer(n) => {
+                        if *n < 0 {
+                            return Err("Cannae calculate factorial o' negative number!".to_string());
+                        }
+                        if *n > 20 {
+                            return Err("Factorial too big! Max is 20".to_string());
+                        }
+                        let mut result: i64 = 1;
+                        for i in 2..=*n {
+                            result *= i;
+                        }
+                        Ok(Value::Integer(result))
+                    }
+                    _ => Err("factorial() needs an integer".to_string()),
+                }
+            }))),
+        );
+
+        // is_even - check if number is even
+        globals.borrow_mut().define(
+            "is_even".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("is_even", 1, |args| {
+                match &args[0] {
+                    Value::Integer(n) => Ok(Value::Bool(*n % 2 == 0)),
+                    _ => Err("is_even() needs an integer".to_string()),
+                }
+            }))),
+        );
+
+        // is_odd - check if number is odd
+        globals.borrow_mut().define(
+            "is_odd".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("is_odd", 1, |args| {
+                match &args[0] {
+                    Value::Integer(n) => Ok(Value::Bool(*n % 2 != 0)),
+                    _ => Err("is_odd() needs an integer".to_string()),
+                }
+            }))),
+        );
+
+        // is_prime - check if number is prime
+        globals.borrow_mut().define(
+            "is_prime".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("is_prime", 1, |args| {
+                match &args[0] {
+                    Value::Integer(n) => {
+                        if *n < 2 {
+                            return Ok(Value::Bool(false));
+                        }
+                        if *n == 2 {
+                            return Ok(Value::Bool(true));
+                        }
+                        if *n % 2 == 0 {
+                            return Ok(Value::Bool(false));
+                        }
+                        let sqrt_n = (*n as f64).sqrt() as i64;
+                        for i in (3..=sqrt_n).step_by(2) {
+                            if *n % i == 0 {
+                                return Ok(Value::Bool(false));
+                            }
+                        }
+                        Ok(Value::Bool(true))
+                    }
+                    _ => Err("is_prime() needs an integer".to_string()),
+                }
+            }))),
+        );
+
+        // ============================================================
+        // ASSERTION FUNCTIONS - Test yer code, ya numpty!
+        // ============================================================
+
+        // assert - throw error if condition is false
+        globals.borrow_mut().define(
+            "assert".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("assert", 2, |args| {
+                let condition = args[0].is_truthy();
+                if !condition {
+                    let msg = match &args[1] {
+                        Value::String(s) => s.clone(),
+                        _ => format!("{}", args[1]),
+                    };
+                    Err(format!("Assertion failed: {}", msg))
+                } else {
+                    Ok(Value::Bool(true))
+                }
+            }))),
+        );
+
+        // assert_equal - throw error if values are not equal
+        globals.borrow_mut().define(
+            "assert_equal".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("assert_equal", 2, |args| {
+                if args[0] == args[1] {
+                    Ok(Value::Bool(true))
+                } else {
+                    Err(format!("Assertion failed: expected {} but got {}", args[0], args[1]))
+                }
+            }))),
+        );
+
+        // assert_nae_equal - throw error if values are equal
+        globals.borrow_mut().define(
+            "assert_nae_equal".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("assert_nae_equal", 2, |args| {
+                if args[0] != args[1] {
+                    Ok(Value::Bool(true))
+                } else {
+                    Err(format!("Assertion failed: {} should not equal {}", args[0], args[1]))
+                }
+            }))),
+        );
+
+        // ============================================================
+        // LIST STATISTICS - Fer number-crunchin'!
+        // ============================================================
+
+        // average - calculate average of a list of numbers (Scots: mean)
+        globals.borrow_mut().define(
+            "average".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("average", 1, |args| {
+                if let Value::List(list) = &args[0] {
+                    let items = list.borrow();
+                    if items.is_empty() {
+                        return Err("Cannae calculate average o' empty list!".to_string());
+                    }
+                    let mut sum: f64 = 0.0;
+                    for item in items.iter() {
+                        match item {
+                            Value::Integer(n) => sum += *n as f64,
+                            Value::Float(f) => sum += *f,
+                            _ => return Err("average() needs a list o' numbers".to_string()),
+                        }
+                    }
+                    Ok(Value::Float(sum / items.len() as f64))
+                } else {
+                    Err("average() needs a list".to_string())
+                }
+            }))),
+        );
+
+        // median - calculate median of a list of numbers
+        globals.borrow_mut().define(
+            "median".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("median", 1, |args| {
+                if let Value::List(list) = &args[0] {
+                    let items = list.borrow();
+                    if items.is_empty() {
+                        return Err("Cannae calculate median o' empty list!".to_string());
+                    }
+                    let mut nums: Vec<f64> = Vec::new();
+                    for item in items.iter() {
+                        match item {
+                            Value::Integer(n) => nums.push(*n as f64),
+                            Value::Float(f) => nums.push(*f),
+                            _ => return Err("median() needs a list o' numbers".to_string()),
+                        }
+                    }
+                    nums.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                    let mid = nums.len() / 2;
+                    if nums.len() % 2 == 0 {
+                        Ok(Value::Float((nums[mid - 1] + nums[mid]) / 2.0))
+                    } else {
+                        Ok(Value::Float(nums[mid]))
+                    }
+                } else {
+                    Err("median() needs a list".to_string())
+                }
+            }))),
+        );
+
+        // product - multiply all numbers in a list
+        globals.borrow_mut().define(
+            "product".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("product", 1, |args| {
+                if let Value::List(list) = &args[0] {
+                    let items = list.borrow();
+                    if items.is_empty() {
+                        return Ok(Value::Integer(1));
+                    }
+                    let mut prod: f64 = 1.0;
+                    let mut is_float = false;
+                    for item in items.iter() {
+                        match item {
+                            Value::Integer(n) => prod *= *n as f64,
+                            Value::Float(f) => { prod *= *f; is_float = true; }
+                            _ => return Err("product() needs a list o' numbers".to_string()),
+                        }
+                    }
+                    if is_float {
+                        Ok(Value::Float(prod))
+                    } else {
+                        Ok(Value::Integer(prod as i64))
+                    }
+                } else {
+                    Err("product() needs a list".to_string())
+                }
+            }))),
+        );
+
+        // minaw - find minimum in a list (min all)
+        globals.borrow_mut().define(
+            "minaw".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("minaw", 1, |args| {
+                if let Value::List(list) = &args[0] {
+                    let items = list.borrow();
+                    if items.is_empty() {
+                        return Err("Cannae find minimum o' empty list!".to_string());
+                    }
+                    let mut min_val = items[0].clone();
+                    for item in items.iter().skip(1) {
+                        match (&min_val, item) {
+                            (Value::Integer(a), Value::Integer(b)) => {
+                                if *b < *a { min_val = item.clone(); }
+                            }
+                            (Value::Float(a), Value::Float(b)) => {
+                                if *b < *a { min_val = item.clone(); }
+                            }
+                            _ => return Err("minaw() needs a list o' comparable numbers".to_string()),
+                        }
+                    }
+                    Ok(min_val)
+                } else {
+                    Err("minaw() needs a list".to_string())
+                }
+            }))),
+        );
+
+        // maxaw - find maximum in a list (max all)
+        globals.borrow_mut().define(
+            "maxaw".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("maxaw", 1, |args| {
+                if let Value::List(list) = &args[0] {
+                    let items = list.borrow();
+                    if items.is_empty() {
+                        return Err("Cannae find maximum o' empty list!".to_string());
+                    }
+                    let mut max_val = items[0].clone();
+                    for item in items.iter().skip(1) {
+                        match (&max_val, item) {
+                            (Value::Integer(a), Value::Integer(b)) => {
+                                if *b > *a { max_val = item.clone(); }
+                            }
+                            (Value::Float(a), Value::Float(b)) => {
+                                if *b > *a { max_val = item.clone(); }
+                            }
+                            _ => return Err("maxaw() needs a list o' comparable numbers".to_string()),
+                        }
+                    }
+                    Ok(max_val)
+                } else {
+                    Err("maxaw() needs a list".to_string())
+                }
+            }))),
+        );
+
+        // range_o - get the range (max - min) of a list
+        globals.borrow_mut().define(
+            "range_o".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("range_o", 1, |args| {
+                if let Value::List(list) = &args[0] {
+                    let items = list.borrow();
+                    if items.is_empty() {
+                        return Err("Cannae get range o' empty list!".to_string());
+                    }
+                    let mut min_val: f64 = f64::MAX;
+                    let mut max_val: f64 = f64::MIN;
+                    for item in items.iter() {
+                        match item {
+                            Value::Integer(n) => {
+                                let v = *n as f64;
+                                if v < min_val { min_val = v; }
+                                if v > max_val { max_val = v; }
+                            }
+                            Value::Float(f) => {
+                                if *f < min_val { min_val = *f; }
+                                if *f > max_val { max_val = *f; }
+                            }
+                            _ => return Err("range_o() needs a list o' numbers".to_string()),
+                        }
+                    }
+                    Ok(Value::Float(max_val - min_val))
+                } else {
+                    Err("range_o() needs a list".to_string())
+                }
+            }))),
+        );
     }
 
     /// Run a program
