@@ -7545,15 +7545,24 @@ f"The answer is {x * 2}"
 
     #[test]
     fn test_contains() {
-        assert_eq!(run(r#"contains("hello", "ell")"#).unwrap(), Value::Bool(true));
+        assert_eq!(
+            run(r#"contains("hello", "ell")"#).unwrap(),
+            Value::Bool(true)
+        );
         assert_eq!(run("contains([1, 2, 3], 2)").unwrap(), Value::Bool(true));
         assert_eq!(run("contains([1, 2, 3], 5)").unwrap(), Value::Bool(false));
-        assert_eq!(run(r#"contains({"a": 1}, "a")"#).unwrap(), Value::Bool(true));
+        assert_eq!(
+            run(r#"contains({"a": 1}, "a")"#).unwrap(),
+            Value::Bool(true)
+        );
     }
 
     #[test]
     fn test_reverse() {
-        assert_eq!(run(r#"reverse("hello")"#).unwrap(), Value::String("olleh".to_string()));
+        assert_eq!(
+            run(r#"reverse("hello")"#).unwrap(),
+            Value::String("olleh".to_string())
+        );
         let result = run("reverse([1, 2, 3])").unwrap();
         if let Value::List(list) = result {
             let list = list.borrow();
@@ -7586,13 +7595,19 @@ f"The answer is {x * 2}"
             panic!("Expected list");
         }
 
-        assert_eq!(run(r#"join(["a", "b", "c"], "-")"#).unwrap(), Value::String("a-b-c".to_string()));
+        assert_eq!(
+            run(r#"join(["a", "b", "c"], "-")"#).unwrap(),
+            Value::String("a-b-c".to_string())
+        );
     }
 
     #[test]
     fn test_heid_tail_bum() {
         assert_eq!(run("heid([1, 2, 3])").unwrap(), Value::Integer(1));
-        assert_eq!(run(r#"heid("hello")"#).unwrap(), Value::String("h".to_string()));
+        assert_eq!(
+            run(r#"heid("hello")"#).unwrap(),
+            Value::String("h".to_string())
+        );
 
         let result = run("tail([1, 2, 3])").unwrap();
         if let Value::List(list) = result {
@@ -7600,10 +7615,16 @@ f"The answer is {x * 2}"
         } else {
             panic!("Expected list");
         }
-        assert_eq!(run(r#"tail("hello")"#).unwrap(), Value::String("ello".to_string()));
+        assert_eq!(
+            run(r#"tail("hello")"#).unwrap(),
+            Value::String("ello".to_string())
+        );
 
         assert_eq!(run("bum([1, 2, 3])").unwrap(), Value::Integer(3));
-        assert_eq!(run(r#"bum("hello")"#).unwrap(), Value::String("o".to_string()));
+        assert_eq!(
+            run(r#"bum("hello")"#).unwrap(),
+            Value::String("o".to_string())
+        );
     }
 
     #[test]
@@ -7629,7 +7650,10 @@ f"The answer is {x * 2}"
             panic!("Expected list");
         }
 
-        assert_eq!(run(r#"slap("hello", " world")"#).unwrap(), Value::String("hello world".to_string()));
+        assert_eq!(
+            run(r#"slap("hello", " world")"#).unwrap(),
+            Value::String("hello world".to_string())
+        );
     }
 
     #[test]
@@ -7641,9 +7665,18 @@ f"The answer is {x * 2}"
 
     #[test]
     fn test_wheesht_upper_lower() {
-        assert_eq!(run(r#"wheesht("  hello  ")"#).unwrap(), Value::String("hello".to_string()));
-        assert_eq!(run(r#"upper("hello")"#).unwrap(), Value::String("HELLO".to_string()));
-        assert_eq!(run(r#"lower("HELLO")"#).unwrap(), Value::String("hello".to_string()));
+        assert_eq!(
+            run(r#"wheesht("  hello  ")"#).unwrap(),
+            Value::String("hello".to_string())
+        );
+        assert_eq!(
+            run(r#"upper("hello")"#).unwrap(),
+            Value::String("HELLO".to_string())
+        );
+        assert_eq!(
+            run(r#"lower("HELLO")"#).unwrap(),
+            Value::String("hello".to_string())
+        );
     }
 
     #[test]
@@ -7742,7 +7775,8 @@ whiles aye {
     i = i + 1
 }
 sum
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(15));
     }
 
@@ -7759,7 +7793,8 @@ whiles i < 10 {
     sum = sum + i
 }
 sum
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(25)); // 1+3+5+7+9
     }
 
@@ -7774,7 +7809,8 @@ fer i in 0..100 {
     sum = sum + i
 }
 sum
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(10)); // 0+1+2+3+4
     }
 
@@ -7786,7 +7822,8 @@ fer x in [1, 2, 3, 4, 5] {
     sum = sum + x
 }
 sum
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(15));
     }
 
@@ -7798,7 +7835,8 @@ fer c in "hello" {
     count = count + 1
 }
 count
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(5));
     }
 
@@ -7845,7 +7883,8 @@ count
 dae double(x) { gie x * 2 }
 dae add_one(x) { gie x + 1 }
 5 |> double |> add_one
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(11));
     }
 
@@ -7857,7 +7896,8 @@ dae add_one(x) { gie x + 1 }
 ken arr = [1, 2, 3]
 arr[1] = 99
 arr[1]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(99));
     }
 
@@ -7867,7 +7907,8 @@ arr[1]
 ken d = {"a": 1}
 d["b"] = 2
 d["b"]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2));
     }
 
@@ -7877,7 +7918,10 @@ d["b"]
     fn test_negative_index() {
         assert_eq!(run("[1, 2, 3][-1]").unwrap(), Value::Integer(3));
         assert_eq!(run("[1, 2, 3][-2]").unwrap(), Value::Integer(2));
-        assert_eq!(run(r#""hello"[-1]"#).unwrap(), Value::String("o".to_string()));
+        assert_eq!(
+            run(r#""hello"[-1]"#).unwrap(),
+            Value::String("o".to_string())
+        );
     }
 
     // ==================== JSON Functions ====================
@@ -7914,9 +7958,18 @@ d["b"]
 
     #[test]
     fn test_json_stringify() {
-        assert_eq!(run(r#"json_stringify(42)"#).unwrap(), Value::String("42".to_string()));
-        assert_eq!(run(r#"json_stringify(aye)"#).unwrap(), Value::String("true".to_string()));
-        assert_eq!(run(r#"json_stringify([1, 2, 3])"#).unwrap(), Value::String("[1, 2, 3]".to_string()));
+        assert_eq!(
+            run(r#"json_stringify(42)"#).unwrap(),
+            Value::String("42".to_string())
+        );
+        assert_eq!(
+            run(r#"json_stringify(aye)"#).unwrap(),
+            Value::String("true".to_string())
+        );
+        assert_eq!(
+            run(r#"json_stringify([1, 2, 3])"#).unwrap(),
+            Value::String("[1, 2, 3]".to_string())
+        );
     }
 
     // ==================== Struct Tests ====================
@@ -7927,7 +7980,8 @@ d["b"]
 thing Point { x, y }
 ken p = Point(10, 20)
 p.x + p.y
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(30));
     }
 
@@ -7944,8 +7998,11 @@ p.x + p.y
     #[test]
     fn test_get_output() {
         let mut interp = Interpreter::new();
-        let program = crate::parser::parse(r#"blether "hello"
-blether "world""#).unwrap();
+        let program = crate::parser::parse(
+            r#"blether "hello"
+blether "world""#,
+        )
+        .unwrap();
         interp.interpret(&program).unwrap();
 
         let output = interp.get_output();
@@ -7983,7 +8040,8 @@ dae make_adder(x) {
 }
 ken add5 = make_adder(5)
 add5(3)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(8));
     }
 
@@ -7997,7 +8055,8 @@ keek x {
     whan 1 -> "one"
     whan _ -> "other"
 }
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("other".to_string()));
     }
 
@@ -8010,7 +8069,8 @@ ken x = 42
 keek x {
     whan value -> value * 2
 }
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(84));
     }
 
@@ -8089,7 +8149,9 @@ keek x {
         let program = crate::parser::parse("dae foo() { gie 1 }").unwrap();
         interp.interpret(&program).unwrap();
         let vars = interp.get_user_variables();
-        assert!(vars.iter().any(|(name, kind, _)| name == "foo" && kind == "function"));
+        assert!(vars
+            .iter()
+            .any(|(name, kind, _)| name == "foo" && kind == "function"));
     }
 
     // ==================== Native Function Edge Cases ====================
@@ -8353,7 +8415,8 @@ gin x > 10 {
 } ither {
     "small"
 }
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("medium".to_string()));
     }
 
@@ -8370,7 +8433,8 @@ whiles i < 100 {
     }
 }
 total
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(10));
     }
 
@@ -8387,7 +8451,8 @@ whiles i < 5 {
     total = total + i
 }
 total
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(12)); // 1+2+4+5 = 12
     }
 
@@ -8402,7 +8467,8 @@ fer i in 0..10 {
     total = total + i
 }
 total
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(10)); // 0+1+2+3+4 = 10
     }
 
@@ -8417,7 +8483,8 @@ fer i in 0..5 {
     total = total + i
 }
 total
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(8)); // 0+1+3+4 = 8
     }
 
@@ -8440,7 +8507,8 @@ kin Counter {
 ken c = Counter(5)
 c.increment()
 c.get()
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(6));
     }
 
@@ -8462,7 +8530,8 @@ kin Dog fae Animal {
 }
 ken d = Dog("Rover")
 d.speak()
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("Woof!".to_string()));
     }
 
@@ -8474,7 +8543,8 @@ d.speak()
 thing Point { x, y }
 ken p = Point(3, 4)
 p.x + p.y
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(7));
     }
 
@@ -8485,7 +8555,8 @@ thing Point { x, y }
 ken p = Point(1, 2)
 p.x = 10
 p.x
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(10));
     }
 
@@ -8496,7 +8567,8 @@ p.x
         let result = run(r#"
 ken list = [1, 2, 3, 4, 5]
 list[-1]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(5));
     }
 
@@ -8505,7 +8577,8 @@ list[-1]
         let result = run(r#"
 ken list = [1, 2, 3, 4, 5]
 list[-2]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(4));
     }
 
@@ -8515,7 +8588,8 @@ list[-2]
 ken list = [1, 2, 3]
 list[1] = 99
 list[1]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(99));
     }
 
@@ -8527,7 +8601,8 @@ list[1]
 ken d = {"a": 1}
 d["b"] = 2
 d["a"] + d["b"]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(3));
     }
 
@@ -8536,7 +8611,8 @@ d["a"] + d["b"]
         let result = run(r#"
 ken d = {"name": "Alice", "age": 30}
 d["name"]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("Alice".to_string()));
     }
 
@@ -8597,7 +8673,8 @@ d["name"]
         let result = run(r#"
 dae foo() { gie 1 }
 whit_kind(foo)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("function".to_string()));
     }
 
@@ -8613,7 +8690,8 @@ whit_kind(foo)
     fn test_pipe_multiple() {
         let result = run(r#"
 "  hello  " |> wheesht |> upper
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("HELLO".to_string()));
     }
 
@@ -8626,7 +8704,8 @@ ken a = [1, 2]
 ken b = [3, 4]
 ken c = [...a, ...b]
 len(c)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(4));
     }
 
@@ -8638,7 +8717,8 @@ dae add(x, y, z) {
 }
 ken args = [1, 2, 3]
 add(...args)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(6));
     }
 
@@ -8652,7 +8732,8 @@ hae_a_bash {
 } gin_it_gangs_wrang e {
     0
 }
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(42));
     }
 
@@ -8664,7 +8745,8 @@ hae_a_bash {
 } gin_it_gangs_wrang e {
     "caught"
 }
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("caught".to_string()));
     }
 
@@ -8701,7 +8783,8 @@ fer i in 0..5 {
     sum = sum + i
 }
 sum
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(10)); // 0+1+2+3+4
     }
 
@@ -8714,7 +8797,8 @@ fer i in r {
     sum = sum + i
 }
 sum
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(6)); // 1+2+3
     }
 
@@ -8725,7 +8809,8 @@ sum
         let result = run(r#"
 ken double = |x| x * 2
 double(5)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(10));
     }
 
@@ -8734,7 +8819,8 @@ double(5)
         let result = run(r#"
 ken add = |x, y| x + y
 add(3, 4)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(7));
     }
 
@@ -8745,7 +8831,8 @@ dae apply(f, x) {
     gie f(x)
 }
 apply(|n| n * n, 4)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(16));
     }
 
@@ -8845,7 +8932,8 @@ apply(|n| n * n, 4)
     fn test_anonymous_function_call() {
         let result = run(r#"
 (|x| x * 2)(5)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(10));
     }
 
@@ -8858,7 +8946,8 @@ dae greet(name, greeting = "Hello") {
     gie greeting + " " + name
 }
 greet("World")
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("Hello World".to_string()));
     }
 
@@ -8869,7 +8958,8 @@ dae greet(name, greeting = "Hello") {
     gie greeting + " " + name
 }
 greet("World", "Hi")
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("Hi World".to_string()));
     }
 
@@ -8880,7 +8970,8 @@ greet("World", "Hi")
         let result = run(r#"
 ken s = creel([1, 2, 3])
 len(s)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(3));
     }
 
@@ -8889,7 +8980,8 @@ len(s)
         let result = run(r#"
 ken s = creel([1, 1, 2, 2, 3])
 len(s)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(3));
     }
 
@@ -8912,7 +9004,8 @@ len(s)
         let result = run(r#"
 ken matrix = [[1, 2], [3, 4]]
 matrix[1][0]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(3));
     }
 
@@ -8921,7 +9014,8 @@ matrix[1][0]
         let result = run(r#"
 ken list = [{"a": 1}, {"a": 2}]
 list[0]["a"] + list[1]["a"]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(3));
     }
 
@@ -8931,7 +9025,8 @@ list[0]["a"] + list[1]["a"]
 ken x = 5
 ken result = gin x > 3 than "big" ither "small"
 result
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("big".to_string()));
     }
 
@@ -9112,7 +9207,8 @@ result
 ken s = creel([1, 2, 3])
 toss_in(s, 4)
 len(s)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(4));
     }
 
@@ -9122,7 +9218,8 @@ len(s)
 ken s = creel([1, 2, 3])
 heave_oot(s, "1")
 len(s)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2));
     }
 
@@ -9131,7 +9228,8 @@ len(s)
         let result = run(r#"
 ken s = creel([1, 2, 3])
 is_in_creel(s, "1")
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Bool(true));
     }
 
@@ -9140,7 +9238,8 @@ is_in_creel(s, "1")
         let result = run(r#"
 ken s = creel([1, 2, 3])
 is_in_creel(s, "5")
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Bool(false));
     }
 
@@ -9273,7 +9372,8 @@ kin Calculator {
 }
 ken c = Calculator(21)
 c.double()
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(42));
     }
 
@@ -9288,7 +9388,8 @@ kin Point {
 }
 ken p = Point(3, 4)
 p.x + p.y
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(7));
     }
 
@@ -9304,7 +9405,8 @@ fer i in start..end {
     sum = sum + i
 }
 sum
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(10)); // 0+1+2+3+4 = 10
     }
 
@@ -9315,7 +9417,8 @@ sum
         let result = run(r#"
 ken d = {"a": 1, "b": 2}
 len(keys(d))
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2));
     }
 
@@ -9324,7 +9427,8 @@ len(keys(d))
         let result = run(r#"
 ken d = {"a": 1, "b": 2}
 len(values(d))
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2));
     }
 
@@ -9334,7 +9438,8 @@ len(values(d))
 ken d = {"a": 1}
 d["a"] = 42
 d["a"]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(42));
     }
 
@@ -9344,7 +9449,8 @@ d["a"]
 ken d = {"a": 1}
 d["b"] = 2
 d["b"]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2));
     }
 
@@ -9367,7 +9473,8 @@ kin Builder {
 }
 ken b = Builder()
 b.add(1).add(2).add(3).get()
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(6));
     }
 
@@ -9378,7 +9485,8 @@ b.add(1).add(2).add(3).get()
         let result = run(r#"
 ken x = 10
 f"Result: {x * 2}"
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("Result: 20".to_string()));
     }
 
@@ -9387,7 +9495,8 @@ f"Result: {x * 2}"
         let result = run(r#"
 dae greet(name) { gie "Hi " + name }
 f"Greeting: {greet(\"World\")}"
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("Greeting: Hi World".to_string()));
     }
 
@@ -9398,7 +9507,8 @@ f"Greeting: {greet(\"World\")}"
         let result = run(r#"
 ken d = {}
 len(keys(d))
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(0));
     }
 
@@ -9408,7 +9518,8 @@ len(keys(d))
 thing Person { name, age }
 ken p = Person("Alice", 30)
 p.name
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("Alice".to_string()));
     }
 
@@ -9420,7 +9531,8 @@ p.name
 ken x = 5
 x += 3
 x
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(8));
     }
 
@@ -9430,7 +9542,8 @@ x
 ken x = 10
 x -= 3
 x
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(7));
     }
 
@@ -9440,7 +9553,8 @@ x
 ken x = 4
 x *= 3
 x
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(12));
     }
 
@@ -9450,7 +9564,8 @@ x
 ken x = 12
 x /= 3
 x
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(4));
     }
 
@@ -9463,7 +9578,8 @@ x
 ken x = 0
 nae an (x = 1)
 x
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(0)); // x should still be 0
     }
 
@@ -9474,7 +9590,8 @@ x
 ken x = 0
 aye or (x = 1)
 x
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(0)); // x should still be 0
     }
 
@@ -9485,7 +9602,8 @@ x
         let result = run(r#"
 ken l = [1, 2, 3, 4, 5]
 l[1:4]
-"#).unwrap();
+"#)
+        .unwrap();
         if let Value::List(items) = result {
             assert_eq!(items.borrow().len(), 3);
         } else {
@@ -9498,7 +9616,8 @@ l[1:4]
         let result = run(r#"
 ken l = [1, 2, 3, 4, 5]
 l[-3:-1]
-"#).unwrap();
+"#)
+        .unwrap();
         if let Value::List(items) = result {
             assert_eq!(items.borrow().len(), 2);
         } else {
@@ -9511,7 +9630,8 @@ l[-3:-1]
         let result = run(r#"
 ken l = [1, 2, 3, 4, 5, 6]
 l[0:6:2]
-"#).unwrap();
+"#)
+        .unwrap();
         if let Value::List(items) = result {
             assert_eq!(items.borrow().len(), 3); // 1, 3, 5
         } else {
@@ -9524,7 +9644,8 @@ l[0:6:2]
         let result = run(r#"
 ken l = [1, 2, 3, 4, 5]
 l[4:0:-1]
-"#).unwrap();
+"#)
+        .unwrap();
         if let Value::List(items) = result {
             assert_eq!(items.borrow().len(), 4); // 5, 4, 3, 2
         } else {
@@ -9537,7 +9658,8 @@ l[4:0:-1]
         let result = run(r#"
 ken s = "hello"
 s[1:4]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("ell".to_string()));
     }
 
@@ -9546,7 +9668,8 @@ s[1:4]
         let result = run(r#"
 ken s = "hello"
 s[4:0:-1]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("olle".to_string()));
     }
 
@@ -9563,7 +9686,8 @@ s[4:0:-1]
         let result = run(r#"
 ken s = creel([1, 2, 3])
 len(creel(s))
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(3));
     }
 
@@ -9573,7 +9697,8 @@ len(creel(s))
 ken s1 = creel([1, 2])
 ken s2 = creel([2, 3])
 len(creels_thegither(s1, s2))
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(3)); // Union: 1, 2, 3
     }
 
@@ -9583,7 +9708,8 @@ len(creels_thegither(s1, s2))
 ken s1 = creel([1, 2, 3])
 ken s2 = creel([2, 3, 4])
 len(creels_baith(s1, s2))
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2)); // Intersection: 2, 3
     }
 
@@ -9593,7 +9719,8 @@ len(creels_baith(s1, s2))
 ken s1 = creel([1, 2, 3])
 ken s2 = creel([2, 3])
 len(creels_differ(s1, s2))
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(1)); // Difference: 1
     }
 
@@ -9602,7 +9729,8 @@ len(creels_differ(s1, s2))
         let result = run(r#"
 ken s = creel([3, 1, 2])
 whit_kind(creel_tae_list(s))
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("list".to_string()));
     }
 
@@ -9612,7 +9740,8 @@ whit_kind(creel_tae_list(s))
 ken s1 = creel([1, 2])
 ken s2 = creel([1, 2, 3])
 is_subset(s1, s2)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Bool(true));
     }
 
@@ -9622,7 +9751,8 @@ is_subset(s1, s2)
 ken s1 = creel([1, 2, 3])
 ken s2 = creel([1, 2])
 is_superset(s1, s2)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Bool(true));
     }
 
@@ -9632,7 +9762,8 @@ is_superset(s1, s2)
 ken s1 = creel([1, 2])
 ken s2 = creel([3, 4])
 is_disjoint(s1, s2)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Bool(true));
     }
 
@@ -9647,7 +9778,8 @@ keek x {
     whan 2 -> 20
     whan 3 -> 30
 }
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(20));
     }
 
@@ -9660,7 +9792,8 @@ keek s {
     whan "hello" -> 2
     whan "bye" -> 3
 }
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2));
     }
 
@@ -9672,7 +9805,8 @@ keek x {
     whan 1 -> 10
     whan _ -> 42
 }
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(42));
     }
 
@@ -9683,7 +9817,8 @@ ken x = 5
 keek x {
     whan n -> n * 2
 }
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(10));
     }
 
@@ -9706,7 +9841,8 @@ keek x {
         let result = run(r#"
 ken [a, b, c] = [1, 2, 3]
 a + b + c
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(6));
     }
 
@@ -9715,7 +9851,8 @@ a + b + c
         let result = run(r#"
 ken [first, ...rest] = [1, 2, 3, 4, 5]
 len(rest)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(4));
     }
 
@@ -9724,7 +9861,8 @@ len(rest)
         let result = run(r#"
 ken [a, _, c] = [1, 2, 3]
 a + c
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(4));
     }
 
@@ -9733,7 +9871,8 @@ a + c
         let result = run(r#"
 ken [a, b, c] = "abc"
 a + b + c
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("abc".to_string()));
     }
 
@@ -9765,7 +9904,8 @@ ken [a, b, c] = [1, 2]
         let result = run(r#"
 ken l = sort(["c", "a", "b"])
 l[0]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("a".to_string()));
     }
 
@@ -9774,7 +9914,8 @@ l[0]
         let result = run(r#"
 ken l = sort([3.5, 1.5, 2.5])
 l[0]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Float(1.5));
     }
 
@@ -9831,7 +9972,8 @@ l[0]
         let result = run(r#"
 dae foo() { gie 1 }
 is_a(foo, "function")
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Bool(true));
     }
 
@@ -10030,7 +10172,8 @@ is_a(foo, "function")
         let result = run(r#"
 ken e = enumerate(["a", "b"])
 e[0][0]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(0));
     }
 
@@ -10057,7 +10200,8 @@ e[0][0]
         let result = run(r#"
 ken l = chynge([1, 3], 1, 2)
 l[1]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2));
     }
 
@@ -10066,7 +10210,8 @@ l[1]
         let result = run(r#"
 ken l = chynge([1, 2, 3], -1, 99)
 len(l)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(4));
     }
 
@@ -10081,7 +10226,8 @@ len(l)
         let result = run(r#"
 ken l = dicht([1, 2, 3], -1)
 len(l)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2));
     }
 
@@ -10126,7 +10272,8 @@ len(l)
         let result = run(r#"
 ken parts = split_by([1, 2, 3, 4], "even")
 len(parts[0])
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2)); // 2, 4 are even
     }
 
@@ -10135,7 +10282,8 @@ len(parts[0])
         let result = run(r#"
 ken parts = split_by([-1, 0, 1, 2], "positive")
 len(parts[0])
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2)); // 1, 2 are positive
     }
 
@@ -10562,7 +10710,8 @@ len(parts[0])
 ken d1 = {"a": 1}
 ken d2 = {"b": 2}
 len(keys(dict_merge(d1, d2)))
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2));
     }
 
@@ -10573,7 +10722,8 @@ ken d1 = {"a": 1}
 ken d2 = {"a": 2}
 ken merged = dict_merge(d1, d2)
 merged["a"]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2));
     }
 
@@ -10606,7 +10756,8 @@ merged["a"]
         let result = run(r#"
 ken d = dict_remove({"a": 1, "b": 2}, "a")
 len(keys(d))
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(1));
     }
 
@@ -10615,7 +10766,8 @@ len(keys(d))
         let result = run(r#"
 ken d = dict_invert({"a": "1", "b": "2"})
 d["1"]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("a".to_string()));
     }
 
@@ -10630,7 +10782,8 @@ d["1"]
         let result = run(r#"
 ken d = fae_pairs([["a", 1], ["b", 2]])
 d["a"]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(1));
     }
 
@@ -10783,7 +10936,8 @@ d["a"]
         let result = run(r#"
 ken l = birl([1, 2, 3, 4], 1)
 l[0]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2));
     }
 
@@ -10792,7 +10946,8 @@ l[0]
         let result = run(r#"
 ken l = birl([1, 2, 3, 4], -1)
 l[0]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(4));
     }
 
@@ -10949,7 +11104,8 @@ kin Dog fae Animal {
 }
 ken d = Dog()
 d.speak()
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("Woof!".to_string()));
     }
 
@@ -10972,7 +11128,8 @@ kin Dog fae notAClass {
 ken a = [1, 2]
 ken b = [0, ...a, 3]
 len(b)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(4));
     }
 
@@ -10982,7 +11139,8 @@ len(b)
 ken s = "ab"
 ken l = [...s]
 len(l)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2));
     }
 
@@ -11000,7 +11158,8 @@ len(l)
 ken l = [1, 2, 3]
 l[-1] = 99
 l[-1]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(99));
     }
 
@@ -11010,7 +11169,8 @@ l[-1]
 ken d = {}
 d[42] = "answer"
 d["42"]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("answer".to_string()));
     }
 
@@ -11168,7 +11328,8 @@ x.foo
         let result = run(r#"
 ken parts = split_by([1, 2, 3, 4, 5, 6], "even")
 len(parts[0])
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(3));
     }
 
@@ -11177,7 +11338,8 @@ len(parts[0])
         let result = run(r#"
 ken parts = split_by([1, 2, 3, 4, 5, 6], "odd")
 len(parts[0])
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(3));
     }
 
@@ -11252,7 +11414,8 @@ len(parts[0])
 ken l = [1, 2, 3]
 shove(l, 4)
 len(l)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(4));
     }
 
@@ -11261,7 +11424,8 @@ len(l)
         let result = run(r#"
 ken l = [1, 2, 3]
 yank(l)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(3));
     }
 
@@ -11272,7 +11436,8 @@ yank(l)
 ken l = [1, 3, 4]
 ken updated = chynge(l, 1, 2)
 updated[1]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2));
     }
 
@@ -11283,7 +11448,8 @@ updated[1]
 ken l = [1, 2, 3]
 ken updated = dicht(l, 1)
 len(updated)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2));
     }
 
@@ -11294,7 +11460,8 @@ len(updated)
 ken l = [1, naething, 2, naething, 3]
 ken cleaned = redd_up(l)
 len(cleaned)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(3));
     }
 
@@ -11435,7 +11602,8 @@ hae_a_bash {
     blether e
 }
 42
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(42));
     }
 
@@ -11450,7 +11618,8 @@ hae_a_bash {
     caught = aye
 }
 caught
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Bool(true));
     }
 
@@ -11472,7 +11641,8 @@ fer x in l {
     shove(result, x * 2)
 }
 result[1]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(4));
     }
 
@@ -11482,7 +11652,8 @@ result[1]
 ken d = {"a": 1, "b": 2}
 ken k = keys(d)
 len(k)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2));
     }
 
@@ -11492,7 +11663,8 @@ len(k)
 ken d = {"a": 1, "b": 2}
 ken v = values(d)
 len(v)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2));
     }
 
@@ -11506,7 +11678,8 @@ dae add_x(n) {
     gie n + x
 }
 add_x(5)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(15));
     }
 
@@ -11525,7 +11698,8 @@ ken c = make_counter()
 c()
 c()
 c()
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(3));
     }
 
@@ -11537,7 +11711,8 @@ c()
 dae empty() {
 }
 empty()
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Nil);
     }
 
@@ -11551,7 +11726,8 @@ dae fib(n) {
     gie fib(n - 1) + fib(n - 2)
 }
 fib(10)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(55));
     }
 
@@ -11567,7 +11743,8 @@ dae is_odd(n) {
     gie is_even(n - 1)
 }
 is_even(10)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Bool(true));
     }
 
@@ -11582,7 +11759,8 @@ fer i in r {
     total = total + i
 }
 total
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(10)); // 1+2+3+4 = 10
     }
 
@@ -11641,7 +11819,8 @@ ken l = lines("one
 two
 three")
 len(l)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(3));
     }
 
@@ -11784,7 +11963,8 @@ len(l)
         let result = run(r#"
 ken obj = json_parse("{\"a\": 1}")
 obj["a"]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(1));
     }
 
@@ -11883,7 +12063,8 @@ obj["a"]
         let result = run(r#"
 ken z = zip([1, 2, 3], ["a", "b", "c"])
 len(z)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(3));
     }
 
@@ -11892,7 +12073,8 @@ len(z)
         let result = run(r#"
 ken e = enumerate(["a", "b", "c"])
 len(e)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(3));
     }
 
@@ -11914,7 +12096,8 @@ len(e)
         let result = run(r#"
 ken s = sort([3, 1, 4, 1, 5, 9])
 s[0]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(1));
     }
 
@@ -11923,7 +12106,8 @@ s[0]
         let result = run(r#"
 ken s = sort(["banana", "apple", "cherry"])
 s[0]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("apple".to_string()));
     }
 
@@ -11933,7 +12117,8 @@ s[0]
 ken l = [1, 2, 3, 4, 5]
 ken s = shuffle(l)
 len(s)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(5));
     }
 
@@ -11943,8 +12128,8 @@ len(s)
 ken l = [1, 2, 3, 4, 5]
 ken r = birl(l, 2)
 r[0]
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(3));
     }
-
 }

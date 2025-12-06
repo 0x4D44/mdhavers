@@ -146,9 +146,12 @@ fn main() {
         Some(Commands::Trace { file, verbose }) => trace_file(&file, verbose),
         Some(Commands::Wasm { file, output }) => compile_wasm(&file, output),
         #[cfg(feature = "llvm")]
-        Some(Commands::Build { file, output, opt_level, emit_llvm }) => {
-            build_native(&file, output, opt_level, emit_llvm)
-        }
+        Some(Commands::Build {
+            file,
+            output,
+            opt_level,
+            emit_llvm,
+        }) => build_native(&file, output, opt_level, emit_llvm),
         None => {
             // If a file is provided directly, run it
             if let Some(file) = cli.file {

@@ -1703,7 +1703,8 @@ mod tests {
 
     #[test]
     fn test_function_with_default_params() {
-        let program = parse("dae greet(name, greeting = \"Hello\") { gie greeting + name }").unwrap();
+        let program =
+            parse("dae greet(name, greeting = \"Hello\") { gie greeting + name }").unwrap();
         assert_eq!(program.statements.len(), 1);
     }
 
@@ -1846,7 +1847,9 @@ mod tests {
 
     #[test]
     fn test_match_with_range_pattern() {
-        let program = parse("keek x {\n  whan 1..10 -> blether \"small\"\n  whan _ -> blether \"big\"\n}").unwrap();
+        let program =
+            parse("keek x {\n  whan 1..10 -> blether \"small\"\n  whan _ -> blether \"big\"\n}")
+                .unwrap();
         assert_eq!(program.statements.len(), 1);
     }
 
@@ -1990,7 +1993,8 @@ mod tests {
 
     #[test]
     fn test_if_else() {
-        let program = parse("gin x > 0 { blether \"positive\" } ither { blether \"not positive\" }").unwrap();
+        let program =
+            parse("gin x > 0 { blether \"positive\" } ither { blether \"not positive\" }").unwrap();
         assert_eq!(program.statements.len(), 1);
     }
 

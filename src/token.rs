@@ -417,7 +417,10 @@ mod tests {
         assert_eq!(format!("{}", TokenKind::Is), "is");
         assert_eq!(format!("{}", TokenKind::Masel), "masel");
         assert_eq!(format!("{}", TokenKind::HaeABash), "hae_a_bash");
-        assert_eq!(format!("{}", TokenKind::GinItGangsWrang), "gin_it_gangs_wrang");
+        assert_eq!(
+            format!("{}", TokenKind::GinItGangsWrang),
+            "gin_it_gangs_wrang"
+        );
         assert_eq!(format!("{}", TokenKind::Keek), "keek");
         assert_eq!(format!("{}", TokenKind::Whan), "whan");
         assert_eq!(format!("{}", TokenKind::MakSiccar), "mak_siccar");
@@ -428,10 +431,22 @@ mod tests {
         assert_eq!(format!("{}", TokenKind::Integer(42)), "42");
         assert_eq!(format!("{}", TokenKind::Integer(-17)), "-17");
         assert_eq!(format!("{}", TokenKind::Float(3.14)), "3.14");
-        assert_eq!(format!("{}", TokenKind::String("hello".to_string())), "\"hello\"");
-        assert_eq!(format!("{}", TokenKind::SingleQuoteString("world".to_string())), "'world'");
-        assert_eq!(format!("{}", TokenKind::FString("Hi {name}".to_string())), "f\"Hi {name}\"");
-        assert_eq!(format!("{}", TokenKind::Identifier("my_var".to_string())), "my_var");
+        assert_eq!(
+            format!("{}", TokenKind::String("hello".to_string())),
+            "\"hello\""
+        );
+        assert_eq!(
+            format!("{}", TokenKind::SingleQuoteString("world".to_string())),
+            "'world'"
+        );
+        assert_eq!(
+            format!("{}", TokenKind::FString("Hi {name}".to_string())),
+            "f\"Hi {name}\""
+        );
+        assert_eq!(
+            format!("{}", TokenKind::Identifier("my_var".to_string())),
+            "my_var"
+        );
     }
 
     #[test]

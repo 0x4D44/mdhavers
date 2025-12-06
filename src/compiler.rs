@@ -1117,10 +1117,7 @@ gin x > 5 {
 
     #[test]
     fn test_if_else_compile() {
-        let result = compile(
-            r#"gin x > 5 { blether "big" } ither { blether "small" }"#,
-        )
-        .unwrap();
+        let result = compile(r#"gin x > 5 { blether "big" } ither { blether "small" }"#).unwrap();
         assert!(result.contains("if ("));
         assert!(result.contains("else"));
     }
@@ -1222,7 +1219,8 @@ kin Animal {
 
     #[test]
     fn test_try_catch_compile() {
-        let result = compile("hae_a_bash { ken x = 1 } gin_it_gangs_wrang e { blether e }").unwrap();
+        let result =
+            compile("hae_a_bash { ken x = 1 } gin_it_gangs_wrang e { blether e }").unwrap();
         assert!(result.contains("try {"));
         assert!(result.contains("catch (e)"));
     }
@@ -1231,11 +1229,14 @@ kin Animal {
 
     #[test]
     fn test_match_compile() {
-        let result = compile(r#"keek x {
+        let result = compile(
+            r#"keek x {
     whan 1 -> blether "one"
     whan 2 -> blether "two"
     whan _ -> blether "other"
-}"#).unwrap();
+}"#,
+        )
+        .unwrap();
         assert!(result.contains("__match_val_"));
         assert!(result.contains("if ("));
         assert!(result.contains("else if ("));
@@ -1243,12 +1244,15 @@ kin Animal {
 
     #[test]
     fn test_match_literal_patterns() {
-        let result = compile(r#"keek x {
+        let result = compile(
+            r#"keek x {
     whan "hello" -> blether "hi"
     whan 3.14 -> blether "pi"
     whan aye -> blether "true"
     whan naething -> blether "nil"
-}"#).unwrap();
+}"#,
+        )
+        .unwrap();
         assert!(result.contains("=== \"hello\""));
         assert!(result.contains("=== 3.14"));
         assert!(result.contains("=== true"));
@@ -1257,19 +1261,25 @@ kin Animal {
 
     #[test]
     fn test_match_identifier_pattern() {
-        let result = compile(r#"keek x {
+        let result = compile(
+            r#"keek x {
     whan value -> blether value
-}"#).unwrap();
+}"#,
+        )
+        .unwrap();
         // Identifier patterns bind the value
         assert!(result.contains("const value ="));
     }
 
     #[test]
     fn test_match_range_pattern() {
-        let result = compile(r#"keek x {
+        let result = compile(
+            r#"keek x {
     whan 1..10 -> blether "in range"
     whan _ -> blether "out"
-}"#).unwrap();
+}"#,
+        )
+        .unwrap();
         assert!(result.contains(">= "));
         assert!(result.contains("< "));
     }

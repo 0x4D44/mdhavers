@@ -483,9 +483,9 @@ mod tests {
 
     #[test]
     fn test_program_new() {
-        let stmts = vec![
-            Stmt::Break { span: Span::new(1, 1) },
-        ];
+        let stmts = vec![Stmt::Break {
+            span: Span::new(1, 1),
+        }];
         let program = Program::new(stmts);
         assert_eq!(program.statements.len(), 1);
     }
@@ -505,7 +505,10 @@ mod tests {
 
     #[test]
     fn test_literal_display_string() {
-        assert_eq!(format!("{}", Literal::String("hello".to_string())), "\"hello\"");
+        assert_eq!(
+            format!("{}", Literal::String("hello".to_string())),
+            "\"hello\""
+        );
         assert_eq!(format!("{}", Literal::String("".to_string())), "\"\"");
     }
 
@@ -571,81 +574,135 @@ mod tests {
     fn test_expr_span() {
         let span = Span::new(5, 10);
 
-        let lit = Expr::Literal { value: Literal::Integer(42), span };
+        let lit = Expr::Literal {
+            value: Literal::Integer(42),
+            span,
+        };
         assert_eq!(lit.span(), span);
 
-        let var = Expr::Variable { name: "x".to_string(), span };
+        let var = Expr::Variable {
+            name: "x".to_string(),
+            span,
+        };
         assert_eq!(var.span(), span);
 
         let assign = Expr::Assign {
             name: "x".to_string(),
-            value: Box::new(Expr::Literal { value: Literal::Integer(1), span }),
+            value: Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
             span,
         };
         assert_eq!(assign.span(), span);
 
         let binary = Expr::Binary {
-            left: Box::new(Expr::Literal { value: Literal::Integer(1), span }),
+            left: Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
             operator: BinaryOp::Add,
-            right: Box::new(Expr::Literal { value: Literal::Integer(2), span }),
+            right: Box::new(Expr::Literal {
+                value: Literal::Integer(2),
+                span,
+            }),
             span,
         };
         assert_eq!(binary.span(), span);
 
         let unary = Expr::Unary {
             operator: UnaryOp::Negate,
-            operand: Box::new(Expr::Literal { value: Literal::Integer(1), span }),
+            operand: Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
             span,
         };
         assert_eq!(unary.span(), span);
 
         let logical = Expr::Logical {
-            left: Box::new(Expr::Literal { value: Literal::Bool(true), span }),
+            left: Box::new(Expr::Literal {
+                value: Literal::Bool(true),
+                span,
+            }),
             operator: LogicalOp::And,
-            right: Box::new(Expr::Literal { value: Literal::Bool(false), span }),
+            right: Box::new(Expr::Literal {
+                value: Literal::Bool(false),
+                span,
+            }),
             span,
         };
         assert_eq!(logical.span(), span);
 
         let call = Expr::Call {
-            callee: Box::new(Expr::Variable { name: "f".to_string(), span }),
+            callee: Box::new(Expr::Variable {
+                name: "f".to_string(),
+                span,
+            }),
             arguments: vec![],
             span,
         };
         assert_eq!(call.span(), span);
 
         let get = Expr::Get {
-            object: Box::new(Expr::Variable { name: "obj".to_string(), span }),
+            object: Box::new(Expr::Variable {
+                name: "obj".to_string(),
+                span,
+            }),
             property: "prop".to_string(),
             span,
         };
         assert_eq!(get.span(), span);
 
         let set = Expr::Set {
-            object: Box::new(Expr::Variable { name: "obj".to_string(), span }),
+            object: Box::new(Expr::Variable {
+                name: "obj".to_string(),
+                span,
+            }),
             property: "prop".to_string(),
-            value: Box::new(Expr::Literal { value: Literal::Integer(1), span }),
+            value: Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
             span,
         };
         assert_eq!(set.span(), span);
 
         let index = Expr::Index {
-            object: Box::new(Expr::Variable { name: "arr".to_string(), span }),
-            index: Box::new(Expr::Literal { value: Literal::Integer(0), span }),
+            object: Box::new(Expr::Variable {
+                name: "arr".to_string(),
+                span,
+            }),
+            index: Box::new(Expr::Literal {
+                value: Literal::Integer(0),
+                span,
+            }),
             span,
         };
         assert_eq!(index.span(), span);
 
         let index_set = Expr::IndexSet {
-            object: Box::new(Expr::Variable { name: "arr".to_string(), span }),
-            index: Box::new(Expr::Literal { value: Literal::Integer(0), span }),
-            value: Box::new(Expr::Literal { value: Literal::Integer(1), span }),
+            object: Box::new(Expr::Variable {
+                name: "arr".to_string(),
+                span,
+            }),
+            index: Box::new(Expr::Literal {
+                value: Literal::Integer(0),
+                span,
+            }),
+            value: Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
             span,
         };
         assert_eq!(index_set.span(), span);
 
         let slice = Expr::Slice {
-            object: Box::new(Expr::Variable { name: "arr".to_string(), span }),
+            object: Box::new(Expr::Variable {
+                name: "arr".to_string(),
+                span,
+            }),
             start: None,
             end: None,
             step: None,
@@ -653,29 +710,47 @@ mod tests {
         };
         assert_eq!(slice.span(), span);
 
-        let list = Expr::List { elements: vec![], span };
+        let list = Expr::List {
+            elements: vec![],
+            span,
+        };
         assert_eq!(list.span(), span);
 
-        let dict = Expr::Dict { pairs: vec![], span };
+        let dict = Expr::Dict {
+            pairs: vec![],
+            span,
+        };
         assert_eq!(dict.span(), span);
 
         let range = Expr::Range {
-            start: Box::new(Expr::Literal { value: Literal::Integer(0), span }),
-            end: Box::new(Expr::Literal { value: Literal::Integer(10), span }),
+            start: Box::new(Expr::Literal {
+                value: Literal::Integer(0),
+                span,
+            }),
+            end: Box::new(Expr::Literal {
+                value: Literal::Integer(10),
+                span,
+            }),
             inclusive: false,
             span,
         };
         assert_eq!(range.span(), span);
 
         let grouping = Expr::Grouping {
-            expr: Box::new(Expr::Literal { value: Literal::Integer(1), span }),
+            expr: Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
             span,
         };
         assert_eq!(grouping.span(), span);
 
         let lambda = Expr::Lambda {
             params: vec!["x".to_string()],
-            body: Box::new(Expr::Variable { name: "x".to_string(), span }),
+            body: Box::new(Expr::Variable {
+                name: "x".to_string(),
+                span,
+            }),
             span,
         };
         assert_eq!(lambda.span(), span);
@@ -684,31 +759,55 @@ mod tests {
         assert_eq!(masel.span(), span);
 
         let input = Expr::Input {
-            prompt: Box::new(Expr::Literal { value: Literal::String("?".to_string()), span }),
+            prompt: Box::new(Expr::Literal {
+                value: Literal::String("?".to_string()),
+                span,
+            }),
             span,
         };
         assert_eq!(input.span(), span);
 
-        let fstring = Expr::FString { parts: vec![], span };
+        let fstring = Expr::FString {
+            parts: vec![],
+            span,
+        };
         assert_eq!(fstring.span(), span);
 
         let spread = Expr::Spread {
-            expr: Box::new(Expr::Variable { name: "arr".to_string(), span }),
+            expr: Box::new(Expr::Variable {
+                name: "arr".to_string(),
+                span,
+            }),
             span,
         };
         assert_eq!(spread.span(), span);
 
         let pipe = Expr::Pipe {
-            left: Box::new(Expr::Literal { value: Literal::Integer(1), span }),
-            right: Box::new(Expr::Variable { name: "f".to_string(), span }),
+            left: Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
+            right: Box::new(Expr::Variable {
+                name: "f".to_string(),
+                span,
+            }),
             span,
         };
         assert_eq!(pipe.span(), span);
 
         let ternary = Expr::Ternary {
-            condition: Box::new(Expr::Literal { value: Literal::Bool(true), span }),
-            then_expr: Box::new(Expr::Literal { value: Literal::Integer(1), span }),
-            else_expr: Box::new(Expr::Literal { value: Literal::Integer(0), span }),
+            condition: Box::new(Expr::Literal {
+                value: Literal::Bool(true),
+                span,
+            }),
+            then_expr: Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
+            else_expr: Box::new(Expr::Literal {
+                value: Literal::Integer(0),
+                span,
+            }),
             span,
         };
         assert_eq!(ternary.span(), span);
@@ -726,33 +825,57 @@ mod tests {
         assert_eq!(var_decl.span(), span);
 
         let expr_stmt = Stmt::Expression {
-            expr: Expr::Literal { value: Literal::Integer(1), span },
+            expr: Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            },
             span,
         };
         assert_eq!(expr_stmt.span(), span);
 
-        let block = Stmt::Block { statements: vec![], span };
+        let block = Stmt::Block {
+            statements: vec![],
+            span,
+        };
         assert_eq!(block.span(), span);
 
         let if_stmt = Stmt::If {
-            condition: Expr::Literal { value: Literal::Bool(true), span },
-            then_branch: Box::new(Stmt::Block { statements: vec![], span }),
+            condition: Expr::Literal {
+                value: Literal::Bool(true),
+                span,
+            },
+            then_branch: Box::new(Stmt::Block {
+                statements: vec![],
+                span,
+            }),
             else_branch: None,
             span,
         };
         assert_eq!(if_stmt.span(), span);
 
         let while_stmt = Stmt::While {
-            condition: Expr::Literal { value: Literal::Bool(true), span },
-            body: Box::new(Stmt::Block { statements: vec![], span }),
+            condition: Expr::Literal {
+                value: Literal::Bool(true),
+                span,
+            },
+            body: Box::new(Stmt::Block {
+                statements: vec![],
+                span,
+            }),
             span,
         };
         assert_eq!(while_stmt.span(), span);
 
         let for_stmt = Stmt::For {
             variable: "i".to_string(),
-            iterable: Expr::Literal { value: Literal::Integer(0), span },
-            body: Box::new(Stmt::Block { statements: vec![], span }),
+            iterable: Expr::Literal {
+                value: Literal::Integer(0),
+                span,
+            },
+            body: Box::new(Stmt::Block {
+                statements: vec![],
+                span,
+            }),
             span,
         };
         assert_eq!(for_stmt.span(), span);
@@ -769,7 +892,10 @@ mod tests {
         assert_eq!(ret.span(), span);
 
         let print = Stmt::Print {
-            value: Expr::Literal { value: Literal::String("hi".to_string()), span },
+            value: Expr::Literal {
+                value: Literal::String("hi".to_string()),
+                span,
+            },
             span,
         };
         assert_eq!(print.span(), span);
@@ -803,22 +929,34 @@ mod tests {
         assert_eq!(import.span(), span);
 
         let try_catch = Stmt::TryCatch {
-            try_block: Box::new(Stmt::Block { statements: vec![], span }),
+            try_block: Box::new(Stmt::Block {
+                statements: vec![],
+                span,
+            }),
             error_name: "e".to_string(),
-            catch_block: Box::new(Stmt::Block { statements: vec![], span }),
+            catch_block: Box::new(Stmt::Block {
+                statements: vec![],
+                span,
+            }),
             span,
         };
         assert_eq!(try_catch.span(), span);
 
         let match_stmt = Stmt::Match {
-            value: Expr::Literal { value: Literal::Integer(1), span },
+            value: Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            },
             arms: vec![],
             span,
         };
         assert_eq!(match_stmt.span(), span);
 
         let assert = Stmt::Assert {
-            condition: Expr::Literal { value: Literal::Bool(true), span },
+            condition: Expr::Literal {
+                value: Literal::Bool(true),
+                span,
+            },
             message: None,
             span,
         };
@@ -826,7 +964,10 @@ mod tests {
 
         let destruct = Stmt::Destructure {
             patterns: vec![],
-            value: Expr::List { elements: vec![], span },
+            value: Expr::List {
+                elements: vec![],
+                span,
+            },
             span,
         };
         assert_eq!(destruct.span(), span);
@@ -839,8 +980,14 @@ mod tests {
         let wildcard = Pattern::Wildcard;
         let span = Span::new(1, 1);
         let range_pattern = Pattern::Range {
-            start: Box::new(Expr::Literal { value: Literal::Integer(0), span }),
-            end: Box::new(Expr::Literal { value: Literal::Integer(10), span }),
+            start: Box::new(Expr::Literal {
+                value: Literal::Integer(0),
+                span,
+            }),
+            end: Box::new(Expr::Literal {
+                value: Literal::Integer(10),
+                span,
+            }),
         };
 
         // Just verify they can be created and matched

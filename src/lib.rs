@@ -105,7 +105,8 @@ mod tests {
                 gie a + b
             }
             add(3, 4)
-        "#).unwrap();
+        "#)
+        .unwrap();
         assert_eq!(result, Value::Integer(7));
     }
 
@@ -117,11 +118,14 @@ mod tests {
 
     #[test]
     fn test_run_with_output_simple() {
-        let (result, output) = run_with_output(r#"
+        let (result, output) = run_with_output(
+            r#"
             blether "Hello"
             blether "World"
             42
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert_eq!(result, Value::Integer(42));
         assert_eq!(output.len(), 2);
         assert_eq!(output[0], "Hello");
@@ -144,11 +148,14 @@ mod tests {
 
     #[test]
     fn test_compile_to_js_function() {
-        let js = compile_to_js(r#"
+        let js = compile_to_js(
+            r#"
             dae greet(name) {
                 gie "Hello " + name
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert!(js.contains("function greet"));
     }
 
@@ -167,11 +174,14 @@ mod tests {
 
     #[test]
     fn test_compile_to_wat_function() {
-        let wat = compile_to_wat(r#"
+        let wat = compile_to_wat(
+            r#"
             dae add(a, b) {
                 gie a + b
             }
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
         assert!(wat.contains("(func"));
     }
 

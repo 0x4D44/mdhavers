@@ -67,7 +67,7 @@ impl<'ctx> MdhTypes<'ctx> {
             f64_type: context.f64_type(),
             bool_type: context.bool_type(),
             void_type: context.void_type(),
-            str_ptr_type: context.ptr_type(inkwell::AddressSpace::default()),
+            str_ptr_type: i8_type.ptr_type(inkwell::AddressSpace::default()),
         }
     }
 
