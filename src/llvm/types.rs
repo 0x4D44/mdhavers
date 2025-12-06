@@ -3,7 +3,7 @@
 //! Defines the runtime value representation and type system.
 
 use inkwell::context::Context;
-use inkwell::types::{BasicType, BasicTypeEnum, PointerType, StructType};
+use inkwell::types::{BasicTypeEnum, PointerType, StructType};
 
 /// Value type tags - must match runtime/mdh_runtime.h MdhTag enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
