@@ -3,10 +3,9 @@ use std::fmt;
 
 /// Aw the different kinds o' tokens in mdhavers
 #[derive(Logos, Debug, Clone, PartialEq)]
-#[logos(skip r"[ \t\r]+")]  // Skip whitespace but nae newlines
+#[logos(skip r"[ \t\r]+")] // Skip whitespace but nae newlines
 pub enum TokenKind {
     // === Scots Keywords ===
-
     /// ken - variable declaration (I know/understand)
     #[token("ken")]
     Ken,
@@ -128,7 +127,6 @@ pub enum TokenKind {
     MakSiccar,
 
     // === Literals ===
-
     #[regex(r"[0-9]+", |lex| lex.slice().parse::<i64>().ok())]
     Integer(i64),
 
@@ -161,7 +159,6 @@ pub enum TokenKind {
     Identifier(String),
 
     // === Operators ===
-
     #[token("+")]
     Plus,
 
@@ -214,7 +211,7 @@ pub enum TokenKind {
     SlashEquals,
 
     #[token("...")]
-    DotDotDot,  // Spread operator (skail = scatter in Scots)
+    DotDotDot, // Spread operator (skail = scatter in Scots)
 
     #[token("..")]
     DotDot,
@@ -223,10 +220,9 @@ pub enum TokenKind {
     Dot,
 
     #[token("_", priority = 3)]
-    Underscore,  // Wildcard/ignore pattern
+    Underscore, // Wildcard/ignore pattern
 
     // === Delimiters ===
-
     #[token("(")]
     LeftParen,
 
@@ -258,7 +254,7 @@ pub enum TokenKind {
     Arrow,
 
     #[token("|>")]
-    PipeForward,  // Pipe operator fer chaining: x |> f means f(x)
+    PipeForward, // Pipe operator fer chaining: x |> f means f(x)
 
     #[token("|")]
     Pipe,
@@ -386,5 +382,130 @@ impl Token {
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} at line {}", self.kind, self.line)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_token_kind_display_keywords() {
+        assert_eq!(format!("{}", TokenKind::Ken), "ken");
+        assert_eq!(format!("{}", TokenKind::Gin), "gin");
+        assert_eq!(format!("{}", TokenKind::Ither), "ither");
+        assert_eq!(format!("{}", TokenKind::Than), "than");
+        assert_eq!(format!("{}", TokenKind::Whiles), "whiles");
+        assert_eq!(format!("{}", TokenKind::Fer), "fer");
+        assert_eq!(format!("{}", TokenKind::Gie), "gie");
+        assert_eq!(format!("{}", TokenKind::Blether), "blether");
+        assert_eq!(format!("{}", TokenKind::Speir), "speir");
+        assert_eq!(format!("{}", TokenKind::Fae), "fae");
+        assert_eq!(format!("{}", TokenKind::Tae), "tae");
+        assert_eq!(format!("{}", TokenKind::An), "an");
+        assert_eq!(format!("{}", TokenKind::Or), "or");
+        assert_eq!(format!("{}", TokenKind::Nae), "nae");
+        assert_eq!(format!("{}", TokenKind::Aye), "aye");
+        assert_eq!(format!("{}", TokenKind::Naething), "naething");
+        assert_eq!(format!("{}", TokenKind::Dae), "dae");
+        assert_eq!(format!("{}", TokenKind::Thing), "thing");
+        assert_eq!(format!("{}", TokenKind::Fetch), "fetch");
+        assert_eq!(format!("{}", TokenKind::Kin), "kin");
+        assert_eq!(format!("{}", TokenKind::Brak), "brak");
+        assert_eq!(format!("{}", TokenKind::Haud), "haud");
+        assert_eq!(format!("{}", TokenKind::In), "in");
+        assert_eq!(format!("{}", TokenKind::Is), "is");
+        assert_eq!(format!("{}", TokenKind::Masel), "masel");
+        assert_eq!(format!("{}", TokenKind::HaeABash), "hae_a_bash");
+        assert_eq!(format!("{}", TokenKind::GinItGangsWrang), "gin_it_gangs_wrang");
+        assert_eq!(format!("{}", TokenKind::Keek), "keek");
+        assert_eq!(format!("{}", TokenKind::Whan), "whan");
+        assert_eq!(format!("{}", TokenKind::MakSiccar), "mak_siccar");
+    }
+
+    #[test]
+    fn test_token_kind_display_literals() {
+        assert_eq!(format!("{}", TokenKind::Integer(42)), "42");
+        assert_eq!(format!("{}", TokenKind::Integer(-17)), "-17");
+        assert_eq!(format!("{}", TokenKind::Float(3.14)), "3.14");
+        assert_eq!(format!("{}", TokenKind::String("hello".to_string())), "\"hello\"");
+        assert_eq!(format!("{}", TokenKind::SingleQuoteString("world".to_string())), "'world'");
+        assert_eq!(format!("{}", TokenKind::FString("Hi {name}".to_string())), "f\"Hi {name}\"");
+        assert_eq!(format!("{}", TokenKind::Identifier("my_var".to_string())), "my_var");
+    }
+
+    #[test]
+    fn test_token_kind_display_operators() {
+        assert_eq!(format!("{}", TokenKind::Plus), "+");
+        assert_eq!(format!("{}", TokenKind::Minus), "-");
+        assert_eq!(format!("{}", TokenKind::Star), "*");
+        assert_eq!(format!("{}", TokenKind::Slash), "/");
+        assert_eq!(format!("{}", TokenKind::Percent), "%");
+        assert_eq!(format!("{}", TokenKind::Equals), "=");
+        assert_eq!(format!("{}", TokenKind::EqualsEquals), "==");
+        assert_eq!(format!("{}", TokenKind::BangEquals), "!=");
+        assert_eq!(format!("{}", TokenKind::Less), "<");
+        assert_eq!(format!("{}", TokenKind::LessEquals), "<=");
+        assert_eq!(format!("{}", TokenKind::Greater), ">");
+        assert_eq!(format!("{}", TokenKind::GreaterEquals), ">=");
+        assert_eq!(format!("{}", TokenKind::Bang), "!");
+        assert_eq!(format!("{}", TokenKind::PlusEquals), "+=");
+        assert_eq!(format!("{}", TokenKind::MinusEquals), "-=");
+        assert_eq!(format!("{}", TokenKind::StarEquals), "*=");
+        assert_eq!(format!("{}", TokenKind::SlashEquals), "/=");
+        assert_eq!(format!("{}", TokenKind::DotDotDot), "...");
+        assert_eq!(format!("{}", TokenKind::DotDot), "..");
+        assert_eq!(format!("{}", TokenKind::Dot), ".");
+        assert_eq!(format!("{}", TokenKind::Underscore), "_");
+    }
+
+    #[test]
+    fn test_token_kind_display_delimiters() {
+        assert_eq!(format!("{}", TokenKind::LeftParen), "(");
+        assert_eq!(format!("{}", TokenKind::RightParen), ")");
+        assert_eq!(format!("{}", TokenKind::LeftBrace), "{");
+        assert_eq!(format!("{}", TokenKind::RightBrace), "}");
+        assert_eq!(format!("{}", TokenKind::LeftBracket), "[");
+        assert_eq!(format!("{}", TokenKind::RightBracket), "]");
+        assert_eq!(format!("{}", TokenKind::Comma), ",");
+        assert_eq!(format!("{}", TokenKind::Colon), ":");
+        assert_eq!(format!("{}", TokenKind::Semicolon), ";");
+        assert_eq!(format!("{}", TokenKind::Arrow), "->");
+        assert_eq!(format!("{}", TokenKind::PipeForward), "|>");
+        assert_eq!(format!("{}", TokenKind::Pipe), "|");
+    }
+
+    #[test]
+    fn test_token_kind_display_special() {
+        assert_eq!(format!("{}", TokenKind::Newline), "newline");
+        assert_eq!(format!("{}", TokenKind::Comment), "comment");
+        assert_eq!(format!("{}", TokenKind::Eof), "end of file");
+    }
+
+    #[test]
+    fn test_token_new() {
+        let token = Token::new(TokenKind::Ken, "ken".to_string(), 1, 5);
+        assert_eq!(token.kind, TokenKind::Ken);
+        assert_eq!(token.lexeme, "ken");
+        assert_eq!(token.line, 1);
+        assert_eq!(token.column, 5);
+    }
+
+    #[test]
+    fn test_token_eof() {
+        let token = Token::eof(10);
+        assert_eq!(token.kind, TokenKind::Eof);
+        assert_eq!(token.lexeme, "");
+        assert_eq!(token.line, 10);
+        assert_eq!(token.column, 0);
+    }
+
+    #[test]
+    fn test_token_display() {
+        let token = Token::new(TokenKind::Ken, "ken".to_string(), 5, 1);
+        assert_eq!(format!("{}", token), "ken at line 5");
+
+        let token2 = Token::new(TokenKind::Integer(42), "42".to_string(), 3, 10);
+        assert_eq!(format!("{}", token2), "42 at line 3");
     }
 }

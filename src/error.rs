@@ -60,7 +60,9 @@ pub enum HaversError {
     #[error("Haud on there! Continue statement ootside a loop at line {line} - ye can only haud inside a whiles or fer loop!")]
     ContinueOutsideLoop { line: usize },
 
-    #[error("Stack's fair puggled! Too many nested calls at line {line} - yer recursion's gone radge!")]
+    #[error(
+        "Stack's fair puggled! Too many nested calls at line {line} - yer recursion's gone radge!"
+    )]
     StackOverflow { line: usize },
 
     #[error("Cannae find module '{name}' - hae ye checked the path is richt?")]
@@ -130,7 +132,11 @@ pub enum HaversError {
     JsonError { message: String, line: usize },
 
     #[error("Ye cannae compare {left_type} wi' {right_type} at line {line} - they're like chalk an' cheese!")]
-    IncomparableTypes { left_type: String, right_type: String, line: usize },
+    IncomparableTypes {
+        left_type: String,
+        right_type: String,
+        line: usize,
+    },
 
     #[error("That number's nae use at line {line}: {message}")]
     InvalidNumberOperation { message: String, line: usize },
@@ -147,7 +153,9 @@ pub enum HaversError {
     #[error("Memory's fair scunnered! Ran oot o' space at line {line}")]
     OutOfMemory { line: usize },
 
-    #[error("That's a private member! Ye cannae access '{member}' fae ootside the class at line {line}")]
+    #[error(
+        "That's a private member! Ye cannae access '{member}' fae ootside the class at line {line}"
+    )]
     PrivateMemberAccess { member: String, line: usize },
 
     #[error("Immutable! Ye cannae change '{name}' at line {line} - it's set in stone!")]
@@ -583,6 +591,67 @@ mod tests {
     }
 
     #[test]
+    fn test_error_suggestions_more_keywords() {
+        // Test more keyword misspellings
+        let keywords = vec![
+            ("false", "nae"),
+            ("if", "gin"),
+            ("else", "ither"),
+            ("while", "whiles"),
+            ("for", "fer"),
+            ("let", "ken"),
+            ("return", "gie"),
+            ("class", "kin"),
+            ("self", "masel"),
+            ("try", "hae_a_bash"),
+            ("catch", "gin_it_gangs_wrang"),
+            ("import", "fetch"),
+            ("break", "brak"),
+            ("continue", "haud"),
+            ("switch", "keek"),
+            ("assert", "mak_siccar"),
+            ("and", "an"),
+            ("map", "gaun"),
+            ("filter", "sieve"),
+            ("reduce", "tumble"),
+            ("length", "len"),
+            ("type", "whit_kind"),
+            ("str", "tae_string"),
+            ("int", "tae_int"),
+            ("push", "shove"),
+            ("pop", "yank"),
+            ("input", "speir"),
+            ("struct", "thing"),
+            ("trim", "wheesht"),
+            ("random", "jammy"),
+            ("sleep", "snooze"),
+            ("now", "noo"),
+            ("exit", "awa"),
+            ("throw", "fling"),
+            ("extends", "frae"),
+            ("super", "auld"),
+            ("first", "heid"),
+            ("last", "bum"),
+            ("debug", "clype"),
+        ];
+
+        for (keyword, expected) in keywords {
+            let err = HaversError::UndefinedVariable {
+                name: keyword.to_string(),
+                line: 1,
+            };
+            let suggestion = get_error_suggestion(&err);
+            assert!(suggestion.is_some(), "Expected suggestion for {}", keyword);
+            assert!(
+                suggestion.unwrap().to_lowercase().contains(expected),
+                "Expected '{}' in suggestion for '{}'",
+                expected,
+                keyword
+            );
+        }
+    }
+
+    #[test]
     fn test_error_suggestions_other_errors() {
         // Test division by zero suggestion
         let err = HaversError::DivisionByZero { line: 1 };
@@ -605,6 +674,116 @@ mod tests {
         let suggestion = get_error_suggestion(&err);
         assert!(suggestion.is_some());
         assert!(suggestion.unwrap().contains("empty"));
+
+        // Test negative index
+        let err = HaversError::IndexOutOfBounds {
+            index: -1,
+            size: 5,
+            line: 1,
+        };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+        assert!(suggestion.unwrap().contains("Negative"));
+
+        // Test positive index out of bounds
+        let err = HaversError::IndexOutOfBounds {
+            index: 10,
+            size: 5,
+            line: 1,
+        };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+        assert!(suggestion.unwrap().contains("0"));
+
+        // Test not callable
+        let err = HaversError::NotCallable { name: "x".to_string(), line: 1 };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+
+        // Test key not found
+        let err = HaversError::KeyNotFound { key: "foo".to_string(), line: 1 };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+
+        // Test unterminated string
+        let err = HaversError::UnterminatedString { line: 1 };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+
+        // Test circular import
+        let err = HaversError::CircularImport { path: "lib".to_string() };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+
+        // Test break outside loop
+        let err = HaversError::BreakOutsideLoop { line: 1 };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+
+        // Test continue outside loop
+        let err = HaversError::ContinueOutsideLoop { line: 1 };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+
+        // Test return outside function
+        let err = HaversError::ReturnOutsideFunction { line: 1 };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+
+        // Test wrong arity - no args expected
+        let err = HaversError::WrongArity {
+            name: "foo".to_string(),
+            expected: 0,
+            got: 2,
+            line: 1,
+        };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+
+        // Test wrong arity - args expected
+        let err = HaversError::WrongArity {
+            name: "foo".to_string(),
+            expected: 2,
+            got: 0,
+            line: 1,
+        };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+
+        // Test type error with string add
+        let err = HaversError::TypeError {
+            message: "Cannot add string".to_string(),
+            line: 1,
+        };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+
+        // Test unexpected token - closing brace
+        let err = HaversError::UnexpectedToken {
+            expected: "expression".to_string(),
+            found: "}".to_string(),
+            line: 1,
+        };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+
+        // Test unexpected token - equals
+        let err = HaversError::UnexpectedToken {
+            expected: "expression".to_string(),
+            found: "=".to_string(),
+            line: 1,
+        };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
+
+        // Test unexpected token - paren
+        let err = HaversError::UnexpectedToken {
+            expected: "something".to_string(),
+            found: ")".to_string(),
+            line: 1,
+        };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_some());
     }
 
     #[test]
@@ -615,6 +794,9 @@ mod tests {
 
         let encouragement = scots_encouragement();
         assert!(!encouragement.is_empty());
+
+        let wisdom = scots_programming_wisdom();
+        assert!(!wisdom.is_empty());
     }
 
     #[test]
@@ -623,5 +805,137 @@ mod tests {
         let context = format_error_context(source, 2);
         assert!(context.contains("ken y = 2"));
         assert!(context.contains("> 2 |"));
+    }
+
+    #[test]
+    fn test_format_error_context_edge_cases() {
+        // Test first line
+        let source = "ken x = 1\nken y = 2";
+        let context = format_error_context(source, 1);
+        assert!(context.contains("ken x = 1"));
+        assert!(context.contains("> 1 |"));
+
+        // Test last line
+        let context = format_error_context(source, 2);
+        assert!(context.contains("ken y = 2"));
+
+        // Test invalid line 0
+        let context = format_error_context(source, 0);
+        assert!(context.is_empty());
+
+        // Test line beyond source
+        let context = format_error_context(source, 10);
+        assert!(context.is_empty());
+    }
+
+    #[test]
+    fn test_error_line_method() {
+        // Test all error variants that have line
+        assert_eq!(HaversError::UnkentToken {
+            lexeme: "x".to_string(), line: 5, column: 3
+        }.line(), Some(5));
+
+        assert_eq!(HaversError::UnexpectedToken {
+            expected: "a".to_string(), found: "b".to_string(), line: 10
+        }.line(), Some(10));
+
+        assert_eq!(HaversError::UndefinedVariable {
+            name: "x".to_string(), line: 3
+        }.line(), Some(3));
+
+        assert_eq!(HaversError::DivisionByZero { line: 7 }.line(), Some(7));
+
+        assert_eq!(HaversError::TypeError {
+            message: "msg".to_string(), line: 2
+        }.line(), Some(2));
+
+        assert_eq!(HaversError::NotCallable {
+            name: "x".to_string(), line: 4
+        }.line(), Some(4));
+
+        assert_eq!(HaversError::WrongArity {
+            name: "f".to_string(), expected: 1, got: 2, line: 6
+        }.line(), Some(6));
+
+        assert_eq!(HaversError::IndexOutOfBounds {
+            index: 5, size: 3, line: 8
+        }.line(), Some(8));
+
+        assert_eq!(HaversError::ParseError {
+            message: "err".to_string(), line: 9
+        }.line(), Some(9));
+
+        assert_eq!(HaversError::BreakOutsideLoop { line: 11 }.line(), Some(11));
+        assert_eq!(HaversError::ContinueOutsideLoop { line: 12 }.line(), Some(12));
+        assert_eq!(HaversError::StackOverflow { line: 13 }.line(), Some(13));
+        assert_eq!(HaversError::UnterminatedString { line: 14 }.line(), Some(14));
+        assert_eq!(HaversError::InvalidNumber { value: "x".to_string(), line: 15 }.line(), Some(15));
+        assert_eq!(HaversError::AlreadyDefined { name: "x".to_string(), line: 16 }.line(), Some(16));
+        assert_eq!(HaversError::NotAnObject { name: "x".to_string(), line: 17 }.line(), Some(17));
+        assert_eq!(HaversError::UndefinedProperty { property: "x".to_string(), line: 18 }.line(), Some(18));
+        assert_eq!(HaversError::InfiniteLoop { line: 19 }.line(), Some(19));
+        assert_eq!(HaversError::NotAList { line: 20 }.line(), Some(20));
+        assert_eq!(HaversError::NotADict { line: 21 }.line(), Some(21));
+        assert_eq!(HaversError::KeyNotFound { key: "x".to_string(), line: 22 }.line(), Some(22));
+        assert_eq!(HaversError::InvalidOperation { operation: "op".to_string(), line: 23 }.line(), Some(23));
+        assert_eq!(HaversError::AssertionFailed { message: "msg".to_string(), line: 24 }.line(), Some(24));
+        assert_eq!(HaversError::ReturnOutsideFunction { line: 25 }.line(), Some(25));
+        assert_eq!(HaversError::NotIterable { type_name: "int".to_string(), line: 26 }.line(), Some(26));
+        assert_eq!(HaversError::PatternError { message: "msg".to_string(), line: 27 }.line(), Some(27));
+        assert_eq!(HaversError::IntegerOverflow { line: 28 }.line(), Some(28));
+        assert_eq!(HaversError::NegativeIndexOutOfBounds { index: -1, line: 29 }.line(), Some(29));
+        assert_eq!(HaversError::EmptyCollection { operation: "op".to_string(), line: 30 }.line(), Some(30));
+        assert_eq!(HaversError::InvalidRegex { message: "msg".to_string(), line: 31 }.line(), Some(31));
+        assert_eq!(HaversError::FormatError { message: "msg".to_string(), line: 32 }.line(), Some(32));
+        assert_eq!(HaversError::JsonError { message: "msg".to_string(), line: 33 }.line(), Some(33));
+        assert_eq!(HaversError::IncomparableTypes { left_type: "a".to_string(), right_type: "b".to_string(), line: 34 }.line(), Some(34));
+        assert_eq!(HaversError::InvalidNumberOperation { message: "msg".to_string(), line: 35 }.line(), Some(35));
+        assert_eq!(HaversError::NonExhaustiveMatch { line: 36 }.line(), Some(36));
+        assert_eq!(HaversError::DuplicateKey { key: "x".to_string(), line: 37 }.line(), Some(37));
+        assert_eq!(HaversError::ExecutionTimeout { line: 38 }.line(), Some(38));
+        assert_eq!(HaversError::OutOfMemory { line: 39 }.line(), Some(39));
+        assert_eq!(HaversError::PrivateMemberAccess { member: "x".to_string(), line: 40 }.line(), Some(40));
+        assert_eq!(HaversError::ImmutableVariable { name: "x".to_string(), line: 41 }.line(), Some(41));
+
+        // Errors without line
+        assert_eq!(HaversError::FileError { path: "x".to_string(), reason: "r".to_string() }.line(), None);
+        assert_eq!(HaversError::InternalError("msg".to_string()).line(), None);
+        assert_eq!(HaversError::ModuleNotFound { name: "x".to_string() }.line(), None);
+        assert_eq!(HaversError::CircularImport { path: "x".to_string() }.line(), None);
+    }
+
+    #[test]
+    fn test_error_display() {
+        // Test that error messages format correctly
+        let err = HaversError::UndefinedVariable { name: "x".to_string(), line: 5 };
+        let msg = format!("{}", err);
+        assert!(msg.contains("x"));
+        assert!(msg.contains("5"));
+
+        let err = HaversError::DivisionByZero { line: 3 };
+        let msg = format!("{}", err);
+        assert!(msg.contains("3"));
+        assert!(msg.contains("zero"));
+
+        let err = HaversError::WrongArity {
+            name: "foo".to_string(),
+            expected: 2,
+            got: 3,
+            line: 7,
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("foo"));
+        assert!(msg.contains("2"));
+        assert!(msg.contains("3"));
+    }
+
+    #[test]
+    fn test_no_suggestion_for_unknown() {
+        let err = HaversError::UndefinedVariable {
+            name: "my_custom_variable".to_string(),
+            line: 1,
+        };
+        let suggestion = get_error_suggestion(&err);
+        assert!(suggestion.is_none());
     }
 }

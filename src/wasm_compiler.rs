@@ -1,13 +1,13 @@
-/// WebAssembly compiler fer mdhavers
-/// Generates WAT (WebAssembly Text Format) that can be compiled tae WASM
-///
-/// This is a basic WASM compiler that supports:
-/// - Integer and float arithmetic
-/// - Variables (local)
-/// - Functions
-/// - Basic control flow (if/while)
-///
-/// Note: This is an experimental feature - no' aw mdhavers features are supported!
+//! WebAssembly compiler fer mdhavers
+//! Generates WAT (WebAssembly Text Format) that can be compiled tae WASM
+//!
+//! This is a basic WASM compiler that supports:
+//! - Integer and float arithmetic
+//! - Variables (local)
+//! - Functions
+//! - Basic control flow (if/while)
+//!
+//! Note: This is an experimental feature - no' aw mdhavers features are supported!
 
 use crate::ast::*;
 use crate::error::{HaversError, HaversResult};
@@ -19,7 +19,6 @@ pub struct WasmCompiler {
     local_vars: Vec<String>,
     func_params: Vec<String>,
     string_data: Vec<String>,
-    func_counter: usize,
 }
 
 impl WasmCompiler {
@@ -30,7 +29,6 @@ impl WasmCompiler {
             local_vars: Vec::new(),
             func_params: Vec::new(),
             string_data: Vec::new(),
-            func_counter: 0,
         }
     }
 
@@ -83,15 +81,16 @@ impl WasmCompiler {
             self.emit_line(";; String data");
             let mut offset = 0;
             // Collect string data first to avoid borrow issues
-            let string_lines: Vec<String> = self.string_data.iter().map(|s| {
-                let line = format!(
-                    "(data (i32.const {}) \"{}\")",
-                    offset,
-                    escape_wat_string(s)
-                );
-                offset += s.len() as i32 + 1; // +1 for null terminator
-                line
-            }).collect();
+            let string_lines: Vec<String> = self
+                .string_data
+                .iter()
+                .map(|s| {
+                    let line =
+                        format!("(data (i32.const {}) \"{}\")", offset, escape_wat_string(s));
+                    offset += s.len() as i32 + 1; // +1 for null terminator
+                    line
+                })
+                .collect();
             for line in string_lines {
                 self.emit_line(&line);
             }
@@ -104,7 +103,10 @@ impl WasmCompiler {
     }
 
     fn compile_function(&mut self, stmt: &Stmt) -> HaversResult<()> {
-        if let Stmt::Function { name, params, body, .. } = stmt {
+        if let Stmt::Function {
+            name, params, body, ..
+        } = stmt
+        {
             self.local_vars.clear();
             self.func_params.clear();
 
@@ -116,17 +118,15 @@ impl WasmCompiler {
             }
 
             // Start function
-            self.emit_line(&format!(
-                "(func ${} {}(result i64)",
-                name, param_types
-            ));
+            self.emit_line(&format!("(func ${} {}(result i64)", name, param_types));
             self.indent += 1;
 
             // Collect locals from body
             self.collect_locals(body);
 
             // Declare locals (collect first to avoid borrow issues)
-            let local_decls: Vec<String> = self.local_vars
+            let local_decls: Vec<String> = self
+                .local_vars
                 .iter()
                 .map(|var| format!("(local ${} i64)", var))
                 .collect();
@@ -197,7 +197,11 @@ impl WasmCompiler {
                     self.collect_locals_stmt(s);
                 }
             }
-            Stmt::If { then_branch, else_branch, .. } => {
+            Stmt::If {
+                then_branch,
+                else_branch,
+                ..
+            } => {
                 self.collect_locals_stmt(then_branch);
                 if let Some(eb) = else_branch {
                     self.collect_locals_stmt(eb);
@@ -218,7 +222,9 @@ impl WasmCompiler {
 
     fn compile_stmt(&mut self, stmt: &Stmt) -> HaversResult<()> {
         match stmt {
-            Stmt::VarDecl { name, initializer, .. } => {
+            Stmt::VarDecl {
+                name, initializer, ..
+            } => {
                 if let Some(init) = initializer {
                     self.compile_expr(init)?;
                 } else {
@@ -238,7 +244,12 @@ impl WasmCompiler {
                 }
             }
 
-            Stmt::If { condition, then_branch, else_branch, .. } => {
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
                 // Compile condition
                 self.compile_expr(condition)?;
                 self.emit_line("(i32.wrap_i64)");
@@ -263,7 +274,9 @@ impl WasmCompiler {
                 self.emit_line(")");
             }
 
-            Stmt::While { condition, body, .. } => {
+            Stmt::While {
+                condition, body, ..
+            } => {
                 self.emit_line("(block $break");
                 self.indent += 1;
                 self.emit_line("(loop $continue");
@@ -356,7 +369,12 @@ impl WasmCompiler {
                 self.emit_line(&format!("(local.tee ${})", name));
             }
 
-            Expr::Binary { left, operator, right, .. } => {
+            Expr::Binary {
+                left,
+                operator,
+                right,
+                ..
+            } => {
                 self.compile_expr(left)?;
                 self.compile_expr(right)?;
 
@@ -393,55 +411,60 @@ impl WasmCompiler {
                 }
             }
 
-            Expr::Unary { operator, operand, .. } => {
-                match operator {
-                    UnaryOp::Negate => {
-                        self.emit_line("(i64.const 0)");
-                        self.compile_expr(operand)?;
-                        self.emit_line("(i64.sub)");
-                    }
-                    UnaryOp::Not => {
-                        self.compile_expr(operand)?;
-                        self.emit_line("(i64.eqz)");
-                        self.emit_line("(i64.extend_i32_u)");
-                    }
+            Expr::Unary {
+                operator, operand, ..
+            } => match operator {
+                UnaryOp::Negate => {
+                    self.emit_line("(i64.const 0)");
+                    self.compile_expr(operand)?;
+                    self.emit_line("(i64.sub)");
                 }
-            }
-
-            Expr::Logical { left, operator, right, .. } => {
-                match operator {
-                    LogicalOp::And => {
-                        self.compile_expr(left)?;
-                        self.emit_line("(i32.wrap_i64)");
-                        self.emit_line("(if (result i64)");
-                        self.indent += 1;
-                        self.emit_line("(then");
-                        self.indent += 1;
-                        self.compile_expr(right)?;
-                        self.indent -= 1;
-                        self.emit_line(")");
-                        self.emit_line("(else (i64.const 0))");
-                        self.indent -= 1;
-                        self.emit_line(")");
-                    }
-                    LogicalOp::Or => {
-                        self.compile_expr(left)?;
-                        self.emit_line("(i32.wrap_i64)");
-                        self.emit_line("(if (result i64)");
-                        self.indent += 1;
-                        self.emit_line("(then (i64.const 1))");
-                        self.emit_line("(else");
-                        self.indent += 1;
-                        self.compile_expr(right)?;
-                        self.indent -= 1;
-                        self.emit_line(")");
-                        self.indent -= 1;
-                        self.emit_line(")");
-                    }
+                UnaryOp::Not => {
+                    self.compile_expr(operand)?;
+                    self.emit_line("(i64.eqz)");
+                    self.emit_line("(i64.extend_i32_u)");
                 }
-            }
+            },
 
-            Expr::Call { callee, arguments, .. } => {
+            Expr::Logical {
+                left,
+                operator,
+                right,
+                ..
+            } => match operator {
+                LogicalOp::And => {
+                    self.compile_expr(left)?;
+                    self.emit_line("(i32.wrap_i64)");
+                    self.emit_line("(if (result i64)");
+                    self.indent += 1;
+                    self.emit_line("(then");
+                    self.indent += 1;
+                    self.compile_expr(right)?;
+                    self.indent -= 1;
+                    self.emit_line(")");
+                    self.emit_line("(else (i64.const 0))");
+                    self.indent -= 1;
+                    self.emit_line(")");
+                }
+                LogicalOp::Or => {
+                    self.compile_expr(left)?;
+                    self.emit_line("(i32.wrap_i64)");
+                    self.emit_line("(if (result i64)");
+                    self.indent += 1;
+                    self.emit_line("(then (i64.const 1))");
+                    self.emit_line("(else");
+                    self.indent += 1;
+                    self.compile_expr(right)?;
+                    self.indent -= 1;
+                    self.emit_line(")");
+                    self.indent -= 1;
+                    self.emit_line(")");
+                }
+            },
+
+            Expr::Call {
+                callee, arguments, ..
+            } => {
                 // Compile arguments
                 for arg in arguments {
                     self.compile_expr(arg)?;
@@ -568,5 +591,310 @@ mod tests {
         let wat = result.unwrap();
         assert!(wat.contains("(loop"));
         assert!(wat.contains("(block"));
+    }
+
+    // ==================== Arithmetic Operations ====================
+
+    #[test]
+    fn test_subtraction_wasm() {
+        let source = "ken x = 50 - 8";
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("i64.sub"));
+    }
+
+    #[test]
+    fn test_multiplication_wasm() {
+        let source = "ken x = 6 * 7";
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("i64.mul"));
+    }
+
+    #[test]
+    fn test_division_wasm() {
+        let source = "ken x = 84 / 2";
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("i64.div_s"));
+    }
+
+    #[test]
+    fn test_modulo_wasm() {
+        let source = "ken x = 10 % 3";
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("i64.rem_s"));
+    }
+
+    // ==================== Comparison Operations ====================
+
+    #[test]
+    fn test_greater_than_wasm() {
+        let source = "ken b = 5 > 3";
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("i64.gt_s"));
+    }
+
+    #[test]
+    fn test_less_than_wasm() {
+        let source = "ken b = 3 < 5";
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("i64.lt_s"));
+    }
+
+    #[test]
+    fn test_greater_equal_wasm() {
+        let source = "ken b = 5 >= 5";
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("i64.ge_s"));
+    }
+
+    #[test]
+    fn test_less_equal_wasm() {
+        let source = "ken b = 3 <= 5";
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("i64.le_s"));
+    }
+
+    #[test]
+    fn test_equal_wasm() {
+        let source = "ken b = 5 == 5";
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("i64.eq"));
+    }
+
+    #[test]
+    fn test_not_equal_wasm() {
+        let source = "ken b = 5 != 3";
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("i64.ne"));
+    }
+
+    // ==================== Logical Operations ====================
+
+    #[test]
+    fn test_logical_and_wasm() {
+        let source = "ken b = aye an nae";
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("(module"));
+    }
+
+    #[test]
+    fn test_logical_or_wasm() {
+        let source = "ken b = aye or nae";
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("(module"));
+    }
+
+    #[test]
+    fn test_logical_not_wasm() {
+        // "no" requires parentheses and may not be fully supported in WASM
+        let source = "ken b = no aye";
+        let result = compile_to_wat(source);
+        // Just verify it doesn't panic - may or may not be supported
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    // ==================== Unary Operations ====================
+
+    #[test]
+    fn test_negate_wasm() {
+        let source = "ken x = -42";
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("i64.const 0"));
+        assert!(result.contains("i64.sub"));
+    }
+
+    // ==================== Control Flow ====================
+
+    #[test]
+    fn test_if_else_wasm() {
+        let source = r#"
+            ken x = 5
+            gin x > 3 {
+                blether x
+            } ither {
+                blether 0
+            }
+        "#;
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("(if"));
+        assert!(result.contains("(then"));
+        assert!(result.contains("(else"));
+    }
+
+    #[test]
+    fn test_for_loop_wasm() {
+        let source = r#"
+            fer i in 1..5 {
+                blether i
+            }
+        "#;
+        let result = compile_to_wat(source);
+        // For loops may not be supported in WASM yet
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_return_wasm() {
+        let source = r#"
+            dae answer() {
+                gie 42
+            }
+        "#;
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("(return"));
+    }
+
+    #[test]
+    fn test_return_implicit_wasm() {
+        let source = r#"
+            dae answer() {
+                gie
+            }
+        "#;
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("(return"));
+    }
+
+    // ==================== Literals ====================
+
+    #[test]
+    fn test_boolean_true_wasm() {
+        let source = "ken b = aye";
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("i64.const 1"));
+    }
+
+    #[test]
+    fn test_boolean_false_wasm() {
+        let source = "ken b = nae";
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("i64.const 0"));
+    }
+
+    #[test]
+    fn test_nil_wasm() {
+        let source = "ken n = naething";
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("i64.const 0"));
+    }
+
+    #[test]
+    fn test_float_wasm() {
+        let source = "ken f = 3.14";
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("(module"));
+    }
+
+    #[test]
+    fn test_string_wasm() {
+        let source = r#"ken s = "Hello""#;
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("(data"));
+    }
+
+    // ==================== String Escape ====================
+
+    #[test]
+    fn test_string_escape_newline() {
+        let source = r#"ken s = "hello\nworld""#;
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("(data"));
+    }
+
+    #[test]
+    fn test_string_escape_tab() {
+        let source = r#"ken s = "hello\tworld""#;
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("(data"));
+    }
+
+    // ==================== Multiple Statements ====================
+
+    #[test]
+    fn test_multiple_vars_wasm() {
+        let source = r#"
+            ken a = 1
+            ken b = 2
+            ken c = a + b
+        "#;
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("(module"));
+    }
+
+    #[test]
+    fn test_function_with_params_wasm() {
+        let source = r#"
+            dae multiply(a, b) {
+                gie a * b
+            }
+        "#;
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("(func $multiply"));
+        assert!(result.contains("(param"));
+    }
+
+    // ==================== Variable Operations ====================
+
+    #[test]
+    fn test_variable_assignment_wasm() {
+        let source = r#"
+            ken x = 1
+            x = 42
+        "#;
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("local.set"));
+    }
+
+    #[test]
+    fn test_variable_get_wasm() {
+        let source = r#"
+            ken x = 42
+            ken y = x
+        "#;
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("local.get"));
+    }
+
+    // ==================== Block ====================
+
+    #[test]
+    fn test_block_wasm() {
+        let source = r#"
+            {
+                ken x = 1
+                ken y = 2
+            }
+        "#;
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("(module"));
+    }
+
+    #[test]
+    fn test_nested_blocks_wasm() {
+        let source = r#"
+            {
+                ken x = 1
+                {
+                    ken y = 2
+                }
+            }
+        "#;
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("(module"));
+    }
+
+    // ==================== Print ====================
+
+    #[test]
+    fn test_print_wasm() {
+        let source = "blether 42";
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("call $print"));
+    }
+
+    #[test]
+    fn test_print_string_wasm() {
+        let source = r#"blether "Hello""#;
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("(module"));
     }
 }

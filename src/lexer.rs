@@ -140,14 +140,8 @@ mod tests {
         let source = "foo bar_baz _private";
         let tokens = lex(source).unwrap();
 
-        assert_eq!(
-            tokens[0].kind,
-            TokenKind::Identifier("foo".to_string())
-        );
-        assert_eq!(
-            tokens[1].kind,
-            TokenKind::Identifier("bar_baz".to_string())
-        );
+        assert_eq!(tokens[0].kind, TokenKind::Identifier("foo".to_string()));
+        assert_eq!(tokens[1].kind, TokenKind::Identifier("bar_baz".to_string()));
         assert_eq!(
             tokens[2].kind,
             TokenKind::Identifier("_private".to_string())

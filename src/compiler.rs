@@ -178,7 +178,9 @@ impl Compiler {
         self.indent += 1;
         self.emit_line("if (typeof x === 'string' || Array.isArray(x)) {");
         self.indent += 1;
-        self.emit_line("if (x.length === 0) throw new Error('Cannae get heid o\\' an empty list!');");
+        self.emit_line(
+            "if (x.length === 0) throw new Error('Cannae get heid o\\' an empty list!');",
+        );
         self.emit_line("return x[0];");
         self.indent -= 1;
         self.emit_line("}");
@@ -200,7 +202,9 @@ impl Compiler {
         self.indent += 1;
         self.emit_line("if (typeof x === 'string' || Array.isArray(x)) {");
         self.indent += 1;
-        self.emit_line("if (x.length === 0) throw new Error('Cannae get bum o\\' an empty list!');");
+        self.emit_line(
+            "if (x.length === 0) throw new Error('Cannae get bum o\\' an empty list!');",
+        );
         self.emit_line("return x[x.length - 1];");
         self.indent -= 1;
         self.emit_line("}");
@@ -211,7 +215,9 @@ impl Compiler {
         // scran - slice
         self.emit_line("scran: (x, start, end) => {");
         self.indent += 1;
-        self.emit_line("if (typeof x === 'string' || Array.isArray(x)) return x.slice(start, end);");
+        self.emit_line(
+            "if (typeof x === 'string' || Array.isArray(x)) return x.slice(start, end);",
+        );
         self.emit_line("throw new Error('scran() expects a list or string');");
         self.indent -= 1;
         self.emit_line("},");
@@ -396,7 +402,8 @@ impl Compiler {
                 ..
             } => {
                 self.emit_indent();
-                self.output.push_str(&format!("for (const {} of ", variable));
+                self.output
+                    .push_str(&format!("for (const {} of ", variable));
                 self.compile_expr(iterable)?;
                 self.output.push_str(") ");
                 self.compile_stmt_inline(body)?;
@@ -404,10 +411,7 @@ impl Compiler {
             }
 
             Stmt::Function {
-                name,
-                params,
-                body,
-                ..
+                name, params, body, ..
             } => {
                 self.emit_indent();
                 let params_str = self.compile_params(params)?;
@@ -517,10 +521,7 @@ impl Compiler {
                         .replace(".braw", "")
                         .replace(".js", "")
                 });
-                self.emit_line(&format!(
-                    "const {} = require('{}');",
-                    module_name, path
-                ));
+                self.emit_line(&format!("const {} = require('{}');", module_name, path));
             }
 
             Stmt::TryCatch {
@@ -591,9 +592,7 @@ impl Compiler {
             }
 
             Stmt::Assert {
-                condition,
-                message,
-                ..
+                condition, message, ..
             } => {
                 self.emit_indent();
                 self.output.push_str("if (!(");
@@ -613,9 +612,7 @@ impl Compiler {
             }
 
             Stmt::Destructure {
-                patterns,
-                value,
-                ..
+                patterns, value, ..
             } => {
                 // JavaScript destructuring: const [a, b, ...rest] = value
                 self.emit_indent();
@@ -769,20 +766,18 @@ impl Compiler {
 
             Expr::Unary {
                 operator, operand, ..
-            } => {
-                match operator {
-                    UnaryOp::Negate => {
-                        self.output.push_str("(-");
-                        self.compile_expr(operand)?;
-                        self.output.push(')');
-                    }
-                    UnaryOp::Not => {
-                        self.output.push_str("(!");
-                        self.compile_expr(operand)?;
-                        self.output.push(')');
-                    }
+            } => match operator {
+                UnaryOp::Negate => {
+                    self.output.push_str("(-");
+                    self.compile_expr(operand)?;
+                    self.output.push(')');
                 }
-            }
+                UnaryOp::Not => {
+                    self.output.push_str("(!");
+                    self.compile_expr(operand)?;
+                    self.output.push(')');
+                }
+            },
 
             Expr::Logical {
                 left,
@@ -838,9 +833,7 @@ impl Compiler {
                 self.output.push(')');
             }
 
-            Expr::Index {
-                object, index, ..
-            } => {
+            Expr::Index { object, index, .. } => {
                 self.compile_expr(object)?;
                 self.output.push('[');
                 self.compile_expr(index)?;
@@ -1053,11 +1046,27 @@ pub fn compile(source: &str) -> HaversResult<String> {
 mod tests {
     use super::*;
 
+    // ==================== Basic Tests ====================
+
     #[test]
     fn test_simple_compile() {
         let result = compile("ken x = 5").unwrap();
         assert!(result.contains("let x = 5;"));
     }
+
+    #[test]
+    fn test_var_no_initializer() {
+        let result = compile("ken x").unwrap();
+        assert!(result.contains("let x = null;"));
+    }
+
+    #[test]
+    fn test_expression_statement() {
+        let result = compile("ken x = 1\nx + 2").unwrap();
+        assert!(result.contains("(x + 2);"));
+    }
+
+    // ==================== Function Tests ====================
 
     #[test]
     fn test_function_compile() {
@@ -1074,6 +1083,25 @@ dae add(a, b) {
     }
 
     #[test]
+    fn test_function_with_defaults() {
+        let result = compile(
+            r#"dae greet(name, greeting = "Hello") {
+    gie greeting + name
+}"#,
+        )
+        .unwrap();
+        assert!(result.contains("greeting = \"Hello\""));
+    }
+
+    #[test]
+    fn test_return_no_value() {
+        let result = compile("dae foo() {\n    gie\n}").unwrap();
+        assert!(result.contains("return;"));
+    }
+
+    // ==================== Control Flow Tests ====================
+
+    #[test]
     fn test_if_compile() {
         let result = compile(
             r#"
@@ -1086,6 +1114,51 @@ gin x > 5 {
         assert!(result.contains("if ("));
         assert!(result.contains("blether("));
     }
+
+    #[test]
+    fn test_if_else_compile() {
+        let result = compile(
+            r#"gin x > 5 { blether "big" } ither { blether "small" }"#,
+        )
+        .unwrap();
+        assert!(result.contains("if ("));
+        assert!(result.contains("else"));
+    }
+
+    #[test]
+    fn test_while_compile() {
+        let result = compile("whiles x < 10 { ken x = x + 1 }").unwrap();
+        assert!(result.contains("while ("));
+    }
+
+    #[test]
+    fn test_for_compile() {
+        let result = compile("fer i in 0..10 { blether i }").unwrap();
+        assert!(result.contains("for (const i of"));
+    }
+
+    #[test]
+    fn test_break_compile() {
+        let result = compile("whiles aye { brak }").unwrap();
+        assert!(result.contains("break;"));
+    }
+
+    #[test]
+    fn test_continue_compile() {
+        let result = compile("whiles aye { haud }").unwrap();
+        assert!(result.contains("continue;"));
+    }
+
+    // ==================== Block Tests ====================
+
+    #[test]
+    fn test_block_compile() {
+        let result = compile("{ ken x = 1\n ken y = 2 }").unwrap();
+        assert!(result.contains("let x = 1;"));
+        assert!(result.contains("let y = 2;"));
+    }
+
+    // ==================== Class Tests ====================
 
     #[test]
     fn test_class_compile() {
@@ -1105,5 +1178,316 @@ kin Animal {
         assert!(result.contains("class Animal"));
         assert!(result.contains("constructor(name)"));
         assert!(result.contains("this.name"));
+    }
+
+    #[test]
+    fn test_class_inheritance() {
+        let result = compile(
+            r#"kin Dog fae Animal {
+    dae bark() {
+        blether "woof"
+    }
+}"#,
+        )
+        .unwrap();
+        assert!(result.contains("class Dog extends Animal"));
+    }
+
+    // ==================== Struct Tests ====================
+
+    #[test]
+    fn test_struct_compile() {
+        let result = compile("thing Point { x, y }").unwrap();
+        assert!(result.contains("class Point"));
+        assert!(result.contains("constructor(x, y)"));
+        assert!(result.contains("this.x = x;"));
+        assert!(result.contains("this.y = y;"));
+    }
+
+    // ==================== Import Tests ====================
+
+    #[test]
+    fn test_import_compile() {
+        let result = compile("fetch \"math\"").unwrap();
+        assert!(result.contains("require('math')"));
+    }
+
+    #[test]
+    fn test_import_with_alias() {
+        let result = compile("fetch \"math\" tae m").unwrap();
+        assert!(result.contains("const m = require('math')"));
+    }
+
+    // ==================== Try-Catch Tests ====================
+
+    #[test]
+    fn test_try_catch_compile() {
+        let result = compile("hae_a_bash { ken x = 1 } gin_it_gangs_wrang e { blether e }").unwrap();
+        assert!(result.contains("try {"));
+        assert!(result.contains("catch (e)"));
+    }
+
+    // ==================== Match Tests ====================
+
+    #[test]
+    fn test_match_compile() {
+        let result = compile(r#"keek x {
+    whan 1 -> blether "one"
+    whan 2 -> blether "two"
+    whan _ -> blether "other"
+}"#).unwrap();
+        assert!(result.contains("__match_val_"));
+        assert!(result.contains("if ("));
+        assert!(result.contains("else if ("));
+    }
+
+    #[test]
+    fn test_match_literal_patterns() {
+        let result = compile(r#"keek x {
+    whan "hello" -> blether "hi"
+    whan 3.14 -> blether "pi"
+    whan aye -> blether "true"
+    whan naething -> blether "nil"
+}"#).unwrap();
+        assert!(result.contains("=== \"hello\""));
+        assert!(result.contains("=== 3.14"));
+        assert!(result.contains("=== true"));
+        assert!(result.contains("=== null"));
+    }
+
+    #[test]
+    fn test_match_identifier_pattern() {
+        let result = compile(r#"keek x {
+    whan value -> blether value
+}"#).unwrap();
+        // Identifier patterns bind the value
+        assert!(result.contains("const value ="));
+    }
+
+    #[test]
+    fn test_match_range_pattern() {
+        let result = compile(r#"keek x {
+    whan 1..10 -> blether "in range"
+    whan _ -> blether "out"
+}"#).unwrap();
+        assert!(result.contains(">= "));
+        assert!(result.contains("< "));
+    }
+
+    // ==================== Assert Tests ====================
+
+    #[test]
+    fn test_assert_compile() {
+        let result = compile("mak_siccar x > 0").unwrap();
+        assert!(result.contains("if (!("));
+        assert!(result.contains("throw new Error"));
+    }
+
+    #[test]
+    fn test_assert_with_message() {
+        let result = compile("mak_siccar x > 0, \"x must be positive\"").unwrap();
+        assert!(result.contains("throw new Error("));
+        assert!(result.contains("\"x must be positive\""));
+    }
+
+    // ==================== Destructuring Tests ====================
+
+    #[test]
+    fn test_destructure_compile() {
+        let result = compile("ken [a, b] = [1, 2]").unwrap();
+        assert!(result.contains("const [a, b] = "));
+    }
+
+    #[test]
+    fn test_destructure_rest() {
+        let result = compile("ken [first, ...rest] = [1, 2, 3]").unwrap();
+        assert!(result.contains("const [first, ...rest] = "));
+    }
+
+    #[test]
+    fn test_destructure_ignore() {
+        let result = compile("ken [_, second, _] = [1, 2, 3]").unwrap();
+        assert!(result.contains("const [_, second, _] = "));
+    }
+
+    // ==================== Expression Tests ====================
+
+    #[test]
+    fn test_assignment_compile() {
+        let result = compile("ken x = 1\nx = 42").unwrap();
+        assert!(result.contains("(x = 42)"));
+    }
+
+    #[test]
+    fn test_unary_negate() {
+        let result = compile("-42").unwrap();
+        assert!(result.contains("(-42)"));
+    }
+
+    #[test]
+    fn test_unary_not() {
+        let result = compile("nae aye").unwrap();
+        assert!(result.contains("(!true)"));
+    }
+
+    #[test]
+    fn test_logical_and() {
+        let result = compile("aye an nae").unwrap();
+        assert!(result.contains("&&"));
+    }
+
+    #[test]
+    fn test_logical_or() {
+        let result = compile("aye or nae").unwrap();
+        assert!(result.contains("||"));
+    }
+
+    #[test]
+    fn test_call_compile() {
+        let result = compile("foo(1, 2, 3)").unwrap();
+        assert!(result.contains("foo(1, 2, 3)"));
+    }
+
+    #[test]
+    fn test_get_property() {
+        let result = compile("obj.prop").unwrap();
+        assert!(result.contains("obj.prop"));
+    }
+
+    #[test]
+    fn test_set_property() {
+        let result = compile("ken obj = {}\nobj.prop = 42").unwrap();
+        assert!(result.contains("obj.prop = 42"));
+    }
+
+    #[test]
+    fn test_index_compile() {
+        let result = compile("list[0]").unwrap();
+        assert!(result.contains("list[0]"));
+    }
+
+    #[test]
+    fn test_index_set_compile() {
+        let result = compile("ken list = [1,2,3]\nlist[0] = 99").unwrap();
+        assert!(result.contains("list[0] = 99"));
+    }
+
+    #[test]
+    fn test_slice_simple() {
+        let result = compile("list[1:3]").unwrap();
+        assert!(result.contains(".slice("));
+    }
+
+    #[test]
+    fn test_slice_with_step() {
+        let result = compile("list[::2]").unwrap();
+        assert!(result.contains("__havers.slice("));
+    }
+
+    #[test]
+    fn test_slice_start_only() {
+        let result = compile("list[1:]").unwrap();
+        assert!(result.contains(".slice(1)"));
+    }
+
+    #[test]
+    fn test_list_compile() {
+        let result = compile("[1, 2, 3]").unwrap();
+        assert!(result.contains("[1, 2, 3]"));
+    }
+
+    #[test]
+    fn test_dict_compile() {
+        let result = compile("ken d = {\"a\": 1, \"b\": 2}").unwrap();
+        assert!(result.contains("{"));
+        assert!(result.contains("}"));
+    }
+
+    #[test]
+    fn test_range_compile() {
+        let result = compile("0..10").unwrap();
+        assert!(result.contains("__havers.range(0, 10)"));
+    }
+
+    #[test]
+    fn test_grouping_compile() {
+        let result = compile("(1 + 2) * 3").unwrap();
+        assert!(result.contains("((1 + 2))"));
+    }
+
+    #[test]
+    fn test_lambda_compile() {
+        let result = compile("|x, y| x + y").unwrap();
+        assert!(result.contains("(x, y) =>"));
+    }
+
+    #[test]
+    fn test_masel_compile() {
+        let result = compile("kin Foo { dae test() { gie masel } }").unwrap();
+        assert!(result.contains("return this"));
+    }
+
+    #[test]
+    fn test_input_compile() {
+        let result = compile("speir \"What? \"").unwrap();
+        assert!(result.contains("speir(\"What? \")"));
+    }
+
+    #[test]
+    fn test_fstring_compile() {
+        let result = compile("ken name = \"world\"\nf\"Hello {name}!\"").unwrap();
+        assert!(result.contains("`Hello ${name}!`"));
+    }
+
+    #[test]
+    fn test_fstring_escapes() {
+        let result = compile("f\"cost: $5\"").unwrap();
+        assert!(result.contains("`cost: \\$5`"));
+    }
+
+    #[test]
+    fn test_spread_compile() {
+        let result = compile("[1, ...[2, 3]]").unwrap();
+        assert!(result.contains("...[2, 3]"));
+    }
+
+    #[test]
+    fn test_pipe_compile() {
+        let result = compile("ken dbl = |x| x * 2\n5 |> dbl").unwrap();
+        assert!(result.contains("dbl(5)"));
+    }
+
+    #[test]
+    fn test_ternary_compile() {
+        let result = compile("ken x = gin aye than 1 ither 0").unwrap();
+        assert!(result.contains("true ? 1 : 0"));
+    }
+
+    // ==================== String Escaping Tests ====================
+
+    #[test]
+    fn test_string_escapes() {
+        let result = compile("ken s = \"line1\\nline2\"").unwrap();
+        assert!(result.contains("\\n"));
+    }
+
+    // ==================== Compiler Default Tests ====================
+
+    #[test]
+    fn test_compiler_default() {
+        let compiler = Compiler::default();
+        assert_eq!(compiler.indent, 0);
+        assert!(compiler.output.is_empty());
+    }
+
+    // ==================== Runtime Tests ====================
+
+    #[test]
+    fn test_runtime_emitted() {
+        let result = compile("ken x = 1").unwrap();
+        assert!(result.contains("const __havers = {"));
+        assert!(result.contains("len:"));
+        assert!(result.contains("whit_kind:"));
+        assert!(result.contains("blether:"));
     }
 }

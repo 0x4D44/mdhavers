@@ -18,6 +18,9 @@ mod token;
 mod value;
 mod wasm_compiler;
 
+#[cfg(feature = "llvm")]
+mod llvm;
+
 use crate::compiler::compile;
 use crate::error::{format_error_context, random_scots_exclamation};
 use crate::interpreter::Interpreter;
@@ -108,6 +111,25 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+
+    /// Build a native executable using LLVM (requires llvm feature)
+    #[cfg(feature = "llvm")]
+    Build {
+        /// The .braw file to compile
+        file: PathBuf,
+
+        /// Output file (defaults to <input> without extension)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Optimization level (0-3)
+        #[arg(short = 'O', long, default_value = "2")]
+        opt_level: u8,
+
+        /// Emit LLVM IR instead of native binary
+        #[arg(long)]
+        emit_llvm: bool,
+    },
 }
 
 fn main() {
@@ -123,6 +145,10 @@ fn main() {
         Some(Commands::Ast { file }) => show_ast(&file),
         Some(Commands::Trace { file, verbose }) => trace_file(&file, verbose),
         Some(Commands::Wasm { file, output }) => compile_wasm(&file, output),
+        #[cfg(feature = "llvm")]
+        Some(Commands::Build { file, output, opt_level, emit_llvm }) => {
+            build_native(&file, output, opt_level, emit_llvm)
+        }
         None => {
             // If a file is provided directly, run it
             if let Some(file) = cli.file {
@@ -147,7 +173,7 @@ fn run_file(path: &PathBuf) -> Result<(), String> {
 
     // Set the current directory tae the file's directory fer module resolution
     if let Some(parent) = path.parent() {
-        if parent.as_os_str().len() > 0 {
+        if !parent.as_os_str().is_empty() {
             interpreter.set_current_dir(parent);
         }
     }
@@ -180,7 +206,7 @@ fn trace_file(path: &PathBuf, verbose: bool) -> Result<(), String> {
 
     // Set the current directory fer module resolution
     if let Some(parent) = path.parent() {
-        if parent.as_os_str().len() > 0 {
+        if !parent.as_os_str().is_empty() {
             interpreter.set_current_dir(parent);
         }
     }
@@ -188,7 +214,9 @@ fn trace_file(path: &PathBuf, verbose: bool) -> Result<(), String> {
     println!("{}", "═".repeat(60).yellow());
     println!(
         "{}",
-        "  🏴󠁧󠁢󠁳󠁣󠁴󠁿 mdhavers Tracer - Watchin' Yer Code Like a Hawk!".yellow().bold()
+        "  🏴󠁧󠁢󠁳󠁣󠁴󠁿 mdhavers Tracer - Watchin' Yer Code Like a Hawk!"
+            .yellow()
+            .bold()
     );
     if verbose {
         println!("{}", "  Mode: Verbose (showin' everything)".yellow());
@@ -213,7 +241,10 @@ fn trace_file(path: &PathBuf, verbose: bool) -> Result<(), String> {
 
     println!();
     println!("{}", "═".repeat(60).yellow());
-    println!("{}", "  🏴󠁧󠁢󠁳󠁣󠁴󠁿 Trace complete - Pure dead brilliant!".yellow().bold());
+    println!(
+        "{}",
+        "  🏴󠁧󠁢󠁳󠁣󠁴󠁿 Trace complete - Pure dead brilliant!".yellow().bold()
+    );
     println!("{}", "═".repeat(60).yellow());
 
     Ok(())
@@ -244,8 +275,8 @@ fn compile_file(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
 
 fn compile_wasm(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
     let source = read_file(path)?;
-    let wat_code = wasm_compiler::compile_to_wat(&source)
-        .map_err(|e| format_parse_error(&source, e))?;
+    let wat_code =
+        wasm_compiler::compile_to_wat(&source).map_err(|e| format_parse_error(&source, e))?;
 
     let output_path = output.unwrap_or_else(|| {
         let mut p = path.clone();
@@ -261,18 +292,69 @@ fn compile_wasm(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
         "Braw!".green().bold(),
         path.display()
     );
-    println!(
-        "  {} {}",
-        "Output:".dimmed(),
-        output_path.display()
-    );
+    println!("  {} {}", "Output:".dimmed(), output_path.display());
     println!();
     println!("{}", "Tae convert tae binary WASM, use:".dimmed());
-    println!(
-        "  {} wat2wasm {}",
-        "$".dimmed(),
-        output_path.display()
-    );
+    println!("  {} wat2wasm {}", "$".dimmed(), output_path.display());
+
+    Ok(())
+}
+
+#[cfg(feature = "llvm")]
+fn build_native(
+    path: &PathBuf,
+    output: Option<PathBuf>,
+    opt_level: u8,
+    emit_llvm: bool,
+) -> Result<(), String> {
+    let source = read_file(path)?;
+    let program = parse(&source).map_err(|e| format_parse_error(&source, e))?;
+
+    if emit_llvm {
+        // Emit LLVM IR
+        let compiler = llvm::LLVMCompiler::new().with_optimization(opt_level);
+        let ir = compiler
+            .compile_to_ir(&program)
+            .map_err(|e| format!("{}", e))?;
+
+        let output_path = output.unwrap_or_else(|| {
+            let mut p = path.clone();
+            p.set_extension("ll");
+            p
+        });
+
+        fs::write(&output_path, &ir)
+            .map_err(|e| format!("Cannae write tae {}: {}", output_path.display(), e))?;
+
+        println!(
+            "{} Compiled {} tae LLVM IR",
+            "Braw!".green().bold(),
+            path.display()
+        );
+        println!("  {} {}", "Output:".dimmed(), output_path.display());
+    } else {
+        // Build native executable
+        let output_path = output.unwrap_or_else(|| {
+            let mut p = path.clone();
+            p.set_extension("");
+            p
+        });
+
+        let compiler = llvm::LLVMCompiler::new();
+        compiler
+            .compile_to_native(&program, &output_path, opt_level)
+            .map_err(|e| format!("{}", e))?;
+
+        println!(
+            "{} Built native executable from {}",
+            "Braw!".green().bold(),
+            path.display()
+        );
+        println!("  {} {}", "Output:".dimmed(), output_path.display());
+        println!();
+        println!("{}", "Tae run:".dimmed());
+        println!("  {} ./{}", "$".dimmed(), output_path.display());
+    }
 
     Ok(())
 }
@@ -283,7 +365,9 @@ fn run_repl() -> Result<(), String> {
     println!("{}", "═".repeat(50).cyan());
     println!(
         "{}",
-        "  mdhavers REPL - A Scots Programming Language".cyan().bold()
+        "  mdhavers REPL - A Scots Programming Language"
+            .cyan()
+            .bold()
     );
     println!("{}", "  Pure havers, but working havers!".cyan());
     println!("{}", "═".repeat(50).cyan());
@@ -311,11 +395,7 @@ fn run_repl() -> Result<(), String> {
 
     // Load the prelude fer REPL users
     if let Err(e) = interpreter.load_prelude() {
-        eprintln!(
-            "{}: Couldnae load prelude: {}",
-            "Warning".yellow(),
-            e
-        );
+        eprintln!("{}: Couldnae load prelude: {}", "Warning".yellow(), e);
     }
 
     loop {
@@ -389,7 +469,10 @@ fn run_repl() -> Result<(), String> {
                             TraceMode::Off
                         });
                         if trace_enabled {
-                            println!("{}", "🏴󠁧󠁢󠁳󠁣󠁴󠁿 Trace mode ON - watchin' yer code like a hawk!".yellow());
+                            println!(
+                                "{}",
+                                "🏴󠁧󠁢󠁳󠁣󠁴󠁿 Trace mode ON - watchin' yer code like a hawk!".yellow()
+                            );
                         } else {
                             println!("{}", "Trace mode OFF - back tae normal.".dimmed());
                         }
@@ -399,7 +482,10 @@ fn run_repl() -> Result<(), String> {
                         trace_enabled = true;
                         verbose_trace = true;
                         interpreter.set_trace_mode(TraceMode::Verbose);
-                        println!("{}", "🏴󠁧󠁢󠁳󠁣󠁴󠁿 Verbose trace mode ON - showin' ye EVERYTHING!".yellow());
+                        println!(
+                            "{}",
+                            "🏴󠁧󠁢󠁳󠁣󠁴󠁿 Verbose trace mode ON - showin' ye EVERYTHING!".yellow()
+                        );
                         continue;
                     }
                     ":vars" | "vars" | ":env" | "env" => {
@@ -451,9 +537,18 @@ fn run_repl() -> Result<(), String> {
 
 fn print_repl_help() {
     println!();
-    println!("{}", "═══════════════════════════════════════════════════".cyan());
-    println!("{}", "  mdhavers Help - Yer Guide tae Scots Coding".cyan().bold());
-    println!("{}", "═══════════════════════════════════════════════════".cyan());
+    println!(
+        "{}",
+        "═══════════════════════════════════════════════════".cyan()
+    );
+    println!(
+        "{}",
+        "  mdhavers Help - Yer Guide tae Scots Coding".cyan().bold()
+    );
+    println!(
+        "{}",
+        "═══════════════════════════════════════════════════".cyan()
+    );
     println!();
 
     println!("{}", "Keywords:".yellow().bold());
@@ -501,7 +596,10 @@ fn print_repl_help() {
     println!("  {}         - get some Scots wisdom", "wisdom".green());
     println!("  {}     - get programming wisdom", "codewisdom".green());
     println!("  {}       - see example code", "examples".green());
-    println!("  {}          - toggle trace mode (debugger)", "trace".green());
+    println!(
+        "  {}          - toggle trace mode (debugger)",
+        "trace".green()
+    );
     println!("  {}       - verbose trace mode", "trace v".green());
     println!("  {}     - show defined variables", "vars / env".green());
     println!();
@@ -515,33 +613,87 @@ fn print_scots_wisdom() {
         .as_nanos() as usize;
 
     let proverbs = [
-        ("Mony a mickle maks a muckle", "Many small things add up tae something big"),
-        ("Lang may yer lum reek", "May ye always hae fuel fer yer fire (prosperity)"),
-        ("Whit's fer ye willnae go by ye", "What's meant fer ye will find ye"),
-        ("A nod's as guid as a wink tae a blind horse", "Some hints are pointless"),
-        ("Dinnae teach yer granny tae suck eggs", "Dinnae give advice tae experts"),
-        ("He wha daes the deil's wark gets the deil's wage", "Bad deeds bring bad consequences"),
-        ("Better a wee fire that warms than a muckle fire that burns", "Moderation is best"),
-        ("Guid gear comes in sma' bulk", "Good things come in wee packages"),
-        ("A blate cat maks a prood moose", "Shyness invites boldness in others"),
-        ("Facts are chiels that winna ding", "Ye cannae argue wi' facts"),
-        ("Ae man's meat is anither man's poison", "What works fer one may no' work fer anither"),
-        ("It's a lang road that has nae turnin'", "Things will improve eventually"),
-        ("Better bend than brek", "It's better tae compromise than tae break"),
+        (
+            "Mony a mickle maks a muckle",
+            "Many small things add up tae something big",
+        ),
+        (
+            "Lang may yer lum reek",
+            "May ye always hae fuel fer yer fire (prosperity)",
+        ),
+        (
+            "Whit's fer ye willnae go by ye",
+            "What's meant fer ye will find ye",
+        ),
+        (
+            "A nod's as guid as a wink tae a blind horse",
+            "Some hints are pointless",
+        ),
+        (
+            "Dinnae teach yer granny tae suck eggs",
+            "Dinnae give advice tae experts",
+        ),
+        (
+            "He wha daes the deil's wark gets the deil's wage",
+            "Bad deeds bring bad consequences",
+        ),
+        (
+            "Better a wee fire that warms than a muckle fire that burns",
+            "Moderation is best",
+        ),
+        (
+            "Guid gear comes in sma' bulk",
+            "Good things come in wee packages",
+        ),
+        (
+            "A blate cat maks a prood moose",
+            "Shyness invites boldness in others",
+        ),
+        (
+            "Facts are chiels that winna ding",
+            "Ye cannae argue wi' facts",
+        ),
+        (
+            "Ae man's meat is anither man's poison",
+            "What works fer one may no' work fer anither",
+        ),
+        (
+            "It's a lang road that has nae turnin'",
+            "Things will improve eventually",
+        ),
+        (
+            "Better bend than brek",
+            "It's better tae compromise than tae break",
+        ),
         ("Frae savin' comes havin'", "Save now, prosper later"),
-        ("They that dance maun pay the fiddler", "Ye must pay fer yer pleasures"),
+        (
+            "They that dance maun pay the fiddler",
+            "Ye must pay fer yer pleasures",
+        ),
         ("Oot o' sicht, oot o' mind", "We forget whit we dinnae see"),
         ("A fool an' his money are soon parted", "Dinnae be wasteful"),
-        ("There's nae fool like an auld fool", "Age doesnae always bring wisdom"),
-        ("Ye cannae mak a silk purse oot o' a soo's lug", "Ye cannae improve on poor materials"),
+        (
+            "There's nae fool like an auld fool",
+            "Age doesnae always bring wisdom",
+        ),
+        (
+            "Ye cannae mak a silk purse oot o' a soo's lug",
+            "Ye cannae improve on poor materials",
+        ),
         ("Birds o' a feather flock thegither", "Like attracts like"),
     ];
 
     let (proverb, meaning) = proverbs[seed % proverbs.len()];
     println!();
-    println!("{}", "═══════════════════════════════════════════════════".cyan());
+    println!(
+        "{}",
+        "═══════════════════════════════════════════════════".cyan()
+    );
     println!("{}", "  A Wee Bit o' Scots Wisdom".cyan().bold());
-    println!("{}", "═══════════════════════════════════════════════════".cyan());
+    println!(
+        "{}",
+        "═══════════════════════════════════════════════════".cyan()
+    );
     println!();
     println!("  \"{}\"", proverb.yellow().italic());
     println!();
@@ -552,9 +704,15 @@ fn print_scots_wisdom() {
 fn print_programming_wisdom() {
     let wisdom = crate::error::scots_programming_wisdom();
     println!();
-    println!("{}", "═══════════════════════════════════════════════════".cyan());
+    println!(
+        "{}",
+        "═══════════════════════════════════════════════════".cyan()
+    );
     println!("{}", "  Scottish Programming Wisdom".cyan().bold());
-    println!("{}", "═══════════════════════════════════════════════════".cyan());
+    println!(
+        "{}",
+        "═══════════════════════════════════════════════════".cyan()
+    );
     println!();
     println!("  \"{}\"", wisdom.yellow().italic());
     println!();
@@ -562,9 +720,15 @@ fn print_programming_wisdom() {
 
 fn print_repl_examples() {
     println!();
-    println!("{}", "═══════════════════════════════════════════════════".cyan());
+    println!(
+        "{}",
+        "═══════════════════════════════════════════════════".cyan()
+    );
     println!("{}", "  mdhavers Examples".cyan().bold());
-    println!("{}", "═══════════════════════════════════════════════════".cyan());
+    println!(
+        "{}",
+        "═══════════════════════════════════════════════════".cyan()
+    );
     println!();
 
     println!("{}", "Variables:".yellow().bold());
@@ -574,8 +738,14 @@ fn print_repl_examples() {
     println!();
 
     println!("{}", "Conditionals:".yellow().bold());
-    println!("  {}", "gin age > 18 { blether \"Ye're auld enough!\" }".green());
-    println!("  {}", "gin score > 90 { \"A\" } ither gin score > 70 { \"B\" } ither { \"C\" }".green());
+    println!(
+        "  {}",
+        "gin age > 18 { blether \"Ye're auld enough!\" }".green()
+    );
+    println!(
+        "  {}",
+        "gin score > 90 { \"A\" } ither gin score > 70 { \"B\" } ither { \"C\" }".green()
+    );
     println!();
 
     println!("{}", "Loops:".yellow().bold());
@@ -584,13 +754,22 @@ fn print_repl_examples() {
     println!();
 
     println!("{}", "Functions:".yellow().bold());
-    println!("  {}", "dae greet(name) { gie \"Hullo, \" + name + \"!\" }".green());
+    println!(
+        "  {}",
+        "dae greet(name) { gie \"Hullo, \" + name + \"!\" }".green()
+    );
     println!("  {}", "greet(\"Scotland\")".green());
     println!();
 
     println!("{}", "Lists & Dicts:".yellow().bold());
-    println!("  {}", "ken fruits = [\"apple\", \"banana\", \"cherry\"]".green());
-    println!("  {}", "ken person = {\"name\": \"Morag\", \"age\": 28}".green());
+    println!(
+        "  {}",
+        "ken fruits = [\"apple\", \"banana\", \"cherry\"]".green()
+    );
+    println!(
+        "  {}",
+        "ken person = {\"name\": \"Morag\", \"age\": 28}".green()
+    );
     println!();
 
     println!("{}", "Functional:".yellow().bold());
@@ -604,21 +783,26 @@ fn print_environment(interpreter: &Interpreter) {
     let vars = interpreter.get_user_variables();
 
     println!();
-    println!("{}", "═══════════════════════════════════════════════════".cyan());
+    println!(
+        "{}",
+        "═══════════════════════════════════════════════════".cyan()
+    );
     println!("{}", "  Yer Variables (Environment)".cyan().bold());
-    println!("{}", "═══════════════════════════════════════════════════".cyan());
+    println!(
+        "{}",
+        "═══════════════════════════════════════════════════".cyan()
+    );
     println!();
 
     if vars.is_empty() {
-        println!("  {}", "Nae variables defined yet - use 'ken x = 42' tae create one!".dimmed());
+        println!(
+            "  {}",
+            "Nae variables defined yet - use 'ken x = 42' tae create one!".dimmed()
+        );
     } else {
         // Separate user values from prelude functions
-        let user_vars: Vec<_> = vars.iter()
-            .filter(|(_, t, _)| t != "function")
-            .collect();
-        let user_funcs: Vec<_> = vars.iter()
-            .filter(|(_, t, _)| t == "function")
-            .collect();
+        let user_vars: Vec<_> = vars.iter().filter(|(_, t, _)| t != "function").collect();
+        let user_funcs: Vec<_> = vars.iter().filter(|(_, t, _)| t == "function").collect();
 
         if !user_vars.is_empty() {
             println!("{}", "  Values:".yellow().bold());
@@ -629,7 +813,12 @@ fn print_environment(interpreter: &Interpreter) {
                 } else {
                     value.clone()
                 };
-                println!("    {} : {} = {}", name.green(), type_name.dimmed(), display_value.yellow());
+                println!(
+                    "    {} : {} = {}",
+                    name.green(),
+                    type_name.dimmed(),
+                    display_value.yellow()
+                );
             }
             println!();
         }
@@ -656,11 +845,7 @@ fn check_file(path: &PathBuf) -> Result<(), String> {
 
     // Lex
     let tokens = lexer::lex(&source).map_err(|e| format_parse_error(&source, e))?;
-    println!(
-        "{} Lexing passed ({} tokens)",
-        "✓".green(),
-        tokens.len()
-    );
+    println!("{} Lexing passed ({} tokens)", "✓".green(), tokens.len());
 
     // Parse
     let _program = parse(&source).map_err(|e| format_parse_error(&source, e))?;
@@ -679,8 +864,8 @@ fn format_file(path: &PathBuf, check_only: bool) -> Result<(), String> {
     let source = read_file(path)?;
 
     // Format the code
-    let formatted = formatter::format_source(&source)
-        .map_err(|e| format_parse_error(&source, e))?;
+    let formatted =
+        formatter::format_source(&source).map_err(|e| format_parse_error(&source, e))?;
 
     if check_only {
         // Just check if formatting would change anything
@@ -692,11 +877,7 @@ fn format_file(path: &PathBuf, check_only: bool) -> Result<(), String> {
             );
             Ok(())
         } else {
-            println!(
-                "{} {} needs formattin'!",
-                "✗".red(),
-                path.display()
-            );
+            println!("{} {} needs formattin'!", "✗".red(), path.display());
             Err("File needs formattin'".to_string())
         }
     } else {
@@ -766,13 +947,8 @@ fn read_file(path: &PathBuf) -> Result<String, String> {
         }
     }
 
-    fs::read_to_string(path).map_err(|e| {
-        format!(
-            "Dinnae be daft! Cannae read '{}': {}",
-            path.display(),
-            e
-        )
-    })
+    fs::read_to_string(path)
+        .map_err(|e| format!("Dinnae be daft! Cannae read '{}': {}", path.display(), e))
 }
 
 fn format_parse_error(source: &str, error: error::HaversError) -> String {
@@ -785,7 +961,7 @@ fn format_parse_error(source: &str, error: error::HaversError) -> String {
 
     // Add helpful suggestion if available
     if let Some(suggestion) = error::get_error_suggestion(&error) {
-        msg.push_str("\n");
+        msg.push('\n');
         msg.push_str(suggestion);
     }
 
@@ -802,7 +978,7 @@ fn format_runtime_error(source: &str, error: error::HaversError) -> String {
 
     // Add helpful suggestion if available
     if let Some(suggestion) = error::get_error_suggestion(&error) {
-        msg.push_str("\n");
+        msg.push('\n');
         msg.push_str(suggestion);
     }
 

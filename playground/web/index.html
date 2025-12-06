@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>mdhavers Playground - A Scots Programming Language</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header>
+        <div class="logo">
+            <span class="flag">🏴󠁧󠁢󠁳󠁣󠁴󠁿</span>
+            <h1>mdhavers</h1>
+            <span class="tagline">Pure havers, but working havers!</span>
+        </div>
+        <nav>
+            <a href="https://github.com/0x4d44/mdhavers" target="_blank" rel="noopener">GitHub</a>
+            <a href="../docs/book/index.html" target="_blank">Docs</a>
+        </nav>
+    </header>
+
+    <main>
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <button id="runBtn" class="primary" title="Run code (Ctrl+Enter)">
+                    <span class="icon">▶</span> Run
+                </button>
+                <button id="formatBtn" title="Format code">
+                    <span class="icon">✨</span> Format
+                </button>
+                <button id="compileBtn" title="Compile to JavaScript">
+                    <span class="icon">⚡</span> Compile
+                </button>
+                <button id="clearBtn" title="Clear output">
+                    <span class="icon">🗑</span> Clear
+                </button>
+            </div>
+            <div class="toolbar-right">
+                <select id="examples" title="Load example">
+                    <option value="">📝 Examples...</option>
+                    <option value="hello">Hello World</option>
+                    <option value="variables">Variables</option>
+                    <option value="control">Control Flow</option>
+                    <option value="functions">Functions</option>
+                    <option value="lists">Lists & Dicts</option>
+                    <option value="classes">Classes</option>
+                    <option value="functional">Functional</option>
+                    <option value="fibonacci">Fibonacci</option>
+                    <option value="fizzbuzz">FizzBuzz</option>
+                </select>
+                <button id="shareBtn" title="Share code">
+                    <span class="icon">🔗</span> Share
+                </button>
+            </div>
+        </div>
+
+        <div class="editor-container">
+            <div class="panel editor-panel">
+                <div class="panel-header">
+                    <span class="panel-title">📝 Code</span>
+                    <span class="filename">untitled.braw</span>
+                </div>
+                <div class="editor-wrapper">
+                    <textarea id="editor" spellcheck="false" placeholder="// Write yer mdhavers code here!
+// Try: blether &quot;Hello, World!&quot;"></textarea>
+                    <div id="lineNumbers" class="line-numbers"></div>
+                </div>
+            </div>
+
+            <div class="panel output-panel">
+                <div class="panel-header">
+                    <span class="panel-title" id="outputTitle">📤 Output</span>
+                    <span class="status" id="status">Ready</span>
+                </div>
+                <div id="output" class="output"></div>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <p>
+            Made wi' ❤️ in Scotland 🏴󠁧󠁢󠁳󠁣󠁴󠁿 |
+            <a href="https://github.com/0x4d44/mdhavers" target="_blank">Source Code</a> |
+            <a href="../docs/book/scots-glossary.html" target="_blank">Scots Glossary</a>
+        </p>
+    </footer>
+
+    <!-- Toast notification -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Compiled code modal -->
+    <div id="compileModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⚡ Compiled JavaScript</h2>
+                <button class="close-btn" id="closeModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <pre id="compiledCode"></pre>
+            </div>
+            <div class="modal-footer">
+                <button id="copyCompiledBtn" class="primary">📋 Copy</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>

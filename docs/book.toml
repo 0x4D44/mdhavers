@@ -1,0 +1,36 @@
+[book]
+title = "mdhavers - A Scots Programming Language"
+authors = ["0x4D44"]
+description = "Pure havers, but working havers! Learn the Scots programming language."
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+create-missing = true
+
+[output.html]
+default-theme = "rust"
+preferred-dark-theme = "coal"
+git-repository-url = "https://github.com/0x4d44/mdhavers"
+edit-url-template = "https://github.com/0x4d44/mdhavers/edit/master/docs/{path}"
+site-url = "/"
+cname = ""
+no-section-label = false
+additional-css = []
+additional-js = []
+
+[output.html.playground]
+editable = false
+copyable = true
+copy-js = true
+line-numbers = true
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.search]
+enable = true
+limit-results = 20
+teaser-word-count = 30
