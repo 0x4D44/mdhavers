@@ -1,0 +1,312 @@
+# structures_demo.braw - Demonstrate data structures in mdhavers
+# "Keepin' yer data organised!"
+
+fetch "lib/structures"
+
+blether ""
+blether "======================================================="
+blether "    DATA STRUCTURES DEMO"
+blether "    'Aw yer data, aw in order!'"
+blether "======================================================="
+blether ""
+
+# ===============================================================
+# Stack (LIFO)
+# ===============================================================
+
+blether "=== Stack (Last In, First Out) ==="
+blether ""
+
+ken stack = Stack()
+
+blether "Pushing items: 1, 2, 3, 4, 5"
+stack.push(1)
+stack.push(2)
+stack.push(3)
+stack.push(4)
+stack.push(5)
+
+blether f"Stack size: {stack.size()}"
+blether f"Top item (peek): {stack.peek()}"
+blether ""
+
+blether "Popping items:"
+whiles nae stack.is_empty() {
+    blether f"  Popped: {stack.pop()}"
+}
+
+blether f"Stack empty: {stack.is_empty()}"
+blether ""
+
+# ===============================================================
+# Queue (FIFO)
+# ===============================================================
+
+blether "=== Queue (First In, First Out) ==="
+blether ""
+
+ken queue = Queue()
+
+blether "Enqueueing: apple, banana, cherry, date"
+queue.enqueue("apple")
+queue.enqueue("banana")
+queue.enqueue("cherry")
+queue.enqueue("date")
+
+blether f"Queue size: {queue.size()}"
+blether f"Front item (peek): {queue.peek()}"
+blether ""
+
+blether "Dequeueing items:"
+whiles nae queue.is_empty() {
+    blether f"  Dequeued: {queue.dequeue()}"
+}
+
+blether ""
+
+# ===============================================================
+# Deque (Double-Ended Queue)
+# ===============================================================
+
+blether "=== Deque (Double-Ended Queue) ==="
+blether ""
+
+ken deque = Deque()
+
+blether "Adding to front: C, B, A"
+deque.push_front("C")
+deque.push_front("B")
+deque.push_front("A")
+
+blether "Adding to back: D, E, F"
+deque.push_back("D")
+deque.push_back("E")
+deque.push_back("F")
+
+blether f"Deque contents: {deque.tae_list()}"
+blether f"Front: {deque.peek_front()}"
+blether f"Back: {deque.peek_back()}"
+blether ""
+
+blether f"Pop front: {deque.pop_front()}"
+blether f"Pop back: {deque.pop_back()}"
+blether f"Remaining: {deque.tae_list()}"
+blether ""
+
+# ===============================================================
+# Set
+# ===============================================================
+
+blether "=== Set (Unique Elements) ==="
+blether ""
+
+ken set1 = make_set([1, 2, 3, 4, 5])
+ken set2 = make_set([4, 5, 6, 7, 8])
+
+blether f"Set 1: {set1.tae_list()}"
+blether f"Set 2: {set2.tae_list()}"
+blether ""
+
+blether f"Set 1 has 3: {set1.has(3)}"
+blether f"Set 1 has 9: {set1.has(9)}"
+blether ""
+
+ken union_set = set1.union(set2)
+ken intersection_set = set1.intersection(set2)
+ken difference_set = set1.difference(set2)
+
+blether f"Union: {union_set.tae_list()}"
+blether f"Intersection: {intersection_set.tae_list()}"
+blether f"Difference (1 - 2): {difference_set.tae_list()}"
+blether ""
+
+# Adding duplicates
+ken unique = Set()
+unique.add("apple")
+unique.add("banana")
+unique.add("apple")
+unique.add("cherry")
+unique.add("banana")
+
+blether f"Adding with duplicates: {unique.tae_list()}"
+blether f"Size: {unique.size()}"
+blether ""
+
+# ===============================================================
+# Priority Queue
+# ===============================================================
+
+blether "=== Priority Queue ==="
+blether ""
+
+ken pq = PriorityQueue()
+
+blether "Adding tasks with priorities:"
+pq.enqueue("Low priority task", 10)
+pq.enqueue("High priority task", 1)
+pq.enqueue("Medium priority task", 5)
+pq.enqueue("Urgent task", 0)
+pq.enqueue("Normal task", 5)
+
+blether f"Queue size: {pq.size()}"
+blether ""
+
+blether "Processing tasks by priority:"
+whiles nae pq.is_empty() {
+    blether f"  Processing: {pq.dequeue()}"
+}
+
+blether ""
+
+# ===============================================================
+# Ring Buffer
+# ===============================================================
+
+blether "=== Ring Buffer (Capacity 5) ==="
+blether ""
+
+ken ring = RingBuffer(5)
+
+blether "Adding 1, 2, 3"
+ring.push(1)
+ring.push(2)
+ring.push(3)
+blether f"Buffer: {ring.tae_list()}"
+blether f"Size: {ring.size()}, Full: {ring.is_full()}"
+blether ""
+
+blether "Adding 4, 5, 6, 7 (will overflow)"
+ring.push(4)
+ring.push(5)
+ring.push(6)
+ring.push(7)
+blether f"Buffer: {ring.tae_list()}"
+blether f"Size: {ring.size()}, Full: {ring.is_full()}"
+blether ""
+
+blether f"Pop oldest: {ring.pop()}"
+blether f"Buffer after pop: {ring.tae_list()}"
+blether ""
+
+# ===============================================================
+# LRU Cache
+# ===============================================================
+
+blether "=== LRU Cache (Capacity 3) ==="
+blether ""
+
+ken cache = LRUCache(3)
+
+blether "Setting: a=1, b=2, c=3"
+cache.set("a", 1)
+cache.set("b", 2)
+cache.set("c", 3)
+
+blether f"Get a: {cache.get('a')}"
+blether f"Get b: {cache.get('b')}"
+blether ""
+
+blether "Setting d=4 (will evict least recently used)"
+cache.set("d", 4)
+
+blether f"Get c (evicted?): {cache.get('c')}"
+blether f"Get a (still there?): {cache.get('a')}"
+blether f"Get d: {cache.get('d')}"
+blether ""
+
+# ===============================================================
+# Counter
+# ===============================================================
+
+blether "=== Counter ==="
+blether ""
+
+ken words = ["apple", "banana", "apple", "cherry", "apple", "banana", "date", "apple", "cherry", "apple"]
+
+ken counter = Counter(words)
+
+blether f"Counting words: {words}"
+blether ""
+blether f"apple count: {counter.get('apple')}"
+blether f"banana count: {counter.get('banana')}"
+blether f"cherry count: {counter.get('cherry')}"
+blether f"date count: {counter.get('date')}"
+blether f"missing count: {counter.get('missing')}"
+blether ""
+
+blether f"Total: {counter.total()}"
+blether ""
+
+blether "Most common:"
+fer item in counter.most_common(3) {
+    blether f"  {item['key']}: {item['count']}"
+}
+
+blether ""
+
+# ===============================================================
+# Practical Example: Task Scheduler
+# ===============================================================
+
+blether "=== Practical Example: Task Scheduler ==="
+blether ""
+
+kin TaskScheduler {
+    dae init() {
+        masel.todo = Queue()
+        masel.done = Stack()
+    }
+
+    dae add_task(task) {
+        masel.todo.enqueue(task)
+    }
+
+    dae do_next() {
+        ken task = masel.todo.dequeue()
+        gin task != naething {
+            blether f"  Doing: {task}"
+            masel.done.push(task)
+        }
+        gie task
+    }
+
+    dae undo_last() {
+        ken task = masel.done.pop()
+        gin task != naething {
+            blether f"  Undoing: {task}"
+            masel.todo.enqueue(task)
+        }
+        gie task
+    }
+
+    dae status() {
+        blether f"  Pending: {masel.todo.size()}, Done: {masel.done.size()}"
+    }
+}
+
+ken scheduler = TaskScheduler()
+
+blether "Adding tasks..."
+scheduler.add_task("Write code")
+scheduler.add_task("Run tests")
+scheduler.add_task("Fix bugs")
+scheduler.add_task("Deploy")
+scheduler.status()
+blether ""
+
+blether "Doing tasks..."
+scheduler.do_next()
+scheduler.do_next()
+scheduler.status()
+blether ""
+
+blether "Oops, need to undo..."
+scheduler.undo_last()
+scheduler.status()
+blether ""
+
+blether "======================================================="
+blether "    Data structures demo complete!"
+blether "    'Yer data's aw in guid order noo!'"
+blether "======================================================="
+blether ""

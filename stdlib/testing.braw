@@ -1,0 +1,339 @@
+# testing.braw - A Scottish testing framework fer mdhavers
+# "Mak siccar yer code works, or ye'll be greetin' later!"
+
+# ===============================================================
+# Test State (global counters)
+# ===============================================================
+
+ken __test_passed = 0
+ken __test_failed = 0
+ken __test_current_suite = ""
+
+# ===============================================================
+# Basic Assertions
+# ===============================================================
+
+# Assert that a condition is true
+dae expect(condition, message = "Expectation failed") {
+    gin condition {
+        __test_passed = __test_passed + 1
+        blether f"  ✓ {message}"
+    } ither {
+        __test_failed = __test_failed + 1
+        blether f"  ✗ {message}"
+    }
+    gie condition
+}
+
+# Assert equality
+dae expect_equal(actual, expected, message = "") {
+    ken msg = message
+    gin len(msg) == 0 {
+        msg = f"Expected {expected}, got {actual}"
+    }
+    gin actual == expected {
+        __test_passed = __test_passed + 1
+        blether f"  ✓ {msg}"
+        gie aye
+    } ither {
+        __test_failed = __test_failed + 1
+        blether f"  ✗ {msg}"
+        blether f"      Expected: {expected}"
+        blether f"      Actual:   {actual}"
+        gie nae
+    }
+}
+
+# Assert inequality
+dae expect_not_equal(actual, unexpected, message = "") {
+    ken msg = message
+    gin len(msg) == 0 {
+        msg = f"Expected NOT {unexpected}"
+    }
+    gin actual != unexpected {
+        __test_passed = __test_passed + 1
+        blether f"  ✓ {msg}"
+        gie aye
+    } ither {
+        __test_failed = __test_failed + 1
+        blether f"  ✗ {msg}"
+        blether f"      Got: {actual} (should be different)"
+        gie nae
+    }
+}
+
+# Assert true
+dae expect_true(value, message = "Expected true") {
+    gie expect(value == aye, message)
+}
+
+# Assert false
+dae expect_false(value, message = "Expected false") {
+    gie expect(value == nae, message)
+}
+
+# Assert nil/naething
+dae expect_naething(value, message = "Expected naething") {
+    gie expect(value == naething, message)
+}
+
+# Assert not nil/naething
+dae expect_somethin(value, message = "Expected something (not naething)") {
+    gie expect(value != naething, message)
+}
+
+# ===============================================================
+# Numeric Assertions
+# ===============================================================
+
+# Assert greater than
+dae expect_greater(actual, threshold, message = "") {
+    ken msg = message
+    gin len(msg) == 0 {
+        msg = f"Expected {actual} > {threshold}"
+    }
+    gie expect(actual > threshold, msg)
+}
+
+# Assert less than
+dae expect_less(actual, threshold, message = "") {
+    ken msg = message
+    gin len(msg) == 0 {
+        msg = f"Expected {actual} < {threshold}"
+    }
+    gie expect(actual < threshold, msg)
+}
+
+# Assert within range (inclusive)
+dae expect_between(actual, wee_end, muckle_end, message = "") {
+    ken msg = message
+    gin len(msg) == 0 {
+        msg = f"Expected {actual} between {wee_end} and {muckle_end}"
+    }
+    gie expect(actual >= wee_end an actual <= muckle_end, msg)
+}
+
+# Assert approximately equal (for floats)
+dae expect_near(actual, expected, tolerance = 0.0001, message = "") {
+    ken diff = actual - expected
+    gin diff < 0 {
+        diff = -diff
+    }
+    ken msg = message
+    gin len(msg) == 0 {
+        msg = f"Expected {actual} ≈ {expected} (tolerance: {tolerance})"
+    }
+    gie expect(diff <= tolerance, msg)
+}
+
+# ===============================================================
+# Collection Assertions
+# ===============================================================
+
+# Assert list length
+dae expect_length(list, expected_len, message = "") {
+    ken actual_len = len(list)
+    ken msg = message
+    gin len(msg) == 0 {
+        msg = f"Expected length {expected_len}, got {actual_len}"
+    }
+    gie expect(actual_len == expected_len, msg)
+}
+
+# Assert list is empty
+dae expect_toom(list, message = "Expected empty list") {
+    gie expect_length(list, 0, message)
+}
+
+# Assert list is not empty
+dae expect_no_toom(list, message = "Expected non-empty list") {
+    gie expect(len(list) > 0, message)
+}
+
+# Assert list contains element
+dae expect_contains(list, element, message = "") {
+    ken msg = message
+    gin len(msg) == 0 {
+        msg = f"Expected list to contain {element}"
+    }
+    gie expect(contains(list, element), msg)
+}
+
+# Assert list does not contain element
+dae expect_no_contains(list, element, message = "") {
+    ken msg = message
+    gin len(msg) == 0 {
+        msg = f"Expected list NOT to contain {element}"
+    }
+    gie expect(nae contains(list, element), msg)
+}
+
+# Assert lists are equal
+dae expect_lists_equal(actual, expected, message = "") {
+    ken msg = message
+    gin len(msg) == 0 {
+        msg = "Expected lists to be equal"
+    }
+    gin len(actual) != len(expected) {
+        __test_failed = __test_failed + 1
+        blether f"  ✗ {msg}"
+        blether f"      Length mismatch: {len(actual)} vs {len(expected)}"
+        gie nae
+    }
+    fer i in 0..len(actual) {
+        gin actual[i] != expected[i] {
+            __test_failed = __test_failed + 1
+            blether f"  ✗ {msg}"
+            blether f"      Differs at index {i}: {actual[i]} vs {expected[i]}"
+            gie nae
+        }
+    }
+    __test_passed = __test_passed + 1
+    blether f"  ✓ {msg}"
+    gie aye
+}
+
+# ===============================================================
+# String Assertions
+# ===============================================================
+
+# Assert string starts with prefix
+dae expect_starts_wi(s, prefix, message = "") {
+    ken msg = message
+    gin len(msg) == 0 {
+        msg = f"Expected '{s}' to start with '{prefix}'"
+    }
+    gin len(s) < len(prefix) {
+        gie expect(nae, msg)
+    }
+    ken starts = aye
+    fer i in 0..len(prefix) {
+        gin s[i] != prefix[i] {
+            starts = nae
+            brak
+        }
+    }
+    gie expect(starts, msg)
+}
+
+# Assert string ends with suffix
+dae expect_ends_wi(s, suffix, message = "") {
+    ken msg = message
+    gin len(msg) == 0 {
+        msg = f"Expected '{s}' to end with '{suffix}'"
+    }
+    gin len(s) < len(suffix) {
+        gie expect(nae, msg)
+    }
+    ken start_pos = len(s) - len(suffix)
+    ken ends = aye
+    fer i in 0..len(suffix) {
+        gin s[start_pos + i] != suffix[i] {
+            ends = nae
+            brak
+        }
+    }
+    gie expect(ends, msg)
+}
+
+# Assert string contains substring
+dae expect_str_contains(s, needle, message = "") {
+    ken msg = message
+    gin len(msg) == 0 {
+        msg = f"Expected '{s}' to contain '{needle}'"
+    }
+    gie expect(contains(s, needle), msg)
+}
+
+# ===============================================================
+# Type Assertions
+# ===============================================================
+
+# Assert type of value
+dae expect_type(value, expected_type, message = "") {
+    ken actual_type = whit_kind(value)
+    ken msg = message
+    gin len(msg) == 0 {
+        msg = f"Expected type '{expected_type}', got '{actual_type}'"
+    }
+    gie expect(actual_type == expected_type, msg)
+}
+
+# ===============================================================
+# Test Organization
+# ===============================================================
+
+# Start a test suite
+dae describe(suite_name, tests_fn) {
+    __test_current_suite = suite_name
+    blether ""
+    blether f"═══ {suite_name} ═══"
+    tests_fn()
+    blether ""
+}
+
+# Run an individual test
+dae test(test_name, test_fn) {
+    blether f"  Testing: {test_name}"
+    test_fn()
+}
+
+# Display test summary
+dae test_summary() {
+    ken total = __test_passed + __test_failed
+    blether ""
+    blether "════════════════════════════════════════"
+    blether "  📊 Test Results"
+    blether "════════════════════════════════════════"
+    blether f"  Total:  {total}"
+    blether f"  Passed: {__test_passed} ✓"
+    blether f"  Failed: {__test_failed} ✗"
+
+    gin __test_failed == 0 {
+        blether ""
+        blether "  🎉 Aw tests passed! Pure dead brilliant!"
+    } ither {
+        blether ""
+        blether "  😢 Some tests failed. Dinnae fash - fix 'em up!"
+    }
+    blether "════════════════════════════════════════"
+
+    gie __test_failed == 0
+}
+
+# Reset test counters (for multiple test runs)
+dae reset_tests() {
+    __test_passed = 0
+    __test_failed = 0
+    __test_current_suite = ""
+}
+
+# ===============================================================
+# Scottish-Flavored Test Helpers
+# ===============================================================
+
+# Quick pass (when you know it's right)
+dae braw(message = "That's braw!") {
+    __test_passed = __test_passed + 1
+    blether f"  ✓ {message}"
+    gie aye
+}
+
+# Quick fail (when you know it's wrong)
+dae mince(message = "That's pure mince!") {
+    __test_failed = __test_failed + 1
+    blether f"  ✗ {message}"
+    gie nae
+}
+
+# Skip a test
+dae skip(reason = "Test skipped") {
+    blether f"  ⊘ SKIP: {reason}"
+}
+
+# Mark test as TODO
+dae todo(what = "Test not implemented yet") {
+    blether f"  📝 TODO: {what}"
+}
+
+blether "Testing module loaded! Time tae mak siccar!"

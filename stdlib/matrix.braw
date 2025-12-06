@@ -1,0 +1,787 @@
+# matrix.braw - Matrix an' Grid Operations fer mdhavers
+# "Rows an' columns, like a tartan weave!"
+#
+# This module provides 2D matrix operations, grid utilities,
+# and tabular data manipulation.
+
+# ============================================================
+# Matrix Creation
+# ============================================================
+
+# Create a matrix filled with a value
+dae matrix(rows, cols, fill_val = 0) {
+    ken m = []
+    fer r in 0..rows {
+        ken row = []
+        fer c in 0..cols {
+            shove(row, fill_val)
+        }
+        shove(m, row)
+    }
+    gie m
+}
+
+# Create an identity matrix (1s on diagonal)
+dae identity_matrix(size) {
+    ken m = matrix(size, size, 0)
+    fer i in 0..size {
+        m[i][i] = 1
+    }
+    gie m
+}
+
+# Create a matrix from a list of rows
+dae matrix_from_rows(rows) {
+    ken m = []
+    fer row in rows {
+        ken new_row = []
+        fer val in row {
+            shove(new_row, val)
+        }
+        shove(m, new_row)
+    }
+    gie m
+}
+
+# Create a matrix from a flat list with dimensions
+dae matrix_from_flat(flat_list, rows, cols) {
+    ken m = []
+    ken idx = 0
+    fer r in 0..rows {
+        ken row = []
+        fer c in 0..cols {
+            gin idx < len(flat_list) {
+                shove(row, flat_list[idx])
+            } ither {
+                shove(row, 0)
+            }
+            idx = idx + 1
+        }
+        shove(m, row)
+    }
+    gie m
+}
+
+# ============================================================
+# Matrix Properties
+# ============================================================
+
+# Get number of rows
+dae num_rows(m) {
+    gie len(m)
+}
+
+# Get number of columns
+dae num_cols(m) {
+    gin len(m) == 0 { gie 0 }
+    gie len(m[0])
+}
+
+# Get dimensions as [rows, cols]
+dae dimensions(m) {
+    gie [num_rows(m), num_cols(m)]
+}
+
+# Check if matrix is square
+dae is_square(m) {
+    gie num_rows(m) == num_cols(m)
+}
+
+# Check if matrix is empty
+dae is_empty(m) {
+    gie num_rows(m) == 0 or num_cols(m) == 0
+}
+
+# Get element at position
+dae get_element(m, row, col) {
+    gie m[row][col]
+}
+
+# Set element at position
+dae set_element(m, row, col, val) {
+    m[row][col] = val
+    gie m
+}
+
+# ============================================================
+# Matrix Operations
+# ============================================================
+
+# Add two matrices
+dae matrix_add(a, b) {
+    ken rows = num_rows(a)
+    ken cols = num_cols(a)
+    ken result = matrix(rows, cols, 0)
+
+    fer r in 0..rows {
+        fer c in 0..cols {
+            result[r][c] = a[r][c] + b[r][c]
+        }
+    }
+    gie result
+}
+
+# Subtract two matrices
+dae matrix_subtract(a, b) {
+    ken rows = num_rows(a)
+    ken cols = num_cols(a)
+    ken result = matrix(rows, cols, 0)
+
+    fer r in 0..rows {
+        fer c in 0..cols {
+            result[r][c] = a[r][c] - b[r][c]
+        }
+    }
+    gie result
+}
+
+# Multiply matrix by scalar
+dae scalar_multiply(m, scalar) {
+    ken rows = num_rows(m)
+    ken cols = num_cols(m)
+    ken result = matrix(rows, cols, 0)
+
+    fer r in 0..rows {
+        fer c in 0..cols {
+            result[r][c] = m[r][c] * scalar
+        }
+    }
+    gie result
+}
+
+# Multiply two matrices
+dae matrix_multiply(a, b) {
+    ken a_rows = num_rows(a)
+    ken a_cols = num_cols(a)
+    ken b_cols = num_cols(b)
+
+    ken result = matrix(a_rows, b_cols, 0)
+
+    fer i in 0..a_rows {
+        fer j in 0..b_cols {
+            ken sum = 0
+            fer k in 0..a_cols {
+                sum = sum + a[i][k] * b[k][j]
+            }
+            result[i][j] = sum
+        }
+    }
+    gie result
+}
+
+# Transpose matrix
+dae transpose(m) {
+    ken rows = num_rows(m)
+    ken cols = num_cols(m)
+    ken result = matrix(cols, rows, 0)
+
+    fer r in 0..rows {
+        fer c in 0..cols {
+            result[c][r] = m[r][c]
+        }
+    }
+    gie result
+}
+
+# ============================================================
+# Row and Column Operations
+# ============================================================
+
+# Get a specific row
+dae get_row(m, row_idx) {
+    ken row = []
+    fer val in m[row_idx] {
+        shove(row, val)
+    }
+    gie row
+}
+
+# Get a specific column
+dae get_col(m, col_idx) {
+    ken col = []
+    fer row in m {
+        shove(col, row[col_idx])
+    }
+    gie col
+}
+
+# Set a row
+dae set_row(m, row_idx, new_row) {
+    fer c in 0..len(new_row) {
+        m[row_idx][c] = new_row[c]
+    }
+    gie m
+}
+
+# Set a column
+dae set_col(m, col_idx, new_col) {
+    fer r in 0..len(new_col) {
+        m[r][col_idx] = new_col[r]
+    }
+    gie m
+}
+
+# Swap two rows
+dae swap_rows(m, row1, row2) {
+    ken temp = get_row(m, row1)
+    m = set_row(m, row1, get_row(m, row2))
+    m = set_row(m, row2, temp)
+    gie m
+}
+
+# Swap two columns
+dae swap_cols(m, col1, col2) {
+    ken temp = get_col(m, col1)
+    m = set_col(m, col1, get_col(m, col2))
+    m = set_col(m, col2, temp)
+    gie m
+}
+
+# ============================================================
+# Matrix Statistics
+# ============================================================
+
+# Sum of all elements
+dae matrix_sum(m) {
+    ken total = 0
+    fer row in m {
+        fer val in row {
+            total = total + val
+        }
+    }
+    gie total
+}
+
+# Sum of each row
+dae row_sums(m) {
+    ken sums = []
+    fer row in m {
+        ken s = 0
+        fer val in row {
+            s = s + val
+        }
+        shove(sums, s)
+    }
+    gie sums
+}
+
+# Sum of each column
+dae col_sums(m) {
+    ken cols = num_cols(m)
+    ken sums = []
+    fer c in 0..cols {
+        ken s = 0
+        fer row in m {
+            s = s + row[c]
+        }
+        shove(sums, s)
+    }
+    gie sums
+}
+
+# Find maximum element
+dae matrix_max(m) {
+    ken max_val = m[0][0]
+    fer row in m {
+        fer val in row {
+            gin val > max_val {
+                max_val = val
+            }
+        }
+    }
+    gie max_val
+}
+
+# Find minimum element
+dae matrix_min(m) {
+    ken min_val = m[0][0]
+    fer row in m {
+        fer val in row {
+            gin val < min_val {
+                min_val = val
+            }
+        }
+    }
+    gie min_val
+}
+
+# Calculate average of all elements
+dae matrix_average(m) {
+    ken total = matrix_sum(m)
+    ken count = num_rows(m) * num_cols(m)
+    gie total / count
+}
+
+# Get diagonal elements
+dae diagonal(m) {
+    ken diag = []
+    ken size = num_rows(m)
+    ken cols = num_cols(m)
+    gin cols < size { size = cols }
+
+    fer i in 0..size {
+        shove(diag, m[i][i])
+    }
+    gie diag
+}
+
+# Sum of diagonal (trace)
+dae trace(m) {
+    gie sumaw(diagonal(m))
+}
+
+# ============================================================
+# Matrix Transformation
+# ============================================================
+
+# Apply function to each element
+dae matrix_map(m, func) {
+    ken rows = num_rows(m)
+    ken cols = num_cols(m)
+    ken result = matrix(rows, cols, 0)
+
+    fer r in 0..rows {
+        fer c in 0..cols {
+            result[r][c] = func(m[r][c])
+        }
+    }
+    gie result
+}
+
+# Filter elements (returns flat list of matching elements)
+dae matrix_filter(m, predicate) {
+    ken result = []
+    fer row in m {
+        fer val in row {
+            gin predicate(val) {
+                shove(result, val)
+            }
+        }
+    }
+    gie result
+}
+
+# Flatten matrix to list
+dae flatten(m) {
+    ken result = []
+    fer row in m {
+        fer val in row {
+            shove(result, val)
+        }
+    }
+    gie result
+}
+
+# Rotate matrix 90 degrees clockwise
+dae rotate_clockwise(m) {
+    ken rows = num_rows(m)
+    ken cols = num_cols(m)
+    ken result = matrix(cols, rows, 0)
+
+    fer r in 0..rows {
+        fer c in 0..cols {
+            result[c][rows - 1 - r] = m[r][c]
+        }
+    }
+    gie result
+}
+
+# Rotate matrix 90 degrees counter-clockwise
+dae rotate_counter_clockwise(m) {
+    ken rows = num_rows(m)
+    ken cols = num_cols(m)
+    ken result = matrix(cols, rows, 0)
+
+    fer r in 0..rows {
+        fer c in 0..cols {
+            result[cols - 1 - c][r] = m[r][c]
+        }
+    }
+    gie result
+}
+
+# Flip matrix horizontally
+dae flip_horizontal(m) {
+    ken rows = num_rows(m)
+    ken cols = num_cols(m)
+    ken result = matrix(rows, cols, 0)
+
+    fer r in 0..rows {
+        fer c in 0..cols {
+            result[r][cols - 1 - c] = m[r][c]
+        }
+    }
+    gie result
+}
+
+# Flip matrix vertically
+dae flip_vertical(m) {
+    ken rows = num_rows(m)
+    ken cols = num_cols(m)
+    ken result = matrix(rows, cols, 0)
+
+    fer r in 0..rows {
+        fer c in 0..cols {
+            result[rows - 1 - r][c] = m[r][c]
+        }
+    }
+    gie result
+}
+
+# ============================================================
+# Submatrix Operations
+# ============================================================
+
+# Extract submatrix
+dae submatrix(m, start_row, start_col, end_row, end_col) {
+    ken result = []
+    fer r in start_row..end_row {
+        ken row = []
+        fer c in start_col..end_col {
+            shove(row, m[r][c])
+        }
+        shove(result, row)
+    }
+    gie result
+}
+
+# Concatenate matrices horizontally
+dae concat_horizontal(a, b) {
+    ken result = []
+    fer r in 0..num_rows(a) {
+        ken row = []
+        fer val in a[r] {
+            shove(row, val)
+        }
+        fer val in b[r] {
+            shove(row, val)
+        }
+        shove(result, row)
+    }
+    gie result
+}
+
+# Concatenate matrices vertically
+dae concat_vertical(a, b) {
+    ken result = []
+    fer row in a {
+        ken new_row = []
+        fer val in row {
+            shove(new_row, val)
+        }
+        shove(result, new_row)
+    }
+    fer row in b {
+        ken new_row = []
+        fer val in row {
+            shove(new_row, val)
+        }
+        shove(result, new_row)
+    }
+    gie result
+}
+
+# ============================================================
+# Grid Utilities (fer games an' visualization)
+# ============================================================
+
+# Create a game grid with characters
+dae game_grid(rows, cols, empty_char = ".") {
+    gie matrix(rows, cols, empty_char)
+}
+
+# Place an item on grid
+dae place_on_grid(grid, row, col, item) {
+    grid[row][col] = item
+    gie grid
+}
+
+# Check if position is in bounds
+dae in_bounds(grid, row, col) {
+    gie row >= 0 an row < num_rows(grid) an col >= 0 an col < num_cols(grid)
+}
+
+# Get all neighbors of a cell (8-directional)
+dae neighbors_8(grid, row, col) {
+    ken dirs = [
+        [-1, -1], [-1, 0], [-1, 1],
+        [0, -1],           [0, 1],
+        [1, -1],  [1, 0],  [1, 1]
+    ]
+
+    ken result = []
+    fer dir in dirs {
+        ken nr = row + dir[0]
+        ken nc = col + dir[1]
+        gin in_bounds(grid, nr, nc) {
+            shove(result, {"row": nr, "col": nc, "val": grid[nr][nc]})
+        }
+    }
+    gie result
+}
+
+# Get cardinal neighbors (4-directional)
+dae neighbors_4(grid, row, col) {
+    ken dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]]
+
+    ken result = []
+    fer dir in dirs {
+        ken nr = row + dir[0]
+        ken nc = col + dir[1]
+        gin in_bounds(grid, nr, nc) {
+            shove(result, {"row": nr, "col": nc, "val": grid[nr][nc]})
+        }
+    }
+    gie result
+}
+
+# Find all positions of a value
+dae find_all(grid, target) {
+    ken positions = []
+    fer r in 0..num_rows(grid) {
+        fer c in 0..num_cols(grid) {
+            gin grid[r][c] == target {
+                shove(positions, [r, c])
+            }
+        }
+    }
+    gie positions
+}
+
+# Count occurrences of a value
+dae count_in_grid(grid, target) {
+    ken count = 0
+    fer row in grid {
+        fer val in row {
+            gin val == target {
+                count = count + 1
+            }
+        }
+    }
+    gie count
+}
+
+# Fill an area (flood fill)
+dae flood_fill(grid, start_row, start_col, new_val) {
+    ken old_val = grid[start_row][start_col]
+    gin old_val == new_val { gie grid }
+
+    ken stack = [[start_row, start_col]]
+
+    whiles len(stack) > 0 {
+        ken pos = yank(stack)
+        ken r = pos[0]
+        ken c = pos[1]
+
+        gin nae in_bounds(grid, r, c) { skip }
+        gin grid[r][c] != old_val { skip }
+
+        grid[r][c] = new_val
+
+        shove(stack, [r - 1, c])
+        shove(stack, [r + 1, c])
+        shove(stack, [r, c - 1])
+        shove(stack, [r, c + 1])
+    }
+
+    gie grid
+}
+
+# ============================================================
+# Display Functions
+# ============================================================
+
+# Display matrix as a table
+dae display_matrix(m, cell_width = 4) {
+    fer row in m {
+        ken line = "│"
+        fer val in row {
+            ken s = tae_string(val)
+            # Right-pad to cell_width
+            whiles len(s) < cell_width {
+                s = " " + s
+            }
+            line = line + s + " │"
+        }
+        blether line
+    }
+}
+
+# Display matrix with row/col headers
+dae display_matrix_with_headers(m) {
+    ken cols = num_cols(m)
+    ken rows = num_rows(m)
+
+    # Column headers
+    ken header = "    "
+    fer c in 0..cols {
+        header = header + f"  {c}  "
+    }
+    blether header
+
+    # Separator
+    ken sep = "   ┌"
+    fer c in 0..cols {
+        sep = sep + "─────"
+    }
+    sep = sep + "┐"
+    blether sep
+
+    # Rows with row numbers
+    fer r in 0..rows {
+        ken line = f" {r} │"
+        fer val in m[r] {
+            ken s = tae_string(val)
+            whiles len(s) < 4 {
+                s = " " + s
+            }
+            line = line + s + " "
+        }
+        line = line + "│"
+        blether line
+    }
+
+    # Bottom separator
+    ken bot = "   └"
+    fer c in 0..cols {
+        bot = bot + "─────"
+    }
+    bot = bot + "┘"
+    blether bot
+}
+
+# Display grid as ASCII art (fer games)
+dae display_grid(grid) {
+    fer row in grid {
+        ken line = ""
+        fer val in row {
+            line = line + tae_string(val)
+        }
+        blether line
+    }
+}
+
+# Display grid with border
+dae display_grid_bordered(grid) {
+    ken cols = num_cols(grid)
+
+    ken top = "┌"
+    fer c in 0..cols {
+        top = top + "─"
+    }
+    top = top + "┐"
+    blether top
+
+    fer row in grid {
+        ken line = "│"
+        fer val in row {
+            line = line + tae_string(val)
+        }
+        line = line + "│"
+        blether line
+    }
+
+    ken bot = "└"
+    fer c in 0..cols {
+        bot = bot + "─"
+    }
+    bot = bot + "┘"
+    blether bot
+}
+
+# ============================================================
+# Special Matrices
+# ============================================================
+
+# Create a checkerboard pattern
+dae checkerboard_matrix(size, val1 = 0, val2 = 1) {
+    ken m = matrix(size, size, val1)
+    fer r in 0..size {
+        fer c in 0..size {
+            gin (r + c) % 2 == 1 {
+                m[r][c] = val2
+            }
+        }
+    }
+    gie m
+}
+
+# Create a spiral matrix (numbers 1 to n*n)
+dae spiral_matrix(n) {
+    ken m = matrix(n, n, 0)
+    ken num = 1
+    ken top = 0
+    ken bottom = n - 1
+    ken left = 0
+    ken right = n - 1
+
+    whiles top <= bottom an left <= right {
+        # Fill top row
+        fer c in left..right+1 {
+            m[top][c] = num
+            num = num + 1
+        }
+        top = top + 1
+
+        # Fill right column
+        fer r in top..bottom+1 {
+            m[r][right] = num
+            num = num + 1
+        }
+        right = right - 1
+
+        # Fill bottom row
+        gin top <= bottom {
+            ken c = right
+            whiles c >= left {
+                m[bottom][c] = num
+                num = num + 1
+                c = c - 1
+            }
+            bottom = bottom - 1
+        }
+
+        # Fill left column
+        gin left <= right {
+            ken r = bottom
+            whiles r >= top {
+                m[r][left] = num
+                num = num + 1
+                r = r - 1
+            }
+            left = left + 1
+        }
+    }
+
+    gie m
+}
+
+# Create a magic square (sum of rows, cols, diagonals are equal) - odd sizes only
+dae magic_square(n) {
+    gin n % 2 == 0 {
+        blether "Magic square only works fer odd sizes!"
+        gie matrix(n, n, 0)
+    }
+
+    ken m = matrix(n, n, 0)
+    ken row = 0
+    ken col = n / 2
+
+    fer num in 1..n*n+1 {
+        m[row][col] = num
+
+        ken new_row = (row - 1 + n) % n
+        ken new_col = (col + 1) % n
+
+        gin m[new_row][new_col] != 0 {
+            row = (row + 1) % n
+        } ither {
+            row = new_row
+            col = new_col
+        }
+    }
+
+    gie m
+}
+
+blether "Matrix module loaded! Rows an' columns, like a tartan weave!"

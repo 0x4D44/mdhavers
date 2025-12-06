@@ -1,0 +1,453 @@
+# json.braw - JSON utilities fer mdhavers
+# "Data is like whisky - better when it flows freely!"
+
+# ===============================================================
+# JSON Serialization (Object tae String)
+# ===============================================================
+
+# Convert a value tae JSON string
+dae tae_json(value, indent = 0, pretty = nae) {
+    ken t = whit_kind(value)
+
+    keek t {
+        whan "nil" -> { gie "null" }
+        whan "boolean" -> {
+            gin value {
+                gie "true"
+            }
+            gie "false"
+        }
+        whan "number" -> { gie tae_string(value) }
+        whan "string" -> { gie json_escape_string(value) }
+        whan "list" -> { gie json_array(value, indent, pretty) }
+        whan "dict" -> { gie json_object(value, indent, pretty) }
+        whan _ -> { gie f"\"{tae_string(value)}\"" }
+    }
+    gie "null"
+}
+
+# Escape a string for JSON
+dae json_escape_string(s) {
+    ken result = "\""
+    fer c in tae_string(s) {
+        keek c {
+            whan "\"" -> { result = result + "\\\"" }
+            whan "\\" -> { result = result + "\\\\" }
+            whan "\n" -> { result = result + "\\n" }
+            whan "\t" -> { result = result + "\\t" }
+            whan "\r" -> { result = result + "\\r" }
+            whan _ -> { result = result + c }
+        }
+    }
+    gie result + "\""
+}
+
+# Convert a list tae JSON array
+dae json_array(lst, indent, pretty) {
+    gin len(lst) == 0 {
+        gie "[]"
+    }
+
+    ken parts = []
+    fer item in lst {
+        shove(parts, tae_json(item, indent + 2, pretty))
+    }
+
+    gin pretty {
+        ken ws = json_whitespace(indent)
+        ken inner_ws = json_whitespace(indent + 2)
+        gie "[\n" + inner_ws + join(parts, ",\n" + inner_ws) + "\n" + ws + "]"
+    }
+
+    gie "[" + join(parts, ", ") + "]"
+}
+
+# Convert a dict tae JSON object
+dae json_object(obj, indent, pretty) {
+    ken ks = keys(obj)
+    gin len(ks) == 0 {
+        gie "{}"
+    }
+
+    ken parts = []
+    fer k in ks {
+        ken key_str = json_escape_string(k)
+        ken val_str = tae_json(obj[k], indent + 2, pretty)
+        shove(parts, key_str + ": " + val_str)
+    }
+
+    gin pretty {
+        ken ws = json_whitespace(indent)
+        ken inner_ws = json_whitespace(indent + 2)
+        gie "{\n" + inner_ws + join(parts, ",\n" + inner_ws) + "\n" + ws + "}"
+    }
+
+    gie "{" + join(parts, ", ") + "}"
+}
+
+# Generate whitespace for indentation
+dae json_whitespace(n) {
+    ken result = ""
+    fer i in 1..n+1 {
+        result = result + " "
+    }
+    gie result
+}
+
+# Pretty print JSON
+dae pretty_json(value) {
+    gie tae_json(value, 0, aye)
+}
+
+# ===============================================================
+# JSON Parsing (String tae Object)
+# ===============================================================
+
+# Simple JSON parser
+# Note: This is a basic parser - for complex JSON, use native functions!
+
+# Parse state object
+dae mak_parse_state(s) {
+    gie {
+        "input": s,
+        "pos": 0,
+        "len": len(s)
+    }
+}
+
+# Get current character
+dae current_char(state) {
+    gin state["pos"] >= state["len"] {
+        gie naething
+    }
+    gie state["input"][state["pos"]]
+}
+
+# Advance position
+dae advance(state) {
+    state["pos"] = state["pos"] + 1
+}
+
+# Skip whitespace
+dae skip_ws(state) {
+    whiles state["pos"] < state["len"] {
+        ken c = current_char(state)
+        gin c == " " or c == "\n" or c == "\t" or c == "\r" {
+            advance(state)
+        } ither {
+            brak
+        }
+    }
+}
+
+# Parse a JSON value
+dae parse_json(s) {
+    ken state = mak_parse_state(wheesht(s))
+    ken result = parse_value(state)
+    gie result
+}
+
+# Parse any JSON value
+dae parse_value(state) {
+    skip_ws(state)
+    ken c = current_char(state)
+
+    gin c == naething {
+        gie naething
+    }
+
+    keek c {
+        whan "{" -> { gie parse_obj(state) }
+        whan "[" -> { gie parse_arr(state) }
+        whan "\"" -> { gie parse_str(state) }
+        whan "t" -> { gie parse_true(state) }
+        whan "f" -> { gie parse_false(state) }
+        whan "n" -> { gie parse_null(state) }
+        whan _ -> {
+            # Must be a number
+            gin c == "-" or is_digit(c) {
+                gie parse_num(state)
+            }
+            gie naething
+        }
+    }
+    gie naething
+}
+
+# Check if character is a digit
+dae is_digit(c) {
+    gie c == "0" or c == "1" or c == "2" or c == "3" or c == "4" or c == "5" or c == "6" or c == "7" or c == "8" or c == "9"
+}
+
+# Parse a JSON object
+dae parse_obj(state) {
+    advance(state)  # skip {
+    skip_ws(state)
+
+    ken result = {}
+
+    gin current_char(state) == "}" {
+        advance(state)
+        gie result
+    }
+
+    whiles aye {
+        skip_ws(state)
+
+        # Parse key
+        ken key = parse_str(state)
+        gin key == naething {
+            gie naething
+        }
+
+        skip_ws(state)
+
+        # Expect :
+        gin current_char(state) != ":" {
+            gie naething
+        }
+        advance(state)
+
+        # Parse value
+        ken value = parse_value(state)
+        result[key] = value
+
+        skip_ws(state)
+
+        ken c = current_char(state)
+        gin c == "}" {
+            advance(state)
+            brak
+        }
+        gin c == "," {
+            advance(state)
+        } ither {
+            gie naething
+        }
+    }
+
+    gie result
+}
+
+# Parse a JSON array
+dae parse_arr(state) {
+    advance(state)  # skip [
+    skip_ws(state)
+
+    ken result = []
+
+    gin current_char(state) == "]" {
+        advance(state)
+        gie result
+    }
+
+    whiles aye {
+        ken value = parse_value(state)
+        shove(result, value)
+
+        skip_ws(state)
+
+        ken c = current_char(state)
+        gin c == "]" {
+            advance(state)
+            brak
+        }
+        gin c == "," {
+            advance(state)
+        } ither {
+            gie naething
+        }
+    }
+
+    gie result
+}
+
+# Parse a JSON string
+dae parse_str(state) {
+    gin current_char(state) != "\"" {
+        gie naething
+    }
+    advance(state)  # skip opening "
+
+    ken result = ""
+    whiles aye {
+        ken c = current_char(state)
+        gin c == naething {
+            gie naething  # Unterminated string
+        }
+        gin c == "\"" {
+            advance(state)
+            brak
+        }
+        gin c == "\\" {
+            advance(state)
+            ken escaped = current_char(state)
+            keek escaped {
+                whan "n" -> { result = result + "\n" }
+                whan "t" -> { result = result + "\t" }
+                whan "r" -> { result = result + "\r" }
+                whan "\"" -> { result = result + "\"" }
+                whan "\\" -> { result = result + "\\" }
+                whan _ -> { result = result + escaped }
+            }
+            advance(state)
+        } ither {
+            result = result + c
+            advance(state)
+        }
+    }
+
+    gie result
+}
+
+# Parse a number
+dae parse_num(state) {
+    ken start = state["pos"]
+    ken has_dot = nae
+
+    gin current_char(state) == "-" {
+        advance(state)
+    }
+
+    whiles state["pos"] < state["len"] {
+        ken c = current_char(state)
+        gin is_digit(c) {
+            advance(state)
+        } ither gin c == "." an nae has_dot {
+            has_dot = aye
+            advance(state)
+        } ither {
+            brak
+        }
+    }
+
+    ken num_str = ""
+    fer i in start..state["pos"] {
+        num_str = num_str + state["input"][i]
+    }
+
+    gin has_dot {
+        gie tae_float(num_str)
+    }
+    gie tae_int(num_str)
+}
+
+# Parse true
+dae parse_true(state) {
+    ken expected = "true"
+    fer i in 0..4 {
+        gin current_char(state) != expected[i] {
+            gie naething
+        }
+        advance(state)
+    }
+    gie aye
+}
+
+# Parse false
+dae parse_false(state) {
+    ken expected = "false"
+    fer i in 0..5 {
+        gin current_char(state) != expected[i] {
+            gie naething
+        }
+        advance(state)
+    }
+    gie nae
+}
+
+# Parse null
+dae parse_null(state) {
+    ken expected = "null"
+    fer i in 0..4 {
+        gin current_char(state) != expected[i] {
+            gie naething
+        }
+        advance(state)
+    }
+    gie naething
+}
+
+# ===============================================================
+# JSON Path Access (like jq)
+# ===============================================================
+
+# Get a value by path (e.g., "users.0.name")
+dae json_get(obj, path) {
+    ken parts = split(path, ".")
+    ken current = obj
+
+    fer part in parts {
+        gin current == naething {
+            gie naething
+        }
+
+        # Check if it's an array index
+        gin is_digits(part) {
+            ken idx = tae_int(part)
+            gin whit_kind(current) == "list" {
+                gin idx >= 0 an idx < len(current) {
+                    current = current[idx]
+                } ither {
+                    gie naething
+                }
+            } ither {
+                gie naething
+            }
+        } ither {
+            # It's an object key
+            gin whit_kind(current) == "dict" {
+                gin contains(current, part) {
+                    current = current[part]
+                } ither {
+                    gie naething
+                }
+            } ither {
+                gie naething
+            }
+        }
+    }
+
+    gie current
+}
+
+# Check if a string contains only digits
+dae is_digits(s) {
+    gin len(s) == 0 {
+        gie nae
+    }
+    fer c in s {
+        gin nae is_digit(c) {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# ===============================================================
+# JSON Validation
+# ===============================================================
+
+# Check if a string is valid JSON
+dae is_valid_json(s) {
+    ken result = parse_json(s)
+    # If we got something back (even naething/null is valid), it's valid
+    gie aye
+}
+
+# Get the type of a JSON value
+dae json_type(value) {
+    ken t = whit_kind(value)
+    keek t {
+        whan "nil" -> { gie "null" }
+        whan "boolean" -> { gie "boolean" }
+        whan "number" -> { gie "number" }
+        whan "string" -> { gie "string" }
+        whan "list" -> { gie "array" }
+        whan "dict" -> { gie "object" }
+        whan _ -> { gie "unknown" }
+    }
+    gie "unknown"
+}
+
+blether "JSON module loaded! Ready tae parse an' stringify!"

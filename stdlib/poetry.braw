@@ -1,0 +1,377 @@
+# poetry.braw - Scottish poetry and verse generation
+# "A guid Scots poem is worth a thousand English words!"
+
+# ===============================================================
+# Word Banks fer Poetry
+# ===============================================================
+
+ken SCOTS_NOUNS = [
+    "brae", "burn", "loch", "glen", "kirk", "croft",
+    "haggis", "whisky", "thistle", "heather", "tartan", "kilt",
+    "ceilidh", "bairn", "laddie", "lassie", "auld yin", "granny",
+    "hairst", "gloamin'", "simmer", "winter", "hogmanay", "neep"
+]
+
+ken SCOTS_ADJECTIVES = [
+    "bonnie", "braw", "wee", "muckle", "auld", "young",
+    "canty", "dreich", "gallus", "glaikit", "scunnered", "radge",
+    "crabbit", "blate", "coothy", "sleekit", "thrawn", "pawky"
+]
+
+ken SCOTS_VERBS = [
+    "ken", "dinnae", "cannae", "blether", "haver", "wheesht",
+    "greet", "greetin'", "flit", "bide", "dander", "skelp",
+    "scunner", "fash", "thole", "dreel", "hirple", "clype"
+]
+
+ken SCOTS_ADVERBS = [
+    "gey", "awfy", "richt", "unco", "fair", "weel",
+    "sae", "nae", "aye", "maist", "whiles", "aften"
+]
+
+ken SCOTS_EXCLAMATIONS = [
+    "Och!", "Awa'!", "Haud on!", "Jings!", "Crivvens!",
+    "Help ma boab!", "Hoots!", "Michty me!", "Wheesht!",
+    "Lang may yer lum reek!", "Haste ye back!"
+]
+
+ken NATURE_WORDS = [
+    "misty", "heathery", "rocky", "bonnie", "wild", "ancient",
+    "purple", "green", "grey", "golden", "silver", "dark"
+]
+
+ken EMOTIONS = [
+    "longin'", "joy", "sorrow", "pride", "love", "hope",
+    "peace", "wonder", "yearning", "contentment", "melancholy"
+]
+
+# ===============================================================
+# Random Selection Helpers
+# ===============================================================
+
+ken poetry_seed = 12345
+
+dae next_random() {
+    # Use smaller multiplier to avoid overflow
+    poetry_seed = ((poetry_seed * 1103) + 12345) % 100000
+    gie poetry_seed
+}
+
+dae pick(lst) {
+    ken idx = next_random() % len(lst)
+    gie lst[idx]
+}
+
+dae pick_n(lst, n) {
+    ken result = []
+    ken used = []
+    fer i in 1..n+1 {
+        ken idx = next_random() % len(lst)
+        whiles contains(used, idx) an len(used) < len(lst) {
+            idx = (idx + 1) % len(lst)
+        }
+        shove(used, idx)
+        shove(result, lst[idx])
+    }
+    gie result
+}
+
+dae set_poetry_seed(s) {
+    poetry_seed = s
+}
+
+# ===============================================================
+# Haiku Generator (5-7-5 syllables)
+# ===============================================================
+
+# Simple syllable patterns for haiku
+ken HAIKU_5 = [
+    "The {adj} {noun}",
+    "Across the {adj} {noun}",
+    "Upon the auld {noun}",
+    "A {adj} wee {noun}",
+    "In the {adj} {noun}",
+    "{exclaim} the {noun}",
+    "Through misty highland"
+]
+
+ken HAIKU_7 = [
+    "Where {adj} {noun}s softly rest",
+    "The {noun} whispers secrets auld",
+    "Like {adj} dreams o' hame",
+    "Beneath the {adj} sky sae wide",
+    "A {noun} sings its ancient song",
+    "The {adj} wind blaws free and wild"
+]
+
+dae generate_haiku() {
+    ken line1 = pick(HAIKU_5)
+    ken line2 = pick(HAIKU_7)
+    ken line3 = pick(HAIKU_5)
+
+    line1 = fill_template(line1)
+    line2 = fill_template(line2)
+    line3 = fill_template(line3)
+
+    gie [line1, line2, line3]
+}
+
+dae fill_template(template) {
+    ken result = template
+
+    # Replace placeholders
+    whiles contains(result, "{adj}") {
+        result = replace_first_occurrence(result, "{adj}", pick(SCOTS_ADJECTIVES))
+    }
+    whiles contains(result, "{noun}") {
+        result = replace_first_occurrence(result, "{noun}", pick(SCOTS_NOUNS))
+    }
+    whiles contains(result, "{verb}") {
+        result = replace_first_occurrence(result, "{verb}", pick(SCOTS_VERBS))
+    }
+    whiles contains(result, "{exclaim}") {
+        result = replace_first_occurrence(result, "{exclaim}", pick(SCOTS_EXCLAMATIONS))
+    }
+
+    gie result
+}
+
+dae replace_first_occurrence(s, old, new) {
+    ken result = ""
+    ken found = nae
+    ken i = 0
+    whiles i < len(s) {
+        gin nae found an i + len(old) <= len(s) {
+            ken match = aye
+            fer j in 0..len(old) {
+                gin s[i + j] != old[j] {
+                    match = nae
+                    brak
+                }
+            }
+            gin match {
+                result = result + new
+                i = i + len(old)
+                found = aye
+                haud
+            }
+        }
+        result = result + s[i]
+        i = i + 1
+    }
+    gie result
+}
+
+# ===============================================================
+# Burns-Style Verse Generator
+# ===============================================================
+
+ken BURNS_LINES_A = [
+    "O, my luve's like a {adj} {noun}",
+    "Wee, {adj}, {adj} beastie",
+    "The {adj} {noun} o' Scotland",
+    "Fair fa' your honest, {adj} face",
+    "Should auld acquaintance be forgot",
+    "My heart's in the {adj} {noun}"
+]
+
+ken BURNS_LINES_B = [
+    "That's newly sprung in {noun}",
+    "O, what a panic's in thy {noun}",
+    "That blooms upon the {noun}",
+    "Great chieftain o' the {noun} race",
+    "And never brought tae {noun}",
+    "A-chasin' the wild {noun}"
+]
+
+dae generate_burns_verse() {
+    ken lines = []
+
+    # ABAB rhyme scheme attempt
+    shove(lines, fill_template(pick(BURNS_LINES_A)))
+    shove(lines, fill_template(pick(BURNS_LINES_B)))
+    shove(lines, fill_template(pick(BURNS_LINES_A)))
+    shove(lines, fill_template(pick(BURNS_LINES_B)))
+
+    gie lines
+}
+
+# ===============================================================
+# Limerick Generator
+# ===============================================================
+
+ken LIMERICK_A = [
+    "There once was a {noun} frae Dundee",
+    "A {adj} wee {noun} frae the glen",
+    "An auld {noun} frae Aberdeen",
+    "A {adj} young laddie named Jock",
+    "A lassie wi' hair like the {noun}"
+]
+
+ken LIMERICK_B = [
+    "Who couldnae stop drinkin' their tea",
+    "Wha lived in a {adj} wee den",
+    "The bonniest ever seen",
+    "Would dance roond the {adj} old clock",
+    "Whose beauty wis truly a boon"
+]
+
+ken LIMERICK_C = [
+    "They'd blether aw day",
+    "They'd sing and they'd play",
+    "Wi' haggis and neeps",
+    "Through the {adj} streets",
+    "When the {noun} came tae stay"
+]
+
+ken LIMERICK_D = [
+    "And dance a wee jig, dinnae ye see!",
+    "Then fall asleep at half past ten",
+    "The bonniest {noun} ever seen!",
+    "Wi' a {adj} tartan sock!",
+    "Beneath the pale Scottish moon"
+]
+
+dae generate_limerick() {
+    ken lines = []
+
+    shove(lines, fill_template(pick(LIMERICK_A)))
+    shove(lines, fill_template(pick(LIMERICK_B)))
+    shove(lines, fill_template(pick(LIMERICK_C)))
+    shove(lines, fill_template(pick(LIMERICK_C)))
+    shove(lines, fill_template(pick(LIMERICK_D)))
+
+    gie lines
+}
+
+# ===============================================================
+# Toast Generator (fer whisky!)
+# ===============================================================
+
+ken TOAST_OPENINGS = [
+    "Here's tae ye!",
+    "Slàinte mhath!",
+    "Lang may yer lum reek!",
+    "Here's tae us, wha's like us?",
+    "May the best ye've ever seen",
+    "Here's tae the heath, the hill, and the heather"
+]
+
+ken TOAST_MIDDLES = [
+    "May yer {noun} be {adj}",
+    "May yer {noun} never grow {adj}",
+    "May the {adj} {noun} guide ye hame",
+    "May yer glass be ever full",
+    "May {adj} fortune smile upon ye"
+]
+
+ken TOAST_ENDINGS = [
+    "And may ye live as long as ye want, and never want as long as ye live!",
+    "Gey few, and they're aw deid!",
+    "Be the worst ye've ever seen!",
+    "The bell, the book, and the candle!",
+    "Slàinte!"
+]
+
+dae generate_toast() {
+    ken parts = []
+    shove(parts, pick(TOAST_OPENINGS))
+    shove(parts, fill_template(pick(TOAST_MIDDLES)))
+    shove(parts, pick(TOAST_ENDINGS))
+    gie parts
+}
+
+# ===============================================================
+# Scottish Proverb Generator
+# ===============================================================
+
+ken PROVERBS = [
+    "A {adj} {noun} maks a {adj} {noun}",
+    "Dinnae count yer {noun}s afore they're hatched",
+    "Many a {adj} {noun} maks a muckle",
+    "Whit's fer ye willnae go by ye",
+    "A fool and his {noun} are soon parted",
+    "Better a wee {noun} that warms than a muckle {noun} that burns",
+    "Guid gear comes in sma' {noun}s",
+    "He wha sups wi' the deil needs a {adj} {noun}"
+]
+
+dae generate_proverb() {
+    gie fill_template(pick(PROVERBS))
+}
+
+# ===============================================================
+# Complete Poem Generator
+# ===============================================================
+
+dae generate_poem(style = "haiku") {
+    keek style {
+        whan "haiku" -> { gie generate_haiku() }
+        whan "burns" -> { gie generate_burns_verse() }
+        whan "limerick" -> { gie generate_limerick() }
+        whan "toast" -> { gie generate_toast() }
+        whan "proverb" -> { gie [generate_proverb()] }
+        whan _ -> { gie generate_haiku() }
+    }
+    gie generate_haiku()
+}
+
+# Print a poem nicely
+dae print_poem(lines, title = naething) {
+    gin title != naething {
+        blether ""
+        blether f"  {title}"
+        blether "  " + repeat_char("-", len(title))
+    }
+    blether ""
+    fer line in lines {
+        blether f"    {line}"
+    }
+    blether ""
+}
+
+dae repeat_char(c, n) {
+    ken result = ""
+    fer i in 1..n+1 {
+        result = result + c
+    }
+    gie result
+}
+
+# ===============================================================
+# Interactive Poetry Session
+# ===============================================================
+
+dae poetry_session() {
+    blether ""
+    blether "═══════════════════════════════════════════════════"
+    blether "  Welcome tae the Scottish Poetry Generator!"
+    blether "  'A guid Scots tongue licks aw things clean'"
+    blether "═══════════════════════════════════════════════════"
+
+    blether ""
+    blether "Here's a wee selection fer ye:"
+    blether ""
+
+    blether "=== A Scots Haiku ==="
+    print_poem(generate_haiku())
+
+    blether "=== In the Style o' Burns ==="
+    print_poem(generate_burns_verse())
+
+    blether "=== A Wee Limerick ==="
+    print_poem(generate_limerick())
+
+    blether "=== A Toast! ==="
+    print_poem(generate_toast())
+
+    blether "=== A Scots Proverb ==="
+    blether f"    \"{generate_proverb()}\""
+    blether ""
+
+    blether "═══════════════════════════════════════════════════"
+    blether "  Haste ye back fer mair poetry!"
+    blether "═══════════════════════════════════════════════════"
+}
+
+blether "Poetry module loaded! Ready tae compose!"

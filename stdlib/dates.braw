@@ -1,0 +1,405 @@
+# dates.braw - Date utilities fer mdhavers
+# "Time flies like an arrow, but ye cannae catch it wi' yer bare hands!"
+
+# ===============================================================
+# Scottish Day Names
+# ===============================================================
+
+ken SCOTS_DAYS = [
+    "Monanday",    # Monday
+    "Tuisday",     # Tuesday
+    "Wadensday",   # Wednesday
+    "Fuirsday",    # Thursday
+    "Fryday",      # Friday
+    "Setterday",   # Saturday
+    "Sabbath"      # Sunday
+]
+
+ken SCOTS_MONTHS = [
+    "Januar",      # January
+    "Februar",     # February
+    "Mairch",      # March
+    "Aprile",      # April
+    "Mey",         # May
+    "Juin",        # June
+    "Julie",       # July
+    "August",      # August
+    "September",   # September
+    "October",     # October
+    "November",    # November
+    "December"     # December
+]
+
+# ===============================================================
+# Date Creation and Parsing
+# ===============================================================
+
+# Create a date object (dict)
+dae mak_date(year, month, day) {
+    gie {
+        "year": year,
+        "month": month,
+        "day": day
+    }
+}
+
+# Create a datetime object
+dae mak_datetime(year, month, day, hour = 0, minute = 0, second = 0) {
+    gie {
+        "year": year,
+        "month": month,
+        "day": day,
+        "hour": hour,
+        "minute": minute,
+        "second": second
+    }
+}
+
+# Parse a date string like "2024-03-15" or "15/03/2024"
+dae parse_date(s) {
+    # Try ISO format first (YYYY-MM-DD)
+    gin contains(s, "-") {
+        ken parts = split(s, "-")
+        gin len(parts) == 3 {
+            gie mak_date(tae_int(parts[0]), tae_int(parts[1]), tae_int(parts[2]))
+        }
+    }
+    # Try UK format (DD/MM/YYYY)
+    gin contains(s, "/") {
+        ken parts = split(s, "/")
+        gin len(parts) == 3 {
+            gie mak_date(tae_int(parts[2]), tae_int(parts[1]), tae_int(parts[0]))
+        }
+    }
+    gie naething
+}
+
+# ===============================================================
+# Date Formatting
+# ===============================================================
+
+# Format a date tae ISO string
+dae format_iso(date) {
+    ken y = tae_string(date["year"])
+    ken m = pad_num(date["month"], 2)
+    ken d = pad_num(date["day"], 2)
+    gie f"{y}-{m}-{d}"
+}
+
+# Format a date in UK style
+dae format_uk(date) {
+    ken d = pad_num(date["day"], 2)
+    ken m = pad_num(date["month"], 2)
+    ken y = tae_string(date["year"])
+    gie f"{d}/{m}/{y}"
+}
+
+# Format a date in a braw Scottish style
+dae format_scots(date) {
+    ken day = date["day"]
+    ken month = SCOTS_MONTHS[date["month"] - 1]
+    ken year = date["year"]
+    gie f"{day} {month} {year}"
+}
+
+# Helper tae pad a number with leading zeros
+dae pad_num(n, width) {
+    ken s = tae_string(n)
+    whiles len(s) < width {
+        s = "0" + s
+    }
+    gie s
+}
+
+# ===============================================================
+# Date Properties
+# ===============================================================
+
+# Check if a year is a leap year
+dae is_leap_year(year) {
+    gin year % 400 == 0 {
+        gie aye
+    }
+    gin year % 100 == 0 {
+        gie nae
+    }
+    gin year % 4 == 0 {
+        gie aye
+    }
+    gie nae
+}
+
+# Get days in a month
+dae days_in_month(year, month) {
+    ken days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    gin month == 2 an is_leap_year(year) {
+        gie 29
+    }
+    gie days[month - 1]
+}
+
+# Get day of week (0 = Monday, 6 = Sunday) using Zeller's congruence
+dae day_of_week(date) {
+    ken y = date["year"]
+    ken m = date["month"]
+    ken d = date["day"]
+
+    # Adjust for January and February
+    gin m < 3 {
+        m = m + 12
+        y = y - 1
+    }
+
+    ken k = y % 100
+    ken j = floor(y / 100)
+
+    ken h = (d + floor((13 * (m + 1)) / 5) + k + floor(k / 4) + floor(j / 4) - 2 * j) % 7
+
+    # Convert from Zeller (0=Saturday) tae our format (0=Monday)
+    ken result = (h + 5) % 7
+    gie result
+}
+
+# Get Scottish day name
+dae scots_day_name(date) {
+    gie SCOTS_DAYS[day_of_week(date)]
+}
+
+# Get Scottish month name
+dae scots_month_name(date) {
+    gie SCOTS_MONTHS[date["month"] - 1]
+}
+
+# ===============================================================
+# Date Comparisons
+# ===============================================================
+
+# Compare two dates (-1 if a < b, 0 if equal, 1 if a > b)
+dae compare_dates(a, b) {
+    gin a["year"] < b["year"] { gie -1 }
+    gin a["year"] > b["year"] { gie 1 }
+    gin a["month"] < b["month"] { gie -1 }
+    gin a["month"] > b["month"] { gie 1 }
+    gin a["day"] < b["day"] { gie -1 }
+    gin a["day"] > b["day"] { gie 1 }
+    gie 0
+}
+
+# Check if two dates are the same
+dae same_date(a, b) {
+    gie compare_dates(a, b) == 0
+}
+
+# Check if a is before b
+dae is_before(a, b) {
+    gie compare_dates(a, b) < 0
+}
+
+# Check if a is after b
+dae is_after(a, b) {
+    gie compare_dates(a, b) > 0
+}
+
+# ===============================================================
+# Date Arithmetic
+# ===============================================================
+
+# Add days tae a date
+dae add_days(date, days) {
+    ken y = date["year"]
+    ken m = date["month"]
+    ken d = date["day"] + days
+
+    # Handle overflow
+    whiles d > days_in_month(y, m) {
+        d = d - days_in_month(y, m)
+        m = m + 1
+        gin m > 12 {
+            m = 1
+            y = y + 1
+        }
+    }
+
+    # Handle underflow
+    whiles d < 1 {
+        m = m - 1
+        gin m < 1 {
+            m = 12
+            y = y - 1
+        }
+        d = d + days_in_month(y, m)
+    }
+
+    gie mak_date(y, m, d)
+}
+
+# Add months tae a date
+dae add_months(date, months) {
+    ken y = date["year"]
+    ken m = date["month"] + months
+    ken d = date["day"]
+
+    # Handle overflow/underflow
+    whiles m > 12 {
+        m = m - 12
+        y = y + 1
+    }
+    whiles m < 1 {
+        m = m + 12
+        y = y - 1
+    }
+
+    # Clamp day tae valid range
+    ken max_day = days_in_month(y, m)
+    gin d > max_day {
+        d = max_day
+    }
+
+    gie mak_date(y, m, d)
+}
+
+# Add years tae a date
+dae add_years(date, years) {
+    ken y = date["year"] + years
+    ken m = date["month"]
+    ken d = date["day"]
+
+    # Handle Feb 29 in non-leap years
+    gin m == 2 an d == 29 an nae is_leap_year(y) {
+        d = 28
+    }
+
+    gie mak_date(y, m, d)
+}
+
+# Calculate days between two dates
+dae days_between(a, b) {
+    # Simple calculation - count days
+    ken days = 0
+    ken current = a
+
+    gin is_after(a, b) {
+        # Swap if a is after b
+        current = b
+        ken target = a
+        whiles is_before(current, target) {
+            current = add_days(current, 1)
+            days = days + 1
+        }
+        gie 0 - days
+    }
+
+    ken target = b
+    whiles is_before(current, target) {
+        current = add_days(current, 1)
+        days = days + 1
+    }
+    gie days
+}
+
+# ===============================================================
+# Special Dates
+# ===============================================================
+
+# St Andrew's Day (30th November)
+dae st_andrews_day(year) {
+    gie mak_date(year, 11, 30)
+}
+
+# Burns Night (25th January)
+dae burns_night(year) {
+    gie mak_date(year, 1, 25)
+}
+
+# Hogmanay (31st December)
+dae hogmanay(year) {
+    gie mak_date(year, 12, 31)
+}
+
+# New Year's Day
+dae new_years_day(year) {
+    gie mak_date(year, 1, 1)
+}
+
+# Check if a date is a Scottish holiday
+dae is_scots_holiday(date) {
+    ken m = date["month"]
+    ken d = date["day"]
+
+    # St Andrew's Day
+    gin m == 11 an d == 30 { gie aye }
+
+    # Burns Night
+    gin m == 1 an d == 25 { gie aye }
+
+    # Hogmanay
+    gin m == 12 an d == 31 { gie aye }
+
+    # New Year (2nd Jan is also a holiday in Scotland!)
+    gin m == 1 an (d == 1 or d == 2) { gie aye }
+
+    gie nae
+}
+
+# Get the name of a Scottish holiday (or naething if not a holiday)
+dae scots_holiday_name(date) {
+    ken m = date["month"]
+    ken d = date["day"]
+
+    gin m == 11 an d == 30 { gie "St Andrew's Day" }
+    gin m == 1 an d == 25 { gie "Burns Night" }
+    gin m == 12 an d == 31 { gie "Hogmanay" }
+    gin m == 1 an d == 1 { gie "Ne'erday" }
+    gin m == 1 an d == 2 { gie "Second Ne'erday" }
+
+    gie naething
+}
+
+# ===============================================================
+# Duration Formatting
+# ===============================================================
+
+# Format days as a human-readable duration
+dae format_duration(days) {
+    gin days == 0 {
+        gie "the noo"
+    }
+    gin days == 1 {
+        gie "the morra"
+    }
+    gin days == -1 {
+        gie "yestreen"
+    }
+    gin days < 0 {
+        ken d = 0 - days
+        gin d < 7 {
+            gie f"{d} days syne"
+        }
+        gin d < 30 {
+            ken weeks = floor(d / 7)
+            gie f"{weeks} weeks syne"
+        }
+        gin d < 365 {
+            ken months = floor(d / 30)
+            gie f"{months} months syne"
+        }
+        ken years = floor(d / 365)
+        gie f"{years} years syne"
+    }
+
+    gin days < 7 {
+        gie f"in {days} days"
+    }
+    gin days < 30 {
+        ken weeks = floor(days / 7)
+        gie f"in {weeks} weeks"
+    }
+    gin days < 365 {
+        ken months = floor(days / 30)
+        gie f"in {months} months"
+    }
+    ken years = floor(days / 365)
+    gie f"in {years} years"
+}
+
+blether "Dates module loaded! Time tae get crackin'!"

@@ -1,0 +1,308 @@
+# fsm.braw - Finite State Machine fer mdhavers
+# "Keep track o' whit state yer in!"
+#
+# A finite state machine implementation fer
+# modeling game states, workflows, and parsers.
+
+# ============================================================
+# State Machine Class
+# ============================================================
+
+kin StateMachine {
+    dae init(name = "Unnamed Machine") {
+        masel.name = name
+        masel.states = {}
+        masel.current = naething
+        masel.initial = naething
+        masel.history = []
+        masel.on_enter = {}
+        masel.on_exit = {}
+        masel.on_transition = naething
+    }
+
+    # Add a state
+    dae add_state(name, is_initial = nae, is_final = nae) {
+        masel.states[name] = {"name": name, "transitions": {}, "is_final": is_final}
+        gin is_initial {
+            masel.initial = name
+            masel.current = name
+        }
+        gie masel
+    }
+
+    # Add a transition between states
+    dae add_transition(from_state, trigger, to_state, guard = naething) {
+        gin nae contains(masel.states, from_state) {
+            mak_siccar nae, f"State '{from_state}' doesnae exist!"
+        }
+        gin nae contains(masel.states, to_state) {
+            mak_siccar nae, f"State '{to_state}' doesnae exist!"
+        }
+        masel.states[from_state]["transitions"][trigger] = {"target": to_state, "guard": guard}
+        gie masel
+    }
+
+    # Set callback when entering a state
+    dae set_on_enter(state, callback) {
+        masel.on_enter[state] = callback
+        gie masel
+    }
+
+    # Set callback when exiting a state
+    dae set_on_exit(state, callback) {
+        masel.on_exit[state] = callback
+        gie masel
+    }
+
+    # Set callback for any transition
+    dae set_on_transition(callback) {
+        masel.on_transition = callback
+        gie masel
+    }
+
+    # Process a trigger/event
+    dae trigger(event) {
+        gin masel.current == naething {
+            mak_siccar nae, "State machine hasnae started yet!"
+        }
+
+        ken current_state = masel.states[masel.current]
+        ken transitions = current_state["transitions"]
+
+        gin nae contains(transitions, event) {
+            gie nae
+        }
+
+        ken transition = transitions[event]
+        ken target = transition["target"]
+        ken guard = transition["guard"]
+
+        # Check guard if present
+        gin guard != naething {
+            gin nae guard() {
+                gie nae
+            }
+        }
+
+        # Exit callback
+        gin contains(masel.on_exit, masel.current) {
+            masel.on_exit[masel.current]()
+        }
+
+        # Record history
+        shove(masel.history, {"from": masel.current, "trigger": event, "to": target})
+
+        ken old_state = masel.current
+        masel.current = target
+
+        # Transition callback
+        gin masel.on_transition != naething {
+            masel.on_transition(old_state, event, target)
+        }
+
+        # Enter callback
+        gin contains(masel.on_enter, target) {
+            masel.on_enter[target]()
+        }
+
+        gie aye
+    }
+
+    # Process multiple triggers
+    dae process(events) {
+        ken results = []
+        fer event in events {
+            shove(results, masel.trigger(event))
+        }
+        gie results
+    }
+
+    # Check if in a particular state
+    dae is_in(state) {
+        gie masel.current == state
+    }
+
+    # Check if in a final state
+    dae is_done() {
+        gin masel.current == naething { gie nae }
+        gie masel.states[masel.current]["is_final"]
+    }
+
+    # Get current state name
+    dae get_state() {
+        gie masel.current
+    }
+
+    # Get available transitions from current state
+    dae available_triggers() {
+        gin masel.current == naething { gie [] }
+        gie keys(masel.states[masel.current]["transitions"])
+    }
+
+    # Reset to initial state
+    dae reset() {
+        masel.current = masel.initial
+        masel.history = []
+        gie masel
+    }
+
+    # Get transition history
+    dae get_history() {
+        gie masel.history
+    }
+
+    # Display state machine
+    dae display() {
+        blether f"═══ {masel.name} ═══"
+        blether f"  Current: {masel.current}"
+        blether f"  Initial: {masel.initial}"
+        blether ""
+        blether "  States:"
+        fer state_name in keys(masel.states) {
+            ken state = masel.states[state_name]
+            ken marker = ""
+            gin state_name == masel.current { marker = " ← current" }
+            gin state["is_final"] { marker = marker + " (final)" }
+            blether f"    • {state_name}{marker}"
+            fer trigger in keys(state["transitions"]) {
+                ken trans = state["transitions"][trigger]
+                blether f"        --[{trigger}]--> {trans[\"target\"]}"
+            }
+        }
+    }
+}
+
+# ============================================================
+# Factory Functions
+# ============================================================
+
+# Create a new state machine
+dae state_machine(name = "Unnamed Machine") {
+    gie StateMachine(name)
+}
+
+# ============================================================
+# Common Patterns
+# ============================================================
+
+# Simple toggle (on/off)
+dae toggle_machine(name = "Toggle") {
+    ken m = state_machine(name)
+    m.add_state("off", aye, nae)
+    m.add_state("on", nae, nae)
+    m.add_transition("off", "toggle", "on")
+    m.add_transition("on", "toggle", "off")
+    gie m
+}
+
+# Traffic light
+dae traffic_light_machine() {
+    ken m = state_machine("Traffic Light")
+    m.add_state("red", aye, nae)
+    m.add_state("green", nae, nae)
+    m.add_state("yellow", nae, nae)
+    m.add_transition("red", "go", "green")
+    m.add_transition("green", "slow", "yellow")
+    m.add_transition("yellow", "stop", "red")
+    gie m
+}
+
+# Door state machine
+dae door_machine() {
+    ken m = state_machine("Door")
+    m.add_state("closed", aye, nae)
+    m.add_state("open", nae, nae)
+    m.add_state("locked", nae, nae)
+    m.add_transition("closed", "open", "open")
+    m.add_transition("closed", "lock", "locked")
+    m.add_transition("open", "close", "closed")
+    m.add_transition("locked", "unlock", "closed")
+    gie m
+}
+
+# Order workflow
+dae order_workflow_machine() {
+    ken m = state_machine("Order Workflow")
+    m.add_state("pending", aye, nae)
+    m.add_state("confirmed", nae, nae)
+    m.add_state("shipped", nae, nae)
+    m.add_state("delivered", nae, aye)
+    m.add_state("cancelled", nae, aye)
+    m.add_transition("pending", "confirm", "confirmed")
+    m.add_transition("pending", "cancel", "cancelled")
+    m.add_transition("confirmed", "ship", "shipped")
+    m.add_transition("confirmed", "cancel", "cancelled")
+    m.add_transition("shipped", "deliver", "delivered")
+    gie m
+}
+
+# Game character states
+dae character_state_machine() {
+    ken m = state_machine("Character States")
+    m.add_state("idle", aye, nae)
+    m.add_state("walking", nae, nae)
+    m.add_state("running", nae, nae)
+    m.add_state("jumping", nae, nae)
+    m.add_state("falling", nae, nae)
+    m.add_state("dead", nae, aye)
+    m.add_transition("idle", "walk", "walking")
+    m.add_transition("idle", "run", "running")
+    m.add_transition("idle", "jump", "jumping")
+    m.add_transition("walking", "stop", "idle")
+    m.add_transition("walking", "run", "running")
+    m.add_transition("walking", "jump", "jumping")
+    m.add_transition("running", "stop", "idle")
+    m.add_transition("running", "walk", "walking")
+    m.add_transition("running", "jump", "jumping")
+    m.add_transition("jumping", "land", "idle")
+    m.add_transition("jumping", "fall", "falling")
+    m.add_transition("falling", "land", "idle")
+    m.add_transition("idle", "die", "dead")
+    m.add_transition("walking", "die", "dead")
+    m.add_transition("running", "die", "dead")
+    m.add_transition("jumping", "die", "dead")
+    m.add_transition("falling", "die", "dead")
+    gie m
+}
+
+# ============================================================
+# Scottish-Themed State Machines
+# ============================================================
+
+# Whisky production process
+dae whisky_production_machine() {
+    ken m = state_machine("Whisky Production")
+    m.add_state("malting", aye, nae)
+    m.add_state("mashing", nae, nae)
+    m.add_state("fermenting", nae, nae)
+    m.add_state("distilling", nae, nae)
+    m.add_state("maturing", nae, nae)
+    m.add_state("bottling", nae, aye)
+    m.add_transition("malting", "grind", "mashing")
+    m.add_transition("mashing", "add_yeast", "fermenting")
+    m.add_transition("fermenting", "heat", "distilling")
+    m.add_transition("distilling", "barrel", "maturing")
+    m.add_transition("maturing", "bottle", "bottling")
+    gie m
+}
+
+# Ceilidh dance caller
+dae ceilidh_machine() {
+    ken m = state_machine("Ceilidh Dance")
+    m.add_state("ready", aye, nae)
+    m.add_state("bow", nae, nae)
+    m.add_state("circle_left", nae, nae)
+    m.add_state("circle_right", nae, nae)
+    m.add_state("do_si_do", nae, nae)
+    m.add_state("promenade", nae, nae)
+    m.add_state("finish", nae, aye)
+    m.add_transition("ready", "start", "bow")
+    m.add_transition("bow", "next", "circle_left")
+    m.add_transition("circle_left", "next", "circle_right")
+    m.add_transition("circle_right", "next", "do_si_do")
+    m.add_transition("do_si_do", "next", "promenade")
+    m.add_transition("promenade", "end", "finish")
+    gie m
+}
+
+blether "FSM module loaded! Keep track o' yer states!"

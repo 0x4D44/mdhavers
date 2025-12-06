@@ -1,0 +1,644 @@
+# cli.braw - CLI utilities fer mdhavers
+# "Build command-line tools the Scottish way!"
+#
+# Provides utilities for building interactive CLI applications
+# including prompts, spinners, progress bars, and more.
+
+# ===============================================================
+# Text Styling (without color module dependency)
+# ===============================================================
+
+dae _style(text, code) {
+    gie f"\x1b[{code}m{text}\x1b[0m"
+}
+
+dae cli_bold(text) { gie _style(text, "1") }
+dae cli_dim(text) { gie _style(text, "2") }
+dae cli_italic(text) { gie _style(text, "3") }
+dae cli_underline(text) { gie _style(text, "4") }
+
+dae cli_red(text) { gie _style(text, "31") }
+dae cli_green(text) { gie _style(text, "32") }
+dae cli_yellow(text) { gie _style(text, "33") }
+dae cli_blue(text) { gie _style(text, "34") }
+dae cli_magenta(text) { gie _style(text, "35") }
+dae cli_cyan(text) { gie _style(text, "36") }
+
+# ===============================================================
+# Terminal Utilities
+# ===============================================================
+
+dae clear_screen() {
+    blether "\x1b[2J\x1b[H"
+}
+
+dae move_cursor(row, col) {
+    blether f"\x1b[{row};{col}H"
+}
+
+dae hide_cursor() {
+    blether "\x1b[?25l"
+}
+
+dae show_cursor() {
+    blether "\x1b[?25h"
+}
+
+dae clear_line() {
+    blether "\x1b[2K"
+}
+
+# ===============================================================
+# Box Drawing
+# ===============================================================
+
+ken BOX_CHARS = {
+    "single": {
+        "tl": "┌", "tr": "┐", "bl": "└", "br": "┘",
+        "h": "─", "v": "│"
+    },
+    "double": {
+        "tl": "╔", "tr": "╗", "bl": "╚", "br": "╝",
+        "h": "═", "v": "║"
+    },
+    "rounded": {
+        "tl": "╭", "tr": "╮", "bl": "╰", "br": "╯",
+        "h": "─", "v": "│"
+    }
+}
+
+dae draw_box(width, height, style = "single") {
+    ken chars = BOX_CHARS[style]
+    ken lines = []
+
+    # Top border
+    ken top = chars["tl"]
+    fer i in 0..(width - 2) {
+        top = top + chars["h"]
+    }
+    top = top + chars["tr"]
+    shove(lines, top)
+
+    # Middle rows
+    fer row in 0..(height - 2) {
+        ken middle = chars["v"]
+        fer i in 0..(width - 2) {
+            middle = middle + " "
+        }
+        middle = middle + chars["v"]
+        shove(lines, middle)
+    }
+
+    # Bottom border
+    ken bottom = chars["bl"]
+    fer i in 0..(width - 2) {
+        bottom = bottom + chars["h"]
+    }
+    bottom = bottom + chars["br"]
+    shove(lines, bottom)
+
+    gie lines
+}
+
+dae print_box(content, padding = 1, style = "single") {
+    ken max_len = 0
+    fer line in content {
+        gin len(line) > max_len {
+            max_len = len(line)
+        }
+    }
+
+    ken width = max_len + (padding * 2) + 2
+    ken chars = BOX_CHARS[style]
+
+    # Top border
+    ken top = chars["tl"]
+    fer i in 0..(width - 2) {
+        top = top + chars["h"]
+    }
+    blether top + chars["tr"]
+
+    # Content rows
+    fer line in content {
+        ken pad_left = ""
+        ken pad_right = ""
+        fer i in 0..padding { pad_left = pad_left + " " }
+        fer i in 0..(max_len - len(line) + padding) { pad_right = pad_right + " " }
+        blether chars["v"] + pad_left + line + pad_right + chars["v"]
+    }
+
+    # Bottom border
+    ken bottom = chars["bl"]
+    fer i in 0..(width - 2) {
+        bottom = bottom + chars["h"]
+    }
+    blether bottom + chars["br"]
+}
+
+# ===============================================================
+# Progress Bar
+# ===============================================================
+
+kin ProgressBar {
+    dae init(total, width = 40) {
+        masel.total = total
+        masel.current = 0
+        masel.width = width
+        masel.fill_char = "█"
+        masel.empty_char = "░"
+        masel.show_percent = aye
+        masel.show_count = aye
+        masel.prefix = ""
+        masel.suffix = ""
+    }
+
+    dae with_fill(char) {
+        masel.fill_char = char
+        gie masel
+    }
+
+    dae with_empty(char) {
+        masel.empty_char = char
+        gie masel
+    }
+
+    dae with_prefix(prefix) {
+        masel.prefix = prefix
+        gie masel
+    }
+
+    dae with_suffix(suffix) {
+        masel.suffix = suffix
+        gie masel
+    }
+
+    dae hide_percent() {
+        masel.show_percent = nae
+        gie masel
+    }
+
+    dae hide_count() {
+        masel.show_count = nae
+        gie masel
+    }
+
+    dae update(value) {
+        masel.current = value
+        gie masel
+    }
+
+    dae increment(amount = 1) {
+        masel.current = masel.current + amount
+        gin masel.current > masel.total {
+            masel.current = masel.total
+        }
+        gie masel
+    }
+
+    dae render() {
+        ken percent = gin masel.total > 0 than (masel.current * 100) / masel.total ither 0
+        ken filled = (percent * masel.width) / 100
+
+        ken bar = ""
+        fer i in 0..filled {
+            bar = bar + masel.fill_char
+        }
+        fer i in filled..masel.width {
+            bar = bar + masel.empty_char
+        }
+
+        ken result = masel.prefix + "[" + bar + "]"
+
+        gin masel.show_percent {
+            result = result + f" {percent}%"
+        }
+        gin masel.show_count {
+            result = result + f" ({masel.current}/{masel.total})"
+        }
+
+        result = result + masel.suffix
+        gie result
+    }
+
+    dae display() {
+        blether "\r" + masel.render()
+    }
+
+    dae is_complete() {
+        gie masel.current >= masel.total
+    }
+}
+
+dae make_progress(total, width = 40) {
+    gie ProgressBar(total, width)
+}
+
+# ===============================================================
+# Spinner
+# ===============================================================
+
+ken SPINNER_STYLES = {
+    "dots": ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+    "line": ["-", "\\", "|", "/"],
+    "arrows": ["←", "↖", "↑", "↗", "→", "↘", "↓", "↙"],
+    "bounce": ["⠁", "⠂", "⠄", "⠂"],
+    "growing": ["▁", "▃", "▄", "▅", "▆", "▇", "█", "▇", "▆", "▅", "▄", "▃"],
+    "circle": ["◐", "◓", "◑", "◒"],
+    "square": ["◰", "◳", "◲", "◱"],
+    "clock": ["🕐", "🕑", "🕒", "🕓", "🕔", "🕕", "🕖", "🕗", "🕘", "🕙", "🕚", "🕛"],
+    "moon": ["🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘"]
+}
+
+kin Spinner {
+    dae init(message = "", style = "dots") {
+        masel.message = message
+        masel.frames = SPINNER_STYLES[style]
+        masel.current_frame = 0
+        masel.running = nae
+    }
+
+    dae with_style(style) {
+        masel.frames = SPINNER_STYLES[style]
+        gie masel
+    }
+
+    dae with_message(msg) {
+        masel.message = msg
+        gie masel
+    }
+
+    dae next_frame() {
+        masel.current_frame = (masel.current_frame + 1) % len(masel.frames)
+        gie masel.frames[masel.current_frame]
+    }
+
+    dae render() {
+        gie masel.frames[masel.current_frame] + " " + masel.message
+    }
+
+    dae display() {
+        blether "\r" + masel.render()
+        masel.current_frame = (masel.current_frame + 1) % len(masel.frames)
+    }
+
+    dae success(msg = naething) {
+        ken text = gin msg != naething than msg ither masel.message
+        blether "\r" + cli_green("✓") + " " + text
+    }
+
+    dae failure(msg = naething) {
+        ken text = gin msg != naething than msg ither masel.message
+        blether "\r" + cli_red("✗") + " " + text
+    }
+
+    dae warning(msg = naething) {
+        ken text = gin msg != naething than msg ither masel.message
+        blether "\r" + cli_yellow("⚠") + " " + text
+    }
+}
+
+dae make_spinner(message = "", style = "dots") {
+    gie Spinner(message, style)
+}
+
+# ===============================================================
+# Tables
+# ===============================================================
+
+kin CLITable {
+    dae init() {
+        masel.headers = []
+        masel.rows = []
+        masel.col_widths = []
+        masel.border_style = "single"
+        masel.header_color = "cyan"
+    }
+
+    dae set_headers(headers) {
+        masel.headers = headers
+        masel._calc_widths()
+        gie masel
+    }
+
+    dae add_row(row) {
+        shove(masel.rows, row)
+        masel._calc_widths()
+        gie masel
+    }
+
+    dae set_rows(rows) {
+        masel.rows = rows
+        masel._calc_widths()
+        gie masel
+    }
+
+    dae with_border(style) {
+        masel.border_style = style
+        gie masel
+    }
+
+    dae _calc_widths() {
+        ken widths = []
+        ken num_cols = gin len(masel.headers) > 0 than len(masel.headers) ither gin len(masel.rows) > 0 than len(masel.rows[0]) ither 0
+
+        fer i in 0..num_cols {
+            ken max_w = 0
+            gin i < len(masel.headers) {
+                gin len(masel.headers[i]) > max_w {
+                    max_w = len(masel.headers[i])
+                }
+            }
+            fer row in masel.rows {
+                gin i < len(row) {
+                    ken cell = tae_string(row[i])
+                    gin len(cell) > max_w {
+                        max_w = len(cell)
+                    }
+                }
+            }
+            shove(widths, max_w + 2)
+        }
+        masel.col_widths = widths
+    }
+
+    dae _pad(text, width) {
+        ken str = tae_string(text)
+        ken padding = width - len(str)
+        ken left_pad = padding / 2
+        ken right_pad = padding - left_pad
+        ken result = ""
+        fer i in 0..left_pad { result = result + " " }
+        result = result + str
+        fer i in 0..right_pad { result = result + " " }
+        gie result
+    }
+
+    dae render() {
+        ken chars = BOX_CHARS[masel.border_style]
+        ken lines = []
+
+        # Top border
+        ken top = chars["tl"]
+        fer i in 0..len(masel.col_widths) {
+            fer j in 0..masel.col_widths[i] {
+                top = top + chars["h"]
+            }
+            gin i < len(masel.col_widths) - 1 {
+                top = top + chars["h"]
+            }
+        }
+        top = top + chars["tr"]
+        shove(lines, top)
+
+        # Headers
+        gin len(masel.headers) > 0 {
+            ken header_row = chars["v"]
+            fer i in 0..len(masel.headers) {
+                header_row = header_row + cli_cyan(masel._pad(masel.headers[i], masel.col_widths[i]))
+                gin i < len(masel.headers) - 1 {
+                    header_row = header_row + chars["v"]
+                }
+            }
+            header_row = header_row + chars["v"]
+            shove(lines, header_row)
+
+            # Header separator
+            ken sep = chars["v"]
+            fer i in 0..len(masel.col_widths) {
+                fer j in 0..masel.col_widths[i] {
+                    sep = sep + chars["h"]
+                }
+                gin i < len(masel.col_widths) - 1 {
+                    sep = sep + chars["h"]
+                }
+            }
+            sep = sep + chars["v"]
+            shove(lines, sep)
+        }
+
+        # Data rows
+        fer row in masel.rows {
+            ken data_row = chars["v"]
+            fer i in 0..len(row) {
+                data_row = data_row + masel._pad(row[i], masel.col_widths[i])
+                gin i < len(row) - 1 {
+                    data_row = data_row + chars["v"]
+                }
+            }
+            data_row = data_row + chars["v"]
+            shove(lines, data_row)
+        }
+
+        # Bottom border
+        ken bottom = chars["bl"]
+        fer i in 0..len(masel.col_widths) {
+            fer j in 0..masel.col_widths[i] {
+                bottom = bottom + chars["h"]
+            }
+            gin i < len(masel.col_widths) - 1 {
+                bottom = bottom + chars["h"]
+            }
+        }
+        bottom = bottom + chars["br"]
+        shove(lines, bottom)
+
+        gie lines
+    }
+
+    dae display() {
+        fer line in masel.render() {
+            blether line
+        }
+    }
+}
+
+dae make_table() {
+    gie CLITable()
+}
+
+# ===============================================================
+# Prompts
+# ===============================================================
+
+dae prompt_text(message, default = naething) {
+    ken prompt = message
+    gin default != naething {
+        prompt = prompt + f" [{default}]"
+    }
+    prompt = prompt + ": "
+    ken answer = wheesht(speir(prompt))
+    gin answer == "" an default != naething {
+        gie default
+    }
+    gie answer
+}
+
+dae prompt_confirm(message, default = aye) {
+    ken hint = gin default than "[Y/n]" ither "[y/N]"
+    ken answer = lower(wheesht(speir(f"{message} {hint}: ")))
+
+    gin answer == "" {
+        gie default
+    } ither gin answer == "y" or answer == "yes" or answer == "aye" {
+        gie aye
+    } ither gin answer == "n" or answer == "no" or answer == "nae" {
+        gie nae
+    }
+    gie default
+}
+
+dae prompt_choice(message, choices) {
+    blether message
+    fer i in 0..len(choices) {
+        blether f"  {i + 1}. {choices[i]}"
+    }
+    blether ""
+
+    ken valid = nae
+    ken choice = 0
+    whiles nae valid {
+        ken answer = wheesht(speir("Enter number: "))
+        hae_a_bash {
+            choice = tae_int(answer)
+            gin choice >= 1 an choice <= len(choices) {
+                valid = aye
+            } ither {
+                blether cli_red("Invalid choice, try again.")
+            }
+        } gin_it_gangs_wrang e {
+            blether cli_red("Please enter a number.")
+        }
+    }
+    gie choices[choice - 1]
+}
+
+dae prompt_password(message) {
+    # Note: This is just a regular prompt since we can't disable echo
+    ken answer = wheesht(speir(message + ": "))
+    gie answer
+}
+
+# ===============================================================
+# Banners and Headers
+# ===============================================================
+
+dae print_banner(text, style = "double") {
+    ken lines = split(text, "\n")
+    ken max_len = 0
+    fer line in lines {
+        gin len(line) > max_len {
+            max_len = len(line)
+        }
+    }
+
+    print_box(lines, 2, style)
+}
+
+dae print_header(text, char = "=") {
+    ken line = ""
+    fer i in 0..len(text) {
+        line = line + char
+    }
+    blether line
+    blether text
+    blether line
+}
+
+dae print_divider(width = 40, char = "─") {
+    ken line = ""
+    fer i in 0..width {
+        line = line + char
+    }
+    blether line
+}
+
+# ===============================================================
+# Status Messages
+# ===============================================================
+
+dae print_success(message) {
+    blether cli_green("✓") + " " + message
+}
+
+dae print_error(message) {
+    blether cli_red("✗") + " " + message
+}
+
+dae print_warning(message) {
+    blether cli_yellow("⚠") + " " + message
+}
+
+dae print_info(message) {
+    blether cli_blue("ℹ") + " " + message
+}
+
+dae print_step(step, total, message) {
+    blether cli_cyan(f"[{step}/{total}]") + " " + message
+}
+
+# ===============================================================
+# Lists
+# ===============================================================
+
+dae print_list(items, bullet = "•") {
+    fer item in items {
+        blether f"  {bullet} {item}"
+    }
+}
+
+dae print_numbered(items) {
+    fer i in 0..len(items) {
+        blether f"  {i + 1}. {items[i]}"
+    }
+}
+
+dae print_tree(tree, prefix = "", is_last = aye) {
+    # tree is {"name": "...", "children": [...]}
+    ken connector = gin is_last than "└── " ither "├── "
+    blether prefix + connector + tree["name"]
+
+    gin contains(tree, "children") {
+        ken children = tree["children"]
+        fer i in 0..len(children) {
+            ken branch_char = gin is_last than "    " ither "│   "
+            ken child_prefix = prefix + branch_char
+            print_tree(children[i], child_prefix, i == len(children) - 1)
+        }
+    }
+}
+
+# ===============================================================
+# Key/Value Display
+# ===============================================================
+
+dae print_kv(key, value, separator = ":") {
+    blether cli_bold(key) + separator + " " + tae_string(value)
+}
+
+dae print_dict(dict, indent = 0) {
+    ken pad = ""
+    fer i in 0..indent { pad = pad + "  " }
+
+    fer key in keys(dict) {
+        ken val = dict[key]
+        gin whit_kind(val) == "dict" {
+            blether pad + cli_bold(key) + ":"
+            print_dict(val, indent + 1)
+        } ither {
+            blether pad + cli_bold(key) + ": " + tae_string(val)
+        }
+    }
+}
+
+# ===============================================================
+# Horizontal Rules
+# ===============================================================
+
+dae hr(width = 40, style = "single") {
+    ken char = gin style == "double" than "═" ither gin style == "dashed" than "╌" ither "─"
+    ken line = ""
+    fer i in 0..width { line = line + char }
+    blether line
+}
+
+blether "CLI module loaded! Ready tae build bonnie command-line tools!"

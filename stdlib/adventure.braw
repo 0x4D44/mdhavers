@@ -1,0 +1,774 @@
+# adventure.braw - Text Adventure Game Engine fer mdhavers
+# "Create interactive fiction the Scottish way!"
+#
+# A complete text adventure engine with rooms, items,
+# NPCs, puzzles, and dialogue.
+
+# ===============================================================
+# Direction Constants
+# ===============================================================
+
+ken NORTH = "north"
+ken SOUTH = "south"
+ken EAST = "east"
+ken WEST = "west"
+ken UP = "up"
+ken DOWN = "down"
+ken IN = "in"
+ken OUT = "out"
+
+ken DIRECTION_OPPOSITES = {
+    "north": "south",
+    "south": "north",
+    "east": "west",
+    "west": "east",
+    "up": "down",
+    "down": "up",
+    "in": "out",
+    "out": "in"
+}
+
+ken DIRECTION_ALIASES = {
+    "n": "north",
+    "s": "south",
+    "e": "east",
+    "w": "west",
+    "u": "up",
+    "d": "down"
+}
+
+# ===============================================================
+# Item
+# ===============================================================
+
+kin Item {
+    dae init(id, name, description) {
+        masel.id = id
+        masel.name = name
+        masel.description = description
+        masel.takeable = aye
+        masel.useable = nae
+        masel.use_message = ""
+        masel.examine_text = ""
+        masel.aliases = []
+        masel.hidden = nae
+        masel.properties = {}
+    }
+
+    dae with_aliases(aliases) {
+        masel.aliases = aliases
+        gie masel
+    }
+
+    dae not_takeable() {
+        masel.takeable = nae
+        gie masel
+    }
+
+    dae useable_with(message) {
+        masel.useable = aye
+        masel.use_message = message
+        gie masel
+    }
+
+    dae with_examine(text) {
+        masel.examine_text = text
+        gie masel
+    }
+
+    dae set_hidden(hidden) {
+        masel.hidden = hidden
+        gie masel
+    }
+
+    dae set_property(key, value) {
+        masel.properties[key] = value
+        gie masel
+    }
+
+    dae get_property(key) {
+        gin contains(masel.properties, key) {
+            gie masel.properties[key]
+        }
+        gie naething
+    }
+
+    dae matches(text) {
+        ken lower_text = lower(text)
+        gin lower(masel.name) == lower_text {
+            gie aye
+        }
+        gin lower(masel.id) == lower_text {
+            gie aye
+        }
+        fer alias in masel.aliases {
+            gin lower(alias) == lower_text {
+                gie aye
+            }
+        }
+        gie nae
+    }
+}
+
+dae make_item(id, name, description) {
+    gie Item(id, name, description)
+}
+
+# ===============================================================
+# NPC (Non-Player Character)
+# ===============================================================
+
+kin NPC {
+    dae init(id, name, description) {
+        masel.id = id
+        masel.name = name
+        masel.description = description
+        masel.dialogue = {}
+        masel.current_topic = "greeting"
+        masel.talked_to = nae
+        masel.friendly = aye
+        masel.gives_item = naething
+        masel.wants_item = naething
+        masel.quest_complete = nae
+    }
+
+    dae add_dialogue(topic, text) {
+        masel.dialogue[topic] = text
+        gie masel
+    }
+
+    dae set_quest(wants, gives) {
+        masel.wants_item = wants
+        masel.gives_item = gives
+        gie masel
+    }
+
+    dae talk() {
+        masel.talked_to = aye
+        gin contains(masel.dialogue, masel.current_topic) {
+            gie masel.dialogue[masel.current_topic]
+        }
+        gie f"{masel.name} has naething tae say."
+    }
+
+    dae ask_about(topic) {
+        ken lower_topic = lower(topic)
+        gin contains(masel.dialogue, lower_topic) {
+            gie masel.dialogue[lower_topic]
+        }
+        gie f"{masel.name} doesnae ken aboot that."
+    }
+
+    dae give_item(item_id) {
+        gin masel.wants_item == item_id an nae masel.quest_complete {
+            masel.quest_complete = aye
+            masel.current_topic = "thanks"
+            gie {"accepted": aye, "gives": masel.gives_item}
+        }
+        gie {"accepted": nae, "message": f"{masel.name} doesnae want that."}
+    }
+}
+
+dae make_npc(id, name, description) {
+    gie NPC(id, name, description)
+}
+
+# ===============================================================
+# Room
+# ===============================================================
+
+kin Room {
+    dae init(id, name, description) {
+        masel.id = id
+        masel.name = name
+        masel.description = description
+        masel.exits = {}
+        masel.items = []
+        masel.npcs = []
+        masel.visited = nae
+        masel.first_visit_text = ""
+        masel.dark = nae
+        masel.locked_exits = {}
+        masel.on_enter_callback = naething
+    }
+
+    dae add_exit(direction, room_id) {
+        masel.exits[direction] = room_id
+        gie masel
+    }
+
+    dae lock_exit(direction, key_id) {
+        masel.locked_exits[direction] = key_id
+        gie masel
+    }
+
+    dae unlock_exit(direction) {
+        gin contains(masel.locked_exits, direction) {
+            ken new_locked = {}
+            fer dir in keys(masel.locked_exits) {
+                gin dir != direction {
+                    new_locked[dir] = masel.locked_exits[dir]
+                }
+            }
+            masel.locked_exits = new_locked
+        }
+        gie masel
+    }
+
+    dae add_item(item) {
+        shove(masel.items, item)
+        gie masel
+    }
+
+    dae remove_item(item_id) {
+        ken new_items = []
+        ken removed = naething
+        fer item in masel.items {
+            gin item.id == item_id {
+                removed = item
+            } ither {
+                shove(new_items, item)
+            }
+        }
+        masel.items = new_items
+        gie removed
+    }
+
+    dae get_item(text) {
+        fer item in masel.items {
+            gin item.matches(text) an nae item.hidden {
+                gie item
+            }
+        }
+        gie naething
+    }
+
+    dae add_npc(npc) {
+        shove(masel.npcs, npc)
+        gie masel
+    }
+
+    dae get_npc(text) {
+        ken lower_text = lower(text)
+        fer npc in masel.npcs {
+            gin lower(npc.name) == lower_text or lower(npc.id) == lower_text {
+                gie npc
+            }
+        }
+        gie naething
+    }
+
+    dae with_first_visit(text) {
+        masel.first_visit_text = text
+        gie masel
+    }
+
+    dae set_dark(dark) {
+        masel.dark = dark
+        gie masel
+    }
+
+    dae on_enter(callback) {
+        masel.on_enter_callback = callback
+        gie masel
+    }
+
+    dae describe() {
+        gin masel.dark {
+            gie "It's pitch black. Ye cannae see a thing!"
+        }
+
+        ken text = masel.description
+
+        gin nae masel.visited an masel.first_visit_text != "" {
+            text = masel.first_visit_text + "\n\n" + text
+        }
+
+        # List exits
+        ken exit_list = keys(masel.exits)
+        gin len(exit_list) > 0 {
+            text = text + "\n\nExits: " + join(exit_list, ", ")
+        }
+
+        # List visible items
+        ken visible_items = []
+        fer item in masel.items {
+            gin nae item.hidden {
+                shove(visible_items, item.name)
+            }
+        }
+        gin len(visible_items) > 0 {
+            text = text + "\n\nYe can see: " + join(visible_items, ", ")
+        }
+
+        # List NPCs
+        gin len(masel.npcs) > 0 {
+            ken npc_names = []
+            fer npc in masel.npcs {
+                shove(npc_names, npc.name)
+            }
+            text = text + "\n\n" + join(npc_names, " and ") + " is here."
+        }
+
+        gie text
+    }
+}
+
+dae make_room(id, name, description) {
+    gie Room(id, name, description)
+}
+
+# ===============================================================
+# Player
+# ===============================================================
+
+kin Player {
+    dae init() {
+        masel.inventory = []
+        masel.max_inventory = 10
+        masel.health = 100
+        masel.score = 0
+        masel.flags = {}
+    }
+
+    dae add_item(item) {
+        gin len(masel.inventory) >= masel.max_inventory {
+            gie {"success": nae, "message": "Yer pockets are full!"}
+        }
+        shove(masel.inventory, item)
+        gie {"success": aye}
+    }
+
+    dae remove_item(item_id) {
+        ken new_inv = []
+        ken removed = naething
+        fer item in masel.inventory {
+            gin item.id == item_id {
+                removed = item
+            } ither {
+                shove(new_inv, item)
+            }
+        }
+        masel.inventory = new_inv
+        gie removed
+    }
+
+    dae has_item(item_id) {
+        fer item in masel.inventory {
+            gin item.id == item_id {
+                gie aye
+            }
+        }
+        gie nae
+    }
+
+    dae get_item(text) {
+        fer item in masel.inventory {
+            gin item.matches(text) {
+                gie item
+            }
+        }
+        gie naething
+    }
+
+    dae list_inventory() {
+        gin len(masel.inventory) == 0 {
+            gie "Ye're carrying naething."
+        }
+        ken names = []
+        fer item in masel.inventory {
+            shove(names, item.name)
+        }
+        gie "Ye're carrying: " + join(names, ", ")
+    }
+
+    dae set_flag(flag, value = aye) {
+        masel.flags[flag] = value
+        gie masel
+    }
+
+    dae get_flag(flag) {
+        gin contains(masel.flags, flag) {
+            gie masel.flags[flag]
+        }
+        gie nae
+    }
+
+    dae add_score(points) {
+        masel.score = masel.score + points
+        gie masel
+    }
+}
+
+# ===============================================================
+# Game Engine
+# ===============================================================
+
+kin AdventureGame {
+    dae init(title) {
+        masel.title = title
+        masel.rooms = {}
+        masel.current_room_id = naething
+        masel.player = Player()
+        masel.running = aye
+        masel.commands = {}
+        masel.intro_text = ""
+        masel.win_condition = naething
+        masel.turns = 0
+        masel._setup_default_commands()
+    }
+
+    dae _setup_default_commands() {
+        # These will be handled in process_command
+        masel.commands["look"] = "look"
+        masel.commands["l"] = "look"
+        masel.commands["inventory"] = "inventory"
+        masel.commands["inv"] = "inventory"
+        masel.commands["i"] = "inventory"
+        masel.commands["take"] = "take"
+        masel.commands["get"] = "take"
+        masel.commands["drop"] = "drop"
+        masel.commands["examine"] = "examine"
+        masel.commands["x"] = "examine"
+        masel.commands["talk"] = "talk"
+        masel.commands["say"] = "talk"
+        masel.commands["ask"] = "ask"
+        masel.commands["give"] = "give"
+        masel.commands["use"] = "use"
+        masel.commands["help"] = "help"
+        masel.commands["quit"] = "quit"
+        masel.commands["score"] = "score"
+    }
+
+    dae add_room(room) {
+        masel.rooms[room.id] = room
+        gie masel
+    }
+
+    dae set_start_room(room_id) {
+        masel.current_room_id = room_id
+        gie masel
+    }
+
+    dae set_intro(text) {
+        masel.intro_text = text
+        gie masel
+    }
+
+    dae set_win_condition(callback) {
+        masel.win_condition = callback
+        gie masel
+    }
+
+    dae current_room() {
+        gin masel.current_room_id != naething {
+            gie masel.rooms[masel.current_room_id]
+        }
+        gie naething
+    }
+
+    dae move(direction) {
+        ken room = masel.current_room()
+        gin room == naething {
+            gie "Ye're lost in the void!"
+        }
+
+        # Check for direction alias
+        gin contains(DIRECTION_ALIASES, direction) {
+            direction = DIRECTION_ALIASES[direction]
+        }
+
+        # Check if exit exists
+        gin nae contains(room.exits, direction) {
+            gie "Ye cannae go that way."
+        }
+
+        # Check if exit is locked
+        gin contains(room.locked_exits, direction) {
+            ken key_id = room.locked_exits[direction]
+            gin masel.player.has_item(key_id) {
+                room.unlock_exit(direction)
+                gie f"Ye unlock the way {direction} and proceed."
+            } ither {
+                gie "That way is locked."
+            }
+        }
+
+        # Move to new room
+        ken new_room_id = room.exits[direction]
+        masel.current_room_id = new_room_id
+        ken new_room = masel.current_room()
+
+        # Trigger on_enter callback
+        gin new_room.on_enter_callback != naething {
+            new_room.on_enter_callback(masel)
+        }
+
+        ken was_visited = new_room.visited
+        new_room.visited = aye
+
+        gie new_room.describe()
+    }
+
+    dae take(item_name) {
+        ken room = masel.current_room()
+        ken item = room.get_item(item_name)
+
+        gin item == naething {
+            gie f"There's nae {item_name} here."
+        }
+
+        gin nae item.takeable {
+            gie f"Ye cannae take the {item.name}."
+        }
+
+        ken result = masel.player.add_item(item)
+        gin result["success"] {
+            room.remove_item(item.id)
+            gie f"Ye take the {item.name}."
+        }
+        gie result["message"]
+    }
+
+    dae drop(item_name) {
+        ken item = masel.player.get_item(item_name)
+
+        gin item == naething {
+            gie f"Ye dinnae have a {item_name}."
+        }
+
+        masel.player.remove_item(item.id)
+        masel.current_room().add_item(item)
+        gie f"Ye drop the {item.name}."
+    }
+
+    dae examine(target) {
+        # Try inventory first
+        ken item = masel.player.get_item(target)
+        gin item != naething {
+            gin item.examine_text != "" {
+                gie item.examine_text
+            }
+            gie item.description
+        }
+
+        # Try room items
+        item = masel.current_room().get_item(target)
+        gin item != naething {
+            gin item.examine_text != "" {
+                gie item.examine_text
+            }
+            gie item.description
+        }
+
+        # Try NPCs
+        ken npc = masel.current_room().get_npc(target)
+        gin npc != naething {
+            gie npc.description
+        }
+
+        gie f"Ye dinnae see any {target} here."
+    }
+
+    dae talk_to(npc_name) {
+        ken npc = masel.current_room().get_npc(npc_name)
+        gin npc == naething {
+            gie f"There's nae {npc_name} here tae talk tae."
+        }
+        gie npc.talk()
+    }
+
+    dae ask_about(npc_name, topic) {
+        ken npc = masel.current_room().get_npc(npc_name)
+        gin npc == naething {
+            gie f"There's nae {npc_name} here."
+        }
+        gie npc.ask_about(topic)
+    }
+
+    dae give_to(item_name, npc_name) {
+        ken npc = masel.current_room().get_npc(npc_name)
+        gin npc == naething {
+            gie f"There's nae {npc_name} here."
+        }
+
+        ken item = masel.player.get_item(item_name)
+        gin item == naething {
+            gie f"Ye dinnae have a {item_name}."
+        }
+
+        ken result = npc.give_item(item.id)
+        gin result["accepted"] {
+            masel.player.remove_item(item.id)
+            gin result["gives"] != naething {
+                # Create reward item (simplified)
+                gie f"{npc.name} thanks ye and gives ye something in return!"
+            }
+            gie f"{npc.name} accepts the {item.name}."
+        }
+        gie result["message"]
+    }
+
+    dae use_item(item_name) {
+        ken item = masel.player.get_item(item_name)
+        gin item == naething {
+            gie f"Ye dinnae have a {item_name}."
+        }
+
+        gin nae item.useable {
+            gie f"Ye cannae use the {item.name}."
+        }
+
+        gie item.use_message
+    }
+
+    dae process_command(input) {
+        ken parts = split(wheesht(input), " ")
+        gin len(parts) == 0 {
+            gie ""
+        }
+
+        ken cmd = lower(parts[0])
+        ken args = []
+        gin len(parts) > 1 {
+            fer i in 1..len(parts) {
+                shove(args, parts[i])
+            }
+        }
+        ken arg_text = join(args, " ")
+
+        masel.turns = masel.turns + 1
+
+        # Movement commands
+        gin cmd == "north" or cmd == "n" { gie masel.move("north") }
+        gin cmd == "south" or cmd == "s" { gie masel.move("south") }
+        gin cmd == "east" or cmd == "e" { gie masel.move("east") }
+        gin cmd == "west" or cmd == "w" { gie masel.move("west") }
+        gin cmd == "up" or cmd == "u" { gie masel.move("up") }
+        gin cmd == "down" or cmd == "d" { gie masel.move("down") }
+        gin cmd == "in" { gie masel.move("in") }
+        gin cmd == "out" { gie masel.move("out") }
+
+        # Look
+        gin cmd == "look" or cmd == "l" {
+            gie masel.current_room().describe()
+        }
+
+        # Inventory
+        gin cmd == "inventory" or cmd == "inv" or cmd == "i" {
+            gie masel.player.list_inventory()
+        }
+
+        # Take
+        gin cmd == "take" or cmd == "get" {
+            gin len(args) == 0 { gie "Take whit?" }
+            gie masel.take(arg_text)
+        }
+
+        # Drop
+        gin cmd == "drop" {
+            gin len(args) == 0 { gie "Drop whit?" }
+            gie masel.drop(arg_text)
+        }
+
+        # Examine
+        gin cmd == "examine" or cmd == "x" or cmd == "look at" {
+            gin len(args) == 0 { gie "Examine whit?" }
+            gie masel.examine(arg_text)
+        }
+
+        # Talk
+        gin cmd == "talk" or cmd == "say" {
+            gin len(args) == 0 { gie "Talk tae wha?" }
+            gie masel.talk_to(arg_text)
+        }
+
+        # Use
+        gin cmd == "use" {
+            gin len(args) == 0 { gie "Use whit?" }
+            gie masel.use_item(arg_text)
+        }
+
+        # Give
+        gin cmd == "give" {
+            # Simple parsing: give X to Y
+            ken to_idx = -1
+            fer i in 0..len(args) {
+                gin lower(args[i]) == "to" {
+                    to_idx = i
+                    brak
+                }
+            }
+            gin to_idx > 0 an to_idx < len(args) - 1 {
+                ken item_parts = []
+                fer i in 0..to_idx { shove(item_parts, args[i]) }
+                ken npc_parts = []
+                ken start_idx = to_idx + 1
+                fer i in start_idx..len(args) { shove(npc_parts, args[i]) }
+                gie masel.give_to(join(item_parts, " "), join(npc_parts, " "))
+            }
+            gie "Give whit tae wha? (e.g., 'give sword to knight')"
+        }
+
+        # Score
+        gin cmd == "score" {
+            gie f"Score: {masel.player.score}  Turns: {masel.turns}"
+        }
+
+        # Help
+        gin cmd == "help" {
+            gie "Commands:\n  north/south/east/west (n/s/e/w) - Move\n  look (l) - Describe room\n  inventory (i) - Show items\n  take/get [item] - Pick up item\n  drop [item] - Drop item\n  examine (x) [thing] - Look closely\n  talk [person] - Talk to someone\n  give [item] to [person] - Give item\n  use [item] - Use an item\n  score - Show score\n  quit - End game"
+        }
+
+        # Quit
+        gin cmd == "quit" or cmd == "q" {
+            masel.running = nae
+            gie "Thanks fer playing!"
+        }
+
+        # Check win condition
+        gin masel.win_condition != naething {
+            gin masel.win_condition(masel) {
+                masel.running = nae
+                gie "Congratulations! Ye've won!"
+            }
+        }
+
+        gie "Ah dinnae understand that. Try 'help' fer commands."
+    }
+
+    dae start() {
+        gin masel.intro_text != "" {
+            blether masel.intro_text
+            blether ""
+        }
+
+        ken room = masel.current_room()
+        gin room != naething {
+            blether room.describe()
+            room.visited = aye
+        }
+    }
+
+    dae run() {
+        masel.start()
+
+        whiles masel.running {
+            blether ""
+            ken input = speir("> ")
+            ken response = masel.process_command(input)
+            gin response != "" {
+                blether response
+            }
+        }
+
+        blether ""
+        blether f"Final Score: {masel.player.score}  Turns: {masel.turns}"
+    }
+}
+
+dae make_adventure(title) {
+    gie AdventureGame(title)
+}
+
+blether "Adventure module loaded! Ready tae create interactive fiction!"

@@ -1,0 +1,460 @@
+# logging.braw - Structured logging fer mdhavers
+# "Keep track o' whit's happenin' in yer code!"
+#
+# This module provides a proper logging system with levels and formatting
+
+# ===============================================================
+# Log Levels
+# ===============================================================
+
+ken LOG_DEBUG = 0
+ken LOG_INFO = 1
+ken LOG_WARN = 2
+ken LOG_ERROR = 3
+ken LOG_FATAL = 4
+
+ken LEVEL_NAMES = ["DEBUG", "INFO", "WARN", "ERROR", "FATAL"]
+ken LEVEL_SCOTS = ["HAVERS", "KEN", "WATCH", "FANKLE", "DEID"]
+
+# ANSI colors fer log levels
+ken LEVEL_COLORS = [
+    "\x1b[36m",   # DEBUG - cyan
+    "\x1b[32m",   # INFO - green
+    "\x1b[33m",   # WARN - yellow
+    "\x1b[31m",   # ERROR - red
+    "\x1b[35;1m"  # FATAL - bold magenta
+]
+ken RESET = "\x1b[0m"
+
+# ===============================================================
+# Logger Class
+# ===============================================================
+
+kin Logger {
+    dae init(name = "root", level = 1) {
+        masel.name = name
+        masel.level = level
+        masel.use_colors = aye
+        masel.use_scots = nae
+        masel.show_timestamp = aye
+        masel.handlers = []
+        masel.log_count = 0
+    }
+
+    # Set minimum log level
+    dae set_level(level) {
+        masel.level = level
+        gie masel
+    }
+
+    # Enable/disable colors
+    dae colors(enabled) {
+        masel.use_colors = enabled
+        gie masel
+    }
+
+    # Use Scottish level names
+    dae scots_mode(enabled) {
+        masel.use_scots = enabled
+        gie masel
+    }
+
+    # Enable/disable timestamps
+    dae timestamps(enabled) {
+        masel.show_timestamp = enabled
+        gie masel
+    }
+
+    # Add a handler function
+    dae add_handler(handler) {
+        shove(masel.handlers, handler)
+        gie masel
+    }
+
+    # Format a log message
+    dae format_message(level, message) {
+        ken level_name = gin masel.use_scots than LEVEL_SCOTS[level] ither LEVEL_NAMES[level]
+        ken color = gin masel.use_colors than LEVEL_COLORS[level] ither ""
+        ken reset = gin masel.use_colors than RESET ither ""
+
+        ken parts = []
+
+        gin masel.show_timestamp {
+            ken ts = noo()
+            shove(parts, f"[{ts}]")
+        }
+
+        shove(parts, f"{color}[{level_name}]{reset}")
+
+        gin masel.name != "root" {
+            shove(parts, f"({masel.name})")
+        }
+
+        shove(parts, message)
+
+        gie join(parts, " ")
+    }
+
+    # Core log function
+    dae log(level, message) {
+        gin level >= masel.level {
+            ken formatted = masel.format_message(level, message)
+            blether formatted
+            masel.log_count = masel.log_count + 1
+
+            # Call handlers
+            fer handler in masel.handlers {
+                handler(level, message, formatted)
+            }
+        }
+    }
+
+    # Convenience methods
+    dae debug(message) {
+        masel.log(LOG_DEBUG, message)
+    }
+
+    dae info(message) {
+        masel.log(LOG_INFO, message)
+    }
+
+    dae warn(message) {
+        masel.log(LOG_WARN, message)
+    }
+
+    dae error(message) {
+        masel.log(LOG_ERROR, message)
+    }
+
+    dae fatal(message) {
+        masel.log(LOG_FATAL, message)
+    }
+
+    # Scots-flavored convenience methods
+    dae havers(message) {
+        masel.log(LOG_DEBUG, message)
+    }
+
+    dae ken_this(message) {
+        masel.log(LOG_INFO, message)
+    }
+
+    dae watch_yersel(message) {
+        masel.log(LOG_WARN, message)
+    }
+
+    dae fankle(message) {
+        masel.log(LOG_ERROR, message)
+    }
+
+    dae deid(message) {
+        masel.log(LOG_FATAL, message)
+    }
+
+    # Get log count
+    dae get_count() {
+        gie masel.log_count
+    }
+
+    # Create child logger with prefix
+    dae child(name) {
+        ken child_name = gin masel.name == "root" than name ither f"{masel.name}.{name}"
+        ken child_logger = Logger(child_name, masel.level)
+        child_logger.use_colors = masel.use_colors
+        child_logger.use_scots = masel.use_scots
+        child_logger.show_timestamp = masel.show_timestamp
+        gie child_logger
+    }
+}
+
+# ===============================================================
+# Global Logger
+# ===============================================================
+
+ken _global_logger = naething
+
+dae get_logger() {
+    gin _global_logger == naething {
+        _global_logger = Logger()
+    }
+    gie _global_logger
+}
+
+# Quick logging functions using global logger
+dae log_debug(message) {
+    get_logger().debug(message)
+}
+
+dae log_info(message) {
+    get_logger().info(message)
+}
+
+dae log_warn(message) {
+    get_logger().warn(message)
+}
+
+dae log_error(message) {
+    get_logger().error(message)
+}
+
+dae log_fatal(message) {
+    get_logger().fatal(message)
+}
+
+# ===============================================================
+# Log Buffer (fer collecting logs)
+# ===============================================================
+
+kin LogBuffer {
+    dae init(max_size = 1000) {
+        masel.entries = []
+        masel.max_size = max_size
+    }
+
+    # Add an entry
+    dae add(level, message, formatted) {
+        ken entry = {
+            "level": level,
+            "message": message,
+            "formatted": formatted,
+            "timestamp": noo()
+        }
+        shove(masel.entries, entry)
+
+        # Trim if over max size
+        gin len(masel.entries) > masel.max_size {
+            masel.entries = tail(masel.entries)
+        }
+    }
+
+    # Get all entries
+    dae get_all() {
+        gie masel.entries
+    }
+
+    # Get entries by level
+    dae get_by_level(level) {
+        ken result = []
+        fer entry in masel.entries {
+            gin entry["level"] == level {
+                shove(result, entry)
+            }
+        }
+        gie result
+    }
+
+    # Get errors only
+    dae get_errors() {
+        ken result = []
+        fer entry in masel.entries {
+            gin entry["level"] >= LOG_ERROR {
+                shove(result, entry)
+            }
+        }
+        gie result
+    }
+
+    # Clear buffer
+    dae clear() {
+        masel.entries = []
+    }
+
+    # Get entry count
+    dae count() {
+        gie len(masel.entries)
+    }
+
+    # Get recent entries
+    dae recent(n = 10) {
+        ken total = len(masel.entries)
+        ken start = gin total > n than total - n ither 0
+        ken result = []
+        fer i in start..total {
+            shove(result, masel.entries[i])
+        }
+        gie result
+    }
+}
+
+# ===============================================================
+# Structured Logger (fer JSON-like output)
+# ===============================================================
+
+kin StructuredLogger {
+    dae init(name = "app") {
+        masel.name = name
+        masel.level = LOG_INFO
+        masel.context = {}
+    }
+
+    # Add context that appears in all logs
+    dae with_context(key, value) {
+        masel.context[key] = value
+        gie masel
+    }
+
+    # Clear context
+    dae clear_context() {
+        masel.context = {}
+        gie masel
+    }
+
+    # Set level
+    dae set_level(level) {
+        masel.level = level
+        gie masel
+    }
+
+    # Log with extra fields
+    dae log(level, message, fields = {}) {
+        gin level >= masel.level {
+            ken entry = {
+                "timestamp": noo(),
+                "level": LEVEL_NAMES[level],
+                "logger": masel.name,
+                "message": message
+            }
+
+            # Add context
+            fer key in keys(masel.context) {
+                entry[key] = masel.context[key]
+            }
+
+            # Add extra fields
+            fer key in keys(fields) {
+                entry[key] = fields[key]
+            }
+
+            blether json_stringify(entry)
+        }
+    }
+
+    dae debug(message, fields = {}) {
+        masel.log(LOG_DEBUG, message, fields)
+    }
+
+    dae info(message, fields = {}) {
+        masel.log(LOG_INFO, message, fields)
+    }
+
+    dae warn(message, fields = {}) {
+        masel.log(LOG_WARN, message, fields)
+    }
+
+    dae error(message, fields = {}) {
+        masel.log(LOG_ERROR, message, fields)
+    }
+}
+
+# ===============================================================
+# Performance Logger
+# ===============================================================
+
+kin PerfLogger {
+    dae init() {
+        masel.timers = {}
+        masel.measurements = []
+    }
+
+    # Start a timer
+    dae start(name) {
+        masel.timers[name] = noo()
+    }
+
+    # Stop a timer and log the duration
+    dae stop(name) {
+        gin contains(masel.timers, name) {
+            ken start_time = masel.timers[name]
+            ken end_time = noo()
+            ken duration = end_time - start_time
+
+            ken measurement = {
+                "name": name,
+                "duration_ms": duration,
+                "timestamp": end_time
+            }
+            shove(masel.measurements, measurement)
+
+            blether f"[PERF] {name}: {duration}ms"
+            gie duration
+        }
+        gie 0
+    }
+
+    # Get all measurements
+    dae get_measurements() {
+        gie masel.measurements
+    }
+
+    # Get average fer a named operation
+    dae average(name) {
+        ken total = 0
+        ken count = 0
+        fer m in masel.measurements {
+            gin m["name"] == name {
+                total = total + m["duration_ms"]
+                count = count + 1
+            }
+        }
+        gin count > 0 {
+            gie total / count
+        }
+        gie 0
+    }
+
+    # Clear measurements
+    dae clear() {
+        masel.timers = {}
+        masel.measurements = []
+    }
+
+    # Report summary
+    dae report() {
+        ken names = {}
+        fer m in masel.measurements {
+            ken name = m["name"]
+            gin nae contains(names, name) {
+                names[name] = {"count": 0, "total": 0, "min": 999999, "max": 0}
+            }
+            names[name]["count"] = names[name]["count"] + 1
+            names[name]["total"] = names[name]["total"] + m["duration_ms"]
+            gin m["duration_ms"] < names[name]["min"] {
+                names[name]["min"] = m["duration_ms"]
+            }
+            gin m["duration_ms"] > names[name]["max"] {
+                names[name]["max"] = m["duration_ms"]
+            }
+        }
+
+        blether "=== Performance Report ==="
+        fer name in keys(names) {
+            ken stats = names[name]
+            ken avg = stats["total"] / stats["count"]
+            blether f"  {name}:"
+            blether f"    Count: {stats['count']}"
+            blether f"    Avg:   {avg}ms"
+            blether f"    Min:   {stats['min']}ms"
+            blether f"    Max:   {stats['max']}ms"
+        }
+    }
+}
+
+# ===============================================================
+# Assertion Logger (fer debugging)
+# ===============================================================
+
+dae log_assert(condition, message) {
+    gin nae condition {
+        get_logger().error(f"ASSERTION FAILED: {message}")
+    }
+}
+
+dae log_assert_eq(actual, expected, message = "Values should be equal") {
+    gin actual != expected {
+        get_logger().error(f"ASSERTION FAILED: {message}")
+        get_logger().error(f"  Expected: {expected}")
+        get_logger().error(f"  Actual:   {actual}")
+    }
+}
+
+blether "Logging module loaded! Ready tae keep track o' things!"

@@ -1,0 +1,417 @@
+# promise.braw - Promise/Future-like patterns fer mdhavers
+# "Promises are like haggis - ye hope they turn oot weel!"
+#
+# This module provides promise-like patterns fer deferred computation
+# Note: mdhavers is single-threaded, so these are synchronous abstractions
+
+# ===============================================================
+# Promise States
+# ===============================================================
+
+ken PENDING = "pending"
+ken FULFILLED = "fulfilled"
+ken REJECTED = "rejected"
+
+# ===============================================================
+# Promise Class
+# ===============================================================
+
+kin Promise {
+    dae init(executor = naething) {
+        masel.state = PENDING
+        masel.value = naething
+        masel.error = naething
+        masel.then_handlers = []
+        masel.catch_handlers = []
+        masel.finally_handlers = []
+
+        # If executor provided, run it immediately
+        gin executor != naething {
+            hae_a_bash {
+                executor(|val| masel.resolve(val), |err| masel.reject(err))
+            } gin_it_gangs_wrang e {
+                masel.reject(e)
+            }
+        }
+    }
+
+    # Resolve the promise with a value
+    dae resolve(value) {
+        gin masel.state == PENDING {
+            masel.state = FULFILLED
+            masel.value = value
+
+            # Call then handlers
+            fer handler in masel.then_handlers {
+                handler(value)
+            }
+
+            # Call finally handlers
+            fer handler in masel.finally_handlers {
+                handler()
+            }
+        }
+        gie masel
+    }
+
+    # Reject the promise with an error
+    dae reject(error) {
+        gin masel.state == PENDING {
+            masel.state = REJECTED
+            masel.error = error
+
+            # Call catch handlers
+            fer handler in masel.catch_handlers {
+                handler(error)
+            }
+
+            # Call finally handlers
+            fer handler in masel.finally_handlers {
+                handler()
+            }
+        }
+        gie masel
+    }
+
+    # Add a success handler
+    dae on_success(handler) {
+        gin masel.state == FULFILLED {
+            handler(masel.value)
+        } ither gin masel.state == PENDING {
+            shove(masel.then_handlers, handler)
+        }
+        gie masel
+    }
+
+    # Add an error handler
+    dae catch(handler) {
+        gin masel.state == REJECTED {
+            handler(masel.error)
+        } ither gin masel.state == PENDING {
+            shove(masel.catch_handlers, handler)
+        }
+        gie masel
+    }
+
+    # Add a finally handler (runs regardless of outcome)
+    dae finally(handler) {
+        gin masel.state != PENDING {
+            handler()
+        } ither {
+            shove(masel.finally_handlers, handler)
+        }
+        gie masel
+    }
+
+    # Check if promise is pending
+    dae is_pending() {
+        gie masel.state == PENDING
+    }
+
+    # Check if promise is fulfilled
+    dae is_fulfilled() {
+        gie masel.state == FULFILLED
+    }
+
+    # Check if promise is rejected
+    dae is_rejected() {
+        gie masel.state == REJECTED
+    }
+
+    # Get the result (blocking wait - in our case, just returns if available)
+    dae await() {
+        gin masel.state == FULFILLED {
+            gie masel.value
+        } ither gin masel.state == REJECTED {
+            gie masel.error
+        }
+        gie naething
+    }
+}
+
+# ===============================================================
+# Promise Factory Functions
+# ===============================================================
+
+# Create an already-resolved promise
+dae resolved(value) {
+    ken p = Promise()
+    p.resolve(value)
+    gie p
+}
+
+# Create an already-rejected promise
+dae rejected(error) {
+    ken p = Promise()
+    p.reject(error)
+    gie p
+}
+
+# ===============================================================
+# Result Type (Either pattern)
+# ===============================================================
+
+kin Result {
+    dae init(value = naething, error = naething) {
+        masel.value = value
+        masel.error = error
+        masel.is_ok = error == naething
+    }
+
+    # Create a success result
+    dae ok(value) {
+        masel.value = value
+        masel.error = naething
+        masel.is_ok = aye
+        gie masel
+    }
+
+    # Create an error result
+    dae err(error) {
+        masel.value = naething
+        masel.error = error
+        masel.is_ok = nae
+        gie masel
+    }
+
+    # Map over the value if ok
+    dae map(fn) {
+        gin masel.is_ok {
+            gie ok_result(fn(masel.value))
+        }
+        gie err_result(masel.error)
+    }
+
+    # Map over the error if err
+    dae map_err(fn) {
+        gin nae masel.is_ok {
+            gie err_result(fn(masel.error))
+        }
+        gie ok_result(masel.value)
+    }
+
+    # Unwrap the value or return default
+    dae unwrap_or(default) {
+        gin masel.is_ok {
+            gie masel.value
+        }
+        gie default
+    }
+
+    # Unwrap the value or call a function
+    dae unwrap_or_else(fn) {
+        gin masel.is_ok {
+            gie masel.value
+        }
+        gie fn(masel.error)
+    }
+
+    # Check if it's ok
+    dae is_success() {
+        gie masel.is_ok
+    }
+
+    # Check if it's an error
+    dae is_failure() {
+        gie nae masel.is_ok
+    }
+}
+
+# Convenience constructors
+dae ok_result(value) {
+    ken r = Result()
+    r.ok(value)
+    gie r
+}
+
+dae err_result(error) {
+    ken r = Result()
+    r.err(error)
+    gie r
+}
+
+# ===============================================================
+# Option Type (Maybe pattern)
+# ===============================================================
+
+kin Option {
+    dae init(value = naething) {
+        masel.value = value
+        masel.has_value = value != naething
+    }
+
+    # Create a some option
+    dae some(value) {
+        masel.value = value
+        masel.has_value = aye
+        gie masel
+    }
+
+    # Create a none option
+    dae none() {
+        masel.value = naething
+        masel.has_value = nae
+        gie masel
+    }
+
+    # Check if has value
+    dae is_some() {
+        gie masel.has_value
+    }
+
+    # Check if empty
+    dae is_none() {
+        gie nae masel.has_value
+    }
+
+    # Map over the value if present
+    dae map(fn) {
+        gin masel.has_value {
+            gie some_option(fn(masel.value))
+        }
+        gie none_option()
+    }
+
+    # Unwrap the value or return default
+    dae unwrap_or(default) {
+        gin masel.has_value {
+            gie masel.value
+        }
+        gie default
+    }
+
+    # Unwrap the value or call a function
+    dae unwrap_or_else(fn) {
+        gin masel.has_value {
+            gie masel.value
+        }
+        gie fn()
+    }
+
+    # Filter the value
+    dae filter(predicate) {
+        gin masel.has_value an predicate(masel.value) {
+            gie masel
+        }
+        gie none_option()
+    }
+}
+
+# Convenience constructors
+dae some_option(value) {
+    ken o = Option()
+    o.some(value)
+    gie o
+}
+
+dae none_option() {
+    ken o = Option()
+    o.none()
+    gie o
+}
+
+# ===============================================================
+# Lazy Evaluation
+# ===============================================================
+
+kin Lazy {
+    dae init(thunk) {
+        masel.thunk = thunk
+        masel.evaluated = nae
+        masel.value = naething
+    }
+
+    # Force evaluation
+    dae force() {
+        gin nae masel.evaluated {
+            masel.value = masel.thunk()
+            masel.evaluated = aye
+        }
+        gie masel.value
+    }
+
+    # Check if evaluated
+    dae is_evaluated() {
+        gie masel.evaluated
+    }
+
+    # Map over the lazy value
+    dae map(fn) {
+        gie Lazy(|| fn(masel.force()))
+    }
+}
+
+# ===============================================================
+# Task Queue (Sequential Execution)
+# ===============================================================
+
+kin TaskQueue {
+    dae init() {
+        masel.tasks = []
+        masel.results = []
+    }
+
+    # Add a task
+    dae add(task) {
+        shove(masel.tasks, task)
+        gie masel
+    }
+
+    # Run all tasks sequentially
+    dae run() {
+        masel.results = []
+        fer task in masel.tasks {
+            ken result = task()
+            shove(masel.results, result)
+        }
+        gie masel.results
+    }
+
+    # Get results
+    dae get_results() {
+        gie masel.results
+    }
+
+    # Clear tasks
+    dae clear() {
+        masel.tasks = []
+        masel.results = []
+    }
+
+    # Get task count
+    dae count() {
+        gie len(masel.tasks)
+    }
+}
+
+# ===============================================================
+# Pipeline (Function Composition)
+# ===============================================================
+
+kin Pipeline {
+    dae init() {
+        masel.steps = []
+    }
+
+    # Add a step
+    dae pipe(fn) {
+        shove(masel.steps, fn)
+        gie masel
+    }
+
+    # Execute the pipeline
+    dae execute(initial_value) {
+        ken value = initial_value
+        fer step in masel.steps {
+            value = step(value)
+        }
+        gie value
+    }
+
+    # Get step count
+    dae length() {
+        gie len(masel.steps)
+    }
+}
+
+blether "Promise module loaded! Ready tae make some promises!"

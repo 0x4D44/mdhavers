@@ -1,0 +1,217 @@
+# tui_demo.braw - Demonstrating the TUI Module
+# "Makin' yer terminal bonnie!"
+
+fetch "../stdlib/tui"
+
+blether ""
+
+# ============================================================
+# Headers and Titles
+# ============================================================
+
+header("SIMPLE HEADER", 50)
+blank()
+
+fancy_header("FANCY HEADER", 50)
+blank()
+
+scots_banner("Alba gu bràth!")
+blank()
+
+# ============================================================
+# Boxes and Panels
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  BOXES AND PANELS")
+blether yellow("═══════════════════════════════════════")
+blank()
+
+box("This is a simple box\nwith multiple lines\nof content inside.", 35, "single")
+blank()
+
+box("Double-line box style", 30, "double")
+blank()
+
+panel("Settings", "Option 1: Enabled\nOption 2: Disabled\nOption 3: Auto", 35)
+blank()
+
+# ============================================================
+# Progress Indicators
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  PROGRESS INDICATORS")
+blether yellow("═══════════════════════════════════════")
+blank()
+
+progress(0, 100, 30, "Download")
+progress(25, 100, 30, "Download")
+progress(50, 100, 30, "Download")
+progress(75, 100, 30, "Download")
+progress(100, 100, 30, "Download")
+blank()
+
+blether "Spinner frames:"
+fer i in 0..10 {
+    spinner(i, "Processing")
+}
+blank()
+
+# ============================================================
+# Lists
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  LISTS")
+blether yellow("═══════════════════════════════════════")
+blank()
+
+blether "Bullet list:"
+bullet_list(["Haggis", "Neeps", "Tatties", "Whisky"])
+blank()
+
+blether "Numbered list:"
+numbered_list(["First item", "Second item", "Third item"])
+blank()
+
+blether "Selection menu (option 2 selected):"
+selection_menu(["New Game", "Continue", "Options", "Quit"], 1)
+blank()
+
+# ============================================================
+# Tables
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  TABLES")
+blether yellow("═══════════════════════════════════════")
+blank()
+
+ken headers = ["Name", "Age", "City"]
+ken rows = [
+    ["Hamish", 35, "Edinburgh"],
+    ["Morag", 28, "Glasgow"],
+    ["Angus", 42, "Aberdeen"]
+]
+
+table(headers, rows, 12)
+blank()
+
+# ============================================================
+# Dialogs and Alerts
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  DIALOGS AND ALERTS")
+blether yellow("═══════════════════════════════════════")
+blank()
+
+info_box("This is an info message", 40)
+blank()
+
+success_box("Operation completed!", 40)
+blank()
+
+warning_box("Proceed with caution", 40)
+blank()
+
+error_box("Something went wrong!", 40)
+blank()
+
+confirm_dialog("Are ye sure?")
+blank()
+
+# ============================================================
+# Scottish Elements
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  SCOTTISH ELEMENTS")
+blether yellow("═══════════════════════════════════════")
+blank()
+
+thistle_divider(40)
+blank()
+
+whisky_toast("Here's tae us, wha's like us?")
+blank()
+
+# ============================================================
+# Cards
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  CARDS")
+blether yellow("═══════════════════════════════════════")
+blank()
+
+card("User Profile", "Name: Hamish MacGregor\nRole: Developer\nLocation: Edinburgh", 35)
+blank()
+
+stat_card("Total Users", 1234, "👥")
+stat_card("Revenue", "£5,678", "💰")
+stat_card("Uptime", "99.9%", "⏰")
+blank()
+
+# ============================================================
+# Dashboard Elements
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  DASHBOARD ELEMENTS")
+blether yellow("═══════════════════════════════════════")
+blank()
+
+gauge("CPU Usage", 75, 100, 20)
+gauge("Memory", 45, 100, 20)
+gauge("Disk", 90, 100, 20)
+blank()
+
+blether "Sparkline (last 10 values):"
+ken data = [5, 8, 12, 7, 15, 10, 8, 20, 18, 12]
+blether f"  {sparkline(data)}"
+blank()
+
+blether "Status indicators:"
+status_indicator("Web Server", "online")
+status_indicator("Database", "warning")
+status_indicator("Cache", "offline")
+status_indicator("Unknown", "unknown")
+blank()
+
+# ============================================================
+# Columns Layout
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  COLUMNS LAYOUT")
+blether yellow("═══════════════════════════════════════")
+blank()
+
+ken items = ["Apple", "Banana", "Cherry", "Date", "Elderberry", "Fig"]
+columns(items, 3, 15)
+blank()
+
+# ============================================================
+# Forms
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  FORMS")
+blether yellow("═══════════════════════════════════════")
+blank()
+
+ken form_fields = [
+    ["Name", "Hamish"],
+    ["Email", "hamish@scotland.scot"],
+    ["Password", ""],
+    ["Country", "Scotland"]
+]
+form("Registration", form_fields)
+blank()
+
+blether green("═══════════════════════════════════════")
+blether green("  TUI Demo Complete!")
+blether green("  \"Yer terminal's lookin' braw!\"")
+blether green("═══════════════════════════════════════")

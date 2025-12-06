@@ -1,0 +1,433 @@
+# datetime.braw - Date and time handling fer mdhavers
+# "Whit time is it? Time fer some guid code!"
+#
+# This module provides date/time utilities fer formatting and manipulation
+
+# ===============================================================
+# Time Constants
+# ===============================================================
+
+ken SECONDS_PER_MINUTE = 60
+ken SECONDS_PER_HOUR = 3600
+ken SECONDS_PER_DAY = 86400
+ken SECONDS_PER_WEEK = 604800
+
+ken DAYS_PER_WEEK = 7
+ken MONTHS_PER_YEAR = 12
+
+# Scottish day names
+ken DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+ken DAY_NAMES_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+ken DAY_NAMES_SCOTS = ["Soonday", "Moanday", "Tysday", "Wadnesday", "Fuirsday", "Fryday", "Setterday"]
+
+# Month names
+ken MONTH_NAMES = ["January", "February", "March", "April", "May", "June",
+                   "July", "August", "September", "October", "November", "December"]
+ken MONTH_NAMES_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+# Days in each month (non-leap year)
+ken DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+
+# ===============================================================
+# Basic Time Functions
+# ===============================================================
+
+# Get current Unix timestamp in seconds
+dae timestamp() {
+    gie floor(noo() / 1000)
+}
+
+# Get current Unix timestamp in milliseconds
+dae timestamp_ms() {
+    gie noo()
+}
+
+# ===============================================================
+# Date/Time Breakdown
+# ===============================================================
+
+# Check if a year is a leap year
+dae is_leap_year(year) {
+    gin year % 400 == 0 {
+        gie aye
+    }
+    gin year % 100 == 0 {
+        gie nae
+    }
+    gin year % 4 == 0 {
+        gie aye
+    }
+    gie nae
+}
+
+# Get days in a month (accounting fer leap years)
+dae days_in_month(year, month) {
+    gin month == 2 an is_leap_year(year) {
+        gie 29
+    }
+    gie DAYS_IN_MONTH[month - 1]
+}
+
+# Calculate day of week from year, month, day (Zeller's formula simplified)
+# Returns 0=Sunday, 1=Monday, etc.
+dae day_of_week(year, month, day) {
+    # Adjust fer January and February
+    ken y = gin month < 3 than year - 1 ither year
+    ken m = gin month < 3 than month + 12 ither month
+
+    ken k = y % 100
+    ken j = floor(y / 100)
+
+    ken h = (day + floor((13 * (m + 1)) / 5) + k + floor(k / 4) + floor(j / 4) - 2 * j) % 7
+
+    # Convert from Zeller (0=Saturday) tae standard (0=Sunday)
+    gie (h + 6) % 7
+}
+
+# ===============================================================
+# DateTime Class
+# ===============================================================
+
+kin DateTime {
+    dae init(year = 1970, month = 1, day = 1, hour = 0, minute = 0, second = 0) {
+        masel.year = year
+        masel.month = month
+        masel.day = day
+        masel.hour = hour
+        masel.minute = minute
+        masel.second = second
+    }
+
+    # Create from Unix timestamp (seconds since epoch)
+    # Note: This is a simplified calculation assuming UTC
+    dae from_timestamp(ts) {
+        # Days since epoch
+        ken total_days = floor(ts / SECONDS_PER_DAY)
+        ken remaining_seconds = ts % SECONDS_PER_DAY
+
+        # Calculate time
+        masel.hour = floor(remaining_seconds / SECONDS_PER_HOUR)
+        remaining_seconds = remaining_seconds % SECONDS_PER_HOUR
+        masel.minute = floor(remaining_seconds / SECONDS_PER_MINUTE)
+        masel.second = remaining_seconds % SECONDS_PER_MINUTE
+
+        # Calculate date (starting from 1970-01-01)
+        masel.year = 1970
+        ken days_remaining = total_days
+
+        whiles days_remaining > 0 {
+            ken days_this_year = gin is_leap_year(masel.year) than 366 ither 365
+            gin days_remaining >= days_this_year {
+                days_remaining = days_remaining - days_this_year
+                masel.year = masel.year + 1
+            } ither {
+                brak
+            }
+        }
+
+        # Calculate month and day
+        masel.month = 1
+        whiles days_remaining > 0 {
+            ken days_this_month = days_in_month(masel.year, masel.month)
+            gin days_remaining >= days_this_month {
+                days_remaining = days_remaining - days_this_month
+                masel.month = masel.month + 1
+            } ither {
+                brak
+            }
+        }
+        masel.day = days_remaining + 1
+
+        gie masel
+    }
+
+    # Get day of week (0=Sunday, 6=Saturday)
+    dae weekday() {
+        gie day_of_week(masel.year, masel.month, masel.day)
+    }
+
+    # Get day name
+    dae day_name() {
+        gie DAY_NAMES[masel.weekday()]
+    }
+
+    # Get day name in Scots
+    dae day_name_scots() {
+        gie DAY_NAMES_SCOTS[masel.weekday()]
+    }
+
+    # Get month name
+    dae month_name() {
+        gie MONTH_NAMES[masel.month - 1]
+    }
+
+    # Check if this is a weekend
+    dae is_weekend() {
+        ken wd = masel.weekday()
+        gie wd == 0 or wd == 6
+    }
+
+    # Format the date/time
+    # Supports: %Y (year), %m (month), %d (day), %H (hour), %M (minute), %S (second)
+    # %B (month name), %b (short month), %A (day name), %a (short day)
+    dae format(fmt = "%Y-%m-%d %H:%M:%S") {
+        ken result = fmt
+
+        # Year
+        result = replace(result, "%Y", tae_string(masel.year))
+
+        # Month (zero-padded)
+        ken month_str = gin masel.month < 10 than "0" + tae_string(masel.month) ither tae_string(masel.month)
+        result = replace(result, "%m", month_str)
+        result = replace(result, "%B", MONTH_NAMES[masel.month - 1])
+        result = replace(result, "%b", MONTH_NAMES_SHORT[masel.month - 1])
+
+        # Day (zero-padded)
+        ken day_str = gin masel.day < 10 than "0" + tae_string(masel.day) ither tae_string(masel.day)
+        result = replace(result, "%d", day_str)
+        result = replace(result, "%A", DAY_NAMES[masel.weekday()])
+        result = replace(result, "%a", DAY_NAMES_SHORT[masel.weekday()])
+
+        # Hour (zero-padded, 24-hour)
+        ken hour_str = gin masel.hour < 10 than "0" + tae_string(masel.hour) ither tae_string(masel.hour)
+        result = replace(result, "%H", hour_str)
+
+        # 12-hour format
+        ken hour12 = gin masel.hour == 0 than 12 ither gin masel.hour > 12 than masel.hour - 12 ither masel.hour
+        ken hour12_str = gin hour12 < 10 than "0" + tae_string(hour12) ither tae_string(hour12)
+        result = replace(result, "%I", hour12_str)
+        ken ampm = gin masel.hour < 12 than "AM" ither "PM"
+        result = replace(result, "%p", ampm)
+
+        # Minute (zero-padded)
+        ken min_str = gin masel.minute < 10 than "0" + tae_string(masel.minute) ither tae_string(masel.minute)
+        result = replace(result, "%M", min_str)
+
+        # Second (zero-padded)
+        ken sec_str = gin masel.second < 10 than "0" + tae_string(masel.second) ither tae_string(masel.second)
+        result = replace(result, "%S", sec_str)
+
+        gie result
+    }
+
+    # ISO 8601 format
+    dae iso() {
+        gie masel.format("%Y-%m-%dT%H:%M:%S")
+    }
+
+    # Human-readable format
+    dae human() {
+        gie masel.format("%A, %B %d, %Y at %I:%M %p")
+    }
+
+    # Scottish format
+    dae scots() {
+        gie f"{masel.day_name_scots()}, {masel.day} {masel.month_name()} {masel.year}"
+    }
+
+    # String representation
+    dae tae_string() {
+        gie masel.format()
+    }
+}
+
+# ===============================================================
+# Convenience Functions
+# ===============================================================
+
+# Get current date/time
+dae noo_datetime() {
+    ken dt = DateTime()
+    dt.from_timestamp(timestamp())
+    gie dt
+}
+
+# Create a DateTime from components
+dae make_datetime(year, month, day, hour = 0, minute = 0, second = 0) {
+    gie DateTime(year, month, day, hour, minute, second)
+}
+
+# Helper fer pluralizing
+dae pluralize(n, word) {
+    gin n == 1 {
+        gie f"{n} {word}"
+    }
+    gie f"{n} {word}s"
+}
+
+# ===============================================================
+# Duration Class
+# ===============================================================
+
+kin Duration {
+    dae init(seconds = 0) {
+        masel.total_seconds = seconds
+    }
+
+    # Create from components
+    dae from_parts(days = 0, hours = 0, minutes = 0, seconds = 0) {
+        masel.total_seconds = days * SECONDS_PER_DAY + hours * SECONDS_PER_HOUR + minutes * SECONDS_PER_MINUTE + seconds
+        gie masel
+    }
+
+    # Get components
+    dae days() {
+        gie floor(masel.total_seconds / SECONDS_PER_DAY)
+    }
+
+    dae hours() {
+        gie floor((masel.total_seconds % SECONDS_PER_DAY) / SECONDS_PER_HOUR)
+    }
+
+    dae minutes() {
+        gie floor((masel.total_seconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE)
+    }
+
+    dae seconds() {
+        gie masel.total_seconds % SECONDS_PER_MINUTE
+    }
+
+    # Human readable
+    dae human() {
+        ken parts = []
+        ken d = masel.days()
+        ken h = masel.hours()
+        ken m = masel.minutes()
+        ken s = masel.seconds()
+
+        gin d > 0 {
+            shove(parts, pluralize(d, "day"))
+        }
+        gin h > 0 {
+            shove(parts, pluralize(h, "hour"))
+        }
+        gin m > 0 {
+            shove(parts, pluralize(m, "minute"))
+        }
+        gin s > 0 or len(parts) == 0 {
+            shove(parts, pluralize(s, "second"))
+        }
+
+        gie join(parts, ", ")
+    }
+
+    # Short format (e.g., "2d 5h 30m")
+    dae short() {
+        ken d = masel.days()
+        ken h = masel.hours()
+        ken m = masel.minutes()
+        ken s = masel.seconds()
+
+        ken parts = []
+        gin d > 0 {
+            shove(parts, f"{d}d")
+        }
+        gin h > 0 {
+            shove(parts, f"{h}h")
+        }
+        gin m > 0 {
+            shove(parts, f"{m}m")
+        }
+        gin s > 0 or len(parts) == 0 {
+            shove(parts, f"{s}s")
+        }
+
+        gie join(parts, " ")
+    }
+}
+
+# ===============================================================
+# Duration Convenience Functions
+# ===============================================================
+
+dae seconds(n) {
+    gie Duration(n)
+}
+
+dae minutes(n) {
+    gie Duration(n * SECONDS_PER_MINUTE)
+}
+
+dae hours(n) {
+    gie Duration(n * SECONDS_PER_HOUR)
+}
+
+dae days(n) {
+    gie Duration(n * SECONDS_PER_DAY)
+}
+
+dae weeks(n) {
+    gie Duration(n * SECONDS_PER_WEEK)
+}
+
+# ===============================================================
+# Time Ago / Time Until
+# ===============================================================
+
+dae time_ago(ts) {
+    ken now_ts = timestamp()
+    ken diff = now_ts - ts
+
+    gin diff < 0 {
+        gie "in the future"
+    }
+    gin diff < 60 {
+        gie "just noo"
+    }
+    gin diff < 3600 {
+        ken mins = floor(diff / 60)
+        gie pluralize(mins, "minute") + " ago"
+    }
+    gin diff < 86400 {
+        ken hrs = floor(diff / 3600)
+        gie pluralize(hrs, "hour") + " ago"
+    }
+    gin diff < 604800 {
+        ken dys = floor(diff / 86400)
+        gie pluralize(dys, "day") + " ago"
+    }
+    gin diff < 2592000 {
+        ken wks = floor(diff / 604800)
+        gie pluralize(wks, "week") + " ago"
+    }
+    gin diff < 31536000 {
+        ken mths = floor(diff / 2592000)
+        gie pluralize(mths, "month") + " ago"
+    }
+    ken yrs = floor(diff / 31536000)
+    gie pluralize(yrs, "year") + " ago"
+}
+
+# ===============================================================
+# Scottish Time Phrases
+# ===============================================================
+
+dae scots_greeting_fer_time() {
+    ken dt = noo_datetime()
+    ken hour = dt.hour
+
+    gin hour < 12 {
+        gie "Guid mornin'!"
+    } ither gin hour < 17 {
+        gie "Guid efternoon!"
+    } ither gin hour < 21 {
+        gie "Guid evenin'!"
+    } ither {
+        gie "Guid nicht!"
+    }
+}
+
+dae is_hogmanay(dt) {
+    gie dt.month == 12 an dt.day == 31
+}
+
+dae is_burns_nicht(dt) {
+    gie dt.month == 1 an dt.day == 25
+}
+
+dae is_st_andrews_day(dt) {
+    gie dt.month == 11 an dt.day == 30
+}
+
+blether "Datetime module loaded! Whit time is it? Time tae code!"

@@ -1,0 +1,393 @@
+# statemachine.braw - State machine implementation fer mdhavers
+# "A guid state machine is like a Scottish reel - ye ken exactly where ye're gaun!"
+#
+# This module provides a simple state machine fer modelin':
+# - Game states (menu -> playing -> paused -> game_over)
+# - Workflow states (draft -> review -> approved -> published)
+# - Connection states (disconnected -> connecting -> connected)
+# - Any finite state automaton!
+
+# ===============================================================
+# State Machine Class
+# ===============================================================
+
+# Create a new state machine
+# Usage:
+#   ken sm = StateMachine("idle", {"idle", "running", "stopped"})
+#   sm.add_transition("start", "idle", "running")
+#   sm.trigger("start")
+
+kin StateMachine {
+    # Initialize with starting state and valid states
+    dae init(initial_state, valid_states) {
+        masel.current_state = initial_state
+        masel.valid_states = valid_states
+        masel.transitions = {}  # {event: {from_state: to_state}}
+        masel.history = [initial_state]
+        masel.on_enter_handlers = {}  # {state: function}
+        masel.on_exit_handlers = {}   # {state: function}
+        masel.on_transition_handlers = []  # list of functions
+    }
+
+    # Get current state
+    dae state() {
+        gie masel.current_state
+    }
+
+    # Check if in a specific state
+    dae is_in(state) {
+        gie masel.current_state == state
+    }
+
+    # Add a state transition
+    # Event "start" takes us from "idle" to "running"
+    dae add_transition(event, from_state, to_state) {
+        # Validate states (use is_in_creel for set membership)
+        gin nae is_in_creel(masel.valid_states, from_state) {
+            blether f"Warning: '{from_state}' is nae a valid state"
+        }
+        gin nae is_in_creel(masel.valid_states, to_state) {
+            blether f"Warning: '{to_state}' is nae a valid state"
+        }
+
+        # Create or update the transition map for this event
+        gin nae contains(masel.transitions, event) {
+            masel.transitions[event] = {}
+        }
+        masel.transitions[event][from_state] = to_state
+    }
+
+    # Add multiple transitions at once
+    # transitions_list = [["start", "idle", "running"], ["stop", "running", "stopped"]]
+    dae add_transitions(transitions_list) {
+        fer t in transitions_list {
+            masel.add_transition(t[0], t[1], t[2])
+        }
+    }
+
+    # Trigger an event (try to transition)
+    # Returns aye if transition happened, nae otherwise
+    dae trigger(event) {
+        gin nae contains(masel.transitions, event) {
+            gie nae  # Unknown event
+        }
+
+        ken event_transitions = masel.transitions[event]
+        gin nae contains(event_transitions, masel.current_state) {
+            gie nae  # No transition from current state for this event
+        }
+
+        ken from_state = masel.current_state
+        ken to_state = event_transitions[masel.current_state]
+
+        # Call on_exit handler if exists
+        gin contains(masel.on_exit_handlers, from_state) {
+            ken handler = masel.on_exit_handlers[from_state]
+            handler(from_state, event)
+        }
+
+        # Update state
+        masel.current_state = to_state
+        shove(masel.history, to_state)
+
+        # Call on_transition handlers
+        fer handler in masel.on_transition_handlers {
+            handler(from_state, event, to_state)
+        }
+
+        # Call on_enter handler if exists
+        gin contains(masel.on_enter_handlers, to_state) {
+            ken handler = masel.on_enter_handlers[to_state]
+            handler(to_state, event)
+        }
+
+        gie aye
+    }
+
+    # Try to trigger, throwing error if transition not allowed
+    dae must_trigger(event) {
+        gin nae masel.trigger(event) {
+            hae_a_bash {
+                ken msg = f"Cannae trigger '{event}' from state '{masel.current_state}'"
+                assert(nae, msg)
+            } gin_it_gangs_wrang e {
+                blether f"StateMachine Error: {e}"
+            }
+        }
+    }
+
+    # Register an on_enter handler for a state
+    dae on_enter(state, handler) {
+        masel.on_enter_handlers[state] = handler
+    }
+
+    # Register an on_exit handler for a state
+    dae on_exit(state, handler) {
+        masel.on_exit_handlers[state] = handler
+    }
+
+    # Register a general transition handler
+    dae on_transition(handler) {
+        shove(masel.on_transition_handlers, handler)
+    }
+
+    # Get list of valid events from current state
+    dae available_events() {
+        ken events = []
+        fer event in keys(masel.transitions) {
+            ken event_map = masel.transitions[event]
+            gin contains(event_map, masel.current_state) {
+                shove(events, event)
+            }
+        }
+        gie events
+    }
+
+    # Get the state history
+    dae get_history() {
+        gie masel.history
+    }
+
+    # Reset to initial state (first in history)
+    dae reset() {
+        ken initial = masel.history[0]
+        masel.current_state = initial
+        masel.history = [initial]
+    }
+
+    # Can we trigger this event?
+    dae can_trigger(event) {
+        gin nae contains(masel.transitions, event) {
+            gie nae
+        }
+        ken event_map = masel.transitions[event]
+        gie contains(event_map, masel.current_state)
+    }
+
+    # Get next state if we triggered this event (without actually triggering)
+    dae peek_next(event) {
+        gin masel.can_trigger(event) {
+            ken event_map = masel.transitions[event]
+            gie event_map[masel.current_state]
+        }
+        gie naething
+    }
+
+    # String representation
+    dae tae_string() {
+        ken available = join(masel.available_events(), ", ")
+        gie f"StateMachine(state='{masel.current_state}', available=[{available}])"
+    }
+}
+
+# ===============================================================
+# Pre-built State Machines
+# ===============================================================
+
+# Traffic Light State Machine
+dae traffic_light() {
+    ken sm = StateMachine("red", creel(["red", "yellow", "green"]))
+    sm.add_transition("next", "red", "green")
+    sm.add_transition("next", "green", "yellow")
+    sm.add_transition("next", "yellow", "red")
+    gie sm
+}
+
+# Simple On/Off Switch
+dae on_off_switch() {
+    ken sm = StateMachine("off", creel(["on", "off"]))
+    sm.add_transition("toggle", "on", "off")
+    sm.add_transition("toggle", "off", "on")
+    sm.add_transition("turn_on", "off", "on")
+    sm.add_transition("turn_off", "on", "off")
+    gie sm
+}
+
+# Door State Machine (open, closed, locked)
+dae door_machine() {
+    ken sm = StateMachine("closed", creel(["open", "closed", "locked"]))
+    sm.add_transitions([
+        ["open", "closed", "open"],
+        ["close", "open", "closed"],
+        ["lock", "closed", "locked"],
+        ["unlock", "locked", "closed"]
+    ])
+    gie sm
+}
+
+# Connection State Machine
+dae connection_machine() {
+    ken sm = StateMachine("disconnected", creel(["disconnected", "connecting", "connected", "error"]))
+    sm.add_transitions([
+        ["connect", "disconnected", "connecting"],
+        ["connected", "connecting", "connected"],
+        ["disconnect", "connected", "disconnected"],
+        ["error", "connecting", "error"],
+        ["error", "connected", "error"],
+        ["retry", "error", "connecting"],
+        ["reset", "error", "disconnected"]
+    ])
+    gie sm
+}
+
+# Game State Machine
+dae game_state_machine() {
+    ken sm = StateMachine("menu", creel(["menu", "loading", "playing", "paused", "game_over"]))
+    sm.add_transitions([
+        ["start_game", "menu", "loading"],
+        ["loaded", "loading", "playing"],
+        ["pause", "playing", "paused"],
+        ["resume", "paused", "playing"],
+        ["game_over", "playing", "game_over"],
+        ["restart", "game_over", "loading"],
+        ["main_menu", "game_over", "menu"],
+        ["main_menu", "paused", "menu"]
+    ])
+    gie sm
+}
+
+# Document Workflow State Machine
+dae document_workflow() {
+    ken sm = StateMachine("draft", creel(["draft", "review", "approved", "published", "archived"]))
+    sm.add_transitions([
+        ["submit", "draft", "review"],
+        ["approve", "review", "approved"],
+        ["reject", "review", "draft"],
+        ["publish", "approved", "published"],
+        ["archive", "published", "archived"],
+        ["archive", "draft", "archived"],
+        ["restore", "archived", "draft"]
+    ])
+    gie sm
+}
+
+# ===============================================================
+# State Machine Builder (Fluent Interface)
+# ===============================================================
+
+kin StateMachineBuilder {
+    dae init(initial_state) {
+        masel.initial = initial_state
+        masel.states = creel([initial_state])
+        masel.transition_list = []
+    }
+
+    # Add a state
+    dae add_state(name) {
+        toss_in(masel.states, name)
+        gie masel
+    }
+
+    # Add multiple states
+    dae add_states(state_list) {
+        fer s in state_list {
+            toss_in(masel.states, s)
+        }
+        gie masel
+    }
+
+    # Add a transition
+    dae add_transition(event, from_state, to_state) {
+        toss_in(masel.states, from_state)
+        toss_in(masel.states, to_state)
+        shove(masel.transition_list, [event, from_state, to_state])
+        gie masel
+    }
+
+    # Build the state machine
+    dae build() {
+        ken sm = StateMachine(masel.initial, masel.states)
+        sm.add_transitions(masel.transition_list)
+        gie sm
+    }
+}
+
+# Helper to create a builder
+dae state_machine_builder(initial_state) {
+    gie StateMachineBuilder(initial_state)
+}
+
+# ===============================================================
+# Hierarchical State Machine (HSM) Support
+# ===============================================================
+
+# Parent-child state relationships
+kin HierarchicalState {
+    dae init(name, parent = naething) {
+        masel.name = name
+        masel.parent = parent
+        masel.children = []
+        masel.initial_child = naething
+    }
+
+    dae add_child(child_name) {
+        shove(masel.children, child_name)
+        gin masel.initial_child == naething {
+            masel.initial_child = child_name
+        }
+    }
+
+    dae set_initial_child(child_name) {
+        masel.initial_child = child_name
+    }
+
+    dae is_parent() {
+        gie len(masel.children) > 0
+    }
+
+    dae has_parent() {
+        gie masel.parent != naething
+    }
+}
+
+# ===============================================================
+# Utility Functions
+# ===============================================================
+
+# Generate a DOT graph representation (for visualization)
+dae sm_to_dot(sm, name = "StateMachine") {
+    ken lines = []
+    shove(lines, f"digraph {name} " + "{")
+    shove(lines, "    rankdir=LR;")
+    shove(lines, f"    node [shape=circle];")
+
+    # Mark initial state with double circle
+    ken initial = sm.history[0]
+    shove(lines, f"    \"{initial}\" [shape=doublecircle];")
+
+    # Add transitions
+    fer event in keys(sm.transitions) {
+        ken event_map = sm.transitions[event]
+        fer from_state in keys(event_map) {
+            ken to_state = event_map[from_state]
+            shove(lines, f"    \"{from_state}\" -> \"{to_state}\" [label=\"{event}\"];")
+        }
+    }
+
+    shove(lines, "}")
+    gie join(lines, "\n")
+}
+
+# Print state machine info
+dae sm_info(sm) {
+    blether "=== State Machine Info ==="
+    blether f"Current State: {sm.state()}"
+    blether f"Available Events: {join(sm.available_events(), ', ')}"
+    blether f"History: {join(sm.history, ' -> ')}"
+    blether f"Valid States: {sm.valid_states}"
+}
+
+# Validate a sequence of events
+dae validate_event_sequence(sm, events) {
+    ken test_sm = StateMachine(sm.history[0], sm.valid_states)
+    test_sm.transitions = sm.transitions
+
+    fer event in events {
+        gin nae test_sm.trigger(event) {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+blether "State machine module loaded! Ready tae transition!"

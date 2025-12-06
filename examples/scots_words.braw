@@ -1,0 +1,119 @@
+# scots_words.braw - Demonstrating the Scots-themed built-in functions
+# These are pure braw functions that add Scottish flavour tae yer code!
+
+blether "======================================================="
+blether "  Scots Words in mdhavers"
+blether "  Pure havers, but useful havers!"
+blether "======================================================="
+blether ""
+
+# === Random Scots sayings ===
+blether "=== Scots Sayings ==="
+blether f"haver(): {haver()}"
+blether f"slainte(): {slainte()}"
+blether f"braw_time(): {braw_time()}"
+blether ""
+
+# === String functions ===
+blether "=== String Functions ==="
+
+ken messy = "   too    many     spaces   here   "
+blether f"Original: '{messy}'"
+blether f"wheesht_aw: '{wheesht_aw(messy)}'"
+
+ken word = "Scotland"
+blether f"geggie('{word}'): '{geggie(word)}'"
+
+ken a = "abc"
+ken b = "123"
+blether f"banter('{a}', '{b}'): '{banter(a, b)}'"
+
+ken long_text = "The quick brown fox"
+blether f"skelp(long_text, 5): {skelp(long_text, 5)}"
+blether ""
+
+# === Number checking ===
+blether "=== Number Checks ==="
+
+ken negative = -42
+ken positive = 42
+blether f"crabbit({negative}): {crabbit(negative)}"
+blether f"crabbit({positive}): {crabbit(positive)}"
+
+ken big_number = 500
+ken small_number = 5
+blether f"gallus({big_number}): {gallus(big_number)}"
+blether f"gallus({small_number}): {gallus(small_number)}"
+blether ""
+
+# === Value validation ===
+blether "=== Value Validation ==="
+
+ken empty_str = ""
+ken full_str = "hello"
+blether f"glaikit(''): {glaikit(empty_str)}"
+blether f"glaikit('hello'): {glaikit(full_str)}"
+
+ken safe_num = 50
+ken crazy_num = 9999
+blether f"cannie({safe_num}): {cannie(safe_num)}"
+blether f"cannie({crazy_num}): {cannie(crazy_num)}"
+
+ken x = 42
+ken type_int = "integer"
+ken type_str = "string"
+blether f"scunner_check(42, 'integer'): {scunner_check(x, type_int)}"
+blether f"scunner_check(42, 'string'): {scunner_check(x, type_str)}"
+blether ""
+
+# === List functions ===
+blether "=== List Functions ==="
+
+ken duplicates = [1, 2, 2, 3, 3, 3]
+ken no_dups = [1, 2, 3, 4, 5]
+blether f"drookit([1,2,2,3,3,3]): {drookit(duplicates)}"
+blether f"drookit([1,2,3,4,5]): {drookit(no_dups)}"
+
+ken numbers = [1, 2, 3, 4, 5]
+blether f"Original list: {numbers}"
+blether f"bampot_mode: {bampot_mode(numbers)}"
+blether ""
+
+# === Using these in practice ===
+blether "=== Practical Examples ==="
+
+dae validate_name(name) {
+    gin glaikit(name) {
+        blether "Och! Name cannae be empty!"
+        gie nae
+    }
+    gin nae cannie(name) {
+        blether "That name's too long, ya daftie!"
+        gie nae
+    }
+    blether f"'{name}' is a braw name!"
+    gie aye
+}
+
+validate_name("")
+validate_name("Hamish")
+
+dae check_score(score) {
+    gin crabbit(score) {
+        blether "Negative score? That's nae guid!"
+    } ither gin gallus(score) {
+        blether f"Score o' {score}! That's pure gallus!"
+    } ither {
+        blether f"Score o' {score} - no bad!"
+    }
+}
+
+check_score(-10)
+check_score(50)
+check_score(200)
+blether ""
+
+blether "======================================================="
+blether "  Demo Complete!"
+blether f"  Here's a toast: {slainte()}"
+blether "======================================================="

@@ -1,0 +1,444 @@
+# crypto.braw - Simple cryptography utilities fer mdhavers
+# "Keep yer secrets safe, like a Scotsman keeps his whisky!"
+#
+# This module provides basic encoding/decoding and simple ciphers.
+# NOTE: This is fer educational purposes only! Use proper crypto libraries
+# fer real security work.
+
+# ===============================================================
+# Base64 Encoding/Decoding
+# ===============================================================
+
+ken BASE64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+# Encode a string to base64
+dae base64_encode(text) {
+    ken result = ""
+    ken bytes = []
+
+    # Convert string to byte values (simple ASCII)
+    fer c in text {
+        shove(bytes, ord(c))
+    }
+
+    ken i = 0
+    whiles i < len(bytes) {
+        ken b1 = bytes[i]
+        ken b2 = gin i + 1 < len(bytes) than bytes[i + 1] ither 0
+        ken b3 = gin i + 2 < len(bytes) than bytes[i + 2] ither 0
+
+        # Encode 3 bytes into 4 base64 characters
+        ken idx1 = floor(b1 / 4)
+        ken idx2 = ((b1 % 4) * 16) + floor(b2 / 16)
+        ken idx3 = ((b2 % 16) * 4) + floor(b3 / 64)
+        ken idx4 = b3 % 64
+
+        result = result + BASE64_CHARS[idx1]
+        result = result + BASE64_CHARS[idx2]
+
+        gin i + 1 < len(bytes) {
+            result = result + BASE64_CHARS[idx3]
+        } ither {
+            result = result + "="
+        }
+
+        gin i + 2 < len(bytes) {
+            result = result + BASE64_CHARS[idx4]
+        } ither {
+            result = result + "="
+        }
+
+        i = i + 3
+    }
+
+    gie result
+}
+
+# Decode a base64 string
+dae base64_decode(encoded) {
+    ken result = ""
+    ken chars_list = []
+
+    # Convert base64 characters to values
+    fer c in encoded {
+        gin c != "=" {
+            ken idx = index_of_char(BASE64_CHARS, c)
+            gin idx >= 0 {
+                shove(chars_list, idx)
+            }
+        }
+    }
+
+    ken i = 0
+    whiles i < len(chars_list) {
+        ken c1 = chars_list[i]
+        ken c2 = gin i + 1 < len(chars_list) than chars_list[i + 1] ither 0
+        ken c3 = gin i + 2 < len(chars_list) than chars_list[i + 2] ither 0
+        ken c4 = gin i + 3 < len(chars_list) than chars_list[i + 3] ither 0
+
+        # Decode 4 base64 chars into 3 bytes
+        ken b1 = (c1 * 4) + floor(c2 / 16)
+        ken b2 = ((c2 % 16) * 16) + floor(c3 / 4)
+        ken b3 = ((c3 % 4) * 64) + c4
+
+        result = result + chr(b1)
+        gin i + 2 < len(chars_list) {
+            result = result + chr(b2)
+        }
+        gin i + 3 < len(chars_list) {
+            result = result + chr(b3)
+        }
+
+        i = i + 4
+    }
+
+    gie result
+}
+
+dae index_of_char(s, c) {
+    fer i in 0..len(s) {
+        gin s[i] == c {
+            gie i
+        }
+    }
+    gie 0 - 1
+}
+
+# ===============================================================
+# Hex Encoding/Decoding
+# ===============================================================
+
+ken HEX_CHARS = "0123456789abcdef"
+
+# Encode a string to hex
+dae hex_encode(text) {
+    ken result = ""
+    fer c in text {
+        ken byte = ord(c)
+        ken high = floor(byte / 16)
+        ken low = byte % 16
+        result = result + HEX_CHARS[high] + HEX_CHARS[low]
+    }
+    gie result
+}
+
+# Decode a hex string
+dae hex_decode(hex) {
+    ken result = ""
+    ken clean = lower(hex)
+    ken i = 0
+    whiles i + 1 < len(clean) {
+        ken high = index_of_char(HEX_CHARS, clean[i])
+        ken low = index_of_char(HEX_CHARS, clean[i + 1])
+        gin high >= 0 an low >= 0 {
+            ken byte = (high * 16) + low
+            result = result + chr(byte)
+        }
+        i = i + 2
+    }
+    gie result
+}
+
+# ===============================================================
+# Caesar Cipher (ROT-N)
+# ===============================================================
+
+ken ALPHABET_UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+ken ALPHABET_LOWER = "abcdefghijklmnopqrstuvwxyz"
+
+# Caesar cipher with configurable shift
+dae caesar_cipher(text, shift) {
+    ken result = ""
+    ken actual_shift = shift % 26
+
+    fer c in text {
+        ken upper_idx = index_of_char(ALPHABET_UPPER, c)
+        ken lower_idx = index_of_char(ALPHABET_LOWER, c)
+
+        gin upper_idx >= 0 {
+            ken new_idx = (upper_idx + actual_shift) % 26
+            gin new_idx < 0 { new_idx = new_idx + 26 }
+            result = result + ALPHABET_UPPER[new_idx]
+        } ither gin lower_idx >= 0 {
+            ken new_idx = (lower_idx + actual_shift) % 26
+            gin new_idx < 0 { new_idx = new_idx + 26 }
+            result = result + ALPHABET_LOWER[new_idx]
+        } ither {
+            result = result + c
+        }
+    }
+
+    gie result
+}
+
+# Standard ROT13 (symmetric cipher)
+dae rot13(text) {
+    gie caesar_cipher(text, 13)
+}
+
+# Decrypt Caesar cipher (just shift in opposite direction)
+dae caesar_decrypt(text, shift) {
+    gie caesar_cipher(text, 0 - shift)
+}
+
+# ===============================================================
+# Simple XOR Cipher
+# ===============================================================
+
+# XOR encrypt/decrypt (symmetric)
+dae xor_cipher(text, key) {
+    ken result = ""
+    fer i in 0..len(text) {
+        ken char_code = ord(text[i])
+        ken key_char = key[i % len(key)]
+        ken key_code = ord(key_char)
+        ken xored = bitwise_xor(char_code, key_code)
+        result = result + chr(xored)
+    }
+    gie result
+}
+
+# Simple bitwise XOR for single values
+dae bitwise_xor(a, b) {
+    # Simple XOR implementation for small values
+    ken result = 0
+    ken bit = 1
+    whiles bit <= 256 {
+        ken a_bit = floor(a / bit) % 2
+        ken b_bit = floor(b / bit) % 2
+        gin a_bit != b_bit {
+            result = result + bit
+        }
+        bit = bit * 2
+    }
+    gie result
+}
+
+# ===============================================================
+# Simple Hash Functions
+# ===============================================================
+
+# Simple string hash (DJB2 algorithm)
+dae simple_hash(text) {
+    ken hash = 5381
+    fer c in text {
+        ken char_code = ord(c)
+        hash = ((hash * 33) + char_code) % 4294967296
+    }
+    gie hash
+}
+
+# Hash to hex string
+dae hash_hex(text) {
+    ken h = simple_hash(text)
+    ken result = ""
+    whiles h > 0 {
+        ken digit = h % 16
+        result = HEX_CHARS[digit] + result
+        h = floor(h / 16)
+    }
+    # Pad to 8 characters
+    whiles len(result) < 8 {
+        result = "0" + result
+    }
+    gie result
+}
+
+# ===============================================================
+# Password Strength Checker
+# ===============================================================
+
+dae check_password_strength(password) {
+    ken score = 0
+    ken feedback = []
+
+    # Check length
+    gin len(password) >= 8 {
+        score = score + 1
+    } ither {
+        shove(feedback, "Password should be at least 8 characters")
+    }
+
+    gin len(password) >= 12 {
+        score = score + 1
+    }
+
+    gin len(password) >= 16 {
+        score = score + 1
+    }
+
+    # Check for uppercase
+    ken has_upper = nae
+    fer c in password {
+        gin index_of_char(ALPHABET_UPPER, c) >= 0 {
+            has_upper = aye
+            brak
+        }
+    }
+    gin has_upper {
+        score = score + 1
+    } ither {
+        shove(feedback, "Add uppercase letters")
+    }
+
+    # Check for lowercase
+    ken has_lower = nae
+    fer c in password {
+        gin index_of_char(ALPHABET_LOWER, c) >= 0 {
+            has_lower = aye
+            brak
+        }
+    }
+    gin has_lower {
+        score = score + 1
+    } ither {
+        shove(feedback, "Add lowercase letters")
+    }
+
+    # Check for numbers
+    ken has_digit = nae
+    ken digits = "0123456789"
+    fer c in password {
+        gin index_of_char(digits, c) >= 0 {
+            has_digit = aye
+            brak
+        }
+    }
+    gin has_digit {
+        score = score + 1
+    } ither {
+        shove(feedback, "Add numbers")
+    }
+
+    # Check for special characters
+    ken has_special = nae
+    ken specials = "!@#$%^&*()_+-=[]{}|;':\",./<>?"
+    fer c in password {
+        gin index_of_char(specials, c) >= 0 {
+            has_special = aye
+            brak
+        }
+    }
+    gin has_special {
+        score = score + 1
+    } ither {
+        shove(feedback, "Add special characters")
+    }
+
+    # Determine strength
+    ken strength = gin score >= 7 than "Very Strong" ither gin score >= 5 than "Strong" ither gin score >= 3 than "Medium" ither "Weak"
+
+    gie {
+        "score": score,
+        "max_score": 7,
+        "strength": strength,
+        "feedback": feedback
+    }
+}
+
+# ===============================================================
+# Vigenère Cipher
+# ===============================================================
+
+# Vigenère cipher encryption
+dae vigenere_encrypt(text, key) {
+    ken result = ""
+    ken key_upper = upper(key)
+    ken key_idx = 0
+
+    fer c in text {
+        ken upper_idx = index_of_char(ALPHABET_UPPER, c)
+        ken lower_idx = index_of_char(ALPHABET_LOWER, c)
+
+        gin upper_idx >= 0 {
+            ken shift = index_of_char(ALPHABET_UPPER, key_upper[key_idx % len(key_upper)])
+            ken new_idx = (upper_idx + shift) % 26
+            result = result + ALPHABET_UPPER[new_idx]
+            key_idx = key_idx + 1
+        } ither gin lower_idx >= 0 {
+            ken shift = index_of_char(ALPHABET_UPPER, key_upper[key_idx % len(key_upper)])
+            ken new_idx = (lower_idx + shift) % 26
+            result = result + ALPHABET_LOWER[new_idx]
+            key_idx = key_idx + 1
+        } ither {
+            result = result + c
+        }
+    }
+
+    gie result
+}
+
+# Vigenère cipher decryption
+dae vigenere_decrypt(text, key) {
+    ken result = ""
+    ken key_upper = upper(key)
+    ken key_idx = 0
+
+    fer c in text {
+        ken upper_idx = index_of_char(ALPHABET_UPPER, c)
+        ken lower_idx = index_of_char(ALPHABET_LOWER, c)
+
+        gin upper_idx >= 0 {
+            ken shift = index_of_char(ALPHABET_UPPER, key_upper[key_idx % len(key_upper)])
+            ken new_idx = (upper_idx - shift + 26) % 26
+            result = result + ALPHABET_UPPER[new_idx]
+            key_idx = key_idx + 1
+        } ither gin lower_idx >= 0 {
+            ken shift = index_of_char(ALPHABET_UPPER, key_upper[key_idx % len(key_upper)])
+            ken new_idx = (lower_idx - shift + 26) % 26
+            result = result + ALPHABET_LOWER[new_idx]
+            key_idx = key_idx + 1
+        } ither {
+            result = result + c
+        }
+    }
+
+    gie result
+}
+
+# ===============================================================
+# Utility Functions
+# ===============================================================
+
+# Generate a simple random key (not cryptographically secure!)
+dae generate_simple_key(length = 16) {
+    ken chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    ken result = ""
+    fer i in 0..length {
+        ken idx = jammy(0, len(chars) - 1)
+        result = result + chars[idx]
+    }
+    gie result
+}
+
+# Reverse a string
+dae reverse_str(s) {
+    ken result = ""
+    ken i = len(s) - 1
+    whiles i >= 0 {
+        result = result + s[i]
+        i = i - 1
+    }
+    gie result
+}
+
+# Atbash cipher (reverse alphabet substitution)
+dae atbash(text) {
+    ken result = ""
+    fer c in text {
+        ken upper_idx = index_of_char(ALPHABET_UPPER, c)
+        ken lower_idx = index_of_char(ALPHABET_LOWER, c)
+
+        gin upper_idx >= 0 {
+            result = result + ALPHABET_UPPER[25 - upper_idx]
+        } ither gin lower_idx >= 0 {
+            result = result + ALPHABET_LOWER[25 - lower_idx]
+        } ither {
+            result = result + c
+        }
+    }
+
+    gie result
+}
+
+blether "Crypto module loaded! Keep yer secrets safe!"

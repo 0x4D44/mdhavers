@@ -1,0 +1,162 @@
+# test_framework_demo.braw - Demonstration of the Testing Framework
+# Shows how tae test yer code like a true Scot!
+
+fetch "../stdlib/test"
+
+# ============================================================
+# Example: Testing a Calculator
+# ============================================================
+
+dae add(a, b) {
+    gie a + b
+}
+
+dae subtract(a, b) {
+    gie a - b
+}
+
+dae multiply(a, b) {
+    gie a * b
+}
+
+# ============================================================
+# Test Suite: Calculator Tests
+# ============================================================
+
+ken calc_tests = describe("Calculator Functions")
+
+dae test_add() {
+    expect_equal(5, add(2, 3))
+    expect_equal(0, add(-1, 1))
+    expect_equal(-5, add(-2, -3))
+}
+
+dae test_subtract() {
+    expect_equal(1, subtract(3, 2))
+    expect_equal(-2, subtract(3, 5))
+    expect_equal(0, subtract(5, 5))
+}
+
+dae test_multiply() {
+    expect_equal(6, multiply(2, 3))
+    expect_equal(0, multiply(5, 0))
+    expect_equal(-10, multiply(2, -5))
+}
+
+calc_tests.add_test("add should sum two numbers", test_add)
+calc_tests.add_test("subtract should find the difference", test_subtract)
+calc_tests.add_test("multiply should calculate the product", test_multiply)
+
+# ============================================================
+# Test Suite: String Functions
+# ============================================================
+
+ken string_tests = describe("String Functions")
+
+dae test_upper() {
+    expect_equal("HELLO", upper("hello"))
+    expect_equal("SCOTLAND", upper("scotland"))
+}
+
+dae test_lower() {
+    expect_equal("hello", lower("HELLO"))
+    expect_equal("braw", lower("BRAW"))
+}
+
+dae test_wheesht() {
+    expect_equal("hello", wheesht("  hello  "))
+    expect_equal("world", wheesht("world"))
+}
+
+string_tests.add_test("upper should uppercase strings", test_upper)
+string_tests.add_test("lower should lowercase strings", test_lower)
+string_tests.add_test("wheesht should trim whitespace", test_wheesht)
+
+# ============================================================
+# Test Suite: List Functions
+# ============================================================
+
+ken list_tests = describe("List Functions")
+
+dae test_len() {
+    expect_equal(3, len([1, 2, 3]))
+    expect_equal(0, len([]))
+}
+
+dae test_heid() {
+    expect_equal(1, heid([1, 2, 3]))
+    expect_equal("a", heid(["a", "b", "c"]))
+}
+
+dae test_bum() {
+    expect_equal(3, bum([1, 2, 3]))
+    expect_equal("c", bum(["a", "b", "c"]))
+}
+
+dae test_contains() {
+    expect_true(contains([1, 2, 3], 2))
+    expect_false(contains([1, 2, 3], 5))
+}
+
+dae test_sumaw() {
+    expect_equal(15, sumaw([1, 2, 3, 4, 5]))
+    expect_equal(0, sumaw([]))
+}
+
+dae test_reverse() {
+    expect_deep_equal([3, 2, 1], reverse([1, 2, 3]))
+    expect_deep_equal([], reverse([]))
+}
+
+list_tests.add_test("len should return list length", test_len)
+list_tests.add_test("heid should get first element", test_heid)
+list_tests.add_test("bum should get last element", test_bum)
+list_tests.add_test("contains should check fer element", test_contains)
+list_tests.add_test("sumaw should sum all numbers", test_sumaw)
+list_tests.add_test("reverse should reverse the list", test_reverse)
+
+# ============================================================
+# Test Suite: Edge Cases
+# ============================================================
+
+ken edge_tests = describe("Edge Cases")
+
+dae test_empty_strings() {
+    expect_equal(0, len(""))
+    expect_equal("", upper(""))
+}
+
+dae test_empty_lists() {
+    expect_equal(0, len([]))
+    expect_deep_equal([], reverse([]))
+}
+
+dae test_negative_numbers() {
+    expect_equal(-3, add(-1, -2))
+    expect_equal(-1, sign(-42))
+}
+
+dae test_float_precision() {
+    expect_close(0.1 + 0.2, 0.3, 0.01)
+}
+
+dae test_skipped() {
+    # This won't run
+    expect_true(nae)
+}
+
+edge_tests.add_test("should handle empty strings", test_empty_strings)
+edge_tests.add_test("should handle empty lists", test_empty_lists)
+edge_tests.add_test("should handle negative numbers", test_negative_numbers)
+edge_tests.add_test("float precision", test_float_precision)
+edge_tests.skip("this test is skipped fer now", test_skipped)
+
+# ============================================================
+# Run All Tests
+# ============================================================
+
+blether ""
+blether "Running all test suites..."
+blether ""
+
+run_all_tests()

@@ -1,0 +1,336 @@
+# scots.braw - Scottish Phrases, Sayings, an' Culture fer mdhavers
+# "A wee bit o' Scotland in yer code!"
+#
+# Contains:
+# - Scottish greetings and farewells
+# - Traditional sayings and proverbs
+# - Burns quotes
+# - Scots vocabulary
+# - Fun Scottish insults (all in good fun!)
+# - Gaelic words
+
+# ============================================================
+# Scottish Greetings
+# ============================================================
+
+ken GREETINGS = [
+    "Haud yer wheesht!",
+    "Aw'richt?",
+    "Whit's the crack?",
+    "How's it gaun?",
+    "Fit like?",
+    "Hiya, pal!",
+    "Guid mornin' tae ye!",
+    "Och, it's yersel!",
+    "Lang time nae see!",
+    "Welcome, ya numpty!"
+]
+
+ken FAREWELLS = [
+    "Haste ye back!",
+    "Cheerio!",
+    "See ye efter!",
+    "Toodle-oo!",
+    "Guid nicht!",
+    "Take care, ya bampot!",
+    "Dinnae be a stranger!",
+    "Slàinte mhath!",
+    "Aw the best!",
+    "Keep yer heid!"
+]
+
+# ============================================================
+# Scottish Proverbs and Sayings
+# ============================================================
+
+ken PROVERBS = [
+    "Whit's fer ye'll no go by ye.",
+    "Mony a mickle maks a muckle.",
+    "A nod's as guid as a wink tae a blind horse.",
+    "Better a wee fire tae warm ye than a muckle fire tae burn ye.",
+    "Fools look tae tomorrow; wise men use tonight.",
+    "He that blaws in the stour fills his ain een.",
+    "They that sow the wind shall reap the whirlwind.",
+    "A shut mouth catches nae flies.",
+    "Better late than never, but never late is better.",
+    "Guid gear comes in sma' bulk.",
+    "Ye cannae put an auld heid on young shouthers.",
+    "A bird in the haun is worth twa in the bush.",
+    "Dinnae count yer chickens afore they're hatched.",
+    "Ilka blade o' grass keps its ain drap o' dew.",
+    "Be happy while ye're leevin, fer ye're a lang time deid."
+]
+
+# ============================================================
+# Robert Burns Quotes
+# ============================================================
+
+ken BURNS_QUOTES = [
+    "The best laid schemes o' mice an' men gang aft agley.",
+    "O wad some Power the giftie gie us tae see oursels as ithers see us!",
+    "My heart's in the Highlands, my heart is not here.",
+    "Should auld acquaintance be forgot, and never brought tae mind?",
+    "A man's a man for a' that.",
+    "Freedom and whisky gang thegither!",
+    "The mirth and fun grew fast and furious.",
+    "Wee, sleekit, cowrin, tim'rous beastie.",
+    "Now's the day, and now's the hour.",
+    "Some hae meat and cannae eat, and some wad eat that want it."
+]
+
+# ============================================================
+# Scottish Vocabulary
+# ============================================================
+
+ken VOCABULARY = {
+    "aye": "yes",
+    "nae": "no / not",
+    "ken": "know / understand",
+    "braw": "good / excellent",
+    "wee": "small / little",
+    "dinnae": "don't",
+    "cannae": "can't",
+    "willnae": "won't",
+    "havenae": "haven't",
+    "frae": "from",
+    "tae": "to",
+    "oot": "out",
+    "aboot": "about",
+    "hoose": "house",
+    "bairn": "child",
+    "lassie": "girl",
+    "laddie": "boy",
+    "bonnie": "beautiful / pretty",
+    "canny": "careful / clever",
+    "dreich": "dreary / gloomy",
+    "haver": "nonsense / rubbish",
+    "blether": "chat / talk",
+    "scunner": "annoy / disgust",
+    "skelp": "slap / smack",
+    "bampot": "idiot / fool",
+    "numpty": "fool / stupid person",
+    "eejit": "idiot",
+    "glaikit": "stupid / foolish",
+    "mince": "rubbish / nonsense",
+    "stoater": "something excellent",
+    "wheesht": "be quiet / hush",
+    "coo": "cow",
+    "kirk": "church",
+    "loch": "lake",
+    "ben": "mountain",
+    "braw": "fine / excellent",
+    "scran": "food",
+    "tatties": "potatoes",
+    "neeps": "turnips",
+    "haggis": "Scotland's national dish"
+}
+
+# ============================================================
+# Friendly Scottish Insults (aw in guid fun!)
+# ============================================================
+
+ken INSULTS = [
+    "Away an' bile yer heid!",
+    "Yer heid's full o' mince!",
+    "Yer a right numpty!",
+    "Daft as a brush!",
+    "Face like a skelped bahookie!",
+    "Awa' and raffle yersel!",
+    "Ye've got a face like a burst couch!",
+    "Ye couldnae organise a booze-up in a brewery!",
+    "Yer aboot as useful as a chocolate teapot!",
+    "Yer bum's oot the windae!",
+    "Dinnae be such a bampot!",
+    "Ye great galoot!",
+    "Awa' and chase yersel!",
+    "Yer heid's mince!"
+]
+
+# ============================================================
+# Gaelic Words and Phrases
+# ============================================================
+
+ken GAELIC = {
+    "slàinte mhath": "good health (cheers)",
+    "ciamar a tha thu": "how are you",
+    "madainn mhath": "good morning",
+    "feasgar math": "good afternoon",
+    "oidhche mhath": "good night",
+    "tapadh leat": "thank you",
+    "mar sin leat": "goodbye",
+    "fàilte": "welcome",
+    "sláinte": "health/cheers",
+    "alba gu bràth": "Scotland forever",
+    "beannachd leat": "blessing with you",
+    "ceud mìle fàilte": "a hundred thousand welcomes"
+}
+
+# ============================================================
+# Functions
+# ============================================================
+
+# Get a random greeting
+dae random_greeting() {
+    ken idx = jammy(0, len(GREETINGS) - 1)
+    gie GREETINGS[idx]
+}
+
+# Get a random farewell
+dae random_farewell() {
+    ken idx = jammy(0, len(FAREWELLS) - 1)
+    gie FAREWELLS[idx]
+}
+
+# Get a random proverb
+dae random_proverb() {
+    ken idx = jammy(0, len(PROVERBS) - 1)
+    gie PROVERBS[idx]
+}
+
+# Get a random Burns quote
+dae random_burns() {
+    ken idx = jammy(0, len(BURNS_QUOTES) - 1)
+    gie BURNS_QUOTES[idx]
+}
+
+# Get a random insult (aw in guid fun!)
+dae random_insult() {
+    ken idx = jammy(0, len(INSULTS) - 1)
+    gie INSULTS[idx]
+}
+
+# Translate a Scots word
+dae whit_means(word) {
+    ken lower_word = lower(word)
+    gin dict_has(VOCABULARY, lower_word) {
+        gie VOCABULARY[lower_word]
+    }
+    gie f"Ah dinnae ken whit '{word}' means!"
+}
+
+# Translate a Gaelic phrase
+dae gaelic_tae_english(phrase) {
+    ken lower_phrase = lower(phrase)
+    gin dict_has(GAELIC, lower_phrase) {
+        gie GAELIC[lower_phrase]
+    }
+    gie f"Ah dinnae ken that Gaelic phrase!"
+}
+
+# Get all Scots vocabulary
+dae get_vocabulary() {
+    gie VOCABULARY
+}
+
+# Get all Gaelic phrases
+dae get_gaelic() {
+    gie GAELIC
+}
+
+# Print a wee Scottish lesson
+dae scots_lesson() {
+    blether ""
+    blether "╔═══════════════════════════════════════════╗"
+    blether "║      WEE SCOTS LANGUAGE LESSON            ║"
+    blether "╚═══════════════════════════════════════════╝"
+    blether ""
+    blether "Today's proverb:"
+    blether f"  \"{random_proverb()}\""
+    blether ""
+    blether "A Burns quote fer ye:"
+    blether f"  \"{random_burns()}\""
+    blether ""
+    blether "Vocabulary:"
+    ken words = ["aye", "nae", "braw", "wee", "bonnie"]
+    fer word in words {
+        blether f"  {word} = {VOCABULARY[word]}"
+    }
+    blether ""
+    blether "Gaelic phrase o' the day:"
+    blether f"  slàinte mhath = {GAELIC[\"slàinte mhath\"]}"
+    blether ""
+    blether "Noo ye ken a wee bit mair Scots!"
+}
+
+# ============================================================
+# Fun Helpers
+# ============================================================
+
+# Add Scottish flair to any message
+dae scottify(message) {
+    ken result = message
+    result = replace(result, "yes", "aye")
+    result = replace(result, "no", "nae")
+    result = replace(result, "know", "ken")
+    result = replace(result, "small", "wee")
+    result = replace(result, "beautiful", "bonnie")
+    result = replace(result, "to", "tae")
+    result = replace(result, "from", "frae")
+    result = replace(result, "don't", "dinnae")
+    result = replace(result, "can't", "cannae")
+    result = replace(result, "won't", "willnae")
+    result = replace(result, "about", "aboot")
+    result = replace(result, "out", "oot")
+    result = replace(result, "house", "hoose")
+    result = replace(result, "child", "bairn")
+    result = replace(result, "girl", "lassie")
+    result = replace(result, "boy", "laddie")
+    result = replace(result, "good", "guid")
+    result = replace(result, "old", "auld")
+    result = replace(result, "own", "ain")
+    gie result
+}
+
+# Generate a Scottish toast
+dae toast() {
+    ken toasts = [
+        "Here's tae us! Wha's like us? Damn few, an' they're aw deid!",
+        "Lang may yer lum reek!",
+        "Slàinte mhath!",
+        "May the best ye've ever seen be the worst ye'll ever see!",
+        "Here's tae ye an' yours, and tae me an' mine!",
+        "May ye be in Heaven half an hour afore the Devil kens ye're deid!"
+    ]
+    ken idx = jammy(0, len(toasts) - 1)
+    gie toasts[idx]
+}
+
+# Generate a Scottish blessing
+dae blessing() {
+    ken blessings = [
+        "May the road rise up tae meet ye.",
+        "May the wind be always at yer back.",
+        "May yer troubles be less and yer blessings be mair.",
+        "May nothing but happiness come through yer door.",
+        "Lang may yer lum reek wi' ither folk's coal!",
+        "May ye live as lang as ye want and never want as lang as ye live."
+    ]
+    ken idx = jammy(0, len(blessings) - 1)
+    gie blessings[idx]
+}
+
+# ============================================================
+# Scottish Clan Information
+# ============================================================
+
+ken CLANS = {
+    "Campbell": "Argyll, tartan: dark green/blue/black",
+    "MacDonald": "Highlands & Isles, tartan: red/green/blue",
+    "Stewart": "Royal clan, tartan: red/green/blue/yellow",
+    "MacLeod": "Skye & Harris, tartan: yellow/black/red",
+    "MacGregor": "Central Highlands, tartan: red/green",
+    "Cameron": "Lochaber, tartan: red/green/yellow",
+    "Fraser": "Inverness-shire, tartan: red/green/blue",
+    "Gordon": "Aberdeenshire, tartan: blue/green/yellow",
+    "Bruce": "Clackmannanshire, tartan: red/yellow/green",
+    "Douglas": "Borders, tartan: green/blue/white"
+}
+
+dae clan_info(name) {
+    gin dict_has(CLANS, name) {
+        gie CLANS[name]
+    }
+    gie f"Ah dinnae ken that clan!"
+}
+
+blether "Scots module loaded! Alba gu bràth!"

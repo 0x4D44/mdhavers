@@ -1,0 +1,662 @@
+# structures.braw - Common data structures fer mdhavers
+# "Keepin' yer data organised the richt way!"
+#
+# This module provides Queue, Stack, Deque, Set, and other data structures
+
+# ===============================================================
+# Stack (LIFO - Last In, First Out)
+# ===============================================================
+
+kin Stack {
+    dae init() {
+        masel.items = []
+    }
+
+    # Push an item onto the stack
+    dae push(item) {
+        shove(masel.items, item)
+        gie masel
+    }
+
+    # Pop an item off the stack
+    dae pop() {
+        gin len(masel.items) == 0 {
+            gie naething
+        }
+        gie yank(masel.items)
+    }
+
+    # Peek at the top item without removing it
+    dae peek() {
+        gin len(masel.items) == 0 {
+            gie naething
+        }
+        gie bum(masel.items)
+    }
+
+    # Check if stack is empty
+    dae is_empty() {
+        gie len(masel.items) == 0
+    }
+
+    # Get the size of the stack
+    dae size() {
+        gie len(masel.items)
+    }
+
+    # Clear the stack
+    dae clear() {
+        masel.items = []
+        gie masel
+    }
+
+    # Convert to list (top is last)
+    dae tae_list() {
+        gie masel.items
+    }
+}
+
+# ===============================================================
+# Queue (FIFO - First In, First Out)
+# ===============================================================
+
+kin Queue {
+    dae init() {
+        masel.items = []
+    }
+
+    # Add an item to the back of the queue
+    dae enqueue(item) {
+        shove(masel.items, item)
+        gie masel
+    }
+
+    # Remove an item from the front of the queue
+    dae dequeue() {
+        gin len(masel.items) == 0 {
+            gie naething
+        }
+        ken first = heid(masel.items)
+        masel.items = tail(masel.items)
+        gie first
+    }
+
+    # Peek at the front item without removing it
+    dae peek() {
+        gin len(masel.items) == 0 {
+            gie naething
+        }
+        gie heid(masel.items)
+    }
+
+    # Check if queue is empty
+    dae is_empty() {
+        gie len(masel.items) == 0
+    }
+
+    # Get the size of the queue
+    dae size() {
+        gie len(masel.items)
+    }
+
+    # Clear the queue
+    dae clear() {
+        masel.items = []
+        gie masel
+    }
+
+    # Convert to list (front is first)
+    dae tae_list() {
+        gie masel.items
+    }
+}
+
+# ===============================================================
+# Deque (Double-Ended Queue)
+# ===============================================================
+
+kin Deque {
+    dae init() {
+        masel.items = []
+    }
+
+    # Add to the front
+    dae push_front(item) {
+        masel.items = [item] + masel.items
+        gie masel
+    }
+
+    # Add to the back
+    dae push_back(item) {
+        shove(masel.items, item)
+        gie masel
+    }
+
+    # Remove from the front
+    dae pop_front() {
+        gin len(masel.items) == 0 {
+            gie naething
+        }
+        ken first = heid(masel.items)
+        masel.items = tail(masel.items)
+        gie first
+    }
+
+    # Remove from the back
+    dae pop_back() {
+        gin len(masel.items) == 0 {
+            gie naething
+        }
+        gie yank(masel.items)
+    }
+
+    # Peek at the front
+    dae peek_front() {
+        gin len(masel.items) == 0 {
+            gie naething
+        }
+        gie heid(masel.items)
+    }
+
+    # Peek at the back
+    dae peek_back() {
+        gin len(masel.items) == 0 {
+            gie naething
+        }
+        gie bum(masel.items)
+    }
+
+    # Check if empty
+    dae is_empty() {
+        gie len(masel.items) == 0
+    }
+
+    # Get size
+    dae size() {
+        gie len(masel.items)
+    }
+
+    # Clear
+    dae clear() {
+        masel.items = []
+        gie masel
+    }
+
+    # Convert to list
+    dae tae_list() {
+        gie masel.items
+    }
+}
+
+# ===============================================================
+# Set (Unique elements)
+# ===============================================================
+
+kin Set {
+    dae init() {
+        masel.items = {}
+    }
+
+    # Add an item
+    dae add(item) {
+        ken key = tae_string(item)
+        masel.items[key] = item
+        gie masel
+    }
+
+    # Remove an item
+    dae remove(item) {
+        ken key = tae_string(item)
+        gin contains(masel.items, key) {
+            # Cannae actually delete, so set tae special marker
+            masel.items[key] = "__REMOVED__"
+        }
+        gie masel
+    }
+
+    # Check if item exists
+    dae has(item) {
+        ken key = tae_string(item)
+        gin contains(masel.items, key) {
+            gie masel.items[key] != "__REMOVED__"
+        }
+        gie nae
+    }
+
+    # Get size
+    dae size() {
+        ken count = 0
+        fer key in keys(masel.items) {
+            gin masel.items[key] != "__REMOVED__" {
+                count = count + 1
+            }
+        }
+        gie count
+    }
+
+    # Check if empty
+    dae is_empty() {
+        gie masel.size() == 0
+    }
+
+    # Convert to list
+    dae tae_list() {
+        ken result = []
+        fer key in keys(masel.items) {
+            gin masel.items[key] != "__REMOVED__" {
+                shove(result, masel.items[key])
+            }
+        }
+        gie result
+    }
+
+    # Clear
+    dae clear() {
+        masel.items = {}
+        gie masel
+    }
+
+    # Union with another set
+    dae union(other) {
+        ken result = Set()
+        fer item in masel.tae_list() {
+            result.add(item)
+        }
+        fer item in other.tae_list() {
+            result.add(item)
+        }
+        gie result
+    }
+
+    # Intersection with another set
+    dae intersection(other) {
+        ken result = Set()
+        fer item in masel.tae_list() {
+            gin other.has(item) {
+                result.add(item)
+            }
+        }
+        gie result
+    }
+
+    # Difference (items in self but not in other)
+    dae difference(other) {
+        ken result = Set()
+        fer item in masel.tae_list() {
+            gin nae other.has(item) {
+                result.add(item)
+            }
+        }
+        gie result
+    }
+
+    # Check if subset of another set
+    dae is_subset(other) {
+        fer item in masel.tae_list() {
+            gin nae other.has(item) {
+                gie nae
+            }
+        }
+        gie aye
+    }
+
+    # Check if superset of another set
+    dae is_superset(other) {
+        gie other.is_subset(masel)
+    }
+}
+
+# ===============================================================
+# Priority Queue (Min-Heap by default)
+# ===============================================================
+
+kin PriorityQueue {
+    dae init(comparator = naething) {
+        masel.items = []
+        masel.comparator = comparator
+    }
+
+    # Add an item with priority
+    dae enqueue(item, priority) {
+        ken entry = {"item": item, "priority": priority}
+        shove(masel.items, entry)
+        # Sort by priority (simple approach - not a true heap)
+        masel._sort()
+        gie masel
+    }
+
+    # Internal sort
+    dae _sort() {
+        # Bubble sort by priority
+        ken n = len(masel.items)
+        fer i in 0..n {
+            fer j in 0..(n - i - 1) {
+                gin masel.items[j]["priority"] > masel.items[j + 1]["priority"] {
+                    ken temp = masel.items[j]
+                    masel.items[j] = masel.items[j + 1]
+                    masel.items[j + 1] = temp
+                }
+            }
+        }
+    }
+
+    # Remove and return the highest priority item
+    dae dequeue() {
+        gin len(masel.items) == 0 {
+            gie naething
+        }
+        ken first = heid(masel.items)
+        masel.items = tail(masel.items)
+        gie first["item"]
+    }
+
+    # Peek at the highest priority item
+    dae peek() {
+        gin len(masel.items) == 0 {
+            gie naething
+        }
+        gie heid(masel.items)["item"]
+    }
+
+    # Check if empty
+    dae is_empty() {
+        gie len(masel.items) == 0
+    }
+
+    # Get size
+    dae size() {
+        gie len(masel.items)
+    }
+
+    # Clear
+    dae clear() {
+        masel.items = []
+        gie masel
+    }
+}
+
+# ===============================================================
+# Ring Buffer (Circular Buffer)
+# ===============================================================
+
+kin RingBuffer {
+    dae init(capacity) {
+        masel.capacity = capacity
+        masel.items = []
+        fer i in 0..capacity {
+            shove(masel.items, naething)
+        }
+        masel.head = 0
+        masel.tail = 0
+        masel.count = 0
+    }
+
+    # Add an item
+    dae push(item) {
+        masel.items[masel.tail] = item
+        masel.tail = (masel.tail + 1) % masel.capacity
+
+        gin masel.count < masel.capacity {
+            masel.count = masel.count + 1
+        } ither {
+            # Buffer is full, move head
+            masel.head = (masel.head + 1) % masel.capacity
+        }
+        gie masel
+    }
+
+    # Remove and return the oldest item
+    dae pop() {
+        gin masel.count == 0 {
+            gie naething
+        }
+        ken item = masel.items[masel.head]
+        masel.items[masel.head] = naething
+        masel.head = (masel.head + 1) % masel.capacity
+        masel.count = masel.count - 1
+        gie item
+    }
+
+    # Peek at the oldest item
+    dae peek() {
+        gin masel.count == 0 {
+            gie naething
+        }
+        gie masel.items[masel.head]
+    }
+
+    # Check if empty
+    dae is_empty() {
+        gie masel.count == 0
+    }
+
+    # Check if full
+    dae is_full() {
+        gie masel.count == masel.capacity
+    }
+
+    # Get current size
+    dae size() {
+        gie masel.count
+    }
+
+    # Get capacity
+    dae get_capacity() {
+        gie masel.capacity
+    }
+
+    # Convert to list (oldest to newest)
+    dae tae_list() {
+        ken result = []
+        ken idx = masel.head
+        fer i in 0..masel.count {
+            shove(result, masel.items[idx])
+            idx = (idx + 1) % masel.capacity
+        }
+        gie result
+    }
+}
+
+# ===============================================================
+# LRU Cache (Least Recently Used)
+# ===============================================================
+
+kin LRUCache {
+    dae init(capacity) {
+        masel.capacity = capacity
+        masel.cache = {}
+        masel.order = []  # Track access order
+    }
+
+    # Get a value
+    dae get(key) {
+        ken key_str = tae_string(key)
+        gin nae contains(masel.cache, key_str) {
+            gie naething
+        }
+
+        # Move to end (most recently used)
+        masel._touch(key_str)
+        gie masel.cache[key_str]
+    }
+
+    # Set a value
+    dae set(key, value) {
+        ken key_str = tae_string(key)
+
+        gin contains(masel.cache, key_str) {
+            # Update existing
+            masel.cache[key_str] = value
+            masel._touch(key_str)
+        } ither {
+            # Add new
+            gin len(masel.order) >= masel.capacity {
+                # Evict least recently used
+                ken oldest = heid(masel.order)
+                masel.order = tail(masel.order)
+                masel.cache[oldest] = naething
+            }
+            masel.cache[key_str] = value
+            shove(masel.order, key_str)
+        }
+        gie masel
+    }
+
+    # Internal: move key to end of order list
+    dae _touch(key_str) {
+        ken new_order = []
+        fer k in masel.order {
+            gin k != key_str {
+                shove(new_order, k)
+            }
+        }
+        shove(new_order, key_str)
+        masel.order = new_order
+    }
+
+    # Check if key exists
+    dae has(key) {
+        ken key_str = tae_string(key)
+        gin contains(masel.cache, key_str) {
+            gie masel.cache[key_str] != naething
+        }
+        gie nae
+    }
+
+    # Get size
+    dae size() {
+        ken count = 0
+        fer key in masel.order {
+            gin masel.cache[key] != naething {
+                count = count + 1
+            }
+        }
+        gie count
+    }
+
+    # Clear
+    dae clear() {
+        masel.cache = {}
+        masel.order = []
+        gie masel
+    }
+}
+
+# ===============================================================
+# Counter (Count occurrences)
+# ===============================================================
+
+kin Counter {
+    dae init(items = []) {
+        masel.counts = {}
+        fer item in items {
+            masel.add(item)
+        }
+    }
+
+    # Add an item (increment count)
+    dae add(item, count = 1) {
+        ken key = tae_string(item)
+        gin contains(masel.counts, key) {
+            masel.counts[key] = masel.counts[key] + count
+        } ither {
+            masel.counts[key] = count
+        }
+        gie masel
+    }
+
+    # Get count of an item
+    dae get(item) {
+        ken key = tae_string(item)
+        gin contains(masel.counts, key) {
+            gie masel.counts[key]
+        }
+        gie 0
+    }
+
+    # Remove an item
+    dae remove(item) {
+        ken key = tae_string(item)
+        gin contains(masel.counts, key) {
+            masel.counts[key] = 0
+        }
+        gie masel
+    }
+
+    # Get total count
+    dae total() {
+        ken sum = 0
+        fer key in keys(masel.counts) {
+            sum = sum + masel.counts[key]
+        }
+        gie sum
+    }
+
+    # Get most common items
+    dae most_common(n = 10) {
+        ken items = []
+        fer key in keys(masel.counts) {
+            gin masel.counts[key] > 0 {
+                shove(items, {"key": key, "count": masel.counts[key]})
+            }
+        }
+
+        # Sort by count (descending) - bubble sort
+        ken total = len(items)
+        fer i in 0..total {
+            fer j in 0..(total - i - 1) {
+                gin items[j]["count"] < items[j + 1]["count"] {
+                    ken temp = items[j]
+                    items[j] = items[j + 1]
+                    items[j + 1] = temp
+                }
+            }
+        }
+
+        # Take first n
+        ken result = []
+        fer i in 0..n {
+            gin i < len(items) {
+                shove(result, items[i])
+            }
+        }
+        gie result
+    }
+
+    # Get all items
+    dae tae_dict() {
+        ken result = {}
+        fer key in keys(masel.counts) {
+            gin masel.counts[key] > 0 {
+                result[key] = masel.counts[key]
+            }
+        }
+        gie result
+    }
+}
+
+# ===============================================================
+# Convenience Functions
+# ===============================================================
+
+dae make_stack() {
+    gie Stack()
+}
+
+dae make_queue() {
+    gie Queue()
+}
+
+dae make_set(items = []) {
+    ken s = Set()
+    fer item in items {
+        s.add(item)
+    }
+    gie s
+}
+
+dae make_counter(items = []) {
+    gie Counter(items)
+}
+
+blether "Structures module loaded! Yer data's aw organised noo!"

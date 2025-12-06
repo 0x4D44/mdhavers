@@ -1,0 +1,89 @@
+# collections_demo.braw - Demonstrating the collections module
+fetch "../stdlib/collections"
+
+blether "═══════════════════════════════════════════════════"
+blether "  Collections Module Demo"
+blether "═══════════════════════════════════════════════════"
+blether ""
+
+# Stack Demo
+blether "=== Stack (LIFO) ==="
+ken s = Stack()
+s.push("first")
+s.push("second")
+s.push("third")
+blether f"Stack size: {s.size()}"
+blether f"Peek: {s.peek()}"
+blether f"Pop: {s.pop()}"
+blether f"Pop: {s.pop()}"
+blether ""
+
+# Queue Demo
+blether "=== Queue (FIFO) ==="
+ken q = Queue()
+q.enqueue("first")
+q.enqueue("second")
+q.enqueue("third")
+blether f"Queue size: {q.size()}"
+blether f"Front: {q.front()}"
+blether f"Dequeue: {q.dequeue()}"
+blether f"Dequeue: {q.dequeue()}"
+blether ""
+
+# Set Demo
+blether "=== Set ==="
+ken set1 = HaversSet()
+set1.add(1)
+set1.add(2)
+set1.add(3)
+set1.add(2)  # Duplicate - should be ignored
+blether f"Set size (added 1,2,3,2): {set1.size()}"
+blether f"Contains 2: {set1.contains(2)}"
+blether f"Contains 5: {set1.contains(5)}"
+
+ken set2 = HaversSet()
+set2.add(2)
+set2.add(3)
+set2.add(4)
+ken union = set1.union(set2)
+ken intersection = set1.intersection(set2)
+blether f"Union size: {union.size()}"
+blether f"Intersection: {intersection.tae_list()}"
+blether ""
+
+# Counter Demo
+blether "=== Counter ==="
+ken counter = Counter()
+counter.count_all(["apple", "banana", "apple", "cherry", "apple", "banana"])
+blether f"Apple count: {counter.get('apple')}"
+blether "Most common:"
+fer pair in counter.most_common(3) {
+    blether f"  {pair[0]}: {pair[1]}"
+}
+blether ""
+
+# Chunk and Flatten
+blether "=== Chunk & Flatten ==="
+ken nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+ken chunks = chunk(nums, 3)
+blether f"Chunks of 3: {chunks}"
+blether f"Flattened: {flatten(chunks)}"
+blether ""
+
+# Partition
+blether "=== Partition ==="
+ken numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+ken parts = partition(numbers, |x| x % 2 == 0)
+blether f"Evens: {fst(parts)}"
+blether f"Odds: {snd(parts)}"
+blether ""
+
+# Unique
+blether "=== Unique ==="
+ken dupes = [1, 2, 2, 3, 3, 3, 4, 4, 4, 4]
+blether f"Unique: {unique(dupes)}"
+blether ""
+
+blether "═══════════════════════════════════════════════════"
+blether "  Collections Demo Complete!"
+blether "═══════════════════════════════════════════════════"

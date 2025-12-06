@@ -1,0 +1,300 @@
+# maths.braw - Mathematics utilities fer mdhavers
+# "Numbers are aw weel an' guid!"
+
+# ===============================================================
+# Constants
+# ===============================================================
+
+ken PI = 3.14159265358979323846
+ken E = 2.71828182845904523536
+ken TAU = 6.28318530717958647692
+ken PHI = 1.61803398874989484820  # Golden ratio
+
+# ===============================================================
+# Basic Operations
+# ===============================================================
+
+# Sign of a number (-1, 0, or 1)
+dae sign(n) {
+    gin n < 0 {
+        gie -1
+    }
+    gin n > 0 {
+        gie 1
+    }
+    gie 0
+}
+
+# Power function (integer exponent)
+dae pooer(base, exp) {
+    gin exp == 0 {
+        gie 1
+    }
+    gin exp < 0 {
+        gie 1 / pooer(base, -exp)
+    }
+    ken result = 1
+    fer i in 1..exp+1 {
+        result = result * base
+    }
+    gie result
+}
+
+# Factorial
+dae factorial(n) {
+    mak_siccar n >= 0, "Cannae dae factorial o' negative numbers!"
+    gin n <= 1 {
+        gie 1
+    }
+    gie n * factorial(n - 1)
+}
+
+# Greatest common divisor (Euclid's algorithm)
+dae gcd(a, b) {
+    ken x = abs(a)
+    ken y = abs(b)
+    whiles y != 0 {
+        ken temp = y
+        y = x % y
+        x = temp
+    }
+    gie x
+}
+
+# Least common multiple
+dae lcm(a, b) {
+    gin a == 0 or b == 0 {
+        gie 0
+    }
+    gie abs(a * b) / gcd(a, b)
+}
+
+# ===============================================================
+# Number Theory
+# ===============================================================
+
+# Check if a number is prime
+dae is_prime(n) {
+    gin n < 2 {
+        gie nae
+    }
+    gin n == 2 {
+        gie aye
+    }
+    gin n % 2 == 0 {
+        gie nae
+    }
+    ken i = 3
+    whiles i * i <= n {
+        gin n % i == 0 {
+            gie nae
+        }
+        i = i + 2
+    }
+    gie aye
+}
+
+# Get prime factors
+dae prime_factors(n) {
+    ken factors = []
+    ken d = 2
+    whiles d * d <= n {
+        whiles n % d == 0 {
+            shove(factors, d)
+            n = n / d
+        }
+        d = d + 1
+    }
+    gin n > 1 {
+        shove(factors, n)
+    }
+    gie factors
+}
+
+# Generate primes up to n (Sieve of Eratosthenes)
+dae primes_up_tae(n) {
+    gin n < 2 {
+        gie []
+    }
+    ken result = []
+    fer i in 2..n+1 {
+        gin is_prime(i) {
+            shove(result, i)
+        }
+    }
+    gie result
+}
+
+# Fibonacci sequence up to n terms
+dae fib_sequence(n) {
+    gin n <= 0 {
+        gie []
+    }
+    gin n == 1 {
+        gie [0]
+    }
+    gin n == 2 {
+        gie [0, 1]
+    }
+    ken result = [0, 1]
+    fer i in 2..n {
+        shove(result, result[i-1] + result[i-2])
+    }
+    gie result
+}
+
+# Get the nth Fibonacci number
+dae fib(n) {
+    gin n <= 0 {
+        gie 0
+    }
+    gin n == 1 {
+        gie 1
+    }
+    ken a = 0
+    ken b = 1
+    fer j in 2..n+1 {
+        ken temp = a + b
+        a = b
+        b = temp
+    }
+    gie b
+}
+
+# ===============================================================
+# Statistics
+# ===============================================================
+
+# Calculate mean (average)
+dae mean(nums) {
+    mak_siccar len(nums) > 0, "Cannae find mean o' empty list!"
+    ken total = sumaw(nums)
+    gie total / len(nums)
+}
+
+# Calculate median
+dae median(nums) {
+    mak_siccar len(nums) > 0, "Cannae find median o' empty list!"
+    ken sorted = sort(nums)
+    ken n = len(sorted)
+    gin n % 2 == 1 {
+        gie sorted[n / 2]
+    }
+    ken mid = n / 2
+    gie (sorted[mid - 1] + sorted[mid]) / 2
+}
+
+# Calculate mode (most frequent value)
+dae mode(nums) {
+    mak_siccar len(nums) > 0, "Cannae find mode o' empty list!"
+    ken counts = {}
+    fer n in nums {
+        ken key = tae_string(n)
+        gin contains(keys(counts), key) {
+            counts[key] = counts[key] + 1
+        } ither {
+            counts[key] = 1
+        }
+    }
+    ken max_count = 0
+    ken mode_val = nums[0]
+    fer key in keys(counts) {
+        gin counts[key] > max_count {
+            max_count = counts[key]
+            mode_val = tae_int(key)
+        }
+    }
+    gie mode_val
+}
+
+# Calculate variance
+dae variance(nums) {
+    mak_siccar len(nums) > 0, "Cannae find variance o' empty list!"
+    ken avg = mean(nums)
+    ken sum_sq = 0
+    fer n in nums {
+        ken diff = n - avg
+        sum_sq = sum_sq + diff * diff
+    }
+    gie sum_sq / len(nums)
+}
+
+# Calculate standard deviation
+dae std_dev(nums) {
+    gie sqrt(variance(nums))
+}
+
+# ===============================================================
+# Geometry
+# ===============================================================
+
+# Degrees to radians
+dae tae_radians(degrees) {
+    gie degrees * PI / 180
+}
+
+# Radians to degrees
+dae tae_degrees(radians) {
+    gie radians * 180 / PI
+}
+
+# Distance between two points
+dae distance(x1, y1, x2, y2) {
+    ken dx = x2 - x1
+    ken dy = y2 - y1
+    gie sqrt(dx * dx + dy * dy)
+}
+
+# Area of a circle
+dae circle_area(radius) {
+    gie PI * radius * radius
+}
+
+# Circumference of a circle
+dae circle_circumference(radius) {
+    gie 2 * PI * radius
+}
+
+# Area of a triangle (base and height)
+dae triangle_area(base, height) {
+    gie base * height / 2
+}
+
+# Area of a triangle (Heron's formula)
+dae triangle_area_heron(a, b, c) {
+    ken s = (a + b + c) / 2
+    gie sqrt(s * (s - a) * (s - b) * (s - c))
+}
+
+# ===============================================================
+# Sequence Generation
+# ===============================================================
+
+# Generate a range of numbers with a step
+dae range_step(start, finish, step) {
+    ken result = []
+    ken i = start
+    gin step > 0 {
+        whiles i < finish {
+            shove(result, i)
+            i = i + step
+        }
+    } ither {
+        whiles i > finish {
+            shove(result, i)
+            i = i + step
+        }
+    }
+    gie result
+}
+
+# Repeat a value n times
+dae repeat(val, n) {
+    ken result = []
+    fer k in 1..n+1 {
+        shove(result, val)
+    }
+    gie result
+}
+
+blether "Maths module loaded! Numbers are braw!"

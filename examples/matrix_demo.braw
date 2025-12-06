@@ -1,0 +1,289 @@
+# matrix_demo.braw - Demonstrating the Matrix Module
+# "Rows an' columns, like a tartan weave!"
+
+fetch "../stdlib/matrix"
+fetch "lib/colors"
+
+blether ""
+blether cyan("╔════════════════════════════════════════════════════════╗")
+blether cyan("║          MATRIX MODULE DEMO                            ║")
+blether cyan("║         \"Rows an' columns, like tartan!\"               ║")
+blether cyan("╚════════════════════════════════════════════════════════╝")
+blether ""
+
+# ============================================================
+# Matrix Creation
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  MATRIX CREATION")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+blether "Creating a 3x4 matrix filled with zeros:"
+ken m1 = matrix(3, 4, 0)
+display_matrix(m1)
+blether ""
+
+blether "Creating a 3x3 identity matrix:"
+ken id = identity_matrix(3)
+display_matrix(id)
+blether ""
+
+blether "Creating matrix from rows:"
+ken m2 = matrix_from_rows([
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9]
+])
+display_matrix(m2)
+blether ""
+
+blether "Creating matrix from flat list [1..12] as 3x4:"
+ken flat = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+ken m3 = matrix_from_flat(flat, 3, 4)
+display_matrix(m3)
+blether ""
+
+# ============================================================
+# Matrix Properties
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  MATRIX PROPERTIES")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+blether f"Matrix m3 dimensions: {dimensions(m3)}"
+blether f"  Rows: {num_rows(m3)}"
+blether f"  Cols: {num_cols(m3)}"
+blether f"  Is square: {is_square(m3)}"
+blether f"  Is empty: {is_empty(m3)}"
+blether f"  Element at [1,2]: {get_element(m3, 1, 2)}"
+blether ""
+
+# ============================================================
+# Matrix Arithmetic
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  MATRIX ARITHMETIC")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken a = matrix_from_rows([
+    [1, 2],
+    [3, 4]
+])
+
+ken b = matrix_from_rows([
+    [5, 6],
+    [7, 8]
+])
+
+blether "Matrix A:"
+display_matrix(a)
+blether ""
+
+blether "Matrix B:"
+display_matrix(b)
+blether ""
+
+blether "A + B:"
+display_matrix(matrix_add(a, b))
+blether ""
+
+blether "A - B:"
+display_matrix(matrix_subtract(a, b))
+blether ""
+
+blether "A * 3 (scalar):"
+display_matrix(scalar_multiply(a, 3))
+blether ""
+
+blether "A × B (matrix multiplication):"
+display_matrix(matrix_multiply(a, b))
+blether ""
+
+blether "Transpose of A:"
+display_matrix(transpose(a))
+blether ""
+
+# ============================================================
+# Row and Column Operations
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  ROW AND COLUMN OPERATIONS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+blether "Original matrix:"
+display_matrix(m2)
+blether ""
+
+blether f"Row 1: {get_row(m2, 1)}"
+blether f"Column 2: {get_col(m2, 2)}"
+blether ""
+
+blether "After swapping rows 0 and 2:"
+ken swapped = swap_rows(matrix_from_rows([[1,2,3],[4,5,6],[7,8,9]]), 0, 2)
+display_matrix(swapped)
+blether ""
+
+# ============================================================
+# Matrix Statistics
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  MATRIX STATISTICS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+blether "Matrix:"
+display_matrix(m2)
+blether ""
+
+blether f"Sum of all elements: {matrix_sum(m2)}"
+blether f"Row sums: {row_sums(m2)}"
+blether f"Column sums: {col_sums(m2)}"
+blether f"Maximum: {matrix_max(m2)}"
+blether f"Minimum: {matrix_min(m2)}"
+blether f"Average: {matrix_average(m2)}"
+blether f"Diagonal: {diagonal(m2)}"
+blether f"Trace (diagonal sum): {trace(m2)}"
+blether ""
+
+# ============================================================
+# Matrix Transformations
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  MATRIX TRANSFORMATIONS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken small = matrix_from_rows([
+    [1, 2, 3],
+    [4, 5, 6]
+])
+
+blether "Original 2x3 matrix:"
+display_matrix(small)
+blether ""
+
+blether "Rotated 90° clockwise (becomes 3x2):"
+display_matrix(rotate_clockwise(small))
+blether ""
+
+blether "Flipped horizontally:"
+display_matrix(flip_horizontal(small))
+blether ""
+
+blether "Flipped vertically:"
+display_matrix(flip_vertical(small))
+blether ""
+
+blether "Doubled (using matrix_map):"
+display_matrix(matrix_map(small, |x| x * 2))
+blether ""
+
+blether "Flattened to list:"
+blether f"  {flatten(small)}"
+blether ""
+
+# ============================================================
+# Submatrix Operations
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  SUBMATRIX OPERATIONS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken big = matrix_from_rows([
+    [1, 2, 3, 4],
+    [5, 6, 7, 8],
+    [9, 10, 11, 12],
+    [13, 14, 15, 16]
+])
+
+blether "4x4 Matrix:"
+display_matrix(big)
+blether ""
+
+blether "Submatrix [1:3, 1:3]:"
+display_matrix(submatrix(big, 1, 1, 3, 3))
+blether ""
+
+# ============================================================
+# Game Grid Utilities
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  GAME GRID UTILITIES")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+blether "Creating a 5x5 game grid:"
+ken grid = game_grid(5, 5, ".")
+grid = place_on_grid(grid, 2, 2, "@")  # Player
+grid = place_on_grid(grid, 0, 0, "#")  # Wall
+grid = place_on_grid(grid, 4, 4, "X")  # Goal
+grid = place_on_grid(grid, 1, 3, "E")  # Enemy
+
+blether "Game grid (@ = player, # = wall, X = goal, E = enemy):"
+display_grid_bordered(grid)
+blether ""
+
+blether f"Player at [2,2] is in bounds: {in_bounds(grid, 2, 2)}"
+blether f"Position [5,5] is in bounds: {in_bounds(grid, 5, 5)}"
+blether ""
+
+blether "Neighbors of player (4-directional):"
+ken n4 = neighbors_4(grid, 2, 2)
+fer n in n4 {
+    blether f"  [{n[\"row\"]},{n[\"col\"]}] = '{n[\"val\"]}'"
+}
+blether ""
+
+blether f"All empty positions: {find_all(grid, '.')}"
+blether f"Count of empty cells: {count_in_grid(grid, '.')}"
+blether ""
+
+# ============================================================
+# Special Matrices
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  SPECIAL MATRICES")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+blether "Checkerboard 4x4:"
+ken checker = checkerboard_matrix(4, "░", "█")
+display_grid(checker)
+blether ""
+
+blether "Spiral matrix 4x4:"
+ken spiral = spiral_matrix(4)
+display_matrix_with_headers(spiral)
+blether ""
+
+blether "Magic square 3x3 (all rows, cols, diagonals sum to 15):"
+ken magic = magic_square(3)
+display_matrix_with_headers(magic)
+blether ""
+
+# Verify magic square
+blether "Verification:"
+blether f"  Row sums: {row_sums(magic)}"
+blether f"  Col sums: {col_sums(magic)}"
+blether f"  Diagonal: {sumaw(diagonal(magic))}"
+blether ""
+
+blether green("═══════════════════════════════════════")
+blether green("  Matrix demo complete!")
+blether green("  \"Like threads in a tartan!\"")
+blether green("═══════════════════════════════════════")
+blether ""

@@ -1,0 +1,110 @@
+# new_functions.braw - Demonstrating various Scots functions
+# These are pure dead brilliant additions tae the language!
+
+blether "═══════════════════════════════════════════════════"
+blether "  mdhavers Functions Demo"
+blether "  Fresh fae the highlands!"
+blether "═══════════════════════════════════════════════════"
+blether ""
+
+# === blether_format - String formatting with named placeholders ===
+blether "=== blether_format (String Templating) ==="
+ken person = {"name": "Hamish", "age": 42, "clan": "MacTavish"}
+ken greeting = blether_format("Hullo {name} o' Clan {clan}! Ye are {age} years auld.", person)
+blether greeting
+
+ken order = {"item": "haggis", "quantity": 3, "price": 12}
+blether blether_format("Order: {quantity}x {item} at £{price} each", order)
+blether ""
+
+# === ceilidh - Interleave lists like dancers ===
+blether "=== ceilidh (Interleave Lists) ==="
+ken lads = ["Hamish", "Angus", "Fergus"]
+ken lassies = ["Morag", "Fiona", "Isla"]
+ken dance_pairs = ceilidh(lads, lassies)
+blether f"Lads: {lads}"
+blether f"Lassies: {lassies}"
+blether f"Paired up fer the ceilidh: {dance_pairs}"
+
+# Works with unequal lengths too!
+ken nums = [1, 2, 3, 4, 5]
+ken letters = ["a", "b", "c"]
+blether f"ceilidh({nums}, {letters}) = {ceilidh(nums, letters)}"
+blether ""
+
+# === dram - Random element (like pouring a wee dram) ===
+blether "=== dram (Random Selection) ==="
+ken whiskies = ["Lagavulin", "Laphroaig", "Talisker", "Glenfiddich", "Macallan"]
+blether f"Available whiskies: {whiskies}"
+blether f"Yer dram tonight: {dram(whiskies)}"
+blether f"Anither round: {dram(whiskies)}"
+
+ken sayings = ["Lang may yer lum reek!", "Haste ye back!", "Slainte mhath!"]
+blether f"A Scottish farewell: {dram(sayings)}"
+blether ""
+
+# === birl - Rotate a list ===
+blether "=== birl (Rotate/Spin) ==="
+ken days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+blether f"Original: {days}"
+blether f"birl(days, 2) = {birl(days, 2)}"
+blether f"birl(days, -1) = {birl(days, -1)}"
+
+# Useful for circular buffers
+ken queue = [1, 2, 3, 4, 5]
+blether f"Queue: {queue} -> after birl by 1: {birl(queue, 1)}"
+blether ""
+
+# === stooshie - Create chaos (shuffle characters) ===
+blether "=== stooshie (Shuffle/Chaos) ==="
+ken word = "Scotland"
+blether f"Original: {word}"
+blether f"stooshie: {stooshie(word)}"
+blether f"stooshie: {stooshie(word)}"
+
+# Anagram generator!
+ken name = "Hamish"
+blether f"Anagrams o' {name}: {stooshie(name)}, {stooshie(name)}"
+blether ""
+
+# === clype - Tell tales (debug info) ===
+blether "=== clype (Debug Info) ==="
+blether clype(42)
+blether clype("hello world")
+blether clype([1, 2, 3, 4, 5])
+blether clype({"name": "Hamish"})
+blether clype(aye)
+blether clype(naething)
+blether ""
+
+# === sclaff - Flatten nested lists ===
+blether "=== sclaff (Deep Flatten) ==="
+ken nested = [[1, 2], [3, [4, [5, 6]]], 7]
+blether f"Nested: {nested}"
+blether f"sclaff(nested): {sclaff(nested)}"
+
+ken matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+blether f"Matrix: {matrix}"
+blether f"Flattened: {sclaff(matrix)}"
+blether ""
+
+# === Combining the new functions ===
+blether "=== Combining Functions ==="
+
+# Create a random dance pairing
+ken men = ["Angus", "Bruce", "Colin"]
+ken women = ["Diana", "Elspeth", "Flora"]
+ken pairs = ceilidh(men, women)
+ken first_pair = [pairs[0], pairs[1]]
+blether f"First tae dance: {first_pair}"
+
+# Rotate through a rota
+ken rota = ["Monday: Hamish", "Tuesday: Morag", "Wednesday: Fergus"]
+ken today_idx = 1
+ken new_rota = birl(rota, today_idx)
+blether f"Rota starting fae today: {new_rota}"
+
+blether ""
+blether "═══════════════════════════════════════════════════"
+blether "  Demo Complete! Pure dead brilliant!"
+blether "═══════════════════════════════════════════════════"

@@ -1,0 +1,256 @@
+# text_demo.braw - Demonstrating the Text Module
+# "Words are the threads that weave the tartan o' yer thoughts!"
+
+fetch "../stdlib/text"
+fetch "lib/colors"
+
+blether ""
+blether cyan("╔════════════════════════════════════════════════════════╗")
+blether cyan("║          TEXT MODULE DEMO                              ║")
+blether cyan("║         \"Words weave the tartan!\"                      ║")
+blether cyan("╚════════════════════════════════════════════════════════╝")
+blether ""
+
+# ============================================================
+# Case Transformations
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  CASE TRANSFORMATIONS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken sample = "hello bonnie scotland"
+
+blether f"Original: \"{sample}\""
+blether f"  title_case:           \"{title_case(sample)}\""
+blether f"  sentence_case:        \"{sentence_case(sample)}\""
+blether f"  camel_case:           \"{camel_case(sample)}\""
+blether f"  pascal_case:          \"{pascal_case(sample)}\""
+blether f"  snake_case:           \"{snake_case(sample)}\""
+blether f"  screaming_snake_case: \"{screaming_snake_case(sample)}\""
+blether f"  kebab_case:           \"{kebab_case(sample)}\""
+blether ""
+
+blether "Swap case:"
+blether f"  \"Hello World\" -> \"{swap_case('Hello World')}\""
+blether f"  \"SCOTLAND\" -> \"{swap_case('SCOTLAND')}\""
+blether ""
+
+# ============================================================
+# Text Analysis
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  TEXT ANALYSIS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken text = "Scotland is a bonnie place. The Highlands are beautiful! The lochs are peaceful. Ye'll love it, aye?"
+
+blether f"Text: \"{text}\""
+blether ""
+
+blether f"  Word count:     {word_count(text)}"
+blether f"  Char count:     {char_count(text)} (excluding spaces)"
+blether f"  Line count:     {line_count(text)}"
+blether f"  Sentence count: {sentence_count(text)}"
+blether ""
+
+blether "Full statistics:"
+display_stats(text)
+blether ""
+
+# ============================================================
+# Word Frequency
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  WORD FREQUENCY")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken poem = "the bonnie hills the bonnie glens the bonnie lochs of Scotland"
+blether f"Text: \"{poem}\""
+blether ""
+
+ken freq = word_frequency(poem)
+blether "Word frequencies:"
+fer word in keys(freq) {
+    blether f"  '{word}': {freq[word]}"
+}
+blether ""
+
+# ============================================================
+# Text Transformation
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  TEXT TRANSFORMATION")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+blether "Reverse text:"
+blether f"  \"Scotland\" -> \"{reverse_text('Scotland')}\""
+blether f"  \"Alba\" -> \"{reverse_text('Alba')}\""
+blether ""
+
+blether "Repeat text:"
+blether f"  \"Aye! \" x 3 -> \"{repeat_text('Aye! ', 3)}\""
+blether ""
+
+blether "Padding:"
+blether f"  pad_left('42', 6, '0'):  \"{pad_left('42', 6, '0')}\""
+blether f"  pad_right('Hi', 10, '-'): \"{pad_right('Hi', 10, '-')}\""
+blether f"  center_text('SCOTS', 15, '*'): \"{center_text('SCOTS', 15, '*')}\""
+blether ""
+
+blether "Truncation:"
+blether f"  truncate('A long Scottish tale...', 15): \"{truncate('A long Scottish tale...', 15)}\""
+blether ""
+
+# ============================================================
+# Word Wrapping
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  WORD WRAPPING")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken long_text = "Scotland is a country that is part of the United Kingdom. It covers the northern third of the island of Great Britain."
+
+blether "Original text:"
+blether f"  \"{long_text}\""
+blether ""
+
+blether "Wrapped at 40 characters:"
+ken wrapped = word_wrap(long_text, 40)
+ken lines = split(wrapped, "\n")
+fer line in lines {
+    blether f"  │{line}│"
+}
+blether ""
+
+# ============================================================
+# Scottish Text Conversion
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  SCOTTISH TEXT CONVERSION")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken english_sentences = [
+    "Do you know where the church is?",
+    "The little child has a good home.",
+    "I don't know about that old house.",
+    "The girl and boy speak very well.",
+    "Give me more to drink now!"
+]
+
+blether "English to Scots conversion:"
+fer sentence in english_sentences {
+    ken scots = tae_scots(sentence)
+    blether f"  EN: {sentence}"
+    blether f"  SC: {scots}"
+    blether ""
+}
+
+blether "Adding Scottish flair:"
+ken plain = "The weather is nice today"
+blether f"  Plain: \"{plain}\""
+blether f"  Scots: \"{add_scots_flair(plain)}\""
+blether ""
+
+# ============================================================
+# Text Validation
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  TEXT VALIDATION")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken test_strings = ["Hello", "12345", "Hello123", "   ", "LOUD", "quiet"]
+
+blether "Testing validation functions:"
+fer s in test_strings {
+    blether f"  \"{s}\":"
+    blether f"    is_alpha: {is_alpha(s)}"
+    blether f"    is_numeric: {is_numeric(s)}"
+    blether f"    is_alphanumeric: {is_alphanumeric(s)}"
+    blether f"    is_blank: {is_blank(s)}"
+    blether f"    is_all_upper: {is_all_upper(s)}"
+    blether f"    is_all_lower: {is_all_lower(s)}"
+    blether ""
+}
+
+# ============================================================
+# Search and Replace
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  SEARCH AND REPLACE")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken haystack = "the cat sat on the mat with the bat"
+blether f"Text: \"{haystack}\""
+blether f"  count_substring('the'): {count_substring(haystack, 'the')}"
+blether f"  count_substring('at'): {count_substring(haystack, 'at')}"
+blether ""
+
+blether f"  replace_first('the', 'a'): \"{replace_first(haystack, 'the', 'a')}\""
+blether f"  replace_all('the', 'a'):   \"{replace_all(haystack, 'the', 'a')}\""
+blether ""
+
+# ============================================================
+# Text Generators
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  TEXT GENERATORS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+blether "Scottish Lorem Ipsum (3 sentences):"
+blether f"  {lorem_scots(3)}"
+blether ""
+
+blether "Random text IDs:"
+fer i in 1..5 {
+    blether f"  {generate_text_id(12)}"
+}
+blether ""
+
+# ============================================================
+# String Similarity
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  STRING SIMILARITY")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken pairs = [
+    ["hello", "hello"],
+    ["hello", "hallo"],
+    ["scotland", "scottland"],
+    ["cat", "dog"]
+]
+
+blether "Comparing strings:"
+fer pair in pairs {
+    ken s1 = pair[0]
+    ken s2 = pair[1]
+    ken sim = similarity(s1, s2)
+    blether f"  '{s1}' vs '{s2}': {sim} ({gin is_similar(s1, s2, 0.7) than 'similar' ither 'different'})"
+}
+blether ""
+
+blether green("═══════════════════════════════════════")
+blether green("  Text demo complete!")
+blether green("  \"Every word tells a story!\"")
+blether green("═══════════════════════════════════════")
+blether ""

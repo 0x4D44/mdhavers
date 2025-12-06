@@ -1,0 +1,82 @@
+# classes.braw - Object-oriented programming in mdhavers
+# Shows how tae use 'kin' tae define classes
+
+# Simple class
+kin Animal {
+    dae init(name, sound) {
+        masel.name = name
+        masel.sound = sound
+    }
+
+    dae speak() {
+        blether masel.name + " says: " + masel.sound
+    }
+
+    dae describe() {
+        blether "This is a " + masel.name
+    }
+
+    dae get_name() {
+        gie masel.name
+    }
+}
+
+# Create instances
+ken dug = Animal("Dug", "Woof!")
+ken cat = Animal("Moggie", "Miaow!")
+
+dug.speak()
+cat.speak()
+dug.describe()
+
+blether ""
+blether "The dug's name is: " + dug.get_name()
+
+blether ""
+
+# Class wi' methods
+kin Person {
+    dae init(name, age) {
+        masel.name = name
+        masel.age = age
+    }
+
+    dae introduce() {
+        blether "Ma name's " + masel.name + " an' ah'm " + tae_string(masel.age) + " years auld."
+    }
+
+    dae get_age() {
+        gie masel.age
+    }
+
+    dae set_age(new_age) {
+        masel.age = new_age
+    }
+}
+
+ken hamish = Person("Hamish", 35)
+hamish.introduce()
+
+# Update age using setter
+hamish.set_age(36)
+blether "Efter his birthday, Hamish is noo " + tae_string(hamish.get_age()) + "!"
+
+blether ""
+
+# Simple class tae demonstrate multiple instances
+kin Point {
+    dae init(x, y) {
+        masel.x = x
+        masel.y = y
+    }
+
+    dae show() {
+        blether "Point(" + tae_string(masel.x) + ", " + tae_string(masel.y) + ")"
+    }
+}
+
+ken p1 = Point(3, 4)
+ken p2 = Point(10, 20)
+
+p1.show()
+p2.show()

@@ -1,0 +1,721 @@
+# network.braw - Network simulation fer mdhavers
+# "Send messages across the Highlands!"
+#
+# Since mdhavers doesnae have real sockets, this provides
+# a simulated network with message passing, channels, and pub/sub.
+
+# ===============================================================
+# Message Types
+# ===============================================================
+
+ken MSG_TYPE_DATA = "data"
+ken MSG_TYPE_REQUEST = "request"
+ken MSG_TYPE_RESPONSE = "response"
+ken MSG_TYPE_EVENT = "event"
+ken MSG_TYPE_ERROR = "error"
+
+# ===============================================================
+# Message
+# ===============================================================
+
+kin Message {
+    dae init(msg_type, payload, sender = "anonymous") {
+        masel.id = _generate_msg_id()
+        masel.type = msg_type
+        masel.payload = payload
+        masel.sender = sender
+        masel.timestamp = _get_timestamp()
+        masel.headers = {}
+        masel.replied = nae
+    }
+
+    dae with_header(key, value) {
+        masel.headers[key] = value
+        gie masel
+    }
+
+    dae get_header(key) {
+        gin contains(masel.headers, key) {
+            gie masel.headers[key]
+        }
+        gie naething
+    }
+
+    dae to_dict() {
+        gie {
+            "id": masel.id,
+            "type": masel.type,
+            "payload": masel.payload,
+            "sender": masel.sender,
+            "timestamp": masel.timestamp,
+            "headers": masel.headers
+        }
+    }
+}
+
+ken _msg_counter = 0
+dae _generate_msg_id() {
+    _msg_counter = _msg_counter + 1
+    gie f"msg_{_msg_counter}"
+}
+
+ken _timestamp = 0
+dae _get_timestamp() {
+    _timestamp = _timestamp + 1
+    gie _timestamp
+}
+
+dae make_message(msg_type, payload, sender = "anonymous") {
+    gie Message(msg_type, payload, sender)
+}
+
+dae data_message(payload, sender = "anonymous") {
+    gie Message(MSG_TYPE_DATA, payload, sender)
+}
+
+dae request_message(payload, sender = "anonymous") {
+    gie Message(MSG_TYPE_REQUEST, payload, sender)
+}
+
+dae error_message(error_text, sender = "anonymous") {
+    gie Message(MSG_TYPE_ERROR, {"error": error_text}, sender)
+}
+
+# ===============================================================
+# Channel (Point-to-Point)
+# ===============================================================
+
+kin Channel {
+    dae init(name, capacity = 100) {
+        masel.name = name
+        masel.capacity = capacity
+        masel.messages = []
+        masel.closed = nae
+        masel.listeners = []
+    }
+
+    dae send(message) {
+        gin masel.closed {
+            gie {"success": nae, "error": "Channel is closed"}
+        }
+        gin len(masel.messages) >= masel.capacity {
+            gie {"success": nae, "error": "Channel is full"}
+        }
+
+        shove(masel.messages, message)
+
+        # Notify listeners
+        fer listener in masel.listeners {
+            listener(message)
+        }
+
+        gie {"success": aye, "message_id": message.id}
+    }
+
+    dae receive() {
+        gin len(masel.messages) == 0 {
+            gie naething
+        }
+        ken msg = masel.messages[0]
+        ken new_messages = []
+        fer i in 1..len(masel.messages) {
+            shove(new_messages, masel.messages[i])
+        }
+        masel.messages = new_messages
+        gie msg
+    }
+
+    dae peek() {
+        gin len(masel.messages) == 0 {
+            gie naething
+        }
+        gie masel.messages[0]
+    }
+
+    dae size() {
+        gie len(masel.messages)
+    }
+
+    dae is_empty() {
+        gie len(masel.messages) == 0
+    }
+
+    dae on_message(callback) {
+        shove(masel.listeners, callback)
+        gie masel
+    }
+
+    dae close() {
+        masel.closed = aye
+        gie masel
+    }
+
+    dae is_closed() {
+        gie masel.closed
+    }
+
+    dae clear() {
+        masel.messages = []
+        gie masel
+    }
+}
+
+dae make_channel(name, capacity = 100) {
+    gie Channel(name, capacity)
+}
+
+# ===============================================================
+# Topic (Pub/Sub)
+# ===============================================================
+
+kin Topic {
+    dae init(name) {
+        masel.name = name
+        masel.subscribers = []
+        masel.message_history = []
+        masel.max_history = 100
+        masel.retain_last = nae
+        masel.last_message = naething
+    }
+
+    dae subscribe(callback) {
+        shove(masel.subscribers, callback)
+        # If retaining, send last message to new subscriber
+        gin masel.retain_last an masel.last_message != naething {
+            callback(masel.last_message)
+        }
+        gie masel
+    }
+
+    dae unsubscribe(callback) {
+        ken new_subs = []
+        fer sub in masel.subscribers {
+            gin sub != callback {
+                shove(new_subs, sub)
+            }
+        }
+        masel.subscribers = new_subs
+        gie masel
+    }
+
+    dae publish(message) {
+        shove(masel.message_history, message)
+        masel.last_message = message
+
+        # Trim history
+        whiles len(masel.message_history) > masel.max_history {
+            ken new_history = []
+            fer i in 1..len(masel.message_history) {
+                shove(new_history, masel.message_history[i])
+            }
+            masel.message_history = new_history
+        }
+
+        # Notify all subscribers
+        fer subscriber in masel.subscribers {
+            subscriber(message)
+        }
+
+        gie masel
+    }
+
+    dae with_retention() {
+        masel.retain_last = aye
+        gie masel
+    }
+
+    dae subscriber_count() {
+        gie len(masel.subscribers)
+    }
+
+    dae get_history() {
+        gie masel.message_history
+    }
+}
+
+dae make_topic(name) {
+    gie Topic(name)
+}
+
+# ===============================================================
+# Message Broker
+# ===============================================================
+
+kin MessageBroker {
+    dae init() {
+        masel.channels = {}
+        masel.topics = {}
+        masel.request_handlers = {}
+        masel.pending_requests = {}
+    }
+
+    # Channel management
+    dae create_channel(name, capacity = 100) {
+        gin nae contains(masel.channels, name) {
+            masel.channels[name] = Channel(name, capacity)
+        }
+        gie masel.channels[name]
+    }
+
+    dae get_channel(name) {
+        gin contains(masel.channels, name) {
+            gie masel.channels[name]
+        }
+        gie naething
+    }
+
+    dae delete_channel(name) {
+        gin contains(masel.channels, name) {
+            ken new_channels = {}
+            fer key in keys(masel.channels) {
+                gin key != name {
+                    new_channels[key] = masel.channels[key]
+                }
+            }
+            masel.channels = new_channels
+        }
+        gie masel
+    }
+
+    # Topic management
+    dae create_topic(name) {
+        gin nae contains(masel.topics, name) {
+            masel.topics[name] = Topic(name)
+        }
+        gie masel.topics[name]
+    }
+
+    dae get_topic(name) {
+        gin contains(masel.topics, name) {
+            gie masel.topics[name]
+        }
+        gie naething
+    }
+
+    dae publish(topic_name, message) {
+        gin contains(masel.topics, topic_name) {
+            masel.topics[topic_name].publish(message)
+            gie aye
+        }
+        gie nae
+    }
+
+    dae subscribe(topic_name, callback) {
+        gin contains(masel.topics, topic_name) {
+            masel.topics[topic_name].subscribe(callback)
+            gie aye
+        }
+        gie nae
+    }
+
+    # Request/Response pattern
+    dae register_handler(request_type, handler) {
+        masel.request_handlers[request_type] = handler
+        gie masel
+    }
+
+    dae request(request_type, payload) {
+        gin contains(masel.request_handlers, request_type) {
+            ken handler = masel.request_handlers[request_type]
+            ken response = handler(payload)
+            gie {"success": aye, "response": response}
+        }
+        gie {"success": nae, "error": f"No handler fer {request_type}"}
+    }
+
+    # Stats
+    dae stats() {
+        gie {
+            "channels": len(masel.channels),
+            "topics": len(masel.topics),
+            "handlers": len(masel.request_handlers)
+        }
+    }
+}
+
+dae make_broker() {
+    gie MessageBroker()
+}
+
+# ===============================================================
+# Simple Router
+# ===============================================================
+
+kin Router {
+    dae init() {
+        masel.routes = {}
+        masel.middleware = []
+        masel.not_found_handler = naething
+    }
+
+    dae route(path, handler) {
+        masel.routes[path] = handler
+        gie masel
+    }
+
+    dae use(middleware) {
+        shove(masel.middleware, middleware)
+        gie masel
+    }
+
+    dae on_not_found(handler) {
+        masel.not_found_handler = handler
+        gie masel
+    }
+
+    dae dispatch(path, context = {}) {
+        # Run middleware
+        fer mw in masel.middleware {
+            ken result = mw(path, context)
+            gin nae result {
+                gie {"handled": nae, "reason": "Middleware blocked"}
+            }
+        }
+
+        # Find handler
+        gin contains(masel.routes, path) {
+            ken handler = masel.routes[path]
+            ken result = handler(context)
+            gie {"handled": aye, "result": result}
+        }
+
+        # Not found
+        gin masel.not_found_handler != naething {
+            ken result = masel.not_found_handler(path, context)
+            gie {"handled": aye, "result": result, "not_found": aye}
+        }
+
+        gie {"handled": nae, "reason": "Route not found"}
+    }
+
+    dae list_routes() {
+        gie keys(masel.routes)
+    }
+}
+
+dae make_router() {
+    gie Router()
+}
+
+# ===============================================================
+# Event Emitter (Node.js style)
+# ===============================================================
+
+kin EventEmitter {
+    dae init() {
+        masel.listeners = {}
+        masel.once_listeners = {}
+    }
+
+    dae on(event, callback) {
+        gin nae contains(masel.listeners, event) {
+            masel.listeners[event] = []
+        }
+        shove(masel.listeners[event], callback)
+        gie masel
+    }
+
+    dae once(event, callback) {
+        gin nae contains(masel.once_listeners, event) {
+            masel.once_listeners[event] = []
+        }
+        shove(masel.once_listeners[event], callback)
+        gie masel
+    }
+
+    dae emit(event, data = naething) {
+        ken count = 0
+
+        # Regular listeners
+        gin contains(masel.listeners, event) {
+            fer callback in masel.listeners[event] {
+                callback(data)
+                count = count + 1
+            }
+        }
+
+        # Once listeners
+        gin contains(masel.once_listeners, event) {
+            fer callback in masel.once_listeners[event] {
+                callback(data)
+                count = count + 1
+            }
+            # Clear once listeners
+            masel.once_listeners[event] = []
+        }
+
+        gie count
+    }
+
+    dae off(event, callback = naething) {
+        gin callback == naething {
+            # Remove all listeners for event
+            gin contains(masel.listeners, event) {
+                masel.listeners[event] = []
+            }
+        } ither {
+            # Remove specific listener
+            gin contains(masel.listeners, event) {
+                ken new_listeners = []
+                fer cb in masel.listeners[event] {
+                    gin cb != callback {
+                        shove(new_listeners, cb)
+                    }
+                }
+                masel.listeners[event] = new_listeners
+            }
+        }
+        gie masel
+    }
+
+    dae listener_count(event) {
+        ken count = 0
+        gin contains(masel.listeners, event) {
+            count = count + len(masel.listeners[event])
+        }
+        gin contains(masel.once_listeners, event) {
+            count = count + len(masel.once_listeners[event])
+        }
+        gie count
+    }
+
+    dae events() {
+        ken all_events = []
+        fer event in keys(masel.listeners) {
+            gin nae contains(all_events, event) {
+                shove(all_events, event)
+            }
+        }
+        fer event in keys(masel.once_listeners) {
+            gin nae contains(all_events, event) {
+                shove(all_events, event)
+            }
+        }
+        gie all_events
+    }
+}
+
+dae make_emitter() {
+    gie EventEmitter()
+}
+
+# ===============================================================
+# Message Queue
+# ===============================================================
+
+kin MessageQueue {
+    dae init(name) {
+        masel.name = name
+        masel.queue = []
+        masel.dead_letter = []
+        masel.max_retries = 3
+        masel.processing = nae
+    }
+
+    dae enqueue(message, priority = 5) {
+        shove(masel.queue, {
+            "message": message,
+            "priority": priority,
+            "retries": 0,
+            "enqueued_at": _get_timestamp()
+        })
+        masel._sort_by_priority()
+        gie masel
+    }
+
+    dae dequeue() {
+        gin len(masel.queue) == 0 {
+            gie naething
+        }
+        ken item = masel.queue[0]
+        ken new_queue = []
+        fer i in 1..len(masel.queue) {
+            shove(new_queue, masel.queue[i])
+        }
+        masel.queue = new_queue
+        gie item["message"]
+    }
+
+    dae peek() {
+        gin len(masel.queue) == 0 {
+            gie naething
+        }
+        gie masel.queue[0]["message"]
+    }
+
+    dae requeue(message) {
+        # Find and increment retry count
+        fer i in 0..len(masel.queue) {
+            gin masel.queue[i]["message"].id == message.id {
+                masel.queue[i]["retries"] = masel.queue[i]["retries"] + 1
+                gin masel.queue[i]["retries"] >= masel.max_retries {
+                    # Move to dead letter queue
+                    shove(masel.dead_letter, masel.queue[i])
+                    ken new_queue = []
+                    fer j in 0..len(masel.queue) {
+                        gin j != i {
+                            shove(new_queue, masel.queue[j])
+                        }
+                    }
+                    masel.queue = new_queue
+                }
+                gie masel
+            }
+        }
+        gie masel
+    }
+
+    dae _sort_by_priority() {
+        ken n = len(masel.queue)
+        fer i in 0..(n - 1) {
+            fer j in 0..(n - i - 1) {
+                gin masel.queue[j]["priority"] < masel.queue[j + 1]["priority"] {
+                    ken temp = masel.queue[j]
+                    masel.queue[j] = masel.queue[j + 1]
+                    masel.queue[j + 1] = temp
+                }
+            }
+        }
+    }
+
+    dae size() {
+        gie len(masel.queue)
+    }
+
+    dae dead_letter_count() {
+        gie len(masel.dead_letter)
+    }
+
+    dae get_dead_letters() {
+        gie masel.dead_letter
+    }
+
+    dae clear_dead_letters() {
+        masel.dead_letter = []
+        gie masel
+    }
+}
+
+dae make_queue(name) {
+    gie MessageQueue(name)
+}
+
+# ===============================================================
+# Simple RPC
+# ===============================================================
+
+kin RPCServer {
+    dae init(name) {
+        masel.name = name
+        masel.methods = {}
+    }
+
+    dae register(method_name, handler) {
+        masel.methods[method_name] = handler
+        gie masel
+    }
+
+    dae call(method_name, params = []) {
+        gin nae contains(masel.methods, method_name) {
+            gie {
+                "success": nae,
+                "error": f"Method '{method_name}' not found"
+            }
+        }
+
+        hae_a_bash {
+            ken handler = masel.methods[method_name]
+            ken result = handler(params)
+            gie {"success": aye, "result": result}
+        } gin_it_gangs_wrang e {
+            gie {"success": nae, "error": tae_string(e)}
+        }
+    }
+
+    dae list_methods() {
+        gie keys(masel.methods)
+    }
+}
+
+dae make_rpc_server(name) {
+    gie RPCServer(name)
+}
+
+# ===============================================================
+# Connection Pool (Simulated)
+# ===============================================================
+
+kin ConnectionPool {
+    dae init(max_connections = 10) {
+        masel.max_connections = max_connections
+        masel.connections = []
+        masel.available = []
+        masel.in_use = []
+    }
+
+    dae _create_connection() {
+        ken conn_id = f"conn_{len(masel.connections) + 1}"
+        ken conn = {
+            "id": conn_id,
+            "created_at": _get_timestamp(),
+            "last_used": _get_timestamp()
+        }
+        shove(masel.connections, conn)
+        gie conn
+    }
+
+    dae acquire() {
+        # Try to get an available connection
+        gin len(masel.available) > 0 {
+            ken conn = masel.available[0]
+            ken new_available = []
+            fer i in 1..len(masel.available) {
+                shove(new_available, masel.available[i])
+            }
+            masel.available = new_available
+            shove(masel.in_use, conn)
+            conn["last_used"] = _get_timestamp()
+            gie {"success": aye, "connection": conn}
+        }
+
+        # Create new connection if under limit
+        gin len(masel.connections) < masel.max_connections {
+            ken conn = masel._create_connection()
+            shove(masel.in_use, conn)
+            gie {"success": aye, "connection": conn}
+        }
+
+        gie {"success": nae, "error": "Pool exhausted"}
+    }
+
+    dae release(conn) {
+        # Move from in_use to available
+        ken new_in_use = []
+        ken found = nae
+        fer c in masel.in_use {
+            gin c["id"] == conn["id"] {
+                found = aye
+                shove(masel.available, c)
+            } ither {
+                shove(new_in_use, c)
+            }
+        }
+        masel.in_use = new_in_use
+        gie found
+    }
+
+    dae stats() {
+        gie {
+            "total": len(masel.connections),
+            "available": len(masel.available),
+            "in_use": len(masel.in_use),
+            "max": masel.max_connections
+        }
+    }
+}
+
+dae make_pool(max_connections = 10) {
+    gie ConnectionPool(max_connections)
+}
+
+blether "Network module loaded! Ready tae send messages across the Highlands!"

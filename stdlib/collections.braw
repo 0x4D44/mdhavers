@@ -1,0 +1,502 @@
+# collections.braw - Advanced collection utilities fer mdhavers
+# "A weel-stocked larder makes fer happy coding!"
+
+# ===============================================================
+# Stack (LIFO - Last In, First Oot)
+# ===============================================================
+
+kin Stack {
+    dae init() {
+        masel.items = []
+    }
+
+    # Push an item ontae the stack
+    dae push(item) {
+        shove(masel.items, item)
+    }
+
+    # Pop an item aff the stack
+    dae pop() {
+        gin masel.is_empty() {
+            gie naething
+        }
+        gie yank(masel.items)
+    }
+
+    # Peek at the top item withoot removing it
+    dae peek() {
+        gin masel.is_empty() {
+            gie naething
+        }
+        gie bum(masel.items)
+    }
+
+    # Check if stack is empty
+    dae is_empty() {
+        gie len(masel.items) == 0
+    }
+
+    # Get the size o' the stack
+    dae size() {
+        gie len(masel.items)
+    }
+
+    # Clear the stack
+    dae clear() {
+        masel.items = []
+    }
+}
+
+# ===============================================================
+# Queue (FIFO - First In, First Oot)
+# ===============================================================
+
+kin Queue {
+    dae init() {
+        masel.items = []
+    }
+
+    # Add an item tae the back o' the queue
+    dae enqueue(item) {
+        shove(masel.items, item)
+    }
+
+    # Remove and return the front item
+    dae dequeue() {
+        gin masel.is_empty() {
+            gie naething
+        }
+        ken item = heid(masel.items)
+        masel.items = tail(masel.items)
+        gie item
+    }
+
+    # Peek at the front item
+    dae front() {
+        gin masel.is_empty() {
+            gie naething
+        }
+        gie heid(masel.items)
+    }
+
+    # Peek at the back item
+    dae back() {
+        gin masel.is_empty() {
+            gie naething
+        }
+        gie bum(masel.items)
+    }
+
+    # Check if queue is empty
+    dae is_empty() {
+        gie len(masel.items) == 0
+    }
+
+    # Get the size o' the queue
+    dae size() {
+        gie len(masel.items)
+    }
+
+    # Clear the queue
+    dae clear() {
+        masel.items = []
+    }
+}
+
+# ===============================================================
+# Deque (Double-ended Queue)
+# ===============================================================
+
+kin Deque {
+    dae init() {
+        masel.items = []
+    }
+
+    # Add tae the front
+    dae push_front(item) {
+        masel.items = [item, ...masel.items]
+    }
+
+    # Add tae the back
+    dae push_back(item) {
+        shove(masel.items, item)
+    }
+
+    # Remove fae the front
+    dae pop_front() {
+        gin masel.is_empty() {
+            gie naething
+        }
+        ken item = heid(masel.items)
+        masel.items = tail(masel.items)
+        gie item
+    }
+
+    # Remove fae the back
+    dae pop_back() {
+        gin masel.is_empty() {
+            gie naething
+        }
+        gie yank(masel.items)
+    }
+
+    dae front() {
+        gin masel.is_empty() { gie naething }
+        gie heid(masel.items)
+    }
+
+    dae back() {
+        gin masel.is_empty() { gie naething }
+        gie bum(masel.items)
+    }
+
+    dae is_empty() {
+        gie len(masel.items) == 0
+    }
+
+    dae size() {
+        gie len(masel.items)
+    }
+}
+
+# ===============================================================
+# Set (Unique collection)
+# ===============================================================
+
+kin HaversSet {
+    dae init() {
+        masel.items = []
+    }
+
+    # Add an item (only if not already present)
+    dae add(item) {
+        gin nae masel.contains(item) {
+            shove(masel.items, item)
+        }
+    }
+
+    # Remove an item
+    dae remove(item) {
+        ken new_items = []
+        fer i in masel.items {
+            gin i != item {
+                shove(new_items, i)
+            }
+        }
+        masel.items = new_items
+    }
+
+    # Check if item exists
+    dae contains(item) {
+        fer i in masel.items {
+            gin i == item {
+                gie aye
+            }
+        }
+        gie nae
+    }
+
+    # Union with another set
+    dae union(other) {
+        ken result = HaversSet()
+        fer item in masel.items {
+            result.add(item)
+        }
+        fer item in other.items {
+            result.add(item)
+        }
+        gie result
+    }
+
+    # Intersection with another set
+    dae intersection(other) {
+        ken result = HaversSet()
+        fer item in masel.items {
+            gin other.contains(item) {
+                result.add(item)
+            }
+        }
+        gie result
+    }
+
+    # Difference (items in masel but not in other)
+    dae difference(other) {
+        ken result = HaversSet()
+        fer item in masel.items {
+            gin nae other.contains(item) {
+                result.add(item)
+            }
+        }
+        gie result
+    }
+
+    # Check if subset
+    dae is_subset(other) {
+        fer item in masel.items {
+            gin nae other.contains(item) {
+                gie nae
+            }
+        }
+        gie aye
+    }
+
+    dae is_empty() {
+        gie len(masel.items) == 0
+    }
+
+    dae size() {
+        gie len(masel.items)
+    }
+
+    dae tae_list() {
+        gie masel.items
+    }
+}
+
+# ===============================================================
+# Counter (Count occurrences)
+# ===============================================================
+
+kin Counter {
+    dae init() {
+        masel.counts = {}
+    }
+
+    # Add/increment an item
+    dae add(item) {
+        ken key = tae_string(item)
+        gin contains(masel.counts, key) {
+            masel.counts[key] = masel.counts[key] + 1
+        } ither {
+            masel.counts[key] = 1
+        }
+    }
+
+    # Count multiple items from a list
+    dae count_all(items) {
+        fer item in items {
+            masel.add(item)
+        }
+    }
+
+    # Get count for an item
+    dae get(item) {
+        ken key = tae_string(item)
+        gin contains(masel.counts, key) {
+            gie masel.counts[key]
+        }
+        gie 0
+    }
+
+    # Get most common items
+    dae most_common(n = 10) {
+        ken ks = keys(masel.counts)
+        ken pairs = []
+        fer k in ks {
+            shove(pairs, [k, masel.counts[k]])
+        }
+
+        # Simple bubble sort by count (descending)
+        ken size = len(pairs)
+        fer i in 0..size {
+            fer j in 0..size-i-1 {
+                gin pairs[j][1] < pairs[j+1][1] {
+                    ken temp = pairs[j]
+                    pairs[j] = pairs[j+1]
+                    pairs[j+1] = temp
+                }
+            }
+        }
+
+        # Return top n
+        ken result = []
+        ken count = 0
+        fer pair in pairs {
+            gin count >= n {
+                brak
+            }
+            shove(result, pair)
+            count = count + 1
+        }
+        gie result
+    }
+
+    dae total() {
+        ken sum = 0
+        ken ks = keys(masel.counts)
+        fer k in ks {
+            sum = sum + masel.counts[k]
+        }
+        gie sum
+    }
+}
+
+# ===============================================================
+# DefaultDict (Dict with default values)
+# ===============================================================
+
+kin DefaultDict {
+    dae init(default_val = naething) {
+        masel.data = {}
+        masel.default_val = default_val
+    }
+
+    dae get(key) {
+        gin contains(masel.data, key) {
+            gie masel.data[key]
+        }
+        gie masel.default_val
+    }
+
+    dae set(key, value) {
+        masel.data[key] = value
+    }
+
+    dae has(key) {
+        gie contains(masel.data, key)
+    }
+
+    dae keys() {
+        gie keys(masel.data)
+    }
+
+    dae values() {
+        gie values(masel.data)
+    }
+}
+
+# ===============================================================
+# Pair and Tuple helpers
+# ===============================================================
+
+# Create a pair
+dae pair(a, b) {
+    gie [a, b]
+}
+
+# Get first element of pair
+dae fst(p) {
+    gie p[0]
+}
+
+# Get second element of pair
+dae snd(p) {
+    gie p[1]
+}
+
+# Create a triple
+dae triple(a, b, c) {
+    gie [a, b, c]
+}
+
+# Zip two lists together
+dae zip_lists(a, b) {
+    ken result = []
+    ken size = min(len(a), len(b))
+    fer i in 0..size {
+        shove(result, pair(a[i], b[i]))
+    }
+    gie result
+}
+
+# Unzip a list of pairs
+dae unzip_list(pairs) {
+    ken firsts = []
+    ken seconds = []
+    fer p in pairs {
+        shove(firsts, fst(p))
+        shove(seconds, snd(p))
+    }
+    gie pair(firsts, seconds)
+}
+
+# ===============================================================
+# List Grouping and Partitioning
+# ===============================================================
+
+# Group items by a key function
+dae group_by(items, key_func) {
+    ken groups = {}
+    fer item in items {
+        ken key = key_func(item)
+        ken key_str = tae_string(key)
+        gin nae has_key(groups, key_str) {
+            groups[key_str] = []
+        }
+        shove(groups[key_str], item)
+    }
+    gie groups
+}
+
+# Partition items into two groups based on predicate
+dae partition(items, predicate) {
+    ken matches = []
+    ken others = []
+    fer item in items {
+        gin predicate(item) {
+            shove(matches, item)
+        } ither {
+            shove(others, item)
+        }
+    }
+    gie pair(matches, others)
+}
+
+# Chunk a list into groups of n
+dae chunk(items, n) {
+    ken result = []
+    ken current = []
+    fer item in items {
+        shove(current, item)
+        gin len(current) == n {
+            shove(result, current)
+            current = []
+        }
+    }
+    gin len(current) > 0 {
+        shove(result, current)
+    }
+    gie result
+}
+
+# Flatten a list of lists
+dae flatten(nested) {
+    ken result = []
+    fer inner in nested {
+        gin whit_kind(inner) == "list" {
+            fer item in inner {
+                shove(result, item)
+            }
+        } ither {
+            shove(result, inner)
+        }
+    }
+    gie result
+}
+
+# Get unique items
+dae unique(items) {
+    ken seen = HaversSet()
+    ken result = []
+    fer item in items {
+        gin nae seen.contains(item) {
+            seen.add(item)
+            shove(result, item)
+        }
+    }
+    gie result
+}
+
+# Get min value
+dae min(a, b) {
+    gin a < b { gie a }
+    gie b
+}
+
+# Get max value
+dae max(a, b) {
+    gin a > b { gie a }
+    gie b
+}
+
+blether "Collections module loaded! Yer data's in guid hauns!"

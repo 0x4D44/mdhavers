@@ -1,0 +1,205 @@
+# collections.braw - Data structure utilities fer mdhavers
+# Stacks, queues, and more!
+
+# === Stack operations (LIFO) ===
+
+# Create a new stack
+dae stack_new() {
+    gie []
+}
+
+# Push onto stack
+dae stack_push(stack, item) {
+    shove(stack, item)
+}
+
+# Pop from stack
+dae stack_pop(stack) {
+    gie yank(stack)
+}
+
+# Peek at top of stack without removing
+dae stack_peek(stack) {
+    gin len(stack) == 0 {
+        gie naething
+    }
+    gie bum(stack)
+}
+
+# Check if stack is empty
+dae stack_empty(stack) {
+    gie len(stack) == 0
+}
+
+# === Queue operations (FIFO) ===
+
+# Create a new queue
+dae queue_new() {
+    gie []
+}
+
+# Enqueue (add to back)
+dae queue_enqueue(queue, item) {
+    shove(queue, item)
+}
+
+# Dequeue (remove from front)
+dae queue_dequeue(queue) {
+    gin len(queue) == 0 {
+        gie naething
+    }
+    ken first = heid(queue)
+    # Shift elements
+    ken i = 0
+    whiles i < len(queue) - 1 {
+        queue[i] = queue[i + 1]
+        i = i + 1
+    }
+    yank(queue)  # remove last (now duplicate)
+    gie first
+}
+
+# Peek at front of queue
+dae queue_peek(queue) {
+    gin len(queue) == 0 {
+        gie naething
+    }
+    gie heid(queue)
+}
+
+# Check if queue is empty
+dae queue_empty(queue) {
+    gie len(queue) == 0
+}
+
+# === Set operations ===
+
+# Create a new set (uses a list with uniqueness check)
+dae set_new() {
+    gie []
+}
+
+# Add to set (only if not present)
+dae set_add(set, item) {
+    gin nae contains(set, item) {
+        shove(set, item)
+        gie aye
+    }
+    gie nae
+}
+
+# Remove from set
+dae set_remove(set, item) {
+    ken i = 0
+    whiles i < len(set) {
+        gin set[i] == item {
+            # Shift remaining elements
+            ken j = i
+            whiles j < len(set) - 1 {
+                set[j] = set[j + 1]
+                j = j + 1
+            }
+            yank(set)
+            gie aye
+        }
+        i = i + 1
+    }
+    gie nae
+}
+
+# Check membership
+dae set_contains(set, item) {
+    gie contains(set, item)
+}
+
+# Union of two sets
+dae set_union(a, b) {
+    ken result = []
+    fer item in a {
+        shove(result, item)
+    }
+    fer item in b {
+        gin nae contains(result, item) {
+            shove(result, item)
+        }
+    }
+    gie result
+}
+
+# Intersection of two sets
+dae set_intersection(a, b) {
+    ken result = []
+    fer item in a {
+        gin contains(b, item) {
+            shove(result, item)
+        }
+    }
+    gie result
+}
+
+# Difference of two sets (a - b)
+dae set_difference(a, b) {
+    ken result = []
+    fer item in a {
+        gin nae contains(b, item) {
+            shove(result, item)
+        }
+    }
+    gie result
+}
+
+# === Counter/bag operations ===
+
+# Create a counter from a list
+dae counter(items) {
+    ken counts = {}
+    fer item in items {
+        ken key = tae_string(item)
+        gin contains(keys(counts), key) {
+            counts[key] = counts[key] + 1
+        } ither {
+            counts[key] = 1
+        }
+    }
+    gie counts
+}
+
+# Get count for an item
+dae counter_get(counts, item) {
+    ken key = tae_string(item)
+    gin contains(keys(counts), key) {
+        gie counts[key]
+    }
+    gie 0
+}
+
+# Get most common items
+dae counter_most_common(counts, n) {
+    ken items = []
+    fer k in keys(counts) {
+        shove(items, [k, counts[k]])
+    }
+    # Simple sort by count (descending)
+    ken sorted = []
+    whiles len(items) > 0 {
+        ken max_idx = 0
+        ken max_count = items[0][1]
+        ken i = 1
+        whiles i < len(items) {
+            gin items[i][1] > max_count {
+                max_idx = i
+                max_count = items[i][1]
+            }
+            i = i + 1
+        }
+        shove(sorted, items[max_idx])
+        # Remove from items
+        ken j = max_idx
+        whiles j < len(items) - 1 {
+            items[j] = items[j + 1]
+            j = j + 1
+        }
+        yank(items)
+    }
+    gie tak(sorted, n)
+}

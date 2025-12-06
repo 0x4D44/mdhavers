@@ -1,0 +1,354 @@
+# argparse.braw - Command-line argument parsing fer mdhavers
+# "Parse yer arguments, the Scots way!"
+#
+# This module provides utilities fer parsing command-line arguments.
+
+# ===============================================================
+# Argument Types
+# ===============================================================
+
+ken ARG_STRING = "string"
+ken ARG_INT = "int"
+ken ARG_FLOAT = "float"
+ken ARG_BOOL = "bool"
+ken ARG_LIST = "list"
+
+# ===============================================================
+# Argument Definition
+# ===============================================================
+
+kin Argument {
+    dae init(name) {
+        masel.name = name
+        masel.short = naething
+        masel.arg_type = ARG_STRING
+        masel.default = naething
+        masel.required = nae
+        masel.help = ""
+        masel.choices = naething
+        masel.is_flag = nae
+    }
+
+    dae short_name(short) {
+        masel.short = short
+        gie masel
+    }
+
+    dae type(arg_type) {
+        masel.arg_type = arg_type
+        gie masel
+    }
+
+    dae default_value(value) {
+        masel.default = value
+        gie masel
+    }
+
+    dae make_required() {
+        masel.required = aye
+        gie masel
+    }
+
+    dae help_text(text) {
+        masel.help = text
+        gie masel
+    }
+
+    dae valid_choices(choices) {
+        masel.choices = choices
+        gie masel
+    }
+
+    dae flag() {
+        masel.is_flag = aye
+        masel.arg_type = ARG_BOOL
+        masel.default = nae
+        gie masel
+    }
+}
+
+dae arg(name) {
+    gie Argument(name)
+}
+
+# ===============================================================
+# Argument Parser
+# ===============================================================
+
+kin ArgParser {
+    dae init(name) {
+        masel.name = name
+        masel.description = ""
+        masel.version = "1.0.0"
+        masel.arguments = []
+        masel.positional = []
+    }
+
+    dae describe(desc) {
+        masel.description = desc
+        gie masel
+    }
+
+    dae with_version(ver) {
+        masel.version = ver
+        gie masel
+    }
+
+    dae add(argument) {
+        gin starts_wi(argument.name, "-") {
+            shove(masel.arguments, argument)
+        } ither {
+            shove(masel.positional, argument)
+        }
+        gie masel
+    }
+
+    dae _find_arg(name) {
+        fer argument in masel.arguments {
+            gin argument.name == name or argument.short == name {
+                gie argument
+            }
+        }
+        gie naething
+    }
+
+    dae _convert_value(value, arg_type) {
+        gin arg_type == ARG_INT {
+            gie tae_int(value)
+        } ither gin arg_type == ARG_FLOAT {
+            gie tae_float(value)
+        } ither gin arg_type == ARG_BOOL {
+            ken lower_val = lower(value)
+            gie lower_val == "true" or lower_val == "aye" or lower_val == "1" or lower_val == "yes"
+        }
+        gie value
+    }
+
+    dae parse(args) {
+        ken result = {}
+        ken pos_idx = 0
+        ken i = 0
+
+        # Set defaults
+        fer argument in masel.arguments {
+            ken key = argument.name
+            gin starts_wi(key, "--") {
+                key = scran(key, 2, len(key))
+            } ither gin starts_wi(key, "-") {
+                key = scran(key, 1, len(key))
+            }
+            result[key] = argument.default
+        }
+
+        fer argument in masel.positional {
+            result[argument.name] = argument.default
+        }
+
+        # Parse arguments
+        whiles i < len(args) {
+            ken current = args[i]
+
+            gin current == "--help" or current == "-h" {
+                masel.show_help()
+                gie naething
+            }
+
+            gin current == "--version" or current == "-v" {
+                blether f"{masel.name} version {masel.version}"
+                gie naething
+            }
+
+            gin starts_wi(current, "--") or starts_wi(current, "-") {
+                ken argument = masel._find_arg(current)
+                gin argument == naething {
+                    blether f"Unknown option: {current}"
+                    gie naething
+                }
+
+                ken key = argument.name
+                gin starts_wi(key, "--") {
+                    key = scran(key, 2, len(key))
+                } ither gin starts_wi(key, "-") {
+                    key = scran(key, 1, len(key))
+                }
+
+                gin argument.is_flag {
+                    result[key] = aye
+                } ither {
+                    i = i + 1
+                    gin i >= len(args) {
+                        blether f"Option {current} requires a value"
+                        gie naething
+                    }
+                    ken value = masel._convert_value(args[i], argument.arg_type)
+
+                    gin argument.choices != naething {
+                        gin nae contains(argument.choices, value) {
+                            blether f"Invalid value fer {current}. Must be one o': {argument.choices}"
+                            gie naething
+                        }
+                    }
+
+                    result[key] = value
+                }
+            } ither {
+                # Positional argument
+                gin pos_idx < len(masel.positional) {
+                    ken argument = masel.positional[pos_idx]
+                    ken value = masel._convert_value(current, argument.arg_type)
+                    result[argument.name] = value
+                    pos_idx = pos_idx + 1
+                }
+            }
+
+            i = i + 1
+        }
+
+        # Check required arguments
+        fer argument in masel.arguments {
+            ken key = argument.name
+            gin starts_wi(key, "--") {
+                key = scran(key, 2, len(key))
+            } ither gin starts_wi(key, "-") {
+                key = scran(key, 1, len(key))
+            }
+
+            gin argument.required an result[key] == naething {
+                blether f"Required option missing: {argument.name}"
+                gie naething
+            }
+        }
+
+        fer argument in masel.positional {
+            gin argument.required an result[argument.name] == naething {
+                blether f"Required argument missing: {argument.name}"
+                gie naething
+            }
+        }
+
+        gie result
+    }
+
+    dae show_help() {
+        blether ""
+        blether f"Usage: {masel.name} [OPTIONS]"
+        gin len(masel.positional) > 0 {
+            ken pos_names = []
+            fer p in masel.positional {
+                ken name = p.name
+                gin p.required {
+                    shove(pos_names, upper(name))
+                } ither {
+                    shove(pos_names, f"[{upper(name)}]")
+                }
+            }
+            blether f"       {masel.name} {join(pos_names, ' ')}"
+        }
+        blether ""
+
+        gin len(masel.description) > 0 {
+            blether masel.description
+            blether ""
+        }
+
+        gin len(masel.positional) > 0 {
+            blether "Positional arguments:"
+            fer argument in masel.positional {
+                ken req = gin argument.required than " (required)" ither ""
+                blether f"  {argument.name}{req}"
+                gin len(argument.help) > 0 {
+                    blether f"      {argument.help}"
+                }
+            }
+            blether ""
+        }
+
+        blether "Options:"
+        blether "  -h, --help     Show this help message"
+        blether "  -v, --version  Show version"
+
+        fer argument in masel.arguments {
+            ken opt = argument.name
+            gin argument.short != naething {
+                opt = f"{argument.short}, {argument.name}"
+            }
+
+            ken type_hint = ""
+            gin nae argument.is_flag {
+                type_hint = f" <{argument.arg_type}>"
+            }
+
+            ken default_hint = ""
+            gin argument.default != naething {
+                default_hint = f" (default: {argument.default})"
+            }
+
+            ken req_hint = ""
+            gin argument.required {
+                req_hint = " (required)"
+            }
+
+            blether f"  {opt}{type_hint}{default_hint}{req_hint}"
+            gin len(argument.help) > 0 {
+                blether f"      {argument.help}"
+            }
+        }
+
+        blether ""
+    }
+}
+
+dae make_parser(name) {
+    gie ArgParser(name)
+}
+
+# ===============================================================
+# Simple Args Helper
+# ===============================================================
+
+# Parse a simple key=value style of arguments
+dae parse_simple(args) {
+    ken result = {}
+    fer argument in args {
+        gin contains(argument, "=") {
+            ken eq_pos = index_of(argument, "=")
+            ken key = scran(argument, 0, eq_pos)
+            ken value = scran(argument, eq_pos + 1, len(argument))
+            result[key] = value
+        } ither {
+            result[argument] = aye
+        }
+    }
+    gie result
+}
+
+# Get a flag from simple args
+dae has_flag(args, flag) {
+    fer argument in args {
+        gin argument == flag or argument == f"--{flag}" or argument == f"-{flag}" {
+            gie aye
+        }
+    }
+    gie nae
+}
+
+# Get a value from simple args
+dae get_value(args, key, default = naething) {
+    ken i = 0
+    whiles i < len(args) {
+        ken arg = args[i]
+        gin arg == key or arg == f"--{key}" or arg == f"-{key}" {
+            gin i + 1 < len(args) {
+                gie args[i + 1]
+            }
+        }
+        gin starts_wi(arg, f"{key}=") or starts_wi(arg, f"--{key}=") {
+            ken eq_pos = index_of(arg, "=")
+            gie scran(arg, eq_pos + 1, len(arg))
+        }
+        i = i + 1
+    }
+    gie default
+}
+
+blether "Argparse module loaded! Ready tae parse yer arguments!"

@@ -1,0 +1,566 @@
+# tui.braw - Terminal User Interface Widgets fer mdhavers
+# "Makin' yer terminal bonnie!"
+#
+# This module provides terminal UI components like menus,
+# forms, dialogs, and interactive widgets.
+
+fetch "colors"
+
+# ============================================================
+# Basic UI Elements
+# ============================================================
+
+# Display a horizontal rule
+dae hr(width = 50, char = "─") {
+    ken line = ""
+    fer i in 0..width {
+        line = line + char
+    }
+    blether line
+}
+
+# Display a double horizontal rule
+dae hr_double(width = 50) {
+    hr(width, "═")
+}
+
+# Display a blank line
+dae blank() {
+    blether ""
+}
+
+# Display centered text
+dae centered(text, width = 50) {
+    ken padding = (width - len(text)) / 2
+    gin padding < 0 { padding = 0 }
+    ken spaces = ""
+    fer i in 0..padding {
+        spaces = spaces + " "
+    }
+    blether f"{spaces}{text}"
+}
+
+# ============================================================
+# Headers and Titles
+# ============================================================
+
+# Display a simple header
+dae header(title, width = 50) {
+    hr(width)
+    centered(title, width)
+    hr(width)
+}
+
+# Display a fancy header
+dae fancy_header(title, width = 50) {
+    ken inner_width = width - 2
+    ken title_len = len(title)
+    ken left_pad = (inner_width - title_len) / 2
+    ken right_pad = inner_width - title_len - left_pad
+
+    # Top border
+    ken top = "╔"
+    fer i in 0..inner_width {
+        top = top + "═"
+    }
+    top = top + "╗"
+    blether top
+
+    # Title line
+    ken title_line = "║"
+    fer i in 0..left_pad {
+        title_line = title_line + " "
+    }
+    title_line = title_line + title
+    fer i in 0..right_pad {
+        title_line = title_line + " "
+    }
+    title_line = title_line + "║"
+    blether title_line
+
+    # Bottom border
+    ken bottom = "╚"
+    fer i in 0..inner_width {
+        bottom = bottom + "═"
+    }
+    bottom = bottom + "╝"
+    blether bottom
+}
+
+# Display a colored header
+dae colored_header(title, color_func, width = 50) {
+    blether color_func(f"╔{'═' * (width-2)}╗")
+    centered(color_func(title), width)
+    blether color_func(f"╚{'═' * (width-2)}╝")
+}
+
+# Repeat a character n times
+dae repeat_char(char, n) {
+    ken result = ""
+    fer i in 0..n {
+        result = result + char
+    }
+    gie result
+}
+
+# ============================================================
+# Boxes and Panels
+# ============================================================
+
+# Create a box around text
+dae box(content, width = 40, style = "single") {
+    ken chars = gin style == "double" than {
+        "tl": "╔", "tr": "╗", "bl": "╚", "br": "╝", "h": "═", "v": "║"
+    } ither {
+        "tl": "┌", "tr": "┐", "bl": "└", "br": "┘", "h": "─", "v": "│"
+    }
+
+    ken inner_width = width - 2
+
+    # Top
+    blether chars["tl"] + repeat_char(chars["h"], inner_width) + chars["tr"]
+
+    # Content lines
+    ken lines = split(content, "\n")
+    fer line in lines {
+        ken padding = inner_width - len(line)
+        gin padding < 0 { padding = 0 }
+        blether chars["v"] + line + repeat_char(" ", padding) + chars["v"]
+    }
+
+    # Bottom
+    blether chars["bl"] + repeat_char(chars["h"], inner_width) + chars["br"]
+}
+
+# Create a panel with title
+dae panel(title, content, width = 40) {
+    ken inner_width = width - 2
+    ken title_display = f" {title} "
+    ken title_len = len(title_display)
+    ken left_border = 2
+    ken right_border = inner_width - left_border - title_len
+
+    # Top with title
+    ken top = "┌" + repeat_char("─", left_border) + title_display
+    top = top + repeat_char("─", right_border) + "┐"
+    blether top
+
+    # Content
+    ken lines = split(content, "\n")
+    fer line in lines {
+        ken padding = inner_width - len(line)
+        gin padding < 0 { padding = 0 }
+        blether "│" + line + repeat_char(" ", padding) + "│"
+    }
+
+    # Bottom
+    blether "└" + repeat_char("─", inner_width) + "┘"
+}
+
+# ============================================================
+# Progress Indicators
+# ============================================================
+
+# Display a progress bar
+dae progress(value, max_val, width = 30, label = "") {
+    ken ratio = value / max_val
+    gin ratio > 1.0 { ratio = 1.0 }
+    gin ratio < 0.0 { ratio = 0.0 }
+
+    ken filled = floor(ratio * width)
+    ken empty = width - filled
+
+    ken bar = "[" + green(repeat_char("█", filled)) + repeat_char("░", empty) + "]"
+    ken percent = floor(ratio * 100)
+
+    gin len(label) > 0 {
+        blether f"{label}: {bar} {percent}%"
+    } ither {
+        blether f"{bar} {percent}%"
+    }
+}
+
+# Display a spinner frame
+dae spinner(frame, message = "Loading") {
+    ken frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    ken idx = frame % len(frames)
+    blether f"{cyan(frames[idx])} {message}..."
+}
+
+# ============================================================
+# Lists and Menus
+# ============================================================
+
+# Display a bulleted list
+dae bullet_list(items, bullet = "•") {
+    fer item in items {
+        blether f"  {bullet} {item}"
+    }
+}
+
+# Display a numbered list
+dae numbered_list(items, start = 1) {
+    ken num = start
+    fer item in items {
+        blether f"  {num}. {item}"
+    }
+    num = num + 1
+}
+
+# Display a menu and return selected option
+dae menu(title, options) {
+    fancy_header(title, 40)
+    blank()
+
+    fer i in 0..len(options) {
+        blether f"  [{i + 1}] {options[i]}"
+    }
+
+    blank()
+    blether "Enter yer choice (1-" + tae_string(len(options)) + "):"
+}
+
+# Display a simple selection menu
+dae selection_menu(options, selected_idx = 0) {
+    fer i in 0..len(options) {
+        ken prefix = gin i == selected_idx than cyan(" ▶ ") ither "   "
+        ken item = gin i == selected_idx than cyan(options[i]) ither options[i]
+        blether f"{prefix}{item}"
+    }
+}
+
+# ============================================================
+# Tables
+# ============================================================
+
+# Display a simple table
+dae table(headers, rows, col_width = 12) {
+    ken num_cols = len(headers)
+
+    # Header separator
+    ken sep = "┌"
+    fer i in 0..num_cols {
+        sep = sep + repeat_char("─", col_width)
+        gin i < num_cols - 1 {
+            sep = sep + "┬"
+        }
+    }
+    sep = sep + "┐"
+    blether sep
+
+    # Header row
+    ken header_line = "│"
+    fer h in headers {
+        ken padded = pad_text(h, col_width)
+        header_line = header_line + bold(padded) + "│"
+    }
+    blether header_line
+
+    # Header-body separator
+    ken mid_sep = "├"
+    fer i in 0..num_cols {
+        mid_sep = mid_sep + repeat_char("─", col_width)
+        gin i < num_cols - 1 {
+            mid_sep = mid_sep + "┼"
+        }
+    }
+    mid_sep = mid_sep + "┤"
+    blether mid_sep
+
+    # Data rows
+    fer row in rows {
+        ken row_line = "│"
+        fer cell in row {
+            ken padded = pad_text(tae_string(cell), col_width)
+            row_line = row_line + padded + "│"
+        }
+        blether row_line
+    }
+
+    # Bottom separator
+    ken bot_sep = "└"
+    fer i in 0..num_cols {
+        bot_sep = bot_sep + repeat_char("─", col_width)
+        gin i < num_cols - 1 {
+            bot_sep = bot_sep + "┴"
+        }
+    }
+    bot_sep = bot_sep + "┘"
+    blether bot_sep
+}
+
+# Pad text to width
+dae pad_text(text, width) {
+    ken result = text
+    whiles len(result) < width {
+        result = result + " "
+    }
+    gin len(result) > width {
+        result = scran(result, 0, width - 1) + "…"
+    }
+    gie result
+}
+
+# Bold text (using ANSI)
+dae bold(text) {
+    gie f"\x1b[1m{text}\x1b[0m"
+}
+
+# ============================================================
+# Dialogs and Alerts
+# ============================================================
+
+# Display an info box
+dae info_box(message, width = 40) {
+    ken icon = cyan("ℹ")
+    ken inner_width = width - 4
+
+    blether "┌" + repeat_char("─", width - 2) + "┐"
+    blether f"│ {icon} " + pad_text(message, inner_width) + "│"
+    blether "└" + repeat_char("─", width - 2) + "┘"
+}
+
+# Display a success box
+dae success_box(message, width = 40) {
+    ken icon = green("✓")
+    ken inner_width = width - 4
+
+    blether green("┌" + repeat_char("─", width - 2) + "┐")
+    blether green(f"│ {icon} ") + message + repeat_char(" ", inner_width - len(message)) + green("│")
+    blether green("└" + repeat_char("─", width - 2) + "┘")
+}
+
+# Display a warning box
+dae warning_box(message, width = 40) {
+    ken icon = yellow("⚠")
+    ken inner_width = width - 4
+
+    blether yellow("┌" + repeat_char("─", width - 2) + "┐")
+    blether yellow(f"│ {icon} ") + message + repeat_char(" ", inner_width - len(message)) + yellow("│")
+    blether yellow("└" + repeat_char("─", width - 2) + "┘")
+}
+
+# Display an error box
+dae error_box(message, width = 40) {
+    ken icon = red("✗")
+    ken inner_width = width - 4
+
+    blether red("┌" + repeat_char("─", width - 2) + "┐")
+    blether red(f"│ {icon} ") + message + repeat_char(" ", inner_width - len(message)) + red("│")
+    blether red("└" + repeat_char("─", width - 2) + "┘")
+}
+
+# Display a confirmation dialog
+dae confirm_dialog(question) {
+    blether "┌────────────────────────────────────────┐"
+    blether f"│ ? {question}"
+    blether "│"
+    blether "│   [Y] Aye    [N] Nae"
+    blether "└────────────────────────────────────────┘"
+}
+
+# ============================================================
+# Scottish-Themed Elements
+# ============================================================
+
+# Display a Scottish banner
+dae scots_banner(text) {
+    ken width = len(text) + 8
+
+    blether "🏴󠁧󠁢󠁳󠁣󠁴󠁿 " + repeat_char("═", width) + " 🏴󠁧󠁢󠁳󠁣󠁴󠁿"
+    blether "   ║  " + text + "  ║"
+    blether "🌿 " + repeat_char("═", width) + " 🌿"
+}
+
+# Display a thistle divider
+dae thistle_divider(width = 40) {
+    ken half = (width - 3) / 2
+    blether repeat_char("~", half) + " 🌿 " + repeat_char("~", half)
+}
+
+# Display a whisky toast
+dae whisky_toast(message) {
+    blether "🥃 ═══════════════════════════════════ 🥃"
+    centered(message, 41)
+    blether "   Slàinte mhath!"
+    blether "🥃 ═══════════════════════════════════ 🥃"
+}
+
+# ============================================================
+# Cards
+# ============================================================
+
+# Display a card with title and content
+dae card(title, content, width = 40) {
+    ken inner_width = width - 4
+
+    # Top border with title
+    blether "╭" + repeat_char("─", width - 2) + "╮"
+    blether "│ " + bold(pad_text(title, inner_width)) + " │"
+    blether "├" + repeat_char("─", width - 2) + "┤"
+
+    # Content
+    ken lines = split(content, "\n")
+    fer line in lines {
+        blether "│ " + pad_text(line, inner_width) + " │"
+    }
+
+    # Bottom border
+    blether "╰" + repeat_char("─", width - 2) + "╯"
+}
+
+# Display a stat card
+dae stat_card(label, value, icon = "📊") {
+    blether "┌─────────────────────┐"
+    blether f"│ {icon} {label}"
+    blether f"│    {bold(tae_string(value))}"
+    blether "└─────────────────────┘"
+}
+
+# ============================================================
+# Layouts
+# ============================================================
+
+# Display items in columns
+dae columns(items, num_cols = 2, col_width = 20) {
+    ken rows = []
+    ken current_row = []
+
+    fer item in items {
+        shove(current_row, item)
+        gin len(current_row) >= num_cols {
+            shove(rows, current_row)
+            current_row = []
+        }
+    }
+
+    gin len(current_row) > 0 {
+        shove(rows, current_row)
+    }
+
+    fer row in rows {
+        ken line = ""
+        fer item in row {
+            line = line + pad_text(tae_string(item), col_width)
+        }
+        blether line
+    }
+}
+
+# ============================================================
+# Forms (Display only - no input)
+# ============================================================
+
+# Display a form field
+dae form_field(label, value = "", width = 30) {
+    ken field_display = gin len(value) > 0 than value ither repeat_char("_", width - len(label) - 3)
+    blether f"  {label}: [{field_display}]"
+}
+
+# Display a form
+dae form(title, fields) {
+    fancy_header(title, 50)
+    blank()
+
+    fer field in fields {
+        ken label = field[0]
+        ken value = gin len(field) > 1 than field[1] ither ""
+        form_field(label, value, 50)
+    }
+
+    blank()
+    blether "  [Submit]  [Cancel]"
+}
+
+# ============================================================
+# Dashboard Elements
+# ============================================================
+
+# Display a gauge (percentage as visual bar)
+dae gauge(label, value, max_val = 100, width = 20) {
+    ken ratio = value / max_val
+    gin ratio > 1.0 { ratio = 1.0 }
+
+    ken filled = floor(ratio * width)
+    ken empty = width - filled
+
+    ken bar_color = gin ratio < 0.3 than red ither gin ratio < 0.7 than yellow ither green
+
+    blether f"{label}:"
+    blether f"  [{bar_color(repeat_char('█', filled))}{repeat_char('░', empty)}] {value}/{max_val}"
+}
+
+# Display a mini chart (sparkline-style)
+dae sparkline(data, width = 20) {
+    ken chars = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
+
+    gin len(data) == 0 { gie "" }
+
+    ken max_val = data[0]
+    ken min_val = data[0]
+    fer val in data {
+        gin val > max_val { max_val = val }
+        gin val < min_val { min_val = val }
+    }
+
+    ken range_val = max_val - min_val
+    gin range_val == 0 { range_val = 1 }
+
+    ken line = ""
+    fer val in data {
+        ken normalized = (val - min_val) / range_val
+        ken idx = floor(normalized * 7)
+        gin idx > 7 { idx = 7 }
+        gin idx < 0 { idx = 0 }
+        line = line + chars[idx]
+    }
+
+    gie line
+}
+
+# Display a status indicator
+dae status_indicator(label, status) {
+    ken icon = ""
+    ken color_func = |x| x
+
+    gin status == "ok" or status == "online" or status == "active" {
+        icon = "●"
+        color_func = green
+    } ither gin status == "warning" or status == "pending" {
+        icon = "●"
+        color_func = yellow
+    } ither gin status == "error" or status == "offline" or status == "inactive" {
+        icon = "●"
+        color_func = red
+    } ither {
+        icon = "○"
+    }
+
+    blether f"  {color_func(icon)} {label}"
+}
+
+# ============================================================
+# Utility
+# ============================================================
+
+# Clear screen (ANSI escape)
+dae clear_screen() {
+    blether "\x1b[2J\x1b[H"
+}
+
+# Move cursor to position
+dae move_cursor(row, col) {
+    blether f"\x1b[{row};{col}H"
+}
+
+# Hide cursor
+dae hide_cursor() {
+    blether "\x1b[?25l"
+}
+
+# Show cursor
+dae show_cursor() {
+    blether "\x1b[?25h"
+}
+
+blether "TUI module loaded! Makin' yer terminal bonnie!"

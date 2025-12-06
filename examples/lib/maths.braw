@@ -1,0 +1,91 @@
+# maths.braw - A wee maths library fer mdhavers
+# Demonstrating modules and exports
+
+# Constants
+ken TAU = 2 * PI
+
+# Square a number
+dae square(x) {
+    gie x * x
+}
+
+# Cube a number
+dae cube(x) {
+    gie x * x * x
+}
+
+# Calculate factorial
+dae factorial(n) {
+    gin n <= 1 {
+        gie 1
+    }
+    gie n * factorial(n - 1)
+}
+
+# Calculate fibonacci
+dae fibonacci(n) {
+    gin n <= 0 {
+        gie 0
+    }
+    gin n == 1 {
+        gie 1
+    }
+    gie fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+# Check if a number is prime
+dae is_prime(n) {
+    gin n < 2 {
+        gie nae
+    }
+    gin n == 2 {
+        gie aye
+    }
+    gin n % 2 == 0 {
+        gie nae
+    }
+    ken i = 3
+    whiles i * i <= n {
+        gin n % i == 0 {
+            gie nae
+        }
+        i = i + 2
+    }
+    gie aye
+}
+
+# Calculate the greatest common divisor
+dae gcd(a, b) {
+    whiles b != 0 {
+        ken temp = b
+        b = a % b
+        a = temp
+    }
+    gie a
+}
+
+# Calculate the least common multiple
+dae lcm(a, b) {
+    gie abs(a * b) / gcd(a, b)
+}
+
+# Calculate degrees tae radians
+dae tae_radians(degrees) {
+    gie degrees * PI / 180
+}
+
+# Calculate radians tae degrees
+dae tae_degrees(radians) {
+    gie radians * 180 / PI
+}
+
+# Clamp a value between min and max
+dae clamp(val, min_val, max_val) {
+    gin val < min_val {
+        gie min_val
+    }
+    gin val > max_val {
+        gie max_val
+    }
+    gie val
+}

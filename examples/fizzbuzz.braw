@@ -1,0 +1,18 @@
+# fizzbuzz.braw - The classic FizzBuzz in Scots!
+# But wi' a Scottish twist - Fizz becomes "Wheesht" an' Buzz becomes "Blether"
+
+blether "Scottish FizzBuzz (WheeshtBlether)!"
+blether "================================"
+blether ""
+
+fer i in 1..31 {
+    gin i % 3 == 0 an i % 5 == 0 {
+        blether "WheeshtBlether"
+    } ither gin i % 3 == 0 {
+        blether "Wheesht"
+    } ither gin i % 5 == 0 {
+        blether "Blether"
+    } ither {
+        blether i
+    }
+}

@@ -1,0 +1,71 @@
+# scots_stdlib.braw - Demonstrating mdhavers' Scots-flavored standard library
+# These functions have proper Scottish names!
+
+blether "=== mdhavers Scots Standard Library Demo ==="
+blether ""
+
+# List functions
+ken nums = [1, 2, 3, 4, 5]
+blether "Working wi' lists:"
+blether "  nums = " + tae_string(nums)
+blether "  heid(nums) = " + tae_string(heid(nums)) + " (first element)"
+blether "  bum(nums) = " + tae_string(bum(nums)) + " (last element)"
+blether "  tail(nums) = " + tae_string(tail(nums)) + " (all but first)"
+blether "  sumaw(nums) = " + tae_string(sumaw(nums)) + " (sum all)"
+
+blether ""
+
+# Slicing with scran
+blether "Grabbing some scran (slicing):"
+ken letters = ["a", "b", "c", "d", "e", "f"]
+blether "  letters = " + tae_string(letters)
+blether "  scran(letters, 1, 4) = " + tae_string(scran(letters, 1, 4))
+blether "  scran(letters, 0, 2) = " + tae_string(scran(letters, 0, 2))
+
+blether ""
+
+# Counting with coont
+blether "Coontin' things:"
+ken repeated = [1, 2, 2, 3, 2, 4, 2, 5]
+blether "  repeated = " + tae_string(repeated)
+blether "  coont(repeated, 2) = " + tae_string(coont(repeated, 2)) + " (count of 2s)"
+
+ken text = "abracadabra"
+blether "  text = \"" + text + "\""
+blether "  coont(text, \"a\") = " + tae_string(coont(text, "a")) + " (count of 'a's)"
+
+blether ""
+
+# Combining with slap
+blether "Slappin' things together:"
+ken list1 = [1, 2, 3]
+ken list2 = [4, 5, 6]
+blether "  list1 = " + tae_string(list1)
+blether "  list2 = " + tae_string(list2)
+blether "  slap(list1, list2) = " + tae_string(slap(list1, list2))
+
+ken str1 = "Hullo "
+ken str2 = "Scotland!"
+blether "  slap(\"Hullo \", \"Scotland!\") = \"" + slap(str1, str2) + "\""
+
+blether ""
+
+# String functions
+blether "String manipulation:"
+ken message = "   hullo there   "
+blether "  message = \"" + message + "\""
+blether "  wheesht(message) = \"" + wheesht(message) + "\" (trim whitespace)"
+blether "  upper(\"scotland\") = \"" + upper("scotland") + "\""
+blether "  lower(\"EDINBURGH\") = \"" + lower("EDINBURGH") + "\""
+
+blether ""
+
+# Shuffling
+blether "Shufflin' like a ceilidh:"
+ken cards = ["Ace", "King", "Queen", "Jack", "10"]
+blether "  cards = " + tae_string(cards)
+blether "  shuffle(cards) = " + tae_string(shuffle(cards))
+blether "  shuffle(cards) = " + tae_string(shuffle(cards)) + " (different each time!)"
+
+blether ""
+blether "Bonnie! That's aw the Scots functions!"

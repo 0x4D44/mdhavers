@@ -1,0 +1,180 @@
+# testing.braw - Testing utilities fer mdhavers
+# Makes testing yer code a doddle!
+
+# Test state
+ken __test_count = 0
+ken __test_passed = 0
+ken __test_failed = 0
+ken __current_suite = ""
+
+# === Test Suite Functions ===
+
+# Start a test suite
+dae describe(name) {
+    __current_suite = name
+    blether f"\n=== {name} ==="
+}
+
+# Run a single test
+dae test(name, test_fn) {
+    __test_count = __test_count + 1
+    hae_a_bash {
+        test_fn()
+        __test_passed = __test_passed + 1
+        blether f"  [PASS] {name}"
+    } gin_it_gangs_wrang err {
+        __test_failed = __test_failed + 1
+        blether f"  [FAIL] {name}"
+        blether f"         {err}"
+    }
+}
+
+# Print test summary
+dae test_summary() {
+    blether ""
+    blether "═══════════════════════════════════════════════════"
+    blether f"  Tests: {__test_count} total"
+    blether f"  Passed: {__test_passed}"
+    blether f"  Failed: {__test_failed}"
+    gin __test_failed == 0 {
+        blether "  Status: All tests passed! Braw!"
+    } ither {
+        blether f"  Status: {__test_failed} tests failed! Och naw!"
+    }
+    blether "═══════════════════════════════════════════════════"
+    gie __test_failed == 0
+}
+
+# Reset test state (for multiple test files)
+dae test_reset() {
+    __test_count = 0
+    __test_passed = 0
+    __test_failed = 0
+    __current_suite = ""
+}
+
+# === Assertion Helpers ===
+
+# Assert two values are equal
+dae assert_eq(actual, expected, msg) {
+    gin actual != expected {
+        blether f"Expected: {expected}"
+        blether f"Actual: {actual}"
+        mak_siccar nae, msg
+    }
+}
+
+# Assert two values are not equal
+dae assert_ne(actual, expected, msg) {
+    mak_siccar actual != expected, msg
+}
+
+# Assert value is true
+dae assert_true(val, msg) {
+    mak_siccar val == aye, msg
+}
+
+# Assert value is false
+dae assert_false(val, msg) {
+    mak_siccar val == nae, msg
+}
+
+# Assert value is naething
+dae assert_nil(val, msg) {
+    mak_siccar val == naething, msg
+}
+
+# Assert value is not naething
+dae assert_not_nil(val, msg) {
+    mak_siccar val != naething, msg
+}
+
+# Assert list contains item
+dae assert_contains(list, item, msg) {
+    mak_siccar contains(list, item), msg
+}
+
+# Assert list does not contain item
+dae assert_not_contains(list, item, msg) {
+    mak_siccar nae contains(list, item), msg
+}
+
+# Assert list is empty
+dae assert_empty(list, msg) {
+    mak_siccar len(list) == 0, msg
+}
+
+# Assert list is not empty
+dae assert_not_empty(list, msg) {
+    mak_siccar len(list) > 0, msg
+}
+
+# Assert value is in range [min, max]
+dae assert_in_range(val, min_val, max_val, msg) {
+    mak_siccar val >= min_val an val <= max_val, msg
+}
+
+# Assert value is greater than
+dae assert_gt(actual, expected, msg) {
+    mak_siccar actual > expected, msg
+}
+
+# Assert value is greater than or equal
+dae assert_gte(actual, expected, msg) {
+    mak_siccar actual >= expected, msg
+}
+
+# Assert value is less than
+dae assert_lt(actual, expected, msg) {
+    mak_siccar actual < expected, msg
+}
+
+# Assert value is less than or equal
+dae assert_lte(actual, expected, msg) {
+    mak_siccar actual <= expected, msg
+}
+
+# Assert string starts with prefix
+dae assert_starts_with(s, prefix, msg) {
+    ken actual = scran(s, 0, len(prefix))
+    mak_siccar actual == prefix, msg
+}
+
+# Assert string ends with suffix
+dae assert_ends_with(s, suffix, msg) {
+    ken actual = scran(s, len(s) - len(suffix), len(s))
+    mak_siccar actual == suffix, msg
+}
+
+# Assert two floats are approximately equal
+dae assert_approx(actual, expected, epsilon, msg) {
+    ken diff = abs(actual - expected)
+    mak_siccar diff < epsilon, msg
+}
+
+# Assert lists are equal (same elements in same order)
+dae assert_list_eq(actual, expected, msg) {
+    gin len(actual) != len(expected) {
+        blether f"Length mismatch: {len(actual)} vs {len(expected)}"
+        mak_siccar nae, msg
+    }
+    ken i = 0
+    whiles i < len(actual) {
+        gin actual[i] != expected[i] {
+            blether f"Mismatch at index {i}: {actual[i]} vs {expected[i]}"
+            mak_siccar nae, msg
+        }
+        i = i + 1
+    }
+}
+
+# Assert code throws an error (test should fail if no error)
+dae assert_throws(fn, msg) {
+    ken did_throw = nae
+    hae_a_bash {
+        fn()
+    } gin_it_gangs_wrang err {
+        did_throw = aye
+    }
+    mak_siccar did_throw, msg
+}

@@ -1,0 +1,954 @@
+# ascii_art.braw - ASCII Art an' Text Graphics fer mdhavers
+# "Drawin' pictures wi' letters - proper Scottish art!"
+#
+# This module provides ASCII art creation, text banners,
+# Scottish symbols, and visual effects.
+
+# ============================================================
+# Box Drawing Characters
+# ============================================================
+
+ken BOX_SINGLE = {
+    "tl": "┌", "tr": "┐", "bl": "└", "br": "┘",
+    "h": "─", "v": "│",
+    "lt": "├", "rt": "┤", "tt": "┬", "bt": "┴",
+    "cross": "┼"
+}
+
+ken BOX_DOUBLE = {
+    "tl": "╔", "tr": "╗", "bl": "╚", "br": "╝",
+    "h": "═", "v": "║",
+    "lt": "╠", "rt": "╣", "tt": "╦", "bt": "╩",
+    "cross": "╬"
+}
+
+ken BOX_ROUNDED = {
+    "tl": "╭", "tr": "╮", "bl": "╰", "br": "╯",
+    "h": "─", "v": "│",
+    "lt": "├", "rt": "┤", "tt": "┬", "bt": "┴",
+    "cross": "┼"
+}
+
+# ============================================================
+# Shade Characters
+# ============================================================
+
+ken SHADES = ["░", "▒", "▓", "█"]
+ken BLOCKS = {
+    "full": "█",
+    "upper": "▀",
+    "lower": "▄",
+    "left": "▌",
+    "right": "▐"
+}
+
+# ============================================================
+# Scottish Symbols (ASCII)
+# ============================================================
+
+dae thistle() {
+    ken art = []
+    shove(art, "     ,")
+    shove(art, "    /|\\")
+    shove(art, "   /*|*\\")
+    shove(art, "  / *** \\")
+    shove(art, "  \\*/|\\*/")
+    shove(art, "    |||")
+    shove(art, "    |||")
+    shove(art, "   _|||_")
+    gie art
+}
+
+dae saltire() {
+    ken art = []
+    shove(art, "\\           /")
+    shove(art, " \\         / ")
+    shove(art, "  \\       /  ")
+    shove(art, "   \\     /   ")
+    shove(art, "    \\   /    ")
+    shove(art, "     \\ /     ")
+    shove(art, "      X      ")
+    shove(art, "     / \\     ")
+    shove(art, "    /   \\    ")
+    shove(art, "   /     \\   ")
+    shove(art, "  /       \\  ")
+    shove(art, " /         \\ ")
+    shove(art, "/           \\")
+    gie art
+}
+
+dae highland_coo() {
+    ken art = []
+    shove(art, "        (__)")
+    shove(art, "   /)   (oo)")
+    shove(art, "  /|\\----\\/ ")
+    shove(art, " / | \\")
+    shove(art, "*  ||-\\\\")
+    shove(art, "   ^^  ^^")
+    gie art
+}
+
+dae bagpipes() {
+    ken art = []
+    shove(art, "    ___")
+    shove(art, "   /   \\")
+    shove(art, "  | o o |")
+    shove(art, "   \\___/")
+    shove(art, "    |||")
+    shove(art, " /==|||==\\")
+    shove(art, "|   |||   |")
+    shove(art, " \\==|||==/")
+    shove(art, "    |||")
+    gie art
+}
+
+dae castle() {
+    ken art = []
+    shove(art, "  |^|   |^|   |^|")
+    shove(art, "  |_|___|_|___|_|")
+    shove(art, "  |  |     |    |")
+    shove(art, "  |  |  _  |    |")
+    shove(art, "  |  | | | |    |")
+    shove(art, "  |__|_|_|_|____|")
+    shove(art, "  /            \\")
+    shove(art, " /              \\")
+    gie art
+}
+
+dae haggis_creature() {
+    ken art = []
+    shove(art, "   __    __")
+    shove(art, "  (  `~~`  )")
+    shove(art, "  ( o    o )")
+    shove(art, "   (  <>  )")
+    shove(art, "    ~~~~~~")
+    shove(art, "   /||||||\\")
+    shove(art, "  /_||||||_\\")
+    gie art
+}
+
+dae whisky_glass() {
+    ken art = []
+    shove(art, "    _____")
+    shove(art, "   /     \\")
+    shove(art, "  |~~~~~~~|")
+    shove(art, "  |#######|")
+    shove(art, "  |#######|")
+    shove(art, "   \\_____/")
+    shove(art, "     | |")
+    shove(art, "   __|_|__")
+    gie art
+}
+
+dae scottish_flag() {
+    ken art = []
+    shove(art, "╔══════════════════════════════╗")
+    shove(art, "║\\  \\  \\  \\  /  /  /  /  /  /  ║")
+    shove(art, "║ \\  \\  \\  \\/  /  /  /  /  /   ║")
+    shove(art, "║  \\  \\  \\  \\/  /  /  /  /    ║")
+    shove(art, "║   \\  \\  \\  X  /  /  /  /     ║")
+    shove(art, "║   /  /  /  X  \\  \\  \\  \\     ║")
+    shove(art, "║  /  /  /  /\\  \\  \\  \\  \\    ║")
+    shove(art, "║ /  /  /  /  \\  \\  \\  \\  \\   ║")
+    shove(art, "║/  /  /  /  /  \\  \\  \\  \\  \\  ║")
+    shove(art, "╚══════════════════════════════╝")
+    gie art
+}
+
+dae tartan_pattern(width = 20, height = 10) {
+    ken art = []
+    ken patterns = ["█░", "░█", "▒▓", "▓▒"]
+
+    fer y in 0..height {
+        ken line = ""
+        fer x in 0..width {
+            ken pattern_idx = ((x / 2) + (y / 2)) % len(patterns)
+            ken char_idx = x % 2
+            ken pattern = patterns[pattern_idx]
+            ken char_list = chars(pattern)
+            line = line + char_list[char_idx]
+        }
+        shove(art, line)
+    }
+    gie art
+}
+
+# ============================================================
+# Display Functions
+# ============================================================
+
+dae display_art(art) {
+    fer line in art {
+        blether line
+    }
+}
+
+dae display_art_centered(art, width = 60) {
+    fer line in art {
+        ken padding = (width - len(line)) / 2
+        gin padding < 0 { padding = 0 }
+        ken spaces = ""
+        fer i in 0..padding {
+            spaces = spaces + " "
+        }
+        blether f"{spaces}{line}"
+    }
+}
+
+# ============================================================
+# Box Drawing
+# ============================================================
+
+dae draw_box(width, height, style = "single") {
+    ken box_chars = BOX_SINGLE
+    gin style == "double" {
+        box_chars = BOX_DOUBLE
+    } ither gin style == "rounded" {
+        box_chars = BOX_ROUNDED
+    }
+
+    ken art = []
+
+    # Top line
+    ken top = box_chars["tl"]
+    fer i in 0..width-2 {
+        top = top + box_chars["h"]
+    }
+    top = top + box_chars["tr"]
+    shove(art, top)
+
+    # Middle lines
+    fer j in 0..height-2 {
+        ken mid = box_chars["v"]
+        fer i in 0..width-2 {
+            mid = mid + " "
+        }
+        mid = mid + box_chars["v"]
+        shove(art, mid)
+    }
+
+    # Bottom line
+    ken bottom = box_chars["bl"]
+    fer i in 0..width-2 {
+        bottom = bottom + box_chars["h"]
+    }
+    bottom = bottom + box_chars["br"]
+    shove(art, bottom)
+
+    gie art
+}
+
+dae draw_box_with_title(title, width = 40, style = "double") {
+    ken box_chars = BOX_SINGLE
+    gin style == "double" {
+        box_chars = BOX_DOUBLE
+    } ither gin style == "rounded" {
+        box_chars = BOX_ROUNDED
+    }
+
+    ken art = []
+    ken inner_width = width - 2
+
+    # Top line
+    ken top = box_chars["tl"]
+    fer i in 0..inner_width {
+        top = top + box_chars["h"]
+    }
+    top = top + box_chars["tr"]
+    shove(art, top)
+
+    # Title line
+    ken title_len = len(title)
+    ken left_pad = (inner_width - title_len) / 2
+    ken right_pad = inner_width - title_len - left_pad
+
+    ken title_line = box_chars["v"]
+    fer i in 0..left_pad {
+        title_line = title_line + " "
+    }
+    title_line = title_line + title
+    fer i in 0..right_pad {
+        title_line = title_line + " "
+    }
+    title_line = title_line + box_chars["v"]
+    shove(art, title_line)
+
+    # Bottom line
+    ken bottom = box_chars["bl"]
+    fer i in 0..inner_width {
+        bottom = bottom + box_chars["h"]
+    }
+    bottom = bottom + box_chars["br"]
+    shove(art, bottom)
+
+    gie art
+}
+
+# ============================================================
+# Progress Bars
+# ============================================================
+
+dae progress_bar(value, max_val = 100, width = 30, filled = "█", empty = "░") {
+    ken ratio = value / max_val
+    gin ratio > 1.0 { ratio = 1.0 }
+    gin ratio < 0.0 { ratio = 0.0 }
+
+    ken filled_count = floor(ratio * width)
+    ken empty_count = width - filled_count
+
+    ken bar = "["
+    fer i in 0..filled_count {
+        bar = bar + filled
+    }
+    fer i in 0..empty_count {
+        bar = bar + empty
+    }
+    bar = bar + "]"
+
+    gie bar
+}
+
+dae scots_progress_bar(value, max_val = 100, width = 30) {
+    ken bar = progress_bar(value, max_val, width)
+    ken percent = floor((value * 100) / max_val)
+
+    ken message = ""
+    gin percent < 25 {
+        message = "Jist gettin' startit..."
+    } ither gin percent < 50 {
+        message = "Hauway there!"
+    } ither gin percent < 75 {
+        message = "Mair than hauf done!"
+    } ither gin percent < 100 {
+        message = "Nearly there, dinnae stop noo!"
+    } ither {
+        message = "Finished! Braw work!"
+    }
+
+    gie f"{bar} {percent}% - {message}"
+}
+
+# ============================================================
+# Spinners
+# ============================================================
+
+ken SPINNER_FRAMES = ["|", "/", "-", "\\"]
+ken SPINNER_DOTS = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+ken SPINNER_SCOTS = ["🏴󠁧󠁢󠁳󠁣󠁴󠁿", "🌿", "🥃", "🎵"]
+
+dae spinner_frame(frame_num, spinner_type = "default") {
+    ken frames = SPINNER_FRAMES
+    gin spinner_type == "dots" {
+        frames = SPINNER_DOTS
+    } ither gin spinner_type == "scots" {
+        frames = SPINNER_SCOTS
+    }
+    ken idx = frame_num % len(frames)
+    gie frames[idx]
+}
+
+# ============================================================
+# Text Effects
+# ============================================================
+
+dae horizontal_line(width = 40, char = "─") {
+    ken line = ""
+    fer i in 0..width {
+        line = line + char
+    }
+    gie line
+}
+
+dae double_line(width = 40) {
+    gie horizontal_line(width, "═")
+}
+
+dae dotted_line(width = 40) {
+    ken line = ""
+    fer i in 0..width {
+        gin i % 2 == 0 {
+            line = line + "·"
+        } ither {
+            line = line + " "
+        }
+    }
+    gie line
+}
+
+dae wavy_line(width = 40) {
+    ken line = ""
+    fer i in 0..width {
+        gin i % 2 == 0 {
+            line = line + "~"
+        } ither {
+            line = line + "˜"
+        }
+    }
+    gie line
+}
+
+# ============================================================
+# Big Text (Simple Block Letters)
+# ============================================================
+
+ken BLOCK_LETTERS = {
+    "A": [
+        " ███ ",
+        "█   █",
+        "█████",
+        "█   █",
+        "█   █"
+    ],
+    "B": [
+        "████ ",
+        "█   █",
+        "████ ",
+        "█   █",
+        "████ "
+    ],
+    "C": [
+        " ████",
+        "█    ",
+        "█    ",
+        "█    ",
+        " ████"
+    ],
+    "D": [
+        "████ ",
+        "█   █",
+        "█   █",
+        "█   █",
+        "████ "
+    ],
+    "E": [
+        "█████",
+        "█    ",
+        "███  ",
+        "█    ",
+        "█████"
+    ],
+    "F": [
+        "█████",
+        "█    ",
+        "███  ",
+        "█    ",
+        "█    "
+    ],
+    "G": [
+        " ████",
+        "█    ",
+        "█  ██",
+        "█   █",
+        " ████"
+    ],
+    "H": [
+        "█   █",
+        "█   █",
+        "█████",
+        "█   █",
+        "█   █"
+    ],
+    "I": [
+        "█████",
+        "  █  ",
+        "  █  ",
+        "  █  ",
+        "█████"
+    ],
+    "J": [
+        "█████",
+        "    █",
+        "    █",
+        "█   █",
+        " ███ "
+    ],
+    "K": [
+        "█   █",
+        "█  █ ",
+        "███  ",
+        "█  █ ",
+        "█   █"
+    ],
+    "L": [
+        "█    ",
+        "█    ",
+        "█    ",
+        "█    ",
+        "█████"
+    ],
+    "M": [
+        "█   █",
+        "██ ██",
+        "█ █ █",
+        "█   █",
+        "█   █"
+    ],
+    "N": [
+        "█   █",
+        "██  █",
+        "█ █ █",
+        "█  ██",
+        "█   █"
+    ],
+    "O": [
+        " ███ ",
+        "█   █",
+        "█   █",
+        "█   █",
+        " ███ "
+    ],
+    "P": [
+        "████ ",
+        "█   █",
+        "████ ",
+        "█    ",
+        "█    "
+    ],
+    "Q": [
+        " ███ ",
+        "█   █",
+        "█   █",
+        "█  █ ",
+        " ██ █"
+    ],
+    "R": [
+        "████ ",
+        "█   █",
+        "████ ",
+        "█  █ ",
+        "█   █"
+    ],
+    "S": [
+        " ████",
+        "█    ",
+        " ███ ",
+        "    █",
+        "████ "
+    ],
+    "T": [
+        "█████",
+        "  █  ",
+        "  █  ",
+        "  █  ",
+        "  █  "
+    ],
+    "U": [
+        "█   █",
+        "█   █",
+        "█   █",
+        "█   █",
+        " ███ "
+    ],
+    "V": [
+        "█   █",
+        "█   █",
+        "█   █",
+        " █ █ ",
+        "  █  "
+    ],
+    "W": [
+        "█   █",
+        "█   █",
+        "█ █ █",
+        "██ ██",
+        "█   █"
+    ],
+    "X": [
+        "█   █",
+        " █ █ ",
+        "  █  ",
+        " █ █ ",
+        "█   █"
+    ],
+    "Y": [
+        "█   █",
+        " █ █ ",
+        "  █  ",
+        "  █  ",
+        "  █  "
+    ],
+    "Z": [
+        "█████",
+        "   █ ",
+        "  █  ",
+        " █   ",
+        "█████"
+    ],
+    " ": [
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "     "
+    ]
+}
+
+dae big_text(text) {
+    ken upper_text = upper(text)
+    ken lines = ["", "", "", "", ""]
+
+    ken char_list = chars(upper_text)
+    fer c in char_list {
+        gin has_key(BLOCK_LETTERS, c) {
+            ken letter = BLOCK_LETTERS[c]
+            fer i in 0..5 {
+                lines[i] = lines[i] + letter[i] + " "
+            }
+        } ither {
+            # Unknown character - use space
+            ken letter = BLOCK_LETTERS[" "]
+            fer i in 0..5 {
+                lines[i] = lines[i] + letter[i] + " "
+            }
+        }
+    }
+
+    gie lines
+}
+
+# Check if key exists in dict
+dae has_key(dict, key) {
+    fer k in keys(dict) {
+        gin k == key {
+            gie aye
+        }
+    }
+    gie nae
+}
+
+# ============================================================
+# Banner Creation
+# ============================================================
+
+dae banner(text, style = "double") {
+    ken box_chars = BOX_SINGLE
+    gin style == "double" {
+        box_chars = BOX_DOUBLE
+    } ither gin style == "rounded" {
+        box_chars = BOX_ROUNDED
+    }
+
+    ken text_len = len(text)
+    ken width = text_len + 4
+
+    ken art = []
+
+    # Top
+    ken top = box_chars["tl"]
+    fer i in 0..width-2 {
+        top = top + box_chars["h"]
+    }
+    top = top + box_chars["tr"]
+    shove(art, top)
+
+    # Text line
+    ken mid = box_chars["v"] + " " + text + " " + box_chars["v"]
+    shove(art, mid)
+
+    # Bottom
+    ken bottom = box_chars["bl"]
+    fer i in 0..width-2 {
+        bottom = bottom + box_chars["h"]
+    }
+    bottom = bottom + box_chars["br"]
+    shove(art, bottom)
+
+    gie art
+}
+
+dae scots_banner(text) {
+    ken art = []
+    ken text_len = len(text)
+    ken width = text_len + 6
+
+    ken thistle_top = "🌿"
+    ken thistle_bottom = "🏴󠁧󠁢󠁳󠁣󠁴󠁿"
+
+    # Decorative top
+    ken top = "╔"
+    fer i in 0..width-2 {
+        top = top + "═"
+    }
+    top = top + "╗"
+    shove(art, f"  {thistle_top}  {top}  {thistle_top}")
+
+    # Text line
+    ken mid = "║  " + text + "  ║"
+    shove(art, f"     {mid}")
+
+    # Bottom
+    ken bottom = "╚"
+    fer i in 0..width-2 {
+        bottom = bottom + "═"
+    }
+    bottom = bottom + "╝"
+    shove(art, f"  {thistle_bottom}  {bottom}  {thistle_bottom}")
+
+    gie art
+}
+
+# ============================================================
+# Gradient and Patterns
+# ============================================================
+
+dae vertical_gradient(width, height) {
+    ken art = []
+    ken shade_height = height / 4
+
+    fer y in 0..height {
+        ken shade_idx = floor(y / shade_height)
+        gin shade_idx > 3 { shade_idx = 3 }
+
+        ken line = ""
+        fer x in 0..width {
+            line = line + SHADES[shade_idx]
+        }
+        shove(art, line)
+    }
+    gie art
+}
+
+dae checkerboard(width, height, char1 = "█", char2 = "░") {
+    ken art = []
+
+    fer y in 0..height {
+        ken line = ""
+        fer x in 0..width {
+            gin (x + y) % 2 == 0 {
+                line = line + char1
+            } ither {
+                line = line + char2
+            }
+        }
+        shove(art, line)
+    }
+    gie art
+}
+
+dae diagonal_pattern(width, height) {
+    ken art = []
+    ken pattern_chars = ["/", "\\"]
+
+    fer y in 0..height {
+        ken line = ""
+        fer x in 0..width {
+            ken idx = (x + y) % 2
+            line = line + pattern_chars[idx]
+        }
+        shove(art, line)
+    }
+    gie art
+}
+
+# ============================================================
+# Frame / Border Art
+# ============================================================
+
+dae frame_art(inner_art, style = "double") {
+    ken box_chars = BOX_SINGLE
+    gin style == "double" {
+        box_chars = BOX_DOUBLE
+    } ither gin style == "rounded" {
+        box_chars = BOX_ROUNDED
+    }
+
+    # Find max width
+    ken max_width = 0
+    fer line in inner_art {
+        gin len(line) > max_width {
+            max_width = len(line)
+        }
+    }
+
+    ken art = []
+
+    # Top
+    ken top = box_chars["tl"]
+    fer i in 0..max_width+2 {
+        top = top + box_chars["h"]
+    }
+    top = top + box_chars["tr"]
+    shove(art, top)
+
+    # Content lines
+    fer line in inner_art {
+        ken padding = max_width - len(line)
+        ken spaces = ""
+        fer i in 0..padding {
+            spaces = spaces + " "
+        }
+        shove(art, box_chars["v"] + " " + line + spaces + " " + box_chars["v"])
+    }
+
+    # Bottom
+    ken bottom = box_chars["bl"]
+    fer i in 0..max_width+2 {
+        bottom = bottom + box_chars["h"]
+    }
+    bottom = bottom + box_chars["br"]
+    shove(art, bottom)
+
+    gie art
+}
+
+# ============================================================
+# Special Effects
+# ============================================================
+
+dae shadow_box(width, height) {
+    ken art = draw_box(width, height, "single")
+    ken shadowed = []
+
+    fer i in 0..len(art) {
+        ken line = art[i]
+        gin i == 0 {
+            shove(shadowed, line)
+        } ither {
+            shove(shadowed, line + "░")
+        }
+    }
+
+    # Bottom shadow
+    ken bottom_shadow = " "
+    fer i in 0..width {
+        bottom_shadow = bottom_shadow + "░"
+    }
+    shove(shadowed, bottom_shadow)
+
+    gie shadowed
+}
+
+dae speech_bubble(text) {
+    ken art = []
+    ken text_len = len(text)
+    ken width = text_len + 4
+
+    # Top
+    ken top = " "
+    fer i in 0..width-2 {
+        top = top + "_"
+    }
+    shove(art, top)
+
+    # Text line
+    shove(art, f"< {text} >")
+
+    # Bottom with tail
+    ken bottom = " "
+    fer i in 0..width-2 {
+        bottom = bottom + "‾"
+    }
+    shove(art, bottom)
+    shove(art, "  \\")
+    shove(art, "   \\")
+
+    gie art
+}
+
+dae thought_bubble(text) {
+    ken art = []
+    ken text_len = len(text)
+    ken width = text_len + 4
+
+    # Top
+    ken top = " "
+    fer i in 0..width-2 {
+        top = top + "˜"
+    }
+    shove(art, top)
+
+    # Text line
+    shove(art, f"( {text} )")
+
+    # Bottom with bubbles
+    ken bottom = " "
+    fer i in 0..width-2 {
+        bottom = bottom + "˜"
+    }
+    shove(art, bottom)
+    shove(art, "  o")
+    shove(art, " o")
+    shove(art, "o")
+
+    gie art
+}
+
+# ============================================================
+# Utility Functions
+# ============================================================
+
+dae repeat_char(char, count) {
+    ken result = ""
+    fer i in 0..count {
+        result = result + char
+    }
+    gie result
+}
+
+dae center_text(text, width) {
+    ken text_len = len(text)
+    ken padding = (width - text_len) / 2
+    gin padding < 0 { padding = 0 }
+    gie repeat_char(" ", padding) + text
+}
+
+dae right_align(text, width) {
+    ken text_len = len(text)
+    ken padding = width - text_len
+    gin padding < 0 { padding = 0 }
+    gie repeat_char(" ", padding) + text
+}
+
+dae combine_art_horizontal(art1, art2, spacing = 2) {
+    ken max_height = len(art1)
+    gin len(art2) > max_height { max_height = len(art2) }
+
+    ken max_width_1 = 0
+    fer line in art1 {
+        gin len(line) > max_width_1 { max_width_1 = len(line) }
+    }
+
+    ken combined = []
+    fer i in 0..max_height {
+        ken line1 = ""
+        ken line2 = ""
+
+        gin i < len(art1) { line1 = art1[i] }
+        gin i < len(art2) { line2 = art2[i] }
+
+        # Pad line1 to max width
+        ken line1_len = len(line1)
+        fer j in line1_len..max_width_1 {
+            line1 = line1 + " "
+        }
+
+        ken space = ""
+        fer j in 0..spacing {
+            space = space + " "
+        }
+
+        shove(combined, line1 + space + line2)
+    }
+
+    gie combined
+}
+
+dae combine_art_vertical(art1, art2, spacing = 1) {
+    ken combined = []
+
+    fer line in art1 {
+        shove(combined, line)
+    }
+
+    fer i in 0..spacing {
+        shove(combined, "")
+    }
+
+    fer line in art2 {
+        shove(combined, line)
+    }
+
+    gie combined
+}
+
+blether "ASCII Art module loaded! Drawin' pictures wi' letters!"

@@ -1,0 +1,438 @@
+# config.braw - Configuration file handling fer mdhavers
+# "Settin' up yer app the richt way!"
+#
+# This module provides INI-style config parsing and key-value configuration
+
+# ===============================================================
+# Config Class (Simple key-value store)
+# ===============================================================
+
+kin Config {
+    dae init() {
+        masel.data = {}
+        masel.defaults = {}
+    }
+
+    # Set a value
+    dae set(key, value) {
+        masel.data[key] = value
+        gie masel
+    }
+
+    # Get a value (returns default if not found)
+    dae get(key, default = naething) {
+        gin contains(masel.data, key) {
+            gie masel.data[key]
+        }
+        gin contains(masel.defaults, key) {
+            gie masel.defaults[key]
+        }
+        gie default
+    }
+
+    # Set a default value
+    dae set_default(key, value) {
+        masel.defaults[key] = value
+        gie masel
+    }
+
+    # Set multiple defaults
+    dae set_defaults(defaults) {
+        fer key in keys(defaults) {
+            masel.defaults[key] = defaults[key]
+        }
+        gie masel
+    }
+
+    # Check if key exists
+    dae has(key) {
+        gie contains(masel.data, key) or contains(masel.defaults, key)
+    }
+
+    # Delete a key
+    dae delete(key) {
+        gin contains(masel.data, key) {
+            # We cannae actually delete, so set tae naething
+            masel.data[key] = naething
+        }
+        gie masel
+    }
+
+    # Get all keys
+    dae all_keys() {
+        ken result = []
+        fer key in keys(masel.data) {
+            gin masel.data[key] != naething {
+                shove(result, key)
+            }
+        }
+        fer key in keys(masel.defaults) {
+            gin nae contains(masel.data, key) {
+                shove(result, key)
+            }
+        }
+        gie result
+    }
+
+    # Get as dictionary
+    dae tae_dict() {
+        ken result = {}
+        fer key in keys(masel.defaults) {
+            result[key] = masel.defaults[key]
+        }
+        fer key in keys(masel.data) {
+            gin masel.data[key] != naething {
+                result[key] = masel.data[key]
+            }
+        }
+        gie result
+    }
+
+    # Merge another config
+    dae merge(other_config) {
+        ken other_dict = other_config.tae_dict()
+        fer key in keys(other_dict) {
+            masel.data[key] = other_dict[key]
+        }
+        gie masel
+    }
+
+    # Get with type conversion
+    dae get_int(key, default = 0) {
+        ken val = masel.get(key)
+        gin val == naething {
+            gie default
+        }
+        gie tae_int(val)
+    }
+
+    dae get_float(key, default = 0.0) {
+        ken val = masel.get(key)
+        gin val == naething {
+            gie default
+        }
+        gie tae_float(val)
+    }
+
+    dae get_bool(key, default = nae) {
+        ken val = masel.get(key)
+        gin val == naething {
+            gie default
+        }
+        gin val == "true" or val == "aye" or val == "yes" or val == "1" or val == aye {
+            gie aye
+        }
+        gie nae
+    }
+
+    dae get_list(key, separator = ",") {
+        ken val = masel.get(key, "")
+        gin val == "" {
+            gie []
+        }
+        gie split(val, separator)
+    }
+}
+
+# ===============================================================
+# INI Parser
+# ===============================================================
+
+kin IniConfig {
+    dae init() {
+        masel.sections = {}
+        masel.current_section = "default"
+        masel.sections["default"] = {}
+    }
+
+    # Parse INI content from string
+    dae parse(content) {
+        ken lines_list = lines(content)
+
+        fer line in lines_list {
+            ken trimmed = wheesht(line)
+
+            # Skip empty lines and comments
+            gin len(trimmed) == 0 {
+                haud
+            }
+            gin starts_wi(trimmed, "#") or starts_wi(trimmed, ";") {
+                haud
+            }
+
+            # Check fer section header [section]
+            gin starts_wi(trimmed, "[") an ends_wi(trimmed, "]") {
+                ken section_name = scran(trimmed, 1, len(trimmed) - 1)
+                masel.current_section = wheesht(section_name)
+                gin nae contains(masel.sections, masel.current_section) {
+                    masel.sections[masel.current_section] = {}
+                }
+                haud
+            }
+
+            # Parse key=value
+            ken eq_pos = index_of(trimmed, "=")
+            gin eq_pos > 0 {
+                ken key = wheesht(scran(trimmed, 0, eq_pos))
+                ken value = wheesht(scran(trimmed, eq_pos + 1, len(trimmed)))
+
+                # Remove quotes if present
+                gin len(value) >= 2 {
+                    gin (starts_wi(value, "\"") an ends_wi(value, "\"")) or (starts_wi(value, "'") an ends_wi(value, "'")) {
+                        value = scran(value, 1, len(value) - 1)
+                    }
+                }
+
+                masel.sections[masel.current_section][key] = value
+            }
+        }
+
+        gie masel
+    }
+
+    # Get value from section
+    dae get(section, key, default = naething) {
+        gin contains(masel.sections, section) {
+            gin contains(masel.sections[section], key) {
+                gie masel.sections[section][key]
+            }
+        }
+        gie default
+    }
+
+    # Get from default section
+    dae get_default(key, default = naething) {
+        gie masel.get("default", key, default)
+    }
+
+    # Set value in section
+    dae set(section, key, value) {
+        gin nae contains(masel.sections, section) {
+            masel.sections[section] = {}
+        }
+        masel.sections[section][key] = value
+        gie masel
+    }
+
+    # Get all section names
+    dae section_names() {
+        gie keys(masel.sections)
+    }
+
+    # Get all keys in a section
+    dae section_keys(section) {
+        gin contains(masel.sections, section) {
+            gie keys(masel.sections[section])
+        }
+        gie []
+    }
+
+    # Get entire section as dict
+    dae section(section) {
+        gin contains(masel.sections, section) {
+            gie masel.sections[section]
+        }
+        gie {}
+    }
+
+    # Check if section exists
+    dae has_section(section) {
+        gie contains(masel.sections, section)
+    }
+
+    # Convert back tae INI string
+    dae tae_string() {
+        ken result = []
+
+        fer section_name in keys(masel.sections) {
+            ken section_data = masel.sections[section_name]
+
+            gin section_name != "default" {
+                shove(result, f"[{section_name}]")
+            }
+
+            fer key in keys(section_data) {
+                ken value = section_data[key]
+                shove(result, f"{key} = {value}")
+            }
+
+            shove(result, "")
+        }
+
+        gie join(result, "\n")
+    }
+}
+
+# ===============================================================
+# Environment-like Config
+# ===============================================================
+
+kin EnvConfig {
+    dae init() {
+        masel.vars = {}
+    }
+
+    # Set a variable
+    dae set(name, value) {
+        masel.vars[upper(name)] = tae_string(value)
+        gie masel
+    }
+
+    # Get a variable
+    dae get(name, default = "") {
+        ken upper_name = upper(name)
+        gin contains(masel.vars, upper_name) {
+            gie masel.vars[upper_name]
+        }
+        gie default
+    }
+
+    # Parse from string (NAME=value format, one per line)
+    dae parse(content) {
+        ken lines_list = lines(content)
+
+        fer line in lines_list {
+            ken trimmed = wheesht(line)
+
+            # Skip empty lines and comments
+            gin len(trimmed) == 0 or starts_wi(trimmed, "#") {
+                haud
+            }
+
+            ken eq_pos = index_of(trimmed, "=")
+            gin eq_pos > 0 {
+                ken name = wheesht(scran(trimmed, 0, eq_pos))
+                ken value = wheesht(scran(trimmed, eq_pos + 1, len(trimmed)))
+
+                # Remove quotes
+                gin len(value) >= 2 {
+                    gin (starts_wi(value, "\"") an ends_wi(value, "\"")) or (starts_wi(value, "'") an ends_wi(value, "'")) {
+                        value = scran(value, 1, len(value) - 1)
+                    }
+                }
+
+                masel.vars[upper(name)] = value
+            }
+        }
+
+        gie masel
+    }
+
+    # Get as dictionary
+    dae tae_dict() {
+        gie masel.vars
+    }
+
+    # Check if variable exists
+    dae has(name) {
+        gie contains(masel.vars, upper(name))
+    }
+
+    # Get with type conversion
+    dae get_int(name, default = 0) {
+        ken val = masel.get(name)
+        gin val == "" {
+            gie default
+        }
+        gie tae_int(val)
+    }
+
+    dae get_bool(name, default = nae) {
+        ken val = lower(masel.get(name))
+        gin val == "" {
+            gie default
+        }
+        gin val == "true" or val == "1" or val == "yes" or val == "aye" {
+            gie aye
+        }
+        gie nae
+    }
+}
+
+# ===============================================================
+# Feature Flags
+# ===============================================================
+
+kin FeatureFlags {
+    dae init() {
+        masel.flags = {}
+    }
+
+    # Enable a feature
+    dae enable(name) {
+        masel.flags[name] = aye
+        gie masel
+    }
+
+    # Disable a feature
+    dae disable(name) {
+        masel.flags[name] = nae
+        gie masel
+    }
+
+    # Toggle a feature
+    dae toggle(name) {
+        gin contains(masel.flags, name) {
+            masel.flags[name] = nae masel.flags[name]
+        } ither {
+            masel.flags[name] = aye
+        }
+        gie masel
+    }
+
+    # Check if feature is enabled
+    dae is_enabled(name) {
+        gin contains(masel.flags, name) {
+            gie masel.flags[name]
+        }
+        gie nae
+    }
+
+    # Get all enabled features
+    dae enabled_features() {
+        ken result = []
+        fer name in keys(masel.flags) {
+            gin masel.flags[name] {
+                shove(result, name)
+            }
+        }
+        gie result
+    }
+
+    # Set multiple flags from dict
+    dae set_flags(flags) {
+        fer name in keys(flags) {
+            masel.flags[name] = flags[name]
+        }
+        gie masel
+    }
+}
+
+# ===============================================================
+# Convenience Functions
+# ===============================================================
+
+# Parse INI string
+dae parse_ini(content) {
+    ken config = IniConfig()
+    config.parse(content)
+    gie config
+}
+
+# Parse env-style string
+dae parse_env(content) {
+    ken config = EnvConfig()
+    config.parse(content)
+    gie config
+}
+
+# Create a simple config from dict
+dae config_from_dict(data) {
+    ken config = Config()
+    fer key in keys(data) {
+        config.set(key, data[key])
+    }
+    gie config
+}
+
+blether "Config module loaded! Ready tae set things up!"

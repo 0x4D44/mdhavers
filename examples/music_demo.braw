@@ -1,0 +1,324 @@
+# music_demo.braw - Demonstrating the Music Module
+# "Scotland the Brave! Music tae stir the soul!"
+
+fetch "../stdlib/music"
+fetch "lib/colors"
+
+blether ""
+blether cyan("╔════════════════════════════════════════════════════════╗")
+blether cyan("║          MUSIC MODULE DEMO                             ║")
+blether cyan("║         \"Scotland the Brave!\"                          ║")
+blether cyan("╚════════════════════════════════════════════════════════╝")
+blether ""
+
+# ============================================================
+# Basic Note Creation
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  BASIC NOTE CREATION")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+blether "Creating notes:"
+ken n1 = note("C", QUARTER, 4)
+ken n2 = note("G", HALF, 4)
+ken n3 = note("E", EIGHTH, 5)
+ken r1 = rest(QUARTER)
+
+blether f"  Quarter C4: {note_tae_string(n1)}"
+blether f"  Half G4:    {note_tae_string(n2)}"
+blether f"  Eighth E5:  {note_tae_string(n3)}"
+blether f"  Rest:       {note_tae_string(r1)}"
+blether ""
+
+blether "Note durations available:"
+blether f"  WHOLE:          {WHOLE} beats"
+blether f"  HALF:           {HALF} beats"
+blether f"  QUARTER:        {QUARTER} beat"
+blether f"  EIGHTH:         {EIGHTH} beats"
+blether f"  SIXTEENTH:      {SIXTEENTH} beats"
+blether f"  DOTTED_QUARTER: {DOTTED_QUARTER} beats"
+blether ""
+
+# ============================================================
+# Scottish Scales
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  SCOTTISH SCALES")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+blether "Standard chromatic notes:"
+blether f"  {join(NOTES, \" \")}"
+blether ""
+
+blether "Scottish pentatonic scale (used in folk music):"
+blether f"  {join(SCOTS_SCALE, \" \")}"
+blether ""
+
+blether "Bagpipe scale (Highland scale):"
+blether f"  {join(BAGPIPE_SCALE, \" \")}"
+blether ""
+
+# ============================================================
+# Famous Scottish Tunes
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  FAMOUS SCOTTISH TUNES")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+# Auld Lang Syne
+ken auld = auld_lang_syne()
+blether f"Tune: {auld[\"title\"]}"
+blether f"  Tempo: {auld[\"tempo\"]} BPM"
+blether f"  Duration: {melody_duration(auld)} beats"
+blether f"  Notes: {len(auld[\"notes\"])}"
+blether ""
+
+# Scotland the Brave
+ken brave = scotland_the_brave()
+blether f"Tune: {brave[\"title\"]}"
+blether f"  Tempo: {brave[\"tempo\"]} BPM"
+blether f"  Duration: {melody_duration(brave)} beats"
+blether ""
+
+# Amazing Grace
+ken grace = amazing_grace()
+blether f"Tune: {grace[\"title\"]}"
+blether f"  Tempo: {grace[\"tempo\"]} BPM"
+blether f"  Duration: {melody_duration(grace)} beats"
+blether ""
+
+# Flower of Scotland
+ken flower = flower_of_scotland()
+blether f"Tune: {flower[\"title\"]}"
+blether f"  Tempo: {flower[\"tempo\"]} BPM"
+blether f"  Duration: {melody_duration(flower)} beats"
+blether ""
+
+# ============================================================
+# Rhythm Visualization
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  RHYTHM VISUALIZATION")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+visualize_rhythm(auld_lang_syne())
+blether ""
+
+# ============================================================
+# Scottish Dance Rhythms
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  SCOTTISH DANCE RHYTHMS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+blether "Strathspey (slow, dignified dance):"
+ken strath = strathspey_rhythm()
+draw_beat_pattern(strath)
+blether ""
+
+blether "Reel (fast, energetic dance):"
+ken reel = reel_rhythm()
+draw_beat_pattern(reel)
+blether ""
+
+blether "Jig (bouncy 6/8 time):"
+ken jig = jig_rhythm()
+draw_beat_pattern(jig)
+blether ""
+
+blether "March (stately procession):"
+ken march = march_rhythm()
+draw_beat_pattern(march)
+blether ""
+
+# ============================================================
+# Bagpipe Notation
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  BAGPIPE NOTATION")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+blether "Bagpipe grace notes (embellishments):"
+fer name in keys(GRACE_NOTES) {
+    blether f"  {name}: {GRACE_NOTES[name]}"
+}
+blether ""
+
+ken pipe_tune = bagpipe_tune("Highland March")
+pipe_tune["tune_type"] = "march"
+pipe_tune = pipe_note(pipe_tune, "G")
+pipe_tune = pipe_note(pipe_tune, "A", "grip")
+pipe_tune = pipe_note(pipe_tune, "B")
+pipe_tune = pipe_note(pipe_tune, "C")
+pipe_tune = pipe_note(pipe_tune, "D", "doubling")
+pipe_tune = pipe_note(pipe_tune, "E")
+pipe_tune = pipe_note(pipe_tune, "D", "throw")
+pipe_tune = pipe_note(pipe_tune, "B")
+
+display_bagpipe(pipe_tune)
+blether ""
+
+# ============================================================
+# Visual Metronome
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  VISUAL METRONOME")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+visual_metronome(8, 120)
+blether ""
+
+# ============================================================
+# Tempo Calculations
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  TEMPO CALCULATIONS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken tempos = [60, 80, 100, 120, 140]
+blether "Milliseconds per beat at different tempos:"
+fer t in tempos {
+    blether f"  {t} BPM: {ms_per_beat(t)} ms/beat"
+}
+blether ""
+
+# ============================================================
+# Note Frequencies
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  NOTE FREQUENCIES (Hz)")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+blether "Standard tuning (A4 = 440 Hz):"
+ken note_list = [
+    note("A", QUARTER, 4),
+    note("C", QUARTER, 4),
+    note("E", QUARTER, 4),
+    note("G", QUARTER, 4),
+    note("C", QUARTER, 5)
+]
+
+fer n in note_list {
+    ken freq = note_tae_frequency(n)
+    blether f"  {note_tae_string(n)}: {freq} Hz"
+}
+blether ""
+
+# ============================================================
+# Random Scottish Tune
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  RANDOM SCOTS TUNE GENERATOR")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken random_tune = random_scots_tune(12)
+blether f"Generated: {random_tune[\"title\"]}"
+blether "Notes:"
+fer n in random_tune["notes"] {
+    blether f"  {note_tae_string(n)}"
+}
+blether ""
+
+visualize_rhythm(random_tune)
+blether ""
+
+# ============================================================
+# Transposition
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  MELODY TRANSPOSITION")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken original = scotland_the_brave()
+ken transposed = transpose_melody(original, 5)
+
+blether f"Original: {original[\"title\"]}"
+blether "  First 3 notes:"
+fer i in 0..3 {
+    blether f"    {note_tae_string(original[\"notes\"][i])}"
+}
+blether ""
+
+blether f"Transposed up 5 semitones: {transposed[\"title\"]}"
+blether "  First 3 notes:"
+fer i in 0..3 {
+    blether f"    {note_tae_string(transposed[\"notes\"][i])}"
+}
+blether ""
+
+# ============================================================
+# Scottish Song with Lyrics
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  SCOTTISH SONG WITH LYRICS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken scots_song = wee_scots_song()
+display_song(scots_song)
+
+# ============================================================
+# Building Custom Melody
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  BUILDING A CUSTOM MELODY")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken my_tune = melody()
+my_tune = set_title(my_tune, "Ma Wee Tune")
+my_tune = set_tempo(my_tune, 110)
+
+# Add notes
+my_tune = add_note(my_tune, note("D", QUARTER))
+my_tune = add_note(my_tune, note("G", QUARTER))
+my_tune = add_note(my_tune, note("A", HALF))
+my_tune = add_note(my_tune, rest(QUARTER))
+my_tune = add_note(my_tune, note("B", EIGHTH))
+my_tune = add_note(my_tune, note("A", EIGHTH))
+my_tune = add_note(my_tune, note("G", QUARTER))
+my_tune = add_note(my_tune, note("D", WHOLE))
+
+blether f"Created: {my_tune[\"title\"]}"
+blether f"Tempo: {my_tune[\"tempo\"]} BPM"
+blether f"Total duration: {melody_duration(my_tune)} beats"
+blether ""
+
+blether "Notes in the melody:"
+fer n in my_tune["notes"] {
+    blether f"  {note_tae_string(n)}"
+}
+blether ""
+
+visualize_rhythm(my_tune)
+blether ""
+
+blether green("═══════════════════════════════════════")
+blether green("  Music demo complete!")
+blether green("  \"Lang may the pipes sound!\"")
+blether green("═══════════════════════════════════════")
+blether ""

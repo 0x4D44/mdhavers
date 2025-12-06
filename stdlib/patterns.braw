@@ -1,0 +1,759 @@
+# patterns.braw - Simple pattern matching fer mdhavers
+# "Patterns are like tartan - they repeat in bonnie ways!"
+#
+# Note: This is a simple pattern matcher, no' full regex.
+# Supported wildcards:
+#   *  - matches any sequence of characters
+#   ?  - matches exactly one character
+#   [] - character class (e.g., [abc] matches a, b, or c)
+
+# ===============================================================
+# Basic Pattern Matching
+# ===============================================================
+
+# Check if a string matches a simple pattern with * and ?
+dae matches(text, pattern) {
+    gie match_helper(text, pattern, 0, 0)
+}
+
+# Recursive helper for pattern matching
+dae match_helper(text, pattern, ti, pi) {
+    # Base case: both consumed
+    gin ti >= len(text) an pi >= len(pattern) {
+        gie aye
+    }
+
+    # Pattern consumed but text remains
+    gin pi >= len(pattern) {
+        gie nae
+    }
+
+    # Get current pattern character
+    ken pc = pattern[pi]
+
+    # Handle * wildcard (matches zero or more)
+    gin pc == "*" {
+        # Try matching zero characters
+        gin match_helper(text, pattern, ti, pi + 1) {
+            gie aye
+        }
+        # Try matching one or more characters
+        gin ti < len(text) {
+            gie match_helper(text, pattern, ti + 1, pi)
+        }
+        gie nae
+    }
+
+    # Text consumed but pattern remains (and not *)
+    gin ti >= len(text) {
+        gie nae
+    }
+
+    ken tc = text[ti]
+
+    # Handle ? wildcard (matches exactly one)
+    gin pc == "?" {
+        gie match_helper(text, pattern, ti + 1, pi + 1)
+    }
+
+    # Handle character class [...]
+    gin pc == "[" {
+        # Find closing bracket
+        ken close = pi + 1
+        whiles close < len(pattern) an pattern[close] != "]" {
+            close = close + 1
+        }
+        gin close >= len(pattern) {
+            gie nae  # No closing bracket
+        }
+
+        # Check if tc is in the class
+        ken matched = nae
+        ken start_idx = pi + 1
+        fer i in start_idx..close {
+            gin pattern[i] == tc {
+                matched = aye
+                brak
+            }
+        }
+
+        gin matched {
+            gie match_helper(text, pattern, ti + 1, close + 1)
+        }
+        gie nae
+    }
+
+    # Literal match
+    gin pc == tc {
+        gie match_helper(text, pattern, ti + 1, pi + 1)
+    }
+
+    gie nae
+}
+
+# ===============================================================
+# Pattern Search
+# ===============================================================
+
+# Find first occurrence of pattern in text, return index or -1
+dae find_pattern(text, pattern) {
+    fer i in 0..len(text) {
+        ken substr = substring_from(text, i)
+        gin starts_with_pattern(substr, pattern) {
+            gie i
+        }
+    }
+    gie 0 - 1
+}
+
+# Check if text starts with pattern
+dae starts_with_pattern(text, pattern) {
+    # For simple patterns without *, check prefix
+    gin nae contains(pattern, "*") {
+        gie matches(text, pattern + "*")
+    }
+    gie matches(text, pattern)
+}
+
+# Get substring from index to end
+dae substring_from(s, start) {
+    ken result = ""
+    fer i in start..len(s) {
+        result = result + s[i]
+    }
+    gie result
+}
+
+# ===============================================================
+# Pattern Replacement
+# ===============================================================
+
+# Replace all occurrences of pattern with replacement
+dae replace_pattern(text, pattern, replacement) {
+    # Simple case: no wildcards
+    gin nae contains(pattern, "*") an nae contains(pattern, "?") an nae contains(pattern, "[") {
+        gie replace_all_str(text, pattern, replacement)
+    }
+
+    # For patterns with wildcards, we need a different approach
+    # This is a simplified version that only handles trailing *
+    gin ends_with_str(pattern, "*") {
+        ken prefix = substring_to(pattern, len(pattern) - 1)
+        ken result = ""
+        ken i = 0
+        whiles i < len(text) {
+            ken substr = substring_from(text, i)
+            gin starts_with_str(substr, prefix) {
+                result = result + replacement
+                # Skip the matched portion
+                i = i + len(prefix)
+                # Skip any additional characters if * was there
+                whiles i < len(text) an i < len(text) {
+                    brak  # For simplicity, just match the prefix
+                }
+            } ither {
+                result = result + text[i]
+                i = i + 1
+            }
+        }
+        gie result
+    }
+
+    # Fallback: just return original
+    gie text
+}
+
+# Helper: substring from 0 to index
+dae substring_to(s, finish) {
+    ken result = ""
+    fer i in 0..finish {
+        gin i < len(s) {
+            result = result + s[i]
+        }
+    }
+    gie result
+}
+
+# Helper: check if string starts with prefix
+dae starts_with_str(s, prefix) {
+    gin len(s) < len(prefix) {
+        gie nae
+    }
+    fer i in 0..len(prefix) {
+        gin s[i] != prefix[i] {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# Helper: check if string ends with suffix
+dae ends_with_str(s, suffix) {
+    gin len(s) < len(suffix) {
+        gie nae
+    }
+    ken start = len(s) - len(suffix)
+    fer i in 0..len(suffix) {
+        gin s[start + i] != suffix[i] {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# Helper: replace all occurrences of old with new
+dae replace_all_str(s, old, new) {
+    ken result = ""
+    ken i = 0
+    whiles i < len(s) {
+        ken matched = aye
+        gin i + len(old) <= len(s) {
+            fer j in 0..len(old) {
+                gin s[i + j] != old[j] {
+                    matched = nae
+                    brak
+                }
+            }
+        } ither {
+            matched = nae
+        }
+
+        gin matched {
+            result = result + new
+            i = i + len(old)
+        } ither {
+            result = result + s[i]
+            i = i + 1
+        }
+    }
+    gie result
+}
+
+# ===============================================================
+# Glob Pattern Matching (for filenames)
+# ===============================================================
+
+# Match a glob pattern against a filename
+dae glob_match(filename, pattern) {
+    gie matches(filename, pattern)
+}
+
+# Filter a list of filenames by glob pattern
+dae glob_filter(filenames, pattern) {
+    ken result = []
+    fer f in filenames {
+        gin glob_match(f, pattern) {
+            shove(result, f)
+        }
+    }
+    gie result
+}
+
+# ===============================================================
+# Common Patterns (pre-defined)
+# ===============================================================
+
+# Match any word (letters only)
+dae is_word(s) {
+    gin len(s) == 0 {
+        gie nae
+    }
+    ken letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    fer c in s {
+        gin nae contains(letters, c) {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# Match a simple email-like pattern
+dae looks_like_email(s) {
+    gin nae contains(s, "@") {
+        gie nae
+    }
+    ken parts = split(s, "@")
+    gin len(parts) != 2 {
+        gie nae
+    }
+    ken local = parts[0]
+    ken domain = parts[1]
+    gin len(local) == 0 or len(domain) == 0 {
+        gie nae
+    }
+    gin nae contains(domain, ".") {
+        gie nae
+    }
+    gie aye
+}
+
+# Match a simple URL-like pattern
+dae looks_like_url(s) {
+    gie starts_with_str(s, "http://") or starts_with_str(s, "https://")
+}
+
+# Match a Scottish postcode pattern (rough approximation)
+dae looks_like_postcode(s) {
+    ken clean = upper(wheesht(s))
+    # Very simplified: check length and format
+    gin len(clean) < 5 or len(clean) > 8 {
+        gie nae
+    }
+    # Should contain a space usually, or be 6-7 chars without
+    gie aye  # Simplified check
+}
+
+# ===============================================================
+# Text Extraction
+# ===============================================================
+
+# Extract all words from text
+dae extract_words(text) {
+    ken words = []
+    ken current = ""
+    ken letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'"
+
+    fer c in text {
+        gin contains(letters, c) {
+            current = current + c
+        } ither {
+            gin len(current) > 0 {
+                shove(words, current)
+                current = ""
+            }
+        }
+    }
+
+    gin len(current) > 0 {
+        shove(words, current)
+    }
+
+    gie words
+}
+
+# Extract all numbers from text
+dae extract_numbers(text) {
+    ken nums = []
+    ken current = ""
+    ken digits = "0123456789"
+
+    fer c in text {
+        gin contains(digits, c) or (c == "." an len(current) > 0) {
+            current = current + c
+        } ither {
+            gin len(current) > 0 {
+                shove(nums, tae_float(current))
+                current = ""
+            }
+        }
+    }
+
+    gin len(current) > 0 {
+        shove(nums, tae_float(current))
+    }
+
+    gie nums
+}
+
+# ===============================================================
+# Type Pattern Matchers (Functional Style)
+# ===============================================================
+
+# Match on type and extract value
+dae when_string(val, handler) {
+    gin whit_kind(val) == "string" {
+        gie handler(val)
+    }
+    gie naething
+}
+
+dae when_int(val, handler) {
+    gin whit_kind(val) == "integer" {
+        gie handler(val)
+    }
+    gie naething
+}
+
+dae when_float(val, handler) {
+    gin whit_kind(val) == "float" {
+        gie handler(val)
+    }
+    gie naething
+}
+
+dae when_list(val, handler) {
+    gin whit_kind(val) == "list" {
+        gie handler(val)
+    }
+    gie naething
+}
+
+dae when_dict(val, handler) {
+    gin whit_kind(val) == "dict" {
+        gie handler(val)
+    }
+    gie naething
+}
+
+dae when_bool(val, handler) {
+    gin whit_kind(val) == "bool" {
+        gie handler(val)
+    }
+    gie naething
+}
+
+dae when_nil(val, handler) {
+    gin val == naething {
+        gie handler()
+    }
+    gie naething
+}
+
+# ===============================================================
+# Value Pattern Matchers
+# ===============================================================
+
+# Match exact value
+dae when_equal(val, expected, handler) {
+    gin val == expected {
+        gie handler(val)
+    }
+    gie naething
+}
+
+# Match if value in list
+dae when_one_of(val, options, handler) {
+    fer opt in options {
+        gin val == opt {
+            gie handler(val)
+        }
+    }
+    gie naething
+}
+
+# Match if predicate is true
+dae when_pred(val, predicate, handler) {
+    gin predicate(val) {
+        gie handler(val)
+    }
+    gie naething
+}
+
+# ===============================================================
+# Numeric Pattern Matchers
+# ===============================================================
+
+# Match if in range (inclusive)
+dae when_between(val, low, high, handler) {
+    gin whit_kind(val) == "integer" or whit_kind(val) == "float" {
+        gin val >= low an val <= high {
+            gie handler(val)
+        }
+    }
+    gie naething
+}
+
+# Match positive numbers
+dae when_positive(val, handler) {
+    gin whit_kind(val) == "integer" or whit_kind(val) == "float" {
+        gin val > 0 {
+            gie handler(val)
+        }
+    }
+    gie naething
+}
+
+# Match negative numbers
+dae when_negative(val, handler) {
+    gin whit_kind(val) == "integer" or whit_kind(val) == "float" {
+        gin val < 0 {
+            gie handler(val)
+        }
+    }
+    gie naething
+}
+
+# Match zero
+dae when_zero(val, handler) {
+    gin val == 0 or val == 0.0 {
+        gie handler(val)
+    }
+    gie naething
+}
+
+# Match even numbers
+dae when_even(val, handler) {
+    gin whit_kind(val) == "integer" {
+        gin val % 2 == 0 {
+            gie handler(val)
+        }
+    }
+    gie naething
+}
+
+# Match odd numbers
+dae when_odd(val, handler) {
+    gin whit_kind(val) == "integer" {
+        gin val % 2 != 0 {
+            gie handler(val)
+        }
+    }
+    gie naething
+}
+
+# ===============================================================
+# List Pattern Matchers
+# ===============================================================
+
+# Match empty list (toom = empty)
+dae when_toom(val, handler) {
+    gin whit_kind(val) == "list" {
+        gin len(val) == 0 {
+            gie handler()
+        }
+    }
+    gie naething
+}
+
+# Match non-empty list
+dae when_no_toom(val, handler) {
+    gin whit_kind(val) == "list" {
+        gin len(val) > 0 {
+            gie handler(val)
+        }
+    }
+    gie naething
+}
+
+# Match single-element list and extract element
+dae when_single(val, handler) {
+    gin whit_kind(val) == "list" {
+        gin len(val) == 1 {
+            gie handler(val[0])
+        }
+    }
+    gie naething
+}
+
+# Match list with head and tail
+dae when_cons(val, handler) {
+    gin whit_kind(val) == "list" {
+        gin len(val) > 0 {
+            ken h = val[0]
+            ken t = tail(val)
+            gie handler(h, t)
+        }
+    }
+    gie naething
+}
+
+# Match pair (2-element list)
+dae when_pair(val, handler) {
+    gin whit_kind(val) == "list" {
+        gin len(val) == 2 {
+            gie handler(val[0], val[1])
+        }
+    }
+    gie naething
+}
+
+# Match triple (3-element list)
+dae when_triple(val, handler) {
+    gin whit_kind(val) == "list" {
+        gin len(val) == 3 {
+            gie handler(val[0], val[1], val[2])
+        }
+    }
+    gie naething
+}
+
+# ===============================================================
+# Dict Pattern Matchers
+# ===============================================================
+
+# Match if dict has key
+dae when_has_key(val, key, handler) {
+    gin whit_kind(val) == "dict" {
+        gin dict_has(val, key) {
+            gie handler(val[key])
+        }
+    }
+    gie naething
+}
+
+# Match if dict has all keys
+dae when_has_keys(val, required_keys, handler) {
+    gin whit_kind(val) == "dict" {
+        ken has_all = aye
+        fer k in required_keys {
+            gin nae dict_has(val, k) {
+                has_all = nae
+                brak
+            }
+        }
+        gin has_all {
+            gie handler(val)
+        }
+    }
+    gie naething
+}
+
+# ===============================================================
+# Result Type Helpers (Some/None pattern)
+# ===============================================================
+
+# Create a "Some" value (wrapped)
+dae some(val) {
+    gie {"_some": aye, "value": val}
+}
+
+# Create a "None" value
+dae none() {
+    gie {"_none": aye}
+}
+
+# Check if value is Some
+dae is_some(val) {
+    gin whit_kind(val) == "dict" {
+        gie dict_has(val, "_some")
+    }
+    gie nae
+}
+
+# Check if value is None
+dae is_none(val) {
+    gin whit_kind(val) == "dict" {
+        gie dict_has(val, "_none")
+    }
+    gie nae
+}
+
+# Unwrap Some value (or return default)
+dae unwrap_or(val, default) {
+    gin is_some(val) {
+        gie val["value"]
+    }
+    gie default
+}
+
+# Map over Some value
+dae map_some(val, mapper) {
+    gin is_some(val) {
+        gie some(mapper(val["value"]))
+    }
+    gie val
+}
+
+# Match on Some/None
+dae when_some(val, handler) {
+    gin is_some(val) {
+        gie handler(val["value"])
+    }
+    gie naething
+}
+
+dae when_none(val, handler) {
+    gin is_none(val) {
+        gie handler()
+    }
+    gie naething
+}
+
+# ===============================================================
+# Either Type Helpers (Left/Right pattern)
+# ===============================================================
+
+# Create a Left value (typically error/failure)
+dae left(val) {
+    gie {"_left": aye, "value": val}
+}
+
+# Create a Right value (typically success)
+dae right(val) {
+    gie {"_right": aye, "value": val}
+}
+
+# Check if value is Left
+dae is_left(val) {
+    gin whit_kind(val) == "dict" {
+        gie dict_has(val, "_left")
+    }
+    gie nae
+}
+
+# Check if value is Right
+dae is_right(val) {
+    gin whit_kind(val) == "dict" {
+        gie dict_has(val, "_right")
+    }
+    gie nae
+}
+
+# Match on Left/Right
+dae when_left(val, handler) {
+    gin is_left(val) {
+        gie handler(val["value"])
+    }
+    gie naething
+}
+
+dae when_right(val, handler) {
+    gin is_right(val) {
+        gie handler(val["value"])
+    }
+    gie naething
+}
+
+# ===============================================================
+# Safe Operations (return Some/None)
+# ===============================================================
+
+# Safe division (returns Some or None)
+dae safe_divide(a, b) {
+    gin b == 0 or b == 0.0 {
+        gie none()
+    }
+    gie some(a / b)
+}
+
+# Safe list access (returns Some or None)
+dae safe_get(list, index) {
+    gin whit_kind(list) == "list" {
+        gin index >= 0 an index < len(list) {
+            gie some(list[index])
+        }
+    }
+    gie none()
+}
+
+# Safe dict access (returns Some or None)
+dae safe_lookup(dict, key) {
+    gin whit_kind(dict) == "dict" {
+        gin dict_has(dict, key) {
+            gie some(dict[key])
+        }
+    }
+    gie none()
+}
+
+# Parse int safely (returns Some or None)
+dae safe_parse_int(s) {
+    hae_a_bash {
+        ken n = tae_int(s)
+        gie some(n)
+    } gin_it_gangs_wrang e {
+        gie none()
+    }
+}
+
+# Parse float safely (returns Some or None)
+dae safe_parse_float(s) {
+    hae_a_bash {
+        ken n = tae_float(s)
+        gie some(n)
+    } gin_it_gangs_wrang e {
+        gie none()
+    }
+}
+
+blether "Patterns module loaded! Ready tae match!"

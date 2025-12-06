@@ -1,0 +1,587 @@
+# menus.braw - Interactive menu and forms fer mdhavers
+# "Askin' the user whit they want!"
+#
+# This module provides utilities for building interactive CLI menus
+
+# ===============================================================
+# Simple Menu
+# ===============================================================
+
+kin Menu {
+    dae init(title = "Menu") {
+        masel.title = title
+        masel.options = []
+        masel.show_numbers = aye
+    }
+
+    # Add an option
+    dae add(label, value = naething) {
+        ken val = gin value == naething than label ither value
+        shove(masel.options, {"label": label, "value": val})
+        gie masel
+    }
+
+    # Add multiple options
+    dae add_all(options) {
+        fer opt in options {
+            masel.add(opt)
+        }
+        gie masel
+    }
+
+    # Display the menu and get a choice
+    dae show() {
+        blether ""
+        blether masel.title
+        blether repeat("=", len(masel.title))
+        blether ""
+
+        fer i in 0..len(masel.options) {
+            ken opt = masel.options[i]
+            gin masel.show_numbers {
+                blether f"  {i + 1}. {opt['label']}"
+            } ither {
+                blether f"  - {opt['label']}"
+            }
+        }
+        blether ""
+
+        ken choice = speir("Enter yer choice: ")
+        ken idx = tae_int(choice) - 1
+
+        gin idx >= 0 an idx < len(masel.options) {
+            gie masel.options[idx]["value"]
+        }
+        gie naething
+    }
+
+    # Show menu and loop until valid choice
+    dae show_required() {
+        ken choice = masel.show()
+        whiles choice == naething {
+            blether "Och, that's no' a valid choice. Try again!"
+            choice = masel.show()
+        }
+        gie choice
+    }
+
+    # Clear options
+    dae clear() {
+        masel.options = []
+        gie masel
+    }
+}
+
+# ===============================================================
+# Yes/No Prompt
+# ===============================================================
+
+dae confirm(question, default = nae) {
+    ken default_hint = gin default than "[Y/n]" ither "[y/N]"
+    ken answer = speir(f"{question} {default_hint} ")
+    ken lower_answer = lower(wheesht(answer))
+
+    gin lower_answer == "" {
+        gie default
+    }
+    gin lower_answer == "y" or lower_answer == "yes" or lower_answer == "aye" {
+        gie aye
+    }
+    gin lower_answer == "n" or lower_answer == "no" or lower_answer == "nae" {
+        gie nae
+    }
+
+    # Invalid input, return default
+    blether "Didnae understand that. Using default."
+    gie default
+}
+
+# ===============================================================
+# Text Input with Validation
+# ===============================================================
+
+kin TextInput {
+    dae init(prompt) {
+        masel.prompt = prompt
+        masel.validators = []
+        masel.default = naething
+        masel.required = nae
+    }
+
+    # Set a default value
+    dae with_default(value) {
+        masel.default = value
+        gie masel
+    }
+
+    # Make input required
+    dae required() {
+        masel.required = aye
+        gie masel
+    }
+
+    # Add a validator function
+    dae add_validator(fn) {
+        shove(masel.validators, fn)
+        gie masel
+    }
+
+    # Validate input
+    dae validate(value) {
+        fer validator in masel.validators {
+            ken result = validator(value)
+            gin result != aye {
+                gie result
+            }
+        }
+        gie aye
+    }
+
+    # Get input
+    dae ask() {
+        ken prompt_text = masel.prompt
+        gin masel.default != naething {
+            prompt_text = f"{prompt_text} [{masel.default}]"
+        }
+        prompt_text = prompt_text + ": "
+
+        ken value = speir(prompt_text)
+
+        gin wheesht(value) == "" {
+            gin masel.default != naething {
+                gie masel.default
+            }
+            gin masel.required {
+                blether "This field is required!"
+                gie masel.ask()
+            }
+            gie ""
+        }
+
+        ken validation = masel.validate(value)
+        gin validation != aye {
+            blether f"Invalid: {validation}"
+            gie masel.ask()
+        }
+
+        gie value
+    }
+}
+
+# ===============================================================
+# Number Input
+# ===============================================================
+
+kin NumberInput {
+    dae init(prompt) {
+        masel.prompt = prompt
+        masel.min_val = naething
+        masel.max_val = naething
+        masel.default = naething
+        masel.is_float = nae
+    }
+
+    # Set minimum value
+    dae min(value) {
+        masel.min_val = value
+        gie masel
+    }
+
+    # Set maximum value
+    dae max(value) {
+        masel.max_val = value
+        gie masel
+    }
+
+    # Set default value
+    dae with_default(value) {
+        masel.default = value
+        gie masel
+    }
+
+    # Allow floating point
+    dae as_float() {
+        masel.is_float = aye
+        gie masel
+    }
+
+    # Get input
+    dae ask() {
+        ken prompt_text = masel.prompt
+        gin masel.default != naething {
+            prompt_text = f"{prompt_text} [{masel.default}]"
+        }
+        prompt_text = prompt_text + ": "
+
+        ken value = speir(prompt_text)
+
+        gin wheesht(value) == "" an masel.default != naething {
+            gie masel.default
+        }
+
+        ken num = gin masel.is_float than tae_float(value) ither tae_int(value)
+
+        gin masel.min_val != naething an num < masel.min_val {
+            blether f"Value must be at least {masel.min_val}"
+            gie masel.ask()
+        }
+
+        gin masel.max_val != naething an num > masel.max_val {
+            blether f"Value must be at most {masel.max_val}"
+            gie masel.ask()
+        }
+
+        gie num
+    }
+}
+
+# ===============================================================
+# Choice Input (Multiple Choice)
+# ===============================================================
+
+kin ChoiceInput {
+    dae init(prompt) {
+        masel.prompt = prompt
+        masel.choices = []
+        masel.default_idx = naething
+    }
+
+    # Add a choice
+    dae add(label, value = naething) {
+        ken val = gin value == naething than label ither value
+        shove(masel.choices, {"label": label, "value": val})
+        gie masel
+    }
+
+    # Add choices from list
+    dae add_all(choices) {
+        fer c in choices {
+            masel.add(c)
+        }
+        gie masel
+    }
+
+    # Set default choice (1-indexed)
+    dae with_default(idx) {
+        masel.default_idx = idx
+        gie masel
+    }
+
+    # Get input
+    dae ask() {
+        blether f"\n{masel.prompt}"
+
+        fer i in 0..len(masel.choices) {
+            ken choice = masel.choices[i]
+            ken marker = gin masel.default_idx == (i + 1) than " (default)" ither ""
+            blether f"  {i + 1}. {choice['label']}{marker}"
+        }
+
+        ken value = speir("Enter choice: ")
+
+        gin wheesht(value) == "" an masel.default_idx != naething {
+            gie masel.choices[masel.default_idx - 1]["value"]
+        }
+
+        ken idx = tae_int(value) - 1
+
+        gin idx >= 0 an idx < len(masel.choices) {
+            gie masel.choices[idx]["value"]
+        }
+
+        blether "Invalid choice, try again!"
+        gie masel.ask()
+    }
+}
+
+# ===============================================================
+# Progress Bar
+# ===============================================================
+
+kin ProgressBar {
+    dae init(total, width = 40) {
+        masel.total = total
+        masel.width = width
+        masel.current = 0
+        masel.label = "Progress"
+    }
+
+    # Set label
+    dae with_label(label) {
+        masel.label = label
+        gie masel
+    }
+
+    # Update progress
+    dae update(current) {
+        masel.current = current
+        masel.render()
+        gie masel
+    }
+
+    # Increment by 1
+    dae tick() {
+        masel.current = masel.current + 1
+        masel.render()
+        gie masel
+    }
+
+    # Render the progress bar
+    dae render() {
+        ken percent = gin masel.total > 0 than (masel.current * 100) / masel.total ither 0
+        ken filled = (masel.width * masel.current) / masel.total
+        ken empty = masel.width - filled
+
+        ken bar = repeat("█", filled) + repeat("░", empty)
+        # Use carriage return to overwrite line
+        blether f"\r{masel.label}: [{bar}] {percent}% ({masel.current}/{masel.total})"
+    }
+
+    # Mark as complete
+    dae complete() {
+        masel.current = masel.total
+        masel.render()
+        blether ""
+    }
+}
+
+# ===============================================================
+# Spinner (for indeterminate progress)
+# ===============================================================
+
+ken SPINNER_FRAMES = ["|", "/", "-", "\\"]
+
+kin Spinner {
+    dae init(message = "Loading") {
+        masel.message = message
+        masel.frame = 0
+    }
+
+    # Spin once
+    dae spin() {
+        ken frame_char = SPINNER_FRAMES[masel.frame % len(SPINNER_FRAMES)]
+        blether f"\r{frame_char} {masel.message}..."
+        masel.frame = masel.frame + 1
+    }
+
+    # Stop and show done
+    dae done(final_message = "Done!") {
+        blether f"\r✓ {final_message}      "
+        blether ""
+    }
+
+    # Stop and show error
+    dae fail(error_message = "Failed!") {
+        blether f"\r✗ {error_message}      "
+        blether ""
+    }
+}
+
+# ===============================================================
+# Form Builder
+# ===============================================================
+
+kin Form {
+    dae init(title = "Form") {
+        masel.title = title
+        masel.fields = []
+        masel.values = {}
+    }
+
+    # Add a text field
+    dae text(name, prompt, required = nae) {
+        ken field = {
+            "name": name,
+            "type": "text",
+            "prompt": prompt,
+            "required": required
+        }
+        shove(masel.fields, field)
+        gie masel
+    }
+
+    # Add a number field
+    dae number(name, prompt, min = naething, max = naething) {
+        ken field = {
+            "name": name,
+            "type": "number",
+            "prompt": prompt,
+            "min": min,
+            "max": max
+        }
+        shove(masel.fields, field)
+        gie masel
+    }
+
+    # Add a yes/no field
+    dae yesno(name, prompt, default = nae) {
+        ken field = {
+            "name": name,
+            "type": "yesno",
+            "prompt": prompt,
+            "default": default
+        }
+        shove(masel.fields, field)
+        gie masel
+    }
+
+    # Add a choice field
+    dae choice(name, prompt, options) {
+        ken field = {
+            "name": name,
+            "type": "choice",
+            "prompt": prompt,
+            "options": options
+        }
+        shove(masel.fields, field)
+        gie masel
+    }
+
+    # Process the form
+    dae submit() {
+        blether ""
+        blether masel.title
+        blether repeat("=", len(masel.title))
+        blether ""
+
+        fer field in masel.fields {
+            ken value = naething
+
+            gin field["type"] == "text" {
+                ken input = TextInput(field["prompt"])
+                gin field["required"] {
+                    input.required()
+                }
+                value = input.ask()
+            } ither gin field["type"] == "number" {
+                ken input = NumberInput(field["prompt"])
+                gin field["min"] != naething {
+                    input.min(field["min"])
+                }
+                gin field["max"] != naething {
+                    input.max(field["max"])
+                }
+                value = input.ask()
+            } ither gin field["type"] == "yesno" {
+                value = confirm(field["prompt"], field["default"])
+            } ither gin field["type"] == "choice" {
+                ken input = ChoiceInput(field["prompt"])
+                input.add_all(field["options"])
+                value = input.ask()
+            }
+
+            masel.values[field["name"]] = value
+        }
+
+        gie masel.values
+    }
+
+    # Get a specific value
+    dae get(name) {
+        gin contains(masel.values, name) {
+            gie masel.values[name]
+        }
+        gie naething
+    }
+
+    # Get all values
+    dae all() {
+        gie masel.values
+    }
+}
+
+# ===============================================================
+# Table Display
+# ===============================================================
+
+kin Table {
+    dae init(headers) {
+        masel.headers = headers
+        masel.rows = []
+        masel.col_widths = []
+        # Initialize column widths from headers
+        fer h in headers {
+            shove(masel.col_widths, len(tae_string(h)))
+        }
+    }
+
+    # Add a row
+    dae add_row(row) {
+        shove(masel.rows, row)
+        # Update column widths
+        fer i in 0..len(row) {
+            ken cell_len = len(tae_string(row[i]))
+            gin cell_len > masel.col_widths[i] {
+                masel.col_widths[i] = cell_len
+            }
+        }
+        gie masel
+    }
+
+    # Add multiple rows
+    dae add_rows(rows) {
+        fer row in rows {
+            masel.add_row(row)
+        }
+        gie masel
+    }
+
+    # Render the table
+    dae show() {
+        ken separator = "+"
+        fer w in masel.col_widths {
+            separator = separator + repeat("-", w + 2) + "+"
+        }
+
+        blether separator
+
+        # Header row
+        ken header_row = "|"
+        fer i in 0..len(masel.headers) {
+            ken header = tae_string(masel.headers[i])
+            ken padded = pad_right(header, masel.col_widths[i], " ")
+            header_row = header_row + " " + padded + " |"
+        }
+        blether header_row
+        blether separator
+
+        # Data rows
+        fer row in masel.rows {
+            ken row_str = "|"
+            fer i in 0..len(row) {
+                ken cell = tae_string(row[i])
+                ken padded = pad_right(cell, masel.col_widths[i], " ")
+                row_str = row_str + " " + padded + " |"
+            }
+            blether row_str
+        }
+        blether separator
+    }
+}
+
+# ===============================================================
+# Convenience Functions
+# ===============================================================
+
+dae ask(prompt) {
+    gie speir(prompt + ": ")
+}
+
+dae ask_int(prompt) {
+    ken input = NumberInput(prompt)
+    gie input.ask()
+}
+
+dae ask_float(prompt) {
+    ken input = NumberInput(prompt)
+    input.as_float()
+    gie input.ask()
+}
+
+dae choose(prompt, options) {
+    ken input = ChoiceInput(prompt)
+    input.add_all(options)
+    gie input.ask()
+}
+
+blether "Menus module loaded! Ready tae ask some questions!"

@@ -1,0 +1,517 @@
+# store.braw - State management fer mdhavers
+# "Keep yer state in order, like a guid Scots hoosekeeper!"
+#
+# Redux-like state management with actions, reducers, and subscriptions.
+
+# ===============================================================
+# Action Creators
+# ===============================================================
+
+dae make_action(action_type, payload = naething) {
+    gie {
+        "type": action_type,
+        "payload": payload
+    }
+}
+
+# ===============================================================
+# Store
+# ===============================================================
+
+kin Store {
+    dae init(reducer, initial_state = {}) {
+        masel.state = initial_state
+        masel.reducer = reducer
+        masel.subscribers = []
+        masel.middleware = []
+        masel.history = []
+        masel.history_enabled = nae
+        masel.max_history = 50
+    }
+
+    # Get current state
+    dae get_state() {
+        gie masel.state
+    }
+
+    # Dispatch an action
+    dae dispatch(action) {
+        # Run through middleware
+        ken should_continue = aye
+        fer mw in masel.middleware {
+            ken result = mw(masel, action)
+            gin nae result {
+                should_continue = nae
+                brak
+            }
+        }
+
+        gin nae should_continue {
+            gie masel.state
+        }
+
+        # Save to history if enabled
+        gin masel.history_enabled {
+            shove(masel.history, {
+                "state": masel._clone_state(),
+                "action": action
+            })
+            # Trim history if too long
+            whiles len(masel.history) > masel.max_history {
+                ken new_history = []
+                fer i in 1..len(masel.history) {
+                    shove(new_history, masel.history[i])
+                }
+                masel.history = new_history
+            }
+        }
+
+        # Apply reducer
+        masel.state = masel.reducer(masel.state, action)
+
+        # Notify subscribers
+        fer subscriber in masel.subscribers {
+            subscriber(masel.state, action)
+        }
+
+        gie masel.state
+    }
+
+    # Subscribe to state changes
+    dae subscribe(callback) {
+        shove(masel.subscribers, callback)
+        gie masel
+    }
+
+    # Unsubscribe
+    dae unsubscribe(callback) {
+        ken new_subs = []
+        fer sub in masel.subscribers {
+            gin sub != callback {
+                shove(new_subs, sub)
+            }
+        }
+        masel.subscribers = new_subs
+        gie masel
+    }
+
+    # Add middleware
+    dae use(middleware) {
+        shove(masel.middleware, middleware)
+        gie masel
+    }
+
+    # Enable history tracking
+    dae enable_history(max_entries = 50) {
+        masel.history_enabled = aye
+        masel.max_history = max_entries
+        gie masel
+    }
+
+    # Get history
+    dae get_history() {
+        gie masel.history
+    }
+
+    # Undo last action (if history enabled)
+    dae undo() {
+        gin nae masel.history_enabled or len(masel.history) == 0 {
+            gie nae
+        }
+        ken last = masel.history[len(masel.history) - 1]
+        masel.state = last["state"]
+        # Remove last entry
+        ken new_history = []
+        fer i in 0..(len(masel.history) - 1) {
+            shove(new_history, masel.history[i])
+        }
+        masel.history = new_history
+        gie aye
+    }
+
+    # Reset to initial state
+    dae reset(initial_state = {}) {
+        masel.state = initial_state
+        masel.history = []
+        fer subscriber in masel.subscribers {
+            subscriber(masel.state, make_action("@@RESET"))
+        }
+        gie masel
+    }
+
+    # Clone state (shallow)
+    dae _clone_state() {
+        ken clone = {}
+        fer key in keys(masel.state) {
+            clone[key] = masel.state[key]
+        }
+        gie clone
+    }
+
+    # Select a value from state
+    dae select(selector) {
+        gie selector(masel.state)
+    }
+}
+
+dae create_store(reducer, initial_state = {}) {
+    gie Store(reducer, initial_state)
+}
+
+# ===============================================================
+# Combine Reducers
+# ===============================================================
+
+# Internal class to hold combined reducer logic
+kin _CombinedReducer {
+    dae init(reducers) {
+        masel.reducers = reducers
+    }
+
+    dae call(state, action) {
+        ken new_state = {}
+        fer key in keys(masel.reducers) {
+            ken reducer = masel.reducers[key]
+            ken slice = gin contains(state, key) than state[key] ither {}
+            new_state[key] = reducer(slice, action)
+        }
+        gie new_state
+    }
+}
+
+dae combine_reducers(reducers) {
+    ken combined = _CombinedReducer(reducers)
+    gie |state, action| combined.call(state, action)
+}
+
+# ===============================================================
+# Common Middleware
+# ===============================================================
+
+# Logger middleware - logs all actions
+dae logger_middleware(store, action) {
+    blether f"[Store] Action: {action['type']}"
+    gin action["payload"] != naething {
+        blether f"[Store] Payload: {action['payload']}"
+    }
+    gie aye
+}
+
+# Thunk middleware - allows async-like actions
+dae thunk_middleware(store, action) {
+    gin whit_kind(action) == "function" {
+        action(store.dispatch, store.get_state)
+        gie nae  # Don't continue normal dispatch
+    }
+    gie aye
+}
+
+# Validator middleware helper class
+kin _ValidatorMiddleware {
+    dae init(validators) {
+        masel.validators = validators
+    }
+
+    dae call(store, action) {
+        gin contains(masel.validators, action["type"]) {
+            ken validator = masel.validators[action["type"]]
+            gin nae validator(action["payload"]) {
+                blether f"[Store] Invalid payload fer action: {action['type']}"
+                gie nae
+            }
+        }
+        gie aye
+    }
+}
+
+# Validator middleware - validates actions
+dae make_validator_middleware(validators) {
+    ken vm = _ValidatorMiddleware(validators)
+    gie |store, action| vm.call(store, action)
+}
+
+# ===============================================================
+# Selectors
+# ===============================================================
+
+# Cached selector helper class
+kin _CachedSelector {
+    dae init(selector_fn) {
+        masel.selector_fn = selector_fn
+        masel.last_state = naething
+        masel.last_result = naething
+    }
+
+    dae call(state) {
+        gin state == masel.last_state {
+            gie masel.last_result
+        }
+        ken result = masel.selector_fn(state)
+        masel.last_state = state
+        masel.last_result = result
+        gie result
+    }
+}
+
+dae create_selector(selector_fn) {
+    ken cached = _CachedSelector(selector_fn)
+    gie |state| cached.call(state)
+}
+
+# ===============================================================
+# Action Type Helpers
+# ===============================================================
+
+dae create_action_types(prefix, types) {
+    ken result = {}
+    fer type_name in types {
+        result[type_name] = f"{prefix}/{type_name}"
+    }
+    gie result
+}
+
+# ===============================================================
+# Simple Reactive Value
+# ===============================================================
+
+kin Reactive {
+    dae init(initial_value) {
+        masel.value = initial_value
+        masel.subscribers = []
+    }
+
+    dae get() {
+        gie masel.value
+    }
+
+    dae set(new_value) {
+        ken old_value = masel.value
+        masel.value = new_value
+        fer subscriber in masel.subscribers {
+            subscriber(new_value, old_value)
+        }
+        gie masel
+    }
+
+    dae update(updater) {
+        masel.set(updater(masel.value))
+        gie masel
+    }
+
+    dae subscribe(callback) {
+        shove(masel.subscribers, callback)
+        gie masel
+    }
+
+    dae unsubscribe(callback) {
+        ken new_subs = []
+        fer sub in masel.subscribers {
+            gin sub != callback {
+                shove(new_subs, sub)
+            }
+        }
+        masel.subscribers = new_subs
+        gie masel
+    }
+}
+
+dae reactive(initial_value) {
+    gie Reactive(initial_value)
+}
+
+# ===============================================================
+# Computed Values
+# ===============================================================
+
+kin Computed {
+    dae init(dependencies, compute_fn) {
+        masel.dependencies = dependencies  # List of Reactive values
+        masel.compute_fn = compute_fn
+        masel.cached_value = naething
+        masel.is_dirty = aye
+
+        # Subscribe to all dependencies - mark dirty on change
+        fer dep in dependencies {
+            dep.subscribe(|new_val, old_val| masel._mark_dirty())
+        }
+    }
+
+    dae _mark_dirty() {
+        masel.is_dirty = aye
+    }
+
+    dae get() {
+        gin masel.is_dirty {
+            ken dep_values = []
+            fer dep in masel.dependencies {
+                shove(dep_values, dep.get())
+            }
+            masel.cached_value = masel.compute_fn(dep_values)
+            masel.is_dirty = nae
+        }
+        gie masel.cached_value
+    }
+}
+
+dae computed(dependencies, compute_fn) {
+    gie Computed(dependencies, compute_fn)
+}
+
+# ===============================================================
+# Observable Collection
+# ===============================================================
+
+kin ObservableList {
+    dae init(initial_items = []) {
+        masel.items = initial_items
+        masel.subscribers = []
+    }
+
+    dae get_items() {
+        gie masel.items
+    }
+
+    dae get(index) {
+        gin index >= 0 an index < len(masel.items) {
+            gie masel.items[index]
+        }
+        gie naething
+    }
+
+    dae add(item) {
+        shove(masel.items, item)
+        masel._notify("add", item, len(masel.items) - 1)
+        gie masel
+    }
+
+    dae remove(index) {
+        gin index >= 0 an index < len(masel.items) {
+            ken removed = masel.items[index]
+            ken new_items = []
+            fer i in 0..len(masel.items) {
+                gin i != index {
+                    shove(new_items, masel.items[i])
+                }
+            }
+            masel.items = new_items
+            masel._notify("remove", removed, index)
+        }
+        gie masel
+    }
+
+    dae update(index, new_value) {
+        gin index >= 0 an index < len(masel.items) {
+            ken old_value = masel.items[index]
+            masel.items[index] = new_value
+            masel._notify("update", {"old": old_value, "new": new_value}, index)
+        }
+        gie masel
+    }
+
+    dae clear() {
+        masel.items = []
+        masel._notify("clear", naething, -1)
+        gie masel
+    }
+
+    dae length() {
+        gie len(masel.items)
+    }
+
+    dae subscribe(callback) {
+        shove(masel.subscribers, callback)
+        gie masel
+    }
+
+    dae _notify(event_type, data, index) {
+        fer subscriber in masel.subscribers {
+            subscriber(event_type, data, index, masel.items)
+        }
+    }
+
+    dae find(predicate) {
+        fer item in masel.items {
+            gin predicate(item) {
+                gie item
+            }
+        }
+        gie naething
+    }
+
+    dae filter(predicate) {
+        ken result = []
+        fer item in masel.items {
+            gin predicate(item) {
+                shove(result, item)
+            }
+        }
+        gie result
+    }
+
+    dae map(transform) {
+        ken result = []
+        fer item in masel.items {
+            shove(result, transform(item))
+        }
+        gie result
+    }
+}
+
+dae observable_list(initial_items = []) {
+    gie ObservableList(initial_items)
+}
+
+# ===============================================================
+# Simple State Machine
+# ===============================================================
+
+kin StatefulStore {
+    dae init(states, initial_state) {
+        masel.states = states
+        masel.current = initial_state
+        masel.data = {}
+        masel.subscribers = []
+    }
+
+    dae get_current() {
+        gie masel.current
+    }
+
+    dae get_data() {
+        gie masel.data
+    }
+
+    dae can_transition(to_state) {
+        gin nae contains(masel.states, masel.current) {
+            gie nae
+        }
+        ken allowed = masel.states[masel.current]
+        gie contains(allowed, to_state)
+    }
+
+    dae transition(to_state, data = naething) {
+        gin masel.can_transition(to_state) {
+            ken from_state = masel.current
+            masel.current = to_state
+            gin data != naething {
+                masel.data = data
+            }
+            fer subscriber in masel.subscribers {
+                subscriber(from_state, to_state, masel.data)
+            }
+            gie aye
+        }
+        gie nae
+    }
+
+    dae subscribe(callback) {
+        shove(masel.subscribers, callback)
+        gie masel
+    }
+}
+
+dae stateful_store(states, initial_state) {
+    gie StatefulStore(states, initial_state)
+}
+
+blether "Store module loaded! Keep yer state in order!"
