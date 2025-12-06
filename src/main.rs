@@ -112,8 +112,7 @@ enum Commands {
         output: Option<PathBuf>,
     },
 
-    /// Build a native executable using LLVM (requires llvm feature)
-    #[cfg(feature = "llvm")]
+    /// Build a native executable using LLVM
     Build {
         /// The .braw file to compile
         file: PathBuf,
@@ -145,7 +144,6 @@ fn main() {
         Some(Commands::Ast { file }) => show_ast(&file),
         Some(Commands::Trace { file, verbose }) => trace_file(&file, verbose),
         Some(Commands::Wasm { file, output }) => compile_wasm(&file, output),
-        #[cfg(feature = "llvm")]
         Some(Commands::Build {
             file,
             output,
@@ -301,6 +299,58 @@ fn compile_wasm(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
     println!("  {} wat2wasm {}", "$".dimmed(), output_path.display());
 
     Ok(())
+}
+
+#[cfg(not(feature = "llvm"))]
+fn build_native(
+    _path: &PathBuf,
+    _output: Option<PathBuf>,
+    _opt_level: u8,
+    _emit_llvm: bool,
+) -> Result<(), String> {
+    use colored::Colorize;
+    eprintln!("{}", "═".repeat(60).yellow());
+    eprintln!(
+        "{}",
+        "  LLVM Native Compilation Not Available".yellow().bold()
+    );
+    eprintln!("{}", "═".repeat(60).yellow());
+    eprintln!();
+    eprintln!("The 'build' command requires LLVM support, which wasnae");
+    eprintln!("included in this build o' mdhavers.");
+    eprintln!();
+    eprintln!("{}", "Tae enable native compilation:".cyan().bold());
+    eprintln!();
+    eprintln!("  1. Install LLVM dependencies:");
+    eprintln!(
+        "     {}",
+        "sudo apt install llvm-15 libpolly-15-dev lld-15 libzstd-dev".green()
+    );
+    eprintln!();
+    eprintln!("  2. Rebuild mdhavers with LLVM:");
+    eprintln!("     {}", "make release".green());
+    eprintln!(
+        "     {} {}",
+        "or:".dimmed(),
+        "cargo build --release --features llvm".green()
+    );
+    eprintln!();
+    eprintln!(
+        "{}",
+        "Alternative compilation targets available now:"
+            .cyan()
+            .bold()
+    );
+    eprintln!(
+        "  {} - Compile tae JavaScript",
+        "mdhavers compile <file>".green()
+    );
+    eprintln!(
+        "  {} - Compile tae WebAssembly",
+        "mdhavers wasm <file>".green()
+    );
+    eprintln!();
+    Err("LLVM support not available".to_string())
 }
 
 #[cfg(feature = "llvm")]

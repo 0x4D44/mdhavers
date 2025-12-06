@@ -69,7 +69,7 @@ pub struct RuntimeFunctions<'ctx> {
 
 impl<'ctx> RuntimeFunctions<'ctx> {
     pub fn declare(module: &Module<'ctx>, types: &MdhTypes<'ctx>) -> Self {
-        let context = module.get_context();
+        let _context = module.get_context();
         let value_type = types.value_type;
         let i8_type = types.i8_type;
         let i32_type = types.i32_type;

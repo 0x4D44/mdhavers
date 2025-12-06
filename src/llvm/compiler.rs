@@ -14,7 +14,7 @@ use inkwell::targets::{
 use inkwell::OptimizationLevel;
 
 use crate::ast::Program;
-use crate::error::{HaversError, HaversResult};
+use crate::error::HaversError;
 
 use super::codegen::CodeGen;
 
@@ -112,7 +112,7 @@ impl LLVMCompiler {
 
         // Link with runtime library using system linker
         let status = Command::new("cc")
-            .args(&[
+            .args([
                 obj_path.to_str().unwrap(),
                 "-lmdh_runtime", // Our runtime library
                 "-lgc",          // Boehm GC
