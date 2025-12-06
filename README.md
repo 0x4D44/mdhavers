@@ -17,7 +17,17 @@ cargo build --release
 ./target/release/mdhavers repl
 
 # Compile to JavaScript
-./target/release/mdhavers compile examples/fizzbuzz.braw
+./target/release/mdhavers compile examples/fizzbuzz.braw -o fizzbuzz.js
+node fizzbuzz.js
+
+# Compile to WebAssembly Text format
+./target/release/mdhavers compile examples/functions.braw --target wat
+
+# Try the web playground
+cd playground && ./build.sh && cd web && python3 -m http.server 8080
+
+# Play Tetris!
+open games/tetris/index.html
 ```
 
 ## Language Guide
@@ -731,6 +741,10 @@ mdhavers  # shorthand
 mdhavers compile program.braw
 mdhavers compile program.braw -o output.js
 
+# Compile to WebAssembly Text format (WAT)
+mdhavers compile program.braw --target wat
+mdhavers compile program.braw --target wat -o output.wat
+
 # Check for errors
 mdhavers check program.braw
 
@@ -747,6 +761,244 @@ mdhavers ast program.braw
 # Trace execution (step-by-step with Scottish commentary!)
 mdhavers trace program.braw        # statements only
 mdhavers trace program.braw -v     # verbose mode (shows values too)
+```
+
+## Compilation Targets
+
+mdhavers can compile yer code tae multiple targets fer running in different environments.
+
+### JavaScript Compilation
+
+Compile mdhavers code tae JavaScript fer running in browsers or Node.js:
+
+```bash
+# Compile to JavaScript
+mdhavers compile fizzbuzz.braw -o fizzbuzz.js
+
+# Run with Node.js
+node fizzbuzz.js
+```
+
+**Example - FizzBuzz in mdhavers:**
+
+```scots
+fer i in 1..101 {
+    gin i % 15 == 0 {
+        blether "FizzBuzz"
+    } ither gin i % 3 == 0 {
+        blether "Fizz"
+    } ither gin i % 5 == 0 {
+        blether "Buzz"
+    } ither {
+        blether i
+    }
+}
+```
+
+**Compiled JavaScript output:**
+
+```javascript
+for (let i = 1; i < 101; i++) {
+    if ((i % 15) === 0) {
+        console.log("FizzBuzz");
+    } else if ((i % 3) === 0) {
+        console.log("Fizz");
+    } else if ((i % 5) === 0) {
+        console.log("Buzz");
+    } else {
+        console.log(i);
+    }
+}
+```
+
+### WebAssembly Text Format (WAT)
+
+Compile tae WAT fer high-performance execution:
+
+```bash
+# Compile to WAT
+mdhavers compile maths.braw --target wat -o maths.wat
+
+# Convert WAT to WASM using wat2wasm (from wabt toolkit)
+wat2wasm maths.wat -o maths.wasm
+```
+
+**Example - Simple maths function:**
+
+```scots
+dae add(a, b) {
+    gie a + b
+}
+```
+
+**Compiled WAT output:**
+
+```wat
+(module
+  (func $add (param $a i64) (param $b i64) (result i64)
+    (i64.add
+      (local.get $a)
+      (local.get $b)))
+  (export "add" (func $add)))
+```
+
+### Using the Rust Library
+
+You can also compile programmatically using mdhavers as a library:
+
+```rust
+use mdhavers::{compile_to_js, compile_to_wat};
+
+fn main() {
+    let source = r#"
+        dae greet(name) {
+            blether "Hello, " + name + "!"
+        }
+        greet("World")
+    "#;
+
+    // Compile to JavaScript
+    let js = compile_to_js(source).unwrap();
+    println!("JavaScript:\n{}", js);
+
+    // Compile to WAT
+    let wat = compile_to_wat(source).unwrap();
+    println!("WAT:\n{}", wat);
+}
+```
+
+## Interactive Playground
+
+mdhavers includes a web-based playground fer experimenting with code directly in yer browser.
+
+### Features
+
+- **Live Code Execution**: Run mdhavers code client-side using WebAssembly
+- **Syntax Highlighting**: Beautiful dark theme with JetBrains Mono font
+- **Code Formatting**: Auto-format yer code with one click
+- **JavaScript Compilation**: View the compiled JavaScript output
+- **Example Code**: Built-in examples covering all language features
+- **Share Links**: Share yer code via URL
+
+### Running the Playground Locally
+
+```bash
+# Navigate to the playground directory
+cd playground
+
+# Build the WASM module (requires wasm-pack)
+./build.sh
+
+# Or manually:
+wasm-pack build --target web
+cp -r pkg web/
+
+# Serve the playground
+cd web
+python3 -m http.server 8080
+
+# Open http://localhost:8080 in your browser
+```
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Enter` | Run code |
+| `Ctrl+Shift+F` | Format code |
+| `Tab` | Insert 4 spaces |
+| `Escape` | Close modal |
+
+### Deployment
+
+The `playground/web/` directory contains everything needed fer static hosting (GitHub Pages, Netlify, Vercel, etc.).
+
+## Games
+
+### Tetris
+
+A fully-featured Tetris implementation written in mdhavers! The game demonstrates classes, control flow, and complex game logic.
+
+#### Playing Tetris
+
+**Browser Version (recommended):**
+```bash
+# Open the game directly in your browser
+open games/tetris/index.html
+
+# Or serve it locally
+cd games/tetris
+python3 -m http.server 8080
+# Visit http://localhost:8080
+```
+
+**Controls:**
+
+| Key | Action |
+|-----|--------|
+| `←` / `→` | Move piece left/right |
+| `↓` | Soft drop (move down faster) |
+| `↑` | Rotate piece |
+| `Space` | Hard drop (instant drop) |
+| `P` | Pause/Resume |
+
+On mobile devices, use the on-screen buttons.
+
+#### Game Features
+
+- Classic Tetris gameplay with all 7 tetromino pieces
+- Scottish-themed colours:
+  - **I** (Turquoise) - Like the Scottish sea
+  - **O** (Gold) - Like whisky
+  - **T** (Purple) - Like heather
+  - **S** (Green) - Like the Highlands
+  - **Z** (Orange-red) - Like a sunset
+  - **J** (Royal blue) - Like the Saltire
+  - **L** (Orange) - Like Irn-Bru
+- Ghost piece showing where yer piece will land
+- Wall kicks fer rotation near edges
+- Level progression (speeds up every 10 lines)
+- Scoring system:
+  - 1 line: 100 points × level
+  - 2 lines: 300 points × level
+  - 3 lines: 500 points × level
+  - 4 lines (Tetris!): 800 points × level
+  - Hard drop bonus: 2 points per cell
+
+#### The mdhavers Source Code
+
+The game logic is written entirely in mdhavers (`games/tetris/tetris.braw`):
+
+```scots
+# Tetris piece definitions
+ken SHAPES = {
+    "I": [[0, 0], [0, 1], [0, 2], [0, 3]],
+    "O": [[0, 0], [0, 1], [1, 0], [1, 1]],
+    "T": [[0, 0], [0, 1], [0, 2], [1, 1]],
+    # ... more shapes
+}
+
+# Game class
+kin TetrisGame {
+    dae init() {
+        masel.board = masel.create_empty_board()
+        masel.score = 0
+        masel.level = 1
+        masel.spawn_piece()
+    }
+
+    dae move_down() {
+        gin nae masel.check_collision(1, 0) {
+            masel.current_row = masel.current_row + 1
+        } ither {
+            masel.lock_piece()
+            masel.clear_lines()
+            masel.spawn_piece()
+        }
+    }
+
+    # ... more game logic
+}
 ```
 
 ## Debugger/Tracer
@@ -848,6 +1100,8 @@ Yer bum's oot the windae! Function 'greet' expects 1 arguments but ye gave it 3
 
 See the `examples/` directory for sample programs:
 
+### Core Examples
+
 - `hello.braw` - Hello World
 - `variables.braw` - Variable types and operations
 - `control_flow.braw` - If statements and loops
@@ -857,35 +1111,66 @@ See the `examples/` directory for sample programs:
 - `primes.braw` - Prime number finder
 - `sorting.braw` - Sorting demonstrations
 - `bubblesort.braw` - Bubblesort with index assignment
+
+### Advanced Features
+
 - `scots_stdlib.braw` - Scots-flavored standard library demo
 - `try_catch.braw` - Error handling examples
 - `match.braw` - Pattern matching examples
 - `higher_order.braw` - Lambdas and higher-order functions
 - `fstrings.braw` - F-string interpolation examples
 - `inheritance.braw` - Class inheritance with `fae`
-- `file_io.braw` - File I/O operations
-- `scottish_pub.braw` - A wee Scottish pub simulation (classes, dicts, HOF)
-- `ceilidh.braw` - Scottish dance party (math functions, lists, shuffling)
-- `modules_demo.braw` - Demonstrating the module import system
 - `operator_overload.braw` - Operator overloading with classes
-- `assert_demo.braw` - Assertions with mak_siccar
-- `test_example.braw` - Testing library demonstration
-- `scots_words.braw` - Scottish vocabulary functions demo
-- `prelude_demo.braw` - Auto-loaded prelude functions demo
-- `new_functions.braw` - New higher-order functions demo
+- `destructure.braw` - Destructuring assignment examples
 - `spread.braw` - Spread operator (...) examples
 - `pipe.braw` - Pipe operator (|>) examples
 - `defaults.braw` - Default parameter values (staundart values)
+
+### Fun Examples
+
+- `scottish_pub.braw` - A wee Scottish pub simulation (classes, dicts, HOF)
+- `ceilidh.braw` - Scottish dance party (math functions, lists, shuffling)
+- `scots_words.braw` - Scottish vocabulary functions demo
+- `scots_fun.braw` - New Scots vocabulary functions demo
+
+### Utility Examples
+
+- `file_io.braw` - File I/O operations
+- `modules_demo.braw` - Demonstrating the module import system
+- `assert_demo.braw` - Assertions with mak_siccar
+- `test_example.braw` - Testing library demonstration
+- `prelude_demo.braw` - Auto-loaded prelude functions demo
+- `prelude_showcase.braw` - Demo of prelude functions (greetings, debug, validation)
+- `new_functions.braw` - New higher-order functions demo
 - `trace_demo.braw` - Demo file for the tracer (try `mdhavers trace`)
 - `benchmark.braw` - Timing and benchmarking demo (noo, tick, bide)
-- `prelude_showcase.braw` - Demo of prelude functions (greetings, debug, validation)
-- `destructure.braw` - Destructuring assignment examples
-- `scots_fun.braw` - New Scots vocabulary functions demo
+
+### Standard Library
+
 - `lib/maths.braw` - Mathematics utility library
 - `lib/strings.braw` - String manipulation library
 - `lib/collections.braw` - Data structures (stacks, queues, sets)
 - `lib/functional.braw` - Functional programming utilities
 - `lib/testing.braw` - Testing framework with assertions
+
+### Games
+
+- `games/tetris/tetris.braw` - Full Tetris game implementation
+
+### Compilation Examples
+
+You can compile any example tae JavaScript:
+
+```bash
+# Compile FizzBuzz to JavaScript
+mdhavers compile examples/fizzbuzz.braw -o fizzbuzz.js
+node fizzbuzz.js
+
+# Compile to WAT
+mdhavers compile examples/functions.braw --target wat -o functions.wat
+```
+
+Try it in the playground at `playground/web/` tae see live compilation!
 
 ## Building from Source
 
