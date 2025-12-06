@@ -437,14 +437,20 @@ mod tests {
         assert_eq!(Value::Function(Rc::new(func)).type_name(), "function");
 
         let native = NativeFunction::new("native", 0, |_| Ok(Value::Nil));
-        assert_eq!(Value::NativeFunction(Rc::new(native)).type_name(), "native function");
+        assert_eq!(
+            Value::NativeFunction(Rc::new(native)).type_name(),
+            "native function"
+        );
 
         let class = HaversClass::new("TestClass".to_string(), None);
         assert_eq!(Value::Class(Rc::new(class)).type_name(), "class");
 
         let class2 = Rc::new(HaversClass::new("TestClass".to_string(), None));
         let instance = HaversInstance::new(class2);
-        assert_eq!(Value::Instance(Rc::new(RefCell::new(instance))).type_name(), "instance");
+        assert_eq!(
+            Value::Instance(Rc::new(RefCell::new(instance))).type_name(),
+            "instance"
+        );
 
         let strct = HaversStruct::new("TestStruct".to_string(), vec![]);
         assert_eq!(Value::Struct(Rc::new(strct)).type_name(), "struct");
@@ -533,7 +539,10 @@ mod tests {
 
     #[test]
     fn test_value_as_string() {
-        assert_eq!(Value::String("hello".to_string()).as_string(), Some("hello"));
+        assert_eq!(
+            Value::String("hello".to_string()).as_string(),
+            Some("hello")
+        );
         assert_eq!(Value::Integer(42).as_string(), None);
         assert_eq!(Value::Float(3.14).as_string(), None);
         assert_eq!(Value::Bool(true).as_string(), None);
@@ -569,7 +578,10 @@ mod tests {
         assert_eq!(format!("{}", multi), "[1, 2, 3]");
 
         // Nested list
-        let inner = Value::List(Rc::new(RefCell::new(vec![Value::Integer(1), Value::Integer(2)])));
+        let inner = Value::List(Rc::new(RefCell::new(vec![
+            Value::Integer(1),
+            Value::Integer(2),
+        ])));
         let outer = Value::List(Rc::new(RefCell::new(vec![inner, Value::Integer(3)])));
         assert_eq!(format!("{}", outer), "[[1, 2], 3]");
     }
@@ -673,8 +685,14 @@ mod tests {
 
     #[test]
     fn test_value_equality_strings() {
-        assert_eq!(Value::String("hello".to_string()), Value::String("hello".to_string()));
-        assert_ne!(Value::String("hello".to_string()), Value::String("world".to_string()));
+        assert_eq!(
+            Value::String("hello".to_string()),
+            Value::String("hello".to_string())
+        );
+        assert_ne!(
+            Value::String("hello".to_string()),
+            Value::String("world".to_string())
+        );
     }
 
     #[test]
@@ -691,9 +709,18 @@ mod tests {
 
     #[test]
     fn test_value_equality_lists() {
-        let list1 = Value::List(Rc::new(RefCell::new(vec![Value::Integer(1), Value::Integer(2)])));
-        let list2 = Value::List(Rc::new(RefCell::new(vec![Value::Integer(1), Value::Integer(2)])));
-        let list3 = Value::List(Rc::new(RefCell::new(vec![Value::Integer(1), Value::Integer(3)])));
+        let list1 = Value::List(Rc::new(RefCell::new(vec![
+            Value::Integer(1),
+            Value::Integer(2),
+        ])));
+        let list2 = Value::List(Rc::new(RefCell::new(vec![
+            Value::Integer(1),
+            Value::Integer(2),
+        ])));
+        let list3 = Value::List(Rc::new(RefCell::new(vec![
+            Value::Integer(1),
+            Value::Integer(3),
+        ])));
 
         assert_eq!(list1, list2);
         assert_ne!(list1, list3);
@@ -723,12 +750,7 @@ mod tests {
 
     #[test]
     fn test_havers_function_new() {
-        let func = HaversFunction::new(
-            "test".to_string(),
-            vec![],
-            vec![],
-            None,
-        );
+        let func = HaversFunction::new("test".to_string(), vec![], vec![], None);
         assert_eq!(func.name, "test");
         assert!(func.params.is_empty());
         assert!(func.body.is_empty());
@@ -738,9 +760,18 @@ mod tests {
     #[test]
     fn test_havers_function_arity_no_defaults() {
         let params = vec![
-            FunctionParam { name: "a".to_string(), default: None },
-            FunctionParam { name: "b".to_string(), default: None },
-            FunctionParam { name: "c".to_string(), default: None },
+            FunctionParam {
+                name: "a".to_string(),
+                default: None,
+            },
+            FunctionParam {
+                name: "b".to_string(),
+                default: None,
+            },
+            FunctionParam {
+                name: "c".to_string(),
+                default: None,
+            },
         ];
         let func = HaversFunction::new("add".to_string(), params, vec![], None);
         assert_eq!(func.min_arity(), 3);
@@ -753,12 +784,21 @@ mod tests {
 
         let default_expr = Expr::Literal {
             value: Literal::Integer(0),
-            span: Span::new(1, 1)
+            span: Span::new(1, 1),
         };
         let params = vec![
-            FunctionParam { name: "a".to_string(), default: None },
-            FunctionParam { name: "b".to_string(), default: Some(default_expr.clone()) },
-            FunctionParam { name: "c".to_string(), default: Some(default_expr) },
+            FunctionParam {
+                name: "a".to_string(),
+                default: None,
+            },
+            FunctionParam {
+                name: "b".to_string(),
+                default: Some(default_expr.clone()),
+            },
+            FunctionParam {
+                name: "c".to_string(),
+                default: Some(default_expr),
+            },
         ];
         let func = HaversFunction::new("test".to_string(), params, vec![], None);
         assert_eq!(func.min_arity(), 1); // Only 'a' required
@@ -842,7 +882,12 @@ mod tests {
     fn test_havers_class_inheritance() {
         // Parent class with a method
         let mut parent = HaversClass::new("Animal".to_string(), None);
-        let speak = Rc::new(HaversFunction::new("speak".to_string(), vec![], vec![], None));
+        let speak = Rc::new(HaversFunction::new(
+            "speak".to_string(),
+            vec![],
+            vec![],
+            None,
+        ));
         parent.methods.insert("speak".to_string(), speak);
         let parent_rc = Rc::new(parent);
 
@@ -858,13 +903,23 @@ mod tests {
     fn test_havers_class_method_override() {
         // Parent class
         let mut parent = HaversClass::new("Parent".to_string(), None);
-        let parent_method = Rc::new(HaversFunction::new("greet".to_string(), vec![], vec![], None));
+        let parent_method = Rc::new(HaversFunction::new(
+            "greet".to_string(),
+            vec![],
+            vec![],
+            None,
+        ));
         parent.methods.insert("greet".to_string(), parent_method);
         let parent_rc = Rc::new(parent);
 
         // Child class with overridden method
         let mut child = HaversClass::new("Child".to_string(), Some(parent_rc));
-        let child_method = Rc::new(HaversFunction::new("greet_child".to_string(), vec![], vec![], None));
+        let child_method = Rc::new(HaversFunction::new(
+            "greet_child".to_string(),
+            vec![],
+            vec![],
+            None,
+        ));
         child.methods.insert("greet".to_string(), child_method);
 
         // Child's method should take precedence
@@ -890,7 +945,10 @@ mod tests {
         instance.set("name".to_string(), Value::String("Alice".to_string()));
         instance.set("age".to_string(), Value::Integer(30));
 
-        assert_eq!(instance.get("name"), Some(Value::String("Alice".to_string())));
+        assert_eq!(
+            instance.get("name"),
+            Some(Value::String("Alice".to_string()))
+        );
         assert_eq!(instance.get("age"), Some(Value::Integer(30)));
         assert_eq!(instance.get("nonexistent"), None);
     }
@@ -898,7 +956,12 @@ mod tests {
     #[test]
     fn test_havers_instance_get_method() {
         let mut class = HaversClass::new("Calculator".to_string(), None);
-        let method = Rc::new(HaversFunction::new("calculate".to_string(), vec![], vec![], None));
+        let method = Rc::new(HaversFunction::new(
+            "calculate".to_string(),
+            vec![],
+            vec![],
+            None,
+        ));
         class.methods.insert("calculate".to_string(), method);
         let class_rc = Rc::new(class);
 
@@ -917,7 +980,12 @@ mod tests {
     #[test]
     fn test_havers_instance_field_shadows_method() {
         let mut class = HaversClass::new("Test".to_string(), None);
-        let method = Rc::new(HaversFunction::new("value".to_string(), vec![], vec![], None));
+        let method = Rc::new(HaversFunction::new(
+            "value".to_string(),
+            vec![],
+            vec![],
+            None,
+        ));
         class.methods.insert("value".to_string(), method);
         let class_rc = Rc::new(class);
 
@@ -937,10 +1005,7 @@ mod tests {
 
     #[test]
     fn test_havers_struct_new() {
-        let strct = HaversStruct::new(
-            "Point".to_string(),
-            vec!["x".to_string(), "y".to_string()],
-        );
+        let strct = HaversStruct::new("Point".to_string(), vec!["x".to_string(), "y".to_string()]);
         assert_eq!(strct.name, "Point");
         assert_eq!(strct.fields, vec!["x", "y"]);
     }
@@ -1028,7 +1093,9 @@ mod tests {
     #[test]
     fn test_environment_with_enclosing() {
         let outer = Rc::new(RefCell::new(Environment::new()));
-        outer.borrow_mut().define("outer_var".to_string(), Value::Integer(1));
+        outer
+            .borrow_mut()
+            .define("outer_var".to_string(), Value::Integer(1));
 
         let inner = Environment::with_enclosing(outer.clone());
 
@@ -1040,7 +1107,9 @@ mod tests {
     #[test]
     fn test_environment_shadowing() {
         let outer = Rc::new(RefCell::new(Environment::new()));
-        outer.borrow_mut().define("x".to_string(), Value::Integer(1));
+        outer
+            .borrow_mut()
+            .define("x".to_string(), Value::Integer(1));
 
         let mut inner = Environment::with_enclosing(outer.clone());
         inner.define("x".to_string(), Value::Integer(2));
@@ -1073,7 +1142,9 @@ mod tests {
     #[test]
     fn test_environment_assign_enclosing() {
         let outer = Rc::new(RefCell::new(Environment::new()));
-        outer.borrow_mut().define("x".to_string(), Value::Integer(1));
+        outer
+            .borrow_mut()
+            .define("x".to_string(), Value::Integer(1));
 
         let mut inner = Environment::with_enclosing(outer.clone());
 
@@ -1101,7 +1172,9 @@ mod tests {
     #[test]
     fn test_environment_get_exports_excludes_enclosing() {
         let outer = Rc::new(RefCell::new(Environment::new()));
-        outer.borrow_mut().define("outer".to_string(), Value::Integer(1));
+        outer
+            .borrow_mut()
+            .define("outer".to_string(), Value::Integer(1));
 
         let mut inner = Environment::with_enclosing(outer);
         inner.define("inner".to_string(), Value::Integer(2));

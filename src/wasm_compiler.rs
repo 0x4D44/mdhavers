@@ -21,6 +21,12 @@ pub struct WasmCompiler {
     string_data: Vec<String>,
 }
 
+impl Default for WasmCompiler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WasmCompiler {
     pub fn new() -> Self {
         WasmCompiler {

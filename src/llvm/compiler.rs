@@ -14,7 +14,7 @@ use inkwell::targets::{
 use inkwell::OptimizationLevel;
 
 use crate::ast::Program;
-use crate::HaversError;
+use crate::error::{HaversError, HaversResult};
 
 use super::codegen::CodeGen;
 
@@ -53,15 +53,20 @@ impl LLVMCompiler {
     }
 
     /// Compile to object file
-    pub fn compile_to_object(&self, program: &Program, output_path: &Path) -> Result<(), HaversError> {
+    pub fn compile_to_object(
+        &self,
+        program: &Program,
+        output_path: &Path,
+    ) -> Result<(), HaversError> {
         let context = Context::create();
         let mut codegen = CodeGen::new(&context, "mdhavers_module");
 
         codegen.compile(program)?;
 
         // Initialize native target
-        Target::initialize_native(&InitializationConfig::default())
-            .map_err(|e| HaversError::CompileError(format!("Failed to initialize target: {}", e)))?;
+        Target::initialize_native(&InitializationConfig::default()).map_err(|e| {
+            HaversError::CompileError(format!("Failed to initialize target: {}", e))
+        })?;
 
         let target_triple = TargetMachine::get_default_triple();
         let target = Target::from_triple(&target_triple)
@@ -76,7 +81,9 @@ impl LLVMCompiler {
                 RelocMode::Default,
                 CodeModel::Default,
             )
-            .ok_or_else(|| HaversError::CompileError("Failed to create target machine".to_string()))?;
+            .ok_or_else(|| {
+                HaversError::CompileError("Failed to create target machine".to_string())
+            })?;
 
         // Run optimization passes
         self.run_optimization_passes(codegen.get_module())?;
@@ -84,7 +91,9 @@ impl LLVMCompiler {
         // Write object file
         target_machine
             .write_to_file(codegen.get_module(), FileType::Object, output_path)
-            .map_err(|e| HaversError::CompileError(format!("Failed to write object file: {}", e)))?;
+            .map_err(|e| {
+                HaversError::CompileError(format!("Failed to write object file: {}", e))
+            })?;
 
         Ok(())
     }
@@ -202,7 +211,7 @@ mod tests {
         let compiler = LLVMCompiler::new();
         let ir = compiler.compile_to_ir(&program).unwrap();
 
-        assert!(ir.contains("br i1"));  // Conditional branch
+        assert!(ir.contains("br i1")); // Conditional branch
         assert!(ir.contains("then"));
         assert!(ir.contains("else"));
     }

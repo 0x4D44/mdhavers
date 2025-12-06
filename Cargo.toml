@@ -24,6 +24,8 @@ required-features = ["cli"]
 
 [features]
 default = ["cli"]
+# Note: To enable LLVM native compilation, install: sudo apt install llvm-15 libpolly-15-dev lld-15 libzstd-dev
+# Then build with: cargo build --features llvm
 cli = ["clap", "rustyline", "dirs", "colored", "lsp-types", "lsp-server"]
 llvm = ["inkwell"]
 

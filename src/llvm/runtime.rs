@@ -77,14 +77,10 @@ impl<'ctx> RuntimeFunctions<'ctx> {
         let f64_type = types.f64_type;
         let bool_type = types.bool_type;
         let void_type = types.void_type;
-        let str_ptr = context.ptr_type(AddressSpace::default());
+        let str_ptr = i8_type.ptr_type(AddressSpace::default());
 
         // Value creation functions
-        let make_nil = module.add_function(
-            "__mdh_make_nil",
-            value_type.fn_type(&[], false),
-            None,
-        );
+        let make_nil = module.add_function("__mdh_make_nil", value_type.fn_type(&[], false), None);
 
         let make_bool = module.add_function(
             "__mdh_make_bool",
@@ -238,7 +234,10 @@ impl<'ctx> RuntimeFunctions<'ctx> {
 
         let list_set = module.add_function(
             "__mdh_list_set",
-            void_type.fn_type(&[value_type.into(), i64_type.into(), value_type.into()], false),
+            void_type.fn_type(
+                &[value_type.into(), i64_type.into(), value_type.into()],
+                false,
+            ),
             None,
         );
 

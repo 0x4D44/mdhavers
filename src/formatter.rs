@@ -28,6 +28,12 @@ pub struct Formatter {
     indent_level: usize,
 }
 
+impl Default for Formatter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Formatter {
     pub fn new() -> Self {
         Formatter::with_config(FormatterConfig::default())

@@ -18,8 +18,18 @@ pub struct BuiltinInfo {
 }
 
 impl BuiltinInfo {
-    const fn new(name: &'static str, runtime_name: &'static str, min_arity: usize, max_arity: Option<usize>) -> Self {
-        BuiltinInfo { name, runtime_name, min_arity, max_arity }
+    const fn new(
+        name: &'static str,
+        runtime_name: &'static str,
+        min_arity: usize,
+        max_arity: Option<usize>,
+    ) -> Self {
+        BuiltinInfo {
+            name,
+            runtime_name,
+            min_arity,
+            max_arity,
+        }
     }
 
     const fn fixed(name: &'static str, runtime_name: &'static str, arity: usize) -> Self {
@@ -32,20 +42,16 @@ pub static BUILTINS: &[BuiltinInfo] = &[
     // I/O
     BuiltinInfo::fixed("blether", "__mdh_blether", 1),
     BuiltinInfo::fixed("speir", "__mdh_speir", 1),
-
     // Type conversion
     BuiltinInfo::fixed("tae_string", "__mdh_to_string", 1),
     BuiltinInfo::fixed("tae_int", "__mdh_to_int", 1),
     BuiltinInfo::fixed("tae_float", "__mdh_to_float", 1),
-
     // Type checking
     BuiltinInfo::fixed("whit_kind", "__mdh_type_of", 1),
-
     // List operations
     BuiltinInfo::fixed("len", "__mdh_len", 1),
     BuiltinInfo::fixed("shove", "__mdh_list_push", 2),
     BuiltinInfo::fixed("yank", "__mdh_list_pop", 1),
-
     // Math
     BuiltinInfo::fixed("abs", "__mdh_abs", 1),
     BuiltinInfo::new("jammy", "__mdh_random", 0, Some(2)),

@@ -54,6 +54,9 @@ pub enum HaversError {
     #[error("Jings! Something went awfy wrang: {0}")]
     InternalError(String),
 
+    #[error("Och! Compilation went tits up: {0}")]
+    CompileError(String),
+
     #[error("Wheesht! Break statement ootside a loop at line {line} - ye can only brak fae inside a whiles or fer loop!")]
     BreakOutsideLoop { line: usize },
 
@@ -696,12 +699,18 @@ mod tests {
         assert!(suggestion.unwrap().contains("0"));
 
         // Test not callable
-        let err = HaversError::NotCallable { name: "x".to_string(), line: 1 };
+        let err = HaversError::NotCallable {
+            name: "x".to_string(),
+            line: 1,
+        };
         let suggestion = get_error_suggestion(&err);
         assert!(suggestion.is_some());
 
         // Test key not found
-        let err = HaversError::KeyNotFound { key: "foo".to_string(), line: 1 };
+        let err = HaversError::KeyNotFound {
+            key: "foo".to_string(),
+            line: 1,
+        };
         let suggestion = get_error_suggestion(&err);
         assert!(suggestion.is_some());
 
@@ -711,7 +720,9 @@ mod tests {
         assert!(suggestion.is_some());
 
         // Test circular import
-        let err = HaversError::CircularImport { path: "lib".to_string() };
+        let err = HaversError::CircularImport {
+            path: "lib".to_string(),
+        };
         let suggestion = get_error_suggestion(&err);
         assert!(suggestion.is_some());
 
@@ -831,83 +842,296 @@ mod tests {
     #[test]
     fn test_error_line_method() {
         // Test all error variants that have line
-        assert_eq!(HaversError::UnkentToken {
-            lexeme: "x".to_string(), line: 5, column: 3
-        }.line(), Some(5));
+        assert_eq!(
+            HaversError::UnkentToken {
+                lexeme: "x".to_string(),
+                line: 5,
+                column: 3
+            }
+            .line(),
+            Some(5)
+        );
 
-        assert_eq!(HaversError::UnexpectedToken {
-            expected: "a".to_string(), found: "b".to_string(), line: 10
-        }.line(), Some(10));
+        assert_eq!(
+            HaversError::UnexpectedToken {
+                expected: "a".to_string(),
+                found: "b".to_string(),
+                line: 10
+            }
+            .line(),
+            Some(10)
+        );
 
-        assert_eq!(HaversError::UndefinedVariable {
-            name: "x".to_string(), line: 3
-        }.line(), Some(3));
+        assert_eq!(
+            HaversError::UndefinedVariable {
+                name: "x".to_string(),
+                line: 3
+            }
+            .line(),
+            Some(3)
+        );
 
         assert_eq!(HaversError::DivisionByZero { line: 7 }.line(), Some(7));
 
-        assert_eq!(HaversError::TypeError {
-            message: "msg".to_string(), line: 2
-        }.line(), Some(2));
+        assert_eq!(
+            HaversError::TypeError {
+                message: "msg".to_string(),
+                line: 2
+            }
+            .line(),
+            Some(2)
+        );
 
-        assert_eq!(HaversError::NotCallable {
-            name: "x".to_string(), line: 4
-        }.line(), Some(4));
+        assert_eq!(
+            HaversError::NotCallable {
+                name: "x".to_string(),
+                line: 4
+            }
+            .line(),
+            Some(4)
+        );
 
-        assert_eq!(HaversError::WrongArity {
-            name: "f".to_string(), expected: 1, got: 2, line: 6
-        }.line(), Some(6));
+        assert_eq!(
+            HaversError::WrongArity {
+                name: "f".to_string(),
+                expected: 1,
+                got: 2,
+                line: 6
+            }
+            .line(),
+            Some(6)
+        );
 
-        assert_eq!(HaversError::IndexOutOfBounds {
-            index: 5, size: 3, line: 8
-        }.line(), Some(8));
+        assert_eq!(
+            HaversError::IndexOutOfBounds {
+                index: 5,
+                size: 3,
+                line: 8
+            }
+            .line(),
+            Some(8)
+        );
 
-        assert_eq!(HaversError::ParseError {
-            message: "err".to_string(), line: 9
-        }.line(), Some(9));
+        assert_eq!(
+            HaversError::ParseError {
+                message: "err".to_string(),
+                line: 9
+            }
+            .line(),
+            Some(9)
+        );
 
         assert_eq!(HaversError::BreakOutsideLoop { line: 11 }.line(), Some(11));
-        assert_eq!(HaversError::ContinueOutsideLoop { line: 12 }.line(), Some(12));
+        assert_eq!(
+            HaversError::ContinueOutsideLoop { line: 12 }.line(),
+            Some(12)
+        );
         assert_eq!(HaversError::StackOverflow { line: 13 }.line(), Some(13));
-        assert_eq!(HaversError::UnterminatedString { line: 14 }.line(), Some(14));
-        assert_eq!(HaversError::InvalidNumber { value: "x".to_string(), line: 15 }.line(), Some(15));
-        assert_eq!(HaversError::AlreadyDefined { name: "x".to_string(), line: 16 }.line(), Some(16));
-        assert_eq!(HaversError::NotAnObject { name: "x".to_string(), line: 17 }.line(), Some(17));
-        assert_eq!(HaversError::UndefinedProperty { property: "x".to_string(), line: 18 }.line(), Some(18));
+        assert_eq!(
+            HaversError::UnterminatedString { line: 14 }.line(),
+            Some(14)
+        );
+        assert_eq!(
+            HaversError::InvalidNumber {
+                value: "x".to_string(),
+                line: 15
+            }
+            .line(),
+            Some(15)
+        );
+        assert_eq!(
+            HaversError::AlreadyDefined {
+                name: "x".to_string(),
+                line: 16
+            }
+            .line(),
+            Some(16)
+        );
+        assert_eq!(
+            HaversError::NotAnObject {
+                name: "x".to_string(),
+                line: 17
+            }
+            .line(),
+            Some(17)
+        );
+        assert_eq!(
+            HaversError::UndefinedProperty {
+                property: "x".to_string(),
+                line: 18
+            }
+            .line(),
+            Some(18)
+        );
         assert_eq!(HaversError::InfiniteLoop { line: 19 }.line(), Some(19));
         assert_eq!(HaversError::NotAList { line: 20 }.line(), Some(20));
         assert_eq!(HaversError::NotADict { line: 21 }.line(), Some(21));
-        assert_eq!(HaversError::KeyNotFound { key: "x".to_string(), line: 22 }.line(), Some(22));
-        assert_eq!(HaversError::InvalidOperation { operation: "op".to_string(), line: 23 }.line(), Some(23));
-        assert_eq!(HaversError::AssertionFailed { message: "msg".to_string(), line: 24 }.line(), Some(24));
-        assert_eq!(HaversError::ReturnOutsideFunction { line: 25 }.line(), Some(25));
-        assert_eq!(HaversError::NotIterable { type_name: "int".to_string(), line: 26 }.line(), Some(26));
-        assert_eq!(HaversError::PatternError { message: "msg".to_string(), line: 27 }.line(), Some(27));
+        assert_eq!(
+            HaversError::KeyNotFound {
+                key: "x".to_string(),
+                line: 22
+            }
+            .line(),
+            Some(22)
+        );
+        assert_eq!(
+            HaversError::InvalidOperation {
+                operation: "op".to_string(),
+                line: 23
+            }
+            .line(),
+            Some(23)
+        );
+        assert_eq!(
+            HaversError::AssertionFailed {
+                message: "msg".to_string(),
+                line: 24
+            }
+            .line(),
+            Some(24)
+        );
+        assert_eq!(
+            HaversError::ReturnOutsideFunction { line: 25 }.line(),
+            Some(25)
+        );
+        assert_eq!(
+            HaversError::NotIterable {
+                type_name: "int".to_string(),
+                line: 26
+            }
+            .line(),
+            Some(26)
+        );
+        assert_eq!(
+            HaversError::PatternError {
+                message: "msg".to_string(),
+                line: 27
+            }
+            .line(),
+            Some(27)
+        );
         assert_eq!(HaversError::IntegerOverflow { line: 28 }.line(), Some(28));
-        assert_eq!(HaversError::NegativeIndexOutOfBounds { index: -1, line: 29 }.line(), Some(29));
-        assert_eq!(HaversError::EmptyCollection { operation: "op".to_string(), line: 30 }.line(), Some(30));
-        assert_eq!(HaversError::InvalidRegex { message: "msg".to_string(), line: 31 }.line(), Some(31));
-        assert_eq!(HaversError::FormatError { message: "msg".to_string(), line: 32 }.line(), Some(32));
-        assert_eq!(HaversError::JsonError { message: "msg".to_string(), line: 33 }.line(), Some(33));
-        assert_eq!(HaversError::IncomparableTypes { left_type: "a".to_string(), right_type: "b".to_string(), line: 34 }.line(), Some(34));
-        assert_eq!(HaversError::InvalidNumberOperation { message: "msg".to_string(), line: 35 }.line(), Some(35));
-        assert_eq!(HaversError::NonExhaustiveMatch { line: 36 }.line(), Some(36));
-        assert_eq!(HaversError::DuplicateKey { key: "x".to_string(), line: 37 }.line(), Some(37));
+        assert_eq!(
+            HaversError::NegativeIndexOutOfBounds {
+                index: -1,
+                line: 29
+            }
+            .line(),
+            Some(29)
+        );
+        assert_eq!(
+            HaversError::EmptyCollection {
+                operation: "op".to_string(),
+                line: 30
+            }
+            .line(),
+            Some(30)
+        );
+        assert_eq!(
+            HaversError::InvalidRegex {
+                message: "msg".to_string(),
+                line: 31
+            }
+            .line(),
+            Some(31)
+        );
+        assert_eq!(
+            HaversError::FormatError {
+                message: "msg".to_string(),
+                line: 32
+            }
+            .line(),
+            Some(32)
+        );
+        assert_eq!(
+            HaversError::JsonError {
+                message: "msg".to_string(),
+                line: 33
+            }
+            .line(),
+            Some(33)
+        );
+        assert_eq!(
+            HaversError::IncomparableTypes {
+                left_type: "a".to_string(),
+                right_type: "b".to_string(),
+                line: 34
+            }
+            .line(),
+            Some(34)
+        );
+        assert_eq!(
+            HaversError::InvalidNumberOperation {
+                message: "msg".to_string(),
+                line: 35
+            }
+            .line(),
+            Some(35)
+        );
+        assert_eq!(
+            HaversError::NonExhaustiveMatch { line: 36 }.line(),
+            Some(36)
+        );
+        assert_eq!(
+            HaversError::DuplicateKey {
+                key: "x".to_string(),
+                line: 37
+            }
+            .line(),
+            Some(37)
+        );
         assert_eq!(HaversError::ExecutionTimeout { line: 38 }.line(), Some(38));
         assert_eq!(HaversError::OutOfMemory { line: 39 }.line(), Some(39));
-        assert_eq!(HaversError::PrivateMemberAccess { member: "x".to_string(), line: 40 }.line(), Some(40));
-        assert_eq!(HaversError::ImmutableVariable { name: "x".to_string(), line: 41 }.line(), Some(41));
+        assert_eq!(
+            HaversError::PrivateMemberAccess {
+                member: "x".to_string(),
+                line: 40
+            }
+            .line(),
+            Some(40)
+        );
+        assert_eq!(
+            HaversError::ImmutableVariable {
+                name: "x".to_string(),
+                line: 41
+            }
+            .line(),
+            Some(41)
+        );
 
         // Errors without line
-        assert_eq!(HaversError::FileError { path: "x".to_string(), reason: "r".to_string() }.line(), None);
+        assert_eq!(
+            HaversError::FileError {
+                path: "x".to_string(),
+                reason: "r".to_string()
+            }
+            .line(),
+            None
+        );
         assert_eq!(HaversError::InternalError("msg".to_string()).line(), None);
-        assert_eq!(HaversError::ModuleNotFound { name: "x".to_string() }.line(), None);
-        assert_eq!(HaversError::CircularImport { path: "x".to_string() }.line(), None);
+        assert_eq!(
+            HaversError::ModuleNotFound {
+                name: "x".to_string()
+            }
+            .line(),
+            None
+        );
+        assert_eq!(
+            HaversError::CircularImport {
+                path: "x".to_string()
+            }
+            .line(),
+            None
+        );
     }
 
     #[test]
     fn test_error_display() {
         // Test that error messages format correctly
-        let err = HaversError::UndefinedVariable { name: "x".to_string(), line: 5 };
+        let err = HaversError::UndefinedVariable {
+            name: "x".to_string(),
+            line: 5,
+        };
         let msg = format!("{}", err);
         assert!(msg.contains("x"));
         assert!(msg.contains("5"));
