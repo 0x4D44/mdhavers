@@ -1,0 +1,120 @@
+# scots_fun.braw - Testing the new Scots-flavoured functions
+# These are pure dead brilliant!
+
+blether "=== Scots Vocabulary Functions ==="
+blether ""
+
+blether "--- haverin (is it nonsense?) ---"
+blether f"haverin('') = {haverin('')}"           # aye (empty)
+blether f"haverin('a') = {haverin('a')}"         # aye (too short)
+blether f"haverin('hello') = {haverin('hello')}" # nae (real content)
+blether f"haverin(naething) = {haverin(naething)}" # aye (nil)
+blether f"haverin([]) = {haverin([])}"           # aye (empty list)
+
+blether ""
+blether "--- scunner (is it disgusting/negative?) ---"
+blether f"scunner(-5) = {scunner(-5)}"       # aye (negative)
+blether f"scunner(42) = {scunner(42)}"       # nae (positive)
+blether f"scunner('') = {scunner('')}"       # aye (empty string)
+blether f"scunner([]) = {scunner([])}"       # aye (empty list)
+blether f"scunner(nae) = {scunner(nae)}"     # aye (false is scunner)
+
+blether ""
+blether "--- bonnie (make it pretty!) ---"
+blether bonnie("Scotland")
+blether bonnie(42)
+blether bonnie([1, 2, 3])
+
+blether ""
+blether "--- is_wee and is_muckle (size checks) ---"
+blether f"is_wee(5) = {is_wee(5)}"           # aye (under 10)
+blether f"is_wee(100) = {is_wee(100)}"       # nae (10 or more)
+blether f"is_wee('hi') = {is_wee('hi')}"     # aye (under 5 chars)
+blether f"is_wee('hello') = {is_wee('hello')}" # nae (5 or more chars)
+
+blether f"is_muckle(50) = {is_muckle(50)}"     # nae (under 100)
+blether f"is_muckle(500) = {is_muckle(500)}"   # aye (100 or more)
+
+blether ""
+blether "--- roar (shout in uppercase!) ---"
+blether roar("hello")
+blether roar("i want tea")
+blether roar("away ye go")
+
+blether ""
+blether "--- cannie (is it safe/valid?) ---"
+blether f"cannie(42) = {cannie(42)}"         # aye (positive)
+blether f"cannie(-5) = {cannie(-5)}"         # nae (negative)
+blether f"cannie('hello') = {cannie('hello')}" # aye (not empty)
+blether f"cannie('') = {cannie('')}"         # nae (empty)
+blether f"cannie(naething) = {cannie(naething)}" # nae (nil)
+blether f"cannie(aye) = {cannie(aye)}"       # aye (true)
+blether f"cannie(nae) = {cannie(nae)}"       # nae (false)
+
+blether ""
+blether "--- glaikit (is it empty/invalid?) ---"
+blether f"glaikit('') = {glaikit('')}"           # aye (empty)
+blether f"glaikit(0) = {glaikit(0)}"             # aye (zero)
+blether f"glaikit(naething) = {glaikit(naething)}" # aye (nil)
+blether f"glaikit('hello') = {glaikit('hello')}" # nae (valid)
+blether f"glaikit(42) = {glaikit(42)}"           # nae (non-zero)
+
+blether ""
+blether "--- wrang_sort (check if wrong type) ---"
+blether f"wrang_sort(42, 'integer') = {wrang_sort(42, 'integer')}"     # nae (correct type)
+blether f"wrang_sort(42, 'string') = {wrang_sort(42, 'string')}"       # aye (wrong type)
+blether f"wrang_sort('hello', 'string') = {wrang_sort('hello', 'string')}" # nae (correct)
+
+blether ""
+blether "--- tattie_scone (stack them up!) ---"
+blether tattie_scone("scone", 3)
+blether tattie_scone("haggis", 5)
+
+blether ""
+blether "--- haggis_hunt (find all occurrences) ---"
+ken text = "the wee bonnie wee lassie wis wee"
+ken positions = haggis_hunt(text, "wee")
+blether f"Finding 'wee' in '{text}'"
+blether f"Found at positions: {positions}"
+
+blether ""
+blether "--- sporran_fill (center pad) ---"
+blether f"'{sporran_fill('BRAW', 12, '*')}'"
+blether f"'{sporran_fill('Hi', 10, '-')}'"
+blether f"'{sporran_fill('Scotland', 20, '=')}'"
+
+blether ""
+blether "=== Practical Uses ==="
+
+# Validate user input
+dae validate_name(name) {
+    gin haverin(name) {
+        gie "That's haverin! Give us a proper name!"
+    }
+    gin scunner(name) {
+        gie "Dinnae be such a scunner!"
+    }
+    gin is_wee(name) {
+        gie "That's a wee bit short fer a name!"
+    }
+    gie f"Welcome, {name}!"
+}
+
+blether validate_name("")
+blether validate_name("Al")
+blether validate_name("Hamish McTavish")
+
+# Format menu items
+dae format_menu_item(item, price) {
+    ken padded = sporran_fill(item, 20, ".")
+    gie f"{padded} £{price}"
+}
+
+blether ""
+blether "=== Scottish Menu ==="
+blether format_menu_item("Haggis", 12)
+blether format_menu_item("Cullen Skink", 8)
+blether format_menu_item("Cranachan", 6)
+
+blether ""
+blether "=== All Scots functions tested! Pure dead brilliant! ==="

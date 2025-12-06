@@ -1,0 +1,81 @@
+# quiz_demo.braw - Demonstrating the Quiz Module
+
+fetch "../stdlib/quiz"
+fetch "lib/colors"
+
+blether ""
+blether cyan("╔════════════════════════════════════════════════════════╗")
+blether cyan("║          QUIZ MODULE DEMO                              ║")
+blether cyan("║         \"Test yer knowledge!\"                          ║")
+blether cyan("╚════════════════════════════════════════════════════════╝")
+blether ""
+
+# Scottish Geography Quiz
+blether yellow("═══════════════════════════════════════")
+blether yellow("  SCOTTISH GEOGRAPHY QUIZ")
+blether yellow("═══════════════════════════════════════")
+
+ken geo_quiz = scottish_geography_quiz()
+demo_quiz(geo_quiz)
+
+# Scottish History Quiz
+blether yellow("═══════════════════════════════════════")
+blether yellow("  SCOTTISH HISTORY QUIZ")
+blether yellow("═══════════════════════════════════════")
+
+ken hist_quiz = scottish_history_quiz()
+demo_quiz(hist_quiz)
+
+# Scottish Culture Quiz
+blether yellow("═══════════════════════════════════════")
+blether yellow("  SCOTTISH CULTURE QUIZ")
+blether yellow("═══════════════════════════════════════")
+
+ken cult_quiz = scottish_culture_quiz()
+demo_quiz(cult_quiz)
+
+# Scots Language Quiz
+blether yellow("═══════════════════════════════════════")
+blether yellow("  SCOTS LANGUAGE QUIZ")
+blether yellow("═══════════════════════════════════════")
+
+ken lang_quiz = scots_language_quiz()
+demo_quiz(lang_quiz)
+
+# Flashcards
+blether yellow("═══════════════════════════════════════")
+blether yellow("  SCOTS VOCABULARY FLASHCARDS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken flashcards = scots_vocab_flashcards()
+demo_flashcards(flashcards)
+blether ""
+
+# Quiz Statistics
+blether yellow("═══════════════════════════════════════")
+blether yellow("  QUIZ STATISTICS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken geo_count = len(scots_geography_questions())
+ken hist_count = len(scots_history_questions())
+ken cult_count = len(scots_culture_questions())
+ken lang_count = len(scots_language_questions())
+ken total = geo_count + hist_count + cult_count + lang_count
+
+blether "Available pre-built quizzes:"
+blether ""
+blether f"  Scottish Geography: {geo_count} questions"
+blether f"  Scottish History:   {hist_count} questions"
+blether f"  Scottish Culture:   {cult_count} questions"
+blether f"  Scots Language:     {lang_count} questions"
+blether ""
+blether f"  Total questions: {total}"
+blether ""
+
+blether green("═══════════════════════════════════════")
+blether green("  Quiz demo complete!")
+blether green("  \"Knowledge is power!\"")
+blether green("═══════════════════════════════════════")
+blether ""

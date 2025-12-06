@@ -1,0 +1,89 @@
+# pipe.braw - Testing the pipe operator |>
+# The pipe lets ye chain operations in a fluent style
+
+blether "=== Testing Pipe Operator ==="
+
+# Basic pipe: value |> function
+ken doubled = 5 |> |x| x * 2
+blether f"5 |> (double) = {doubled}"
+
+# Chain multiple pipes
+dae add_one(x) { gie x + 1 }
+dae triple(x) { gie x * 3 }
+dae negate(x) { gie -x }
+
+ken result = 5 |> add_one |> triple |> add_one
+blether f"5 |> add_one |> triple |> add_one = {result}"
+
+blether ""
+blether "=== Practical Examples ==="
+
+# Processing a list through multiple transformations
+ken numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+# Get even numbers, double them, and sum
+dae get_evens(list) {
+    gie sieve(list, |x| x % 2 == 0)
+}
+
+dae double_all(list) {
+    gie gaun(list, |x| x * 2)
+}
+
+ken processed = numbers |> get_evens |> double_all |> sumaw
+blether f"{numbers} |> get_evens |> double_all |> sumaw = {processed}"
+
+# String processing pipeline
+dae trim_it(s) { gie wheesht(s) }
+dae make_upper(s) { gie upper(s) }
+dae add_exclaim(s) { gie s + "!" }
+
+ken greeting = "  hello world  " |> trim_it |> make_upper |> add_exclaim
+blether f"'  hello world  ' |> wheesht |> upper |> '!' = '{greeting}'"
+
+blether ""
+blether "=== Using with Built-in Functions ==="
+
+# Pipe works with built-in functions too
+ken text = "havers"
+ken length = text |> len
+blether f"'{text}' |> len = {length}"
+
+# Chain: sort then reverse
+ken unsorted = [3, 1, 4, 1, 5, 9, 2, 6]
+ken sorted_desc = unsorted |> sort |> reverse
+blether f"{unsorted} |> sort |> reverse = {sorted_desc}"
+
+blether ""
+blether "=== Combining with Lambdas ==="
+
+# You can pipe to inline lambdas
+ken squared_plus_one = 7 |> |x| x * x |> |x| x + 1
+blether f"7 |> square |> add_one = {squared_plus_one}"
+
+# Building a data pipeline
+ken data = [10, 25, 3, 47, 8, 19, 33]
+
+dae filter_big(lst) { gie sieve(lst, |x| x > 10) }
+dae double_it(lst) { gie gaun(lst, |x| x * 2) }
+
+ken pipeline_result = data |> filter_big |> double_it |> sumaw
+blether f"Data pipeline result: {pipeline_result}"
+
+blether ""
+blether "=== Ye Ken What's Braw? ==="
+
+# Scottish-flavored pipeline!
+dae scottify_greeting(name) {
+    gie f"Och aye, how's it gaun, {name}?"
+}
+
+dae make_loud(s) {
+    gie upper(s)
+}
+
+ken scottish = "Hamish" |> scottify_greeting |> make_loud
+blether scottish
+
+blether ""
+blether "=== All pipe tests complete! ==="

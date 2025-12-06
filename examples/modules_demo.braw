@@ -1,0 +1,86 @@
+# modules_demo.braw - Demonstrating the module system
+# Shows how tae use fetch tae import external libraries
+
+blether "═══════════════════════════════════════════════════"
+blether "  mdhavers Module System Demo"
+blether "═══════════════════════════════════════════════════"
+blether ""
+
+# Import the maths library
+fetch "lib/maths"
+
+# Import the strings library (directly, no alias)
+fetch "lib/strings"
+
+blether "=== Using the Maths Library ==="
+blether ""
+
+blether f"TAU (2 times PI) = {TAU}"
+blether f"square(7) = {square(7)}"
+blether f"cube(3) = {cube(3)}"
+blether f"factorial(5) = {factorial(5)}"
+blether f"fibonacci(10) = {fibonacci(10)}"
+blether ""
+
+# Test prime numbers
+blether "Prime numbers up tae 20:"
+ken primes = []
+fer n in 2..21 {
+    gin is_prime(n) {
+        shove(primes, n)
+    }
+}
+blether primes
+blether ""
+
+blether f"gcd(48, 18) = {gcd(48, 18)}"
+blether f"lcm(4, 6) = {lcm(4, 6)}"
+blether ""
+
+blether f"45 degrees in radians = {tae_radians(45)}"
+ken pi_degs = tae_degrees(PI)
+blether f"PI radians in degrees = {pi_degs}"
+blether ""
+
+blether f"clamp(15, 0, 10) = {clamp(15, 0, 10)}"
+blether f"clamp(-5, 0, 10) = {clamp(-5, 0, 10)}"
+blether f"clamp(5, 0, 10) = {clamp(5, 0, 10)}"
+blether ""
+
+blether "=== Using the Strings Library ==="
+blether ""
+
+ken test_str = "  hullo scotland  "
+
+blether f"Original: '{test_str}'"
+ken empty_check = is_empty(test_str)
+ken blank_check = is_blank(test_str)
+ken cap_result = capitalize(wheesht(test_str))
+blether f"is_empty: {empty_check}"
+blether f"is_blank: {blank_check}"
+blether f"capitalize: '{cap_result}'"
+blether ""
+
+ken sentence = "och aye the noo"
+ken titled = title_case(sentence)
+blether f"Original: '{sentence}'"
+blether f"title_case: '{titled}'"
+blether ""
+
+ken word = "racecar"
+ken reversed = reverse_string(word)
+ken is_pal = is_palindrome(word)
+blether f"reverse_string('{word}'): '{reversed}'"
+blether f"is_palindrome('{word}'): {is_pal}"
+blether ""
+
+ken text = "Hello, this is a test message"
+ken wc = word_count(text)
+ken trunc = truncate(text, 15)
+blether f"word_count: {wc}"
+blether f"truncate at 15: '{trunc}'"
+blether ""
+
+blether "═══════════════════════════════════════════════════"
+blether "  Module Demo Complete!"
+blether "═══════════════════════════════════════════════════"

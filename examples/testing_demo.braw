@@ -1,0 +1,154 @@
+# testing_demo.braw - Demonstrating the testing framework
+# "Mak siccar yer code works!"
+
+fetch "lib/testing"
+
+# ===============================================================
+# Example: Testing a simple function
+# ===============================================================
+
+dae factorial(n) {
+    gin n <= 1 {
+        gie 1
+    }
+    gie n * factorial(n - 1)
+}
+
+dae fibonacci(n) {
+    gin n <= 0 {
+        gie 0
+    }
+    gin n == 1 {
+        gie 1
+    }
+    ken a = 0
+    ken b = 1
+    fer i in 2..n+1 {
+        ken temp = a + b
+        a = b
+        b = temp
+    }
+    gie b
+}
+
+# Helper to create test functions
+dae test_factorial_0() {
+    assert_eq(factorial(0), 1, "factorial(0) = 1")
+}
+
+dae test_factorial_1() {
+    assert_eq(factorial(1), 1, "factorial(1) = 1")
+}
+
+dae test_factorial_5() {
+    assert_eq(factorial(5), 120, "factorial(5) = 120")
+}
+
+dae test_factorial_10() {
+    assert_eq(factorial(10), 3628800, "factorial(10) = 3628800")
+}
+
+dae test_fib_0() {
+    assert_eq(fibonacci(0), 0, "fib(0) = 0")
+}
+
+dae test_fib_1() {
+    assert_eq(fibonacci(1), 1, "fib(1) = 1")
+}
+
+dae test_fib_10() {
+    assert_eq(fibonacci(10), 55, "fib(10) = 55")
+}
+
+dae test_fib_positive() {
+    assert_gt(fibonacci(20), 0, "fib(20) > 0")
+}
+
+dae test_list_empty() {
+    assert_eq(len([]), 0, "empty list length")
+}
+
+dae test_list_contains() {
+    ken nums = [1, 2, 3]
+    assert_contains(nums, 2, "list contains 2")
+}
+
+dae test_list_sorted() {
+    ken sorted_nums = sort([3, 1, 4, 1, 5, 9, 2, 6])
+    assert_eq(heid(sorted_nums), 1, "first is 1")
+    assert_eq(bum(sorted_nums), 9, "last is 9")
+}
+
+dae test_list_eq() {
+    ken a = [1, 2, 3]
+    ken b = [1, 2, 3]
+    assert_list_eq(a, b, "lists are equal")
+}
+
+dae test_string_len() {
+    assert_eq(len("hello"), 5, "hello has 5 chars")
+}
+
+dae test_string_upper() {
+    assert_eq(upper("hello"), "HELLO", "upper works")
+}
+
+dae test_string_lower() {
+    assert_eq(lower("WORLD"), "world", "lower works")
+}
+
+dae test_num_gt() {
+    assert_gt(10, 5, "10 > 5")
+}
+
+dae test_num_lt() {
+    assert_lt(3, 7, "3 < 7")
+}
+
+dae test_num_range() {
+    assert_in_range(5, 1, 10, "5 is between 1 and 10")
+}
+
+dae test_num_approx() {
+    assert_approx(3.14159, 3.14, 0.01, "PI approx 3.14")
+}
+
+# ===============================================================
+# Run the tests
+# ===============================================================
+
+blether "════════════════════════════════════════════════════"
+blether "  mdhavers Testing Framework Demo"
+blether "════════════════════════════════════════════════════"
+
+describe("Factorial Function")
+test("factorial(0) should be 1", test_factorial_0)
+test("factorial(1) should be 1", test_factorial_1)
+test("factorial(5) should be 120", test_factorial_5)
+test("factorial(10) should be 3628800", test_factorial_10)
+
+describe("Fibonacci Function")
+test("fib(0) should be 0", test_fib_0)
+test("fib(1) should be 1", test_fib_1)
+test("fib(10) should be 55", test_fib_10)
+test("fib results should be positive", test_fib_positive)
+
+describe("List Operations")
+test("empty list has length 0", test_list_empty)
+test("list should contain element", test_list_contains)
+test("sorted list is in order", test_list_sorted)
+test("lists equality", test_list_eq)
+
+describe("String Operations")
+test("string length", test_string_len)
+test("uppercase conversion", test_string_upper)
+test("lowercase conversion", test_string_lower)
+
+describe("Numeric Comparisons")
+test("greater than", test_num_gt)
+test("less than", test_num_lt)
+test("in range", test_num_range)
+test("approximate equality", test_num_approx)
+
+# Show the final summary
+test_summary()

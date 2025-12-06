@@ -1,0 +1,219 @@
+# logging_demo.braw - Demonstrate the logging system in mdhavers
+# "Keep track o' whit's happenin' in yer code!"
+
+fetch "lib/logging"
+
+blether ""
+blether "═══════════════════════════════════════════════════"
+blether "    LOGGING DEMO"
+blether "    'Writin' doon whit happens!'"
+blether "═══════════════════════════════════════════════════"
+blether ""
+
+# ===============================================================
+# Basic Logging
+# ===============================================================
+
+blether "=== Basic Logging ==="
+blether ""
+
+ken logger = Logger("my_app")
+logger.colors(aye)
+logger.timestamps(nae)
+
+logger.debug("This is a debug message")
+logger.info("Application started")
+logger.warn("Memory usage is high")
+logger.error("Failed tae connect tae database")
+logger.fatal("System is shuttin' doon!")
+
+blether ""
+
+# ===============================================================
+# Log Levels
+# ===============================================================
+
+blether "=== Log Levels ==="
+blether ""
+
+ken quiet_logger = Logger("quiet")
+quiet_logger.set_level(LOG_WARN)
+quiet_logger.timestamps(nae)
+
+blether "Logger set tae WARN level:"
+quiet_logger.debug("This willnae show")
+quiet_logger.info("This willnae show either")
+quiet_logger.warn("This WILL show")
+quiet_logger.error("This WILL show too")
+
+blether ""
+
+# ===============================================================
+# Scots Mode
+# ===============================================================
+
+blether "=== Scots Mode ==="
+blether ""
+
+ken scots_logger = Logger("scots")
+scots_logger.scots_mode(aye)
+scots_logger.timestamps(nae)
+
+blether "Using Scottish level names:"
+scots_logger.havers("Debug in Scots is HAVERS")
+scots_logger.ken_this("Info in Scots is KEN")
+scots_logger.watch_yersel("Warning in Scots is WATCH")
+scots_logger.fankle("Error in Scots is FANKLE")
+
+blether ""
+
+# ===============================================================
+# Child Loggers
+# ===============================================================
+
+blether "=== Child Loggers ==="
+blether ""
+
+ken parent = Logger("app")
+parent.timestamps(nae)
+ken db_logger = parent.child("database")
+ken api_logger = parent.child("api")
+
+parent.info("Application starting")
+db_logger.info("Database connected")
+api_logger.info("API server listening on port 8080")
+api_logger.warn("Rate limit approaching")
+db_logger.error("Query timed oot")
+
+blether ""
+
+# ===============================================================
+# Global Logger
+# ===============================================================
+
+blether "=== Global Logger ==="
+blether ""
+
+get_logger().timestamps(nae)
+
+log_info("Using the global logger")
+log_warn("This is a global warning")
+log_error("This is a global error")
+
+blether f"Total logs: {get_logger().get_count()}"
+
+blether ""
+
+# ===============================================================
+# Log Buffer
+# ===============================================================
+
+blether "=== Log Buffer ==="
+blether ""
+
+ken buffer = LogBuffer(100)
+
+ken buffered_logger = Logger("buffered")
+buffered_logger.timestamps(nae)
+
+dae buffer_handler(level, message, formatted) {
+    buffer.add(level, message, formatted)
+}
+
+buffered_logger.add_handler(buffer_handler)
+
+buffered_logger.info("First message")
+buffered_logger.warn("Second message")
+buffered_logger.error("Third message")
+buffered_logger.info("Fourth message")
+buffered_logger.debug("Fifth message")
+
+blether ""
+blether f"Buffer contains {buffer.count()} entries"
+blether "Recent entries:"
+fer entry in buffer.recent(3) {
+    blether f"  [{LEVEL_NAMES[entry['level']]}] {entry['message']}"
+}
+
+blether ""
+blether "Errors only:"
+fer entry in buffer.get_errors() {
+    blether f"  {entry['message']}"
+}
+
+blether ""
+
+# ===============================================================
+# Structured Logger
+# ===============================================================
+
+blether "=== Structured Logger (JSON output) ==="
+blether ""
+
+ken struct_logger = StructuredLogger("api")
+struct_logger.with_context("version", "1.0.0")
+struct_logger.with_context("environment", "development")
+
+struct_logger.info("Request received", {"path": "/users", "method": "GET"})
+struct_logger.info("Request completed", {"path": "/users", "status": 200, "duration_ms": 45})
+struct_logger.warn("Slow query detected", {"query": "SELECT *", "duration_ms": 1500})
+
+blether ""
+
+# ===============================================================
+# Performance Logger
+# ===============================================================
+
+blether "=== Performance Logger ==="
+blether ""
+
+ken perf = PerfLogger()
+
+# Simulate some operations
+perf.start("database_query")
+ken sum = 0
+fer i in 0..1000 {
+    sum = sum + i
+}
+perf.stop("database_query")
+
+perf.start("api_call")
+fer i in 0..500 {
+    sum = sum + i
+}
+perf.stop("api_call")
+
+perf.start("database_query")
+fer i in 0..2000 {
+    sum = sum + i
+}
+perf.stop("database_query")
+
+blether ""
+perf.report()
+
+blether ""
+
+# ===============================================================
+# Assertion Logging
+# ===============================================================
+
+blether "=== Assertion Logging ==="
+blether ""
+
+ken x = 5
+ken y = 10
+
+log_assert(x < y, "x should be less than y")
+log_assert_eq(x + 5, y, "x + 5 should equal y")
+
+# These will show errors
+log_assert(x > y, "This assertion will fail")
+log_assert_eq(x, y, "x should equal y")
+
+blether ""
+blether "═══════════════════════════════════════════════════"
+blether "    Logging demo complete!"
+blether "    'Noo ye ken whit happened!'"
+blether "═══════════════════════════════════════════════════"
+blether ""

@@ -1,0 +1,476 @@
+# chance.braw - Random an' Chance Operations fer mdhavers
+# "Fortune favours the braw!"
+#
+# This module provides randomness, dice rolling, card games,
+# and other chance-based operations with Scottish flair.
+
+# ============================================================
+# Basic Random Functions
+# ============================================================
+
+# Get a random integer between min and max (inclusive)
+dae roll_between(wee_end, muckle_end) {
+    gie jammy(wee_end, muckle_end + 1)
+}
+
+# Get a random float between 0 and 1
+dae random_float() {
+    gie jammy(0, 10000) / 10000.0
+}
+
+# Get a random float between min and max
+dae random_float_between(wee_end, muckle_end) {
+    ken r = random_float()
+    gie wee_end + (r * (muckle_end - wee_end))
+}
+
+# Flip a coin (returns "heads" or "tails")
+dae flip_coin() {
+    gin jammy(0, 2) == 0 {
+        gie "heads"
+    }
+    gie "tails"
+}
+
+# Flip a Scottish coin (returns "heid" or "tail")
+dae flip_bawbee() {
+    gin jammy(0, 2) == 0 {
+        gie "heid"
+    }
+    gie "tail"
+}
+
+# Return aye or nae randomly
+dae maybe() {
+    gie jammy(0, 2) == 0
+}
+
+# Return aye with given probability (0.0 to 1.0)
+dae chance(probability) {
+    gie random_float() < probability
+}
+
+# ============================================================
+# Dice Rolling (Scottish Style!)
+# ============================================================
+
+# Roll a single die with n sides
+dae roll_die(sides) {
+    gie jammy(1, sides + 1)
+}
+
+# Roll a d6 (standard six-sided die)
+dae roll_d6() {
+    gie roll_die(6)
+}
+
+# Roll a d20 (fer the tabletop gamers!)
+dae roll_d20() {
+    gie roll_die(20)
+}
+
+# Roll multiple dice and sum them
+dae roll_dice(count, sides) {
+    ken total = 0
+    fer i in 1..count+1 {
+        total = total + roll_die(sides)
+    }
+    gie total
+}
+
+# Roll dice notation like "2d6" or "3d8+5"
+dae roll_notation(notation) {
+    # Parse notation like "2d6" or "3d8+5" or "1d20-2"
+    ken d_pos = index_of(notation, "d")
+    gin d_pos < 0 {
+        gie 0
+    }
+
+    ken count_str = scran(notation, 0, d_pos)
+    ken count = tae_int(count_str)
+
+    ken rest = scran(notation, d_pos + 1, len(notation))
+
+    # Check for modifier
+    ken plus_pos = index_of(rest, "+")
+    ken minus_pos = index_of(rest, "-")
+
+    ken sides = 0
+    ken modifier = 0
+
+    gin plus_pos >= 0 {
+        sides = tae_int(scran(rest, 0, plus_pos))
+        modifier = tae_int(scran(rest, plus_pos + 1, len(rest)))
+    } ither gin minus_pos >= 0 {
+        sides = tae_int(scran(rest, 0, minus_pos))
+        modifier = 0 - tae_int(scran(rest, minus_pos + 1, len(rest)))
+    } ither {
+        sides = tae_int(rest)
+    }
+
+    gie roll_dice(count, sides) + modifier
+}
+
+# Roll with advantage (roll twice, take higher)
+dae roll_advantage(sides) {
+    ken r1 = roll_die(sides)
+    ken r2 = roll_die(sides)
+    gin r1 > r2 {
+        gie r1
+    }
+    gie r2
+}
+
+# Roll with disadvantage (roll twice, take lower)
+dae roll_disadvantage(sides) {
+    ken r1 = roll_die(sides)
+    ken r2 = roll_die(sides)
+    gin r1 < r2 {
+        gie r1
+    }
+    gie r2
+}
+
+# Exploding dice (if max, roll again and add)
+dae roll_exploding(sides) {
+    ken total = 0
+    ken roll = roll_die(sides)
+    total = roll
+    whiles roll == sides {
+        roll = roll_die(sides)
+        total = total + roll
+    }
+    gie total
+}
+
+# ============================================================
+# List Selection
+# ============================================================
+
+# Pick a random element from a list
+dae pick_one(list) {
+    gin len(list) == 0 {
+        gie naething
+    }
+    ken idx = jammy(0, len(list))
+    gie list[idx]
+}
+
+# Pick n random elements from a list (with replacement)
+dae pick_many(list, n) {
+    ken result = []
+    fer i in 1..n+1 {
+        shove(result, pick_one(list))
+    }
+    gie result
+}
+
+# Pick n unique random elements from a list (without replacement)
+dae pick_unique(list, n) {
+    gin n >= len(list) {
+        gie shuffle(list)
+    }
+
+    ken result = []
+    ken available = []
+    fer item in list {
+        shove(available, item)
+    }
+
+    fer i in 1..n+1 {
+        ken idx = jammy(0, len(available))
+        shove(result, available[idx])
+        # Remove picked item
+        ken new_available = []
+        fer j in 0..len(available) {
+            gin j != idx {
+                shove(new_available, available[j])
+            }
+        }
+        available = new_available
+    }
+
+    gie result
+}
+
+# Weighted random selection
+dae pick_weighted(items, weights) {
+    ken total_weight = sumaw(weights)
+    ken r = random_float() * total_weight
+    ken cumulative = 0.0
+
+    fer i in 0..len(items) {
+        cumulative = cumulative + weights[i]
+        gin r < cumulative {
+            gie items[i]
+        }
+    }
+
+    gie items[len(items) - 1]
+}
+
+# ============================================================
+# Playing Cards (Scottish Style!)
+# ============================================================
+
+# Card suits in Scots
+ken SUITS = ["Herts", "Diamonds", "Clubs", "Spades"]
+
+# Card ranks (Ace through King)
+ken RANKS = ["Ace", "Twa", "Three", "Fower", "Five", "Sax", "Seeven", "Echt", "Nine", "Ten", "Knave", "Queen", "King"]
+
+# Create a standard deck of 52 cards
+dae mak_deck() {
+    ken deck = []
+    fer suit in SUITS {
+        fer rank in RANKS {
+            shove(deck, {"rank": rank, "suit": suit})
+        }
+    }
+    gie deck
+}
+
+# Shuffle a deck
+dae shuffle_deck(deck) {
+    gie shuffle(deck)
+}
+
+# Draw cards from top of deck
+dae draw_cards(deck, n) {
+    ken drawn = []
+    ken remaining = []
+
+    fer i in 0..len(deck) {
+        gin i < n {
+            shove(drawn, deck[i])
+        } ither {
+            shove(remaining, deck[i])
+        }
+    }
+
+    gie {"drawn": drawn, "deck": remaining}
+}
+
+# Format a card as string
+dae card_tae_string(card) {
+    gie f"{card[\"rank\"]} o' {card[\"suit\"]}"
+}
+
+# Get numeric value of a card (fer blackjack etc)
+dae card_value(card) {
+    ken rank = card["rank"]
+    keek rank {
+        whan "Ace" -> { gie 11 }
+        whan "Twa" -> { gie 2 }
+        whan "Three" -> { gie 3 }
+        whan "Fower" -> { gie 4 }
+        whan "Five" -> { gie 5 }
+        whan "Sax" -> { gie 6 }
+        whan "Seeven" -> { gie 7 }
+        whan "Echt" -> { gie 8 }
+        whan "Nine" -> { gie 9 }
+        whan "Ten" -> { gie 10 }
+        whan "Knave" -> { gie 10 }
+        whan "Queen" -> { gie 10 }
+        whan "King" -> { gie 10 }
+        whan _ -> { gie 0 }
+    }
+    gie 0
+}
+
+# ============================================================
+# Scottish Games
+# ============================================================
+
+# Play "Heids or Tails" - guess the coin flip
+dae heids_or_tails(guess) {
+    ken result = flip_bawbee()
+    ken won = (lower(guess) == result) or (lower(guess) == "heid" an result == "heid") or (lower(guess) == "tail" an result == "tail")
+    gie {"result": result, "guess": guess, "won": won}
+}
+
+# Roll fer initiative (D&D style)
+dae roll_initiative(modifier = 0) {
+    gie roll_d20() + modifier
+}
+
+# Saving throw (D&D style)
+dae saving_throw(dc, modifier = 0) {
+    ken roll = roll_d20()
+    ken total = roll + modifier
+    gie {
+        "roll": roll,
+        "modifier": modifier,
+        "total": total,
+        "dc": dc,
+        "success": total >= dc,
+        "nat_20": roll == 20,
+        "nat_1": roll == 1
+    }
+}
+
+# Simple slot machine (returns three symbols)
+dae spin_slots() {
+    ken symbols = ["🍒", "🍋", "🍊", "🍇", "⭐", "7️⃣", "🎰"]
+    ken s1 = pick_one(symbols)
+    ken s2 = pick_one(symbols)
+    ken s3 = pick_one(symbols)
+
+    ken jackpot = s1 == s2 an s2 == s3
+    ken two_match = s1 == s2 or s2 == s3 or s1 == s3
+
+    gie {
+        "slots": [s1, s2, s3],
+        "jackpot": jackpot,
+        "two_match": two_match
+    }
+}
+
+# ============================================================
+# Probability Distributions
+# ============================================================
+
+# Generate normal/gaussian random number (Box-Muller transform)
+dae random_normal(mean = 0.0, std_dev = 1.0) {
+    ken u1 = random_float()
+    ken u2 = random_float()
+
+    # Avoid log(0)
+    gin u1 < 0.0001 { u1 = 0.0001 }
+
+    # Box-Muller transform (approximation using available math)
+    ken z0 = sqrt(0 - 2.0 * log_approx(u1)) * cos(2.0 * 3.14159 * u2)
+
+    gie mean + z0 * std_dev
+}
+
+# Simple log approximation for small values
+dae log_approx(x) {
+    # Using Newton's method approximation
+    gin x <= 0 { gie 0 - 999999 }
+    gin x == 1 { gie 0 }
+
+    # ln(x) ≈ 2 * (x-1)/(x+1) for values near 1
+    ken result = 0.0
+    ken current = x
+
+    # Normalize to range [0.5, 1.5]
+    whiles current > 2 {
+        current = current / 2.718281828
+        result = result + 1
+    }
+    whiles current < 0.5 {
+        current = current * 2.718281828
+        result = result - 1
+    }
+
+    # Approximate for normalized value
+    ken ratio = (current - 1) / (current + 1)
+    ken ln_norm = 2 * ratio * (1 + ratio * ratio / 3 + pooer(ratio, 4) / 5)
+
+    gie result + ln_norm
+}
+
+# Bernoulli trial (success/failure with probability p)
+dae bernoulli(p) {
+    gie random_float() < p
+}
+
+# Binomial distribution (n trials, probability p)
+dae binomial(n, p) {
+    ken successes = 0
+    fer i in 1..n+1 {
+        gin bernoulli(p) {
+            successes = successes + 1
+        }
+    }
+    gie successes
+}
+
+# ============================================================
+# Scottish Fortune Telling
+# ============================================================
+
+# Get a random Scottish fortune
+dae read_fortune() {
+    ken fortunes = [
+        "Lang may yer lum reek! Prosperity is comin' yer way.",
+        "A stranger frae the Highlands will bring guid news.",
+        "Dinnae fash yersel - the storm will pass.",
+        "Whit's fer ye willnae go by ye.",
+        "A bonnie surprise awaits ye aroond the corner.",
+        "Yer code will compile on the first try (but test it anyway!).",
+        "The haggis ye've been seekin' is closer than ye think.",
+        "A wee dram of wisdom will solve yer problems.",
+        "Trust yer instincts - they're as sharp as a Highland dirk.",
+        "The answer ye seek is in the last place ye'll look.",
+        "Guid things come tae those who wait... but better things come tae those who code!",
+        "Yer variable names will bring ye joy or sorrow - choose wisely.",
+        "A mysterious bug will reveal itself at the witching hour.",
+        "The semicolon ye forgot will haunt yer dreams nae mair."
+    ]
+    gie pick_one(fortunes)
+}
+
+# Magic 8-ball, Scottish edition
+dae ask_the_haggis(question) {
+    ken responses = [
+        "Aye, definitely!",
+        "Aye, that's fer sure.",
+        "Most likely, aye.",
+        "Och aye!",
+        "Signs point tae aye.",
+        "Reply hazy, hae another dram.",
+        "Ask again efter yer tea.",
+        "Better no' tell ye noo.",
+        "Cannae predict noo.",
+        "Concentrate and ask again.",
+        "Dinnae count on it.",
+        "Ma reply is nae.",
+        "Ma sources say nae.",
+        "Oot look no' sae guid.",
+        "Verra doubtful."
+    ]
+    gie pick_one(responses)
+}
+
+# ============================================================
+# Random Name Generators (Scottish)
+# ============================================================
+
+ken SCOTTISH_FIRST_NAMES = [
+    "Hamish", "Angus", "Ewan", "Callum", "Finlay", "Magnus", "Tavish", "Dougal",
+    "Morag", "Eilidh", "Isla", "Fiona", "Kirsty", "Bonnie", "Aileen", "Catriona"
+]
+
+ken SCOTTISH_LAST_NAMES = [
+    "MacDonald", "Campbell", "Stewart", "MacLeod", "MacGregor", "Fraser",
+    "Cameron", "Gordon", "Bruce", "Douglas", "Murray", "Ross", "Robertson"
+]
+
+dae random_scottish_name() {
+    ken first = pick_one(SCOTTISH_FIRST_NAMES)
+    ken last = pick_one(SCOTTISH_LAST_NAMES)
+    gie f"{first} {last}"
+}
+
+# ============================================================
+# UUID Generator (simplified)
+# ============================================================
+
+dae generate_uuid() {
+    ken hex_chars = "0123456789abcdef"
+    ken hex_list = chars(hex_chars)
+
+    dae hex_group(n) {
+        ken result = ""
+        fer i in 1..n+1 {
+            result = result + pick_one(hex_list)
+        }
+        gie result
+    }
+
+    gie f"{hex_group(8)}-{hex_group(4)}-{hex_group(4)}-{hex_group(4)}-{hex_group(12)}"
+}
+
+blether "Chance module loaded! Fortune favours the braw!"

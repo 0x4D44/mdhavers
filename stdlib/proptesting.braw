@@ -1,0 +1,347 @@
+# proptesting.braw - Property-Based Testing fer mdhavers
+# "Gie yer code a proper skelping wi' random tests!"
+#
+# Property-based testing generates random inputs tae verify
+# that properties o' yer code always hold true.
+
+# ============================================================
+# Random Data Generators
+# ============================================================
+
+# Generate random integer in range
+dae gen_int(min_val = -1000, max_val = 1000) {
+    gie jammy(min_val, max_val)
+}
+
+# Generate random positive integer
+dae gen_pos_int(max_val = 1000) {
+    gie jammy(1, max_val)
+}
+
+# Generate random natural number (0 or positive)
+dae gen_nat(max_val = 1000) {
+    gie jammy(0, max_val)
+}
+
+# Generate random float
+dae gen_float(min_val = -1000.0, max_val = 1000.0) {
+    ken range = max_val - min_val
+    gie min_val + (jammy(0, 10000) / 10000.0) * range
+}
+
+# Generate random boolean
+dae gen_bool() {
+    gie jammy(0, 1) == 1
+}
+
+# Generate random character
+dae gen_char() {
+    ken chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    ken idx = jammy(0, len(chars) - 1)
+    gie chars[idx]
+}
+
+# Generate random lowercase letter
+dae gen_lower() {
+    ken chars = "abcdefghijklmnopqrstuvwxyz"
+    ken idx = jammy(0, len(chars) - 1)
+    gie chars[idx]
+}
+
+# Generate random uppercase letter
+dae gen_upper() {
+    ken chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    ken idx = jammy(0, len(chars) - 1)
+    gie chars[idx]
+}
+
+# Generate random digit
+dae gen_digit() {
+    ken chars = "0123456789"
+    ken idx = jammy(0, len(chars) - 1)
+    gie chars[idx]
+}
+
+# Generate random string of given length
+dae gen_string(length = 10) {
+    ken result = ""
+    fer i in 0..length {
+        result = result + gen_char()
+    }
+    gie result
+}
+
+# Generate random alphabetic string
+dae gen_alpha_string(length = 10) {
+    ken result = ""
+    fer i in 0..length {
+        gin gen_bool() {
+            result = result + gen_lower()
+        } ither {
+            result = result + gen_upper()
+        }
+    }
+    gie result
+}
+
+# Generate random list of integers
+dae gen_int_list(length = 10, min_val = -100, max_val = 100) {
+    ken result = []
+    fer i in 0..length {
+        shove(result, gen_int(min_val, max_val))
+    }
+    gie result
+}
+
+# Generate random list of random length
+dae gen_int_list_var(min_len = 0, max_len = 20, min_val = -100, max_val = 100) {
+    ken length = jammy(min_len, max_len)
+    gie gen_int_list(length, min_val, max_val)
+}
+
+# Generate sorted list
+dae gen_sorted_list(length = 10, min_val = -100, max_val = 100) {
+    ken list = gen_int_list(length, min_val, max_val)
+    gie sort(list)
+}
+
+# Generate random element from a list
+dae gen_one_of(options) {
+    ken idx = jammy(0, len(options) - 1)
+    gie options[idx]
+}
+
+# Generate a pair (tuple as list)
+dae gen_pair(gen_a, gen_b) {
+    gie [gen_a(), gen_b()]
+}
+
+# ============================================================
+# Property Test Runner
+# ============================================================
+
+ken __prop_passed = 0
+ken __prop_failed = 0
+ken __prop_shrinks = 0
+
+# Run a property test with N random inputs
+dae forall(name, generator, property, num_tests = 100) {
+    blether f"  🔍 Property: {name}"
+
+    ken failures = []
+    ken passed = 0
+
+    fer i in 0..num_tests {
+        ken input = generator()
+        ken result = aye
+        ken error_msg = naething
+
+        hae_a_bash {
+            result = property(input)
+        } gin_it_gangs_wrang e {
+            result = nae
+            error_msg = tae_string(e)
+        }
+
+        gin result {
+            passed = passed + 1
+        } ither {
+            shove(failures, {"input": input, "error": error_msg, "trial": i})
+            brak
+        }
+    }
+
+    gin len(failures) == 0 {
+        __prop_passed = __prop_passed + 1
+        blether f"     ✓ Passed {passed}/{num_tests} tests"
+        gie aye
+    } ither {
+        __prop_failed = __prop_failed + 1
+        ken fail = failures[0]
+        blether f"     ✗ Failed after {fail[\"trial\"]} tests"
+        blether f"       Input: {fail[\"input\"]}"
+        gin fail["error"] != naething {
+            blether f"       Error: {fail[\"error\"]}"
+        }
+        gie nae
+    }
+}
+
+# Run property test with two generators
+dae forall2(name, gen_a, gen_b, property, num_tests = 100) {
+    ken combined_gen = || [gen_a(), gen_b()]
+    ken wrapped_prop = |pair| property(pair[0], pair[1])
+    gie forall(name, combined_gen, wrapped_prop, num_tests)
+}
+
+# Run property test with three generators
+dae forall3(name, gen_a, gen_b, gen_c, property, num_tests = 100) {
+    ken combined_gen = || [gen_a(), gen_b(), gen_c()]
+    ken wrapped_prop = |triple| property(triple[0], triple[1], triple[2])
+    gie forall(name, combined_gen, wrapped_prop, num_tests)
+}
+
+# ============================================================
+# Common Properties (Reusable Property Patterns)
+# ============================================================
+
+# Property: f(f(x)) == x (involution)
+dae prop_involution(f) {
+    gie |x| f(f(x)) == x
+}
+
+# Property: f(x) == f(f(x)) (idempotent)
+dae prop_idempotent(f) {
+    gie |x| f(x) == f(f(x))
+}
+
+# Property: f(a, b) == f(b, a) (commutative)
+dae prop_commutative(f) {
+    gie |pair| f(pair[0], pair[1]) == f(pair[1], pair[0])
+}
+
+# Property: f(f(a, b), c) == f(a, f(b, c)) (associative)
+dae prop_associative(f) {
+    gie |triple| f(f(triple[0], triple[1]), triple[2]) == f(triple[0], f(triple[1], triple[2]))
+}
+
+# Property: result is in expected range (helper function approach)
+dae _check_in_range(x, min_val, max_val, f) {
+    ken result = f(x)
+    gie result >= min_val an result <= max_val
+}
+
+# Property: result length relates to input
+dae prop_preserves_length(f) {
+    gie |x| len(f(x)) == len(x)
+}
+
+# ============================================================
+# List Properties
+# ============================================================
+
+# Property: reverse(reverse(x)) == x
+dae _check_reverse_involution(list) {
+    ken reversed_twice = reverse(reverse(list))
+    gin len(list) != len(reversed_twice) { gie nae }
+    fer i in 0..len(list) {
+        gin list[i] != reversed_twice[i] { gie nae }
+    }
+    gie aye
+}
+
+dae prop_reverse_involution() {
+    gie _check_reverse_involution
+}
+
+# Property: sort is idempotent
+dae _check_sort_idempotent(list) {
+    ken sorted1 = sort(list)
+    ken sorted2 = sort(sorted1)
+    gin len(sorted1) != len(sorted2) { gie nae }
+    fer i in 0..len(sorted1) {
+        gin sorted1[i] != sorted2[i] { gie nae }
+    }
+    gie aye
+}
+
+dae prop_sort_idempotent() {
+    gie _check_sort_idempotent
+}
+
+# Property: sorted list is ordered
+dae _check_sorted_ordered(list) {
+    ken s = sort(list)
+    ken max_idx = len(s) - 1
+    fer i in 0..max_idx {
+        gin s[i] > s[i + 1] { gie nae }
+    }
+    gie aye
+}
+
+dae prop_sorted_ordered() {
+    gie _check_sorted_ordered
+}
+
+# Property: length is preserved
+dae prop_sort_preserves_length() {
+    gie |list| len(sort(list)) == len(list)
+}
+
+# ============================================================
+# Arithmetic Properties
+# ============================================================
+
+# Property: a + b == b + a (addition is commutative)
+dae prop_add_commutative() {
+    gie |pair| pair[0] + pair[1] == pair[1] + pair[0]
+}
+
+# Property: a * b == b * a (multiplication is commutative)
+dae prop_mul_commutative() {
+    gie |pair| pair[0] * pair[1] == pair[1] * pair[0]
+}
+
+# Property: a + 0 == a (zero is identity for addition)
+dae prop_add_identity() {
+    gie |x| x + 0 == x
+}
+
+# Property: a * 1 == a (one is identity for multiplication)
+dae prop_mul_identity() {
+    gie |x| x * 1 == x
+}
+
+# Property: a * 0 == 0 (zero absorbs multiplication)
+dae prop_mul_zero() {
+    gie |x| x * 0 == 0
+}
+
+# ============================================================
+# String Properties
+# ============================================================
+
+# Property: len(a + b) == len(a) + len(b)
+dae prop_concat_length() {
+    gie |pair| len(pair[0] + pair[1]) == len(pair[0]) + len(pair[1])
+}
+
+# Property: upper(lower(s)) still has same length
+dae prop_case_preserves_length() {
+    gie |s| len(upper(s)) == len(s) an len(lower(s)) == len(s)
+}
+
+# ============================================================
+# Property Test Summary
+# ============================================================
+
+dae prop_summary() {
+    ken total = __prop_passed + __prop_failed
+    blether ""
+    blether "════════════════════════════════════════"
+    blether "  🎲 Property Test Results"
+    blether "════════════════════════════════════════"
+    blether f"  Properties tested: {total}"
+    blether f"  Passed: {__prop_passed} ✓"
+    blether f"  Failed: {__prop_failed} ✗"
+
+    gin __prop_failed == 0 {
+        blether ""
+        blether "  🎉 Aw properties held! Yer code's rock solid!"
+    } ither {
+        blether ""
+        blether "  😢 Some properties failed. Time fer debugging!"
+    }
+    blether "════════════════════════════════════════"
+
+    gie __prop_failed == 0
+}
+
+# Reset counters
+dae prop_reset() {
+    __prop_passed = 0
+    __prop_failed = 0
+    __prop_shrinks = 0
+}
+
+blether "Property testing module loaded! Gie yer code a skelping!"

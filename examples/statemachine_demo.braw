@@ -1,0 +1,253 @@
+# statemachine_demo.braw - Demonstrate state machines in mdhavers
+# "A guid state machine is like a Scottish reel - ye ken exactly where ye're gaun!"
+
+fetch "lib/statemachine"
+
+blether ""
+blether "═══════════════════════════════════════════════════"
+blether "    STATE MACHINE DEMO"
+blether "    'From one state tae anither!'"
+blether "═══════════════════════════════════════════════════"
+blether ""
+
+# ===============================================================
+# Traffic Light Example
+# ===============================================================
+
+blether "=== Traffic Light Example ==="
+blether ""
+
+ken traffic = traffic_light()
+blether f"Initial state: {traffic.state()}"
+blether f"Available events: {join(traffic.available_events(), ', ')}"
+
+# Cycle through the lights
+blether ""
+blether "Cycling through the lights:"
+fer i in 1..7 {
+    ken old_state = traffic.state()
+    traffic.trigger("next")
+    blether f"  {old_state} -> {traffic.state()}"
+}
+
+blether ""
+
+# ===============================================================
+# On/Off Switch Example
+# ===============================================================
+
+blether "=== On/Off Switch Example ==="
+blether ""
+
+ken switch = on_off_switch()
+blether f"Initial state: {switch.state()}"
+
+switch.trigger("toggle")
+blether f"After toggle: {switch.state()}"
+
+switch.trigger("toggle")
+blether f"After toggle: {switch.state()}"
+
+switch.trigger("turn_on")
+blether f"After turn_on: {switch.state()}"
+
+switch.trigger("turn_off")
+blether f"After turn_off: {switch.state()}"
+
+blether ""
+
+# ===============================================================
+# Door State Machine Example
+# ===============================================================
+
+blether "=== Door State Machine Example ==="
+blether ""
+
+ken door = door_machine()
+blether f"Initial state: {door.state()}"
+
+blether ""
+blether "Opening the door..."
+door.trigger("open")
+blether f"State: {door.state()}"
+
+blether "Closing the door..."
+door.trigger("close")
+blether f"State: {door.state()}"
+
+blether "Locking the door..."
+door.trigger("lock")
+blether f"State: {door.state()}"
+
+blether "Trying to open locked door..."
+ken result = door.trigger("open")
+blether f"Success? {result} - State: {door.state()}"
+
+blether "Unlocking the door..."
+door.trigger("unlock")
+blether f"State: {door.state()}"
+
+blether ""
+
+# ===============================================================
+# Game State Machine Example
+# ===============================================================
+
+blether "=== Game State Machine Example ==="
+blether ""
+
+ken game = game_state_machine()
+blether f"Initial state: {game.state()}"
+blether f"History: {join(game.get_history(), ' -> ')}"
+
+blether ""
+blether "Playing the game..."
+game.trigger("start_game")
+blether f"After start_game: {game.state()}"
+
+game.trigger("loaded")
+blether f"After loaded: {game.state()}"
+
+game.trigger("pause")
+blether f"After pause: {game.state()}"
+
+game.trigger("resume")
+blether f"After resume: {game.state()}"
+
+game.trigger("game_over")
+blether f"After game_over: {game.state()}"
+
+blether ""
+blether f"Full history: {join(game.get_history(), ' -> ')}"
+blether ""
+
+# ===============================================================
+# Custom State Machine Example
+# ===============================================================
+
+blether "=== Custom State Machine (Vending Machine) ==="
+blether ""
+
+# Create a simple vending machine
+ken vending = StateMachine("idle", creel(["idle", "waiting_for_selection", "dispensing", "out_of_stock"]))
+
+vending.add_transitions([
+    ["insert_coin", "idle", "waiting_for_selection"],
+    ["select_item", "waiting_for_selection", "dispensing"],
+    ["item_dispensed", "dispensing", "idle"],
+    ["cancel", "waiting_for_selection", "idle"],
+    ["out_of_stock", "waiting_for_selection", "out_of_stock"],
+    ["refill", "out_of_stock", "idle"]
+])
+
+blether f"Vending machine state: {vending.state()}"
+
+blether "Inserting coin..."
+vending.trigger("insert_coin")
+blether f"State: {vending.state()}"
+
+blether "Selecting item..."
+vending.trigger("select_item")
+blether f"State: {vending.state()}"
+
+blether "Item dispensed!"
+vending.trigger("item_dispensed")
+blether f"State: {vending.state()}"
+
+blether ""
+
+# ===============================================================
+# Document Workflow Example
+# ===============================================================
+
+blether "=== Document Workflow Example ==="
+blether ""
+
+ken doc = document_workflow()
+blether f"Document state: {doc.state()}"
+
+blether ""
+blether "Workflow steps:"
+doc.trigger("submit")
+blether f"  After submit: {doc.state()}"
+
+doc.trigger("reject")
+blether f"  After reject: {doc.state()}"
+
+doc.trigger("submit")
+blether f"  After submit again: {doc.state()}"
+
+doc.trigger("approve")
+blether f"  After approve: {doc.state()}"
+
+doc.trigger("publish")
+blether f"  After publish: {doc.state()}"
+
+doc.trigger("archive")
+blether f"  After archive: {doc.state()}"
+
+blether ""
+blether f"Full history: {join(doc.get_history(), ' -> ')}"
+blether ""
+
+# ===============================================================
+# State Machine Info
+# ===============================================================
+
+blether "=== State Machine Info ==="
+blether ""
+
+sm_info(game)
+blether ""
+
+# ===============================================================
+# Can Trigger Check
+# ===============================================================
+
+blether "=== Can Trigger Check ==="
+blether ""
+
+game.reset()
+blether f"After reset, state: {game.state()}"
+
+blether f"Can trigger 'start_game'? {game.can_trigger('start_game')}"
+blether f"Can trigger 'pause'? {game.can_trigger('pause')}"
+blether f"Peek next for 'start_game': {game.peek_next('start_game')}"
+
+blether ""
+
+# ===============================================================
+# Using the Builder
+# ===============================================================
+
+blether "=== Using the Builder Pattern ==="
+blether ""
+
+ken washing = state_machine_builder("dirty")
+washing.add_states(["washing", "rinsing", "drying", "clean"])
+washing.add_transition("wash", "dirty", "washing")
+washing.add_transition("rinse", "washing", "rinsing")
+washing.add_transition("dry", "rinsing", "drying")
+washing.add_transition("done", "drying", "clean")
+washing.add_transition("dirty_again", "clean", "dirty")
+
+ken washer = washing.build()
+
+blether f"Washing machine state: {washer.state()}"
+blether "Running wash cycle..."
+
+washer.trigger("wash")
+blether f"  {washer.state()}"
+washer.trigger("rinse")
+blether f"  {washer.state()}"
+washer.trigger("dry")
+blether f"  {washer.state()}"
+washer.trigger("done")
+blether f"  {washer.state()}"
+
+blether ""
+blether "═══════════════════════════════════════════════════"
+blether "    State machine demo complete!"
+blether "    'Every state has its place'"
+blether "═══════════════════════════════════════════════════"
+blether ""

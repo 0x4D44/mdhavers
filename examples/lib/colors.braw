@@ -1,0 +1,349 @@
+# colors.braw - ANSI color styling fer terminal output
+# "Gie yer text a wee splash o' colour!"
+#
+# This module provides ANSI escape code helpers fer colorful terminal output
+
+# ===============================================================
+# ANSI Escape Codes
+# ===============================================================
+
+ken ESC = "\x1b["
+ken RESET = "\x1b[0m"
+
+# ===============================================================
+# Foreground Colors (Text Color)
+# ===============================================================
+
+ken FG_BLACK = "\x1b[30m"
+ken FG_RED = "\x1b[31m"
+ken FG_GREEN = "\x1b[32m"
+ken FG_YELLOW = "\x1b[33m"
+ken FG_BLUE = "\x1b[34m"
+ken FG_MAGENTA = "\x1b[35m"
+ken FG_CYAN = "\x1b[36m"
+ken FG_WHITE = "\x1b[37m"
+
+# Bright foreground colors
+ken FG_BRIGHT_BLACK = "\x1b[90m"
+ken FG_BRIGHT_RED = "\x1b[91m"
+ken FG_BRIGHT_GREEN = "\x1b[92m"
+ken FG_BRIGHT_YELLOW = "\x1b[93m"
+ken FG_BRIGHT_BLUE = "\x1b[94m"
+ken FG_BRIGHT_MAGENTA = "\x1b[95m"
+ken FG_BRIGHT_CYAN = "\x1b[96m"
+ken FG_BRIGHT_WHITE = "\x1b[97m"
+
+# ===============================================================
+# Background Colors
+# ===============================================================
+
+ken BG_BLACK = "\x1b[40m"
+ken BG_RED = "\x1b[41m"
+ken BG_GREEN = "\x1b[42m"
+ken BG_YELLOW = "\x1b[43m"
+ken BG_BLUE = "\x1b[44m"
+ken BG_MAGENTA = "\x1b[45m"
+ken BG_CYAN = "\x1b[46m"
+ken BG_WHITE = "\x1b[47m"
+
+# Bright background colors
+ken BG_BRIGHT_BLACK = "\x1b[100m"
+ken BG_BRIGHT_RED = "\x1b[101m"
+ken BG_BRIGHT_GREEN = "\x1b[102m"
+ken BG_BRIGHT_YELLOW = "\x1b[103m"
+ken BG_BRIGHT_BLUE = "\x1b[104m"
+ken BG_BRIGHT_MAGENTA = "\x1b[105m"
+ken BG_BRIGHT_CYAN = "\x1b[106m"
+ken BG_BRIGHT_WHITE = "\x1b[107m"
+
+# ===============================================================
+# Text Styles
+# ===============================================================
+
+ken BOLD = "\x1b[1m"
+ken DIM = "\x1b[2m"
+ken ITALIC = "\x1b[3m"
+ken UNDERLINE = "\x1b[4m"
+ken BLINK = "\x1b[5m"
+ken REVERSE = "\x1b[7m"
+ken HIDDEN = "\x1b[8m"
+ken STRIKETHROUGH = "\x1b[9m"
+
+# ===============================================================
+# Helper Functions
+# ===============================================================
+
+# Apply a color/style and auto-reset
+dae styled(text, style) {
+    gie style + text + RESET
+}
+
+# Color text functions
+dae black(text) { gie styled(text, FG_BLACK) }
+dae red(text) { gie styled(text, FG_RED) }
+dae green(text) { gie styled(text, FG_GREEN) }
+dae yellow(text) { gie styled(text, FG_YELLOW) }
+dae blue(text) { gie styled(text, FG_BLUE) }
+dae magenta(text) { gie styled(text, FG_MAGENTA) }
+dae cyan(text) { gie styled(text, FG_CYAN) }
+dae white(text) { gie styled(text, FG_WHITE) }
+
+# Bright color functions
+dae bright_black(text) { gie styled(text, FG_BRIGHT_BLACK) }
+dae bright_red(text) { gie styled(text, FG_BRIGHT_RED) }
+dae bright_green(text) { gie styled(text, FG_BRIGHT_GREEN) }
+dae bright_yellow(text) { gie styled(text, FG_BRIGHT_YELLOW) }
+dae bright_blue(text) { gie styled(text, FG_BRIGHT_BLUE) }
+dae bright_magenta(text) { gie styled(text, FG_BRIGHT_MAGENTA) }
+dae bright_cyan(text) { gie styled(text, FG_BRIGHT_CYAN) }
+dae bright_white(text) { gie styled(text, FG_BRIGHT_WHITE) }
+
+# Style functions
+dae bold(text) { gie styled(text, BOLD) }
+dae dim(text) { gie styled(text, DIM) }
+dae italic(text) { gie styled(text, ITALIC) }
+dae underline(text) { gie styled(text, UNDERLINE) }
+dae blink(text) { gie styled(text, BLINK) }
+dae reverse(text) { gie styled(text, REVERSE) }
+dae strikethrough(text) { gie styled(text, STRIKETHROUGH) }
+
+# Background color functions
+dae bg_black(text) { gie styled(text, BG_BLACK) }
+dae bg_red(text) { gie styled(text, BG_RED) }
+dae bg_green(text) { gie styled(text, BG_GREEN) }
+dae bg_yellow(text) { gie styled(text, BG_YELLOW) }
+dae bg_blue(text) { gie styled(text, BG_BLUE) }
+dae bg_magenta(text) { gie styled(text, BG_MAGENTA) }
+dae bg_cyan(text) { gie styled(text, BG_CYAN) }
+dae bg_white(text) { gie styled(text, BG_WHITE) }
+
+# ===============================================================
+# Combined Styles
+# ===============================================================
+
+# Apply multiple styles
+dae style_all(text, styles) {
+    ken result = ""
+    fer s in styles {
+        result = result + s
+    }
+    gie result + text + RESET
+}
+
+# Common combinations
+dae bold_red(text) { gie style_all(text, [BOLD, FG_RED]) }
+dae bold_green(text) { gie style_all(text, [BOLD, FG_GREEN]) }
+dae bold_yellow(text) { gie style_all(text, [BOLD, FG_YELLOW]) }
+dae bold_blue(text) { gie style_all(text, [BOLD, FG_BLUE]) }
+dae bold_cyan(text) { gie style_all(text, [BOLD, FG_CYAN]) }
+dae bold_magenta(text) { gie style_all(text, [BOLD, FG_MAGENTA]) }
+
+dae error_style(text) { gie style_all(text, [BOLD, FG_RED]) }
+dae warning_style(text) { gie style_all(text, [BOLD, FG_YELLOW]) }
+dae success_style(text) { gie style_all(text, [BOLD, FG_GREEN]) }
+dae info_style(text) { gie style_all(text, [BOLD, FG_CYAN]) }
+
+# ===============================================================
+# 256 Color Support
+# ===============================================================
+
+# Foreground 256 color
+dae fg_256(text, color_code) {
+    ken code = "\x1b[38;5;" + tae_string(color_code) + "m"
+    gie code + text + RESET
+}
+
+# Background 256 color
+dae bg_256(text, color_code) {
+    ken code = "\x1b[48;5;" + tae_string(color_code) + "m"
+    gie code + text + RESET
+}
+
+# ===============================================================
+# RGB Color Support (True Color)
+# ===============================================================
+
+# Foreground RGB color
+dae fg_rgb(text, r, g, b) {
+    ken code = "\x1b[38;2;" + tae_string(r) + ";" + tae_string(g) + ";" + tae_string(b) + "m"
+    gie code + text + RESET
+}
+
+# Background RGB color
+dae bg_rgb(text, r, g, b) {
+    ken code = "\x1b[48;2;" + tae_string(r) + ";" + tae_string(g) + ";" + tae_string(b) + "m"
+    gie code + text + RESET
+}
+
+# ===============================================================
+# Terminal Control
+# ===============================================================
+
+# Clear screen
+dae clear_screen() {
+    blether "\x1b[2J\x1b[H"
+}
+
+# Move cursor
+dae move_cursor(row, col) {
+    blether "\x1b[" + tae_string(row) + ";" + tae_string(col) + "H"
+}
+
+# Hide cursor
+dae hide_cursor() {
+    blether "\x1b[?25l"
+}
+
+# Show cursor
+dae show_cursor() {
+    blether "\x1b[?25h"
+}
+
+# Save cursor position
+dae save_cursor() {
+    blether "\x1b[s"
+}
+
+# Restore cursor position
+dae restore_cursor() {
+    blether "\x1b[u"
+}
+
+# Clear line
+dae clear_line() {
+    blether "\x1b[2K"
+}
+
+# ===============================================================
+# Progress Bar
+# ===============================================================
+
+dae progress_bar(current, total, width = 40, filled_char = "█", empty_char = "░") {
+    ken percentage = floor((current * 100) / total)
+    ken filled_width = floor((current * width) / total)
+    ken empty_width = width - filled_width
+
+    ken bar = ""
+    fer i in 0..filled_width {
+        bar = bar + filled_char
+    }
+    fer i in 0..empty_width {
+        bar = bar + empty_char
+    }
+
+    gie f"[{green(bar)}] {percentage}%"
+}
+
+# ===============================================================
+# Box Drawing
+# ===============================================================
+
+# Simple box around text
+dae box(text, width = 0) {
+    ken actual_width = gin width > 0 than width ither len(text) + 4
+    ken padding = actual_width - len(text) - 2
+
+    ken top = "┌" + repeat_char("─", actual_width - 2) + "┐"
+    ken mid = "│ " + text + repeat_char(" ", padding - 2) + " │"
+    ken bot = "└" + repeat_char("─", actual_width - 2) + "┘"
+
+    gie top + "\n" + mid + "\n" + bot
+}
+
+dae repeat_char(c, n) {
+    ken result = ""
+    fer i in 0..n {
+        result = result + c
+    }
+    gie result
+}
+
+# ===============================================================
+# Rainbow Text
+# ===============================================================
+
+dae rainbow(text) {
+    ken colors = [FG_RED, FG_YELLOW, FG_GREEN, FG_CYAN, FG_BLUE, FG_MAGENTA]
+    ken result = ""
+    ken i = 0
+
+    fer c in text {
+        gin c != " " {
+            result = result + colors[i % len(colors)] + c
+            i = i + 1
+        } ither {
+            result = result + c
+        }
+    }
+
+    gie result + RESET
+}
+
+# ===============================================================
+# Gradient Text (simple 2-color gradient)
+# ===============================================================
+
+dae gradient(text, start_color, end_color) {
+    # Simple gradient using 256 colors
+    ken len_text = len(text)
+    ken result = ""
+
+    fer i in 0..len_text {
+        ken c = text[i]
+        ken ratio = i / len_text
+        ken color = floor(start_color + ((end_color - start_color) * ratio))
+        ken code = "\x1b[38;5;" + tae_string(color) + "m"
+        result = result + code + c
+    }
+
+    gie result + RESET
+}
+
+# ===============================================================
+# Scottish Theme Colors
+# ===============================================================
+
+# Scottish flag colors (Saltire)
+dae saltire_blue(text) { gie fg_rgb(text, 0, 91, 153) }
+dae saltire_white(text) { gie styled(text, FG_BRIGHT_WHITE) }
+
+# Tartan-inspired colors
+dae tartan_red(text) { gie fg_rgb(text, 180, 18, 20) }
+dae tartan_green(text) { gie fg_rgb(text, 0, 100, 50) }
+dae tartan_navy(text) { gie fg_rgb(text, 0, 35, 102) }
+dae tartan_yellow(text) { gie fg_rgb(text, 255, 204, 0) }
+
+# Heather purple
+dae heather(text) { gie fg_rgb(text, 150, 120, 180) }
+
+# Whisky amber
+dae whisky(text) { gie fg_rgb(text, 205, 127, 50) }
+
+# Highland green
+dae highland_green(text) { gie fg_rgb(text, 34, 139, 34) }
+
+# ===============================================================
+# Logging Helpers
+# ===============================================================
+
+dae log_error(message) {
+    blether error_style("[ERROR]") + " " + message
+}
+
+dae log_warning(message) {
+    blether warning_style("[WARN]") + " " + message
+}
+
+dae log_success(message) {
+    blether success_style("[OK]") + " " + message
+}
+
+dae log_info(message) {
+    blether info_style("[INFO]") + " " + message
+}
+
+dae log_debug(message) {
+    blether dim("[DEBUG] " + message)
+}
+
+blether "Colors module loaded! Ready tae add some colour!"

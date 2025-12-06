@@ -1,0 +1,394 @@
+# template.braw - String Templating fer mdhavers
+# "Mak yer strings bonnie an' braw!"
+
+# ============================================================
+# String Builder Class - fer efficient string construction
+# ============================================================
+
+kin StringBuilder {
+    dae init() {
+        masel.parts = []
+    }
+
+    dae append(s) {
+        shove(masel.parts, tae_string(s))
+        gie masel
+    }
+
+    dae appendln(s) {
+        shove(masel.parts, tae_string(s))
+        shove(masel.parts, "\n")
+        gie masel
+    }
+
+    dae append_all(items) {
+        fer item in items {
+            shove(masel.parts, tae_string(item))
+        }
+        gie masel
+    }
+
+    dae append_join(items, sep) {
+        ken first = aye
+        fer item in items {
+            gin nae first {
+                shove(masel.parts, sep)
+            }
+            shove(masel.parts, tae_string(item))
+            first = nae
+        }
+        gie masel
+    }
+
+    dae clear() {
+        masel.parts = []
+        gie masel
+    }
+
+    dae length() {
+        ken total = 0
+        fer p in masel.parts {
+            total = total + len(p)
+        }
+        gie total
+    }
+
+    dae is_empty() {
+        gie len(masel.parts) == 0
+    }
+
+    dae build() {
+        gie join(masel.parts, "")
+    }
+
+    dae tae_string() {
+        gie masel.build()
+    }
+}
+
+dae string_builder() {
+    gie StringBuilder()
+}
+
+# ============================================================
+# Format Functions
+# ============================================================
+
+dae pad_left(s, width, ch = " ") {
+    ken str = tae_string(s)
+    ken pad_len = width - len(str)
+    gin pad_len <= 0 {
+        gie str
+    }
+    gie repeat(ch, pad_len) + str
+}
+
+dae pad_right(s, width, ch = " ") {
+    ken str = tae_string(s)
+    ken pad_len = width - len(str)
+    gin pad_len <= 0 {
+        gie str
+    }
+    gie str + repeat(ch, pad_len)
+}
+
+dae pad_center(s, width, ch = " ") {
+    ken str = tae_string(s)
+    ken total_pad = width - len(str)
+    gin total_pad <= 0 {
+        gie str
+    }
+    ken left_pad = total_pad / 2
+    ken right_pad = total_pad - left_pad
+    gie repeat(ch, left_pad) + str + repeat(ch, right_pad)
+}
+
+dae format_number(n, sep = ",") {
+    ken str = tae_string(abs(n))
+    ken result = ""
+    ken count = 0
+
+    fer i in 0..len(str) {
+        ken idx = len(str) - 1 - i
+        gin count > 0 {
+            gin count % 3 == 0 {
+                result = sep + result
+            }
+        }
+        result = char_at(str, idx) + result
+        count = count + 1
+    }
+
+    gin n < 0 {
+        gie "-" + result
+    }
+    gie result
+}
+
+dae format_currency(amount, symbol = "£", decimals = 2) {
+    ken whole = floor(abs(amount))
+    ken multiplier = pooer(10, decimals)
+    ken frac = round((abs(amount) - whole) * multiplier)
+    ken frac_str = pad_left(tae_string(frac), decimals, "0")
+    ken whole_str = format_number(whole)
+    
+    ken result = symbol + whole_str + "." + frac_str
+    gin amount < 0 {
+        gie "-" + result
+    }
+    gie result
+}
+
+dae format_percent(value, decimals = 1) {
+    ken pct = value * 100
+    ken whole = floor(pct)
+    gin decimals == 0 {
+        gie tae_string(whole) + "%"
+    }
+    ken multiplier = pooer(10, decimals)
+    ken frac = round((pct - whole) * multiplier)
+    ken frac_str = pad_left(tae_string(frac), decimals, "0")
+    gie tae_string(whole) + "." + frac_str + "%"
+}
+
+dae format_bytes(bytes) {
+    ken units = ["B", "KB", "MB", "GB", "TB"]
+    ken val = bytes + 0.0
+    ken unit_idx = 0
+
+    whiles val >= 1024.0 {
+        gin unit_idx >= len(units) - 1 {
+            brak
+        }
+        val = val / 1024.0
+        unit_idx = unit_idx + 1
+    }
+
+    gin unit_idx == 0 {
+        gie tae_string(floor(val)) + " " + units[unit_idx]
+    }
+
+    ken rounded = round(val * 100) / 100
+    gie tae_string(rounded) + " " + units[unit_idx]
+}
+
+dae format_duration(seconds) {
+    ken secs = floor(seconds)
+    ken mins = floor(secs / 60)
+    ken hrs = floor(mins / 60)
+    ken days = floor(hrs / 24)
+    
+    secs = secs % 60
+    mins = mins % 60
+    hrs = hrs % 24
+    
+    ken parts = []
+    gin days > 0 { shove(parts, f"{days}d") }
+    gin hrs > 0 { shove(parts, f"{hrs}h") }
+    gin mins > 0 { shove(parts, f"{mins}m") }
+    gin secs > 0 { shove(parts, f"{secs}s") }
+    gin len(parts) == 0 { shove(parts, "0s") }
+    
+    gie join(parts, " ")
+}
+
+# ============================================================
+# Text Wrapping
+# ============================================================
+
+dae wrap_text(text, width) {
+    ken words = split(text, " ")
+    ken lines = []
+    ken current_line = []
+    ken current_len = 0
+    
+    fer word in words {
+        ken word_len = len(word)
+        ken space_needed = gin len(current_line) > 0 than 1 ither 0
+        gin current_len + word_len + space_needed > width {
+            gin len(current_line) > 0 {
+                shove(lines, join(current_line, " "))
+                current_line = []
+                current_len = 0
+            }
+        }
+        shove(current_line, word)
+        current_len = current_len + word_len + space_needed
+    }
+    
+    gin len(current_line) > 0 {
+        shove(lines, join(current_line, " "))
+    }
+    
+    gie join(lines, "\n")
+}
+
+dae truncate(text, max_len, suffix = "...") {
+    gin len(text) <= max_len {
+        gie text
+    }
+    ken cut_len = max_len - len(suffix)
+    gin cut_len <= 0 {
+        gie suffix
+    }
+    gie scran(text, 0, cut_len) + suffix
+}
+
+# ============================================================
+# Text Tables
+# ============================================================
+
+kin TextTable {
+    dae init() {
+        masel.headers = []
+        masel.rows = []
+        masel.col_widths = []
+    }
+
+    dae set_headers(headers) {
+        masel.headers = headers
+        masel._update_widths(headers)
+        gie masel
+    }
+
+    dae add_row(row) {
+        shove(masel.rows, row)
+        masel._update_widths(row)
+        gie masel
+    }
+
+    dae _update_widths(row) {
+        fer i in 0..len(row) {
+            ken cell_width = len(tae_string(row[i]))
+            whiles len(masel.col_widths) <= i {
+                shove(masel.col_widths, 0)
+            }
+            gin cell_width > masel.col_widths[i] {
+                masel.col_widths[i] = cell_width
+            }
+        }
+    }
+
+    dae _format_row(row, sep = " | ") {
+        ken cells = []
+        fer i in 0..len(row) {
+            ken width = masel.col_widths[i]
+            shove(cells, pad_right(tae_string(row[i]), width))
+        }
+        gie sep + join(cells, sep) + sep
+    }
+
+    dae _separator_row() {
+        ken parts = []
+        fer w in masel.col_widths {
+            shove(parts, repeat("-", w + 2))
+        }
+        gie "+" + join(parts, "+") + "+"
+    }
+
+    dae render() {
+        ken sb = string_builder()
+        ken sep = masel._separator_row()
+        
+        sb.appendln(sep)
+        
+        gin len(masel.headers) > 0 {
+            sb.appendln(masel._format_row(masel.headers))
+            sb.appendln(sep)
+        }
+        
+        fer row in masel.rows {
+            sb.appendln(masel._format_row(row))
+        }
+        
+        sb.append(sep)
+        gie sb.build()
+    }
+
+    dae tae_string() {
+        gie masel.render()
+    }
+}
+
+dae text_table() {
+    gie TextTable()
+}
+
+# ============================================================
+# Box Drawing
+# ============================================================
+
+dae box(text, padding = 1) {
+    ken lines = split(text, "\n")
+    ken max_width = 0
+    fer line in lines {
+        gin len(line) > max_width {
+            max_width = len(line)
+        }
+    }
+    
+    ken inner_width = max_width + padding * 2
+    ken sb = string_builder()
+    
+    sb.appendln("+" + repeat("-", inner_width) + "+")
+    
+    fer p in 0..padding {
+        sb.appendln("|" + repeat(" ", inner_width) + "|")
+    }
+    
+    fer line in lines {
+        ken padded = repeat(" ", padding) + pad_right(line, max_width) + repeat(" ", padding)
+        sb.appendln("|" + padded + "|")
+    }
+    
+    fer p in 0..padding {
+        sb.appendln("|" + repeat(" ", inner_width) + "|")
+    }
+    
+    sb.append("+" + repeat("-", inner_width) + "+")
+    
+    gie sb.build()
+}
+
+dae titled_box(title, text, width = 40) {
+    ken lines = split(text, "\n")
+    ken inner_width = width - 2
+    ken sb = string_builder()
+    
+    ken title_str = " " + title + " "
+    ken left_border = (inner_width - len(title_str)) / 2
+    ken right_border = inner_width - left_border - len(title_str)
+    
+    sb.appendln("+" + repeat("-", left_border) + title_str + repeat("-", right_border) + "+")
+    
+    fer line in lines {
+        ken max_line_len = inner_width - 2
+        ken truncated = truncate(line, max_line_len, "")
+        ken padded = " " + pad_right(truncated, max_line_len) + " "
+        sb.appendln("|" + padded + "|")
+    }
+    
+    sb.append("+" + repeat("-", inner_width) + "+")
+    
+    gie sb.build()
+}
+
+# ============================================================
+# Simple Template Substitution
+# ============================================================
+
+# Replace {{key}} with value from context dict
+dae render_template(template_str, context) {
+    ken result = template_str
+    ken ks = keys(context)
+    
+    fer k in ks {
+        ken placeholder = "{{" + k + "}}"
+        ken value = tae_string(context[k])
+        result = replace(result, placeholder, value)
+    }
+    
+    gie result
+}
+
+blether "Template module loaded! Mak yer strings bonnie!"

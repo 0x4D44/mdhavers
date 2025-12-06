@@ -1,0 +1,679 @@
+# music.braw - Scottish Music an' Sound fer mdhavers
+# "Scotland the Brave! Music tae stir the soul!"
+#
+# This module provides music notation, rhythm patterns,
+# bagpipe tunes, and ASCII-based sound visualization.
+
+# ============================================================
+# Helper Functions
+# ============================================================
+
+# Check if a dictionary has a key
+dae has_key(dict, key) {
+    fer k in keys(dict) {
+        gin k == key {
+            gie aye
+        }
+    }
+    gie nae
+}
+
+# ============================================================
+# Musical Constants
+# ============================================================
+
+# Standard note durations (in beats)
+ken WHOLE = 4.0
+ken HALF = 2.0
+ken QUARTER = 1.0
+ken EIGHTH = 0.5
+ken SIXTEENTH = 0.25
+ken DOTTED_HALF = 3.0
+ken DOTTED_QUARTER = 1.5
+ken DOTTED_EIGHTH = 0.75
+
+# Note names (chromatic scale)
+ken NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+
+# Scottish scale (pentatonic - common in Scottish music)
+ken SCOTS_SCALE = ["D", "E", "G", "A", "B"]
+
+# Bagpipe scale (the "Highland" scale - A Mixolydian)
+ken BAGPIPE_SCALE = ["G", "A", "B", "C", "D", "E", "F", "G_high", "A_high"]
+
+# Grace notes fer bagpipes
+ken GRACE_NOTES = {
+    "grip": "GDG",
+    "doubling": "GDG",
+    "throw": "LG",
+    "birl": "LGLG",
+    "taorluath": "LGDE",
+    "crunluath": "LGDEA"
+}
+
+# ============================================================
+# Note Representation
+# ============================================================
+
+# Create a note
+dae note(pitch, duration = QUARTER, octave = 4) {
+    gie {
+        "pitch": pitch,
+        "duration": duration,
+        "octave": octave,
+        "type": "note"
+    }
+}
+
+# Create a rest
+dae rest(duration = QUARTER) {
+    gie {
+        "pitch": "R",
+        "duration": duration,
+        "type": "rest"
+    }
+}
+
+# Format a note for display
+dae note_tae_string(n) {
+    gin n["type"] == "rest" {
+        gie f"R({n[\"duration\"]})"
+    }
+    gie f"{n[\"pitch\"]}{n[\"octave\"]}({n[\"duration\"]})"
+}
+
+# ============================================================
+# Melody Representation
+# ============================================================
+
+# Create a melody (list of notes)
+dae melody(notes = []) {
+    gie {
+        "notes": notes,
+        "tempo": 120,
+        "time_sig": [4, 4],
+        "title": "Untitled"
+    }
+}
+
+# Add a note to melody
+dae add_note(mel, n) {
+    shove(mel["notes"], n)
+    gie mel
+}
+
+# Set melody title
+dae set_title(mel, title) {
+    mel["title"] = title
+    gie mel
+}
+
+# Set tempo (BPM)
+dae set_tempo(mel, bpm) {
+    mel["tempo"] = bpm
+    gie mel
+}
+
+# Calculate total duration in beats
+dae melody_duration(mel) {
+    ken total = 0.0
+    fer n in mel["notes"] {
+        total = total + n["duration"]
+    }
+    gie total
+}
+
+# ============================================================
+# ASCII Visualization
+# ============================================================
+
+# Visualize a note on a staff
+dae note_tae_staff(n) {
+    gin n["type"] == "rest" {
+        gie "  -  "
+    }
+
+    ken pitch = n["pitch"]
+    ken symbols = {
+        "C": "  o  ",
+        "D": " o   ",
+        "E": "o    ",
+        "F": "  o  ",
+        "G": " o   ",
+        "A": "o    ",
+        "B": "  o  "
+    }
+
+    gin has_key(symbols, pitch) {
+        gie symbols[pitch]
+    }
+    gie " [?] "
+}
+
+# Draw an ASCII staff with notes
+dae draw_staff(mel) {
+    ken lines = ["", "", "", "", ""]
+    ken staff_lines = ["─", "─", "─", "─", "─"]
+
+    blether f"♫ {mel[\"title\"]} ♫"
+    blether f"Tempo: {mel[\"tempo\"]} BPM"
+    blether ""
+
+    # Draw each note position
+    fer n in mel["notes"] {
+        ken viz = note_tae_staff(n)
+        # Simple visualization
+        blether f"│ {note_tae_string(n)} │"
+    }
+
+    blether "╰─────────────────╯"
+}
+
+# Create a rhythm visualization
+dae visualize_rhythm(mel) {
+    ken bar = ""
+    ken beat_count = 0.0
+
+    blether f"Rhythm fer '{mel[\"title\"]}':"
+    blether ""
+
+    fer n in mel["notes"] {
+        ken dur = n["duration"]
+        ken symbol = ""
+
+        gin dur >= WHOLE {
+            symbol = "████"
+        } ither gin dur >= HALF {
+            symbol = "██"
+        } ither gin dur >= QUARTER {
+            symbol = "█"
+        } ither gin dur >= EIGHTH {
+            symbol = "▄"
+        } ither {
+            symbol = "▀"
+        }
+
+        gin n["type"] == "rest" {
+            symbol = replace_all(symbol, "█", "░")
+            symbol = replace_all(symbol, "▄", "░")
+            symbol = replace_all(symbol, "▀", "░")
+        }
+
+        bar = bar + symbol + " "
+        beat_count = beat_count + dur
+
+        # New line every 4 beats (one bar in 4/4)
+        gin beat_count >= 4.0 {
+            blether f"│{bar}│"
+            bar = ""
+            beat_count = 0.0
+        }
+    }
+
+    gin len(bar) > 0 {
+        blether f"│{bar}│"
+    }
+}
+
+# ============================================================
+# Scottish Tunes (as note sequences)
+# ============================================================
+
+# Auld Lang Syne (simplified)
+dae auld_lang_syne() {
+    ken mel = melody()
+    mel = set_title(mel, "Auld Lang Syne")
+    mel = set_tempo(mel, 100)
+
+    # "Should auld acquaintance be forgot..."
+    mel = add_note(mel, note("G", QUARTER))
+    mel = add_note(mel, note("C", DOTTED_QUARTER))
+    mel = add_note(mel, note("C", EIGHTH))
+    mel = add_note(mel, note("C", QUARTER))
+    mel = add_note(mel, note("E", QUARTER))
+    mel = add_note(mel, note("D", DOTTED_QUARTER))
+    mel = add_note(mel, note("C", EIGHTH))
+    mel = add_note(mel, note("D", QUARTER))
+    mel = add_note(mel, note("E", EIGHTH))
+    mel = add_note(mel, note("D", EIGHTH))
+
+    # "And never brought to mind..."
+    mel = add_note(mel, note("C", DOTTED_QUARTER))
+    mel = add_note(mel, note("C", EIGHTH))
+    mel = add_note(mel, note("E", QUARTER))
+    mel = add_note(mel, note("G", QUARTER))
+    mel = add_note(mel, note("A", HALF))
+
+    gie mel
+}
+
+# Scotland the Brave (opening)
+dae scotland_the_brave() {
+    ken mel = melody()
+    mel = set_title(mel, "Scotland the Brave")
+    mel = set_tempo(mel, 120)
+
+    # Opening phrase
+    mel = add_note(mel, note("G", EIGHTH))
+    mel = add_note(mel, note("B", DOTTED_QUARTER))
+    mel = add_note(mel, note("G", EIGHTH))
+    mel = add_note(mel, note("B", QUARTER))
+    mel = add_note(mel, note("A", QUARTER))
+    mel = add_note(mel, note("G", QUARTER))
+    mel = add_note(mel, note("E", QUARTER))
+    mel = add_note(mel, note("D", HALF))
+
+    gie mel
+}
+
+# Amazing Grace (Scottish version)
+dae amazing_grace() {
+    ken mel = melody()
+    mel = set_title(mel, "Amazing Grace")
+    mel = set_tempo(mel, 80)
+
+    # "Amazing grace, how sweet the sound..."
+    mel = add_note(mel, note("G", QUARTER))
+    mel = add_note(mel, note("C", HALF))
+    mel = add_note(mel, note("E", EIGHTH))
+    mel = add_note(mel, note("C", EIGHTH))
+    mel = add_note(mel, note("E", HALF))
+    mel = add_note(mel, note("D", QUARTER))
+    mel = add_note(mel, note("C", HALF))
+    mel = add_note(mel, note("A", QUARTER))
+    mel = add_note(mel, note("G", HALF))
+
+    gie mel
+}
+
+# Flower of Scotland
+dae flower_of_scotland() {
+    ken mel = melody()
+    mel = set_title(mel, "Flower of Scotland")
+    mel = set_tempo(mel, 88)
+
+    # "O Flower of Scotland..."
+    mel = add_note(mel, note("D", QUARTER))
+    mel = add_note(mel, note("G", HALF))
+    mel = add_note(mel, note("A", QUARTER))
+    mel = add_note(mel, note("B", HALF))
+    mel = add_note(mel, note("A", QUARTER))
+    mel = add_note(mel, note("G", QUARTER))
+    mel = add_note(mel, note("E", HALF))
+    mel = add_note(mel, note("D", HALF))
+
+    gie mel
+}
+
+# ============================================================
+# Rhythm Patterns
+# ============================================================
+
+# Create a strathspey rhythm (characteristic Scottish dance)
+dae strathspey_rhythm() {
+    ken pattern = []
+    # Dotted rhythms characteristic of strathspey
+    shove(pattern, DOTTED_EIGHTH)
+    shove(pattern, SIXTEENTH)
+    shove(pattern, QUARTER)
+    shove(pattern, DOTTED_EIGHTH)
+    shove(pattern, SIXTEENTH)
+    shove(pattern, QUARTER)
+    gie pattern
+}
+
+# Create a reel rhythm (faster Scottish dance)
+dae reel_rhythm() {
+    ken pattern = []
+    fer i in 1..9 {
+        shove(pattern, EIGHTH)
+    }
+    gie pattern
+}
+
+# Create a jig rhythm (6/8 time)
+dae jig_rhythm() {
+    ken pattern = []
+    # Two groups of three eighth notes
+    fer i in 1..7 {
+        shove(pattern, EIGHTH)
+    }
+    gie pattern
+}
+
+# Create a march rhythm
+dae march_rhythm() {
+    ken pattern = []
+    shove(pattern, QUARTER)
+    shove(pattern, QUARTER)
+    shove(pattern, EIGHTH)
+    shove(pattern, EIGHTH)
+    shove(pattern, QUARTER)
+    gie pattern
+}
+
+# ============================================================
+# Bagpipe Specific
+# ============================================================
+
+# Bagpipe notation (using traditional symbols)
+kin BagpipeNote {
+    dae init(pitch, is_grace = nae) {
+        masel.pitch = pitch
+        masel.is_grace = is_grace
+        masel.embellishment = naething
+    }
+
+    dae add_grace(grace_type) {
+        gin has_key(GRACE_NOTES, grace_type) {
+            masel.embellishment = grace_type
+        }
+        gie masel
+    }
+
+    dae tae_string() {
+        ken result = masel.pitch
+        gin masel.embellishment != naething {
+            result = f"[{masel.embellishment}]{result}"
+        }
+        gie result
+    }
+}
+
+# Create a bagpipe tune representation
+dae bagpipe_tune(title) {
+    gie {
+        "title": title,
+        "notes": [],
+        "tune_type": "march",
+        "time_sig": [4, 4]
+    }
+}
+
+# Add bagpipe note with optional grace note
+dae pipe_note(tune, pitch, grace = naething) {
+    ken n = BagpipeNote(pitch)
+    gin grace != naething {
+        n = n.add_grace(grace)
+    }
+    shove(tune["notes"], n)
+    gie tune
+}
+
+# Display bagpipe notation
+dae display_bagpipe(tune) {
+    blether f"╔══════════════════════════════════════╗"
+    blether f"║  🏴󠁧󠁢󠁳󠁣󠁴󠁿 {tune[\"title\"]}"
+    blether f"║  Type: {tune[\"tune_type\"]}"
+    blether f"╚══════════════════════════════════════╝"
+    blether ""
+
+    ken line = "♩ "
+    ken count = 0
+    fer n in tune["notes"] {
+        line = line + n.tae_string() + " "
+        count = count + 1
+        gin count >= 8 {
+            blether line
+            line = "♩ "
+            count = 0
+        }
+    }
+    gin len(line) > 2 {
+        blether line
+    }
+}
+
+# ============================================================
+# Metronome / Timing
+# ============================================================
+
+# Calculate milliseconds per beat from BPM
+dae ms_per_beat(bpm) {
+    gie 60000.0 / bpm
+}
+
+# Text-based metronome (visual)
+dae metronome_tick(beat_num, beats_per_bar = 4) {
+    gin beat_num % beats_per_bar == 1 {
+        gie "TICK"
+    }
+    gie "tock"
+}
+
+# Display a visual metronome for n beats
+dae visual_metronome(beats, bpm = 120) {
+    ken ms = ms_per_beat(bpm)
+    blether f"Metronome: {bpm} BPM"
+    blether ""
+
+    fer i in 1..beats+1 {
+        ken beat_in_bar = ((i - 1) % 4) + 1
+        ken display = ""
+
+        gin beat_in_bar == 1 {
+            display = "│ ● ○ ○ ○ │"
+        } ither gin beat_in_bar == 2 {
+            display = "│ ○ ● ○ ○ │"
+        } ither gin beat_in_bar == 3 {
+            display = "│ ○ ○ ● ○ │"
+        } ither {
+            display = "│ ○ ○ ○ ● │"
+        }
+
+        blether f"Beat {i}: {display} {metronome_tick(i)}"
+    }
+}
+
+# ============================================================
+# Sound Wave Visualization (ASCII)
+# ============================================================
+
+# Draw a simple sine wave
+dae draw_wave(length = 40, amplitude = 3) {
+    fer y in 0..amplitude*2+1 {
+        ken line = ""
+        fer x in 0..length {
+            # Approximate sine wave position
+            ken wave_y = floor(amplitude + amplitude * sin(x * 0.3))
+            gin y == wave_y {
+                line = line + "~"
+            } ither {
+                line = line + " "
+            }
+        }
+        blether line
+    }
+}
+
+# Draw a beat pattern visualization
+dae draw_beat_pattern(pattern, char = "█") {
+    ken max_dur = 0.0
+    fer dur in pattern {
+        gin dur > max_dur {
+            max_dur = dur
+        }
+    }
+
+    ken scale = 8.0 / max_dur
+
+    fer dur in pattern {
+        ken width = floor(dur * scale)
+        ken bar = ""
+        fer i in 1..width+1 {
+            bar = bar + char
+        }
+        blether f"│{bar}│ ({dur})"
+    }
+}
+
+# ============================================================
+# Tune Generator (Random Scottish Tune)
+# ============================================================
+
+# Generate a random melody using Scottish scale
+dae random_scots_tune(length = 8) {
+    ken mel = melody()
+    mel = set_title(mel, "Random Scots Tune")
+
+    ken rhythms = [QUARTER, EIGHTH, HALF, DOTTED_QUARTER]
+
+    fer i in 1..length+1 {
+        ken pitch_idx = jammy(0, len(SCOTS_SCALE))
+        ken dur_idx = jammy(0, len(rhythms))
+        ken octave = 4 + jammy(0, 2)
+
+        mel = add_note(mel, note(SCOTS_SCALE[pitch_idx], rhythms[dur_idx], octave))
+    }
+
+    gie mel
+}
+
+# ============================================================
+# Lyrics / Song Structure
+# ============================================================
+
+# Create a song with verses and chorus
+dae song(title) {
+    gie {
+        "title": title,
+        "verses": [],
+        "chorus": naething,
+        "melody": naething
+    }
+}
+
+# Add verse
+dae add_verse(s, text) {
+    shove(s["verses"], text)
+    gie s
+}
+
+# Set chorus
+dae set_chorus(s, text) {
+    s["chorus"] = text
+    gie s
+}
+
+# Display song with structure
+dae display_song(s) {
+    blether "═══════════════════════════════════════"
+    blether f"  ♫ {s[\"title\"]} ♫"
+    blether "═══════════════════════════════════════"
+    blether ""
+
+    ken verse_num = 1
+    fer verse in s["verses"] {
+        blether f"[Verse {verse_num}]"
+        blether verse
+        blether ""
+
+        gin s["chorus"] != naething {
+            blether "[Chorus]"
+            blether s["chorus"]
+            blether ""
+        }
+
+        verse_num = verse_num + 1
+    }
+}
+
+# ============================================================
+# Scottish Song Builder
+# ============================================================
+
+# Build a wee Scottish song
+dae wee_scots_song() {
+    ken s = song("A Wee Scots Ditty")
+
+    s = add_verse(s, "Frae the Highlands tae the sea,\nScotland's beauty calls tae me,\nWi' the heather on the brae,\nI'll remember this fine day.")
+
+    s = set_chorus(s, "Sing heigh-ho, the wind does blow,\nO'er the bonnie Scottish snow,\nRaise a glass an' sing along,\nTae this auld Scots song!")
+
+    s = add_verse(s, "By the loch at break o' dawn,\nWhere the stag an' deer do roam,\nI'll return when wanderin's done,\nTae ma beloved Scottish home.")
+
+    gie s
+}
+
+# ============================================================
+# Utility Functions
+# ============================================================
+
+# Convert note name to frequency (Hz)
+dae note_tae_frequency(n, a4_freq = 440.0) {
+    ken pitch = n["pitch"]
+    ken octave = n["octave"]
+
+    ken note_idx = 0
+    fer i in 0..len(NOTES) {
+        gin NOTES[i] == pitch {
+            note_idx = i
+        }
+    }
+
+    # A4 is index 9 in octave 4
+    ken semitones_from_a4 = (octave - 4) * 12 + (note_idx - 9)
+
+    # f = 440 * 2^(n/12)
+    gie a4_freq * pooer(2.0, semitones_from_a4 / 12.0)
+}
+
+# Get note name from MIDI note number
+dae midi_tae_note(midi_num) {
+    ken octave = floor(midi_num / 12) - 1
+    ken note_idx = midi_num % 12
+    gie note(NOTES[note_idx], QUARTER, octave)
+}
+
+# Simple transpose (shift by semitones)
+dae transpose_melody(mel, semitones) {
+    ken new_mel = melody()
+    new_mel = set_title(new_mel, f"{mel[\"title\"]} (transposed)")
+    new_mel = set_tempo(new_mel, mel["tempo"])
+
+    fer n in mel["notes"] {
+        gin n["type"] == "rest" {
+            new_mel = add_note(new_mel, n)
+        } ither {
+            ken pitch = n["pitch"]
+            ken octave = n["octave"]
+
+            # Find current index
+            ken idx = 0
+            fer i in 0..len(NOTES) {
+                gin NOTES[i] == pitch {
+                    idx = i
+                }
+            }
+
+            # Apply transposition
+            ken new_idx = idx + semitones
+            ken octave_shift = floor(new_idx / 12)
+            new_idx = new_idx % 12
+            gin new_idx < 0 {
+                new_idx = new_idx + 12
+                octave_shift = octave_shift - 1
+            }
+
+            new_mel = add_note(new_mel, note(NOTES[new_idx], n["duration"], octave + octave_shift))
+        }
+    }
+
+    gie new_mel
+}
+
+# Replace all helper (if not available)
+dae replace_all(s, old, new) {
+    ken result = ""
+    ken chars_list = chars(s)
+    fer c in chars_list {
+        gin c == old {
+            result = result + new
+        } ither {
+            result = result + c
+        }
+    }
+    gie result
+}
+
+blether "Music module loaded! Scotland the Brave! 🎵"

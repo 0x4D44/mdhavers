@@ -1,0 +1,245 @@
+# benchmark.braw - Performance testing utilities fer mdhavers
+# "Time is money, but benchmarks are gold!"
+
+# ===============================================================
+# Timing Functions
+# ===============================================================
+
+# Time a single execution of a function
+dae time_it(func) {
+    ken start = tick()
+    func()
+    ken finish = tick()
+    gie finish - start
+}
+
+# Time multiple executions and return average (in microseconds)
+dae benchmark(func, iterations = 1000) {
+    ken total = 0
+    fer i in 1..iterations+1 {
+        total = total + time_it(func)
+    }
+    gie total / iterations
+}
+
+# Time multiple executions with warmup (fer JIT-like behavior)
+dae benchmark_warmup(func, iterations = 1000, warmup = 100) {
+    # Warmup phase
+    fer i in 1..warmup+1 {
+        func()
+    }
+
+    # Actual benchmark
+    gie benchmark(func, iterations)
+}
+
+# ===============================================================
+# Benchmark Reporting
+# ===============================================================
+
+# Store fer benchmark results
+ken benchmark_results = []
+
+# Register a benchmark result
+dae record_benchmark(name, time_us) {
+    shove(benchmark_results, {
+        "name": name,
+        "time_us": time_us
+    })
+}
+
+# Run and record a benchmark
+dae run_benchmark(name, func, iterations = 1000) {
+    ken time = benchmark(func, iterations)
+    record_benchmark(name, time)
+    blether f"  {name}: {format_time(time)}"
+}
+
+# Format time in appropriate units
+dae format_time(us) {
+    gin us < 1000 {
+        gie f"{us} µs"
+    }
+    gin us < 1000000 {
+        ken ms = us / 1000
+        gie f"{ms} ms"
+    }
+    ken s = us / 1000000
+    gie f"{s} s"
+}
+
+# Print all benchmark results
+dae print_results() {
+    blether ""
+    blether "═══════════════════════════════════════════════════"
+    blether "  Benchmark Results"
+    blether "═══════════════════════════════════════════════════"
+    blether ""
+
+    fer result in benchmark_results {
+        blether f"  {result['name']}: {format_time(result['time_us'])}"
+    }
+
+    blether ""
+}
+
+# Clear benchmark results
+dae clear_results() {
+    benchmark_results = []
+}
+
+# ===============================================================
+# Comparison Utilities
+# ===============================================================
+
+# Compare two functions (returns ratio of times)
+dae compare(name1, func1, name2, func2, iterations = 1000) {
+    ken time1 = benchmark(func1, iterations)
+    ken time2 = benchmark(func2, iterations)
+
+    blether ""
+    blether f"=== Comparison: {name1} vs {name2} ==="
+    blether f"  {name1}: {format_time(time1)}"
+    blether f"  {name2}: {format_time(time2)}"
+
+    gin time1 < time2 {
+        ken ratio = time2 / time1
+        blether f"  {name1} is {ratio}x faster"
+    } ither gin time2 < time1 {
+        ken ratio = time1 / time2
+        blether f"  {name2} is {ratio}x faster"
+    } ither {
+        blether "  Both are about the same speed"
+    }
+
+    gie {"time1": time1, "time2": time2, "ratio": time1 / time2}
+}
+
+# ===============================================================
+# Memory Estimation (basic)
+# ===============================================================
+
+# Estimate list memory usage (items * 8 bytes approximate)
+dae estimate_list_memory(lst) {
+    ken bytes = len(lst) * 8  # Rough estimate: 8 bytes per value reference
+
+    # Add overhead for nested structures
+    fer item in lst {
+        ken t = whit_kind(item)
+        gin t == "list" {
+            bytes = bytes + estimate_list_memory(item)
+        } ither gin t == "string" {
+            bytes = bytes + len(item)
+        } ither gin t == "dict" {
+            bytes = bytes + estimate_dict_memory(item)
+        }
+    }
+
+    gie bytes
+}
+
+# Estimate dict memory usage
+dae estimate_dict_memory(obj) {
+    ken ks = keys(obj)
+    ken bytes = len(ks) * 16  # Key-value pair overhead
+
+    fer k in ks {
+        bytes = bytes + len(k)  # Key string length
+        ken v = obj[k]
+        ken t = whit_kind(v)
+        gin t == "list" {
+            bytes = bytes + estimate_list_memory(v)
+        } ither gin t == "string" {
+            bytes = bytes + len(v)
+        } ither gin t == "dict" {
+            bytes = bytes + estimate_dict_memory(v)
+        }
+    }
+
+    gie bytes
+}
+
+# Format bytes in human-readable form
+dae format_bytes(b) {
+    gin b < 1024 {
+        gie f"{b} B"
+    }
+    gin b < 1048576 {
+        ken kb = b / 1024
+        gie f"{kb} KB"
+    }
+    ken mb = b / 1048576
+    gie f"{mb} MB"
+}
+
+# ===============================================================
+# Algorithmic Complexity Helpers
+# ===============================================================
+
+# Test if algorithm is O(n) by doubling input size
+dae test_linear(name, generator, func) {
+    blether f"Testing linearity of '{name}':"
+
+    ken sizes = [100, 200, 400, 800]
+    ken times = []
+
+    fer size in sizes {
+        ken data = generator(size)
+        ken time = benchmark(|| func(data), 100)
+        shove(times, time)
+        blether f"  n={size}: {format_time(time)}"
+    }
+
+    # Check if ratios are roughly 2x
+    ken is_linear = aye
+    fer i in 0..len(times)-1 {
+        ken ratio = times[i+1] / times[i]
+        gin ratio < 1.5 or ratio > 2.5 {
+            is_linear = nae
+        }
+    }
+
+    gin is_linear {
+        blether "  Verdict: Looks like O(n) - linear!"
+    } ither {
+        blether "  Verdict: Might nae be O(n)"
+    }
+}
+
+# Generate list of n random-ish numbers (using simple formula)
+dae generate_numbers(n) {
+    ken result = []
+    ken seed = 42
+    fer i in 1..n+1 {
+        seed = (seed * 1103515245 + 12345) % 2147483648
+        shove(result, seed % 1000)
+    }
+    gie result
+}
+
+# ===============================================================
+# Suite Runner
+# ===============================================================
+
+# Run a benchmark suite (list of {name, func, iterations} dicts)
+dae run_suite(name, benchmarks) {
+    blether ""
+    blether "═══════════════════════════════════════════════════"
+    blether f"  Benchmark Suite: {name}"
+    blether "═══════════════════════════════════════════════════"
+    blether ""
+
+    fer b in benchmarks {
+        ken iterations = 1000
+        gin contains(b, "iterations") {
+            iterations = b["iterations"]
+        }
+        run_benchmark(b["name"], b["func"], iterations)
+    }
+
+    blether ""
+    blether "Suite complete!"
+    blether ""
+}
+
+blether "Benchmark module loaded! Time tae measure!"

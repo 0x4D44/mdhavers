@@ -1,0 +1,624 @@
+# game.braw - Game development utilities fer mdhavers
+# "Build braw games, the Scots way!"
+#
+# Provides ASCII graphics, game loops, input handling, and game state management.
+
+# ===============================================================
+# Screen Buffer
+# ===============================================================
+
+kin Screen {
+    dae init(width, height) {
+        masel.width = width
+        masel.height = height
+        masel.buffer = []
+        masel.clear_char = " "
+        masel._init_buffer()
+    }
+
+    dae _init_buffer() {
+        masel.buffer = []
+        fer y in 0..masel.height {
+            ken row = []
+            fer x in 0..masel.width {
+                shove(row, masel.clear_char)
+            }
+            shove(masel.buffer, row)
+        }
+    }
+
+    dae clear() {
+        masel._init_buffer()
+        gie masel
+    }
+
+    dae set_clear_char(ch) {
+        masel.clear_char = ch
+        gie masel
+    }
+
+    dae set(x, y, ch) {
+        gin x >= 0 an x < masel.width an y >= 0 an y < masel.height {
+            masel.buffer[y][x] = ch
+        }
+        gie masel
+    }
+
+    dae get(x, y) {
+        gin x >= 0 an x < masel.width an y >= 0 an y < masel.height {
+            gie masel.buffer[y][x]
+        }
+        gie naething
+    }
+
+    dae draw_text(x, y, text) {
+        fer i in 0..len(text) {
+            masel.set(x + i, y, char_at(text, i))
+        }
+        gie masel
+    }
+
+    dae draw_line(x1, y1, x2, y2, ch) {
+        # Bresenham's line algorithm (simplified)
+        ken dx = x2 - x1
+        ken dy = y2 - y1
+        gin dx < 0 { dx = 0 - dx }
+        gin dy < 0 { dy = 0 - dy }
+
+        ken sx = gin x1 < x2 than 1 ither -1
+        ken sy = gin y1 < y2 than 1 ither -1
+        ken err = dx - dy
+
+        ken x = x1
+        ken y = y1
+
+        whiles aye {
+            masel.set(x, y, ch)
+            gin x == x2 an y == y2 { brak }
+            ken e2 = 2 * err
+            gin e2 > (0 - dy) {
+                err = err - dy
+                x = x + sx
+            }
+            gin e2 < dx {
+                err = err + dx
+                y = y + sy
+            }
+        }
+        gie masel
+    }
+
+    dae draw_rect(x, y, w, h, ch) {
+        # Top and bottom
+        fer i in 0..w {
+            masel.set(x + i, y, ch)
+            masel.set(x + i, y + h - 1, ch)
+        }
+        # Left and right
+        fer i in 0..h {
+            masel.set(x, y + i, ch)
+            masel.set(x + w - 1, y + i, ch)
+        }
+        gie masel
+    }
+
+    dae fill_rect(x, y, w, h, ch) {
+        fer row in y..(y + h) {
+            fer col in x..(x + w) {
+                masel.set(col, row, ch)
+            }
+        }
+        gie masel
+    }
+
+    dae draw_circle(cx, cy, r, ch) {
+        # Midpoint circle algorithm
+        ken x = r
+        ken y = 0
+        ken err = 0
+
+        whiles x >= y {
+            masel.set(cx + x, cy + y, ch)
+            masel.set(cx + y, cy + x, ch)
+            masel.set(cx - y, cy + x, ch)
+            masel.set(cx - x, cy + y, ch)
+            masel.set(cx - x, cy - y, ch)
+            masel.set(cx - y, cy - x, ch)
+            masel.set(cx + y, cy - x, ch)
+            masel.set(cx + x, cy - y, ch)
+
+            y = y + 1
+            gin err <= 0 {
+                err = err + 2 * y + 1
+            }
+            gin err > 0 {
+                x = x - 1
+                err = err - 2 * x + 1
+            }
+        }
+        gie masel
+    }
+
+    dae render() {
+        ken lines = []
+        fer row in masel.buffer {
+            shove(lines, join(row, ""))
+        }
+        gie join(lines, "\n")
+    }
+
+    dae display() {
+        blether masel.render()
+        gie masel
+    }
+
+    dae draw_sprite(x, y, sprite) {
+        ken lines = sprite.get_lines()
+        fer row in 0..len(lines) {
+            ken line = lines[row]
+            fer col in 0..len(line) {
+                ken ch = char_at(line, col)
+                gin ch != " " {
+                    masel.set(x + col, y + row, ch)
+                }
+            }
+        }
+        gie masel
+    }
+}
+
+dae make_screen(width, height) {
+    gie Screen(width, height)
+}
+
+# ===============================================================
+# Sprites
+# ===============================================================
+
+kin Sprite {
+    dae init(art) {
+        # Art is either a string with newlines or a list of strings
+        gin whit_kind(art) == "string" {
+            masel.lines = split(art, "\n")
+        } ither {
+            masel.lines = art
+        }
+        masel.width = 0
+        masel.height = len(masel.lines)
+        fer line in masel.lines {
+            gin len(line) > masel.width {
+                masel.width = len(line)
+            }
+        }
+    }
+
+    dae get_lines() {
+        gie masel.lines
+    }
+
+    dae get_width() {
+        gie masel.width
+    }
+
+    dae get_height() {
+        gie masel.height
+    }
+
+    dae flip_horizontal() {
+        ken new_lines = []
+        fer line in masel.lines {
+            ken reversed = ""
+            fer i in 0..len(line) {
+                reversed = char_at(line, i) + reversed
+            }
+            shove(new_lines, reversed)
+        }
+        gie Sprite(new_lines)
+    }
+
+    dae flip_vertical() {
+        ken new_lines = []
+        fer i in 0..len(masel.lines) {
+            shove(new_lines, masel.lines[len(masel.lines) - 1 - i])
+        }
+        gie Sprite(new_lines)
+    }
+}
+
+dae make_sprite(art) {
+    gie Sprite(art)
+}
+
+# ===============================================================
+# Pre-made Sprites
+# ===============================================================
+
+ken SPRITE_PLAYER = make_sprite("  O  \n /|\\ \n / \\ ")
+ken SPRITE_ENEMY = make_sprite(" /-\\ \n |X| \n /-\\ ")
+ken SPRITE_HEART = make_sprite(" ** ** \n*  *  *\n *   * \n  * *  \n   *   ")
+ken SPRITE_STAR = make_sprite("  *  \n *** \n*****\n *** \n  *  ")
+ken SPRITE_TREE = make_sprite("   *   \n  ***  \n ***** \n*******\n   |   ")
+ken SPRITE_HOUSE = make_sprite("   /\\   \n  /  \\  \n /    \\ \n|  []  |\n|______|")
+ken SPRITE_GHOST = make_sprite(" .-. \n| O | \n|   | \n '~' ")
+ken SPRITE_SKULL = make_sprite(" _____ \n/     \\\n| o o |\n|  ^  |\n \\_v_/ ")
+
+# Scottish-themed sprites
+ken SPRITE_HAGGIS = make_sprite("  ___  \n /o o\\ \n(  _  )\n \\_^_/ ")
+ken SPRITE_THISTLE = make_sprite("  ()  \n  /\\  \n //\\\\ \n///\\\\\\\n  ||  ")
+ken SPRITE_BAGPIPE = make_sprite("   ___\n  /   \\\n-<  o  >-\n  \\___/\n   |||")
+
+# ===============================================================
+# Entity System
+# ===============================================================
+
+kin Entity {
+    dae init(x, y) {
+        masel.x = x
+        masel.y = y
+        masel.vx = 0
+        masel.vy = 0
+        masel.sprite = naething
+        masel.char = "@"
+        masel.active = aye
+        masel.tags = []
+    }
+
+    dae with_sprite(sprite) {
+        masel.sprite = sprite
+        gie masel
+    }
+
+    dae with_char(ch) {
+        masel.char = ch
+        gie masel
+    }
+
+    dae with_velocity(vx, vy) {
+        masel.vx = vx
+        masel.vy = vy
+        gie masel
+    }
+
+    dae with_tag(tag) {
+        shove(masel.tags, tag)
+        gie masel
+    }
+
+    dae has_tag(tag) {
+        gie contains(masel.tags, tag)
+    }
+
+    dae move(dx, dy) {
+        masel.x = masel.x + dx
+        masel.y = masel.y + dy
+        gie masel
+    }
+
+    dae update() {
+        masel.x = masel.x + masel.vx
+        masel.y = masel.y + masel.vy
+        gie masel
+    }
+
+    dae draw(screen) {
+        gin nae masel.active { gie masel }
+
+        gin masel.sprite != naething {
+            screen.draw_sprite(masel.x, masel.y, masel.sprite)
+        } ither {
+            screen.set(masel.x, masel.y, masel.char)
+        }
+        gie masel
+    }
+
+    dae collides_with(other) {
+        gin masel.sprite != naething an other.sprite != naething {
+            # Box collision for sprites
+            ken w1 = masel.sprite.get_width()
+            ken h1 = masel.sprite.get_height()
+            ken w2 = other.sprite.get_width()
+            ken h2 = other.sprite.get_height()
+
+            gie masel.x < other.x + w2 an masel.x + w1 > other.x an masel.y < other.y + h2 an masel.y + h1 > other.y
+        }
+        # Point collision
+        gie masel.x == other.x an masel.y == other.y
+    }
+
+    dae distance_to(other) {
+        ken dx = other.x - masel.x
+        ken dy = other.y - masel.y
+        # Manhattan distance (simpler than Euclidean)
+        gin dx < 0 { dx = 0 - dx }
+        gin dy < 0 { dy = 0 - dy }
+        gie dx + dy
+    }
+}
+
+dae make_entity(x, y) {
+    gie Entity(x, y)
+}
+
+# ===============================================================
+# Game State
+# ===============================================================
+
+kin GameState {
+    dae init() {
+        masel.score = 0
+        masel.level = 1
+        masel.lives = 3
+        masel.running = aye
+        masel.paused = nae
+        masel.data = {}
+    }
+
+    dae add_score(points) {
+        masel.score = masel.score + points
+        gie masel
+    }
+
+    dae next_level() {
+        masel.level = masel.level + 1
+        gie masel
+    }
+
+    dae lose_life() {
+        masel.lives = masel.lives - 1
+        gin masel.lives <= 0 {
+            masel.running = nae
+        }
+        gie masel
+    }
+
+    dae game_over() {
+        masel.running = nae
+        gie masel
+    }
+
+    dae toggle_pause() {
+        masel.paused = nae masel.paused
+        gie masel
+    }
+
+    dae set_data(key, value) {
+        masel.data[key] = value
+        gie masel
+    }
+
+    dae get_data(key) {
+        gin contains(masel.data, key) {
+            gie masel.data[key]
+        }
+        gie naething
+    }
+}
+
+dae make_game_state() {
+    gie GameState()
+}
+
+# ===============================================================
+# Animation
+# ===============================================================
+
+kin Animation {
+    dae init(frames) {
+        masel.frames = frames  # List of sprites
+        masel.current_frame = 0
+        masel.frame_duration = 1
+        masel.frame_counter = 0
+        masel.looping = aye
+    }
+
+    dae with_duration(duration) {
+        masel.frame_duration = duration
+        gie masel
+    }
+
+    dae no_loop() {
+        masel.looping = nae
+        gie masel
+    }
+
+    dae update() {
+        masel.frame_counter = masel.frame_counter + 1
+        gin masel.frame_counter >= masel.frame_duration {
+            masel.frame_counter = 0
+            masel.current_frame = masel.current_frame + 1
+            gin masel.current_frame >= len(masel.frames) {
+                gin masel.looping {
+                    masel.current_frame = 0
+                } ither {
+                    masel.current_frame = len(masel.frames) - 1
+                }
+            }
+        }
+        gie masel
+    }
+
+    dae get_current() {
+        gie masel.frames[masel.current_frame]
+    }
+
+    dae reset() {
+        masel.current_frame = 0
+        masel.frame_counter = 0
+        gie masel
+    }
+}
+
+dae make_animation(frames) {
+    gie Animation(frames)
+}
+
+# ===============================================================
+# Particle System
+# ===============================================================
+
+kin Particle {
+    dae init(x, y, char) {
+        masel.x = x
+        masel.y = y
+        masel.vx = 0
+        masel.vy = 0
+        masel.char = char
+        masel.life = 10
+        masel.alive = aye
+    }
+
+    dae update() {
+        masel.x = masel.x + masel.vx
+        masel.y = masel.y + masel.vy
+        masel.life = masel.life - 1
+        gin masel.life <= 0 {
+            masel.alive = nae
+        }
+        gie masel
+    }
+}
+
+kin ParticleSystem {
+    dae init() {
+        masel.particles = []
+    }
+
+    dae emit(x, y, count, chars) {
+        fer i in 0..count {
+            ken ch = dram(chars)
+            ken p = Particle(x, y, ch)
+            # Random-ish velocity
+            p.vx = ((i * 7 + 3) % 5) - 2
+            p.vy = ((i * 11 + 5) % 5) - 2
+            p.life = 5 + (i % 5)
+            shove(masel.particles, p)
+        }
+        gie masel
+    }
+
+    dae update() {
+        ken alive_particles = []
+        fer p in masel.particles {
+            p.update()
+            gin p.alive {
+                shove(alive_particles, p)
+            }
+        }
+        masel.particles = alive_particles
+        gie masel
+    }
+
+    dae draw(screen) {
+        fer p in masel.particles {
+            screen.set(tae_int(p.x), tae_int(p.y), p.char)
+        }
+        gie masel
+    }
+
+    dae clear() {
+        masel.particles = []
+        gie masel
+    }
+}
+
+dae make_particle_system() {
+    gie ParticleSystem()
+}
+
+# ===============================================================
+# UI Elements
+# ===============================================================
+
+dae draw_health_bar(screen, x, y, current, max, width) {
+    ken filled = (current * width) / max
+    ken bar = "["
+    fer i in 0..width {
+        gin i < filled {
+            bar = bar + "#"
+        } ither {
+            bar = bar + "-"
+        }
+    }
+    bar = bar + "]"
+    screen.draw_text(x, y, bar)
+}
+
+dae draw_score(screen, x, y, score) {
+    screen.draw_text(x, y, f"Score: {score}")
+}
+
+dae draw_lives(screen, x, y, lives) {
+    ken hearts = ""
+    fer i in 0..lives {
+        hearts = hearts + "<3 "
+    }
+    screen.draw_text(x, y, hearts)
+}
+
+# ===============================================================
+# Box Drawing Characters
+# ===============================================================
+
+ken BOX_SINGLE = {
+    "tl": "+",
+    "tr": "+",
+    "bl": "+",
+    "br": "+",
+    "h": "-",
+    "v": "|"
+}
+
+ken BOX_DOUBLE = {
+    "tl": "#",
+    "tr": "#",
+    "bl": "#",
+    "br": "#",
+    "h": "=",
+    "v": "#"
+}
+
+dae draw_box(screen, x, y, w, h, style) {
+    # Corners
+    screen.set(x, y, style["tl"])
+    screen.set(x + w - 1, y, style["tr"])
+    screen.set(x, y + h - 1, style["bl"])
+    screen.set(x + w - 1, y + h - 1, style["br"])
+
+    # Horizontal lines
+    fer i in 1..(w - 1) {
+        screen.set(x + i, y, style["h"])
+        screen.set(x + i, y + h - 1, style["h"])
+    }
+
+    # Vertical lines
+    fer i in 1..(h - 1) {
+        screen.set(x, y + i, style["v"])
+        screen.set(x + w - 1, y + i, style["v"])
+    }
+}
+
+# ===============================================================
+# Random Helpers
+# ===============================================================
+
+dae random_position(max_x, max_y) {
+    ken positions = []
+    fer y in 0..max_y {
+        fer x in 0..max_x {
+            shove(positions, {"x": x, "y": y})
+        }
+    }
+    gie dram(positions)
+}
+
+dae random_direction() {
+    ken dirs = [
+        {"dx": 0, "dy": -1},  # up
+        {"dx": 0, "dy": 1},   # down
+        {"dx": -1, "dy": 0},  # left
+        {"dx": 1, "dy": 0}    # right
+    ]
+    gie dram(dirs)
+}
+
+blether "Game module loaded! Ready tae build braw games!"

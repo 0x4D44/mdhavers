@@ -1,0 +1,568 @@
+# http.braw - HTTP client utilities fer mdhavers
+# "Fetch data frae the world wide web!"
+#
+# This module provides HTTP request/response handling utilities.
+# Note: Actual network requests require runtime support.
+
+# ===============================================================
+# HTTP Methods
+# ===============================================================
+
+ken HTTP_GET = "GET"
+ken HTTP_POST = "POST"
+ken HTTP_PUT = "PUT"
+ken HTTP_DELETE = "DELETE"
+ken HTTP_PATCH = "PATCH"
+ken HTTP_HEAD = "HEAD"
+ken HTTP_OPTIONS = "OPTIONS"
+
+# ===============================================================
+# HTTP Status Codes
+# ===============================================================
+
+ken HTTP_OK = 200
+ken HTTP_CREATED = 201
+ken HTTP_ACCEPTED = 202
+ken HTTP_NO_CONTENT = 204
+ken HTTP_MOVED = 301
+ken HTTP_FOUND = 302
+ken HTTP_NOT_MODIFIED = 304
+ken HTTP_BAD_REQUEST = 400
+ken HTTP_UNAUTHORIZED = 401
+ken HTTP_FORBIDDEN = 403
+ken HTTP_NOT_FOUND = 404
+ken HTTP_METHOD_NOT_ALLOWED = 405
+ken HTTP_CONFLICT = 409
+ken HTTP_GONE = 410
+ken HTTP_TEAPOT = 418  # I'm a teapot!
+ken HTTP_SERVER_ERROR = 500
+ken HTTP_NOT_IMPLEMENTED = 501
+ken HTTP_BAD_GATEWAY = 502
+ken HTTP_SERVICE_UNAVAILABLE = 503
+
+# Status code descriptions (in Scots!)
+ken STATUS_MESSAGES = {
+    "200": "Aw guid! Request succeeded.",
+    "201": "Braw! Resource created.",
+    "202": "Accepted, but still workin' on it.",
+    "204": "Done, but naething tae say.",
+    "301": "Moved permanently - gang somewhere else!",
+    "302": "Found elsewhere - follow the redirect!",
+    "304": "Naething's changed since last time.",
+    "400": "Och, bad request! Check yer data.",
+    "401": "Haud on! Ye need tae log in first.",
+    "403": "Nae chance! Ye're no' allowed in here.",
+    "404": "Cannae find it! It's away wi' the fairies.",
+    "405": "That method's no' allowed here!",
+    "409": "There's a conflict - sort it oot!",
+    "410": "It's gone fer good. Deid as a dodo.",
+    "418": "Ah'm a teapot! Cannae brew coffee.",
+    "500": "Server's havin' a wee wobble!",
+    "501": "That's no' implemented yet!",
+    "502": "Bad gateway - upstream's banjaxed!",
+    "503": "Service unavailable - try again later!"
+}
+
+dae get_status_message(code) {
+    ken key = tae_string(code)
+    gin contains(STATUS_MESSAGES, key) {
+        gie STATUS_MESSAGES[key]
+    }
+    gie f"Unknown status code: {code}"
+}
+
+dae is_success(code) {
+    gie code >= 200 an code < 300
+}
+
+dae is_redirect(code) {
+    gie code >= 300 an code < 400
+}
+
+dae is_client_error(code) {
+    gie code >= 400 an code < 500
+}
+
+dae is_server_error(code) {
+    gie code >= 500
+}
+
+# ===============================================================
+# URL Parsing
+# ===============================================================
+
+kin URL {
+    dae init(url_string) {
+        masel.original = url_string
+        masel.protocol = ""
+        masel.host = ""
+        masel.port = naething
+        masel.path = "/"
+        masel.query = {}
+        masel.fragment = ""
+        masel._parse()
+    }
+
+    dae _parse() {
+        ken url = masel.original
+
+        # Extract protocol
+        ken proto_end = index_of(url, "://")
+        gin proto_end >= 0 {
+            masel.protocol = scran(url, 0, proto_end)
+            url = scran(url, proto_end + 3, len(url))
+        }
+
+        # Extract fragment
+        ken frag_start = index_of(url, "#")
+        gin frag_start >= 0 {
+            masel.fragment = scran(url, frag_start + 1, len(url))
+            url = scran(url, 0, frag_start)
+        }
+
+        # Extract query string
+        ken query_start = index_of(url, "?")
+        gin query_start >= 0 {
+            ken query_str = scran(url, query_start + 1, len(url))
+            masel.query = masel._parse_query(query_str)
+            url = scran(url, 0, query_start)
+        }
+
+        # Extract path
+        ken path_start = index_of(url, "/")
+        gin path_start >= 0 {
+            masel.path = scran(url, path_start, len(url))
+            url = scran(url, 0, path_start)
+        }
+
+        # Extract port
+        ken port_start = index_of(url, ":")
+        gin port_start >= 0 {
+            ken port_str = scran(url, port_start + 1, len(url))
+            masel.port = tae_int(port_str)
+            url = scran(url, 0, port_start)
+        }
+
+        masel.host = url
+    }
+
+    dae _parse_query(query_str) {
+        ken params = {}
+        ken pairs = split(query_str, "&")
+        fer pair in pairs {
+            ken eq_pos = index_of(pair, "=")
+            gin eq_pos >= 0 {
+                ken key = scran(pair, 0, eq_pos)
+                ken value = scran(pair, eq_pos + 1, len(pair))
+                params[key] = value
+            } ither {
+                params[pair] = ""
+            }
+        }
+        gie params
+    }
+
+    dae to_string() {
+        ken result = ""
+        gin len(masel.protocol) > 0 {
+            result = result + masel.protocol + "://"
+        }
+        result = result + masel.host
+        gin masel.port != naething {
+            result = result + ":" + tae_string(masel.port)
+        }
+        result = result + masel.path
+        gin len(keys(masel.query)) > 0 {
+            result = result + "?" + masel._build_query()
+        }
+        gin len(masel.fragment) > 0 {
+            result = result + "#" + masel.fragment
+        }
+        gie result
+    }
+
+    dae _build_query() {
+        ken pairs = []
+        fer key in keys(masel.query) {
+            shove(pairs, f"{key}={masel.query[key]}")
+        }
+        gie join(pairs, "&")
+    }
+
+    dae with_param(key, value) {
+        masel.query[key] = tae_string(value)
+        gie masel
+    }
+
+    dae get_param(key) {
+        gin contains(masel.query, key) {
+            gie masel.query[key]
+        }
+        gie naething
+    }
+}
+
+dae parse_url(url_string) {
+    gie URL(url_string)
+}
+
+# ===============================================================
+# HTTP Headers
+# ===============================================================
+
+kin Headers {
+    dae init() {
+        masel.headers = {}
+    }
+
+    dae set(name, value) {
+        masel.headers[lower(name)] = value
+        gie masel
+    }
+
+    dae get(name) {
+        ken key = lower(name)
+        gin contains(masel.headers, key) {
+            gie masel.headers[key]
+        }
+        gie naething
+    }
+
+    dae has(name) {
+        gie contains(masel.headers, lower(name))
+    }
+
+    dae remove(name) {
+        ken key = lower(name)
+        ken new_headers = {}
+        fer k in keys(masel.headers) {
+            gin k != key {
+                new_headers[k] = masel.headers[k]
+            }
+        }
+        masel.headers = new_headers
+        gie masel
+    }
+
+    dae to_dict() {
+        gie masel.headers
+    }
+
+    dae from_dict(dict) {
+        fer key in keys(dict) {
+            masel.set(key, dict[key])
+        }
+        gie masel
+    }
+}
+
+dae make_headers() {
+    gie Headers()
+}
+
+# ===============================================================
+# HTTP Request
+# ===============================================================
+
+kin Request {
+    dae init(method, url) {
+        masel.method = upper(method)
+        masel.url = gin whit_kind(url) == "string" than URL(url) ither url
+        masel.headers = Headers()
+        masel.body = naething
+        masel.timeout = 30000  # 30 seconds
+    }
+
+    dae with_header(name, value) {
+        masel.headers.set(name, value)
+        gie masel
+    }
+
+    dae with_headers(dict) {
+        masel.headers.from_dict(dict)
+        gie masel
+    }
+
+    dae with_body(body) {
+        masel.body = body
+        gie masel
+    }
+
+    dae with_json(data) {
+        masel.headers.set("content-type", "application/json")
+        # Would stringify JSON here
+        masel.body = tae_string(data)
+        gie masel
+    }
+
+    dae with_timeout(ms) {
+        masel.timeout = ms
+        gie masel
+    }
+
+    dae to_dict() {
+        gie {
+            "method": masel.method,
+            "url": masel.url.to_string(),
+            "headers": masel.headers.to_dict(),
+            "body": masel.body,
+            "timeout": masel.timeout
+        }
+    }
+}
+
+# ===============================================================
+# HTTP Response
+# ===============================================================
+
+kin Response {
+    dae init(status, headers, body) {
+        masel.status = status
+        masel.headers = gin whit_kind(headers) == "dict" than Headers().from_dict(headers) ither headers
+        masel.body = body
+        masel.ok = is_success(status)
+    }
+
+    dae status_text() {
+        gie get_status_message(masel.status)
+    }
+
+    dae json() {
+        # Would parse JSON here
+        gie masel.body
+    }
+
+    dae text() {
+        gie tae_string(masel.body)
+    }
+}
+
+# ===============================================================
+# Request Builders
+# ===============================================================
+
+dae get(url) {
+    gie Request(HTTP_GET, url)
+}
+
+dae post(url) {
+    gie Request(HTTP_POST, url)
+}
+
+dae put(url) {
+    gie Request(HTTP_PUT, url)
+}
+
+dae delete_request(url) {
+    gie Request(HTTP_DELETE, url)
+}
+
+dae patch(url) {
+    gie Request(HTTP_PATCH, url)
+}
+
+# ===============================================================
+# URL Encoding
+# ===============================================================
+
+ken URL_SAFE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~"
+
+dae url_encode(str) {
+    ken result = ""
+    fer i in 0..len(str) {
+        ken ch = char_at(str, i)
+        gin index_of(URL_SAFE_CHARS, ch) >= 0 {
+            result = result + ch
+        } ither gin ch == " " {
+            result = result + "+"
+        } ither {
+            # Would do proper percent encoding here
+            result = result + ch
+        }
+    }
+    gie result
+}
+
+dae url_decode(str) {
+    ken result = replace(str, "+", " ")
+    # Would do proper percent decoding here
+    gie result
+}
+
+# ===============================================================
+# Query String Helpers
+# ===============================================================
+
+dae build_query_string(params) {
+    ken pairs = []
+    fer key in keys(params) {
+        ken encoded_key = url_encode(tae_string(key))
+        ken encoded_val = url_encode(tae_string(params[key]))
+        shove(pairs, f"{encoded_key}={encoded_val}")
+    }
+    gie join(pairs, "&")
+}
+
+dae parse_query_string(query) {
+    ken params = {}
+    ken pairs = split(query, "&")
+    fer pair in pairs {
+        ken eq_pos = index_of(pair, "=")
+        gin eq_pos >= 0 {
+            ken key = url_decode(scran(pair, 0, eq_pos))
+            ken value = url_decode(scran(pair, eq_pos + 1, len(pair)))
+            params[key] = value
+        }
+    }
+    gie params
+}
+
+# ===============================================================
+# Mock HTTP Client (fer testing)
+# ===============================================================
+
+kin MockClient {
+    dae init() {
+        masel.responses = {}
+        masel.requests = []
+    }
+
+    dae mock_response(method, url_pattern, response) {
+        ken key = f"{upper(method)}:{url_pattern}"
+        masel.responses[key] = response
+        gie masel
+    }
+
+    dae send(request) {
+        shove(masel.requests, request.to_dict())
+
+        ken key = f"{request.method}:{request.url.to_string()}"
+        gin contains(masel.responses, key) {
+            ken mock = masel.responses[key]
+            gie Response(mock["status"], mock["headers"], mock["body"])
+        }
+
+        # Default 404 response
+        gie Response(404, {}, "Not found")
+    }
+
+    dae get_requests() {
+        gie masel.requests
+    }
+
+    dae clear() {
+        masel.responses = {}
+        masel.requests = []
+        gie masel
+    }
+}
+
+dae make_mock_client() {
+    gie MockClient()
+}
+
+# ===============================================================
+# Cookie Handling
+# ===============================================================
+
+kin Cookie {
+    dae init(name, value) {
+        masel.name = name
+        masel.value = value
+        masel.path = "/"
+        masel.domain = ""
+        masel.secure = nae
+        masel.http_only = nae
+        masel.expires = naething
+    }
+
+    dae with_path(path) {
+        masel.path = path
+        gie masel
+    }
+
+    dae with_domain(domain) {
+        masel.domain = domain
+        gie masel
+    }
+
+    dae secure_only() {
+        masel.secure = aye
+        gie masel
+    }
+
+    dae http_only_flag() {
+        masel.http_only = aye
+        gie masel
+    }
+
+    dae to_string() {
+        ken parts = [f"{masel.name}={masel.value}"]
+        gin len(masel.path) > 0 {
+            shove(parts, f"Path={masel.path}")
+        }
+        gin len(masel.domain) > 0 {
+            shove(parts, f"Domain={masel.domain}")
+        }
+        gin masel.secure {
+            shove(parts, "Secure")
+        }
+        gin masel.http_only {
+            shove(parts, "HttpOnly")
+        }
+        gie join(parts, "; ")
+    }
+}
+
+kin CookieJar {
+    dae init() {
+        masel.cookies = {}
+    }
+
+    dae set(cookie) {
+        masel.cookies[cookie.name] = cookie
+        gie masel
+    }
+
+    dae get(name) {
+        gin contains(masel.cookies, name) {
+            gie masel.cookies[name]
+        }
+        gie naething
+    }
+
+    dae remove(name) {
+        ken new_cookies = {}
+        fer key in keys(masel.cookies) {
+            gin key != name {
+                new_cookies[key] = masel.cookies[key]
+            }
+        }
+        masel.cookies = new_cookies
+        gie masel
+    }
+
+    dae to_header() {
+        ken parts = []
+        fer name in keys(masel.cookies) {
+            ken cookie = masel.cookies[name]
+            shove(parts, f"{cookie.name}={cookie.value}")
+        }
+        gie join(parts, "; ")
+    }
+
+    dae clear() {
+        masel.cookies = {}
+        gie masel
+    }
+}
+
+dae make_cookie(name, value) {
+    gie Cookie(name, value)
+}
+
+dae make_cookie_jar() {
+    gie CookieJar()
+}
+
+blether "HTTP module loaded! Ready tae fetch frae the web!"

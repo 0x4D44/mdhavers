@@ -1,0 +1,79 @@
+# creels.braw - Demonstrating set operations
+# A creel is a basket in Scots!
+
+blether "=== Creels (Sets) in mdhavers ==="
+blether ""
+
+# Create a creel from a list - duplicates are removed!
+blether "--- Creating Creels ---"
+ken fruit = creel(["apple", "banana", "apple", "cherry", "banana"])
+blether f"Fruit creel: {fruit}"
+blether f"Length (duplicates removed): {len(fruit)}"
+blether ""
+
+# Empty creel
+ken empty = empty_creel()
+blether f"Empty creel: {empty}"
+blether ""
+
+# Check membership
+blether "--- Membership Tests ---"
+blether f"Is apple in the creel? {is_in_creel(fruit, \"apple\")}"
+blether f"Is mango in the creel? {is_in_creel(fruit, \"mango\")}"
+blether ""
+
+# Add and remove items
+blether "--- Toss In and Heave Oot ---"
+ken drinks = creel(["whisky", "irn-bru"])
+blether f"Drinks creel: {drinks}"
+toss_in(drinks, "tea")
+blether f"After tossing in tea: {drinks}"
+heave_oot(drinks, "irn-bru")
+blether f"After heaving oot irn-bru: {drinks}"
+blether ""
+
+# Set operations
+blether "--- Set Operations ---"
+ken scots_food = creel(["haggis", "neeps", "tatties", "porridge"])
+ken breakfast = creel(["porridge", "eggs", "bacon", "tatties"])
+
+blether f"Scots food: {scots_food}"
+blether f"Breakfast: {breakfast}"
+blether ""
+
+# Union - aw items from baith
+ken aw_food = creels_thegither(scots_food, breakfast)
+blether f"Union (aw food): {aw_food}"
+
+# Intersection - what's in baith
+ken shared = creels_baith(scots_food, breakfast)
+blether f"Intersection (in baith): {shared}"
+
+# Difference - what's only in the first
+ken scots_only = creels_differ(scots_food, breakfast)
+blether f"Scots-only (no in breakfast): {scots_only}"
+blether ""
+
+# Subset and superset
+blether "--- Subset/Superset ---"
+ken basic = creel(["haggis", "neeps"])
+blether f"Is basic a subset o scots_food? {is_subset(basic, scots_food)}"
+blether f"Is scots_food a superset o basic? {is_superset(scots_food, basic)}"
+blether ""
+
+# Disjoint - nae overlap
+blether "--- Disjoint Sets ---"
+ken vegetables = creel(["neeps", "tatties", "carrots"])
+ken meats = creel(["haggis", "bacon", "eggs"])
+blether f"Are vegetables and meats disjoint? {is_disjoint(vegetables, meats)}"
+blether ""
+
+# Convert back to list
+blether "--- Creel tae List ---"
+ken numbers = creel([5, 1, 3, 1, 4, 2, 3])
+blether f"Numbers creel: {numbers}"
+ken sorted_list = creel_tae_list(numbers)
+blether f"As sorted list: {sorted_list}"
+blether ""
+
+blether "=== Aw creel tests complete! ==="

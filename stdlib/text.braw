@@ -1,0 +1,644 @@
+# text.braw - Advanced Text Processing fer mdhavers
+# "Words are the threads that weave the tartan o' yer thoughts!"
+#
+# This module provides text manipulation, analysis, and transformation
+# with a distinctly Scottish flair.
+
+# ============================================================
+# Case Transformations
+# ============================================================
+
+# Convert to title case (capitalize each word)
+dae title_case(text) {
+    ken words = split(text, " ")
+    ken result = []
+    fer word in words {
+        gin len(word) > 0 {
+            ken first = upper(word[0])
+            ken rest = lower(scran(word, 1, len(word)))
+            shove(result, first + rest)
+        }
+    }
+    gie join(result, " ")
+}
+
+# Convert to sentence case (capitalize first letter only)
+dae sentence_case(text) {
+    gin len(text) == 0 { gie "" }
+    ken first = upper(text[0])
+    ken rest = lower(scran(text, 1, len(text)))
+    gie first + rest
+}
+
+# Convert to camelCase
+dae camel_case(text) {
+    ken words = split(text, " ")
+    ken result = []
+    fer i in 0..len(words) {
+        ken word = words[i]
+        gin len(word) > 0 {
+            gin i == 0 {
+                shove(result, lower(word))
+            } ither {
+                ken first = upper(word[0])
+                ken rest = lower(scran(word, 1, len(word)))
+                shove(result, first + rest)
+            }
+        }
+    }
+    gie join(result, "")
+}
+
+# Convert to PascalCase
+dae pascal_case(text) {
+    ken words = split(text, " ")
+    ken result = []
+    fer word in words {
+        gin len(word) > 0 {
+            ken first = upper(word[0])
+            ken rest = lower(scran(word, 1, len(word)))
+            shove(result, first + rest)
+        }
+    }
+    gie join(result, "")
+}
+
+# Convert to snake_case
+dae snake_case(text) {
+    ken words = split(text, " ")
+    ken result = []
+    fer word in words {
+        gin len(word) > 0 {
+            shove(result, lower(word))
+        }
+    }
+    gie join(result, "_")
+}
+
+# Convert to SCREAMING_SNAKE_CASE
+dae screaming_snake_case(text) {
+    ken words = split(text, " ")
+    ken result = []
+    fer word in words {
+        gin len(word) > 0 {
+            shove(result, upper(word))
+        }
+    }
+    gie join(result, "_")
+}
+
+# Convert to kebab-case
+dae kebab_case(text) {
+    ken words = split(text, " ")
+    ken result = []
+    fer word in words {
+        gin len(word) > 0 {
+            shove(result, lower(word))
+        }
+    }
+    gie join(result, "-")
+}
+
+# Swap case (upper to lower, lower to upper)
+dae swap_case(text) {
+    ken result = ""
+    ken char_list = chars(text)
+    fer c in char_list {
+        ken up = upper(c)
+        ken lo = lower(c)
+        gin c == up an c != lo {
+            # It's uppercase, make it lower
+            result = result + lo
+        } ither gin c == lo an c != up {
+            # It's lowercase, make it upper
+            result = result + up
+        } ither {
+            result = result + c
+        }
+    }
+    gie result
+}
+
+# ============================================================
+# Text Analysis
+# ============================================================
+
+# Count words in text
+dae word_count(text) {
+    ken words = split(wheesht(text), " ")
+    ken count = 0
+    fer word in words {
+        gin len(wheesht(word)) > 0 {
+            count = count + 1
+        }
+    }
+    gie count
+}
+
+# Count characters (excluding spaces)
+dae char_count(text) {
+    ken count = 0
+    ken char_list = chars(text)
+    fer c in char_list {
+        gin c != " " an c != "\n" an c != "\t" {
+            count = count + 1
+        }
+    }
+    gie count
+}
+
+# Count lines
+dae line_count(text) {
+    gin len(text) == 0 { gie 0 }
+    ken count = 1
+    ken char_list = chars(text)
+    fer c in char_list {
+        gin c == "\n" {
+            count = count + 1
+        }
+    }
+    gie count
+}
+
+# Count sentences (approximation based on . ! ?)
+dae sentence_count(text) {
+    ken count = 0
+    ken char_list = chars(text)
+    fer c in char_list {
+        gin c == "." or c == "!" or c == "?" {
+            count = count + 1
+        }
+    }
+    gie count
+}
+
+# Get word frequency map
+dae word_frequency(text) {
+    ken words = split(lower(text), " ")
+    ken freq = {}
+    fer word in words {
+        ken cleaned = clean_word(word)
+        gin len(cleaned) > 0 {
+            gin has_key(freq, cleaned) {
+                freq[cleaned] = freq[cleaned] + 1
+            } ither {
+                freq[cleaned] = 1
+            }
+        }
+    }
+    gie freq
+}
+
+# Clean word (remove punctuation)
+dae clean_word(word) {
+    ken result = ""
+    ken char_list = chars(word)
+    fer c in char_list {
+        gin is_letter(c) or is_digit(c) {
+            result = result + c
+        }
+    }
+    gie result
+}
+
+# Check if character is a letter
+dae is_letter(c) {
+    ken lo = lower(c)
+    ken letters = "abcdefghijklmnopqrstuvwxyz"
+    fer l in chars(letters) {
+        gin lo == l { gie aye }
+    }
+    gie nae
+}
+
+# Check if character is a digit
+dae is_digit(c) {
+    ken digits = "0123456789"
+    fer d in chars(digits) {
+        gin c == d { gie aye }
+    }
+    gie nae
+}
+
+# Check if key exists in dictionary
+dae has_key(dict, key) {
+    fer k in keys(dict) {
+        gin k == key {
+            gie aye
+        }
+    }
+    gie nae
+}
+
+# ============================================================
+# Text Transformation
+# ============================================================
+
+# Reverse text
+dae reverse_text(text) {
+    ken char_list = chars(text)
+    ken result = ""
+    ken i = len(char_list) - 1
+    whiles i >= 0 {
+        result = result + char_list[i]
+        i = i - 1
+    }
+    gie result
+}
+
+# Repeat text n times
+dae repeat_text(text, n) {
+    ken result = ""
+    fer i in 0..n {
+        result = result + text
+    }
+    gie result
+}
+
+# Pad left with character to reach width
+dae pad_left(text, width, char = " ") {
+    ken padding_needed = width - len(text)
+    gin padding_needed <= 0 { gie text }
+    ken padding = repeat_text(char, padding_needed)
+    gie padding + text
+}
+
+# Pad right with character to reach width
+dae pad_right(text, width, char = " ") {
+    ken padding_needed = width - len(text)
+    gin padding_needed <= 0 { gie text }
+    ken padding = repeat_text(char, padding_needed)
+    gie text + padding
+}
+
+# Center text with padding
+dae center_text(text, width, char = " ") {
+    ken total_padding = width - len(text)
+    gin total_padding <= 0 { gie text }
+    ken left_pad = total_padding / 2
+    ken right_pad = total_padding - left_pad
+    gie repeat_text(char, left_pad) + text + repeat_text(char, right_pad)
+}
+
+# Truncate text with ellipsis
+dae truncate(text, max_len, ellipsis = "...") {
+    gin len(text) <= max_len { gie text }
+    ken cut_len = max_len - len(ellipsis)
+    gin cut_len <= 0 { gie ellipsis }
+    gie scran(text, 0, cut_len) + ellipsis
+}
+
+# Wrap text at specified width
+dae word_wrap(text, width) {
+    ken words = split(text, " ")
+    ken lines = []
+    ken current_line = ""
+
+    fer word in words {
+        gin len(current_line) == 0 {
+            current_line = word
+        } ither gin len(current_line) + 1 + len(word) <= width {
+            current_line = current_line + " " + word
+        } ither {
+            shove(lines, current_line)
+            current_line = word
+        }
+    }
+
+    gin len(current_line) > 0 {
+        shove(lines, current_line)
+    }
+
+    gie join(lines, "\n")
+}
+
+# ============================================================
+# Scottish Text Transformations
+# ============================================================
+
+# Common Scots word replacements
+dae scots_replacements() {
+    gie {
+        "yes": "aye",
+        "no": "nae",
+        "not": "nae",
+        "do": "dae",
+        "don't": "dinnae",
+        "dont": "dinnae",
+        "know": "ken",
+        "little": "wee",
+        "small": "wee",
+        "child": "bairn",
+        "children": "bairns",
+        "good": "guid",
+        "have": "hae",
+        "from": "frae",
+        "to": "tae",
+        "with": "wi'",
+        "about": "aboot",
+        "out": "oot",
+        "house": "hoose",
+        "home": "hame",
+        "church": "kirk",
+        "own": "ain",
+        "self": "sel",
+        "all": "aw",
+        "old": "auld",
+        "more": "mair",
+        "great": "braw",
+        "pretty": "bonnie",
+        "beautiful": "bonnie",
+        "very": "gey",
+        "quite": "gey",
+        "now": "noo",
+        "how": "hoo",
+        "why": "whit fer",
+        "where": "whaur",
+        "who": "wha",
+        "what": "whit",
+        "when": "whan",
+        "speak": "blether",
+        "talk": "blether",
+        "give": "gie",
+        "girl": "lass",
+        "boy": "lad",
+        "man": "mon",
+        "woman": "wumman",
+        "always": "aye",
+        "lake": "loch",
+        "stream": "burn",
+        "valley": "glen",
+        "hill": "brae",
+        "mountain": "ben",
+        "stomach": "wame"
+    }
+}
+
+# Convert English text to Scots (simple word replacement)
+dae tae_scots(text) {
+    ken replacements = scots_replacements()
+    ken words = split(text, " ")
+    ken result = []
+
+    fer word in words {
+        ken lower_word = lower(clean_word(word))
+        ken new_word = word
+
+        gin has_key(replacements, lower_word) {
+            ken replacement = replacements[lower_word]
+            # Preserve capitalization of first letter
+            gin len(word) > 0 an word[0] == upper(word[0]) {
+                new_word = upper(replacement[0]) + scran(replacement, 1, len(replacement))
+            } ither {
+                new_word = replacement
+            }
+            # Preserve punctuation
+            ken punct = ""
+            ken orig_chars = chars(word)
+            fer c in orig_chars {
+                gin nae is_letter(c) an nae is_digit(c) {
+                    punct = punct + c
+                }
+            }
+            new_word = new_word + punct
+        }
+
+        shove(result, new_word)
+    }
+
+    gie join(result, " ")
+}
+
+# Add Scottish flair to text
+dae add_scots_flair(text) {
+    ken phrases = [
+        "Och, ",
+        "Ach, ",
+        "Weel, ",
+        "Noo then, ",
+        "Haud on, "
+    ]
+
+    ken endings = [
+        ", ye ken?",
+        ", aye?",
+        ", so it is.",
+        ", mind.",
+        "!"
+    ]
+
+    # Just use first phrase and ending for determinism
+    gie phrases[0] + text + endings[0]
+}
+
+# ============================================================
+# Text Validation
+# ============================================================
+
+# Check if text contains only letters
+dae is_alpha(text) {
+    ken char_list = chars(text)
+    fer c in char_list {
+        gin nae is_letter(c) { gie nae }
+    }
+    gie len(text) > 0
+}
+
+# Check if text contains only digits
+dae is_numeric(text) {
+    ken char_list = chars(text)
+    fer c in char_list {
+        gin nae is_digit(c) { gie nae }
+    }
+    gie len(text) > 0
+}
+
+# Check if text contains only letters and digits
+dae is_alphanumeric(text) {
+    ken char_list = chars(text)
+    fer c in char_list {
+        gin nae is_letter(c) an nae is_digit(c) { gie nae }
+    }
+    gie len(text) > 0
+}
+
+# Check if text is blank (empty or only whitespace)
+dae is_blank(text) {
+    gie len(wheesht(text)) == 0
+}
+
+# Check if all characters are uppercase
+dae is_all_upper(text) {
+    ken char_list = chars(text)
+    fer c in char_list {
+        gin is_letter(c) an c != upper(c) { gie nae }
+    }
+    gie len(text) > 0
+}
+
+# Check if all characters are lowercase
+dae is_all_lower(text) {
+    ken char_list = chars(text)
+    fer c in char_list {
+        gin is_letter(c) an c != lower(c) { gie nae }
+    }
+    gie len(text) > 0
+}
+
+# ============================================================
+# Search and Replace
+# ============================================================
+
+# Count occurrences of substring
+dae count_substring(text, sub) {
+    ken count = 0
+    ken i = 0
+    ken sub_len = len(sub)
+    ken text_len = len(text)
+
+    whiles i <= text_len - sub_len {
+        ken match = aye
+        fer j in 0..sub_len {
+            gin text[i + j] != sub[j] {
+                match = nae
+                brak
+            }
+        }
+        gin match {
+            count = count + 1
+            i = i + sub_len  # Non-overlapping
+        } ither {
+            i = i + 1
+        }
+    }
+
+    gie count
+}
+
+# Replace first occurrence of pattern
+dae replace_first(text, old, new) {
+    ken idx = index_of(text, old)
+    gin idx < 0 { gie text }
+    ken before = scran(text, 0, idx)
+    ken after = scran(text, idx + len(old), len(text))
+    gie before + new + after
+}
+
+# Replace all occurrences of pattern
+dae replace_all(text, old, new) {
+    ken result = text
+    ken idx = index_of(result, old)
+    whiles idx >= 0 {
+        ken before = scran(result, 0, idx)
+        ken after = scran(result, idx + len(old), len(result))
+        result = before + new + after
+        idx = index_of(result, old)
+    }
+    gie result
+}
+
+# ============================================================
+# Text Generators
+# ============================================================
+
+# Generate placeholder text (Lorem Ipsum Scots style!)
+dae lorem_scots(sentences = 5) {
+    ken phrases = [
+        "Lang may yer lum reek.",
+        "Whit's fer ye'll no go by ye.",
+        "Mony a mickle maks a muckle.",
+        "Gie it laldy!",
+        "Haud yer wheesht!",
+        "Dinnae fash yersel.",
+        "It's a braw bricht moonlicht nicht the nicht.",
+        "Yer bum's oot the windae.",
+        "Awa' an bile yer heid!",
+        "Haste ye back.",
+        "Lang may yer lum reek, an' may a wee moose ne'er leave yer kitchen wi' a tear in its eye.",
+        "We're aw Jock Tamson's bairns.",
+        "Mair haste, less speed.",
+        "A nod's as guid as a wink tae a blind horse.",
+        "Guid gear comes in sma' bulk."
+    ]
+
+    ken result = []
+    fer i in 0..sentences {
+        ken idx = i % len(phrases)
+        shove(result, phrases[idx])
+    }
+
+    gie join(result, " ")
+}
+
+# Generate random-looking text ID
+dae generate_text_id(length = 8) {
+    ken alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+    ken char_list = chars(alphabet)
+    ken result = ""
+
+    fer i in 0..length {
+        ken idx = jammy(0, len(char_list))
+        result = result + char_list[idx]
+    }
+
+    gie result
+}
+
+# ============================================================
+# String Similarity
+# ============================================================
+
+# Simple similarity check (percentage of matching characters)
+dae similarity(text1, text2) {
+    ken len1 = len(text1)
+    ken len2 = len(text2)
+    ken max_len = len1
+    gin len2 > max_len { max_len = len2 }
+    gin max_len == 0 { gie 1.0 }
+
+    ken matches = 0
+    ken min_len = len1
+    gin len2 < min_len { min_len = len2 }
+
+    fer i in 0..min_len {
+        gin text1[i] == text2[i] {
+            matches = matches + 1
+        }
+    }
+
+    gie matches / max_len
+}
+
+# Check if texts are similar (above threshold)
+dae is_similar(text1, text2, threshold = 0.8) {
+    gie similarity(text1, text2) >= threshold
+}
+
+# ============================================================
+# Text Statistics Summary
+# ============================================================
+
+# Get comprehensive text statistics
+dae text_stats(text) {
+    gie {
+        "characters": len(text),
+        "characters_no_space": char_count(text),
+        "words": word_count(text),
+        "lines": line_count(text),
+        "sentences": sentence_count(text),
+        "is_blank": is_blank(text)
+    }
+}
+
+# Display text statistics in a nice format
+dae display_stats(text) {
+    ken stats = text_stats(text)
+    blether "Text Statistics:"
+    blether f"  Characters:        {stats[\"characters\"]}"
+    blether f"  Characters (text): {stats[\"characters_no_space\"]}"
+    blether f"  Words:             {stats[\"words\"]}"
+    blether f"  Lines:             {stats[\"lines\"]}"
+    blether f"  Sentences:         {stats[\"sentences\"]}"
+}
+
+blether "Text module loaded! Words are the threads that weave yer thoughts!"

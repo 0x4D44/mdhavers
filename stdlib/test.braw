@@ -1,0 +1,474 @@
+# test.braw - A Braw Testing Framework fer mdhavers
+# "Test yer code like a true Scot!"
+#
+# Features:
+# - Test suites and individual tests
+# - Assertions with Scots-flavored messages
+# - Test timing and statistics
+
+# ============================================================
+# Test Registry - Keeps track o' aw yer tests
+# ============================================================
+
+ken _test_suites = []
+ken _test_results = {"passed": 0, "failed": 0, "skipped": 0, "errors": []}
+ken _verbose = aye
+
+# ============================================================
+# Test Suite Class
+# ============================================================
+
+kin TestSuite {
+    dae init(name) {
+        masel.name = name
+        masel.tests = []
+        masel.before_each_fn = naething
+        masel.after_each_fn = naething
+    }
+
+    # Add a test
+    dae add_test(name, test_fn) {
+        shove(masel.tests, {"name": name, "fn": test_fn, "skip": nae})
+        gie masel
+    }
+
+    # Skip a test
+    dae skip(name, test_fn) {
+        shove(masel.tests, {"name": name, "fn": test_fn, "skip": aye})
+        gie masel
+    }
+
+    # Set up hook run before each test
+    dae set_before_each(fn) {
+        masel.before_each_fn = fn
+        gie masel
+    }
+
+    # Tear down hook run after each test
+    dae set_after_each(fn) {
+        masel.after_each_fn = fn
+        gie masel
+    }
+}
+
+# ============================================================
+# Helper: Create a new test suite
+# ============================================================
+
+dae describe(name) {
+    ken suite = TestSuite(name)
+    shove(_test_suites, suite)
+    gie suite
+}
+
+# Alias fer describe
+dae test_suite(name) {
+    gie describe(name)
+}
+
+# ============================================================
+# Assertion Functions - Test yer assumptions!
+# ============================================================
+
+# Basic assertion
+dae expect_true(condition, message = "Expected condition tae be true") {
+    gin nae condition {
+        mak_siccar nae, message
+    }
+    gie aye
+}
+
+# Alias
+dae expect(condition, message = "Expected condition tae be true") {
+    gie expect_true(condition, message)
+}
+
+# Assert false
+dae expect_false(condition, message = "Expected condition tae be false") {
+    gin condition {
+        mak_siccar nae, message
+    }
+    gie aye
+}
+
+# Assert equality
+dae expect_equal(expected, actual, message = naething) {
+    gin expected != actual {
+        ken msg = gin message != naething than message ither f"Expected {expected} but got {actual}"
+        mak_siccar nae, msg
+    }
+    gie aye
+}
+
+# Assert inequality
+dae expect_nae_equal(expected, actual, message = naething) {
+    gin expected == actual {
+        ken msg = gin message != naething than message ither f"Expected {actual} tae NOT equal {expected}"
+        mak_siccar nae, msg
+    }
+    gie aye
+}
+
+# Assert nil
+dae expect_naething(value, message = "Expected naething (nil)") {
+    gin value != naething {
+        mak_siccar nae, f"{message}, but got {value}"
+    }
+    gie aye
+}
+
+# Assert not nil
+dae expect_something(value, message = "Expected something, got naething!") {
+    gin value == naething {
+        mak_siccar nae, message
+    }
+    gie aye
+}
+
+# Assert greater than
+dae expect_greater(actual, expected, message = naething) {
+    gin actual <= expected {
+        ken msg = gin message != naething than message ither f"Expected {actual} tae be greater than {expected}"
+        mak_siccar nae, msg
+    }
+    gie aye
+}
+
+# Assert less than
+dae expect_less(actual, expected, message = naething) {
+    gin actual >= expected {
+        ken msg = gin message != naething than message ither f"Expected {actual} tae be less than {expected}"
+        mak_siccar nae, msg
+    }
+    gie aye
+}
+
+# Assert list contains element
+dae expect_contains(collection, element, message = naething) {
+    gin nae contains(collection, element) {
+        ken msg = gin message != naething than message ither f"Expected {collection} tae contain {element}"
+        mak_siccar nae, msg
+    }
+    gie aye
+}
+
+# Assert list length
+dae expect_length(collection, expected_len) {
+    ken actual_len = len(collection)
+    gin actual_len != expected_len {
+        mak_siccar nae, f"Expected length {expected_len} but got {actual_len}"
+    }
+    gie aye
+}
+
+# Assert empty
+dae expect_empty(collection) {
+    gin len(collection) != 0 {
+        mak_siccar nae, f"Expected empty collection but got {len(collection)} elements"
+    }
+    gie aye
+}
+
+# Assert type
+dae expect_type(value, expected_type) {
+    ken actual_type = whit_kind(value)
+    gin actual_type != expected_type {
+        mak_siccar nae, f"Expected type '{expected_type}' but got '{actual_type}'"
+    }
+    gie aye
+}
+
+# Assert approximate equality (fer floats)
+dae expect_close(actual, expected, tolerance = 0.0001) {
+    ken diff = abs(actual - expected)
+    gin diff > tolerance {
+        mak_siccar nae, f"Expected {actual} tae be close tae {expected} (tolerance: {tolerance}, diff: {diff})"
+    }
+    gie aye
+}
+
+# Assert value is in range
+dae expect_in_range(value, min_val, max_val) {
+    gin value < min_val or value > max_val {
+        mak_siccar nae, f"Expected {value} tae be between {min_val} and {max_val}"
+    }
+    gie aye
+}
+
+# Helper to compare lists deeply
+dae _lists_equal(a, b) {
+    gin len(a) != len(b) {
+        gie nae
+    }
+    fer i in 0..len(a) {
+        gin a[i] != b[i] {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# Assert lists are deeply equal
+dae expect_deep_equal(expected, actual) {
+    gin whit_kind(expected) == "list" an whit_kind(actual) == "list" {
+        gin nae _lists_equal(expected, actual) {
+            mak_siccar nae, f"Lists differ: {expected} vs {actual}"
+        }
+    } ither {
+        expect_equal(expected, actual)
+    }
+    gie aye
+}
+
+# Assert function throws error
+dae expect_error(fn) {
+    ken did_throw = nae
+    hae_a_bash {
+        fn()
+    } gin_it_gangs_wrang e {
+        did_throw = aye
+    }
+    gin nae did_throw {
+        mak_siccar nae, "Expected function tae throw an error but it didnae"
+    }
+    gie aye
+}
+
+# ============================================================
+# Test Runner - Simpler approach
+# ============================================================
+
+dae _run_single_test(test, suite) {
+    ken test_name = test["name"]
+    ken test_fn = test["fn"]
+    ken result = {"passed": aye, "error": naething, "duration": 0}
+
+    # Check if we should skip
+    gin test["skip"] {
+        gin _verbose {
+            blether f"  ⏭️  {test_name} (skipped)"
+        }
+        _test_results["skipped"] = _test_results["skipped"] + 1
+        gie aye
+    }
+
+    # Run before_each if present
+    gin suite.before_each_fn != naething {
+        suite.before_each_fn()
+    }
+
+    # Time and run the test
+    ken start = noo()
+
+    hae_a_bash {
+        test_fn()
+        result["passed"] = aye
+    } gin_it_gangs_wrang e {
+        result["passed"] = nae
+        result["error"] = e
+    }
+
+    ken end = noo()
+    result["duration"] = end - start
+
+    # Run after_each if present
+    gin suite.after_each_fn != naething {
+        suite.after_each_fn()
+    }
+
+    # Record result
+    gin result["passed"] {
+        gin _verbose {
+            blether f"  ✅ {test_name} ({result[\"duration\"]}ms)"
+        }
+        _test_results["passed"] = _test_results["passed"] + 1
+        gie aye
+    } ither {
+        gin _verbose {
+            blether f"  ❌ {test_name}"
+            blether f"     Error: {result[\"error\"]}"
+        }
+        _test_results["failed"] = _test_results["failed"] + 1
+        shove(_test_results["errors"], {"test": test_name, "error": result["error"]})
+        gie nae
+    }
+}
+
+dae run_suite(suite) {
+    blether ""
+    blether f"📦 {suite.name}"
+    blether "─────────────────────────────────"
+
+    ken suite_passed = 0
+    ken suite_failed = 0
+
+    fer test in suite.tests {
+        gin _run_single_test(test, suite) {
+            suite_passed = suite_passed + 1
+        } ither {
+            suite_failed = suite_failed + 1
+        }
+    }
+
+    blether f"  Suite: {suite_passed} passed, {suite_failed} failed"
+    gie suite_failed == 0
+}
+
+# Run all registered test suites
+dae run_all_tests(verbose = aye) {
+    _verbose = verbose
+    _test_results = {"passed": 0, "failed": 0, "skipped": 0, "errors": []}
+
+    blether ""
+    blether "╔════════════════════════════════════════════════════════╗"
+    blether "║           🏴󠁧󠁢󠁳󠁣󠁴󠁿 MDHAVERS TEST RUNNER 🏴󠁧󠁢󠁳󠁣󠁴󠁿                   ║"
+    blether "║         Testing yer code like a true Scot!             ║"
+    blether "╚════════════════════════════════════════════════════════╝"
+
+    ken start_time = noo()
+    ken all_passed = aye
+
+    fer suite in _test_suites {
+        gin nae run_suite(suite) {
+            all_passed = nae
+        }
+    }
+
+    ken end_time = noo()
+    ken total_duration = end_time - start_time
+
+    # Print summary
+    blether ""
+    blether "════════════════════════════════════════════════════════"
+    blether "                    TEST SUMMARY"
+    blether "════════════════════════════════════════════════════════"
+    blether f"  ✅ Passed:  {_test_results[\"passed\"]}"
+    blether f"  ❌ Failed:  {_test_results[\"failed\"]}"
+    blether f"  ⏭️  Skipped: {_test_results[\"skipped\"]}"
+    blether f"  ⏱️  Time:    {total_duration}ms"
+    blether ""
+
+    gin _test_results["failed"] > 0 {
+        blether "Failed Tests:"
+        fer err in _test_results["errors"] {
+            blether f"  • {err[\"test\"]}: {err[\"error\"]}"
+        }
+        blether ""
+    }
+
+    gin all_passed {
+        blether "🎉 Aw tests passed! Braw work!"
+    } ither {
+        blether "💔 Some tests failed. Keep tryin', ye'll get there!"
+    }
+    blether ""
+
+    gie all_passed
+}
+
+# Reset test state
+dae reset_tests() {
+    _test_suites = []
+    _test_results = {"passed": 0, "failed": 0, "skipped": 0, "errors": []}
+}
+
+# ============================================================
+# Simple Mock
+# ============================================================
+
+kin Mock {
+    dae init() {
+        masel.calls = []
+        masel.return_value = naething
+        masel.impl = naething
+    }
+
+    dae returns(value) {
+        masel.return_value = value
+        gie masel
+    }
+
+    dae implements(fn) {
+        masel.impl = fn
+        gie masel
+    }
+
+    dae call(arg) {
+        shove(masel.calls, arg)
+        gin masel.impl != naething {
+            gie masel.impl(arg)
+        }
+        gie masel.return_value
+    }
+
+    dae was_called() {
+        gie len(masel.calls) > 0
+    }
+
+    dae call_count() {
+        gie len(masel.calls)
+    }
+
+    dae last_call() {
+        gin len(masel.calls) == 0 {
+            gie naething
+        }
+        gie masel.calls[len(masel.calls) - 1]
+    }
+
+    dae reset() {
+        masel.calls = []
+    }
+}
+
+dae mock() {
+    gie Mock()
+}
+
+dae spy(fn) {
+    ken m = Mock()
+    m.implements(fn)
+    gie m
+}
+
+# ============================================================
+# Test Data Generator
+# ============================================================
+
+kin TestData {
+    dae init() {
+        masel.seed = the_noo()
+    }
+
+    dae random_int(min_val = 0, max_val = 100) {
+        gie jammy(min_val, max_val)
+    }
+
+    dae random_string(length = 10) {
+        ken chars = "abcdefghijklmnopqrstuvwxyz"
+        ken result = []
+        fer i in 0..length {
+            ken idx = jammy(0, len(chars) - 1)
+            shove(result, char_at(chars, idx))
+        }
+        gie join(result, "")
+    }
+
+    dae random_list(length = 5) {
+        ken result = []
+        fer i in 0..length {
+            shove(result, masel.random_int())
+        }
+        gie result
+    }
+
+    dae random_bool() {
+        gie jammy(0, 1) == 1
+    }
+}
+
+dae test_data() {
+    gie TestData()
+}
+
+blether "Test framework loaded! Ready tae test yer code!"

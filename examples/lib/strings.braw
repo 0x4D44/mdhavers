@@ -1,0 +1,98 @@
+# strings.braw - String utilities fer mdhavers
+# More string manipulation functions
+
+# Check if string is empty
+dae is_empty(s) {
+    gie len(s) == 0
+}
+
+# Check if string is blank (empty or whitespace only)
+dae is_blank(s) {
+    gie len(wheesht(s)) == 0
+}
+
+# Capitalize first letter
+dae capitalize(s) {
+    gin len(s) == 0 {
+        gie s
+    }
+    ken first = upper(char_at(s, 0))
+    gin len(s) == 1 {
+        gie first
+    }
+    ken rest = scran(s, 1, len(s))
+    gie first + rest
+}
+
+# Title case (capitalize each word)
+dae title_case(s) {
+    ken words = split(s, " ")
+    ken result = []
+    fer word in words {
+        shove(result, capitalize(word))
+    }
+    gie join(result, " ")
+}
+
+# Reverse a string
+dae reverse_string(s) {
+    ken chars = []
+    ken i = len(s) - 1
+    whiles i >= 0 {
+        shove(chars, char_at(s, i))
+        i = i - 1
+    }
+    gie join(chars, "")
+}
+
+# Check if string is a palindrome
+dae is_palindrome(s) {
+    ken clean = lower(wheesht(s))
+    gie clean == reverse_string(clean)
+}
+
+# Count words in a string
+dae word_count(s) {
+    gin is_blank(s) {
+        gie 0
+    }
+    ken words = split(wheesht(s), " ")
+    gie len(words)
+}
+
+# Truncate string with ellipsis
+dae truncate(s, max_len) {
+    gin len(s) <= max_len {
+        gie s
+    }
+    gie scran(s, 0, max_len - 3) + "..."
+}
+
+# Center a string
+dae center(s, width) {
+    ken padding = width - len(s)
+    gin padding <= 0 {
+        gie s
+    }
+    ken left_pad = padding / 2
+    ken right_pad = padding - left_pad
+    gie repeat(" ", left_pad) + s + repeat(" ", right_pad)
+}
+
+# Remove all occurrences of a character
+dae remove_char(s, ch) {
+    gie replace(s, ch, "")
+}
+
+# Count occurrences of substring
+dae count_substr(s, sub) {
+    ken count = 0
+    ken i = 0
+    whiles i <= len(s) - len(sub) {
+        gin scran(s, i, i + len(sub)) == sub {
+            count = count + 1
+        }
+        i = i + 1
+    }
+    gie count
+}

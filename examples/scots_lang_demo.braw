@@ -1,0 +1,260 @@
+# scots_lang_demo.braw - Demonstrate the Scottish language module
+# "Learn tae speak like a proper Scot!"
+
+fetch "lib/scots_lang"
+fetch "lib/colors"
+
+blether ""
+blether yellow("╔═══════════════════════════════════════════════════════╗")
+blether yellow("║         SCOTS LANGUAGE MODULE DEMO                    ║")
+blether yellow("║      'Learn tae speak like a proper Scot!'            ║")
+blether yellow("╚═══════════════════════════════════════════════════════╝")
+blether ""
+
+# ===============================================================
+# Greetings and Farewells
+# ===============================================================
+
+blether cyan("=== Greetings and Farewells ===")
+blether ""
+blether f"Random greeting: {green(random_greeting())}"
+blether f"Random farewell: {green(random_farewell())}"
+blether ""
+
+# ===============================================================
+# Exclamations
+# ===============================================================
+
+blether cyan("=== Scottish Exclamations ===")
+blether ""
+blether f"Random exclamation: {random_exclamation()}"
+blether f"Positive reaction: {green(positive_reaction())}"
+blether f"Negative reaction: {red(negative_reaction())}"
+blether ""
+
+# ===============================================================
+# Proverbs and Wisdom
+# ===============================================================
+
+blether cyan("=== Scottish Wisdom ===")
+blether ""
+blether f"Proverb: {random_proverb()}"
+blether ""
+blether "Three more fortunes:"
+fer i in 0..3 {
+    blether f"  {i + 1}. {scots_fortune()}"
+}
+blether ""
+
+# ===============================================================
+# Dictionary Lookups
+# ===============================================================
+
+blether cyan("=== Scots Dictionary ===")
+blether ""
+
+ken words_to_lookup = ["bairn", "dreich", "bonnie", "scunnered", "bahookie", "gloamin'"]
+fer word in words_to_lookup {
+    blether f"  {bold(word)}: {whit_means(word)}"
+}
+blether ""
+
+# ===============================================================
+# Programming Terms Explained
+# ===============================================================
+
+blether cyan("=== mdhavers Keywords Explained ===")
+blether ""
+
+ken keywords = ["ken", "gin", "dae", "gie", "blether", "mak_siccar"]
+fer keyword in keywords {
+    blether f"  {green(keyword)}: {explain_keyword(keyword)}"
+}
+blether ""
+
+# ===============================================================
+# Scottish Numbers
+# ===============================================================
+
+blether cyan("=== Scots Numbers ===")
+blether ""
+blether "Count frae yin tae twal:"
+fer i in 1..13 {
+    blether f"  {i} = {tae_scots_number(i)}"
+}
+blether ""
+
+# ===============================================================
+# Scottish Days and Months
+# ===============================================================
+
+blether cyan("=== Scots Days and Months ===")
+blether ""
+blether "Days o' the week:"
+fer i in 0..7 {
+    blether f"  {scots_day(i)}"
+}
+blether ""
+blether "First three months:"
+fer i in 0..3 {
+    blether f"  {scots_month(i)}"
+}
+blether ""
+
+# ===============================================================
+# Scottish Names
+# ===============================================================
+
+blether cyan("=== Random Scottish Names ===")
+blether ""
+blether "Male names:"
+fer i in 0..3 {
+    blether f"  {random_scots_name('male')}"
+}
+blether ""
+blether "Female names:"
+fer i in 0..3 {
+    blether f"  {random_scots_name('female')}"
+}
+blether ""
+
+# ===============================================================
+# Place Names
+# ===============================================================
+
+blether cyan("=== Random Scottish Place Names ===")
+blether ""
+fer i in 0..5 {
+    blether f"  {random_place_name()}"
+}
+blether ""
+
+# ===============================================================
+# Clan Mottos
+# ===============================================================
+
+blether cyan("=== Clan Mottos ===")
+blether ""
+ken clans = ["MacDonald", "MacLeod", "Fraser", "Wallace", "Bruce"]
+fer clan in clans {
+    blether f"  Clan {bold(clan)}: {clan_motto(clan)}"
+}
+blether ""
+
+# ===============================================================
+# Scottish Foods
+# ===============================================================
+
+blether cyan("=== Scottish Foods ===")
+blether ""
+ken foods = ["haggis", "neeps", "cranachan", "whisky"]
+fer food in foods {
+    blether f"  {bold(food)}: {describe_food(food)}"
+}
+blether ""
+
+# ===============================================================
+# Mythical Creatures
+# ===============================================================
+
+blether cyan("=== Scottish Mythical Creatures ===")
+blether ""
+ken creatures = ["Nessie", "Kelpie", "Selkie", "Redcap"]
+fer creature in creatures {
+    blether f"  {bold(creature)}: {describe_creature(creature)}"
+}
+blether ""
+
+# ===============================================================
+# Scottish Toasts
+# ===============================================================
+
+blether cyan("=== Scottish Toasts ===")
+blether ""
+fer i in 0..3 {
+    blether f"  {random_toast()}"
+}
+blether ""
+
+# ===============================================================
+# Scottish Songs
+# ===============================================================
+
+blether cyan("=== Scottish Song Lines ===")
+blether ""
+fer i in 0..3 {
+    blether f"  ♫ {random_song_line()}"
+}
+blether ""
+
+# ===============================================================
+# Scottish Insults (mild!)
+# ===============================================================
+
+blether cyan("=== Scottish Insults (mild) ===")
+blether ""
+fer i in 0..3 {
+    blether f"  {random_insult(aye)}"
+}
+blether ""
+
+# ===============================================================
+# Scottish Gaelic
+# ===============================================================
+
+blether cyan("=== Scottish Gaelic Phrases ===")
+blether ""
+fer i in 0..4 {
+    blether f"  {random_gaelic()}"
+}
+blether ""
+
+# ===============================================================
+# Text Converter
+# ===============================================================
+
+blether cyan("=== English to Scots Converter ===")
+blether ""
+ken english_texts = [
+    "Don't worry about the small child.",
+    "Give me a good house with a beautiful lake.",
+    "I know he has been crying and is very tired."
+]
+fer text in english_texts {
+    blether f"  English: {text}"
+    blether f"  Scots:   {green(make_scots(text))}"
+    blether ""
+}
+
+# ===============================================================
+# Weather Words
+# ===============================================================
+
+blether cyan("=== Scottish Weather Words ===")
+blether ""
+fer word in keys(WEATHER_WORDS) {
+    blether f"  {bold(word)}: {WEATHER_WORDS[word]}"
+}
+blether ""
+
+# ===============================================================
+# Chat Bot Demo
+# ===============================================================
+
+blether cyan("=== Scots Chat Bot ===")
+blether ""
+
+ken bot = ScotsChat("Hamish the Bot")
+blether bot.greet()
+blether bot.share_wisdom()
+blether bot.explain("braw")
+blether bot.react(aye)
+blether bot.farewell()
+blether ""
+
+blether yellow("═══════════════════════════════════════════════════════")
+blether yellow("               Demo Complete!")
+blether yellow("═══════════════════════════════════════════════════════")
+blether ""
+blether scots_fortune()
+blether ""

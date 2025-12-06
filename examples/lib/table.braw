@@ -1,0 +1,571 @@
+# table.braw - Table and data manipulation fer mdhavers
+# "Wrangle yer data like a true Scot!"
+#
+# This module provides utilities fer working with tabular data.
+
+# ===============================================================
+# Table Class
+# ===============================================================
+
+kin Table {
+    dae init(columns) {
+        masel.columns = columns
+        masel.rows = []
+        masel.column_widths = {}
+        fer col in columns {
+            masel.column_widths[col] = len(col)
+        }
+    }
+
+    # Add a row (dict or list)
+    dae add_row(row) {
+        gin whit_kind(row) == "list" {
+            ken row_dict = {}
+            fer i in 0..len(masel.columns) {
+                gin i < len(row) {
+                    row_dict[masel.columns[i]] = row[i]
+                    ken val_len = len(tae_string(row[i]))
+                    gin val_len > masel.column_widths[masel.columns[i]] {
+                        masel.column_widths[masel.columns[i]] = val_len
+                    }
+                } ither {
+                    row_dict[masel.columns[i]] = naething
+                }
+            }
+            shove(masel.rows, row_dict)
+        } ither {
+            shove(masel.rows, row)
+            fer col in masel.columns {
+                gin contains(row, col) {
+                    ken val_len = len(tae_string(row[col]))
+                    gin val_len > masel.column_widths[col] {
+                        masel.column_widths[col] = val_len
+                    }
+                }
+            }
+        }
+        gie masel
+    }
+
+    # Add multiple rows
+    dae add_rows(rows) {
+        fer row in rows {
+            masel.add_row(row)
+        }
+        gie masel
+    }
+
+    # Get a row by index
+    dae get_row(index) {
+        gin index >= 0 an index < len(masel.rows) {
+            gie masel.rows[index]
+        }
+        gie naething
+    }
+
+    # Get a column as a list
+    dae get_column(col_name) {
+        ken result = []
+        fer row in masel.rows {
+            gin contains(row, col_name) {
+                shove(result, row[col_name])
+            } ither {
+                shove(result, naething)
+            }
+        }
+        gie result
+    }
+
+    # Get value at row, column
+    dae get(row_idx, col_name) {
+        ken row = masel.get_row(row_idx)
+        gin row != naething an contains(row, col_name) {
+            gie row[col_name]
+        }
+        gie naething
+    }
+
+    # Set value at row, column
+    dae set(row_idx, col_name, value) {
+        gin row_idx >= 0 an row_idx < len(masel.rows) {
+            masel.rows[row_idx][col_name] = value
+            ken val_len = len(tae_string(value))
+            gin val_len > masel.column_widths[col_name] {
+                masel.column_widths[col_name] = val_len
+            }
+        }
+        gie masel
+    }
+
+    # Filter rows
+    dae filter(predicate) {
+        ken result = Table(masel.columns)
+        fer row in masel.rows {
+            gin predicate(row) {
+                result.add_row(row)
+            }
+        }
+        gie result
+    }
+
+    # Map over rows
+    dae map_rows(transform) {
+        ken result = Table(masel.columns)
+        fer row in masel.rows {
+            result.add_row(transform(row))
+        }
+        gie result
+    }
+
+    # Sort by column
+    dae sort_by(col_name, ascending = aye) {
+        # Simple bubble sort
+        ken sorted_rows = masel.rows + []
+        ken n = len(sorted_rows)
+
+        fer i in 0..(n - 1) {
+            fer j in 0..(n - i - 1) {
+                ken a = sorted_rows[j][col_name]
+                ken b = sorted_rows[j + 1][col_name]
+                ken should_swap = gin ascending than a > b ither a < b
+
+                gin should_swap {
+                    ken temp = sorted_rows[j]
+                    sorted_rows[j] = sorted_rows[j + 1]
+                    sorted_rows[j + 1] = temp
+                }
+            }
+        }
+
+        ken result = Table(masel.columns)
+        result.rows = sorted_rows
+        result.column_widths = masel.column_widths
+        gie result
+    }
+
+    # Select specific columns
+    dae select(col_names) {
+        ken result = Table(col_names)
+        fer row in masel.rows {
+            ken new_row = {}
+            fer col in col_names {
+                gin contains(row, col) {
+                    new_row[col] = row[col]
+                }
+            }
+            result.add_row(new_row)
+        }
+        gie result
+    }
+
+    # Aggregate functions
+    dae sum(col_name) {
+        ken total = 0
+        fer row in masel.rows {
+            gin contains(row, col_name) an row[col_name] != naething {
+                total = total + row[col_name]
+            }
+        }
+        gie total
+    }
+
+    dae avg(col_name) {
+        ken total = masel.sum(col_name)
+        ken count = 0
+        fer row in masel.rows {
+            gin contains(row, col_name) an row[col_name] != naething {
+                count = count + 1
+            }
+        }
+        gin count == 0 {
+            gie 0
+        }
+        gie total / count
+    }
+
+    dae min_val(col_name) {
+        ken result = naething
+        fer row in masel.rows {
+            gin contains(row, col_name) an row[col_name] != naething {
+                gin result == naething or row[col_name] < result {
+                    result = row[col_name]
+                }
+            }
+        }
+        gie result
+    }
+
+    dae max_val(col_name) {
+        ken result = naething
+        fer row in masel.rows {
+            gin contains(row, col_name) an row[col_name] != naething {
+                gin result == naething or row[col_name] > result {
+                    result = row[col_name]
+                }
+            }
+        }
+        gie result
+    }
+
+    dae count_rows() {
+        gie len(masel.rows)
+    }
+
+    # Group by a column
+    dae group_by(col_name) {
+        ken groups = {}
+        fer row in masel.rows {
+            ken key = gin contains(row, col_name) than tae_string(row[col_name]) ither "naething"
+            gin nae contains(groups, key) {
+                groups[key] = []
+            }
+            shove(groups[key], row)
+        }
+        gie groups
+    }
+
+    # Remove duplicates based on column(s)
+    dae distinct(col_names = naething) {
+        ken seen = {}
+        ken result = Table(masel.columns)
+
+        fer row in masel.rows {
+            ken key = ""
+            gin col_names == naething {
+                fer col in masel.columns {
+                    key = key + tae_string(row[col]) + "|"
+                }
+            } ither {
+                fer col in col_names {
+                    key = key + tae_string(row[col]) + "|"
+                }
+            }
+
+            gin nae contains(seen, key) {
+                seen[key] = aye
+                result.add_row(row)
+            }
+        }
+        gie result
+    }
+
+    # Take first n rows
+    dae take(n) {
+        ken result = Table(masel.columns)
+        ken count = 0
+        fer row in masel.rows {
+            gin count >= n {
+                brak
+            }
+            result.add_row(row)
+            count = count + 1
+        }
+        gie result
+    }
+
+    # Skip first n rows
+    dae skip(n) {
+        ken result = Table(masel.columns)
+        ken count = 0
+        fer row in masel.rows {
+            gin count >= n {
+                result.add_row(row)
+            }
+            count = count + 1
+        }
+        gie result
+    }
+
+    # Render as string
+    dae to_string() {
+        ken lines = []
+
+        # Header
+        ken header = "|"
+        ken separator = "+"
+        fer col in masel.columns {
+            ken width = masel.column_widths[col]
+            header = header + " " + pad_right(col, width) + " |"
+            separator = separator + repeat("-", width + 2) + "+"
+        }
+        shove(lines, separator)
+        shove(lines, header)
+        shove(lines, separator)
+
+        # Rows
+        fer row in masel.rows {
+            ken line = "|"
+            fer col in masel.columns {
+                ken width = masel.column_widths[col]
+                ken value = gin contains(row, col) than tae_string(row[col]) ither ""
+                line = line + " " + pad_right(value, width) + " |"
+            }
+            shove(lines, line)
+        }
+        shove(lines, separator)
+
+        gie join(lines, "\n")
+    }
+
+    dae display() {
+        blether masel.to_string()
+        gie masel
+    }
+
+    # Export to CSV
+    dae to_csv() {
+        ken lines = []
+        shove(lines, join(masel.columns, ","))
+
+        fer row in masel.rows {
+            ken values = []
+            fer col in masel.columns {
+                ken val = gin contains(row, col) than tae_string(row[col]) ither ""
+                # Escape commas and quotes
+                gin contains(val, ",") or contains(val, "\"") {
+                    val = "\"" + replace(val, "\"", "\"\"") + "\""
+                }
+                shove(values, val)
+            }
+            shove(lines, join(values, ","))
+        }
+
+        gie join(lines, "\n")
+    }
+
+    # Convert to list of dicts
+    dae to_list() {
+        gie masel.rows + []
+    }
+}
+
+# ===============================================================
+# Helper Functions
+# ===============================================================
+
+dae pad_right(str, width) {
+    ken result = tae_string(str)
+    whiles len(result) < width {
+        result = result + " "
+    }
+    gie result
+}
+
+dae pad_left(str, width) {
+    ken result = tae_string(str)
+    whiles len(result) < width {
+        result = " " + result
+    }
+    gie result
+}
+
+dae repeat(str, times) {
+    ken result = ""
+    fer i in 0..times {
+        result = result + str
+    }
+    gie result
+}
+
+# ===============================================================
+# Table Builders
+# ===============================================================
+
+dae make_table(columns) {
+    gie Table(columns)
+}
+
+dae table_from_list(data, columns = naething) {
+    gin len(data) == 0 {
+        gie Table([])
+    }
+
+    # Auto-detect columns from first row if not provided
+    ken cols = columns
+    gin cols == naething {
+        gin whit_kind(data[0]) == "dict" {
+            cols = keys(data[0])
+        } ither {
+            cols = []
+            fer i in 0..len(data[0]) {
+                shove(cols, f"col{i}")
+            }
+        }
+    }
+
+    ken table = Table(cols)
+    table.add_rows(data)
+    gie table
+}
+
+# Parse CSV string into table
+dae table_from_csv(csv_string) {
+    ken lines = split(csv_string, "\n")
+    gin len(lines) == 0 {
+        gie Table([])
+    }
+
+    # First line is header
+    ken columns = split(lines[0], ",")
+    # Trim whitespace from column names
+    ken clean_cols = []
+    fer col in columns {
+        shove(clean_cols, wheesht(col))
+    }
+
+    ken table = Table(clean_cols)
+
+    fer i in 1..len(lines) {
+        ken line = lines[i]
+        gin len(wheesht(line)) == 0 {
+            haud
+        }
+        ken values = split(line, ",")
+        ken row = {}
+        fer j in 0..len(clean_cols) {
+            gin j < len(values) {
+                row[clean_cols[j]] = wheesht(values[j])
+            }
+        }
+        table.add_row(row)
+    }
+
+    gie table
+}
+
+# ===============================================================
+# DataFrame-like Operations
+# ===============================================================
+
+dae inner_join(table1, table2, on_column) {
+    ken all_cols = table1.columns + []
+    fer col in table2.columns {
+        gin col != on_column an nae contains(all_cols, col) {
+            shove(all_cols, col)
+        }
+    }
+
+    ken result = Table(all_cols)
+
+    fer row1 in table1.rows {
+        ken key1 = gin contains(row1, on_column) than row1[on_column] ither naething
+        fer row2 in table2.rows {
+            ken key2 = gin contains(row2, on_column) than row2[on_column] ither naething
+            gin key1 == key2 an key1 != naething {
+                ken merged = {}
+                fer col in table1.columns {
+                    merged[col] = row1[col]
+                }
+                fer col in table2.columns {
+                    gin col != on_column {
+                        merged[col] = row2[col]
+                    }
+                }
+                result.add_row(merged)
+            }
+        }
+    }
+
+    gie result
+}
+
+dae left_join(table1, table2, on_column) {
+    ken all_cols = table1.columns + []
+    fer col in table2.columns {
+        gin col != on_column an nae contains(all_cols, col) {
+            shove(all_cols, col)
+        }
+    }
+
+    ken result = Table(all_cols)
+
+    fer row1 in table1.rows {
+        ken key1 = gin contains(row1, on_column) than row1[on_column] ither naething
+        ken found = nae
+
+        fer row2 in table2.rows {
+            ken key2 = gin contains(row2, on_column) than row2[on_column] ither naething
+            gin key1 == key2 an key1 != naething {
+                ken merged = {}
+                fer col in table1.columns {
+                    merged[col] = row1[col]
+                }
+                fer col in table2.columns {
+                    gin col != on_column {
+                        merged[col] = row2[col]
+                    }
+                }
+                result.add_row(merged)
+                found = aye
+            }
+        }
+
+        gin nae found {
+            ken merged = {}
+            fer col in table1.columns {
+                merged[col] = row1[col]
+            }
+            fer col in table2.columns {
+                gin col != on_column {
+                    merged[col] = naething
+                }
+            }
+            result.add_row(merged)
+        }
+    }
+
+    gie result
+}
+
+# Concatenate tables vertically
+dae concat_tables(tables) {
+    gin len(tables) == 0 {
+        gie Table([])
+    }
+
+    ken result = Table(tables[0].columns)
+    fer table in tables {
+        fer row in table.rows {
+            result.add_row(row)
+        }
+    }
+    gie result
+}
+
+# ===============================================================
+# Pivot Operations
+# ===============================================================
+
+dae pivot(table, index_col, pivot_col, value_col) {
+    ken pivot_values = []
+    fer row in table.rows {
+        ken val = row[pivot_col]
+        gin nae contains(pivot_values, val) {
+            shove(pivot_values, val)
+        }
+    }
+
+    ken new_cols = [index_col]
+    fer pv in pivot_values {
+        shove(new_cols, tae_string(pv))
+    }
+
+    ken groups = table.group_by(index_col)
+    ken result = Table(new_cols)
+
+    fer key in keys(groups) {
+        ken new_row = {index_col: key}
+        fer pv in pivot_values {
+            new_row[tae_string(pv)] = 0
+        }
+        fer row in groups[key] {
+            ken pv = tae_string(row[pivot_col])
+            new_row[pv] = new_row[pv] + row[value_col]
+        }
+        result.add_row(new_row)
+    }
+
+    gie result
+}
+
+blether "Table module loaded! Ready tae wrangle yer data!"

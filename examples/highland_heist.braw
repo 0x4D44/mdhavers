@@ -1,0 +1,281 @@
+# highland_heist.braw - A Scottish Heist Game
+# "Rob the laird's castle... if ye dare!"
+
+fetch "lib/colors"
+fetch "lib/scots_lang"
+
+blether ""
+blether red("╔════════════════════════════════════════════════╗")
+blether red("║              HIGHLAND HEIST                    ║")
+blether red("║      'Rob the Laird's Castle... if ye dare!'   ║")
+blether red("╚════════════════════════════════════════════════╝")
+blether ""
+
+# Game state
+ken player = {
+    "gold": 0,
+    "reputation": 50,
+    "stealth": 50,
+    "luck": 50,
+    "caught": nae,
+    "escaped": nae
+}
+
+ken castle = {
+    "alarm_level": 0,
+    "guards": 3,
+    "treasures": [
+        {"name": "Golden Sporran", "value": 100, "difficulty": 30},
+        {"name": "Ancient Sgian-dubh", "value": 150, "difficulty": 40},
+        {"name": "Jeweled Claymore", "value": 250, "difficulty": 60},
+        {"name": "Laird's Whisky Collection", "value": 300, "difficulty": 50},
+        {"name": "Crown o' Scotland (replica)", "value": 500, "difficulty": 80},
+        {"name": "Haggis Recipe (secret)", "value": 1000, "difficulty": 90}
+    ],
+    "stolen": []
+}
+
+# Random check with luck bonus
+dae skill_check(difficulty, skill) {
+    ken base_roll = jammy(1, 100)
+    ken total = base_roll + (skill / 2) + (player["luck"] / 4)
+    gie total >= difficulty
+}
+
+dae show_stats() {
+    blether ""
+    blether cyan("═══ YER STATS ═══")
+    blether f"Gold: {yellow(tae_string(player['gold']))}"
+    blether f"Reputation: {player['reputation']}%"
+    blether f"Stealth: {player['stealth']}%"
+    blether f"Luck: {player['luck']}%"
+    blether f"Castle Alarm: {red(tae_string(castle['alarm_level']))}%"
+    blether f"Guards Alert: {castle['guards']}"
+    blether ""
+}
+
+dae show_treasures() {
+    blether ""
+    blether yellow("═══ AVAILABLE TREASURES ═══")
+    ken available = []
+    fer i in 0..len(castle["treasures"]) {
+        ken t = castle["treasures"][i]
+        gin nae contains(castle["stolen"], t["name"]) {
+            shove(available, i)
+            ken diff_color = gin t["difficulty"] < 40 than green ither gin t["difficulty"] < 70 than yellow ither red
+            blether f"  {i + 1}. {t['name']} - Value: {t['value']} gold - Difficulty: {diff_color(tae_string(t['difficulty']))}"
+        }
+    }
+    blether ""
+    gie available
+}
+
+dae attempt_steal(treasure_idx) {
+    ken treasure = castle["treasures"][treasure_idx]
+    blether ""
+    blether f"Ye creep towards the {bold(treasure['name'])}..."
+    blether ""
+
+    # Stealth check to approach
+    ken approach_diff = treasure["difficulty"] - 20
+    gin approach_diff < 10 { approach_diff = 10 }
+
+    gin skill_check(approach_diff, player["stealth"]) {
+        blether green("Ye approach without bein' seen!")
+    } ither {
+        blether yellow("Ye made a wee noise... the guards stir!")
+        castle["alarm_level"] = castle["alarm_level"] + 10
+    }
+
+    # Main theft check
+    gin skill_check(treasure["difficulty"], player["stealth"]) {
+        blether green(f"SUCCESS! Ye've nabbed the {treasure['name']}!")
+        player["gold"] = player["gold"] + treasure["value"]
+        player["reputation"] = player["reputation"] + 5
+        shove(castle["stolen"], treasure["name"])
+
+        # Small luck bonus for success
+        gin player["luck"] < 90 {
+            player["luck"] = player["luck"] + 2
+        }
+    } ither {
+        blether red("Och naw! Ye fumbled it!")
+        castle["alarm_level"] = castle["alarm_level"] + 20
+
+        # Chance to drop something
+        gin jammy(1, 100) < 30 an player["gold"] > 0 {
+            ken lost = jammy(10, 50)
+            gin lost > player["gold"] { lost = player["gold"] }
+            player["gold"] = player["gold"] - lost
+            blether red(f"Ye dropped {lost} gold coins in the scramble!")
+        }
+    }
+
+    # Check alarm level
+    gin castle["alarm_level"] >= 100 {
+        blether ""
+        blether red("THE ALARM IS RAISED! GUARDS EVERYWHERE!")
+        player["caught"] = aye
+    }
+}
+
+dae try_bribe_guard() {
+    gin player["gold"] < 50 {
+        blether red("Ye dinnae have enough gold tae bribe anyone!")
+        gie nae
+    }
+
+    blether ""
+    blether "Ye approach a guard wi' a handful o' gold..."
+
+    ken bribe_cost = jammy(30, 80)
+    gin player["gold"] >= bribe_cost {
+        gin skill_check(50, player["luck"]) {
+            player["gold"] = player["gold"] - bribe_cost
+            castle["alarm_level"] = castle["alarm_level"] - 30
+            gin castle["alarm_level"] < 0 { castle["alarm_level"] = 0 }
+            blether green(f"The guard pockets {bribe_cost} gold an' looks the other way!")
+            gie aye
+        } ither {
+            blether red("The guard refuses an' raises the alarm!")
+            castle["alarm_level"] = castle["alarm_level"] + 25
+            gie nae
+        }
+    }
+    gie nae
+}
+
+dae try_hide() {
+    blether ""
+    blether "Ye duck intae the shadows..."
+
+    gin skill_check(40 + castle["alarm_level"] / 3, player["stealth"]) {
+        blether green("Ye hide successfully! The patrol passes by.")
+        castle["alarm_level"] = castle["alarm_level"] - 15
+        gin castle["alarm_level"] < 0 { castle["alarm_level"] = 0 }
+        player["stealth"] = player["stealth"] + 2
+        gie aye
+    } ither {
+        blether red("A guard spots ye!")
+        castle["alarm_level"] = castle["alarm_level"] + 15
+        gie nae
+    }
+}
+
+dae try_escape() {
+    blether ""
+    blether "Ye make a run fer the exit..."
+
+    ken escape_diff = 30 + castle["alarm_level"] / 2
+    gin skill_check(escape_diff, player["stealth"] + player["luck"]) {
+        blether green("Ye slip oot intae the night! Freedom!")
+        player["escaped"] = aye
+        gie aye
+    } ither {
+        blether red("The guards cut off yer escape!")
+        castle["alarm_level"] = castle["alarm_level"] + 20
+        gin castle["alarm_level"] >= 100 {
+            player["caught"] = aye
+        }
+        gie nae
+    }
+}
+
+dae show_menu() {
+    blether cyan("═══ WHIT DAE YE DAE? ═══")
+    blether "  1. Steal a treasure"
+    blether "  2. Hide in the shadows"
+    blether "  3. Bribe a guard (costs gold)"
+    blether "  4. Try tae escape"
+    blether "  5. Check stats"
+    blether "  6. Give up (get caught)"
+    blether ""
+}
+
+# Introduction
+blether "The year is 1745. Ye're a cunning thief in the Highlands."
+blether "Tonight, ye've snuck intae Castle MacTavish tae steal"
+blether "the laird's treasures. But beware - the guards are alert!"
+blether ""
+blether "Steal whit ye can an' escape before the alarm reaches 100%!"
+blether ""
+
+speir("Press Enter tae begin yer heist...")
+
+# Main game loop
+whiles nae player["caught"] an nae player["escaped"] {
+    show_stats()
+    show_menu()
+
+    ken choice = wheesht(speir("Yer choice (1-6): "))
+
+    gin choice == "1" {
+        ken available = show_treasures()
+        gin len(available) == 0 {
+            blether yellow("There's naething left tae steal!")
+        } ither {
+            ken pick = wheesht(speir("Which treasure? (number or 'back'): "))
+            gin pick != "back" {
+                ken idx = tae_int(pick) - 1
+                gin idx >= 0 an idx < len(castle["treasures"]) {
+                    gin nae contains(castle["stolen"], castle["treasures"][idx]["name"]) {
+                        attempt_steal(idx)
+                    } ither {
+                        blether red("Ye've already stolen that one!")
+                    }
+                }
+            }
+        }
+    } ither gin choice == "2" {
+        try_hide()
+    } ither gin choice == "3" {
+        try_bribe_guard()
+    } ither gin choice == "4" {
+        try_escape()
+    } ither gin choice == "5" {
+        show_stats()
+    } ither gin choice == "6" {
+        blether red("Ye surrender tae the guards!")
+        player["caught"] = aye
+    }
+}
+
+# End game
+blether ""
+blether "════════════════════════════════════════════════════"
+
+gin player["escaped"] {
+    blether green("╔══════════════════════════════════════════════╗")
+    blether green("║           YE ESCAPED!                        ║")
+    blether green("╚══════════════════════════════════════════════╝")
+    blether ""
+    blether f"Ye made off wi' {bold(tae_string(player['gold']))} gold!"
+    blether f"Treasures stolen: {len(castle['stolen'])}"
+    blether ""
+
+    gin player["gold"] >= 1000 {
+        blether yellow("LEGENDARY HEIST! Ye'll be remembered in song!")
+    } ither gin player["gold"] >= 500 {
+        blether green("A grand haul! The bards will sing o' this!")
+    } ither gin player["gold"] >= 200 {
+        blether cyan("A decent night's work!")
+    } ither gin player["gold"] > 0 {
+        blether "At least ye got somethin'!"
+    } ither {
+        blether "Ye escaped wi' yer life, but no' much else!"
+    }
+} ither {
+    blether red("╔══════════════════════════════════════════════╗")
+    blether red("║           YE GOT CAUGHT!                     ║")
+    blether red("╚══════════════════════════════════════════════╝")
+    blether ""
+    blether "The guards drag ye tae the dungeon!"
+    blether f"Ye had {player['gold']} gold on ye - confiscated!"
+    blether ""
+    blether "The laird sentences ye tae clean the haggis pots"
+    blether "fer the next ten years!"
+}
+
+blether ""
+blether random_farewell()
+blether ""

@@ -1,0 +1,256 @@
+# patterns_match_demo.braw - Demonstrate pattern matching in mdhavers
+# "Findin' needles in haystacks!"
+
+fetch "lib/patterns_match"
+
+blether ""
+blether "======================================================="
+blether "    PATTERN MATCHING DEMO"
+blether "    'Findin' whit ye're lookin' fer!'"
+blether "======================================================="
+blether ""
+
+# ===============================================================
+# Basic Glob Matching
+# ===============================================================
+
+blether "=== Basic Glob Matching ==="
+blether ""
+
+blether "Pattern: '*.braw'"
+blether f"  main.braw: {glob_match('*.braw', 'main.braw')}"
+blether f"  test.py: {glob_match('*.braw', 'test.py')}"
+blether f"  utils.braw: {glob_match('*.braw', 'utils.braw')}"
+blether ""
+
+blether "Pattern: 'test_*'"
+blether f"  test_foo: {glob_match('test_*', 'test_foo')}"
+blether f"  test_bar: {glob_match('test_*', 'test_bar')}"
+blether f"  main: {glob_match('test_*', 'main')}"
+blether ""
+
+blether "Pattern: '*_test_*'"
+blether f"  my_test_file: {glob_match('*_test_*', 'my_test_file')}"
+blether f"  test_file: {glob_match('*_test_*', 'test_file')}"
+blether ""
+
+blether "Pattern: 'h?llo'"
+blether f"  hello: {glob_match('h?llo', 'hello')}"
+blether f"  hallo: {glob_match('h?llo', 'hallo')}"
+blether f"  hlo: {glob_match('h?llo', 'hlo')}"
+blether ""
+
+# ===============================================================
+# Pattern Object
+# ===============================================================
+
+blether "=== Pattern Object ==="
+blether ""
+
+ken pattern = Pattern("*.txt")
+
+blether "Testing files against '*.txt':"
+ken files = ["readme.txt", "data.csv", "notes.txt", "script.py"]
+fer file in files {
+    blether f"  {file}: {pattern.test(file)}"
+}
+blether ""
+
+# Case insensitive
+ken case_pattern = Pattern("HELLO*")
+case_pattern.ignore_case()
+
+blether "Case-insensitive pattern 'HELLO*':"
+blether f"  'hello world': {case_pattern.test('hello world')}"
+blether f"  'HELLO THERE': {case_pattern.test('HELLO THERE')}"
+blether f"  'goodbye': {case_pattern.test('goodbye')}"
+blether ""
+
+# ===============================================================
+# Finding Matches
+# ===============================================================
+
+blether "=== Finding Matches ==="
+blether ""
+
+ken text = "The quick brown fox jumps over the lazy dog"
+ken word_pattern = Pattern("*o*")
+
+ken matches_found = word_pattern.find_all(text)
+blether f"Words containing 'o' in '{text}':"
+blether f"  {matches_found}"
+blether ""
+
+# ===============================================================
+# String Occurrences
+# ===============================================================
+
+blether "=== String Occurrences ==="
+blether ""
+
+ken sample = "abracadabra"
+ken search = "abra"
+
+ken positions = find_all_occurrences(sample, search)
+blether f"Finding '{search}' in '{sample}':"
+blether f"  Positions: {positions}"
+blether f"  Count: {count_occurrences(sample, search)}"
+blether ""
+
+# ===============================================================
+# Filter by Pattern
+# ===============================================================
+
+blether "=== Filter by Pattern ==="
+blether ""
+
+ken all_files = ["main.braw", "test.braw", "utils.py", "config.json", "README.md"]
+
+ken braw_files = filter_by_pattern(all_files, "*.braw")
+blether f"All files: {all_files}"
+blether f"Matching '*.braw': {braw_files}"
+
+ken non_braw = exclude_by_pattern(all_files, "*.braw")
+blether f"Not matching '*.braw': {non_braw}"
+blether ""
+
+# ===============================================================
+# Multiple Patterns
+# ===============================================================
+
+blether "=== Multiple Patterns ==="
+blether ""
+
+ken patterns_to_check = ["*.braw", "*.py", "*.js"]
+
+blether "Checking 'main.braw' against multiple patterns:"
+blether f"  Match any: {match_any('main.braw', patterns_to_check)}"
+
+blether "Checking 'test.txt' against multiple patterns:"
+blether f"  Match any: {match_any('test.txt', patterns_to_check)}"
+blether ""
+
+# ===============================================================
+# Extract Between Delimiters
+# ===============================================================
+
+blether "=== Extract Between Delimiters ==="
+blether ""
+
+ken html = "<title>Hello World</title><body><p>Welcome!</p></body>"
+
+ken title = extract_between(html, "<title>", "</title>")
+blether f"HTML: {html}"
+blether f"Title: {title}"
+
+ken paragraphs = extract_all_between(html, "<p>", "</p>")
+blether f"Paragraphs: {paragraphs}"
+blether ""
+
+# ===============================================================
+# Template
+# ===============================================================
+
+blether "=== Template ==="
+blether ""
+
+ken template = Template("Hello, {{name}}! Ye are {{age}} years auld.")
+
+blether f"Template: 'Hello, {{{{name}}}}! Ye are {{{{age}}}} years auld.'"
+blether f"Placeholders: {template.placeholders()}"
+
+ken rendered = template.render({"name": "Angus", "age": 25})
+blether f"Rendered: {rendered}"
+blether ""
+
+# Custom delimiters
+ken custom = Template("Hello, [%name%]!")
+custom.with_delimiters("[%", "%]")
+
+ken custom_rendered = custom.render({"name": "Morag"})
+blether f"Custom template: {custom_rendered}"
+blether ""
+
+# ===============================================================
+# Word Boundaries
+# ===============================================================
+
+blether "=== Word Boundaries ==="
+blether ""
+
+ken sentence = "The cat sat on the mat."
+
+blether f"Sentence: '{sentence}'"
+blether f"  starts_with_word 'The': {starts_with_word(sentence, 'The')}"
+blether f"  ends_with_word 'mat.': {ends_with_word(sentence, 'mat.')}"
+blether f"  contains_word 'cat': {contains_word(sentence, 'cat')}"
+blether f"  contains_word 'ca': {contains_word(sentence, 'ca')}"
+blether ""
+
+# ===============================================================
+# Tokenizer
+# ===============================================================
+
+blether "=== Tokenizer ==="
+blether ""
+
+ken tokenizer = Tokenizer()
+ken tokens = tokenizer.tokenize("Hello, World! How are you?")
+
+blether f"Tokenized 'Hello, World! How are you?':"
+blether f"  {tokens}"
+blether ""
+
+# Custom separators
+ken csv_tokenizer = Tokenizer()
+csv_tokenizer.set_separators([","])
+
+ken csv_tokens = csv_tokenizer.tokenize("apple,banana,cherry,date")
+blether f"CSV tokenized 'apple,banana,cherry,date':"
+blether f"  {csv_tokens}"
+blether ""
+
+# Keep separators
+ken keep_tokenizer = Tokenizer()
+keep_tokenizer.add_separator(",")
+keep_tokenizer.add_separator(".")
+keep_tokenizer.keep()
+
+ken kept_tokens = keep_tokenizer.tokenize("a,b.c d")
+blether f"Tokenized with kept separators 'a,b.c d':"
+blether f"  {kept_tokens}"
+blether ""
+
+# ===============================================================
+# Practical Example: Log Parser
+# ===============================================================
+
+blether "=== Practical Example: Log Parser ==="
+blether ""
+
+ken logs = [
+    "[INFO] Application started",
+    "[ERROR] Failed to connect",
+    "[WARN] Low memory",
+    "[INFO] User logged in",
+    "[ERROR] Database timeout"
+]
+
+blether "Log entries:"
+fer log in logs {
+    blether f"  {log}"
+}
+blether ""
+
+ken error_logs = filter_by_pattern(logs, "*ERROR*")
+blether f"Errors only: {error_logs}"
+
+ken info_logs = filter_by_pattern(logs, "*INFO*")
+blether f"Info only: {info_logs}"
+
+blether ""
+blether "======================================================="
+blether "    Pattern matching demo complete!"
+blether "    'Ye've found whit ye were lookin' fer!'"
+blether "======================================================="
+blether ""

@@ -1,0 +1,355 @@
+# adventure.braw - A wee Scottish text adventure game
+# "The Haggis Hunt" - Can ye find the legendary Golden Haggis?
+
+blether ""
+blether "═══════════════════════════════════════════════════════════════"
+blether "    THE HAGGIS HUNT"
+blether "    A Wee Scottish Adventure"
+blether "═══════════════════════════════════════════════════════════════"
+blether ""
+blether "Ye find yersel at the foot o' Ben Nevis on a dreich mornin'."
+blether "Legend tells o' a Golden Haggis hidden somewhere on the mountain."
+blether "Can ye find it and bring glory tae yer clan?"
+blether ""
+
+# Game state
+ken inventory = []
+ken current_room = "foot_of_ben"
+ken has_won = nae
+ken health = 100
+ken turns = 0
+
+# Room definitions
+ken rooms = {
+    "foot_of_ben": {
+        "name": "Foot o' Ben Nevis",
+        "description": "Ye stand at the base o' the mighty Ben Nevis. A wee path leads up the mountain. There's an auld croft nearby.",
+        "exits": {"north": "lower_path", "east": "auld_croft"},
+        "items": ["walking_stick"]
+    },
+    "auld_croft": {
+        "name": "Auld Croft",
+        "description": "A tumbledown croft wi' a peat fire still smolderin'. An auld shepherd sits by the fire.",
+        "exits": {"west": "foot_of_ben"},
+        "items": ["oatcakes"],
+        "npc": "shepherd"
+    },
+    "lower_path": {
+        "name": "Lower Mountain Path",
+        "description": "The path winds up through purple heather. Ye can hear a burn babbling nearby.",
+        "exits": {"south": "foot_of_ben", "north": "highland_burn", "east": "heather_field"},
+        "items": []
+    },
+    "heather_field": {
+        "name": "Heather Field",
+        "description": "A bonnie field o' purple heather stretches oot. A wee rabbit watches ye.",
+        "exits": {"west": "lower_path"},
+        "items": ["lucky_heather"]
+    },
+    "highland_burn": {
+        "name": "Highland Burn",
+        "description": "A crystal-clear burn flows doon the mountain. The water looks gey refreshing.",
+        "exits": {"south": "lower_path", "north": "misty_ridge"},
+        "items": ["flask"],
+        "action": "drink"
+    },
+    "misty_ridge": {
+        "name": "Misty Ridge",
+        "description": "Thick mist swirls aroond ye. Ye can barely see yer hand in front o' yer face. A narrow path leads further up.",
+        "exits": {"south": "highland_burn", "north": "cave_entrance"},
+        "items": [],
+        "hazard": "mist"
+    },
+    "cave_entrance": {
+        "name": "Cave Entrance",
+        "description": "A dark cave gapes in the mountainside. Ye can feel cold air comin' fae within. Strange sounds echo from inside.",
+        "exits": {"south": "misty_ridge", "in": "dark_cave"},
+        "items": ["torch"]
+    },
+    "dark_cave": {
+        "name": "Dark Cave",
+        "description": "It's pitch black! Ye cannae see a thing without some light.",
+        "exits": {"out": "cave_entrance", "deep": "treasure_chamber"},
+        "items": [],
+        "requires_light": aye
+    },
+    "treasure_chamber": {
+        "name": "Treasure Chamber",
+        "description": "A glitterin' chamber! In the center, on a pedestal of ancient stone, sits... THE GOLDEN HAGGIS!",
+        "exits": {"back": "dark_cave"},
+        "items": ["golden_haggis"],
+        "requires_light": aye
+    }
+}
+
+# Item descriptions
+ken item_descriptions = {
+    "walking_stick": "A sturdy hazel walking stick",
+    "oatcakes": "Some tasty oatcakes wrapped in cloth",
+    "lucky_heather": "A sprig o' lucky heather",
+    "flask": "A leather flask ye can fill wi' water",
+    "torch": "An unlit torch",
+    "golden_haggis": "THE LEGENDARY GOLDEN HAGGIS! It glitters magnificently!"
+}
+
+# NPC dialogue
+ken npc_dialogue = {
+    "shepherd": [
+        "Och, a traveller! Are ye seekin' the Golden Haggis?",
+        "Many have tried, few have succeeded...",
+        "Ye'll need light fer the caves, and something tae eat fer the journey.",
+        "Watch oot fer the mist on the ridge - it can be gey treacherous!"
+    ]
+}
+
+# Helper functions
+dae show_room() {
+    ken room = rooms[current_room]
+    blether ""
+    blether f"=== {room['name']} ==="
+    blether room["description"]
+
+    # Show items
+    gin len(room["items"]) > 0 {
+        blether ""
+        blether "Ye can see:"
+        fer item in room["items"] {
+            blether f"  - {item_descriptions[item]}"
+        }
+    }
+
+    # Show exits
+    ken exit_list = keys(room["exits"])
+    blether f"\nExits: {join(exit_list, ', ')}"
+}
+
+dae show_inventory() {
+    gin len(inventory) == 0 {
+        blether "Yer sporran is empty!"
+    } ither {
+        blether "Ye're carryin':"
+        fer item in inventory {
+            blether f"  - {item_descriptions[item]}"
+        }
+    }
+}
+
+dae take_item(item) {
+    ken room = rooms[current_room]
+    ken found = nae
+    ken new_items = []
+
+    fer i in room["items"] {
+        gin i == item {
+            shove(inventory, item)
+            found = aye
+            blether f"Ye pick up the {item}."
+
+            # Special case: golden haggis wins the game
+            gin item == "golden_haggis" {
+                has_won = aye
+            }
+        } ither {
+            shove(new_items, i)
+        }
+    }
+
+    gin found {
+        room["items"] = new_items
+    } ither {
+        blether f"There's nae {item} here!"
+    }
+}
+
+dae go_direction(direction) {
+    ken room = rooms[current_room]
+
+    gin contains(room["exits"], direction) {
+        ken next_room = room["exits"][direction]
+        ken target = rooms[next_room]
+
+        # Check if light is required
+        gin contains(target, "requires_light") an target["requires_light"] {
+            gin nae contains(inventory, "torch") {
+                blether "It's too dark tae go that way without a torch!"
+                gie nae
+            }
+        }
+
+        current_room = next_room
+        turns = turns + 1
+
+        # Check for hazards
+        gin contains(target, "hazard") {
+            gin target["hazard"] == "mist" {
+                health = health - 10
+                blether "The thick mist chills ye tae the bone! (-10 health)"
+            }
+        }
+
+        show_room()
+        gie aye
+    } ither {
+        blether "Ye cannae go that way!"
+        gie nae
+    }
+}
+
+dae talk_to_npc() {
+    ken room = rooms[current_room]
+    gin contains(room, "npc") {
+        ken npc = room["npc"]
+        blether f"\nThe {npc} speaks:"
+        fer line in npc_dialogue[npc] {
+            blether f"  \"{line}\""
+        }
+    } ither {
+        blether "There's naebody here tae talk tae!"
+    }
+}
+
+dae eat() {
+    gin contains(inventory, "oatcakes") {
+        health = health + 20
+        blether "Ye munch on some tasty oatcakes. (+20 health)"
+        # Remove oatcakes from inventory
+        ken new_inv = []
+        fer item in inventory {
+            gin item != "oatcakes" {
+                shove(new_inv, item)
+            }
+        }
+        inventory = new_inv
+    } ither {
+        blether "Ye've got naething tae eat!"
+    }
+}
+
+dae drink() {
+    ken room = rooms[current_room]
+    gin contains(room, "action") an room["action"] == "drink" {
+        health = health + 10
+        blether "Ye drink fae the cool, clear burn. Refreshin'! (+10 health)"
+    } ither {
+        blether "There's naething tae drink here!"
+    }
+}
+
+dae show_status() {
+    blether f"\nHealth: {health}  |  Turns: {turns}"
+}
+
+dae show_help() {
+    blether ""
+    blether "Commands:"
+    blether "  go <direction> - Move in a direction (north, south, east, west, in, out)"
+    blether "  take <item>    - Pick up an item"
+    blether "  inventory      - Show what ye're carryin'"
+    blether "  look           - Look around the room"
+    blether "  talk           - Talk to someone"
+    blether "  eat            - Eat some food"
+    blether "  drink          - Drink water (if available)"
+    blether "  status         - Show yer health"
+    blether "  help           - Show this help"
+    blether "  quit           - End the game"
+    blether ""
+}
+
+# Process a command
+dae process_command(cmd) {
+    ken parts = split(lower(wheesht(cmd)), " ")
+    gin len(parts) == 0 {
+        gie aye
+    }
+
+    ken action = parts[0]
+
+    keek action {
+        whan "go" -> {
+            gin len(parts) > 1 {
+                go_direction(parts[1])
+            } ither {
+                blether "Go where?"
+            }
+        }
+        whan "north" -> { go_direction("north") }
+        whan "south" -> { go_direction("south") }
+        whan "east" -> { go_direction("east") }
+        whan "west" -> { go_direction("west") }
+        whan "in" -> { go_direction("in") }
+        whan "out" -> { go_direction("out") }
+        whan "back" -> { go_direction("back") }
+        whan "deep" -> { go_direction("deep") }
+        whan "take" -> {
+            gin len(parts) > 1 {
+                take_item(parts[1])
+            } ither {
+                blether "Take what?"
+            }
+        }
+        whan "get" -> {
+            gin len(parts) > 1 {
+                take_item(parts[1])
+            } ither {
+                blether "Get what?"
+            }
+        }
+        whan "inventory" -> { show_inventory() }
+        whan "inv" -> { show_inventory() }
+        whan "i" -> { show_inventory() }
+        whan "look" -> { show_room() }
+        whan "l" -> { show_room() }
+        whan "talk" -> { talk_to_npc() }
+        whan "eat" -> { eat() }
+        whan "drink" -> { drink() }
+        whan "status" -> { show_status() }
+        whan "help" -> { show_help() }
+        whan "quit" -> {
+            blether "Haste ye back! Slàinte!"
+            gie nae
+        }
+        whan "exit" -> {
+            blether "Haste ye back! Slàinte!"
+            gie nae
+        }
+        whan _ -> { blether "Ah dinnae ken whit ye mean by that!" }
+    }
+
+    gie aye
+}
+
+# Main game loop
+dae play_game() {
+    show_help()
+    show_room()
+
+    ken playing = aye
+    whiles playing an nae has_won an health > 0 {
+        blether ""
+        ken cmd = speir("> ")
+        playing = process_command(cmd)
+    }
+
+    gin has_won {
+        blether ""
+        blether "═══════════════════════════════════════════════════════════════"
+        blether "    CONGRATULATIONS!"
+        blether "═══════════════════════════════════════════════════════════════"
+        blether ""
+        blether "Ye've found the GOLDEN HAGGIS!"
+        blether f"Ye completed the adventure in {turns} turns!"
+        blether "Yer clan will sing songs o' yer bravery fer generations!"
+        blether ""
+        blether "    🏴󠁧󠁢󠁳󠁣󠁴󠁿 LANG MAY YER LUM REEK! 🏴󠁧󠁢󠁳󠁣󠁴󠁿"
+        blether ""
+    } ither gin health <= 0 {
+        blether ""
+        blether "Och no! Ye've run oot o' health!"
+        blether "The mountain has claimed anither adventurer..."
+        blether "Better luck next time!"
+        blether ""
+    }
+}
+
+# Start the game!
+play_game()

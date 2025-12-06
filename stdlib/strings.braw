@@ -1,0 +1,340 @@
+# strings.braw - String utilities fer mdhavers
+# "Words are like tattie scones - better wi' a wee bit o' butter!"
+
+# ===============================================================
+# String Checking
+# ===============================================================
+
+# Check if string is empty or whitespace
+dae is_blank(s) {
+    gie len(wheesht(s)) == 0
+}
+
+# Check if string starts with prefix
+dae starts_wi(s, prefix) {
+    gin len(s) < len(prefix) {
+        gie nae
+    }
+    fer i in 0..len(prefix) {
+        gin s[i] != prefix[i] {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# Check if string ends with suffix
+dae ends_wi(s, suffix) {
+    gin len(s) < len(suffix) {
+        gie nae
+    }
+    ken start = len(s) - len(suffix)
+    fer i in 0..len(suffix) {
+        gin s[start + i] != suffix[i] {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# Check if string contains only digits
+dae is_digits(s) {
+    gin len(s) == 0 {
+        gie nae
+    }
+    ken digits = "0123456789"
+    fer c in s {
+        gin nae contains(digits, c) {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# Check if string contains only letters
+dae is_letters(s) {
+    gin len(s) == 0 {
+        gie nae
+    }
+    ken letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    fer c in s {
+        gin nae contains(letters, c) {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# Check if string is alphanumeric
+dae is_alnum(s) {
+    gin len(s) == 0 {
+        gie nae
+    }
+    ken allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    fer c in s {
+        gin nae contains(allowed, c) {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# ===============================================================
+# String Transformation
+# ===============================================================
+
+# Capitalize first letter
+dae capitalise(s) {
+    gin len(s) == 0 {
+        gie s
+    }
+    ken first = upper(s[0])
+    gin len(s) == 1 {
+        gie first
+    }
+    gie first + s[1:]
+}
+
+# Title case (capitalize each word)
+dae title_case(s) {
+    ken words = split(s, " ")
+    ken result = []
+    fer word in words {
+        shove(result, capitalise(word))
+    }
+    gie join(result, " ")
+}
+
+# Swap case (upper to lower, lower to upper)
+dae swap_case(s) {
+    ken result = ""
+    ken lowers = "abcdefghijklmnopqrstuvwxyz"
+    ken uppers = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    fer c in s {
+        gin contains(lowers, c) {
+            result = result + upper(c)
+        } ither gin contains(uppers, c) {
+            result = result + lower(c)
+        } ither {
+            result = result + c
+        }
+    }
+    gie result
+}
+
+# Repeat a string n times
+dae repeat_str(s, n) {
+    ken result = ""
+    fer i in 1..n+1 {
+        result = result + s
+    }
+    gie result
+}
+
+# Reverse a string
+dae reverse_str(s) {
+    ken chars = []
+    fer c in s {
+        shove(chars, c)
+    }
+    ken result = ""
+    ken i = len(chars) - 1
+    whiles i >= 0 {
+        result = result + chars[i]
+        i = i - 1
+    }
+    gie result
+}
+
+# ===============================================================
+# String Padding & Alignment
+# ===============================================================
+
+# Pad string on the left to reach width
+dae pad_left(s, width, char = " ") {
+    ken padding = width - len(s)
+    gin padding <= 0 {
+        gie s
+    }
+    gie repeat_str(char, padding) + s
+}
+
+# Pad string on the right to reach width
+dae pad_right(s, width, char = " ") {
+    ken padding = width - len(s)
+    gin padding <= 0 {
+        gie s
+    }
+    gie s + repeat_str(char, padding)
+}
+
+# Center string within width
+dae center(s, width, char = " ") {
+    ken total_padding = width - len(s)
+    gin total_padding <= 0 {
+        gie s
+    }
+    ken left_pad = total_padding / 2
+    ken right_pad = total_padding - left_pad
+    gie repeat_str(char, left_pad) + s + repeat_str(char, right_pad)
+}
+
+# ===============================================================
+# String Extraction
+# ===============================================================
+
+# Get substring (start inclusive, end exclusive)
+dae substring(s, start, finish) {
+    ken result = ""
+    ken i = start
+    whiles i < finish an i < len(s) {
+        result = result + s[i]
+        i = i + 1
+    }
+    gie result
+}
+
+# Find index of substring (-1 if not found)
+dae find_index(s, needle) {
+    gin len(needle) == 0 {
+        gie 0
+    }
+    gin len(needle) > len(s) {
+        gie -1
+    }
+    fer i in 0..len(s) - len(needle) + 1 {
+        ken match = aye
+        fer j in 0..len(needle) {
+            gin s[i + j] != needle[j] {
+                match = nae
+                brak
+            }
+        }
+        gin match {
+            gie i
+        }
+    }
+    gie -1
+}
+
+# Find all occurrences of substring
+dae find_all(s, needle) {
+    ken positions = []
+    ken i = 0
+    whiles i < len(s) {
+        ken pos = find_index(substring(s, i, len(s)), needle)
+        gin pos == -1 {
+            brak
+        }
+        shove(positions, i + pos)
+        i = i + pos + 1
+    }
+    gie positions
+}
+
+# Count occurrences of substring
+dae count_str(s, needle) {
+    gie len(find_all(s, needle))
+}
+
+# ===============================================================
+# String Replacement
+# ===============================================================
+
+# Replace first occurrence
+dae replace_first(s, old, new) {
+    ken pos = find_index(s, old)
+    gin pos == -1 {
+        gie s
+    }
+    gie substring(s, 0, pos) + new + substring(s, pos + len(old), len(s))
+}
+
+# Replace all occurrences
+dae replace_all(s, old, new) {
+    ken result = s
+    ken pos = find_index(result, old)
+    whiles pos != -1 {
+        result = substring(result, 0, pos) + new + substring(result, pos + len(old), len(result))
+        pos = find_index(result, old)
+    }
+    gie result
+}
+
+# Remove all occurrences
+dae remove_all(s, chars) {
+    ken result = ""
+    fer c in s {
+        gin nae contains(chars, c) {
+            result = result + c
+        }
+    }
+    gie result
+}
+
+# ===============================================================
+# Word Operations
+# ===============================================================
+
+# Count words in string
+dae word_count(s) {
+    ken words = split(wheesht(s), " ")
+    ken count = 0
+    fer w in words {
+        gin len(wheesht(w)) > 0 {
+            count = count + 1
+        }
+    }
+    gie count
+}
+
+# Get first n words
+dae first_words(s, n) {
+    ken words = split(wheesht(s), " ")
+    ken result = []
+    ken count = 0
+    fer w in words {
+        gin count >= n {
+            brak
+        }
+        gin len(wheesht(w)) > 0 {
+            shove(result, w)
+            count = count + 1
+        }
+    }
+    gie join(result, " ")
+}
+
+# Truncate string with ellipsis
+dae truncate(s, max_len, suffix = "...") {
+    gin len(s) <= max_len {
+        gie s
+    }
+    gie substring(s, 0, max_len - len(suffix)) + suffix
+}
+
+# ===============================================================
+# Scottish-Flavored Helpers
+# ===============================================================
+
+# Make text SHOUTY (uppercase with exclamation)
+dae shouty(s) {
+    gie upper(s) + "!"
+}
+
+# Make text wee (lowercase with ellipsis)
+dae wee_voice(s) {
+    gie "..." + lower(s) + "..."
+}
+
+# Add Scottish greeting
+dae add_greeting(s) {
+    gie "Haud on - " + s
+}
+
+# Add Scottish sign-off
+dae add_signoff(s) {
+    gie s + " - Cheerio!"
+}
+
+blether "Strings module loaded! Words are bonnie!"

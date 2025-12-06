@@ -1,0 +1,570 @@
+# time.braw - Date and Time Utilities fer mdhavers
+# "Time an' tide wait fer nae man!"
+#
+# This module provides date/time manipulation with Scottish flair.
+# Uses built-in noo(), tick(), braw_time(), snooze()
+
+# ============================================================
+# Time Constants
+# ============================================================
+
+ken MILLISECONDS_PER_SECOND = 1000
+ken SECONDS_PER_MINUTE = 60
+ken MINUTES_PER_HOUR = 60
+ken HOURS_PER_DAY = 24
+ken DAYS_PER_WEEK = 7
+ken MONTHS_PER_YEAR = 12
+
+ken SECONDS_PER_HOUR = 3600
+ken SECONDS_PER_DAY = 86400
+ken SECONDS_PER_WEEK = 604800
+
+ken MILLISECONDS_PER_MINUTE = 60000
+ken MILLISECONDS_PER_HOUR = 3600000
+ken MILLISECONDS_PER_DAY = 86400000
+
+# Scottish day names
+ken DAYS_SCOTS = ["Sünday", "Moanday", "Tysday", "Wensday", "Fuirsday", "Fryday", "Setterday"]
+ken DAYS_ENGLISH = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+
+# Scottish month names (similar tae English but we can add flair!)
+ken MONTHS_SCOTS = ["Januar", "Februar", "Mairch", "Apryle", "Mey", "Juin", "Julie", "August", "September", "October", "November", "December"]
+ken MONTHS_ENGLISH = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+
+# ============================================================
+# Basic Time Functions
+# ============================================================
+
+# Get current time in seconds
+dae timestamp() {
+    gie floor(noo() / 1000)
+}
+
+# Get current time in milliseconds (alias fer clarity)
+dae timestamp_ms() {
+    gie noo()
+}
+
+# Get raw seconds timestamp (fer internal use)
+dae secs_noo() {
+    gie floor(noo() / 1000)
+}
+
+# Wait fer a number of seconds
+dae wait(seconds) {
+    snooze(seconds * 1000)
+}
+
+# Wait fer a number of milliseconds
+dae wait_ms(ms) {
+    snooze(ms)
+}
+
+# ============================================================
+# Time Conversion
+# ============================================================
+
+# Convert seconds to minutes
+dae seconds_tae_minutes(secs) {
+    gie secs / 60
+}
+
+# Convert minutes to seconds
+dae minutes_tae_seconds(mins) {
+    gie mins * 60
+}
+
+# Convert seconds to hours
+dae seconds_tae_hours(secs) {
+    gie secs / 3600
+}
+
+# Convert hours to seconds
+dae hours_tae_seconds(hrs) {
+    gie hrs * 3600
+}
+
+# Convert seconds to days
+dae seconds_tae_days(secs) {
+    gie secs / 86400
+}
+
+# Convert days to seconds
+dae days_tae_seconds(days) {
+    gie days * 86400
+}
+
+# ============================================================
+# Duration Formatting
+# ============================================================
+
+# Format a duration in seconds to human-readable string
+dae format_duration(total_secs) {
+    ken secs = floor(total_secs)
+    ken days = floor(secs / 86400)
+    secs = secs % 86400
+    ken hours = floor(secs / 3600)
+    secs = secs % 3600
+    ken mins = floor(secs / 60)
+    secs = secs % 60
+
+    ken parts = []
+    gin days > 0 {
+        gin days == 1 {
+            shove(parts, "1 day")
+        } ither {
+            shove(parts, f"{days} days")
+        }
+    }
+    gin hours > 0 {
+        gin hours == 1 {
+            shove(parts, "1 hour")
+        } ither {
+            shove(parts, f"{hours} hours")
+        }
+    }
+    gin mins > 0 {
+        gin mins == 1 {
+            shove(parts, "1 minute")
+        } ither {
+            shove(parts, f"{mins} minutes")
+        }
+    }
+    gin secs > 0 or len(parts) == 0 {
+        gin secs == 1 {
+            shove(parts, "1 second")
+        } ither {
+            shove(parts, f"{secs} seconds")
+        }
+    }
+
+    gie join(parts, ", ")
+}
+
+# Format duration in Scottish style
+dae format_duration_scots(total_secs) {
+    ken secs = floor(total_secs)
+    ken days = floor(secs / 86400)
+    secs = secs % 86400
+    ken hours = floor(secs / 3600)
+    secs = secs % 3600
+    ken mins = floor(secs / 60)
+    secs = secs % 60
+
+    ken parts = []
+    gin days > 0 {
+        gin days == 1 {
+            shove(parts, "1 day")
+        } ither {
+            shove(parts, f"{days} days")
+        }
+    }
+    gin hours > 0 {
+        gin hours == 1 {
+            shove(parts, "an oor")
+        } ither {
+            shove(parts, f"{hours} oors")
+        }
+    }
+    gin mins > 0 {
+        gin mins == 1 {
+            shove(parts, "a meenit")
+        } ither {
+            shove(parts, f"{mins} meenits")
+        }
+    }
+    gin secs > 0 or len(parts) == 0 {
+        gin secs == 1 {
+            shove(parts, "a second")
+        } ither {
+            shove(parts, f"{secs} seconds")
+        }
+    }
+
+    gie join(parts, ", ")
+}
+
+# Format duration in compact form (1d 2h 3m 4s)
+dae format_duration_compact(total_secs) {
+    ken secs = floor(total_secs)
+    ken days = floor(secs / 86400)
+    secs = secs % 86400
+    ken hours = floor(secs / 3600)
+    secs = secs % 3600
+    ken mins = floor(secs / 60)
+    secs = secs % 60
+
+    ken parts = []
+    gin days > 0 { shove(parts, f"{days}d") }
+    gin hours > 0 { shove(parts, f"{hours}h") }
+    gin mins > 0 { shove(parts, f"{mins}m") }
+    gin secs > 0 or len(parts) == 0 { shove(parts, f"{secs}s") }
+
+    gie join(parts, " ")
+}
+
+# ============================================================
+# Stopwatch / Timer
+# ============================================================
+
+kin Stopwatch {
+    dae init() {
+        masel.start_time = 0
+        masel.elapsed = 0
+        masel.running = nae
+    }
+
+    dae start() {
+        gin nae masel.running {
+            masel.start_time = noo()
+            masel.running = aye
+        }
+        gie masel
+    }
+
+    dae stop() {
+        gin masel.running {
+            masel.elapsed = masel.elapsed + (noo() - masel.start_time)
+            masel.running = nae
+        }
+        gie masel
+    }
+
+    dae reset() {
+        masel.start_time = 0
+        masel.elapsed = 0
+        masel.running = nae
+        gie masel
+    }
+
+    dae restart() {
+        masel.elapsed = 0
+        masel.start_time = noo()
+        masel.running = aye
+        gie masel
+    }
+
+    dae elapsed_ms() {
+        gin masel.running {
+            gie masel.elapsed + (noo() - masel.start_time)
+        }
+        gie masel.elapsed
+    }
+
+    dae elapsed_seconds() {
+        gie masel.elapsed_ms() / 1000.0
+    }
+
+    dae is_running() {
+        gie masel.running
+    }
+
+    dae tae_string() {
+        ken ms = masel.elapsed_ms()
+        gie format_duration(ms / 1000)
+    }
+}
+
+dae stopwatch() {
+    gie Stopwatch()
+}
+
+# ============================================================
+# Timer (countdown)
+# ============================================================
+
+kin Timer {
+    dae init(duration_secs) {
+        masel.duration = duration_secs * 1000
+        masel.start_time = 0
+        masel.running = nae
+    }
+
+    dae start() {
+        gin nae masel.running {
+            masel.start_time = noo()
+            masel.running = aye
+        }
+        gie masel
+    }
+
+    dae remaining_ms() {
+        gin nae masel.running {
+            gie masel.duration
+        }
+        ken elapsed = noo() - masel.start_time
+        ken remaining = masel.duration - elapsed
+        gin remaining < 0 {
+            gie 0
+        }
+        gie remaining
+    }
+
+    dae remaining_seconds() {
+        gie masel.remaining_ms() / 1000.0
+    }
+
+    dae is_finished() {
+        gie masel.remaining_ms() <= 0
+    }
+
+    dae is_running() {
+        gie masel.running an nae masel.is_finished()
+    }
+
+    dae reset() {
+        masel.start_time = 0
+        masel.running = nae
+        gie masel
+    }
+
+    dae tae_string() {
+        ken secs = floor(masel.remaining_seconds())
+        gie format_duration(secs)
+    }
+}
+
+dae timer(seconds) {
+    gie Timer(seconds)
+}
+
+# ============================================================
+# Time of Day Functions
+# ============================================================
+
+# Get hours (0-23) from timestamp
+dae get_hour(timestamp_secs) {
+    gie floor((timestamp_secs % 86400) / 3600)
+}
+
+# Get minutes (0-59) from timestamp
+dae get_minute(timestamp_secs) {
+    gie floor((timestamp_secs % 3600) / 60)
+}
+
+# Get seconds (0-59) from timestamp
+dae get_second(timestamp_secs) {
+    gie floor(timestamp_secs % 60)
+}
+
+# Get current hour
+dae current_hour() {
+    gie get_hour(secs_noo())
+}
+
+# Get current minute
+dae current_minute() {
+    gie get_minute(secs_noo())
+}
+
+# Get current second
+dae current_second() {
+    gie get_second(secs_noo())
+}
+
+# ============================================================
+# Time Period Checks
+# ============================================================
+
+# Check if it's morning (6am - 11:59am)
+dae is_mornin() {
+    ken h = current_hour()
+    gie h >= 6 an h < 12
+}
+
+# Check if it's afternoon (12pm - 5:59pm)
+dae is_efternoon() {
+    ken h = current_hour()
+    gie h >= 12 an h < 18
+}
+
+# Check if it's evening (6pm - 9:59pm)
+dae is_evenin() {
+    ken h = current_hour()
+    gie h >= 18 an h < 22
+}
+
+# Check if it's night (10pm - 5:59am)
+dae is_nicht() {
+    ken h = current_hour()
+    gie h >= 22 or h < 6
+}
+
+# Check if it's the "wee small hours" (midnight to 5am)
+dae is_wee_small_hours() {
+    ken h = current_hour()
+    gie h >= 0 an h < 6
+}
+
+# Get time of day as Scottish string
+dae time_o_day() {
+    ken h = current_hour()
+    gin h >= 0 an h < 6 {
+        gie "the wee small hours"
+    } ither gin h >= 6 an h < 12 {
+        gie "the mornin'"
+    } ither gin h == 12 {
+        gie "high noon"
+    } ither gin h >= 13 an h < 18 {
+        gie "the efternoon"
+    } ither gin h >= 18 an h < 22 {
+        gie "the evenin'"
+    } ither {
+        gie "late nicht"
+    }
+}
+
+# ============================================================
+# Scottish Time Expressions
+# ============================================================
+
+# Get a Scottish greeting based on time of day
+dae time_greetin() {
+    ken h = current_hour()
+    gin h >= 0 an h < 6 {
+        gie "Ye're up late! Or is it early?"
+    } ither gin h >= 6 an h < 12 {
+        gie "Guid mornin' tae ye!"
+    } ither gin h >= 12 an h < 13 {
+        gie "Time fer yer denner!"
+    } ither gin h >= 13 an h < 18 {
+        gie "Guid efternoon!"
+    } ither gin h >= 18 an h < 22 {
+        gie "Guid evenin' tae ye!"
+    } ither {
+        gie "Guid nicht! Time fer bed soon?"
+    }
+}
+
+# Format time in 12-hour format with Scottish AM/PM
+dae format_12_hour(timestamp_secs) {
+    ken h = get_hour(timestamp_secs)
+    ken m = get_minute(timestamp_secs)
+
+    ken period = gin h < 12 than "in the mornin'" ither "in the efternoon"
+    ken hour_12 = h % 12
+    gin hour_12 == 0 { hour_12 = 12 }
+
+    ken m_str = gin m < 10 than f"0{m}" ither tae_string(m)
+    gie f"{hour_12}:{m_str} {period}"
+}
+
+# Format time in 24-hour format
+dae format_24_hour(timestamp_secs) {
+    ken h = get_hour(timestamp_secs)
+    ken m = get_minute(timestamp_secs)
+    ken s = get_second(timestamp_secs)
+
+    ken h_str = gin h < 10 than f"0{h}" ither tae_string(h)
+    ken m_str = gin m < 10 than f"0{m}" ither tae_string(m)
+    ken s_str = gin s < 10 than f"0{s}" ither tae_string(s)
+
+    gie f"{h_str}:{m_str}:{s_str}"
+}
+
+# ============================================================
+# Timing Functions
+# ============================================================
+
+# Time how long a function takes to run (returns [result, milliseconds])
+dae time_it(func) {
+    ken start = noo()
+    ken result = func()
+    ken finish = noo()
+    gie {"result": result, "ms": finish - start}
+}
+
+# Run a function and print how long it took
+dae time_an_tell(name, func) {
+    ken start = noo()
+    ken result = func()
+    ken duration = noo() - start
+    blether f"  {name}: {duration}ms"
+    gie result
+}
+
+# Simple benchmark - run function n times and report average
+dae benchmark(name, func, iterations) {
+    ken total = 0
+    fer i in 1..iterations+1 {
+        ken start = noo()
+        func()
+        total = total + (noo() - start)
+    }
+    ken avg = total / iterations
+    blether f"Benchmark '{name}': {iterations} runs, average {avg}ms"
+    gie avg
+}
+
+# ============================================================
+# Countdown Display
+# ============================================================
+
+# Display a countdown (blocking)
+dae countdown(seconds, message = "Starting in") {
+    fer i in 0..seconds {
+        ken remaining = seconds - i
+        blether f"{message} {remaining}..."
+        wait(1)
+    }
+    blether "Go!"
+}
+
+# Display a countdown with Scottish flair
+dae scottish_countdown(seconds) {
+    ken scots_numbers = ["zero", "ane", "twa", "three", "fower", "five", "sax", "seeven", "echt", "nine", "ten"]
+
+    fer i in 0..seconds {
+        ken remaining = seconds - i
+        ken num_str = gin remaining <= 10 than scots_numbers[remaining] ither tae_string(remaining)
+        blether f"  {num_str}..."
+        wait(1)
+    }
+    blether "  AWA' WI' YE!"
+}
+
+# ============================================================
+# Approximate Time Ago
+# ============================================================
+
+# Format a timestamp as "X time ago"
+dae time_ago(past_timestamp) {
+    ken now = secs_noo()
+    ken diff = now - past_timestamp
+
+    gin diff < 60 {
+        gie "just noo"
+    } ither gin diff < 3600 {
+        ken mins = floor(diff / 60)
+        gin mins == 1 {
+            gie "a meenit ago"
+        }
+        gie f"{mins} meenits ago"
+    } ither gin diff < 86400 {
+        ken hours = floor(diff / 3600)
+        gin hours == 1 {
+            gie "an oor ago"
+        }
+        gie f"{hours} oors ago"
+    } ither gin diff < 604800 {
+        ken days = floor(diff / 86400)
+        gin days == 1 {
+            gie "yesterday"
+        }
+        gie f"{days} days ago"
+    } ither gin diff < 2592000 {
+        ken weeks = floor(diff / 604800)
+        gin weeks == 1 {
+            gie "a week ago"
+        }
+        gie f"{weeks} weeks ago"
+    } ither {
+        ken months = floor(diff / 2592000)
+        gin months == 1 {
+            gie "a month ago"
+        }
+        gie f"{months} months ago"
+    }
+}
+
+blether "Time module loaded! Time an' tide wait fer nae man!"

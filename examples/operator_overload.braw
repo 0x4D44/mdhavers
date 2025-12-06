@@ -1,0 +1,212 @@
+# operator_overload.braw - Demonstrating operator overloading in mdhavers
+# Ye can define special methods tae customise how operators work wi' yer classes!
+
+blether "═══════════════════════════════════════════════════"
+blether "  mdhavers Operator Overloading Demo"
+blether "═══════════════════════════════════════════════════"
+blether ""
+
+# A Vector class wi' operator overloading
+kin Vector {
+    dae init(x, y) {
+        masel.x = x
+        masel.y = y
+    }
+
+    # Pit thegither - add twa vectors
+    dae __pit_thegither__(that) {
+        gie Vector(masel.x + that.x, masel.y + that.y)
+    }
+
+    # Tak awa - subtract a vector
+    dae __tak_awa__(that) {
+        gie Vector(masel.x - that.x, masel.y - that.y)
+    }
+
+    # Times - scalar multiplication
+    dae __times__(scalar) {
+        gie Vector(masel.x * scalar, masel.y * scalar)
+    }
+
+    # Check if same as anither vector
+    dae __same_as__(that) {
+        gie masel.x == that.x an masel.y == that.y
+    }
+
+    # String representation
+    dae tae_str() {
+        gie f"Vector({masel.x}, {masel.y})"
+    }
+
+    # Calculate magnitude
+    dae magnitude() {
+        gie sqrt(masel.x * masel.x + masel.y * masel.y)
+    }
+}
+
+blether "=== Vector Arithmetic ==="
+blether ""
+
+ken v1 = Vector(3, 4)
+ken v2 = Vector(1, 2)
+
+blether f"v1 = {v1.tae_str()}"
+blether f"v2 = {v2.tae_str()}"
+blether ""
+
+# Addition using + operator
+ken v3 = v1 + v2
+blether f"v1 + v2 = {v3.tae_str()}"
+
+# Subtraction using - operator
+ken v4 = v1 - v2
+blether f"v1 - v2 = {v4.tae_str()}"
+
+# Scalar multiplication
+ken v5 = v1 * 2
+blether f"v1 * 2 = {v5.tae_str()}"
+blether ""
+
+# Equality check
+blether f"v1 == v2: {v1 == v2}"
+ken v1_copy = Vector(3, 4)
+blether f"v1 == Vector(3,4): {v1 == v1_copy}"
+blether ""
+
+blether f"Magnitude o' v1: {v1.magnitude()}"
+blether ""
+
+# A Complex number class
+blether "=== Complex Numbers ==="
+blether ""
+
+kin Complex {
+    dae init(real, imag) {
+        masel.real = real
+        masel.imag = imag
+    }
+
+    dae __pit_thegither__(that) {
+        gie Complex(masel.real + that.real, masel.imag + that.imag)
+    }
+
+    dae __tak_awa__(that) {
+        gie Complex(masel.real - that.real, masel.imag - that.imag)
+    }
+
+    dae __times__(that) {
+        # (a + bi)(c + di) = (ac - bd) + (ad + bc)i
+        ken a = masel.real
+        ken b = masel.imag
+        ken c = that.real
+        ken d = that.imag
+        gie Complex(a*c - b*d, a*d + b*c)
+    }
+
+    dae tae_str() {
+        gin masel.imag >= 0 {
+            gie f"{masel.real} + {masel.imag}i"
+        }
+        gie f"{masel.real} - {0 - masel.imag}i"
+    }
+
+    dae conjugate() {
+        gie Complex(masel.real, 0 - masel.imag)
+    }
+}
+
+ken c1 = Complex(3, 2)
+ken c2 = Complex(1, 4)
+
+blether f"c1 = {c1.tae_str()}"
+blether f"c2 = {c2.tae_str()}"
+blether ""
+
+ken c3 = c1 + c2
+blether f"c1 + c2 = {c3.tae_str()}"
+
+ken c4 = c1 - c2
+blether f"c1 - c2 = {c4.tae_str()}"
+
+ken c5 = c1 * c2
+blether f"c1 * c2 = {c5.tae_str()}"
+
+blether f"Conjugate o' c1: {c1.conjugate().tae_str()}"
+blether ""
+
+# A Money class fer demonstrating real-world use
+blether "=== Money Arithmetic ==="
+blether ""
+
+kin Money {
+    dae init(pounds, pence) {
+        masel.pounds = pounds
+        masel.pence = pence
+        masel.normalise()
+    }
+
+    dae normalise() {
+        # Make sure pence is always 0-99
+        ken extra_pounds = floor(masel.pence / 100)
+        masel.pounds = masel.pounds + extra_pounds
+        masel.pence = masel.pence % 100
+    }
+
+    dae __pit_thegither__(that) {
+        gie Money(masel.pounds + that.pounds, masel.pence + that.pence)
+    }
+
+    dae __tak_awa__(that) {
+        ken total_pence = (masel.pounds * 100 + masel.pence) - (that.pounds * 100 + that.pence)
+        gie Money(floor(total_pence / 100), total_pence % 100)
+    }
+
+    dae __times__(multiplier) {
+        ken total_pence = (masel.pounds * 100 + masel.pence) * multiplier
+        gie Money(floor(total_pence / 100), total_pence % 100)
+    }
+
+    dae __muckle_er__(that) {
+        ken masel_pence = masel.pounds * 100 + masel.pence
+        ken that_pence = that.pounds * 100 + that.pence
+        gie masel_pence > that_pence
+    }
+
+    dae __wee_er__(that) {
+        ken masel_pence = masel.pounds * 100 + masel.pence
+        ken that_pence = that.pounds * 100 + that.pence
+        gie masel_pence < that_pence
+    }
+
+    dae tae_str() {
+        ken p = masel.pence
+        gin p < 10 {
+            gie f"£{masel.pounds}.0{p}"
+        }
+        gie f"£{masel.pounds}.{p}"
+    }
+}
+
+ken price1 = Money(5, 99)
+ken price2 = Money(3, 50)
+
+blether f"Price 1: {price1.tae_str()}"
+blether f"Price 2: {price2.tae_str()}"
+blether ""
+
+ken total = price1 + price2
+blether f"Total: {total.tae_str()}"
+
+ken difference = price1 - price2
+blether f"Difference: {difference.tae_str()}"
+
+ken doubled = price1 * 2
+blether f"Price 1 doubled: {doubled.tae_str()}"
+
+blether f"price1 > price2: {price1 > price2}"
+blether f"price1 < price2: {price1 < price2}"
+blether ""
+
+blether "═══════════════════════════════════════════════════"
+blether "  Operator Overloading Demo Complete!"
+blether "═══════════════════════════════════════════════════"

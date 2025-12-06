@@ -1,0 +1,392 @@
+# patterns_match.braw - Pattern matching utilities fer mdhavers
+# "Findin' needles in haystacks!"
+#
+# This module provides wildcard and pattern matching utilities
+
+# ===============================================================
+# Wildcard Pattern Matching
+# ===============================================================
+
+# Match a string against a glob-style pattern
+# Supports: * (any chars), ? (single char)
+dae glob_match(pattern, text) {
+    ken p_len = len(pattern)
+    ken t_len = len(text)
+    ken p_idx = 0
+    ken t_idx = 0
+    ken star_idx = -1
+    ken match_idx = 0
+
+    whiles t_idx < t_len {
+        gin p_idx < p_len an (char_at(pattern, p_idx) == char_at(text, t_idx) or char_at(pattern, p_idx) == "?") {
+            p_idx = p_idx + 1
+            t_idx = t_idx + 1
+        } ither gin p_idx < p_len an char_at(pattern, p_idx) == "*" {
+            star_idx = p_idx
+            match_idx = t_idx
+            p_idx = p_idx + 1
+        } ither gin star_idx >= 0 {
+            p_idx = star_idx + 1
+            match_idx = match_idx + 1
+            t_idx = match_idx
+        } ither {
+            gie nae
+        }
+    }
+
+    whiles p_idx < p_len an char_at(pattern, p_idx) == "*" {
+        p_idx = p_idx + 1
+    }
+
+    gie p_idx == p_len
+}
+
+# Simple wildcard test - just checks if pattern appears anywhere
+dae contains_pattern(text, pattern) {
+    # If pattern has no wildcards, just use contains
+    gin index_of(pattern, "*") < 0 an index_of(pattern, "?") < 0 {
+        gie index_of(text, pattern) >= 0
+    }
+
+    # Try matching pattern at each position
+    fer i in 0..len(text) {
+        ken substr = scran(text, i, len(text))
+        gin glob_match(pattern, substr) {
+            gie aye
+        }
+    }
+    gie nae
+}
+
+# ===============================================================
+# Pattern Object
+# ===============================================================
+
+kin Pattern {
+    dae init(pattern) {
+        masel.pattern = pattern
+        masel.flags = {}
+    }
+
+    # Enable case-insensitive matching
+    dae ignore_case() {
+        masel.flags["ignore_case"] = aye
+        gie masel
+    }
+
+    # Test if text matches pattern
+    dae test(text) {
+        ken t = text
+        ken p = masel.pattern
+        gin contains(masel.flags, "ignore_case") an masel.flags["ignore_case"] {
+            t = lower(t)
+            p = lower(p)
+        }
+        gie glob_match(p, t)
+    }
+
+    # Find all matches in text
+    dae find_all(text) {
+        ken results = []
+        ken words_list = words(text)
+        fer word in words_list {
+            gin masel.test(word) {
+                shove(results, word)
+            }
+        }
+        gie results
+    }
+
+    # Replace matches with replacement
+    dae replace_matches(text, replacement) {
+        ken words_list = words(text)
+        ken result = []
+        fer word in words_list {
+            gin masel.test(word) {
+                shove(result, replacement)
+            } ither {
+                shove(result, word)
+            }
+        }
+        gie join(result, " ")
+    }
+}
+
+# ===============================================================
+# String Search Functions
+# ===============================================================
+
+# Find all occurrences of a substring
+dae find_all_occurrences(text, search) {
+    ken results = []
+    ken pos = 0
+    ken search_len = len(search)
+
+    whiles pos < len(text) {
+        ken idx = index_of(scran(text, pos, len(text)), search)
+        gin idx >= 0 {
+            shove(results, pos + idx)
+            pos = pos + idx + search_len
+        } ither {
+            brak
+        }
+    }
+    gie results
+}
+
+# Count occurrences of substring
+dae count_occurrences(text, search) {
+    gie len(find_all_occurrences(text, search))
+}
+
+# ===============================================================
+# Word Pattern Matching
+# ===============================================================
+
+# Match word against list of patterns (any match returns true)
+dae match_any(text, patterns) {
+    fer pattern in patterns {
+        gin glob_match(pattern, text) {
+            gie aye
+        }
+    }
+    gie nae
+}
+
+# Match word against all patterns (all must match)
+dae match_all(text, patterns) {
+    fer pattern in patterns {
+        gin nae glob_match(pattern, text) {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# ===============================================================
+# Filter Functions
+# ===============================================================
+
+# Filter list by pattern
+dae filter_by_pattern(list, pattern) {
+    ken results = []
+    fer item in list {
+        gin glob_match(pattern, tae_string(item)) {
+            shove(results, item)
+        }
+    }
+    gie results
+}
+
+# Exclude items matching pattern
+dae exclude_by_pattern(list, pattern) {
+    ken results = []
+    fer item in list {
+        gin nae glob_match(pattern, tae_string(item)) {
+            shove(results, item)
+        }
+    }
+    gie results
+}
+
+# ===============================================================
+# String Extraction
+# ===============================================================
+
+# Extract text between two delimiters
+dae extract_between(text, start_delim, end_delim) {
+    ken start_idx = index_of(text, start_delim)
+    gin start_idx < 0 {
+        gie naething
+    }
+
+    ken after_start = start_idx + len(start_delim)
+    ken end_idx = index_of(scran(text, after_start, len(text)), end_delim)
+    gin end_idx < 0 {
+        gie naething
+    }
+
+    gie scran(text, after_start, after_start + end_idx)
+}
+
+# Extract all occurrences between delimiters
+dae extract_all_between(text, start_delim, end_delim) {
+    ken results = []
+    ken remaining = text
+
+    whiles len(remaining) > 0 {
+        ken extracted = extract_between(remaining, start_delim, end_delim)
+        gin extracted == naething {
+            brak
+        }
+        shove(results, extracted)
+
+        ken start_idx = index_of(remaining, start_delim)
+        ken end_idx = index_of(remaining, end_delim)
+        gin end_idx < 0 {
+            brak
+        }
+        remaining = scran(remaining, end_idx + len(end_delim), len(remaining))
+    }
+    gie results
+}
+
+# ===============================================================
+# Simple Template/Placeholder
+# ===============================================================
+
+kin Template {
+    dae init(template_str) {
+        masel.template = template_str
+        masel.placeholder_start = "{{"
+        masel.placeholder_end = "}}"
+    }
+
+    # Set custom placeholder delimiters
+    dae with_delimiters(start, end) {
+        masel.placeholder_start = start
+        masel.placeholder_end = end
+        gie masel
+    }
+
+    # Render template with values
+    dae render(values) {
+        ken result = masel.template
+
+        fer key in keys(values) {
+            ken placeholder = masel.placeholder_start + key + masel.placeholder_end
+            result = replace(result, placeholder, tae_string(values[key]))
+        }
+
+        gie result
+    }
+
+    # Get list of placeholders in template
+    dae placeholders() {
+        gie extract_all_between(masel.template, masel.placeholder_start, masel.placeholder_end)
+    }
+}
+
+# ===============================================================
+# Word Boundaries
+# ===============================================================
+
+# Check if text starts with word (with word boundary)
+dae starts_with_word(text, word) {
+    gin nae starts_wi(text, word) {
+        gie nae
+    }
+    gin len(text) == len(word) {
+        gie aye
+    }
+    ken next_char = char_at(text, len(word))
+    gie is_space(next_char) or next_char == "." or next_char == "," or next_char == "!" or next_char == "?"
+}
+
+# Check if text ends with word (with word boundary)
+dae ends_with_word(text, word) {
+    gin nae ends_wi(text, word) {
+        gie nae
+    }
+    gin len(text) == len(word) {
+        gie aye
+    }
+    ken prev_idx = len(text) - len(word) - 1
+    gin prev_idx < 0 {
+        gie aye
+    }
+    ken prev_char = char_at(text, prev_idx)
+    gie is_space(prev_char) or prev_char == "." or prev_char == "," or prev_char == "!" or prev_char == "?"
+}
+
+# Check if word appears as whole word in text
+dae contains_word(text, word) {
+    ken word_list = words(text)
+    gie contains(word_list, word)
+}
+
+# ===============================================================
+# Tokenizer
+# ===============================================================
+
+kin Tokenizer {
+    dae init() {
+        masel.separators = [" ", "\t", "\n"]
+        masel.keep_separators = nae
+    }
+
+    # Add separator
+    dae add_separator(sep) {
+        shove(masel.separators, sep)
+        gie masel
+    }
+
+    # Set separators
+    dae set_separators(seps) {
+        masel.separators = seps
+        gie masel
+    }
+
+    # Keep separators in output
+    dae keep() {
+        masel.keep_separators = aye
+        gie masel
+    }
+
+    # Tokenize text
+    dae tokenize(text) {
+        ken tokens = []
+        ken current = ""
+
+        fer i in 0..len(text) {
+            ken ch = char_at(text, i)
+            ken is_sep = contains(masel.separators, ch)
+
+            gin is_sep {
+                gin len(current) > 0 {
+                    shove(tokens, current)
+                    current = ""
+                }
+                gin masel.keep_separators {
+                    shove(tokens, ch)
+                }
+            } ither {
+                current = current + ch
+            }
+        }
+
+        gin len(current) > 0 {
+            shove(tokens, current)
+        }
+
+        gie tokens
+    }
+}
+
+# ===============================================================
+# Convenience Functions
+# ===============================================================
+
+dae make_pattern(pattern_str) {
+    gie Pattern(pattern_str)
+}
+
+dae make_template(template_str) {
+    gie Template(template_str)
+}
+
+dae make_tokenizer() {
+    gie Tokenizer()
+}
+
+# Quick pattern test
+dae matches(text, pattern) {
+    gie glob_match(pattern, text)
+}
+
+# Quick wildcard filter
+dae wildcard_filter(items, pattern) {
+    gie filter_by_pattern(items, pattern)
+}
+
+blether "Patterns module loaded! Ready tae find whit ye're lookin' fer!"

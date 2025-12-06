@@ -1,0 +1,252 @@
+# quiz.braw - Quiz an' Trivia Framework fer mdhavers
+# "Test yer knowledge, Scottish style!"
+
+# ============================================================
+# Quiz Data Structures
+# ============================================================
+
+# Create a question
+dae question(text, options, correct_idx, explanation) {
+    gie {"text": text, "options": options, "correct": correct_idx, "explanation": explanation, "type": "mc"}
+}
+
+# Create a true/false question
+dae tf_question(text, answer, explanation) {
+    ken correct = gin answer than 0 ither 1
+    gie {"text": text, "options": ["True", "False"], "correct": correct, "explanation": explanation, "type": "tf"}
+}
+
+# Create a quiz
+dae quiz(title, description) {
+    gie {"title": title, "description": description, "questions": [], "score": 0, "answered": []}
+}
+
+# Add question to quiz
+dae add_question(q, qn) {
+    shove(q["questions"], qn)
+    gie q
+}
+
+# ============================================================
+# Display Functions
+# ============================================================
+
+dae chr(code) {
+    ken letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    gin code >= 65 an code < 91 { gie letters[code - 65] }
+    gie "?"
+}
+
+dae display_question(q, idx) {
+    ken qn = q["questions"][idx]
+    ken total = len(q["questions"])
+
+    blether f"Question {idx + 1} of {total}: {qn[\"text\"]}"
+    fer i in 0..len(qn["options"]) {
+        blether f"  {chr(65 + i)}) {qn[\"options\"][i]}"
+    }
+    blether ""
+}
+
+dae demo_quiz(q) {
+    blether ""
+    blether f"=== {q[\"title\"]} ==="
+    blether f"    {q[\"description\"]}"
+    blether ""
+
+    fer i in 0..len(q["questions"]) {
+        ken qn = q["questions"][i]
+        blether f"Q{i + 1}: {qn[\"text\"]}"
+        fer j in 0..len(qn["options"]) {
+            ken mark = gin j == qn["correct"] than " [CORRECT]" ither ""
+            blether f"    {chr(65 + j)}) {qn[\"options\"][j]}{mark}"
+        }
+        gin len(qn["explanation"]) > 0 {
+            blether f"    Info: {qn[\"explanation\"]}"
+        }
+        blether ""
+    }
+}
+
+# ============================================================
+# Scottish Geography Questions
+# ============================================================
+
+dae scots_geography_questions() {
+    ken qs = []
+
+    ken q1 = question("Whit is the capital o' Scotland?", ["Glasgow", "Edinburgh", "Aberdeen", "Dundee"], 1, "Edinburgh has been capital since the 15th century.")
+    shove(qs, q1)
+
+    ken q2 = question("Whit is Scotland's highest mountain?", ["Ben Nevis", "Ben Macdui", "Cairn Gorm", "Ben Lomond"], 0, "Ben Nevis is 1,345m tall.")
+    shove(qs, q2)
+
+    ken q3 = question("Which loch has a famous monster?", ["Loch Lomond", "Loch Ness", "Loch Katrine", "Loch Tay"], 1, "Nessie lives in Loch Ness!")
+    shove(qs, q3)
+
+    ken q4 = question("Whit river flows through Glasgow?", ["River Tay", "River Clyde", "River Forth", "River Dee"], 1, "The Clyde was vital fer shipbuilding.")
+    shove(qs, q4)
+
+    ken q5 = question("Which islands lie west o' Scotland?", ["Orkney", "Shetland", "Hebrides", "Arran"], 2, "The Hebrides include Lewis and Skye.")
+    shove(qs, q5)
+
+    gie qs
+}
+
+# ============================================================
+# Scottish History Questions
+# ============================================================
+
+dae scots_history_questions() {
+    ken qs = []
+
+    ken q1 = question("When did Scotland join England?", ["1603", "1707", "1745", "1314"], 1, "The Acts o' Union passed in 1707.")
+    shove(qs, q1)
+
+    ken q2 = question("Wha won at Bannockburn?", ["Wallace", "Robert the Bruce", "Prince Charlie", "James VI"], 1, "Bruce defeated England in 1314.")
+    shove(qs, q2)
+
+    ken q3 = question("Wha was executed in 1305?", ["Robert the Bruce", "William Wallace", "Rob Roy", "Macbeth"], 1, "Wallace was betrayed and executed.")
+    shove(qs, q3)
+
+    ken q4 = tf_question("Mary Queen of Scots died in 1587.", aye, "Executed at Fotheringhay Castle.")
+    shove(qs, q4)
+
+    ken q5 = question("Whit happened in 1745?", ["Glorious Revolution", "Jacobite Rising", "Covenanter Rebellion", "Clearances"], 1, "Bonnie Prince Charlie led the '45.")
+    shove(qs, q5)
+
+    gie qs
+}
+
+# ============================================================
+# Scottish Culture Questions
+# ============================================================
+
+dae scots_culture_questions() {
+    ken qs = []
+
+    ken q1 = question("Whit's haggis made frae?", ["Black pudding", "Sheep organs", "Fish", "Oats"], 1, "Haggis: sheep organs, oats, spices!")
+    shove(qs, q1)
+
+    ken q2 = question("Whit's Scots fer 'church'?", ["Hoose", "Kirk", "Brae", "Ben"], 1, "Kirk comes frae Old Norse.")
+    shove(qs, q2)
+
+    ken q3 = question("Scotland's national instrument?", ["Fiddle", "Accordion", "Bagpipes", "Clarsach"], 2, "The Great Highland Bagpipe!")
+    shove(qs, q3)
+
+    ken q4 = question("Whit's on January 25th?", ["Hogmanay", "Burns Night", "St Andrew's Day", "Games"], 1, "We celebrate Robert Burns!")
+    shove(qs, q4)
+
+    ken q5 = question("Whit's 'uisge beatha' mean?", ["Slàinte", "Water of life", "Cèilidh", "Alba"], 1, "It became 'whisky' in English!")
+    shove(qs, q5)
+
+    gie qs
+}
+
+# ============================================================
+# Scots Language Questions
+# ============================================================
+
+dae scots_language_questions() {
+    ken qs = []
+
+    ken q1 = question("Whit does 'braw' mean?", ["Bad", "Good/Fine", "Cold", "Hungry"], 1, "Braw means fine or excellent!")
+    shove(qs, q1)
+
+    ken q2 = question("Whit is a 'bairn'?", ["Barn", "Child", "Bear", "Bird"], 1, "Bairn means child.")
+    shove(qs, q2)
+
+    ken q3 = question("'Dinnae fash yersel' means?", ["Don't forget", "Don't worry", "Don't be late", "Don't eat"], 1, "It means don't worry!")
+    shove(qs, q3)
+
+    ken q4 = question("Scots word fer 'know'?", ["Noo", "Ken", "Gie", "Hae"], 1, "'Dae ye ken?' = 'Do you know?'")
+    shove(qs, q4)
+
+    ken q5 = question("Whit does 'hoose' mean?", ["Horse", "House", "Hose", "Goose"], 1, "Hoose = house in Scots.")
+    shove(qs, q5)
+
+    gie qs
+}
+
+# ============================================================
+# Pre-built Quizzes
+# ============================================================
+
+dae scottish_geography_quiz() {
+    ken q = quiz("Scottish Geography", "Test yer knowledge o' Scotland's lands!")
+    ken questions = scots_geography_questions()
+    fer qn in questions { q = add_question(q, qn) }
+    gie q
+}
+
+dae scottish_history_quiz() {
+    ken q = quiz("Scottish History", "How well dae ye ken Scotland's past?")
+    ken questions = scots_history_questions()
+    fer qn in questions { q = add_question(q, qn) }
+    gie q
+}
+
+dae scottish_culture_quiz() {
+    ken q = quiz("Scottish Culture", "Test yer knowledge o' Scottish traditions!")
+    ken questions = scots_culture_questions()
+    fer qn in questions { q = add_question(q, qn) }
+    gie q
+}
+
+dae scots_language_quiz() {
+    ken q = quiz("Scots Language", "How well dae ye ken the Scots tongue?")
+    ken questions = scots_language_questions()
+    fer qn in questions { q = add_question(q, qn) }
+    gie q
+}
+
+# ============================================================
+# Flashcards
+# ============================================================
+
+dae flashcard(front, back) {
+    gie {"front": front, "back": back}
+}
+
+dae flashcard_deck(name) {
+    gie {"name": name, "cards": []}
+}
+
+dae add_card(deck, card) {
+    shove(deck["cards"], card)
+    gie deck
+}
+
+dae scots_vocab_flashcards() {
+    ken deck = flashcard_deck("Scots Vocabulary")
+
+    deck = add_card(deck, flashcard("Braw", "Fine, good, excellent"))
+    deck = add_card(deck, flashcard("Ken", "Know"))
+    deck = add_card(deck, flashcard("Bairn", "Child"))
+    deck = add_card(deck, flashcard("Hoose", "House"))
+    deck = add_card(deck, flashcard("Kirk", "Church"))
+    deck = add_card(deck, flashcard("Loch", "Lake"))
+    deck = add_card(deck, flashcard("Ben", "Mountain"))
+    deck = add_card(deck, flashcard("Brae", "Hill, slope"))
+    deck = add_card(deck, flashcard("Glen", "Valley"))
+    deck = add_card(deck, flashcard("Wee", "Small, little"))
+    deck = add_card(deck, flashcard("Bonnie", "Pretty, beautiful"))
+    deck = add_card(deck, flashcard("Dinnae", "Don't"))
+    deck = add_card(deck, flashcard("Aye", "Yes"))
+    deck = add_card(deck, flashcard("Nae", "No, not"))
+    deck = add_card(deck, flashcard("Guid", "Good"))
+
+    gie deck
+}
+
+dae demo_flashcards(deck) {
+    blether f"Flashcard Deck: {deck[\"name\"]}"
+    blether f"  {len(deck[\"cards\"])} cards"
+    blether ""
+    fer i in 0..len(deck["cards"]) {
+        ken card = deck["cards"][i]
+        blether f"  {i + 1}. {card[\"front\"]} -> {card[\"back\"]}"
+    }
+}
+
+blether "Quiz module loaded! Test yer knowledge!"

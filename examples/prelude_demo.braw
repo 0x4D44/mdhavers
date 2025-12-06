@@ -1,0 +1,113 @@
+# prelude_demo.braw - Demonstrating the auto-loaded prelude functions
+# These functions are available in every mdhavers program!
+
+blether "═══════════════════════════════════════════════════════════"
+blether "  Prelude Functions Demo"
+blether "  These are automatically available - nae need tae fetch!"
+blether "═══════════════════════════════════════════════════════════"
+blether ""
+
+# === Number Functions ===
+blether "=== Number Functions ==="
+
+ken a = 10
+ken b = 25
+blether f"wee({a}, {b}) = {wee(a, b)}"
+blether f"muckle({a}, {b}) = {muckle(a, b)}"
+blether f"is_even({a}) = {is_even(a)}"
+blether f"is_odd({b}) = {is_odd(b)}"
+blether f"atween(15, {a}, {b}) = {atween(15, a, b)}"
+blether f"hauld_atween(100, 0, 50) = {hauld_atween(100, 0, 50)}"
+blether ""
+
+# === List Functions ===
+blether "=== List Functions ==="
+
+ken numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+blether f"numbers = {numbers}"
+blether f"is_toom(numbers) = {is_toom(numbers)}"
+blether f"is_toom([]) = {is_toom([])}"
+blether f"tak(numbers, 3) = {tak(numbers, 3)}"
+blether f"drap(numbers, 7) = {drap(numbers, 7)}"
+blether f"backside_forrit(numbers) = {backside_forrit(numbers)}"
+blether f"first(numbers) = {first(numbers)}"
+blether f"last(numbers) = {last(numbers)}"
+blether ""
+
+# Higher-order functions with predicates
+dae is_big(n) { gie n > 5 }
+blether f"coont(numbers, is_big) = {coont(numbers, is_big)}"
+blether f"ony(numbers, is_big) = {ony(numbers, is_big)}"
+blether f"ilka(numbers, is_big) = {ilka(numbers, is_big)}"
+blether f"fin(numbers, is_big) = {fin(numbers, is_big)}"
+blether f"fin_index(numbers, is_big) = {fin_index(numbers, is_big)}"
+blether ""
+
+# More list functions
+ken nested = [[1, 2], [3, 4], [5]]
+blether f"flatten({nested}) = {flatten(nested)}"
+
+ken xs = [1, 2, 3]
+ken ys = [10, 20, 30]
+blether f"zip_up({xs}, {ys}) = {zip_up(xs, ys)}"
+blether f"mony(42, 5) = {mony(42, 5)}"
+blether ""
+
+# === String Functions ===
+blether "=== String Functions ==="
+
+ken text = "hello"
+ken spaces = "   "
+ken ha = "ha"
+ken num_str = "42"
+ken hi = "hi"
+ken wow = "WOW"
+ken zero = "0"
+ken dash = "-"
+ken star = "*"
+blether f"is_baw(text) = {is_baw(text)}"
+blether f"is_baw(spaces) = {is_baw(spaces)}"
+blether f"repeat_say(ha, 3) = {repeat_say(ha, 3)}"
+blether f"pad_left(num_str, 5, zero) = {pad_left(num_str, 5, zero)}"
+blether f"pad_right(hi, 5, dash) = {pad_right(hi, 5, dash)}"
+blether f"centre(wow, 9, star) = {centre(wow, 9, star)}"
+blether ""
+
+# === Value Utilities ===
+blether "=== Value Utilities ==="
+
+ken maybe_val = naething
+blether f"is_nowt(naething) = {is_nowt(maybe_val)}"
+blether f"is_somethin(42) = {is_somethin(42)}"
+blether f"or_else(naething, 'default') = {or_else(naething, 'default')}"
+blether f"or_else(42, 'default') = {or_else(42, 'default')}"
+blether ""
+
+# === Higher-Order Functions ===
+blether "=== Higher-Order Functions ==="
+
+dae double(x) { gie x * 2 }
+dae add_one(x) { gie x + 1 }
+
+ken double_then_add = compose(add_one, double)
+blether f"compose(add_one, double)(5) = {double_then_add(5)}"
+blether f"apply_n(double, 3, 2) = {apply_n(double, 3, 2)}"
+blether f"same(42) = {same(42)}"
+
+ken always_42 = constant(42)
+blether f"constant(42)(999) = {always_42(999)}"
+
+ken is_small = nae_that(is_big)
+blether f"nae_that(is_big)(3) = {is_small(3)}"
+blether ""
+
+# === Debug Helper ===
+blether "=== Debug Helper ==="
+ken result = swatch("test value", 123)
+blether f"swatch returned: {result}"
+blether ""
+
+blether "═══════════════════════════════════════════════════════════"
+blether "  Demo Complete!"
+blether "  All prelude functions are working braw!"
+blether "═══════════════════════════════════════════════════════════"

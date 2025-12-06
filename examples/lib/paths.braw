@@ -1,0 +1,430 @@
+# paths.braw - Path manipulation utilities fer mdhavers
+# "Findin' yer way aboot the filesystem!"
+#
+# This module provides utilities for working with file paths
+
+# ===============================================================
+# Path Separators
+# ===============================================================
+
+ken PATH_SEP = "/"
+ken EXT_SEP = "."
+
+# ===============================================================
+# Basic Path Functions
+# ===============================================================
+
+# Get the base name (last component) of a path
+dae basename(path) {
+    gin len(path) == 0 {
+        gie ""
+    }
+
+    # Remove trailing slashes
+    ken p = path
+    whiles len(p) > 1 an ends_wi(p, PATH_SEP) {
+        p = scran(p, 0, len(p) - 1)
+    }
+
+    # Find last separator
+    ken last_sep = -1
+    fer i in 0..len(p) {
+        gin scran(p, i, i + 1) == PATH_SEP {
+            last_sep = i
+        }
+    }
+
+    gin last_sep < 0 {
+        gie p
+    }
+    gie scran(p, last_sep + 1, len(p))
+}
+
+# Get the directory name (all but last component)
+dae dirname(path) {
+    gin len(path) == 0 {
+        gie "."
+    }
+
+    # Remove trailing slashes
+    ken p = path
+    whiles len(p) > 1 an ends_wi(p, PATH_SEP) {
+        p = scran(p, 0, len(p) - 1)
+    }
+
+    # Find last separator
+    ken last_sep = -1
+    fer i in 0..len(p) {
+        gin scran(p, i, i + 1) == PATH_SEP {
+            last_sep = i
+        }
+    }
+
+    gin last_sep < 0 {
+        gie "."
+    }
+    gin last_sep == 0 {
+        gie PATH_SEP
+    }
+    gie scran(p, 0, last_sep)
+}
+
+# Get the file extension (without the dot)
+dae extension(path) {
+    ken base = basename(path)
+
+    # Find last dot
+    ken last_dot = -1
+    fer i in 0..len(base) {
+        gin scran(base, i, i + 1) == EXT_SEP {
+            last_dot = i
+        }
+    }
+
+    # No extension or hidden file (starts with dot)
+    gin last_dot <= 0 {
+        gie ""
+    }
+
+    gie scran(base, last_dot + 1, len(base))
+}
+
+# Get filename without extension
+dae stem(path) {
+    ken base = basename(path)
+
+    # Find last dot
+    ken last_dot = -1
+    fer i in 0..len(base) {
+        gin scran(base, i, i + 1) == EXT_SEP {
+            last_dot = i
+        }
+    }
+
+    # No extension or hidden file (starts with dot)
+    gin last_dot <= 0 {
+        gie base
+    }
+
+    gie scran(base, 0, last_dot)
+}
+
+# Join path components
+dae path_join(parts) {
+    ken result = ""
+    fer part in parts {
+        gin len(result) == 0 {
+            result = part
+        } ither gin len(part) > 0 {
+            # Add separator if needed
+            gin nae ends_wi(result, PATH_SEP) an nae starts_wi(part, PATH_SEP) {
+                result = result + PATH_SEP + part
+            } ither gin ends_wi(result, PATH_SEP) an starts_wi(part, PATH_SEP) {
+                result = result + scran(part, 1, len(part))
+            } ither {
+                result = result + part
+            }
+        }
+    }
+    gie result
+}
+
+# Two-argument version fer convenience
+dae join_path(a, b) {
+    gie path_join([a, b])
+}
+
+# Check if path is absolute
+dae is_absolute(path) {
+    gie len(path) > 0 an starts_wi(path, PATH_SEP)
+}
+
+# Check if path is relative
+dae is_relative(path) {
+    gie nae is_absolute(path)
+}
+
+# Normalize a path (remove . and ..)
+dae normalize(path) {
+    gin len(path) == 0 {
+        gie "."
+    }
+
+    ken is_abs = is_absolute(path)
+    ken parts = split(path, PATH_SEP)
+    ken result = []
+
+    fer part in parts {
+        gin part == "" or part == "." {
+            # Skip empty and current directory
+            haud
+        } ither gin part == ".." {
+            # Go up one directory
+            gin len(result) > 0 an bum(result) != ".." {
+                yank(result)
+            } ither gin nae is_abs {
+                shove(result, "..")
+            }
+        } ither {
+            shove(result, part)
+        }
+    }
+
+    gin len(result) == 0 {
+        gie gin is_abs than PATH_SEP ither "."
+    }
+
+    ken joined = join(result, PATH_SEP)
+    gie gin is_abs than PATH_SEP + joined ither joined
+}
+
+# Split path into components
+dae path_parts(path) {
+    ken parts = split(path, PATH_SEP)
+    ken result = []
+    fer part in parts {
+        gin len(part) > 0 {
+            shove(result, part)
+        }
+    }
+    gie result
+}
+
+# ===============================================================
+# Path Class
+# ===============================================================
+
+kin Path {
+    dae init(path_str = ".") {
+        masel.path = path_str
+    }
+
+    # Get string representation
+    dae tae_string() {
+        gie masel.path
+    }
+
+    # Get basename
+    dae basename() {
+        gie basename(masel.path)
+    }
+
+    # Get dirname
+    dae dirname() {
+        gie Path(dirname(masel.path))
+    }
+
+    # Get extension
+    dae extension() {
+        gie extension(masel.path)
+    }
+
+    # Get stem (filename without extension)
+    dae stem() {
+        gie stem(masel.path)
+    }
+
+    # Is absolute?
+    dae is_absolute() {
+        gie is_absolute(masel.path)
+    }
+
+    # Is relative?
+    dae is_relative() {
+        gie is_relative(masel.path)
+    }
+
+    # Join with another path
+    dae join(other) {
+        ken other_str = gin whit_kind(other) == "instance" than other.tae_string() ither tae_string(other)
+        gie Path(join_path(masel.path, other_str))
+    }
+
+    # Normalize the path
+    dae normalize() {
+        gie Path(normalize(masel.path))
+    }
+
+    # Get parent directory
+    dae parent() {
+        gie Path(dirname(masel.path))
+    }
+
+    # Get path parts
+    dae parts() {
+        gie path_parts(masel.path)
+    }
+
+    # Check if file exists
+    dae exists() {
+        gie file_exists(masel.path)
+    }
+
+    # Read file contents
+    dae read() {
+        gie read_file(masel.path)
+    }
+
+    # Read file as lines
+    dae read_lines() {
+        gie read_lines(masel.path)
+    }
+
+    # Write to file
+    dae write(content) {
+        scrieve(masel.path, content)
+        gie masel
+    }
+
+    # Append to file
+    dae append(content) {
+        append_file(masel.path, content)
+        gie masel
+    }
+
+    # With different extension
+    dae with_extension(ext) {
+        ken dir = dirname(masel.path)
+        ken name = stem(masel.path)
+        ken new_name = gin len(ext) > 0 than name + EXT_SEP + ext ither name
+        gie Path(join_path(dir, new_name))
+    }
+
+    # With different filename
+    dae with_filename(name) {
+        ken dir = dirname(masel.path)
+        gie Path(join_path(dir, name))
+    }
+}
+
+# ===============================================================
+# Convenience Constructors
+# ===============================================================
+
+dae path(str) {
+    gie Path(str)
+}
+
+# ===============================================================
+# File Type Utilities
+# ===============================================================
+
+ken COMMON_EXTENSIONS = {
+    # Programming languages
+    "braw": "mdhavers source",
+    "rs": "Rust source",
+    "py": "Python source",
+    "js": "JavaScript source",
+    "ts": "TypeScript source",
+    "go": "Go source",
+    "java": "Java source",
+    "c": "C source",
+    "cpp": "C++ source",
+    "h": "C header",
+    "rb": "Ruby source",
+
+    # Web
+    "html": "HTML document",
+    "css": "CSS stylesheet",
+    "json": "JSON data",
+    "xml": "XML document",
+    "yaml": "YAML data",
+    "yml": "YAML data",
+
+    # Documents
+    "md": "Markdown document",
+    "txt": "Text file",
+    "pdf": "PDF document",
+    "doc": "Word document",
+    "docx": "Word document",
+
+    # Images
+    "png": "PNG image",
+    "jpg": "JPEG image",
+    "jpeg": "JPEG image",
+    "gif": "GIF image",
+    "svg": "SVG image",
+
+    # Archives
+    "zip": "ZIP archive",
+    "tar": "TAR archive",
+    "gz": "Gzip archive",
+
+    # Config
+    "ini": "INI config",
+    "cfg": "Config file",
+    "conf": "Config file",
+    "env": "Environment file",
+    "toml": "TOML config"
+}
+
+dae file_type(path) {
+    ken ext = lower(extension(path))
+    gin contains(COMMON_EXTENSIONS, ext) {
+        gie COMMON_EXTENSIONS[ext]
+    }
+    gin len(ext) > 0 {
+        gie f"{ext} file"
+    }
+    gie "unknown file"
+}
+
+dae is_source_file(path) {
+    ken ext = lower(extension(path))
+    ken source_exts = ["braw", "rs", "py", "js", "ts", "go", "java", "c", "cpp", "rb", "h"]
+    gie contains(source_exts, ext)
+}
+
+dae is_image(path) {
+    ken ext = lower(extension(path))
+    ken image_exts = ["png", "jpg", "jpeg", "gif", "svg", "bmp", "webp"]
+    gie contains(image_exts, ext)
+}
+
+dae is_document(path) {
+    ken ext = lower(extension(path))
+    ken doc_exts = ["md", "txt", "pdf", "doc", "docx", "rtf"]
+    gie contains(doc_exts, ext)
+}
+
+dae is_config(path) {
+    ken ext = lower(extension(path))
+    ken config_exts = ["ini", "cfg", "conf", "env", "toml", "yaml", "yml", "json"]
+    gie contains(config_exts, ext)
+}
+
+# ===============================================================
+# Path Builder
+# ===============================================================
+
+kin PathBuilder {
+    dae init(base = ".") {
+        masel.parts = [base]
+    }
+
+    # Add a component
+    dae add(component) {
+        shove(masel.parts, component)
+        gie masel
+    }
+
+    # Add multiple components
+    dae add_all(components) {
+        fer c in components {
+            shove(masel.parts, c)
+        }
+        gie masel
+    }
+
+    # Build the final path
+    dae build() {
+        gie Path(path_join(masel.parts))
+    }
+
+    # Build as string
+    dae tae_string() {
+        gie path_join(masel.parts)
+    }
+}
+
+blether "Paths module loaded! Ready tae find yer way aboot!"

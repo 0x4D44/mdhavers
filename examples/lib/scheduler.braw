@@ -1,0 +1,507 @@
+# scheduler.braw - Task scheduling utilities fer mdhavers
+# "Schedule yer tasks like a well-oiled ceilidh!"
+#
+# Note: This provides a simulation-based scheduler since mdhavers
+# doesn't have actual async/timer support yet.
+
+# ===============================================================
+# Time Utilities
+# ===============================================================
+
+# Get current timestamp (simulated with incrementing counter)
+ken _tick_counter = 0
+
+dae tick() {
+    _tick_counter = _tick_counter + 1
+    gie _tick_counter
+}
+
+dae reset_ticks() {
+    _tick_counter = 0
+}
+
+dae current_tick() {
+    gie _tick_counter
+}
+
+# ===============================================================
+# Task Priority Constants
+# ===============================================================
+
+ken PRIORITY_LOW = 1
+ken PRIORITY_NORMAL = 5
+ken PRIORITY_HIGH = 10
+ken PRIORITY_URGENT = 20
+
+# ===============================================================
+# Task Definition
+# ===============================================================
+
+kin Task {
+    dae init(name, action) {
+        masel.name = name
+        masel.action = action
+        masel.priority = PRIORITY_NORMAL
+        masel.delay = 0
+        masel.repeat_interval = 0
+        masel.max_runs = 1
+        masel.run_count = 0
+        masel.enabled = aye
+        masel.last_run = -1
+        masel.next_run = 0
+        masel.created_at = current_tick()
+    }
+
+    dae with_priority(p) {
+        masel.priority = p
+        gie masel
+    }
+
+    dae with_delay(ticks) {
+        masel.delay = ticks
+        masel.next_run = current_tick() + ticks
+        gie masel
+    }
+
+    dae repeat_every(interval) {
+        masel.repeat_interval = interval
+        masel.max_runs = -1  # -1 means unlimited
+        gie masel
+    }
+
+    dae run_times(n) {
+        masel.max_runs = n
+        gie masel
+    }
+
+    dae disable() {
+        masel.enabled = nae
+        gie masel
+    }
+
+    dae enable() {
+        masel.enabled = aye
+        gie masel
+    }
+
+    dae should_run(current_time) {
+        gin nae masel.enabled {
+            gie nae
+        }
+        gin masel.max_runs > 0 an masel.run_count >= masel.max_runs {
+            gie nae
+        }
+        gie current_time >= masel.next_run
+    }
+
+    dae execute() {
+        masel.action()
+        masel.run_count = masel.run_count + 1
+        masel.last_run = current_tick()
+
+        gin masel.repeat_interval > 0 {
+            masel.next_run = current_tick() + masel.repeat_interval
+        }
+    }
+
+    dae is_complete() {
+        gin masel.max_runs < 0 {
+            gie nae  # Infinite task
+        }
+        gie masel.run_count >= masel.max_runs
+    }
+}
+
+dae make_task(name, action) {
+    gie Task(name, action)
+}
+
+# ===============================================================
+# Scheduler
+# ===============================================================
+
+kin Scheduler {
+    dae init() {
+        masel.tasks = []
+        masel.running = nae
+        masel.current_time = 0
+        masel.completed = []
+    }
+
+    dae add(task) {
+        shove(masel.tasks, task)
+        gie masel
+    }
+
+    dae remove(task_name) {
+        ken new_tasks = []
+        fer task in masel.tasks {
+            gin task.name != task_name {
+                shove(new_tasks, task)
+            }
+        }
+        masel.tasks = new_tasks
+        gie masel
+    }
+
+    dae get_task(name) {
+        fer task in masel.tasks {
+            gin task.name == name {
+                gie task
+            }
+        }
+        gie naething
+    }
+
+    # Sort tasks by priority (higher first) then by next_run time
+    dae _sort_tasks() {
+        ken n = len(masel.tasks)
+        fer i in 0..(n - 1) {
+            fer j in 0..(n - i - 1) {
+                ken a = masel.tasks[j]
+                ken b = masel.tasks[j + 1]
+                # Higher priority first, then earlier next_run
+                ken should_swap = a.priority < b.priority or (a.priority == b.priority an a.next_run > b.next_run)
+                gin should_swap {
+                    ken temp = masel.tasks[j]
+                    masel.tasks[j] = masel.tasks[j + 1]
+                    masel.tasks[j + 1] = temp
+                }
+            }
+        }
+    }
+
+    # Run one tick of the scheduler
+    dae step() {
+        masel.current_time = tick()
+        masel._sort_tasks()
+
+        ken tasks_to_run = []
+        fer task in masel.tasks {
+            gin task.should_run(masel.current_time) {
+                shove(tasks_to_run, task)
+            }
+        }
+
+        fer task in tasks_to_run {
+            task.execute()
+            gin task.is_complete() {
+                shove(masel.completed, task.name)
+            }
+        }
+
+        # Remove completed tasks
+        ken active = []
+        fer task in masel.tasks {
+            gin nae task.is_complete() {
+                shove(active, task)
+            }
+        }
+        masel.tasks = active
+
+        gie len(tasks_to_run)
+    }
+
+    # Run until all tasks complete or max_ticks reached
+    dae run(max_ticks = 100) {
+        masel.running = aye
+        ken ticks_run = 0
+
+        whiles masel.running an len(masel.tasks) > 0 an ticks_run < max_ticks {
+            masel.step()
+            ticks_run = ticks_run + 1
+        }
+
+        masel.running = nae
+        gie ticks_run
+    }
+
+    dae stop() {
+        masel.running = nae
+        gie masel
+    }
+
+    dae clear() {
+        masel.tasks = []
+        masel.completed = []
+        gie masel
+    }
+
+    dae pending_count() {
+        gie len(masel.tasks)
+    }
+
+    dae completed_count() {
+        gie len(masel.completed)
+    }
+
+    dae status() {
+        gie {
+            "running": masel.running,
+            "pending": len(masel.tasks),
+            "completed": len(masel.completed),
+            "current_time": masel.current_time
+        }
+    }
+}
+
+dae make_scheduler() {
+    gie Scheduler()
+}
+
+# ===============================================================
+# Cron-like Scheduling
+# ===============================================================
+
+kin CronSchedule {
+    dae init() {
+        masel.minute = "*"
+        masel.hour = "*"
+        masel.day = "*"
+        masel.month = "*"
+        masel.weekday = "*"
+    }
+
+    dae at_minute(m) {
+        masel.minute = tae_string(m)
+        gie masel
+    }
+
+    dae at_hour(h) {
+        masel.hour = tae_string(h)
+        gie masel
+    }
+
+    dae on_day(d) {
+        masel.day = tae_string(d)
+        gie masel
+    }
+
+    dae in_month(m) {
+        masel.month = tae_string(m)
+        gie masel
+    }
+
+    dae on_weekday(w) {
+        masel.weekday = tae_string(w)
+        gie masel
+    }
+
+    dae every_minute() {
+        masel.minute = "*"
+        gie masel
+    }
+
+    dae every_hour() {
+        masel.minute = "0"
+        masel.hour = "*"
+        gie masel
+    }
+
+    dae daily() {
+        masel.minute = "0"
+        masel.hour = "0"
+        gie masel
+    }
+
+    dae weekly() {
+        masel.minute = "0"
+        masel.hour = "0"
+        masel.weekday = "1"  # Monday
+        gie masel
+    }
+
+    dae to_string() {
+        gie f"{masel.minute} {masel.hour} {masel.day} {masel.month} {masel.weekday}"
+    }
+}
+
+dae make_cron() {
+    gie CronSchedule()
+}
+
+# ===============================================================
+# Rate Limiter
+# ===============================================================
+
+kin RateLimiter {
+    dae init(max_calls, window_size) {
+        masel.max_calls = max_calls
+        masel.window_size = window_size
+        masel.calls = []
+    }
+
+    dae can_proceed() {
+        ken now = current_tick()
+        # Remove old calls outside window
+        ken recent = []
+        fer call_time in masel.calls {
+            gin now - call_time < masel.window_size {
+                shove(recent, call_time)
+            }
+        }
+        masel.calls = recent
+
+        gie len(masel.calls) < masel.max_calls
+    }
+
+    dae record_call() {
+        gin masel.can_proceed() {
+            shove(masel.calls, current_tick())
+            gie aye
+        }
+        gie nae
+    }
+
+    dae remaining() {
+        ken now = current_tick()
+        ken recent = 0
+        fer call_time in masel.calls {
+            gin now - call_time < masel.window_size {
+                recent = recent + 1
+            }
+        }
+        gie masel.max_calls - recent
+    }
+
+    dae reset() {
+        masel.calls = []
+        gie masel
+    }
+}
+
+dae make_rate_limiter(max_calls, window_size) {
+    gie RateLimiter(max_calls, window_size)
+}
+
+# ===============================================================
+# Debouncer
+# ===============================================================
+
+kin Debouncer {
+    dae init(delay) {
+        masel.delay = delay
+        masel.last_call = -1000
+        masel.pending = nae
+    }
+
+    dae call(action) {
+        ken now = current_tick()
+        gin now - masel.last_call >= masel.delay {
+            action()
+            masel.last_call = now
+            masel.pending = nae
+            gie aye
+        }
+        masel.pending = aye
+        gie nae
+    }
+
+    dae force(action) {
+        action()
+        masel.last_call = current_tick()
+        masel.pending = nae
+        gie aye
+    }
+
+    dae is_pending() {
+        gie masel.pending
+    }
+}
+
+dae make_debouncer(delay) {
+    gie Debouncer(delay)
+}
+
+# ===============================================================
+# Throttler
+# ===============================================================
+
+kin Throttler {
+    dae init(interval) {
+        masel.interval = interval
+        masel.last_call = -1000
+    }
+
+    dae call(action) {
+        ken now = current_tick()
+        gin now - masel.last_call >= masel.interval {
+            action()
+            masel.last_call = now
+            gie aye
+        }
+        gie nae
+    }
+
+    dae time_until_next() {
+        ken now = current_tick()
+        ken elapsed = now - masel.last_call
+        gin elapsed >= masel.interval {
+            gie 0
+        }
+        gie masel.interval - elapsed
+    }
+}
+
+dae make_throttler(interval) {
+    gie Throttler(interval)
+}
+
+# ===============================================================
+# Retry Helper
+# ===============================================================
+
+kin Retry {
+    dae init(max_attempts) {
+        masel.max_attempts = max_attempts
+        masel.attempts = 0
+        masel.delay = 1
+        masel.backoff_multiplier = 2
+        masel.last_error = naething
+    }
+
+    dae with_delay(d) {
+        masel.delay = d
+        gie masel
+    }
+
+    dae with_backoff(multiplier) {
+        masel.backoff_multiplier = multiplier
+        gie masel
+    }
+
+    dae execute(action, error_handler = naething) {
+        whiles masel.attempts < masel.max_attempts {
+            masel.attempts = masel.attempts + 1
+
+            hae_a_bash {
+                ken result = action()
+                gie result
+            } gin_it_gangs_wrang e {
+                masel.last_error = e
+                gin error_handler != naething {
+                    error_handler(e, masel.attempts)
+                }
+                # Simulate delay with ticks
+                fer i in 0..masel.delay {
+                    tick()
+                }
+                masel.delay = masel.delay * masel.backoff_multiplier
+            }
+        }
+        gie naething
+    }
+
+    dae reset() {
+        masel.attempts = 0
+        masel.delay = 1
+        masel.last_error = naething
+        gie masel
+    }
+}
+
+dae make_retry(max_attempts) {
+    gie Retry(max_attempts)
+}
+
+blether "Scheduler module loaded! Ready tae schedule yer tasks!"

@@ -1,0 +1,249 @@
+# paths_demo.braw - Demonstrate path utilities in mdhavers
+# "Findin' yer way aboot the filesystem!"
+
+fetch "lib/paths"
+
+blether ""
+blether "======================================================="
+blether "    PATHS MODULE DEMO"
+blether "    'Navigatin' the filesystem!'"
+blether "======================================================="
+blether ""
+
+# ===============================================================
+# Basic Path Functions
+# ===============================================================
+
+blether "=== Basic Path Functions ==="
+blether ""
+
+ken test_paths = [
+    "/home/user/documents/report.txt",
+    "/var/log/app.log",
+    "src/main.braw",
+    "./lib/utils.braw",
+    "../parent/file.txt",
+    "/single",
+    "filename.ext",
+    ".hidden",
+    "/path/to/.config"
+]
+
+fer p in test_paths {
+    blether f"Path: {p}"
+    blether f"  basename:  {basename(p)}"
+    blether f"  dirname:   {dirname(p)}"
+    blether f"  extension: {extension(p)}"
+    blether f"  stem:      {stem(p)}"
+    blether ""
+}
+
+# ===============================================================
+# Path Joining
+# ===============================================================
+
+blether "=== Path Joining ==="
+blether ""
+
+blether f"join_path('/home', 'user'): {join_path('/home', 'user')}"
+blether f"join_path('/home/', 'user'): {join_path('/home/', 'user')}"
+blether f"join_path('/home', '/user'): {join_path('/home', '/user')}"
+blether f"path_join(['/home', 'user', 'docs']): {path_join(['/home', 'user', 'docs'])}"
+
+blether ""
+
+# ===============================================================
+# Absolute/Relative Checks
+# ===============================================================
+
+blether "=== Absolute/Relative Checks ==="
+blether ""
+
+ken check_paths = ["/absolute/path", "relative/path", "./current", "../parent"]
+
+fer p in check_paths {
+    blether f"'{p}' - absolute: {is_absolute(p)}, relative: {is_relative(p)}"
+}
+
+blether ""
+
+# ===============================================================
+# Path Normalization
+# ===============================================================
+
+blether "=== Path Normalization ==="
+blether ""
+
+ken normalize_tests = [
+    "/home/user/../other/./file.txt",
+    "./foo/bar/../baz",
+    "/a/b/c/../../d",
+    "foo/./bar/./baz",
+    "../../../up/and/away"
+]
+
+fer p in normalize_tests {
+    blether f"'{p}'"
+    blether f"  -> '{normalize(p)}'"
+}
+
+blether ""
+
+# ===============================================================
+# Path Parts
+# ===============================================================
+
+blether "=== Path Parts ==="
+blether ""
+
+ken parts_test = "/home/user/documents/file.txt"
+blether f"Path: {parts_test}"
+blether f"Parts: {path_parts(parts_test)}"
+
+blether ""
+
+# ===============================================================
+# Path Class
+# ===============================================================
+
+blether "=== Path Class ==="
+blether ""
+
+ken p = Path("/home/user/code/project/src/main.braw")
+
+blether f"Original path: {p.tae_string()}"
+blether f"  basename: {p.basename()}"
+blether f"  dirname:  {p.dirname().tae_string()}"
+blether f"  extension: {p.extension()}"
+blether f"  stem: {p.stem()}"
+blether f"  is_absolute: {p.is_absolute()}"
+blether f"  parent: {p.parent().tae_string()}"
+blether f"  parts: {p.parts()}"
+
+blether ""
+
+# Joining paths
+ken base = Path("/home/user")
+ken full = base.join("documents").join("report.txt")
+blether f"Joined path: {full.tae_string()}"
+
+blether ""
+
+# Changing extension
+ken source = Path("/project/src/main.braw")
+ken compiled = source.with_extension("wasm")
+blether f"Original: {source.tae_string()}"
+blether f"With new extension: {compiled.tae_string()}"
+
+blether ""
+
+# Changing filename
+ken new_file = source.with_filename("lib.braw")
+blether f"With new filename: {new_file.tae_string()}"
+
+blether ""
+
+# ===============================================================
+# File Type Detection
+# ===============================================================
+
+blether "=== File Type Detection ==="
+blether ""
+
+ken files = [
+    "script.braw",
+    "main.rs",
+    "app.py",
+    "style.css",
+    "data.json",
+    "readme.md",
+    "photo.jpg",
+    "archive.zip",
+    "config.toml",
+    "unknown.xyz"
+]
+
+fer f in files {
+    blether f"  {f}: {file_type(f)}"
+}
+
+blether ""
+
+# ===============================================================
+# File Category Checks
+# ===============================================================
+
+blether "=== File Category Checks ==="
+blether ""
+
+ken test_files = ["main.braw", "photo.png", "readme.md", "config.ini", "data.bin"]
+
+fer f in test_files {
+    blether f"  {f}:"
+    blether f"    is_source_file: {is_source_file(f)}"
+    blether f"    is_image: {is_image(f)}"
+    blether f"    is_document: {is_document(f)}"
+    blether f"    is_config: {is_config(f)}"
+}
+
+blether ""
+
+# ===============================================================
+# Path Builder
+# ===============================================================
+
+blether "=== Path Builder ==="
+blether ""
+
+ken builder = PathBuilder("/home")
+builder.add("user")
+builder.add("projects")
+builder.add("mdhavers")
+
+ken built_path = builder.build()
+blether f"Built path: {built_path.tae_string()}"
+
+# Using add_all
+ken builder2 = PathBuilder("/var")
+builder2.add_all(["log", "app", "debug.log"])
+blether f"Built with add_all: {builder2.tae_string()}"
+
+blether ""
+
+# ===============================================================
+# Practical Example
+# ===============================================================
+
+blether "=== Practical Example ==="
+blether ""
+
+# Simulating a source file processor
+dae process_source_files(source_dir, output_dir, files) {
+    ken results = []
+    fer file in files {
+        ken source = Path(join_path(source_dir, file))
+        ken output = Path(output_dir).join(stem(file) + ".out")
+
+        shove(results, {
+            "source": source.tae_string(),
+            "output": output.tae_string(),
+            "type": file_type(file)
+        })
+    }
+    gie results
+}
+
+ken source_files = ["main.braw", "utils.braw", "lib.braw"]
+ken processed = process_source_files("src", "build", source_files)
+
+blether "Processing source files:"
+fer item in processed {
+    blether f"  {item['source']} -> {item['output']} ({item['type']})"
+}
+
+blether ""
+blether "======================================================="
+blether "    Paths demo complete!"
+blether "    'Noo ye ken how tae find yer way!'"
+blether "======================================================="
+blether ""

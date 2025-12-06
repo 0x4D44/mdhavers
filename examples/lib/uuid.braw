@@ -1,0 +1,245 @@
+# uuid.braw - UUID generation fer mdhavers
+# "Gie every wee thing its ain special name!"
+#
+# This module provides UUID (Universally Unique Identifier) generation
+# using various methods fer generating unique identifiers.
+
+# ===============================================================
+# UUID v4 (Random-based)
+# ===============================================================
+
+# Generate a UUID v4 (random-based)
+# Format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+# where y is 8, 9, a, or b
+dae uuid4() {
+    ken hex_chars = "0123456789abcdef"
+    ken result = ""
+
+    fer i in 0..36 {
+        gin i == 8 or i == 13 or i == 18 or i == 23 {
+            result = result + "-"
+        } ither gin i == 14 {
+            # Version 4
+            result = result + "4"
+        } ither gin i == 19 {
+            # Variant - must be 8, 9, a, or b
+            ken variant_chars = "89ab"
+            ken idx = jammy(0, 4)
+            result = result + variant_chars[idx]
+        } ither {
+            ken idx = jammy(0, 16)
+            result = result + hex_chars[idx]
+        }
+    }
+
+    gie result
+}
+
+# Generate a simple unique ID (shorter than UUID)
+dae simple_id(length = 8) {
+    ken chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+    ken result = ""
+
+    fer i in 0..length {
+        ken idx = jammy(0, len(chars))
+        result = result + chars[idx]
+    }
+
+    gie result
+}
+
+# Generate a numeric ID
+dae numeric_id(length = 10) {
+    ken digits = "0123456789"
+    ken result = ""
+
+    fer i in 0..length {
+        ken idx = jammy(0, 10)
+        result = result + digits[idx]
+    }
+
+    gie result
+}
+
+# ===============================================================
+# Sequential ID Generator (fer ordered IDs)
+# ===============================================================
+
+kin SequentialId {
+    dae init(prefix = "", start = 1) {
+        masel.prefix = prefix
+        masel.counter = start
+    }
+
+    dae next() {
+        ken id = masel.prefix + tae_string(masel.counter)
+        masel.counter = masel.counter + 1
+        gie id
+    }
+
+    dae current() {
+        gie masel.prefix + tae_string(masel.counter - 1)
+    }
+
+    dae peek() {
+        gie masel.prefix + tae_string(masel.counter)
+    }
+
+    dae reset(start = 1) {
+        masel.counter = start
+    }
+}
+
+# ===============================================================
+# Time-based ID Generator
+# ===============================================================
+
+# Generate a timestamp-based ID
+dae timestamp_id() {
+    ken t = noo()
+    ken rand_part = simple_id(4)
+    gie tae_string(t) + "-" + rand_part
+}
+
+# Generate a sortable ID (timestamp prefix + random)
+dae sortable_id() {
+    ken t = noo()
+    # Pad timestamp tae ensure sorting
+    ken ts = tae_string(t)
+    whiles len(ts) < 15 {
+        ts = "0" + ts
+    }
+    gie ts + "-" + simple_id(8)
+}
+
+# ===============================================================
+# Prefixed ID Generator
+# ===============================================================
+
+kin PrefixedId {
+    dae init(prefix, separator = "_") {
+        masel.prefix = prefix
+        masel.separator = separator
+        masel.counter = 0
+    }
+
+    dae next() {
+        masel.counter = masel.counter + 1
+        gie masel.prefix + masel.separator + simple_id(8)
+    }
+
+    dae next_numeric() {
+        masel.counter = masel.counter + 1
+        gie masel.prefix + masel.separator + tae_string(masel.counter)
+    }
+}
+
+# ===============================================================
+# UUID Validation
+# ===============================================================
+
+# Check if a string looks like a valid UUID v4
+dae is_uuid(s) {
+    gin len(s) != 36 {
+        gie nae
+    }
+
+    # Check dashes in correct positions
+    gin s[8] != "-" or s[13] != "-" or s[18] != "-" or s[23] != "-" {
+        gie nae
+    }
+
+    # Check version (should be 4)
+    gin s[14] != "4" {
+        gie nae
+    }
+
+    # Check variant (should be 8, 9, a, or b)
+    ken variant = s[19]
+    gin variant != "8" an variant != "9" an variant != "a" an variant != "b" {
+        gie nae
+    }
+
+    # Check all other characters are hex
+    ken hex_chars = "0123456789abcdef"
+    fer i in 0..36 {
+        gin i != 8 an i != 13 an i != 14 an i != 18 an i != 19 an i != 23 {
+            ken c = lower(s[i])
+            ken found = nae
+            fer h in hex_chars {
+                gin c == h {
+                    found = aye
+                }
+            }
+            gin nae found {
+                gie nae
+            }
+        }
+    }
+
+    gie aye
+}
+
+# ===============================================================
+# Convenience Factories
+# ===============================================================
+
+# Create a user ID generator
+dae user_id_generator() {
+    gie PrefixedId("usr")
+}
+
+# Create a session ID generator
+dae session_id_generator() {
+    gie PrefixedId("sess")
+}
+
+# Create an order ID generator
+dae order_id_generator() {
+    gie PrefixedId("ord")
+}
+
+# Create a transaction ID generator
+dae transaction_id_generator() {
+    gie PrefixedId("txn")
+}
+
+# ===============================================================
+# Slug Generation (fer URLs)
+# ===============================================================
+
+dae slugify(text) {
+    ken result = ""
+    ken last_was_dash = aye  # Start true tae avoid leading dash
+
+    fer c in lower(text) {
+        ken code = ord(c)
+        # Check if letter (a-z = 97-122) or digit (0-9 = 48-57)
+        gin (code >= 97 an code <= 122) or (code >= 48 an code <= 57) {
+            result = result + c
+            last_was_dash = nae
+        } ither gin c == " " or c == "-" or c == "_" {
+            gin nae last_was_dash {
+                result = result + "-"
+                last_was_dash = aye
+            }
+        }
+        # Other characters are skipped
+    }
+
+    # Remove trailing dash
+    gin len(result) > 0 an result[len(result) - 1] == "-" {
+        result = slice(result, 0, len(result) - 1)
+    }
+
+    gie result
+}
+
+# Generate a URL-safe unique slug
+dae unique_slug(text) {
+    ken base = slugify(text)
+    ken suffix = simple_id(6)
+    gie base + "-" + suffix
+}
+
+blether "UUID module loaded! Ready tae gie things unique names!"

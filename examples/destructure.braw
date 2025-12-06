@@ -1,0 +1,90 @@
+# destructure.braw - Testing destructuring assignment
+# In Scots, we call this "unpacking" or "skailing oot"
+
+blether "=== Testing Destructuring Assignment ==="
+
+# Basic destructuring
+ken [a, b, c] = [1, 2, 3]
+blether f"[a, b, c] = [1, 2, 3]"
+blether f"a = {a}, b = {b}, c = {c}"
+
+blether ""
+blether "=== With Rest Pattern ==="
+
+# Destructure with rest: ...captures the remaining elements
+ken [first, ...rest] = [1, 2, 3, 4, 5]
+blether f"[first, ...rest] = [1, 2, 3, 4, 5]"
+blether f"first = {first}"
+blether f"rest = {rest}"
+
+# Rest in the middle
+ken [x, ...middle, y] = [10, 20, 30, 40, 50]
+blether f"[x, ...middle, y] = [10, 20, 30, 40, 50]"
+blether f"x = {x}, middle = {middle}, y = {y}"
+
+blether ""
+blether "=== With Ignore Pattern ==="
+
+# Ignore certain elements with _
+ken [_, second, _, fourth] = ["skip", "take", "skip", "take"]
+blether f"[_, second, _, fourth] = ['skip', 'take', 'skip', 'take']"
+blether f"second = '{second}', fourth = '{fourth}'"
+
+# Combine ignore with rest
+ken [head, _, ...tail] = ["A", "ignored", "B", "C", "D"]
+blether f"[head, _, ...tail] = ['A', 'ignored', 'B', 'C', 'D']"
+blether f"head = '{head}', tail = {tail}"
+
+blether ""
+blether "=== Destructuring Strings ==="
+
+# Strings can be destructured intae characters
+ken [c1, c2, c3] = "ABC"
+blether f"[c1, c2, c3] = 'ABC'"
+blether f"c1 = '{c1}', c2 = '{c2}', c3 = '{c3}'"
+
+ken [letter, ...letters] = "SCOTS"
+blether f"[letter, ...letters] = 'SCOTS'"
+blether f"letter = '{letter}', letters = {letters}"
+
+blether ""
+blether "=== Practical Examples ==="
+
+# Swapping values
+ken items = [42, 17]
+ken [left, right] = items
+blether f"left = {left}, right = {right}"
+
+# Processing function returns
+dae get_min_max(list) {
+    ken sorted_list = sort(list)
+    gie [heid(sorted_list), bum(sorted_list)]
+}
+
+ken numbers = [5, 2, 8, 1, 9, 3]
+ken [minimum, maximum] = get_min_max(numbers)
+blether f"numbers = {numbers}"
+blether f"min = {minimum}, max = {maximum}"
+
+# Parsing coordinates
+ken coords = [[1, 2], [3, 4], [5, 6]]
+fer coord in coords {
+    ken [px, py] = coord
+    blether f"Point at ({px}, {py})"
+}
+
+blether ""
+blether "=== Edge Cases ==="
+
+# Empty rest
+ken [only, ...empty] = [42]
+blether f"[only, ...empty] = [42]"
+blether f"only = {only}, empty = {empty}"
+
+# All in rest
+ken [...everything] = [1, 2, 3]
+blether f"[...everything] = [1, 2, 3]"
+blether f"everything = {everything}"
+
+blether ""
+blether "=== All destructure tests complete! ==="

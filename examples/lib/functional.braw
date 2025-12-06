@@ -1,0 +1,527 @@
+# functional.braw - Functional programming helpers fer mdhavers
+# "Daein' things the functional way!"
+#
+# This module provides functional programming utilities like map, filter, reduce
+
+# ===============================================================
+# Core Higher-Order Functions
+# ===============================================================
+
+# Map a function over a list
+dae map_list(list, fn) {
+    ken result = []
+    fer item in list {
+        shove(result, fn(item))
+    }
+    gie result
+}
+
+# Filter a list by predicate
+dae filter_list(list, predicate) {
+    ken result = []
+    fer item in list {
+        gin predicate(item) {
+            shove(result, item)
+        }
+    }
+    gie result
+}
+
+# Reduce a list to a single value
+dae reduce(list, fn, initial) {
+    ken acc = initial
+    fer item in list {
+        acc = fn(acc, item)
+    }
+    gie acc
+}
+
+# Reduce from the right
+dae reduce_right(list, fn, initial) {
+    ken reversed = reverse(list)
+    gie reduce(reversed, fn, initial)
+}
+
+# Find first item matching predicate
+dae find(list, predicate) {
+    fer item in list {
+        gin predicate(item) {
+            gie item
+        }
+    }
+    gie naething
+}
+
+# Find last item matching predicate
+dae find_last(list, predicate) {
+    ken result = naething
+    fer item in list {
+        gin predicate(item) {
+            result = item
+        }
+    }
+    gie result
+}
+
+# Find index of first matching item
+dae find_index(list, predicate) {
+    fer i in 0..len(list) {
+        gin predicate(list[i]) {
+            gie i
+        }
+    }
+    gie -1
+}
+
+# Check if any item matches predicate
+dae any(list, predicate) {
+    fer item in list {
+        gin predicate(item) {
+            gie aye
+        }
+    }
+    gie nae
+}
+
+# Check if all items match predicate
+dae all(list, predicate) {
+    fer item in list {
+        gin nae predicate(item) {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# Check if no items match predicate
+dae none(list, predicate) {
+    fer item in list {
+        gin predicate(item) {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# Count items matching predicate
+dae count_if(list, predicate) {
+    ken count = 0
+    fer item in list {
+        gin predicate(item) {
+            count = count + 1
+        }
+    }
+    gie count
+}
+
+# ===============================================================
+# List Transformation Functions
+# ===============================================================
+
+# Take while predicate is true
+dae take_while(list, predicate) {
+    ken result = []
+    fer item in list {
+        gin nae predicate(item) {
+            gie result
+        }
+        shove(result, item)
+    }
+    gie result
+}
+
+# Drop while predicate is true
+dae drop_while(list, predicate) {
+    ken result = []
+    ken dropping = aye
+    fer item in list {
+        gin dropping an predicate(item) {
+            haud
+        }
+        dropping = nae
+        shove(result, item)
+    }
+    gie result
+}
+
+# Partition list into two based on predicate
+dae partition(list, predicate) {
+    ken truthy = []
+    ken falsy = []
+    fer item in list {
+        gin predicate(item) {
+            shove(truthy, item)
+        } ither {
+            shove(falsy, item)
+        }
+    }
+    gie {"match": truthy, "no_match": falsy}
+}
+
+# Group by key function
+dae group_by(list, key_fn) {
+    ken groups = {}
+    fer item in list {
+        ken key = tae_string(key_fn(item))
+        gin nae contains(groups, key) {
+            groups[key] = []
+        }
+        shove(groups[key], item)
+    }
+    gie groups
+}
+
+# Flat map (map then flatten)
+dae flat_map(list, fn) {
+    ken result = []
+    fer item in list {
+        ken mapped = fn(item)
+        gin whit_kind(mapped) == "list" {
+            fer sub_item in mapped {
+                shove(result, sub_item)
+            }
+        } ither {
+            shove(result, mapped)
+        }
+    }
+    gie result
+}
+
+# ===============================================================
+# Function Composition
+# ===============================================================
+
+# Compose two functions (right to left: compose(f, g)(x) = f(g(x)))
+dae compose(f, g) {
+    gie |x| f(g(x))
+}
+
+# Pipe two functions (left to right: pipe(f, g)(x) = g(f(x)))
+dae pipe_fn(f, g) {
+    gie |x| g(f(x))
+}
+
+# Create a pipeline from multiple functions
+dae pipeline(functions) {
+    gie |x| reduce(functions, |acc, fn| fn(acc), x)
+}
+
+# Apply function n times
+dae apply_n(fn, n, initial) {
+    ken result = initial
+    fer i in 0..n {
+        result = fn(result)
+    }
+    gie result
+}
+
+# ===============================================================
+# Currying and Partial Application
+# ===============================================================
+
+# Partially apply first argument
+dae partial(fn, first_arg) {
+    gie |second_arg| fn(first_arg, second_arg)
+}
+
+# Partially apply second argument
+dae partial_right(fn, second_arg) {
+    gie |first_arg| fn(first_arg, second_arg)
+}
+
+# Flip argument order
+dae flip(fn) {
+    gie |a, b| fn(b, a)
+}
+
+# ===============================================================
+# Common Predicates
+# ===============================================================
+
+dae is_even(n) {
+    gie n % 2 == 0
+}
+
+dae is_odd(n) {
+    gie n % 2 != 0
+}
+
+dae is_positive(n) {
+    gie n > 0
+}
+
+dae is_negative(n) {
+    gie n < 0
+}
+
+dae is_zero(n) {
+    gie n == 0
+}
+
+dae is_empty(val) {
+    gin whit_kind(val) == "list" {
+        gie len(val) == 0
+    }
+    gin whit_kind(val) == "string" {
+        gie len(val) == 0
+    }
+    gin whit_kind(val) == "dict" {
+        gie len(keys(val)) == 0
+    }
+    gie nae
+}
+
+dae is_not_empty(val) {
+    gie nae is_empty(val)
+}
+
+# ===============================================================
+# Common Mappers
+# ===============================================================
+
+dae double(n) {
+    gie n * 2
+}
+
+dae triple(n) {
+    gie n * 3
+}
+
+dae square(n) {
+    gie n * n
+}
+
+dae cube(n) {
+    gie n * n * n
+}
+
+dae increment(n) {
+    gie n + 1
+}
+
+dae decrement(n) {
+    gie n - 1
+}
+
+dae negate(n) {
+    gie -n
+}
+
+dae identity(x) {
+    gie x
+}
+
+dae constant(value) {
+    gie || value
+}
+
+# ===============================================================
+# Common Reducers
+# ===============================================================
+
+dae sum(list) {
+    gie reduce(list, |a, b| a + b, 0)
+}
+
+dae product(list) {
+    gie reduce(list, |a, b| a * b, 1)
+}
+
+dae max_of(list) {
+    gin len(list) == 0 {
+        gie naething
+    }
+    gie reduce(tail(list), |a, b| gin a > b than a ither b, heid(list))
+}
+
+dae min_of(list) {
+    gin len(list) == 0 {
+        gie naething
+    }
+    gie reduce(tail(list), |a, b| gin a < b than a ither b, heid(list))
+}
+
+dae average(list) {
+    gin len(list) == 0 {
+        gie 0
+    }
+    gie sum(list) / len(list)
+}
+
+dae concat_all(lists) {
+    gie reduce(lists, |a, b| a + b, [])
+}
+
+dae join_strings(strings, separator = "") {
+    gin len(strings) == 0 {
+        gie ""
+    }
+    gie reduce(tail(strings), |acc, s| acc + separator + s, heid(strings))
+}
+
+# ===============================================================
+# Iteration Utilities
+# ===============================================================
+
+# Execute function n times
+dae times(n, fn) {
+    fer i in 0..n {
+        fn(i)
+    }
+}
+
+# Generate a list by applying function to indices
+dae generate(n, fn) {
+    ken result = []
+    fer i in 0..n {
+        shove(result, fn(i))
+    }
+    gie result
+}
+
+# Repeat a value n times
+dae replicate(n, value) {
+    ken result = []
+    fer i in 0..n {
+        shove(result, value)
+    }
+    gie result
+}
+
+# Iterate function starting from initial value
+dae iterate(fn, initial, n) {
+    ken result = [initial]
+    ken current = initial
+    fer i in 0..(n - 1) {
+        current = fn(current)
+        shove(result, current)
+    }
+    gie result
+}
+
+# ===============================================================
+# Comparison and Sorting Helpers
+# ===============================================================
+
+# Sort by key function
+dae sort_by(list, key_fn) {
+    ken pairs = map_list(list, |item| {"item": item, "key": key_fn(item)})
+
+    # Bubble sort by key
+    ken n = len(pairs)
+    fer i in 0..n {
+        fer j in 0..(n - i - 1) {
+            gin pairs[j]["key"] > pairs[j + 1]["key"] {
+                ken temp = pairs[j]
+                pairs[j] = pairs[j + 1]
+                pairs[j + 1] = temp
+            }
+        }
+    }
+
+    gie map_list(pairs, |p| p["item"])
+}
+
+# Sort descending
+dae sort_desc(list) {
+    gie reverse(sort(list))
+}
+
+# Sort by key descending
+dae sort_by_desc(list, key_fn) {
+    gie reverse(sort_by(list, key_fn))
+}
+
+# ===============================================================
+# Memoization
+# ===============================================================
+
+kin Memoize {
+    dae init(fn) {
+        masel.fn = fn
+        masel.cache = {}
+    }
+
+    dae call(arg) {
+        ken key = tae_string(arg)
+        gin nae contains(masel.cache, key) {
+            masel.cache[key] = masel.fn(arg)
+        }
+        gie masel.cache[key]
+    }
+
+    dae clear_cache() {
+        masel.cache = {}
+        gie masel
+    }
+
+    dae cache_size() {
+        gie len(keys(masel.cache))
+    }
+}
+
+dae memoize(fn) {
+    gie Memoize(fn)
+}
+
+# ===============================================================
+# Functor Wrapper (for chaining)
+# ===============================================================
+
+kin Functor {
+    dae init(value) {
+        masel.value = value
+    }
+
+    # Map over the value
+    dae map(fn) {
+        gin whit_kind(masel.value) == "list" {
+            gie Functor(map_list(masel.value, fn))
+        }
+        gie Functor(fn(masel.value))
+    }
+
+    # Filter (for lists)
+    dae filter(predicate) {
+        gin whit_kind(masel.value) == "list" {
+            gie Functor(filter_list(masel.value, predicate))
+        }
+        gie masel
+    }
+
+    # Reduce (for lists)
+    dae reduce(fn, initial) {
+        gin whit_kind(masel.value) == "list" {
+            gie Functor(reduce(masel.value, fn, initial))
+        }
+        gie masel
+    }
+
+    # Apply function if condition is true
+    dae when(condition, fn) {
+        gin condition {
+            gie masel.map(fn)
+        }
+        gie masel
+    }
+
+    # Chain another functor operation
+    dae chain(fn) {
+        ken result = fn(masel.value)
+        gin whit_kind(result) == "instance" {
+            gie result
+        }
+        gie Functor(result)
+    }
+
+    # Extract the value
+    dae unwrap() {
+        gie masel.value
+    }
+}
+
+dae wrap(value) {
+    gie Functor(value)
+}
+
+blether "Functional module loaded! Ready fer some functional havers!"

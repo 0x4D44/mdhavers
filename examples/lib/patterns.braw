@@ -1,0 +1,358 @@
+# patterns.braw - Simple pattern matching fer mdhavers
+# "Patterns are like tartan - they repeat in bonnie ways!"
+#
+# Note: This is a simple pattern matcher, no' full regex.
+# Supported wildcards:
+#   *  - matches any sequence of characters
+#   ?  - matches exactly one character
+#   [] - character class (e.g., [abc] matches a, b, or c)
+
+# ===============================================================
+# Basic Pattern Matching
+# ===============================================================
+
+# Check if a string matches a simple pattern with * and ?
+dae matches(text, pattern) {
+    gie match_helper(text, pattern, 0, 0)
+}
+
+# Recursive helper for pattern matching
+dae match_helper(text, pattern, ti, pi) {
+    # Base case: both consumed
+    gin ti >= len(text) an pi >= len(pattern) {
+        gie aye
+    }
+
+    # Pattern consumed but text remains
+    gin pi >= len(pattern) {
+        gie nae
+    }
+
+    # Get current pattern character
+    ken pc = pattern[pi]
+
+    # Handle * wildcard (matches zero or more)
+    gin pc == "*" {
+        # Try matching zero characters
+        gin match_helper(text, pattern, ti, pi + 1) {
+            gie aye
+        }
+        # Try matching one or more characters
+        gin ti < len(text) {
+            gie match_helper(text, pattern, ti + 1, pi)
+        }
+        gie nae
+    }
+
+    # Text consumed but pattern remains (and not *)
+    gin ti >= len(text) {
+        gie nae
+    }
+
+    ken tc = text[ti]
+
+    # Handle ? wildcard (matches exactly one)
+    gin pc == "?" {
+        gie match_helper(text, pattern, ti + 1, pi + 1)
+    }
+
+    # Handle character class [...]
+    gin pc == "[" {
+        # Find closing bracket
+        ken close = pi + 1
+        whiles close < len(pattern) an pattern[close] != "]" {
+            close = close + 1
+        }
+        gin close >= len(pattern) {
+            gie nae  # No closing bracket
+        }
+
+        # Check if tc is in the class
+        ken matched = nae
+        ken start_idx = pi + 1
+        fer i in start_idx..close {
+            gin pattern[i] == tc {
+                matched = aye
+                brak
+            }
+        }
+
+        gin matched {
+            gie match_helper(text, pattern, ti + 1, close + 1)
+        }
+        gie nae
+    }
+
+    # Literal match
+    gin pc == tc {
+        gie match_helper(text, pattern, ti + 1, pi + 1)
+    }
+
+    gie nae
+}
+
+# ===============================================================
+# Pattern Search
+# ===============================================================
+
+# Find first occurrence of pattern in text, return index or -1
+dae find_pattern(text, pattern) {
+    fer i in 0..len(text) {
+        ken substr = substring_from(text, i)
+        gin starts_with_pattern(substr, pattern) {
+            gie i
+        }
+    }
+    gie 0 - 1
+}
+
+# Check if text starts with pattern
+dae starts_with_pattern(text, pattern) {
+    # For simple patterns without *, check prefix
+    gin nae contains(pattern, "*") {
+        gie matches(text, pattern + "*")
+    }
+    gie matches(text, pattern)
+}
+
+# Get substring from index to end
+dae substring_from(s, start) {
+    ken result = ""
+    fer i in start..len(s) {
+        result = result + s[i]
+    }
+    gie result
+}
+
+# ===============================================================
+# Pattern Replacement
+# ===============================================================
+
+# Replace all occurrences of pattern with replacement
+dae replace_pattern(text, pattern, replacement) {
+    # Simple case: no wildcards
+    gin nae contains(pattern, "*") an nae contains(pattern, "?") an nae contains(pattern, "[") {
+        gie replace_all_str(text, pattern, replacement)
+    }
+
+    # For patterns with wildcards, we need a different approach
+    # This is a simplified version that only handles trailing *
+    gin ends_with_str(pattern, "*") {
+        ken prefix = substring_to(pattern, len(pattern) - 1)
+        ken result = ""
+        ken i = 0
+        whiles i < len(text) {
+            ken substr = substring_from(text, i)
+            gin starts_with_str(substr, prefix) {
+                result = result + replacement
+                # Skip the matched portion
+                i = i + len(prefix)
+                # Skip any additional characters if * was there
+                whiles i < len(text) an i < len(text) {
+                    brak  # For simplicity, just match the prefix
+                }
+            } ither {
+                result = result + text[i]
+                i = i + 1
+            }
+        }
+        gie result
+    }
+
+    # Fallback: just return original
+    gie text
+}
+
+# Helper: substring from 0 to index
+dae substring_to(s, finish) {
+    ken result = ""
+    fer i in 0..finish {
+        gin i < len(s) {
+            result = result + s[i]
+        }
+    }
+    gie result
+}
+
+# Helper: check if string starts with prefix
+dae starts_with_str(s, prefix) {
+    gin len(s) < len(prefix) {
+        gie nae
+    }
+    fer i in 0..len(prefix) {
+        gin s[i] != prefix[i] {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# Helper: check if string ends with suffix
+dae ends_with_str(s, suffix) {
+    gin len(s) < len(suffix) {
+        gie nae
+    }
+    ken start = len(s) - len(suffix)
+    fer i in 0..len(suffix) {
+        gin s[start + i] != suffix[i] {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# Helper: replace all occurrences of old with new
+dae replace_all_str(s, old, new) {
+    ken result = ""
+    ken i = 0
+    whiles i < len(s) {
+        ken matched = aye
+        gin i + len(old) <= len(s) {
+            fer j in 0..len(old) {
+                gin s[i + j] != old[j] {
+                    matched = nae
+                    brak
+                }
+            }
+        } ither {
+            matched = nae
+        }
+
+        gin matched {
+            result = result + new
+            i = i + len(old)
+        } ither {
+            result = result + s[i]
+            i = i + 1
+        }
+    }
+    gie result
+}
+
+# ===============================================================
+# Glob Pattern Matching (for filenames)
+# ===============================================================
+
+# Match a glob pattern against a filename
+dae glob_match(filename, pattern) {
+    gie matches(filename, pattern)
+}
+
+# Filter a list of filenames by glob pattern
+dae glob_filter(filenames, pattern) {
+    ken result = []
+    fer f in filenames {
+        gin glob_match(f, pattern) {
+            shove(result, f)
+        }
+    }
+    gie result
+}
+
+# ===============================================================
+# Common Patterns (pre-defined)
+# ===============================================================
+
+# Match any word (letters only)
+dae is_word(s) {
+    gin len(s) == 0 {
+        gie nae
+    }
+    ken letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    fer c in s {
+        gin nae contains(letters, c) {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# Match a simple email-like pattern
+dae looks_like_email(s) {
+    gin nae contains(s, "@") {
+        gie nae
+    }
+    ken parts = split(s, "@")
+    gin len(parts) != 2 {
+        gie nae
+    }
+    ken local = parts[0]
+    ken domain = parts[1]
+    gin len(local) == 0 or len(domain) == 0 {
+        gie nae
+    }
+    gin nae contains(domain, ".") {
+        gie nae
+    }
+    gie aye
+}
+
+# Match a simple URL-like pattern
+dae looks_like_url(s) {
+    gie starts_with_str(s, "http://") or starts_with_str(s, "https://")
+}
+
+# Match a Scottish postcode pattern (rough approximation)
+dae looks_like_postcode(s) {
+    ken clean = upper(wheesht(s))
+    # Very simplified: check length and format
+    gin len(clean) < 5 or len(clean) > 8 {
+        gie nae
+    }
+    # Should contain a space usually, or be 6-7 chars without
+    gie aye  # Simplified check
+}
+
+# ===============================================================
+# Text Extraction
+# ===============================================================
+
+# Extract all words from text
+dae extract_words(text) {
+    ken words = []
+    ken current = ""
+    ken letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'"
+
+    fer c in text {
+        gin contains(letters, c) {
+            current = current + c
+        } ither {
+            gin len(current) > 0 {
+                shove(words, current)
+                current = ""
+            }
+        }
+    }
+
+    gin len(current) > 0 {
+        shove(words, current)
+    }
+
+    gie words
+}
+
+# Extract all numbers from text
+dae extract_numbers(text) {
+    ken nums = []
+    ken current = ""
+    ken digits = "0123456789"
+
+    fer c in text {
+        gin contains(digits, c) or (c == "." an len(current) > 0) {
+            current = current + c
+        } ither {
+            gin len(current) > 0 {
+                shove(nums, tae_float(current))
+                current = ""
+            }
+        }
+    }
+
+    gin len(current) > 0 {
+        shove(nums, tae_float(current))
+    }
+
+    gie nums
+}
+
+blether "Patterns module loaded! Ready tae match!"

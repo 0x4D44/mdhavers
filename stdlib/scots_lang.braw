@@ -1,0 +1,806 @@
+# scots_lang.braw - Scottish language utilities fer mdhavers
+# "Gie yer code a proper Scots flavour!"
+#
+# This module provides Scottish phrases, idioms, and language utilities
+
+# ===============================================================
+# Scottish Greetings and Farewells
+# ===============================================================
+
+ken GREETINGS = [
+    "Hullo there!",
+    "Whit like?",
+    "How ye daein'?",
+    "Awright?",
+    "Fit like?",
+    "How's it gaun?",
+    "Guid mornin'!",
+    "Guid efternoon!",
+    "Guid evenin'!",
+    "Aye aye!"
+]
+
+ken FAREWELLS = [
+    "Haste ye back!",
+    "See ye efter!",
+    "Cheerio!",
+    "Guid nicht!",
+    "Tata fer noo!",
+    "Tak care o' yersel!",
+    "Keep yer heid up!",
+    "Lang may yer lum reek!",
+    "Aw the best!",
+    "Slàinte!"
+]
+
+# ===============================================================
+# Scottish Exclamations
+# ===============================================================
+
+ken EXCLAMATIONS = [
+    "Och!",
+    "Awa'!",
+    "Hoots!",
+    "Jings!",
+    "Crivvens!",
+    "Help ma boab!",
+    "Michty me!",
+    "Goad's sake!",
+    "Blimey!",
+    "Heavens above!"
+]
+
+ken POSITIVE_EXCLAMATIONS = [
+    "Bonnie!",
+    "Braw!",
+    "Stoatin'!",
+    "Magic!",
+    "Brilliant!",
+    "Crackin'!",
+    "Barry!",
+    "Pure dead brilliant!",
+    "Champion!",
+    "Smashing!"
+]
+
+ken NEGATIVE_EXCLAMATIONS = [
+    "Ach, whit a fankle!",
+    "Och, fer cryin' oot loud!",
+    "Aw naw!",
+    "That's mince!",
+    "Whit a guddle!",
+    "Yer bum's oot the windae!",
+    "Dinnae talk havers!",
+    "That's pure guff!",
+    "Absolute walloper!",
+    "Utter bampot!"
+]
+
+# ===============================================================
+# Scottish Proverbs and Sayings
+# ===============================================================
+
+ken PROVERBS = [
+    "Mony a mickle maks a muckle.",
+    "Whit's fer ye'll no go by ye.",
+    "A nod's as guid as a wink tae a blind horse.",
+    "Better a wee fire tae warm ye than a big fire tae burn ye.",
+    "Ye cannae tak the breeks aff a Hielandman.",
+    "Dinnae teach yer granny tae suck eggs.",
+    "A shut mouth catches nae flies.",
+    "Fools and bairns shouldnae see half-done wark.",
+    "He that would eat the kernel maun crack the nut.",
+    "It's a lang road that has nae turnin'.",
+    "The proof o' the puddin' is in the eatin'.",
+    "If ye cannae beat them, join them.",
+    "Gie a man luck an' throw him in the sea.",
+    "Better late than never, but never late is better.",
+    "An ill wind that blaws naebody guid.",
+    "A bird in the haun is worth twa in the bush.",
+    "Every cloud has a silver linin'.",
+    "Guid gear comes in sma' bulk.",
+    "Hunger's guid kitchen.",
+    "Lang may yer lum reek!"
+]
+
+# ===============================================================
+# Scottish Weather Words
+# ===============================================================
+
+ken WEATHER_WORDS = {
+    "haar": "sea fog or mist",
+    "dreich": "dull, wet, dreary weather",
+    "smirr": "light drizzle or fine rain",
+    "snell": "cold, bitter, biting weather",
+    "stoorie": "dusty or misty conditions",
+    "blashy": "wet and gusty",
+    "peltin": "heavy rain",
+    "driech": "persistently damp and dull",
+    "gowsterous": "stormy, blustery",
+    "scouthery": "showery weather"
+}
+
+# ===============================================================
+# Scottish Words Dictionary
+# ===============================================================
+
+ken SCOTS_WORDS = {
+    # Common nouns
+    "bairn": "child",
+    "wean": "child (Glasgow)",
+    "lassie": "girl",
+    "laddie": "boy",
+    "auld yin": "old person",
+    "gadgie": "man/fellow",
+    "piece": "sandwich",
+    "scran": "food",
+    "tatties": "potatoes",
+    "neeps": "turnips",
+    "haggis": "Scottish delicacy",
+    "peely-wally": "pale, sickly",
+    "clarty": "dirty, muddy",
+    "cludgie": "toilet",
+    "hoose": "house",
+    "kirk": "church",
+    "burn": "stream",
+    "brae": "hillside",
+    "ben": "mountain",
+    "loch": "lake",
+    "glen": "valley",
+    "dram": "measure of whisky",
+
+    # Adjectives
+    "bonnie": "beautiful",
+    "braw": "great, fine",
+    "canny": "careful, clever",
+    "daft": "silly, crazy",
+    "gallus": "bold, confident",
+    "glaikit": "stupid, vacant",
+    "manky": "dirty, disgusting",
+    "mingin": "smelly, horrible",
+    "radge": "angry, crazy",
+    "scunnered": "fed up, disgusted",
+    "wabbit": "exhausted",
+    "blootered": "very drunk",
+    "puggled": "exhausted, confused",
+
+    # Verbs and actions
+    "blether": "chat, talk nonsense",
+    "dinnae": "don't",
+    "fash": "worry, bother",
+    "greet": "cry",
+    "haver": "talk nonsense",
+    "ken": "know",
+    "scunner": "disgust, sicken",
+    "wheesht": "be quiet",
+    "skelp": "hit, slap",
+    "stoor": "dust flying",
+    "haud": "hold",
+    "gie": "give",
+    "tak": "take",
+
+    # Expressions
+    "aye": "yes",
+    "nae": "no",
+    "och": "exclamation of surprise",
+    "lang syne": "long ago",
+    "wee": "small",
+    "muckle": "big, much",
+    "slainte": "cheers (to your health)"
+}
+
+# ===============================================================
+# Scottish Place Name Components
+# ===============================================================
+
+ken PLACE_PREFIXES = [
+    "Aber", "Ach", "Auchter", "Bal", "Ben", "Blair", "Craig",
+    "Dal", "Drum", "Dun", "Glen", "Inch", "Inver", "Kil",
+    "Kin", "Kirk", "Loch", "Pit", "Strath", "Tay"
+]
+
+ken PLACE_SUFFIXES = [
+    "brae", "burn", "dale", "fell", "firth", "ford", "glen",
+    "head", "more", "muir", "ness", "pool", "shaw", "side",
+    "town", "wick", "wood"
+]
+
+# ===============================================================
+# Helper Functions
+# ===============================================================
+
+dae random_greeting() {
+    gie dram(GREETINGS)
+}
+
+dae random_farewell() {
+    gie dram(FAREWELLS)
+}
+
+dae random_exclamation() {
+    gie dram(EXCLAMATIONS)
+}
+
+dae random_proverb() {
+    gie dram(PROVERBS)
+}
+
+dae positive_reaction() {
+    gie dram(POSITIVE_EXCLAMATIONS)
+}
+
+dae negative_reaction() {
+    gie dram(NEGATIVE_EXCLAMATIONS)
+}
+
+# Look up a Scots word
+dae whit_means(word) {
+    ken lower_word = lower(word)
+    gin contains(SCOTS_WORDS, lower_word) {
+        gie SCOTS_WORDS[lower_word]
+    }
+    gie f"Dinnae ken whit '{word}' means!"
+}
+
+# Get all words that match a pattern
+dae find_scots_words(contains_text) {
+    ken results = []
+    ken search = lower(contains_text)
+    fer word in keys(SCOTS_WORDS) {
+        gin index_of(word, search) >= 0 {
+            shove(results, word)
+        }
+    }
+    gie results
+}
+
+# ===============================================================
+# Scottish Number Words
+# ===============================================================
+
+ken NUMBER_WORDS = [
+    "nane", "yin", "twa", "three", "fower", "five",
+    "sax", "seeven", "echt", "nine", "ten",
+    "eleeven", "twal"
+]
+
+dae tae_scots_number(n) {
+    gin n >= 0 an n < len(NUMBER_WORDS) {
+        gie NUMBER_WORDS[n]
+    }
+    gie tae_string(n)
+}
+
+# ===============================================================
+# Scottish Day and Month Names
+# ===============================================================
+
+ken SCOTS_DAYS = [
+    "Soonday", "Moanday", "Tysday", "Wadnesday",
+    "Fuirsday", "Fryday", "Setterday"
+]
+
+ken SCOTS_MONTHS = [
+    "Januar", "Februar", "Mairch", "Aprile",
+    "Mey", "June", "Julie", "August",
+    "September", "October", "November", "December"
+]
+
+dae scots_day(day_index) {
+    gin day_index >= 0 an day_index < 7 {
+        gie SCOTS_DAYS[day_index]
+    }
+    gie "???"
+}
+
+dae scots_month(month_index) {
+    gin month_index >= 0 an month_index < 12 {
+        gie SCOTS_MONTHS[month_index]
+    }
+    gie "???"
+}
+
+# ===============================================================
+# Scottish Text Converter
+# ===============================================================
+
+kin ScotsConverter {
+    dae init() {
+        masel.replacements = {
+            "don't": "dinnae",
+            "didn't": "didnae",
+            "can't": "cannae",
+            "won't": "willnae",
+            "haven't": "havenae",
+            "isn't": "isnae",
+            "wasn't": "wasnae",
+            "couldn't": "couldnae",
+            "wouldn't": "wouldnae",
+            "shouldn't": "shouldnae",
+            "know": "ken",
+            "knows": "kens",
+            "knowing": "kennin'",
+            "give": "gie",
+            "gives": "gies",
+            "giving": "giein'",
+            "take": "tak",
+            "takes": "taks",
+            "taking": "takin'",
+            "have": "hae",
+            "has": "has",
+            "small": "wee",
+            "child": "bairn",
+            "children": "bairns",
+            "girl": "lassie",
+            "boy": "laddie",
+            "yes": "aye",
+            "no": "nae",
+            "not": "nae",
+            "beautiful": "bonnie",
+            "great": "braw",
+            "good": "guid",
+            "from": "frae",
+            "with": "wi'",
+            "without": "withoot",
+            "about": "aboot",
+            "house": "hoose",
+            "church": "kirk",
+            "stream": "burn",
+            "lake": "loch",
+            "mountain": "ben",
+            "valley": "glen",
+            "potato": "tattie",
+            "potatoes": "tatties",
+            "turnip": "neep",
+            "turnips": "neeps",
+            "tired": "wabbit",
+            "food": "scran",
+            "talk": "blether",
+            "talking": "bletherin'",
+            "worry": "fash",
+            "worried": "fashed",
+            "crying": "greetin'",
+            "cry": "greet"
+        }
+    }
+
+    dae convert(text) {
+        ken result = text
+        fer english in keys(masel.replacements) {
+            ken scots = masel.replacements[english]
+            result = replace(result, english, scots)
+            # Also try capitalized version
+            ken cap_english = upper(scran(english, 0, 1)) + scran(english, 1, len(english))
+            ken cap_scots = upper(scran(scots, 0, 1)) + scran(scots, 1, len(scots))
+            result = replace(result, cap_english, cap_scots)
+        }
+        gie result
+    }
+
+    dae add_replacement(english, scots) {
+        masel.replacements[english] = scots
+        gie masel
+    }
+}
+
+# Create global converter
+dae make_scots(text) {
+    ken converter = ScotsConverter()
+    gie converter.convert(text)
+}
+
+# ===============================================================
+# Scottish Name Generator
+# ===============================================================
+
+ken SCOTS_FIRST_NAMES_MALE = [
+    "Angus", "Callum", "Duncan", "Ewan", "Fergus",
+    "Hamish", "Iain", "Jamie", "Kenneth", "Lachlan",
+    "Malcolm", "Murray", "Neil", "Rory", "Stuart"
+]
+
+ken SCOTS_FIRST_NAMES_FEMALE = [
+    "Ailsa", "Bonnie", "Catriona", "Eilidh", "Fiona",
+    "Isla", "Kirsty", "Mairi", "Morag", "Shona",
+    "Aileen", "Heather", "Mhairi", "Rhona", "Skye"
+]
+
+ken SCOTS_SURNAMES = [
+    "MacDonald", "MacLeod", "Campbell", "Stewart", "Robertson",
+    "MacKenzie", "Fraser", "MacGregor", "Murray", "Cameron",
+    "Ross", "Grant", "Anderson", "Scott", "Wallace",
+    "Bruce", "Douglas", "Graham", "Hamilton", "Gordon"
+]
+
+dae random_scots_name(gender = "any") {
+    ken first_names = gin gender == "male" than SCOTS_FIRST_NAMES_MALE ither gin gender == "female" than SCOTS_FIRST_NAMES_FEMALE ither SCOTS_FIRST_NAMES_MALE + SCOTS_FIRST_NAMES_FEMALE
+    ken first_name = dram(first_names)
+    ken surname = dram(SCOTS_SURNAMES)
+    gie f"{first_name} {surname}"
+}
+
+# ===============================================================
+# Scottish Place Name Generator
+# ===============================================================
+
+dae random_place_name() {
+    ken prefix = dram(PLACE_PREFIXES)
+    ken suffix = dram(PLACE_SUFFIXES)
+    gie prefix + suffix
+}
+
+# ===============================================================
+# Conversation Utilities
+# ===============================================================
+
+kin ScotsChat {
+    dae init(name = "Wee Bot") {
+        masel.name = name
+        masel.mood = "happy"
+    }
+
+    dae greet() {
+        gie f"{random_greeting()} Ah'm {masel.name}!"
+    }
+
+    dae farewell() {
+        gie random_farewell()
+    }
+
+    dae react(is_positive) {
+        gin is_positive {
+            gie positive_reaction()
+        }
+        gie negative_reaction()
+    }
+
+    dae share_wisdom() {
+        gie f"Here's some wisdom fer ye: {random_proverb()}"
+    }
+
+    dae explain(word) {
+        ken meaning = whit_means(word)
+        gie f"'{word}' means: {meaning}"
+    }
+}
+
+# ===============================================================
+# Scottish Clan Mottos
+# ===============================================================
+
+ken CLAN_MOTTOS = {
+    "MacDonald": "Per mare per terras (By sea and by land)",
+    "MacLeod": "Hold fast",
+    "Campbell": "Ne obliviscaris (Do not forget)",
+    "Stewart": "Virescit vulnere virtus (Courage grows strong at a wound)",
+    "Robertson": "Virtutis gloria merces (Glory is the reward of valour)",
+    "MacKenzie": "Luceo non uro (I shine, not burn)",
+    "Fraser": "Je suis prest (I am ready)",
+    "MacGregor": "S rioghal mo dhream (Royal is my race)",
+    "Murray": "Furth fortune and fill the fetters",
+    "Cameron": "Aonaibh ri chèile (Unite)",
+    "Ross": "Spem successus alit (Success nourishes hope)",
+    "Grant": "Stand fast",
+    "Wallace": "Pro libertate (For liberty)",
+    "Bruce": "Fuimus (We have been)",
+    "Douglas": "Jamais arrière (Never behind)",
+    "Graham": "Ne oublie (Do not forget)"
+}
+
+dae clan_motto(clan_name) {
+    gin contains(CLAN_MOTTOS, clan_name) {
+        gie CLAN_MOTTOS[clan_name]
+    }
+    gie "Motto unknown"
+}
+
+# ===============================================================
+# Scottish Programming Terms
+# ===============================================================
+
+ken PROGRAMMING_TERMS = {
+    # Control flow
+    "gin": "if (condition check)",
+    "ither": "else (alternative branch)",
+    "whiles": "while (loop while condition)",
+    "fer": "for (iteration loop)",
+    "brak": "break (exit loop)",
+    "haud": "continue (skip to next iteration)",
+
+    # Variables and data
+    "ken": "let/const (declare variable)",
+    "gie": "return (give back value)",
+    "naething": "null/nil (no value)",
+    "aye": "true (affirmative)",
+    "nae": "false/not (negative)",
+
+    # Functions and classes
+    "dae": "function (do something)",
+    "kin": "class (kind of thing)",
+    "masel": "self/this (reference to instance)",
+    "fetch": "import (bring in module)",
+
+    # I/O
+    "blether": "print (output text)",
+    "speir": "input (ask for input)",
+
+    # Error handling
+    "hae_a_bash": "try (attempt operation)",
+    "gin_it_gangs_wrang": "catch (if it goes wrong)",
+    "mak_siccar": "assert (make sure)",
+
+    # Collections
+    "creel": "list (basket of items)",
+    "shove": "push (add to list)"
+}
+
+dae explain_keyword(keyword) {
+    gin contains(PROGRAMMING_TERMS, keyword) {
+        gie PROGRAMMING_TERMS[keyword]
+    }
+    gie f"'{keyword}' is nae a kent keyword"
+}
+
+# ===============================================================
+# Scottish Insults (for error messages!)
+# ===============================================================
+
+ken INSULTS = [
+    "ya numpty",
+    "ya bampot",
+    "ya walloper",
+    "ya dobber",
+    "ya dunderheid",
+    "ya tube",
+    "ya muppet",
+    "ya eejit",
+    "ya tadger",
+    "ya clipe"
+]
+
+ken MILD_INSULTS = [
+    "ya wee scunner",
+    "ya daft gowk",
+    "ya saft laddie",
+    "ya glaikit bawheid",
+    "ya dozey beggar"
+]
+
+dae random_insult(mild = aye) {
+    gin mild {
+        gie dram(MILD_INSULTS)
+    }
+    gie dram(INSULTS)
+}
+
+# ===============================================================
+# Scottish Toast Phrases
+# ===============================================================
+
+ken TOASTS = [
+    "Slàinte mhath! (Good health!)",
+    "Here's tae us! Wha's like us? Damn few, and they're a' deid!",
+    "Lang may yer lum reek!",
+    "May the best ye've ever seen be the worst ye'll ever see!",
+    "May ye be hauf an hour in Heaven afore the Devil kens ye're deid!",
+    "Guid luck an' guid fortune tae ye!",
+    "May yer sporran ne'er be toom (empty)!",
+    "Here's tae the heath, the hill and the heather!",
+    "Here's tae yer een (eyes)!",
+    "Tae freends, auld and new!"
+]
+
+dae random_toast() {
+    gie dram(TOASTS)
+}
+
+# ===============================================================
+# Scottish Song Snippets
+# ===============================================================
+
+ken SONG_LINES = [
+    "Should auld acquaintance be forgot...",
+    "Ye'll tak the high road, and I'll tak the low road...",
+    "Wi' a hundred pipers an' a', an' a'...",
+    "Oh flower of Scotland, when will we see yer like again...",
+    "Speed bonnie boat like a bird on the wing...",
+    "My love is like a red, red rose...",
+    "Scotland the brave! Land of my birth...",
+    "Ae fond kiss, and then we sever...",
+    "A man's a man for a' that...",
+    "The bonnie, bonnie banks of Loch Lomond..."
+]
+
+dae random_song_line() {
+    gie dram(SONG_LINES)
+}
+
+# ===============================================================
+# Scottish Food Terms
+# ===============================================================
+
+ken SCOTTISH_FOODS = {
+    "haggis": "Sheep's pluck (heart, liver, lungs) minced wi' oatmeal, onion, and spices",
+    "neeps": "Mashed turnips/swede, served wi' haggis",
+    "tatties": "Potatoes, often mashed",
+    "cranachan": "Dessert wi' raspberries, cream, oats, and whisky",
+    "cullen skink": "Smoked haddock soup",
+    "cock-a-leekie": "Chicken and leek soup",
+    "shortbread": "Rich butter biscuit",
+    "tablet": "Sugar confection, crumbly and sweet",
+    "black pudding": "Blood sausage wi' oatmeal",
+    "white pudding": "Oatmeal sausage (nae blood)",
+    "bridies": "Meat pastries frae Forfar",
+    "scotch pie": "Double-crust meat pie",
+    "oatcakes": "Oat-based crackers",
+    "porridge": "Oatmeal breakfast, wi' salt (traditional)",
+    "Irn-Bru": "Scotland's other national drink",
+    "whisky": "The water of life (uisge beatha)"
+}
+
+dae describe_food(food_name) {
+    ken lower_name = lower(food_name)
+    gin contains(SCOTTISH_FOODS, lower_name) {
+        gie SCOTTISH_FOODS[lower_name]
+    }
+    gie f"Dinnae ken whit {food_name} is!"
+}
+
+# ===============================================================
+# Scottish Mythical Creatures
+# ===============================================================
+
+ken CREATURES = {
+    "Nessie": "The Loch Ness Monster, mysterious creature o' the deep",
+    "Kelpie": "Shape-shifting water spirit, often appears as a horse",
+    "Selkie": "Seal folk who can shed their skin tae become human",
+    "Brownie": "Helpful household spirit, easily offended",
+    "Bean Sidhe": "Banshee, keening spirit foretelling death",
+    "Boggart": "Malevolent household spirit",
+    "Nuckelavee": "Skinless sea demon frae Orkney",
+    "Blue Men o' the Minch": "Storm spirits between Lewis and mainland",
+    "Cu Sith": "Enormous fairy hound, harbinger o' death",
+    "Cat Sith": "Large black fairy cat wi' white chest spot",
+    "Wulver": "Benevolent werewolf-like creature frae Shetland",
+    "Redcap": "Malicious goblin haunting ruined castles"
+}
+
+dae describe_creature(creature_name) {
+    gin contains(CREATURES, creature_name) {
+        gie CREATURES[creature_name]
+    }
+    gie f"Nae heard o' that beastie!"
+}
+
+# ===============================================================
+# More Scots Words - Extended Dictionary
+# ===============================================================
+
+ken MORE_SCOTS_WORDS = {
+    # Body parts
+    "heid": "head",
+    "een": "eyes",
+    "lug": "ear",
+    "neb": "nose",
+    "mooth": "mouth",
+    "airm": "arm",
+    "haun": "hand",
+    "pinkie": "little finger",
+    "bahookie": "bottom/backside",
+
+    # Emotions
+    "chuffed": "pleased, happy",
+    "beelin'": "furious, angry",
+    "feart": "afraid, scared",
+    "dumfoonert": "bewildered, confused",
+    "stooshie": "commotion, fuss",
+
+    # Actions
+    "dander": "walk, stroll",
+    "stoorie": "dusty, kick up dust",
+    "swither": "hesitate, be uncertain",
+    "slaister": "make a mess",
+    "hirple": "limp, walk with difficulty",
+    "clatter": "gossip, idle talk",
+    "clamber": "climb awkwardly",
+    "skite": "slip, slide",
+
+    # Places
+    "close": "alley, passage between buildings",
+    "wynd": "narrow lane",
+    "vennel": "narrow passage",
+    "pend": "arched passageway",
+
+    # Quantities
+    "hunner": "hundred",
+    "thoosan": "thousand",
+    "a wheen": "a few, several",
+    "a puckle": "a small amount",
+
+    # Time expressions
+    "the noo": "right now",
+    "the morn": "tomorrow",
+    "yestreen": "yesterday evening",
+    "gloamin'": "twilight, dusk",
+    "efter": "after",
+    "afore": "before",
+
+    # Objects
+    "bunnet": "cap, hat",
+    "semmit": "undershirt, vest",
+    "breeks": "trousers",
+    "gutties": "plimsolls, trainers",
+    "baffies": "slippers"
+}
+
+# Merge into main dictionary
+fer word in keys(MORE_SCOTS_WORDS) {
+    SCOTS_WORDS[word] = MORE_SCOTS_WORDS[word]
+}
+
+# ===============================================================
+# Scottish Gaelic Phrases
+# ===============================================================
+
+ken GAELIC_PHRASES = {
+    "Slàinte mhath": "Good health (toast)",
+    "Fàilte": "Welcome",
+    "Tapadh leat": "Thank you",
+    "Madainn mhath": "Good morning",
+    "Feasgar math": "Good afternoon",
+    "Oidhche mhath": "Good night",
+    "Mar sin leat": "Goodbye",
+    "Ciamar a tha thu?": "How are you?",
+    "Tha gu math": "I am well",
+    "Alba gu bràth": "Scotland forever",
+    "Mo chreach": "My goodness (exclamation)",
+    "Tha mi duilich": "I am sorry",
+    "Beannachd leat": "Blessing be with you"
+}
+
+dae gaelic_phrase(english_key) {
+    ken lower_key = lower(english_key)
+    fer phrase in keys(GAELIC_PHRASES) {
+        gin lower(phrase) == lower_key {
+            gie GAELIC_PHRASES[phrase]
+        }
+    }
+    gie naething
+}
+
+dae random_gaelic() {
+    ken phrases = keys(GAELIC_PHRASES)
+    ken phrase = dram(phrases)
+    gie f"{phrase} - {GAELIC_PHRASES[phrase]}"
+}
+
+# ===============================================================
+# Scottish Fortune Cookie / Wisdom Generator
+# ===============================================================
+
+dae scots_fortune() {
+    ken fortune_types = ["proverb", "toast", "song", "wisdom"]
+    ken fortune_type = dram(fortune_types)
+
+    gin fortune_type == "proverb" {
+        gie f"Wisdom: {random_proverb()}"
+    } ither gin fortune_type == "toast" {
+        gie f"A toast: {random_toast()}"
+    } ither gin fortune_type == "song" {
+        gie f"A wee song: {random_song_line()}"
+    } ither {
+        ken wisdoms = [
+            "Dinnae fash yersel - worrying changes naething.",
+            "Every day's a school day, even fer the wisest.",
+            "The best-laid schemes o' mice an' men gang aft agley.",
+            "Whit's fer ye'll no go by ye.",
+            "Be yersel - everybody else is already taken.",
+            "A problem shared is a problem halved.",
+            "Tomorrow's anither day entirely.",
+            "Ye cannae change the wind, but ye can adjust yer sails."
+        ]
+        gie dram(wisdoms)
+    }
+}
+
+blether "Scots language module loaded! Gie yer code some flavour!"

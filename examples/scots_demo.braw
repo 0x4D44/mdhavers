@@ -1,0 +1,178 @@
+# scots_demo.braw - Demo of the Scottish Culture Module
+# "A wee bit o' Scotland in yer code!"
+
+fetch "../stdlib/scots"
+fetch "lib/colors"
+
+blether ""
+blether cyan("╔════════════════════════════════════════════════════════╗")
+blether cyan("║          SCOTTISH CULTURE MODULE DEMO                  ║")
+blether cyan("║         \"Alba gu bràth!\" - Scotland forever!           ║")
+blether cyan("╚════════════════════════════════════════════════════════╝")
+blether ""
+
+# ============================================================
+# Greetings and Farewells
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  GREETINGS AN' FAREWELLS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+blether "Random Scottish greetings:"
+fer i in 0..5 {
+    blether f"  {random_greeting()}"
+}
+blether ""
+
+blether "Random Scottish farewells:"
+fer i in 0..3 {
+    blether f"  {random_farewell()}"
+}
+blether ""
+
+# ============================================================
+# Proverbs and Wisdom
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  SCOTTISH PROVERBS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+blether "Wisdom frae the Highlands:"
+fer i in 0..5 {
+    blether f"  • {random_proverb()}"
+    blether ""
+}
+
+# ============================================================
+# Robert Burns
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  ROBERT BURNS QUOTES")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+blether "Frae Scotland's national poet:"
+fer i in 0..3 {
+    blether f"  \"{random_burns()}\""
+    blether ""
+}
+
+# ============================================================
+# Vocabulary Lesson
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  SCOTS VOCABULARY")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken words_tae_learn = ["aye", "nae", "braw", "wee", "bonnie", "bampot", "numpty", "haggis"]
+fer word in words_tae_learn {
+    blether f"  {word} = {whit_means(word)}"
+}
+blether ""
+
+# Unknown word
+blether f"  bletherskite = {whit_means(\"bletherskite\")}"
+blether ""
+
+# ============================================================
+# Gaelic Phrases
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  GAELIC PHRASES")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken gaelic_phrases = ["slàinte mhath", "alba gu bràth", "fàilte", "ceud mìle fàilte"]
+fer phrase in gaelic_phrases {
+    blether f"  {phrase} = {gaelic_tae_english(phrase)}"
+}
+blether ""
+
+# ============================================================
+# Fun Insults (aw in guid fun!)
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  SCOTTISH INSULTS (aw in guid fun!)")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+blether "Some friendly Scottish patter:"
+fer i in 0..5 {
+    blether f"  • {random_insult()}"
+}
+blether ""
+
+# ============================================================
+# Scottify Text
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  SCOTTIFY YER TEXT")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken original = "I don't know if this small beautiful girl can't go to the house."
+ken scottified = scottify(original)
+
+blether "Original English:"
+blether f"  {original}"
+blether ""
+blether "Scottified:"
+blether f"  {scottified}"
+blether ""
+
+# ============================================================
+# Toasts and Blessings
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  TOASTS AN' BLESSINGS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+blether "A wee toast fer ye:"
+blether f"  {toast()}"
+blether ""
+
+blether "A Scottish blessing:"
+blether f"  {blessing()}"
+blether ""
+
+# ============================================================
+# Clan Information
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  SCOTTISH CLANS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken clans = ["Campbell", "MacDonald", "Stewart", "MacLeod", "MacGregor"]
+fer clan in clans {
+    blether f"  Clan {clan}: {clan_info(clan)}"
+}
+blether ""
+
+# ============================================================
+# Full Lesson
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  WEE SCOTS LESSON")
+blether yellow("═══════════════════════════════════════")
+
+scots_lesson()
+
+blether green("═══════════════════════════════════════")
+blether green("  Haste ye back! Alba gu bràth!")
+blether green("═══════════════════════════════════════")
+blether ""

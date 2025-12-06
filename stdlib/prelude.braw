@@ -1,0 +1,732 @@
+# prelude.braw - Automatically loaded fer every mdhavers program
+# Contains the maist commonly used functions and utilities
+# "A wee bit o' help tae get ye started!"
+
+# ===============================================================
+# Basic Utilities
+# ===============================================================
+
+# Check if a value is nowt (nil/naething)
+dae is_nowt(val) {
+    gie val == naething
+}
+
+# Check if a value is NOT nowt
+dae is_somethin(val) {
+    gie val != naething
+}
+
+# Get a default value if the first is naething
+dae or_else(val, default) {
+    gin val == naething {
+        gie default
+    }
+    gie val
+}
+
+# ===============================================================
+# Number Functions
+# ===============================================================
+
+# Get the smaller of two values
+dae wee(a, b) {
+    gin a < b {
+        gie a
+    }
+    gie b
+}
+
+# Get the larger of two values
+dae muckle(a, b) {
+    gin a > b {
+        gie a
+    }
+    gie b
+}
+
+# Check if a number is even
+dae is_even(n) {
+    gie n % 2 == 0
+}
+
+# Check if a number is odd
+dae is_odd(n) {
+    gie n % 2 != 0
+}
+
+# Check if a number is between min and max (inclusive)
+dae atween(val, wee_end, muckle_end) {
+    gie val >= wee_end an val <= muckle_end
+}
+
+# Clamp a value between bounds
+dae hauld_atween(val, wee_end, muckle_end) {
+    gin val < wee_end {
+        gie wee_end
+    }
+    gin val > muckle_end {
+        gie muckle_end
+    }
+    gie val
+}
+
+# ===============================================================
+# List Functions
+# ===============================================================
+
+# Check if a list is empty (toom = empty in Scots)
+dae is_toom(list) {
+    gie len(list) == 0
+}
+
+# Get the first n elements
+dae tak(list, n) {
+    ken result = []
+    ken i = 0
+    whiles i < n an i < len(list) {
+        shove(result, list[i])
+        i = i + 1
+    }
+    gie result
+}
+
+# Skip the first n elements
+dae drap(list, n) {
+    ken result = []
+    ken i = n
+    whiles i < len(list) {
+        shove(result, list[i])
+        i = i + 1
+    }
+    gie result
+}
+
+# Get elements while predicate is true
+dae tak_while(list, pred) {
+    ken result = []
+    fer item in list {
+        gin nae pred(item) {
+            gie result
+        }
+        shove(result, item)
+    }
+    gie result
+}
+
+# Skip elements while predicate is true
+dae drap_while(list, pred) {
+    ken result = []
+    ken skipping = aye
+    fer item in list {
+        gin skipping an pred(item) {
+            haud
+        }
+        skipping = nae
+        shove(result, item)
+    }
+    gie result
+}
+
+# Reverse a list
+dae backside_forrit(list) {
+    ken result = []
+    ken i = len(list) - 1
+    whiles i >= 0 {
+        shove(result, list[i])
+        i = i - 1
+    }
+    gie result
+}
+
+# Count elements matching predicate (coont_gin = count if)
+# Note: built-in coont(list, value) counts exact matches
+dae coont_gin(list, pred) {
+    ken total = 0
+    fer item in list {
+        gin pred(item) {
+            total = total + 1
+        }
+    }
+    gie total
+}
+
+# Check if any element matches
+dae ony(list, pred) {
+    fer item in list {
+        gin pred(item) {
+            gie aye
+        }
+    }
+    gie nae
+}
+
+# Check if all elements match
+dae ilka(list, pred) {
+    fer item in list {
+        gin nae pred(item) {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# Find first matching element
+dae fin(list, pred) {
+    fer item in list {
+        gin pred(item) {
+            gie item
+        }
+    }
+    gie naething
+}
+
+# Find index of first matching element
+dae fin_index(list, pred) {
+    ken i = 0
+    fer item in list {
+        gin pred(item) {
+            gie i
+        }
+        i = i + 1
+    }
+    gie -1
+}
+
+# Flatten a list of lists by one level
+dae flatten(list) {
+    ken result = []
+    fer item in list {
+        gin whit_kind(item) == "list" {
+            fer inner in item {
+                shove(result, inner)
+            }
+        } ither {
+            shove(result, item)
+        }
+    }
+    gie result
+}
+
+# Zip two lists together
+dae zip_up(a, b) {
+    ken result = []
+    ken i = 0
+    ken stop = wee(len(a), len(b))
+    whiles i < stop {
+        shove(result, [a[i], b[i]])
+        i = i + 1
+    }
+    gie result
+}
+
+# Create a list repeating value n times
+dae mony(val, n) {
+    ken result = []
+    ken i = 0
+    whiles i < n {
+        shove(result, val)
+        i = i + 1
+    }
+    gie result
+}
+
+# ===============================================================
+# String Functions
+# ===============================================================
+
+# Check if string is empty or whitespace only
+dae is_baw(s) {
+    gie len(wheesht(s)) == 0
+}
+
+# Repeat a string n times
+dae repeat_say(s, n) {
+    ken result = ""
+    ken i = 0
+    whiles i < n {
+        result = result + s
+        i = i + 1
+    }
+    gie result
+}
+
+# Pad string on left to width
+dae pad_left(s, width, fill) {
+    ken padding = width - len(s)
+    gin padding <= 0 {
+        gie s
+    }
+    gie repeat_say(fill, padding) + s
+}
+
+# Pad string on right to width
+dae pad_right(s, width, fill) {
+    ken padding = width - len(s)
+    gin padding <= 0 {
+        gie s
+    }
+    gie s + repeat_say(fill, padding)
+}
+
+# Center string in width
+dae centre(s, width, fill) {
+    ken padding = width - len(s)
+    gin padding <= 0 {
+        gie s
+    }
+    ken left_pad = padding / 2
+    ken right_pad = padding - left_pad
+    gie repeat_say(fill, left_pad) + s + repeat_say(fill, right_pad)
+}
+
+# ===============================================================
+# Higher-Order Functions
+# ===============================================================
+
+# Compose two functions: compose(f, g)(x) = f(g(x))
+dae compose(f, g) {
+    dae composed(x) {
+        gie f(g(x))
+    }
+    gie composed
+}
+
+# Apply a function n times
+dae apply_n(f, n, start) {
+    ken val = start
+    ken i = 0
+    whiles i < n {
+        val = f(val)
+        i = i + 1
+    }
+    gie val
+}
+
+# Identity function - returns its argument unchanged
+dae same(x) {
+    gie x
+}
+
+# Constant function - ignores argument, returns constant
+dae constant(val) {
+    dae inner(x) {
+        gie val
+    }
+    gie inner
+}
+
+# Negate a predicate function
+dae nae_that(pred) {
+    dae negated(x) {
+        gie nae pred(x)
+    }
+    gie negated
+}
+
+# ===============================================================
+# Debug Helpers
+# ===============================================================
+
+# Print a value with a label and return it (for debugging)
+# "swatch" means to take a look/glimpse in Scots
+dae swatch(label, val) {
+    blether f"[swatch] {label}: {val}"
+    gie val
+}
+
+# Assert that a condition is true
+dae mak_siccar_that(condition, message) {
+    gin nae condition {
+        blether f"ASSERTION FAILED: {message}"
+    }
+}
+
+# ===============================================================
+# Scots-Flavoured Aliases
+# ===============================================================
+
+# Alias: first = heid (already built-in, but we ensure it's there)
+dae first(list) {
+    gie heid(list)
+}
+
+# Alias: last = bum (already built-in, but we ensure it's there)
+dae last(list) {
+    gie bum(list)
+}
+
+# ===============================================================
+# Scottish Numerical Words
+# ===============================================================
+
+# Convert a wee number (0-10) tae Scots words
+dae scots_number(n) {
+    keek n {
+        whan 0 -> { gie "zero" }
+        whan 1 -> { gie "ane" }
+        whan 2 -> { gie "twa" }
+        whan 3 -> { gie "three" }
+        whan 4 -> { gie "fower" }
+        whan 5 -> { gie "five" }
+        whan 6 -> { gie "sax" }
+        whan 7 -> { gie "seeven" }
+        whan 8 -> { gie "echt" }
+        whan 9 -> { gie "nine" }
+        whan 10 -> { gie "ten" }
+        whan _ -> { gie tae_string(n) }
+    }
+    gie tae_string(n)
+}
+
+# ===============================================================
+# Scottish Ordinal Words
+# ===============================================================
+
+# Convert a number tae ordinal (1st, 2nd, 3rd...)
+dae ordinal(n) {
+    ken suffix = "th"
+    gin n % 100 >= 11 an n % 100 <= 13 {
+        suffix = "th"
+    } ither gin n % 10 == 1 {
+        suffix = "st"
+    } ither gin n % 10 == 2 {
+        suffix = "nd"
+    } ither gin n % 10 == 3 {
+        suffix = "rd"
+    }
+    gie tae_string(n) + suffix
+}
+
+# ===============================================================
+# Validation Functions (wi' Scottish flair)
+# ===============================================================
+
+# Check if a value is braw (good/valid)
+dae is_braw(val) {
+    gin val == naething { gie nae }
+    gin whit_kind(val) == "string" an len(val) == 0 { gie nae }
+    gin whit_kind(val) == "list" an len(val) == 0 { gie nae }
+    gie aye
+}
+
+# Make sure something isnae empty, or complain aboot it
+dae needsae_be_toom(val, name) {
+    gin is_braw(val) {
+        gie val
+    }
+    blether f"Och! {name} cannae be empty, ya numpty!"
+    gie naething
+}
+
+# ===============================================================
+# Timing and Delays
+# ===============================================================
+
+# Time how long a function takes (returns [result, milliseconds])
+dae tak_time(func) {
+    ken start = the_noo()
+    ken result = func()
+    ken finish = the_noo()
+    gie [result, (finish - start) * 1000]
+}
+
+# ===============================================================
+# Range Utilities
+# ===============================================================
+
+# Create a range as a list
+dae make_range(start, finish) {
+    ken result = []
+    ken i = start
+    whiles i <= finish {
+        shove(result, i)
+        i = i + 1
+    }
+    gie result
+}
+
+# Create a range with step
+dae make_range_step(start, finish, step) {
+    ken result = []
+    ken i = start
+    gin step > 0 {
+        whiles i <= finish {
+            shove(result, i)
+            i = i + step
+        }
+    } ither gin step < 0 {
+        whiles i >= finish {
+            shove(result, i)
+            i = i + step
+        }
+    }
+    gie result
+}
+
+# ===============================================================
+# Scottish Expressions & Phrases
+# ===============================================================
+
+# Express yersel in guid Scots!
+dae wheech(msg) {
+    # Wheech means "to move quickly" - for urgent messages
+    blether f"!! {upper(msg)} !!"
+}
+
+dae dinnae_fash(msg) {
+    # "Don't worry yourself"
+    blether f"Dinnae fash yersel! {msg}"
+}
+
+dae pure_dead_brilliant(whit) {
+    blether f"Pure dead brilliant, that {whit}!"
+}
+
+# ===============================================================
+# Math Helpers
+# ===============================================================
+
+# Calculate average of a list
+dae average(list) {
+    gin len(list) == 0 { gie 0 }
+    gie sumaw(list) / len(list)
+}
+
+# Get median of a list
+dae median(list) {
+    gin len(list) == 0 { gie naething }
+    ken sorted = sort(list)
+    ken mid = len(sorted) / 2
+    gin len(sorted) % 2 == 0 {
+        gie (sorted[mid - 1] + sorted[mid]) / 2
+    }
+    gie sorted[mid]
+}
+
+# Get the mode (most common value) - returns the first if ties
+dae mode(list) {
+    gin len(list) == 0 { gie naething }
+    ken counts = {}
+    ken best = list[0]
+    ken best_count = 0
+    fer item in list {
+        ken key = tae_string(item)
+        gin contains(keys(counts), key) {
+            counts[key] = counts[key] + 1
+        } ither {
+            counts[key] = 1
+        }
+        gin counts[key] > best_count {
+            best = item
+            best_count = counts[key]
+        }
+    }
+    gie best
+}
+
+# ===============================================================
+# List Transformation Functions
+# ===============================================================
+
+# Map-reduce in one: transform then combine (gaun then tumble)
+dae transform_an_combine(list, mapper, reducer, start) {
+    ken transformed = gaun(list, mapper)
+    gie tumble(transformed, start, reducer)
+}
+
+# Partition list into two based on predicate function [matching, not-matching]
+# Note: built-in split_by(list, "even") uses string predicates
+dae hauf_by(list, pred) {
+    ken matching = []
+    ken others = []
+    fer item in list {
+        gin pred(item) {
+            shove(matching, item)
+        } ither {
+            shove(others, item)
+        }
+    }
+    gie [matching, others]
+}
+
+# Group list items by a key function: returns dict of key -> [items]
+dae group_by(list, key_fn) {
+    ken groups = {}
+    fer item in list {
+        ken key = tae_string(key_fn(item))
+        gin contains(keys(groups), key) {
+            shove(groups[key], item)
+        } ither {
+            groups[key] = [item]
+        }
+    }
+    gie groups
+}
+
+# Remove duplicates from list
+dae unique(list) {
+    ken seen = creel([])
+    ken result = []
+    fer item in list {
+        gin nae is_in_creel(seen, item) {
+            toss_in(seen, item)
+            shove(result, item)
+        }
+    }
+    gie result
+}
+
+# ===============================================================
+# Scots Proverbs and Wisdom
+# ===============================================================
+
+# Get a random Scots proverb
+dae scots_wisdom() {
+    ken proverbs = ["Mony a mickle maks a muckle", "Lang may yer lum reek", "Whit's fer ye willnae go by ye", "Better a wee fire that warms", "A nod's as guid as a wink", "Dinnae teach yer granny tae suck eggs", "He wha daes the deil's wark gets the deil's wage"]
+    ken idx = jammy(0, len(proverbs))
+    gie proverbs[idx]
+}
+
+# ===============================================================
+# Date/Time Functions (Scots Style!)
+# ===============================================================
+
+# Get formatted timestamp as string
+dae the_noo() {
+    ken ms = noo()
+    ken secs = ms / 1000
+    gie f"timestamp: {secs} seconds since 1970"
+}
+
+# ===============================================================
+# Scottish Greetings and Phrases
+# ===============================================================
+
+# Get a random Scottish greeting
+dae scots_greetin() {
+    ken greetins = ["Hullo there!", "Hoo's it gaun?", "Whit's the crack?", "Aye aye!", "Guid day tae ye!", "Haud yer wheesht!", "Lang time nae see!", "Whit like the day?"]
+    ken idx = jammy(0, len(greetins))
+    gie greetins[idx]
+}
+
+# Get a Scottish farewell
+dae scots_farewell() {
+    ken farewells = ["Haste ye back!", "See ye efter!", "Cheers the noo!", "Tak care noo!", "Lang may yer lum reek!", "Keep the heid!", "Dinnae be a stranger!", "Aw the best!"]
+    ken idx = jammy(0, len(farewells))
+    gie farewells[idx]
+}
+
+# Get a Scottish exclamation
+dae scots_exclaim() {
+    ken exclaims = ["Jings!", "Crivvens!", "Help ma boab!", "Michty me!", "Och naw!", "By the wee man!", "Sakes alive!", "Hoots mon!"]
+    ken idx = jammy(0, len(exclaims))
+    gie exclaims[idx]
+}
+
+# ===============================================================
+# Validation Functions
+# ===============================================================
+
+# Check if string is a valid number
+dae is_nummer(s) {
+    hae_a_bash {
+        ken n = tae_float(s)
+        gie aye
+    } gin_it_gangs_wrang e {
+        gie nae
+    }
+}
+
+# Check if string is a valid integer
+dae is_hale_nummer(s) {
+    hae_a_bash {
+        ken n = tae_int(s)
+        gie aye
+    } gin_it_gangs_wrang e {
+        gie nae
+    }
+}
+
+# Check if value is positive
+dae is_positive(n) {
+    gie n > 0
+}
+
+# Check if value is negative
+dae is_negative(n) {
+    gie n < 0
+}
+
+# ===============================================================
+# Pipeline Helpers
+# ===============================================================
+
+# Identity function (useful in pipelines)
+dae same(x) {
+    gie x
+}
+
+# Compose two functions
+dae efter(f, g) {
+    gie |x| g(f(x))
+}
+
+# Apply function n times
+dae dae_times(n, val, func) {
+    ken result = val
+    fer i in 1..n+1 {
+        result = func(result)
+    }
+    gie result
+}
+
+# ===============================================================
+# Debug Helpers
+# ===============================================================
+
+# Print with label (fer debugging)
+dae spy(label, val) {
+    blether f"[{label}] {val}"
+    gie val
+}
+
+# Print type and value
+dae inspect(val) {
+    blether f"<{whit_kind(val)}> {val}"
+    gie val
+}
+
+# Assert with custom message
+dae assert_that(condition, message) {
+    gin nae condition {
+        mak_siccar nae, message
+    }
+}
+
+# Assert two values are equal
+dae assert_equal(expected, actual) {
+    gin expected != actual {
+        mak_siccar nae, f"Expected {expected}, but got {actual}"
+    }
+}
+
+# ===============================================================
+# Scottish Units and Measures (just fer fun!)
+# ===============================================================
+
+# Convert miles to kilometers (a Scots mile was longer!)
+dae scots_miles_tae_km(miles) {
+    # A Scots mile was about 1.8 km (longer than English mile)
+    gie miles * 1.8
+}
+
+# Convert pints to litres (Scottish pint was bigger!)
+dae scots_pints_tae_litres(pints) {
+    # A Scots pint was about 1.7 litres
+    gie pints * 1.7
+}
+
+# Convert stones to kilograms
+dae stanes_tae_kg(stanes) {
+    gie stanes * 6.35
+}

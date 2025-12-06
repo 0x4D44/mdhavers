@@ -1,0 +1,83 @@
+# dates_demo.braw - Demonstrating the dates module
+fetch "../stdlib/dates"
+
+blether "═══════════════════════════════════════════════════"
+blether "  Dates Module Demo"
+blether "═══════════════════════════════════════════════════"
+blether ""
+
+# Create dates
+blether "=== Date Creation ==="
+ken hogmanay_2024 = mak_date(2024, 12, 31)
+ken burns = burns_night(2025)
+ken standrews = st_andrews_day(2024)
+
+blether f"Hogmanay 2024: {format_scots(hogmanay_2024)}"
+blether f"Burns Night 2025: {format_scots(burns)}"
+blether f"St Andrew's Day 2024: {format_scots(standrews)}"
+blether ""
+
+# Date formatting
+blether "=== Date Formatting ==="
+ken today = mak_date(2024, 3, 15)
+blether f"ISO format: {format_iso(today)}"
+blether f"UK format: {format_uk(today)}"
+blether f"Scots format: {format_scots(today)}"
+blether ""
+
+# Day of week
+blether "=== Day of Week ==="
+blether f"15 March 2024 is a: {scots_day_name(today)}"
+blether ""
+
+# Scottish holidays
+blether "=== Scottish Holidays ==="
+fer year in [2024, 2025] {
+    blether f"Year {year}:"
+    blether f"  Burns Night: {format_scots(burns_night(year))}"
+    blether f"  St Andrew's Day: {format_scots(st_andrews_day(year))}"
+    ken hogmanay_date = hogmanay(year)
+    blether f"  Hogmanay: {format_scots(hogmanay_date)}"
+}
+blether ""
+
+# Date arithmetic
+blether "=== Date Arithmetic ==="
+ken start = mak_date(2024, 1, 1)
+ken later = add_days(start, 100)
+blether f"100 days after {format_scots(start)}: {format_scots(later)}"
+
+ken next_month = add_months(start, 3)
+blether f"3 months after: {format_scots(next_month)}"
+blether ""
+
+# Leap year
+blether "=== Leap Years ==="
+blether f"2024 is leap year: {is_leap_year(2024)}"
+blether f"2023 is leap year: {is_leap_year(2023)}"
+blether f"2000 is leap year: {is_leap_year(2000)}"
+blether f"1900 is leap year: {is_leap_year(1900)}"
+blether ""
+
+# Holiday checking
+blether "=== Holiday Check ==="
+ken test_dates = [
+    mak_date(2024, 1, 25),   # Burns Night
+    mak_date(2024, 1, 1),    # Ne'erday
+    mak_date(2024, 3, 15),   # Random day
+    mak_date(2024, 11, 30)   # St Andrew's Day
+]
+
+fer d in test_dates {
+    ken holiday = scots_holiday_name(d)
+    gin holiday != naething {
+        blether f"{format_scots(d)}: {holiday}!"
+    } ither {
+        blether f"{format_scots(d)}: Just a normal day"
+    }
+}
+blether ""
+
+blether "═══════════════════════════════════════════════════"
+blether "  Dates Demo Complete!"
+blether "═══════════════════════════════════════════════════"

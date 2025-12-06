@@ -1,0 +1,601 @@
+# dungeon_crawler.braw - A Scottish Roguelike Dungeon Crawler
+# "Venture intae the depths o' Castle MacFear!"
+
+fetch "lib/colors"
+fetch "lib/scots_lang"
+
+# ===============================================================
+# Game Constants
+# ===============================================================
+
+ken MAP_WIDTH = 40
+ken MAP_HEIGHT = 15
+
+# Tile types
+ken TILE_FLOOR = "."
+ken TILE_WALL = "#"
+ken TILE_DOOR = "+"
+ken TILE_STAIRS_DOWN = ">"
+ken TILE_STAIRS_UP = "<"
+ken TILE_TREASURE = "$"
+ken TILE_TRAP = "^"
+ken TILE_PLAYER = "@"
+ken TILE_MONSTER = "M"
+ken TILE_BOSS = "B"
+
+# Monster types
+ken MONSTERS = [
+    {"name": "Boggart", "symbol": "b", "hp": 10, "damage": 3, "xp": 15},
+    {"name": "Kelpie", "symbol": "k", "hp": 15, "damage": 5, "xp": 25},
+    {"name": "Will-o-wisp", "symbol": "w", "hp": 8, "damage": 4, "xp": 20},
+    {"name": "Redcap", "symbol": "r", "hp": 20, "damage": 6, "xp": 35},
+    {"name": "Bean Sidhe", "symbol": "B", "hp": 25, "damage": 8, "xp": 50},
+    {"name": "Nuckelavee", "symbol": "N", "hp": 40, "damage": 12, "xp": 100}
+]
+
+# Items
+ken ITEMS = [
+    {"name": "Healing Potion", "symbol": "!", "effect": "heal", "value": 20},
+    {"name": "Strength Potion", "symbol": "!", "effect": "strength", "value": 5},
+    {"name": "Shield Scroll", "symbol": "?", "effect": "armor", "value": 3},
+    {"name": "Gold Coins", "symbol": "$", "effect": "gold", "value": 0},
+    {"name": "Claymore", "symbol": "/", "effect": "weapon", "value": 5},
+    {"name": "Leather Sporran", "symbol": "[", "effect": "armor", "value": 2}
+]
+
+# ===============================================================
+# Game State
+# ===============================================================
+
+ken player = {
+    "x": 1,
+    "y": 1,
+    "hp": 100,
+    "max_hp": 100,
+    "damage": 10,
+    "armor": 0,
+    "gold": 0,
+    "xp": 0,
+    "level": 1,
+    "floor": 1,
+    "inventory": []
+}
+
+ken dungeon = {
+    "map": [],
+    "monsters": [],
+    "items": [],
+    "visible": []
+}
+
+ken game_state = {
+    "running": aye,
+    "message": "Welcome tae Castle MacFear! Use WASD or arrow keys tae move.",
+    "turn": 0
+}
+
+# ===============================================================
+# Map Generation
+# ===============================================================
+
+dae generate_dungeon(floor_num) {
+    # Initialize empty map with walls
+    ken map = []
+    ken visible = []
+    fer y in 0..MAP_HEIGHT {
+        ken row = []
+        ken vis_row = []
+        fer x in 0..MAP_WIDTH {
+            shove(row, TILE_WALL)
+            shove(vis_row, nae)
+        }
+        shove(map, row)
+        shove(visible, vis_row)
+    }
+
+    # Carve out rooms
+    ken rooms = []
+    ken num_rooms = 4 + (floor_num / 2)
+    gin num_rooms > 8 { num_rooms = 8 }
+
+    fer i in 0..num_rooms {
+        ken room_w = jammy(4, 8)
+        ken room_h = jammy(3, 5)
+        ken room_x = jammy(1, MAP_WIDTH - room_w - 1)
+        ken room_y = jammy(1, MAP_HEIGHT - room_h - 1)
+
+        # Check for overlap (simplified - just create anyway)
+        shove(rooms, {"x": room_x, "y": room_y, "w": room_w, "h": room_h})
+
+        # Carve room
+        fer ry in room_y..(room_y + room_h) {
+            fer rx in room_x..(room_x + room_w) {
+                map[ry][rx] = TILE_FLOOR
+            }
+        }
+    }
+
+    # Connect rooms with corridors
+    fer i in 0..(len(rooms) - 1) {
+        ken r1 = rooms[i]
+        ken r2 = rooms[i + 1]
+        ken x1 = r1["x"] + (r1["w"] / 2)
+        ken y1 = r1["y"] + (r1["h"] / 2)
+        ken x2 = r2["x"] + (r2["w"] / 2)
+        ken y2 = r2["y"] + (r2["h"] / 2)
+
+        # Horizontal corridor
+        ken start_x = gin x1 < x2 than x1 ither x2
+        ken end_x = gin x1 < x2 than x2 ither x1
+        fer cx in start_x..(end_x + 1) {
+            map[y1][cx] = TILE_FLOOR
+        }
+
+        # Vertical corridor
+        ken start_y = gin y1 < y2 than y1 ither y2
+        ken end_y = gin y1 < y2 than y2 ither y1
+        fer cy in start_y..(end_y + 1) {
+            map[cy][x2] = TILE_FLOOR
+        }
+    }
+
+    # Place stairs down (in last room)
+    ken last_room = rooms[len(rooms) - 1]
+    ken stair_x = last_room["x"] + 1
+    ken stair_y = last_room["y"] + 1
+    map[stair_y][stair_x] = TILE_STAIRS_DOWN
+
+    # Place player in first room
+    ken first_room = rooms[0]
+    player["x"] = first_room["x"] + 1
+    player["y"] = first_room["y"] + 1
+
+    # Generate monsters
+    ken monsters = []
+    ken num_monsters = 2 + floor_num
+    gin num_monsters > 8 { num_monsters = 8 }
+
+    fer i in 0..num_monsters {
+        ken room = rooms[jammy(1, len(rooms)) - 1]
+        ken mx = room["x"] + jammy(1, room["w"] - 1)
+        ken my = room["y"] + jammy(1, room["h"] - 1)
+
+        # Skip if on player position
+        gin mx == player["x"] an my == player["y"] { haud }
+
+        # Pick monster type based on floor
+        ken monster_idx = jammy(0, gin floor_num > 3 than len(MONSTERS) - 1 ither floor_num)
+        ken monster_template = MONSTERS[monster_idx]
+
+        shove(monsters, {
+            "name": monster_template["name"],
+            "symbol": monster_template["symbol"],
+            "hp": monster_template["hp"] + (floor_num * 2),
+            "max_hp": monster_template["hp"] + (floor_num * 2),
+            "damage": monster_template["damage"] + floor_num,
+            "xp": monster_template["xp"],
+            "x": mx,
+            "y": my
+        })
+    }
+
+    # Generate items
+    ken items = []
+    ken num_items = jammy(2, 5)
+    fer i in 0..num_items {
+        ken room = rooms[jammy(0, len(rooms) - 1)]
+        ken ix = room["x"] + jammy(1, room["w"] - 1)
+        ken iy = room["y"] + jammy(1, room["h"] - 1)
+
+        ken item_template = ITEMS[jammy(0, len(ITEMS) - 1)]
+        ken item_value = gin item_template["effect"] == "gold" than jammy(10, 50) * floor_num ither item_template["value"]
+
+        shove(items, {
+            "name": item_template["name"],
+            "symbol": item_template["symbol"],
+            "effect": item_template["effect"],
+            "value": item_value,
+            "x": ix,
+            "y": iy
+        })
+    }
+
+    # Place some traps
+    fer i in 0..floor_num {
+        ken room = rooms[jammy(0, len(rooms) - 1)]
+        ken tx = room["x"] + jammy(1, room["w"] - 1)
+        ken ty = room["y"] + jammy(1, room["h"] - 1)
+        gin map[ty][tx] == TILE_FLOOR {
+            map[ty][tx] = TILE_TRAP
+        }
+    }
+
+    dungeon["map"] = map
+    dungeon["monsters"] = monsters
+    dungeon["items"] = items
+    dungeon["visible"] = visible
+}
+
+# ===============================================================
+# Field of View
+# ===============================================================
+
+dae update_visibility() {
+    ken radius = 5
+
+    fer y in 0..MAP_HEIGHT {
+        fer x in 0..MAP_WIDTH {
+            ken dx = x - player["x"]
+            ken dy = y - player["y"]
+            ken dist = (dx * dx) + (dy * dy)
+            gin dist <= (radius * radius) {
+                dungeon["visible"][y][x] = aye
+            }
+        }
+    }
+}
+
+# ===============================================================
+# Rendering
+# ===============================================================
+
+dae render_map() {
+    update_visibility()
+
+    # Status bar
+    blether ""
+    ken hp_color = gin player["hp"] > 50 than green ither gin player["hp"] > 25 than yellow ither red
+    blether f"HP: {hp_color(tae_string(player['hp']))}/{player['max_hp']}  Damage: {player['damage']}  Armor: {player['armor']}  Gold: {yellow(tae_string(player['gold']))}  XP: {player['xp']}  Lvl: {player['level']}  Floor: {player['floor']}"
+    blether ""
+
+    fer y in 0..MAP_HEIGHT {
+        ken line = ""
+        fer x in 0..MAP_WIDTH {
+            ken tile = dungeon["map"][y][x]
+            ken is_visible = dungeon["visible"][y][x]
+
+            # Check for player
+            gin x == player["x"] an y == player["y"] {
+                line = line + bold(yellow("@"))
+                haud
+            }
+
+            # Check for monsters
+            ken found_monster = nae
+            fer monster in dungeon["monsters"] {
+                gin monster["x"] == x an monster["y"] == y an monster["hp"] > 0 {
+                    gin is_visible {
+                        line = line + red(monster["symbol"])
+                    } ither {
+                        line = line + " "
+                    }
+                    found_monster = aye
+                    brak
+                }
+            }
+            gin found_monster { haud }
+
+            # Check for items
+            ken found_item = nae
+            fer item in dungeon["items"] {
+                gin item["x"] == x an item["y"] == y {
+                    gin is_visible {
+                        line = line + cyan(item["symbol"])
+                    } ither {
+                        line = line + " "
+                    }
+                    found_item = aye
+                    brak
+                }
+            }
+            gin found_item { haud }
+
+            # Render tile
+            gin is_visible {
+                gin tile == TILE_WALL {
+                    line = line + dim("#")
+                } ither gin tile == TILE_STAIRS_DOWN {
+                    line = line + bold(green(">"))
+                } ither gin tile == TILE_TRAP {
+                    line = line + red("^")
+                } ither {
+                    line = line + dim(".")
+                }
+            } ither {
+                line = line + " "
+            }
+        }
+        blether line
+    }
+
+    # Message
+    blether ""
+    blether game_state["message"]
+    blether ""
+}
+
+# ===============================================================
+# Combat
+# ===============================================================
+
+dae attack_monster(monster) {
+    ken damage_dealt = player["damage"] + jammy(-2, 3)
+    monster["hp"] = monster["hp"] - damage_dealt
+
+    gin monster["hp"] <= 0 {
+        game_state["message"] = f"Ye slew the {monster['name']}! Gained {monster['xp']} XP!"
+        player["xp"] = player["xp"] + monster["xp"]
+        check_level_up()
+    } ither {
+        game_state["message"] = f"Ye hit the {monster['name']} fer {damage_dealt} damage!"
+    }
+}
+
+dae monster_attack(monster) {
+    ken damage_taken = monster["damage"] - player["armor"]
+    gin damage_taken < 1 { damage_taken = 1 }
+    player["hp"] = player["hp"] - damage_taken
+    game_state["message"] = game_state["message"] + f" The {monster['name']} hits ye fer {damage_taken}!"
+
+    gin player["hp"] <= 0 {
+        game_state["running"] = nae
+        game_state["message"] = red("Ye have been slain! Game Over.")
+    }
+}
+
+dae check_level_up() {
+    ken xp_needed = player["level"] * 100
+    gin player["xp"] >= xp_needed {
+        player["level"] = player["level"] + 1
+        player["max_hp"] = player["max_hp"] + 10
+        player["hp"] = player["max_hp"]
+        player["damage"] = player["damage"] + 2
+        game_state["message"] = game_state["message"] + f" LEVEL UP! Ye're noo level {player['level']}!"
+    }
+}
+
+# ===============================================================
+# Item Handling
+# ===============================================================
+
+dae pickup_item() {
+    ken items_to_remove = []
+    fer i in 0..len(dungeon["items"]) {
+        ken item = dungeon["items"][i]
+        gin item["x"] == player["x"] an item["y"] == player["y"] {
+            gin item["effect"] == "heal" {
+                player["hp"] = player["hp"] + item["value"]
+                gin player["hp"] > player["max_hp"] { player["hp"] = player["max_hp"] }
+                game_state["message"] = f"Ye drink a {item['name']}! Healed fer {item['value']} HP."
+            } ither gin item["effect"] == "strength" {
+                player["damage"] = player["damage"] + item["value"]
+                game_state["message"] = f"Ye feel stronger! +{item['value']} damage."
+            } ither gin item["effect"] == "armor" {
+                player["armor"] = player["armor"] + item["value"]
+                game_state["message"] = f"Ye equip the {item['name']}! +{item['value']} armor."
+            } ither gin item["effect"] == "gold" {
+                player["gold"] = player["gold"] + item["value"]
+                game_state["message"] = f"Ye found {item['value']} gold!"
+            } ither gin item["effect"] == "weapon" {
+                player["damage"] = player["damage"] + item["value"]
+                game_state["message"] = f"Ye wield the {item['name']}! +{item['value']} damage."
+            }
+            shove(items_to_remove, i)
+        }
+    }
+
+    # Remove picked up items (in reverse order)
+    fer j in 0..len(items_to_remove) {
+        ken idx = items_to_remove[len(items_to_remove) - 1 - j]
+        ken new_items = []
+        fer k in 0..len(dungeon["items"]) {
+            gin k != idx {
+                shove(new_items, dungeon["items"][k])
+            }
+        }
+        dungeon["items"] = new_items
+    }
+}
+
+# ===============================================================
+# Movement and Actions
+# ===============================================================
+
+dae try_move(dx, dy) {
+    ken new_x = player["x"] + dx
+    ken new_y = player["y"] + dy
+
+    # Bounds check
+    gin new_x < 0 or new_x >= MAP_WIDTH or new_y < 0 or new_y >= MAP_HEIGHT {
+        game_state["message"] = "Ye cannae go that way!"
+        gie nae
+    }
+
+    ken tile = dungeon["map"][new_y][new_x]
+
+    # Wall check
+    gin tile == TILE_WALL {
+        game_state["message"] = "There's a wall there, ye numpty!"
+        gie nae
+    }
+
+    # Monster check
+    fer monster in dungeon["monsters"] {
+        gin monster["x"] == new_x an monster["y"] == new_y an monster["hp"] > 0 {
+            attack_monster(monster)
+            gin monster["hp"] > 0 {
+                monster_attack(monster)
+            }
+            gie aye
+        }
+    }
+
+    # Move player
+    player["x"] = new_x
+    player["y"] = new_y
+
+    # Check for items
+    pickup_item()
+
+    # Check for traps
+    gin tile == TILE_TRAP {
+        ken trap_damage = jammy(5, 15)
+        player["hp"] = player["hp"] - trap_damage
+        game_state["message"] = red(f"Ye stepped on a trap! Took {trap_damage} damage!")
+        dungeon["map"][new_y][new_x] = TILE_FLOOR  # Trap is sprung
+        gin player["hp"] <= 0 {
+            game_state["running"] = nae
+            game_state["message"] = red("A trap killed ye! Game Over.")
+        }
+    }
+
+    # Check for stairs
+    gin tile == TILE_STAIRS_DOWN {
+        game_state["message"] = "Ye descend deeper intae the dungeon..."
+        player["floor"] = player["floor"] + 1
+        generate_dungeon(player["floor"])
+    }
+
+    game_state["turn"] = game_state["turn"] + 1
+    gie aye
+}
+
+dae monsters_move() {
+    fer monster in dungeon["monsters"] {
+        gin monster["hp"] <= 0 { haud }
+
+        # Simple AI - move towards player if visible
+        ken dx = player["x"] - monster["x"]
+        ken dy = player["y"] - monster["y"]
+        ken dist = (dx * dx) + (dy * dy)
+
+        gin dist <= 36 {  # Within 6 tiles
+            ken move_x = gin dx > 0 than 1 ither gin dx < 0 than -1 ither 0
+            ken move_y = gin dy > 0 than 1 ither gin dy < 0 than -1 ither 0
+
+            # Try to move (prioritize axis with greater distance)
+            ken abs_dx = gin dx < 0 than -dx ither dx
+            ken abs_dy = gin dy < 0 than -dy ither dy
+
+            ken new_x = monster["x"]
+            ken new_y = monster["y"]
+
+            gin abs_dx >= abs_dy {
+                new_x = monster["x"] + move_x
+            } ither {
+                new_y = monster["y"] + move_y
+            }
+
+            # Check if can move there
+            gin new_x >= 0 an new_x < MAP_WIDTH an new_y >= 0 an new_y < MAP_HEIGHT {
+                ken tile = dungeon["map"][new_y][new_x]
+                gin tile != TILE_WALL {
+                    # Check for player collision (attack!)
+                    gin new_x == player["x"] an new_y == player["y"] {
+                        monster_attack(monster)
+                    } ither {
+                        # Check for other monsters
+                        ken blocked = nae
+                        fer other in dungeon["monsters"] {
+                            gin other["x"] == new_x an other["y"] == new_y an other["hp"] > 0 {
+                                blocked = aye
+                                brak
+                            }
+                        }
+                        gin nae blocked {
+                            monster["x"] = new_x
+                            monster["y"] = new_y
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+# ===============================================================
+# Main Game
+# ===============================================================
+
+blether ""
+blether red("╔════════════════════════════════════════════════════════╗")
+blether red("║           CASTLE MacFEAR DUNGEON CRAWLER               ║")
+blether red("║      'Venture intae the depths... if ye dare!'         ║")
+blether red("╚════════════════════════════════════════════════════════╝")
+blether ""
+blether "CONTROLS:"
+blether "  W/8/↑ - Move north     S/2/↓ - Move south"
+blether "  A/4/← - Move west      D/6/→ - Move east"
+blether "  Q - Quit game"
+blether ""
+blether "LEGEND:"
+blether f"  {yellow('@')} Player    {red('b')} Monster    {cyan('!')} Potion"
+blether f"  {dim('#')} Wall      {dim('.')} Floor      {green('>')} Stairs down"
+blether f"  {cyan('$')} Gold      {red('^')} Trap       {cyan('/')} Weapon"
+blether ""
+blether "Survive as many floors as ye can and collect gold!"
+blether ""
+
+speir("Press Enter tae begin yer adventure...")
+
+generate_dungeon(1)
+
+whiles game_state["running"] {
+    render_map()
+
+    blether "Move (WASD/arrows) or Q tae quit:"
+    ken input = lower(wheesht(speir("> ")))
+
+    gin input == "q" or input == "quit" {
+        game_state["running"] = nae
+        blether ""
+        blether "Ye flee frae Castle MacFear!"
+    } ither gin input == "w" or input == "8" {
+        gin try_move(0, -1) {
+            monsters_move()
+        }
+    } ither gin input == "s" or input == "2" {
+        gin try_move(0, 1) {
+            monsters_move()
+        }
+    } ither gin input == "a" or input == "4" {
+        gin try_move(-1, 0) {
+            monsters_move()
+        }
+    } ither gin input == "d" or input == "6" {
+        gin try_move(1, 0) {
+            monsters_move()
+        }
+    } ither {
+        game_state["message"] = "Invalid input. Use WASD or arrow keys."
+    }
+}
+
+# Game Over
+blether ""
+blether "════════════════════════════════════════════════════"
+blether bold("              FINAL SCORE")
+blether "════════════════════════════════════════════════════"
+blether ""
+blether f"Floors Explored: {player['floor']}"
+blether f"Gold Collected: {yellow(tae_string(player['gold']))}"
+blether f"Experience Earned: {player['xp']}"
+blether f"Final Level: {player['level']}"
+blether f"Turns Survived: {game_state['turn']}"
+blether ""
+
+ken score = player["gold"] + (player["floor"] * 100) + player["xp"]
+blether f"Total Score: {bold(tae_string(score))}"
+blether ""
+
+gin player["floor"] >= 5 {
+    blether green("Legendary Explorer! Ye reached the deep dungeon!")
+} ither gin player["floor"] >= 3 {
+    blether yellow("Brave Adventurer! A respectable delve!")
+} ither {
+    blether "Better luck next time, ye wee bampot!"
+}
+
+blether ""
+blether random_farewell()
+blether ""

@@ -1,0 +1,128 @@
+# test_example.braw - Example of using the testing library
+# Shows how tae write proper tests fer yer code!
+
+fetch "lib/testing"
+fetch "lib/maths"
+
+blether "═══════════════════════════════════════════════════"
+blether "  mdhavers Testing Library Demo"
+blether "═══════════════════════════════════════════════════"
+
+# Helper functions fer testing
+dae test_square() {
+    assert_eq(square(2), 4, "2 squared should be 4")
+    assert_eq(square(5), 25, "5 squared should be 25")
+    assert_eq(square(0), 0, "0 squared should be 0")
+}
+
+dae test_cube() {
+    assert_eq(cube(2), 8, "2 cubed should be 8")
+    assert_eq(cube(3), 27, "3 cubed should be 27")
+}
+
+dae test_factorial() {
+    assert_eq(factorial(0), 1, "0! should be 1")
+    assert_eq(factorial(1), 1, "1! should be 1")
+    assert_eq(factorial(5), 120, "5! should be 120")
+}
+
+dae test_fibonacci() {
+    assert_eq(fibonacci(0), 0, "fib(0) should be 0")
+    assert_eq(fibonacci(1), 1, "fib(1) should be 1")
+    assert_eq(fibonacci(10), 55, "fib(10) should be 55")
+}
+
+dae test_is_prime() {
+    assert_true(is_prime(2), "2 is prime")
+    assert_true(is_prime(17), "17 is prime")
+    assert_false(is_prime(4), "4 is not prime")
+    assert_false(is_prime(1), "1 is not prime")
+}
+
+dae test_gcd() {
+    assert_eq(gcd(48, 18), 6, "gcd(48, 18) should be 6")
+    assert_eq(gcd(100, 25), 25, "gcd(100, 25) should be 25")
+}
+
+dae test_lcm() {
+    assert_eq(lcm(4, 6), 12, "lcm(4, 6) should be 12")
+    assert_eq(lcm(3, 5), 15, "lcm(3, 5) should be 15")
+}
+
+dae test_list_basics() {
+    ken list = [1, 2, 3]
+    assert_eq(len(list), 3, "list should have 3 elements")
+    assert_eq(heid(list), 1, "first element should be 1")
+    assert_eq(bum(list), 3, "last element should be 3")
+}
+
+dae test_list_contains() {
+    ken list = [1, 2, 3, 4, 5]
+    assert_contains(list, 3, "list should contain 3")
+    assert_not_contains(list, 10, "list should not contain 10")
+}
+
+dae test_list_sum() {
+    ken list = [1, 2, 3, 4, 5]
+    assert_eq(sumaw(list), 15, "sum should be 15")
+}
+
+dae test_string_concat() {
+    assert_eq("hello" + " " + "world", "hello world", "concatenation works")
+}
+
+dae test_string_length() {
+    assert_eq(len("hello"), 5, "hello has 5 characters")
+    assert_eq(len(""), 0, "empty string has 0 characters")
+}
+
+dae test_string_case() {
+    assert_eq(upper("hello"), "HELLO", "upper works")
+    assert_eq(lower("HELLO"), "hello", "lower works")
+}
+
+dae test_value_range() {
+    assert_in_range(5, 1, 10, "5 is in range 1-10")
+    assert_gt(10, 5, "10 > 5")
+    assert_lt(5, 10, "5 < 10")
+}
+
+dae test_approx_eq() {
+    assert_approx(3.14159, PI, 0.001, "3.14159 is approximately PI")
+}
+
+dae test_list_eq() {
+    ken a = [1, 2, 3]
+    ken b = [1, 2, 3]
+    assert_list_eq(a, b, "lists should be equal")
+}
+
+# Run all tests
+describe("Maths Library Tests")
+test("square function", test_square)
+test("cube function", test_cube)
+test("factorial function", test_factorial)
+test("fibonacci function", test_fibonacci)
+test("is_prime function", test_is_prime)
+test("gcd function", test_gcd)
+test("lcm function", test_lcm)
+
+describe("List Operations Tests")
+test("basic list operations", test_list_basics)
+test("list contains", test_list_contains)
+test("list sum", test_list_sum)
+
+describe("String Operations Tests")
+test("string concatenation", test_string_concat)
+test("string length", test_string_length)
+test("string case", test_string_case)
+
+describe("Range and Comparison Tests")
+test("value in range", test_value_range)
+test("approximate equality", test_approx_eq)
+
+describe("List Equality Tests")
+test("list equality", test_list_eq)
+
+# Print summary
+test_summary()

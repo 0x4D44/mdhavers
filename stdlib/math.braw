@@ -1,0 +1,846 @@
+# math.braw - Advanced Mathematics and Geometry fer mdhavers
+# "Numbers an' shapes, the building blocks o' aw things!"
+
+# ===============================================================
+# 2D Vector Class
+# ===============================================================
+
+kin Vec2 {
+    dae init(x = 0.0, y = 0.0) {
+        masel.x = x
+        masel.y = y
+    }
+
+    # Add twa vectors
+    dae add(other) {
+        gie Vec2(masel.x + other.x, masel.y + other.y)
+    }
+
+    # Subtract twa vectors
+    dae sub(other) {
+        gie Vec2(masel.x - other.x, masel.y - other.y)
+    }
+
+    # Multiply by scalar
+    dae scale(s) {
+        gie Vec2(masel.x * s, masel.y * s)
+    }
+
+    # Dot product
+    dae dot(other) {
+        gie masel.x * other.x + masel.y * other.y
+    }
+
+    # Cross product (returns scalar for 2D)
+    dae cross(other) {
+        gie masel.x * other.y - masel.y * other.x
+    }
+
+    # Length/magnitude
+    dae length() {
+        gie sqrt(masel.x * masel.x + masel.y * masel.y)
+    }
+
+    # Squared length (faster, nae sqrt)
+    dae length_squared() {
+        gie masel.x * masel.x + masel.y * masel.y
+    }
+
+    # Normalize tae unit vector
+    dae normalize() {
+        ken len = masel.length()
+        gin len == 0 {
+            gie Vec2(0, 0)
+        }
+        gie Vec2(masel.x / len, masel.y / len)
+    }
+
+    # Distance tae another point
+    dae distance(other) {
+        gie masel.sub(other).length()
+    }
+
+    # Angle in radians
+    dae angle() {
+        gie atan2(masel.y, masel.x)
+    }
+
+    # Rotate by angle (radians)
+    dae rotate(angle) {
+        ken c = cos(angle)
+        ken s = sin(angle)
+        gie Vec2(masel.x * c - masel.y * s, masel.x * s + masel.y * c)
+    }
+
+    # Perpendicular vector (90 degrees counter-clockwise)
+    dae perp() {
+        gie Vec2(-masel.y, masel.x)
+    }
+
+    # Negate
+    dae neg() {
+        gie Vec2(-masel.x, -masel.y)
+    }
+
+    # Linear interpolation tae another vector
+    dae lerp(other, t) {
+        ken new_x = masel.x + (other.x - masel.x) * t
+        ken new_y = masel.y + (other.y - masel.y) * t
+        gie Vec2(new_x, new_y)
+    }
+
+    # Reflect aff a normal
+    dae reflect(normal) {
+        ken d = masel.dot(normal) * 2
+        gie masel.sub(normal.scale(d))
+    }
+
+    # Project ontae another vector
+    dae project(other) {
+        ken d = other.dot(other)
+        gin d == 0 {
+            gie Vec2(0, 0)
+        }
+        ken scalar = masel.dot(other) / d
+        gie other.scale(scalar)
+    }
+
+    # Check equality
+    dae equals(other) {
+        gie masel.x == other.x an masel.y == other.y
+    }
+
+    # Tae string
+    dae tae_string() {
+        gie f"Vec2({masel.x}, {masel.y})"
+    }
+
+    # Tae list
+    dae tae_list() {
+        gie [masel.x, masel.y]
+    }
+}
+
+# Helper: Create Vec2 from angle and length
+dae vec2_from_angle(angle, length = 1.0) {
+    gie Vec2(cos(angle) * length, sin(angle) * length)
+}
+
+# Helper: Create Vec2 from list
+dae vec2_from_list(lst) {
+    gie Vec2(lst[0], lst[1])
+}
+
+# ===============================================================
+# 3D Vector Class
+# ===============================================================
+
+kin Vec3 {
+    dae init(x = 0.0, y = 0.0, z = 0.0) {
+        masel.x = x
+        masel.y = y
+        masel.z = z
+    }
+
+    dae add(other) {
+        gie Vec3(masel.x + other.x, masel.y + other.y, masel.z + other.z)
+    }
+
+    dae sub(other) {
+        gie Vec3(masel.x - other.x, masel.y - other.y, masel.z - other.z)
+    }
+
+    dae scale(s) {
+        gie Vec3(masel.x * s, masel.y * s, masel.z * s)
+    }
+
+    dae dot(other) {
+        gie masel.x * other.x + masel.y * other.y + masel.z * other.z
+    }
+
+    # Cross product (returns new Vec3)
+    dae cross(other) {
+        ken cx = masel.y * other.z - masel.z * other.y
+        ken cy = masel.z * other.x - masel.x * other.z
+        ken cz = masel.x * other.y - masel.y * other.x
+        gie Vec3(cx, cy, cz)
+    }
+
+    dae length() {
+        gie sqrt(masel.x * masel.x + masel.y * masel.y + masel.z * masel.z)
+    }
+
+    dae length_squared() {
+        gie masel.x * masel.x + masel.y * masel.y + masel.z * masel.z
+    }
+
+    dae normalize() {
+        ken len = masel.length()
+        gin len == 0 {
+            gie Vec3(0, 0, 0)
+        }
+        gie Vec3(masel.x / len, masel.y / len, masel.z / len)
+    }
+
+    dae distance(other) {
+        gie masel.sub(other).length()
+    }
+
+    dae neg() {
+        gie Vec3(-masel.x, -masel.y, -masel.z)
+    }
+
+    dae lerp(other, t) {
+        ken new_x = masel.x + (other.x - masel.x) * t
+        ken new_y = masel.y + (other.y - masel.y) * t
+        ken new_z = masel.z + (other.z - masel.z) * t
+        gie Vec3(new_x, new_y, new_z)
+    }
+
+    dae reflect(normal) {
+        ken d = masel.dot(normal) * 2
+        gie masel.sub(normal.scale(d))
+    }
+
+    dae equals(other) {
+        gie masel.x == other.x an masel.y == other.y an masel.z == other.z
+    }
+
+    dae tae_string() {
+        gie f"Vec3({masel.x}, {masel.y}, {masel.z})"
+    }
+
+    dae tae_list() {
+        gie [masel.x, masel.y, masel.z]
+    }
+}
+
+# Helper: Create Vec3 from list
+dae vec3_from_list(lst) {
+    gie Vec3(lst[0], lst[1], lst[2])
+}
+
+# ===============================================================
+# 2x2 Matrix Class
+# ===============================================================
+
+kin Mat2 {
+    dae init(a = 1.0, b = 0.0, c = 0.0, d = 1.0) {
+        # Layout: | a  b |
+        #         | c  d |
+        masel.a = a
+        masel.b = b
+        masel.c = c
+        masel.d = d
+    }
+
+    # Multiply by another matrix
+    dae mul(other) {
+        ken new_a = masel.a * other.a + masel.b * other.c
+        ken new_b = masel.a * other.b + masel.b * other.d
+        ken new_c = masel.c * other.a + masel.d * other.c
+        ken new_d = masel.c * other.b + masel.d * other.d
+        gie Mat2(new_a, new_b, new_c, new_d)
+    }
+
+    # Multiply by a Vec2
+    dae transform(v) {
+        ken new_x = masel.a * v.x + masel.b * v.y
+        ken new_y = masel.c * v.x + masel.d * v.y
+        gie Vec2(new_x, new_y)
+    }
+
+    # Scale by a scalar
+    dae scale(s) {
+        gie Mat2(masel.a * s, masel.b * s, masel.c * s, masel.d * s)
+    }
+
+    # Determinant
+    dae det() {
+        gie masel.a * masel.d - masel.b * masel.c
+    }
+
+    # Inverse (returns naething if singular)
+    dae inverse() {
+        ken determinant = masel.det()
+        gin determinant == 0 {
+            gie naething
+        }
+        ken inv_det = 1.0 / determinant
+        ken new_a = masel.d * inv_det
+        ken new_b = -masel.b * inv_det
+        ken new_c = -masel.c * inv_det
+        ken new_d = masel.a * inv_det
+        gie Mat2(new_a, new_b, new_c, new_d)
+    }
+
+    # Transpose
+    dae transpose() {
+        gie Mat2(masel.a, masel.c, masel.b, masel.d)
+    }
+
+    dae tae_string() {
+        gie f"Mat2([{masel.a}, {masel.b}], [{masel.c}, {masel.d}])"
+    }
+}
+
+# Create identity matrix
+dae mat2_identity() {
+    gie Mat2(1, 0, 0, 1)
+}
+
+# Create rotation matrix
+dae mat2_rotation(angle) {
+    ken c = cos(angle)
+    ken s = sin(angle)
+    gie Mat2(c, -s, s, c)
+}
+
+# Create scale matrix
+dae mat2_scale(sx, sy) {
+    gie Mat2(sx, 0, 0, sy)
+}
+
+# ===============================================================
+# 3x3 Matrix Class (fer 2D transformations with translation)
+# ===============================================================
+
+kin Mat3 {
+    dae init() {
+        # Row-major: [m00, m01, m02, m10, m11, m12, m20, m21, m22]
+        masel.m = [1, 0, 0, 0, 1, 0, 0, 0, 1]
+    }
+
+    dae set_values(m00, m01, m02, m10, m11, m12, m20, m21, m22) {
+        masel.m = [m00, m01, m02, m10, m11, m12, m20, m21, m22]
+        gie masel
+    }
+
+    dae get(row, col) {
+        gie masel.m[row * 3 + col]
+    }
+
+    dae set(row, col, val) {
+        masel.m[row * 3 + col] = val
+    }
+
+    # Multiply by another Mat3
+    dae mul(other) {
+        ken result = Mat3()
+        fer row in 0..3 {
+            fer col in 0..3 {
+                ken sum = 0
+                fer k in 0..3 {
+                    sum = sum + masel.get(row, k) * other.get(k, col)
+                }
+                result.set(row, col, sum)
+            }
+        }
+        gie result
+    }
+
+    # Transform a 2D point (applies translation)
+    dae transform_point(v) {
+        ken x = masel.m[0] * v.x + masel.m[1] * v.y + masel.m[2]
+        ken y = masel.m[3] * v.x + masel.m[4] * v.y + masel.m[5]
+        gie Vec2(x, y)
+    }
+
+    # Transform a 2D vector (ignores translation)
+    dae transform_vector(v) {
+        ken x = masel.m[0] * v.x + masel.m[1] * v.y
+        ken y = masel.m[3] * v.x + masel.m[4] * v.y
+        gie Vec2(x, y)
+    }
+
+    # Transpose
+    dae transpose() {
+        ken result = Mat3()
+        fer row in 0..3 {
+            fer col in 0..3 {
+                result.set(col, row, masel.get(row, col))
+            }
+        }
+        gie result
+    }
+
+    dae tae_string() {
+        gie f"Mat3([{masel.m[0]}, {masel.m[1]}, {masel.m[2]}], [{masel.m[3]}, {masel.m[4]}, {masel.m[5]}], [{masel.m[6]}, {masel.m[7]}, {masel.m[8]}])"
+    }
+}
+
+# Identity Mat3
+dae mat3_identity() {
+    gie Mat3()
+}
+
+# Translation Mat3
+dae mat3_translation(tx, ty) {
+    ken m = Mat3()
+    m.m = [1, 0, tx, 0, 1, ty, 0, 0, 1]
+    gie m
+}
+
+# Rotation Mat3
+dae mat3_rotation(angle) {
+    ken c = cos(angle)
+    ken s = sin(angle)
+    ken m = Mat3()
+    m.m = [c, -s, 0, s, c, 0, 0, 0, 1]
+    gie m
+}
+
+# Scale Mat3
+dae mat3_scale(sx, sy) {
+    ken m = Mat3()
+    m.m = [sx, 0, 0, 0, sy, 0, 0, 0, 1]
+    gie m
+}
+
+# ===============================================================
+# Geometric Shapes
+# ===============================================================
+
+# Rectangle
+kin Rectangle {
+    dae init(x = 0, y = 0, width = 0, height = 0) {
+        masel.x = x
+        masel.y = y
+        masel.width = width
+        masel.height = height
+    }
+
+    dae area() {
+        gie masel.width * masel.height
+    }
+
+    dae perimeter() {
+        gie 2 * (masel.width + masel.height)
+    }
+
+    dae center() {
+        gie Vec2(masel.x + masel.width / 2, masel.y + masel.height / 2)
+    }
+
+    # Check if point is inside
+    dae contains_point(p) {
+        ken in_x = p.x >= masel.x an p.x <= masel.x + masel.width
+        ken in_y = p.y >= masel.y an p.y <= masel.y + masel.height
+        gie in_x an in_y
+    }
+
+    # Check if rectangles overlap
+    dae overlaps(other) {
+        ken overlap_x = masel.x < other.x + other.width an masel.x + masel.width > other.x
+        ken overlap_y = masel.y < other.y + other.height an masel.y + masel.height > other.y
+        gie overlap_x an overlap_y
+    }
+
+    # Get corners as Vec2 list
+    dae corners() {
+        ken c1 = Vec2(masel.x, masel.y)
+        ken c2 = Vec2(masel.x + masel.width, masel.y)
+        ken c3 = Vec2(masel.x + masel.width, masel.y + masel.height)
+        ken c4 = Vec2(masel.x, masel.y + masel.height)
+        gie [c1, c2, c3, c4]
+    }
+
+    dae tae_string() {
+        gie f"Rectangle({masel.x}, {masel.y}, {masel.width}, {masel.height})"
+    }
+}
+
+# Circle
+kin Circle {
+    dae init(x = 0, y = 0, radius = 1) {
+        masel.x = x
+        masel.y = y
+        masel.radius = radius
+    }
+
+    dae area() {
+        gie PI * masel.radius * masel.radius
+    }
+
+    dae circumference() {
+        gie 2 * PI * masel.radius
+    }
+
+    dae center() {
+        gie Vec2(masel.x, masel.y)
+    }
+
+    dae diameter() {
+        gie masel.radius * 2
+    }
+
+    # Check if point is inside
+    dae contains_point(p) {
+        ken dx = p.x - masel.x
+        ken dy = p.y - masel.y
+        gie dx * dx + dy * dy <= masel.radius * masel.radius
+    }
+
+    # Check if circles overlap
+    dae overlaps(other) {
+        ken dx = masel.x - other.x
+        ken dy = masel.y - other.y
+        ken dist_sq = dx * dx + dy * dy
+        ken radii_sum = masel.radius + other.radius
+        gie dist_sq <= radii_sum * radii_sum
+    }
+
+    # Get point on circumference at angle
+    dae point_at_angle(angle) {
+        ken px = masel.x + cos(angle) * masel.radius
+        ken py = masel.y + sin(angle) * masel.radius
+        gie Vec2(px, py)
+    }
+
+    dae tae_string() {
+        gie f"Circle({masel.x}, {masel.y}, r={masel.radius})"
+    }
+}
+
+# Line Segment
+kin LineSegment {
+    dae init(x1 = 0, y1 = 0, x2 = 0, y2 = 0) {
+        masel.start = Vec2(x1, y1)
+        masel.end = Vec2(x2, y2)
+    }
+
+    dae length() {
+        gie masel.start.distance(masel.end)
+    }
+
+    dae midpoint() {
+        gie masel.start.lerp(masel.end, 0.5)
+    }
+
+    dae direction() {
+        gie masel.end.sub(masel.start).normalize()
+    }
+
+    # Get point at t (0 = start, 1 = end)
+    dae point_at(t) {
+        gie masel.start.lerp(masel.end, t)
+    }
+
+    # Distance from point to line segment
+    dae distance_to_point(p) {
+        ken line_vec = masel.end.sub(masel.start)
+        ken point_vec = p.sub(masel.start)
+        ken line_len = line_vec.length()
+
+        gin line_len == 0 {
+            gie p.distance(masel.start)
+        }
+
+        ken t = clamp(point_vec.dot(line_vec) / (line_len * line_len), 0, 1)
+        ken closest = masel.point_at(t)
+        gie p.distance(closest)
+    }
+
+    dae tae_string() {
+        gie f"LineSegment({masel.start.x}, {masel.start.y}) -> ({masel.end.x}, {masel.end.y})"
+    }
+}
+
+# Triangle
+kin Triangle {
+    dae init(p1, p2, p3) {
+        masel.p1 = p1
+        masel.p2 = p2
+        masel.p3 = p3
+    }
+
+    dae area() {
+        # Using cross product formula
+        ken v1 = masel.p2.sub(masel.p1)
+        ken v2 = masel.p3.sub(masel.p1)
+        gie abs(v1.cross(v2)) / 2
+    }
+
+    dae perimeter() {
+        ken d1 = masel.p1.distance(masel.p2)
+        ken d2 = masel.p2.distance(masel.p3)
+        ken d3 = masel.p3.distance(masel.p1)
+        gie d1 + d2 + d3
+    }
+
+    dae centroid() {
+        ken cx = (masel.p1.x + masel.p2.x + masel.p3.x) / 3
+        ken cy = (masel.p1.y + masel.p2.y + masel.p3.y) / 3
+        gie Vec2(cx, cy)
+    }
+
+    # Check if point is inside using barycentric coordinates
+    dae contains_point(p) {
+        ken v0 = masel.p3.sub(masel.p1)
+        ken v1 = masel.p2.sub(masel.p1)
+        ken v2 = p.sub(masel.p1)
+
+        ken dot00 = v0.dot(v0)
+        ken dot01 = v0.dot(v1)
+        ken dot02 = v0.dot(v2)
+        ken dot11 = v1.dot(v1)
+        ken dot12 = v1.dot(v2)
+
+        ken inv_denom = 1 / (dot00 * dot11 - dot01 * dot01)
+        ken u = (dot11 * dot02 - dot01 * dot12) * inv_denom
+        ken v = (dot00 * dot12 - dot01 * dot02) * inv_denom
+
+        gie u >= 0 an v >= 0 an (u + v) <= 1
+    }
+
+    dae vertices() {
+        gie [masel.p1, masel.p2, masel.p3]
+    }
+
+    dae tae_string() {
+        gie f"Triangle({masel.p1.tae_string()}, {masel.p2.tae_string()}, {masel.p3.tae_string()})"
+    }
+}
+
+# ===============================================================
+# Geometric Utility Functions
+# ===============================================================
+
+# Distance between two points (list form)
+dae distance_2d(x1, y1, x2, y2) {
+    ken dx = x2 - x1
+    ken dy = y2 - y1
+    gie sqrt(dx * dx + dy * dy)
+}
+
+# Angle between two points
+dae angle_between_points(x1, y1, x2, y2) {
+    gie atan2(y2 - y1, x2 - x1)
+}
+
+# Check if three points are collinear
+dae are_collinear(p1, p2, p3) {
+    ken v1 = p2.sub(p1)
+    ken v2 = p3.sub(p1)
+    gie abs(v1.cross(v2)) < 0.0001
+}
+
+# Calculate angle between two vectors
+dae angle_between_vectors(v1, v2) {
+    ken dot = v1.dot(v2)
+    ken len_product = v1.length() * v2.length()
+    gin len_product == 0 {
+        gie 0
+    }
+    gie acos(clamp(dot / len_product, -1.0, 1.0))
+}
+
+# Signed area of polygon (positive = counter-clockwise)
+dae polygon_area(vertices) {
+    ken n = len(vertices)
+    gin n < 3 {
+        gie 0
+    }
+    ken area = 0
+    fer i in 0..n {
+        ken j = (i + 1) % n
+        area = area + vertices[i].x * vertices[j].y
+        area = area - vertices[j].x * vertices[i].y
+    }
+    gie area / 2
+}
+
+# Polygon perimeter
+dae polygon_perimeter(vertices) {
+    ken n = len(vertices)
+    gin n < 2 {
+        gie 0
+    }
+    ken perimeter = 0
+    fer i in 0..n {
+        ken j = (i + 1) % n
+        perimeter = perimeter + vertices[i].distance(vertices[j])
+    }
+    gie perimeter
+}
+
+# Polygon centroid
+dae polygon_centroid(vertices) {
+    ken n = len(vertices)
+    gin n == 0 {
+        gie Vec2(0, 0)
+    }
+    ken cx = 0
+    ken cy = 0
+    fer v in vertices {
+        cx = cx + v.x
+        cy = cy + v.y
+    }
+    gie Vec2(cx / n, cy / n)
+}
+
+# Check if polygon is convex
+dae is_convex(vertices) {
+    ken n = len(vertices)
+    gin n < 3 {
+        gie nae
+    }
+    ken sign = naething
+    fer i in 0..n {
+        ken v1 = vertices[(i + 1) % n].sub(vertices[i])
+        ken v2 = vertices[(i + 2) % n].sub(vertices[(i + 1) % n])
+        ken cross = v1.cross(v2)
+        gin sign == naething {
+            sign = cross > 0
+        } ither {
+            gin (cross > 0) != sign {
+                gie nae
+            }
+        }
+    }
+    gie aye
+}
+
+# ===============================================================
+# Interpolation Functions
+# ===============================================================
+
+# Cubic bezier
+dae bezier_point(p0, p1, p2, p3, t) {
+    ken t2 = t * t
+    ken t3 = t2 * t
+    ken mt = 1 - t
+    ken mt2 = mt * mt
+    ken mt3 = mt2 * mt
+
+    ken term0 = p0.scale(mt3)
+    ken term1 = p1.scale(3 * mt2 * t)
+    ken term2 = p2.scale(3 * mt * t2)
+    ken term3 = p3.scale(t3)
+    gie term0.add(term1).add(term2).add(term3)
+}
+
+# Quadratic bezier
+dae bezier_quadratic(p0, p1, p2, t) {
+    ken mt = 1 - t
+    ken mt2 = mt * mt
+    ken t2 = t * t
+
+    ken term0 = p0.scale(mt2)
+    ken term1 = p1.scale(2 * mt * t)
+    ken term2 = p2.scale(t2)
+    gie term0.add(term1).add(term2)
+}
+
+# Catmull-Rom spline
+dae catmull_rom(p0, p1, p2, p3, t) {
+    ken t2 = t * t
+    ken t3 = t2 * t
+
+    ken x1 = 2 * p1.x
+    ken x2 = (-p0.x + p2.x) * t
+    ken x3 = (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2
+    ken x4 = (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3
+    ken x = 0.5 * (x1 + x2 + x3 + x4)
+
+    ken y1 = 2 * p1.y
+    ken y2 = (-p0.y + p2.y) * t
+    ken y3 = (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2
+    ken y4 = (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3
+    ken y = 0.5 * (y1 + y2 + y3 + y4)
+
+    gie Vec2(x, y)
+}
+
+# Smoothstep interpolation
+dae smoothstep(edge0, edge1, x) {
+    ken t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0)
+    gie t * t * (3 - 2 * t)
+}
+
+# Smoother step (Ken Perlin's version)
+dae smootherstep(edge0, edge1, x) {
+    ken t = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0)
+    gie t * t * t * (t * (t * 6 - 15) + 10)
+}
+
+# ===============================================================
+# Collision Detection Helpers
+# ===============================================================
+
+# Axis-Aligned Bounding Box (AABB) from points
+dae aabb_from_points(points) {
+    gin len(points) == 0 {
+        gie naething
+    }
+    ken min_x = points[0].x
+    ken max_x = points[0].x
+    ken min_y = points[0].y
+    ken max_y = points[0].y
+
+    fer p in points {
+        gin p.x < min_x { min_x = p.x }
+        gin p.x > max_x { max_x = p.x }
+        gin p.y < min_y { min_y = p.y }
+        gin p.y > max_y { max_y = p.y }
+    }
+
+    gie Rectangle(min_x, min_y, max_x - min_x, max_y - min_y)
+}
+
+# Check if two AABBs overlap
+dae aabb_overlap(a, b) {
+    gie a.overlaps(b)
+}
+
+# Point in circle
+dae point_in_circle(point, circle) {
+    gie circle.contains_point(point)
+}
+
+# Point in rectangle
+dae point_in_rect(point, rect) {
+    gie rect.contains_point(point)
+}
+
+# Circle-circle collision
+dae circles_collide(c1, c2) {
+    gie c1.overlaps(c2)
+}
+
+# Line-line intersection
+dae lines_intersect(line1, line2) {
+    ken x1 = line1.start.x
+    ken y1 = line1.start.y
+    ken x2 = line1.end.x
+    ken y2 = line1.end.y
+    ken x3 = line2.start.x
+    ken y3 = line2.start.y
+    ken x4 = line2.end.x
+    ken y4 = line2.end.y
+
+    ken denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+    gin abs(denom) < 0.0001 {
+        gie naething  # Parallel lines
+    }
+
+    ken t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom
+    ken u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom
+
+    gin t >= 0 an t <= 1 an u >= 0 an u <= 1 {
+        gie Vec2(x1 + t * (x2 - x1), y1 + t * (y2 - y1))
+    }
+    gie naething
+}
+
+# ===============================================================
+# Constants
+# ===============================================================
+
+ken SQRT2 = sqrt(2)
+ken SQRT3 = sqrt(3)
+ken INV_SQRT2 = 1 / sqrt(2)
+ken DEG_TO_RAD = PI / 180
+ken RAD_TO_DEG = 180 / PI
+
+blether "Math module loaded! Vectors, matrices, an' geometry at yer service!"

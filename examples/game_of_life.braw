@@ -1,0 +1,161 @@
+# game_of_life.braw - Conway's Game of Life in Scots!
+# "The game o' life, Scottish style!"
+
+fetch "lib/colors"
+
+# Grid dimensions
+ken WIDTH = 40
+ken HEIGHT = 15
+
+# Create empty grid
+dae create_grid() {
+    ken grid = []
+    fer y in 0..HEIGHT {
+        ken row = []
+        fer x in 0..WIDTH {
+            shove(row, nae)
+        }
+        shove(grid, row)
+    }
+    gie grid
+}
+
+# Set cell value
+dae set_cell(grid, x, y, alive) {
+    gin x >= 0 an x < WIDTH an y >= 0 an y < HEIGHT {
+        grid[y][x] = alive
+    }
+}
+
+# Get cell value (with wraparound)
+dae get_cell(grid, x, y) {
+    ken wrapped_x = (x + WIDTH) % WIDTH
+    ken wrapped_y = (y + HEIGHT) % HEIGHT
+    gie grid[wrapped_y][wrapped_x]
+}
+
+# Count live neighbors
+dae count_neighbors(grid, x, y) {
+    ken count = 0
+    ken offsets = [-1, 0, 1]
+    fer dy in offsets {
+        fer dx in offsets {
+            gin dx != 0 or dy != 0 {
+                gin get_cell(grid, x + dx, y + dy) {
+                    count = count + 1
+                }
+            }
+        }
+    }
+    gie count
+}
+
+# Compute next generation
+dae next_generation(grid) {
+    ken new_grid = create_grid()
+
+    fer y in 0..HEIGHT {
+        fer x in 0..WIDTH {
+            ken alive = grid[y][x]
+            ken neighbors = count_neighbors(grid, x, y)
+
+            # Rules:
+            # 1. Live cell with 2 or 3 neighbors survives
+            # 2. Dead cell with exactly 3 neighbors becomes alive
+            # 3. All other cells die or stay dead
+            gin alive {
+                set_cell(new_grid, x, y, neighbors == 2 or neighbors == 3)
+            } ither {
+                set_cell(new_grid, x, y, neighbors == 3)
+            }
+        }
+    }
+
+    gie new_grid
+}
+
+# Display the grid
+dae display_grid(grid, generation) {
+    blether f"Generation: {generation}"
+    blether "+" + repeat("-", WIDTH) + "+"
+
+    fer y in 0..HEIGHT {
+        ken line = "|"
+        fer x in 0..WIDTH {
+            gin grid[y][x] {
+                line = line + green("O")
+            } ither {
+                line = line + " "
+            }
+        }
+        blether line + "|"
+    }
+    blether "+" + repeat("-", WIDTH) + "+"
+}
+
+# Add a glider pattern
+dae add_glider(grid, start_x, start_y) {
+    set_cell(grid, start_x + 1, start_y, aye)
+    set_cell(grid, start_x + 2, start_y + 1, aye)
+    set_cell(grid, start_x, start_y + 2, aye)
+    set_cell(grid, start_x + 1, start_y + 2, aye)
+    set_cell(grid, start_x + 2, start_y + 2, aye)
+}
+
+# Add a blinker pattern
+dae add_blinker(grid, start_x, start_y) {
+    set_cell(grid, start_x, start_y, aye)
+    set_cell(grid, start_x + 1, start_y, aye)
+    set_cell(grid, start_x + 2, start_y, aye)
+}
+
+# Add a block (still life)
+dae add_block(grid, start_x, start_y) {
+    set_cell(grid, start_x, start_y, aye)
+    set_cell(grid, start_x + 1, start_y, aye)
+    set_cell(grid, start_x, start_y + 1, aye)
+    set_cell(grid, start_x + 1, start_y + 1, aye)
+}
+
+# Add a Scots thistle pattern (custom)
+dae add_thistle(grid, start_x, start_y) {
+    set_cell(grid, start_x + 2, start_y, aye)
+    set_cell(grid, start_x + 1, start_y + 1, aye)
+    set_cell(grid, start_x + 2, start_y + 1, aye)
+    set_cell(grid, start_x + 3, start_y + 1, aye)
+    set_cell(grid, start_x, start_y + 2, aye)
+    set_cell(grid, start_x + 1, start_y + 2, aye)
+    set_cell(grid, start_x + 2, start_y + 2, aye)
+    set_cell(grid, start_x + 3, start_y + 2, aye)
+    set_cell(grid, start_x + 4, start_y + 2, aye)
+    set_cell(grid, start_x + 2, start_y + 3, aye)
+    set_cell(grid, start_x + 2, start_y + 4, aye)
+}
+
+# Main program
+blether ""
+blether cyan("========================================")
+blether cyan("  CONWAY'S GAME OF LIFE - SCOTS EDITION")
+blether cyan("      \"Life finds a way, laddie!\"")
+blether cyan("========================================")
+blether ""
+
+ken grid = create_grid()
+
+# Add some patterns
+add_glider(grid, 2, 2)
+add_blinker(grid, 15, 6)
+add_block(grid, 30, 3)
+add_thistle(grid, 20, 8)
+
+# Run simulation
+ken generations = 10
+fer gen in 0..generations {
+    display_grid(grid, gen)
+    blether ""
+    grid = next_generation(grid)
+}
+
+blether yellow("Simulation complete!")
+blether f"Ran {generations} generations o' cellular automata."
+blether "The Game o' Life shows how simple rules create complex behaviour!"

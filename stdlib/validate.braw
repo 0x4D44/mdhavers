@@ -1,0 +1,409 @@
+# validate.braw - Data validation fer mdhavers
+# "Make sure yer data's nae a load o' havers!"
+#
+# This module provides functions fer validating data
+
+# ===============================================================
+# string Validators
+# ===============================================================
+
+# Check if a string is empty or whitespace only
+dae is_blank(s) {
+    gin len(s) == 0 {
+        gie aye
+    }
+    fer c in s {
+        gin c != " " an c != "\t" an c != "\n" an c != "\r" {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# Check if a string is nae blank
+dae is_present(s) {
+    gie nae is_blank(s)
+}
+
+# Check if a string has a minimum length
+dae min_length(s, min) {
+    gie len(s) >= min
+}
+
+# Check if a string has a maximum length
+dae max_length(s, max) {
+    gie len(s) <= max
+}
+
+# Check if a string length is in a range
+dae length_between(s, min, max) {
+    ken l = len(s)
+    gie l >= min an l <= max
+}
+
+# Check if a string contains only letters
+dae is_alpha(s) {
+    gin len(s) == 0 {
+        gie nae
+    }
+    fer c in s {
+        ken code = ord(c)
+        gin nae ((code >= 65 an code <= 90) or (code >= 97 an code <= 122)) {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# Check if a string contains only digits
+dae is_numeric(s) {
+    gin len(s) == 0 {
+        gie nae
+    }
+    fer c in s {
+        ken code = ord(c)
+        gin nae (code >= 48 an code <= 57) {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# Check if a string contains only letters and digits
+dae is_alphanumeric(s) {
+    gin len(s) == 0 {
+        gie nae
+    }
+    fer c in s {
+        ken code = ord(c)
+        gin nae ((code >= 65 an code <= 90) or (code >= 97 an code <= 122) or (code >= 48 an code <= 57)) {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# Check if a string looks like an email (simple check)
+dae is_email(s) {
+    gin len(s) < 5 {
+        gie nae
+    }
+
+    # Must have exactly one @
+    ken at_count = 0
+    ken at_pos = -1
+    fer i in 0..len(s) {
+        gin s[i] == "@" {
+            at_count = at_count + 1
+            at_pos = i
+        }
+    }
+    gin at_count != 1 {
+        gie nae
+    }
+
+    # @ cannae be first or last
+    gin at_pos == 0 or at_pos == len(s) - 1 {
+        gie nae
+    }
+
+    # Must have a dot after @
+    ken has_dot_after_at = nae
+    ken start = at_pos + 1
+    fer i in start..len(s) {
+        gin s[i] == "." {
+            has_dot_after_at = aye
+        }
+    }
+
+    gie has_dot_after_at
+}
+
+# Check if a string looks like a URL
+dae is_url(s) {
+    gie starts_wi(s, "http://") or starts_wi(s, "https://")
+}
+
+# ===============================================================
+# Number Validators
+# ===============================================================
+
+# Check if a number is positive
+dae is_positive(n) {
+    gie n > 0
+}
+
+# Check if a number is negative
+dae is_negative(n) {
+    gie n < 0
+}
+
+# Check if a number is zero
+dae is_zero(n) {
+    gie n == 0
+}
+
+# Check if a number is in a range (inclusive)
+dae in_range(n, min, max) {
+    gie n >= min an n <= max
+}
+
+# Check if a number is an integer
+dae is_integer(n) {
+    gie floor(n) == n
+}
+
+# Check if a number is even
+dae is_even(n) {
+    gie n % 2 == 0
+}
+
+# Check if a number is odd
+dae is_odd(n) {
+    gie n % 2 != 0
+}
+
+# ===============================================================
+# List Validators
+# ===============================================================
+
+# Check if a list is empty
+dae is_empty(lst) {
+    gie len(lst) == 0
+}
+
+# Check if a list is nae empty
+dae is_nae_empty(lst) {
+    gie len(lst) > 0
+}
+
+# Check if a list has a minimum size
+dae min_size(lst, min) {
+    gie len(lst) >= min
+}
+
+# Check if a list has a maximum size
+dae max_size(lst, max) {
+    gie len(lst) <= max
+}
+
+# Check if all elements in a list pass a predicate
+dae all_pass(lst, predicate) {
+    fer item in lst {
+        gin nae predicate(item) {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# Check if any element in a list passes a predicate
+dae any_pass(lst, predicate) {
+    fer item in lst {
+        gin predicate(item) {
+            gie aye
+        }
+    }
+    gie nae
+}
+
+# Check if none of the elements pass a predicate
+dae none_pass(lst, predicate) {
+    fer item in lst {
+        gin predicate(item) {
+            gie nae
+        }
+    }
+    gie aye
+}
+
+# ===============================================================
+# Schema Validator Class
+# ===============================================================
+
+kin Schema {
+    dae init() {
+        masel.rules = {}
+        masel.errors = []
+    }
+
+    # Add a required field
+    dae required(field_name) {
+        gin nae contains(masel.rules, field_name) {
+            masel.rules[field_name] = []
+        }
+        shove(masel.rules[field_name], {"type": "required"})
+        gie masel
+    }
+
+    # Add a string type check
+    dae string(field_name) {
+        gin nae contains(masel.rules, field_name) {
+            masel.rules[field_name] = []
+        }
+        shove(masel.rules[field_name], {"type": "string"})
+        gie masel
+    }
+
+    # Add a number type check
+    dae number(field_name) {
+        gin nae contains(masel.rules, field_name) {
+            masel.rules[field_name] = []
+        }
+        shove(masel.rules[field_name], {"type": "number"})
+        gie masel
+    }
+
+    # Add a minimum length check
+    dae min_len(field_name, min) {
+        gin nae contains(masel.rules, field_name) {
+            masel.rules[field_name] = []
+        }
+        shove(masel.rules[field_name], {"type": "min_len", "value": min})
+        gie masel
+    }
+
+    # Add a maximum length check
+    dae max_len(field_name, max) {
+        gin nae contains(masel.rules, field_name) {
+            masel.rules[field_name] = []
+        }
+        shove(masel.rules[field_name], {"type": "max_len", "value": max})
+        gie masel
+    }
+
+    # Add a minimum value check
+    dae min_val(field_name, min) {
+        gin nae contains(masel.rules, field_name) {
+            masel.rules[field_name] = []
+        }
+        shove(masel.rules[field_name], {"type": "min_val", "value": min})
+        gie masel
+    }
+
+    # Add a maximum value check
+    dae max_val(field_name, max) {
+        gin nae contains(masel.rules, field_name) {
+            masel.rules[field_name] = []
+        }
+        shove(masel.rules[field_name], {"type": "max_val", "value": max})
+        gie masel
+    }
+
+    # Add an email check
+    dae email(field_name) {
+        gin nae contains(masel.rules, field_name) {
+            masel.rules[field_name] = []
+        }
+        shove(masel.rules[field_name], {"type": "email"})
+        gie masel
+    }
+
+    # Validate data against the schema
+    dae validate(data) {
+        masel.errors = []
+
+        fer field_name in keys(masel.rules) {
+            ken rules = masel.rules[field_name]
+            ken value = gin contains(data, field_name) than data[field_name] ither naething
+
+            fer rule in rules {
+                ken rule_type = rule["type"]
+
+                gin rule_type == "required" {
+                    gin value == naething or (whit_kind(value) == "string" an is_blank(value)) {
+                        shove(masel.errors, f"{field_name} is required")
+                    }
+                }
+
+                gin rule_type == "string" an value != naething {
+                    gin whit_kind(value) != "string" {
+                        shove(masel.errors, f"{field_name} must be a string")
+                    }
+                }
+
+                gin rule_type == "number" an value != naething {
+                    gin whit_kind(value) != "integer" an whit_kind(value) != "float" {
+                        shove(masel.errors, f"{field_name} must be a number")
+                    }
+                }
+
+                gin rule_type == "min_len" an value != naething an whit_kind(value) == "string" {
+                    gin len(value) < rule["value"] {
+                        shove(masel.errors, f"{field_name} must be at least {rule['value']} characters")
+                    }
+                }
+
+                gin rule_type == "max_len" an value != naething an whit_kind(value) == "string" {
+                    gin len(value) > rule["value"] {
+                        shove(masel.errors, f"{field_name} must be at most {rule['value']} characters")
+                    }
+                }
+
+                gin rule_type == "min_val" an value != naething {
+                    gin value < rule["value"] {
+                        shove(masel.errors, f"{field_name} must be at least {rule['value']}")
+                    }
+                }
+
+                gin rule_type == "max_val" an value != naething {
+                    gin value > rule["value"] {
+                        shove(masel.errors, f"{field_name} must be at most {rule['value']}")
+                    }
+                }
+
+                gin rule_type == "email" an value != naething an whit_kind(value) == "string" {
+                    gin nae is_email(value) {
+                        shove(masel.errors, f"{field_name} must be a valid email")
+                    }
+                }
+            }
+        }
+
+        gie len(masel.errors) == 0
+    }
+
+    # Get validation errors
+    dae get_errors() {
+        gie masel.errors
+    }
+
+    # Check if valid
+    dae is_valid() {
+        gie len(masel.errors) == 0
+    }
+}
+
+# ===============================================================
+# Convenience Schema Builders
+# ===============================================================
+
+# Create a user registration schema
+dae user_registration_schema() {
+    ken schema = Schema()
+    schema.required("username")
+    schema.string("username")
+    schema.min_len("username", 3)
+    schema.max_len("username", 20)
+    schema.required("email")
+    schema.email("email")
+    schema.required("age")
+    schema.number("age")
+    schema.min_val("age", 13)
+    schema.max_val("age", 120)
+    gie schema
+}
+
+# Create a product schema
+dae product_schema() {
+    ken schema = Schema()
+    schema.required("name")
+    schema.string("name")
+    schema.min_len("name", 1)
+    schema.required("price")
+    schema.number("price")
+    schema.min_val("price", 0)
+    gie schema
+}
+
+blether "Validation module loaded! Ready tae check yer data!"

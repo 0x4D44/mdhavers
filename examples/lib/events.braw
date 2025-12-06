@@ -1,0 +1,416 @@
+# events.braw - Event system fer mdhavers
+# "When something happens, let the world ken aboot it!"
+#
+# This module provides a simple pub/sub event system fer:
+# - Game events (player_moved, enemy_spawned, etc.)
+# - UI events (button_clicked, form_submitted, etc.)
+# - Custom application events
+
+# ===============================================================
+# Event Emitter Class
+# ===============================================================
+
+kin EventEmitter {
+    dae init() {
+        masel.listeners = {}  # {event_name: [handlers]}
+        masel.once_listeners = {}  # One-time listeners
+        masel.event_history = []
+        masel.max_history = 100
+    }
+
+    # Register an event listener
+    dae on(event_name, handler) {
+        gin nae contains(masel.listeners, event_name) {
+            masel.listeners[event_name] = []
+        }
+        shove(masel.listeners[event_name], handler)
+        gie masel
+    }
+
+    # Register a one-time listener (fires once then removes itself)
+    dae once(event_name, handler) {
+        gin nae contains(masel.once_listeners, event_name) {
+            masel.once_listeners[event_name] = []
+        }
+        shove(masel.once_listeners[event_name], handler)
+        gie masel
+    }
+
+    # Remove all listeners for an event
+    dae off_all(event_name) {
+        gin contains(masel.listeners, event_name) {
+            masel.listeners[event_name] = []
+        }
+        gin contains(masel.once_listeners, event_name) {
+            masel.once_listeners[event_name] = []
+        }
+        gie masel
+    }
+
+    # Emit an event with optional data
+    dae emit(event_name, data = naething) {
+        ken event = {
+            "name": event_name,
+            "data": data,
+            "timestamp": noo()
+        }
+
+        # Add to history
+        shove(masel.event_history, event)
+        gin len(masel.event_history) > masel.max_history {
+            masel.event_history = tail(masel.event_history)
+        }
+
+        ken handled = nae
+
+        # Call regular listeners
+        gin contains(masel.listeners, event_name) {
+            fer handler in masel.listeners[event_name] {
+                handler(event)
+                handled = aye
+            }
+        }
+
+        # Call and remove once listeners
+        gin contains(masel.once_listeners, event_name) {
+            fer handler in masel.once_listeners[event_name] {
+                handler(event)
+                handled = aye
+            }
+            masel.once_listeners[event_name] = []
+        }
+
+        gie handled
+    }
+
+    # Check if there are listeners for an event
+    dae has_listeners(event_name) {
+        ken regular = gin contains(masel.listeners, event_name) than len(masel.listeners[event_name]) > 0 ither nae
+        ken once = gin contains(masel.once_listeners, event_name) than len(masel.once_listeners[event_name]) > 0 ither nae
+        gie regular or once
+    }
+
+    # Get count of listeners for an event
+    dae listener_count(event_name) {
+        ken count = 0
+        gin contains(masel.listeners, event_name) {
+            count = count + len(masel.listeners[event_name])
+        }
+        gin contains(masel.once_listeners, event_name) {
+            count = count + len(masel.once_listeners[event_name])
+        }
+        gie count
+    }
+
+    # Get list of all event names with listeners
+    dae event_names() {
+        ken names = creel([])
+        fer name in keys(masel.listeners) {
+            gin len(masel.listeners[name]) > 0 {
+                toss_in(names, name)
+            }
+        }
+        fer name in keys(masel.once_listeners) {
+            gin len(masel.once_listeners[name]) > 0 {
+                toss_in(names, name)
+            }
+        }
+        gie creel_tae_list(names)
+    }
+
+    # Get recent event history
+    dae history(count = 10) {
+        ken total = len(masel.event_history)
+        ken start = gin total > count than total - count ither 0
+        ken result = []
+        fer i in start..total {
+            shove(result, masel.event_history[i])
+        }
+        gie result
+    }
+
+    # Clear all listeners
+    dae clear() {
+        masel.listeners = {}
+        masel.once_listeners = {}
+    }
+
+    # Clear history
+    dae clear_history() {
+        masel.event_history = []
+    }
+}
+
+# ===============================================================
+# Global Event Bus (Singleton pattern)
+# ===============================================================
+
+ken _global_bus = naething
+
+dae get_event_bus() {
+    gin _global_bus == naething {
+        _global_bus = EventEmitter()
+    }
+    gie _global_bus
+}
+
+# Convenience functions for global bus
+dae subscribe(event_name, handler) {
+    gie get_event_bus().on(event_name, handler)
+}
+
+dae unsubscribe(event_name) {
+    gie get_event_bus().off_all(event_name)
+}
+
+dae publish(event_name, data = naething) {
+    gie get_event_bus().emit(event_name, data)
+}
+
+# ===============================================================
+# Event Queue (for deferred processing)
+# ===============================================================
+
+kin EventQueue {
+    dae init() {
+        masel.queue = []
+        masel.processing = nae
+    }
+
+    # Add event to queue
+    dae enqueue(event_name, data = naething) {
+        shove(masel.queue, {"name": event_name, "data": data})
+    }
+
+    # Process next event in queue
+    dae process_one(handler) {
+        gin len(masel.queue) > 0 {
+            ken event = masel.queue[0]
+            masel.queue = tail(masel.queue)
+            handler(event["name"], event["data"])
+            gie aye
+        }
+        gie nae
+    }
+
+    # Process all queued events with a handler
+    dae process_all(handler) {
+        masel.processing = aye
+        ken count = 0
+        whiles len(masel.queue) > 0 {
+            ken event = masel.queue[0]
+            masel.queue = tail(masel.queue)
+            handler(event["name"], event["data"])
+            count = count + 1
+        }
+        masel.processing = nae
+        gie count
+    }
+
+    # Get queue length
+    dae length() {
+        gie len(masel.queue)
+    }
+
+    # Clear the queue
+    dae clear() {
+        masel.queue = []
+    }
+
+    # Check if currently processing
+    dae is_processing() {
+        gie masel.processing
+    }
+
+    # Peek at next event without removing
+    dae peek() {
+        gin len(masel.queue) > 0 {
+            gie masel.queue[0]
+        }
+        gie naething
+    }
+}
+
+# ===============================================================
+# Signal Class (simpler reactive primitive)
+# ===============================================================
+
+kin Signal {
+    dae init(initial_value = naething) {
+        masel.value = initial_value
+        masel.subscribers = []
+    }
+
+    # Get current value
+    dae get() {
+        gie masel.value
+    }
+
+    # Set new value and notify subscribers
+    dae set(new_value) {
+        ken old_value = masel.value
+        masel.value = new_value
+
+        # Notify subscribers of change
+        fer subscriber in masel.subscribers {
+            subscriber(new_value, old_value)
+        }
+    }
+
+    # Subscribe to changes
+    dae subscribe(handler) {
+        shove(masel.subscribers, handler)
+        gie masel
+    }
+
+    # Update value using a function
+    dae update(fn) {
+        masel.set(fn(masel.value))
+    }
+
+    # Get subscriber count
+    dae subscriber_count() {
+        gie len(masel.subscribers)
+    }
+}
+
+# ===============================================================
+# Event Counter
+# ===============================================================
+
+kin EventCounter {
+    dae init() {
+        masel.counts = {}
+    }
+
+    # Increment counter for an event
+    dae count(event_name) {
+        gin nae contains(masel.counts, event_name) {
+            masel.counts[event_name] = 0
+        }
+        masel.counts[event_name] = masel.counts[event_name] + 1
+    }
+
+    # Get count for an event
+    dae get_count(event_name) {
+        gin contains(masel.counts, event_name) {
+            gie masel.counts[event_name]
+        }
+        gie 0
+    }
+
+    # Get all counts
+    dae get_all() {
+        gie masel.counts
+    }
+
+    # Reset all counts
+    dae reset() {
+        masel.counts = {}
+    }
+
+    # Get total of all counts
+    dae total() {
+        ken sum = 0
+        fer name in keys(masel.counts) {
+            sum = sum + masel.counts[name]
+        }
+        gie sum
+    }
+}
+
+# ===============================================================
+# Event Logger
+# ===============================================================
+
+kin EventLogger {
+    dae init(prefix = "[EVENT]") {
+        masel.prefix = prefix
+        masel.logs = []
+        masel.enabled = aye
+    }
+
+    # Log an event
+    dae log(event) {
+        gin masel.enabled {
+            ken entry = f"{masel.prefix} {event['name']}: {event['data']}"
+            shove(masel.logs, entry)
+            blether entry
+        }
+    }
+
+    # Create a handler that logs events
+    dae handler() {
+        gie |event| masel.log(event)
+    }
+
+    # Get all logs
+    dae get_logs() {
+        gie masel.logs
+    }
+
+    # Clear logs
+    dae clear() {
+        masel.logs = []
+    }
+
+    # Enable/disable logging
+    dae enable() {
+        masel.enabled = aye
+    }
+
+    dae disable() {
+        masel.enabled = nae
+    }
+}
+
+# ===============================================================
+# Helper Functions
+# ===============================================================
+
+# Create an event emitter with logging
+dae create_logged_emitter(prefix = "[EVENT]") {
+    ken emitter = EventEmitter()
+    ken logger = EventLogger(prefix)
+
+    # We'll return both so user can attach logger to specific events
+    gie {"emitter": emitter, "logger": logger}
+}
+
+# Note: mdhavers lambdas are single-expression only
+# For complex event filtering, use regular functions instead
+
+# ===============================================================
+# Pre-built Event Names (constants)
+# ===============================================================
+
+# Common game events
+ken GAME_START = "game:start"
+ken GAME_PAUSE = "game:pause"
+ken GAME_RESUME = "game:resume"
+ken GAME_OVER = "game:over"
+ken PLAYER_MOVE = "player:move"
+ken PLAYER_JUMP = "player:jump"
+ken PLAYER_ATTACK = "player:attack"
+ken PLAYER_DAMAGE = "player:damage"
+ken PLAYER_DEATH = "player:death"
+ken ENEMY_SPAWN = "enemy:spawn"
+ken ENEMY_DEATH = "enemy:death"
+ken ITEM_PICKUP = "item:pickup"
+ken LEVEL_START = "level:start"
+ken LEVEL_COMPLETE = "level:complete"
+
+# Common UI events
+ken BUTTON_CLICK = "ui:button:click"
+ken FORM_SUBMIT = "ui:form:submit"
+ken INPUT_CHANGE = "ui:input:change"
+ken MENU_OPEN = "ui:menu:open"
+ken MENU_CLOSE = "ui:menu:close"
+
+# Common system events
+ken APP_START = "app:start"
+ken APP_STOP = "app:stop"
+ken ERROR = "system:error"
+ken WARNING = "system:warning"
+
+blether "Events module loaded! Ready tae notify!"
