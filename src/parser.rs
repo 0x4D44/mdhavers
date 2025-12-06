@@ -83,7 +83,8 @@ impl Parser {
             if self.match_token(&TokenKind::DotDotDot) {
                 if seen_rest {
                     return Err(HaversError::ParseError {
-                        message: "Ye can only hae ane rest pattern (...) in a destructure".to_string(),
+                        message: "Ye can only hae ane rest pattern (...) in a destructure"
+                            .to_string(),
                         line: span.line,
                     });
                 }
@@ -140,7 +141,9 @@ impl Parser {
                     // Params wi' defaults must come efter params wi'oot
                     if seen_default {
                         return Err(HaversError::ParseError {
-                            message: "Och! Params wi'oot defaults cannae come efter params wi' defaults".to_string(),
+                            message:
+                                "Och! Params wi'oot defaults cannae come efter params wi' defaults"
+                                    .to_string(),
                             line: span.line,
                         });
                     }
@@ -587,7 +590,9 @@ impl Parser {
                         span,
                     });
                 }
-                Expr::Get { object, property, .. } => {
+                Expr::Get {
+                    object, property, ..
+                } => {
                     return Ok(Expr::Set {
                         object,
                         property,
@@ -634,10 +639,7 @@ impl Parser {
                     return Ok(Expr::Assign {
                         name: name.clone(),
                         value: Box::new(Expr::Binary {
-                            left: Box::new(Expr::Variable {
-                                name,
-                                span,
-                            }),
+                            left: Box::new(Expr::Variable { name, span }),
                             operator: op,
                             right: Box::new(value),
                             span,
@@ -678,7 +680,10 @@ impl Parser {
     fn ternary(&mut self) -> HaversResult<Expr> {
         // Check fer ternary expression starting wi' 'gin'
         if self.match_token(&TokenKind::Gin) {
-            let span = self.previous().map(|t| Span::new(t.line, t.column)).unwrap_or(self.current_span());
+            let span = self
+                .previous()
+                .map(|t| Span::new(t.line, t.column))
+                .unwrap_or(self.current_span());
 
             // Parse the condition
             let condition = self.or()?;
@@ -693,7 +698,7 @@ impl Parser {
             self.expect(&TokenKind::Ither, "ither")?;
 
             // Parse the 'else' expression (falsy case)
-            let else_expr = self.ternary()?;  // Right-associative
+            let else_expr = self.ternary()?; // Right-associative
 
             return Ok(Expr::Ternary {
                 condition: Box::new(condition),
@@ -710,7 +715,10 @@ impl Parser {
         let mut expr = self.and()?;
 
         while self.match_token(&TokenKind::Or) {
-            let span = self.previous().map(|t| Span::new(t.line, t.column)).unwrap_or(self.current_span());
+            let span = self
+                .previous()
+                .map(|t| Span::new(t.line, t.column))
+                .unwrap_or(self.current_span());
             let right = self.and()?;
             expr = Expr::Logical {
                 left: Box::new(expr),
@@ -727,7 +735,10 @@ impl Parser {
         let mut expr = self.equality()?;
 
         while self.match_token(&TokenKind::An) {
-            let span = self.previous().map(|t| Span::new(t.line, t.column)).unwrap_or(self.current_span());
+            let span = self
+                .previous()
+                .map(|t| Span::new(t.line, t.column))
+                .unwrap_or(self.current_span());
             let right = self.equality()?;
             expr = Expr::Logical {
                 left: Box::new(expr),
@@ -752,7 +763,10 @@ impl Parser {
                 break;
             };
 
-            let span = self.previous().map(|t| Span::new(t.line, t.column)).unwrap_or(self.current_span());
+            let span = self
+                .previous()
+                .map(|t| Span::new(t.line, t.column))
+                .unwrap_or(self.current_span());
             let right = self.comparison()?;
             expr = Expr::Binary {
                 left: Box::new(expr),
@@ -781,7 +795,10 @@ impl Parser {
                 break;
             };
 
-            let span = self.previous().map(|t| Span::new(t.line, t.column)).unwrap_or(self.current_span());
+            let span = self
+                .previous()
+                .map(|t| Span::new(t.line, t.column))
+                .unwrap_or(self.current_span());
             let right = self.term()?;
             expr = Expr::Binary {
                 left: Box::new(expr),
@@ -806,7 +823,10 @@ impl Parser {
                 break;
             };
 
-            let span = self.previous().map(|t| Span::new(t.line, t.column)).unwrap_or(self.current_span());
+            let span = self
+                .previous()
+                .map(|t| Span::new(t.line, t.column))
+                .unwrap_or(self.current_span());
             let right = self.factor()?;
             expr = Expr::Binary {
                 left: Box::new(expr),
@@ -833,7 +853,10 @@ impl Parser {
                 break;
             };
 
-            let span = self.previous().map(|t| Span::new(t.line, t.column)).unwrap_or(self.current_span());
+            let span = self
+                .previous()
+                .map(|t| Span::new(t.line, t.column))
+                .unwrap_or(self.current_span());
             let right = self.unary()?;
             expr = Expr::Binary {
                 left: Box::new(expr),
@@ -848,7 +871,10 @@ impl Parser {
 
     fn unary(&mut self) -> HaversResult<Expr> {
         if self.match_token(&TokenKind::Minus) {
-            let span = self.previous().map(|t| Span::new(t.line, t.column)).unwrap_or(self.current_span());
+            let span = self
+                .previous()
+                .map(|t| Span::new(t.line, t.column))
+                .unwrap_or(self.current_span());
             let operand = self.unary()?;
             return Ok(Expr::Unary {
                 operator: UnaryOp::Negate,
@@ -864,7 +890,10 @@ impl Parser {
             // Look ahead to see if there's an operand
             if self.is_nae_followed_by_operand() {
                 self.advance(); // consume nae
-                let span = self.previous().map(|t| Span::new(t.line, t.column)).unwrap_or(self.current_span());
+                let span = self
+                    .previous()
+                    .map(|t| Span::new(t.line, t.column))
+                    .unwrap_or(self.current_span());
                 let operand = self.unary()?;
                 return Ok(Expr::Unary {
                     operator: UnaryOp::Not,
@@ -876,7 +905,10 @@ impl Parser {
         }
 
         if self.match_token(&TokenKind::Bang) {
-            let span = self.previous().map(|t| Span::new(t.line, t.column)).unwrap_or(self.current_span());
+            let span = self
+                .previous()
+                .map(|t| Span::new(t.line, t.column))
+                .unwrap_or(self.current_span());
             let operand = self.unary()?;
             return Ok(Expr::Unary {
                 operator: UnaryOp::Not,
@@ -936,11 +968,12 @@ impl Parser {
                     // [:end] or [:] or [:end:step] or [::step]
                     self.advance(); // consume the first colon
 
-                    let end = if self.check(&TokenKind::Colon) || self.check(&TokenKind::RightBracket) {
-                        None
-                    } else {
-                        Some(Box::new(self.expression()?))
-                    };
+                    let end =
+                        if self.check(&TokenKind::Colon) || self.check(&TokenKind::RightBracket) {
+                            None
+                        } else {
+                            Some(Box::new(self.expression()?))
+                        };
 
                     // Check fer step
                     let step = if self.match_token(&TokenKind::Colon) {
@@ -967,7 +1000,9 @@ impl Parser {
 
                     if self.match_token(&TokenKind::Colon) {
                         // It's a slice: [start:end] or [start:] or [start:end:step] or [start::step]
-                        let end = if self.check(&TokenKind::Colon) || self.check(&TokenKind::RightBracket) {
+                        let end = if self.check(&TokenKind::Colon)
+                            || self.check(&TokenKind::RightBracket)
+                        {
                             None
                         } else {
                             Some(Box::new(self.expression()?))
@@ -1216,7 +1251,9 @@ impl Parser {
     // === Helper methods ===
 
     fn peek(&self) -> &Token {
-        self.tokens.get(self.current).unwrap_or(&self.tokens[self.tokens.len() - 1])
+        self.tokens
+            .get(self.current)
+            .unwrap_or(&self.tokens[self.tokens.len() - 1])
     }
 
     fn previous(&self) -> Option<&Token> {
@@ -1524,8 +1561,8 @@ mod tests {
 
     #[test]
     fn test_if_statement() {
-        let program = parse("gin x > 5 {\n  blether \"big\"\n} ither {\n  blether \"wee\"\n}")
-            .unwrap();
+        let program =
+            parse("gin x > 5 {\n  blether \"big\"\n} ither {\n  blether \"wee\"\n}").unwrap();
         assert_eq!(program.statements.len(), 1);
         assert!(matches!(program.statements[0], Stmt::If { .. }));
     }
@@ -1566,7 +1603,11 @@ mod tests {
     fn test_multiline_list() {
         let program = parse("ken arr = [\n  1,\n  2,\n  3\n]").unwrap();
         assert_eq!(program.statements.len(), 1);
-        if let Stmt::VarDecl { initializer: Some(expr), .. } = &program.statements[0] {
+        if let Stmt::VarDecl {
+            initializer: Some(expr),
+            ..
+        } = &program.statements[0]
+        {
             assert!(matches!(expr, Expr::List { elements, .. } if elements.len() == 3));
         } else {
             panic!("Expected VarDecl with List");
@@ -1600,14 +1641,18 @@ mod tests {
 
     #[test]
     fn test_match_statement() {
-        let program = parse("keek x {\n  whan 1 -> { blether \"one\" }\n  whan _ -> { blether \"other\" }\n}").unwrap();
+        let program = parse(
+            "keek x {\n  whan 1 -> { blether \"one\" }\n  whan _ -> { blether \"other\" }\n}",
+        )
+        .unwrap();
         assert_eq!(program.statements.len(), 1);
         assert!(matches!(program.statements[0], Stmt::Match { .. }));
     }
 
     #[test]
     fn test_class_declaration() {
-        let program = parse("kin Dug {\n  dae init(name) {\n    masel.name = name\n  }\n}").unwrap();
+        let program =
+            parse("kin Dug {\n  dae init(name) {\n    masel.name = name\n  }\n}").unwrap();
         assert_eq!(program.statements.len(), 1);
         assert!(matches!(program.statements[0], Stmt::Class { .. }));
     }
@@ -1628,5 +1673,356 @@ mod tests {
     fn test_pipe_operator() {
         let program = parse("ken result = x |> f |> g").unwrap();
         assert_eq!(program.statements.len(), 1);
+    }
+
+    // ==================== Error Cases ====================
+
+    #[test]
+    fn test_destructure_multiple_rest_error() {
+        let result = parse("ken [...a, ...b] = [1, 2, 3]");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_param_defaults_ordering_error() {
+        let result = parse("dae foo(a = 1, b) { gie a + b }");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_destructure_with_ignore() {
+        let program = parse("ken [a, _, c] = [1, 2, 3]").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_destructure_with_rest() {
+        let program = parse("ken [first, ...rest] = [1, 2, 3, 4]").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_function_with_default_params() {
+        let program = parse("dae greet(name, greeting = \"Hello\") { gie greeting + name }").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_function_with_all_default_params() {
+        let program = parse("dae foo(a = 1, b = 2, c = 3) { gie a + b + c }").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    // ==================== Escape Sequences ====================
+
+    #[test]
+    fn test_escape_newline() {
+        let program = parse(r#"ken s = "hello\nworld""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_escape_tab() {
+        let program = parse(r#"ken s = "hello\tworld""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_escape_carriage_return() {
+        let program = parse(r#"ken s = "hello\rworld""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_escape_backslash() {
+        let program = parse(r#"ken s = "C:\\Users\\path""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_escape_double_quote() {
+        let program = parse(r#"ken s = "say \"hello\"""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_escape_single_quote() {
+        let program = parse(r#"ken s = "it\'s fine""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_escape_null() {
+        let program = parse(r#"ken s = "null\0byte""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_escape_hex() {
+        let program = parse(r#"ken s = "\x41\x42""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_escape_unknown() {
+        // Unknown escapes are kept as-is
+        let program = parse(r#"ken s = "hello\zworld""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_escape_trailing_backslash() {
+        let program = parse(r#"ken s = "hello\\""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    // ==================== F-String Tests ====================
+
+    #[test]
+    fn test_fstring_basic() {
+        let program = parse(r#"ken s = f"Hello {name}!""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_fstring_multiple_exprs() {
+        let program = parse(r#"ken s = f"{a} + {b} = {a + b}""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_fstring_escaped_braces() {
+        let program = parse(r#"ken s = f"Use {{braces}} here""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_fstring_nested_expr() {
+        let program = parse(r#"ken s = f"Result: {gin x > 0 than x ither -x}""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    // ==================== More Statement Tests ====================
+
+    #[test]
+    fn test_struct_declaration() {
+        let program = parse("thing Point { x, y }").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(program.statements[0], Stmt::Struct { .. }));
+    }
+
+    #[test]
+    fn test_import_statement() {
+        let program = parse(r#"fetch "math""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(program.statements[0], Stmt::Import { .. }));
+    }
+
+    #[test]
+    fn test_try_catch() {
+        let program = parse("hae_a_bash { risky() } gin_it_gangs_wrang e { blether e }").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(program.statements[0], Stmt::TryCatch { .. }));
+    }
+
+    #[test]
+    fn test_assert_statement() {
+        let program = parse("mak_siccar x > 0").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(program.statements[0], Stmt::Assert { .. }));
+    }
+
+    #[test]
+    fn test_assert_with_message() {
+        let program = parse(r#"mak_siccar x > 0 , "x must be positive""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_class_with_inheritance() {
+        let program = parse("kin Dog fae Animal { dae bark() { gie \"woof\" } }").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_match_with_range_pattern() {
+        let program = parse("keek x {\n  whan 1..10 -> blether \"small\"\n  whan _ -> blether \"big\"\n}").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    // ==================== Expression Tests ====================
+
+    #[test]
+    fn test_lambda_syntax() {
+        let program = parse("ken add = |a, b| a + b").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_range_inclusive() {
+        let program = parse("ken r = 1..10").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_range_exclusive() {
+        let program = parse("ken r = 1..10").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_slice_with_step() {
+        let program = parse("ken s = arr[::2]").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_slice_reverse() {
+        let program = parse("ken s = arr[::-1]").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_compound_assignment_plus() {
+        let program = parse("x += 5").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_compound_assignment_minus() {
+        let program = parse("x -= 5").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_compound_assignment_multiply() {
+        let program = parse("x *= 5").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_compound_assignment_divide() {
+        let program = parse("x /= 5").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_logical_not() {
+        let program = parse("ken b = no(aye)").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_unary_negate() {
+        let program = parse("ken n = -42").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_method_call_chain() {
+        let program = parse("obj.method1().method2().field").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_masel_reference() {
+        let program = parse("kin Foo { dae bar() { gie masel.x } }").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_dict_literal_syntax() {
+        let program = parse(r#"ken d = {"key": "value", "num": 42}"#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_list_literal_syntax() {
+        let program = parse("ken l = [1, 2, 3, 4, 5]").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_grouping_expression() {
+        let program = parse("ken n = (1 + 2) * 3").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    // ==================== Control Flow Tests ====================
+
+    #[test]
+    fn test_while_loop_parse() {
+        let program = parse("whiles x > 0 { x = x - 1 }").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(program.statements[0], Stmt::While { .. }));
+    }
+
+    #[test]
+    fn test_for_loop_parse() {
+        let program = parse("fer i in 1..10 { blether i }").unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(matches!(program.statements[0], Stmt::For { .. }));
+    }
+
+    #[test]
+    fn test_break_statement() {
+        let program = parse("whiles aye { brak }").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_continue_statement() {
+        let program = parse("fer i in 1..10 { haud }").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_return_with_value() {
+        let program = parse("dae foo() { gie 42 }").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_return_without_value() {
+        let program = parse("dae foo() { gie naething }").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_if_else() {
+        let program = parse("gin x > 0 { blether \"positive\" } ither { blether \"not positive\" }").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_if_else_if() {
+        let program = parse("gin x > 0 { blether \"pos\" } ither gin x < 0 { blether \"neg\" } ither { blether \"zero\" }").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    // ==================== Error Recovery Tests ====================
+
+    #[test]
+    fn test_unexpected_token_error() {
+        let result = parse("ken = 42");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_missing_closing_brace() {
+        let result = parse("gin aye { blether \"hi\"");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_missing_closing_bracket() {
+        let result = parse("ken l = [1, 2, 3");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_invalid_assignment_target() {
+        let result = parse("42 = x");
+        assert!(result.is_err());
     }
 }

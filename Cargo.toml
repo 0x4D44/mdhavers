@@ -8,25 +8,43 @@ license = "MIT"
 readme = "README.md"
 keywords = ["scots", "programming-language", "interpreter", "compiler"]
 
+[lib]
+name = "mdhavers"
+path = "src/lib.rs"
+
 [[bin]]
 name = "mdhavers"
 path = "src/main.rs"
+required-features = ["cli"]
 
 [[bin]]
 name = "mdhavers-lsp"
 path = "src/lsp/main.rs"
+required-features = ["cli"]
+
+[features]
+default = ["cli"]
+cli = ["clap", "rustyline", "dirs", "colored", "lsp-types", "lsp-server"]
+llvm = ["inkwell"]
 
 [dependencies]
-clap = { version = "4.4", features = ["derive"] }
 thiserror = "1.0"
-colored = "2.1"
 logos = "0.14"
-rustyline = "14.0"
-dirs = "5.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-lsp-types = "0.97"
-lsp-server = "0.7"
+
+# CLI-only dependencies (not needed for WASM)
+clap = { version = "4.4", features = ["derive"], optional = true }
+colored = { version = "2.1", optional = true }
+rustyline = { version = "14.0", optional = true }
+dirs = { version = "5.0", optional = true }
+lsp-types = { version = "0.97", optional = true }
+lsp-server = { version = "0.7", optional = true }
+
+# LLVM backend dependencies (optional)
+# Supports LLVM 14, 15, 16, 17, 18. Change feature flag to match installed version.
+# To check: apt list --installed | grep llvm-*-dev
+inkwell = { version = "0.4", features = ["llvm15-0"], optional = true }
 
 [dev-dependencies]
 pretty_assertions = "1.4"

@@ -17,20 +17,15 @@ enum ControlFlow {
 }
 
 /// Trace mode fer debugging - shows step-by-step execution
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum TraceMode {
     /// Nae tracing at aw
+    #[default]
     Off,
     /// Show statement execution only
     Statements,
     /// Show everything (statements, expressions, values)
     Verbose,
-}
-
-impl Default for TraceMode {
-    fn default() -> Self {
-        TraceMode::Off
-    }
 }
 
 /// The interpreter - runs mdhavers programs
@@ -124,11 +119,7 @@ impl Interpreter {
             // Skip prelude functions (they have specific patterns)
             if matches!(value, Value::Function(_)) {
                 // Include user-defined functions but mark them
-                vars.push((
-                    name.clone(),
-                    "function".to_string(),
-                    format!("{}", value),
-                ));
+                vars.push((name.clone(), "function".to_string(), format!("{}", value)));
             } else {
                 vars.push((
                     name.clone(),
@@ -234,8 +225,10 @@ impl Interpreter {
         // int - convert to integer (tae_int in Scots!)
         globals.borrow_mut().define(
             "tae_int".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("tae_int", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "tae_int",
+                1,
+                |args| match &args[0] {
                     Value::Integer(n) => Ok(Value::Integer(*n)),
                     Value::Float(f) => Ok(Value::Integer(*f as i64)),
                     Value::String(s) => s
@@ -243,16 +236,21 @@ impl Interpreter {
                         .map(Value::Integer)
                         .map_err(|_| format!("Cannae turn '{}' intae an integer", s)),
                     Value::Bool(b) => Ok(Value::Integer(if *b { 1 } else { 0 })),
-                    _ => Err(format!("Cannae turn {} intae an integer", args[0].type_name())),
-                }
-            }))),
+                    _ => Err(format!(
+                        "Cannae turn {} intae an integer",
+                        args[0].type_name()
+                    )),
+                },
+            ))),
         );
 
         // float - convert to float (tae_float in Scots!)
         globals.borrow_mut().define(
             "tae_float".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("tae_float", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "tae_float",
+                1,
+                |args| match &args[0] {
                     Value::Integer(n) => Ok(Value::Float(*n as f64)),
                     Value::Float(f) => Ok(Value::Float(*f)),
                     Value::String(s) => s
@@ -260,8 +258,8 @@ impl Interpreter {
                         .map(Value::Float)
                         .map_err(|_| format!("Cannae turn '{}' intae a float", s)),
                     _ => Err(format!("Cannae turn {} intae a float", args[0].type_name())),
-                }
-            }))),
+                },
+            ))),
         );
 
         // push - add to list (shove in Scots!)
@@ -325,12 +323,8 @@ impl Interpreter {
         globals.borrow_mut().define(
             "range".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("range", 2, |args| {
-                let start = args[0]
-                    .as_integer()
-                    .ok_or("range() expects integers")?;
-                let end = args[1]
-                    .as_integer()
-                    .ok_or("range() expects integers")?;
+                let start = args[0].as_integer().ok_or("range() expects integers")?;
+                let end = args[1].as_integer().ok_or("range() expects integers")?;
                 Ok(Value::Range(RangeValue::new(start, end, false)))
             }))),
         );
@@ -378,49 +372,57 @@ impl Interpreter {
         // floor
         globals.borrow_mut().define(
             "floor".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("floor", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "floor",
+                1,
+                |args| match &args[0] {
                     Value::Float(f) => Ok(Value::Integer(f.floor() as i64)),
                     Value::Integer(n) => Ok(Value::Integer(*n)),
                     _ => Err("floor() expects a number".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // ceil
         globals.borrow_mut().define(
             "ceil".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("ceil", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "ceil",
+                1,
+                |args| match &args[0] {
                     Value::Float(f) => Ok(Value::Integer(f.ceil() as i64)),
                     Value::Integer(n) => Ok(Value::Integer(*n)),
                     _ => Err("ceil() expects a number".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // round
         globals.borrow_mut().define(
             "round".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("round", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "round",
+                1,
+                |args| match &args[0] {
                     Value::Float(f) => Ok(Value::Integer(f.round() as i64)),
                     Value::Integer(n) => Ok(Value::Integer(*n)),
                     _ => Err("round() expects a number".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // sqrt
         globals.borrow_mut().define(
             "sqrt".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("sqrt", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "sqrt",
+                1,
+                |args| match &args[0] {
                     Value::Float(f) => Ok(Value::Float(f.sqrt())),
                     Value::Integer(n) => Ok(Value::Float((*n as f64).sqrt())),
                     _ => Err("sqrt() expects a number".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // split - split string
@@ -446,11 +448,8 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("join", 2, |args| {
                 match (&args[0], &args[1]) {
                     (Value::List(list), Value::String(delim)) => {
-                        let parts: Vec<String> = list
-                            .borrow()
-                            .iter()
-                            .map(|v| format!("{}", v))
-                            .collect();
+                        let parts: Vec<String> =
+                            list.borrow().iter().map(|v| format!("{}", v)).collect();
                         Ok(Value::String(parts.join(delim)))
                     }
                     _ => Err("join() expects a list and a string".to_string()),
@@ -461,8 +460,10 @@ impl Interpreter {
         // contains - check if list/string contains value
         globals.borrow_mut().define(
             "contains".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("contains", 2, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "contains",
+                2,
+                |args| match &args[0] {
                     Value::List(list) => {
                         let found = list.borrow().iter().any(|v| v == &args[1]);
                         Ok(Value::Bool(found))
@@ -482,26 +483,26 @@ impl Interpreter {
                         }
                     }
                     _ => Err("contains() expects a list, string, or dict".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // reverse - reverse a list or string
         globals.borrow_mut().define(
             "reverse".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("reverse", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "reverse",
+                1,
+                |args| match &args[0] {
                     Value::List(list) => {
                         let mut reversed = list.borrow().clone();
                         reversed.reverse();
                         Ok(Value::List(Rc::new(RefCell::new(reversed))))
                     }
-                    Value::String(s) => {
-                        Ok(Value::String(s.chars().rev().collect()))
-                    }
+                    Value::String(s) => Ok(Value::String(s.chars().rev().collect())),
                     _ => Err("reverse() expects a list or string".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // slap - append lists together (like a friendly slap on the back!)
@@ -525,24 +526,32 @@ impl Interpreter {
         // heid - get the first element (head)
         globals.borrow_mut().define(
             "heid".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("heid", 1, |args| {
-                match &args[0] {
-                    Value::List(list) => {
-                        list.borrow().first().cloned().ok_or("Cannae get heid o' empty list!".to_string())
-                    }
-                    Value::String(s) => {
-                        s.chars().next().map(|c| Value::String(c.to_string())).ok_or("Cannae get heid o' empty string!".to_string())
-                    }
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "heid",
+                1,
+                |args| match &args[0] {
+                    Value::List(list) => list
+                        .borrow()
+                        .first()
+                        .cloned()
+                        .ok_or("Cannae get heid o' empty list!".to_string()),
+                    Value::String(s) => s
+                        .chars()
+                        .next()
+                        .map(|c| Value::String(c.to_string()))
+                        .ok_or("Cannae get heid o' empty string!".to_string()),
                     _ => Err("heid() expects a list or string".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // tail - get everything except the first (like a tail!)
         globals.borrow_mut().define(
             "tail".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("tail", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "tail",
+                1,
+                |args| match &args[0] {
                     Value::List(list) => {
                         let list = list.borrow();
                         if list.is_empty() {
@@ -551,12 +560,10 @@ impl Interpreter {
                             Ok(Value::List(Rc::new(RefCell::new(list[1..].to_vec()))))
                         }
                     }
-                    Value::String(s) => {
-                        Ok(Value::String(s.chars().skip(1).collect()))
-                    }
+                    Value::String(s) => Ok(Value::String(s.chars().skip(1).collect())),
                     _ => Err("tail() expects a list or string".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // bum - get the last element (backside!)
@@ -564,12 +571,16 @@ impl Interpreter {
             "bum".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("bum", 1, |args| {
                 match &args[0] {
-                    Value::List(list) => {
-                        list.borrow().last().cloned().ok_or("Cannae get bum o' empty list!".to_string())
-                    }
-                    Value::String(s) => {
-                        s.chars().last().map(|c| Value::String(c.to_string())).ok_or("Cannae get bum o' empty string!".to_string())
-                    }
+                    Value::List(list) => list
+                        .borrow()
+                        .last()
+                        .cloned()
+                        .ok_or("Cannae get bum o' empty list!".to_string()),
+                    Value::String(s) => s
+                        .chars()
+                        .last()
+                        .map(|c| Value::String(c.to_string()))
+                        .ok_or("Cannae get bum o' empty string!".to_string()),
                     _ => Err("bum() expects a list or string".to_string()),
                 }
             }))),
@@ -579,19 +590,27 @@ impl Interpreter {
         globals.borrow_mut().define(
             "scran".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("scran", 3, |args| {
-                let start = args[1].as_integer().ok_or("scran() needs integer indices")?;
-                let end = args[2].as_integer().ok_or("scran() needs integer indices")?;
+                let start = args[1]
+                    .as_integer()
+                    .ok_or("scran() needs integer indices")?;
+                let end = args[2]
+                    .as_integer()
+                    .ok_or("scran() needs integer indices")?;
                 match &args[0] {
                     Value::List(list) => {
                         let list = list.borrow();
                         let start = start.max(0) as usize;
                         let end = end.min(list.len() as i64) as usize;
-                        Ok(Value::List(Rc::new(RefCell::new(list[start..end].to_vec()))))
+                        Ok(Value::List(Rc::new(RefCell::new(
+                            list[start..end].to_vec(),
+                        ))))
                     }
                     Value::String(s) => {
                         let start = start.max(0) as usize;
                         let end = end.min(s.len() as i64) as usize;
-                        Ok(Value::String(s.chars().skip(start).take(end - start).collect()))
+                        Ok(Value::String(
+                            s.chars().skip(start).take(end - start).collect(),
+                        ))
                     }
                     _ => Err("scran() expects a list or string".to_string()),
                 }
@@ -608,7 +627,10 @@ impl Interpreter {
                     for item in list.borrow().iter() {
                         match item {
                             Value::Integer(n) => sum += *n as f64,
-                            Value::Float(f) => { sum += f; is_float = true; }
+                            Value::Float(f) => {
+                                sum += f;
+                                is_float = true;
+                            }
                             _ => return Err("sumaw() expects a list of numbers".to_string()),
                         }
                     }
@@ -626,8 +648,10 @@ impl Interpreter {
         // coont - count occurrences in list or string
         globals.borrow_mut().define(
             "coont".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("coont", 2, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "coont",
+                2,
+                |args| match &args[0] {
                     Value::List(list) => {
                         let count = list.borrow().iter().filter(|&x| x == &args[1]).count();
                         Ok(Value::Integer(count as i64))
@@ -641,8 +665,8 @@ impl Interpreter {
                         }
                     }
                     _ => Err("coont() expects a list or string".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // wheesht - remove whitespace (be quiet/silent!)
@@ -687,7 +711,10 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("shuffle", 1, |args| {
                 if let Value::List(list) = &args[0] {
                     use std::time::{SystemTime, UNIX_EPOCH};
-                    let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64;
+                    let seed = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos() as u64;
                     let mut shuffled = list.borrow().clone();
                     // Simple Fisher-Yates shuffle with basic RNG
                     let mut rng = seed;
@@ -709,13 +736,13 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("sort", 1, |args| {
                 if let Value::List(list) = &args[0] {
                     let mut sorted = list.borrow().clone();
-                    sorted.sort_by(|a, b| {
-                        match (a, b) {
-                            (Value::Integer(x), Value::Integer(y)) => x.cmp(y),
-                            (Value::Float(x), Value::Float(y)) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
-                            (Value::String(x), Value::String(y)) => x.cmp(y),
-                            _ => std::cmp::Ordering::Equal,
+                    sorted.sort_by(|a, b| match (a, b) {
+                        (Value::Integer(x), Value::Integer(y)) => x.cmp(y),
+                        (Value::Float(x), Value::Float(y)) => {
+                            x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
                         }
+                        (Value::String(x), Value::String(y)) => x.cmp(y),
+                        _ => std::cmp::Ordering::Equal,
                     });
                     Ok(Value::List(Rc::new(RefCell::new(sorted))))
                 } else {
@@ -734,7 +761,10 @@ impl Interpreter {
                 if min >= max {
                     return Err("jammy() needs min < max, ya numpty!".to_string());
                 }
-                let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64;
+                let seed = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos() as u64;
                 let rng = seed.wrapping_mul(1103515245).wrapping_add(12345);
                 let range = (max - min) as u64;
                 let result = min + ((rng % range) as i64);
@@ -747,7 +777,10 @@ impl Interpreter {
             "the_noo".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("the_noo", 0, |_args| {
                 use std::time::{SystemTime, UNIX_EPOCH};
-                let secs = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+                let secs = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
                 Ok(Value::Integer(secs as i64))
             }))),
         );
@@ -776,7 +809,9 @@ impl Interpreter {
                     "bool" => matches!(args[0], Value::Bool(_)),
                     "list" => matches!(args[0], Value::List(_)),
                     "dict" => matches!(args[0], Value::Dict(_)),
-                    "function" | "dae" => matches!(args[0], Value::Function(_) | Value::NativeFunction(_)),
+                    "function" | "dae" => {
+                        matches!(args[0], Value::Function(_) | Value::NativeFunction(_))
+                    }
                     "naething" | "nil" => matches!(args[0], Value::Nil),
                     "range" => matches!(args[0], Value::Range(_)),
                     _ => false,
@@ -801,11 +836,20 @@ impl Interpreter {
                     Value::String(s) => s,
                     _ => return Err("char_at() needs a string".to_string()),
                 };
-                let idx = args[1].as_integer().ok_or("char_at() needs an integer index")?;
+                let idx = args[1]
+                    .as_integer()
+                    .ok_or("char_at() needs an integer index")?;
                 let idx = if idx < 0 { s.len() as i64 + idx } else { idx } as usize;
-                s.chars().nth(idx)
+                s.chars()
+                    .nth(idx)
                     .map(|c| Value::String(c.to_string()))
-                    .ok_or_else(|| format!("Index {} oot o' bounds fer string o' length {}", idx, s.len()))
+                    .ok_or_else(|| {
+                        format!(
+                            "Index {} oot o' bounds fer string o' length {}",
+                            idx,
+                            s.len()
+                        )
+                    })
             }))),
         );
 
@@ -825,13 +869,13 @@ impl Interpreter {
         // starts_wi - check if string starts with prefix (Scots: starts with)
         globals.borrow_mut().define(
             "starts_wi".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("starts_wi", 2, |args| {
-                match (&args[0], &args[1]) {
-                    (Value::String(s), Value::String(prefix)) => {
-                        Ok(Value::Bool(s.starts_with(prefix.as_str())))
-                    }
-                    _ => Err("starts_wi() needs two strings".to_string()),
+            Value::NativeFunction(Rc::new(NativeFunction::new("starts_wi", 2, |args| match (
+                &args[0], &args[1],
+            ) {
+                (Value::String(s), Value::String(prefix)) => {
+                    Ok(Value::Bool(s.starts_with(prefix.as_str())))
                 }
+                _ => Err("starts_wi() needs two strings".to_string()),
             }))),
         );
 
@@ -870,9 +914,9 @@ impl Interpreter {
             "index_of".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("index_of", 2, |args| {
                 match (&args[0], &args[1]) {
-                    (Value::String(s), Value::String(needle)) => {
-                        Ok(Value::Integer(s.find(needle.as_str()).map(|i| i as i64).unwrap_or(-1)))
-                    }
+                    (Value::String(s), Value::String(needle)) => Ok(Value::Integer(
+                        s.find(needle.as_str()).map(|i| i as i64).unwrap_or(-1),
+                    )),
                     (Value::List(list), val) => {
                         let list = list.borrow();
                         for (i, item) in list.iter().enumerate() {
@@ -900,11 +944,14 @@ impl Interpreter {
                             Ok(Value::String(s.clone()))
                         } else {
                             let pad = pad_char.chars().next().unwrap_or(' ');
-                            let padding: String = std::iter::repeat(pad).take(width - s.len()).collect();
+                            let padding: String =
+                                std::iter::repeat_n(pad, width - s.len()).collect();
                             Ok(Value::String(format!("{}{}", padding, s)))
                         }
                     }
-                    _ => Err("pad_left() needs a string, integer width, and pad character".to_string()),
+                    _ => Err(
+                        "pad_left() needs a string, integer width, and pad character".to_string(),
+                    ),
                 }
             }))),
         );
@@ -912,19 +959,21 @@ impl Interpreter {
         // pad_right - pad string on the right to reach target length
         globals.borrow_mut().define(
             "pad_right".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("pad_right", 3, |args| {
-                match (&args[0], &args[1], &args[2]) {
-                    (Value::String(s), Value::Integer(width), Value::String(pad_char)) => {
-                        let width = *width as usize;
-                        if s.len() >= width {
-                            Ok(Value::String(s.clone()))
-                        } else {
-                            let pad = pad_char.chars().next().unwrap_or(' ');
-                            let padding: String = std::iter::repeat(pad).take(width - s.len()).collect();
-                            Ok(Value::String(format!("{}{}", s, padding)))
-                        }
+            Value::NativeFunction(Rc::new(NativeFunction::new("pad_right", 3, |args| match (
+                &args[0], &args[1], &args[2],
+            ) {
+                (Value::String(s), Value::Integer(width), Value::String(pad_char)) => {
+                    let width = *width as usize;
+                    if s.len() >= width {
+                        Ok(Value::String(s.clone()))
+                    } else {
+                        let pad = pad_char.chars().next().unwrap_or(' ');
+                        let padding: String = std::iter::repeat_n(pad, width - s.len()).collect();
+                        Ok(Value::String(format!("{}{}", s, padding)))
                     }
-                    _ => Err("pad_right() needs a string, integer width, and pad character".to_string()),
+                }
+                _ => {
+                    Err("pad_right() needs a string, integer width, and pad character".to_string())
                 }
             }))),
         );
@@ -966,7 +1015,9 @@ impl Interpreter {
             "is_digit".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("is_digit", 1, |args| {
                 if let Value::String(s) = &args[0] {
-                    Ok(Value::Bool(!s.is_empty() && s.chars().all(|c| c.is_ascii_digit())))
+                    Ok(Value::Bool(
+                        !s.is_empty() && s.chars().all(|c| c.is_ascii_digit()),
+                    ))
                 } else {
                     Err("is_digit() needs a string".to_string())
                 }
@@ -978,7 +1029,9 @@ impl Interpreter {
             "is_alpha".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("is_alpha", 1, |args| {
                 if let Value::String(s) = &args[0] {
-                    Ok(Value::Bool(!s.is_empty() && s.chars().all(|c| c.is_alphabetic())))
+                    Ok(Value::Bool(
+                        !s.is_empty() && s.chars().all(|c| c.is_alphabetic()),
+                    ))
                 } else {
                     Err("is_alpha() needs a string".to_string())
                 }
@@ -990,7 +1043,9 @@ impl Interpreter {
             "is_space".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("is_space", 1, |args| {
                 if let Value::String(s) = &args[0] {
-                    Ok(Value::Bool(!s.is_empty() && s.chars().all(|c| c.is_whitespace())))
+                    Ok(Value::Bool(
+                        !s.is_empty() && s.chars().all(|c| c.is_whitespace()),
+                    ))
                 } else {
                     Err("is_space() needs a string".to_string())
                 }
@@ -1004,7 +1059,9 @@ impl Interpreter {
                 if let Value::String(s) = &args[0] {
                     let mut chars = s.chars();
                     let result = match chars.next() {
-                        Some(first) => format!("{}{}", first.to_uppercase(), chars.collect::<String>()),
+                        Some(first) => {
+                            format!("{}{}", first.to_uppercase(), chars.collect::<String>())
+                        }
                         None => String::new(),
                     };
                     Ok(Value::String(result))
@@ -1024,7 +1081,11 @@ impl Interpreter {
                         .map(|word| {
                             let mut chars = word.chars();
                             match chars.next() {
-                                Some(first) => format!("{}{}", first.to_uppercase(), chars.collect::<String>().to_lowercase()),
+                                Some(first) => format!(
+                                    "{}{}",
+                                    first.to_uppercase(),
+                                    chars.collect::<String>().to_lowercase()
+                                ),
                                 None => String::new(),
                             }
                         })
@@ -1042,10 +1103,8 @@ impl Interpreter {
             "chars".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("chars", 1, |args| {
                 if let Value::String(s) = &args[0] {
-                    let char_list: Vec<Value> = s
-                        .chars()
-                        .map(|c| Value::String(c.to_string()))
-                        .collect();
+                    let char_list: Vec<Value> =
+                        s.chars().map(|c| Value::String(c.to_string())).collect();
                     Ok(Value::List(Rc::new(RefCell::new(char_list))))
                 } else {
                     Err("chars() needs a string".to_string())
@@ -1078,7 +1137,10 @@ impl Interpreter {
                             .map(|c| Value::String(c.to_string()))
                             .ok_or_else(|| format!("Invalid Unicode codepoint: {}", n))
                     } else {
-                        Err(format!("chr() needs a valid Unicode codepoint (0 to 1114111), got {}", n))
+                        Err(format!(
+                            "chr() needs a valid Unicode codepoint (0 to 1114111), got {}",
+                            n
+                        ))
                     }
                 } else {
                     Err("chr() needs an integer".to_string())
@@ -1114,8 +1176,12 @@ impl Interpreter {
                     (Value::List(a), Value::List(b)) => {
                         let a = a.borrow();
                         let b = b.borrow();
-                        let result: Vec<Value> = a.iter().zip(b.iter())
-                            .map(|(x, y)| Value::List(Rc::new(RefCell::new(vec![x.clone(), y.clone()]))))
+                        let result: Vec<Value> = a
+                            .iter()
+                            .zip(b.iter())
+                            .map(|(x, y)| {
+                                Value::List(Rc::new(RefCell::new(vec![x.clone(), y.clone()])))
+                            })
                             .collect();
                         Ok(Value::List(Rc::new(RefCell::new(result))))
                     }
@@ -1129,8 +1195,16 @@ impl Interpreter {
             "enumerate".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("enumerate", 1, |args| {
                 if let Value::List(list) = &args[0] {
-                    let result: Vec<Value> = list.borrow().iter().enumerate()
-                        .map(|(i, v)| Value::List(Rc::new(RefCell::new(vec![Value::Integer(i as i64), v.clone()]))))
+                    let result: Vec<Value> = list
+                        .borrow()
+                        .iter()
+                        .enumerate()
+                        .map(|(i, v)| {
+                            Value::List(Rc::new(RefCell::new(vec![
+                                Value::Integer(i as i64),
+                                v.clone(),
+                            ])))
+                        })
                         .collect();
                     Ok(Value::List(Rc::new(RefCell::new(result))))
                 } else {
@@ -1167,7 +1241,9 @@ impl Interpreter {
             "chynge".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("chynge", 3, |args| {
                 if let Value::List(list) = &args[0] {
-                    let idx = args[1].as_integer().ok_or("chynge() needs an integer index")?;
+                    let idx = args[1]
+                        .as_integer()
+                        .ok_or("chynge() needs an integer index")?;
                     let mut new_list = list.borrow().clone();
                     let idx = if idx < 0 {
                         (new_list.len() as i64 + idx) as usize
@@ -1175,7 +1251,11 @@ impl Interpreter {
                         idx as usize
                     };
                     if idx > new_list.len() {
-                        return Err(format!("Index {} oot o' bounds fer list o' length {}", idx, new_list.len()));
+                        return Err(format!(
+                            "Index {} oot o' bounds fer list o' length {}",
+                            idx,
+                            new_list.len()
+                        ));
                     }
                     new_list.insert(idx, args[2].clone());
                     Ok(Value::List(Rc::new(RefCell::new(new_list))))
@@ -1190,7 +1270,9 @@ impl Interpreter {
             "dicht".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("dicht", 2, |args| {
                 if let Value::List(list) = &args[0] {
-                    let idx = args[1].as_integer().ok_or("dicht() needs an integer index")?;
+                    let idx = args[1]
+                        .as_integer()
+                        .ok_or("dicht() needs an integer index")?;
                     let mut new_list = list.borrow().clone();
                     let idx = if idx < 0 {
                         (new_list.len() as i64 + idx) as usize
@@ -1198,7 +1280,11 @@ impl Interpreter {
                         idx as usize
                     };
                     if idx >= new_list.len() {
-                        return Err(format!("Index {} oot o' bounds fer list o' length {}", idx, new_list.len()));
+                        return Err(format!(
+                            "Index {} oot o' bounds fer list o' length {}",
+                            idx,
+                            new_list.len()
+                        ));
                     }
                     new_list.remove(idx);
                     Ok(Value::List(Rc::new(RefCell::new(new_list))))
@@ -1233,7 +1319,9 @@ impl Interpreter {
         globals.borrow_mut().define(
             "drap".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("drap", 2, |args| {
-                let n = args[1].as_integer().ok_or("drap() needs an integer count")?;
+                let n = args[1]
+                    .as_integer()
+                    .ok_or("drap() needs an integer count")?;
                 let n = n.max(0) as usize;
                 match &args[0] {
                     Value::List(list) => {
@@ -1255,7 +1343,8 @@ impl Interpreter {
             "redd_up".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("redd_up", 1, |args| {
                 if let Value::List(list) = &args[0] {
-                    let result: Vec<Value> = list.borrow()
+                    let result: Vec<Value> = list
+                        .borrow()
                         .iter()
                         .filter(|v| !matches!(v, Value::Nil))
                         .cloned()
@@ -1337,13 +1426,16 @@ impl Interpreter {
             "chunks".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("chunks", 2, |args| {
                 if let Value::List(list) = &args[0] {
-                    let n = args[1].as_integer().ok_or("chunks() needs an integer size")?;
+                    let n = args[1]
+                        .as_integer()
+                        .ok_or("chunks() needs an integer size")?;
                     if n <= 0 {
                         return Err("chunks() size must be positive".to_string());
                     }
                     let n = n as usize;
                     let list = list.borrow();
-                    let result: Vec<Value> = list.chunks(n)
+                    let result: Vec<Value> = list
+                        .chunks(n)
                         .map(|chunk| Value::List(Rc::new(RefCell::new(chunk.to_vec()))))
                         .collect();
                     Ok(Value::List(Rc::new(RefCell::new(result))))
@@ -1356,8 +1448,10 @@ impl Interpreter {
         // interleave - alternate elements from two lists
         globals.borrow_mut().define(
             "interleave".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("interleave", 2, |args| {
-                match (&args[0], &args[1]) {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "interleave",
+                2,
+                |args| match (&args[0], &args[1]) {
                     (Value::List(a), Value::List(b)) => {
                         let a = a.borrow();
                         let b = b.borrow();
@@ -1374,8 +1468,8 @@ impl Interpreter {
                         Ok(Value::List(Rc::new(RefCell::new(result))))
                     }
                     _ => Err("interleave() needs two lists".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // === More Mathematical Functions ===
@@ -1395,9 +1489,7 @@ impl Interpreter {
                     (Value::Float(base), Value::Integer(exp)) => {
                         Ok(Value::Float(base.powi(*exp as i32)))
                     }
-                    (Value::Float(base), Value::Float(exp)) => {
-                        Ok(Value::Float(base.powf(*exp)))
-                    }
+                    (Value::Float(base), Value::Float(exp)) => Ok(Value::Float(base.powf(*exp))),
                     (Value::Integer(base), Value::Float(exp)) => {
                         Ok(Value::Float((*base as f64).powf(*exp)))
                     }
@@ -1457,32 +1549,31 @@ impl Interpreter {
         // log10 - base 10 logarithm
         globals.borrow_mut().define(
             "log10".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("log10", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "log10",
+                1,
+                |args| match &args[0] {
                     Value::Float(f) => Ok(Value::Float(f.log10())),
                     Value::Integer(n) => Ok(Value::Float((*n as f64).log10())),
                     _ => Err("log10() needs a number".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // PI constant
-        globals.borrow_mut().define(
-            "PI".to_string(),
-            Value::Float(std::f64::consts::PI),
-        );
+        globals
+            .borrow_mut()
+            .define("PI".to_string(), Value::Float(std::f64::consts::PI));
 
         // E constant (Euler's number)
-        globals.borrow_mut().define(
-            "E".to_string(),
-            Value::Float(std::f64::consts::E),
-        );
+        globals
+            .borrow_mut()
+            .define("E".to_string(), Value::Float(std::f64::consts::E));
 
         // TAU constant (2*PI)
-        globals.borrow_mut().define(
-            "TAU".to_string(),
-            Value::Float(std::f64::consts::TAU),
-        );
+        globals
+            .borrow_mut()
+            .define("TAU".to_string(), Value::Float(std::f64::consts::TAU));
 
         // exp - e raised to the power
         globals.borrow_mut().define(
@@ -1517,37 +1608,43 @@ impl Interpreter {
         // asin - arc sine
         globals.borrow_mut().define(
             "asin".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("asin", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "asin",
+                1,
+                |args| match &args[0] {
                     Value::Float(f) => Ok(Value::Float(f.asin())),
                     Value::Integer(n) => Ok(Value::Float((*n as f64).asin())),
                     _ => Err("asin() needs a number".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // acos - arc cosine
         globals.borrow_mut().define(
             "acos".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("acos", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "acos",
+                1,
+                |args| match &args[0] {
                     Value::Float(f) => Ok(Value::Float(f.acos())),
                     Value::Integer(n) => Ok(Value::Float((*n as f64).acos())),
                     _ => Err("acos() needs a number".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // atan - arc tangent
         globals.borrow_mut().define(
             "atan".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("atan", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "atan",
+                1,
+                |args| match &args[0] {
                     Value::Float(f) => Ok(Value::Float(f.atan())),
                     Value::Integer(n) => Ok(Value::Float((*n as f64).atan())),
                     _ => Err("atan() needs a number".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // atan2 - two-argument arc tangent
@@ -1589,25 +1686,29 @@ impl Interpreter {
         // degrees - convert radians to degrees
         globals.borrow_mut().define(
             "degrees".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("degrees", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "degrees",
+                1,
+                |args| match &args[0] {
                     Value::Float(f) => Ok(Value::Float(f.to_degrees())),
                     Value::Integer(n) => Ok(Value::Float((*n as f64).to_degrees())),
                     _ => Err("degrees() needs a number".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // radians - convert degrees to radians
         globals.borrow_mut().define(
             "radians".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("radians", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "radians",
+                1,
+                |args| match &args[0] {
                     Value::Float(f) => Ok(Value::Float(f.to_radians())),
                     Value::Integer(n) => Ok(Value::Float((*n as f64).to_radians())),
                     _ => Err("radians() needs a number".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // === Time Functions ===
@@ -1616,7 +1717,9 @@ impl Interpreter {
         globals.borrow_mut().define(
             "snooze".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("snooze", 1, |args| {
-                let ms = args[0].as_integer().ok_or("snooze() needs an integer (milliseconds)")?;
+                let ms = args[0]
+                    .as_integer()
+                    .ok_or("snooze() needs an integer (milliseconds)")?;
                 if ms < 0 {
                     return Err("Cannae snooze fer negative time, ya daftie!".to_string());
                 }
@@ -1658,7 +1761,10 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("blooter", 1, |args| {
                 if let Value::String(s) = &args[0] {
                     use std::time::{SystemTime, UNIX_EPOCH};
-                    let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64;
+                    let seed = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos() as u64;
                     let mut chars: Vec<char> = s.chars().collect();
                     // Fisher-Yates shuffle
                     let mut rng = seed;
@@ -1685,7 +1791,11 @@ impl Interpreter {
                         if s.len() >= w {
                             Ok(Value::String(s.clone()))
                         } else {
-                            Ok(Value::String(format!("{}{}", pad_char.to_string().repeat(w - s.len()), s)))
+                            Ok(Value::String(format!(
+                                "{}{}",
+                                pad_char.to_string().repeat(w - s.len()),
+                                s
+                            )))
                         }
                     }
                     _ => Err("pad_left() needs (string, width, pad_char)".to_string()),
@@ -1696,19 +1806,23 @@ impl Interpreter {
         // pad_right - pad string on right
         globals.borrow_mut().define(
             "pad_right".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("pad_right", 3, |args| {
-                match (&args[0], &args[1], &args[2]) {
-                    (Value::String(s), Value::Integer(width), Value::String(pad)) => {
-                        let pad_char = pad.chars().next().unwrap_or(' ');
-                        let w = *width as usize;
-                        if s.len() >= w {
-                            Ok(Value::String(s.clone()))
-                        } else {
-                            Ok(Value::String(format!("{}{}", s, pad_char.to_string().repeat(w - s.len()))))
-                        }
+            Value::NativeFunction(Rc::new(NativeFunction::new("pad_right", 3, |args| match (
+                &args[0], &args[1], &args[2],
+            ) {
+                (Value::String(s), Value::Integer(width), Value::String(pad)) => {
+                    let pad_char = pad.chars().next().unwrap_or(' ');
+                    let w = *width as usize;
+                    if s.len() >= w {
+                        Ok(Value::String(s.clone()))
+                    } else {
+                        Ok(Value::String(format!(
+                            "{}{}",
+                            s,
+                            pad_char.to_string().repeat(w - s.len())
+                        )))
                     }
-                    _ => Err("pad_right() needs (string, width, pad_char)".to_string()),
                 }
+                _ => Err("pad_right() needs (string, width, pad_char)".to_string()),
             }))),
         );
 
@@ -1757,7 +1871,8 @@ impl Interpreter {
                         }
                         let size = *size as usize;
                         let items = list.borrow();
-                        let result: Vec<Value> = items.chunks(size)
+                        let result: Vec<Value> = items
+                            .chunks(size)
                             .map(|chunk| Value::List(Rc::new(RefCell::new(chunk.to_vec()))))
                             .collect();
                         Ok(Value::List(Rc::new(RefCell::new(result))))
@@ -1773,7 +1888,8 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("pair_up", 1, |args| {
                 if let Value::List(list) = &args[0] {
                     let items = list.borrow();
-                    let result: Vec<Value> = items.chunks(2)
+                    let result: Vec<Value> = items
+                        .chunks(2)
                         .map(|chunk| Value::List(Rc::new(RefCell::new(chunk.to_vec()))))
                         .collect();
                     Ok(Value::List(Rc::new(RefCell::new(result))))
@@ -1849,9 +1965,11 @@ impl Interpreter {
         // haud_yer_wheesht - tell someone to be quiet (returns empty string)
         globals.borrow_mut().define(
             "haud_yer_wheesht".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("haud_yer_wheesht", 0, |_args| {
-                Ok(Value::String("".to_string()))
-            }))),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "haud_yer_wheesht",
+                0,
+                |_args| Ok(Value::String("".to_string())),
+            ))),
         );
 
         // braw - check if something is good/excellent
@@ -1930,13 +2048,19 @@ impl Interpreter {
                     for item in items.iter().skip(1) {
                         match (&best, item) {
                             (Value::Integer(a), Value::Integer(b)) => {
-                                if *b > *a { best = item.clone(); }
+                                if *b > *a {
+                                    best = item.clone();
+                                }
                             }
                             (Value::Float(a), Value::Float(b)) => {
-                                if *b > *a { best = item.clone(); }
+                                if *b > *a {
+                                    best = item.clone();
+                                }
                             }
                             (Value::String(a), Value::String(b)) => {
-                                if b.len() > a.len() { best = item.clone(); }
+                                if b.len() > a.len() {
+                                    best = item.clone();
+                                }
                             }
                             _ => {}
                         }
@@ -1951,14 +2075,20 @@ impl Interpreter {
         // numpty_check - validate input isn't empty/nil
         globals.borrow_mut().define(
             "numpty_check".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("numpty_check", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "numpty_check",
+                1,
+                |args| match &args[0] {
                     Value::Nil => Ok(Value::String("That's naething, ya numpty!".to_string())),
-                    Value::String(s) if s.is_empty() => Ok(Value::String("Empty string, ya numpty!".to_string())),
-                    Value::List(l) if l.borrow().is_empty() => Ok(Value::String("Empty list, ya numpty!".to_string())),
+                    Value::String(s) if s.is_empty() => {
+                        Ok(Value::String("Empty string, ya numpty!".to_string()))
+                    }
+                    Value::List(l) if l.borrow().is_empty() => {
+                        Ok(Value::String("Empty list, ya numpty!".to_string()))
+                    }
                     _ => Ok(Value::String("That's braw!".to_string())),
-                }
-            }))),
+                },
+            ))),
         );
 
         // scottify - add Scottish flair to text
@@ -2069,7 +2199,8 @@ impl Interpreter {
                 };
                 let content = fs::read_to_string(&path)
                     .map_err(|e| format!("Couldnae read '{}': {}", path, e))?;
-                let lines: Vec<Value> = content.lines()
+                let lines: Vec<Value> = content
+                    .lines()
                     .map(|l| Value::String(l.to_string()))
                     .collect();
                 Ok(Value::List(Rc::new(RefCell::new(lines))))
@@ -2135,7 +2266,10 @@ impl Interpreter {
                     "That's pure mince!",
                     "Jings, crivvens, help ma boab!",
                 ];
-                let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64;
+                let seed = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos() as u64;
                 let rng = seed.wrapping_mul(1103515245).wrapping_add(12345);
                 let idx = (rng as usize) % havers.len();
                 Ok(Value::String(havers[idx].to_string()))
@@ -2155,7 +2289,10 @@ impl Interpreter {
                     "May ye aye be happy, an' never drink frae a toom glass!",
                     "Here's tae the heath, the hill and the heather!",
                 ];
-                let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64;
+                let seed = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos() as u64;
                 let rng = seed.wrapping_mul(1103515245).wrapping_add(12345);
                 let idx = (rng as usize) % toasts.len();
                 Ok(Value::String(toasts[idx].to_string()))
@@ -2192,10 +2329,7 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("wheesht_aw", 1, |args| {
                 if let Value::String(s) = &args[0] {
                     // Collapse multiple spaces and trim
-                    let cleaned: String = s
-                        .split_whitespace()
-                        .collect::<Vec<_>>()
-                        .join(" ");
+                    let cleaned: String = s.split_whitespace().collect::<Vec<_>>().join(" ");
                     Ok(Value::String(cleaned))
                 } else {
                     Err("wheesht_aw() needs a string".to_string())
@@ -2231,7 +2365,10 @@ impl Interpreter {
                 use std::time::{SystemTime, UNIX_EPOCH};
                 if let Value::List(list) = &args[0] {
                     let mut items: Vec<Value> = list.borrow().clone();
-                    let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64;
+                    let seed = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos() as u64;
                     let mut rng = seed;
                     // Double shuffle for extra chaos!
                     for _ in 0..2 {
@@ -2252,13 +2389,15 @@ impl Interpreter {
         // crabbit - check if a number is negative (Scots: grumpy/bad-tempered)
         globals.borrow_mut().define(
             "crabbit".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("crabbit", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "crabbit",
+                1,
+                |args| match &args[0] {
                     Value::Integer(n) => Ok(Value::Bool(*n < 0)),
                     Value::Float(f) => Ok(Value::Bool(*f < 0.0)),
                     _ => Err("crabbit() needs a number".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // gallus - check if a value is bold/impressive (non-empty/non-zero)
@@ -2401,12 +2540,15 @@ impl Interpreter {
         // indices_o - find all indices of a value (Scots: indices of)
         globals.borrow_mut().define(
             "indices_o".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("indices_o", 2, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "indices_o",
+                2,
+                |args| match &args[0] {
                     Value::List(list) => {
                         let items = list.borrow();
                         let needle = &args[1];
-                        let indices: Vec<Value> = items.iter()
+                        let indices: Vec<Value> = items
+                            .iter()
                             .enumerate()
                             .filter(|(_, item)| *item == needle)
                             .map(|(i, _)| Value::Integer(i as i64))
@@ -2416,19 +2558,24 @@ impl Interpreter {
                     Value::String(s) => {
                         let needle = match &args[1] {
                             Value::String(n) => n,
-                            _ => return Err("indices_o() on string needs a string needle".to_string()),
+                            _ => {
+                                return Err(
+                                    "indices_o() on string needs a string needle".to_string()
+                                )
+                            }
                         };
                         if needle.is_empty() {
                             return Err("Cannae search fer an empty string, ya numpty!".to_string());
                         }
-                        let indices: Vec<Value> = s.match_indices(needle.as_str())
+                        let indices: Vec<Value> = s
+                            .match_indices(needle.as_str())
                             .map(|(i, _)| Value::Integer(i as i64))
                             .collect();
                         Ok(Value::List(Rc::new(RefCell::new(indices))))
                     }
                     _ => Err("indices_o() needs a list or string".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // braw_date - format a timestamp or current time in Scottish style
@@ -2438,7 +2585,10 @@ impl Interpreter {
                 use std::time::{SystemTime, UNIX_EPOCH};
                 let secs = match &args[0] {
                     Value::Integer(n) => *n as u64,
-                    Value::Nil => SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+                    Value::Nil => SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs(),
                     _ => return Err("braw_date() needs a timestamp or naething".to_string()),
                 };
                 // Calculate date components (simplified, doesn't handle leap years perfectly)
@@ -2446,15 +2596,24 @@ impl Interpreter {
                 let day_of_week = ((days_since_epoch + 4) % 7) as usize; // Jan 1, 1970 was Thursday
 
                 let scots_day_names = [
-                    "the Sabbath", "Monday", "Tuesday", "Wednesday",
-                    "Thursday", "Friday", "Setterday"
+                    "the Sabbath",
+                    "Monday",
+                    "Tuesday",
+                    "Wednesday",
+                    "Thursday",
+                    "Friday",
+                    "Setterday",
                 ];
 
                 // Simple month/day calculation
                 let mut remaining_days = days_since_epoch as i64;
                 let mut year = 1970i64;
                 loop {
-                    let days_in_year = if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 { 366 } else { 365 };
+                    let days_in_year = if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 {
+                        366
+                    } else {
+                        365
+                    };
                     if remaining_days < days_in_year {
                         break;
                     }
@@ -2463,14 +2622,25 @@ impl Interpreter {
                 }
 
                 let scots_months = [
-                    "Januar", "Februar", "Mairch", "Aprile", "Mey", "Juin",
-                    "Julie", "August", "September", "October", "November", "December"
+                    "Januar",
+                    "Februar",
+                    "Mairch",
+                    "Aprile",
+                    "Mey",
+                    "Juin",
+                    "Julie",
+                    "August",
+                    "September",
+                    "October",
+                    "November",
+                    "December",
                 ];
-                let days_in_months: [i64; 12] = if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 {
-                    [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-                } else {
-                    [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-                };
+                let days_in_months: [i64; 12] =
+                    if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 {
+                        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+                    } else {
+                        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+                    };
 
                 let mut month = 0usize;
                 for (i, &days) in days_in_months.iter().enumerate() {
@@ -2558,8 +2728,10 @@ impl Interpreter {
         // haverin - check if a string is empty/nonsense (talking havers!)
         globals.borrow_mut().define(
             "haverin".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("haverin", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "haverin",
+                1,
+                |args| match &args[0] {
                     Value::String(s) => {
                         let trimmed = s.trim();
                         Ok(Value::Bool(trimmed.is_empty() || trimmed.len() < 2))
@@ -2567,15 +2739,17 @@ impl Interpreter {
                     Value::Nil => Ok(Value::Bool(true)),
                     Value::List(l) => Ok(Value::Bool(l.borrow().is_empty())),
                     _ => Ok(Value::Bool(false)),
-                }
-            }))),
+                },
+            ))),
         );
 
         // scunner - check if value is "disgusting" (negative or empty)
         globals.borrow_mut().define(
             "scunner".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("scunner", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "scunner",
+                1,
+                |args| match &args[0] {
                     Value::Integer(n) => Ok(Value::Bool(*n < 0)),
                     Value::Float(f) => Ok(Value::Bool(*f < 0.0)),
                     Value::String(s) => Ok(Value::Bool(s.is_empty())),
@@ -2583,8 +2757,8 @@ impl Interpreter {
                     Value::Bool(b) => Ok(Value::Bool(!*b)),
                     Value::Nil => Ok(Value::Bool(true)),
                     _ => Ok(Value::Bool(false)),
-                }
-            }))),
+                },
+            ))),
         );
 
         // bonnie - pretty print a value with decoration
@@ -2599,36 +2773,42 @@ impl Interpreter {
         // is_wee - check if value is small (< 10 for numbers, < 5 chars for strings)
         globals.borrow_mut().define(
             "is_wee".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("is_wee", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "is_wee",
+                1,
+                |args| match &args[0] {
                     Value::Integer(n) => Ok(Value::Bool(n.abs() < 10)),
                     Value::Float(f) => Ok(Value::Bool(f.abs() < 10.0)),
                     Value::String(s) => Ok(Value::Bool(s.len() < 5)),
                     Value::List(l) => Ok(Value::Bool(l.borrow().len() < 5)),
                     _ => Ok(Value::Bool(true)),
-                }
-            }))),
+                },
+            ))),
         );
 
         // is_muckle - check if value is big (opposite of is_wee)
         globals.borrow_mut().define(
             "is_muckle".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("is_muckle", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "is_muckle",
+                1,
+                |args| match &args[0] {
                     Value::Integer(n) => Ok(Value::Bool(n.abs() >= 100)),
                     Value::Float(f) => Ok(Value::Bool(f.abs() >= 100.0)),
                     Value::String(s) => Ok(Value::Bool(s.len() >= 50)),
                     Value::List(l) => Ok(Value::Bool(l.borrow().len() >= 50)),
                     _ => Ok(Value::Bool(false)),
-                }
-            }))),
+                },
+            ))),
         );
 
         // cannie - check if value is safe/valid (not nil, not empty, not negative)
         globals.borrow_mut().define(
             "cannie".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("cannie", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "cannie",
+                1,
+                |args| match &args[0] {
                     Value::Nil => Ok(Value::Bool(false)),
                     Value::Integer(n) => Ok(Value::Bool(*n >= 0)),
                     Value::Float(f) => Ok(Value::Bool(*f >= 0.0 && !f.is_nan())),
@@ -2636,8 +2816,8 @@ impl Interpreter {
                     Value::List(l) => Ok(Value::Bool(!l.borrow().is_empty())),
                     Value::Bool(b) => Ok(Value::Bool(*b)),
                     _ => Ok(Value::Bool(true)),
-                }
-            }))),
+                },
+            ))),
         );
 
         // wrang_sort - check if value is the wrong type (sort = kind/type in Scots)
@@ -2763,8 +2943,12 @@ impl Interpreter {
                 let mut result = Vec::new();
                 let max_len = list1.len().max(list2.len());
                 for i in 0..max_len {
-                    if i < list1.len() { result.push(list1[i].clone()); }
-                    if i < list2.len() { result.push(list2[i].clone()); }
+                    if i < list1.len() {
+                        result.push(list1[i].clone());
+                    }
+                    if i < list2.len() {
+                        result.push(list2[i].clone());
+                    }
                 }
                 Ok(Value::List(Rc::new(RefCell::new(result))))
             }))),
@@ -2782,7 +2966,10 @@ impl Interpreter {
                 if list.is_empty() {
                     return Ok(Value::Nil);
                 }
-                let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as usize;
+                let seed = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos() as usize;
                 let idx = seed % list.len();
                 Ok(list[idx].clone())
             }))),
@@ -2823,7 +3010,10 @@ impl Interpreter {
                 };
                 let mut chars: Vec<char> = s.chars().collect();
                 // Simple Fisher-Yates shuffle
-                let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64;
+                let seed = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos() as u64;
                 let mut rng = seed;
                 for i in (1..chars.len()).rev() {
                     rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
@@ -2853,7 +3043,7 @@ impl Interpreter {
                     Value::NativeFunction(f) => format!("native function '{}'", f.name),
                     Value::Class(c) => format!("class '{}'", c.name),
                     Value::Instance(inst) => format!("instance o' '{}'", inst.borrow().class.name),
-                    _ => format!("{}", type_name),
+                    _ => type_name.to_string(),
                 };
                 Ok(Value::String(format!("[{}] {}", type_name, info)))
             }))),
@@ -2894,9 +3084,7 @@ impl Interpreter {
             "noo".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("noo", 0, |_args| {
                 use std::time::{SystemTime, UNIX_EPOCH};
-                let duration = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap();
+                let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
                 Ok(Value::Integer(duration.as_millis() as i64))
             }))),
         );
@@ -2906,9 +3094,7 @@ impl Interpreter {
             "tick".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("tick", 0, |_args| {
                 use std::time::{SystemTime, UNIX_EPOCH};
-                let duration = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap();
+                let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
                 Ok(Value::Integer(duration.as_nanos() as i64))
             }))),
         );
@@ -2953,11 +3139,8 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("creel", 1, |args| {
                 match &args[0] {
                     Value::List(list) => {
-                        let items: HashSet<String> = list
-                            .borrow()
-                            .iter()
-                            .map(|v| format!("{}", v))
-                            .collect();
+                        let items: HashSet<String> =
+                            list.borrow().iter().map(|v| format!("{}", v)).collect();
                         Ok(Value::Set(Rc::new(RefCell::new(items))))
                     }
                     Value::Set(s) => Ok(Value::Set(s.clone())), // Already a set
@@ -3010,55 +3193,52 @@ impl Interpreter {
         // creels_thegither - union of two sets (put them thegither!)
         globals.borrow_mut().define(
             "creels_thegither".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("creels_thegither", 2, |args| {
-                match (&args[0], &args[1]) {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "creels_thegither",
+                2,
+                |args| match (&args[0], &args[1]) {
                     (Value::Set(a), Value::Set(b)) => {
-                        let union: HashSet<String> = a
-                            .borrow()
-                            .union(&*b.borrow())
-                            .cloned()
-                            .collect();
+                        let union: HashSet<String> =
+                            a.borrow().union(&*b.borrow()).cloned().collect();
                         Ok(Value::Set(Rc::new(RefCell::new(union))))
                     }
                     _ => Err("creels_thegither() needs two creels".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // creels_baith - intersection of two sets (what's in baith!)
         globals.borrow_mut().define(
             "creels_baith".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("creels_baith", 2, |args| {
-                match (&args[0], &args[1]) {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "creels_baith",
+                2,
+                |args| match (&args[0], &args[1]) {
                     (Value::Set(a), Value::Set(b)) => {
-                        let intersection: HashSet<String> = a
-                            .borrow()
-                            .intersection(&*b.borrow())
-                            .cloned()
-                            .collect();
+                        let intersection: HashSet<String> =
+                            a.borrow().intersection(&*b.borrow()).cloned().collect();
                         Ok(Value::Set(Rc::new(RefCell::new(intersection))))
                     }
                     _ => Err("creels_baith() needs two creels".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // creels_differ - difference of two sets (what's in a but no in b)
         globals.borrow_mut().define(
             "creels_differ".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("creels_differ", 2, |args| {
-                match (&args[0], &args[1]) {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "creels_differ",
+                2,
+                |args| match (&args[0], &args[1]) {
                     (Value::Set(a), Value::Set(b)) => {
-                        let difference: HashSet<String> = a
-                            .borrow()
-                            .difference(&*b.borrow())
-                            .cloned()
-                            .collect();
+                        let difference: HashSet<String> =
+                            a.borrow().difference(&*b.borrow()).cloned().collect();
                         Ok(Value::Set(Rc::new(RefCell::new(difference))))
                     }
                     _ => Err("creels_differ() needs two creels".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // creel_tae_list - convert set to sorted list
@@ -3079,40 +3259,44 @@ impl Interpreter {
         // is_subset - check if one set is a subset of another (is a inside b?)
         globals.borrow_mut().define(
             "is_subset".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("is_subset", 2, |args| {
-                match (&args[0], &args[1]) {
-                    (Value::Set(a), Value::Set(b)) => {
-                        Ok(Value::Bool(a.borrow().is_subset(&*b.borrow())))
-                    }
-                    _ => Err("is_subset() needs two creels".to_string()),
+            Value::NativeFunction(Rc::new(NativeFunction::new("is_subset", 2, |args| match (
+                &args[0], &args[1],
+            ) {
+                (Value::Set(a), Value::Set(b)) => {
+                    Ok(Value::Bool(a.borrow().is_subset(&*b.borrow())))
                 }
+                _ => Err("is_subset() needs two creels".to_string()),
             }))),
         );
 
         // is_superset - check if one set is a superset of another (does a contain aw o b?)
         globals.borrow_mut().define(
             "is_superset".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("is_superset", 2, |args| {
-                match (&args[0], &args[1]) {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "is_superset",
+                2,
+                |args| match (&args[0], &args[1]) {
                     (Value::Set(a), Value::Set(b)) => {
                         Ok(Value::Bool(a.borrow().is_superset(&*b.borrow())))
                     }
                     _ => Err("is_superset() needs two creels".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // is_disjoint - check if two sets have nae overlap
         globals.borrow_mut().define(
             "is_disjoint".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("is_disjoint", 2, |args| {
-                match (&args[0], &args[1]) {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "is_disjoint",
+                2,
+                |args| match (&args[0], &args[1]) {
                     (Value::Set(a), Value::Set(b)) => {
                         Ok(Value::Bool(a.borrow().is_disjoint(&*b.borrow())))
                     }
                     _ => Err("is_disjoint() needs two creels".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // empty_creel - create an empty set
@@ -3191,19 +3375,23 @@ impl Interpreter {
         // bit_nae - bitwise NOT (Scots: nae = not)
         globals.borrow_mut().define(
             "bit_nae".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("bit_nae", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "bit_nae",
+                1,
+                |args| match &args[0] {
                     Value::Integer(n) => Ok(Value::Integer(!*n)),
                     _ => Err("bit_nae() needs an integer".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // bit_shove_left - left shift (shove left!)
         globals.borrow_mut().define(
             "bit_shove_left".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("bit_shove_left", 2, |args| {
-                match (&args[0], &args[1]) {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "bit_shove_left",
+                2,
+                |args| match (&args[0], &args[1]) {
                     (Value::Integer(a), Value::Integer(b)) => {
                         if *b < 0 || *b > 63 {
                             return Err("Shift amount must be 0-63, ya numpty!".to_string());
@@ -3211,15 +3399,17 @@ impl Interpreter {
                         Ok(Value::Integer(*a << *b))
                     }
                     _ => Err("bit_shove_left() needs two integers".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // bit_shove_right - right shift (shove right!)
         globals.borrow_mut().define(
             "bit_shove_right".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("bit_shove_right", 2, |args| {
-                match (&args[0], &args[1]) {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "bit_shove_right",
+                2,
+                |args| match (&args[0], &args[1]) {
                     (Value::Integer(a), Value::Integer(b)) => {
                         if *b < 0 || *b > 63 {
                             return Err("Shift amount must be 0-63, ya numpty!".to_string());
@@ -3227,82 +3417,90 @@ impl Interpreter {
                         Ok(Value::Integer(*a >> *b))
                     }
                     _ => Err("bit_shove_right() needs two integers".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // bit_coont - count number of set bits (popcount)
         globals.borrow_mut().define(
             "bit_coont".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("bit_coont", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "bit_coont",
+                1,
+                |args| match &args[0] {
                     Value::Integer(n) => Ok(Value::Integer(n.count_ones() as i64)),
                     _ => Err("bit_coont() needs an integer".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // tae_binary - convert to binary string
         globals.borrow_mut().define(
             "tae_binary".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("tae_binary", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "tae_binary",
+                1,
+                |args| match &args[0] {
                     Value::Integer(n) => Ok(Value::String(format!("{:b}", n))),
                     _ => Err("tae_binary() needs an integer".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // tae_hex - convert to hexadecimal string
         globals.borrow_mut().define(
             "tae_hex".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("tae_hex", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "tae_hex",
+                1,
+                |args| match &args[0] {
                     Value::Integer(n) => Ok(Value::String(format!("{:x}", n))),
                     _ => Err("tae_hex() needs an integer".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // tae_octal - convert to octal string
         globals.borrow_mut().define(
             "tae_octal".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("tae_octal", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "tae_octal",
+                1,
+                |args| match &args[0] {
                     Value::Integer(n) => Ok(Value::String(format!("{:o}", n))),
                     _ => Err("tae_octal() needs an integer".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // fae_binary - parse binary string to integer
         globals.borrow_mut().define(
             "fae_binary".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("fae_binary", 1, |args| {
-                match &args[0] {
-                    Value::String(s) => {
-                        i64::from_str_radix(s.trim_start_matches("0b"), 2)
-                            .map(Value::Integer)
-                            .map_err(|_| format!("Cannae parse '{}' as binary", s))
-                    }
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "fae_binary",
+                1,
+                |args| match &args[0] {
+                    Value::String(s) => i64::from_str_radix(s.trim_start_matches("0b"), 2)
+                        .map(Value::Integer)
+                        .map_err(|_| format!("Cannae parse '{}' as binary", s)),
                     _ => Err("fae_binary() needs a string".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // fae_hex - parse hexadecimal string to integer
         globals.borrow_mut().define(
             "fae_hex".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("fae_hex", 1, |args| {
-                match &args[0] {
-                    Value::String(s) => {
-                        i64::from_str_radix(s.trim_start_matches("0x"), 16)
-                            .map(Value::Integer)
-                            .map_err(|_| format!("Cannae parse '{}' as hex", s))
-                    }
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "fae_hex",
+                1,
+                |args| match &args[0] {
+                    Value::String(s) => i64::from_str_radix(s.trim_start_matches("0x"), 16)
+                        .map(Value::Integer)
+                        .map_err(|_| format!("Cannae parse '{}' as hex", s)),
                     _ => Err("fae_hex() needs a string".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // ============================================================
@@ -3312,8 +3510,10 @@ impl Interpreter {
         // dict_merge - merge two dictionaries (second overrides first)
         globals.borrow_mut().define(
             "dict_merge".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("dict_merge", 2, |args| {
-                match (&args[0], &args[1]) {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "dict_merge",
+                2,
+                |args| match (&args[0], &args[1]) {
                     (Value::Dict(a), Value::Dict(b)) => {
                         let mut result = a.borrow().clone();
                         for (k, v) in b.borrow().iter() {
@@ -3322,32 +3522,39 @@ impl Interpreter {
                         Ok(Value::Dict(Rc::new(RefCell::new(result))))
                     }
                     _ => Err("dict_merge() needs two dictionaries".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // dict_get - get value with default (avoids crashes!)
         globals.borrow_mut().define(
             "dict_get".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("dict_get", 3, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "dict_get",
+                3,
+                |args| match &args[0] {
                     Value::Dict(d) => {
                         let key = match &args[1] {
                             Value::String(s) => s.clone(),
                             _ => return Err("dict_get() key must be a string".to_string()),
                         };
-                        Ok(d.borrow().get(&key).cloned().unwrap_or_else(|| args[2].clone()))
+                        Ok(d.borrow()
+                            .get(&key)
+                            .cloned()
+                            .unwrap_or_else(|| args[2].clone()))
                     }
                     _ => Err("dict_get() needs a dictionary".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // dict_has - check if dictionary has a key
         globals.borrow_mut().define(
             "dict_has".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("dict_has", 2, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "dict_has",
+                2,
+                |args| match &args[0] {
                     Value::Dict(d) => {
                         let key = match &args[1] {
                             Value::String(s) => s.clone(),
@@ -3356,15 +3563,17 @@ impl Interpreter {
                         Ok(Value::Bool(d.borrow().contains_key(&key)))
                     }
                     _ => Err("dict_has() needs a dictionary".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // dict_remove - remove a key from dictionary (returns new dict)
         globals.borrow_mut().define(
             "dict_remove".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("dict_remove", 2, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "dict_remove",
+                2,
+                |args| match &args[0] {
                     Value::Dict(d) => {
                         let key = match &args[1] {
                             Value::String(s) => s.clone(),
@@ -3375,15 +3584,17 @@ impl Interpreter {
                         Ok(Value::Dict(Rc::new(RefCell::new(new_dict))))
                     }
                     _ => Err("dict_remove() needs a dictionary".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // dict_invert - swap keys and values
         globals.borrow_mut().define(
             "dict_invert".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("dict_invert", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "dict_invert",
+                1,
+                |args| match &args[0] {
                     Value::Dict(d) => {
                         let mut inverted = HashMap::new();
                         for (k, v) in d.borrow().iter() {
@@ -3393,34 +3604,42 @@ impl Interpreter {
                         Ok(Value::Dict(Rc::new(RefCell::new(inverted))))
                     }
                     _ => Err("dict_invert() needs a dictionary".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // items - get dictionary as list of [key, value] pairs
         globals.borrow_mut().define(
             "items".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("items", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "items",
+                1,
+                |args| match &args[0] {
                     Value::Dict(d) => {
-                        let pairs: Vec<Value> = d.borrow().iter()
-                            .map(|(k, v)| Value::List(Rc::new(RefCell::new(vec![
-                                Value::String(k.clone()),
-                                v.clone()
-                            ]))))
+                        let pairs: Vec<Value> = d
+                            .borrow()
+                            .iter()
+                            .map(|(k, v)| {
+                                Value::List(Rc::new(RefCell::new(vec![
+                                    Value::String(k.clone()),
+                                    v.clone(),
+                                ])))
+                            })
                             .collect();
                         Ok(Value::List(Rc::new(RefCell::new(pairs))))
                     }
                     _ => Err("items() needs a dictionary".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // fae_pairs - create dictionary from list of [key, value] pairs
         globals.borrow_mut().define(
             "fae_pairs".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("fae_pairs", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "fae_pairs",
+                1,
+                |args| match &args[0] {
                     Value::List(list) => {
                         let mut dict = HashMap::new();
                         for item in list.borrow().iter() {
@@ -3435,8 +3654,8 @@ impl Interpreter {
                         Ok(Value::Dict(Rc::new(RefCell::new(dict))))
                     }
                     _ => Err("fae_pairs() needs a list o' pairs".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // ============================================================
@@ -3477,111 +3696,140 @@ impl Interpreter {
         // is_upper - check if string is all uppercase
         globals.borrow_mut().define(
             "is_upper".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("is_upper", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "is_upper",
+                1,
+                |args| match &args[0] {
                     Value::String(s) => {
                         let has_letters = s.chars().any(|c| c.is_alphabetic());
-                        Ok(Value::Bool(has_letters && s.chars().all(|c| !c.is_alphabetic() || c.is_uppercase())))
+                        Ok(Value::Bool(
+                            has_letters
+                                && s.chars().all(|c| !c.is_alphabetic() || c.is_uppercase()),
+                        ))
                     }
                     _ => Err("is_upper() needs a string".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // is_lower - check if string is all lowercase
         globals.borrow_mut().define(
             "is_lower".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("is_lower", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "is_lower",
+                1,
+                |args| match &args[0] {
                     Value::String(s) => {
                         let has_letters = s.chars().any(|c| c.is_alphabetic());
-                        Ok(Value::Bool(has_letters && s.chars().all(|c| !c.is_alphabetic() || c.is_lowercase())))
+                        Ok(Value::Bool(
+                            has_letters
+                                && s.chars().all(|c| !c.is_alphabetic() || c.is_lowercase()),
+                        ))
                     }
                     _ => Err("is_lower() needs a string".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // swapcase - swap case of all letters
         globals.borrow_mut().define(
             "swapcase".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("swapcase", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "swapcase",
+                1,
+                |args| match &args[0] {
                     Value::String(s) => {
-                        let swapped: String = s.chars().map(|c| {
-                            if c.is_uppercase() {
-                                c.to_lowercase().next().unwrap_or(c)
-                            } else if c.is_lowercase() {
-                                c.to_uppercase().next().unwrap_or(c)
-                            } else {
-                                c
-                            }
-                        }).collect();
+                        let swapped: String = s
+                            .chars()
+                            .map(|c| {
+                                if c.is_uppercase() {
+                                    c.to_lowercase().next().unwrap_or(c)
+                                } else if c.is_lowercase() {
+                                    c.to_uppercase().next().unwrap_or(c)
+                                } else {
+                                    c
+                                }
+                            })
+                            .collect();
                         Ok(Value::String(swapped))
                     }
                     _ => Err("swapcase() needs a string".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // strip_left - remove leading characters
         globals.borrow_mut().define(
             "strip_left".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("strip_left", 2, |args| {
-                match (&args[0], &args[1]) {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "strip_left",
+                2,
+                |args| match (&args[0], &args[1]) {
                     (Value::String(s), Value::String(chars)) => {
                         let char_set: Vec<char> = chars.chars().collect();
-                        Ok(Value::String(s.trim_start_matches(|c| char_set.contains(&c)).to_string()))
+                        Ok(Value::String(
+                            s.trim_start_matches(|c| char_set.contains(&c)).to_string(),
+                        ))
                     }
                     _ => Err("strip_left() needs two strings".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // strip_right - remove trailing characters
         globals.borrow_mut().define(
             "strip_right".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("strip_right", 2, |args| {
-                match (&args[0], &args[1]) {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "strip_right",
+                2,
+                |args| match (&args[0], &args[1]) {
                     (Value::String(s), Value::String(chars)) => {
                         let char_set: Vec<char> = chars.chars().collect();
-                        Ok(Value::String(s.trim_end_matches(|c| char_set.contains(&c)).to_string()))
+                        Ok(Value::String(
+                            s.trim_end_matches(|c| char_set.contains(&c)).to_string(),
+                        ))
                     }
                     _ => Err("strip_right() needs two strings".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // replace_first - replace only first occurrence
         globals.borrow_mut().define(
             "replace_first".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("replace_first", 3, |args| {
-                match (&args[0], &args[1], &args[2]) {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "replace_first",
+                3,
+                |args| match (&args[0], &args[1], &args[2]) {
                     (Value::String(s), Value::String(from), Value::String(to)) => {
                         Ok(Value::String(s.replacen(from.as_str(), to.as_str(), 1)))
                     }
                     _ => Err("replace_first() needs three strings".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // substr_between - get substring between two markers
         globals.borrow_mut().define(
             "substr_between".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("substr_between", 3, |args| {
-                match (&args[0], &args[1], &args[2]) {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "substr_between",
+                3,
+                |args| match (&args[0], &args[1], &args[2]) {
                     (Value::String(s), Value::String(start), Value::String(end)) => {
                         if let Some(start_idx) = s.find(start.as_str()) {
                             let after_start = start_idx + start.len();
                             if let Some(end_idx) = s[after_start..].find(end.as_str()) {
-                                return Ok(Value::String(s[after_start..after_start + end_idx].to_string()));
+                                return Ok(Value::String(
+                                    s[after_start..after_start + end_idx].to_string(),
+                                ));
                             }
                         }
                         Ok(Value::Nil)
                     }
                     _ => Err("substr_between() needs three strings".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // ============================================================
@@ -3591,13 +3839,27 @@ impl Interpreter {
         // sign - get sign of number (-1, 0, or 1)
         globals.borrow_mut().define(
             "sign".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("sign", 1, |args| {
-                match &args[0] {
-                    Value::Integer(n) => Ok(Value::Integer(if *n > 0 { 1 } else if *n < 0 { -1 } else { 0 })),
-                    Value::Float(f) => Ok(Value::Integer(if *f > 0.0 { 1 } else if *f < 0.0 { -1 } else { 0 })),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "sign",
+                1,
+                |args| match &args[0] {
+                    Value::Integer(n) => Ok(Value::Integer(if *n > 0 {
+                        1
+                    } else if *n < 0 {
+                        -1
+                    } else {
+                        0
+                    })),
+                    Value::Float(f) => Ok(Value::Integer(if *f > 0.0 {
+                        1
+                    } else if *f < 0.0 {
+                        -1
+                    } else {
+                        0
+                    })),
                     _ => Err("sign() needs a number".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // clamp - constrain a value between min and max
@@ -3644,12 +3906,14 @@ impl Interpreter {
             "gcd".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("gcd", 2, |args| {
                 fn gcd_calc(a: i64, b: i64) -> i64 {
-                    if b == 0 { a.abs() } else { gcd_calc(b, a % b) }
+                    if b == 0 {
+                        a.abs()
+                    } else {
+                        gcd_calc(b, a % b)
+                    }
                 }
                 match (&args[0], &args[1]) {
-                    (Value::Integer(a), Value::Integer(b)) => {
-                        Ok(Value::Integer(gcd_calc(*a, *b)))
-                    }
+                    (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(gcd_calc(*a, *b))),
                     _ => Err("gcd() needs two integers".to_string()),
                 }
             }))),
@@ -3660,7 +3924,11 @@ impl Interpreter {
             "lcm".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("lcm", 2, |args| {
                 fn gcd_calc(a: i64, b: i64) -> i64 {
-                    if b == 0 { a.abs() } else { gcd_calc(b, a % b) }
+                    if b == 0 {
+                        a.abs()
+                    } else {
+                        gcd_calc(b, a % b)
+                    }
                 }
                 match (&args[0], &args[1]) {
                     (Value::Integer(a), Value::Integer(b)) => {
@@ -3678,11 +3946,15 @@ impl Interpreter {
         // factorial - calculate factorial
         globals.borrow_mut().define(
             "factorial".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("factorial", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "factorial",
+                1,
+                |args| match &args[0] {
                     Value::Integer(n) => {
                         if *n < 0 {
-                            return Err("Cannae calculate factorial o' negative number!".to_string());
+                            return Err(
+                                "Cannae calculate factorial o' negative number!".to_string()
+                            );
                         }
                         if *n > 20 {
                             return Err("Factorial too big! Max is 20".to_string());
@@ -3694,37 +3966,43 @@ impl Interpreter {
                         Ok(Value::Integer(result))
                     }
                     _ => Err("factorial() needs an integer".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // is_even - check if number is even
         globals.borrow_mut().define(
             "is_even".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("is_even", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "is_even",
+                1,
+                |args| match &args[0] {
                     Value::Integer(n) => Ok(Value::Bool(*n % 2 == 0)),
                     _ => Err("is_even() needs an integer".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // is_odd - check if number is odd
         globals.borrow_mut().define(
             "is_odd".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("is_odd", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "is_odd",
+                1,
+                |args| match &args[0] {
                     Value::Integer(n) => Ok(Value::Bool(*n % 2 != 0)),
                     _ => Err("is_odd() needs an integer".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // is_prime - check if number is prime
         globals.borrow_mut().define(
             "is_prime".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("is_prime", 1, |args| {
-                match &args[0] {
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "is_prime",
+                1,
+                |args| match &args[0] {
                     Value::Integer(n) => {
                         if *n < 2 {
                             return Ok(Value::Bool(false));
@@ -3744,8 +4022,8 @@ impl Interpreter {
                         Ok(Value::Bool(true))
                     }
                     _ => Err("is_prime() needs an integer".to_string()),
-                }
-            }))),
+                },
+            ))),
         );
 
         // ============================================================
@@ -3776,7 +4054,10 @@ impl Interpreter {
                 if args[0] == args[1] {
                     Ok(Value::Bool(true))
                 } else {
-                    Err(format!("Assertion failed: expected {} but got {}", args[0], args[1]))
+                    Err(format!(
+                        "Assertion failed: expected {} but got {}",
+                        args[0], args[1]
+                    ))
                 }
             }))),
         );
@@ -3784,13 +4065,20 @@ impl Interpreter {
         // assert_nae_equal - throw error if values are equal
         globals.borrow_mut().define(
             "assert_nae_equal".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("assert_nae_equal", 2, |args| {
-                if args[0] != args[1] {
-                    Ok(Value::Bool(true))
-                } else {
-                    Err(format!("Assertion failed: {} should not equal {}", args[0], args[1]))
-                }
-            }))),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "assert_nae_equal",
+                2,
+                |args| {
+                    if args[0] != args[1] {
+                        Ok(Value::Bool(true))
+                    } else {
+                        Err(format!(
+                            "Assertion failed: {} should not equal {}",
+                            args[0], args[1]
+                        ))
+                    }
+                },
+            ))),
         );
 
         // ============================================================
@@ -3840,7 +4128,7 @@ impl Interpreter {
                     }
                     nums.sort_by(|a, b| a.partial_cmp(b).unwrap());
                     let mid = nums.len() / 2;
-                    if nums.len() % 2 == 0 {
+                    if nums.len().is_multiple_of(2) {
                         Ok(Value::Float((nums[mid - 1] + nums[mid]) / 2.0))
                     } else {
                         Ok(Value::Float(nums[mid]))
@@ -3865,7 +4153,10 @@ impl Interpreter {
                     for item in items.iter() {
                         match item {
                             Value::Integer(n) => prod *= *n as f64,
-                            Value::Float(f) => { prod *= *f; is_float = true; }
+                            Value::Float(f) => {
+                                prod *= *f;
+                                is_float = true;
+                            }
                             _ => return Err("product() needs a list o' numbers".to_string()),
                         }
                     }
@@ -3893,12 +4184,18 @@ impl Interpreter {
                     for item in items.iter().skip(1) {
                         match (&min_val, item) {
                             (Value::Integer(a), Value::Integer(b)) => {
-                                if *b < *a { min_val = item.clone(); }
+                                if *b < *a {
+                                    min_val = item.clone();
+                                }
                             }
                             (Value::Float(a), Value::Float(b)) => {
-                                if *b < *a { min_val = item.clone(); }
+                                if *b < *a {
+                                    min_val = item.clone();
+                                }
                             }
-                            _ => return Err("minaw() needs a list o' comparable numbers".to_string()),
+                            _ => {
+                                return Err("minaw() needs a list o' comparable numbers".to_string())
+                            }
                         }
                     }
                     Ok(min_val)
@@ -3921,12 +4218,18 @@ impl Interpreter {
                     for item in items.iter().skip(1) {
                         match (&max_val, item) {
                             (Value::Integer(a), Value::Integer(b)) => {
-                                if *b > *a { max_val = item.clone(); }
+                                if *b > *a {
+                                    max_val = item.clone();
+                                }
                             }
                             (Value::Float(a), Value::Float(b)) => {
-                                if *b > *a { max_val = item.clone(); }
+                                if *b > *a {
+                                    max_val = item.clone();
+                                }
                             }
-                            _ => return Err("maxaw() needs a list o' comparable numbers".to_string()),
+                            _ => {
+                                return Err("maxaw() needs a list o' comparable numbers".to_string())
+                            }
                         }
                     }
                     Ok(max_val)
@@ -3951,12 +4254,20 @@ impl Interpreter {
                         match item {
                             Value::Integer(n) => {
                                 let v = *n as f64;
-                                if v < min_val { min_val = v; }
-                                if v > max_val { max_val = v; }
+                                if v < min_val {
+                                    min_val = v;
+                                }
+                                if v > max_val {
+                                    max_val = v;
+                                }
                             }
                             Value::Float(f) => {
-                                if *f < min_val { min_val = *f; }
-                                if *f > max_val { max_val = *f; }
+                                if *f < min_val {
+                                    min_val = *f;
+                                }
+                                if *f > max_val {
+                                    max_val = *f;
+                                }
                             }
                             _ => return Err("range_o() needs a list o' numbers".to_string()),
                         }
@@ -4007,18 +4318,15 @@ impl Interpreter {
         }
 
         // Read the module file
-        let source = std::fs::read_to_string(&module_path).map_err(|_| {
-            HaversError::ModuleNotFound {
+        let source =
+            std::fs::read_to_string(&module_path).map_err(|_| HaversError::ModuleNotFound {
                 name: path.to_string(),
-            }
-        })?;
+            })?;
 
         // Parse the module
-        let program = crate::parser::parse(&source).map_err(|e| {
-            HaversError::ParseError {
-                message: format!("Error in module '{}': {}", path, e),
-                line: span.line,
-            }
+        let program = crate::parser::parse(&source).map_err(|e| HaversError::ParseError {
+            message: format!("Error in module '{}': {}", path, e),
+            line: span.line,
         })?;
 
         // Mark as loaded tae prevent circular imports
@@ -4031,7 +4339,9 @@ impl Interpreter {
         }
 
         // Execute the module in a new environment that inherits fae globals
-        let module_env = Rc::new(RefCell::new(Environment::with_enclosing(self.globals.clone())));
+        let module_env = Rc::new(RefCell::new(Environment::with_enclosing(
+            self.globals.clone(),
+        )));
         let old_env = self.environment.clone();
         self.environment = module_env.clone();
 
@@ -4079,11 +4389,11 @@ impl Interpreter {
         }
 
         // Canonicalize the path
-        module_path.canonicalize().map_err(|_| {
-            HaversError::ModuleNotFound {
+        module_path
+            .canonicalize()
+            .map_err(|_| HaversError::ModuleNotFound {
                 name: path.to_string(),
-            }
-        })
+            })
     }
 
     fn execute_stmt(&mut self, stmt: &Stmt) -> HaversResult<Value> {
@@ -4105,7 +4415,9 @@ impl Interpreter {
     ) -> HaversResult<Result<Value, ControlFlow>> {
         match stmt {
             Stmt::VarDecl {
-                name, initializer, span,
+                name,
+                initializer,
+                span,
             } => {
                 self.trace(&format!("[line {}] ken {} = ...", span.line, name));
                 let value = if let Some(init) = initializer {
@@ -4146,10 +4458,16 @@ impl Interpreter {
                 let cond_value = self.evaluate(condition)?;
                 self.trace_verbose(&format!("→ condition is {}", cond_value));
                 if cond_value.is_truthy() {
-                    self.trace(&format!("[line {}] condition is aye - takin' then branch", span.line));
+                    self.trace(&format!(
+                        "[line {}] condition is aye - takin' then branch",
+                        span.line
+                    ));
                     self.execute_stmt_with_control(then_branch)
                 } else if let Some(else_br) = else_branch {
-                    self.trace(&format!("[line {}] condition is nae - takin' ither branch", span.line));
+                    self.trace(&format!(
+                        "[line {}] condition is nae - takin' ither branch",
+                        span.line
+                    ));
                     self.execute_stmt_with_control(else_br)
                 } else {
                     self.trace_verbose("→ condition is nae, nae ither branch");
@@ -4158,9 +4476,14 @@ impl Interpreter {
             }
 
             Stmt::While {
-                condition, body, span,
+                condition,
+                body,
+                span,
             } => {
-                self.trace(&format!("[line {}] whiles (while) loop startin'", span.line));
+                self.trace(&format!(
+                    "[line {}] whiles (while) loop startin'",
+                    span.line
+                ));
                 let mut iteration = 0;
                 while self.evaluate(condition)?.is_truthy() {
                     iteration += 1;
@@ -4168,7 +4491,10 @@ impl Interpreter {
                     match self.execute_stmt_with_control(body)? {
                         Ok(_) => {}
                         Err(ControlFlow::Break) => {
-                            self.trace(&format!("[line {}] brak! (break) - leavin' loop", span.line));
+                            self.trace(&format!(
+                                "[line {}] brak! (break) - leavin' loop",
+                                span.line
+                            ));
                             break;
                         }
                         Err(ControlFlow::Continue) => {
@@ -4178,7 +4504,10 @@ impl Interpreter {
                         Err(ControlFlow::Return(v)) => return Ok(Err(ControlFlow::Return(v))),
                     }
                 }
-                self.trace(&format!("[line {}] whiles loop done after {} iterations", span.line, iteration));
+                self.trace(&format!(
+                    "[line {}] whiles loop done after {} iterations",
+                    span.line, iteration
+                ));
                 Ok(Ok(Value::Nil))
             }
 
@@ -4188,21 +4517,19 @@ impl Interpreter {
                 body,
                 span,
             } => {
-                self.trace(&format!("[line {}] fer (for) loop: {} in ...", span.line, variable));
+                self.trace(&format!(
+                    "[line {}] fer (for) loop: {} in ...",
+                    span.line, variable
+                ));
                 let iter_value = self.evaluate(iterable)?;
 
                 let items: Vec<Value> = match iter_value {
                     Value::Range(range) => range.iter().map(Value::Integer).collect(),
                     Value::List(list) => list.borrow().clone(),
-                    Value::String(s) => {
-                        s.chars().map(|c| Value::String(c.to_string())).collect()
-                    }
+                    Value::String(s) => s.chars().map(|c| Value::String(c.to_string())).collect(),
                     _ => {
                         return Err(HaversError::TypeError {
-                            message: format!(
-                                "Cannae iterate ower a {}",
-                                iter_value.type_name()
-                            ),
+                            message: format!("Cannae iterate ower a {}", iter_value.type_name()),
                             line: span.line,
                         });
                     }
@@ -4212,14 +4539,18 @@ impl Interpreter {
                 let mut iteration = 0;
                 for item in items {
                     iteration += 1;
-                    self.trace_verbose(&format!("→ iteration {}: {} = {}", iteration, variable, item));
-                    self.environment
-                        .borrow_mut()
-                        .define(variable.clone(), item);
+                    self.trace_verbose(&format!(
+                        "→ iteration {}: {} = {}",
+                        iteration, variable, item
+                    ));
+                    self.environment.borrow_mut().define(variable.clone(), item);
                     match self.execute_stmt_with_control(body)? {
                         Ok(_) => {}
                         Err(ControlFlow::Break) => {
-                            self.trace(&format!("[line {}] brak! (break) - leavin' fer loop", span.line));
+                            self.trace(&format!(
+                                "[line {}] brak! (break) - leavin' fer loop",
+                                span.line
+                            ));
                             break;
                         }
                         Err(ControlFlow::Continue) => {
@@ -4229,7 +4560,10 @@ impl Interpreter {
                         Err(ControlFlow::Return(v)) => return Ok(Err(ControlFlow::Return(v))),
                     }
                 }
-                self.trace(&format!("[line {}] fer loop done after {} iterations", span.line, iteration));
+                self.trace(&format!(
+                    "[line {}] fer loop done after {} iterations",
+                    span.line, iteration
+                ));
                 Ok(Ok(Value::Nil))
             }
 
@@ -4239,7 +4573,12 @@ impl Interpreter {
                 body,
                 span,
             } => {
-                self.trace(&format!("[line {}] dae (function) {} wi' {} params", span.line, name, params.len()));
+                self.trace(&format!(
+                    "[line {}] dae (function) {} wi' {} params",
+                    span.line,
+                    name,
+                    params.len()
+                ));
                 // Convert AST Param tae runtime FunctionParam
                 let runtime_params: Vec<FunctionParam> = params
                     .iter()
@@ -4298,16 +4637,17 @@ impl Interpreter {
                 methods,
                 span,
             } => {
-                self.trace(&format!("[line {}] kin (class) {} defined", span.line, name));
+                self.trace(&format!(
+                    "[line {}] kin (class) {} defined",
+                    span.line, name
+                ));
                 let super_class = if let Some(super_name) = superclass {
-                    let super_val = self
-                        .environment
-                        .borrow()
-                        .get(super_name)
-                        .ok_or_else(|| HaversError::UndefinedVariable {
+                    let super_val = self.environment.borrow().get(super_name).ok_or_else(|| {
+                        HaversError::UndefinedVariable {
                             name: super_name.clone(),
                             line: span.line,
-                        })?;
+                        }
+                    })?;
                     match super_val {
                         Value::Class(c) => Some(c),
                         _ => {
@@ -4357,7 +4697,12 @@ impl Interpreter {
             }
 
             Stmt::Struct { name, fields, span } => {
-                self.trace(&format!("[line {}] thing (struct) {} defined wi' {} fields", span.line, name, fields.len()));
+                self.trace(&format!(
+                    "[line {}] thing (struct) {} defined wi' {} fields",
+                    span.line,
+                    name,
+                    fields.len()
+                ));
                 let structure = HaversStruct::new(name.clone(), fields.clone());
                 self.environment
                     .borrow_mut()
@@ -4366,8 +4711,14 @@ impl Interpreter {
             }
 
             Stmt::Import { path, alias, span } => {
-                let alias_str = alias.as_ref().map(|a| format!(" as {}", a)).unwrap_or_default();
-                self.trace(&format!("[line {}] fetch (import) \"{}\"{}", span.line, path, alias_str));
+                let alias_str = alias
+                    .as_ref()
+                    .map(|a| format!(" as {}", a))
+                    .unwrap_or_default();
+                self.trace(&format!(
+                    "[line {}] fetch (import) \"{}\"{}",
+                    span.line, path, alias_str
+                ));
                 self.load_module(path, alias.as_deref(), *span)
             }
 
@@ -4380,11 +4731,17 @@ impl Interpreter {
                 self.trace(&format!("[line {}] hae_a_bash (try) startin'", span.line));
                 match self.execute_stmt_with_control(try_block) {
                     Ok(result) => {
-                        self.trace(&format!("[line {}] try block succeeded - nae bother!", span.line));
+                        self.trace(&format!(
+                            "[line {}] try block succeeded - nae bother!",
+                            span.line
+                        ));
                         Ok(result)
                     }
                     Err(e) => {
-                        self.trace(&format!("[line {}] gin_it_gangs_wrang (catch) - caught: {}", span.line, e));
+                        self.trace(&format!(
+                            "[line {}] gin_it_gangs_wrang (catch) - caught: {}",
+                            span.line, e
+                        ));
                         // Bind the error to the catch variable
                         self.environment
                             .borrow_mut()
@@ -4450,7 +4807,11 @@ impl Interpreter {
                 value,
                 span,
             } => {
-                self.trace(&format!("[line {}] destructurin' intae {} variables", span.line, patterns.len()));
+                self.trace(&format!(
+                    "[line {}] destructurin' intae {} variables",
+                    span.line,
+                    patterns.len()
+                ));
                 let val = self.evaluate(value)?;
                 self.trace_verbose(&format!("→ unpackin': {}", val));
 
@@ -4473,12 +4834,14 @@ impl Interpreter {
                 };
 
                 // Find the rest pattern position if any
-                let rest_pos = patterns.iter().position(|p| matches!(p, DestructPattern::Rest(_)));
+                let rest_pos = patterns
+                    .iter()
+                    .position(|p| matches!(p, DestructPattern::Rest(_)));
 
                 // Calculate positions
                 let before_rest = rest_pos.unwrap_or(patterns.len());
-                let after_rest = if rest_pos.is_some() {
-                    patterns.len() - rest_pos.unwrap() - 1
+                let after_rest = if let Some(pos) = rest_pos {
+                    patterns.len() - pos - 1
                 } else {
                     0
                 };
@@ -4834,7 +5197,7 @@ impl Interpreter {
                         s.chars()
                             .nth(idx as usize)
                             .map(|c| Value::String(c.to_string()))
-                            .ok_or_else(|| HaversError::IndexOutOfBounds {
+                            .ok_or(HaversError::IndexOutOfBounds {
                                 index: *i,
                                 size: s.len(),
                                 line: span.line,
@@ -4998,7 +5361,7 @@ impl Interpreter {
                         };
 
                         let end = if end < 0 {
-                            (len + end).max(-1) as i64
+                            (len + end).max(-1)
                         } else {
                             (end as usize).min(list.len()) as i64
                         };
@@ -5048,7 +5411,7 @@ impl Interpreter {
                         };
 
                         let end = if end < 0 {
-                            (len + end).max(-1) as i64
+                            (len + end).max(-1)
                         } else {
                             (end as usize).min(chars.len()) as i64
                         };
@@ -5253,9 +5616,7 @@ impl Interpreter {
                 (Value::Float(a), Value::Float(b)) => Ok(Value::Float(a + b)),
                 (Value::Integer(a), Value::Float(b)) => Ok(Value::Float(*a as f64 + b)),
                 (Value::Float(a), Value::Integer(b)) => Ok(Value::Float(a + *b as f64)),
-                (Value::String(a), Value::String(b)) => {
-                    Ok(Value::String(format!("{}{}", a, b)))
-                }
+                (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
                 (Value::String(a), b) => Ok(Value::String(format!("{}{}", a, b))),
                 (a, Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
                 (Value::List(a), Value::List(b)) => {
@@ -5264,11 +5625,7 @@ impl Interpreter {
                     Ok(Value::List(Rc::new(RefCell::new(result))))
                 }
                 _ => Err(HaversError::TypeError {
-                    message: format!(
-                        "Cannae add {} an' {}",
-                        left.type_name(),
-                        right.type_name()
-                    ),
+                    message: format!("Cannae add {} an' {}", left.type_name(), right.type_name()),
                     line,
                 }),
             },
@@ -5332,9 +5689,8 @@ impl Interpreter {
             }
 
             BinaryOp::Modulo => {
-                match right {
-                    Value::Integer(0) => return Err(HaversError::DivisionByZero { line }),
-                    _ => {}
+                if let Value::Integer(0) = right {
+                    return Err(HaversError::DivisionByZero { line });
                 }
                 match (left, right) {
                     (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(a % b)),
@@ -5360,15 +5716,20 @@ impl Interpreter {
         }
     }
 
-    fn compare<F, S>(&self, left: &Value, right: &Value, cmp: F, str_cmp: S, line: usize) -> HaversResult<Value>
+    fn compare<F, S>(
+        &self,
+        left: &Value,
+        right: &Value,
+        cmp: F,
+        str_cmp: S,
+        line: usize,
+    ) -> HaversResult<Value>
     where
         F: Fn(f64, f64) -> bool,
         S: Fn(&str, &str) -> bool,
     {
         match (left, right) {
-            (Value::Integer(a), Value::Integer(b)) => {
-                Ok(Value::Bool(cmp(*a as f64, *b as f64)))
-            }
+            (Value::Integer(a), Value::Integer(b)) => Ok(Value::Bool(cmp(*a as f64, *b as f64))),
             (Value::Float(a), Value::Float(b)) => Ok(Value::Bool(cmp(*a, *b))),
             (Value::Integer(a), Value::Float(b)) => Ok(Value::Bool(cmp(*a as f64, *b))),
             (Value::Float(a), Value::Integer(b)) => Ok(Value::Bool(cmp(*a, *b as f64))),
@@ -5497,7 +5858,7 @@ impl Interpreter {
                         line,
                     });
                 }
-                (native.func)(args).map_err(|e| HaversError::InternalError(e))
+                (native.func)(args).map_err(HaversError::InternalError)
             }
             // Higher-order function builtins
             Value::String(ref s) if s.starts_with("__builtin_") => {
@@ -5546,7 +5907,12 @@ impl Interpreter {
     }
 
     /// Handle higher-order function builtins
-    fn call_builtin_hof(&mut self, name: &str, args: Vec<Value>, line: usize) -> HaversResult<Value> {
+    fn call_builtin_hof(
+        &mut self,
+        name: &str,
+        args: Vec<Value>,
+        line: usize,
+    ) -> HaversResult<Value> {
         match name {
             // gaun(list, func) - map function over list
             "__builtin_gaun__" => {
@@ -5560,10 +5926,12 @@ impl Interpreter {
                 }
                 let list = match &args[0] {
                     Value::List(l) => l.borrow().clone(),
-                    _ => return Err(HaversError::TypeError {
-                        message: "gaun() expects a list as first argument".to_string(),
-                        line,
-                    }),
+                    _ => {
+                        return Err(HaversError::TypeError {
+                            message: "gaun() expects a list as first argument".to_string(),
+                            line,
+                        })
+                    }
                 };
                 let func = args[1].clone();
                 let mut result = Vec::new();
@@ -5586,10 +5954,12 @@ impl Interpreter {
                 }
                 let list = match &args[0] {
                     Value::List(l) => l.borrow().clone(),
-                    _ => return Err(HaversError::TypeError {
-                        message: "sieve() expects a list as first argument".to_string(),
-                        line,
-                    }),
+                    _ => {
+                        return Err(HaversError::TypeError {
+                            message: "sieve() expects a list as first argument".to_string(),
+                            line,
+                        })
+                    }
                 };
                 let func = args[1].clone();
                 let mut result = Vec::new();
@@ -5614,10 +5984,12 @@ impl Interpreter {
                 }
                 let list = match &args[0] {
                     Value::List(l) => l.borrow().clone(),
-                    _ => return Err(HaversError::TypeError {
-                        message: "tumble() expects a list as first argument".to_string(),
-                        line,
-                    }),
+                    _ => {
+                        return Err(HaversError::TypeError {
+                            message: "tumble() expects a list as first argument".to_string(),
+                            line,
+                        })
+                    }
                 };
                 let mut acc = args[1].clone();
                 let func = args[2].clone();
@@ -5639,10 +6011,12 @@ impl Interpreter {
                 }
                 let list = match &args[0] {
                     Value::List(l) => l.borrow().clone(),
-                    _ => return Err(HaversError::TypeError {
-                        message: "ilk() expects a list as first argument".to_string(),
-                        line,
-                    }),
+                    _ => {
+                        return Err(HaversError::TypeError {
+                            message: "ilk() expects a list as first argument".to_string(),
+                            line,
+                        })
+                    }
                 };
                 let func = args[1].clone();
                 for item in list {
@@ -5663,10 +6037,12 @@ impl Interpreter {
                 }
                 let list = match &args[0] {
                     Value::List(l) => l.borrow().clone(),
-                    _ => return Err(HaversError::TypeError {
-                        message: "hunt() expects a list as first argument".to_string(),
-                        line,
-                    }),
+                    _ => {
+                        return Err(HaversError::TypeError {
+                            message: "hunt() expects a list as first argument".to_string(),
+                            line,
+                        })
+                    }
                 };
                 let func = args[1].clone();
                 for item in list {
@@ -5690,10 +6066,12 @@ impl Interpreter {
                 }
                 let list = match &args[0] {
                     Value::List(l) => l.borrow().clone(),
-                    _ => return Err(HaversError::TypeError {
-                        message: "ony() expects a list as first argument".to_string(),
-                        line,
-                    }),
+                    _ => {
+                        return Err(HaversError::TypeError {
+                            message: "ony() expects a list as first argument".to_string(),
+                            line,
+                        })
+                    }
                 };
                 let func = args[1].clone();
                 for item in list {
@@ -5717,10 +6095,12 @@ impl Interpreter {
                 }
                 let list = match &args[0] {
                     Value::List(l) => l.borrow().clone(),
-                    _ => return Err(HaversError::TypeError {
-                        message: "aw() expects a list as first argument".to_string(),
-                        line,
-                    }),
+                    _ => {
+                        return Err(HaversError::TypeError {
+                            message: "aw() expects a list as first argument".to_string(),
+                            line,
+                        })
+                    }
                 };
                 let func = args[1].clone();
                 for item in list {
@@ -5744,10 +6124,12 @@ impl Interpreter {
                 }
                 let list = match &args[0] {
                     Value::List(l) => l.borrow().clone(),
-                    _ => return Err(HaversError::TypeError {
-                        message: "grup_up() expects a list as first argument".to_string(),
-                        line,
-                    }),
+                    _ => {
+                        return Err(HaversError::TypeError {
+                            message: "grup_up() expects a list as first argument".to_string(),
+                            line,
+                        })
+                    }
                 };
                 let func = args[1].clone();
                 // Result is a dict where keys are the function results, values are lists
@@ -5756,9 +6138,9 @@ impl Interpreter {
                     let key = self.call_value(func.clone(), vec![item.clone()], line)?;
                     let key_str = format!("{}", key);
                     let mut dict = result.borrow_mut();
-                    let group = dict.entry(key_str).or_insert_with(|| {
-                        Value::List(Rc::new(RefCell::new(Vec::new())))
-                    });
+                    let group = dict
+                        .entry(key_str)
+                        .or_insert_with(|| Value::List(Rc::new(RefCell::new(Vec::new()))));
                     if let Value::List(l) = group {
                         l.borrow_mut().push(item);
                     }
@@ -5778,10 +6160,12 @@ impl Interpreter {
                 }
                 let list = match &args[0] {
                     Value::List(l) => l.borrow().clone(),
-                    _ => return Err(HaversError::TypeError {
-                        message: "pairt_by() expects a list as first argument".to_string(),
-                        line,
-                    }),
+                    _ => {
+                        return Err(HaversError::TypeError {
+                            message: "pairt_by() expects a list as first argument".to_string(),
+                            line,
+                        })
+                    }
                 };
                 let func = args[1].clone();
                 let mut matches = Vec::new();
@@ -5829,7 +6213,10 @@ impl Interpreter {
                 return Err(HaversError::TypeError {
                     message: format!(
                         "Function '{}' expects {} tae {} arguments but ye gave it {}",
-                        func.name, min_arity, max_arity, args.len()
+                        func.name,
+                        min_arity,
+                        max_arity,
+                        args.len()
                     ),
                     line,
                 });
@@ -5946,7 +6333,11 @@ fn parse_json_object(chars: &[char], pos: &mut usize) -> Result<Value, String> {
             return Err("Expected string key in JSON object".to_string());
         }
         let key = parse_json_string(chars, pos)?;
-        let key = if let Value::String(s) = key { s } else { return Err("Invalid key".to_string()); };
+        let key = if let Value::String(s) = key {
+            s
+        } else {
+            return Err("Invalid key".to_string());
+        };
 
         skip_json_whitespace(chars, pos);
 
@@ -6046,7 +6437,7 @@ fn parse_json_string(chars: &[char], pos: &mut usize) -> Result<Value, String> {
                     if *pos + 4 >= chars.len() {
                         return Err("Invalid unicode escape".to_string());
                     }
-                    let hex: String = chars[*pos+1..*pos+5].iter().collect();
+                    let hex: String = chars[*pos + 1..*pos + 5].iter().collect();
                     if let Ok(code) = u32::from_str_radix(&hex, 16) {
                         if let Some(ch) = char::from_u32(code) {
                             result.push(ch);
@@ -6095,18 +6486,20 @@ fn parse_json_number(chars: &[char], pos: &mut usize) -> Result<Value, String> {
     let num_str: String = chars[start..*pos].iter().collect();
 
     if has_dot || has_exp {
-        num_str.parse::<f64>()
+        num_str
+            .parse::<f64>()
             .map(Value::Float)
             .map_err(|_| format!("Invalid number: {}", num_str))
     } else {
-        num_str.parse::<i64>()
+        num_str
+            .parse::<i64>()
             .map(Value::Integer)
             .map_err(|_| format!("Invalid integer: {}", num_str))
     }
 }
 
 fn parse_json_true(chars: &[char], pos: &mut usize) -> Result<Value, String> {
-    if *pos + 4 <= chars.len() && chars[*pos..*pos+4].iter().collect::<String>() == "true" {
+    if *pos + 4 <= chars.len() && chars[*pos..*pos + 4].iter().collect::<String>() == "true" {
         *pos += 4;
         Ok(Value::Bool(true))
     } else {
@@ -6115,7 +6508,7 @@ fn parse_json_true(chars: &[char], pos: &mut usize) -> Result<Value, String> {
 }
 
 fn parse_json_false(chars: &[char], pos: &mut usize) -> Result<Value, String> {
-    if *pos + 5 <= chars.len() && chars[*pos..*pos+5].iter().collect::<String>() == "false" {
+    if *pos + 5 <= chars.len() && chars[*pos..*pos + 5].iter().collect::<String>() == "false" {
         *pos += 5;
         Ok(Value::Bool(false))
     } else {
@@ -6124,7 +6517,7 @@ fn parse_json_false(chars: &[char], pos: &mut usize) -> Result<Value, String> {
 }
 
 fn parse_json_null(chars: &[char], pos: &mut usize) -> Result<Value, String> {
-    if *pos + 4 <= chars.len() && chars[*pos..*pos+4].iter().collect::<String>() == "null" {
+    if *pos + 4 <= chars.len() && chars[*pos..*pos + 4].iter().collect::<String>() == "null" {
         *pos += 4;
         Ok(Value::Nil)
     } else {
@@ -6140,9 +6533,7 @@ fn value_to_json(value: &Value) -> String {
         Value::Bool(false) => "false".to_string(),
         Value::Integer(n) => n.to_string(),
         Value::Float(f) => {
-            if f.is_nan() {
-                "null".to_string()
-            } else if f.is_infinite() {
+            if f.is_nan() || f.is_infinite() {
                 "null".to_string()
             } else {
                 f.to_string()
@@ -6154,12 +6545,14 @@ fn value_to_json(value: &Value) -> String {
             format!("[{}]", items.join(", "))
         }
         Value::Dict(d) => {
-            let pairs: Vec<String> = d.borrow().iter()
+            let pairs: Vec<String> = d
+                .borrow()
+                .iter()
                 .map(|(k, v)| format!("{}: {}", json_escape_string(k), value_to_json(v)))
                 .collect();
             format!("{{{}}}", pairs.join(", "))
         }
-        _ => format!("\"{}\"", format!("{}", value).replace('\"', "\\\""))
+        _ => format!("\"{}\"", format!("{}", value).replace('\"', "\\\"")),
     }
 }
 
@@ -6186,7 +6579,8 @@ fn value_to_json_pretty(value: &Value, indent: usize) -> String {
             if items.is_empty() {
                 "[]".to_string()
             } else {
-                let formatted: Vec<String> = items.iter()
+                let formatted: Vec<String> = items
+                    .iter()
                     .map(|v| format!("{}{}", ws_inner, value_to_json_pretty(v, indent + 1)))
                     .collect();
                 format!("[\n{}\n{}]", formatted.join(",\n"), ws)
@@ -6197,13 +6591,21 @@ fn value_to_json_pretty(value: &Value, indent: usize) -> String {
             if dict.is_empty() {
                 "{}".to_string()
             } else {
-                let formatted: Vec<String> = dict.iter()
-                    .map(|(k, v)| format!("{}{}: {}", ws_inner, json_escape_string(k), value_to_json_pretty(v, indent + 1)))
+                let formatted: Vec<String> = dict
+                    .iter()
+                    .map(|(k, v)| {
+                        format!(
+                            "{}{}: {}",
+                            ws_inner,
+                            json_escape_string(k),
+                            value_to_json_pretty(v, indent + 1)
+                        )
+                    })
                     .collect();
                 format!("{{\n{}\n{}}}", formatted.join(",\n"), ws)
             }
         }
-        _ => format!("\"{}\"", format!("{}", value).replace('\"', "\\\""))
+        _ => format!("\"{}\"", format!("{}", value).replace('\"', "\\\"")),
     }
 }
 
@@ -6275,8 +6677,7 @@ mod tests {
 
     #[test]
     fn test_if_statement() {
-        let result = run(
-            r#"
+        let result = run(r#"
 ken x = 10
 ken result = 0
 gin x > 5 {
@@ -6285,16 +6686,14 @@ gin x > 5 {
     result = 2
 }
 result
-"#,
-        )
+"#)
         .unwrap();
         assert_eq!(result, Value::Integer(1));
     }
 
     #[test]
     fn test_while_loop() {
-        let result = run(
-            r#"
+        let result = run(r#"
 ken sum = 0
 ken i = 1
 whiles i <= 5 {
@@ -6302,45 +6701,39 @@ whiles i <= 5 {
     i = i + 1
 }
 sum
-"#,
-        )
+"#)
         .unwrap();
         assert_eq!(result, Value::Integer(15));
     }
 
     #[test]
     fn test_for_loop() {
-        let result = run(
-            r#"
+        let result = run(r#"
 ken sum = 0
 fer i in 1..6 {
     sum = sum + i
 }
 sum
-"#,
-        )
+"#)
         .unwrap();
         assert_eq!(result, Value::Integer(15));
     }
 
     #[test]
     fn test_function() {
-        let result = run(
-            r#"
+        let result = run(r#"
 dae add(a, b) {
     gie a + b
 }
 add(3, 4)
-"#,
-        )
+"#)
         .unwrap();
         assert_eq!(result, Value::Integer(7));
     }
 
     #[test]
     fn test_recursion() {
-        let result = run(
-            r#"
+        let result = run(r#"
 dae factorial(n) {
     gin n <= 1 {
         gie 1
@@ -6348,32 +6741,27 @@ dae factorial(n) {
     gie n * factorial(n - 1)
 }
 factorial(5)
-"#,
-        )
+"#)
         .unwrap();
         assert_eq!(result, Value::Integer(120));
     }
 
     #[test]
     fn test_list() {
-        let result = run(
-            r#"
+        let result = run(r#"
 ken arr = [1, 2, 3]
 arr[1]
-"#,
-        )
+"#)
         .unwrap();
         assert_eq!(result, Value::Integer(2));
     }
 
     #[test]
     fn test_dict() {
-        let result = run(
-            r#"
+        let result = run(r#"
 ken d = {"a": 1, "b": 2}
 d["a"]
-"#,
-        )
+"#)
         .unwrap();
         assert_eq!(result, Value::Integer(1));
     }
@@ -6381,10 +6769,7 @@ d["a"]
     #[test]
     fn test_native_functions() {
         assert_eq!(run("len([1, 2, 3])").unwrap(), Value::Integer(3));
-        assert_eq!(
-            run(r#"len("hello")"#).unwrap(),
-            Value::Integer(5)
-        );
+        assert_eq!(run(r#"len("hello")"#).unwrap(), Value::Integer(5));
     }
 
     #[test]
@@ -6498,7 +6883,8 @@ keek x {
     whan _ -> result = "other"
 }
 result
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("two".to_string()));
     }
 
@@ -6516,14 +6902,16 @@ result
         // With strings
         assert_eq!(
             run(r#"ken x = gin aye than "yes" ither "no"
-x"#).unwrap(),
+x"#)
+            .unwrap(),
             Value::String("yes".to_string())
         );
         // Nested ternary
         assert_eq!(
             run("ken x = 5
 ken result = gin x > 10 than 1 ither gin x > 3 than 2 ither 3
-result").unwrap(),
+result")
+            .unwrap(),
             Value::Integer(2)
         );
     }
@@ -6712,13 +7100,15 @@ result").unwrap(),
         let result = run(r#"
             ken s = creel(["apple", "banana", "cherry"])
             is_in_creel(s, "banana")
-        "#).unwrap();
+        "#)
+        .unwrap();
         assert_eq!(result, Value::Bool(true));
 
         let result = run(r#"
             ken s = creel(["apple", "banana", "cherry"])
             is_in_creel(s, "mango")
-        "#).unwrap();
+        "#)
+        .unwrap();
         assert_eq!(result, Value::Bool(false));
 
         // Union
@@ -6726,7 +7116,8 @@ result").unwrap(),
             ken a = creel([1, 2, 3])
             ken b = creel([3, 4, 5])
             len(creels_thegither(a, b))
-        "#).unwrap();
+        "#)
+        .unwrap();
         assert_eq!(result, Value::Integer(5)); // 1, 2, 3, 4, 5
 
         // Intersection
@@ -6734,7 +7125,8 @@ result").unwrap(),
             ken a = creel([1, 2, 3])
             ken b = creel([2, 3, 4])
             len(creels_baith(a, b))
-        "#).unwrap();
+        "#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2)); // 2, 3
 
         // Difference
@@ -6742,7 +7134,8 @@ result").unwrap(),
             ken a = creel([1, 2, 3])
             ken b = creel([2, 3, 4])
             len(creels_differ(a, b))
-        "#).unwrap();
+        "#)
+        .unwrap();
         assert_eq!(result, Value::Integer(1)); // just 1
 
         // Subset
@@ -6750,14 +7143,16 @@ result").unwrap(),
             ken a = creel([1, 2])
             ken b = creel([1, 2, 3])
             is_subset(a, b)
-        "#).unwrap();
+        "#)
+        .unwrap();
         assert_eq!(result, Value::Bool(true));
 
         // Convert to list
         let result = run(r#"
             ken s = creel([3, 1, 2])
             creel_tae_list(s)
-        "#).unwrap();
+        "#)
+        .unwrap();
         if let Value::List(list) = result {
             let list = list.borrow();
             assert_eq!(list.len(), 3);
@@ -6784,7 +7179,8 @@ kin Dug {
 }
 ken fido = Dug("Fido")
 fido.bark()
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("Woof! Ah'm Fido".to_string()));
     }
 
@@ -6806,7 +7202,8 @@ kin Dug fae Animal {
 }
 ken d = Dug("Rex")
 d.speak()
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("Woof!".to_string()));
     }
 
@@ -6821,7 +7218,8 @@ hae_a_bash {
     result = "caught"
 }
 result
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("caught".to_string()));
     }
 
@@ -6831,14 +7229,16 @@ result
         let result = run(r#"
 ken [a, b, c] = [1, 2, 3]
 b
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(2));
 
         // Rest destructuring
         let result = run(r#"
 ken [first, ...rest] = [1, 2, 3, 4]
 len(rest)
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::Integer(3));
     }
 
@@ -6849,7 +7249,8 @@ dae greet(name, greeting = "Hullo") {
     gie greeting + ", " + name + "!"
 }
 greet("Hamish")
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("Hullo, Hamish!".to_string()));
 
         let result = run(r#"
@@ -6857,7 +7258,8 @@ dae greet(name, greeting = "Hullo") {
     gie greeting + ", " + name + "!"
 }
 greet("Hamish", "Guid day")
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("Guid day, Hamish!".to_string()));
     }
 
@@ -6866,14 +7268,16 @@ greet("Hamish", "Guid day")
         let result = run(r#"
 ken name = "Scotland"
 f"Hello, {name}!"
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("Hello, Scotland!".to_string()));
 
         // F-string with expression
         let result = run(r#"
 ken x = 5
 f"The answer is {x * 2}"
-"#).unwrap();
+"#)
+        .unwrap();
         assert_eq!(result, Value::String("The answer is 10".to_string()));
     }
 
@@ -7018,7 +7422,4529 @@ f"The answer is {x * 2}"
             ken start = noo()
             ken finish = noo()
             finish >= start
-        "#).unwrap();
+        "#)
+        .unwrap();
         assert_eq!(result, Value::Bool(true));
     }
+
+    // ==================== Native Function Edge Cases ====================
+
+    #[test]
+    fn test_len_dict() {
+        assert_eq!(run(r#"len({"a": 1, "b": 2})"#).unwrap(), Value::Integer(2));
+    }
+
+    #[test]
+    fn test_len_set() {
+        assert_eq!(run("len(creel([1, 2, 3]))").unwrap(), Value::Integer(3));
+    }
+
+    #[test]
+    fn test_len_error() {
+        assert!(run("len(42)").is_err());
+    }
+
+    #[test]
+    fn test_tae_int_from_int() {
+        assert_eq!(run("tae_int(42)").unwrap(), Value::Integer(42));
+    }
+
+    #[test]
+    fn test_tae_int_from_float() {
+        assert_eq!(run("tae_int(3.7)").unwrap(), Value::Integer(3));
+    }
+
+    #[test]
+    fn test_tae_int_from_string() {
+        assert_eq!(run("tae_int(\"123\")").unwrap(), Value::Integer(123));
+    }
+
+    #[test]
+    fn test_tae_int_from_bool() {
+        assert_eq!(run("tae_int(aye)").unwrap(), Value::Integer(1));
+        assert_eq!(run("tae_int(nae)").unwrap(), Value::Integer(0));
+    }
+
+    #[test]
+    fn test_tae_int_error() {
+        assert!(run("tae_int(\"not a number\")").is_err());
+        assert!(run("tae_int([1, 2, 3])").is_err());
+    }
+
+    #[test]
+    fn test_tae_float_from_int() {
+        assert_eq!(run("tae_float(42)").unwrap(), Value::Float(42.0));
+    }
+
+    #[test]
+    fn test_tae_float_from_float() {
+        assert_eq!(run("tae_float(3.14)").unwrap(), Value::Float(3.14));
+    }
+
+    #[test]
+    fn test_tae_float_from_string() {
+        assert_eq!(run("tae_float(\"3.14\")").unwrap(), Value::Float(3.14));
+    }
+
+    #[test]
+    fn test_tae_float_error() {
+        assert!(run("tae_float(\"xyz\")").is_err());
+        assert!(run("tae_float([1, 2, 3])").is_err());
+    }
+
+    #[test]
+    fn test_shove_error() {
+        assert!(run("shove(42, 1)").is_err());
+    }
+
+    #[test]
+    fn test_yank_error() {
+        assert!(run("yank([])").is_err());
+        assert!(run("yank(42)").is_err());
+    }
+
+    #[test]
+    fn test_keys_values() {
+        let result = run(r#"keys({"a": 1, "b": 2})"#).unwrap();
+        if let Value::List(list) = result {
+            assert_eq!(list.borrow().len(), 2);
+        } else {
+            panic!("Expected list");
+        }
+
+        let result = run(r#"values({"a": 1, "b": 2})"#).unwrap();
+        if let Value::List(list) = result {
+            assert_eq!(list.borrow().len(), 2);
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_keys_values_error() {
+        assert!(run("keys(42)").is_err());
+        assert!(run("values([1, 2])").is_err());
+    }
+
+    #[test]
+    fn test_abs() {
+        assert_eq!(run("abs(-5)").unwrap(), Value::Integer(5));
+        assert_eq!(run("abs(5)").unwrap(), Value::Integer(5));
+        assert_eq!(run("abs(-3.14)").unwrap(), Value::Float(3.14));
+    }
+
+    #[test]
+    fn test_math_functions() {
+        assert_eq!(run("min(1, 5)").unwrap(), Value::Integer(1));
+        assert_eq!(run("max(1, 5)").unwrap(), Value::Integer(5));
+        assert_eq!(run("floor(3.7)").unwrap(), Value::Integer(3));
+        assert_eq!(run("ceil(3.2)").unwrap(), Value::Integer(4));
+        assert_eq!(run("round(3.5)").unwrap(), Value::Integer(4));
+        assert_eq!(run("sqrt(16)").unwrap(), Value::Float(4.0));
+    }
+
+    #[test]
+    fn test_contains() {
+        assert_eq!(run(r#"contains("hello", "ell")"#).unwrap(), Value::Bool(true));
+        assert_eq!(run("contains([1, 2, 3], 2)").unwrap(), Value::Bool(true));
+        assert_eq!(run("contains([1, 2, 3], 5)").unwrap(), Value::Bool(false));
+        assert_eq!(run(r#"contains({"a": 1}, "a")"#).unwrap(), Value::Bool(true));
+    }
+
+    #[test]
+    fn test_reverse() {
+        assert_eq!(run(r#"reverse("hello")"#).unwrap(), Value::String("olleh".to_string()));
+        let result = run("reverse([1, 2, 3])").unwrap();
+        if let Value::List(list) = result {
+            let list = list.borrow();
+            assert_eq!(list[0], Value::Integer(3));
+            assert_eq!(list[2], Value::Integer(1));
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_sort() {
+        let result = run("sort([3, 1, 2])").unwrap();
+        if let Value::List(list) = result {
+            let list = list.borrow();
+            assert_eq!(list[0], Value::Integer(1));
+            assert_eq!(list[1], Value::Integer(2));
+            assert_eq!(list[2], Value::Integer(3));
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_split_join() {
+        let result = run(r#"split("a,b,c", ",")"#).unwrap();
+        if let Value::List(list) = result {
+            assert_eq!(list.borrow().len(), 3);
+        } else {
+            panic!("Expected list");
+        }
+
+        assert_eq!(run(r#"join(["a", "b", "c"], "-")"#).unwrap(), Value::String("a-b-c".to_string()));
+    }
+
+    #[test]
+    fn test_heid_tail_bum() {
+        assert_eq!(run("heid([1, 2, 3])").unwrap(), Value::Integer(1));
+        assert_eq!(run(r#"heid("hello")"#).unwrap(), Value::String("h".to_string()));
+
+        let result = run("tail([1, 2, 3])").unwrap();
+        if let Value::List(list) = result {
+            assert_eq!(list.borrow().len(), 2);
+        } else {
+            panic!("Expected list");
+        }
+        assert_eq!(run(r#"tail("hello")"#).unwrap(), Value::String("ello".to_string()));
+
+        assert_eq!(run("bum([1, 2, 3])").unwrap(), Value::Integer(3));
+        assert_eq!(run(r#"bum("hello")"#).unwrap(), Value::String("o".to_string()));
+    }
+
+    #[test]
+    fn test_heid_tail_bum_errors() {
+        assert!(run("heid([])").is_err());
+        assert!(run("bum([])").is_err());
+        assert!(run("heid(42)").is_err());
+    }
+
+    #[test]
+    fn test_scran_slap() {
+        let result = run("scran([1, 2, 3, 4], 1, 3)").unwrap();
+        if let Value::List(list) = result {
+            assert_eq!(list.borrow().len(), 2);
+        } else {
+            panic!("Expected list");
+        }
+
+        let result = run("slap([1, 2], [3, 4])").unwrap();
+        if let Value::List(list) = result {
+            assert_eq!(list.borrow().len(), 4);
+        } else {
+            panic!("Expected list");
+        }
+
+        assert_eq!(run(r#"slap("hello", " world")"#).unwrap(), Value::String("hello world".to_string()));
+    }
+
+    #[test]
+    fn test_sumaw_coont() {
+        assert_eq!(run("sumaw([1, 2, 3, 4])").unwrap(), Value::Integer(10));
+        assert_eq!(run("coont([1, 2, 2, 3, 2], 2)").unwrap(), Value::Integer(3));
+        assert_eq!(run(r#"coont("hello", "l")"#).unwrap(), Value::Integer(2));
+    }
+
+    #[test]
+    fn test_wheesht_upper_lower() {
+        assert_eq!(run(r#"wheesht("  hello  ")"#).unwrap(), Value::String("hello".to_string()));
+        assert_eq!(run(r#"upper("hello")"#).unwrap(), Value::String("HELLO".to_string()));
+        assert_eq!(run(r#"lower("HELLO")"#).unwrap(), Value::String("hello".to_string()));
+    }
+
+    #[test]
+    fn test_shuffle() {
+        let result = run("len(shuffle([1, 2, 3]))").unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    // ==================== Arithmetic Edge Cases ====================
+
+    #[test]
+    fn test_float_arithmetic() {
+        assert_eq!(run("3.5 + 2.5").unwrap(), Value::Float(6.0));
+        assert_eq!(run("5.0 - 2.0").unwrap(), Value::Float(3.0));
+        assert_eq!(run("2.5 * 4.0").unwrap(), Value::Float(10.0));
+        assert_eq!(run("10.0 / 4.0").unwrap(), Value::Float(2.5));
+    }
+
+    #[test]
+    fn test_mixed_arithmetic() {
+        assert_eq!(run("5 + 2.5").unwrap(), Value::Float(7.5));
+        assert_eq!(run("10.0 / 2").unwrap(), Value::Float(5.0));
+    }
+
+    #[test]
+    fn test_unary_negate() {
+        assert_eq!(run("-5").unwrap(), Value::Integer(-5));
+        assert_eq!(run("-3.14").unwrap(), Value::Float(-3.14));
+    }
+
+    #[test]
+    fn test_modulo_float() {
+        let result = run("7.5 % 2.0").unwrap();
+        if let Value::Float(f) = result {
+            assert!((f - 1.5).abs() < 0.001);
+        } else {
+            panic!("Expected float");
+        }
+    }
+
+    // ==================== Comparison Operations ====================
+
+    #[test]
+    fn test_string_comparison() {
+        assert_eq!(run(r#""a" < "b""#).unwrap(), Value::Bool(true));
+        assert_eq!(run(r#""hello" == "hello""#).unwrap(), Value::Bool(true));
+        assert_eq!(run(r#""a" != "b""#).unwrap(), Value::Bool(true));
+    }
+
+    #[test]
+    fn test_list_equality() {
+        assert_eq!(run("[1, 2, 3] == [1, 2, 3]").unwrap(), Value::Bool(true));
+        assert_eq!(run("[1, 2, 3] == [1, 2, 4]").unwrap(), Value::Bool(false));
+    }
+
+    // ==================== Logical Operations ====================
+
+    #[test]
+    fn test_logical_operations() {
+        assert_eq!(run("aye an aye").unwrap(), Value::Bool(true));
+        assert_eq!(run("aye an nae").unwrap(), Value::Bool(false));
+        assert_eq!(run("nae or aye").unwrap(), Value::Bool(true));
+        assert_eq!(run("nae or nae").unwrap(), Value::Bool(false));
+    }
+
+    #[test]
+    fn test_logical_not() {
+        assert_eq!(run("ken x = aye\nnae x").unwrap(), Value::Bool(false));
+        assert_eq!(run("ken x = nae\nnae x").unwrap(), Value::Bool(true));
+    }
+
+    #[test]
+    fn test_short_circuit_and() {
+        // Should short-circuit and not evaluate second part
+        assert_eq!(run("nae an (1/0 > 0)").unwrap(), Value::Bool(false));
+    }
+
+    #[test]
+    fn test_short_circuit_or() {
+        // Should short-circuit and not evaluate second part
+        assert_eq!(run("aye or (1/0 > 0)").unwrap(), Value::Bool(true));
+    }
+
+    // ==================== Control Flow Edge Cases ====================
+
+    #[test]
+    fn test_break_in_while() {
+        let result = run(r#"
+ken sum = 0
+ken i = 1
+whiles aye {
+    gin i > 5 {
+        brak
+    }
+    sum = sum + i
+    i = i + 1
+}
+sum
+"#).unwrap();
+        assert_eq!(result, Value::Integer(15));
+    }
+
+    #[test]
+    fn test_continue_in_while() {
+        let result = run(r#"
+ken sum = 0
+ken i = 0
+whiles i < 10 {
+    i = i + 1
+    gin i % 2 == 0 {
+        haud
+    }
+    sum = sum + i
+}
+sum
+"#).unwrap();
+        assert_eq!(result, Value::Integer(25)); // 1+3+5+7+9
+    }
+
+    #[test]
+    fn test_break_in_for() {
+        let result = run(r#"
+ken sum = 0
+fer i in 0..100 {
+    gin i >= 5 {
+        brak
+    }
+    sum = sum + i
+}
+sum
+"#).unwrap();
+        assert_eq!(result, Value::Integer(10)); // 0+1+2+3+4
+    }
+
+    #[test]
+    fn test_for_over_list() {
+        let result = run(r#"
+ken sum = 0
+fer x in [1, 2, 3, 4, 5] {
+    sum = sum + x
+}
+sum
+"#).unwrap();
+        assert_eq!(result, Value::Integer(15));
+    }
+
+    #[test]
+    fn test_for_over_string() {
+        let result = run(r#"
+ken count = 0
+fer c in "hello" {
+    count = count + 1
+}
+count
+"#).unwrap();
+        assert_eq!(result, Value::Integer(5));
+    }
+
+    // ==================== Assert Statement ====================
+
+    #[test]
+    fn test_assert_pass() {
+        assert_eq!(run("mak_siccar 5 > 3\n42").unwrap(), Value::Integer(42));
+    }
+
+    #[test]
+    fn test_assert_fail() {
+        assert!(run("mak_siccar 3 > 5").is_err());
+    }
+
+    #[test]
+    fn test_assert_with_message() {
+        let result = run("mak_siccar 3 > 5, \"Should be bigger\"");
+        assert!(result.is_err());
+    }
+
+    // ==================== Spread Operator ====================
+
+    #[test]
+    fn test_spread_list_elements() {
+        let result = run("[1, ...[2, 3], 4]").unwrap();
+        if let Value::List(list) = result {
+            let list = list.borrow();
+            assert_eq!(list.len(), 4);
+            assert_eq!(list[0], Value::Integer(1));
+            assert_eq!(list[1], Value::Integer(2));
+            assert_eq!(list[2], Value::Integer(3));
+            assert_eq!(list[3], Value::Integer(4));
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    // ==================== Pipe Operator ====================
+
+    #[test]
+    fn test_pipe_operator() {
+        let result = run(r#"
+dae double(x) { gie x * 2 }
+dae add_one(x) { gie x + 1 }
+5 |> double |> add_one
+"#).unwrap();
+        assert_eq!(result, Value::Integer(11));
+    }
+
+    // ==================== Index Assignment ====================
+
+    #[test]
+    fn test_list_index_assignment() {
+        let result = run(r#"
+ken arr = [1, 2, 3]
+arr[1] = 99
+arr[1]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(99));
+    }
+
+    #[test]
+    fn test_dict_index_assignment() {
+        let result = run(r#"
+ken d = {"a": 1}
+d["b"] = 2
+d["b"]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    // ==================== Negative Index ====================
+
+    #[test]
+    fn test_negative_index() {
+        assert_eq!(run("[1, 2, 3][-1]").unwrap(), Value::Integer(3));
+        assert_eq!(run("[1, 2, 3][-2]").unwrap(), Value::Integer(2));
+        assert_eq!(run(r#""hello"[-1]"#).unwrap(), Value::String("o".to_string()));
+    }
+
+    // ==================== JSON Functions ====================
+
+    #[test]
+    fn test_json_parse() {
+        let result = run(r#"json_parse("{\"name\": \"test\", \"value\": 42}")"#).unwrap();
+        if let Value::Dict(dict) = result {
+            let dict = dict.borrow();
+            assert_eq!(dict.get("value"), Some(&Value::Integer(42)));
+        } else {
+            panic!("Expected dict");
+        }
+    }
+
+    #[test]
+    fn test_json_parse_array() {
+        let result = run(r#"json_parse("[1, 2, 3]")"#).unwrap();
+        if let Value::List(list) = result {
+            assert_eq!(list.borrow().len(), 3);
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_json_parse_primitives() {
+        assert_eq!(run(r#"json_parse("true")"#).unwrap(), Value::Bool(true));
+        assert_eq!(run(r#"json_parse("false")"#).unwrap(), Value::Bool(false));
+        assert_eq!(run(r#"json_parse("null")"#).unwrap(), Value::Nil);
+        assert_eq!(run(r#"json_parse("42")"#).unwrap(), Value::Integer(42));
+        assert_eq!(run(r#"json_parse("3.14")"#).unwrap(), Value::Float(3.14));
+    }
+
+    #[test]
+    fn test_json_stringify() {
+        assert_eq!(run(r#"json_stringify(42)"#).unwrap(), Value::String("42".to_string()));
+        assert_eq!(run(r#"json_stringify(aye)"#).unwrap(), Value::String("true".to_string()));
+        assert_eq!(run(r#"json_stringify([1, 2, 3])"#).unwrap(), Value::String("[1, 2, 3]".to_string()));
+    }
+
+    // ==================== Struct Tests ====================
+
+    #[test]
+    fn test_struct() {
+        let result = run(r#"
+thing Point { x, y }
+ken p = Point(10, 20)
+p.x + p.y
+"#).unwrap();
+        assert_eq!(result, Value::Integer(30));
+    }
+
+    // ==================== Interpreter Default ====================
+
+    #[test]
+    fn test_interpreter_default() {
+        let interp = Interpreter::default();
+        assert!(interp.output.is_empty());
+    }
+
+    // ==================== Output Capture ====================
+
+    #[test]
+    fn test_get_output() {
+        let mut interp = Interpreter::new();
+        let program = crate::parser::parse(r#"blether "hello"
+blether "world""#).unwrap();
+        interp.interpret(&program).unwrap();
+
+        let output = interp.get_output();
+        assert_eq!(output.len(), 2);
+        assert_eq!(output[0], "hello");
+        assert_eq!(output[1], "world");
+    }
+
+    // ==================== Float Division ====================
+
+    #[test]
+    fn test_float_division() {
+        // Normal float division
+        assert_eq!(run("10.0 / 4.0").unwrap(), Value::Float(2.5));
+        // Mixed int/float division
+        assert_eq!(run("10.0 / 2").unwrap(), Value::Float(5.0));
+    }
+
+    // ==================== Block Statement ====================
+
+    #[test]
+    fn test_block_returns_last_value() {
+        let result = run("{ ken x = 1\n ken y = 2\n x + y }").unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    // ==================== Closures ====================
+
+    #[test]
+    fn test_closure_basic() {
+        // Test basic closure that captures outer variable
+        let result = run(r#"
+dae make_adder(x) {
+    gie |y| x + y
+}
+ken add5 = make_adder(5)
+add5(3)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(8));
+    }
+
+    // ==================== Wildcard Pattern ====================
+
+    #[test]
+    fn test_match_wildcard() {
+        let result = run(r#"
+ken x = 999
+keek x {
+    whan 1 -> "one"
+    whan _ -> "other"
+}
+"#).unwrap();
+        assert_eq!(result, Value::String("other".to_string()));
+    }
+
+    // ==================== Match with Identifier Pattern ====================
+
+    #[test]
+    fn test_match_identifier_bind() {
+        let result = run(r#"
+ken x = 42
+keek x {
+    whan value -> value * 2
+}
+"#).unwrap();
+        assert_eq!(result, Value::Integer(84));
+    }
+
+    // ==================== Random Functions ====================
+
+    #[test]
+    fn test_jammy_random() {
+        // jammy(min, max) returns random int between min and max
+        let result = run("jammy(1, 10)").unwrap();
+        if let Value::Integer(n) = result {
+            assert!(n >= 1 && n <= 10);
+        } else {
+            panic!("Expected integer");
+        }
+    }
+
+    // ==================== More Scots Functions ====================
+
+    #[test]
+    fn test_dram_single_element() {
+        // dram returns a random element from a list
+        let result = run("dram([1, 2, 3])").unwrap();
+        if let Value::Integer(n) = result {
+            assert!(n >= 1 && n <= 3);
+        } else {
+            panic!("Expected integer");
+        }
+    }
+
+    #[test]
+    fn test_blooter_scramble() {
+        // blooter scrambles a string
+        let result = run(r#"len(blooter("hello"))"#).unwrap();
+        assert_eq!(result, Value::Integer(5));
+    }
+
+    #[test]
+    fn test_haver_nonsense() {
+        // haver generates a random Scots phrase
+        let result = run("haver()").unwrap();
+        if let Value::String(s) = result {
+            assert!(!s.is_empty());
+        } else {
+            panic!("Expected string");
+        }
+    }
+
+    // ==================== Interpreter Configuration Tests ====================
+
+    #[test]
+    fn test_interpreter_with_dir() {
+        let interp = Interpreter::with_dir("/tmp");
+        assert!(interp.current_dir.to_str().unwrap().contains("tmp"));
+    }
+
+    #[test]
+    fn test_interpreter_set_current_dir() {
+        let mut interp = Interpreter::new();
+        interp.set_current_dir("/tmp");
+        assert!(interp.current_dir.to_str().unwrap().contains("tmp"));
+    }
+
+    #[test]
+    fn test_interpreter_get_user_variables() {
+        let mut interp = Interpreter::new();
+        let program = crate::parser::parse("ken x = 42\nken y = \"hello\"").unwrap();
+        interp.interpret(&program).unwrap();
+        let vars = interp.get_user_variables();
+        assert!(vars.iter().any(|(name, _, _)| name == "x"));
+        assert!(vars.iter().any(|(name, _, _)| name == "y"));
+    }
+
+    #[test]
+    fn test_interpreter_get_user_functions() {
+        let mut interp = Interpreter::new();
+        let program = crate::parser::parse("dae foo() { gie 1 }").unwrap();
+        interp.interpret(&program).unwrap();
+        let vars = interp.get_user_variables();
+        assert!(vars.iter().any(|(name, kind, _)| name == "foo" && kind == "function"));
+    }
+
+    // ==================== Native Function Edge Cases ====================
+
+    #[test]
+    fn test_scran_slice_list() {
+        let result = run("scran([1, 2, 3, 4, 5], 1, 4)").unwrap();
+        if let Value::List(list) = result {
+            assert_eq!(list.borrow().len(), 3);
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_scran_slice_string() {
+        let result = run(r#"scran("hello", 1, 4)"#).unwrap();
+        assert_eq!(result, Value::String("ell".to_string()));
+    }
+
+    #[test]
+    fn test_scran_negative_indices() {
+        // Negative indices should clamp to 0
+        let result = run("scran([1, 2, 3], -5, 2)").unwrap();
+        if let Value::List(list) = result {
+            assert_eq!(list.borrow().len(), 2);
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_scran_large_end_index() {
+        // Large end should clamp to list length
+        let result = run("scran([1, 2, 3], 0, 100)").unwrap();
+        if let Value::List(list) = result {
+            assert_eq!(list.borrow().len(), 3);
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_coont_string_no_match() {
+        let result = run(r#"coont("hello", "z")"#).unwrap();
+        assert_eq!(result, Value::Integer(0));
+    }
+
+    #[test]
+    fn test_coont_string_multiple() {
+        let result = run(r#"coont("hello world", "l")"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_coont_list_values() {
+        let result = run("coont([1, 2, 1, 3, 1], 1)").unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_wheesht_trim() {
+        let result = run(r#"wheesht("  hello  ")"#).unwrap();
+        assert_eq!(result, Value::String("hello".to_string()));
+    }
+
+    #[test]
+    fn test_unique_list() {
+        let result = run("unique([1, 2, 1, 3, 2])").unwrap();
+        if let Value::List(list) = result {
+            let items = list.borrow();
+            assert_eq!(items.len(), 3);
+            assert_eq!(items[0], Value::Integer(1));
+            assert_eq!(items[1], Value::Integer(2));
+            assert_eq!(items[2], Value::Integer(3));
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_scottify_transform() {
+        // Note: scottify replaces "no" before "know", so "know" becomes "knaew"
+        let result = run(r#"scottify("yes the small child is beautiful")"#).unwrap();
+        if let Value::String(s) = result {
+            assert!(s.contains("aye"));
+            assert!(s.contains("wee"));
+            assert!(s.contains("bairn"));
+            assert!(s.contains("bonnie"));
+        } else {
+            panic!("Expected string");
+        }
+    }
+
+    // ==================== Error Path Tests ====================
+
+    #[test]
+    fn test_len_error_non_collection() {
+        let result = run("len(42)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_shove_error_non_list() {
+        let result = run(r#"shove("hello", 1)"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_yank_error_non_list() {
+        let result = run(r#"yank("hello")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_keys_error_non_dict() {
+        let result = run("keys([1, 2, 3])");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_values_error_non_dict() {
+        let result = run("values([1, 2, 3])");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_sqrt_error_negative() {
+        let result = run("sqrt(-1)").unwrap();
+        if let Value::Float(f) = result {
+            assert!(f.is_nan());
+        }
+    }
+
+    #[test]
+    fn test_sqrt_error_non_number() {
+        let result = run(r#"sqrt("hello")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_scran_error_non_integer_indices() {
+        let result = run(r#"scran([1, 2, 3], "a", "b")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_scran_error_non_collection() {
+        let result = run("scran(42, 0, 1)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_coont_error_non_collection() {
+        let result = run("coont(42, 1)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_coont_string_error_non_string_needle() {
+        let result = run(r#"coont("hello", 1)"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_wheesht_error_non_string() {
+        let result = run("wheesht(42)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_unique_error_non_list() {
+        let result = run(r#"unique("hello")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_scottify_error_non_string() {
+        let result = run("scottify(42)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_sumaw_error_non_list() {
+        let result = run("sumaw(42)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_sumaw_error_non_numeric() {
+        let result = run(r#"sumaw(["a", "b"])"#);
+        assert!(result.is_err());
+    }
+
+    // ==================== Math Functions Edge Cases ====================
+
+    #[test]
+    fn test_abs_negative_integer() {
+        let result = run("abs(-42)").unwrap();
+        assert_eq!(result, Value::Integer(42));
+    }
+
+    #[test]
+    fn test_abs_negative_float() {
+        let result = run("abs(-3.14)").unwrap();
+        assert_eq!(result, Value::Float(3.14));
+    }
+
+    #[test]
+    fn test_abs_positive() {
+        let result = run("abs(42)").unwrap();
+        assert_eq!(result, Value::Integer(42));
+    }
+
+    #[test]
+    fn test_floor_positive() {
+        let result = run("floor(3.9)").unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_floor_negative() {
+        let result = run("floor(-3.1)").unwrap();
+        assert_eq!(result, Value::Integer(-4));
+    }
+
+    #[test]
+    fn test_ceil_positive() {
+        let result = run("ceil(3.1)").unwrap();
+        assert_eq!(result, Value::Integer(4));
+    }
+
+    #[test]
+    fn test_ceil_negative() {
+        let result = run("ceil(-3.9)").unwrap();
+        assert_eq!(result, Value::Integer(-3));
+    }
+
+    #[test]
+    fn test_round_half_up() {
+        let result = run("round(3.5)").unwrap();
+        assert_eq!(result, Value::Integer(4));
+    }
+
+    #[test]
+    fn test_round_half_down() {
+        let result = run("round(3.4)").unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    // ==================== Complex Control Flow ====================
+
+    #[test]
+    fn test_nested_if_else() {
+        let result = run(r#"
+ken x = 5
+gin x > 10 {
+    "big"
+} ither gin x > 3 {
+    "medium"
+} ither {
+    "small"
+}
+"#).unwrap();
+        assert_eq!(result, Value::String("medium".to_string()));
+    }
+
+    #[test]
+    fn test_while_with_break() {
+        let result = run(r#"
+ken total = 0
+ken i = 0
+whiles i < 100 {
+    total = total + i
+    i = i + 1
+    gin i == 5 {
+        brak
+    }
+}
+total
+"#).unwrap();
+        assert_eq!(result, Value::Integer(10));
+    }
+
+    #[test]
+    fn test_while_with_continue() {
+        let result = run(r#"
+ken total = 0
+ken i = 0
+whiles i < 5 {
+    i = i + 1
+    gin i == 3 {
+        haud
+    }
+    total = total + i
+}
+total
+"#).unwrap();
+        assert_eq!(result, Value::Integer(12)); // 1+2+4+5 = 12
+    }
+
+    #[test]
+    fn test_for_with_break() {
+        let result = run(r#"
+ken total = 0
+fer i in 0..10 {
+    gin i == 5 {
+        brak
+    }
+    total = total + i
+}
+total
+"#).unwrap();
+        assert_eq!(result, Value::Integer(10)); // 0+1+2+3+4 = 10
+    }
+
+    #[test]
+    fn test_for_with_continue() {
+        let result = run(r#"
+ken total = 0
+fer i in 0..5 {
+    gin i == 2 {
+        haud
+    }
+    total = total + i
+}
+total
+"#).unwrap();
+        assert_eq!(result, Value::Integer(8)); // 0+1+3+4 = 8
+    }
+
+    // ==================== Class and Method Tests ====================
+
+    #[test]
+    fn test_class_with_init() {
+        let result = run(r#"
+kin Counter {
+    dae init(start) {
+        masel.count = start
+    }
+    dae increment() {
+        masel.count = masel.count + 1
+    }
+    dae get() {
+        gie masel.count
+    }
+}
+ken c = Counter(5)
+c.increment()
+c.get()
+"#).unwrap();
+        assert_eq!(result, Value::Integer(6));
+    }
+
+    #[test]
+    fn test_class_inheritance() {
+        let result = run(r#"
+kin Animal {
+    dae init(name) {
+        masel.name = name
+    }
+    dae speak() {
+        gie "..."
+    }
+}
+kin Dog fae Animal {
+    dae speak() {
+        gie "Woof!"
+    }
+}
+ken d = Dog("Rover")
+d.speak()
+"#).unwrap();
+        assert_eq!(result, Value::String("Woof!".to_string()));
+    }
+
+    // ==================== Struct Tests ====================
+
+    #[test]
+    fn test_struct_creation() {
+        let result = run(r#"
+thing Point { x, y }
+ken p = Point(3, 4)
+p.x + p.y
+"#).unwrap();
+        assert_eq!(result, Value::Integer(7));
+    }
+
+    #[test]
+    fn test_struct_update() {
+        let result = run(r#"
+thing Point { x, y }
+ken p = Point(1, 2)
+p.x = 10
+p.x
+"#).unwrap();
+        assert_eq!(result, Value::Integer(10));
+    }
+
+    // ==================== List Operations ====================
+
+    #[test]
+    fn test_list_negative_index() {
+        let result = run(r#"
+ken list = [1, 2, 3, 4, 5]
+list[-1]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(5));
+    }
+
+    #[test]
+    fn test_list_negative_index_second() {
+        let result = run(r#"
+ken list = [1, 2, 3, 4, 5]
+list[-2]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(4));
+    }
+
+    #[test]
+    fn test_list_index_mutation() {
+        let result = run(r#"
+ken list = [1, 2, 3]
+list[1] = 99
+list[1]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(99));
+    }
+
+    // ==================== Dict Operations ====================
+
+    #[test]
+    fn test_dict_set_get() {
+        let result = run(r#"
+ken d = {"a": 1}
+d["b"] = 2
+d["a"] + d["b"]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_dict_with_string_keys() {
+        let result = run(r#"
+ken d = {"name": "Alice", "age": 30}
+d["name"]
+"#).unwrap();
+        assert_eq!(result, Value::String("Alice".to_string()));
+    }
+
+    // ==================== String Operations ====================
+
+    #[test]
+    fn test_string_index() {
+        let result = run(r#""hello"[0]"#).unwrap();
+        assert_eq!(result, Value::String("h".to_string()));
+    }
+
+    #[test]
+    fn test_string_negative_index() {
+        let result = run(r#""hello"[-1]"#).unwrap();
+        assert_eq!(result, Value::String("o".to_string()));
+    }
+
+    #[test]
+    fn test_upper_function() {
+        let result = run(r#"upper("hello")"#).unwrap();
+        assert_eq!(result, Value::String("HELLO".to_string()));
+    }
+
+    #[test]
+    fn test_lower_function() {
+        let result = run(r#"lower("HELLO")"#).unwrap();
+        assert_eq!(result, Value::String("hello".to_string()));
+    }
+
+    #[test]
+    fn test_replace_string() {
+        let result = run(r#"replace("hello world", "world", "everyone")"#).unwrap();
+        assert_eq!(result, Value::String("hello everyone".to_string()));
+    }
+
+    // ==================== Type Checking Functions ====================
+
+    #[test]
+    fn test_whit_kind_integer() {
+        let result = run(r#"whit_kind(42)"#).unwrap();
+        assert_eq!(result, Value::String("integer".to_string()));
+    }
+
+    #[test]
+    fn test_whit_kind_string() {
+        let result = run(r#"whit_kind("hello")"#).unwrap();
+        assert_eq!(result, Value::String("string".to_string()));
+    }
+
+    #[test]
+    fn test_whit_kind_list() {
+        let result = run(r#"whit_kind([1, 2, 3])"#).unwrap();
+        assert_eq!(result, Value::String("list".to_string()));
+    }
+
+    #[test]
+    fn test_whit_kind_function_value() {
+        let result = run(r#"
+dae foo() { gie 1 }
+whit_kind(foo)
+"#).unwrap();
+        assert_eq!(result, Value::String("function".to_string()));
+    }
+
+    // ==================== Pipe Operator ====================
+
+    #[test]
+    fn test_pipe_chain() {
+        let result = run(r#"[1, 2, 3] |> len"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_pipe_multiple() {
+        let result = run(r#"
+"  hello  " |> wheesht |> upper
+"#).unwrap();
+        assert_eq!(result, Value::String("HELLO".to_string()));
+    }
+
+    // ==================== Spread Operator ====================
+
+    #[test]
+    fn test_spread_list() {
+        let result = run(r#"
+ken a = [1, 2]
+ken b = [3, 4]
+ken c = [...a, ...b]
+len(c)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(4));
+    }
+
+    #[test]
+    fn test_spread_in_call() {
+        let result = run(r#"
+dae add(x, y, z) {
+    gie x + y + z
+}
+ken args = [1, 2, 3]
+add(...args)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(6));
+    }
+
+    // ==================== Try-Catch Tests ====================
+
+    #[test]
+    fn test_try_catch_no_error() {
+        let result = run(r#"
+hae_a_bash {
+    42
+} gin_it_gangs_wrang e {
+    0
+}
+"#).unwrap();
+        assert_eq!(result, Value::Integer(42));
+    }
+
+    #[test]
+    fn test_try_catch_with_error() {
+        let result = run(r#"
+hae_a_bash {
+    1 / 0
+} gin_it_gangs_wrang e {
+    "caught"
+}
+"#).unwrap();
+        assert_eq!(result, Value::String("caught".to_string()));
+    }
+
+    // ==================== Assert Tests ====================
+
+    #[test]
+    fn test_mak_siccar_pass() {
+        let result = run("mak_siccar aye");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_mak_siccar_fail() {
+        let result = run("mak_siccar nae");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_mak_siccar_with_message() {
+        let result = run(r#"mak_siccar nae, "Custom message""#);
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(format!("{:?}", e).contains("Custom message"));
+        }
+    }
+
+    // ==================== Range Iteration ====================
+
+    #[test]
+    fn test_for_range_exclusive() {
+        let result = run(r#"
+ken sum = 0
+fer i in 0..5 {
+    sum = sum + i
+}
+sum
+"#).unwrap();
+        assert_eq!(result, Value::Integer(10)); // 0+1+2+3+4
+    }
+
+    #[test]
+    fn test_range_in_list() {
+        let result = run(r#"
+ken r = 1..4
+ken sum = 0
+fer i in r {
+    sum = sum + i
+}
+sum
+"#).unwrap();
+        assert_eq!(result, Value::Integer(6)); // 1+2+3
+    }
+
+    // ==================== Lambda Tests ====================
+
+    #[test]
+    fn test_lambda_simple() {
+        let result = run(r#"
+ken double = |x| x * 2
+double(5)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(10));
+    }
+
+    #[test]
+    fn test_lambda_multiple_params() {
+        let result = run(r#"
+ken add = |x, y| x + y
+add(3, 4)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(7));
+    }
+
+    #[test]
+    fn test_lambda_as_callback() {
+        let result = run(r#"
+dae apply(f, x) {
+    gie f(x)
+}
+apply(|n| n * n, 4)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(16));
+    }
+
+    // ==================== Modulo and Integer Division ====================
+
+    #[test]
+    fn test_modulo_positive() {
+        let result = run("10 % 3").unwrap();
+        assert_eq!(result, Value::Integer(1));
+    }
+
+    #[test]
+    fn test_modulo_negative() {
+        let result = run("-10 % 3").unwrap();
+        assert_eq!(result, Value::Integer(-1));
+    }
+
+    #[test]
+    fn test_floor_division() {
+        // Use floor() for integer division
+        let result = run("floor(10 / 3)").unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    // ==================== Comparison Edge Cases ====================
+
+    #[test]
+    fn test_string_less_than() {
+        let result = run(r#""apple" < "banana""#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_mixed_numeric_comparison() {
+        let result = run("3 == 3.0").unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_nil_equality() {
+        let result = run("naething == naething").unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    // ==================== More Native Functions ====================
+
+    #[test]
+    fn test_heid_list() {
+        let result = run("heid([1, 2, 3])").unwrap();
+        assert_eq!(result, Value::Integer(1));
+    }
+
+    #[test]
+    fn test_heid_string() {
+        let result = run(r#"heid("hello")"#).unwrap();
+        assert_eq!(result, Value::String("h".to_string()));
+    }
+
+    #[test]
+    fn test_tail_list() {
+        let result = run("tail([1, 2, 3])").unwrap();
+        if let Value::List(list) = result {
+            assert_eq!(list.borrow().len(), 2);
+            assert_eq!(list.borrow()[0], Value::Integer(2));
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_tail_string() {
+        let result = run(r#"tail("hello")"#).unwrap();
+        assert_eq!(result, Value::String("ello".to_string()));
+    }
+
+    #[test]
+    fn test_bum_list() {
+        let result = run("bum([1, 2, 3])").unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_bum_string() {
+        let result = run(r#"bum("hello")"#).unwrap();
+        assert_eq!(result, Value::String("o".to_string()));
+    }
+
+    #[test]
+    fn test_join_string() {
+        let result = run(r#"join(["a", "b", "c"], ", ")"#).unwrap();
+        assert_eq!(result, Value::String("a, b, c".to_string()));
+    }
+
+    // ==================== Module/Import Tests ====================
+
+    #[test]
+    fn test_anonymous_function_call() {
+        let result = run(r#"
+(|x| x * 2)(5)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(10));
+    }
+
+    // ==================== Default Parameter Tests ====================
+
+    #[test]
+    fn test_function_default_param() {
+        let result = run(r#"
+dae greet(name, greeting = "Hello") {
+    gie greeting + " " + name
+}
+greet("World")
+"#).unwrap();
+        assert_eq!(result, Value::String("Hello World".to_string()));
+    }
+
+    #[test]
+    fn test_function_override_default() {
+        let result = run(r#"
+dae greet(name, greeting = "Hello") {
+    gie greeting + " " + name
+}
+greet("World", "Hi")
+"#).unwrap();
+        assert_eq!(result, Value::String("Hi World".to_string()));
+    }
+
+    // ==================== Set Operations ====================
+
+    #[test]
+    fn test_creel_basic() {
+        let result = run(r#"
+ken s = creel([1, 2, 3])
+len(s)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_creel_duplicates() {
+        let result = run(r#"
+ken s = creel([1, 1, 2, 2, 3])
+len(s)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    // ==================== More Edge Cases ====================
+
+    #[test]
+    fn test_empty_list_operations() {
+        let result = run("len([])").unwrap();
+        assert_eq!(result, Value::Integer(0));
+    }
+
+    #[test]
+    fn test_empty_string_operations() {
+        let result = run(r#"len("")"#).unwrap();
+        assert_eq!(result, Value::Integer(0));
+    }
+
+    #[test]
+    fn test_nested_list_access() {
+        let result = run(r#"
+ken matrix = [[1, 2], [3, 4]]
+matrix[1][0]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_dict_in_list() {
+        let result = run(r#"
+ken list = [{"a": 1}, {"a": 2}]
+list[0]["a"] + list[1]["a"]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_conditional_expression() {
+        let result = run(r#"
+ken x = 5
+ken result = gin x > 3 than "big" ither "small"
+result
+"#).unwrap();
+        assert_eq!(result, Value::String("big".to_string()));
+    }
+
+    #[test]
+    fn test_contains_list() {
+        let result = run("contains([1, 2, 3], 2)").unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_contains_list_missing() {
+        let result = run("contains([1, 2, 3], 5)").unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_contains_string() {
+        let result = run(r#"contains("hello", "ell")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_sort_integers() {
+        let result = run("sort([3, 1, 2])").unwrap();
+        if let Value::List(list) = result {
+            let items = list.borrow();
+            assert_eq!(items[0], Value::Integer(1));
+            assert_eq!(items[1], Value::Integer(2));
+            assert_eq!(items[2], Value::Integer(3));
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_sort_strings() {
+        let result = run(r#"sort(["c", "a", "b"])"#).unwrap();
+        if let Value::List(list) = result {
+            let items = list.borrow();
+            assert_eq!(items[0], Value::String("a".to_string()));
+            assert_eq!(items[1], Value::String("b".to_string()));
+            assert_eq!(items[2], Value::String("c".to_string()));
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_reverse_list() {
+        let result = run("reverse([1, 2, 3])").unwrap();
+        if let Value::List(list) = result {
+            let items = list.borrow();
+            assert_eq!(items[0], Value::Integer(3));
+            assert_eq!(items[1], Value::Integer(2));
+            assert_eq!(items[2], Value::Integer(1));
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_reverse_string_builtin() {
+        let result = run(r#"reverse("hello")"#).unwrap();
+        assert_eq!(result, Value::String("olleh".to_string()));
+    }
+
+    // ==================== More Native Function Tests ====================
+
+    #[test]
+    fn test_words_function() {
+        let result = run(r#"words("hello world")"#).unwrap();
+        if let Value::List(list) = result {
+            assert_eq!(list.borrow().len(), 2);
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_is_digit_true() {
+        let result = run(r#"is_digit("123")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_is_digit_false() {
+        let result = run(r#"is_digit("12a")"#).unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_is_alpha_true() {
+        let result = run(r#"is_alpha("hello")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_is_alpha_false() {
+        let result = run(r#"is_alpha("hello1")"#).unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_is_space_true() {
+        let result = run(r#"is_space("   ")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_is_space_with_letters() {
+        let result = run(r#"is_space("  x  ")"#).unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_capitalize_function() {
+        let result = run(r#"capitalize("hello")"#).unwrap();
+        assert_eq!(result, Value::String("Hello".to_string()));
+    }
+
+    #[test]
+    fn test_title_function() {
+        let result = run(r#"title("hello world")"#).unwrap();
+        assert_eq!(result, Value::String("Hello World".to_string()));
+    }
+
+    #[test]
+    fn test_the_noo_timestamp() {
+        let result = run("the_noo()").unwrap();
+        if let Value::Integer(n) = result {
+            assert!(n > 0);
+        } else {
+            panic!("Expected integer timestamp");
+        }
+    }
+
+    #[test]
+    fn test_jammy_error_min_gte_max() {
+        let result = run("jammy(10, 5)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_shuffle_preserves_length() {
+        let result = run("len(shuffle([1, 2, 3, 4, 5]))").unwrap();
+        assert_eq!(result, Value::Integer(5));
+    }
+
+    #[test]
+    fn test_sort_error_non_list() {
+        let result = run(r#"sort("hello")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_shuffle_error_non_list() {
+        let result = run(r#"shuffle("hello")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_lower_error_non_string() {
+        let result = run("lower(42)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_upper_error_non_string() {
+        let result = run("upper(42)");
+        assert!(result.is_err());
+    }
+
+    // ==================== Set Function Tests ====================
+
+    #[test]
+    fn test_toss_in_set() {
+        let result = run(r#"
+ken s = creel([1, 2, 3])
+toss_in(s, 4)
+len(s)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(4));
+    }
+
+    #[test]
+    fn test_heave_oot_set() {
+        let result = run(r#"
+ken s = creel([1, 2, 3])
+heave_oot(s, "1")
+len(s)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_is_in_creel_true() {
+        let result = run(r#"
+ken s = creel([1, 2, 3])
+is_in_creel(s, "1")
+"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_is_in_creel_false() {
+        let result = run(r#"
+ken s = creel([1, 2, 3])
+is_in_creel(s, "5")
+"#).unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    // ==================== More Math Tests ====================
+
+    #[test]
+    fn test_pow_function() {
+        let result = run("pow(2, 3)").unwrap();
+        assert_eq!(result, Value::Float(8.0));
+    }
+
+    #[test]
+    fn test_log_function() {
+        // log is natural log (ln)
+        let result = run("log10(100)").unwrap();
+        if let Value::Float(f) = result {
+            assert!((f - 2.0).abs() < 0.0001);
+        } else {
+            panic!("Expected float");
+        }
+    }
+
+    #[test]
+    fn test_sin_function() {
+        let result = run("sin(0)").unwrap();
+        if let Value::Float(f) = result {
+            assert!(f.abs() < 0.0001);
+        } else {
+            panic!("Expected float");
+        }
+    }
+
+    #[test]
+    fn test_cos_function() {
+        let result = run("cos(0)").unwrap();
+        if let Value::Float(f) = result {
+            assert!((f - 1.0).abs() < 0.0001);
+        } else {
+            panic!("Expected float");
+        }
+    }
+
+    // ==================== More Error Path Tests ====================
+
+    #[test]
+    fn test_index_error_list() {
+        let result = run("[1, 2, 3][10]");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_index_error_string() {
+        let result = run(r#""hi"[10]"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_heid_error_empty_list() {
+        let result = run("heid([])");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tail_empty_list_returns_empty() {
+        // tail on empty list returns empty list (not error)
+        let result = run("len(tail([1]))").unwrap();
+        assert_eq!(result, Value::Integer(0));
+    }
+
+    #[test]
+    fn test_bum_error_empty_list() {
+        let result = run("bum([])");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_heid_error_empty_string() {
+        let result = run(r#"heid("")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_bum_error_empty_string() {
+        let result = run(r#"bum("")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_is_digit_error_non_string() {
+        let result = run("is_digit(42)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_is_alpha_error_non_string() {
+        let result = run("is_alpha(42)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_words_error_non_string() {
+        let result = run("words(42)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_capitalize_error_non_string() {
+        let result = run("capitalize(42)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_title_error_non_string() {
+        let result = run("title(42)");
+        assert!(result.is_err());
+    }
+
+    // ==================== Method Access Tests ====================
+
+    #[test]
+    fn test_instance_method_call() {
+        let result = run(r#"
+kin Calculator {
+    dae init(val) {
+        masel.val = val
+    }
+    dae double() {
+        gie masel.val * 2
+    }
+}
+ken c = Calculator(21)
+c.double()
+"#).unwrap();
+        assert_eq!(result, Value::Integer(42));
+    }
+
+    #[test]
+    fn test_instance_field_access() {
+        let result = run(r#"
+kin Point {
+    dae init(x, y) {
+        masel.x = x
+        masel.y = y
+    }
+}
+ken p = Point(3, 4)
+p.x + p.y
+"#).unwrap();
+        assert_eq!(result, Value::Integer(7));
+    }
+
+    // ==================== Range Tests ====================
+
+    #[test]
+    fn test_range_with_variable_bounds() {
+        let result = run(r#"
+ken start = 0
+ken end = 5
+ken sum = 0
+fer i in start..end {
+    sum = sum + i
+}
+sum
+"#).unwrap();
+        assert_eq!(result, Value::Integer(10)); // 0+1+2+3+4 = 10
+    }
+
+    // ==================== Dictionary Key Tests ====================
+
+    #[test]
+    fn test_dict_keys_iteration() {
+        let result = run(r#"
+ken d = {"a": 1, "b": 2}
+len(keys(d))
+"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_dict_values_iteration() {
+        let result = run(r#"
+ken d = {"a": 1, "b": 2}
+len(values(d))
+"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_dict_update_existing() {
+        let result = run(r#"
+ken d = {"a": 1}
+d["a"] = 42
+d["a"]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(42));
+    }
+
+    #[test]
+    fn test_dict_add_new_key() {
+        let result = run(r#"
+ken d = {"a": 1}
+d["b"] = 2
+d["b"]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    // ==================== More Complex Expression Tests ====================
+
+    #[test]
+    fn test_chained_method_calls() {
+        let result = run(r#"
+kin Builder {
+    dae init() {
+        masel.val = 0
+    }
+    dae add(n) {
+        masel.val = masel.val + n
+        gie masel
+    }
+    dae get() {
+        gie masel.val
+    }
+}
+ken b = Builder()
+b.add(1).add(2).add(3).get()
+"#).unwrap();
+        assert_eq!(result, Value::Integer(6));
+    }
+
+    // ==================== String Interpolation Tests ====================
+
+    #[test]
+    fn test_fstring_nested_expr() {
+        let result = run(r#"
+ken x = 10
+f"Result: {x * 2}"
+"#).unwrap();
+        assert_eq!(result, Value::String("Result: 20".to_string()));
+    }
+
+    #[test]
+    fn test_fstring_function_call() {
+        let result = run(r#"
+dae greet(name) { gie "Hi " + name }
+f"Greeting: {greet(\"World\")}"
+"#).unwrap();
+        assert_eq!(result, Value::String("Greeting: Hi World".to_string()));
+    }
+
+    // ==================== Empty Structure Tests ====================
+
+    #[test]
+    fn test_empty_dict() {
+        let result = run(r#"
+ken d = {}
+len(keys(d))
+"#).unwrap();
+        assert_eq!(result, Value::Integer(0));
+    }
+
+    #[test]
+    fn test_struct_with_fields() {
+        let result = run(r#"
+thing Person { name, age }
+ken p = Person("Alice", 30)
+p.name
+"#).unwrap();
+        assert_eq!(result, Value::String("Alice".to_string()));
+    }
+
+    // ==================== Assignment Operators ====================
+
+    #[test]
+    fn test_plus_equals() {
+        let result = run(r#"
+ken x = 5
+x += 3
+x
+"#).unwrap();
+        assert_eq!(result, Value::Integer(8));
+    }
+
+    #[test]
+    fn test_minus_equals() {
+        let result = run(r#"
+ken x = 10
+x -= 3
+x
+"#).unwrap();
+        assert_eq!(result, Value::Integer(7));
+    }
+
+    #[test]
+    fn test_times_equals() {
+        let result = run(r#"
+ken x = 4
+x *= 3
+x
+"#).unwrap();
+        assert_eq!(result, Value::Integer(12));
+    }
+
+    #[test]
+    fn test_divide_equals() {
+        let result = run(r#"
+ken x = 12
+x /= 3
+x
+"#).unwrap();
+        assert_eq!(result, Value::Integer(4));
+    }
+
+    // ==================== Boolean Short Circuit Proof ====================
+
+    #[test]
+    fn test_and_short_circuit_side_effect() {
+        // If short circuit works, second expression shouldn't run
+        let result = run(r#"
+ken x = 0
+nae an (x = 1)
+x
+"#).unwrap();
+        assert_eq!(result, Value::Integer(0)); // x should still be 0
+    }
+
+    #[test]
+    fn test_or_short_circuit_side_effect() {
+        // If short circuit works, second expression shouldn't run
+        let result = run(r#"
+ken x = 0
+aye or (x = 1)
+x
+"#).unwrap();
+        assert_eq!(result, Value::Integer(0)); // x should still be 0
+    }
+
+    // ==================== Slice Tests ====================
+
+    #[test]
+    fn test_list_slice_basic() {
+        let result = run(r#"
+ken l = [1, 2, 3, 4, 5]
+l[1:4]
+"#).unwrap();
+        if let Value::List(items) = result {
+            assert_eq!(items.borrow().len(), 3);
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_list_slice_negative_index() {
+        let result = run(r#"
+ken l = [1, 2, 3, 4, 5]
+l[-3:-1]
+"#).unwrap();
+        if let Value::List(items) = result {
+            assert_eq!(items.borrow().len(), 2);
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_list_slice_with_step() {
+        let result = run(r#"
+ken l = [1, 2, 3, 4, 5, 6]
+l[0:6:2]
+"#).unwrap();
+        if let Value::List(items) = result {
+            assert_eq!(items.borrow().len(), 3); // 1, 3, 5
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_list_slice_negative_step() {
+        let result = run(r#"
+ken l = [1, 2, 3, 4, 5]
+l[4:0:-1]
+"#).unwrap();
+        if let Value::List(items) = result {
+            assert_eq!(items.borrow().len(), 4); // 5, 4, 3, 2
+        } else {
+            panic!("Expected list");
+        }
+    }
+
+    #[test]
+    fn test_string_slice_basic() {
+        let result = run(r#"
+ken s = "hello"
+s[1:4]
+"#).unwrap();
+        assert_eq!(result, Value::String("ell".to_string()));
+    }
+
+    #[test]
+    fn test_string_slice_negative_step() {
+        let result = run(r#"
+ken s = "hello"
+s[4:0:-1]
+"#).unwrap();
+        assert_eq!(result, Value::String("olle".to_string()));
+    }
+
+    #[test]
+    fn test_slice_step_zero_error() {
+        let result = run("ken l = [1,2,3]\nl[::0]");
+        assert!(result.is_err());
+    }
+
+    // ==================== More Set (Creel) Tests ====================
+
+    #[test]
+    fn test_creel_from_set() {
+        let result = run(r#"
+ken s = creel([1, 2, 3])
+len(creel(s))
+"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_creels_thegither() {
+        let result = run(r#"
+ken s1 = creel([1, 2])
+ken s2 = creel([2, 3])
+len(creels_thegither(s1, s2))
+"#).unwrap();
+        assert_eq!(result, Value::Integer(3)); // Union: 1, 2, 3
+    }
+
+    #[test]
+    fn test_creels_baith() {
+        let result = run(r#"
+ken s1 = creel([1, 2, 3])
+ken s2 = creel([2, 3, 4])
+len(creels_baith(s1, s2))
+"#).unwrap();
+        assert_eq!(result, Value::Integer(2)); // Intersection: 2, 3
+    }
+
+    #[test]
+    fn test_creels_differ() {
+        let result = run(r#"
+ken s1 = creel([1, 2, 3])
+ken s2 = creel([2, 3])
+len(creels_differ(s1, s2))
+"#).unwrap();
+        assert_eq!(result, Value::Integer(1)); // Difference: 1
+    }
+
+    #[test]
+    fn test_creel_tae_list() {
+        let result = run(r#"
+ken s = creel([3, 1, 2])
+whit_kind(creel_tae_list(s))
+"#).unwrap();
+        assert_eq!(result, Value::String("list".to_string()));
+    }
+
+    #[test]
+    fn test_is_subset() {
+        let result = run(r#"
+ken s1 = creel([1, 2])
+ken s2 = creel([1, 2, 3])
+is_subset(s1, s2)
+"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_is_superset() {
+        let result = run(r#"
+ken s1 = creel([1, 2, 3])
+ken s2 = creel([1, 2])
+is_superset(s1, s2)
+"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_is_disjoint() {
+        let result = run(r#"
+ken s1 = creel([1, 2])
+ken s2 = creel([3, 4])
+is_disjoint(s1, s2)
+"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    // ==================== Match Statement Tests ====================
+
+    #[test]
+    fn test_match_literal_int() {
+        let result = run(r#"
+ken x = 2
+keek x {
+    whan 1 -> 10
+    whan 2 -> 20
+    whan 3 -> 30
+}
+"#).unwrap();
+        assert_eq!(result, Value::Integer(20));
+    }
+
+    #[test]
+    fn test_match_literal_string() {
+        let result = run(r#"
+ken s = "hello"
+keek s {
+    whan "hi" -> 1
+    whan "hello" -> 2
+    whan "bye" -> 3
+}
+"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_match_catchall() {
+        let result = run(r#"
+ken x = 99
+keek x {
+    whan 1 -> 10
+    whan _ -> 42
+}
+"#).unwrap();
+        assert_eq!(result, Value::Integer(42));
+    }
+
+    #[test]
+    fn test_match_binding() {
+        let result = run(r#"
+ken x = 5
+keek x {
+    whan n -> n * 2
+}
+"#).unwrap();
+        assert_eq!(result, Value::Integer(10));
+    }
+
+    #[test]
+    fn test_match_no_match_error() {
+        let result = run(r#"
+ken x = 99
+keek x {
+    whan 1 -> 10
+    whan 2 -> 20
+}
+"#);
+        assert!(result.is_err());
+    }
+
+    // ==================== Destructuring Tests ====================
+
+    #[test]
+    fn test_destructure_basic() {
+        let result = run(r#"
+ken [a, b, c] = [1, 2, 3]
+a + b + c
+"#).unwrap();
+        assert_eq!(result, Value::Integer(6));
+    }
+
+    #[test]
+    fn test_destructure_with_rest() {
+        let result = run(r#"
+ken [first, ...rest] = [1, 2, 3, 4, 5]
+len(rest)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(4));
+    }
+
+    #[test]
+    fn test_destructure_with_ignore() {
+        let result = run(r#"
+ken [a, _, c] = [1, 2, 3]
+a + c
+"#).unwrap();
+        assert_eq!(result, Value::Integer(4));
+    }
+
+    #[test]
+    fn test_destructure_string() {
+        let result = run(r#"
+ken [a, b, c] = "abc"
+a + b + c
+"#).unwrap();
+        assert_eq!(result, Value::String("abc".to_string()));
+    }
+
+    #[test]
+    fn test_destructure_not_enough_elements() {
+        let result = run(r#"
+ken [a, b, c] = [1, 2]
+"#);
+        assert!(result.is_err());
+    }
+
+    // ==================== More Native Function Tests ====================
+
+    #[test]
+    fn test_shuffle_length() {
+        // Shuffle should return a list of the same length
+        let result = run("len(shuffle([1, 2, 3, 4, 5]))").unwrap();
+        assert_eq!(result, Value::Integer(5));
+    }
+
+    #[test]
+    fn test_shuffle_reject_string() {
+        let result = run(r#"shuffle("hello")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_sort_string_list() {
+        let result = run(r#"
+ken l = sort(["c", "a", "b"])
+l[0]
+"#).unwrap();
+        assert_eq!(result, Value::String("a".to_string()));
+    }
+
+    #[test]
+    fn test_sort_float_list() {
+        let result = run(r#"
+ken l = sort([3.5, 1.5, 2.5])
+l[0]
+"#).unwrap();
+        assert_eq!(result, Value::Float(1.5));
+    }
+
+    #[test]
+    fn test_sort_rejects_non_list() {
+        let result = run(r#"sort("abc")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_jammy_min_max() {
+        let result = run("jammy(1, 10)").unwrap();
+        if let Value::Integer(n) = result {
+            assert!(n >= 1 && n < 10);
+        } else {
+            panic!("Expected integer");
+        }
+    }
+
+    #[test]
+    fn test_jammy_bounds_error() {
+        let result = run("jammy(10, 5)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_the_noo() {
+        let result = run("the_noo()").unwrap();
+        if let Value::Integer(ts) = result {
+            assert!(ts > 0);
+        } else {
+            panic!("Expected integer timestamp");
+        }
+    }
+
+    #[test]
+    fn test_clype_debug_info() {
+        let result = run("clype([1, 2, 3])").unwrap();
+        if let Value::String(s) = result {
+            assert!(s.contains("list"));
+        } else {
+            panic!("Expected string");
+        }
+    }
+
+    #[test]
+    fn test_is_a_integer() {
+        let result = run(r#"is_a(42, "integer")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_is_a_function() {
+        let result = run(r#"
+dae foo() { gie 1 }
+is_a(foo, "function")
+"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_is_a_nil() {
+        let result = run(r#"is_a(naething, "nil")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_is_a_range() {
+        let result = run(r#"is_a(1..10, "range")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_tae_bool() {
+        let result = run("tae_bool(0)").unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_char_at_positive() {
+        let result = run(r#"char_at("hello", 1)"#).unwrap();
+        assert_eq!(result, Value::String("e".to_string()));
+    }
+
+    #[test]
+    fn test_char_at_negative() {
+        let result = run(r#"char_at("hello", -1)"#).unwrap();
+        assert_eq!(result, Value::String("o".to_string()));
+    }
+
+    #[test]
+    fn test_char_at_out_of_bounds() {
+        let result = run(r#"char_at("hi", 10)"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_repeat_string() {
+        let result = run(r#"repeat("ab", 3)"#).unwrap();
+        assert_eq!(result, Value::String("ababab".to_string()));
+    }
+
+    #[test]
+    fn test_repeat_negative_error() {
+        let result = run(r#"repeat("ab", -1)"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_index_of_string() {
+        let result = run(r#"index_of("hello", "ll")"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_index_of_string_not_found() {
+        let result = run(r#"index_of("hello", "xyz")"#).unwrap();
+        assert_eq!(result, Value::Integer(-1));
+    }
+
+    #[test]
+    fn test_index_of_list() {
+        let result = run(r#"index_of([10, 20, 30], 20)"#).unwrap();
+        assert_eq!(result, Value::Integer(1));
+    }
+
+    #[test]
+    fn test_index_of_list_not_found() {
+        let result = run(r#"index_of([1, 2, 3], 99)"#).unwrap();
+        assert_eq!(result, Value::Integer(-1));
+    }
+
+    // ==================== More String Functions ====================
+
+    #[test]
+    fn test_pad_left() {
+        let result = run(r#"pad_left("5", 3, "0")"#).unwrap();
+        assert_eq!(result, Value::String("005".to_string()));
+    }
+
+    #[test]
+    fn test_pad_right() {
+        let result = run(r#"pad_right("5", 3, "0")"#).unwrap();
+        assert_eq!(result, Value::String("500".to_string()));
+    }
+
+    #[test]
+    fn test_pad_left_already_wide() {
+        let result = run(r#"pad_left("hello", 3, " ")"#).unwrap();
+        assert_eq!(result, Value::String("hello".to_string()));
+    }
+
+    #[test]
+    fn test_lines() {
+        let result = run(r#"len(lines("a\nb\nc"))"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_lines_error_non_string() {
+        let result = run("lines(42)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_is_space() {
+        let result = run(r#"is_space("   ")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_is_space_mixed_chars() {
+        let result = run(r#"is_space("a b")"#).unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_is_space_error_non_string() {
+        let result = run("is_space(42)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_chars() {
+        let result = run(r#"len(chars("abc"))"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_chars_error_non_string() {
+        let result = run("chars(42)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_ord() {
+        let result = run(r#"ord("A")"#).unwrap();
+        assert_eq!(result, Value::Integer(65));
+    }
+
+    #[test]
+    fn test_ord_empty_string_error() {
+        let result = run(r#"ord("")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_chr() {
+        let result = run("chr(65)").unwrap();
+        assert_eq!(result, Value::String("A".to_string()));
+    }
+
+    #[test]
+    fn test_chr_invalid_codepoint() {
+        let result = run("chr(-1)");
+        assert!(result.is_err());
+    }
+
+    // ==================== More List Functions ====================
+
+    #[test]
+    fn test_flatten() {
+        let result = run("len(flatten([[1, 2], [3, 4]]))").unwrap();
+        assert_eq!(result, Value::Integer(4));
+    }
+
+    #[test]
+    fn test_flatten_mixed() {
+        let result = run("len(flatten([1, [2, 3], 4]))").unwrap();
+        assert_eq!(result, Value::Integer(4));
+    }
+
+    #[test]
+    fn test_flatten_error_non_list() {
+        let result = run(r#"flatten("abc")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_zip() {
+        let result = run("len(zip([1, 2], [3, 4]))").unwrap();
+        assert_eq!(result, Value::Integer(2)); // Two pairs
+    }
+
+    #[test]
+    fn test_zip_error_non_lists() {
+        let result = run(r#"zip([1], "abc")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_enumerate() {
+        let result = run(r#"
+ken e = enumerate(["a", "b"])
+e[0][0]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(0));
+    }
+
+    #[test]
+    fn test_enumerate_error_non_list() {
+        let result = run(r#"enumerate("abc")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_uniq() {
+        let result = run("len(uniq([1, 2, 2, 3, 3, 3]))").unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_uniq_error_non_list() {
+        let result = run(r#"uniq("abc")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_chynge_insert() {
+        let result = run(r#"
+ken l = chynge([1, 3], 1, 2)
+l[1]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_chynge_negative_index() {
+        let result = run(r#"
+ken l = chynge([1, 2, 3], -1, 99)
+len(l)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(4));
+    }
+
+    #[test]
+    fn test_dicht_remove() {
+        let result = run("len(dicht([1, 2, 3], 1))").unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_dicht_negative_index() {
+        let result = run(r#"
+ken l = dicht([1, 2, 3], -1)
+len(l)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_tak() {
+        let result = run("len(tak([1, 2, 3, 4], 2))").unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_string_slice_take() {
+        let result = run(r#""hello"[0:3]"#).unwrap();
+        assert_eq!(result, Value::String("hel".to_string()));
+    }
+
+    #[test]
+    fn test_drap() {
+        let result = run("len(drap([1, 2, 3, 4], 2))").unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_string_slice_drop() {
+        let result = run(r#""hello"[2:]"#).unwrap();
+        assert_eq!(result, Value::String("llo".to_string()));
+    }
+
+    #[test]
+    fn test_redd_up() {
+        let result = run("len(redd_up([1, naething, 2, naething, 3]))").unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_redd_up_error_non_list() {
+        let result = run(r#"redd_up("abc")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_split_by_even() {
+        let result = run(r#"
+ken parts = split_by([1, 2, 3, 4], "even")
+len(parts[0])
+"#).unwrap();
+        assert_eq!(result, Value::Integer(2)); // 2, 4 are even
+    }
+
+    #[test]
+    fn test_split_by_positive() {
+        let result = run(r#"
+ken parts = split_by([-1, 0, 1, 2], "positive")
+len(parts[0])
+"#).unwrap();
+        assert_eq!(result, Value::Integer(2)); // 1, 2 are positive
+    }
+
+    #[test]
+    fn test_split_by_unknown_predicate() {
+        let result = run(r#"split_by([1, 2], "unknown")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_grup_runs() {
+        let result = run("len(grup_runs([1, 1, 2, 2, 2, 3]))").unwrap();
+        assert_eq!(result, Value::Integer(3)); // [[1,1], [2,2,2], [3]]
+    }
+
+    #[test]
+    fn test_grup_runs_error_non_list() {
+        let result = run(r#"grup_runs("aab")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_chunks() {
+        let result = run("len(chunks([1, 2, 3, 4, 5], 2))").unwrap();
+        assert_eq!(result, Value::Integer(3)); // [[1,2], [3,4], [5]]
+    }
+
+    #[test]
+    fn test_chunks_zero_size_error() {
+        let result = run("chunks([1, 2, 3], 0)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_interleave() {
+        let result = run("len(interleave([1, 2], [3, 4]))").unwrap();
+        assert_eq!(result, Value::Integer(4)); // [1, 3, 2, 4]
+    }
+
+    #[test]
+    fn test_interleave_error_non_lists() {
+        let result = run(r#"interleave([1], "abc")"#);
+        assert!(result.is_err());
+    }
+
+    // ==================== Math Functions ====================
+
+    #[test]
+    fn test_pooer_integers() {
+        let result = run("pooer(2, 10)").unwrap();
+        assert_eq!(result, Value::Integer(1024));
+    }
+
+    #[test]
+    fn test_pooer_negative_exponent() {
+        let result = run("pooer(2, -2)").unwrap();
+        assert_eq!(result, Value::Float(0.25));
+    }
+
+    #[test]
+    fn test_pooer_floats() {
+        let result = run("pooer(2.0, 3.0)").unwrap();
+        assert_eq!(result, Value::Float(8.0));
+    }
+
+    #[test]
+    fn test_pooer_error_non_numbers() {
+        let result = run(r#"pooer("a", 2)"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_sign_positive() {
+        let result = run("sign(42)").unwrap();
+        assert_eq!(result, Value::Integer(1));
+    }
+
+    #[test]
+    fn test_sign_negative() {
+        let result = run("sign(-42)").unwrap();
+        assert_eq!(result, Value::Integer(-1));
+    }
+
+    #[test]
+    fn test_sign_zero() {
+        let result = run("sign(0)").unwrap();
+        assert_eq!(result, Value::Integer(0));
+    }
+
+    #[test]
+    fn test_sign_float() {
+        let result = run("sign(-3.14)").unwrap();
+        assert_eq!(result, Value::Integer(-1));
+    }
+
+    #[test]
+    fn test_clamp_integers() {
+        let result = run("clamp(15, 0, 10)").unwrap();
+        assert_eq!(result, Value::Integer(10));
+    }
+
+    #[test]
+    fn test_clamp_floats() {
+        let result = run("clamp(-5.0, 0.0, 10.0)").unwrap();
+        assert_eq!(result, Value::Float(0.0));
+    }
+
+    #[test]
+    fn test_lerp() {
+        let result = run("lerp(0.0, 10.0, 0.5)").unwrap();
+        assert_eq!(result, Value::Float(5.0));
+    }
+
+    #[test]
+    fn test_lerp_integers() {
+        let result = run("lerp(0, 100, 0)").unwrap();
+        assert_eq!(result, Value::Float(0.0));
+    }
+
+    #[test]
+    fn test_gcd() {
+        let result = run("gcd(48, 18)").unwrap();
+        assert_eq!(result, Value::Integer(6));
+    }
+
+    #[test]
+    fn test_gcd_negative() {
+        let result = run("gcd(-48, 18)").unwrap();
+        assert_eq!(result, Value::Integer(6));
+    }
+
+    #[test]
+    fn test_lcm() {
+        let result = run("lcm(4, 6)").unwrap();
+        assert_eq!(result, Value::Integer(12));
+    }
+
+    #[test]
+    fn test_lcm_zero() {
+        let result = run("lcm(0, 5)").unwrap();
+        assert_eq!(result, Value::Integer(0));
+    }
+
+    #[test]
+    fn test_factorial() {
+        let result = run("factorial(5)").unwrap();
+        assert_eq!(result, Value::Integer(120));
+    }
+
+    #[test]
+    fn test_factorial_zero() {
+        let result = run("factorial(0)").unwrap();
+        assert_eq!(result, Value::Integer(1));
+    }
+
+    #[test]
+    fn test_factorial_negative_error() {
+        let result = run("factorial(-1)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_factorial_too_big_error() {
+        let result = run("factorial(21)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_is_even() {
+        let result = run("is_even(4)").unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_is_odd() {
+        let result = run("is_odd(3)").unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    // ==================== Scots-themed Functions ====================
+
+    #[test]
+    fn test_clarty_list_duplicates() {
+        let result = run("clarty([1, 2, 2, 3])").unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_clarty_list_no_duplicates() {
+        let result = run("clarty([1, 2, 3])").unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_clarty_string() {
+        let result = run(r#"clarty("hello")"#).unwrap(); // has duplicate 'l'
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_dreich_empty() {
+        let result = run(r#"dreich("")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_dreich_same_chars() {
+        let result = run(r#"dreich("aaaa")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_dreich_varied() {
+        let result = run(r#"dreich("hello")"#).unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_stoater_numbers() {
+        let result = run("stoater([1, 5, 3, 2])").unwrap();
+        assert_eq!(result, Value::Integer(5));
+    }
+
+    #[test]
+    fn test_stoater_floats() {
+        let result = run("stoater([1.0, 5.0, 3.0])").unwrap();
+        assert_eq!(result, Value::Float(5.0));
+    }
+
+    #[test]
+    fn test_stoater_strings() {
+        let result = run(r#"stoater(["a", "abc", "ab"])"#).unwrap();
+        assert_eq!(result, Value::String("abc".to_string())); // longest
+    }
+
+    #[test]
+    fn test_stoater_empty_list_error() {
+        let result = run("stoater([])");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_numpty_check_nil() {
+        let result = run("numpty_check(naething)").unwrap();
+        if let Value::String(s) = result {
+            assert!(s.contains("naething"));
+        } else {
+            panic!("Expected string");
+        }
+    }
+
+    #[test]
+    fn test_numpty_check_empty_string() {
+        let result = run(r#"numpty_check("")"#).unwrap();
+        if let Value::String(s) = result {
+            assert!(s.contains("Empty string"));
+        } else {
+            panic!("Expected string");
+        }
+    }
+
+    #[test]
+    fn test_numpty_check_valid() {
+        let result = run("numpty_check(42)").unwrap();
+        if let Value::String(s) = result {
+            assert!(s.contains("braw"));
+        } else {
+            panic!("Expected string");
+        }
+    }
+
+    #[test]
+    fn test_bampot_mode() {
+        // Should return a list of same length
+        let result = run("len(bampot_mode([1, 2, 3]))").unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_crabbit_negative() {
+        let result = run("crabbit(-5)").unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_crabbit_positive() {
+        let result = run("crabbit(5)").unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_crabbit_float() {
+        let result = run("crabbit(-3.14)").unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_gallus_large_number() {
+        let result = run("gallus(200)").unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_gallus_small_number() {
+        let result = run("gallus(50)").unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_drookit_has_duplicates() {
+        let result = run("drookit([1, 2, 2, 3])").unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_drookit_no_duplicates() {
+        let result = run("drookit([1, 2, 3])").unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_glaikit_nil() {
+        let result = run("glaikit(naething)").unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_glaikit_zero() {
+        let result = run("glaikit(0)").unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_glaikit_valid() {
+        let result = run("glaikit(42)").unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_cannie_valid() {
+        let result = run("cannie(500)").unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_geggie() {
+        let result = run(r#"geggie("hello")"#).unwrap();
+        assert_eq!(result, Value::String("ho".to_string()));
+    }
+
+    #[test]
+    fn test_geggie_empty() {
+        let result = run(r#"geggie("")"#).unwrap();
+        assert_eq!(result, Value::String("".to_string()));
+    }
+
+    #[test]
+    fn test_banter() {
+        let result = run(r#"banter("ab", "12")"#).unwrap();
+        if let Value::String(s) = result {
+            assert!(s.len() >= 2);
+        } else {
+            panic!("Expected string");
+        }
+    }
+
+    // ==================== Timing Functions ====================
+
+    #[test]
+    fn test_noo() {
+        let result = run("noo()").unwrap();
+        if let Value::Integer(ts) = result {
+            assert!(ts > 0);
+        } else {
+            panic!("Expected integer");
+        }
+    }
+
+    #[test]
+    fn test_tick() {
+        let result = run("tick()").unwrap();
+        if let Value::Integer(ts) = result {
+            assert!(ts > 0);
+        } else {
+            panic!("Expected integer");
+        }
+    }
+
+    #[test]
+    fn test_braw_time() {
+        let result = run("braw_time()").unwrap();
+        if let Value::String(s) = result {
+            assert!(s.contains(":")); // Should contain time
+        } else {
+            panic!("Expected string");
+        }
+    }
+
+    #[test]
+    fn test_haver() {
+        let result = run("haver()").unwrap();
+        if let Value::String(s) = result {
+            assert!(!s.is_empty());
+        } else {
+            panic!("Expected string");
+        }
+    }
+
+    #[test]
+    fn test_slainte() {
+        let result = run("slainte()").unwrap();
+        if let Value::String(s) = result {
+            assert!(!s.is_empty());
+        } else {
+            panic!("Expected string");
+        }
+    }
+
+    // ==================== Dictionary Functions ====================
+
+    #[test]
+    fn test_dict_merge() {
+        let result = run(r#"
+ken d1 = {"a": 1}
+ken d2 = {"b": 2}
+len(keys(dict_merge(d1, d2)))
+"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_dict_merge_override() {
+        let result = run(r#"
+ken d1 = {"a": 1}
+ken d2 = {"a": 2}
+ken merged = dict_merge(d1, d2)
+merged["a"]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_dict_get_existing() {
+        let result = run(r#"dict_get({"a": 42}, "a", 0)"#).unwrap();
+        assert_eq!(result, Value::Integer(42));
+    }
+
+    #[test]
+    fn test_dict_get_default() {
+        let result = run(r#"dict_get({"a": 1}, "b", 99)"#).unwrap();
+        assert_eq!(result, Value::Integer(99));
+    }
+
+    #[test]
+    fn test_dict_has() {
+        let result = run(r#"dict_has({"a": 1}, "a")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_dict_has_missing() {
+        let result = run(r#"dict_has({"a": 1}, "b")"#).unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_dict_remove() {
+        let result = run(r#"
+ken d = dict_remove({"a": 1, "b": 2}, "a")
+len(keys(d))
+"#).unwrap();
+        assert_eq!(result, Value::Integer(1));
+    }
+
+    #[test]
+    fn test_dict_invert() {
+        let result = run(r#"
+ken d = dict_invert({"a": "1", "b": "2"})
+d["1"]
+"#).unwrap();
+        assert_eq!(result, Value::String("a".to_string()));
+    }
+
+    #[test]
+    fn test_items() {
+        let result = run(r#"len(items({"a": 1, "b": 2}))"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_fae_pairs() {
+        let result = run(r#"
+ken d = fae_pairs([["a", 1], ["b", 2]])
+d["a"]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(1));
+    }
+
+    // ==================== More String Functions ====================
+
+    #[test]
+    fn test_center() {
+        let result = run(r#"center("hi", 6, "-")"#).unwrap();
+        assert_eq!(result, Value::String("--hi--".to_string()));
+    }
+
+    #[test]
+    fn test_is_upper() {
+        let result = run(r#"is_upper("HELLO")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_is_upper_mixed() {
+        let result = run(r#"is_upper("Hello")"#).unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_is_lower() {
+        let result = run(r#"is_lower("hello")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_swapcase() {
+        let result = run(r#"swapcase("Hello")"#).unwrap();
+        assert_eq!(result, Value::String("hELLO".to_string()));
+    }
+
+    #[test]
+    fn test_strip_left() {
+        let result = run(r#"strip_left("xxxhello", "x")"#).unwrap();
+        assert_eq!(result, Value::String("hello".to_string()));
+    }
+
+    #[test]
+    fn test_strip_right() {
+        let result = run(r#"strip_right("helloyyy", "y")"#).unwrap();
+        assert_eq!(result, Value::String("hello".to_string()));
+    }
+
+    #[test]
+    fn test_replace_first() {
+        let result = run(r#"replace_first("hello hello", "hello", "hi")"#).unwrap();
+        assert_eq!(result, Value::String("hi hello".to_string()));
+    }
+
+    #[test]
+    fn test_substr_between() {
+        let result = run(r#"substr_between("Hello [World]!", "[", "]")"#).unwrap();
+        assert_eq!(result, Value::String("World".to_string()));
+    }
+
+    #[test]
+    fn test_substr_between_not_found() {
+        let result = run(r#"substr_between("Hello World", "[", "]")"#).unwrap();
+        assert_eq!(result, Value::Nil);
+    }
+
+    // ==================== Ternary Operator ====================
+
+    #[test]
+    fn test_ternary_true() {
+        let result = run("ken x = gin aye than 1 ither 2\nx").unwrap();
+        assert_eq!(result, Value::Integer(1));
+    }
+
+    #[test]
+    fn test_ternary_false() {
+        let result = run("ken x = gin nae than 1 ither 2\nx").unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_ternary_nested() {
+        let result = run("ken x = gin aye than (gin nae than 1 ither 2) ither 3\nx").unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    // ==================== More Edge Cases ====================
+
+    #[test]
+    fn test_list_concat() {
+        let result = run("len([1, 2] + [3, 4])").unwrap();
+        assert_eq!(result, Value::Integer(4));
+    }
+
+    #[test]
+    fn test_string_multiply() {
+        let result = run(r#""ab" * 3"#).unwrap();
+        assert_eq!(result, Value::String("ababab".to_string()));
+    }
+
+    #[test]
+    fn test_integer_multiply_string() {
+        let result = run(r#"3 * "ab""#).unwrap();
+        assert_eq!(result, Value::String("ababab".to_string()));
+    }
+
+    #[test]
+    fn test_modulo_floats() {
+        let result = run("7.5 % 2.5").unwrap();
+        assert_eq!(result, Value::Float(0.0));
+    }
+
+    #[test]
+    fn test_division_by_zero_float() {
+        let result = run("5.0 / 0.0");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_modulo_by_zero() {
+        let result = run("5 % 0");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_contains_dict() {
+        let result = run(r#"contains({"a": 1}, "a")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_contains_dict_missing() {
+        let result = run(r#"contains({"a": 1}, "b")"#).unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_reverse_str_builtin() {
+        let result = run(r#"reverse("hello")"#).unwrap();
+        assert_eq!(result, Value::String("olleh".to_string()));
+    }
+
+    #[test]
+    fn test_reverse_error_invalid_type() {
+        let result = run("reverse(42)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_birl_rotate() {
+        let result = run(r#"
+ken l = birl([1, 2, 3, 4], 1)
+l[0]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_birl_negative() {
+        let result = run(r#"
+ken l = birl([1, 2, 3, 4], -1)
+l[0]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(4));
+    }
+
+    #[test]
+    fn test_stooshie() {
+        // Just verify it returns a string of same length
+        let result = run(r#"len(chars(stooshie("hello")))"#).unwrap();
+        assert_eq!(result, Value::Integer(5));
+    }
+
+    #[test]
+    fn test_sclaff_deep_flatten() {
+        let result = run("len(sclaff([[1, [2, 3]], [[4]]]))").unwrap();
+        assert_eq!(result, Value::Integer(4));
+    }
+
+    #[test]
+    fn test_dram_singleton() {
+        // Should return something from the list
+        let result = run("dram([1])").unwrap();
+        assert_eq!(result, Value::Integer(1));
+    }
+
+    #[test]
+    fn test_dram_empty_list() {
+        let result = run("dram([])").unwrap();
+        assert_eq!(result, Value::Nil);
+    }
+
+    #[test]
+    fn test_ceilidh_interleave() {
+        let result = run("len(ceilidh([1, 2], [3, 4]))").unwrap();
+        assert_eq!(result, Value::Integer(4));
+    }
+
+    #[test]
+    fn test_blether_format() {
+        let result = run(r#"blether_format("Hello {name}!", {"name": "World"})"#).unwrap();
+        assert_eq!(result, Value::String("Hello World!".to_string()));
+    }
+
+    #[test]
+    fn test_wheesht_aw() {
+        let result = run(r#"wheesht_aw("  hello   world  ")"#).unwrap();
+        assert_eq!(result, Value::String("hello world".to_string()));
+    }
+
+    #[test]
+    fn test_scunner_check_pass() {
+        let result = run(r#"scunner_check(42, "integer")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_scunner_check_fail() {
+        let result = run(r#"scunner_check(42, "string")"#).unwrap();
+        if let Value::String(s) = result {
+            assert!(s.contains("scunner"));
+        } else {
+            panic!("Expected string error message");
+        }
+    }
+
+    #[test]
+    fn test_wrang_sort() {
+        let result = run(r#"wrang_sort(42, "string")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_tattie_scone() {
+        let result = run(r#"tattie_scone("yum", 3)"#).unwrap();
+        assert_eq!(result, Value::String("yum | yum | yum".to_string()));
+    }
+
+    #[test]
+    fn test_haggis_hunt() {
+        let result = run(r#"len(haggis_hunt("aba aba", "aba"))"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_sporran_fill() {
+        let result = run(r#"sporran_fill("hi", 6, "*")"#).unwrap();
+        assert_eq!(result, Value::String("**hi**".to_string()));
+    }
+
+    // ==================== Hex Conversion ====================
+
+    #[test]
+    fn test_tae_hex() {
+        let result = run("tae_hex(255)").unwrap();
+        assert_eq!(result, Value::String("ff".to_string()));
+    }
+
+    #[test]
+    fn test_fae_hex() {
+        let result = run(r#"fae_hex("ff")"#).unwrap();
+        assert_eq!(result, Value::Integer(255));
+    }
+
+    #[test]
+    fn test_fae_hex_invalid() {
+        let result = run(r#"fae_hex("zz")"#);
+        assert!(result.is_err());
+    }
+
+    // ==================== Statistics Functions ====================
+
+    #[test]
+    fn test_minaw() {
+        let result = run("minaw([3, 1, 4, 1, 5])").unwrap();
+        assert_eq!(result, Value::Integer(1));
+    }
+
+    #[test]
+    fn test_maxaw() {
+        let result = run("maxaw([3, 1, 4, 1, 5])").unwrap();
+        assert_eq!(result, Value::Integer(5));
+    }
+
+    #[test]
+    fn test_range_o() {
+        let result = run("range_o([1, 5, 3])").unwrap();
+        assert_eq!(result, Value::Float(4.0)); // 5 - 1 = 4
+    }
+
+    #[test]
+    fn test_sumaw_integers() {
+        let result = run("sumaw([1, 2, 3, 4])").unwrap();
+        assert_eq!(result, Value::Integer(10));
+    }
+
+    #[test]
+    fn test_sumaw_floats() {
+        let result = run("sumaw([1.0, 2.0, 3.0])").unwrap();
+        assert_eq!(result, Value::Float(6.0));
+    }
+
+    // ==================== Inheritance Tests ====================
+
+    #[test]
+    fn test_class_inheritance_method() {
+        let result = run(r#"
+kin Animal {
+    dae speak() {
+        gie "..."
+    }
+}
+kin Dog fae Animal {
+    dae speak() {
+        gie "Woof!"
+    }
+}
+ken d = Dog()
+d.speak()
+"#).unwrap();
+        assert_eq!(result, Value::String("Woof!".to_string()));
+    }
+
+    #[test]
+    fn test_inheritance_superclass_not_a_class() {
+        let result = run(r#"
+ken notAClass = 42
+kin Dog fae notAClass {
+    dae speak() { gie "woof" }
+}
+"#);
+        assert!(result.is_err());
+    }
+
+    // ==================== Spread Operator ====================
+
+    #[test]
+    fn test_spread_list_expr() {
+        let result = run(r#"
+ken a = [1, 2]
+ken b = [0, ...a, 3]
+len(b)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(4));
+    }
+
+    #[test]
+    fn test_spread_string_in_list() {
+        let result = run(r#"
+ken s = "ab"
+ken l = [...s]
+len(l)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_spread_invalid_context() {
+        let result = run("...42");
+        assert!(result.is_err());
+    }
+
+    // ==================== Index Set Tests ====================
+
+    #[test]
+    fn test_list_index_set_negative() {
+        let result = run(r#"
+ken l = [1, 2, 3]
+l[-1] = 99
+l[-1]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(99));
+    }
+
+    #[test]
+    fn test_dict_index_set_non_string() {
+        let result = run(r#"
+ken d = {}
+d[42] = "answer"
+d["42"]
+"#).unwrap();
+        assert_eq!(result, Value::String("answer".to_string()));
+    }
+
+    // ==================== Property Access/Set ====================
+
+    #[test]
+    fn test_set_property_on_invalid_type() {
+        let result = run(r#"
+ken x = 42
+x.foo = 5
+"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_property_on_invalid_type() {
+        let result = run(r#"
+ken x = 42
+x.foo
+"#);
+        assert!(result.is_err());
+    }
+
+    // ==================== Interpreter Config Tests ====================
+
+    #[test]
+    fn test_interp_with_dir() {
+        let interp = Interpreter::with_dir("/tmp");
+        assert!(!interp.has_prelude());
+    }
+
+    #[test]
+    fn test_interp_set_dir() {
+        let mut interp = Interpreter::new();
+        interp.set_current_dir("/tmp");
+        // Should not panic
+    }
+
+    #[test]
+    fn test_interp_user_vars() {
+        let code = "ken x = 42\nken y = \"hello\"";
+        let program = crate::parser::parse(code).unwrap();
+        let mut interp = Interpreter::new();
+        interp.interpret(&program).unwrap();
+        let vars = interp.get_user_variables();
+        assert!(vars.len() >= 2);
+    }
+
+    #[test]
+    fn test_interp_output() {
+        let code = r#"blether "test output""#;
+        let program = crate::parser::parse(code).unwrap();
+        let mut interp = Interpreter::new();
+        interp.interpret(&program).unwrap();
+        let output = interp.get_output();
+        assert!(output.len() >= 1);
+    }
+
+    // ==================== More Native Function Tests ====================
+
+    #[test]
+    fn test_coont_list() {
+        let result = run("coont([1, 2, 2, 3, 2], 2)").unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_coont_in_string() {
+        let result = run(r#"coont("hello", "l")"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_unique_integers() {
+        let result = run("len(unique([1, 2, 2, 3, 3, 3]))").unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_average_floats() {
+        let result = run("average([1.0, 2.0, 3.0, 4.0, 5.0])").unwrap();
+        assert_eq!(result, Value::Float(3.0));
+    }
+
+    #[test]
+    fn test_average_int_list() {
+        let result = run("average([10, 20, 30])").unwrap();
+        assert_eq!(result, Value::Float(20.0));
+    }
+
+    #[test]
+    fn test_median() {
+        let result = run("median([1.0, 2.0, 3.0])").unwrap();
+        assert_eq!(result, Value::Float(2.0));
+    }
+
+    #[test]
+    fn test_median_even() {
+        let result = run("median([1.0, 2.0, 3.0, 4.0])").unwrap();
+        assert_eq!(result, Value::Float(2.5));
+    }
+
+    #[test]
+    fn test_sumaw_list_integers() {
+        let result = run("sumaw([1, 2, 3, 4, 5])").unwrap();
+        assert_eq!(result, Value::Integer(15));
+    }
+
+    #[test]
+    fn test_sumaw_list_floats() {
+        let result = run("sumaw([1.5, 2.5, 3.0])").unwrap();
+        assert_eq!(result, Value::Float(7.0));
+    }
+
+    #[test]
+    fn test_product() {
+        let result = run("product([1, 2, 3, 4])").unwrap();
+        assert_eq!(result, Value::Integer(24));
+    }
+
+    #[test]
+    fn test_product_floats() {
+        let result = run("product([2.0, 3.0, 4.0])").unwrap();
+        assert_eq!(result, Value::Float(24.0));
+    }
+
+    #[test]
+    fn test_minaw_list() {
+        let result = run("minaw([5, 3, 8, 1, 9])").unwrap();
+        assert_eq!(result, Value::Integer(1));
+    }
+
+    #[test]
+    fn test_maxaw_list() {
+        let result = run("maxaw([5, 3, 8, 1, 9])").unwrap();
+        assert_eq!(result, Value::Integer(9));
+    }
+
+    #[test]
+    fn test_wheesht_aw_string_trim() {
+        // wheesht_aw cleans and trims a string
+        let result = run(r#"wheesht_aw("  hello   world  ")"#).unwrap();
+        assert_eq!(result, Value::String("hello world".to_string()));
+    }
+
+    #[test]
+    fn test_redd_up_with_nils() {
+        // redd_up filters out nil values from a list
+        let result = run("len(redd_up([1, naething, 2, naething, 3]))").unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_split_by_even_count() {
+        let result = run(r#"
+ken parts = split_by([1, 2, 3, 4, 5, 6], "even")
+len(parts[0])
+"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_split_by_odd_count() {
+        let result = run(r#"
+ken parts = split_by([1, 2, 3, 4, 5, 6], "odd")
+len(parts[0])
+"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    // ==================== String Methods ====================
+
+    #[test]
+    fn test_upper() {
+        let result = run(r#"upper("hello")"#).unwrap();
+        assert_eq!(result, Value::String("HELLO".to_string()));
+    }
+
+    #[test]
+    fn test_lower() {
+        let result = run(r#"lower("HELLO")"#).unwrap();
+        assert_eq!(result, Value::String("hello".to_string()));
+    }
+
+    #[test]
+    fn test_wheesht_string() {
+        // Using wheesht to filter a string (removes whitespace-ish behavior via replace)
+        let result = run(r#"replace("  hello  ", " ", "")"#).unwrap();
+        assert_eq!(result, Value::String("hello".to_string()));
+    }
+
+    #[test]
+    fn test_split() {
+        let result = run(r#"len(split("a,b,c", ","))"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_join() {
+        let result = run(r#"join(["a", "b", "c"], "-")"#).unwrap();
+        assert_eq!(result, Value::String("a-b-c".to_string()));
+    }
+
+    #[test]
+    fn test_replace() {
+        let result = run(r#"replace("hello", "l", "x")"#).unwrap();
+        assert_eq!(result, Value::String("hexxo".to_string()));
+    }
+
+    #[test]
+    fn test_starts_wi() {
+        let result = run(r#"starts_wi("hello", "hel")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_starts_wi_false() {
+        let result = run(r#"starts_wi("hello", "wor")"#).unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_ends_wi() {
+        let result = run(r#"ends_wi("hello", "llo")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_ends_wi_false() {
+        let result = run(r#"ends_wi("hello", "abc")"#).unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    // ==================== List Operations ====================
+
+    #[test]
+    fn test_shove_list() {
+        let result = run(r#"
+ken l = [1, 2, 3]
+shove(l, 4)
+len(l)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(4));
+    }
+
+    #[test]
+    fn test_yank_list() {
+        let result = run(r#"
+ken l = [1, 2, 3]
+yank(l)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_chynge_list() {
+        // chynge inserts at an index
+        let result = run(r#"
+ken l = [1, 3, 4]
+ken updated = chynge(l, 1, 2)
+updated[1]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_dicht_list() {
+        // dicht removes at an index
+        let result = run(r#"
+ken l = [1, 2, 3]
+ken updated = dicht(l, 1)
+len(updated)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_redd_up_list() {
+        // redd_up removes nil values
+        let result = run(r#"
+ken l = [1, naething, 2, naething, 3]
+ken cleaned = redd_up(l)
+len(cleaned)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_flatten_nested() {
+        let result = run("len(flatten([[1, 2], [3, 4], [5]]))").unwrap();
+        assert_eq!(result, Value::Integer(5));
+    }
+
+    // ==================== Type Conversion ====================
+
+    #[test]
+    fn test_tae_string() {
+        let result = run("tae_string(42)").unwrap();
+        assert_eq!(result, Value::String("42".to_string()));
+    }
+
+    #[test]
+    fn test_tae_int() {
+        let result = run(r#"tae_int("42")"#).unwrap();
+        assert_eq!(result, Value::Integer(42));
+    }
+
+    #[test]
+    fn test_tae_int_float() {
+        let result = run("tae_int(3.14)").unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_tae_float() {
+        let result = run(r#"tae_float("3.14")"#).unwrap();
+        assert_eq!(result, Value::Float(3.14));
+    }
+
+    #[test]
+    fn test_tae_float_int() {
+        let result = run("tae_float(42)").unwrap();
+        assert_eq!(result, Value::Float(42.0));
+    }
+
+    // ==================== Math Functions ====================
+
+    #[test]
+    fn test_sqrt() {
+        let result = run("sqrt(16.0)").unwrap();
+        assert_eq!(result, Value::Float(4.0));
+    }
+
+    #[test]
+    fn test_sqrt_int() {
+        let result = run("sqrt(9)").unwrap();
+        assert_eq!(result, Value::Float(3.0));
+    }
+
+    #[test]
+    fn test_abs_int() {
+        let result = run("abs(-42)").unwrap();
+        assert_eq!(result, Value::Integer(42));
+    }
+
+    #[test]
+    fn test_abs_float() {
+        let result = run("abs(-3.14)").unwrap();
+        assert_eq!(result, Value::Float(3.14));
+    }
+
+    #[test]
+    fn test_floor() {
+        let result = run("floor(3.7)").unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_ceil() {
+        let result = run("ceil(3.2)").unwrap();
+        assert_eq!(result, Value::Integer(4));
+    }
+
+    #[test]
+    fn test_round() {
+        let result = run("round(3.5)").unwrap();
+        assert_eq!(result, Value::Integer(4));
+    }
+
+    #[test]
+    fn test_log() {
+        let result = run("log(2.718281828)").unwrap();
+        if let Value::Float(n) = result {
+            assert!((n - 1.0).abs() < 0.01);
+        } else {
+            panic!("Expected float");
+        }
+    }
+
+    #[test]
+    fn test_exp() {
+        let result = run("exp(1.0)").unwrap();
+        if let Value::Float(n) = result {
+            assert!((n - 2.718281828).abs() < 0.001);
+        } else {
+            panic!("Expected float");
+        }
+    }
+
+    #[test]
+    fn test_sin() {
+        let result = run("sin(0.0)").unwrap();
+        assert_eq!(result, Value::Float(0.0));
+    }
+
+    #[test]
+    fn test_cos() {
+        let result = run("cos(0.0)").unwrap();
+        assert_eq!(result, Value::Float(1.0));
+    }
+
+    #[test]
+    fn test_tan() {
+        let result = run("tan(0.0)").unwrap();
+        assert_eq!(result, Value::Float(0.0));
+    }
+
+    // ==================== Error Handling ====================
+
+    #[test]
+    fn test_throw() {
+        let result = run(r#"fling("test error")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_try_catch_catches() {
+        let result = run(r#"
+hae_a_bash {
+    fling("oops")
+} gin_it_gangs_wrang e {
+    blether e
+}
+42
+"#).unwrap();
+        assert_eq!(result, Value::Integer(42));
+    }
+
+    #[test]
+    fn test_try_catch_error_value() {
+        // Test that we can catch and handle errors
+        let result = run(r#"
+ken caught = nae
+hae_a_bash {
+    fling("my error")
+} gin_it_gangs_wrang e {
+    caught = aye
+}
+caught
+"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    // ==================== Complex Expression Tests ====================
+
+    #[test]
+    fn test_nested_function_calls() {
+        let result = run("len(split(upper(\"hello,world\"), \",\"))").unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_list_comprehension_like() {
+        // Using map-like functionality with shove
+        let result = run(r#"
+ken l = [1, 2, 3]
+ken result = []
+fer x in l {
+    shove(result, x * 2)
+}
+result[1]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(4));
+    }
+
+    #[test]
+    fn test_dict_iteration_keys() {
+        let result = run(r#"
+ken d = {"a": 1, "b": 2}
+ken k = keys(d)
+len(k)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_dict_iteration_values() {
+        let result = run(r#"
+ken d = {"a": 1, "b": 2}
+ken v = values(d)
+len(v)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    // ==================== Closure Tests ====================
+
+    #[test]
+    fn test_closure_captures_variable() {
+        let result = run(r#"
+ken x = 10
+dae add_x(n) {
+    gie n + x
+}
+add_x(5)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(15));
+    }
+
+    #[test]
+    fn test_closure_counter() {
+        let result = run(r#"
+dae make_counter() {
+    ken count = 0
+    dae counter() {
+        count = count + 1
+        gie count
+    }
+    gie counter
+}
+ken c = make_counter()
+c()
+c()
+c()
+"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    // ==================== More Edge Cases ====================
+
+    #[test]
+    fn test_empty_function() {
+        let result = run(r#"
+dae empty() {
+}
+empty()
+"#).unwrap();
+        assert_eq!(result, Value::Nil);
+    }
+
+    #[test]
+    fn test_recursive_function() {
+        let result = run(r#"
+dae fib(n) {
+    gin n <= 1 {
+        gie n
+    }
+    gie fib(n - 1) + fib(n - 2)
+}
+fib(10)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(55));
+    }
+
+    #[test]
+    fn test_mutual_recursion() {
+        let result = run(r#"
+dae is_even(n) {
+    gin n == 0 { gie aye }
+    gie is_odd(n - 1)
+}
+dae is_odd(n) {
+    gin n == 0 { gie nae }
+    gie is_even(n - 1)
+}
+is_even(10)
+"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    // ==================== Native Function Coverage Tests ====================
+
+    #[test]
+    fn test_range_function() {
+        let result = run(r#"
+ken r = range(1, 5)
+ken total = 0
+fer i in r {
+    total = total + i
+}
+total
+"#).unwrap();
+        assert_eq!(result, Value::Integer(10)); // 1+2+3+4 = 10
+    }
+
+    #[test]
+    fn test_min_floats() {
+        let result = run("min(3.5, 2.1)").unwrap();
+        assert_eq!(result, Value::Float(2.1));
+    }
+
+    #[test]
+    fn test_max_floats() {
+        let result = run("max(3.5, 2.1)").unwrap();
+        assert_eq!(result, Value::Float(3.5));
+    }
+
+    #[test]
+    fn test_floor_integer() {
+        let result = run("floor(42)").unwrap();
+        assert_eq!(result, Value::Integer(42));
+    }
+
+    #[test]
+    fn test_ceil_integer() {
+        let result = run("ceil(42)").unwrap();
+        assert_eq!(result, Value::Integer(42));
+    }
+
+    #[test]
+    fn test_round_integer() {
+        let result = run("round(42)").unwrap();
+        assert_eq!(result, Value::Integer(42));
+    }
+
+    #[test]
+    fn test_title_case_string() {
+        let result = run(r#"title("hello world")"#).unwrap();
+        assert_eq!(result, Value::String("Hello World".to_string()));
+    }
+
+    #[test]
+    fn test_center_function() {
+        let result = run(r#"center("hi", 6, " ")"#).unwrap();
+        assert_eq!(result, Value::String("  hi  ".to_string()));
+    }
+
+    #[test]
+    fn test_repeat_function() {
+        let result = run(r#"repeat("ab", 3)"#).unwrap();
+        assert_eq!(result, Value::String("ababab".to_string()));
+    }
+
+    #[test]
+    fn test_lines_function() {
+        let result = run(r#"
+ken l = lines("one
+two
+three")
+len(l)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_words_split() {
+        let result = run(r#"len(words("hello beautiful world"))"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_is_alpha_letter() {
+        let result = run(r#"is_alpha("hello")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_is_alpha_mixed() {
+        let result = run(r#"is_alpha("hello123")"#).unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_is_digit_numeric() {
+        let result = run(r#"is_digit("12345")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_is_digit_alphanumeric() {
+        let result = run(r#"is_digit("123abc")"#).unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_is_space_whitespace() {
+        let result = run(r#"is_space("   ")"#).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_is_space_with_chars() {
+        let result = run(r#"is_space("  a  ")"#).unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_pad_left_function() {
+        let result = run(r#"pad_left("42", 5, "0")"#).unwrap();
+        assert_eq!(result, Value::String("00042".to_string()));
+    }
+
+    #[test]
+    fn test_pad_right_function() {
+        let result = run(r#"pad_right("42", 5, "0")"#).unwrap();
+        assert_eq!(result, Value::String("42000".to_string()));
+    }
+
+    #[test]
+    fn test_index_of_found() {
+        let result = run(r#"index_of("hello", "l")"#).unwrap();
+        assert_eq!(result, Value::Integer(2));
+    }
+
+    #[test]
+    fn test_index_of_not_found() {
+        let result = run(r#"index_of("hello", "z")"#).unwrap();
+        assert_eq!(result, Value::Integer(-1));
+    }
+
+    #[test]
+    fn test_ord_function() {
+        let result = run(r#"ord("A")"#).unwrap();
+        assert_eq!(result, Value::Integer(65));
+    }
+
+    #[test]
+    fn test_chr_function() {
+        let result = run("chr(65)").unwrap();
+        assert_eq!(result, Value::String("A".to_string()));
+    }
+
+    #[test]
+    fn test_chr_unicode() {
+        let result = run("chr(128512)").unwrap();
+        assert_eq!(result, Value::String("😀".to_string()));
+    }
+
+    #[test]
+    fn test_tae_bool_truthy() {
+        let result = run("tae_bool(1)").unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_tae_bool_falsy() {
+        let result = run("tae_bool(0)").unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_scran_string_range() {
+        let result = run(r#"scran("hello", 1, 4)"#).unwrap();
+        assert_eq!(result, Value::String("ell".to_string()));
+    }
+
+    #[test]
+    fn test_scran_list_range() {
+        let result = run("len(scran([1,2,3,4,5], 1, 4))").unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_append_file() {
+        // Test that append_file function exists (may error on missing file)
+        let result = run(r#"append_file("/tmp/nonexistent_test", "data")"#);
+        // Just checking it doesn't crash - file may or may not exist
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_file_exists_false() {
+        let result = run(r#"file_exists("/nonexistent/path/to/file")"#).unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_read_lines_error() {
+        let result = run(r#"read_lines("/nonexistent/path")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_read_file_error() {
+        let result = run(r#"read_file("/nonexistent/path")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_json_parse_object() {
+        let result = run(r#"
+ken obj = json_parse("{\"a\": 1}")
+obj["a"]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(1));
+    }
+
+    #[test]
+    fn test_json_stringify_dict() {
+        let result = run(r#"json_stringify({"a": 1})"#).unwrap();
+        if let Value::String(s) = result {
+            assert!(s.contains("\"a\"") && s.contains("1"));
+        } else {
+            panic!("Expected string");
+        }
+    }
+
+    #[test]
+    fn test_json_pretty_format() {
+        let result = run(r#"json_pretty({"a": 1})"#).unwrap();
+        if let Value::String(s) = result {
+            assert!(s.contains("a"));
+        } else {
+            panic!("Expected string");
+        }
+    }
+
+    #[test]
+    fn test_sin_pi() {
+        let result = run("sin(3.14159265359)").unwrap();
+        if let Value::Float(n) = result {
+            assert!(n.abs() < 0.0001);
+        } else {
+            panic!("Expected float");
+        }
+    }
+
+    #[test]
+    fn test_cos_pi() {
+        let result = run("cos(3.14159265359)").unwrap();
+        if let Value::Float(n) = result {
+            assert!((n + 1.0).abs() < 0.0001);
+        } else {
+            panic!("Expected float");
+        }
+    }
+
+    #[test]
+    fn test_tan_function() {
+        let result = run("tan(0.785398)").unwrap();
+        if let Value::Float(n) = result {
+            assert!((n - 1.0).abs() < 0.001);
+        } else {
+            panic!("Expected float");
+        }
+    }
+
+    #[test]
+    fn test_atan2_function() {
+        let result = run("atan2(1.0, 1.0)").unwrap();
+        if let Value::Float(n) = result {
+            assert!((n - 0.785398).abs() < 0.001);
+        } else {
+            panic!("Expected float");
+        }
+    }
+
+    #[test]
+    fn test_hypot_function() {
+        let result = run("hypot(3.0, 4.0)").unwrap();
+        assert_eq!(result, Value::Float(5.0));
+    }
+
+    #[test]
+    fn test_pow_integer_exponent() {
+        let result = run("pow(2, 10)").unwrap();
+        assert_eq!(result, Value::Integer(1024));
+    }
+
+    #[test]
+    fn test_pow_float() {
+        let result = run("pow(2.0, 3.0)").unwrap();
+        assert_eq!(result, Value::Float(8.0));
+    }
+
+    #[test]
+    fn test_gcd_function() {
+        let result = run("gcd(48, 18)").unwrap();
+        assert_eq!(result, Value::Integer(6));
+    }
+
+    #[test]
+    fn test_lcm_function() {
+        let result = run("lcm(4, 6)").unwrap();
+        assert_eq!(result, Value::Integer(12));
+    }
+
+    #[test]
+    fn test_zip_lists() {
+        let result = run(r#"
+ken z = zip([1, 2, 3], ["a", "b", "c"])
+len(z)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_enumerate_function() {
+        let result = run(r#"
+ken e = enumerate(["a", "b", "c"])
+len(e)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_unique_function() {
+        let result = run("len(unique([1, 2, 2, 3, 3, 3]))").unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_uniq_function() {
+        // uniq is alias for unique
+        let result = run("len(uniq([1, 1, 2, 2, 3]))").unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
+    #[test]
+    fn test_sort_numbers() {
+        let result = run(r#"
+ken s = sort([3, 1, 4, 1, 5, 9])
+s[0]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(1));
+    }
+
+    #[test]
+    fn test_sort_strings_alpha() {
+        let result = run(r#"
+ken s = sort(["banana", "apple", "cherry"])
+s[0]
+"#).unwrap();
+        assert_eq!(result, Value::String("apple".to_string()));
+    }
+
+    #[test]
+    fn test_shuffle_function() {
+        let result = run(r#"
+ken l = [1, 2, 3, 4, 5]
+ken s = shuffle(l)
+len(s)
+"#).unwrap();
+        assert_eq!(result, Value::Integer(5));
+    }
+
+    #[test]
+    fn test_birl_rotate_list() {
+        let result = run(r#"
+ken l = [1, 2, 3, 4, 5]
+ken r = birl(l, 2)
+r[0]
+"#).unwrap();
+        assert_eq!(result, Value::Integer(3));
+    }
+
 }

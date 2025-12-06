@@ -16,8 +16,8 @@ use lsp_types::{
     CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse,
     Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents,
-    HoverParams, HoverProviderCapability, InitializeParams, MarkupContent, MarkupKind,
-    Position, Range, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Uri,
+    HoverParams, HoverProviderCapability, InitializeParams, MarkupContent, MarkupKind, Position,
+    Range, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Uri,
 };
 use serde_json::Value;
 
@@ -94,10 +94,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     Ok(())
 }
 
-fn main_loop(
-    connection: Connection,
-    params: Value,
-) -> Result<(), Box<dyn Error + Sync + Send>> {
+fn main_loop(connection: Connection, params: Value) -> Result<(), Box<dyn Error + Sync + Send>> {
     let _params: InitializeParams = serde_json::from_value(params).unwrap();
 
     let mut documents = DocumentStore::new();
@@ -292,7 +289,9 @@ fn publish_diagnostics(
         },
     );
 
-    connection.sender.send(Message::Notification(notification))?;
+    connection
+        .sender
+        .send(Message::Notification(notification))?;
     Ok(())
 }
 

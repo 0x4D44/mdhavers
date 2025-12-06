@@ -123,7 +123,14 @@ impl fmt::Display for Value {
                 let set = set.borrow();
                 let mut strs: Vec<&String> = set.iter().collect();
                 strs.sort(); // Sort fer consistent display
-                write!(f, "creel{{{}}}", strs.iter().map(|s| format!("\"{}\"", s)).collect::<Vec<_>>().join(", "))
+                write!(
+                    f,
+                    "creel{{{}}}",
+                    strs.iter()
+                        .map(|s| format!("\"{}\"", s))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
             }
             Value::Function(func) => write!(f, "<dae {}>", func.name),
             Value::NativeFunction(func) => write!(f, "<native dae {}>", func.name),
@@ -399,5 +406,709 @@ impl Environment {
 impl Default for Environment {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ==================== Value::type_name() Tests ====================
+
+    #[test]
+    fn test_value_type_name_all_types() {
+        assert_eq!(Value::Integer(42).type_name(), "integer");
+        assert_eq!(Value::Float(3.14).type_name(), "float");
+        assert_eq!(Value::String("hello".to_string()).type_name(), "string");
+        assert_eq!(Value::Bool(true).type_name(), "bool");
+        assert_eq!(Value::Bool(false).type_name(), "bool");
+        assert_eq!(Value::Nil.type_name(), "naething");
+
+        let list = Value::List(Rc::new(RefCell::new(vec![Value::Integer(1)])));
+        assert_eq!(list.type_name(), "list");
+
+        let dict = Value::Dict(Rc::new(RefCell::new(HashMap::new())));
+        assert_eq!(dict.type_name(), "dict");
+
+        let set = Value::Set(Rc::new(RefCell::new(HashSet::new())));
+        assert_eq!(set.type_name(), "creel");
+
+        let func = HaversFunction::new("test".to_string(), vec![], vec![], None);
+        assert_eq!(Value::Function(Rc::new(func)).type_name(), "function");
+
+        let native = NativeFunction::new("native", 0, |_| Ok(Value::Nil));
+        assert_eq!(Value::NativeFunction(Rc::new(native)).type_name(), "native function");
+
+        let class = HaversClass::new("TestClass".to_string(), None);
+        assert_eq!(Value::Class(Rc::new(class)).type_name(), "class");
+
+        let class2 = Rc::new(HaversClass::new("TestClass".to_string(), None));
+        let instance = HaversInstance::new(class2);
+        assert_eq!(Value::Instance(Rc::new(RefCell::new(instance))).type_name(), "instance");
+
+        let strct = HaversStruct::new("TestStruct".to_string(), vec![]);
+        assert_eq!(Value::Struct(Rc::new(strct)).type_name(), "struct");
+
+        let range = RangeValue::new(0, 10, false);
+        assert_eq!(Value::Range(range).type_name(), "range");
+    }
+
+    // ==================== Value::is_truthy() Tests ====================
+
+    #[test]
+    fn test_value_is_truthy() {
+        // Booleans
+        assert!(Value::Bool(true).is_truthy());
+        assert!(!Value::Bool(false).is_truthy());
+
+        // Nil is always falsy
+        assert!(!Value::Nil.is_truthy());
+
+        // Integer 0 is falsy, others truthy
+        assert!(!Value::Integer(0).is_truthy());
+        assert!(Value::Integer(1).is_truthy());
+        assert!(Value::Integer(-1).is_truthy());
+        assert!(Value::Integer(42).is_truthy());
+
+        // Float 0.0 is falsy, others truthy
+        assert!(!Value::Float(0.0).is_truthy());
+        assert!(Value::Float(0.1).is_truthy());
+        assert!(Value::Float(-0.1).is_truthy());
+        assert!(Value::Float(3.14).is_truthy());
+
+        // Empty string is falsy, non-empty truthy
+        assert!(!Value::String("".to_string()).is_truthy());
+        assert!(Value::String("hello".to_string()).is_truthy());
+        assert!(Value::String(" ".to_string()).is_truthy());
+
+        // Empty list is falsy, non-empty truthy
+        let empty_list = Value::List(Rc::new(RefCell::new(vec![])));
+        let non_empty_list = Value::List(Rc::new(RefCell::new(vec![Value::Integer(1)])));
+        assert!(!empty_list.is_truthy());
+        assert!(non_empty_list.is_truthy());
+
+        // Empty set is falsy, non-empty truthy
+        let empty_set = Value::Set(Rc::new(RefCell::new(HashSet::new())));
+        let mut non_empty = HashSet::new();
+        non_empty.insert("item".to_string());
+        let non_empty_set = Value::Set(Rc::new(RefCell::new(non_empty)));
+        assert!(!empty_set.is_truthy());
+        assert!(non_empty_set.is_truthy());
+
+        // Dict is always truthy (even if empty - default case)
+        let empty_dict = Value::Dict(Rc::new(RefCell::new(HashMap::new())));
+        assert!(empty_dict.is_truthy());
+
+        // Functions are truthy
+        let func = HaversFunction::new("test".to_string(), vec![], vec![], None);
+        assert!(Value::Function(Rc::new(func)).is_truthy());
+
+        // Classes and instances are truthy
+        let class = Rc::new(HaversClass::new("Test".to_string(), None));
+        assert!(Value::Class(class.clone()).is_truthy());
+        let instance = HaversInstance::new(class);
+        assert!(Value::Instance(Rc::new(RefCell::new(instance))).is_truthy());
+    }
+
+    // ==================== Value::as_* Conversion Tests ====================
+
+    #[test]
+    fn test_value_as_integer() {
+        assert_eq!(Value::Integer(42).as_integer(), Some(42));
+        assert_eq!(Value::Float(3.7).as_integer(), Some(3)); // truncates
+        assert_eq!(Value::Float(3.2).as_integer(), Some(3));
+        assert_eq!(Value::String("hello".to_string()).as_integer(), None);
+        assert_eq!(Value::Bool(true).as_integer(), None);
+        assert_eq!(Value::Nil.as_integer(), None);
+    }
+
+    #[test]
+    fn test_value_as_float() {
+        assert_eq!(Value::Float(3.14).as_float(), Some(3.14));
+        assert_eq!(Value::Integer(42).as_float(), Some(42.0));
+        assert_eq!(Value::String("hello".to_string()).as_float(), None);
+        assert_eq!(Value::Bool(true).as_float(), None);
+        assert_eq!(Value::Nil.as_float(), None);
+    }
+
+    #[test]
+    fn test_value_as_string() {
+        assert_eq!(Value::String("hello".to_string()).as_string(), Some("hello"));
+        assert_eq!(Value::Integer(42).as_string(), None);
+        assert_eq!(Value::Float(3.14).as_string(), None);
+        assert_eq!(Value::Bool(true).as_string(), None);
+        assert_eq!(Value::Nil.as_string(), None);
+    }
+
+    // ==================== Value Display Tests ====================
+
+    #[test]
+    fn test_value_display_primitives() {
+        assert_eq!(format!("{}", Value::Integer(42)), "42");
+        assert_eq!(format!("{}", Value::Integer(-123)), "-123");
+        assert_eq!(format!("{}", Value::Float(3.14)), "3.14");
+        assert_eq!(format!("{}", Value::String("hello".to_string())), "hello");
+        assert_eq!(format!("{}", Value::Bool(true)), "aye");
+        assert_eq!(format!("{}", Value::Bool(false)), "nae");
+        assert_eq!(format!("{}", Value::Nil), "naething");
+    }
+
+    #[test]
+    fn test_value_display_list() {
+        let empty = Value::List(Rc::new(RefCell::new(vec![])));
+        assert_eq!(format!("{}", empty), "[]");
+
+        let single = Value::List(Rc::new(RefCell::new(vec![Value::Integer(42)])));
+        assert_eq!(format!("{}", single), "[42]");
+
+        let multi = Value::List(Rc::new(RefCell::new(vec![
+            Value::Integer(1),
+            Value::Integer(2),
+            Value::Integer(3),
+        ])));
+        assert_eq!(format!("{}", multi), "[1, 2, 3]");
+
+        // Nested list
+        let inner = Value::List(Rc::new(RefCell::new(vec![Value::Integer(1), Value::Integer(2)])));
+        let outer = Value::List(Rc::new(RefCell::new(vec![inner, Value::Integer(3)])));
+        assert_eq!(format!("{}", outer), "[[1, 2], 3]");
+    }
+
+    #[test]
+    fn test_value_display_dict() {
+        let empty = Value::Dict(Rc::new(RefCell::new(HashMap::new())));
+        assert_eq!(format!("{}", empty), "{}");
+
+        let mut map = HashMap::new();
+        map.insert("a".to_string(), Value::Integer(1));
+        let single = Value::Dict(Rc::new(RefCell::new(map)));
+        assert_eq!(format!("{}", single), "{\"a\": 1}");
+    }
+
+    #[test]
+    fn test_value_display_set() {
+        let empty = Value::Set(Rc::new(RefCell::new(HashSet::new())));
+        assert_eq!(format!("{}", empty), "creel{}");
+
+        let mut set = HashSet::new();
+        set.insert("a".to_string());
+        let single = Value::Set(Rc::new(RefCell::new(set)));
+        assert_eq!(format!("{}", single), "creel{\"a\"}");
+
+        let mut multi_set = HashSet::new();
+        multi_set.insert("a".to_string());
+        multi_set.insert("b".to_string());
+        let multi = Value::Set(Rc::new(RefCell::new(multi_set)));
+        // Sorted output
+        assert_eq!(format!("{}", multi), "creel{\"a\", \"b\"}");
+    }
+
+    #[test]
+    fn test_value_display_function() {
+        let func = HaversFunction::new("add".to_string(), vec![], vec![], None);
+        let val = Value::Function(Rc::new(func));
+        assert_eq!(format!("{}", val), "<dae add>");
+    }
+
+    #[test]
+    fn test_value_display_native_function() {
+        let native = NativeFunction::new("len", 1, |_| Ok(Value::Nil));
+        let val = Value::NativeFunction(Rc::new(native));
+        assert_eq!(format!("{}", val), "<native dae len>");
+    }
+
+    #[test]
+    fn test_value_display_class() {
+        let class = HaversClass::new("Person".to_string(), None);
+        let val = Value::Class(Rc::new(class));
+        assert_eq!(format!("{}", val), "<kin Person>");
+    }
+
+    #[test]
+    fn test_value_display_instance() {
+        let class = Rc::new(HaversClass::new("Dog".to_string(), None));
+        let instance = HaversInstance::new(class);
+        let val = Value::Instance(Rc::new(RefCell::new(instance)));
+        assert_eq!(format!("{}", val), "<Dog instance>");
+    }
+
+    #[test]
+    fn test_value_display_struct() {
+        let strct = HaversStruct::new("Point".to_string(), vec!["x".to_string(), "y".to_string()]);
+        let val = Value::Struct(Rc::new(strct));
+        assert_eq!(format!("{}", val), "<thing Point>");
+    }
+
+    #[test]
+    fn test_value_display_range() {
+        let range = RangeValue::new(0, 10, false);
+        let val = Value::Range(range);
+        assert_eq!(format!("{}", val), "0..10");
+
+        let inclusive = RangeValue::new(1, 5, true);
+        let val2 = Value::Range(inclusive);
+        assert_eq!(format!("{}", val2), "1..5");
+    }
+
+    // ==================== Value PartialEq Tests ====================
+
+    #[test]
+    fn test_value_equality_integers() {
+        assert_eq!(Value::Integer(42), Value::Integer(42));
+        assert_ne!(Value::Integer(42), Value::Integer(43));
+    }
+
+    #[test]
+    fn test_value_equality_floats() {
+        assert_eq!(Value::Float(3.14), Value::Float(3.14));
+        assert_ne!(Value::Float(3.14), Value::Float(3.15));
+    }
+
+    #[test]
+    fn test_value_equality_mixed_numeric() {
+        assert_eq!(Value::Integer(42), Value::Float(42.0));
+        assert_eq!(Value::Float(42.0), Value::Integer(42));
+        assert_ne!(Value::Integer(42), Value::Float(42.5));
+    }
+
+    #[test]
+    fn test_value_equality_strings() {
+        assert_eq!(Value::String("hello".to_string()), Value::String("hello".to_string()));
+        assert_ne!(Value::String("hello".to_string()), Value::String("world".to_string()));
+    }
+
+    #[test]
+    fn test_value_equality_bools() {
+        assert_eq!(Value::Bool(true), Value::Bool(true));
+        assert_eq!(Value::Bool(false), Value::Bool(false));
+        assert_ne!(Value::Bool(true), Value::Bool(false));
+    }
+
+    #[test]
+    fn test_value_equality_nil() {
+        assert_eq!(Value::Nil, Value::Nil);
+    }
+
+    #[test]
+    fn test_value_equality_lists() {
+        let list1 = Value::List(Rc::new(RefCell::new(vec![Value::Integer(1), Value::Integer(2)])));
+        let list2 = Value::List(Rc::new(RefCell::new(vec![Value::Integer(1), Value::Integer(2)])));
+        let list3 = Value::List(Rc::new(RefCell::new(vec![Value::Integer(1), Value::Integer(3)])));
+
+        assert_eq!(list1, list2);
+        assert_ne!(list1, list3);
+    }
+
+    #[test]
+    fn test_value_equality_different_types() {
+        assert_ne!(Value::Integer(42), Value::String("42".to_string()));
+        assert_ne!(Value::Bool(true), Value::Integer(1));
+        assert_ne!(Value::Nil, Value::Integer(0));
+        assert_ne!(Value::Nil, Value::Bool(false));
+    }
+
+    // ==================== FunctionParam Tests ====================
+
+    #[test]
+    fn test_function_param() {
+        let param_no_default = FunctionParam {
+            name: "x".to_string(),
+            default: None,
+        };
+        assert_eq!(param_no_default.name, "x");
+        assert!(param_no_default.default.is_none());
+    }
+
+    // ==================== HaversFunction Tests ====================
+
+    #[test]
+    fn test_havers_function_new() {
+        let func = HaversFunction::new(
+            "test".to_string(),
+            vec![],
+            vec![],
+            None,
+        );
+        assert_eq!(func.name, "test");
+        assert!(func.params.is_empty());
+        assert!(func.body.is_empty());
+        assert!(func.closure.is_none());
+    }
+
+    #[test]
+    fn test_havers_function_arity_no_defaults() {
+        let params = vec![
+            FunctionParam { name: "a".to_string(), default: None },
+            FunctionParam { name: "b".to_string(), default: None },
+            FunctionParam { name: "c".to_string(), default: None },
+        ];
+        let func = HaversFunction::new("add".to_string(), params, vec![], None);
+        assert_eq!(func.min_arity(), 3);
+        assert_eq!(func.max_arity(), 3);
+    }
+
+    #[test]
+    fn test_havers_function_arity_with_defaults() {
+        use crate::ast::{Expr, Literal, Span};
+
+        let default_expr = Expr::Literal {
+            value: Literal::Integer(0),
+            span: Span::new(1, 1)
+        };
+        let params = vec![
+            FunctionParam { name: "a".to_string(), default: None },
+            FunctionParam { name: "b".to_string(), default: Some(default_expr.clone()) },
+            FunctionParam { name: "c".to_string(), default: Some(default_expr) },
+        ];
+        let func = HaversFunction::new("test".to_string(), params, vec![], None);
+        assert_eq!(func.min_arity(), 1); // Only 'a' required
+        assert_eq!(func.max_arity(), 3); // All three can be provided
+    }
+
+    #[test]
+    fn test_havers_function_with_closure() {
+        let env = Rc::new(RefCell::new(Environment::new()));
+        env.borrow_mut().define("x".to_string(), Value::Integer(42));
+
+        let func = HaversFunction::new(
+            "closure_test".to_string(),
+            vec![],
+            vec![],
+            Some(env.clone()),
+        );
+        assert!(func.closure.is_some());
+    }
+
+    // ==================== NativeFunction Tests ====================
+
+    #[test]
+    fn test_native_function_new() {
+        let native = NativeFunction::new("len", 1, |args| {
+            if let Value::String(s) = &args[0] {
+                Ok(Value::Integer(s.len() as i64))
+            } else {
+                Err("Expected string".to_string())
+            }
+        });
+        assert_eq!(native.name, "len");
+        assert_eq!(native.arity, 1);
+    }
+
+    #[test]
+    fn test_native_function_call() {
+        let native = NativeFunction::new("double", 1, |args| {
+            if let Value::Integer(n) = &args[0] {
+                Ok(Value::Integer(n * 2))
+            } else {
+                Err("Expected integer".to_string())
+            }
+        });
+
+        let result = (native.func)(vec![Value::Integer(21)]);
+        assert_eq!(result, Ok(Value::Integer(42)));
+
+        let error = (native.func)(vec![Value::String("x".to_string())]);
+        assert!(error.is_err());
+    }
+
+    #[test]
+    fn test_native_function_debug() {
+        let native = NativeFunction::new("test", 0, |_| Ok(Value::Nil));
+        let debug_str = format!("{:?}", native);
+        assert_eq!(debug_str, "NativeFunction(test)");
+    }
+
+    // ==================== HaversClass Tests ====================
+
+    #[test]
+    fn test_havers_class_new() {
+        let class = HaversClass::new("Animal".to_string(), None);
+        assert_eq!(class.name, "Animal");
+        assert!(class.superclass.is_none());
+        assert!(class.methods.is_empty());
+    }
+
+    #[test]
+    fn test_havers_class_with_methods() {
+        let mut class = HaversClass::new("Calculator".to_string(), None);
+        let method = Rc::new(HaversFunction::new("add".to_string(), vec![], vec![], None));
+        class.methods.insert("add".to_string(), method);
+
+        assert!(class.find_method("add").is_some());
+        assert!(class.find_method("subtract").is_none());
+    }
+
+    #[test]
+    fn test_havers_class_inheritance() {
+        // Parent class with a method
+        let mut parent = HaversClass::new("Animal".to_string(), None);
+        let speak = Rc::new(HaversFunction::new("speak".to_string(), vec![], vec![], None));
+        parent.methods.insert("speak".to_string(), speak);
+        let parent_rc = Rc::new(parent);
+
+        // Child class inheriting from parent
+        let child = HaversClass::new("Dog".to_string(), Some(parent_rc));
+
+        // Child should find parent's method
+        assert!(child.find_method("speak").is_some());
+        assert!(child.find_method("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_havers_class_method_override() {
+        // Parent class
+        let mut parent = HaversClass::new("Parent".to_string(), None);
+        let parent_method = Rc::new(HaversFunction::new("greet".to_string(), vec![], vec![], None));
+        parent.methods.insert("greet".to_string(), parent_method);
+        let parent_rc = Rc::new(parent);
+
+        // Child class with overridden method
+        let mut child = HaversClass::new("Child".to_string(), Some(parent_rc));
+        let child_method = Rc::new(HaversFunction::new("greet_child".to_string(), vec![], vec![], None));
+        child.methods.insert("greet".to_string(), child_method);
+
+        // Child's method should take precedence
+        let found = child.find_method("greet").unwrap();
+        assert_eq!(found.name, "greet_child");
+    }
+
+    // ==================== HaversInstance Tests ====================
+
+    #[test]
+    fn test_havers_instance_new() {
+        let class = Rc::new(HaversClass::new("Person".to_string(), None));
+        let instance = HaversInstance::new(class.clone());
+        assert_eq!(instance.class.name, "Person");
+        assert!(instance.fields.is_empty());
+    }
+
+    #[test]
+    fn test_havers_instance_set_get() {
+        let class = Rc::new(HaversClass::new("Person".to_string(), None));
+        let mut instance = HaversInstance::new(class);
+
+        instance.set("name".to_string(), Value::String("Alice".to_string()));
+        instance.set("age".to_string(), Value::Integer(30));
+
+        assert_eq!(instance.get("name"), Some(Value::String("Alice".to_string())));
+        assert_eq!(instance.get("age"), Some(Value::Integer(30)));
+        assert_eq!(instance.get("nonexistent"), None);
+    }
+
+    #[test]
+    fn test_havers_instance_get_method() {
+        let mut class = HaversClass::new("Calculator".to_string(), None);
+        let method = Rc::new(HaversFunction::new("calculate".to_string(), vec![], vec![], None));
+        class.methods.insert("calculate".to_string(), method);
+        let class_rc = Rc::new(class);
+
+        let instance = HaversInstance::new(class_rc);
+
+        // Should find method through class
+        let found = instance.get("calculate");
+        assert!(found.is_some());
+        if let Some(Value::Function(f)) = found {
+            assert_eq!(f.name, "calculate");
+        } else {
+            panic!("Expected function");
+        }
+    }
+
+    #[test]
+    fn test_havers_instance_field_shadows_method() {
+        let mut class = HaversClass::new("Test".to_string(), None);
+        let method = Rc::new(HaversFunction::new("value".to_string(), vec![], vec![], None));
+        class.methods.insert("value".to_string(), method);
+        let class_rc = Rc::new(class);
+
+        let mut instance = HaversInstance::new(class_rc);
+
+        // Before setting field, get returns method
+        let before = instance.get("value");
+        assert!(matches!(before, Some(Value::Function(_))));
+
+        // After setting field, field takes precedence
+        instance.set("value".to_string(), Value::Integer(42));
+        let after = instance.get("value");
+        assert_eq!(after, Some(Value::Integer(42)));
+    }
+
+    // ==================== HaversStruct Tests ====================
+
+    #[test]
+    fn test_havers_struct_new() {
+        let strct = HaversStruct::new(
+            "Point".to_string(),
+            vec!["x".to_string(), "y".to_string()],
+        );
+        assert_eq!(strct.name, "Point");
+        assert_eq!(strct.fields, vec!["x", "y"]);
+    }
+
+    #[test]
+    fn test_havers_struct_empty_fields() {
+        let strct = HaversStruct::new("Empty".to_string(), vec![]);
+        assert_eq!(strct.name, "Empty");
+        assert!(strct.fields.is_empty());
+    }
+
+    // ==================== RangeValue Tests ====================
+
+    #[test]
+    fn test_range_value_new() {
+        let range = RangeValue::new(0, 10, false);
+        assert_eq!(range.start, 0);
+        assert_eq!(range.end, 10);
+        assert!(!range.inclusive);
+
+        let inclusive = RangeValue::new(1, 5, true);
+        assert!(inclusive.inclusive);
+    }
+
+    #[test]
+    fn test_range_iterator_exclusive() {
+        let range = RangeValue::new(0, 5, false);
+        let values: Vec<i64> = range.iter().collect();
+        assert_eq!(values, vec![0, 1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn test_range_iterator_inclusive() {
+        let range = RangeValue::new(0, 5, true);
+        let values: Vec<i64> = range.iter().collect();
+        assert_eq!(values, vec![0, 1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_range_iterator_empty() {
+        // Exclusive range where start == end
+        let range = RangeValue::new(5, 5, false);
+        let values: Vec<i64> = range.iter().collect();
+        assert!(values.is_empty());
+    }
+
+    #[test]
+    fn test_range_iterator_single_inclusive() {
+        // Inclusive range where start == end
+        let range = RangeValue::new(5, 5, true);
+        let values: Vec<i64> = range.iter().collect();
+        assert_eq!(values, vec![5]);
+    }
+
+    #[test]
+    fn test_range_iterator_negative() {
+        let range = RangeValue::new(-3, 2, false);
+        let values: Vec<i64> = range.iter().collect();
+        assert_eq!(values, vec![-3, -2, -1, 0, 1]);
+    }
+
+    // ==================== Environment Tests ====================
+
+    #[test]
+    fn test_environment_new() {
+        let env = Environment::new();
+        assert!(env.enclosing.is_none());
+    }
+
+    #[test]
+    fn test_environment_default() {
+        let env = Environment::default();
+        assert!(env.enclosing.is_none());
+    }
+
+    #[test]
+    fn test_environment_define_get() {
+        let mut env = Environment::new();
+        env.define("x".to_string(), Value::Integer(42));
+
+        assert_eq!(env.get("x"), Some(Value::Integer(42)));
+        assert_eq!(env.get("y"), None);
+    }
+
+    #[test]
+    fn test_environment_with_enclosing() {
+        let outer = Rc::new(RefCell::new(Environment::new()));
+        outer.borrow_mut().define("outer_var".to_string(), Value::Integer(1));
+
+        let inner = Environment::with_enclosing(outer.clone());
+
+        // Inner should find outer's variable
+        assert_eq!(inner.get("outer_var"), Some(Value::Integer(1)));
+        assert_eq!(inner.get("nonexistent"), None);
+    }
+
+    #[test]
+    fn test_environment_shadowing() {
+        let outer = Rc::new(RefCell::new(Environment::new()));
+        outer.borrow_mut().define("x".to_string(), Value::Integer(1));
+
+        let mut inner = Environment::with_enclosing(outer.clone());
+        inner.define("x".to_string(), Value::Integer(2));
+
+        // Inner's x shadows outer's x
+        assert_eq!(inner.get("x"), Some(Value::Integer(2)));
+        // Outer's x unchanged
+        assert_eq!(outer.borrow().get("x"), Some(Value::Integer(1)));
+    }
+
+    #[test]
+    fn test_environment_assign_local() {
+        let mut env = Environment::new();
+        env.define("x".to_string(), Value::Integer(1));
+
+        let result = env.assign("x", Value::Integer(2));
+        assert!(result);
+        assert_eq!(env.get("x"), Some(Value::Integer(2)));
+    }
+
+    #[test]
+    fn test_environment_assign_nonexistent() {
+        let mut env = Environment::new();
+
+        let result = env.assign("x", Value::Integer(1));
+        assert!(!result);
+        assert_eq!(env.get("x"), None);
+    }
+
+    #[test]
+    fn test_environment_assign_enclosing() {
+        let outer = Rc::new(RefCell::new(Environment::new()));
+        outer.borrow_mut().define("x".to_string(), Value::Integer(1));
+
+        let mut inner = Environment::with_enclosing(outer.clone());
+
+        // Assign to outer's variable from inner
+        let result = inner.assign("x", Value::Integer(2));
+        assert!(result);
+
+        // Both should see the new value
+        assert_eq!(inner.get("x"), Some(Value::Integer(2)));
+        assert_eq!(outer.borrow().get("x"), Some(Value::Integer(2)));
+    }
+
+    #[test]
+    fn test_environment_get_exports() {
+        let mut env = Environment::new();
+        env.define("a".to_string(), Value::Integer(1));
+        env.define("b".to_string(), Value::Integer(2));
+
+        let exports = env.get_exports();
+        assert_eq!(exports.len(), 2);
+        assert_eq!(exports.get("a"), Some(&Value::Integer(1)));
+        assert_eq!(exports.get("b"), Some(&Value::Integer(2)));
+    }
+
+    #[test]
+    fn test_environment_get_exports_excludes_enclosing() {
+        let outer = Rc::new(RefCell::new(Environment::new()));
+        outer.borrow_mut().define("outer".to_string(), Value::Integer(1));
+
+        let mut inner = Environment::with_enclosing(outer);
+        inner.define("inner".to_string(), Value::Integer(2));
+
+        let exports = inner.get_exports();
+        assert_eq!(exports.len(), 1);
+        assert!(exports.contains_key("inner"));
+        assert!(!exports.contains_key("outer"));
     }
 }

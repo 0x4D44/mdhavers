@@ -391,7 +391,10 @@ mod tests {
         // Valid code should produce no diagnostics
         let source = "ken x = 42\nblether x";
         let diagnostics = get_diagnostics(source);
-        assert!(diagnostics.is_empty(), "Expected no diagnostics for valid code");
+        assert!(
+            diagnostics.is_empty(),
+            "Expected no diagnostics for valid code"
+        );
     }
 
     #[test]
@@ -399,7 +402,10 @@ mod tests {
         // Unclosed brace should produce an error
         let source = "gin x > 0 {\n    blether x\n";
         let diagnostics = get_diagnostics(source);
-        assert!(!diagnostics.is_empty(), "Expected diagnostics for unclosed brace");
+        assert!(
+            !diagnostics.is_empty(),
+            "Expected diagnostics for unclosed brace"
+        );
         assert!(diagnostics.iter().any(|d| d.2.contains("Unclosed")));
     }
 
@@ -439,79 +445,366 @@ mod tests {
 pub fn get_keywords_and_builtins() -> Vec<(String, String, String)> {
     vec![
         // Keywords
-        ("ken".to_string(), "keyword".to_string(), "Variable declaration".to_string()),
-        ("gin".to_string(), "keyword".to_string(), "If statement".to_string()),
-        ("ither".to_string(), "keyword".to_string(), "Else clause".to_string()),
-        ("than".to_string(), "keyword".to_string(), "Then (ternary)".to_string()),
-        ("whiles".to_string(), "keyword".to_string(), "While loop".to_string()),
-        ("fer".to_string(), "keyword".to_string(), "For loop".to_string()),
-        ("dae".to_string(), "keyword".to_string(), "Function definition".to_string()),
-        ("gie".to_string(), "keyword".to_string(), "Return statement".to_string()),
-        ("blether".to_string(), "keyword".to_string(), "Print output".to_string()),
-        ("speir".to_string(), "keyword".to_string(), "User input".to_string()),
-        ("aye".to_string(), "constant".to_string(), "Boolean true".to_string()),
-        ("nae".to_string(), "keyword".to_string(), "Boolean false / not".to_string()),
-        ("naething".to_string(), "constant".to_string(), "Null value".to_string()),
-        ("an".to_string(), "keyword".to_string(), "Logical AND".to_string()),
-        ("or".to_string(), "keyword".to_string(), "Logical OR".to_string()),
-        ("brak".to_string(), "keyword".to_string(), "Break from loop".to_string()),
-        ("haud".to_string(), "keyword".to_string(), "Continue loop".to_string()),
-        ("kin".to_string(), "keyword".to_string(), "Class definition".to_string()),
-        ("thing".to_string(), "keyword".to_string(), "Struct definition".to_string()),
-        ("masel".to_string(), "keyword".to_string(), "Self reference".to_string()),
-        ("fetch".to_string(), "keyword".to_string(), "Import module".to_string()),
-        ("hae_a_bash".to_string(), "keyword".to_string(), "Try block".to_string()),
-        ("gin_it_gangs_wrang".to_string(), "keyword".to_string(), "Catch block".to_string()),
-        ("keek".to_string(), "keyword".to_string(), "Match statement".to_string()),
-        ("whan".to_string(), "keyword".to_string(), "Match case".to_string()),
-        ("mak_siccar".to_string(), "keyword".to_string(), "Assert".to_string()),
-        ("in".to_string(), "keyword".to_string(), "For-in keyword".to_string()),
-        ("is".to_string(), "keyword".to_string(), "Type check".to_string()),
-        ("fae".to_string(), "keyword".to_string(), "From (inheritance)".to_string()),
-        ("tae".to_string(), "keyword".to_string(), "To (import alias)".to_string()),
-
+        (
+            "ken".to_string(),
+            "keyword".to_string(),
+            "Variable declaration".to_string(),
+        ),
+        (
+            "gin".to_string(),
+            "keyword".to_string(),
+            "If statement".to_string(),
+        ),
+        (
+            "ither".to_string(),
+            "keyword".to_string(),
+            "Else clause".to_string(),
+        ),
+        (
+            "than".to_string(),
+            "keyword".to_string(),
+            "Then (ternary)".to_string(),
+        ),
+        (
+            "whiles".to_string(),
+            "keyword".to_string(),
+            "While loop".to_string(),
+        ),
+        (
+            "fer".to_string(),
+            "keyword".to_string(),
+            "For loop".to_string(),
+        ),
+        (
+            "dae".to_string(),
+            "keyword".to_string(),
+            "Function definition".to_string(),
+        ),
+        (
+            "gie".to_string(),
+            "keyword".to_string(),
+            "Return statement".to_string(),
+        ),
+        (
+            "blether".to_string(),
+            "keyword".to_string(),
+            "Print output".to_string(),
+        ),
+        (
+            "speir".to_string(),
+            "keyword".to_string(),
+            "User input".to_string(),
+        ),
+        (
+            "aye".to_string(),
+            "constant".to_string(),
+            "Boolean true".to_string(),
+        ),
+        (
+            "nae".to_string(),
+            "keyword".to_string(),
+            "Boolean false / not".to_string(),
+        ),
+        (
+            "naething".to_string(),
+            "constant".to_string(),
+            "Null value".to_string(),
+        ),
+        (
+            "an".to_string(),
+            "keyword".to_string(),
+            "Logical AND".to_string(),
+        ),
+        (
+            "or".to_string(),
+            "keyword".to_string(),
+            "Logical OR".to_string(),
+        ),
+        (
+            "brak".to_string(),
+            "keyword".to_string(),
+            "Break from loop".to_string(),
+        ),
+        (
+            "haud".to_string(),
+            "keyword".to_string(),
+            "Continue loop".to_string(),
+        ),
+        (
+            "kin".to_string(),
+            "keyword".to_string(),
+            "Class definition".to_string(),
+        ),
+        (
+            "thing".to_string(),
+            "keyword".to_string(),
+            "Struct definition".to_string(),
+        ),
+        (
+            "masel".to_string(),
+            "keyword".to_string(),
+            "Self reference".to_string(),
+        ),
+        (
+            "fetch".to_string(),
+            "keyword".to_string(),
+            "Import module".to_string(),
+        ),
+        (
+            "hae_a_bash".to_string(),
+            "keyword".to_string(),
+            "Try block".to_string(),
+        ),
+        (
+            "gin_it_gangs_wrang".to_string(),
+            "keyword".to_string(),
+            "Catch block".to_string(),
+        ),
+        (
+            "keek".to_string(),
+            "keyword".to_string(),
+            "Match statement".to_string(),
+        ),
+        (
+            "whan".to_string(),
+            "keyword".to_string(),
+            "Match case".to_string(),
+        ),
+        (
+            "mak_siccar".to_string(),
+            "keyword".to_string(),
+            "Assert".to_string(),
+        ),
+        (
+            "in".to_string(),
+            "keyword".to_string(),
+            "For-in keyword".to_string(),
+        ),
+        (
+            "is".to_string(),
+            "keyword".to_string(),
+            "Type check".to_string(),
+        ),
+        (
+            "fae".to_string(),
+            "keyword".to_string(),
+            "From (inheritance)".to_string(),
+        ),
+        (
+            "tae".to_string(),
+            "keyword".to_string(),
+            "To (import alias)".to_string(),
+        ),
         // Built-in functions
-        ("len".to_string(), "function".to_string(), "Get length of list/string".to_string()),
-        ("whit_kind".to_string(), "function".to_string(), "Get type of value".to_string()),
-        ("tae_string".to_string(), "function".to_string(), "Convert to string".to_string()),
-        ("tae_int".to_string(), "function".to_string(), "Convert to integer".to_string()),
-        ("tae_float".to_string(), "function".to_string(), "Convert to float".to_string()),
-        ("shove".to_string(), "function".to_string(), "Add to list (push)".to_string()),
-        ("yank".to_string(), "function".to_string(), "Remove from list (pop)".to_string()),
-        ("heid".to_string(), "function".to_string(), "First element".to_string()),
-        ("tail".to_string(), "function".to_string(), "All but first".to_string()),
-        ("bum".to_string(), "function".to_string(), "Last element".to_string()),
-        ("range".to_string(), "function".to_string(), "Create range".to_string()),
-        ("keys".to_string(), "function".to_string(), "Dictionary keys".to_string()),
-        ("values".to_string(), "function".to_string(), "Dictionary values".to_string()),
-        ("abs".to_string(), "function".to_string(), "Absolute value".to_string()),
-        ("min".to_string(), "function".to_string(), "Minimum".to_string()),
-        ("max".to_string(), "function".to_string(), "Maximum".to_string()),
-        ("floor".to_string(), "function".to_string(), "Round down".to_string()),
-        ("ceil".to_string(), "function".to_string(), "Round up".to_string()),
-        ("round".to_string(), "function".to_string(), "Round".to_string()),
-        ("sqrt".to_string(), "function".to_string(), "Square root".to_string()),
-        ("split".to_string(), "function".to_string(), "Split string".to_string()),
-        ("join".to_string(), "function".to_string(), "Join list".to_string()),
-        ("contains".to_string(), "function".to_string(), "Check containment".to_string()),
-        ("reverse".to_string(), "function".to_string(), "Reverse list".to_string()),
-        ("sort".to_string(), "function".to_string(), "Sort list".to_string()),
-        ("upper".to_string(), "function".to_string(), "Uppercase".to_string()),
-        ("lower".to_string(), "function".to_string(), "Lowercase".to_string()),
-        ("shuffle".to_string(), "function".to_string(), "Shuffle list".to_string()),
-        ("gaun".to_string(), "function".to_string(), "Map function".to_string()),
-        ("sieve".to_string(), "function".to_string(), "Filter list".to_string()),
-        ("tumble".to_string(), "function".to_string(), "Reduce/fold".to_string()),
-        ("aw".to_string(), "function".to_string(), "All satisfy".to_string()),
-        ("ony".to_string(), "function".to_string(), "Any satisfy".to_string()),
-        ("hunt".to_string(), "function".to_string(), "Find first".to_string()),
-        ("noo".to_string(), "function".to_string(), "Current time (ms)".to_string()),
-        ("bide".to_string(), "function".to_string(), "Sleep (ms)".to_string()),
-        ("jammy".to_string(), "function".to_string(), "Random number".to_string()),
-        ("clype".to_string(), "function".to_string(), "Debug print".to_string()),
-        ("creel".to_string(), "function".to_string(), "Create set".to_string()),
-        ("empty_creel".to_string(), "function".to_string(), "Empty set".to_string()),
-        ("toss_in".to_string(), "function".to_string(), "Add to set".to_string()),
-        ("chuck_oot".to_string(), "function".to_string(), "Remove from set".to_string()),
+        (
+            "len".to_string(),
+            "function".to_string(),
+            "Get length of list/string".to_string(),
+        ),
+        (
+            "whit_kind".to_string(),
+            "function".to_string(),
+            "Get type of value".to_string(),
+        ),
+        (
+            "tae_string".to_string(),
+            "function".to_string(),
+            "Convert to string".to_string(),
+        ),
+        (
+            "tae_int".to_string(),
+            "function".to_string(),
+            "Convert to integer".to_string(),
+        ),
+        (
+            "tae_float".to_string(),
+            "function".to_string(),
+            "Convert to float".to_string(),
+        ),
+        (
+            "shove".to_string(),
+            "function".to_string(),
+            "Add to list (push)".to_string(),
+        ),
+        (
+            "yank".to_string(),
+            "function".to_string(),
+            "Remove from list (pop)".to_string(),
+        ),
+        (
+            "heid".to_string(),
+            "function".to_string(),
+            "First element".to_string(),
+        ),
+        (
+            "tail".to_string(),
+            "function".to_string(),
+            "All but first".to_string(),
+        ),
+        (
+            "bum".to_string(),
+            "function".to_string(),
+            "Last element".to_string(),
+        ),
+        (
+            "range".to_string(),
+            "function".to_string(),
+            "Create range".to_string(),
+        ),
+        (
+            "keys".to_string(),
+            "function".to_string(),
+            "Dictionary keys".to_string(),
+        ),
+        (
+            "values".to_string(),
+            "function".to_string(),
+            "Dictionary values".to_string(),
+        ),
+        (
+            "abs".to_string(),
+            "function".to_string(),
+            "Absolute value".to_string(),
+        ),
+        (
+            "min".to_string(),
+            "function".to_string(),
+            "Minimum".to_string(),
+        ),
+        (
+            "max".to_string(),
+            "function".to_string(),
+            "Maximum".to_string(),
+        ),
+        (
+            "floor".to_string(),
+            "function".to_string(),
+            "Round down".to_string(),
+        ),
+        (
+            "ceil".to_string(),
+            "function".to_string(),
+            "Round up".to_string(),
+        ),
+        (
+            "round".to_string(),
+            "function".to_string(),
+            "Round".to_string(),
+        ),
+        (
+            "sqrt".to_string(),
+            "function".to_string(),
+            "Square root".to_string(),
+        ),
+        (
+            "split".to_string(),
+            "function".to_string(),
+            "Split string".to_string(),
+        ),
+        (
+            "join".to_string(),
+            "function".to_string(),
+            "Join list".to_string(),
+        ),
+        (
+            "contains".to_string(),
+            "function".to_string(),
+            "Check containment".to_string(),
+        ),
+        (
+            "reverse".to_string(),
+            "function".to_string(),
+            "Reverse list".to_string(),
+        ),
+        (
+            "sort".to_string(),
+            "function".to_string(),
+            "Sort list".to_string(),
+        ),
+        (
+            "upper".to_string(),
+            "function".to_string(),
+            "Uppercase".to_string(),
+        ),
+        (
+            "lower".to_string(),
+            "function".to_string(),
+            "Lowercase".to_string(),
+        ),
+        (
+            "shuffle".to_string(),
+            "function".to_string(),
+            "Shuffle list".to_string(),
+        ),
+        (
+            "gaun".to_string(),
+            "function".to_string(),
+            "Map function".to_string(),
+        ),
+        (
+            "sieve".to_string(),
+            "function".to_string(),
+            "Filter list".to_string(),
+        ),
+        (
+            "tumble".to_string(),
+            "function".to_string(),
+            "Reduce/fold".to_string(),
+        ),
+        (
+            "aw".to_string(),
+            "function".to_string(),
+            "All satisfy".to_string(),
+        ),
+        (
+            "ony".to_string(),
+            "function".to_string(),
+            "Any satisfy".to_string(),
+        ),
+        (
+            "hunt".to_string(),
+            "function".to_string(),
+            "Find first".to_string(),
+        ),
+        (
+            "noo".to_string(),
+            "function".to_string(),
+            "Current time (ms)".to_string(),
+        ),
+        (
+            "bide".to_string(),
+            "function".to_string(),
+            "Sleep (ms)".to_string(),
+        ),
+        (
+            "jammy".to_string(),
+            "function".to_string(),
+            "Random number".to_string(),
+        ),
+        (
+            "clype".to_string(),
+            "function".to_string(),
+            "Debug print".to_string(),
+        ),
+        (
+            "creel".to_string(),
+            "function".to_string(),
+            "Create set".to_string(),
+        ),
+        (
+            "empty_creel".to_string(),
+            "function".to_string(),
+            "Empty set".to_string(),
+        ),
+        (
+            "toss_in".to_string(),
+            "function".to_string(),
+            "Add to set".to_string(),
+        ),
+        (
+            "chuck_oot".to_string(),
+            "function".to_string(),
+            "Remove from set".to_string(),
+        ),
     ]
 }
