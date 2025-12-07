@@ -26,6 +26,10 @@ pub use interpreter::Interpreter;
 pub use parser::parse;
 pub use value::Value;
 
+// LLVM compiler re-export
+#[cfg(feature = "llvm")]
+pub use llvm::LLVMCompiler;
+
 /// Run mdhavers source code and return the result
 ///
 /// This is a convenience function that handles the full pipeline:

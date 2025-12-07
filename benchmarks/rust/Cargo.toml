@@ -1,0 +1,8 @@
+[package]
+name = "mdhavers-benchmarks"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "benchmark_all"
+path = "src/main.rs"

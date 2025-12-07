@@ -78,7 +78,7 @@ impl LLVMCompiler {
                 "generic",
                 "",
                 self.opt_level,
-                RelocMode::Default,
+                RelocMode::PIC,  // Use PIC for PIE executables
                 CodeModel::Default,
             )
             .ok_or_else(|| {
@@ -110,13 +110,11 @@ impl LLVMCompiler {
         let compiler = LLVMCompiler::new().with_optimization(opt_level);
         compiler.compile_to_object(program, &obj_path)?;
 
-        // Link with runtime library using system linker
+        // Link with system linker (no external runtime - all code is inlined)
         let status = Command::new("cc")
             .args([
                 obj_path.to_str().unwrap(),
-                "-lmdh_runtime", // Our runtime library
-                "-lgc",          // Boehm GC
-                "-lm",           // Math library
+                "-lm", // Math library (for floor, ceil, etc.)
                 "-o",
                 output_path.to_str().unwrap(),
             ])
