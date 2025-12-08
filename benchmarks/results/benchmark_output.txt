@@ -1,0 +1,135 @@
+=== MDHAVERS LANGUAGE EVALUATION REPORT ===
+Date: $(date)
+
+
+=== FIBONACCI BENCHMARK ===
+--- Rust ---
+=== Fibonacci Stress Test (Rust) ===
+Correctness check:
+  fib(10) = 55
+  fib(20) = 6765
+
+Iterative stress test:
+  fib_iter(10000) completed in 3 us
+  1000x fib_iter(1000) in 0 ms
+
+Recursive stress test:
+  fib_naive(30) = 832040 in 1 ms
+
+=== Fibonacci stress complete ===
+
+--- mdhavers LLVM ---
+=== Fibonacci Stress Test ===
+Correctness check:
+  fib(10) = 55
+  fib(20) = 6765
+
+Iterative stress test:
+  fib_iter(10000) completed in 9 us
+  1000x fib_iter(1000) in 0 ms
+
+Recursive stress test:
+  fib_naive(30) = 832040 in 2 ms
+
+=== Fibonacci stress complete ===
+
+=== PRIMES BENCHMARK ===
+--- Rust ---
+=== Primes Stress Test (Rust) ===
+Correctness check:
+  Primes to 100: 25 primes
+
+Scalability tests:
+  sieve(1000): 168 primes in 2 us
+  sieve(5000): 669 primes in 9 us
+  sieve(10000): 1229 primes in 20 us
+  sieve(20000): 2262 primes in 37 us
+
+Scaling analysis:
+  5K/1K time ratio: 3.51
+  10K/5K time ratio: 2.17
+  20K/10K time ratio: 1.82
+
+=== Primes stress complete ===
+
+--- mdhavers LLVM ---
+=== Primes Stress Test ===
+Correctness check:
+  Primes to 100: 25 primes
+
+Scalability tests:
+  sieve(1000): 168 primes in 27 us
+  sieve(5000): 669 primes in 143 us
+  sieve(10000): 1229 primes in 504 us
+  sieve(20000): 2262 primes in 384 us
+
+Scaling analysis:
+  5K/1K time ratio: 5
+  10K/5K time ratio: 3
+  20K/10K time ratio: 0
+
+=== Primes stress complete ===
+
+=== STRING BENCHMARK ===
+--- Rust ---
+=== String Stress Test (Rust) ===
+String concatenation:
+  1000 single-char concats: 1 us, len=1000
+  100 multi-char concats: 0 us, len=1200
+
+String operations:
+  1000x upper(): 9 us
+  1000x lower(): 10 us
+
+Split/Join operations:
+  1000x split(): 72 us
+  1000x join(): 15 us
+
+Contains operations:
+  1000x contains(): 0 us
+
+=== String stress complete ===
+
+--- mdhavers LLVM ---
+=== String Stress Test ===
+String concatenation:
+  1000 single-char concats: 164 us, len=1000
+  100 multi-char concats: 19 us, len=1200
+
+String operations:
+  1000x upper(): 57 us
+  1000x lower(): 52 us
+
+Split/Join operations:
+  1000x split(): 531 us
+  1000x join(): 75 us
+
+Contains operations:
+  1000x contains(): 0 us
+
+=== String stress complete ===
+
+=== LIST STRESS BENCHMARK ===
+=== List Stress Test ===
+List building:
+  Build 10K element list: 81 us
+
+List access:
+  10K sequential accesses: 7 us, sum=49995000
+  1K pseudo-random accesses: 1 us
+
+List operations:
+  100x sort(10 elements): 8 us
+  100x reverse(10 elements): 6 us
+
+Slice operations:
+  1000x scran(100 elements): 475 us
+
+Higher-order function stress:
+  100x gaun(100 elements): 57 us
+  100x sieve(100 elements): 48 us
+  100x tumble(100 elements): 8 us
+
+=== List stress complete ===
+
+=== EDGE CASE TESTS ===
