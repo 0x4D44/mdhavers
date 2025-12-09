@@ -226,11 +226,7 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             None,
         );
 
-        let get_key = module.add_function(
-            "__mdh_get_key",
-            value_type.fn_type(&[], false),
-            None,
-        );
+        let get_key = module.add_function("__mdh_get_key", value_type.fn_type(&[], false), None);
 
         // List operations
         let list_get = module.add_function(

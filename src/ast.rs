@@ -471,6 +471,7 @@ impl Stmt {
 }
 
 #[cfg(test)]
+#[allow(clippy::approx_constant)]
 mod tests {
     use super::*;
 
@@ -499,7 +500,7 @@ mod tests {
 
     #[test]
     fn test_literal_display_float() {
-        assert_eq!(format!("{}", Literal::Float(3.14)), "3.14");
+        assert_eq!(format!("{}", Literal::Float(3.15)), "3.15");
         assert_eq!(format!("{}", Literal::Float(-2.5)), "-2.5");
     }
 

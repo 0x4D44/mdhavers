@@ -206,18 +206,16 @@ impl Interpreter {
                 enable_raw_mode().map_err(|e| format!("Cannae enable raw mode: {}", e))?;
 
                 let result = match read() {
-                    Ok(Event::Key(KeyEvent { code, .. })) => {
-                        match code {
-                            KeyCode::Char(c) => Ok(Value::String(c.to_string())),
-                            KeyCode::Enter => Ok(Value::String("\n".to_string())),
-                            KeyCode::Esc => Ok(Value::String("\x1b".to_string())),
-                            KeyCode::Backspace => Ok(Value::String("\x08".to_string())),
-                            KeyCode::Left => Ok(Value::String("Left".to_string())),
-                            KeyCode::Right => Ok(Value::String("Right".to_string())),
-                            KeyCode::Up => Ok(Value::String("Up".to_string())),
-                            KeyCode::Down => Ok(Value::String("Down".to_string())),
-                            _ => Ok(Value::String("".to_string())),
-                        }
+                    Ok(Event::Key(KeyEvent { code, .. })) => match code {
+                        KeyCode::Char(c) => Ok(Value::String(c.to_string())),
+                        KeyCode::Enter => Ok(Value::String("\n".to_string())),
+                        KeyCode::Esc => Ok(Value::String("\x1b".to_string())),
+                        KeyCode::Backspace => Ok(Value::String("\x08".to_string())),
+                        KeyCode::Left => Ok(Value::String("Left".to_string())),
+                        KeyCode::Right => Ok(Value::String("Right".to_string())),
+                        KeyCode::Up => Ok(Value::String("Up".to_string())),
+                        KeyCode::Down => Ok(Value::String("Down".to_string())),
+                        _ => Ok(Value::String("".to_string())),
                     },
                     Ok(_) => Ok(Value::String("".to_string())),
                     Err(e) => Err(format!("Cannae read key: {}", e)),
@@ -6666,6 +6664,8 @@ fn json_escape_string(s: &str) -> String {
 }
 
 #[cfg(test)]
+#[allow(clippy::approx_constant)]
+#[allow(clippy::manual_range_contains)]
 mod tests {
     use super::*;
     use crate::parser::parse;
@@ -11262,7 +11262,7 @@ x.foo
         let mut interp = Interpreter::new();
         interp.interpret(&program).unwrap();
         let output = interp.get_output();
-        assert!(output.len() >= 1);
+        assert!(!output.is_empty());
     }
 
     // ==================== More Native Function Tests ====================

@@ -64,12 +64,7 @@ fn verify_standalone(source: &str) -> Result<(), String> {
         }
 
         // Allowed dependencies: libc, ld-linux, linux-vdso, libm
-        let allowed = [
-            "libc.so",
-            "ld-linux",
-            "linux-vdso",
-            "libm.so",
-        ];
+        let allowed = ["libc.so", "ld-linux", "linux-vdso", "libm.so"];
 
         let is_allowed = allowed.iter().any(|lib| line.contains(lib));
 
