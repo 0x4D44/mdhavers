@@ -801,7 +801,7 @@ impl Compiler {
             } => {
                 // Heuristic: If calling a variable with a capitalized name, assume it's a class constructor
                 if let Expr::Variable { name, .. } = &**callee {
-                    if name.chars().next().map_or(false, |c| c.is_uppercase()) {
+                    if name.chars().next().is_some_and(|c| c.is_uppercase()) {
                         self.output.push_str("new ");
                     }
                 }

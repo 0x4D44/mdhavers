@@ -386,6 +386,7 @@ impl fmt::Display for Token {
 }
 
 #[cfg(test)]
+#[allow(clippy::approx_constant)]
 mod tests {
     use super::*;
 

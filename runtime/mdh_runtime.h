@@ -129,8 +129,8 @@ MdhValue __mdh_round(MdhValue a);
 
 /* Get string pointer from MdhValue (assumes tag is STRING) */
 static inline const char *__mdh_get_string(MdhValue v) {
-    MdhString *s = (MdhString *)(intptr_t)v.data;
-    return s ? s->data : "";
+    /* data field contains char* directly (matches LLVM convention) */
+    return (const char *)(intptr_t)v.data;
 }
 
 /* Get list pointer from MdhValue (assumes tag is LIST) */

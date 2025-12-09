@@ -3,8 +3,12 @@
 //! Provides high-level API for compiling mdhavers to LLVM IR, object files,
 //! and native executables.
 
+use std::io::Write;
 use std::path::Path;
 use std::process::Command;
+
+/// Embedded runtime object file - compiled into the binary at build time
+static EMBEDDED_RUNTIME: &[u8] = include_bytes!("../../runtime/mdh_runtime.o");
 
 use inkwell::context::Context;
 use inkwell::module::Module;
@@ -79,7 +83,7 @@ impl LLVMCompiler {
                 "generic",
                 "",
                 self.opt_level,
-                RelocMode::PIC,  // Use PIC for PIE executables
+                RelocMode::PIC, // Use PIC for PIE executables
                 CodeModel::Default,
             )
             .ok_or_else(|| {
@@ -111,23 +115,28 @@ impl LLVMCompiler {
         let compiler = LLVMCompiler::new().with_optimization(opt_level);
         compiler.compile_to_object(program, &obj_path)?;
 
-        // Link with system linker (no external runtime - all code is inlined)
-        // Update: We now link mdh_runtime.o for complex features like get_key
-        let runtime_obj = "runtime/mdh_runtime.o";
+        // Write embedded runtime to temp file for linking
+        let runtime_path = std::env::temp_dir().join("mdh_runtime.o");
+        std::fs::File::create(&runtime_path)
+            .and_then(|mut f| f.write_all(EMBEDDED_RUNTIME))
+            .map_err(|e| HaversError::CompileError(format!("Failed to write runtime: {}", e)))?;
+
+        // Link with system linker
         let status = Command::new("cc")
             .args([
                 obj_path.to_str().unwrap(),
-                runtime_obj,
+                runtime_path.to_str().unwrap(),
                 "/tmp/gc_stub.o", // GC stub for testing
-                "-lm", // Math library (for floor, ceil, etc.)
+                "-lm",            // Math library (for floor, ceil, etc.)
                 "-o",
                 output_path.to_str().unwrap(),
             ])
             .status()
             .map_err(|e| HaversError::CompileError(format!("Failed to run linker: {}", e)))?;
 
-        // Clean up object file
+        // Clean up temp files
         let _ = std::fs::remove_file(&obj_path);
+        let _ = std::fs::remove_file(&runtime_path);
 
         if status.success() {
             Ok(())

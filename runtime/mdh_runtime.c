@@ -61,10 +61,8 @@ MdhValue __mdh_make_string(const char *value) {
     MdhValue v;
     v.tag = MDH_TAG_STRING;
 
-    MdhString *s = (MdhString *)GC_malloc(sizeof(MdhString));
-    s->length = strlen(value);
-    s->data = GC_strdup(value);
-
+    /* Store char* directly (matches LLVM backend convention) */
+    char *s = GC_strdup(value);
     v.data = (int64_t)(intptr_t)s;
     return v;
 }
@@ -419,10 +417,14 @@ MdhValue __mdh_get_key(void) {
     /* Disable canonical mode (buffered i/o) and local echo */
     new_tio.c_lflag &= (~ICANON & ~ECHO);
 
+    /* Non-blocking: return immediately if no key available */
+    new_tio.c_cc[VMIN] = 0;
+    new_tio.c_cc[VTIME] = 1;  /* 100ms timeout */
+
     /* Apply new settings immediately */
     tcsetattr(STDIN_FILENO, TCSANOW, &new_tio);
 
-    /* Read one character */
+    /* Read one character (non-blocking with timeout) */
     if (read(STDIN_FILENO, &c, 1) > 0) {
         /* Restore settings immediately */
         tcsetattr(STDIN_FILENO, TCSANOW, &old_tio);

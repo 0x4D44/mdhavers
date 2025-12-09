@@ -382,64 +382,6 @@ pub fn get_keyword_info(keyword: &str) -> Option<String> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_get_diagnostics_valid() {
-        // Valid code should produce no diagnostics
-        let source = "ken x = 42\nblether x";
-        let diagnostics = get_diagnostics(source);
-        assert!(
-            diagnostics.is_empty(),
-            "Expected no diagnostics for valid code"
-        );
-    }
-
-    #[test]
-    fn test_get_diagnostics_unmatched_braces() {
-        // Unclosed brace should produce an error
-        let source = "gin x > 0 {\n    blether x\n";
-        let diagnostics = get_diagnostics(source);
-        assert!(
-            !diagnostics.is_empty(),
-            "Expected diagnostics for unclosed brace"
-        );
-        assert!(diagnostics.iter().any(|d| d.2.contains("Unclosed")));
-    }
-
-    #[test]
-    fn test_get_keyword_info() {
-        // Test that we get info for keywords
-        let info = get_keyword_info("ken");
-        assert!(info.is_some());
-        assert!(info.unwrap().contains("Variable declaration"));
-
-        let info = get_keyword_info("gin");
-        assert!(info.is_some());
-        assert!(info.unwrap().contains("If statement"));
-
-        // Unknown word should return None
-        let info = get_keyword_info("foobar");
-        assert!(info.is_none());
-    }
-
-    #[test]
-    fn test_get_keywords_and_builtins() {
-        let items = get_keywords_and_builtins();
-        assert!(!items.is_empty());
-
-        // Check that common items are present
-        let names: Vec<&str> = items.iter().map(|i| i.0.as_str()).collect();
-        assert!(names.contains(&"ken"));
-        assert!(names.contains(&"gin"));
-        assert!(names.contains(&"blether"));
-        assert!(names.contains(&"len"));
-        assert!(names.contains(&"gaun"));
-    }
-}
-
 /// Get all keywords and builtins fer completion
 /// Returns (name, kind, documentation)
 pub fn get_keywords_and_builtins() -> Vec<(String, String, String)> {
@@ -807,4 +749,62 @@ pub fn get_keywords_and_builtins() -> Vec<(String, String, String)> {
             "Remove from set".to_string(),
         ),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_diagnostics_valid() {
+        // Valid code should produce no diagnostics
+        let source = "ken x = 42\nblether x";
+        let diagnostics = get_diagnostics(source);
+        assert!(
+            diagnostics.is_empty(),
+            "Expected no diagnostics for valid code"
+        );
+    }
+
+    #[test]
+    fn test_get_diagnostics_unmatched_braces() {
+        // Unclosed brace should produce an error
+        let source = "gin x > 0 {\n    blether x\n";
+        let diagnostics = get_diagnostics(source);
+        assert!(
+            !diagnostics.is_empty(),
+            "Expected diagnostics for unclosed brace"
+        );
+        assert!(diagnostics.iter().any(|d| d.2.contains("Unclosed")));
+    }
+
+    #[test]
+    fn test_get_keyword_info() {
+        // Test that we get info for keywords
+        let info = get_keyword_info("ken");
+        assert!(info.is_some());
+        assert!(info.unwrap().contains("Variable declaration"));
+
+        let info = get_keyword_info("gin");
+        assert!(info.is_some());
+        assert!(info.unwrap().contains("If statement"));
+
+        // Unknown word should return None
+        let info = get_keyword_info("foobar");
+        assert!(info.is_none());
+    }
+
+    #[test]
+    fn test_get_keywords_and_builtins() {
+        let items = get_keywords_and_builtins();
+        assert!(!items.is_empty());
+
+        // Check that common items are present
+        let names: Vec<&str> = items.iter().map(|i| i.0.as_str()).collect();
+        assert!(names.contains(&"ken"));
+        assert!(names.contains(&"gin"));
+        assert!(names.contains(&"blether"));
+        assert!(names.contains(&"len"));
+        assert!(names.contains(&"gaun"));
+    }
 }
