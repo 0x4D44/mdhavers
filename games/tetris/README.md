@@ -20,7 +20,7 @@ On mobile devices, use the on-screen buttons.
 ## Files
 
 - `tetris.braw` - The game logic written in mdhavers
-- `index.html` - Browser-based game (JavaScript implementation that mirrors the mdhavers code)
+- `index.html` - Browser-based game interface running the compiled code
 
 ## Game Features
 

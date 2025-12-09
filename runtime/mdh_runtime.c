@@ -12,6 +12,8 @@
 #include <string.h>
 #include <math.h>
 #include <time.h>
+#include <unistd.h>
+#include <termios.h>
 
 /* Boehm GC - declared as extern */
 extern void GC_init(void);
@@ -399,6 +401,75 @@ MdhValue __mdh_speir(MdhValue prompt) {
         return __mdh_make_string(buffer);
     }
 
+    return __mdh_make_string("");
+}
+
+MdhValue __mdh_get_key(void) {
+    if (!isatty(STDIN_FILENO)) {
+        return __mdh_make_string("");
+    }
+
+    struct termios old_tio, new_tio;
+    unsigned char c;
+
+    /* Get current terminal settings */
+    tcgetattr(STDIN_FILENO, &old_tio);
+    new_tio = old_tio;
+
+    /* Disable canonical mode (buffered i/o) and local echo */
+    new_tio.c_lflag &= (~ICANON & ~ECHO);
+
+    /* Apply new settings immediately */
+    tcsetattr(STDIN_FILENO, TCSANOW, &new_tio);
+
+    /* Read one character */
+    if (read(STDIN_FILENO, &c, 1) > 0) {
+        /* Restore settings immediately */
+        tcsetattr(STDIN_FILENO, TCSANOW, &old_tio);
+
+        if (c == 27) { /* Escape sequence start \x1b */
+            /* Try to read more chars non-blocking (simple hack for now) */
+            /* In a real raw loop, we might want to return ESC immediately or parse.
+               For parity with crossterm, we should try to detect arrows. */
+            
+            /* Quick check for [A, [B, [C, [D */
+            /* Re-enable raw mode briefly to peek */
+            tcsetattr(STDIN_FILENO, TCSANOW, &new_tio);
+            
+            unsigned char seq[2];
+            /* Set non-blocking read for sequence */
+            struct termios nb_tio = new_tio;
+            nb_tio.c_cc[VMIN] = 0;
+            nb_tio.c_cc[VTIME] = 0;
+            tcsetattr(STDIN_FILENO, TCSANOW, &nb_tio);
+            
+            if (read(STDIN_FILENO, &seq[0], 1) == 1 && seq[0] == '[') {
+                 if (read(STDIN_FILENO, &seq[1], 1) == 1) {
+                     tcsetattr(STDIN_FILENO, TCSANOW, &old_tio);
+                     switch (seq[1]) {
+                         case 'A': return __mdh_make_string("Up");
+                         case 'B': return __mdh_make_string("Down");
+                         case 'C': return __mdh_make_string("Right");
+                         case 'D': return __mdh_make_string("Left");
+                     }
+                     return __mdh_make_string("\x1b"); /* Unknown sequence */
+                 }
+            }
+            
+            tcsetattr(STDIN_FILENO, TCSANOW, &old_tio);
+            return __mdh_make_string("\x1b");
+        } else if (c == 10 || c == 13) {
+            return __mdh_make_string("\n");
+        } else if (c == 127) {
+            return __mdh_make_string("\x08"); /* Backspace */
+        }
+        
+        char str[2] = { (char)c, '\0' };
+        return __mdh_make_string(str);
+    }
+
+    /* Restore settings on error/EOF */
+    tcsetattr(STDIN_FILENO, TCSANOW, &old_tio);
     return __mdh_make_string("");
 }
 

@@ -4,6 +4,12 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+#[cfg(feature = "cli")]
+use crossterm::{
+    event::{read, Event, KeyCode, KeyEvent},
+    terminal::{disable_raw_mode, enable_raw_mode},
+};
+
 use crate::ast::*;
 use crate::error::{HaversError, HaversResult};
 use crate::value::*;
@@ -192,6 +198,36 @@ impl Interpreter {
     }
 
     fn define_natives(globals: &Rc<RefCell<Environment>>) {
+        // get_key - read a single key press (raw input)
+        #[cfg(feature = "cli")]
+        globals.borrow_mut().define(
+            "get_key".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("get_key", 0, |_args| {
+                enable_raw_mode().map_err(|e| format!("Cannae enable raw mode: {}", e))?;
+
+                let result = match read() {
+                    Ok(Event::Key(KeyEvent { code, .. })) => {
+                        match code {
+                            KeyCode::Char(c) => Ok(Value::String(c.to_string())),
+                            KeyCode::Enter => Ok(Value::String("\n".to_string())),
+                            KeyCode::Esc => Ok(Value::String("\x1b".to_string())),
+                            KeyCode::Backspace => Ok(Value::String("\x08".to_string())),
+                            KeyCode::Left => Ok(Value::String("Left".to_string())),
+                            KeyCode::Right => Ok(Value::String("Right".to_string())),
+                            KeyCode::Up => Ok(Value::String("Up".to_string())),
+                            KeyCode::Down => Ok(Value::String("Down".to_string())),
+                            _ => Ok(Value::String("".to_string())),
+                        }
+                    },
+                    Ok(_) => Ok(Value::String("".to_string())),
+                    Err(e) => Err(format!("Cannae read key: {}", e)),
+                };
+
+                disable_raw_mode().map_err(|e| format!("Cannae disable raw mode: {}", e))?;
+
+                result
+            }))),
+        );
         // len - get length of list, string, dict, or set
         globals.borrow_mut().define(
             "len".to_string(),

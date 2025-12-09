@@ -45,6 +45,7 @@ pub struct RuntimeFunctions<'ctx> {
     // I/O
     pub blether: FunctionValue<'ctx>,
     pub speir: FunctionValue<'ctx>,
+    pub get_key: FunctionValue<'ctx>,
 
     // List operations
     pub list_get: FunctionValue<'ctx>,
@@ -225,6 +226,12 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             None,
         );
 
+        let get_key = module.add_function(
+            "__mdh_get_key",
+            value_type.fn_type(&[], false),
+            None,
+        );
+
         // List operations
         let list_get = module.add_function(
             "__mdh_list_get",
@@ -340,6 +347,7 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             type_of,
             blether,
             speir,
+            get_key,
             list_get,
             list_set,
             list_push,

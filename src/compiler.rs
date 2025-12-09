@@ -799,6 +799,13 @@ impl Compiler {
             Expr::Call {
                 callee, arguments, ..
             } => {
+                // Heuristic: If calling a variable with a capitalized name, assume it's a class constructor
+                if let Expr::Variable { name, .. } = &**callee {
+                    if name.chars().next().map_or(false, |c| c.is_uppercase()) {
+                        self.output.push_str("new ");
+                    }
+                }
+
                 self.compile_expr(callee)?;
                 self.output.push('(');
                 for (i, arg) in arguments.iter().enumerate() {
