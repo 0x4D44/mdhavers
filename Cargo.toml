@@ -23,12 +23,11 @@ path = "src/lsp/main.rs"
 required-features = ["cli"]
 
 [features]
-default = ["cli"]
-cli = ["clap", "rustyline", "dirs", "colored", "lsp-types", "lsp-server"]
+default = ["cli", "llvm"]
+cli = ["clap", "rustyline", "crossterm", "dirs", "colored", "lsp-types", "lsp-server"]
 llvm = ["inkwell"]
-# LLVM native compilation:
-#   Use `make build` or `make release` for auto-detection
-#   Or manually: cargo build --features llvm
+# LLVM native compilation (enabled by default):
+#   To disable: cargo build --no-default-features --features cli
 #   Requires: sudo apt install llvm-15 libpolly-15-dev lld-15 libzstd-dev
 
 [dependencies]
@@ -41,6 +40,7 @@ serde_json = "1.0"
 clap = { version = "4.4", features = ["derive"], optional = true }
 colored = { version = "2.1", optional = true }
 rustyline = { version = "14.0", optional = true }
+crossterm = { version = "0.27", optional = true }
 dirs = { version = "5.0", optional = true }
 lsp-types = { version = "0.97", optional = true }
 lsp-server = { version = "0.7", optional = true }

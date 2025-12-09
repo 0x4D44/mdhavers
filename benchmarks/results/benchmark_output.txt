@@ -133,3 +133,14 @@ Higher-order function stress:
 === List stress complete ===
 
 === EDGE CASE TESTS ===
+
+=== EDGE CASE TESTS ===
+/bin/bash: line 25: /tmp/edge_cases: No such file or directory
+
+=== APPLICATIONS ===
+
+--- Game of Life ---
+/bin/bash: line 32: /tmp/gol: No such file or directory
+
+--- Maze Solver ---
+/bin/bash: line 37: /tmp/maze: No such file or directory

@@ -1,0 +1,343 @@
+=== LARGE-SCALE BENCHMARK RESULTS ===
+Date: Tue Dec  9 16:29:16 GMT 2025
+
+=== FIBONACCI LARGE ===
+--- Rust ---
+=== Large-Scale Fibonacci Benchmark (Rust) ===
+Correctness check:
+  fib(10) = 55
+  fib(20) = 6765
+  fib(50) = 12586269025
+
+Large-scale iterative tests:
+  fib_iter(1000): 0 us
+  fib_iter(10000): 3 us
+  fib_iter(50000): 19 us
+  fib_iter(100000): 38 us
+
+Stress test (10000 calls to fib_iter(100)):
+  10000x fib_iter(100): 0 ms
+
+=== Fibonacci large-scale complete ===
+
+--- mdhavers ---
+=== Large-Scale Fibonacci Benchmark ===
+Correctness check:
+  fib(10) = 55
+  fib(20) = 6765
+  fib(50) = 12586269025
+
+Large-scale iterative tests:
+  fib_iter(1000): 960 us
+  fib_iter(10000): 8520 us
+  fib_iter(50000): 42420 us
+  fib_iter(100000): 84849 us
+
+Stress test (10000 calls to fib_iter(100)):
+  10000x fib_iter(100): 856 ms
+
+=== Fibonacci large-scale complete ===
+
+=== PRIMES LARGE ===
+--- Rust ---
+=== Large-Scale Prime Sieve Benchmark (Rust) ===
+Correctness check:
+  Primes to 100: 25 primes
+  First 10: [2, 3, 5, 7, 11, 13, 17, 19, 23, 29]
+
+Scaling tests:
+  sieve(10K): 1229 primes in 8 us
+  sieve(50K): 5133 primes in 39 us
+  sieve(100K): 9592 primes in 0 ms
+  sieve(500K): 41538 primes in 0 ms
+  sieve(1M): 78498 primes in 1 ms
+
+=== Prime sieve large-scale complete ===
+
+--- mdhavers ---
+=== Large-Scale Prime Sieve Benchmark ===
+Correctness check:
+  Primes to 100: 25 primes
+  First 10: [2, 3, 5, 7, 11, 13, 17, 19, 23, 29]
+
+Scaling tests:
+  sieve(10K): 1229 primes in 120597 us
+  sieve(50K): 5133 primes in 682643 us
+  sieve(100K): 9592 primes in 1358 ms
+  sieve(500K): 41538 primes in 6936 ms
+  sieve(1M): 78498 primes in 26427 ms
+
+=== Prime sieve large-scale complete ===
+
+=== SORT STRESS ===
+--- Rust ---
+=== Sort Stress Test Benchmark (Rust) ===
+Correctness check:
+  Unsorted: [2606, 3775, 6924, 3573, 5178, 459, 9192, 1793, 8310, 167]
+  Sorted: [167, 459, 1793, 2606, 3573, 3775, 5178, 6924, 8310, 9192]
+  Is sorted: true
+
+Scaling tests:
+  1K elements: gen=2us, sort=11us, valid=true
+  5K elements: gen=12us, sort=56us, valid=true
+  10K elements: gen=17us, sort=114us, valid=true
+  50K elements: gen=147us, sort=0ms, valid=true
+  100K elements: gen=230us, sort=1ms, valid=true
+
+=== Sort stress complete ===
+
+--- mdhavers ---
+=== Sort Stress Test Benchmark ===
+Correctness check:
+  Unsorted: [2606, 3775, 6924, 3573, 5178, 459, 9192, 1793, 8310, 167]
+  Sorted: [167, 459, 1793, 2606, 3573, 3775, 5178, 6924, 8310, 9192]
+  Is sorted: aye
+
+Scaling tests:
+  1K elements: gen=8260us, sort=286101us, valid=aye
+  5K elements: gen=44246us, sort=5841ms, valid=aye
+  10K elements: gen=155ms, sort=24020ms, valid=aye
+  50K elements: gen=669ms, sort=1717017ms, valid=aye
+
+=== Sort stress complete ===
+
+=== STRING LARGE ===
+--- Rust ---
+=== Large-Scale String Processing Benchmark (Rust) ===
+Correctness check:
+  build_string(10): len=10
+  build_pattern_string(5): abc,abc,abc,abc,abc,
+
+String building scaling:
+  build_string(100): 0 us, len=100
+  build_string(500): 0 us, len=500
+  build_string(1000): 1 us, len=1000
+  build_string(2000): 1 us, len=2000
+
+Split/join on pattern strings:
+  Build 100 patterns: 0 us, len=400
+  Split 100 patterns: 1 us, parts=101
+  Join 100 parts: 0 us, len=400
+  Build 500 patterns: 0 us, len=2000
+  Split 500 patterns: 3 us, parts=501
+  Join 500 parts: 1 us, len=2000
+
+String operations on large strings:
+  Built string of length: 1440
+  upper(): 0 us
+  lower(): 0 us
+  contains('fox'): true in 0 us
+  contains('xyz'): false in 0 us
+
+=== String large-scale complete ===
+
+--- mdhavers ---
+=== Large-Scale String Processing Benchmark ===
+Correctness check:
+  build_string(10): len=10
+  build_pattern_string(5): abc,abc,abc,abc,abc,
+
+String building scaling:
+  build_string(100): 4089 us, len=100
+  build_string(500): 50206 us, len=500
+  build_string(1000): 192 ms, len=1000
+  build_string(2000): 724 ms, len=2000
+
+Split/join on pattern strings:
+  Build 100 patterns: 10166 us, len=400
+  Split 100 patterns: 1899 us, parts=100
+  Join 100 parts: 1945 us, len=399
+  Build 500 patterns: 176 ms, len=2000
+  Split 500 patterns: 8618 us, parts=500
+  Join 500 parts: 13958 us, len=2299
+
+String operations on large strings:
+  Built string of length: 1440
+  upper(): 4002 us
+  lower(): 1134 us
+  contains('fox'): aye in 179 us
+  contains('xyz'): nae in 116 us
+
+=== String large-scale complete ===
+
+=== NESTED DATA STRUCTURES ===
+=== Nested Data Structures Benchmark ===
+Correctness check:
+  5-level nested: [94602870907600]
+  Access depth 5: 42
+  3x3 matrix: [94602870907984, 94602870908048, 94602870908160]
+  Sum: 36
+
+Nested list depth scaling:
+  build_nested(10): 163 us
+  access_nested(10): 47 us, value=1
+  build_nested(50): 354 us
+  access_nested(50): 60 us, value=1
+  build_nested(100): 665 us
+  access_nested(100): 83 us, value=1
+
+Matrix scaling:
+  10x10 matrix: build=1721us, sum=4950
+  50x50 matrix: build=29771us, sum_time=4071us, sum=3123750
+  100x100 matrix: build=118ms, sum_time=15599us, sum=49995000
+  200x200 matrix: build=709ms, sum_time=92ms, sum=799980000
+
+=== Nested data structures complete ===
+
+=== LIST OPS LARGE ===
+=== Large-Scale List Operations Benchmark ===
+Correctness check:
+  make_list(10): [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  gaun(double): [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
+  sieve(is_even): [0, 2, 4, 6, 8]
+  tumble(0, add): 45
+
+List building scaling:
+  make_list(1000): 7001 us
+  make_list(10000): 83448 us
+  make_list(50000): 449 ms
+  make_list(100000): 979 ms
+
+Higher-order function scaling:
+  Using 10K element list:
+    gaun(double): 57 ms
+    sieve(even): 33 ms, count=5000
+    tumble(sum): 17 ms, sum=49995000
+  Using 50K element list:
+    gaun(double): 284 ms
+    sieve(even): 156 ms, count=25000
+    tumble(sum): 62 ms, sum=1249975000
+
+Chained HOF operations (10K list):
+  gaun -> sieve -> tumble: 93 ms, result=49990000
+
+Slice operations:
+  scran(100K, 0, 1000): 1776 us, len=1000
+  scran(100K, 50K, 60K): 63128 us, len=10000
+  scran(100K, 90K, 100K): 56226 us, len=10000
+
+=== List operations large-scale complete ===
+
+=== APPLICATION: CSV PARSER ===
+=== CSV Parser Benchmark ===
+Correctness check:
+Sample CSV (5 rows, 3 cols):
+id,col0,col1,col2
+0,0,1,2
+1,100,101,102
+2,200,201,202
+3,300,301,302
+4,400,401,402
+
+Parsed 6 rows
+Header: [id, col0, col1, col2]
+Row 1: [0, 0, 1, 2]
+
+CSV Generation scaling:
+  100 rows x 10 cols: 272 ms, len=5223
+  500 rows x 10 cols: 5617 ms, len=30823
+  1000 rows x 10 cols: 23375 ms, len=62823
+
+CSV Parsing scaling:
+  Parse 100 rows: 90 ms
+  Parse 500 rows: 371 ms
+  Parse 1000 rows: 745 ms
+
+Aggregation operations (1000 rows):
+  sum_column(col1): 5641 us, sum=0
+  count_where(col1 > 50000): 1569 us, count=0
+
+=== CSV parser complete ===
+
+=== APPLICATION: GRAPH ALGORITHMS ===
+
+=== APPLICATION: GRAPH ALGORITHMS ===
+
+=== APPLICATION: GRAPH (SIMPLIFIED) ===
+=== Simplified Graph Algorithms Benchmark ===
+Correctness check:
+  3x3 grid graph (9 nodes)
+  Node 0 neighbors: [3, 1]
+  Node 4 neighbors: [1, 7, 3, 5]
+  BFS from 0: [0, 1, 2, 1, 2, 3, 2, 3, 4]
+  Reachable: 9
+
+Grid graph scaling:
+  5x5 grid (25 nodes): create=2738 us
+    BFS: 4168 us, reachable=25
+  10x10 grid (100 nodes): create=25260 us
+    BFS: 25008 us, reachable=100
+  20x20 grid (400 nodes): create=58806 us
+    BFS: 177 ms, reachable=400
+  30x30 grid (900 nodes): create=107 ms
+    BFS: 493 ms, reachable=900
+
+=== Graph simple complete ===
+
+=== APPLICATION: PARTICLE SIMULATION ===
+=== Particle Simulation Benchmark ===
+Correctness check:
+  5 particles created
+  Particle 0: [0, 0, 0.1, 0.1, 1]
+  Initial energy: 0.15
+  After 10 steps:
+    Final energy: 0.150001
+
+Particle simulation scaling:
+  10 particles, 100 steps: 99 ms
+  20 particles, 100 steps: 350 ms
+  50 particles, 100 steps: 2127 ms
+  100 particles, 100 steps: 8392 ms
+
+Step count scaling (50 particles):
+  100 steps: 2166 ms
+  500 steps: 10591 ms
+  1000 steps: 21156 ms
+
+=== Particle simulation complete ===
+
+=== APPLICATION: EXPRESSION EVALUATOR ===
+
+=== APPLICATION: EXPRESSION EVALUATOR ===
+=== Expression Evaluator Benchmark ===
+Correctness check:
+  '2 + 3' = naething
+  '10 - 4' = naething
+  '3 * 4' = naething
+  '8 / 2' = naething
+  '2 + 3 * 4' = naething
+
+Expression evaluation scaling:
+  1000x simple expr: 211 ms
+  1000x medium expr: 332 ms
+  1000x complex expr: 638 ms
+
+=== Expression evaluator complete ===
+
+=== STRESS: MEMORY ===
+=== Memory Stress Test ===
+Progressive allocation test:
+  10K elements: 83399 us, len=10000
+  50K elements: 499 ms, len=50000
+  100K elements: 729 ms, len=100000
+  500K elements: 3574 ms, len=500000
+
+Allocation cycle test (allocate and discard):
+  100 cycles x 1K elements: 731 ms
+  100 cycles x 10K elements: 13625 ms
+  1000 cycles x 1K elements: 10655 ms
+
+Nested list stress:
+  Depth 3, width 10 (1K leaves): 47636 us
+  Depth 4, width 10 (10K leaves): 395 ms
+  Depth 5, width 5 (3K leaves): 126 ms
+
+String memory stress:
+  Build 1K string: 29423 us, len=1000
+  Build 5K string: 559 ms, len=5000
+  Build 10K string: 2219 ms, len=10000
+
+=== Memory stress complete ===
+
+=== STRESS: STABILITY ===
+

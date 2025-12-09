@@ -112,9 +112,13 @@ impl LLVMCompiler {
         compiler.compile_to_object(program, &obj_path)?;
 
         // Link with system linker (no external runtime - all code is inlined)
+        // Update: We now link mdh_runtime.o for complex features like get_key
+        let runtime_obj = "runtime/mdh_runtime.o";
         let status = Command::new("cc")
             .args([
                 obj_path.to_str().unwrap(),
+                runtime_obj,
+                "/tmp/gc_stub.o", // GC stub for testing
                 "-lm", // Math library (for floor, ceil, etc.)
                 "-o",
                 output_path.to_str().unwrap(),
@@ -237,8 +241,10 @@ mod tests {
         let ir = compiler.compile_to_ir(&program).unwrap();
 
         assert!(ir.contains("define i32 @main"));
-        assert!(ir.contains("__mdh_make_int"));
-        assert!(ir.contains("__mdh_blether"));
+        // Check for inlined integer creation: { i8 2, i64 42 }
+        assert!(ir.contains("i8 2") || ir.contains("insertvalue"));
+        // Check for printf call (used by blether)
+        assert!(ir.contains("@printf"));
     }
 
     #[test]

@@ -52,6 +52,19 @@ struct LibcFunctions<'ctx> {
     srand: FunctionValue<'ctx>,
     time: FunctionValue<'ctx>,
     qsort: FunctionValue<'ctx>,
+    // Runtime functions
+    get_key: FunctionValue<'ctx>,
+}
+
+/// Inferred type for optimization
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VarType {
+    Unknown,
+    Int,
+    Float,
+    String,
+    Bool,
+    List,
 }
 
 /// Main code generator with inlined runtime
@@ -68,11 +81,21 @@ pub struct CodeGen<'ctx> {
     /// Variable storage (name -> alloca pointer)
     variables: HashMap<String, PointerValue<'ctx>>,
 
+    /// Shadow i64 storage for integer variables (optimization)
+    /// When a variable is known to be Int, we keep an unboxed i64 version
+    int_shadows: HashMap<String, PointerValue<'ctx>>,
+
+    /// Inferred types for variables (for optimization)
+    var_types: HashMap<String, VarType>,
+
     /// User-defined functions
     functions: HashMap<String, FunctionValue<'ctx>>,
 
     /// Loop context stack for break/continue
     loop_stack: Vec<LoopContext<'ctx>>,
+
+    /// Track if we're in a hot loop body (skip MdhValue stores)
+    in_loop_body: bool,
 
     /// Counter for generating unique lambda names
     lambda_counter: u32,
@@ -106,7 +129,7 @@ impl<'ctx> CodeGen<'ctx> {
         let types = MdhTypes::new(context);
 
         // Declare libc functions
-        let libc = Self::declare_libc_functions(&module, context);
+        let libc = Self::declare_libc_functions(&module, context, &types);
 
         // Create format strings
         let fmt_int = Self::create_global_string(&module, context, "%lld", "fmt_int");
@@ -125,8 +148,11 @@ impl<'ctx> CodeGen<'ctx> {
             libc,
             current_function: None,
             variables: HashMap::new(),
+            int_shadows: HashMap::new(),
+            var_types: HashMap::new(),
             functions: HashMap::new(),
             loop_stack: Vec::new(),
+            in_loop_body: false,
             lambda_counter: 0,
             fmt_int,
             fmt_float,
@@ -138,7 +164,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    fn declare_libc_functions(module: &Module<'ctx>, context: &'ctx Context) -> LibcFunctions<'ctx> {
+    fn declare_libc_functions(module: &Module<'ctx>, context: &'ctx Context, types: &MdhTypes<'ctx>) -> LibcFunctions<'ctx> {
         let i8_ptr = context.i8_type().ptr_type(AddressSpace::default());
         let i32_type = context.i32_type();
         let i64_type = context.i64_type();
@@ -229,6 +255,10 @@ impl<'ctx> CodeGen<'ctx> {
         let qsort_type = void_type.fn_type(&[i8_ptr.into(), i64_type.into(), i64_type.into(), i8_ptr.into()], false);
         let qsort = module.add_function("qsort", qsort_type, Some(Linkage::External));
 
+        // __mdh_get_key() -> MdhValue
+        let get_key_type = types.value_type.fn_type(&[], false);
+        let get_key = module.add_function("__mdh_get_key", get_key_type, Some(Linkage::External));
+
         LibcFunctions {
             printf,
             malloc,
@@ -251,6 +281,7 @@ impl<'ctx> CodeGen<'ctx> {
             srand,
             time,
             qsort,
+            get_key,
         }
     }
 
@@ -402,6 +433,22 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(v2.into_struct_value().into())
     }
 
+    /// Create a dict value: {tag=6, data=ptr as i64}
+    /// Dict memory layout: [i64 count][entry0][entry1]... where entry = [{i8,i64} key][{i8,i64} val]
+    fn make_dict(&self, ptr: PointerValue<'ctx>) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let tag = self.types.i8_type.const_int(ValueTag::Dict.as_u8() as u64, false);
+        let data = self.builder.build_ptr_to_int(ptr, self.types.i64_type, "dict_ptr_int")
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert ptr: {}", e)))?;
+
+        let undef = self.types.value_type.get_undef();
+        let v1 = self.builder.build_insert_value(undef, tag, 0, "v1")
+            .map_err(|e| HaversError::CompileError(format!("Failed to insert tag: {}", e)))?;
+        let v2 = self.builder.build_insert_value(v1, data, 1, "v2")
+            .map_err(|e| HaversError::CompileError(format!("Failed to insert data: {}", e)))?;
+
+        Ok(v2.into_struct_value().into())
+    }
+
     /// Create a function value: {tag=7, data=func_ptr as i64}
     fn make_function(&self, func_ptr_int: IntValue<'ctx>) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let tag = self.types.i8_type.const_int(ValueTag::Function.as_u8() as u64, false);
@@ -514,6 +561,181 @@ impl<'ctx> CodeGen<'ctx> {
         ]);
 
         Ok(phi.as_basic_value().into_int_value())
+    }
+
+    /// Compile a condition expression directly to i1 boolean, bypassing MdhValue boxing.
+    /// This is an optimization for loop conditions and if statements.
+    /// Returns None if the expression can't be optimized (falls back to is_truthy).
+    fn compile_condition_direct(&mut self, expr: &Expr) -> Result<Option<IntValue<'ctx>>, HaversError> {
+        match expr {
+            // Comparison operations can return i1 directly
+            Expr::Binary { left, operator, right, .. } => {
+                match operator {
+                    BinaryOp::Less | BinaryOp::LessEqual |
+                    BinaryOp::Greater | BinaryOp::GreaterEqual |
+                    BinaryOp::Equal | BinaryOp::NotEqual => {
+                        // Helper to get i64 value from expression (shadow or extract)
+                        let get_int_data = |s: &mut Self, expr: &Expr| -> Result<IntValue<'ctx>, HaversError> {
+                            // First try int shadow path
+                            if let Some(int_val) = s.compile_int_expr(expr)? {
+                                return Ok(int_val);
+                            }
+                            // Fall back to MdhValue extraction
+                            let val = s.compile_expr(expr)?;
+                            s.extract_data(val)
+                        };
+
+                        let left_data = get_int_data(self, left)?;
+                        let right_data = get_int_data(self, right)?;
+
+                        let pred = match operator {
+                            BinaryOp::Less => IntPredicate::SLT,
+                            BinaryOp::LessEqual => IntPredicate::SLE,
+                            BinaryOp::Greater => IntPredicate::SGT,
+                            BinaryOp::GreaterEqual => IntPredicate::SGE,
+                            BinaryOp::Equal => IntPredicate::EQ,
+                            BinaryOp::NotEqual => IntPredicate::NE,
+                            _ => unreachable!(),
+                        };
+
+                        let result = self.builder.build_int_compare(pred, left_data, right_data, "cmp_direct").unwrap();
+                        Ok(Some(result))
+                    }
+                    _ => Ok(None), // Other binary ops need full compilation
+                }
+            }
+            // Boolean literals
+            Expr::Literal { value: Literal::Bool(b), .. } => {
+                let result = self.types.bool_type.const_int(if *b { 1 } else { 0 }, false);
+                Ok(Some(result))
+            }
+            // Variable that we know is boolean could be optimized too, but for now fall back
+            _ => Ok(None),
+        }
+    }
+
+    /// Infer the type of an expression for optimization purposes
+    fn infer_expr_type(&self, expr: &Expr) -> VarType {
+        match expr {
+            Expr::Literal { value, .. } => match value {
+                Literal::Integer(_) => VarType::Int,
+                Literal::Float(_) => VarType::Float,
+                Literal::String(_) => VarType::String,
+                Literal::Bool(_) => VarType::Bool,
+                Literal::Nil => VarType::Unknown,
+            },
+            Expr::Variable { name, .. } => {
+                self.var_types.get(name).copied().unwrap_or(VarType::Unknown)
+            }
+            Expr::Binary { left, operator, right, .. } => {
+                match operator {
+                    BinaryOp::Add | BinaryOp::Subtract |
+                    BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo => {
+                        let lt = self.infer_expr_type(left);
+                        let rt = self.infer_expr_type(right);
+                        if lt == VarType::Int && rt == VarType::Int {
+                            VarType::Int
+                        } else if lt == VarType::Float || rt == VarType::Float {
+                            VarType::Float
+                        } else {
+                            VarType::Unknown
+                        }
+                    }
+                    BinaryOp::Less | BinaryOp::LessEqual |
+                    BinaryOp::Greater | BinaryOp::GreaterEqual |
+                    BinaryOp::Equal | BinaryOp::NotEqual => VarType::Bool,
+                }
+            }
+            Expr::List { .. } => VarType::List,
+            Expr::Unary { operand, .. } => self.infer_expr_type(operand),
+            _ => VarType::Unknown,
+        }
+    }
+
+    /// Compile an integer expression directly to i64, bypassing MdhValue boxing.
+    /// Returns None if the expression can't be compiled as pure integer.
+    fn compile_int_expr(&mut self, expr: &Expr) -> Result<Option<IntValue<'ctx>>, HaversError> {
+        match expr {
+            // Integer literal
+            Expr::Literal { value: Literal::Integer(n), .. } => {
+                Ok(Some(self.types.i64_type.const_int(*n as u64, true)))
+            }
+
+            // Variable with int shadow
+            Expr::Variable { name, .. } => {
+                if let Some(&shadow) = self.int_shadows.get(name) {
+                    let val = self.builder.build_load(self.types.i64_type, shadow, &format!("{}_i64", name))
+                        .map_err(|e| HaversError::CompileError(format!("Failed to load shadow: {}", e)))?;
+                    Ok(Some(val.into_int_value()))
+                } else if self.var_types.get(name) == Some(&VarType::Int) {
+                    // Known int but no shadow - extract from MdhValue
+                    if let Some(&alloca) = self.variables.get(name) {
+                        let val = self.builder.build_load(self.types.value_type, alloca, name)
+                            .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?;
+                        let data = self.extract_data(val)?;
+                        Ok(Some(data))
+                    } else {
+                        Ok(None)
+                    }
+                } else {
+                    Ok(None)
+                }
+            }
+
+            // Binary operations on integers
+            Expr::Binary { left, operator, right, .. } => {
+                let lt = self.infer_expr_type(left);
+                let rt = self.infer_expr_type(right);
+
+                if lt == VarType::Int && rt == VarType::Int {
+                    match operator {
+                        BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply |
+                        BinaryOp::Divide | BinaryOp::Modulo => {
+                            let left_i64 = self.compile_int_expr(left)?;
+                            let right_i64 = self.compile_int_expr(right)?;
+
+                            if let (Some(l), Some(r)) = (left_i64, right_i64) {
+                                let result = match operator {
+                                    BinaryOp::Add => self.builder.build_int_add(l, r, "add_i64").unwrap(),
+                                    BinaryOp::Subtract => self.builder.build_int_sub(l, r, "sub_i64").unwrap(),
+                                    BinaryOp::Multiply => self.builder.build_int_mul(l, r, "mul_i64").unwrap(),
+                                    BinaryOp::Divide => self.builder.build_int_signed_div(l, r, "div_i64").unwrap(),
+                                    BinaryOp::Modulo => self.builder.build_int_signed_rem(l, r, "mod_i64").unwrap(),
+                                    _ => unreachable!(),
+                                };
+                                return Ok(Some(result));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                Ok(None)
+            }
+
+            _ => Ok(None),
+        }
+    }
+
+    /// Sync all int shadows back to their MdhValue counterparts
+    /// Called at loop exit to ensure variables are up-to-date
+    fn sync_all_shadows(&mut self) -> Result<(), HaversError> {
+        // Collect names first to avoid borrow issues
+        let shadow_names: Vec<String> = self.int_shadows.keys().cloned().collect();
+
+        for name in shadow_names {
+            if let (Some(&shadow), Some(&alloca)) = (self.int_shadows.get(&name), self.variables.get(&name)) {
+                // Load from shadow
+                let int_val = self.builder.build_load(self.types.i64_type, shadow, &format!("{}_sync", name))
+                    .map_err(|e| HaversError::CompileError(format!("Failed to load shadow: {}", e)))?
+                    .into_int_value();
+                // Box to MdhValue
+                let boxed = self.make_int(int_val)?;
+                // Store to MdhValue
+                self.builder.build_store(alloca, boxed)
+                    .map_err(|e| HaversError::CompileError(format!("Failed to store: {}", e)))?;
+            }
+        }
+        Ok(())
     }
 
     // ========== Inline Arithmetic ==========
@@ -2671,16 +2893,82 @@ impl<'ctx> CodeGen<'ctx> {
     fn compile_stmt(&mut self, stmt: &Stmt) -> Result<(), HaversError> {
         match stmt {
             Stmt::VarDecl { name, initializer, .. } => {
+                // Track the inferred type for optimization
+                let var_type = if let Some(init) = initializer {
+                    self.infer_expr_type(init)
+                } else {
+                    VarType::Unknown
+                };
+                self.var_types.insert(name.clone(), var_type);
+
+                // For int variables, try to use optimized path
+                if var_type == VarType::Int {
+                    // Check if shadow already exists (re-declaration in loop)
+                    let shadow = if let Some(&existing) = self.int_shadows.get(name) {
+                        existing
+                    } else {
+                        let s = self.create_entry_block_alloca_i64(&format!("{}_shadow", name));
+                        self.int_shadows.insert(name.clone(), s);
+                        s
+                    };
+
+                    // Try to get the int value directly
+                    if let Some(init) = initializer {
+                        if let Some(int_val) = self.compile_int_expr(init)? {
+                            // Store to shadow
+                            self.builder.build_store(shadow, int_val)
+                                .map_err(|e| HaversError::CompileError(format!("Failed to store shadow: {}", e)))?;
+
+                            // Skip MdhValue store in loop body
+                            if !self.in_loop_body {
+                                // Ensure MdhValue alloca exists
+                                let alloca = if let Some(&existing) = self.variables.get(name) {
+                                    existing
+                                } else {
+                                    let a = self.create_entry_block_alloca(name);
+                                    self.variables.insert(name.clone(), a);
+                                    a
+                                };
+                                let boxed = self.make_int(int_val)?;
+                                self.builder.build_store(alloca, boxed)
+                                    .map_err(|e| HaversError::CompileError(format!("Failed to store: {}", e)))?;
+                            } else {
+                                // In loop: just ensure alloca exists
+                                if !self.variables.contains_key(name) {
+                                    let a = self.create_entry_block_alloca(name);
+                                    self.variables.insert(name.clone(), a);
+                                }
+                            }
+                            return Ok(());
+                        }
+                    }
+                }
+
+                // Fall back to standard path
                 let value = if let Some(init) = initializer {
                     self.compile_expr(init)?
                 } else {
                     self.make_nil()
                 };
 
-                let alloca = self.create_entry_block_alloca(name);
+                let alloca = if let Some(&existing) = self.variables.get(name) {
+                    existing
+                } else {
+                    let a = self.create_entry_block_alloca(name);
+                    self.variables.insert(name.clone(), a);
+                    a
+                };
                 self.builder.build_store(alloca, value)
                     .map_err(|e| HaversError::CompileError(format!("Failed to store: {}", e)))?;
-                self.variables.insert(name.clone(), alloca);
+
+                // Create shadow if needed
+                if var_type == VarType::Int && !self.int_shadows.contains_key(name) {
+                    let shadow = self.create_entry_block_alloca_i64(&format!("{}_shadow", name));
+                    let data = self.extract_data(value)?;
+                    self.builder.build_store(shadow, data)
+                        .map_err(|e| HaversError::CompileError(format!("Failed to store shadow: {}", e)))?;
+                    self.int_shadows.insert(name.clone(), shadow);
+                }
                 Ok(())
             }
 
@@ -2765,6 +3053,17 @@ impl<'ctx> CodeGen<'ctx> {
 
             Expr::Variable { name, .. } => {
                 if let Some(&alloca) = self.variables.get(name) {
+                    // If we're in a loop body and have a shadow, construct fresh MdhValue from shadow
+                    // This ensures function calls get the correct value even though we've been
+                    // skipping MdhValue stores for optimization
+                    if self.in_loop_body {
+                        if let Some(&shadow) = self.int_shadows.get(name) {
+                            let int_val = self.builder.build_load(self.types.i64_type, shadow, &format!("{}_shadow_load", name))
+                                .map_err(|e| HaversError::CompileError(format!("Failed to load shadow: {}", e)))?
+                                .into_int_value();
+                            return self.make_int(int_val);
+                        }
+                    }
                     let val = self.builder.build_load(self.types.value_type, alloca, name)
                         .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?;
                     Ok(val)
@@ -2779,10 +3078,42 @@ impl<'ctx> CodeGen<'ctx> {
             }
 
             Expr::Assign { name, value, .. } => {
+                // Try to use optimized int path if we have an int shadow
+                if let Some(&shadow) = self.int_shadows.get(name) {
+                    // Try to compile the value directly as i64
+                    if let Some(int_val) = self.compile_int_expr(value)? {
+                        // Update the shadow with the new i64 value
+                        self.builder.build_store(shadow, int_val)
+                            .map_err(|e| HaversError::CompileError(format!("Failed to store shadow: {}", e)))?;
+
+                        // Skip MdhValue store in loop body (will sync at loop exit)
+                        if self.in_loop_body {
+                            // Still need to return a valid MdhValue
+                            let boxed = self.make_int(int_val)?;
+                            return Ok(boxed);
+                        }
+
+                        // Outside loop: also update the MdhValue
+                        let boxed = self.make_int(int_val)?;
+                        if let Some(&alloca) = self.variables.get(name) {
+                            self.builder.build_store(alloca, boxed)
+                                .map_err(|e| HaversError::CompileError(format!("Failed to store: {}", e)))?;
+                        }
+                        return Ok(boxed);
+                    }
+                }
+
+                // Fall back to standard path
                 let val = self.compile_expr(value)?;
                 if let Some(&alloca) = self.variables.get(name) {
                     self.builder.build_store(alloca, val)
                         .map_err(|e| HaversError::CompileError(format!("Failed to store: {}", e)))?;
+                    // Update int shadow if we have one
+                    if let Some(&shadow) = self.int_shadows.get(name) {
+                        let data = self.extract_data(val)?;
+                        self.builder.build_store(shadow, data)
+                            .map_err(|e| HaversError::CompileError(format!("Failed to store shadow: {}", e)))?;
+                    }
                     Ok(val)
                 } else {
                     Err(HaversError::CompileError(format!("Undefined variable: {}", name)))
@@ -2820,6 +3151,10 @@ impl<'ctx> CodeGen<'ctx> {
 
             Expr::List { elements, .. } => {
                 self.compile_list(elements)
+            }
+
+            Expr::Dict { pairs, .. } => {
+                self.compile_dict(pairs)
             }
 
             Expr::Index { object, index, .. } => {
@@ -2875,6 +3210,21 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn compile_binary(&mut self, left: &Expr, op: BinaryOp, right: &Expr) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        // Type-based optimization: if both operands are known to be Int, use fast path
+        let left_type = self.infer_expr_type(left);
+        let right_type = self.infer_expr_type(right);
+
+        // Integer fast path for arithmetic operations
+        if left_type == VarType::Int && right_type == VarType::Int {
+            match op {
+                BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply |
+                BinaryOp::Divide | BinaryOp::Modulo => {
+                    return self.compile_binary_int_fast(left, op, right);
+                }
+                _ => {} // Comparisons already optimized via compile_condition_direct
+            }
+        }
+
         let left_val = self.compile_expr(left)?;
         let right_val = self.compile_expr(right)?;
 
@@ -2891,6 +3241,37 @@ impl<'ctx> CodeGen<'ctx> {
             BinaryOp::Greater => self.inline_gt(left_val, right_val),
             BinaryOp::GreaterEqual => self.inline_ge(left_val, right_val),
         }
+    }
+
+    /// Fast path for integer arithmetic - uses shadows when available
+    fn compile_binary_int_fast(&mut self, left: &Expr, op: BinaryOp, right: &Expr) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        // Try to use int shadows directly (avoids MdhValue load)
+        let left_data = if let Some(l) = self.compile_int_expr(left)? {
+            l
+        } else {
+            let left_val = self.compile_expr(left)?;
+            self.extract_data(left_val)?
+        };
+
+        let right_data = if let Some(r) = self.compile_int_expr(right)? {
+            r
+        } else {
+            let right_val = self.compile_expr(right)?;
+            self.extract_data(right_val)?
+        };
+
+        // Perform operation directly on i64
+        let result = match op {
+            BinaryOp::Add => self.builder.build_int_add(left_data, right_data, "add_fast").unwrap(),
+            BinaryOp::Subtract => self.builder.build_int_sub(left_data, right_data, "sub_fast").unwrap(),
+            BinaryOp::Multiply => self.builder.build_int_mul(left_data, right_data, "mul_fast").unwrap(),
+            BinaryOp::Divide => self.builder.build_int_signed_div(left_data, right_data, "div_fast").unwrap(),
+            BinaryOp::Modulo => self.builder.build_int_signed_rem(left_data, right_data, "mod_fast").unwrap(),
+            _ => unreachable!(),
+        };
+
+        // Box the result back to MdhValue
+        self.make_int(result)
     }
 
     fn compile_unary(&mut self, op: UnaryOp, operand: &Expr) -> Result<BasicValueEnum<'ctx>, HaversError> {
@@ -3051,8 +3432,8 @@ impl<'ctx> CodeGen<'ctx> {
                     if args.len() != 1 {
                         return Err(HaversError::CompileError("yank expects 1 argument".to_string()));
                     }
-                    let arg = self.compile_expr(&args[0])?;
-                    return self.inline_yank(arg);
+                    let list = self.compile_expr(&args[0])?;
+                    return self.inline_yank(list);
                 }
                 "heid" => {
                     if args.len() != 1 {
@@ -3322,8 +3703,13 @@ impl<'ctx> CodeGen<'ctx> {
 
     fn compile_if(&mut self, condition: &Expr, then_branch: &Stmt, else_branch: Option<&Stmt>) -> Result<(), HaversError> {
         let function = self.current_function.unwrap();
-        let cond_val = self.compile_expr(condition)?;
-        let cond_bool = self.is_truthy(cond_val)?;
+        // Optimization: try to compile condition directly to i1 without boxing
+        let cond_bool = if let Some(direct) = self.compile_condition_direct(condition)? {
+            direct
+        } else {
+            let cond_val = self.compile_expr(condition)?;
+            self.is_truthy(cond_val)?
+        };
 
         let then_block = self.context.append_basic_block(function, "then");
         let else_block = self.context.append_basic_block(function, "else");
@@ -3366,18 +3752,32 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
         self.builder.position_at_end(loop_block);
-        let cond_val = self.compile_expr(condition)?;
-        let cond_bool = self.is_truthy(cond_val)?;
+        // Optimization: try to compile condition directly to i1 without boxing
+        let cond_bool = if let Some(direct) = self.compile_condition_direct(condition)? {
+            direct
+        } else {
+            // Fallback: compile expression and check truthiness
+            let cond_val = self.compile_expr(condition)?;
+            self.is_truthy(cond_val)?
+        };
         self.builder.build_conditional_branch(cond_bool, body_block, after_block).unwrap();
 
         self.builder.position_at_end(body_block);
+        // Mark that we're in a hot loop body (skip MdhValue stores)
+        let was_in_loop = self.in_loop_body;
+        self.in_loop_body = true;
         self.compile_stmt(body)?;
+        self.in_loop_body = was_in_loop;
         if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
             self.builder.build_unconditional_branch(loop_block).unwrap();
         }
 
         self.loop_stack.pop();
         self.builder.position_at_end(after_block);
+
+        // Sync all dirty shadows to MdhValue at loop exit
+        self.sync_all_shadows()?;
+
         Ok(())
     }
 
@@ -3460,17 +3860,32 @@ impl<'ctx> CodeGen<'ctx> {
 
         let saved_function = self.current_function;
         let saved_variables = std::mem::take(&mut self.variables);
+        let saved_var_types = std::mem::take(&mut self.var_types);
+        let saved_int_shadows = std::mem::take(&mut self.int_shadows);
 
         self.builder.position_at_end(entry);
         self.current_function = Some(function);
 
         // Set up parameters
+        // Create shadows for all parameters (optimistic: assume they're integers)
+        // The shadow will be used if the parameter is used in integer context
         for (i, param) in params.iter().enumerate() {
             let param_val = function.get_nth_param(i as u32)
                 .ok_or_else(|| HaversError::CompileError("Missing parameter".to_string()))?;
             let alloca = self.create_entry_block_alloca(&param.name);
             self.builder.build_store(alloca, param_val).unwrap();
             self.variables.insert(param.name.clone(), alloca);
+
+            // Create shadow with extracted int value (optimistic)
+            // If parameter isn't actually an int at runtime, this is still safe
+            // because we only use the shadow when we KNOW it's an int context
+            let shadow = self.create_entry_block_alloca_i64(&format!("{}_shadow", param.name));
+            let data = self.extract_data(param_val)?;
+            self.builder.build_store(shadow, data).unwrap();
+            self.int_shadows.insert(param.name.clone(), shadow);
+
+            // Mark as Unknown - but shadow is available for optimizations
+            self.var_types.insert(param.name.clone(), VarType::Unknown);
         }
 
         // Compile body
@@ -3486,6 +3901,8 @@ impl<'ctx> CodeGen<'ctx> {
         // Restore state
         self.current_function = saved_function;
         self.variables = saved_variables;
+        self.var_types = saved_var_types;
+        self.int_shadows = saved_int_shadows;
 
         if let Some(func) = saved_function {
             if let Some(last_block) = func.get_last_basic_block() {
@@ -3536,6 +3953,20 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         builder.build_alloca(self.types.value_type, name).unwrap()
+    }
+
+    /// Create alloca for i64 shadow variable in entry block (hoisted from loop)
+    fn create_entry_block_alloca_i64(&self, name: &str) -> PointerValue<'ctx> {
+        let function = self.current_function.unwrap();
+        let entry = function.get_first_basic_block().unwrap();
+
+        let builder = self.context.create_builder();
+        match entry.get_first_instruction() {
+            Some(instr) => builder.position_before(&instr),
+            None => builder.position_at_end(entry),
+        }
+
+        builder.build_alloca(self.types.i64_type, name).unwrap()
     }
 
     /// Compile a list expression: allocate memory and store elements
@@ -3606,7 +4037,100 @@ impl<'ctx> CodeGen<'ctx> {
         self.make_list(raw_ptr)
     }
 
-    /// Compile an index expression: list[index] or string[index]
+    /// Compile a dict literal expression: {key1: value1, key2: value2, ...}
+    /// Dict memory layout: [i64 count][entry0][entry1]... where entry = [{i8,i64} key][{i8,i64} val]
+    fn compile_dict(&mut self, pairs: &[(Expr, Expr)]) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let count = pairs.len();
+
+        // Calculate memory size: 8 bytes for count + count * 32 bytes for entries (16 bytes key + 16 bytes value)
+        let entry_size = 32u64; // 16 bytes for key + 16 bytes for value
+        let header_size = 8u64; // sizeof(i64) for count
+        let total_size = header_size + (count as u64) * entry_size;
+
+        // Allocate memory
+        let size_val = self.types.i64_type.const_int(total_size, false);
+        let raw_ptr = self.builder.build_call(
+            self.libc.malloc,
+            &[size_val.into()],
+            "dict_alloc"
+        ).map_err(|e| HaversError::CompileError(format!("Failed to call malloc: {}", e)))?
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| HaversError::CompileError("malloc returned void".to_string()))?
+            .into_pointer_value();
+
+        // Cast to i64* for storing the count
+        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let count_ptr = self.builder.build_pointer_cast(raw_ptr, i64_ptr_type, "count_ptr")
+            .map_err(|e| HaversError::CompileError(format!("Failed to cast pointer: {}", e)))?;
+
+        // Store count
+        let count_val = self.types.i64_type.const_int(count as u64, false);
+        self.builder.build_store(count_ptr, count_val)
+            .map_err(|e| HaversError::CompileError(format!("Failed to store count: {}", e)))?;
+
+        // Get pointer to entries array (after the count)
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let entries_base = unsafe {
+            self.builder.build_gep(
+                self.types.i64_type,
+                count_ptr,
+                &[self.types.i64_type.const_int(1, false)],
+                "entries_base"
+            ).map_err(|e| HaversError::CompileError(format!("Failed to compute entries base: {}", e)))?
+        };
+
+        // Compile and store each key-value pair
+        for (i, (key_expr, val_expr)) in pairs.iter().enumerate() {
+            let compiled_key = self.compile_expr(key_expr)?;
+            let compiled_val = self.compile_expr(val_expr)?;
+
+            // Calculate entry offset: entry_size * i
+            let entry_offset = self.types.i64_type.const_int((i as u64) * entry_size, false);
+
+            // Get pointer to key slot
+            let entry_ptr = unsafe {
+                self.builder.build_gep(
+                    self.context.i8_type(),
+                    self.builder.build_pointer_cast(entries_base, i8_ptr_type, "entries_i8").unwrap(),
+                    &[entry_offset],
+                    &format!("entry_{}", i)
+                ).map_err(|e| HaversError::CompileError(format!("Failed to compute entry pointer: {}", e)))?
+            };
+
+            // Store key at entry start
+            let key_ptr = self.builder.build_pointer_cast(
+                entry_ptr,
+                self.types.value_type.ptr_type(AddressSpace::default()),
+                &format!("key_ptr_{}", i)
+            ).map_err(|e| HaversError::CompileError(format!("Failed to cast key pointer: {}", e)))?;
+            self.builder.build_store(key_ptr, compiled_key)
+                .map_err(|e| HaversError::CompileError(format!("Failed to store key: {}", e)))?;
+
+            // Store value at entry start + 16 bytes
+            let value_offset = self.types.i64_type.const_int(16, false);
+            let val_ptr = unsafe {
+                self.builder.build_gep(
+                    self.context.i8_type(),
+                    entry_ptr,
+                    &[value_offset],
+                    &format!("val_gep_{}", i)
+                ).map_err(|e| HaversError::CompileError(format!("Failed to compute value pointer: {}", e)))?
+            };
+            let val_typed_ptr = self.builder.build_pointer_cast(
+                val_ptr,
+                self.types.value_type.ptr_type(AddressSpace::default()),
+                &format!("val_ptr_{}", i)
+            ).map_err(|e| HaversError::CompileError(format!("Failed to cast value pointer: {}", e)))?;
+            self.builder.build_store(val_typed_ptr, compiled_val)
+                .map_err(|e| HaversError::CompileError(format!("Failed to store value: {}", e)))?;
+        }
+
+        // Return the dict as a tagged value
+        self.make_dict(raw_ptr)
+    }
+
+    /// Compile an index expression: list[index], string[index], or dict[key]
     fn compile_index(&mut self, object: &Expr, index: &Expr) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let obj_val = self.compile_expr(object)?;
         let idx_val = self.compile_expr(index)?;
@@ -3615,8 +4139,14 @@ impl<'ctx> CodeGen<'ctx> {
         let obj_tag = self.extract_tag(obj_val)?;
         let obj_data = self.extract_data(obj_val)?;
 
-        // Extract the index (assume it's an integer)
-        let idx_data = self.extract_data(idx_val)?;
+        // Create basic blocks for branching
+        let function = self.current_function.ok_or_else(||
+            HaversError::CompileError("No current function".to_string()))?;
+        let list_block = self.context.append_basic_block(function, "index_list");
+        let check_dict_block = self.context.append_basic_block(function, "check_dict");
+        let dict_block = self.context.append_basic_block(function, "index_dict");
+        let string_block = self.context.append_basic_block(function, "index_string");
+        let merge_block = self.context.append_basic_block(function, "index_merge");
 
         // Check if object is a list (tag == 5)
         let list_tag = self.types.i8_type.const_int(ValueTag::List.as_u8() as u64, false);
@@ -3627,32 +4157,45 @@ impl<'ctx> CodeGen<'ctx> {
             "is_list"
         ).map_err(|e| HaversError::CompileError(format!("Failed to compare tags: {}", e)))?;
 
-        // Create basic blocks for branching
-        let function = self.current_function.ok_or_else(||
-            HaversError::CompileError("No current function".to_string()))?;
-        let list_block = self.context.append_basic_block(function, "index_list");
-        let string_block = self.context.append_basic_block(function, "index_string");
-        let merge_block = self.context.append_basic_block(function, "index_merge");
-
-        self.builder.build_conditional_branch(is_list, list_block, string_block)
+        self.builder.build_conditional_branch(is_list, list_block, check_dict_block)
             .map_err(|e| HaversError::CompileError(format!("Failed to build branch: {}", e)))?;
 
-        // List indexing
+        // List indexing - use index as integer
         self.builder.position_at_end(list_block);
+        let idx_data = self.extract_data(idx_val)?;
         let list_result = self.compile_list_index(obj_data, idx_data)?;
         let list_bb = self.builder.get_insert_block().unwrap();
         self.builder.build_unconditional_branch(merge_block).unwrap();
 
-        // String indexing (return character as string)
+        // Check if object is a dict (tag == 6)
+        self.builder.position_at_end(check_dict_block);
+        let dict_tag = self.types.i8_type.const_int(ValueTag::Dict.as_u8() as u64, false);
+        let is_dict = self.builder.build_int_compare(
+            inkwell::IntPredicate::EQ,
+            obj_tag,
+            dict_tag,
+            "is_dict"
+        ).map_err(|e| HaversError::CompileError(format!("Failed to compare tags: {}", e)))?;
+
+        self.builder.build_conditional_branch(is_dict, dict_block, string_block).unwrap();
+
+        // Dict indexing - use key for lookup
+        self.builder.position_at_end(dict_block);
+        let dict_result = self.compile_dict_index(obj_data, idx_val)?;
+        let dict_bb = self.builder.get_insert_block().unwrap();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+
+        // String indexing (return character as string) - use index as integer
         self.builder.position_at_end(string_block);
-        let string_result = self.compile_string_index(obj_data, idx_data)?;
+        let idx_data_str = self.extract_data(idx_val)?;
+        let string_result = self.compile_string_index(obj_data, idx_data_str)?;
         let string_bb = self.builder.get_insert_block().unwrap();
         self.builder.build_unconditional_branch(merge_block).unwrap();
 
         // Merge
         self.builder.position_at_end(merge_block);
         let phi = self.builder.build_phi(self.types.value_type, "index_result").unwrap();
-        phi.add_incoming(&[(&list_result, list_bb), (&string_result, string_bb)]);
+        phi.add_incoming(&[(&list_result, list_bb), (&dict_result, dict_bb), (&string_result, string_bb)]);
 
         Ok(phi.as_basic_value())
     }
@@ -3717,6 +4260,108 @@ impl<'ctx> CodeGen<'ctx> {
         let result = self.builder.build_load(self.types.value_type, elem_ptr, "elem_val")
             .map_err(|e| HaversError::CompileError(format!("Failed to load element: {}", e)))?;
 
+        Ok(result)
+    }
+
+    /// Helper for dict indexing - searches for key and returns corresponding value
+    /// Dict layout: [i64 count][entry0][entry1]... where entry = [{i8,i64} key][{i8,i64} val]
+    fn compile_dict_index(&mut self, dict_data: IntValue<'ctx>, key_val: BasicValueEnum<'ctx>) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let function = self.current_function.unwrap();
+
+        // Convert dict data to pointer
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let dict_ptr = self.builder.build_int_to_ptr(dict_data, i8_ptr_type, "dict_ptr")
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert to pointer: {}", e)))?;
+
+        // Get dict count
+        let count_ptr = self.builder.build_pointer_cast(dict_ptr, i64_ptr_type, "count_ptr").unwrap();
+        let dict_count = self.builder.build_load(self.types.i64_type, count_ptr, "dict_count")
+            .unwrap().into_int_value();
+
+        // Extract key tag and data for comparison
+        let key_tag = self.extract_tag(key_val)?;
+        let key_data = self.extract_data(key_val)?;
+
+        // Allocate result pointer and found flag
+        let result_ptr = self.builder.build_alloca(self.types.value_type, "result_ptr").unwrap();
+        self.builder.build_store(result_ptr, self.make_nil()).unwrap();
+
+        // Loop through entries to find matching key
+        let zero = self.types.i64_type.const_int(0, false);
+        let one = self.types.i64_type.const_int(1, false);
+        let header_size = self.types.i64_type.const_int(8, false);
+        let entry_size = self.types.i64_type.const_int(32, false);
+        let value_offset_in_entry = self.types.i64_type.const_int(16, false);
+
+        let idx_ptr = self.builder.build_alloca(self.types.i64_type, "idx").unwrap();
+        self.builder.build_store(idx_ptr, zero).unwrap();
+
+        let loop_block = self.context.append_basic_block(function, "dict_lookup_loop");
+        let body_block = self.context.append_basic_block(function, "dict_lookup_body");
+        let found_block = self.context.append_basic_block(function, "dict_found");
+        let continue_block = self.context.append_basic_block(function, "dict_continue");
+        let done_block = self.context.append_basic_block(function, "dict_lookup_done");
+
+        self.builder.build_unconditional_branch(loop_block).unwrap();
+        self.builder.position_at_end(loop_block);
+
+        let idx = self.builder.build_load(self.types.i64_type, idx_ptr, "idx_val").unwrap().into_int_value();
+        let done_cond = self.builder.build_int_compare(IntPredicate::UGE, idx, dict_count, "done").unwrap();
+        self.builder.build_conditional_branch(done_cond, done_block, body_block).unwrap();
+
+        self.builder.position_at_end(body_block);
+
+        // Get entry key from dict
+        let dict_entry_offset = self.builder.build_int_add(
+            header_size,
+            self.builder.build_int_mul(idx, entry_size, "entry_mul").unwrap(),
+            "entry_offset"
+        ).unwrap();
+        let dict_key_ptr = unsafe {
+            self.builder.build_gep(self.context.i8_type(), dict_ptr, &[dict_entry_offset], "dict_key_ptr").unwrap()
+        };
+        let key_value_ptr = self.builder.build_pointer_cast(
+            dict_key_ptr,
+            self.types.value_type.ptr_type(AddressSpace::default()),
+            "key_value_ptr"
+        ).unwrap();
+        let entry_key = self.builder.build_load(self.types.value_type, key_value_ptr, "entry_key").unwrap();
+
+        // Compare keys - check both tag and data match
+        let entry_key_tag = self.extract_tag(entry_key)?;
+        let entry_key_data = self.extract_data(entry_key)?;
+
+        let tags_match = self.builder.build_int_compare(IntPredicate::EQ, key_tag, entry_key_tag, "tags_match").unwrap();
+        let data_match = self.builder.build_int_compare(IntPredicate::EQ, key_data, entry_key_data, "data_match").unwrap();
+        let keys_match = self.builder.build_and(tags_match, data_match, "keys_match").unwrap();
+
+        self.builder.build_conditional_branch(keys_match, found_block, continue_block).unwrap();
+
+        // Found - get the value
+        self.builder.position_at_end(found_block);
+        let dict_value_offset = self.builder.build_int_add(dict_entry_offset, value_offset_in_entry, "value_offset").unwrap();
+        let dict_value_ptr = unsafe {
+            self.builder.build_gep(self.context.i8_type(), dict_ptr, &[dict_value_offset], "dict_value_ptr").unwrap()
+        };
+        let value_ptr = self.builder.build_pointer_cast(
+            dict_value_ptr,
+            self.types.value_type.ptr_type(AddressSpace::default()),
+            "value_ptr"
+        ).unwrap();
+        let found_val = self.builder.build_load(self.types.value_type, value_ptr, "found_val").unwrap();
+        self.builder.build_store(result_ptr, found_val).unwrap();
+        self.builder.build_unconditional_branch(done_block).unwrap();
+
+        // Continue loop
+        self.builder.position_at_end(continue_block);
+        let next_idx = self.builder.build_int_add(idx, one, "next_idx").unwrap();
+        self.builder.build_store(idx_ptr, next_idx).unwrap();
+        self.builder.build_unconditional_branch(loop_block).unwrap();
+
+        // Done - return result (nil if not found)
+        self.builder.position_at_end(done_block);
+        let result = self.builder.build_load(self.types.value_type, result_ptr, "dict_result").unwrap();
         Ok(result)
     }
 
@@ -4186,6 +4831,37 @@ impl<'ctx> CodeGen<'ctx> {
             "str_len"
         ).unwrap().try_as_basic_value().left().unwrap().into_int_value();
 
+        // Handle empty delimiter - return list with single element (the whole string)
+        // This prevents infinite loop when delimiter is ""
+        let zero = self.types.i64_type.const_int(0, false);
+        let delim_is_empty = self.builder.build_int_compare(IntPredicate::EQ, delim_len, zero, "delim_empty").unwrap();
+
+        let empty_delim_block = self.context.append_basic_block(function, "empty_delim");
+        let normal_split_block = self.context.append_basic_block(function, "normal_split");
+        let merge_block = self.context.append_basic_block(function, "split_merge");
+
+        self.builder.build_conditional_branch(delim_is_empty, empty_delim_block, normal_split_block).unwrap();
+
+        // Empty delimiter case: return list containing the original string
+        self.builder.position_at_end(empty_delim_block);
+        let one_elem_list = self.allocate_list(self.types.i64_type.const_int(1, false))?;
+        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let one_len_ptr = self.builder.build_pointer_cast(one_elem_list, i64_ptr_type, "one_len_ptr").unwrap();
+        self.builder.build_store(one_len_ptr, self.types.i64_type.const_int(1, false)).unwrap();
+        // Store original string as element 0
+        let header_size_const = self.types.i64_type.const_int(8, false);
+        let elem_ptr_empty = unsafe {
+            self.builder.build_gep(self.context.i8_type(), one_elem_list, &[header_size_const], "elem_ptr_empty").unwrap()
+        };
+        let value_ptr_empty = self.builder.build_pointer_cast(elem_ptr_empty, self.types.value_type.ptr_type(AddressSpace::default()), "value_ptr_empty").unwrap();
+        self.builder.build_store(value_ptr_empty, str_val).unwrap();
+        let empty_result = self.make_list(one_elem_list)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let empty_delim_end = self.builder.get_insert_block().unwrap();
+
+        // Normal split case
+        self.builder.position_at_end(normal_split_block);
+
         // Allocate list with space for up to 100 elements initially
         // List format: [i64 length][value elem0][value elem1]...
         let header_size = self.types.i64_type.const_int(8, false);
@@ -4360,13 +5036,16 @@ impl<'ctx> CodeGen<'ctx> {
         let done_len_ptr = self.builder.build_pointer_cast(done_list_ptr, i64_ptr_type, "done_len_ptr").unwrap();
         self.builder.build_store(done_len_ptr, done_count).unwrap();
 
-        // Return list value
-        let list_as_int = self.builder.build_ptr_to_int(done_list_ptr, self.types.i64_type, "list_as_int").unwrap();
-        let list_tag = self.types.i8_type.const_int(ValueTag::List.as_u8() as u64, false);
-        let undef = self.types.value_type.get_undef();
-        let v1 = self.builder.build_insert_value(undef, list_tag, 0, "v1").unwrap();
-        let v2 = self.builder.build_insert_value(v1, list_as_int, 1, "v2").unwrap();
-        Ok(v2.into_struct_value().into())
+        // Create list value for normal case
+        let normal_result = self.make_list(done_list_ptr)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let normal_split_end = self.builder.get_insert_block().unwrap();
+
+        // Merge block - use phi to select result
+        self.builder.position_at_end(merge_block);
+        let phi = self.builder.build_phi(self.types.value_type, "split_result").unwrap();
+        phi.add_incoming(&[(&empty_result, empty_delim_end), (&normal_result, normal_split_end)]);
+        Ok(phi.as_basic_value())
     }
 
     /// join(list, delimiter) - Join list elements with delimiter

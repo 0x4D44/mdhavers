@@ -98,6 +98,7 @@ MdhValue __mdh_type_of(MdhValue a);
 
 void __mdh_blether(MdhValue a);
 MdhValue __mdh_speir(MdhValue prompt);
+MdhValue __mdh_get_key(void);
 
 /* ========== List Operations ========== */
 

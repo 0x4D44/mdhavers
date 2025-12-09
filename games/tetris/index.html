@@ -350,244 +350,27 @@
     </footer>
 
     <script type="module">
-        // Import the compiled mdhavers code
-        // This would normally come from the mdhavers compiler output
-        // For now, we implement the game logic directly in JavaScript
-        // that mirrors the mdhavers code structure
+        import { 
+            game, 
+            new_game, 
+            tick, 
+            move_left, 
+            move_right, 
+            move_down, 
+            hard_drop, 
+            rotate, 
+            toggle_pause, 
+            get_state, 
+            get_colours, 
+            get_dimensions 
+        } from './tetris.js';
 
         // === Game Constants ===
-        const BOARD_WIDTH = 10;
-        const BOARD_HEIGHT = 20;
-        const CELL_SIZE = 30;
-
-        // Tetromino shapes
-        const SHAPES = {
-            I: [[0, 0], [0, 1], [0, 2], [0, 3]],
-            O: [[0, 0], [0, 1], [1, 0], [1, 1]],
-            T: [[0, 0], [0, 1], [0, 2], [1, 1]],
-            S: [[0, 1], [0, 2], [1, 0], [1, 1]],
-            Z: [[0, 0], [0, 1], [1, 1], [1, 2]],
-            J: [[0, 0], [1, 0], [1, 1], [1, 2]],
-            L: [[0, 2], [1, 0], [1, 1], [1, 2]]
-        };
-
-        // Scottish-themed colours
-        const COLOURS = {
-            I: '#00CED1',  // Turquoise like the sea
-            O: '#FFD700',  // Gold like whisky
-            T: '#9370DB',  // Purple like heather
-            S: '#32CD32',  // Green like the Highlands
-            Z: '#FF4500',  // Orange-red like a sunset
-            J: '#4169E1',  // Royal blue like the Saltire
-            L: '#FF8C00'   // Orange like Irn-Bru
-        };
-
-        const SHAPE_NAMES = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'];
-
-        // === Game State ===
-        class TetrisGame {
-            constructor() {
-                this.reset();
-            }
-
-            reset() {
-                this.board = this.createEmptyBoard();
-                this.currentPiece = null;
-                this.currentShape = '';
-                this.currentRow = 0;
-                this.currentCol = 0;
-                this.currentRotation = 0;
-                this.score = 0;
-                this.level = 1;
-                this.linesCleared = 0;
-                this.gameOver = false;
-                this.paused = false;
-                this.spawnPiece();
-            }
-
-            createEmptyBoard() {
-                return Array(BOARD_HEIGHT).fill(null).map(() =>
-                    Array(BOARD_WIDTH).fill(0)
-                );
-            }
-
-            spawnPiece() {
-                const idx = Math.floor(Math.random() * SHAPE_NAMES.length);
-                this.currentShape = SHAPE_NAMES[idx];
-                this.currentPiece = SHAPES[this.currentShape];
-                this.currentRotation = 0;
-                this.currentRow = 0;
-                this.currentCol = Math.floor((BOARD_WIDTH - 4) / 2);
-
-                if (this.checkCollision(0, 0)) {
-                    this.gameOver = true;
-                }
-            }
-
-            getRotatedPiece() {
-                return this.currentPiece.map(([r, c]) => {
-                    switch (this.currentRotation) {
-                        case 1: return [c, 3 - r];      // 90 degrees
-                        case 2: return [3 - r, 3 - c];  // 180 degrees
-                        case 3: return [3 - c, r];      // 270 degrees
-                        default: return [r, c];          // No rotation
-                    }
-                });
-            }
-
-            checkCollision(rowOffset, colOffset) {
-                const piece = this.getRotatedPiece();
-                for (const [r, c] of piece) {
-                    const newRow = this.currentRow + r + rowOffset;
-                    const newCol = this.currentCol + c + colOffset;
-
-                    if (newRow < 0 || newRow >= BOARD_HEIGHT ||
-                        newCol < 0 || newCol >= BOARD_WIDTH) {
-                        return true;
-                    }
-
-                    if (this.board[newRow][newCol] !== 0) {
-                        return true;
-                    }
-                }
-                return false;
-            }
-
-            moveLeft() {
-                if (!this.gameOver && !this.paused && !this.checkCollision(0, -1)) {
-                    this.currentCol--;
-                }
-            }
-
-            moveRight() {
-                if (!this.gameOver && !this.paused && !this.checkCollision(0, 1)) {
-                    this.currentCol++;
-                }
-            }
-
-            moveDown() {
-                if (this.gameOver || this.paused) return false;
-
-                if (!this.checkCollision(1, 0)) {
-                    this.currentRow++;
-                    return true;
-                } else {
-                    this.lockPiece();
-                    this.clearLines();
-                    this.spawnPiece();
-                    return false;
-                }
-            }
-
-            hardDrop() {
-                if (this.gameOver || this.paused) return;
-
-                let dropped = 0;
-                while (!this.checkCollision(1, 0)) {
-                    this.currentRow++;
-                    dropped++;
-                }
-                this.score += dropped * 2;
-                this.lockPiece();
-                this.clearLines();
-                this.spawnPiece();
-            }
-
-            rotate() {
-                if (this.gameOver || this.paused) return;
-
-                const oldRotation = this.currentRotation;
-                this.currentRotation = (this.currentRotation + 1) % 4;
-
-                if (this.checkCollision(0, 0)) {
-                    const kicks = [0, 1, -1, 2, -2];
-                    let kicked = false;
-
-                    for (const kick of kicks) {
-                        if (!this.checkCollision(0, kick)) {
-                            this.currentCol += kick;
-                            kicked = true;
-                            break;
-                        }
-                    }
-
-                    if (!kicked) {
-                        this.currentRotation = oldRotation;
-                    }
-                }
-            }
-
-            lockPiece() {
-                const piece = this.getRotatedPiece();
-                const colour = COLOURS[this.currentShape];
-
-                for (const [r, c] of piece) {
-                    const row = this.currentRow + r;
-                    const col = this.currentCol + c;
-
-                    if (row >= 0 && row < BOARD_HEIGHT &&
-                        col >= 0 && col < BOARD_WIDTH) {
-                        this.board[row][col] = colour;
-                    }
-                }
-            }
-
-            clearLines() {
-                const linesToClear = [];
-
-                for (let row = 0; row < BOARD_HEIGHT; row++) {
-                    if (this.board[row].every(cell => cell !== 0)) {
-                        linesToClear.push(row);
-                    }
-                }
-
-                for (const line of linesToClear) {
-                    this.board.splice(line, 1);
-                    this.board.unshift(Array(BOARD_WIDTH).fill(0));
-                }
-
-                const numLines = linesToClear.length;
-                if (numLines > 0) {
-                    this.linesCleared += numLines;
-
-                    const points = { 1: 100, 2: 300, 3: 500, 4: 800 };
-                    this.score += (points[numLines] || 0) * this.level;
-
-                    this.level = Math.floor(this.linesCleared / 10) + 1;
-                }
-            }
-
-            togglePause() {
-                if (!this.gameOver) {
-                    this.paused = !this.paused;
-                }
-            }
-
-            getGhostRow() {
-                let ghostRow = this.currentRow;
-                while (!this.checkCollisionAt(ghostRow + 1, this.currentCol)) {
-                    ghostRow++;
-                }
-                return ghostRow;
-            }
-
-            checkCollisionAt(row, col) {
-                const oldRow = this.currentRow;
-                const oldCol = this.currentCol;
-                this.currentRow = row;
-                this.currentCol = col;
-                const result = this.checkCollision(0, 0);
-                this.currentRow = oldRow;
-                this.currentCol = oldCol;
-                return result;
-            }
-
-            getDropSpeed() {
-                const baseSpeed = 1000;
-                const speed = baseSpeed - ((this.level - 1) * 100);
-                return Math.max(speed, 100);
-            }
-        }
+        const dims = get_dimensions();
+        const BOARD_WIDTH = dims.width;
+        const BOARD_HEIGHT = dims.height;
+        const CELL_SIZE = dims.cell_size;
+        const COLOURS = get_colours();
 
         // === Renderer ===
         class GameRenderer {
@@ -596,14 +379,14 @@
                 this.ctx = canvas.getContext('2d');
             }
 
-            render(game) {
+            render() {
                 this.ctx.fillStyle = '#0a0a15';
                 this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
                 this.drawGrid();
                 this.drawBoard(game.board);
-                this.drawGhost(game);
-                this.drawCurrentPiece(game);
+                this.drawGhost();
+                this.drawCurrentPiece();
             }
 
             drawGrid() {
@@ -635,29 +418,29 @@
                 }
             }
 
-            drawGhost(game) {
-                if (game.gameOver || game.paused) return;
+            drawGhost() {
+                if (game.game_over || game.paused) return;
 
-                const ghostRow = game.getGhostRow();
-                const piece = game.getRotatedPiece();
-                const colour = COLOURS[game.currentShape];
+                const ghostRow = game.get_ghost_row();
+                const piece = game.get_rotated_piece();
+                const colour = COLOURS[game.current_shape];
 
                 for (const [r, c] of piece) {
                     const row = ghostRow + r;
-                    const col = game.currentCol + c;
+                    const col = game.current_col + c;
                     this.drawGhostCell(col, row, colour);
                 }
             }
 
-            drawCurrentPiece(game) {
-                if (game.gameOver || game.paused) return;
+            drawCurrentPiece() {
+                if (game.game_over || game.paused) return;
 
-                const piece = game.getRotatedPiece();
-                const colour = COLOURS[game.currentShape];
+                const piece = game.get_rotated_piece();
+                const colour = COLOURS[game.current_shape];
 
                 for (const [r, c] of piece) {
-                    const row = game.currentRow + r;
-                    const col = game.currentCol + c;
+                    const row = game.current_row + r;
+                    const col = game.current_col + c;
                     if (row >= 0) {
                         this.drawCell(col, row, colour);
                     }
@@ -703,7 +486,6 @@
         class GameController {
             constructor() {
                 this.canvas = document.getElementById('canvas');
-                this.game = new TetrisGame();
                 this.renderer = new GameRenderer(this.canvas);
                 this.lastTick = 0;
                 this.animationId = null;
@@ -718,23 +500,23 @@
                     switch (e.key) {
                         case 'ArrowLeft':
                             e.preventDefault();
-                            this.game.moveLeft();
+                            move_left();
                             break;
                         case 'ArrowRight':
                             e.preventDefault();
-                            this.game.moveRight();
+                            move_right();
                             break;
                         case 'ArrowDown':
                             e.preventDefault();
-                            this.game.moveDown();
+                            move_down();
                             break;
                         case 'ArrowUp':
                             e.preventDefault();
-                            this.game.rotate();
+                            rotate();
                             break;
                         case ' ':
                             e.preventDefault();
-                            this.game.hardDrop();
+                            hard_drop();
                             break;
                         case 'p':
                         case 'P':
@@ -762,23 +544,23 @@
 
                 // Mobile controls
                 document.getElementById('leftBtn')?.addEventListener('click', () => {
-                    this.game.moveLeft();
+                    move_left();
                 });
 
                 document.getElementById('rightBtn')?.addEventListener('click', () => {
-                    this.game.moveRight();
+                    move_right();
                 });
 
                 document.getElementById('dropBtn')?.addEventListener('click', () => {
-                    this.game.moveDown();
+                    move_down();
                 });
 
                 document.getElementById('rotateBtn')?.addEventListener('click', () => {
-                    this.game.rotate();
+                    rotate();
                 });
 
                 document.getElementById('hardDropBtn')?.addEventListener('click', () => {
-                    this.game.hardDrop();
+                    hard_drop();
                 });
             }
 
@@ -787,19 +569,19 @@
             }
 
             gameLoop(timestamp) {
-                if (!this.game.gameOver && !this.game.paused) {
-                    const dropSpeed = this.game.getDropSpeed();
+                if (!game.game_over && !game.paused) {
+                    const dropSpeed = game.get_drop_speed();
 
                     if (timestamp - this.lastTick >= dropSpeed) {
-                        this.game.moveDown();
+                        move_down();
                         this.lastTick = timestamp;
                     }
                 }
 
-                this.renderer.render(this.game);
+                this.renderer.render();
                 this.updateUI();
 
-                if (this.game.gameOver) {
+                if (game.game_over) {
                     this.showGameOver();
                 }
 
@@ -807,13 +589,13 @@
             }
 
             updateUI() {
-                document.getElementById('score').textContent = this.game.score;
-                document.getElementById('level').textContent = this.game.level;
-                document.getElementById('lines').textContent = this.game.linesCleared;
+                document.getElementById('score').textContent = game.score;
+                document.getElementById('level').textContent = game.level;
+                document.getElementById('lines').textContent = game.lines_cleared;
             }
 
             showGameOver() {
-                document.getElementById('finalScore').textContent = this.game.score;
+                document.getElementById('finalScore').textContent = game.score;
                 document.getElementById('gameOverOverlay').classList.remove('hidden');
             }
 
@@ -822,9 +604,9 @@
             }
 
             togglePause() {
-                this.game.togglePause();
+                toggle_pause();
                 const pauseOverlay = document.getElementById('pauseOverlay');
-                if (this.game.paused) {
+                if (game.paused) {
                     pauseOverlay.classList.remove('hidden');
                 } else {
                     pauseOverlay.classList.add('hidden');
@@ -832,7 +614,7 @@
             }
 
             newGame() {
-                this.game.reset();
+                new_game();
                 this.hideGameOver();
                 document.getElementById('pauseOverlay').classList.add('hidden');
                 this.lastTick = performance.now();

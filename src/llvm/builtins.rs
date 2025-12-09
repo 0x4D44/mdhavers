@@ -42,6 +42,7 @@ pub static BUILTINS: &[BuiltinInfo] = &[
     // I/O
     BuiltinInfo::fixed("blether", "__mdh_blether", 1),
     BuiltinInfo::fixed("speir", "__mdh_speir", 1),
+    BuiltinInfo::fixed("get_key", "__mdh_get_key", 0),
     // Type conversion
     BuiltinInfo::fixed("tae_string", "__mdh_to_string", 1),
     BuiltinInfo::fixed("tae_int", "__mdh_to_int", 1),
