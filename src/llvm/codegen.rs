@@ -39,6 +39,7 @@ struct LibcFunctions<'ctx> {
     snprintf: FunctionValue<'ctx>,
     exit: FunctionValue<'ctx>,
     strstr: FunctionValue<'ctx>,
+    strcmp: FunctionValue<'ctx>,
     memcpy: FunctionValue<'ctx>,
     toupper: FunctionValue<'ctx>,
     tolower: FunctionValue<'ctx>,
@@ -236,6 +237,10 @@ impl<'ctx> CodeGen<'ctx> {
         let strstr_type = i8_ptr.fn_type(&[i8_ptr.into(), i8_ptr.into()], false);
         let strstr = module.add_function("strstr", strstr_type, Some(Linkage::External));
 
+        // strcmp(const char*, const char*) -> int
+        let strcmp_type = i32_type.fn_type(&[i8_ptr.into(), i8_ptr.into()], false);
+        let strcmp = module.add_function("strcmp", strcmp_type, Some(Linkage::External));
+
         // memcpy(void* dest, const void* src, size_t n) -> void*
         let memcpy_type = i8_ptr.fn_type(&[i8_ptr.into(), i8_ptr.into(), i64_type.into()], false);
         let memcpy = module.add_function("memcpy", memcpy_type, Some(Linkage::External));
@@ -314,6 +319,7 @@ impl<'ctx> CodeGen<'ctx> {
             snprintf,
             exit,
             strstr,
+            strcmp,
             memcpy,
             toupper,
             tolower,
@@ -782,12 +788,46 @@ impl<'ctx> CodeGen<'ctx> {
                 ..
             } => {
                 match operator {
+                    // For equality comparisons, check if either operand could be a string
+                    // If so, fall back to full compilation which uses strcmp
+                    BinaryOp::Equal | BinaryOp::NotEqual => {
+                        let left_type = self.infer_expr_type(left);
+                        let right_type = self.infer_expr_type(right);
+                        // Only use fast path if both are known to be non-string types
+                        if left_type == VarType::String
+                            || right_type == VarType::String
+                            || left_type == VarType::Unknown
+                            || right_type == VarType::Unknown
+                        {
+                            // Fall back to full compilation with strcmp support
+                            return Ok(None);
+                        }
+                        // Both are known non-string types, safe to compare data directly
+                        let get_int_data =
+                            |s: &mut Self, expr: &Expr| -> Result<IntValue<'ctx>, HaversError> {
+                                if let Some(int_val) = s.compile_int_expr(expr)? {
+                                    return Ok(int_val);
+                                }
+                                let val = s.compile_expr(expr)?;
+                                s.extract_data(val)
+                            };
+                        let left_data = get_int_data(self, left)?;
+                        let right_data = get_int_data(self, right)?;
+                        let pred = match operator {
+                            BinaryOp::Equal => IntPredicate::EQ,
+                            BinaryOp::NotEqual => IntPredicate::NE,
+                            _ => unreachable!(),
+                        };
+                        let result = self
+                            .builder
+                            .build_int_compare(pred, left_data, right_data, "cmp_direct")
+                            .unwrap();
+                        Ok(Some(result))
+                    }
                     BinaryOp::Less
                     | BinaryOp::LessEqual
                     | BinaryOp::Greater
-                    | BinaryOp::GreaterEqual
-                    | BinaryOp::Equal
-                    | BinaryOp::NotEqual => {
+                    | BinaryOp::GreaterEqual => {
                         // Helper to get i64 value from expression (shadow or extract)
                         let get_int_data =
                             |s: &mut Self, expr: &Expr| -> Result<IntValue<'ctx>, HaversError> {
@@ -808,8 +848,6 @@ impl<'ctx> CodeGen<'ctx> {
                             BinaryOp::LessEqual => IntPredicate::SLE,
                             BinaryOp::Greater => IntPredicate::SGT,
                             BinaryOp::GreaterEqual => IntPredicate::SGE,
-                            BinaryOp::Equal => IntPredicate::EQ,
-                            BinaryOp::NotEqual => IntPredicate::NE,
                             _ => unreachable!(),
                         };
 
@@ -1632,21 +1670,90 @@ impl<'ctx> CodeGen<'ctx> {
         let left_data = self.extract_data(left)?;
         let right_data = self.extract_data(right)?;
 
-        // Tags must match
+        // Tags must match first
         let tags_equal = self
             .builder
             .build_int_compare(IntPredicate::EQ, left_tag, right_tag, "tags_eq")
             .unwrap();
-        // Data must match
+
+        // Check if both are strings (tag == 4)
+        let string_tag = self.types.i8_type.const_int(4, false);
+        let left_is_string = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, string_tag, "left_is_str")
+            .unwrap();
+        let right_is_string = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, string_tag, "right_is_str")
+            .unwrap();
+        let both_strings = self
+            .builder
+            .build_and(left_is_string, right_is_string, "both_str")
+            .unwrap();
+
+        // Create basic blocks for string vs non-string comparison
+        let function = self.current_function.unwrap();
+        let cmp_string = self.context.append_basic_block(function, "cmp_string");
+        let cmp_other = self.context.append_basic_block(function, "cmp_other");
+        let cmp_merge = self.context.append_basic_block(function, "cmp_merge");
+
+        self.builder
+            .build_conditional_branch(both_strings, cmp_string, cmp_other)
+            .unwrap();
+
+        // String comparison: use strcmp
+        self.builder.position_at_end(cmp_string);
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let left_str = self
+            .builder
+            .build_int_to_ptr(left_data, i8_ptr_type, "left_str")
+            .unwrap();
+        let right_str = self
+            .builder
+            .build_int_to_ptr(right_data, i8_ptr_type, "right_str")
+            .unwrap();
+        let strcmp_result = self
+            .builder
+            .build_call(
+                self.libc.strcmp,
+                &[left_str.into(), right_str.into()],
+                "strcmp_res",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_int_value();
+        let zero = self.types.i32_type.const_int(0, false);
+        let str_equal = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, strcmp_result, zero, "str_eq")
+            .unwrap();
+        self.builder.build_unconditional_branch(cmp_merge).unwrap();
+        let string_block = self.builder.get_insert_block().unwrap();
+
+        // Non-string comparison: compare data directly
+        self.builder.position_at_end(cmp_other);
         let data_equal = self
             .builder
             .build_int_compare(IntPredicate::EQ, left_data, right_data, "data_eq")
             .unwrap();
-        // Both must be true
-        let result = self
+        // Both tags and data must match for non-strings
+        let other_equal = self
             .builder
-            .build_and(tags_equal, data_equal, "eq")
+            .build_and(tags_equal, data_equal, "other_eq")
             .unwrap();
+        self.builder.build_unconditional_branch(cmp_merge).unwrap();
+        let other_block = self.builder.get_insert_block().unwrap();
+
+        // Merge results
+        self.builder.position_at_end(cmp_merge);
+        let phi = self
+            .builder
+            .build_phi(self.types.bool_type, "eq_result")
+            .unwrap();
+        phi.add_incoming(&[(&str_equal, string_block), (&other_equal, other_block)]);
+        let result = phi.as_basic_value().into_int_value();
 
         self.make_bool(result)
     }
@@ -1657,25 +1764,15 @@ impl<'ctx> CodeGen<'ctx> {
         left: BasicValueEnum<'ctx>,
         right: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        let left_tag = self.extract_tag(left)?;
-        let right_tag = self.extract_tag(right)?;
-        let left_data = self.extract_data(left)?;
-        let right_data = self.extract_data(right)?;
-
-        let tags_equal = self
+        // Use inline_eq and invert the result
+        let eq_result = self.inline_eq(left, right)?;
+        // Extract the bool data (0 or 1) and truncate to i1
+        let eq_data = self.extract_data(eq_result)?;
+        let eq_bool = self
             .builder
-            .build_int_compare(IntPredicate::EQ, left_tag, right_tag, "tags_eq")
+            .build_int_truncate(eq_data, self.types.bool_type, "eq_as_bool")
             .unwrap();
-        let data_equal = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, left_data, right_data, "data_eq")
-            .unwrap();
-        let both_equal = self
-            .builder
-            .build_and(tags_equal, data_equal, "eq")
-            .unwrap();
-        let result = self.builder.build_not(both_equal, "ne").unwrap();
-
+        let result = self.builder.build_not(eq_bool, "ne").unwrap();
         self.make_bool(result)
     }
 
