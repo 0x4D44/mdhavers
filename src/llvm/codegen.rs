@@ -2246,10 +2246,20 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_to_ptr(data, i8_ptr_type, "list_ptr")
             .unwrap();
-        let len_ptr = self
+        let header_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "len_ptr")
+            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
             .unwrap();
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    header_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
+                .unwrap()
+        };
         let list_len = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
@@ -3401,7 +3411,7 @@ impl<'ctx> CodeGen<'ctx> {
     fn allocate_list(&self, length: IntValue<'ctx>) -> Result<PointerValue<'ctx>, HaversError> {
         // Size = 8 (length) + 16 * num_elements (each element is {i8, i64} = 16 bytes with padding)
         let elem_size = self.types.i64_type.const_int(16, false);
-        let header_size = self.types.i64_type.const_int(8, false);
+        let header_size = self.types.i64_type.const_int(16, false);
         let elems_size = self
             .builder
             .build_int_mul(length, elem_size, "elems_size")
@@ -4710,7 +4720,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // Allocate list: 8 bytes header + length * 16 bytes
-        let header_size = self.types.i64_type.const_int(8, false);
+        let header_size = self.types.i64_type.const_int(16, false);
         let value_size = self.types.i64_type.const_int(16, false);
         let elements_size = self
             .builder
@@ -6047,10 +6057,20 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Get list length (first 8 bytes)
-        let len_ptr = self
+        let header_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "len_ptr")
+            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
             .unwrap();
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    header_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
+                .unwrap()
+        };
         let list_len = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
@@ -6100,7 +6120,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(body_block);
 
         // Calculate element offset: 8 (header) + idx * 16 (element size)
-        let header_size = self.types.i64_type.const_int(8, false);
+        let header_size = self.types.i64_type.const_int(16, false);
         let elem_size = self.types.i64_type.const_int(16, false);
         let elem_offset = self
             .builder
@@ -6925,7 +6945,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Loop through entries to find matching key
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
-        let header_size = self.types.i64_type.const_int(8, false);
+        let header_size = self.types.i64_type.const_int(16, false);
         let entry_size = self.types.i64_type.const_int(32, false);
         let value_offset_in_entry = self.types.i64_type.const_int(16, false);
 
@@ -7826,7 +7846,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(one_len_ptr, self.types.i64_type.const_int(1, false))
             .unwrap();
         // Store original string as element 0
-        let header_size_const = self.types.i64_type.const_int(8, false);
+        let header_size_const = self.types.i64_type.const_int(16, false);
         let elem_ptr_empty = unsafe {
             self.builder
                 .build_gep(
@@ -7857,7 +7877,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Allocate list with space for up to 100 elements initially
         // List format: [i64 length][value elem0][value elem1]...
-        let header_size = self.types.i64_type.const_int(8, false);
+        let header_size = self.types.i64_type.const_int(16, false);
         let elem_size = self.types.i64_type.const_int(16, false);
         let max_elems = self.types.i64_type.const_int(100, false);
         let initial_size = self
@@ -8248,11 +8268,21 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_int_value();
 
-        // Get list length
-        let len_ptr = self
+        // Get list length from offset 1 (after capacity)
+        let header_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "len_ptr")
+            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
             .unwrap();
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    header_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
+                .unwrap()
+        };
         let list_len = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
@@ -8324,7 +8354,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Get element at index
         let elem_size = self.types.i64_type.const_int(16, false);
-        let header_size = self.types.i64_type.const_int(8, false);
+        let header_size = self.types.i64_type.const_int(16, false);
         let elem_offset = self
             .builder
             .build_int_add(
@@ -8596,10 +8626,20 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Get list length
-        let len_ptr = self
+        let header_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "len_ptr")
+            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
             .unwrap();
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    header_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
+                .unwrap()
+        };
         let list_len = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
@@ -8607,7 +8647,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // Calculate total size: 8 + len * 16
-        let header_size = self.types.i64_type.const_int(8, false);
+        let header_size = self.types.i64_type.const_int(16, false);
         let elem_size = self.types.i64_type.const_int(16, false);
         let elems_total = self
             .builder
@@ -8852,10 +8892,20 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Get list length
-        let len_ptr = self
+        let header_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "len_ptr")
+            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
             .unwrap();
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    header_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
+                .unwrap()
+        };
         let list_len = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
@@ -8863,7 +8913,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // Calculate total size: 8 + len * 16
-        let header_size = self.types.i64_type.const_int(8, false);
+        let header_size = self.types.i64_type.const_int(16, false);
         let elem_size = self.types.i64_type.const_int(16, false);
         let elems_total = self
             .builder
@@ -9199,10 +9249,20 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_to_ptr(list_data, i8_ptr_type, "list_ptr")
             .unwrap();
 
-        let len_ptr = self
+        let header_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "len_ptr")
+            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
             .unwrap();
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    header_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
+                .unwrap()
+        };
         let list_len = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
@@ -9210,7 +9270,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // Allocate new list
-        let header_size = self.types.i64_type.const_int(8, false);
+        let header_size = self.types.i64_type.const_int(16, false);
         let elem_size = self.types.i64_type.const_int(16, false);
         let elems_total = self
             .builder
@@ -9382,10 +9442,20 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_to_ptr(list_data, i8_ptr_type, "list_ptr")
             .unwrap();
 
-        let len_ptr = self
+        let header_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "len_ptr")
+            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
             .unwrap();
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    header_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
+                .unwrap()
+        };
         let list_len = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
@@ -9393,7 +9463,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // Allocate new list (max size = original size)
-        let header_size = self.types.i64_type.const_int(8, false);
+        let header_size = self.types.i64_type.const_int(16, false);
         let elem_size = self.types.i64_type.const_int(16, false);
         let elems_total = self
             .builder
@@ -9620,10 +9690,20 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_to_ptr(list_data, i8_ptr_type, "list_ptr")
             .unwrap();
 
-        let len_ptr = self
+        let header_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "len_ptr")
+            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
             .unwrap();
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    header_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
+                .unwrap()
+        };
         let list_len = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
@@ -9642,7 +9722,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         self.builder.build_store(acc_alloca, init_val).unwrap();
 
-        let header_size = self.types.i64_type.const_int(8, false);
+        let header_size = self.types.i64_type.const_int(16, false);
         let elem_size = self.types.i64_type.const_int(16, false);
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
@@ -9749,10 +9829,20 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_to_ptr(list_data, i8_ptr_type, "list_ptr")
             .unwrap();
 
-        let len_ptr = self
+        let header_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "len_ptr")
+            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
             .unwrap();
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    header_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
+                .unwrap()
+        };
         let list_len = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
@@ -9765,7 +9855,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         self.builder.build_store(func_alloca, func_val).unwrap();
 
-        let header_size = self.types.i64_type.const_int(8, false);
+        let header_size = self.types.i64_type.const_int(16, false);
         let elem_size = self.types.i64_type.const_int(16, false);
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
@@ -9887,10 +9977,20 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_to_ptr(list_data, i8_ptr_type, "list_ptr")
             .unwrap();
 
-        let len_ptr = self
+        let header_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "len_ptr")
+            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
             .unwrap();
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    header_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
+                .unwrap()
+        };
         let list_len = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
@@ -9903,7 +10003,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         self.builder.build_store(func_alloca, func_val).unwrap();
 
-        let header_size = self.types.i64_type.const_int(8, false);
+        let header_size = self.types.i64_type.const_int(16, false);
         let elem_size = self.types.i64_type.const_int(16, false);
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
@@ -10025,10 +10125,20 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_to_ptr(list_data, i8_ptr_type, "list_ptr")
             .unwrap();
 
-        let len_ptr = self
+        let header_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "len_ptr")
+            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
             .unwrap();
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    header_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
+                .unwrap()
+        };
         let list_len = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
@@ -10041,7 +10151,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         self.builder.build_store(func_alloca, func_val).unwrap();
 
-        let header_size = self.types.i64_type.const_int(8, false);
+        let header_size = self.types.i64_type.const_int(16, false);
         let elem_size = self.types.i64_type.const_int(16, false);
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
@@ -10175,10 +10285,20 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Get list length
-        let len_ptr = self
+        let header_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "len_ptr")
+            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
             .unwrap();
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    header_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
+                .unwrap()
+        };
         let list_len = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
@@ -10192,7 +10312,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         self.builder.build_store(func_alloca, func_val).unwrap();
 
-        let header_size = self.types.i64_type.const_int(8, false);
+        let header_size = self.types.i64_type.const_int(16, false);
         let elem_size = self.types.i64_type.const_int(16, false);
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
@@ -10303,7 +10423,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // Allocate result list: 8 bytes header + 16 bytes per key
-        let header_size = self.types.i64_type.const_int(8, false);
+        let header_size = self.types.i64_type.const_int(16, false);
         let elem_size = self.types.i64_type.const_int(16, false);
         let result_data_size = self
             .builder
@@ -10469,7 +10589,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // Allocate result list: 8 bytes header + 16 bytes per value
-        let header_size = self.types.i64_type.const_int(8, false);
+        let header_size = self.types.i64_type.const_int(16, false);
         let elem_size = self.types.i64_type.const_int(16, false);
         let result_data_size = self
             .builder
