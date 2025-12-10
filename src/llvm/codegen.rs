@@ -1274,12 +1274,31 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_pointer_value();
 
-        // Copy strings
+        // Copy strings using memcpy (faster than strcpy/strcat since we know lengths)
+        // memcpy(new_str, left_ptr, left_len)
         self.builder
-            .build_call(self.libc.strcpy, &[new_str.into(), left_ptr.into()], "")
+            .build_call(
+                self.libc.memcpy,
+                &[new_str.into(), left_ptr.into(), left_len.into()],
+                "",
+            )
+            .unwrap();
+        // memcpy(new_str + left_len, right_ptr, right_len + 1) - +1 for null terminator
+        let dest_offset = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), new_str, &[left_len], "dest_offset")
+                .unwrap()
+        };
+        let right_len_plus_one = self
+            .builder
+            .build_int_add(right_len, one, "rlen_plus_one")
             .unwrap();
         self.builder
-            .build_call(self.libc.strcat, &[new_str.into(), right_ptr.into()], "")
+            .build_call(
+                self.libc.memcpy,
+                &[dest_offset.into(), right_ptr.into(), right_len_plus_one.into()],
+                "",
+            )
             .unwrap();
 
         let string_result = self.make_string(new_str)?;
