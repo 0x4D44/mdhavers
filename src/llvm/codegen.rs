@@ -871,7 +871,28 @@ impl<'ctx> CodeGen<'ctx> {
                     .const_int(if *b { 1 } else { 0 }, false);
                 Ok(Some(result))
             }
-            // Variable that we know is boolean could be optimized too, but for now fall back
+            // Boolean variable - extract and compare to 0
+            Expr::Variable { name, .. } => {
+                if self.var_types.get(name) == Some(&VarType::Bool) {
+                    let val = self.compile_expr(expr)?;
+                    let data = self.extract_data(val)?;
+                    let zero = self.types.i64_type.const_int(0, false);
+                    let result = self.builder.build_int_compare(IntPredicate::NE, data, zero, "bool_truthy").unwrap();
+                    Ok(Some(result))
+                } else {
+                    Ok(None)
+                }
+            }
+            // Index expression - if result type is bool, optimize truthiness check
+            Expr::Index { .. } => {
+                // Compile the index and check if non-zero
+                // This works for booleans stored as MdhValue{tag:1, data:0|1}
+                let val = self.compile_expr(expr)?;
+                let data = self.extract_data(val)?;
+                let zero = self.types.i64_type.const_int(0, false);
+                let result = self.builder.build_int_compare(IntPredicate::NE, data, zero, "index_truthy").unwrap();
+                Ok(Some(result))
+            }
             _ => Ok(None),
         }
     }
@@ -2862,16 +2883,22 @@ impl<'ctx> CodeGen<'ctx> {
             .build_conditional_branch(is_list, len_list, len_default)
             .unwrap();
 
-        // List -> read length from first 8 bytes
+        // List -> read length from offset 1 (after capacity)
+        // Layout: [capacity: i64][length: i64][elements...]
         self.builder.position_at_end(len_list);
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let list_ptr = self
+        let header_ptr = self
             .builder
-            .build_int_to_ptr(data, i64_ptr_type, "list_ptr")
+            .build_int_to_ptr(data, i64_ptr_type, "header_ptr")
             .unwrap();
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, header_ptr, &[self.types.i64_type.const_int(1, false)], "len_ptr")
+                .unwrap()
+        };
         let list_len = self
             .builder
-            .build_load(self.types.i64_type, list_ptr, "list_len")
+            .build_load(self.types.i64_type, len_ptr, "list_len")
             .unwrap()
             .into_int_value();
         let list_result = self.make_int(list_len)?;
@@ -2905,6 +2932,7 @@ impl<'ctx> CodeGen<'ctx> {
         list_val: BasicValueEnum<'ctx>,
         elem_val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        // List layout: [capacity: i64][length: i64][elements...]
         let tag = self.extract_tag(list_val)?;
         let data = self.extract_data(list_val)?;
 
@@ -2926,50 +2954,76 @@ impl<'ctx> CodeGen<'ctx> {
             .build_conditional_branch(is_list, shove_list, shove_default)
             .unwrap();
 
-        // Handle list case - use realloc to expand in place
+        // Handle list case with capacity-based growth
         self.builder.position_at_end(shove_list);
 
         // Convert data to pointer
         let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let old_list_ptr_i8 = self
+        let header_ptr = self
             .builder
-            .build_int_to_ptr(data, i8_ptr_type, "old_list_ptr_i8")
-            .unwrap();
-        let old_list_ptr = self
-            .builder
-            .build_pointer_cast(old_list_ptr_i8, i64_ptr_type, "old_list_ptr")
+            .build_int_to_ptr(data, i64_ptr_type, "header_ptr")
             .unwrap();
 
-        // Load current length from offset 0
-        let old_len = self
+        // Load capacity from offset 0
+        let old_capacity = self
             .builder
-            .build_load(self.types.i64_type, old_list_ptr, "old_len")
+            .build_load(self.types.i64_type, header_ptr, "old_capacity")
             .unwrap()
             .into_int_value();
 
-        // Calculate new length and size
+        // Get length pointer at offset 1
         let one = self.types.i64_type.const_int(1, false);
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, header_ptr, &[one], "len_ptr")
+                .unwrap()
+        };
+
+        // Load current length
+        let old_len = self
+            .builder
+            .build_load(self.types.i64_type, len_ptr, "old_len")
+            .unwrap()
+            .into_int_value();
+
+        // Calculate new length
         let new_len = self.builder.build_int_add(old_len, one, "new_len").unwrap();
 
-        // new_size = 8 + new_len * 16
-        let header_size = self.types.i64_type.const_int(8, false);
-        let value_size = self.types.i64_type.const_int(16, false);
-        let elements_size = self
-            .builder
-            .build_int_mul(new_len, value_size, "elements_size")
-            .unwrap();
-        let total_size = self
-            .builder
-            .build_int_add(header_size, elements_size, "total_size")
-            .unwrap();
+        // Check if we need to grow: new_len > capacity?
+        let needs_grow = self.builder.build_int_compare(
+            IntPredicate::UGT, new_len, old_capacity, "needs_grow"
+        ).unwrap();
 
-        // Use realloc to expand the list in place (or get new memory with copy)
+        // Create blocks for grow vs no-grow paths
+        let grow_block = self.context.append_basic_block(function, "shove_grow");
+        let no_grow_block = self.context.append_basic_block(function, "shove_no_grow");
+        let store_block = self.context.append_basic_block(function, "shove_store");
+
+        self.builder.build_conditional_branch(needs_grow, grow_block, no_grow_block).unwrap();
+
+        // GROW PATH: double capacity and realloc
+        self.builder.position_at_end(grow_block);
+        let two = self.types.i64_type.const_int(2, false);
+        let doubled_capacity = self.builder.build_int_mul(old_capacity, two, "doubled_capacity").unwrap();
+        // Ensure new_capacity is at least 8 (in case old_capacity was 0 or very small)
+        let eight = self.types.i64_type.const_int(8, false);
+        let cap_ok = self.builder.build_int_compare(IntPredicate::UGE, doubled_capacity, eight, "cap_ok").unwrap();
+        let new_capacity = self.builder.build_select(cap_ok, doubled_capacity, eight, "safe_cap").unwrap().into_int_value();
+
+        // Calculate new allocation size: 16 (header) + new_capacity * 16 (elements)
+        let header_size = self.types.i64_type.const_int(16, false);
+        let value_size = self.types.i64_type.const_int(16, false);
+        let elements_size = self.builder.build_int_mul(new_capacity, value_size, "elements_size").unwrap();
+        let total_size = self.builder.build_int_add(header_size, elements_size, "total_size").unwrap();
+
+        // Realloc
+        let old_ptr_i8 = self.builder.build_pointer_cast(header_ptr, i8_ptr_type, "old_ptr_i8").unwrap();
         let new_ptr = self
             .builder
             .build_call(
                 self.libc.realloc,
-                &[old_list_ptr_i8.into(), total_size.into()],
+                &[old_ptr_i8.into(), total_size.into()],
                 "new_list_alloc",
             )
             .unwrap()
@@ -2977,19 +3031,42 @@ impl<'ctx> CodeGen<'ctx> {
             .left()
             .unwrap()
             .into_pointer_value();
+        let new_header_ptr = self.builder.build_pointer_cast(new_ptr, i64_ptr_type, "new_header_ptr").unwrap();
 
-        // Cast to i64* and store new length
-        let new_len_ptr = self
-            .builder
-            .build_pointer_cast(new_ptr, i64_ptr_type, "new_len_ptr")
-            .unwrap();
-        self.builder.build_store(new_len_ptr, new_len).unwrap();
+        // Store new capacity
+        self.builder.build_store(new_header_ptr, new_capacity).unwrap();
+        self.builder.build_unconditional_branch(store_block).unwrap();
+        let grow_end_block = self.builder.get_insert_block().unwrap();
 
-        // Get pointer to elements array (after length)
+        // NO-GROW PATH: just use existing buffer
+        self.builder.position_at_end(no_grow_block);
+        self.builder.build_unconditional_branch(store_block).unwrap();
+        let no_grow_end_block = self.builder.get_insert_block().unwrap();
+
+        // STORE BLOCK: use PHI to get final header pointer, then store element
+        self.builder.position_at_end(store_block);
+        let final_header_ptr = self.builder.build_phi(i64_ptr_type, "final_header_ptr").unwrap();
+        final_header_ptr.add_incoming(&[
+            (&new_header_ptr, grow_end_block),
+            (&header_ptr, no_grow_end_block),
+        ]);
+        let final_header_ptr = final_header_ptr.as_basic_value().into_pointer_value();
+
+        // Get length pointer in final buffer (at offset 1)
+        let final_len_ptr = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, final_header_ptr, &[one], "final_len_ptr")
+                .unwrap()
+        };
+
+        // Store new length
+        self.builder.build_store(final_len_ptr, new_len).unwrap();
+
+        // Get pointer to elements array (at offset 2)
         let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
         let elements_base = unsafe {
             self.builder
-                .build_gep(self.types.i64_type, new_len_ptr, &[one], "elements_base")
+                .build_gep(self.types.i64_type, final_header_ptr, &[two], "elements_base")
                 .unwrap()
         };
         let elements_ptr = self
@@ -3005,8 +3082,8 @@ impl<'ctx> CodeGen<'ctx> {
         };
         self.builder.build_store(new_elem_ptr, elem_val).unwrap();
 
-        // Create result list value with possibly new pointer
-        let list_result = self.make_list(new_ptr)?;
+        // Create result list value
+        let list_result = self.make_list(self.builder.build_pointer_cast(final_header_ptr, i8_ptr_type, "list_ptr").unwrap())?;
         self.builder
             .build_unconditional_branch(shove_merge)
             .unwrap();
@@ -6325,10 +6402,12 @@ impl<'ctx> CodeGen<'ctx> {
     fn compile_list(&mut self, elements: &[Expr]) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let len = elements.len();
 
-        // Calculate memory size: 8 bytes for length + len * 16 bytes for tagged values
+        // New layout: [capacity: i64][length: i64][elements...]
+        // Calculate capacity: at least 8 elements or len, whichever is larger
+        let initial_capacity = std::cmp::max(8, len);
         let value_size = 16u64; // sizeof({i8, i64}) with alignment
-        let header_size = 8u64; // sizeof(i64) for length
-        let total_size = header_size + (len as u64) * value_size;
+        let header_size = 16u64; // 2 * sizeof(i64) for capacity + length
+        let total_size = header_size + (initial_capacity as u64) * value_size;
 
         // Allocate memory
         let size_val = self.types.i64_type.const_int(total_size, false);
@@ -6341,27 +6420,38 @@ impl<'ctx> CodeGen<'ctx> {
             .ok_or_else(|| HaversError::CompileError("malloc returned void".to_string()))?
             .into_pointer_value();
 
-        // Cast to i64* for storing the length
+        // Cast to i64* for storing capacity and length
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let len_ptr = self
+        let header_ptr = self
             .builder
-            .build_pointer_cast(raw_ptr, i64_ptr_type, "len_ptr")
+            .build_pointer_cast(raw_ptr, i64_ptr_type, "header_ptr")
             .map_err(|e| HaversError::CompileError(format!("Failed to cast pointer: {}", e)))?;
 
-        // Store length
+        // Store capacity at offset 0
+        let cap_val = self.types.i64_type.const_int(initial_capacity as u64, false);
+        self.builder
+            .build_store(header_ptr, cap_val)
+            .map_err(|e| HaversError::CompileError(format!("Failed to store capacity: {}", e)))?;
+
+        // Store length at offset 1
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, header_ptr, &[self.types.i64_type.const_int(1, false)], "len_ptr")
+                .map_err(|e| HaversError::CompileError(format!("Failed to get len ptr: {}", e)))?
+        };
         let len_val = self.types.i64_type.const_int(len as u64, false);
         self.builder
             .build_store(len_ptr, len_val)
             .map_err(|e| HaversError::CompileError(format!("Failed to store length: {}", e)))?;
 
-        // Get pointer to elements array (after the length)
+        // Get pointer to elements array (after capacity and length = offset 2)
         let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
         let elements_base = unsafe {
             self.builder
                 .build_gep(
                     self.types.i64_type,
-                    len_ptr,
-                    &[self.types.i64_type.const_int(1, false)],
+                    header_ptr,
+                    &[self.types.i64_type.const_int(2, false)],
                     "elements_base",
                 )
                 .map_err(|e| {
@@ -6539,6 +6629,15 @@ impl<'ctx> CodeGen<'ctx> {
         object: &Expr,
         index: &Expr,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        // Fast path: if we know the object is a list and index is an int,
+        // skip type checking and negative index handling
+        let obj_type = self.infer_expr_type(object);
+        let idx_type = self.infer_expr_type(index);
+
+        if obj_type == VarType::List && idx_type == VarType::Int {
+            return self.compile_list_index_fast(object, index);
+        }
+
         let obj_val = self.compile_expr(object)?;
         let idx_val = self.compile_expr(index)?;
 
@@ -6632,21 +6731,22 @@ impl<'ctx> CodeGen<'ctx> {
         list_data: IntValue<'ctx>,
         index: IntValue<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        // List layout: [capacity: i64][length: i64][elements...]
         // Convert data to pointer
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let raw_ptr = self
+        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let header_ptr = self
             .builder
-            .build_int_to_ptr(list_data, i8_ptr_type, "list_ptr")
+            .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr")
             .map_err(|e| {
                 HaversError::CompileError(format!("Failed to convert to pointer: {}", e))
             })?;
 
-        // Cast to i64* to read length
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let len_ptr = self
-            .builder
-            .build_pointer_cast(raw_ptr, i64_ptr_type, "len_ptr")
-            .map_err(|e| HaversError::CompileError(format!("Failed to cast pointer: {}", e)))?;
+        // Get length pointer (at offset 1)
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, header_ptr, &[self.types.i64_type.const_int(1, false)], "len_ptr")
+                .map_err(|e| HaversError::CompileError(format!("Failed to get len ptr: {}", e)))?
+        };
 
         // Load length
         let length = self
@@ -6673,14 +6773,14 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| HaversError::CompileError(format!("Failed to select: {}", e)))?
             .into_int_value();
 
-        // Get pointer to elements array (after length)
+        // Get pointer to elements array (at offset 2, after capacity and length)
         let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
         let elements_base = unsafe {
             self.builder
                 .build_gep(
                     self.types.i64_type,
-                    len_ptr,
-                    &[self.types.i64_type.const_int(1, false)],
+                    header_ptr,
+                    &[self.types.i64_type.const_int(2, false)],
                     "elements_base",
                 )
                 .map_err(|e| {
@@ -6710,6 +6810,70 @@ impl<'ctx> CodeGen<'ctx> {
         let result = self
             .builder
             .build_load(self.types.value_type, elem_ptr, "elem_val")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load element: {}", e)))?;
+
+        Ok(result)
+    }
+
+    /// Fast path for list indexing when types are known at compile time
+    /// Skips type checking, negative index handling, and uses direct pointer arithmetic
+    fn compile_list_index_fast(
+        &mut self,
+        object: &Expr,
+        index: &Expr,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        // Get list data pointer directly
+        let obj_val = self.compile_expr(object)?;
+        let list_data = self.extract_data(obj_val)?;
+
+        // Get index as i64 directly (use shadow if available)
+        let idx_i64 = if let Some(i) = self.compile_int_expr(index)? {
+            i
+        } else {
+            let idx_val = self.compile_expr(index)?;
+            self.extract_data(idx_val)?
+        };
+
+        // Convert data to pointer - list layout is [capacity: i64][length: i64][elem0: {i8, i64}][elem1: {i8, i64}]...
+        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let list_ptr = self
+            .builder
+            .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr_fast")
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert to pointer: {}", e)))?;
+
+        // Skip past capacity and length (16 bytes = offset 2) to reach elements
+        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let elements_base = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    list_ptr,
+                    &[self.types.i64_type.const_int(2, false)],
+                    "elements_base_fast",
+                )
+                .map_err(|e| HaversError::CompileError(format!("Failed to compute elements base: {}", e)))?
+        };
+        let elements_ptr = self
+            .builder
+            .build_pointer_cast(elements_base, value_ptr_type, "elements_ptr_fast")
+            .map_err(|e| HaversError::CompileError(format!("Failed to cast pointer: {}", e)))?;
+
+        // Get pointer to the indexed element
+        let elem_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.value_type,
+                    elements_ptr,
+                    &[idx_i64],
+                    "elem_ptr_fast",
+                )
+                .map_err(|e| HaversError::CompileError(format!("Failed to compute element pointer: {}", e)))?
+        };
+
+        // Load and return the element
+        let result = self
+            .builder
+            .build_load(self.types.value_type, elem_ptr, "elem_val_fast")
             .map_err(|e| HaversError::CompileError(format!("Failed to load element: {}", e)))?;
 
         Ok(result)
@@ -6909,6 +7073,15 @@ impl<'ctx> CodeGen<'ctx> {
         index: &Expr,
         value: &Expr,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        // Fast path: if we know the object is a list and index is an int,
+        // skip type checking and negative index handling
+        let obj_type = self.infer_expr_type(object);
+        let idx_type = self.infer_expr_type(index);
+
+        if obj_type == VarType::List && idx_type == VarType::Int {
+            return self.compile_list_index_set_fast(object, index, value);
+        }
+
         // Compile the object, index, and value
         let obj_val = self.compile_expr(object)?;
         let idx_val = self.compile_expr(index)?;
@@ -6920,21 +7093,21 @@ impl<'ctx> CodeGen<'ctx> {
         // Extract the index (assume it's an integer)
         let idx_data = self.extract_data(idx_val)?;
 
-        // Convert list data to pointer
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let raw_ptr = self
+        // Convert list data to pointer - layout: [capacity][length][elements...]
+        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let header_ptr = self
             .builder
-            .build_int_to_ptr(obj_data, i8_ptr_type, "list_ptr")
+            .build_int_to_ptr(obj_data, i64_ptr_type, "list_header_ptr")
             .map_err(|e| {
                 HaversError::CompileError(format!("Failed to convert to pointer: {}", e))
             })?;
 
-        // Cast to i64* to read length
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let len_ptr = self
-            .builder
-            .build_pointer_cast(raw_ptr, i64_ptr_type, "len_ptr")
-            .map_err(|e| HaversError::CompileError(format!("Failed to cast pointer: {}", e)))?;
+        // Get length pointer at offset 1
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, header_ptr, &[self.types.i64_type.const_int(1, false)], "len_ptr")
+                .map_err(|e| HaversError::CompileError(format!("Failed to get len ptr: {}", e)))?
+        };
 
         // Load length for bounds checking and negative index handling
         let length = self
@@ -6961,14 +7134,14 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| HaversError::CompileError(format!("Failed to select: {}", e)))?
             .into_int_value();
 
-        // Get pointer to elements array (after length)
+        // Get pointer to elements array (at offset 2, after capacity and length)
         let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
         let elements_base = unsafe {
             self.builder
                 .build_gep(
                     self.types.i64_type,
-                    len_ptr,
-                    &[self.types.i64_type.const_int(1, false)],
+                    header_ptr,
+                    &[self.types.i64_type.const_int(2, false)],
                     "elements_base",
                 )
                 .map_err(|e| {
@@ -7000,6 +7173,73 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| HaversError::CompileError(format!("Failed to store element: {}", e)))?;
 
         // Return the value that was set (for chained assignments)
+        Ok(new_val)
+    }
+
+    /// Fast path for list index assignment when types are known at compile time
+    fn compile_list_index_set_fast(
+        &mut self,
+        object: &Expr,
+        index: &Expr,
+        value: &Expr,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        // Get list data pointer directly
+        let obj_val = self.compile_expr(object)?;
+        let list_data = self.extract_data(obj_val)?;
+
+        // Get index as i64 directly (use shadow if available)
+        let idx_i64 = if let Some(i) = self.compile_int_expr(index)? {
+            i
+        } else {
+            let idx_val = self.compile_expr(index)?;
+            self.extract_data(idx_val)?
+        };
+
+        // Compile the value to store
+        let new_val = self.compile_expr(value)?;
+
+        // Convert data to pointer - list layout is [capacity: i64][length: i64][elem0: {i8, i64}][elem1: {i8, i64}]...
+        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let list_ptr = self
+            .builder
+            .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr_set_fast")
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert to pointer: {}", e)))?;
+
+        // Skip past capacity and length (16 bytes = offset 2) to reach elements
+        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let elements_base = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    list_ptr,
+                    &[self.types.i64_type.const_int(2, false)],
+                    "elements_base_set_fast",
+                )
+                .map_err(|e| HaversError::CompileError(format!("Failed to compute elements base: {}", e)))?
+        };
+        let elements_ptr = self
+            .builder
+            .build_pointer_cast(elements_base, value_ptr_type, "elements_ptr_set_fast")
+            .map_err(|e| HaversError::CompileError(format!("Failed to cast pointer: {}", e)))?;
+
+        // Get pointer to the indexed element
+        let elem_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.value_type,
+                    elements_ptr,
+                    &[idx_i64],
+                    "elem_ptr_set_fast",
+                )
+                .map_err(|e| HaversError::CompileError(format!("Failed to compute element pointer: {}", e)))?
+        };
+
+        // Store the new value at that location
+        self.builder
+            .build_store(elem_ptr, new_val)
+            .map_err(|e| HaversError::CompileError(format!("Failed to store element: {}", e)))?;
+
+        // Return the value that was set
         Ok(new_val)
     }
 
