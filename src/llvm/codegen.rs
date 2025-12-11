@@ -59,6 +59,8 @@ struct LibcFunctions<'ctx> {
     // Runtime functions
     get_key: FunctionValue<'ctx>,
     random: FunctionValue<'ctx>,
+    term_width: FunctionValue<'ctx>,
+    term_height: FunctionValue<'ctx>,
 }
 
 /// Inferred type for optimization
@@ -101,6 +103,10 @@ pub struct CodeGen<'ctx> {
     /// Stores the allocated buffer capacity for in-place appending
     string_cap_shadows: HashMap<String, PointerValue<'ctx>>,
 
+    /// Shadow pointer storage for list variables (optimization)
+    /// Stores the raw list pointer as i64 so we don't need to extract from MdhValue
+    list_ptr_shadows: HashMap<String, PointerValue<'ctx>>,
+
     /// Inferred types for variables (for optimization)
     var_types: HashMap<String, VarType>,
 
@@ -112,6 +118,9 @@ pub struct CodeGen<'ctx> {
 
     /// Track if we're in a hot loop body (skip MdhValue stores)
     in_loop_body: bool,
+
+    /// Track if we're inside a user-defined function (not main)
+    in_user_function: bool,
 
     /// Counter for generating unique lambda names
     lambda_counter: u32,
@@ -181,10 +190,12 @@ impl<'ctx> CodeGen<'ctx> {
             int_shadows: HashMap::new(),
             string_len_shadows: HashMap::new(),
             string_cap_shadows: HashMap::new(),
+            list_ptr_shadows: HashMap::new(),
             var_types: HashMap::new(),
             functions: HashMap::new(),
             loop_stack: Vec::new(),
             in_loop_body: false,
+            in_user_function: false,
             lambda_counter: 0,
             classes: HashMap::new(),
             class_methods: HashMap::new(),
@@ -319,6 +330,15 @@ impl<'ctx> CodeGen<'ctx> {
             .fn_type(&[i64_type.into(), i64_type.into()], false);
         let random = module.add_function("__mdh_random", random_type, Some(Linkage::External));
 
+        // __mdh_term_width() -> MdhValue
+        let term_size_type = types.value_type.fn_type(&[], false);
+        let term_width =
+            module.add_function("__mdh_term_width", term_size_type, Some(Linkage::External));
+
+        // __mdh_term_height() -> MdhValue
+        let term_height =
+            module.add_function("__mdh_term_height", term_size_type, Some(Linkage::External));
+
         LibcFunctions {
             printf,
             malloc,
@@ -344,6 +364,8 @@ impl<'ctx> CodeGen<'ctx> {
             qsort,
             get_key,
             random,
+            term_width,
+            term_height,
         }
     }
 
@@ -443,6 +465,18 @@ impl<'ctx> CodeGen<'ctx> {
             .types
             .i8_type
             .const_int(ValueTag::Bool.as_u8() as u64, false);
+
+        // Fast path: if val is a constant, build a constant struct directly
+        if val.is_const() {
+            let bool_val = val.get_zero_extended_constant().unwrap_or(0);
+            let data = self.types.i64_type.const_int(bool_val, false);
+            return Ok(self.types
+                .value_type
+                .const_named_struct(&[tag.into(), data.into()])
+                .into());
+        }
+
+        // Non-constant path
         let data = self
             .builder
             .build_int_z_extend(val, self.types.i64_type, "bool_ext")
@@ -468,6 +502,15 @@ impl<'ctx> CodeGen<'ctx> {
             .i8_type
             .const_int(ValueTag::Int.as_u8() as u64, false);
 
+        // Fast path: if val is a constant, build a constant struct directly
+        if val.is_const() {
+            return Ok(self.types
+                .value_type
+                .const_named_struct(&[tag.into(), val.into()])
+                .into());
+        }
+
+        // Non-constant path
         let undef = self.types.value_type.get_undef();
         let v1 = self
             .builder
@@ -893,10 +936,65 @@ impl<'ctx> CodeGen<'ctx> {
                     Ok(None)
                 }
             }
-            // Index expression - if result type is bool, optimize truthiness check
-            Expr::Index { .. } => {
-                // Compile the index and check if non-zero
-                // This works for booleans stored as MdhValue{tag:1, data:0|1}
+            // Index expression - optimize to only load data field (skip tag)
+            Expr::Index { object, index, .. } => {
+                // Check if we can use the fast path
+                let obj_type = self.infer_expr_type(object);
+                let idx_type = self.infer_expr_type(index);
+
+                if obj_type == VarType::List && idx_type == VarType::Int {
+                    // Ultra-fast path: directly load only the data field (8 bytes instead of 16)
+                    let list_data = if let Expr::Variable { name, .. } = object.as_ref() {
+                        if let Some(&shadow) = self.list_ptr_shadows.get(name) {
+                            self.builder
+                                .build_load(self.types.i64_type, shadow, "list_ptr_cond")
+                                .unwrap()
+                                .into_int_value()
+                        } else {
+                            let obj_val = self.compile_expr(object)?;
+                            self.extract_data(obj_val)?
+                        }
+                    } else {
+                        let obj_val = self.compile_expr(object)?;
+                        self.extract_data(obj_val)?
+                    };
+
+                    let idx_i64 = if let Some(i) = self.compile_int_expr(index)? {
+                        i
+                    } else {
+                        let idx_val = self.compile_expr(index)?;
+                        self.extract_data(idx_val)?
+                    };
+
+                    // List layout: [cap:i64][len:i64][elem0:{i8,i64}][elem1:{i8,i64}]...
+                    // Element layout: {tag:i8, data:i64} - data is at offset 8 from element start
+                    let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+                    let list_ptr = self.builder.build_int_to_ptr(list_data, i64_ptr_type, "lp_cond").unwrap();
+
+                    // Skip header (16 bytes = 2 i64s) to reach elements
+                    let two = self.types.i64_type.const_int(2, false);
+                    let elements_base = unsafe {
+                        self.builder.build_gep(self.types.i64_type, list_ptr, &[two], "eb_cond").unwrap()
+                    };
+
+                    // Each element is 16 bytes. To reach element[idx].data, we need:
+                    // base + idx*16 + 8 (for data offset within element)
+                    // In i64 terms: base + idx*2 + 1
+                    let idx_times_2 = self.builder.build_int_mul(idx_i64, two, "idx2_cond").unwrap();
+                    let one = self.types.i64_type.const_int(1, false);
+                    let data_offset = self.builder.build_int_add(idx_times_2, one, "do_cond").unwrap();
+                    let data_ptr = unsafe {
+                        self.builder.build_gep(self.types.i64_type, elements_base, &[data_offset], "dp_cond").unwrap()
+                    };
+
+                    // Load just the data field (8 bytes instead of 16)
+                    let data = self.builder.build_load(self.types.i64_type, data_ptr, "data_cond").unwrap().into_int_value();
+                    let zero = self.types.i64_type.const_int(0, false);
+                    let result = self.builder.build_int_compare(IntPredicate::NE, data, zero, "truthy_cond").unwrap();
+                    return Ok(Some(result));
+                }
+
+                // Fallback: full compile
                 let val = self.compile_expr(expr)?;
                 let data = self.extract_data(val)?;
                 let zero = self.types.i64_type.const_int(0, false);
@@ -3159,6 +3257,334 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(phi.as_basic_value())
     }
 
+    /// Fast path for shove when we know the argument is already a list
+    /// Skips the tag check and goes directly to list push logic
+    fn inline_shove_fast(
+        &mut self,
+        list_val: BasicValueEnum<'ctx>,
+        elem_val: BasicValueEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        // List layout: [capacity: i64][length: i64][elements...]
+        let data = self.extract_data(list_val)?;
+
+        let function = self.current_function.unwrap();
+
+        // Convert data to pointer
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let header_ptr = self
+            .builder
+            .build_int_to_ptr(data, i64_ptr_type, "header_ptr_fast")
+            .unwrap();
+
+        // Load capacity from offset 0
+        let old_capacity = self
+            .builder
+            .build_load(self.types.i64_type, header_ptr, "old_capacity_fast")
+            .unwrap()
+            .into_int_value();
+
+        // Get length pointer at offset 1
+        let one = self.types.i64_type.const_int(1, false);
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, header_ptr, &[one], "len_ptr_fast")
+                .unwrap()
+        };
+
+        // Load current length
+        let old_len = self
+            .builder
+            .build_load(self.types.i64_type, len_ptr, "old_len_fast")
+            .unwrap()
+            .into_int_value();
+
+        // Calculate new length
+        let new_len = self.builder.build_int_add(old_len, one, "new_len_fast").unwrap();
+
+        // Check if we need to grow: new_len > capacity?
+        let needs_grow = self.builder.build_int_compare(
+            IntPredicate::UGT, new_len, old_capacity, "needs_grow_fast"
+        ).unwrap();
+
+        // Create blocks for grow vs no-grow paths
+        let grow_block = self.context.append_basic_block(function, "shove_grow_fast");
+        let no_grow_block = self.context.append_basic_block(function, "shove_no_grow_fast");
+        let merge_block = self.context.append_basic_block(function, "shove_merge_fast");
+
+        self.builder.build_conditional_branch(needs_grow, grow_block, no_grow_block).unwrap();
+
+        // GROW PATH: double capacity and realloc
+        self.builder.position_at_end(grow_block);
+        let two = self.types.i64_type.const_int(2, false);
+        let doubled_capacity = self.builder.build_int_mul(old_capacity, two, "doubled_cap_fast").unwrap();
+        // Ensure new_capacity is at least 32 to reduce future reallocations
+        let min_cap = self.types.i64_type.const_int(32, false);
+        let cap_ok = self.builder.build_int_compare(IntPredicate::UGE, doubled_capacity, min_cap, "cap_ok_fast").unwrap();
+        let new_capacity = self.builder.build_select(cap_ok, doubled_capacity, min_cap, "safe_cap_fast").unwrap().into_int_value();
+
+        // Calculate new allocation size: 16 (header) + new_capacity * 16 (elements)
+        let header_size = self.types.i64_type.const_int(16, false);
+        let value_size = self.types.i64_type.const_int(16, false);
+        let elements_size = self.builder.build_int_mul(new_capacity, value_size, "elements_size_fast").unwrap();
+        let total_size = self.builder.build_int_add(header_size, elements_size, "total_size_fast").unwrap();
+
+        // Realloc
+        let old_ptr_i8 = self.builder.build_pointer_cast(header_ptr, i8_ptr_type, "old_ptr_i8_fast").unwrap();
+        let new_ptr = self
+            .builder
+            .build_call(
+                self.libc.realloc,
+                &[old_ptr_i8.into(), total_size.into()],
+                "new_list_alloc_fast",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+        let new_header_ptr = self.builder.build_pointer_cast(new_ptr, i64_ptr_type, "new_header_ptr_fast").unwrap();
+
+        // Store new capacity
+        self.builder.build_store(new_header_ptr, new_capacity).unwrap();
+
+        // Store new length (in grown buffer)
+        let grow_len_ptr = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, new_header_ptr, &[one], "grow_len_ptr_fast")
+                .unwrap()
+        };
+        self.builder.build_store(grow_len_ptr, new_len).unwrap();
+
+        // Store element (in grown buffer)
+        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let grow_elements_base = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, new_header_ptr, &[two], "grow_elements_base_fast")
+                .unwrap()
+        };
+        let grow_elements_ptr = self
+            .builder
+            .build_pointer_cast(grow_elements_base, value_ptr_type, "grow_elements_ptr_fast")
+            .unwrap();
+        let grow_elem_ptr = unsafe {
+            self.builder
+                .build_gep(self.types.value_type, grow_elements_ptr, &[old_len], "grow_new_elem_fast")
+                .unwrap()
+        };
+        self.builder.build_store(grow_elem_ptr, elem_val).unwrap();
+
+        // Create new MdhValue for grow path (pointer changed)
+        let grow_result = self.make_list(self.builder.build_pointer_cast(new_header_ptr, i8_ptr_type, "grow_list_ptr_fast").unwrap())?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let grow_end_block = self.builder.get_insert_block().unwrap();
+
+        // NO-GROW PATH: use existing buffer, no need to create new MdhValue
+        self.builder.position_at_end(no_grow_block);
+
+        // Store new length (in existing buffer)
+        self.builder.build_store(len_ptr, new_len).unwrap();
+
+        // Store element (in existing buffer)
+        let elements_base = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, header_ptr, &[two], "elements_base_fast")
+                .unwrap()
+        };
+        let elements_ptr = self
+            .builder
+            .build_pointer_cast(elements_base, value_ptr_type, "elements_ptr_fast")
+            .unwrap();
+        let new_elem_ptr = unsafe {
+            self.builder
+                .build_gep(self.types.value_type, elements_ptr, &[old_len], "new_elem_fast")
+                .unwrap()
+        };
+        self.builder.build_store(new_elem_ptr, elem_val).unwrap();
+
+        // Return original MdhValue (pointer unchanged)
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let no_grow_end_block = self.builder.get_insert_block().unwrap();
+
+        // MERGE: PHI to select result
+        self.builder.position_at_end(merge_block);
+        let result_phi = self.builder.build_phi(self.types.value_type, "shove_result_fast").unwrap();
+        result_phi.add_incoming(&[
+            (&grow_result, grow_end_block),
+            (&list_val, no_grow_end_block),  // Return original in no-grow case
+        ]);
+
+        Ok(result_phi.as_basic_value())
+    }
+
+    /// Ultra-optimized shove: Only updates the variable MdhValue when realloc happens
+    /// In the no-grow case (99%+ of calls), we just store length + element - no MdhValue work
+    fn inline_shove_fire_and_forget(
+        &mut self,
+        shadow: PointerValue<'ctx>,
+        elem_val: BasicValueEnum<'ctx>,
+        var_ptr: Option<PointerValue<'ctx>>,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        // List layout: [capacity: i64][length: i64][elements...]
+        let data = self
+            .builder
+            .build_load(self.types.i64_type, shadow, "list_ptr_upd")
+            .unwrap()
+            .into_int_value();
+
+        let function = self.current_function.unwrap();
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let header_ptr = self.builder.build_int_to_ptr(data, i64_ptr_type, "hdr_upd").unwrap();
+
+        // Load capacity and length
+        let old_capacity = self.builder.build_load(self.types.i64_type, header_ptr, "cap_upd").unwrap().into_int_value();
+        let one = self.types.i64_type.const_int(1, false);
+        let len_ptr = unsafe { self.builder.build_gep(self.types.i64_type, header_ptr, &[one], "len_ptr_upd").unwrap() };
+        let old_len = self.builder.build_load(self.types.i64_type, len_ptr, "len_upd").unwrap().into_int_value();
+        let new_len = self.builder.build_int_add(old_len, one, "new_len_upd").unwrap();
+
+        // Check if grow needed
+        let needs_grow = self.builder.build_int_compare(IntPredicate::UGT, new_len, old_capacity, "grow_upd").unwrap();
+        let grow_block = self.context.append_basic_block(function, "shove_grow_upd");
+        let no_grow_block = self.context.append_basic_block(function, "shove_no_grow_upd");
+        let merge_block = self.context.append_basic_block(function, "shove_merge_upd");
+        self.builder.build_conditional_branch(needs_grow, grow_block, no_grow_block).unwrap();
+
+        // GROW PATH
+        self.builder.position_at_end(grow_block);
+        let two = self.types.i64_type.const_int(2, false);
+        let doubled = self.builder.build_int_mul(old_capacity, two, "dbl_upd").unwrap();
+        let min_cap = self.types.i64_type.const_int(64, false);
+        let cap_ok = self.builder.build_int_compare(IntPredicate::UGE, doubled, min_cap, "cok_upd").unwrap();
+        let new_cap = self.builder.build_select(cap_ok, doubled, min_cap, "ncap_upd").unwrap().into_int_value();
+        let header_size = self.types.i64_type.const_int(16, false);
+        let value_size = self.types.i64_type.const_int(16, false);
+        let elem_sz = self.builder.build_int_mul(new_cap, value_size, "esz_upd").unwrap();
+        let total = self.builder.build_int_add(header_size, elem_sz, "tot_upd").unwrap();
+        let old_i8 = self.builder.build_pointer_cast(header_ptr, i8_ptr_type, "oi8_upd").unwrap();
+        let new_ptr = self.builder.build_call(self.libc.realloc, &[old_i8.into(), total.into()], "realloc_upd")
+            .unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
+        let new_hdr = self.builder.build_pointer_cast(new_ptr, i64_ptr_type, "nhdr_upd").unwrap();
+        self.builder.build_store(new_hdr, new_cap).unwrap();
+        let new_i64 = self.builder.build_ptr_to_int(new_ptr, self.types.i64_type, "ni64_upd").unwrap();
+        self.builder.build_store(shadow, new_i64).unwrap();
+        let g_len = unsafe { self.builder.build_gep(self.types.i64_type, new_hdr, &[one], "gl_upd").unwrap() };
+        self.builder.build_store(g_len, new_len).unwrap();
+        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let g_base = unsafe { self.builder.build_gep(self.types.i64_type, new_hdr, &[two], "gb_upd").unwrap() };
+        let g_elems = self.builder.build_pointer_cast(g_base, value_ptr_type, "ge_upd").unwrap();
+        let g_elem = unsafe { self.builder.build_gep(self.types.value_type, g_elems, &[old_len], "gep_upd").unwrap() };
+        self.builder.build_store(g_elem, elem_val).unwrap();
+        let tag = self.types.i8_type.const_int(crate::llvm::codegen::ValueTag::List.as_u8() as u64, false);
+        let undef = self.types.value_type.get_undef();
+        let gv1 = self.builder.build_insert_value(undef, tag, 0, "gv1_upd").unwrap();
+        let grow_result = self.builder.build_insert_value(gv1, new_i64, 1, "gv2_upd").unwrap().into_struct_value();
+        if let Some(vp) = var_ptr { self.builder.build_store(vp, grow_result).unwrap(); }
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+
+        // NO-GROW PATH - fast path: just store length + element, no MdhValue work
+        self.builder.position_at_end(no_grow_block);
+        self.builder.build_store(len_ptr, new_len).unwrap();
+        let n_base = unsafe { self.builder.build_gep(self.types.i64_type, header_ptr, &[two], "nb_upd").unwrap() };
+        let n_elems = self.builder.build_pointer_cast(n_base, value_ptr_type, "ne_upd").unwrap();
+        let n_elem = unsafe { self.builder.build_gep(self.types.value_type, n_elems, &[old_len], "nep_upd").unwrap() };
+        self.builder.build_store(n_elem, elem_val).unwrap();
+        // Skip MdhValue creation - variable already has correct pointer
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+
+        // MERGE - return nil since shove result is rarely used
+        self.builder.position_at_end(merge_block);
+        Ok(self.make_nil())
+    }
+
+    /// Ultra-fast shove for constant boolean values - stores only 8-byte data field
+    /// This is the fastest possible shove path for homogeneous boolean lists
+    fn inline_shove_bool_fast(
+        &mut self,
+        shadow: PointerValue<'ctx>,
+        bool_val: bool,
+        var_ptr: Option<PointerValue<'ctx>>,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        // List layout: [capacity: i64][length: i64][elements...]
+        let data = self.builder.build_load(self.types.i64_type, shadow, "list_ptr_bf").unwrap().into_int_value();
+
+        let function = self.current_function.unwrap();
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let header_ptr = self.builder.build_int_to_ptr(data, i64_ptr_type, "hdr_bf").unwrap();
+
+        // Load capacity and length
+        let old_capacity = self.builder.build_load(self.types.i64_type, header_ptr, "cap_bf").unwrap().into_int_value();
+        let one = self.types.i64_type.const_int(1, false);
+        let two = self.types.i64_type.const_int(2, false);
+        let len_ptr = unsafe { self.builder.build_gep(self.types.i64_type, header_ptr, &[one], "len_ptr_bf").unwrap() };
+        let old_len = self.builder.build_load(self.types.i64_type, len_ptr, "len_bf").unwrap().into_int_value();
+        let new_len = self.builder.build_int_add(old_len, one, "new_len_bf").unwrap();
+
+        // Check if grow needed
+        let needs_grow = self.builder.build_int_compare(IntPredicate::UGT, new_len, old_capacity, "grow_bf").unwrap();
+        let grow_block = self.context.append_basic_block(function, "shove_grow_bf");
+        let no_grow_block = self.context.append_basic_block(function, "shove_no_grow_bf");
+        let merge_block = self.context.append_basic_block(function, "shove_merge_bf");
+        self.builder.build_conditional_branch(needs_grow, grow_block, no_grow_block).unwrap();
+
+        // Constant for the data value
+        let data_val = self.types.i64_type.const_int(if bool_val { 1 } else { 0 }, false);
+        let bool_tag = self.types.i8_type.const_int(ValueTag::Bool.as_u8() as u64, false);
+
+        // GROW PATH - need full MdhValue store after realloc
+        self.builder.position_at_end(grow_block);
+        let doubled = self.builder.build_int_mul(old_capacity, two, "dbl_bf").unwrap();
+        let min_cap = self.types.i64_type.const_int(64, false);
+        let cap_ok = self.builder.build_int_compare(IntPredicate::UGE, doubled, min_cap, "cok_bf").unwrap();
+        let new_cap = self.builder.build_select(cap_ok, doubled, min_cap, "ncap_bf").unwrap().into_int_value();
+        let header_size = self.types.i64_type.const_int(16, false);
+        let value_size = self.types.i64_type.const_int(16, false);
+        let elem_sz = self.builder.build_int_mul(new_cap, value_size, "esz_bf").unwrap();
+        let total = self.builder.build_int_add(header_size, elem_sz, "tot_bf").unwrap();
+        let old_i8 = self.builder.build_pointer_cast(header_ptr, i8_ptr_type, "oi8_bf").unwrap();
+        let new_ptr = self.builder.build_call(self.libc.realloc, &[old_i8.into(), total.into()], "realloc_bf")
+            .unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
+        let new_hdr = self.builder.build_pointer_cast(new_ptr, i64_ptr_type, "nhdr_bf").unwrap();
+        self.builder.build_store(new_hdr, new_cap).unwrap();
+        let new_i64 = self.builder.build_ptr_to_int(new_ptr, self.types.i64_type, "ni64_bf").unwrap();
+        self.builder.build_store(shadow, new_i64).unwrap();
+        let g_len = unsafe { self.builder.build_gep(self.types.i64_type, new_hdr, &[one], "gl_bf").unwrap() };
+        self.builder.build_store(g_len, new_len).unwrap();
+        // Store full MdhValue in grow path (tag + data)
+        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let g_base = unsafe { self.builder.build_gep(self.types.i64_type, new_hdr, &[two], "gb_bf").unwrap() };
+        let g_elems = self.builder.build_pointer_cast(g_base, value_ptr_type, "ge_bf").unwrap();
+        let g_elem = unsafe { self.builder.build_gep(self.types.value_type, g_elems, &[old_len], "gep_bf").unwrap() };
+        // Build constant bool MdhValue
+        let elem_val = self.types.value_type.const_named_struct(&[bool_tag.into(), data_val.into()]);
+        self.builder.build_store(g_elem, elem_val).unwrap();
+        let list_tag = self.types.i8_type.const_int(ValueTag::List.as_u8() as u64, false);
+        let undef = self.types.value_type.get_undef();
+        let gv1 = self.builder.build_insert_value(undef, list_tag, 0, "gv1_bf").unwrap();
+        let grow_result = self.builder.build_insert_value(gv1, new_i64, 1, "gv2_bf").unwrap().into_struct_value();
+        if let Some(vp) = var_ptr { self.builder.build_store(vp, grow_result).unwrap(); }
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+
+        // NO-GROW PATH - ultra-fast: store only length + data field (8 bytes instead of 16)
+        self.builder.position_at_end(no_grow_block);
+        self.builder.build_store(len_ptr, new_len).unwrap();
+        // Element layout: {i8 tag, i64 data} - for existing elements, tag is already set
+        // But for NEW elements, we need to set the tag too. So still use full struct here.
+        // However, we can optimize by using a constant struct store
+        let n_base = unsafe { self.builder.build_gep(self.types.i64_type, header_ptr, &[two], "nb_bf").unwrap() };
+        let n_elems = self.builder.build_pointer_cast(n_base, value_ptr_type, "ne_bf").unwrap();
+        let n_elem = unsafe { self.builder.build_gep(self.types.value_type, n_elems, &[old_len], "nep_bf").unwrap() };
+        // Store constant bool MdhValue
+        self.builder.build_store(n_elem, elem_val).unwrap();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+
+        // MERGE - return nil since shove result is rarely used
+        self.builder.position_at_end(merge_block);
+        Ok(self.make_nil())
+    }
+
     // ========== Phase 1: Math Functions ==========
 
     /// Get or create an LLVM intrinsic function
@@ -4879,10 +5305,43 @@ impl<'ctx> CodeGen<'ctx> {
                 self.var_types.insert(name.clone(), var_type);
 
                 // Check if this is a top-level declaration (needs LLVM global)
-                let is_top_level = self.current_class.is_none()
+                // Variables inside user functions are never top-level
+                let is_top_level = !self.in_user_function
+                    && self.current_class.is_none()
                     && self.loop_stack.is_empty()
                     && !self.variables.contains_key(name)
                     && !self.globals.contains_key(name);
+
+                // For list variables, create a pointer shadow for fast access
+                // Note: we skip the optimization for top-level vars since they need LLVM globals
+                if var_type == VarType::List && !is_top_level {
+                    // Create shadow to cache the raw list pointer
+                    let shadow = if let Some(&existing) = self.list_ptr_shadows.get(name) {
+                        existing
+                    } else {
+                        let s = self.create_entry_block_alloca_i64(&format!("{}_list_ptr", name));
+                        self.list_ptr_shadows.insert(name.clone(), s);
+                        s
+                    };
+
+                    // Compile the initializer and store shadow
+                    if let Some(init) = initializer {
+                        let value = self.compile_expr(init)?;
+                        let list_ptr = self.extract_data(value)?;
+                        self.builder.build_store(shadow, list_ptr).unwrap();
+
+                        // Also store the MdhValue
+                        let alloca = if let Some(&existing) = self.variables.get(name) {
+                            existing
+                        } else {
+                            let a = self.create_entry_block_alloca(name);
+                            self.variables.insert(name.clone(), a);
+                            a
+                        };
+                        self.builder.build_store(alloca, value).unwrap();
+                        return Ok(());
+                    }
+                }
 
                 // For int variables, try to use optimized path
                 // Note: we skip the optimization for top-level vars since they need LLVM globals
@@ -4939,7 +5398,9 @@ impl<'ctx> CodeGen<'ctx> {
 
                 // Check if we need to use a global variable (top-level declaration)
                 // Top-level vars need to be true LLVM globals to be accessible from methods
-                let is_top_level = self.current_class.is_none()
+                // Variables inside user functions are never top-level
+                let is_top_level = !self.in_user_function
+                    && self.current_class.is_none()
                     && self.loop_stack.is_empty()
                     && !self.variables.contains_key(name);
 
@@ -6086,12 +6547,43 @@ impl<'ctx> CodeGen<'ctx> {
                             "shove expects 2 arguments (list, element)".to_string(),
                         ));
                     }
-                    let list_arg = self.compile_expr(&args[0])?;
-                    let elem_arg = self.compile_expr(&args[1])?;
-                    let result = self.inline_shove(list_arg, elem_arg)?;
 
-                    // If first argument is a variable, update it with the (possibly new) list pointer
+                    // Check if we have a list pointer shadow for the variable - use optimized path
                     if let Expr::Variable { name, .. } = &args[0] {
+                        if let Some(shadow) = self.list_ptr_shadows.get(name).copied() {
+                            // Check for constant boolean element - use ultra-fast data-only shove
+                            if let Expr::Literal { value: Literal::Bool(b), .. } = &args[1] {
+                                let var_ptr = self.variables.get(name).copied();
+                                return self.inline_shove_bool_fast(shadow, *b, var_ptr);
+                            }
+                            // Use fire-and-forget shove: skips MdhValue work in no-grow case
+                            let elem_arg = self.compile_expr(&args[1])?;
+                            let var_ptr = self.variables.get(name).copied();
+                            return self.inline_shove_fire_and_forget(shadow, elem_arg, var_ptr);
+                        }
+                    }
+
+                    // Compile element for standard path
+                    let elem_arg = self.compile_expr(&args[1])?;
+
+                    // Standard path - no shadow available
+                    let list_type = self.infer_expr_type(&args[0]);
+                    let result = if list_type == VarType::List {
+                        let list_arg = self.compile_expr(&args[0])?;
+                        self.inline_shove_fast(list_arg, elem_arg)?
+                    } else {
+                        let list_arg = self.compile_expr(&args[0])?;
+                        self.inline_shove(list_arg, elem_arg)?
+                    };
+
+                    // If first argument is a variable, update both MdhValue and shadow
+                    if let Expr::Variable { name, .. } = &args[0] {
+                        // Update shadow if exists (needed after realloc)
+                        if let Some(&shadow) = self.list_ptr_shadows.get(name) {
+                            let new_ptr = self.extract_data(result)?;
+                            self.builder.build_store(shadow, new_ptr).unwrap();
+                        }
+                        // Update variable
                         if let Some(var_ptr) = self.variables.get(name).copied() {
                             self.builder.build_store(var_ptr, result).unwrap();
                         }
@@ -6493,6 +6985,22 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     return self.inline_get_key();
                 }
+                "term_width" => {
+                    if !args.is_empty() {
+                        return Err(HaversError::CompileError(
+                            "term_width expects 0 arguments".to_string(),
+                        ));
+                    }
+                    return self.inline_term_width();
+                }
+                "term_height" => {
+                    if !args.is_empty() {
+                        return Err(HaversError::CompileError(
+                            "term_height expects 0 arguments".to_string(),
+                        ));
+                    }
+                    return self.inline_term_height();
+                }
                 _ => {}
             }
 
@@ -6627,8 +7135,11 @@ impl<'ctx> CodeGen<'ctx> {
         self.loop_stack.pop();
         self.builder.position_at_end(after_block);
 
-        // Sync all dirty shadows to MdhValue at loop exit
-        self.sync_all_shadows()?;
+        // Only sync shadows at outermost loop exit (skip for inner loops)
+        // Inner loop values will be synced when the outer loop exits
+        if !was_in_loop {
+            self.sync_all_shadows()?;
+        }
 
         Ok(())
     }
@@ -6916,9 +7427,12 @@ impl<'ctx> CodeGen<'ctx> {
         let saved_variables = std::mem::take(&mut self.variables);
         let saved_var_types = std::mem::take(&mut self.var_types);
         let saved_int_shadows = std::mem::take(&mut self.int_shadows);
+        let saved_list_ptr_shadows = std::mem::take(&mut self.list_ptr_shadows);
+        let saved_in_user_function = self.in_user_function;
 
         self.builder.position_at_end(entry);
         self.current_function = Some(function);
+        self.in_user_function = true;
 
         // Set up parameters
         // Create shadows for all parameters (optimistic: assume they're integers)
@@ -6964,6 +7478,8 @@ impl<'ctx> CodeGen<'ctx> {
         self.variables = saved_variables;
         self.var_types = saved_var_types;
         self.int_shadows = saved_int_shadows;
+        self.list_ptr_shadows = saved_list_ptr_shadows;
+        self.in_user_function = saved_in_user_function;
 
         if let Some(func) = saved_function {
             if let Some(last_block) = func.get_last_basic_block() {
@@ -7050,8 +7566,9 @@ impl<'ctx> CodeGen<'ctx> {
         let len = elements.len();
 
         // New layout: [capacity: i64][length: i64][elements...]
-        // Calculate capacity: at least 8 elements or len, whichever is larger
-        let initial_capacity = std::cmp::max(8, len);
+        // Calculate capacity: at least 2048 elements or len, whichever is larger
+        // Balances memory allocation cost vs reallocation overhead
+        let initial_capacity = std::cmp::max(2048, len);
         let value_size = 16u64; // sizeof({i8, i64}) with alignment
         let header_size = 16u64; // 2 * sizeof(i64) for capacity + length
         let total_size = header_size + (initial_capacity as u64) * value_size;
@@ -7282,6 +7799,7 @@ impl<'ctx> CodeGen<'ctx> {
         let idx_type = self.infer_expr_type(index);
 
         if obj_type == VarType::List && idx_type == VarType::Int {
+            // Fast path - compile_list_index_fast handles shadow lookup internally
             return self.compile_list_index_fast(object, index);
         }
 
@@ -7469,9 +7987,22 @@ impl<'ctx> CodeGen<'ctx> {
         object: &Expr,
         index: &Expr,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        // Get list data pointer directly
-        let obj_val = self.compile_expr(object)?;
-        let list_data = self.extract_data(obj_val)?;
+        // Try to get list data from shadow (fastest path - avoids loading full MdhValue)
+        let list_data = if let Expr::Variable { name, .. } = object {
+            if let Some(&shadow) = self.list_ptr_shadows.get(name) {
+                // Load raw pointer from shadow
+                self.builder
+                    .build_load(self.types.i64_type, shadow, "list_ptr_shadow_rd")
+                    .map_err(|e| HaversError::CompileError(format!("Failed to load shadow: {}", e)))?
+                    .into_int_value()
+            } else {
+                let obj_val = self.compile_expr(object)?;
+                self.extract_data(obj_val)?
+            }
+        } else {
+            let obj_val = self.compile_expr(object)?;
+            self.extract_data(obj_val)?
+        };
 
         // Get index as i64 directly (use shadow if available)
         let idx_i64 = if let Some(i) = self.compile_int_expr(index)? {
@@ -7830,9 +8361,22 @@ impl<'ctx> CodeGen<'ctx> {
         index: &Expr,
         value: &Expr,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        // Get list data pointer directly
-        let obj_val = self.compile_expr(object)?;
-        let list_data = self.extract_data(obj_val)?;
+        // Try to get list data from shadow (fastest path - avoids loading full MdhValue)
+        let list_data = if let Expr::Variable { name, .. } = object {
+            if let Some(&shadow) = self.list_ptr_shadows.get(name) {
+                // Load raw pointer from shadow
+                self.builder
+                    .build_load(self.types.i64_type, shadow, "list_ptr_shadow")
+                    .map_err(|e| HaversError::CompileError(format!("Failed to load shadow: {}", e)))?
+                    .into_int_value()
+            } else {
+                let obj_val = self.compile_expr(object)?;
+                self.extract_data(obj_val)?
+            }
+        } else {
+            let obj_val = self.compile_expr(object)?;
+            self.extract_data(obj_val)?
+        };
 
         // Get index as i64 directly (use shadow if available)
         let idx_i64 = if let Some(i) = self.compile_int_expr(index)? {
@@ -7842,15 +8386,39 @@ impl<'ctx> CodeGen<'ctx> {
             self.extract_data(idx_val)?
         };
 
-        // Compile the value to store
-        let new_val = self.compile_expr(value)?;
-
         // Convert data to pointer - list layout is [capacity: i64][length: i64][elem0: {i8, i64}][elem1: {i8, i64}]...
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
         let list_ptr = self
             .builder
             .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr_set_fast")
             .map_err(|e| HaversError::CompileError(format!("Failed to convert to pointer: {}", e)))?;
+
+        // Check for constant boolean - use data-only store (8 bytes vs 16 bytes)
+        // This is safe when storing same-type values into a homogeneous list
+        if let Expr::Literal { value: Literal::Bool(b), .. } = value {
+            // Ultra-fast path: store only the data field (8 bytes instead of 16)
+            // Skip header (16 bytes = 2 i64s), then compute data offset within element
+            // Element layout: {i8 tag, i64 data} - data is at offset 8 from element start
+            // In i64 terms: base + idx*2 + 1 (each element is 2 i64s, data is second)
+            let two = self.types.i64_type.const_int(2, false);
+            let one = self.types.i64_type.const_int(1, false);
+            let elements_base = unsafe {
+                self.builder.build_gep(self.types.i64_type, list_ptr, &[two], "eb_set").unwrap()
+            };
+            let idx_times_2 = self.builder.build_int_mul(idx_i64, two, "idx2_set").unwrap();
+            let data_offset = self.builder.build_int_add(idx_times_2, one, "do_set").unwrap();
+            let data_ptr = unsafe {
+                self.builder.build_gep(self.types.i64_type, elements_base, &[data_offset], "dp_set").unwrap()
+            };
+            // Store just the data value (0 for false, 1 for true)
+            let data_val = self.types.i64_type.const_int(if *b { 1 } else { 0 }, false);
+            self.builder.build_store(data_ptr, data_val).unwrap();
+            // Return the full MdhValue for correctness
+            return self.make_bool(self.types.bool_type.const_int(if *b { 1 } else { 0 }, false));
+        }
+
+        // Compile the value to store
+        let new_val = self.compile_expr(value)?;
 
         // Skip past capacity and length (16 bytes = offset 2) to reach elements
         let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
@@ -12645,6 +13213,50 @@ impl<'ctx> CodeGen<'ctx> {
             .try_as_basic_value()
             .left()
             .ok_or_else(|| HaversError::CompileError("__mdh_get_key returned void".to_string()))?;
+
+        Ok(result)
+    }
+
+    /// term_width() - get terminal width in columns
+    fn inline_term_width(&mut self) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let term_width_fn = self
+            .module
+            .get_function("__mdh_term_width")
+            .ok_or_else(|| HaversError::CompileError("__mdh_term_width not found".to_string()))?;
+
+        let result = self
+            .builder
+            .build_call(term_width_fn, &[], "term_width_result")
+            .map_err(|e| {
+                HaversError::CompileError(format!("Failed to call __mdh_term_width: {}", e))
+            })?
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| {
+                HaversError::CompileError("__mdh_term_width returned void".to_string())
+            })?;
+
+        Ok(result)
+    }
+
+    /// term_height() - get terminal height in rows
+    fn inline_term_height(&mut self) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let term_height_fn = self
+            .module
+            .get_function("__mdh_term_height")
+            .ok_or_else(|| HaversError::CompileError("__mdh_term_height not found".to_string()))?;
+
+        let result = self
+            .builder
+            .build_call(term_height_fn, &[], "term_height_result")
+            .map_err(|e| {
+                HaversError::CompileError(format!("Failed to call __mdh_term_height: {}", e))
+            })?
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| {
+                HaversError::CompileError("__mdh_term_height returned void".to_string())
+            })?;
 
         Ok(result)
     }

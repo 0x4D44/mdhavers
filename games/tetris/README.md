@@ -2,25 +2,43 @@
 
 A Tetris implementation written in mdhavers, the Scots programming language.
 
-## Playing the Game
+## Versions
 
 ### Browser Version
 Open `index.html` in your browser to play the game directly.
 
-### Controls
+### Terminal Versions
+Two terminal versions are available:
+
+1. **ASCII Version** (`tetris_terminal.braw`) - Simple ASCII characters
+   ```bash
+   mdhavers build tetris_terminal.braw -o tetris
+   ./tetris
+   ```
+
+2. **Color Version** (`tetris_color.braw`) - Full ANSI color support with fancy ASCII art
+   ```bash
+   mdhavers build tetris_color.braw -o tetris_color
+   ./tetris_color
+   ```
+
+## Controls
 - **Arrow Left/Right**: Move piece
 - **Arrow Down**: Soft drop
 - **Arrow Up**: Rotate
 - **Space**: Hard drop
 - **P**: Pause/Resume
+- **Q**: Quit
 
-### Mobile
+### Mobile (Browser)
 On mobile devices, use the on-screen buttons.
 
 ## Files
 
-- `tetris.braw` - The game logic written in mdhavers
-- `index.html` - Browser-based game interface running the compiled code
+- `tetris.braw` - Browser game logic (compiled to JS)
+- `tetris_terminal.braw` - ASCII terminal version
+- `tetris_color.braw` - Colorful ANSI terminal version
+- `index.html` - Browser-based game interface
 
 ## Game Features
 
