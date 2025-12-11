@@ -8103,7 +8103,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Loop through entries to find matching key
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
-        let header_size = self.types.i64_type.const_int(16, false);
+        let header_size = self.types.i64_type.const_int(8, false); // sizeof(i64) for count
         let entry_size = self.types.i64_type.const_int(32, false);
         let value_offset_in_entry = self.types.i64_type.const_int(16, false);
 
@@ -11866,13 +11866,13 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_int_value();
 
-        // Allocate result list: 8 bytes header + 16 bytes per key
-        let header_size = self.types.i64_type.const_int(16, false);
+        // Allocate result list: 16 bytes header (capacity + length) + 16 bytes per key
+        let list_header_size = self.types.i64_type.const_int(16, false);
         let elem_size = self.types.i64_type.const_int(16, false);
         let result_data_size = self
             .builder
             .build_int_add(
-                header_size,
+                list_header_size,
                 self.builder
                     .build_int_mul(dict_count, elem_size, "data_size")
                     .unwrap(),
@@ -11898,6 +11898,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Loop to copy keys
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
+        let dict_header_size = self.types.i64_type.const_int(8, false); // sizeof(i64) for count
         let entry_size = self.types.i64_type.const_int(32, false); // 16 bytes key + 16 bytes value
         let idx_ptr = self
             .builder
@@ -11931,7 +11932,7 @@ impl<'ctx> CodeGen<'ctx> {
         let dict_entry_offset = self
             .builder
             .build_int_add(
-                header_size,
+                dict_header_size,
                 self.builder
                     .build_int_mul(idx, entry_size, "entry_mul")
                     .unwrap(),
@@ -11965,7 +11966,7 @@ impl<'ctx> CodeGen<'ctx> {
         let result_elem_offset = self
             .builder
             .build_int_add(
-                header_size,
+                list_header_size,
                 self.builder
                     .build_int_mul(idx, elem_size, "result_mul")
                     .unwrap(),
@@ -12032,13 +12033,13 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_int_value();
 
-        // Allocate result list: 8 bytes header + 16 bytes per value
-        let header_size = self.types.i64_type.const_int(16, false);
+        // Allocate result list: 16 bytes header (capacity + length) + 16 bytes per value
+        let list_header_size = self.types.i64_type.const_int(16, false);
         let elem_size = self.types.i64_type.const_int(16, false);
         let result_data_size = self
             .builder
             .build_int_add(
-                header_size,
+                list_header_size,
                 self.builder
                     .build_int_mul(dict_count, elem_size, "data_size")
                     .unwrap(),
@@ -12064,6 +12065,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Loop to copy values
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
+        let dict_header_size = self.types.i64_type.const_int(8, false); // sizeof(i64) for count
         let entry_size = self.types.i64_type.const_int(32, false); // 16 bytes key + 16 bytes value
         let value_offset_in_entry = self.types.i64_type.const_int(16, false); // Value comes after key
         let idx_ptr = self
@@ -12098,7 +12100,7 @@ impl<'ctx> CodeGen<'ctx> {
         let dict_entry_offset = self
             .builder
             .build_int_add(
-                header_size,
+                dict_header_size,
                 self.builder
                     .build_int_mul(idx, entry_size, "entry_mul")
                     .unwrap(),
@@ -12136,7 +12138,7 @@ impl<'ctx> CodeGen<'ctx> {
         let result_elem_offset = self
             .builder
             .build_int_add(
-                header_size,
+                list_header_size,
                 self.builder
                     .build_int_mul(idx, elem_size, "result_mul")
                     .unwrap(),
