@@ -14,6 +14,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <termios.h>
+#include <sys/ioctl.h>
 
 /* Boehm GC - declared as extern */
 extern void GC_init(void);
@@ -473,6 +474,24 @@ MdhValue __mdh_get_key(void) {
     /* Restore settings on error/EOF */
     tcsetattr(STDIN_FILENO, TCSANOW, &old_tio);
     return __mdh_make_string("");
+}
+
+/* ========== Terminal Dimensions ========== */
+
+MdhValue __mdh_term_width(void) {
+    struct winsize w;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == 0) {
+        return __mdh_make_int(w.ws_col);
+    }
+    return __mdh_make_int(80);  /* Default fallback */
+}
+
+MdhValue __mdh_term_height(void) {
+    struct winsize w;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == 0) {
+        return __mdh_make_int(w.ws_row);
+    }
+    return __mdh_make_int(24);  /* Default fallback */
 }
 
 /* ========== List Operations ========== */
