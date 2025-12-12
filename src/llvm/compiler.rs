@@ -61,6 +61,7 @@ impl LLVMCompiler {
     }
 
     /// Compile to object file
+    #[allow(dead_code)]
     pub fn compile_to_object(
         &self,
         program: &Program,
@@ -120,6 +121,7 @@ impl LLVMCompiler {
     }
 
     /// Compile to native executable
+    #[allow(dead_code)]
     pub fn compile_to_native(
         &self,
         program: &Program,
