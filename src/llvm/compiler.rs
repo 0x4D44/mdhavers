@@ -10,6 +10,9 @@ use std::process::Command;
 /// Embedded runtime object file - compiled into the binary at build time
 static EMBEDDED_RUNTIME: &[u8] = include_bytes!("../../runtime/mdh_runtime.o");
 
+/// Embedded GC stub - minimal malloc wrappers for standalone builds
+static EMBEDDED_GC_STUB: &[u8] = include_bytes!("../../runtime/gc_stub.o");
+
 use inkwell::context::Context;
 use inkwell::module::Module;
 use inkwell::passes::PassManager;
@@ -115,19 +118,29 @@ impl LLVMCompiler {
         let compiler = LLVMCompiler::new().with_optimization(opt_level);
         compiler.compile_to_object(program, &obj_path)?;
 
+        // Generate unique temp file names using process ID and a counter
+        // This avoids race conditions when tests run in parallel
+        let unique_id = format!("{}_{:?}", std::process::id(), std::thread::current().id());
+        let runtime_path = std::env::temp_dir().join(format!("mdh_runtime_{}.o", unique_id));
+        let gc_stub_path = std::env::temp_dir().join(format!("mdh_gc_stub_{}.o", unique_id));
+
         // Write embedded runtime to temp file for linking
-        let runtime_path = std::env::temp_dir().join("mdh_runtime.o");
         std::fs::File::create(&runtime_path)
             .and_then(|mut f| f.write_all(EMBEDDED_RUNTIME))
             .map_err(|e| HaversError::CompileError(format!("Failed to write runtime: {}", e)))?;
+
+        // Write embedded GC stub to temp file for linking
+        std::fs::File::create(&gc_stub_path)
+            .and_then(|mut f| f.write_all(EMBEDDED_GC_STUB))
+            .map_err(|e| HaversError::CompileError(format!("Failed to write GC stub: {}", e)))?;
 
         // Link with system linker
         let status = Command::new("cc")
             .args([
                 obj_path.to_str().unwrap(),
                 runtime_path.to_str().unwrap(),
-                "/tmp/gc_stub.o", // GC stub for testing
-                "-lm",            // Math library (for floor, ceil, etc.)
+                gc_stub_path.to_str().unwrap(),
+                "-lm", // Math library (for floor, ceil, etc.)
                 "-o",
                 output_path.to_str().unwrap(),
             ])
@@ -137,6 +150,7 @@ impl LLVMCompiler {
         // Clean up temp files
         let _ = std::fs::remove_file(&obj_path);
         let _ = std::fs::remove_file(&runtime_path);
+        let _ = std::fs::remove_file(&gc_stub_path);
 
         if status.success() {
             Ok(())

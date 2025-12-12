@@ -163,6 +163,9 @@ pub enum HaversError {
 
     #[error("Immutable! Ye cannae change '{name}' at line {line} - it's set in stone!")]
     ImmutableVariable { name: String, line: usize },
+
+    #[error("Hurled at line {line}: {message}")]
+    UserError { message: String, line: usize },
 }
 
 impl HaversError {
@@ -208,6 +211,7 @@ impl HaversError {
             HaversError::OutOfMemory { line } => Some(*line),
             HaversError::PrivateMemberAccess { line, .. } => Some(*line),
             HaversError::ImmutableVariable { line, .. } => Some(*line),
+            HaversError::UserError { line, .. } => Some(*line),
             _ => None,
         }
     }

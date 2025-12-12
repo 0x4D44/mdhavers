@@ -10,9 +10,123 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode},
 };
 
-use crate::ast::*;
+use crate::ast::{LogLevel, *};
 use crate::error::{HaversError, HaversResult};
 use crate::value::*;
+use chrono::Local;
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::Mutex;
+
+/// Global log level that can be modified by native functions
+/// Default is Blether (3 = INFO)
+static GLOBAL_LOG_LEVEL: AtomicU8 = AtomicU8::new(3);
+
+/// Whether crash handling is enabled (default: true)
+static CRASH_HANDLING_ENABLED: AtomicBool = AtomicBool::new(true);
+
+/// A stack frame for the shadow call stack
+#[derive(Debug, Clone)]
+pub struct StackFrame {
+    /// Function name or "<main>"
+    pub name: String,
+    /// Source file name
+    pub file: String,
+    /// Line number
+    pub line: usize,
+}
+
+impl std::fmt::Display for StackFrame {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "  at {} ({}:{})", self.name, self.file, self.line)
+    }
+}
+
+/// Global shadow call stack for crash reporting
+static SHADOW_STACK: Mutex<Vec<StackFrame>> = Mutex::new(Vec::new());
+static CURRENT_STACK_FILE: Mutex<String> = Mutex::new(String::new());
+
+/// Push a frame onto the shadow stack
+pub fn push_stack_frame(name: &str, line: usize) {
+    if let Ok(mut stack) = SHADOW_STACK.lock() {
+        let file = CURRENT_STACK_FILE
+            .lock()
+            .map(|f| f.clone())
+            .unwrap_or_default();
+        stack.push(StackFrame {
+            name: name.to_string(),
+            file,
+            line,
+        });
+    }
+}
+
+/// Pop a frame from the shadow stack
+pub fn pop_stack_frame() {
+    if let Ok(mut stack) = SHADOW_STACK.lock() {
+        stack.pop();
+    }
+}
+
+/// Get a copy of the current stack trace
+pub fn get_stack_trace() -> Vec<StackFrame> {
+    SHADOW_STACK.lock().map(|s| s.clone()).unwrap_or_default()
+}
+
+/// Clear the stack trace (for REPL reset)
+#[allow(dead_code)]
+pub fn clear_stack_trace() {
+    if let Ok(mut stack) = SHADOW_STACK.lock() {
+        stack.clear();
+    }
+}
+
+/// Set the current file name for stack frames
+pub fn set_stack_file(file: &str) {
+    if let Ok(mut f) = CURRENT_STACK_FILE.lock() {
+        *f = file.to_string();
+    }
+}
+
+/// Print the current stack trace to stderr
+pub fn print_stack_trace() {
+    let stack = get_stack_trace();
+    if stack.is_empty() {
+        eprintln!("  (no stack trace available)");
+        return;
+    }
+    eprintln!("\n🏴󠁧󠁢󠁳󠁣󠁴󠁿 Stack trace (most recent call last):");
+    for frame in stack.iter().rev() {
+        eprintln!("{}", frame);
+    }
+}
+
+/// Enable or disable crash handling
+pub fn set_crash_handling(enabled: bool) {
+    CRASH_HANDLING_ENABLED.store(enabled, Ordering::Relaxed);
+}
+
+/// Check if crash handling is enabled
+pub fn is_crash_handling_enabled() -> bool {
+    CRASH_HANDLING_ENABLED.load(Ordering::Relaxed)
+}
+
+/// Get the global log level
+pub fn get_global_log_level() -> LogLevel {
+    match GLOBAL_LOG_LEVEL.load(Ordering::Relaxed) {
+        0 => LogLevel::Wheesht,
+        1 => LogLevel::Roar,
+        2 => LogLevel::Holler,
+        3 => LogLevel::Blether,
+        4 => LogLevel::Mutter,
+        5 => LogLevel::Whisper,
+        _ => LogLevel::Blether,
+    }
+}
+
+/// Set the global log level
+pub fn set_global_log_level(level: LogLevel) {
+    GLOBAL_LOG_LEVEL.store(level as u8, Ordering::Relaxed);
+}
 
 /// Control flow signals
 #[derive(Debug)]
@@ -49,6 +163,11 @@ pub struct Interpreter {
     trace_mode: TraceMode,
     /// Current trace indentation level
     trace_depth: usize,
+    /// Current log level (default: Blether/INFO)
+    #[allow(dead_code)]
+    log_level: LogLevel,
+    /// Current source file name for log messages
+    current_file: String,
 }
 
 impl Interpreter {
@@ -57,6 +176,18 @@ impl Interpreter {
 
         // Define native functions
         Self::define_natives(&globals);
+
+        // Register graphics functions (if feature enabled)
+        crate::graphics::register_graphics_functions(&globals);
+
+        // Check fer MDH_LOG_LEVEL environment variable
+        let log_level = std::env::var("MDH_LOG_LEVEL")
+            .ok()
+            .and_then(|s| LogLevel::parse_level(&s))
+            .unwrap_or(LogLevel::Blether);
+
+        // Set the global log level too
+        set_global_log_level(log_level);
 
         Interpreter {
             globals: globals.clone(),
@@ -67,7 +198,63 @@ impl Interpreter {
             prelude_loaded: false,
             trace_mode: TraceMode::Off,
             trace_depth: 0,
+            log_level,
+            current_file: "<repl>".to_string(),
         }
+    }
+
+    /// Set the current source file name (fer log messages)
+    pub fn set_current_file(&mut self, file: &str) {
+        self.current_file = file.to_string();
+        // Also update the global stack file for crash reporting
+        set_stack_file(file);
+    }
+
+    /// Set the log level
+    #[allow(dead_code)]
+    pub fn set_log_level(&mut self, level: LogLevel) {
+        self.log_level = level;
+    }
+
+    /// Get current log level
+    #[allow(dead_code)]
+    pub fn get_log_level(&self) -> LogLevel {
+        self.log_level
+    }
+
+    /// Check if a log level should be output
+    fn should_log(&self, level: LogLevel) -> bool {
+        // Use the global log level (can be changed at runtime)
+        let current_level = get_global_log_level();
+        (level as u8) <= (current_level as u8)
+    }
+
+    /// Format and output a log message
+    fn log_message(&self, level: LogLevel, message: &str, line: usize) {
+        if !self.should_log(level) {
+            return;
+        }
+
+        let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
+        let thread_id = std::thread::current().id();
+        // Extract numeric part from thread ID (format is ThreadId(N))
+        let thread_num: u64 = format!("{:?}", thread_id)
+            .chars()
+            .filter(|c| c.is_ascii_digit())
+            .collect::<String>()
+            .parse()
+            .unwrap_or(0)
+            % 10000;
+
+        eprintln!(
+            "[{:7}] {} [thread:{:04}] {}:{} | {}",
+            level.name(),
+            timestamp,
+            thread_num,
+            self.current_file,
+            line,
+            message
+        );
     }
 
     /// Enable trace mode fer debugging
@@ -455,6 +642,86 @@ impl Interpreter {
                     Value::Float(f) => Ok(Value::Float(f.sqrt())),
                     Value::Integer(n) => Ok(Value::Float((*n as f64).sqrt())),
                     _ => Err("sqrt() expects a number".to_string()),
+                },
+            ))),
+        );
+
+        // set_log_level - set the logging level at runtime
+        globals.borrow_mut().define(
+            "set_log_level".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "set_log_level",
+                1,
+                |args| match &args[0] {
+                    Value::String(s) => {
+                        if let Some(level) = LogLevel::parse_level(s) {
+                            set_global_log_level(level);
+                            Ok(Value::Nil)
+                        } else {
+                            Err(format!(
+                                "Invalid log level '{}'. Use: wheesht, roar, holler, blether, mutter, or whisper",
+                                s
+                            ))
+                        }
+                    }
+                    Value::Integer(n) => {
+                        let level = match n {
+                            0 => LogLevel::Wheesht,
+                            1 => LogLevel::Roar,
+                            2 => LogLevel::Holler,
+                            3 => LogLevel::Blether,
+                            4 => LogLevel::Mutter,
+                            5 => LogLevel::Whisper,
+                            _ => return Err(format!("Invalid log level {}. Use 0-5", n)),
+                        };
+                        set_global_log_level(level);
+                        Ok(Value::Nil)
+                    }
+                    _ => Err("set_log_level() expects a string or integer".to_string()),
+                },
+            ))),
+        );
+
+        // get_log_level - get the current logging level
+        globals.borrow_mut().define(
+            "get_log_level".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("get_log_level", 0, |_args| {
+                let level = get_global_log_level();
+                Ok(Value::String(level.name().to_lowercase()))
+            }))),
+        );
+
+        // stacktrace - get the current stack trace as a string
+        globals.borrow_mut().define(
+            "stacktrace".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("stacktrace", 0, |_args| {
+                let stack = get_stack_trace();
+                let trace = stack
+                    .iter()
+                    .rev()
+                    .map(|f| format!("  at {} ({}:{})", f.name, f.file, f.line))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                Ok(Value::String(if trace.is_empty() {
+                    "(no stack trace)".to_string()
+                } else {
+                    trace
+                }))
+            }))),
+        );
+
+        // set_crash_handling - enable or disable crash handling
+        globals.borrow_mut().define(
+            "set_crash_handling".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "set_crash_handling",
+                1,
+                |args| match &args[0] {
+                    Value::Bool(enabled) => {
+                        set_crash_handling(*enabled);
+                        Ok(Value::Nil)
+                    }
+                    _ => Err("set_crash_handling() expects a boolean".to_string()),
                 },
             ))),
         );
@@ -4312,6 +4579,830 @@ impl Interpreter {
                 }
             }))),
         );
+
+        // ============================================================
+        // STDLIB EXPANSION - File I/O
+        // ============================================================
+
+        // scrieve_append - append to file (Scots: write-append)
+        globals.borrow_mut().define(
+            "scrieve_append".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("scrieve_append", 2, |args| {
+                use std::fs::OpenOptions;
+                use std::io::Write as IoWrite;
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("scrieve_append() needs a file path string".to_string()),
+                };
+                let content = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    v => format!("{}", v),
+                };
+                let mut file = OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&path)
+                    .map_err(|e| format!("Couldnae open '{}' fer appendin': {}", path, e))?;
+                file.write_all(content.as_bytes())
+                    .map_err(|e| format!("Couldnae append tae '{}': {}", path, e))?;
+                Ok(Value::Nil)
+            }))),
+        );
+
+        // file_delete - delete a file
+        globals.borrow_mut().define(
+            "file_delete".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("file_delete", 1, |args| {
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("file_delete() needs a file path string".to_string()),
+                };
+                std::fs::remove_file(&path)
+                    .map_err(|e| format!("Couldnae delete '{}': {}", path, e))?;
+                Ok(Value::Nil)
+            }))),
+        );
+
+        // list_dir - list directory contents
+        globals.borrow_mut().define(
+            "list_dir".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("list_dir", 1, |args| {
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("list_dir() needs a directory path string".to_string()),
+                };
+                let entries = std::fs::read_dir(&path)
+                    .map_err(|e| format!("Couldnae read directory '{}': {}", path, e))?;
+                let files: Vec<Value> = entries
+                    .filter_map(|e| e.ok())
+                    .map(|e| Value::String(e.file_name().to_string_lossy().to_string()))
+                    .collect();
+                Ok(Value::List(Rc::new(RefCell::new(files))))
+            }))),
+        );
+
+        // make_dir - create directory (and parents)
+        globals.borrow_mut().define(
+            "make_dir".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("make_dir", 1, |args| {
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("make_dir() needs a directory path string".to_string()),
+                };
+                std::fs::create_dir_all(&path)
+                    .map_err(|e| format!("Couldnae create directory '{}': {}", path, e))?;
+                Ok(Value::Nil)
+            }))),
+        );
+
+        // is_dir - check if path is a directory
+        globals.borrow_mut().define(
+            "is_dir".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("is_dir", 1, |args| {
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("is_dir() needs a path string".to_string()),
+                };
+                Ok(Value::Bool(std::path::Path::new(&path).is_dir()))
+            }))),
+        );
+
+        // file_size - get file size in bytes
+        globals.borrow_mut().define(
+            "file_size".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("file_size", 1, |args| {
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("file_size() needs a file path string".to_string()),
+                };
+                let metadata = std::fs::metadata(&path)
+                    .map_err(|e| format!("Couldnae get file info fer '{}': {}", path, e))?;
+                Ok(Value::Integer(metadata.len() as i64))
+            }))),
+        );
+
+        // path_join - join path components
+        globals.borrow_mut().define(
+            "path_join".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("path_join", 2, |args| {
+                let path1 = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("path_join() needs strings".to_string()),
+                };
+                let path2 = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("path_join() needs strings".to_string()),
+                };
+                let joined = std::path::Path::new(&path1).join(&path2);
+                Ok(Value::String(joined.to_string_lossy().to_string()))
+            }))),
+        );
+
+        // ============================================================
+        // STDLIB EXPANSION - String Functions
+        // ============================================================
+
+        // trim - remove leading/trailing whitespace
+        globals.borrow_mut().define(
+            "trim".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("trim", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    Ok(Value::String(s.trim().to_string()))
+                } else {
+                    Err("trim() needs a string".to_string())
+                }
+            }))),
+        );
+
+        // trim_start - remove leading whitespace
+        globals.borrow_mut().define(
+            "trim_start".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("trim_start", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    Ok(Value::String(s.trim_start().to_string()))
+                } else {
+                    Err("trim_start() needs a string".to_string())
+                }
+            }))),
+        );
+
+        // trim_end - remove trailing whitespace
+        globals.borrow_mut().define(
+            "trim_end".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("trim_end", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    Ok(Value::String(s.trim_end().to_string()))
+                } else {
+                    Err("trim_end() needs a string".to_string())
+                }
+            }))),
+        );
+
+        // starts_with - check if string starts with prefix
+        globals.borrow_mut().define(
+            "starts_with".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "starts_with",
+                2,
+                |args| match (&args[0], &args[1]) {
+                    (Value::String(s), Value::String(prefix)) => {
+                        Ok(Value::Bool(s.starts_with(prefix.as_str())))
+                    }
+                    _ => Err("starts_with() needs two strings".to_string()),
+                },
+            ))),
+        );
+
+        // ends_with - check if string ends with suffix
+        globals.borrow_mut().define(
+            "ends_with".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("ends_with", 2, |args| match (
+                &args[0], &args[1],
+            ) {
+                (Value::String(s), Value::String(suffix)) => {
+                    Ok(Value::Bool(s.ends_with(suffix.as_str())))
+                }
+                _ => Err("ends_with() needs two strings".to_string()),
+            }))),
+        );
+
+        // last_index_of - find last index of substring
+        globals.borrow_mut().define(
+            "last_index_of".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "last_index_of",
+                2,
+                |args| match (&args[0], &args[1]) {
+                    (Value::String(s), Value::String(needle)) => Ok(Value::Integer(
+                        s.rfind(needle.as_str()).map(|i| i as i64).unwrap_or(-1),
+                    )),
+                    _ => Err("last_index_of() needs two strings".to_string()),
+                },
+            ))),
+        );
+
+        // substring - extract substring (start, end exclusive)
+        globals.borrow_mut().define(
+            "substring".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("substring", 3, |args| {
+                let s = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("substring() needs a string".to_string()),
+                };
+                let start = args[1]
+                    .as_integer()
+                    .ok_or("substring() needs integer indices")?
+                    as usize;
+                let end = args[2]
+                    .as_integer()
+                    .ok_or("substring() needs integer indices")? as usize;
+                let chars: Vec<char> = s.chars().collect();
+                let start = start.min(chars.len());
+                let end = end.min(chars.len());
+                Ok(Value::String(chars[start..end].iter().collect()))
+            }))),
+        );
+
+        // is_empty - check if string is empty
+        globals.borrow_mut().define(
+            "is_empty".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "is_empty",
+                1,
+                |args| match &args[0] {
+                    Value::String(s) => Ok(Value::Bool(s.is_empty())),
+                    Value::List(l) => Ok(Value::Bool(l.borrow().is_empty())),
+                    Value::Dict(d) => Ok(Value::Bool(d.borrow().is_empty())),
+                    _ => Err("is_empty() needs a string, list, or dict".to_string()),
+                },
+            ))),
+        );
+
+        // is_blank - check if string is empty or only whitespace
+        globals.borrow_mut().define(
+            "is_blank".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("is_blank", 1, |args| {
+                if let Value::String(s) = &args[0] {
+                    Ok(Value::Bool(s.trim().is_empty()))
+                } else {
+                    Err("is_blank() needs a string".to_string())
+                }
+            }))),
+        );
+
+        // ============================================================
+        // STDLIB EXPANSION - Math Functions
+        // ============================================================
+
+        // random - random float between 0.0 and 1.0
+        globals.borrow_mut().define(
+            "random".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("random", 0, |_args| {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let seed = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos() as u64;
+                let rng = seed.wrapping_mul(1103515245).wrapping_add(12345);
+                let random_float = (rng as f64) / (u64::MAX as f64);
+                Ok(Value::Float(random_float))
+            }))),
+        );
+
+        // random_int - random integer in range (inclusive)
+        globals.borrow_mut().define(
+            "random_int".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("random_int", 2, |args| {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let min = args[0]
+                    .as_integer()
+                    .ok_or("random_int() needs integer bounds")?;
+                let max = args[1]
+                    .as_integer()
+                    .ok_or("random_int() needs integer bounds")?;
+                if min > max {
+                    return Err("random_int() min must be <= max".to_string());
+                }
+                let seed = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos() as u64;
+                let rng = seed.wrapping_mul(1103515245).wrapping_add(12345);
+                let range = (max - min + 1) as u64;
+                let result = min + ((rng % range) as i64);
+                Ok(Value::Integer(result))
+            }))),
+        );
+
+        // random_choice - random element from list
+        globals.borrow_mut().define(
+            "random_choice".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("random_choice", 1, |args| {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                if let Value::List(list) = &args[0] {
+                    let items = list.borrow();
+                    if items.is_empty() {
+                        return Ok(Value::Nil);
+                    }
+                    let seed = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_nanos() as u64;
+                    let rng = seed.wrapping_mul(1103515245).wrapping_add(12345);
+                    let idx = (rng as usize) % items.len();
+                    Ok(items[idx].clone())
+                } else {
+                    Err("random_choice() needs a list".to_string())
+                }
+            }))),
+        );
+
+        // pi - return PI constant
+        globals.borrow_mut().define(
+            "pi".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("pi", 0, |_args| {
+                Ok(Value::Float(std::f64::consts::PI))
+            }))),
+        );
+
+        // e - return Euler's number
+        globals.borrow_mut().define(
+            "e".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("e", 0, |_args| {
+                Ok(Value::Float(std::f64::consts::E))
+            }))),
+        );
+
+        // tau - return TAU (2*PI)
+        globals.borrow_mut().define(
+            "tau".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("tau", 0, |_args| {
+                Ok(Value::Float(std::f64::consts::TAU))
+            }))),
+        );
+
+        // trunc - truncate toward zero
+        globals.borrow_mut().define(
+            "trunc".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "trunc",
+                1,
+                |args| match &args[0] {
+                    Value::Float(f) => Ok(Value::Integer(f.trunc() as i64)),
+                    Value::Integer(n) => Ok(Value::Integer(*n)),
+                    _ => Err("trunc() needs a number".to_string()),
+                },
+            ))),
+        );
+
+        // log2 - base 2 logarithm
+        globals.borrow_mut().define(
+            "log2".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "log2",
+                1,
+                |args| match &args[0] {
+                    Value::Float(f) => Ok(Value::Float(f.log2())),
+                    Value::Integer(n) => Ok(Value::Float((*n as f64).log2())),
+                    _ => Err("log2() needs a number".to_string()),
+                },
+            ))),
+        );
+
+        // ============================================================
+        // STDLIB EXPANSION - Date/Time Functions
+        // ============================================================
+
+        // date_now - current date as dict
+        globals.borrow_mut().define(
+            "date_now".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("date_now", 0, |_args| {
+                use chrono::{Datelike, Local, Timelike};
+                let now = Local::now();
+                let mut dict = HashMap::new();
+                dict.insert("year".to_string(), Value::Integer(now.year() as i64));
+                dict.insert("month".to_string(), Value::Integer(now.month() as i64));
+                dict.insert("day".to_string(), Value::Integer(now.day() as i64));
+                dict.insert("hour".to_string(), Value::Integer(now.hour() as i64));
+                dict.insert("minute".to_string(), Value::Integer(now.minute() as i64));
+                dict.insert("second".to_string(), Value::Integer(now.second() as i64));
+                dict.insert(
+                    "weekday".to_string(),
+                    Value::Integer(now.weekday().num_days_from_monday() as i64),
+                );
+                Ok(Value::Dict(Rc::new(RefCell::new(dict))))
+            }))),
+        );
+
+        // date_format - format timestamp
+        globals.borrow_mut().define(
+            "date_format".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("date_format", 2, |args| {
+                use chrono::{Local, TimeZone};
+                let timestamp_ms = args[0]
+                    .as_integer()
+                    .ok_or("date_format() needs a timestamp")?;
+                let format = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("date_format() needs a format string".to_string()),
+                };
+                let dt = Local
+                    .timestamp_millis_opt(timestamp_ms)
+                    .single()
+                    .ok_or("Invalid timestamp")?;
+                Ok(Value::String(dt.format(&format).to_string()))
+            }))),
+        );
+
+        // date_parse - parse string to timestamp
+        globals.borrow_mut().define(
+            "date_parse".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("date_parse", 2, |args| {
+                use chrono::NaiveDateTime;
+                let date_str = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("date_parse() needs a date string".to_string()),
+                };
+                let format = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("date_parse() needs a format string".to_string()),
+                };
+                let dt = NaiveDateTime::parse_from_str(&date_str, &format)
+                    .map_err(|e| format!("Couldnae parse date '{}': {}", date_str, e))?;
+                Ok(Value::Integer(dt.and_utc().timestamp_millis()))
+            }))),
+        );
+
+        // date_add - add time to timestamp
+        globals.borrow_mut().define(
+            "date_add".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("date_add", 3, |args| {
+                use chrono::{Duration, Local, TimeZone};
+                let timestamp_ms = args[0].as_integer().ok_or("date_add() needs a timestamp")?;
+                let amount = args[1].as_integer().ok_or("date_add() needs an amount")?;
+                let unit = match &args[2] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("date_add() needs a unit string".to_string()),
+                };
+                let dt = Local
+                    .timestamp_millis_opt(timestamp_ms)
+                    .single()
+                    .ok_or("Invalid timestamp")?;
+                let new_dt = match unit.as_str() {
+                    "seconds" => dt + Duration::seconds(amount),
+                    "minutes" => dt + Duration::minutes(amount),
+                    "hours" => dt + Duration::hours(amount),
+                    "days" => dt + Duration::days(amount),
+                    "weeks" => dt + Duration::weeks(amount),
+                    _ => return Err(format!("Unknown time unit: {}", unit)),
+                };
+                Ok(Value::Integer(new_dt.timestamp_millis()))
+            }))),
+        );
+
+        // date_diff - difference between timestamps
+        globals.borrow_mut().define(
+            "date_diff".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("date_diff", 3, |args| {
+                let ts1 = args[0].as_integer().ok_or("date_diff() needs timestamps")?;
+                let ts2 = args[1].as_integer().ok_or("date_diff() needs timestamps")?;
+                let unit = match &args[2] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("date_diff() needs a unit string".to_string()),
+                };
+                let diff_ms = ts2 - ts1;
+                let result = match unit.as_str() {
+                    "milliseconds" => diff_ms,
+                    "seconds" => diff_ms / 1000,
+                    "minutes" => diff_ms / 60000,
+                    "hours" => diff_ms / 3600000,
+                    "days" => diff_ms / 86400000,
+                    "weeks" => diff_ms / 604800000,
+                    _ => return Err(format!("Unknown time unit: {}", unit)),
+                };
+                Ok(Value::Integer(result))
+            }))),
+        );
+
+        // timestamp - Unix timestamp in seconds
+        globals.borrow_mut().define(
+            "timestamp".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("timestamp", 0, |_args| {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let secs = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                Ok(Value::Integer(secs as i64))
+            }))),
+        );
+
+        // timestamp_millis - Unix timestamp in milliseconds
+        globals.borrow_mut().define(
+            "timestamp_millis".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "timestamp_millis",
+                0,
+                |_args| {
+                    use std::time::{SystemTime, UNIX_EPOCH};
+                    let millis = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis();
+                    Ok(Value::Integer(millis as i64))
+                },
+            ))),
+        );
+
+        // ============================================================
+        // STDLIB EXPANSION - Regular Expressions
+        // ============================================================
+
+        // regex_test - test if pattern matches
+        globals.borrow_mut().define(
+            "regex_test".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("regex_test", 2, |args| {
+                use regex::Regex;
+                let text = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("regex_test() needs a string".to_string()),
+                };
+                let pattern = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("regex_test() needs a pattern string".to_string()),
+                };
+                let re = Regex::new(&pattern)
+                    .map_err(|e| format!("Invalid regex '{}': {}", pattern, e))?;
+                Ok(Value::Bool(re.is_match(&text)))
+            }))),
+        );
+
+        // regex_match - find first match
+        globals.borrow_mut().define(
+            "regex_match".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("regex_match", 2, |args| {
+                use regex::Regex;
+                let text = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("regex_match() needs a string".to_string()),
+                };
+                let pattern = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("regex_match() needs a pattern string".to_string()),
+                };
+                let re = Regex::new(&pattern)
+                    .map_err(|e| format!("Invalid regex '{}': {}", pattern, e))?;
+                if let Some(m) = re.find(&text) {
+                    let mut dict = HashMap::new();
+                    dict.insert("match".to_string(), Value::String(m.as_str().to_string()));
+                    dict.insert("start".to_string(), Value::Integer(m.start() as i64));
+                    dict.insert("end".to_string(), Value::Integer(m.end() as i64));
+                    Ok(Value::Dict(Rc::new(RefCell::new(dict))))
+                } else {
+                    Ok(Value::Nil)
+                }
+            }))),
+        );
+
+        // regex_match_all - find all matches
+        globals.borrow_mut().define(
+            "regex_match_all".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("regex_match_all", 2, |args| {
+                use regex::Regex;
+                let text = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("regex_match_all() needs a string".to_string()),
+                };
+                let pattern = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("regex_match_all() needs a pattern string".to_string()),
+                };
+                let re = Regex::new(&pattern)
+                    .map_err(|e| format!("Invalid regex '{}': {}", pattern, e))?;
+                let matches: Vec<Value> = re
+                    .find_iter(&text)
+                    .map(|m| {
+                        let mut dict = HashMap::new();
+                        dict.insert("match".to_string(), Value::String(m.as_str().to_string()));
+                        dict.insert("start".to_string(), Value::Integer(m.start() as i64));
+                        dict.insert("end".to_string(), Value::Integer(m.end() as i64));
+                        Value::Dict(Rc::new(RefCell::new(dict)))
+                    })
+                    .collect();
+                Ok(Value::List(Rc::new(RefCell::new(matches))))
+            }))),
+        );
+
+        // regex_replace - replace all matches
+        globals.borrow_mut().define(
+            "regex_replace".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("regex_replace", 3, |args| {
+                use regex::Regex;
+                let text = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("regex_replace() needs a string".to_string()),
+                };
+                let pattern = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("regex_replace() needs a pattern string".to_string()),
+                };
+                let replacement = match &args[2] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("regex_replace() needs a replacement string".to_string()),
+                };
+                let re = Regex::new(&pattern)
+                    .map_err(|e| format!("Invalid regex '{}': {}", pattern, e))?;
+                Ok(Value::String(
+                    re.replace_all(&text, replacement.as_str()).to_string(),
+                ))
+            }))),
+        );
+
+        // regex_replace_first - replace first match only
+        globals.borrow_mut().define(
+            "regex_replace_first".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "regex_replace_first",
+                3,
+                |args| {
+                    use regex::Regex;
+                    let text = match &args[0] {
+                        Value::String(s) => s.clone(),
+                        _ => return Err("regex_replace_first() needs a string".to_string()),
+                    };
+                    let pattern = match &args[1] {
+                        Value::String(s) => s.clone(),
+                        _ => return Err("regex_replace_first() needs a pattern string".to_string()),
+                    };
+                    let replacement = match &args[2] {
+                        Value::String(s) => s.clone(),
+                        _ => {
+                            return Err(
+                                "regex_replace_first() needs a replacement string".to_string()
+                            )
+                        }
+                    };
+                    let re = Regex::new(&pattern)
+                        .map_err(|e| format!("Invalid regex '{}': {}", pattern, e))?;
+                    Ok(Value::String(
+                        re.replacen(&text, 1, replacement.as_str()).to_string(),
+                    ))
+                },
+            ))),
+        );
+
+        // regex_split - split by regex pattern
+        globals.borrow_mut().define(
+            "regex_split".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("regex_split", 2, |args| {
+                use regex::Regex;
+                let text = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("regex_split() needs a string".to_string()),
+                };
+                let pattern = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("regex_split() needs a pattern string".to_string()),
+                };
+                let re = Regex::new(&pattern)
+                    .map_err(|e| format!("Invalid regex '{}': {}", pattern, e))?;
+                let parts: Vec<Value> = re
+                    .split(&text)
+                    .map(|s| Value::String(s.to_string()))
+                    .collect();
+                Ok(Value::List(Rc::new(RefCell::new(parts))))
+            }))),
+        );
+
+        // ============================================================
+        // STDLIB EXPANSION - Environment & System
+        // ============================================================
+
+        // env_get - get environment variable
+        globals.borrow_mut().define(
+            "env_get".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("env_get", 1, |args| {
+                let name = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("env_get() needs a variable name string".to_string()),
+                };
+                match std::env::var(&name) {
+                    Ok(val) => Ok(Value::String(val)),
+                    Err(_) => Ok(Value::Nil),
+                }
+            }))),
+        );
+
+        // env_set - set environment variable
+        globals.borrow_mut().define(
+            "env_set".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("env_set", 2, |args| {
+                let name = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("env_set() needs a variable name string".to_string()),
+                };
+                let value = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    v => format!("{}", v),
+                };
+                std::env::set_var(&name, &value);
+                Ok(Value::Nil)
+            }))),
+        );
+
+        // env_all - get all environment variables as dict
+        globals.borrow_mut().define(
+            "env_all".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("env_all", 0, |_args| {
+                let vars: HashMap<String, Value> = std::env::vars()
+                    .map(|(k, v)| (k, Value::String(v)))
+                    .collect();
+                Ok(Value::Dict(Rc::new(RefCell::new(vars))))
+            }))),
+        );
+
+        // shell - execute shell command and return output
+        globals.borrow_mut().define(
+            "shell".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("shell", 1, |args| {
+                use std::process::Command;
+                let cmd = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("shell() needs a command string".to_string()),
+                };
+                let output = if cfg!(target_os = "windows") {
+                    Command::new("cmd").args(["/C", &cmd]).output()
+                } else {
+                    Command::new("sh").args(["-c", &cmd]).output()
+                };
+                match output {
+                    Ok(out) => {
+                        let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+                        let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+                        Ok(Value::String(if stdout.is_empty() {
+                            stderr
+                        } else {
+                            stdout
+                        }))
+                    }
+                    Err(e) => Err(format!("Shell command failed: {}", e)),
+                }
+            }))),
+        );
+
+        // shell_status - execute shell command and return exit code
+        globals.borrow_mut().define(
+            "shell_status".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("shell_status", 1, |args| {
+                use std::process::Command;
+                let cmd = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("shell_status() needs a command string".to_string()),
+                };
+                let status = if cfg!(target_os = "windows") {
+                    Command::new("cmd").args(["/C", &cmd]).status()
+                } else {
+                    Command::new("sh").args(["-c", &cmd]).status()
+                };
+                match status {
+                    Ok(s) => Ok(Value::Integer(s.code().unwrap_or(-1) as i64)),
+                    Err(e) => Err(format!("Shell command failed: {}", e)),
+                }
+            }))),
+        );
+
+        // exit - exit program with code
+        globals.borrow_mut().define(
+            "exit".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("exit", 1, |args| {
+                let code = args[0].as_integer().unwrap_or(0) as i32;
+                std::process::exit(code);
+            }))),
+        );
+
+        // args - get command line arguments
+        globals.borrow_mut().define(
+            "args".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("args", 0, |_args| {
+                let arguments: Vec<Value> = std::env::args().map(Value::String).collect();
+                Ok(Value::List(Rc::new(RefCell::new(arguments))))
+            }))),
+        );
+
+        // cwd - get current working directory
+        globals.borrow_mut().define(
+            "cwd".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("cwd", 0, |_args| {
+                match std::env::current_dir() {
+                    Ok(path) => Ok(Value::String(path.to_string_lossy().to_string())),
+                    Err(e) => Err(format!("Couldnae get current directory: {}", e)),
+                }
+            }))),
+        );
+
+        // chdir - change current directory
+        globals.borrow_mut().define(
+            "chdir".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("chdir", 1, |args| {
+                let path = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("chdir() needs a path string".to_string()),
+                };
+                std::env::set_current_dir(&path)
+                    .map_err(|e| format!("Couldnae change tae directory '{}': {}", path, e))?;
+                Ok(Value::Nil)
+            }))),
+        );
+
+        // json_stringify_pretty - pretty-printed JSON (alias for json_pretty)
+        globals.borrow_mut().define(
+            "json_stringify_pretty".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "json_stringify_pretty",
+                1,
+                |args| Ok(Value::String(value_to_json_pretty(&args[0], 0))),
+            ))),
+        );
     }
 
     /// Run a program
@@ -4933,6 +6024,28 @@ impl Interpreter {
                 }
 
                 Ok(Ok(Value::Nil))
+            }
+
+            Stmt::Log {
+                level,
+                message,
+                span,
+            } => {
+                let msg = self.evaluate(message)?;
+                self.log_message(*level, &format!("{}", msg), span.line);
+                Ok(Ok(Value::Nil))
+            }
+
+            Stmt::Hurl { message, span } => {
+                let msg = self.evaluate(message)?;
+                let error_msg = match msg {
+                    Value::String(s) => s,
+                    v => format!("{}", v),
+                };
+                Err(HaversError::UserError {
+                    message: error_msg,
+                    line: span.line,
+                })
             }
         }
     }
@@ -6269,8 +7382,11 @@ impl Interpreter {
         func: &HaversFunction,
         args: Vec<Value>,
         env: Rc<RefCell<Environment>>,
-        _line: usize,
+        line: usize,
     ) -> HaversResult<Value> {
+        // Push stack frame for crash reporting
+        push_stack_frame(&func.name, line);
+
         // Set up closure environment fer evaluating default values
         let old_env = self.environment.clone();
         self.environment = env.clone();
@@ -6292,12 +7408,17 @@ impl Interpreter {
         // Restore the environment
         self.environment = old_env;
 
-        match self.execute_block(&func.body, Some(env))? {
+        let result = match self.execute_block(&func.body, Some(env))? {
             Ok(v) => Ok(v),
             Err(ControlFlow::Return(v)) => Ok(v),
             Err(ControlFlow::Break) => Ok(Value::Nil),
             Err(ControlFlow::Continue) => Ok(Value::Nil),
-        }
+        };
+
+        // Pop stack frame
+        pop_stack_frame();
+
+        result
     }
 }
 

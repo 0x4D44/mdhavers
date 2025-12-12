@@ -126,6 +126,31 @@ pub enum TokenKind {
     #[token("mak_siccar")]
     MakSiccar,
 
+    // === Logging Keywords ===
+    /// log_whisper - TRACE level (most verbose)
+    #[token("log_whisper")]
+    LogWhisper,
+
+    /// log_mutter - DEBUG level
+    #[token("log_mutter")]
+    LogMutter,
+
+    /// log_blether - INFO level
+    #[token("log_blether")]
+    LogBlether,
+
+    /// log_holler - WARN level
+    #[token("log_holler")]
+    LogHoller,
+
+    /// log_roar - ERROR level
+    #[token("log_roar")]
+    LogRoar,
+
+    /// hurl - throw/raise an exception
+    #[token("hurl")]
+    Hurl,
+
     // === Literals ===
     #[regex(r"[0-9]+", |lex| lex.slice().parse::<i64>().ok())]
     Integer(i64),
@@ -304,6 +329,12 @@ impl fmt::Display for TokenKind {
             TokenKind::Keek => write!(f, "keek"),
             TokenKind::Whan => write!(f, "whan"),
             TokenKind::MakSiccar => write!(f, "mak_siccar"),
+            TokenKind::LogWhisper => write!(f, "log_whisper"),
+            TokenKind::LogMutter => write!(f, "log_mutter"),
+            TokenKind::LogBlether => write!(f, "log_blether"),
+            TokenKind::LogHoller => write!(f, "log_holler"),
+            TokenKind::LogRoar => write!(f, "log_roar"),
+            TokenKind::Hurl => write!(f, "hurl"),
             TokenKind::Integer(n) => write!(f, "{}", n),
             TokenKind::Float(n) => write!(f, "{}", n),
             TokenKind::String(s) => write!(f, "\"{}\"", s),

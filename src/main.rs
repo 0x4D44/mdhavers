@@ -11,6 +11,7 @@ mod ast;
 mod compiler;
 mod error;
 mod formatter;
+mod graphics;
 mod interpreter;
 mod lexer;
 mod parser;
@@ -23,8 +24,36 @@ mod llvm;
 
 use crate::compiler::compile;
 use crate::error::{format_error_context, random_scots_exclamation};
-use crate::interpreter::Interpreter;
+use crate::interpreter::{is_crash_handling_enabled, print_stack_trace, Interpreter};
 use crate::parser::parse;
+
+/// Initialize crash handlers for graceful error reporting
+fn setup_crash_handlers() {
+    // Set up panic hook to print stack trace
+    let default_panic = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        if is_crash_handling_enabled() {
+            eprintln!("\n{}", "🏴󠁧󠁢󠁳󠁣󠁴󠁿 Och noo! The program crashed!".red().bold());
+            if let Some(location) = panic_info.location() {
+                eprintln!(
+                    "{}",
+                    format!("Panic at {}:{}", location.file(), location.line()).red()
+                );
+            }
+            if let Some(message) = panic_info.payload().downcast_ref::<&str>() {
+                eprintln!("{}", format!("Message: {}", message).red());
+            } else if let Some(message) = panic_info.payload().downcast_ref::<String>() {
+                eprintln!("{}", format!("Message: {}", message).red());
+            }
+            print_stack_trace();
+            eprintln!(
+                "\n{}",
+                "This shouldnae hae happened! Please report this issue.".yellow()
+            );
+        }
+        default_panic(panic_info);
+    }));
+}
 
 /// mdhavers - A Scots programming language
 /// Pure havers, but working havers!
@@ -132,6 +161,9 @@ enum Commands {
 }
 
 fn main() {
+    // Set up crash handlers for graceful error reporting
+    setup_crash_handlers();
+
     let cli = Cli::parse();
 
     let result = match cli.command {
@@ -171,6 +203,13 @@ fn run_file(path: &PathBuf) -> Result<(), String> {
     let source = read_file(path)?;
     let program = parse(&source).map_err(|e| format_parse_error(&source, e))?;
     let mut interpreter = Interpreter::new();
+
+    // Set the current file name fer logging
+    let filename = path
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.display().to_string());
+    interpreter.set_current_file(&filename);
 
     // Set the current directory tae the file's directory fer module resolution
     if let Some(parent) = path.parent() {

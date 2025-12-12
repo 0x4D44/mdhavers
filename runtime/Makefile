@@ -16,8 +16,11 @@ LIB_SHARED = $(LIB_NAME).so
 SOURCES = mdh_runtime.c
 OBJECTS = $(SOURCES:.c=.o)
 
+# GC stub for standalone builds (no libgc dependency)
+GC_STUB = gc_stub.o
+
 # Default target
-all: $(LIB_STATIC) $(LIB_SHARED)
+all: $(LIB_STATIC) $(LIB_SHARED) $(GC_STUB)
 
 # Static library
 $(LIB_STATIC): $(OBJECTS)
@@ -29,6 +32,10 @@ $(LIB_SHARED): $(OBJECTS)
 
 # Object files
 %.o: %.c mdh_runtime.h
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# GC stub (standalone, no header dependency)
+gc_stub.o: gc_stub.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Install (requires root or prefix)
@@ -50,7 +57,7 @@ uninstall:
 
 # Clean
 clean:
-	rm -f $(OBJECTS) $(LIB_STATIC) $(LIB_SHARED)
+	rm -f $(OBJECTS) $(GC_STUB) $(LIB_STATIC) $(LIB_SHARED)
 
 # Debug build
 debug: CFLAGS += -g -DDEBUG

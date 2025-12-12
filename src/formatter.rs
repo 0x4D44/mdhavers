@@ -271,6 +271,24 @@ impl Formatter {
                 let val_str = self.format_expr(value);
                 self.writeln(&format!("ken [{}] = {}", patterns_str, val_str));
             }
+
+            Stmt::Log { level, message, .. } => {
+                let keyword = match level {
+                    crate::ast::LogLevel::Wheesht => "log_wheesht",
+                    crate::ast::LogLevel::Roar => "log_roar",
+                    crate::ast::LogLevel::Holler => "log_holler",
+                    crate::ast::LogLevel::Blether => "log_blether",
+                    crate::ast::LogLevel::Mutter => "log_mutter",
+                    crate::ast::LogLevel::Whisper => "log_whisper",
+                };
+                let msg = self.format_expr(message);
+                self.writeln(&format!("{} {}", keyword, msg));
+            }
+
+            Stmt::Hurl { message, .. } => {
+                let msg = self.format_expr(message);
+                self.writeln(&format!("hurl {}", msg));
+            }
         }
     }
 

@@ -636,6 +636,32 @@ impl Compiler {
                 self.compile_expr(value)?;
                 self.output.push_str(";\n");
             }
+
+            Stmt::Log { level, message, .. } => {
+                // Compile log to console.error with level prefix
+                let level_name = match level {
+                    crate::ast::LogLevel::Wheesht => return Ok(()), // Silent - no output
+                    crate::ast::LogLevel::Roar => "ROAR",
+                    crate::ast::LogLevel::Holler => "HOLLER",
+                    crate::ast::LogLevel::Blether => "BLETHER",
+                    crate::ast::LogLevel::Mutter => "MUTTER",
+                    crate::ast::LogLevel::Whisper => "WHISPER",
+                };
+                self.emit_indent();
+                self.output.push_str(&format!(
+                    "console.error(`[{}] ${{new Date().toISOString()}} | ` + ",
+                    level_name
+                ));
+                self.compile_expr(message)?;
+                self.output.push_str(");\n");
+            }
+
+            Stmt::Hurl { message, .. } => {
+                self.emit_indent();
+                self.output.push_str("throw new Error(");
+                self.compile_expr(message)?;
+                self.output.push_str(");\n");
+            }
         }
 
         Ok(())
