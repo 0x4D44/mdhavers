@@ -1,5 +1,56 @@
 use std::fmt;
 
+/// Log levels for the logging system
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum LogLevel {
+    /// Silent - no output
+    Wheesht = 0,
+    /// Error level - serious issues
+    Roar = 1,
+    /// Warning level - potential problems
+    Holler = 2,
+    /// Info level - normal operation (DEFAULT)
+    #[default]
+    Blether = 3,
+    /// Debug level - detailed information
+    Mutter = 4,
+    /// Trace level - most verbose
+    Whisper = 5,
+}
+
+impl LogLevel {
+    /// Get the log level name for display
+    pub fn name(&self) -> &'static str {
+        match self {
+            LogLevel::Wheesht => "WHEESHT",
+            LogLevel::Roar => "ROAR",
+            LogLevel::Holler => "HOLLER",
+            LogLevel::Blether => "BLETHER",
+            LogLevel::Mutter => "MUTTER",
+            LogLevel::Whisper => "WHISPER",
+        }
+    }
+
+    /// Parse a log level from a string (case-insensitive)
+    pub fn parse_level(s: &str) -> Option<LogLevel> {
+        match s.to_lowercase().as_str() {
+            "wheesht" => Some(LogLevel::Wheesht),
+            "roar" => Some(LogLevel::Roar),
+            "holler" => Some(LogLevel::Holler),
+            "blether" => Some(LogLevel::Blether),
+            "mutter" => Some(LogLevel::Mutter),
+            "whisper" => Some(LogLevel::Whisper),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for LogLevel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name())
+    }
+}
+
 /// Span information for error reporting
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Span {
@@ -135,6 +186,16 @@ pub enum Stmt {
         value: Expr,
         span: Span,
     },
+
+    /// Log statement: log_whisper/log_mutter/log_blether/log_holler/log_roar message
+    Log {
+        level: LogLevel,
+        message: Expr,
+        span: Span,
+    },
+
+    /// Hurl statement: throw/raise an exception with a message
+    Hurl { message: Expr, span: Span },
 }
 
 /// A match arm: whan pattern -> body
@@ -466,6 +527,8 @@ impl Stmt {
             Stmt::Match { span, .. } => *span,
             Stmt::Assert { span, .. } => *span,
             Stmt::Destructure { span, .. } => *span,
+            Stmt::Log { span, .. } => *span,
+            Stmt::Hurl { span, .. } => *span,
         }
     }
 }

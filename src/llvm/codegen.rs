@@ -470,7 +470,8 @@ impl<'ctx> CodeGen<'ctx> {
         if val.is_const() {
             let bool_val = val.get_zero_extended_constant().unwrap_or(0);
             let data = self.types.i64_type.const_int(bool_val, false);
-            return Ok(self.types
+            return Ok(self
+                .types
                 .value_type
                 .const_named_struct(&[tag.into(), data.into()])
                 .into());
@@ -504,7 +505,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Fast path: if val is a constant, build a constant struct directly
         if val.is_const() {
-            return Ok(self.types
+            return Ok(self
+                .types
                 .value_type
                 .const_named_struct(&[tag.into(), val.into()])
                 .into());
@@ -930,7 +932,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let val = self.compile_expr(expr)?;
                     let data = self.extract_data(val)?;
                     let zero = self.types.i64_type.const_int(0, false);
-                    let result = self.builder.build_int_compare(IntPredicate::NE, data, zero, "bool_truthy").unwrap();
+                    let result = self
+                        .builder
+                        .build_int_compare(IntPredicate::NE, data, zero, "bool_truthy")
+                        .unwrap();
                     Ok(Some(result))
                 } else {
                     Ok(None)
@@ -969,28 +974,53 @@ impl<'ctx> CodeGen<'ctx> {
                     // List layout: [cap:i64][len:i64][elem0:{i8,i64}][elem1:{i8,i64}]...
                     // Element layout: {tag:i8, data:i64} - data is at offset 8 from element start
                     let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-                    let list_ptr = self.builder.build_int_to_ptr(list_data, i64_ptr_type, "lp_cond").unwrap();
+                    let list_ptr = self
+                        .builder
+                        .build_int_to_ptr(list_data, i64_ptr_type, "lp_cond")
+                        .unwrap();
 
                     // Skip header (16 bytes = 2 i64s) to reach elements
                     let two = self.types.i64_type.const_int(2, false);
                     let elements_base = unsafe {
-                        self.builder.build_gep(self.types.i64_type, list_ptr, &[two], "eb_cond").unwrap()
+                        self.builder
+                            .build_gep(self.types.i64_type, list_ptr, &[two], "eb_cond")
+                            .unwrap()
                     };
 
                     // Each element is 16 bytes. To reach element[idx].data, we need:
                     // base + idx*16 + 8 (for data offset within element)
                     // In i64 terms: base + idx*2 + 1
-                    let idx_times_2 = self.builder.build_int_mul(idx_i64, two, "idx2_cond").unwrap();
+                    let idx_times_2 = self
+                        .builder
+                        .build_int_mul(idx_i64, two, "idx2_cond")
+                        .unwrap();
                     let one = self.types.i64_type.const_int(1, false);
-                    let data_offset = self.builder.build_int_add(idx_times_2, one, "do_cond").unwrap();
+                    let data_offset = self
+                        .builder
+                        .build_int_add(idx_times_2, one, "do_cond")
+                        .unwrap();
                     let data_ptr = unsafe {
-                        self.builder.build_gep(self.types.i64_type, elements_base, &[data_offset], "dp_cond").unwrap()
+                        self.builder
+                            .build_gep(
+                                self.types.i64_type,
+                                elements_base,
+                                &[data_offset],
+                                "dp_cond",
+                            )
+                            .unwrap()
                     };
 
                     // Load just the data field (8 bytes instead of 16)
-                    let data = self.builder.build_load(self.types.i64_type, data_ptr, "data_cond").unwrap().into_int_value();
+                    let data = self
+                        .builder
+                        .build_load(self.types.i64_type, data_ptr, "data_cond")
+                        .unwrap()
+                        .into_int_value();
                     let zero = self.types.i64_type.const_int(0, false);
-                    let result = self.builder.build_int_compare(IntPredicate::NE, data, zero, "truthy_cond").unwrap();
+                    let result = self
+                        .builder
+                        .build_int_compare(IntPredicate::NE, data, zero, "truthy_cond")
+                        .unwrap();
                     return Ok(Some(result));
                 }
 
@@ -998,7 +1028,10 @@ impl<'ctx> CodeGen<'ctx> {
                 let val = self.compile_expr(expr)?;
                 let data = self.extract_data(val)?;
                 let zero = self.types.i64_type.const_int(0, false);
-                let result = self.builder.build_int_compare(IntPredicate::NE, data, zero, "index_truthy").unwrap();
+                let result = self
+                    .builder
+                    .build_int_compare(IntPredicate::NE, data, zero, "index_truthy")
+                    .unwrap();
                 Ok(Some(result))
             }
             _ => Ok(None),
@@ -1039,10 +1072,7 @@ impl<'ctx> CodeGen<'ctx> {
                         VarType::Unknown
                     }
                 }
-                BinaryOp::Subtract
-                | BinaryOp::Multiply
-                | BinaryOp::Divide
-                | BinaryOp::Modulo => {
+                BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo => {
                     let lt = self.infer_expr_type(left);
                     let rt = self.infer_expr_type(right);
                     if lt == VarType::Int && rt == VarType::Int {
@@ -1416,7 +1446,11 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_call(
                 self.libc.memcpy,
-                &[dest_offset.into(), right_ptr.into(), right_len_plus_one.into()],
+                &[
+                    dest_offset.into(),
+                    right_ptr.into(),
+                    right_len_plus_one.into(),
+                ],
                 "",
             )
             .unwrap();
@@ -3042,7 +3076,12 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let len_ptr = unsafe {
             self.builder
-                .build_gep(self.types.i64_type, header_ptr, &[self.types.i64_type.const_int(1, false)], "len_ptr")
+                .build_gep(
+                    self.types.i64_type,
+                    header_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
                 .unwrap()
         };
         let list_len = self
@@ -3140,34 +3179,56 @@ impl<'ctx> CodeGen<'ctx> {
         let new_len = self.builder.build_int_add(old_len, one, "new_len").unwrap();
 
         // Check if we need to grow: new_len > capacity?
-        let needs_grow = self.builder.build_int_compare(
-            IntPredicate::UGT, new_len, old_capacity, "needs_grow"
-        ).unwrap();
+        let needs_grow = self
+            .builder
+            .build_int_compare(IntPredicate::UGT, new_len, old_capacity, "needs_grow")
+            .unwrap();
 
         // Create blocks for grow vs no-grow paths
         let grow_block = self.context.append_basic_block(function, "shove_grow");
         let no_grow_block = self.context.append_basic_block(function, "shove_no_grow");
         let store_block = self.context.append_basic_block(function, "shove_store");
 
-        self.builder.build_conditional_branch(needs_grow, grow_block, no_grow_block).unwrap();
+        self.builder
+            .build_conditional_branch(needs_grow, grow_block, no_grow_block)
+            .unwrap();
 
         // GROW PATH: double capacity and realloc
         self.builder.position_at_end(grow_block);
         let two = self.types.i64_type.const_int(2, false);
-        let doubled_capacity = self.builder.build_int_mul(old_capacity, two, "doubled_capacity").unwrap();
+        let doubled_capacity = self
+            .builder
+            .build_int_mul(old_capacity, two, "doubled_capacity")
+            .unwrap();
         // Ensure new_capacity is at least 8 (in case old_capacity was 0 or very small)
         let eight = self.types.i64_type.const_int(8, false);
-        let cap_ok = self.builder.build_int_compare(IntPredicate::UGE, doubled_capacity, eight, "cap_ok").unwrap();
-        let new_capacity = self.builder.build_select(cap_ok, doubled_capacity, eight, "safe_cap").unwrap().into_int_value();
+        let cap_ok = self
+            .builder
+            .build_int_compare(IntPredicate::UGE, doubled_capacity, eight, "cap_ok")
+            .unwrap();
+        let new_capacity = self
+            .builder
+            .build_select(cap_ok, doubled_capacity, eight, "safe_cap")
+            .unwrap()
+            .into_int_value();
 
         // Calculate new allocation size: 16 (header) + new_capacity * 16 (elements)
         let header_size = self.types.i64_type.const_int(16, false);
         let value_size = self.types.i64_type.const_int(16, false);
-        let elements_size = self.builder.build_int_mul(new_capacity, value_size, "elements_size").unwrap();
-        let total_size = self.builder.build_int_add(header_size, elements_size, "total_size").unwrap();
+        let elements_size = self
+            .builder
+            .build_int_mul(new_capacity, value_size, "elements_size")
+            .unwrap();
+        let total_size = self
+            .builder
+            .build_int_add(header_size, elements_size, "total_size")
+            .unwrap();
 
         // Realloc
-        let old_ptr_i8 = self.builder.build_pointer_cast(header_ptr, i8_ptr_type, "old_ptr_i8").unwrap();
+        let old_ptr_i8 = self
+            .builder
+            .build_pointer_cast(header_ptr, i8_ptr_type, "old_ptr_i8")
+            .unwrap();
         let new_ptr = self
             .builder
             .build_call(
@@ -3180,21 +3241,33 @@ impl<'ctx> CodeGen<'ctx> {
             .left()
             .unwrap()
             .into_pointer_value();
-        let new_header_ptr = self.builder.build_pointer_cast(new_ptr, i64_ptr_type, "new_header_ptr").unwrap();
+        let new_header_ptr = self
+            .builder
+            .build_pointer_cast(new_ptr, i64_ptr_type, "new_header_ptr")
+            .unwrap();
 
         // Store new capacity
-        self.builder.build_store(new_header_ptr, new_capacity).unwrap();
-        self.builder.build_unconditional_branch(store_block).unwrap();
+        self.builder
+            .build_store(new_header_ptr, new_capacity)
+            .unwrap();
+        self.builder
+            .build_unconditional_branch(store_block)
+            .unwrap();
         let grow_end_block = self.builder.get_insert_block().unwrap();
 
         // NO-GROW PATH: just use existing buffer
         self.builder.position_at_end(no_grow_block);
-        self.builder.build_unconditional_branch(store_block).unwrap();
+        self.builder
+            .build_unconditional_branch(store_block)
+            .unwrap();
         let no_grow_end_block = self.builder.get_insert_block().unwrap();
 
         // STORE BLOCK: use PHI to get final header pointer, then store element
         self.builder.position_at_end(store_block);
-        let final_header_ptr = self.builder.build_phi(i64_ptr_type, "final_header_ptr").unwrap();
+        let final_header_ptr = self
+            .builder
+            .build_phi(i64_ptr_type, "final_header_ptr")
+            .unwrap();
         final_header_ptr.add_incoming(&[
             (&new_header_ptr, grow_end_block),
             (&header_ptr, no_grow_end_block),
@@ -3204,7 +3277,12 @@ impl<'ctx> CodeGen<'ctx> {
         // Get length pointer in final buffer (at offset 1)
         let final_len_ptr = unsafe {
             self.builder
-                .build_gep(self.types.i64_type, final_header_ptr, &[one], "final_len_ptr")
+                .build_gep(
+                    self.types.i64_type,
+                    final_header_ptr,
+                    &[one],
+                    "final_len_ptr",
+                )
                 .unwrap()
         };
 
@@ -3215,7 +3293,12 @@ impl<'ctx> CodeGen<'ctx> {
         let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
         let elements_base = unsafe {
             self.builder
-                .build_gep(self.types.i64_type, final_header_ptr, &[two], "elements_base")
+                .build_gep(
+                    self.types.i64_type,
+                    final_header_ptr,
+                    &[two],
+                    "elements_base",
+                )
                 .unwrap()
         };
         let elements_ptr = self
@@ -3232,7 +3315,11 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(new_elem_ptr, elem_val).unwrap();
 
         // Create result list value
-        let list_result = self.make_list(self.builder.build_pointer_cast(final_header_ptr, i8_ptr_type, "list_ptr").unwrap())?;
+        let list_result = self.make_list(
+            self.builder
+                .build_pointer_cast(final_header_ptr, i8_ptr_type, "list_ptr")
+                .unwrap(),
+        )?;
         self.builder
             .build_unconditional_branch(shove_merge)
             .unwrap();
@@ -3300,37 +3387,66 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // Calculate new length
-        let new_len = self.builder.build_int_add(old_len, one, "new_len_fast").unwrap();
+        let new_len = self
+            .builder
+            .build_int_add(old_len, one, "new_len_fast")
+            .unwrap();
 
         // Check if we need to grow: new_len > capacity?
-        let needs_grow = self.builder.build_int_compare(
-            IntPredicate::UGT, new_len, old_capacity, "needs_grow_fast"
-        ).unwrap();
+        let needs_grow = self
+            .builder
+            .build_int_compare(IntPredicate::UGT, new_len, old_capacity, "needs_grow_fast")
+            .unwrap();
 
         // Create blocks for grow vs no-grow paths
         let grow_block = self.context.append_basic_block(function, "shove_grow_fast");
-        let no_grow_block = self.context.append_basic_block(function, "shove_no_grow_fast");
-        let merge_block = self.context.append_basic_block(function, "shove_merge_fast");
+        let no_grow_block = self
+            .context
+            .append_basic_block(function, "shove_no_grow_fast");
+        let merge_block = self
+            .context
+            .append_basic_block(function, "shove_merge_fast");
 
-        self.builder.build_conditional_branch(needs_grow, grow_block, no_grow_block).unwrap();
+        self.builder
+            .build_conditional_branch(needs_grow, grow_block, no_grow_block)
+            .unwrap();
 
         // GROW PATH: double capacity and realloc
         self.builder.position_at_end(grow_block);
         let two = self.types.i64_type.const_int(2, false);
-        let doubled_capacity = self.builder.build_int_mul(old_capacity, two, "doubled_cap_fast").unwrap();
+        let doubled_capacity = self
+            .builder
+            .build_int_mul(old_capacity, two, "doubled_cap_fast")
+            .unwrap();
         // Ensure new_capacity is at least 32 to reduce future reallocations
         let min_cap = self.types.i64_type.const_int(32, false);
-        let cap_ok = self.builder.build_int_compare(IntPredicate::UGE, doubled_capacity, min_cap, "cap_ok_fast").unwrap();
-        let new_capacity = self.builder.build_select(cap_ok, doubled_capacity, min_cap, "safe_cap_fast").unwrap().into_int_value();
+        let cap_ok = self
+            .builder
+            .build_int_compare(IntPredicate::UGE, doubled_capacity, min_cap, "cap_ok_fast")
+            .unwrap();
+        let new_capacity = self
+            .builder
+            .build_select(cap_ok, doubled_capacity, min_cap, "safe_cap_fast")
+            .unwrap()
+            .into_int_value();
 
         // Calculate new allocation size: 16 (header) + new_capacity * 16 (elements)
         let header_size = self.types.i64_type.const_int(16, false);
         let value_size = self.types.i64_type.const_int(16, false);
-        let elements_size = self.builder.build_int_mul(new_capacity, value_size, "elements_size_fast").unwrap();
-        let total_size = self.builder.build_int_add(header_size, elements_size, "total_size_fast").unwrap();
+        let elements_size = self
+            .builder
+            .build_int_mul(new_capacity, value_size, "elements_size_fast")
+            .unwrap();
+        let total_size = self
+            .builder
+            .build_int_add(header_size, elements_size, "total_size_fast")
+            .unwrap();
 
         // Realloc
-        let old_ptr_i8 = self.builder.build_pointer_cast(header_ptr, i8_ptr_type, "old_ptr_i8_fast").unwrap();
+        let old_ptr_i8 = self
+            .builder
+            .build_pointer_cast(header_ptr, i8_ptr_type, "old_ptr_i8_fast")
+            .unwrap();
         let new_ptr = self
             .builder
             .build_call(
@@ -3343,15 +3459,25 @@ impl<'ctx> CodeGen<'ctx> {
             .left()
             .unwrap()
             .into_pointer_value();
-        let new_header_ptr = self.builder.build_pointer_cast(new_ptr, i64_ptr_type, "new_header_ptr_fast").unwrap();
+        let new_header_ptr = self
+            .builder
+            .build_pointer_cast(new_ptr, i64_ptr_type, "new_header_ptr_fast")
+            .unwrap();
 
         // Store new capacity
-        self.builder.build_store(new_header_ptr, new_capacity).unwrap();
+        self.builder
+            .build_store(new_header_ptr, new_capacity)
+            .unwrap();
 
         // Store new length (in grown buffer)
         let grow_len_ptr = unsafe {
             self.builder
-                .build_gep(self.types.i64_type, new_header_ptr, &[one], "grow_len_ptr_fast")
+                .build_gep(
+                    self.types.i64_type,
+                    new_header_ptr,
+                    &[one],
+                    "grow_len_ptr_fast",
+                )
                 .unwrap()
         };
         self.builder.build_store(grow_len_ptr, new_len).unwrap();
@@ -3360,7 +3486,12 @@ impl<'ctx> CodeGen<'ctx> {
         let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
         let grow_elements_base = unsafe {
             self.builder
-                .build_gep(self.types.i64_type, new_header_ptr, &[two], "grow_elements_base_fast")
+                .build_gep(
+                    self.types.i64_type,
+                    new_header_ptr,
+                    &[two],
+                    "grow_elements_base_fast",
+                )
                 .unwrap()
         };
         let grow_elements_ptr = self
@@ -3369,14 +3500,25 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let grow_elem_ptr = unsafe {
             self.builder
-                .build_gep(self.types.value_type, grow_elements_ptr, &[old_len], "grow_new_elem_fast")
+                .build_gep(
+                    self.types.value_type,
+                    grow_elements_ptr,
+                    &[old_len],
+                    "grow_new_elem_fast",
+                )
                 .unwrap()
         };
         self.builder.build_store(grow_elem_ptr, elem_val).unwrap();
 
         // Create new MdhValue for grow path (pointer changed)
-        let grow_result = self.make_list(self.builder.build_pointer_cast(new_header_ptr, i8_ptr_type, "grow_list_ptr_fast").unwrap())?;
-        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let grow_result = self.make_list(
+            self.builder
+                .build_pointer_cast(new_header_ptr, i8_ptr_type, "grow_list_ptr_fast")
+                .unwrap(),
+        )?;
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
         let grow_end_block = self.builder.get_insert_block().unwrap();
 
         // NO-GROW PATH: use existing buffer, no need to create new MdhValue
@@ -3388,7 +3530,12 @@ impl<'ctx> CodeGen<'ctx> {
         // Store element (in existing buffer)
         let elements_base = unsafe {
             self.builder
-                .build_gep(self.types.i64_type, header_ptr, &[two], "elements_base_fast")
+                .build_gep(
+                    self.types.i64_type,
+                    header_ptr,
+                    &[two],
+                    "elements_base_fast",
+                )
                 .unwrap()
         };
         let elements_ptr = self
@@ -3397,21 +3544,31 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let new_elem_ptr = unsafe {
             self.builder
-                .build_gep(self.types.value_type, elements_ptr, &[old_len], "new_elem_fast")
+                .build_gep(
+                    self.types.value_type,
+                    elements_ptr,
+                    &[old_len],
+                    "new_elem_fast",
+                )
                 .unwrap()
         };
         self.builder.build_store(new_elem_ptr, elem_val).unwrap();
 
         // Return original MdhValue (pointer unchanged)
-        self.builder.build_unconditional_branch(merge_block).unwrap();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
         let no_grow_end_block = self.builder.get_insert_block().unwrap();
 
         // MERGE: PHI to select result
         self.builder.position_at_end(merge_block);
-        let result_phi = self.builder.build_phi(self.types.value_type, "shove_result_fast").unwrap();
+        let result_phi = self
+            .builder
+            .build_phi(self.types.value_type, "shove_result_fast")
+            .unwrap();
         result_phi.add_incoming(&[
             (&grow_result, grow_end_block),
-            (&list_val, no_grow_end_block),  // Return original in no-grow case
+            (&list_val, no_grow_end_block), // Return original in no-grow case
         ]);
 
         Ok(result_phi.as_basic_value())
@@ -3435,63 +3592,165 @@ impl<'ctx> CodeGen<'ctx> {
         let function = self.current_function.unwrap();
         let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let header_ptr = self.builder.build_int_to_ptr(data, i64_ptr_type, "hdr_upd").unwrap();
+        let header_ptr = self
+            .builder
+            .build_int_to_ptr(data, i64_ptr_type, "hdr_upd")
+            .unwrap();
 
         // Load capacity and length
-        let old_capacity = self.builder.build_load(self.types.i64_type, header_ptr, "cap_upd").unwrap().into_int_value();
+        let old_capacity = self
+            .builder
+            .build_load(self.types.i64_type, header_ptr, "cap_upd")
+            .unwrap()
+            .into_int_value();
         let one = self.types.i64_type.const_int(1, false);
-        let len_ptr = unsafe { self.builder.build_gep(self.types.i64_type, header_ptr, &[one], "len_ptr_upd").unwrap() };
-        let old_len = self.builder.build_load(self.types.i64_type, len_ptr, "len_upd").unwrap().into_int_value();
-        let new_len = self.builder.build_int_add(old_len, one, "new_len_upd").unwrap();
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, header_ptr, &[one], "len_ptr_upd")
+                .unwrap()
+        };
+        let old_len = self
+            .builder
+            .build_load(self.types.i64_type, len_ptr, "len_upd")
+            .unwrap()
+            .into_int_value();
+        let new_len = self
+            .builder
+            .build_int_add(old_len, one, "new_len_upd")
+            .unwrap();
 
         // Check if grow needed
-        let needs_grow = self.builder.build_int_compare(IntPredicate::UGT, new_len, old_capacity, "grow_upd").unwrap();
+        let needs_grow = self
+            .builder
+            .build_int_compare(IntPredicate::UGT, new_len, old_capacity, "grow_upd")
+            .unwrap();
         let grow_block = self.context.append_basic_block(function, "shove_grow_upd");
-        let no_grow_block = self.context.append_basic_block(function, "shove_no_grow_upd");
+        let no_grow_block = self
+            .context
+            .append_basic_block(function, "shove_no_grow_upd");
         let merge_block = self.context.append_basic_block(function, "shove_merge_upd");
-        self.builder.build_conditional_branch(needs_grow, grow_block, no_grow_block).unwrap();
+        self.builder
+            .build_conditional_branch(needs_grow, grow_block, no_grow_block)
+            .unwrap();
 
         // GROW PATH
         self.builder.position_at_end(grow_block);
         let two = self.types.i64_type.const_int(2, false);
-        let doubled = self.builder.build_int_mul(old_capacity, two, "dbl_upd").unwrap();
+        let doubled = self
+            .builder
+            .build_int_mul(old_capacity, two, "dbl_upd")
+            .unwrap();
         let min_cap = self.types.i64_type.const_int(64, false);
-        let cap_ok = self.builder.build_int_compare(IntPredicate::UGE, doubled, min_cap, "cok_upd").unwrap();
-        let new_cap = self.builder.build_select(cap_ok, doubled, min_cap, "ncap_upd").unwrap().into_int_value();
+        let cap_ok = self
+            .builder
+            .build_int_compare(IntPredicate::UGE, doubled, min_cap, "cok_upd")
+            .unwrap();
+        let new_cap = self
+            .builder
+            .build_select(cap_ok, doubled, min_cap, "ncap_upd")
+            .unwrap()
+            .into_int_value();
         let header_size = self.types.i64_type.const_int(16, false);
         let value_size = self.types.i64_type.const_int(16, false);
-        let elem_sz = self.builder.build_int_mul(new_cap, value_size, "esz_upd").unwrap();
-        let total = self.builder.build_int_add(header_size, elem_sz, "tot_upd").unwrap();
-        let old_i8 = self.builder.build_pointer_cast(header_ptr, i8_ptr_type, "oi8_upd").unwrap();
-        let new_ptr = self.builder.build_call(self.libc.realloc, &[old_i8.into(), total.into()], "realloc_upd")
-            .unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
-        let new_hdr = self.builder.build_pointer_cast(new_ptr, i64_ptr_type, "nhdr_upd").unwrap();
+        let elem_sz = self
+            .builder
+            .build_int_mul(new_cap, value_size, "esz_upd")
+            .unwrap();
+        let total = self
+            .builder
+            .build_int_add(header_size, elem_sz, "tot_upd")
+            .unwrap();
+        let old_i8 = self
+            .builder
+            .build_pointer_cast(header_ptr, i8_ptr_type, "oi8_upd")
+            .unwrap();
+        let new_ptr = self
+            .builder
+            .build_call(
+                self.libc.realloc,
+                &[old_i8.into(), total.into()],
+                "realloc_upd",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+        let new_hdr = self
+            .builder
+            .build_pointer_cast(new_ptr, i64_ptr_type, "nhdr_upd")
+            .unwrap();
         self.builder.build_store(new_hdr, new_cap).unwrap();
-        let new_i64 = self.builder.build_ptr_to_int(new_ptr, self.types.i64_type, "ni64_upd").unwrap();
+        let new_i64 = self
+            .builder
+            .build_ptr_to_int(new_ptr, self.types.i64_type, "ni64_upd")
+            .unwrap();
         self.builder.build_store(shadow, new_i64).unwrap();
-        let g_len = unsafe { self.builder.build_gep(self.types.i64_type, new_hdr, &[one], "gl_upd").unwrap() };
+        let g_len = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, new_hdr, &[one], "gl_upd")
+                .unwrap()
+        };
         self.builder.build_store(g_len, new_len).unwrap();
         let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
-        let g_base = unsafe { self.builder.build_gep(self.types.i64_type, new_hdr, &[two], "gb_upd").unwrap() };
-        let g_elems = self.builder.build_pointer_cast(g_base, value_ptr_type, "ge_upd").unwrap();
-        let g_elem = unsafe { self.builder.build_gep(self.types.value_type, g_elems, &[old_len], "gep_upd").unwrap() };
+        let g_base = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, new_hdr, &[two], "gb_upd")
+                .unwrap()
+        };
+        let g_elems = self
+            .builder
+            .build_pointer_cast(g_base, value_ptr_type, "ge_upd")
+            .unwrap();
+        let g_elem = unsafe {
+            self.builder
+                .build_gep(self.types.value_type, g_elems, &[old_len], "gep_upd")
+                .unwrap()
+        };
         self.builder.build_store(g_elem, elem_val).unwrap();
-        let tag = self.types.i8_type.const_int(crate::llvm::codegen::ValueTag::List.as_u8() as u64, false);
+        let tag = self
+            .types
+            .i8_type
+            .const_int(crate::llvm::codegen::ValueTag::List.as_u8() as u64, false);
         let undef = self.types.value_type.get_undef();
-        let gv1 = self.builder.build_insert_value(undef, tag, 0, "gv1_upd").unwrap();
-        let grow_result = self.builder.build_insert_value(gv1, new_i64, 1, "gv2_upd").unwrap().into_struct_value();
-        if let Some(vp) = var_ptr { self.builder.build_store(vp, grow_result).unwrap(); }
-        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let gv1 = self
+            .builder
+            .build_insert_value(undef, tag, 0, "gv1_upd")
+            .unwrap();
+        let grow_result = self
+            .builder
+            .build_insert_value(gv1, new_i64, 1, "gv2_upd")
+            .unwrap()
+            .into_struct_value();
+        if let Some(vp) = var_ptr {
+            self.builder.build_store(vp, grow_result).unwrap();
+        }
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
 
         // NO-GROW PATH - fast path: just store length + element, no MdhValue work
         self.builder.position_at_end(no_grow_block);
         self.builder.build_store(len_ptr, new_len).unwrap();
-        let n_base = unsafe { self.builder.build_gep(self.types.i64_type, header_ptr, &[two], "nb_upd").unwrap() };
-        let n_elems = self.builder.build_pointer_cast(n_base, value_ptr_type, "ne_upd").unwrap();
-        let n_elem = unsafe { self.builder.build_gep(self.types.value_type, n_elems, &[old_len], "nep_upd").unwrap() };
+        let n_base = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, header_ptr, &[two], "nb_upd")
+                .unwrap()
+        };
+        let n_elems = self
+            .builder
+            .build_pointer_cast(n_base, value_ptr_type, "ne_upd")
+            .unwrap();
+        let n_elem = unsafe {
+            self.builder
+                .build_gep(self.types.value_type, n_elems, &[old_len], "nep_upd")
+                .unwrap()
+        };
         self.builder.build_store(n_elem, elem_val).unwrap();
         // Skip MdhValue creation - variable already has correct pointer
-        self.builder.build_unconditional_branch(merge_block).unwrap();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
 
         // MERGE - return nil since shove result is rarely used
         self.builder.position_at_end(merge_block);
@@ -3507,65 +3766,167 @@ impl<'ctx> CodeGen<'ctx> {
         var_ptr: Option<PointerValue<'ctx>>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         // List layout: [capacity: i64][length: i64][elements...]
-        let data = self.builder.build_load(self.types.i64_type, shadow, "list_ptr_bf").unwrap().into_int_value();
+        let data = self
+            .builder
+            .build_load(self.types.i64_type, shadow, "list_ptr_bf")
+            .unwrap()
+            .into_int_value();
 
         let function = self.current_function.unwrap();
         let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let header_ptr = self.builder.build_int_to_ptr(data, i64_ptr_type, "hdr_bf").unwrap();
+        let header_ptr = self
+            .builder
+            .build_int_to_ptr(data, i64_ptr_type, "hdr_bf")
+            .unwrap();
 
         // Load capacity and length
-        let old_capacity = self.builder.build_load(self.types.i64_type, header_ptr, "cap_bf").unwrap().into_int_value();
+        let old_capacity = self
+            .builder
+            .build_load(self.types.i64_type, header_ptr, "cap_bf")
+            .unwrap()
+            .into_int_value();
         let one = self.types.i64_type.const_int(1, false);
         let two = self.types.i64_type.const_int(2, false);
-        let len_ptr = unsafe { self.builder.build_gep(self.types.i64_type, header_ptr, &[one], "len_ptr_bf").unwrap() };
-        let old_len = self.builder.build_load(self.types.i64_type, len_ptr, "len_bf").unwrap().into_int_value();
-        let new_len = self.builder.build_int_add(old_len, one, "new_len_bf").unwrap();
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, header_ptr, &[one], "len_ptr_bf")
+                .unwrap()
+        };
+        let old_len = self
+            .builder
+            .build_load(self.types.i64_type, len_ptr, "len_bf")
+            .unwrap()
+            .into_int_value();
+        let new_len = self
+            .builder
+            .build_int_add(old_len, one, "new_len_bf")
+            .unwrap();
 
         // Check if grow needed
-        let needs_grow = self.builder.build_int_compare(IntPredicate::UGT, new_len, old_capacity, "grow_bf").unwrap();
+        let needs_grow = self
+            .builder
+            .build_int_compare(IntPredicate::UGT, new_len, old_capacity, "grow_bf")
+            .unwrap();
         let grow_block = self.context.append_basic_block(function, "shove_grow_bf");
-        let no_grow_block = self.context.append_basic_block(function, "shove_no_grow_bf");
+        let no_grow_block = self
+            .context
+            .append_basic_block(function, "shove_no_grow_bf");
         let merge_block = self.context.append_basic_block(function, "shove_merge_bf");
-        self.builder.build_conditional_branch(needs_grow, grow_block, no_grow_block).unwrap();
+        self.builder
+            .build_conditional_branch(needs_grow, grow_block, no_grow_block)
+            .unwrap();
 
         // Constant for the data value
-        let data_val = self.types.i64_type.const_int(if bool_val { 1 } else { 0 }, false);
-        let bool_tag = self.types.i8_type.const_int(ValueTag::Bool.as_u8() as u64, false);
+        let data_val = self
+            .types
+            .i64_type
+            .const_int(if bool_val { 1 } else { 0 }, false);
+        let bool_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Bool.as_u8() as u64, false);
 
         // GROW PATH - need full MdhValue store after realloc
         self.builder.position_at_end(grow_block);
-        let doubled = self.builder.build_int_mul(old_capacity, two, "dbl_bf").unwrap();
+        let doubled = self
+            .builder
+            .build_int_mul(old_capacity, two, "dbl_bf")
+            .unwrap();
         let min_cap = self.types.i64_type.const_int(64, false);
-        let cap_ok = self.builder.build_int_compare(IntPredicate::UGE, doubled, min_cap, "cok_bf").unwrap();
-        let new_cap = self.builder.build_select(cap_ok, doubled, min_cap, "ncap_bf").unwrap().into_int_value();
+        let cap_ok = self
+            .builder
+            .build_int_compare(IntPredicate::UGE, doubled, min_cap, "cok_bf")
+            .unwrap();
+        let new_cap = self
+            .builder
+            .build_select(cap_ok, doubled, min_cap, "ncap_bf")
+            .unwrap()
+            .into_int_value();
         let header_size = self.types.i64_type.const_int(16, false);
         let value_size = self.types.i64_type.const_int(16, false);
-        let elem_sz = self.builder.build_int_mul(new_cap, value_size, "esz_bf").unwrap();
-        let total = self.builder.build_int_add(header_size, elem_sz, "tot_bf").unwrap();
-        let old_i8 = self.builder.build_pointer_cast(header_ptr, i8_ptr_type, "oi8_bf").unwrap();
-        let new_ptr = self.builder.build_call(self.libc.realloc, &[old_i8.into(), total.into()], "realloc_bf")
-            .unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
-        let new_hdr = self.builder.build_pointer_cast(new_ptr, i64_ptr_type, "nhdr_bf").unwrap();
+        let elem_sz = self
+            .builder
+            .build_int_mul(new_cap, value_size, "esz_bf")
+            .unwrap();
+        let total = self
+            .builder
+            .build_int_add(header_size, elem_sz, "tot_bf")
+            .unwrap();
+        let old_i8 = self
+            .builder
+            .build_pointer_cast(header_ptr, i8_ptr_type, "oi8_bf")
+            .unwrap();
+        let new_ptr = self
+            .builder
+            .build_call(
+                self.libc.realloc,
+                &[old_i8.into(), total.into()],
+                "realloc_bf",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+        let new_hdr = self
+            .builder
+            .build_pointer_cast(new_ptr, i64_ptr_type, "nhdr_bf")
+            .unwrap();
         self.builder.build_store(new_hdr, new_cap).unwrap();
-        let new_i64 = self.builder.build_ptr_to_int(new_ptr, self.types.i64_type, "ni64_bf").unwrap();
+        let new_i64 = self
+            .builder
+            .build_ptr_to_int(new_ptr, self.types.i64_type, "ni64_bf")
+            .unwrap();
         self.builder.build_store(shadow, new_i64).unwrap();
-        let g_len = unsafe { self.builder.build_gep(self.types.i64_type, new_hdr, &[one], "gl_bf").unwrap() };
+        let g_len = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, new_hdr, &[one], "gl_bf")
+                .unwrap()
+        };
         self.builder.build_store(g_len, new_len).unwrap();
         // Store full MdhValue in grow path (tag + data)
         let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
-        let g_base = unsafe { self.builder.build_gep(self.types.i64_type, new_hdr, &[two], "gb_bf").unwrap() };
-        let g_elems = self.builder.build_pointer_cast(g_base, value_ptr_type, "ge_bf").unwrap();
-        let g_elem = unsafe { self.builder.build_gep(self.types.value_type, g_elems, &[old_len], "gep_bf").unwrap() };
+        let g_base = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, new_hdr, &[two], "gb_bf")
+                .unwrap()
+        };
+        let g_elems = self
+            .builder
+            .build_pointer_cast(g_base, value_ptr_type, "ge_bf")
+            .unwrap();
+        let g_elem = unsafe {
+            self.builder
+                .build_gep(self.types.value_type, g_elems, &[old_len], "gep_bf")
+                .unwrap()
+        };
         // Build constant bool MdhValue
-        let elem_val = self.types.value_type.const_named_struct(&[bool_tag.into(), data_val.into()]);
+        let elem_val = self
+            .types
+            .value_type
+            .const_named_struct(&[bool_tag.into(), data_val.into()]);
         self.builder.build_store(g_elem, elem_val).unwrap();
-        let list_tag = self.types.i8_type.const_int(ValueTag::List.as_u8() as u64, false);
+        let list_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::List.as_u8() as u64, false);
         let undef = self.types.value_type.get_undef();
-        let gv1 = self.builder.build_insert_value(undef, list_tag, 0, "gv1_bf").unwrap();
-        let grow_result = self.builder.build_insert_value(gv1, new_i64, 1, "gv2_bf").unwrap().into_struct_value();
-        if let Some(vp) = var_ptr { self.builder.build_store(vp, grow_result).unwrap(); }
-        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let gv1 = self
+            .builder
+            .build_insert_value(undef, list_tag, 0, "gv1_bf")
+            .unwrap();
+        let grow_result = self
+            .builder
+            .build_insert_value(gv1, new_i64, 1, "gv2_bf")
+            .unwrap()
+            .into_struct_value();
+        if let Some(vp) = var_ptr {
+            self.builder.build_store(vp, grow_result).unwrap();
+        }
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
 
         // NO-GROW PATH - ultra-fast: store only length + data field (8 bytes instead of 16)
         self.builder.position_at_end(no_grow_block);
@@ -3573,12 +3934,25 @@ impl<'ctx> CodeGen<'ctx> {
         // Element layout: {i8 tag, i64 data} - for existing elements, tag is already set
         // But for NEW elements, we need to set the tag too. So still use full struct here.
         // However, we can optimize by using a constant struct store
-        let n_base = unsafe { self.builder.build_gep(self.types.i64_type, header_ptr, &[two], "nb_bf").unwrap() };
-        let n_elems = self.builder.build_pointer_cast(n_base, value_ptr_type, "ne_bf").unwrap();
-        let n_elem = unsafe { self.builder.build_gep(self.types.value_type, n_elems, &[old_len], "nep_bf").unwrap() };
+        let n_base = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, header_ptr, &[two], "nb_bf")
+                .unwrap()
+        };
+        let n_elems = self
+            .builder
+            .build_pointer_cast(n_base, value_ptr_type, "ne_bf")
+            .unwrap();
+        let n_elem = unsafe {
+            self.builder
+                .build_gep(self.types.value_type, n_elems, &[old_len], "nep_bf")
+                .unwrap()
+        };
         // Store constant bool MdhValue
         self.builder.build_store(n_elem, elem_val).unwrap();
-        self.builder.build_unconditional_branch(merge_block).unwrap();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
 
         // MERGE - return nil since shove result is rarely used
         self.builder.position_at_end(merge_block);
@@ -5441,7 +5815,8 @@ impl<'ctx> CodeGen<'ctx> {
                 if var_type == VarType::String && !self.string_len_shadows.contains_key(name) {
                     let len_shadow =
                         self.create_entry_block_alloca_i64(&format!("{}_strlen", name));
-                    let cap_shadow = self.create_entry_block_alloca_i64(&format!("{}_strcap", name));
+                    let cap_shadow =
+                        self.create_entry_block_alloca_i64(&format!("{}_strcap", name));
                     // Calculate initial string length and set initial capacity
                     if let Some(init) = initializer {
                         if let Expr::Literal {
@@ -5737,12 +6112,12 @@ impl<'ctx> CodeGen<'ctx> {
                     } = value.as_ref()
                     {
                         // Check if left is the same variable
-                        let is_self_concat = if let Expr::Variable { name: lname, .. } = left.as_ref()
-                        {
-                            lname == name
-                        } else {
-                            false
-                        };
+                        let is_self_concat =
+                            if let Expr::Variable { name: lname, .. } = left.as_ref() {
+                                lname == name
+                            } else {
+                                false
+                            };
                         if is_self_concat {
                             // s = s + something - compute new length as old_len + right_len
                             let old_len = self
@@ -5818,10 +6193,7 @@ impl<'ctx> CodeGen<'ctx> {
                         if let Some(new_len) = new_str_len {
                             // Use pre-computed length
                             self.builder.build_store(len_shadow, new_len).map_err(|e| {
-                                HaversError::CompileError(format!(
-                                    "Failed to store strlen: {}",
-                                    e
-                                ))
+                                HaversError::CompileError(format!("Failed to store strlen: {}", e))
                             })?;
                         } else {
                             // Compute length with strlen
@@ -5841,10 +6213,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 .unwrap()
                                 .into_int_value();
                             self.builder.build_store(len_shadow, len).map_err(|e| {
-                                HaversError::CompileError(format!(
-                                    "Failed to store strlen: {}",
-                                    e
-                                ))
+                                HaversError::CompileError(format!("Failed to store strlen: {}", e))
                             })?;
                         }
                     }
@@ -6182,7 +6551,12 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let dest_offset = unsafe {
             self.builder
-                .build_gep(self.context.i8_type(), new_str, &[left_len], "dest_offset_fast")
+                .build_gep(
+                    self.context.i8_type(),
+                    new_str,
+                    &[left_len],
+                    "dest_offset_fast",
+                )
                 .unwrap()
         };
         let right_len_plus_one = self
@@ -6192,7 +6566,11 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_call(
                 self.libc.memcpy,
-                &[dest_offset.into(), right_ptr.into(), right_len_plus_one.into()],
+                &[
+                    dest_offset.into(),
+                    right_ptr.into(),
+                    right_len_plus_one.into(),
+                ],
                 "",
             )
             .unwrap();
@@ -6223,10 +6601,9 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Load current string pointer, length, and capacity
-        let var_alloca = *self
-            .variables
-            .get(var_name)
-            .ok_or_else(|| HaversError::CompileError(format!("Variable not found: {}", var_name)))?;
+        let var_alloca = *self.variables.get(var_name).ok_or_else(|| {
+            HaversError::CompileError(format!("Variable not found: {}", var_name))
+        })?;
         let current_val = self
             .builder
             .build_load(self.types.value_type, var_alloca, "current_str")
@@ -6254,7 +6631,10 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_add(old_len, right_len_const, "new_len")
             .unwrap();
         let one = self.types.i64_type.const_int(1, false);
-        let new_len_plus_one = self.builder.build_int_add(new_len, one, "new_size").unwrap();
+        let new_len_plus_one = self
+            .builder
+            .build_int_add(new_len, one, "new_size")
+            .unwrap();
 
         // Use an alloca to store the working buffer pointer
         let buf_ptr_alloca = self
@@ -6343,9 +6723,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(buf_ptr_alloca, malloc_result)
             .unwrap();
-        self.builder
-            .build_unconditional_branch(after_grow)
-            .unwrap();
+        self.builder.build_unconditional_branch(after_grow).unwrap();
 
         // REALLOC PATH: extend existing buffer
         self.builder.position_at_end(realloc_block);
@@ -6364,9 +6742,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(buf_ptr_alloca, realloc_result)
             .unwrap();
-        self.builder
-            .build_unconditional_branch(after_grow)
-            .unwrap();
+        self.builder.build_unconditional_branch(after_grow).unwrap();
 
         // AFTER GROW: update capacity and continue to append
         self.builder.position_at_end(after_grow);
@@ -6552,7 +6928,11 @@ impl<'ctx> CodeGen<'ctx> {
                     if let Expr::Variable { name, .. } = &args[0] {
                         if let Some(shadow) = self.list_ptr_shadows.get(name).copied() {
                             // Check for constant boolean element - use ultra-fast data-only shove
-                            if let Expr::Literal { value: Literal::Bool(b), .. } = &args[1] {
+                            if let Expr::Literal {
+                                value: Literal::Bool(b),
+                                ..
+                            } = &args[1]
+                            {
                                 let var_ptr = self.variables.get(name).copied();
                                 return self.inline_shove_bool_fast(shadow, *b, var_ptr);
                             }
@@ -7428,6 +7808,8 @@ impl<'ctx> CodeGen<'ctx> {
         let saved_var_types = std::mem::take(&mut self.var_types);
         let saved_int_shadows = std::mem::take(&mut self.int_shadows);
         let saved_list_ptr_shadows = std::mem::take(&mut self.list_ptr_shadows);
+        let saved_string_len_shadows = std::mem::take(&mut self.string_len_shadows);
+        let saved_string_cap_shadows = std::mem::take(&mut self.string_cap_shadows);
         let saved_in_user_function = self.in_user_function;
 
         self.builder.position_at_end(entry);
@@ -7473,12 +7855,14 @@ impl<'ctx> CodeGen<'ctx> {
             self.builder.build_return(Some(&self.make_nil())).unwrap();
         }
 
-        // Restore state
+        // Restore state - all shadow maps to prevent cross-function leakage
         self.current_function = saved_function;
         self.variables = saved_variables;
         self.var_types = saved_var_types;
         self.int_shadows = saved_int_shadows;
         self.list_ptr_shadows = saved_list_ptr_shadows;
+        self.string_len_shadows = saved_string_len_shadows;
+        self.string_cap_shadows = saved_string_cap_shadows;
         self.in_user_function = saved_in_user_function;
 
         if let Some(func) = saved_function {
@@ -7592,7 +7976,10 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| HaversError::CompileError(format!("Failed to cast pointer: {}", e)))?;
 
         // Store capacity at offset 0
-        let cap_val = self.types.i64_type.const_int(initial_capacity as u64, false);
+        let cap_val = self
+            .types
+            .i64_type
+            .const_int(initial_capacity as u64, false);
         self.builder
             .build_store(header_ptr, cap_val)
             .map_err(|e| HaversError::CompileError(format!("Failed to store capacity: {}", e)))?;
@@ -7600,7 +7987,12 @@ impl<'ctx> CodeGen<'ctx> {
         // Store length at offset 1
         let len_ptr = unsafe {
             self.builder
-                .build_gep(self.types.i64_type, header_ptr, &[self.types.i64_type.const_int(1, false)], "len_ptr")
+                .build_gep(
+                    self.types.i64_type,
+                    header_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
                 .map_err(|e| HaversError::CompileError(format!("Failed to get len ptr: {}", e)))?
         };
         let len_val = self.types.i64_type.const_int(len as u64, false);
@@ -7909,7 +8301,12 @@ impl<'ctx> CodeGen<'ctx> {
         // Get length pointer (at offset 1)
         let len_ptr = unsafe {
             self.builder
-                .build_gep(self.types.i64_type, header_ptr, &[self.types.i64_type.const_int(1, false)], "len_ptr")
+                .build_gep(
+                    self.types.i64_type,
+                    header_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
                 .map_err(|e| HaversError::CompileError(format!("Failed to get len ptr: {}", e)))?
         };
 
@@ -7993,7 +8390,9 @@ impl<'ctx> CodeGen<'ctx> {
                 // Load raw pointer from shadow
                 self.builder
                     .build_load(self.types.i64_type, shadow, "list_ptr_shadow_rd")
-                    .map_err(|e| HaversError::CompileError(format!("Failed to load shadow: {}", e)))?
+                    .map_err(|e| {
+                        HaversError::CompileError(format!("Failed to load shadow: {}", e))
+                    })?
                     .into_int_value()
             } else {
                 let obj_val = self.compile_expr(object)?;
@@ -8017,7 +8416,9 @@ impl<'ctx> CodeGen<'ctx> {
         let list_ptr = self
             .builder
             .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr_fast")
-            .map_err(|e| HaversError::CompileError(format!("Failed to convert to pointer: {}", e)))?;
+            .map_err(|e| {
+                HaversError::CompileError(format!("Failed to convert to pointer: {}", e))
+            })?;
 
         // Skip past capacity and length (16 bytes = offset 2) to reach elements
         let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
@@ -8029,7 +8430,9 @@ impl<'ctx> CodeGen<'ctx> {
                     &[self.types.i64_type.const_int(2, false)],
                     "elements_base_fast",
                 )
-                .map_err(|e| HaversError::CompileError(format!("Failed to compute elements base: {}", e)))?
+                .map_err(|e| {
+                    HaversError::CompileError(format!("Failed to compute elements base: {}", e))
+                })?
         };
         let elements_ptr = self
             .builder
@@ -8045,7 +8448,9 @@ impl<'ctx> CodeGen<'ctx> {
                     &[idx_i64],
                     "elem_ptr_fast",
                 )
-                .map_err(|e| HaversError::CompileError(format!("Failed to compute element pointer: {}", e)))?
+                .map_err(|e| {
+                    HaversError::CompileError(format!("Failed to compute element pointer: {}", e))
+                })?
         };
 
         // Load and return the element
@@ -8283,7 +8688,12 @@ impl<'ctx> CodeGen<'ctx> {
         // Get length pointer at offset 1
         let len_ptr = unsafe {
             self.builder
-                .build_gep(self.types.i64_type, header_ptr, &[self.types.i64_type.const_int(1, false)], "len_ptr")
+                .build_gep(
+                    self.types.i64_type,
+                    header_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
                 .map_err(|e| HaversError::CompileError(format!("Failed to get len ptr: {}", e)))?
         };
 
@@ -8367,7 +8777,9 @@ impl<'ctx> CodeGen<'ctx> {
                 // Load raw pointer from shadow
                 self.builder
                     .build_load(self.types.i64_type, shadow, "list_ptr_shadow")
-                    .map_err(|e| HaversError::CompileError(format!("Failed to load shadow: {}", e)))?
+                    .map_err(|e| {
+                        HaversError::CompileError(format!("Failed to load shadow: {}", e))
+                    })?
                     .into_int_value()
             } else {
                 let obj_val = self.compile_expr(object)?;
@@ -8391,11 +8803,17 @@ impl<'ctx> CodeGen<'ctx> {
         let list_ptr = self
             .builder
             .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr_set_fast")
-            .map_err(|e| HaversError::CompileError(format!("Failed to convert to pointer: {}", e)))?;
+            .map_err(|e| {
+                HaversError::CompileError(format!("Failed to convert to pointer: {}", e))
+            })?;
 
         // Check for constant boolean - use data-only store (8 bytes vs 16 bytes)
         // This is safe when storing same-type values into a homogeneous list
-        if let Expr::Literal { value: Literal::Bool(b), .. } = value {
+        if let Expr::Literal {
+            value: Literal::Bool(b),
+            ..
+        } = value
+        {
             // Ultra-fast path: store only the data field (8 bytes instead of 16)
             // Skip header (16 bytes = 2 i64s), then compute data offset within element
             // Element layout: {i8 tag, i64 data} - data is at offset 8 from element start
@@ -8403,18 +8821,32 @@ impl<'ctx> CodeGen<'ctx> {
             let two = self.types.i64_type.const_int(2, false);
             let one = self.types.i64_type.const_int(1, false);
             let elements_base = unsafe {
-                self.builder.build_gep(self.types.i64_type, list_ptr, &[two], "eb_set").unwrap()
+                self.builder
+                    .build_gep(self.types.i64_type, list_ptr, &[two], "eb_set")
+                    .unwrap()
             };
-            let idx_times_2 = self.builder.build_int_mul(idx_i64, two, "idx2_set").unwrap();
-            let data_offset = self.builder.build_int_add(idx_times_2, one, "do_set").unwrap();
+            let idx_times_2 = self
+                .builder
+                .build_int_mul(idx_i64, two, "idx2_set")
+                .unwrap();
+            let data_offset = self
+                .builder
+                .build_int_add(idx_times_2, one, "do_set")
+                .unwrap();
             let data_ptr = unsafe {
-                self.builder.build_gep(self.types.i64_type, elements_base, &[data_offset], "dp_set").unwrap()
+                self.builder
+                    .build_gep(self.types.i64_type, elements_base, &[data_offset], "dp_set")
+                    .unwrap()
             };
             // Store just the data value (0 for false, 1 for true)
             let data_val = self.types.i64_type.const_int(if *b { 1 } else { 0 }, false);
             self.builder.build_store(data_ptr, data_val).unwrap();
             // Return the full MdhValue for correctness
-            return self.make_bool(self.types.bool_type.const_int(if *b { 1 } else { 0 }, false));
+            return self.make_bool(
+                self.types
+                    .bool_type
+                    .const_int(if *b { 1 } else { 0 }, false),
+            );
         }
 
         // Compile the value to store
@@ -8430,7 +8862,9 @@ impl<'ctx> CodeGen<'ctx> {
                     &[self.types.i64_type.const_int(2, false)],
                     "elements_base_set_fast",
                 )
-                .map_err(|e| HaversError::CompileError(format!("Failed to compute elements base: {}", e)))?
+                .map_err(|e| {
+                    HaversError::CompileError(format!("Failed to compute elements base: {}", e))
+                })?
         };
         let elements_ptr = self
             .builder
@@ -8446,7 +8880,9 @@ impl<'ctx> CodeGen<'ctx> {
                     &[idx_i64],
                     "elem_ptr_set_fast",
                 )
-                .map_err(|e| HaversError::CompileError(format!("Failed to compute element pointer: {}", e)))?
+                .map_err(|e| {
+                    HaversError::CompileError(format!("Failed to compute element pointer: {}", e))
+                })?
         };
 
         // Store the new value at that location
@@ -9029,7 +9465,9 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         let empty_delim_block = self.context.append_basic_block(function, "empty_delim");
-        let single_char_block = self.context.append_basic_block(function, "single_char_split");
+        let single_char_block = self
+            .context
+            .append_basic_block(function, "single_char_split");
         let normal_split_block = self.context.append_basic_block(function, "normal_split");
         let merge_block = self.context.append_basic_block(function, "split_merge");
 
@@ -9064,190 +9502,429 @@ impl<'ctx> CodeGen<'ctx> {
         // === SINGLE-CHAR FAST PATH ===
         // Phase 1: Count delimiters to know exact list size
         self.builder.position_at_end(sc_count_block);
-        let sc_i_ptr = self.builder.build_alloca(self.types.i64_type, "sc_i").unwrap();
-        let sc_count_ptr = self.builder.build_alloca(self.types.i64_type, "sc_count").unwrap();
+        let sc_i_ptr = self
+            .builder
+            .build_alloca(self.types.i64_type, "sc_i")
+            .unwrap();
+        let sc_count_ptr = self
+            .builder
+            .build_alloca(self.types.i64_type, "sc_count")
+            .unwrap();
         let sc_one = self.types.i64_type.const_int(1, false);
         self.builder.build_store(sc_i_ptr, zero).unwrap();
         self.builder.build_store(sc_count_ptr, zero).unwrap();
-        self.builder.build_unconditional_branch(sc_count_body).unwrap();
+        self.builder
+            .build_unconditional_branch(sc_count_body)
+            .unwrap();
 
         // Count loop condition check
         self.builder.position_at_end(sc_count_body);
-        let sc_i = self.builder.build_load(self.types.i64_type, sc_i_ptr, "sc_i_val").unwrap().into_int_value();
-        let sc_at_end = self.builder.build_int_compare(IntPredicate::UGE, sc_i, str_len, "sc_at_end").unwrap();
+        let sc_i = self
+            .builder
+            .build_load(self.types.i64_type, sc_i_ptr, "sc_i_val")
+            .unwrap()
+            .into_int_value();
+        let sc_at_end = self
+            .builder
+            .build_int_compare(IntPredicate::UGE, sc_i, str_len, "sc_at_end")
+            .unwrap();
 
         // Create a block for the loop body work
         let sc_count_work = self.context.append_basic_block(function, "sc_count_work");
-        self.builder.build_conditional_branch(sc_at_end, sc_count_done, sc_count_work).unwrap();
+        self.builder
+            .build_conditional_branch(sc_at_end, sc_count_done, sc_count_work)
+            .unwrap();
 
         // Loop body: check char and update count
         self.builder.position_at_end(sc_count_work);
         let sc_char_ptr = unsafe {
-            self.builder.build_gep(self.context.i8_type(), str_ptr, &[sc_i], "sc_char_ptr").unwrap()
+            self.builder
+                .build_gep(self.context.i8_type(), str_ptr, &[sc_i], "sc_char_ptr")
+                .unwrap()
         };
-        let sc_char = self.builder.build_load(self.context.i8_type(), sc_char_ptr, "sc_char").unwrap().into_int_value();
-        let sc_is_delim = self.builder.build_int_compare(IntPredicate::EQ, sc_char, delim_byte, "sc_is_delim").unwrap();
+        let sc_char = self
+            .builder
+            .build_load(self.context.i8_type(), sc_char_ptr, "sc_char")
+            .unwrap()
+            .into_int_value();
+        let sc_is_delim = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, sc_char, delim_byte, "sc_is_delim")
+            .unwrap();
 
         // Increment count if delimiter
-        let sc_curr_count = self.builder.build_load(self.types.i64_type, sc_count_ptr, "sc_curr_count").unwrap().into_int_value();
-        let sc_new_count = self.builder.build_int_add(sc_curr_count, sc_one, "sc_new_count").unwrap();
-        let sc_count_to_store = self.builder.build_select(sc_is_delim, sc_new_count, sc_curr_count, "sc_count_sel").unwrap().into_int_value();
-        self.builder.build_store(sc_count_ptr, sc_count_to_store).unwrap();
+        let sc_curr_count = self
+            .builder
+            .build_load(self.types.i64_type, sc_count_ptr, "sc_curr_count")
+            .unwrap()
+            .into_int_value();
+        let sc_new_count = self
+            .builder
+            .build_int_add(sc_curr_count, sc_one, "sc_new_count")
+            .unwrap();
+        let sc_count_to_store = self
+            .builder
+            .build_select(sc_is_delim, sc_new_count, sc_curr_count, "sc_count_sel")
+            .unwrap()
+            .into_int_value();
+        self.builder
+            .build_store(sc_count_ptr, sc_count_to_store)
+            .unwrap();
 
         // Increment i and loop back
-        let sc_next_i = self.builder.build_int_add(sc_i, sc_one, "sc_next_i").unwrap();
+        let sc_next_i = self
+            .builder
+            .build_int_add(sc_i, sc_one, "sc_next_i")
+            .unwrap();
         self.builder.build_store(sc_i_ptr, sc_next_i).unwrap();
-        self.builder.build_unconditional_branch(sc_count_body).unwrap();
+        self.builder
+            .build_unconditional_branch(sc_count_body)
+            .unwrap();
 
         // Count done - allocate list with exact size (count + 1 elements)
         self.builder.position_at_end(sc_count_done);
-        let sc_final_count = self.builder.build_load(self.types.i64_type, sc_count_ptr, "sc_final_count").unwrap().into_int_value();
-        let sc_list_len = self.builder.build_int_add(sc_final_count, sc_one, "sc_list_len").unwrap();
+        let sc_final_count = self
+            .builder
+            .build_load(self.types.i64_type, sc_count_ptr, "sc_final_count")
+            .unwrap()
+            .into_int_value();
+        let sc_list_len = self
+            .builder
+            .build_int_add(sc_final_count, sc_one, "sc_list_len")
+            .unwrap();
 
         let sc_header_size = self.types.i64_type.const_int(16, false);
         let sc_elem_size = self.types.i64_type.const_int(16, false);
-        let sc_list_size = self.builder.build_int_add(
-            sc_header_size,
-            self.builder.build_int_mul(sc_list_len, sc_elem_size, "sc_elems_size").unwrap(),
-            "sc_list_size"
-        ).unwrap();
+        let sc_list_size = self
+            .builder
+            .build_int_add(
+                sc_header_size,
+                self.builder
+                    .build_int_mul(sc_list_len, sc_elem_size, "sc_elems_size")
+                    .unwrap(),
+                "sc_list_size",
+            )
+            .unwrap();
 
-        let sc_list_ptr = self.builder.build_call(self.libc.malloc, &[sc_list_size.into()], "sc_list_ptr")
-            .unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
+        let sc_list_ptr = self
+            .builder
+            .build_call(self.libc.malloc, &[sc_list_size.into()], "sc_list_ptr")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
 
         // Store list length
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let sc_len_ptr = self.builder.build_pointer_cast(sc_list_ptr, i64_ptr_type, "sc_len_ptr").unwrap();
+        let sc_len_ptr = self
+            .builder
+            .build_pointer_cast(sc_list_ptr, i64_ptr_type, "sc_len_ptr")
+            .unwrap();
         self.builder.build_store(sc_len_ptr, sc_list_len).unwrap();
 
         // Phase 2: Split and fill list
-        let sc_pos_ptr = self.builder.build_alloca(self.types.i64_type, "sc_pos").unwrap();
-        let sc_elem_idx_ptr = self.builder.build_alloca(self.types.i64_type, "sc_elem_idx").unwrap();
-        let sc_token_start_ptr = self.builder.build_alloca(self.types.i64_type, "sc_token_start").unwrap();
+        let sc_pos_ptr = self
+            .builder
+            .build_alloca(self.types.i64_type, "sc_pos")
+            .unwrap();
+        let sc_elem_idx_ptr = self
+            .builder
+            .build_alloca(self.types.i64_type, "sc_elem_idx")
+            .unwrap();
+        let sc_token_start_ptr = self
+            .builder
+            .build_alloca(self.types.i64_type, "sc_token_start")
+            .unwrap();
         self.builder.build_store(sc_pos_ptr, zero).unwrap();
         self.builder.build_store(sc_elem_idx_ptr, zero).unwrap();
         self.builder.build_store(sc_token_start_ptr, zero).unwrap();
-        self.builder.build_unconditional_branch(sc_split_body).unwrap();
+        self.builder
+            .build_unconditional_branch(sc_split_body)
+            .unwrap();
 
         // Split loop - check if we've reached end
         self.builder.position_at_end(sc_split_body);
-        let sc_pos = self.builder.build_load(self.types.i64_type, sc_pos_ptr, "sc_pos_val").unwrap().into_int_value();
-        let sc_split_end_cmp = self.builder.build_int_compare(IntPredicate::UGE, sc_pos, str_len, "sc_split_end_cmp").unwrap();
-        self.builder.build_conditional_branch(sc_split_end_cmp, sc_split_done, sc_split_block).unwrap();
+        let sc_pos = self
+            .builder
+            .build_load(self.types.i64_type, sc_pos_ptr, "sc_pos_val")
+            .unwrap()
+            .into_int_value();
+        let sc_split_end_cmp = self
+            .builder
+            .build_int_compare(IntPredicate::UGE, sc_pos, str_len, "sc_split_end_cmp")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(sc_split_end_cmp, sc_split_done, sc_split_block)
+            .unwrap();
 
         // Check current char for delimiter
         self.builder.position_at_end(sc_split_block);
         let sc_char_ptr2 = unsafe {
-            self.builder.build_gep(self.context.i8_type(), str_ptr, &[sc_pos], "sc_char_ptr2").unwrap()
+            self.builder
+                .build_gep(self.context.i8_type(), str_ptr, &[sc_pos], "sc_char_ptr2")
+                .unwrap()
         };
-        let sc_char2 = self.builder.build_load(self.context.i8_type(), sc_char_ptr2, "sc_char2").unwrap().into_int_value();
-        let sc_is_delim2 = self.builder.build_int_compare(IntPredicate::EQ, sc_char2, delim_byte, "sc_is_delim2").unwrap();
+        let sc_char2 = self
+            .builder
+            .build_load(self.context.i8_type(), sc_char_ptr2, "sc_char2")
+            .unwrap()
+            .into_int_value();
+        let sc_is_delim2 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, sc_char2, delim_byte, "sc_is_delim2")
+            .unwrap();
 
         // Advance position
-        let sc_next_pos = self.builder.build_int_add(sc_pos, sc_one, "sc_next_pos").unwrap();
+        let sc_next_pos = self
+            .builder
+            .build_int_add(sc_pos, sc_one, "sc_next_pos")
+            .unwrap();
         self.builder.build_store(sc_pos_ptr, sc_next_pos).unwrap();
 
-        self.builder.build_conditional_branch(sc_is_delim2, sc_split_found, sc_split_body).unwrap();
+        self.builder
+            .build_conditional_branch(sc_is_delim2, sc_split_found, sc_split_body)
+            .unwrap();
 
         // Found delimiter - emit token
         // Note: We need to recalculate position since sc_pos was an SSA value in another block
         // The delimiter position is (current_pos - 1) since we already incremented
         self.builder.position_at_end(sc_split_found);
-        let sc_curr_pos = self.builder.build_load(self.types.i64_type, sc_pos_ptr, "sc_curr_pos").unwrap().into_int_value();
-        let sc_delim_pos = self.builder.build_int_sub(sc_curr_pos, sc_one, "sc_delim_pos").unwrap();
-        let sc_token_start = self.builder.build_load(self.types.i64_type, sc_token_start_ptr, "sc_ts").unwrap().into_int_value();
-        let sc_token_len = self.builder.build_int_sub(sc_delim_pos, sc_token_start, "sc_token_len").unwrap();
+        let sc_curr_pos = self
+            .builder
+            .build_load(self.types.i64_type, sc_pos_ptr, "sc_curr_pos")
+            .unwrap()
+            .into_int_value();
+        let sc_delim_pos = self
+            .builder
+            .build_int_sub(sc_curr_pos, sc_one, "sc_delim_pos")
+            .unwrap();
+        let sc_token_start = self
+            .builder
+            .build_load(self.types.i64_type, sc_token_start_ptr, "sc_ts")
+            .unwrap()
+            .into_int_value();
+        let sc_token_len = self
+            .builder
+            .build_int_sub(sc_delim_pos, sc_token_start, "sc_token_len")
+            .unwrap();
 
         // Allocate token string
-        let sc_token_size = self.builder.build_int_add(sc_token_len, sc_one, "sc_token_size").unwrap();
-        let sc_token_ptr = self.builder.build_call(self.libc.malloc, &[sc_token_size.into()], "sc_token_ptr")
-            .unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
+        let sc_token_size = self
+            .builder
+            .build_int_add(sc_token_len, sc_one, "sc_token_size")
+            .unwrap();
+        let sc_token_ptr = self
+            .builder
+            .build_call(self.libc.malloc, &[sc_token_size.into()], "sc_token_ptr")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
 
         // Copy token
         let sc_src_ptr = unsafe {
-            self.builder.build_gep(self.context.i8_type(), str_ptr, &[sc_token_start], "sc_src_ptr").unwrap()
+            self.builder
+                .build_gep(
+                    self.context.i8_type(),
+                    str_ptr,
+                    &[sc_token_start],
+                    "sc_src_ptr",
+                )
+                .unwrap()
         };
-        self.builder.build_call(self.libc.memcpy, &[sc_token_ptr.into(), sc_src_ptr.into(), sc_token_len.into()], "").unwrap();
+        self.builder
+            .build_call(
+                self.libc.memcpy,
+                &[sc_token_ptr.into(), sc_src_ptr.into(), sc_token_len.into()],
+                "",
+            )
+            .unwrap();
 
         // Null terminate
         let sc_token_end = unsafe {
-            self.builder.build_gep(self.context.i8_type(), sc_token_ptr, &[sc_token_len], "sc_token_end").unwrap()
+            self.builder
+                .build_gep(
+                    self.context.i8_type(),
+                    sc_token_ptr,
+                    &[sc_token_len],
+                    "sc_token_end",
+                )
+                .unwrap()
         };
-        self.builder.build_store(sc_token_end, self.context.i8_type().const_int(0, false)).unwrap();
+        self.builder
+            .build_store(sc_token_end, self.context.i8_type().const_int(0, false))
+            .unwrap();
 
         // Create string value
         let sc_token_value = self.make_string(sc_token_ptr)?;
 
         // Store in list
-        let sc_elem_idx = self.builder.build_load(self.types.i64_type, sc_elem_idx_ptr, "sc_elem_idx_val").unwrap().into_int_value();
-        let sc_elem_offset = self.builder.build_int_add(
-            sc_header_size,
-            self.builder.build_int_mul(sc_elem_idx, sc_elem_size, "sc_eo_mul").unwrap(),
-            "sc_elem_offset"
-        ).unwrap();
+        let sc_elem_idx = self
+            .builder
+            .build_load(self.types.i64_type, sc_elem_idx_ptr, "sc_elem_idx_val")
+            .unwrap()
+            .into_int_value();
+        let sc_elem_offset = self
+            .builder
+            .build_int_add(
+                sc_header_size,
+                self.builder
+                    .build_int_mul(sc_elem_idx, sc_elem_size, "sc_eo_mul")
+                    .unwrap(),
+                "sc_elem_offset",
+            )
+            .unwrap();
         let sc_elem_ptr = unsafe {
-            self.builder.build_gep(self.context.i8_type(), sc_list_ptr, &[sc_elem_offset], "sc_elem_ptr").unwrap()
+            self.builder
+                .build_gep(
+                    self.context.i8_type(),
+                    sc_list_ptr,
+                    &[sc_elem_offset],
+                    "sc_elem_ptr",
+                )
+                .unwrap()
         };
-        let sc_value_ptr = self.builder.build_pointer_cast(
-            sc_elem_ptr,
-            self.types.value_type.ptr_type(AddressSpace::default()),
-            "sc_value_ptr"
-        ).unwrap();
-        self.builder.build_store(sc_value_ptr, sc_token_value).unwrap();
+        let sc_value_ptr = self
+            .builder
+            .build_pointer_cast(
+                sc_elem_ptr,
+                self.types.value_type.ptr_type(AddressSpace::default()),
+                "sc_value_ptr",
+            )
+            .unwrap();
+        self.builder
+            .build_store(sc_value_ptr, sc_token_value)
+            .unwrap();
 
         // Update token start and element index
         // sc_curr_pos is already the position after the delimiter
-        self.builder.build_store(sc_token_start_ptr, sc_curr_pos).unwrap();
-        let sc_next_elem = self.builder.build_int_add(sc_elem_idx, sc_one, "sc_next_elem").unwrap();
-        self.builder.build_store(sc_elem_idx_ptr, sc_next_elem).unwrap();
+        self.builder
+            .build_store(sc_token_start_ptr, sc_curr_pos)
+            .unwrap();
+        let sc_next_elem = self
+            .builder
+            .build_int_add(sc_elem_idx, sc_one, "sc_next_elem")
+            .unwrap();
+        self.builder
+            .build_store(sc_elem_idx_ptr, sc_next_elem)
+            .unwrap();
 
-        self.builder.build_unconditional_branch(sc_split_body).unwrap();
+        self.builder
+            .build_unconditional_branch(sc_split_body)
+            .unwrap();
 
         // Split done - add final token
         self.builder.position_at_end(sc_split_done);
-        let sc_final_start = self.builder.build_load(self.types.i64_type, sc_token_start_ptr, "sc_final_start").unwrap().into_int_value();
-        let sc_final_len = self.builder.build_int_sub(str_len, sc_final_start, "sc_final_len").unwrap();
+        let sc_final_start = self
+            .builder
+            .build_load(self.types.i64_type, sc_token_start_ptr, "sc_final_start")
+            .unwrap()
+            .into_int_value();
+        let sc_final_len = self
+            .builder
+            .build_int_sub(str_len, sc_final_start, "sc_final_len")
+            .unwrap();
 
         // Allocate final token
-        let sc_final_size = self.builder.build_int_add(sc_final_len, sc_one, "sc_final_size").unwrap();
-        let sc_final_ptr = self.builder.build_call(self.libc.malloc, &[sc_final_size.into()], "sc_final_ptr")
-            .unwrap().try_as_basic_value().left().unwrap().into_pointer_value();
+        let sc_final_size = self
+            .builder
+            .build_int_add(sc_final_len, sc_one, "sc_final_size")
+            .unwrap();
+        let sc_final_ptr = self
+            .builder
+            .build_call(self.libc.malloc, &[sc_final_size.into()], "sc_final_ptr")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
 
         // Copy final token
         let sc_final_src = unsafe {
-            self.builder.build_gep(self.context.i8_type(), str_ptr, &[sc_final_start], "sc_final_src").unwrap()
+            self.builder
+                .build_gep(
+                    self.context.i8_type(),
+                    str_ptr,
+                    &[sc_final_start],
+                    "sc_final_src",
+                )
+                .unwrap()
         };
-        self.builder.build_call(self.libc.memcpy, &[sc_final_ptr.into(), sc_final_src.into(), sc_final_len.into()], "").unwrap();
+        self.builder
+            .build_call(
+                self.libc.memcpy,
+                &[
+                    sc_final_ptr.into(),
+                    sc_final_src.into(),
+                    sc_final_len.into(),
+                ],
+                "",
+            )
+            .unwrap();
 
         // Null terminate
         let sc_final_end = unsafe {
-            self.builder.build_gep(self.context.i8_type(), sc_final_ptr, &[sc_final_len], "sc_final_end").unwrap()
+            self.builder
+                .build_gep(
+                    self.context.i8_type(),
+                    sc_final_ptr,
+                    &[sc_final_len],
+                    "sc_final_end",
+                )
+                .unwrap()
         };
-        self.builder.build_store(sc_final_end, self.context.i8_type().const_int(0, false)).unwrap();
+        self.builder
+            .build_store(sc_final_end, self.context.i8_type().const_int(0, false))
+            .unwrap();
 
         // Create final string value
         let sc_final_value = self.make_string(sc_final_ptr)?;
 
         // Store final in list
-        let sc_final_idx = self.builder.build_load(self.types.i64_type, sc_elem_idx_ptr, "sc_final_idx").unwrap().into_int_value();
-        let sc_final_offset = self.builder.build_int_add(
-            sc_header_size,
-            self.builder.build_int_mul(sc_final_idx, sc_elem_size, "sc_fo_mul").unwrap(),
-            "sc_final_offset"
-        ).unwrap();
+        let sc_final_idx = self
+            .builder
+            .build_load(self.types.i64_type, sc_elem_idx_ptr, "sc_final_idx")
+            .unwrap()
+            .into_int_value();
+        let sc_final_offset = self
+            .builder
+            .build_int_add(
+                sc_header_size,
+                self.builder
+                    .build_int_mul(sc_final_idx, sc_elem_size, "sc_fo_mul")
+                    .unwrap(),
+                "sc_final_offset",
+            )
+            .unwrap();
         let sc_final_elem = unsafe {
-            self.builder.build_gep(self.context.i8_type(), sc_list_ptr, &[sc_final_offset], "sc_final_elem").unwrap()
+            self.builder
+                .build_gep(
+                    self.context.i8_type(),
+                    sc_list_ptr,
+                    &[sc_final_offset],
+                    "sc_final_elem",
+                )
+                .unwrap()
         };
-        let sc_final_vptr = self.builder.build_pointer_cast(
-            sc_final_elem,
-            self.types.value_type.ptr_type(AddressSpace::default()),
-            "sc_final_vptr"
-        ).unwrap();
-        self.builder.build_store(sc_final_vptr, sc_final_value).unwrap();
+        let sc_final_vptr = self
+            .builder
+            .build_pointer_cast(
+                sc_final_elem,
+                self.types.value_type.ptr_type(AddressSpace::default()),
+                "sc_final_vptr",
+            )
+            .unwrap();
+        self.builder
+            .build_store(sc_final_vptr, sc_final_value)
+            .unwrap();
 
         // Create result and branch to merge
         let sc_result = self.make_list(sc_list_ptr)?;
-        self.builder.build_unconditional_branch(merge_block).unwrap();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
         let sc_split_end_block = self.builder.get_insert_block().unwrap();
 
         // Empty delimiter case: return list containing the original string
@@ -9884,7 +10561,10 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(idx_ptr, zero).unwrap();
 
         // Track write position
-        let write_pos_ptr = self.builder.build_alloca(self.types.i64_type, "write_pos").unwrap();
+        let write_pos_ptr = self
+            .builder
+            .build_alloca(self.types.i64_type, "write_pos")
+            .unwrap();
         self.builder.build_store(write_pos_ptr, zero).unwrap();
 
         let concat_loop = self.context.append_basic_block(function, "concat_loop");
@@ -9966,16 +10646,31 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // Get current write position
-        let write_pos = self.builder.build_load(self.types.i64_type, write_pos_ptr, "write_pos").unwrap().into_int_value();
+        let write_pos = self
+            .builder
+            .build_load(self.types.i64_type, write_pos_ptr, "write_pos")
+            .unwrap()
+            .into_int_value();
 
         // Copy element using memcpy
         let dest_ptr = unsafe {
-            self.builder.build_gep(self.context.i8_type(), result_buf, &[write_pos], "dest_ptr").unwrap()
+            self.builder
+                .build_gep(self.context.i8_type(), result_buf, &[write_pos], "dest_ptr")
+                .unwrap()
         };
-        self.builder.build_call(self.libc.memcpy, &[dest_ptr.into(), elem_str_ptr2.into(), elem_len2.into()], "").unwrap();
+        self.builder
+            .build_call(
+                self.libc.memcpy,
+                &[dest_ptr.into(), elem_str_ptr2.into(), elem_len2.into()],
+                "",
+            )
+            .unwrap();
 
         // Update write position
-        let new_write_pos = self.builder.build_int_add(write_pos, elem_len2, "new_write_pos").unwrap();
+        let new_write_pos = self
+            .builder
+            .build_int_add(write_pos, elem_len2, "new_write_pos")
+            .unwrap();
 
         // Add delimiter if not last
         let one2 = self.types.i64_type.const_int(1, false);
@@ -9998,23 +10693,46 @@ impl<'ctx> CodeGen<'ctx> {
         // Add delimiter using memcpy
         self.builder.position_at_end(add_delim_block);
         let delim_dest = unsafe {
-            self.builder.build_gep(self.context.i8_type(), result_buf, &[new_write_pos], "delim_dest").unwrap()
+            self.builder
+                .build_gep(
+                    self.context.i8_type(),
+                    result_buf,
+                    &[new_write_pos],
+                    "delim_dest",
+                )
+                .unwrap()
         };
-        self.builder.build_call(self.libc.memcpy, &[delim_dest.into(), delim_ptr.into(), delim_len.into()], "").unwrap();
-        let with_delim_pos = self.builder.build_int_add(new_write_pos, delim_len, "with_delim_pos").unwrap();
-        self.builder.build_store(write_pos_ptr, with_delim_pos).unwrap();
+        self.builder
+            .build_call(
+                self.libc.memcpy,
+                &[delim_dest.into(), delim_ptr.into(), delim_len.into()],
+                "",
+            )
+            .unwrap();
+        let with_delim_pos = self
+            .builder
+            .build_int_add(new_write_pos, delim_len, "with_delim_pos")
+            .unwrap();
+        self.builder
+            .build_store(write_pos_ptr, with_delim_pos)
+            .unwrap();
         self.builder
             .build_unconditional_branch(skip_delim_block)
             .unwrap();
 
         self.builder.position_at_end(skip_delim_block);
         // Use phi for write position
-        let pos_phi = self.builder.build_phi(self.types.i64_type, "pos_phi").unwrap();
+        let pos_phi = self
+            .builder
+            .build_phi(self.types.i64_type, "pos_phi")
+            .unwrap();
         pos_phi.add_incoming(&[
             (&new_write_pos, concat_body),
             (&with_delim_pos, add_delim_block),
         ]);
-        self.builder.build_store(write_pos_ptr, pos_phi.as_basic_value().into_int_value()).unwrap();
+        self.builder
+            .build_store(write_pos_ptr, pos_phi.as_basic_value().into_int_value())
+            .unwrap();
 
         let next_idx2 = self.builder.build_int_add(idx2, one, "next_idx2").unwrap();
         self.builder.build_store(idx_ptr, next_idx2).unwrap();
@@ -10024,11 +10742,19 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Done concatenating - null terminate
         self.builder.position_at_end(concat_done);
-        let final_pos = self.builder.build_load(self.types.i64_type, write_pos_ptr, "final_pos").unwrap().into_int_value();
+        let final_pos = self
+            .builder
+            .build_load(self.types.i64_type, write_pos_ptr, "final_pos")
+            .unwrap()
+            .into_int_value();
         let null_ptr = unsafe {
-            self.builder.build_gep(self.context.i8_type(), result_buf, &[final_pos], "null_ptr").unwrap()
+            self.builder
+                .build_gep(self.context.i8_type(), result_buf, &[final_pos], "null_ptr")
+                .unwrap()
         };
-        self.builder.build_store(null_ptr, self.context.i8_type().const_int(0, false)).unwrap();
+        self.builder
+            .build_store(null_ptr, self.context.i8_type().const_int(0, false))
+            .unwrap();
 
         let concat_result = self.make_string(result_buf)?;
         self.builder.build_unconditional_branch(done_block).unwrap();
@@ -10577,9 +11303,14 @@ impl<'ctx> CodeGen<'ctx> {
         let fn_type = self.types.value_type.fn_type(&param_types, false);
         let lambda_fn = self.module.add_function(&lambda_name, fn_type, None);
 
-        // Save current state
+        // Save current state - all shadow maps to prevent cross-lambda leakage
         let saved_function = self.current_function;
         let saved_variables = std::mem::take(&mut self.variables);
+        let saved_var_types = std::mem::take(&mut self.var_types);
+        let saved_int_shadows = std::mem::take(&mut self.int_shadows);
+        let saved_list_ptr_shadows = std::mem::take(&mut self.list_ptr_shadows);
+        let saved_string_len_shadows = std::mem::take(&mut self.string_len_shadows);
+        let saved_string_cap_shadows = std::mem::take(&mut self.string_cap_shadows);
         let saved_block = self.builder.get_insert_block();
 
         // Set up lambda function
@@ -10602,9 +11333,14 @@ impl<'ctx> CodeGen<'ctx> {
         let result = self.compile_expr(body)?;
         self.builder.build_return(Some(&result)).unwrap();
 
-        // Restore state
+        // Restore state - all shadow maps to prevent cross-lambda leakage
         self.current_function = saved_function;
         self.variables = saved_variables;
+        self.var_types = saved_var_types;
+        self.int_shadows = saved_int_shadows;
+        self.list_ptr_shadows = saved_list_ptr_shadows;
+        self.string_len_shadows = saved_string_len_shadows;
+        self.string_cap_shadows = saved_string_cap_shadows;
         if let Some(block) = saved_block {
             self.builder.position_at_end(block);
         }
@@ -12936,10 +13672,13 @@ impl<'ctx> CodeGen<'ctx> {
             HaversError::CompileError(format!("Method {} not declared", func_name))
         })?;
 
-        // Save current state
+        // Save current state - IMPORTANT: save ALL shadow maps to prevent cross-method leakage
         let old_function = self.current_function;
         let old_variables = std::mem::take(&mut self.variables);
         let old_int_shadows = std::mem::take(&mut self.int_shadows);
+        let old_list_ptr_shadows = std::mem::take(&mut self.list_ptr_shadows);
+        let old_string_len_shadows = std::mem::take(&mut self.string_len_shadows);
+        let old_string_cap_shadows = std::mem::take(&mut self.string_cap_shadows);
         let old_var_types = std::mem::take(&mut self.var_types);
         let old_masel = self.current_masel;
 
@@ -12999,10 +13738,13 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| HaversError::CompileError(format!("Failed to build return: {}", e)))?;
         }
 
-        // Restore state
+        // Restore state - IMPORTANT: restore ALL shadow maps to prevent cross-method leakage
         self.current_function = old_function;
         self.variables = old_variables;
         self.int_shadows = old_int_shadows;
+        self.list_ptr_shadows = old_list_ptr_shadows;
+        self.string_len_shadows = old_string_len_shadows;
+        self.string_cap_shadows = old_string_cap_shadows;
         self.var_types = old_var_types;
         self.current_masel = old_masel;
 
@@ -13090,9 +13832,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| HaversError::CompileError(format!("Failed to call init: {}", e)))?
                 .try_as_basic_value()
                 .left()
-                .ok_or_else(|| {
-                    HaversError::CompileError("init returned void".to_string())
-                })?;
+                .ok_or_else(|| HaversError::CompileError("init returned void".to_string()))?;
             return Ok(init_result);
         }
 

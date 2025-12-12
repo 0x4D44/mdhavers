@@ -9,11 +9,15 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 cd "$PROJECT_DIR"
 
+# Build first so we don't include compilation warnings
+cargo build --release --bin mdhavers 2>/dev/null
+
 count=0
 for braw in $(find tests/golden -name "*.braw" | sort); do
     expected="${braw%.braw}.expected"
     echo "Updating $expected..."
-    cargo run --release -- "$braw" > "$expected" 2>&1 || true
+    # Run and capture only stdout (discard stderr/warnings)
+    ./target/release/mdhavers "$braw" > "$expected" 2>/dev/null || true
     count=$((count + 1))
 done
 

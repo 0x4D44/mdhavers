@@ -1,4 +1,4 @@
-use crate::ast::*;
+use crate::ast::{LogLevel, *};
 use crate::error::{HaversError, HaversResult};
 use crate::token::{Token, TokenKind};
 
@@ -278,6 +278,18 @@ impl Parser {
             self.match_statement()
         } else if self.check(&TokenKind::MakSiccar) {
             self.assert_statement()
+        } else if self.check(&TokenKind::LogWhisper) {
+            self.log_statement(LogLevel::Whisper)
+        } else if self.check(&TokenKind::LogMutter) {
+            self.log_statement(LogLevel::Mutter)
+        } else if self.check(&TokenKind::LogBlether) {
+            self.log_statement(LogLevel::Blether)
+        } else if self.check(&TokenKind::LogHoller) {
+            self.log_statement(LogLevel::Holler)
+        } else if self.check(&TokenKind::LogRoar) {
+            self.log_statement(LogLevel::Roar)
+        } else if self.check(&TokenKind::Hurl) {
+            self.hurl_statement()
         } else if self.check(&TokenKind::LeftBrace) {
             self.block()
         } else {
@@ -445,6 +457,30 @@ impl Parser {
             message,
             span,
         })
+    }
+
+    fn log_statement(&mut self, level: LogLevel) -> HaversResult<Stmt> {
+        let span = self.current_span();
+        self.advance(); // consume 'log_whisper', 'log_mutter', etc.
+
+        let message = self.expression()?;
+        self.expect_statement_end()?;
+
+        Ok(Stmt::Log {
+            level,
+            message,
+            span,
+        })
+    }
+
+    fn hurl_statement(&mut self) -> HaversResult<Stmt> {
+        let span = self.current_span();
+        self.advance(); // consume 'hurl'
+
+        let message = self.expression()?;
+        self.expect_statement_end()?;
+
+        Ok(Stmt::Hurl { message, span })
     }
 
     fn match_arm(&mut self) -> HaversResult<MatchArm> {
@@ -1154,7 +1190,8 @@ impl Parser {
                 self.advance();
                 let expr = self.expression()?;
                 self.expect(&TokenKind::RightParen, ")")?;
-                Ok(Expr::Grouping {
+                // Check for range after grouping: (x+1)..10
+                self.maybe_range(Expr::Grouping {
                     expr: Box::new(expr),
                     span,
                 })
@@ -1365,6 +1402,11 @@ impl Parser {
                 | TokenKind::Kin
                 | TokenKind::Thing
                 | TokenKind::Fetch
+                | TokenKind::LogWhisper
+                | TokenKind::LogMutter
+                | TokenKind::LogBlether
+                | TokenKind::LogHoller
+                | TokenKind::LogRoar
         ) {
             return Ok(());
         }

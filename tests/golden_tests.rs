@@ -36,7 +36,9 @@ fn discover_tests(dir: &Path) -> Vec<PathBuf> {
 fn should_skip(source: &str, mode: &str) -> bool {
     match mode {
         "native" => source.contains("// SKIP_NATIVE") || source.contains("# SKIP_NATIVE"),
-        "interpreter" => source.contains("// SKIP_INTERPRETER") || source.contains("# SKIP_INTERPRETER"),
+        "interpreter" => {
+            source.contains("// SKIP_INTERPRETER") || source.contains("# SKIP_INTERPRETER")
+        }
         _ => false,
     }
 }
@@ -71,8 +73,8 @@ fn run_interpreter_test(braw_path: &Path) -> Result<String, String> {
     let source = fs::read_to_string(braw_path)
         .map_err(|e| format!("Failed to read {}: {}", braw_path.display(), e))?;
 
-    let (_value, output) = mdhavers::run_with_output(&source)
-        .map_err(|e| format!("Interpreter error: {:?}", e))?;
+    let (_value, output) =
+        mdhavers::run_with_output(&source).map_err(|e| format!("Interpreter error: {:?}", e))?;
 
     Ok(output.join("\n"))
 }
