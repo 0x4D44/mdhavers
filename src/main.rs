@@ -434,7 +434,7 @@ fn build_native(
 
         let compiler = llvm::LLVMCompiler::new();
         compiler
-            .compile_to_native_with_source(&program, &output_path, opt_level, Some(&path))
+            .compile_to_native_with_source(&program, &output_path, opt_level, Some(path))
             .map_err(|e| format!("{}", e))?;
 
         println!(
