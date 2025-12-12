@@ -66,8 +66,21 @@ impl LLVMCompiler {
         program: &Program,
         output_path: &Path,
     ) -> Result<(), HaversError> {
+        self.compile_to_object_with_source(program, output_path, None)
+    }
+
+    /// Compile to object file with source path for import resolution
+    pub fn compile_to_object_with_source(
+        &self,
+        program: &Program,
+        output_path: &Path,
+        source_path: Option<&Path>,
+    ) -> Result<(), HaversError> {
         let context = Context::create();
         let mut codegen = CodeGen::new(&context, "mdhavers_module");
+        if let Some(path) = source_path {
+            codegen.set_source_path(path);
+        }
 
         codegen.compile(program)?;
 
@@ -113,10 +126,21 @@ impl LLVMCompiler {
         output_path: &Path,
         opt_level: u8,
     ) -> Result<(), HaversError> {
+        self.compile_to_native_with_source(program, output_path, opt_level, None)
+    }
+
+    /// Compile to native executable with source path for import resolution
+    pub fn compile_to_native_with_source(
+        &self,
+        program: &Program,
+        output_path: &Path,
+        opt_level: u8,
+        source_path: Option<&Path>,
+    ) -> Result<(), HaversError> {
         // First compile to object file
         let obj_path = output_path.with_extension("o");
         let compiler = LLVMCompiler::new().with_optimization(opt_level);
-        compiler.compile_to_object(program, &obj_path)?;
+        compiler.compile_to_object_with_source(program, &obj_path, source_path)?;
 
         // Generate unique temp file names using process ID and a counter
         // This avoids race conditions when tests run in parallel

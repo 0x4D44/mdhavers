@@ -3,7 +3,8 @@
 //! Compiles mdhavers AST to LLVM IR with fully inlined runtime.
 //! Produces standalone executables that only depend on libc.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
@@ -16,7 +17,7 @@ use inkwell::values::{
 use inkwell::AddressSpace;
 use inkwell::IntPredicate;
 
-use crate::ast::{BinaryOp, Expr, Literal, LogicalOp, Program, Stmt, UnaryOp};
+use crate::ast::{BinaryOp, DestructPattern, Expr, FStringPart, Literal, LogicalOp, MatchArm, Pattern, Program, Stmt, UnaryOp};
 use crate::error::HaversError;
 
 use super::types::{MdhTypes, ValueTag};
@@ -137,6 +138,12 @@ pub struct CodeGen<'ctx> {
     /// Current class name being compiled (for method naming)
     current_class: Option<String>,
 
+    /// Source file path for resolving imports
+    source_path: Option<PathBuf>,
+
+    /// Imported modules (to avoid duplicate imports)
+    imported_modules: HashSet<PathBuf>,
+
     /// Format strings for printf
     fmt_int: inkwell::values::GlobalValue<'ctx>,
     fmt_float: inkwell::values::GlobalValue<'ctx>,
@@ -201,6 +208,8 @@ impl<'ctx> CodeGen<'ctx> {
             class_methods: HashMap::new(),
             current_masel: None,
             current_class: None,
+            source_path: None,
+            imported_modules: HashSet::new(),
             fmt_int,
             fmt_float,
             fmt_string,
@@ -209,6 +218,11 @@ impl<'ctx> CodeGen<'ctx> {
             fmt_nil,
             fmt_newline,
         }
+    }
+
+    /// Set the source file path for resolving imports
+    pub fn set_source_path(&mut self, path: &Path) {
+        self.source_path = Some(path.to_path_buf());
     }
 
     fn declare_libc_functions(
@@ -2028,6 +2042,167 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_compare(IntPredicate::SGE, left_data, right_data, "ge")
             .unwrap();
         self.make_bool(result)
+    }
+
+    /// Check if a value is truthy (returns raw i1 bool for conditionals)
+    fn inline_is_truthy(&mut self, val: BasicValueEnum<'ctx>) -> Result<IntValue<'ctx>, HaversError> {
+        let tag = self.extract_tag(val)?;
+        let data = self.extract_data(val)?;
+
+        // Value is truthy if:
+        // - Bool: data != 0
+        // - Int: data != 0
+        // - Float: data != 0 (bit pattern)
+        // - String: len > 0
+        // - List: len > 0
+        // - Nil: false
+        // For simplicity, we check if data != 0 (works for most cases)
+        let nil_tag = self.types.i8_type.const_int(0, false);
+        let is_nil = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, nil_tag, "is_nil")
+            .unwrap();
+
+        let zero = self.types.i64_type.const_int(0, false);
+        let data_nonzero = self
+            .builder
+            .build_int_compare(IntPredicate::NE, data, zero, "data_nonzero")
+            .unwrap();
+
+        // Truthy if not nil AND data is non-zero
+        let not_nil = self.builder.build_not(is_nil, "not_nil").unwrap();
+        let is_truthy = self
+            .builder
+            .build_and(not_nil, data_nonzero, "is_truthy")
+            .unwrap();
+
+        Ok(is_truthy)
+    }
+
+    /// Compare two values for equality (returns raw i1 bool for conditionals)
+    fn inline_eq_raw(
+        &mut self,
+        left: BasicValueEnum<'ctx>,
+        right: BasicValueEnum<'ctx>,
+    ) -> Result<IntValue<'ctx>, HaversError> {
+        let left_tag = self.extract_tag(left)?;
+        let right_tag = self.extract_tag(right)?;
+        let left_data = self.extract_data(left)?;
+        let right_data = self.extract_data(right)?;
+
+        // Tags must match first
+        let tags_equal = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, right_tag, "tags_eq")
+            .unwrap();
+
+        // Check if both are strings (tag == 4)
+        let string_tag = self.types.i8_type.const_int(4, false);
+        let left_is_string = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, string_tag, "left_is_str")
+            .unwrap();
+        let right_is_string = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, string_tag, "right_is_str")
+            .unwrap();
+        let both_strings = self
+            .builder
+            .build_and(left_is_string, right_is_string, "both_str")
+            .unwrap();
+
+        // Create basic blocks for string vs non-string comparison
+        let function = self.current_function.unwrap();
+        let cmp_string = self.context.append_basic_block(function, "cmp_string_raw");
+        let cmp_other = self.context.append_basic_block(function, "cmp_other_raw");
+        let cmp_merge = self.context.append_basic_block(function, "cmp_merge_raw");
+
+        self.builder
+            .build_conditional_branch(both_strings, cmp_string, cmp_other)
+            .unwrap();
+
+        // String comparison: use strcmp
+        self.builder.position_at_end(cmp_string);
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let left_str = self
+            .builder
+            .build_int_to_ptr(left_data, i8_ptr_type, "left_str")
+            .unwrap();
+        let right_str = self
+            .builder
+            .build_int_to_ptr(right_data, i8_ptr_type, "right_str")
+            .unwrap();
+        let strcmp_result = self
+            .builder
+            .build_call(
+                self.libc.strcmp,
+                &[left_str.into(), right_str.into()],
+                "strcmp_res",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_int_value();
+        let zero = self.types.i32_type.const_int(0, false);
+        let str_equal = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, strcmp_result, zero, "str_eq")
+            .unwrap();
+        self.builder.build_unconditional_branch(cmp_merge).unwrap();
+        let string_block = self.builder.get_insert_block().unwrap();
+
+        // Non-string comparison: compare data directly
+        self.builder.position_at_end(cmp_other);
+        let data_equal = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_data, right_data, "data_eq")
+            .unwrap();
+        // Both tags and data must match for non-strings
+        let other_equal = self
+            .builder
+            .build_and(tags_equal, data_equal, "other_eq")
+            .unwrap();
+        self.builder.build_unconditional_branch(cmp_merge).unwrap();
+        let other_block = self.builder.get_insert_block().unwrap();
+
+        // Merge results
+        self.builder.position_at_end(cmp_merge);
+        let phi = self
+            .builder
+            .build_phi(self.types.bool_type, "eq_result_raw")
+            .unwrap();
+        phi.add_incoming(&[(&str_equal, string_block), (&other_equal, other_block)]);
+
+        Ok(phi.as_basic_value().into_int_value())
+    }
+
+    /// Compare two values: greater than or equal (returns raw i1 bool)
+    fn inline_ge_raw(
+        &mut self,
+        left: BasicValueEnum<'ctx>,
+        right: BasicValueEnum<'ctx>,
+    ) -> Result<IntValue<'ctx>, HaversError> {
+        let left_data = self.extract_data(left)?;
+        let right_data = self.extract_data(right)?;
+        Ok(self
+            .builder
+            .build_int_compare(IntPredicate::SGE, left_data, right_data, "ge_raw")
+            .unwrap())
+    }
+
+    /// Compare two values: less than (returns raw i1 bool)
+    fn inline_lt_raw(
+        &mut self,
+        left: BasicValueEnum<'ctx>,
+        right: BasicValueEnum<'ctx>,
+    ) -> Result<IntValue<'ctx>, HaversError> {
+        let left_data = self.extract_data(left)?;
+        let right_data = self.extract_data(right)?;
+        Ok(self
+            .builder
+            .build_int_compare(IntPredicate::SLT, left_data, right_data, "lt_raw")
+            .unwrap())
     }
 
     /// Negate a value
@@ -5965,6 +6140,14 @@ impl<'ctx> CodeGen<'ctx> {
                 ..
             } => self.compile_class(name, methods),
 
+            Stmt::Import { path, .. } => self.compile_import(path),
+
+            Stmt::Assert { condition, message, .. } => self.compile_assert(condition, message.as_ref()),
+
+            Stmt::Match { value, arms, .. } => self.compile_match(value, arms),
+
+            Stmt::Destructure { patterns, value, .. } => self.compile_destructure(patterns, value),
+
             // Not yet implemented
             _ => Err(HaversError::CompileError(format!(
                 "Statement not yet supported in LLVM backend: {:?}",
@@ -6296,6 +6479,18 @@ impl<'ctx> CodeGen<'ctx> {
                 value,
                 ..
             } => self.compile_set(object, property, value),
+
+            Expr::FString { parts, .. } => self.compile_fstring(parts),
+
+            Expr::Pipe { left, right, .. } => self.compile_pipe(left, right),
+
+            Expr::Spread { expr, .. } => {
+                // Spread is handled specially in list literal compilation
+                // If we get here, it's an error - spread can only be used in list context
+                Err(HaversError::CompileError(
+                    "Spread operator can only be used inside list literals".to_string(),
+                ))
+            }
 
             // Not yet implemented
             _ => Err(HaversError::CompileError(format!(
@@ -12925,6 +13120,618 @@ impl<'ctx> CodeGen<'ctx> {
                 "'masel' used outside of a method".to_string(),
             ))
         }
+    }
+
+    /// Compile f-string (string interpolation): f"Hello {name}!"
+    fn compile_fstring(
+        &mut self,
+        parts: &[FStringPart],
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        if parts.is_empty() {
+            // Empty f-string -> empty string
+            let empty = self
+                .builder
+                .build_global_string_ptr("", "empty_fstr")
+                .unwrap();
+            return self.make_string(empty.as_pointer_value());
+        }
+
+        // Start with the first part
+        let mut result = match &parts[0] {
+            FStringPart::Text(s) => {
+                let text = self
+                    .builder
+                    .build_global_string_ptr(s, "fstr_text")
+                    .unwrap();
+                self.make_string(text.as_pointer_value())?
+            }
+            FStringPart::Expr(expr) => {
+                let val = self.compile_expr(expr)?;
+                // Convert to string
+                self.inline_tae_string(val)?
+            }
+        };
+
+        // Concatenate remaining parts
+        for part in parts.iter().skip(1) {
+            let part_val = match part {
+                FStringPart::Text(s) => {
+                    let text = self
+                        .builder
+                        .build_global_string_ptr(s, "fstr_text")
+                        .unwrap();
+                    self.make_string(text.as_pointer_value())?
+                }
+                FStringPart::Expr(expr) => {
+                    let val = self.compile_expr(expr)?;
+                    self.inline_tae_string(val)?
+                }
+            };
+            // Concatenate using inline_add (handles string + string)
+            result = self.inline_add(result, part_val)?;
+        }
+
+        Ok(result)
+    }
+
+    /// Compile pipe expression: value |> func  ->  func(value)
+    fn compile_pipe(
+        &mut self,
+        left: &Expr,
+        right: &Expr,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        // Compile the left side (the value to pass)
+        let left_val = self.compile_expr(left)?;
+
+        // The right side should be callable - compile and call with left as argument
+        match right {
+            Expr::Lambda { params, body, .. } => {
+                // Inline lambda call: compile body with parameter bound to left_val
+                if params.len() != 1 {
+                    return Err(HaversError::CompileError(
+                        "Pipe lambda must take exactly 1 parameter".to_string(),
+                    ));
+                }
+                // Create a temporary variable for the parameter
+                let param_name = &params[0];
+                let alloca = self.create_entry_block_alloca(param_name);
+                self.builder.build_store(alloca, left_val).unwrap();
+                let old_var = self.variables.insert(param_name.clone(), alloca);
+
+                let result = self.compile_expr(body)?;
+
+                // Restore old variable if there was one
+                if let Some(old) = old_var {
+                    self.variables.insert(param_name.clone(), old);
+                } else {
+                    self.variables.remove(param_name);
+                }
+
+                Ok(result)
+            }
+            Expr::Variable { name, span } => {
+                // Call the named function with left_val
+                if let Some(&func) = self.functions.get(name) {
+                    let call = self
+                        .builder
+                        .build_call(func, &[left_val.into()], "pipe_call")
+                        .unwrap();
+                    Ok(call.try_as_basic_value().left().unwrap_or(self.make_nil()))
+                } else {
+                    // Try calling as a builtin by creating a synthetic Call expression
+                    let synthetic_call = Expr::Call {
+                        callee: Box::new(right.clone()),
+                        arguments: vec![left.clone()],
+                        span: *span,
+                    };
+                    self.compile_expr(&synthetic_call)
+                }
+            }
+            Expr::Call { callee, arguments, .. } => {
+                // Call with left_val prepended to arguments
+                // First compile the callee
+                let callee_val = self.compile_expr(callee)?;
+
+                // Compile other arguments
+                let mut args: Vec<BasicValueEnum<'ctx>> = vec![left_val];
+                for arg in arguments {
+                    args.push(self.compile_expr(arg)?);
+                }
+
+                // Call the function
+                self.call_function_value(callee_val, &args)
+            }
+            _ => {
+                // General case: compile right as callable and call with left
+                let func_val = self.compile_expr(right)?;
+                self.call_function_value(func_val, &[left_val])
+            }
+        }
+    }
+
+    /// Compile import statement - inline imported module's declarations
+    fn compile_import(&mut self, path: &str) -> Result<(), HaversError> {
+        // Resolve the import path relative to the source file
+        let import_path = self.resolve_import_path(path)?;
+
+        // Check if already imported
+        if self.imported_modules.contains(&import_path) {
+            return Ok(());
+        }
+        self.imported_modules.insert(import_path.clone());
+
+        // Read and parse the imported file
+        let source = std::fs::read_to_string(&import_path).map_err(|e| {
+            HaversError::CompileError(format!(
+                "Failed to read import '{}': {}",
+                import_path.display(),
+                e
+            ))
+        })?;
+
+        let program = crate::parser::parse(&source)?;
+
+        // First pass: Handle nested imports, declare functions, create global variables
+        for stmt in &program.statements {
+            match stmt {
+                Stmt::Import { path: sub_path, .. } => {
+                    // Handle nested imports first
+                    let saved_path = self.source_path.clone();
+                    self.source_path = Some(import_path.clone());
+                    self.compile_import(sub_path)?;
+                    self.source_path = saved_path;
+                }
+                Stmt::Function { name, params, .. } => {
+                    // Declare the function (forward declaration)
+                    self.declare_function(name, params.len())?;
+                }
+                Stmt::VarDecl { name, initializer, .. } => {
+                    // Create global variable
+                    if !self.globals.contains_key(name) && !self.variables.contains_key(name) {
+                        // Create an LLVM global variable for imported module-level vars
+                        let global = self.module.add_global(self.types.value_type, None, &format!("imported_{}", name));
+                        global.set_initializer(&self.types.value_type.const_zero());
+                        let global_ptr = global.as_pointer_value();
+                        self.globals.insert(name.clone(), global_ptr);
+                        // Also add to variables so current scope can find it
+                        self.variables.insert(name.clone(), global_ptr);
+
+                        // Compile the initializer and store value
+                        if let Some(init) = initializer {
+                            let value = self.compile_expr(init)?;
+                            self.builder.build_store(global_ptr, value).unwrap();
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Second pass: Compile function bodies and classes
+        for stmt in &program.statements {
+            match stmt {
+                Stmt::Function { name, params, body, .. } => {
+                    // Compile the function body
+                    self.compile_function(name, params, body)?;
+                }
+                Stmt::Class { name, methods, .. } => {
+                    self.compile_class(name, methods)?;
+                }
+                _ => {
+                    // Skip - already handled or not needed
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Resolve import path relative to current source file
+    fn resolve_import_path(&self, path: &str) -> Result<PathBuf, HaversError> {
+        // Add .braw extension if not present
+        let path_with_ext = if path.ends_with(".braw") {
+            path.to_string()
+        } else {
+            format!("{}.braw", path)
+        };
+
+        // Try relative to source file first
+        if let Some(ref source_path) = self.source_path {
+            if let Some(parent) = source_path.parent() {
+                let relative_path = parent.join(&path_with_ext);
+                if relative_path.exists() {
+                    return Ok(relative_path.canonicalize().unwrap_or(relative_path));
+                }
+
+                // Try parent's parent (e.g., for stdlib/foo.braw importing lib/bar.braw)
+                if let Some(grandparent) = parent.parent() {
+                    let grandparent_path = grandparent.join(&path_with_ext);
+                    if grandparent_path.exists() {
+                        return Ok(grandparent_path.canonicalize().unwrap_or(grandparent_path));
+                    }
+                }
+            }
+        }
+
+        // Try current directory
+        let cwd_path = PathBuf::from(&path_with_ext);
+        if cwd_path.exists() {
+            return Ok(cwd_path.canonicalize().unwrap_or(cwd_path));
+        }
+
+        // Try examples directory (common pattern)
+        let examples_path = PathBuf::from("examples").join(&path_with_ext);
+        if examples_path.exists() {
+            return Ok(examples_path.canonicalize().unwrap_or(examples_path));
+        }
+
+        Err(HaversError::CompileError(format!(
+            "Cannot find module to import: {}",
+            path
+        )))
+    }
+
+    /// Compile assert statement: mak_siccar condition, "message"
+    fn compile_assert(
+        &mut self,
+        condition: &Expr,
+        message: Option<&Expr>,
+    ) -> Result<(), HaversError> {
+        let cond_val = self.compile_expr(condition)?;
+
+        // Check if condition is truthy
+        let is_truthy = self.inline_is_truthy(cond_val)?;
+
+        let function = self.current_function.unwrap();
+        let assert_fail = self.context.append_basic_block(function, "assert_fail");
+        let assert_pass = self.context.append_basic_block(function, "assert_pass");
+
+        self.builder
+            .build_conditional_branch(is_truthy, assert_pass, assert_fail)
+            .unwrap();
+
+        // Assert failed - print message and abort
+        self.builder.position_at_end(assert_fail);
+
+        // Print error message
+        let default_msg = self
+            .builder
+            .build_global_string_ptr("Assertion failed!\n", "assert_msg")
+            .unwrap();
+
+        if let Some(msg_expr) = message {
+            let msg_val = self.compile_expr(msg_expr)?;
+            let msg_str = self.inline_tae_string(msg_val)?;
+            let msg_data = self.extract_data(msg_str)?;
+            let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+            let msg_ptr = self
+                .builder
+                .build_int_to_ptr(msg_data, i8_ptr, "msg_ptr")
+                .unwrap();
+
+            let prefix = self
+                .builder
+                .build_global_string_ptr("Assertion failed: ", "assert_prefix")
+                .unwrap();
+            let newline = self
+                .builder
+                .build_global_string_ptr("\n", "newline")
+                .unwrap();
+
+            self.builder
+                .build_call(
+                    self.libc.printf,
+                    &[prefix.as_pointer_value().into()],
+                    "",
+                )
+                .unwrap();
+            self.builder
+                .build_call(self.libc.printf, &[msg_ptr.into()], "")
+                .unwrap();
+            self.builder
+                .build_call(
+                    self.libc.printf,
+                    &[newline.as_pointer_value().into()],
+                    "",
+                )
+                .unwrap();
+        } else {
+            self.builder
+                .build_call(
+                    self.libc.printf,
+                    &[default_msg.as_pointer_value().into()],
+                    "",
+                )
+                .unwrap();
+        }
+
+        // Exit with error code
+        let exit_code = self.context.i32_type().const_int(1, false);
+        self.builder
+            .build_call(self.libc.exit, &[exit_code.into()], "")
+            .unwrap();
+        self.builder.build_unreachable().unwrap();
+
+        // Continue after assert pass
+        self.builder.position_at_end(assert_pass);
+        Ok(())
+    }
+
+    /// Compile match statement
+    fn compile_match(&mut self, value: &Expr, arms: &[MatchArm]) -> Result<(), HaversError> {
+        let match_val = self.compile_expr(value)?;
+
+        let function = self.current_function.unwrap();
+        let end_block = self.context.append_basic_block(function, "match_end");
+
+        // For each arm, create a test block and body block
+        let mut arm_blocks: Vec<(BasicBlock<'ctx>, BasicBlock<'ctx>)> = Vec::new();
+        for i in 0..arms.len() {
+            let test_block = self
+                .context
+                .append_basic_block(function, &format!("match_test_{}", i));
+            let body_block = self
+                .context
+                .append_basic_block(function, &format!("match_body_{}", i));
+            arm_blocks.push((test_block, body_block));
+        }
+
+        // Jump to first arm test
+        if !arm_blocks.is_empty() {
+            self.builder
+                .build_unconditional_branch(arm_blocks[0].0)
+                .unwrap();
+        } else {
+            self.builder.build_unconditional_branch(end_block).unwrap();
+        }
+
+        // Compile each arm
+        for (i, arm) in arms.iter().enumerate() {
+            let (test_block, body_block) = arm_blocks[i];
+            let next_test = if i + 1 < arm_blocks.len() {
+                arm_blocks[i + 1].0
+            } else {
+                end_block
+            };
+
+            // Test block
+            self.builder.position_at_end(test_block);
+            let matches = self.compile_pattern_test(match_val, &arm.pattern)?;
+
+            self.builder
+                .build_conditional_branch(matches, body_block, next_test)
+                .unwrap();
+
+            // Body block
+            self.builder.position_at_end(body_block);
+
+            // Bind pattern variables if needed
+            if let Pattern::Identifier(name) = &arm.pattern {
+                let alloca = self.create_entry_block_alloca(name);
+                self.builder.build_store(alloca, match_val).unwrap();
+                self.variables.insert(name.clone(), alloca);
+            }
+
+            // Compile body
+            self.compile_stmt(&arm.body)?;
+
+            // Jump to end if block doesn't have a terminator
+            if self
+                .builder
+                .get_insert_block()
+                .unwrap()
+                .get_terminator()
+                .is_none()
+            {
+                self.builder.build_unconditional_branch(end_block).unwrap();
+            }
+        }
+
+        self.builder.position_at_end(end_block);
+        Ok(())
+    }
+
+    /// Compile a pattern test - returns i1 (bool) indicating if pattern matches
+    fn compile_pattern_test(
+        &mut self,
+        value: BasicValueEnum<'ctx>,
+        pattern: &Pattern,
+    ) -> Result<IntValue<'ctx>, HaversError> {
+        match pattern {
+            Pattern::Wildcard => {
+                // Wildcard always matches
+                Ok(self.context.bool_type().const_int(1, false))
+            }
+            Pattern::Identifier(_) => {
+                // Identifier always matches (and binds)
+                Ok(self.context.bool_type().const_int(1, false))
+            }
+            Pattern::Literal(lit) => {
+                // Compare value to literal
+                let lit_val = self.compile_literal(lit)?;
+                self.inline_eq_raw(value, lit_val)
+            }
+            Pattern::Range { start, end } => {
+                // Check if value is in range [start, end)
+                let start_val = self.compile_expr(start)?;
+                let end_val = self.compile_expr(end)?;
+
+                let ge_start = self.inline_ge_raw(value, start_val)?;
+                let lt_end = self.inline_lt_raw(value, end_val)?;
+
+                Ok(self
+                    .builder
+                    .build_and(ge_start, lt_end, "in_range")
+                    .unwrap())
+            }
+        }
+    }
+
+    /// Compile destructure statement: ken [a, b, c] = list
+    fn compile_destructure(
+        &mut self,
+        patterns: &[DestructPattern],
+        value: &Expr,
+    ) -> Result<(), HaversError> {
+        let list_val = self.compile_expr(value)?;
+
+        // Get list pointer
+        let list_data = self.extract_data(list_val)?;
+        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        let list_ptr = self
+            .builder
+            .build_int_to_ptr(list_data, i8_ptr, "list_ptr")
+            .unwrap();
+
+        let mut index = 0u64;
+        for pattern in patterns {
+            match pattern {
+                DestructPattern::Variable(name) => {
+                    // Extract element at index
+                    let elem = self.compile_list_index_ptr(list_ptr, index)?;
+                    let alloca = self.create_entry_block_alloca(name);
+                    self.builder.build_store(alloca, elem).unwrap();
+                    self.variables.insert(name.clone(), alloca);
+                    index += 1;
+                }
+                DestructPattern::Ignore => {
+                    // Skip this element
+                    index += 1;
+                }
+                DestructPattern::Rest(name) => {
+                    // Capture remaining elements as a new list
+                    // For now, create a simple slice
+                    let rest_list = self.compile_list_slice(list_ptr, index)?;
+                    let alloca = self.create_entry_block_alloca(name);
+                    self.builder.build_store(alloca, rest_list).unwrap();
+                    self.variables.insert(name.clone(), alloca);
+                    break; // Rest must be last
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Extract element from list at given index
+    fn compile_list_index_ptr(
+        &mut self,
+        list_ptr: PointerValue<'ctx>,
+        index: u64,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        // List structure: [len: i64][cap: i64][elem0][elem1]...
+        // Each element is a MdhValue (16 bytes)
+
+        let elem_offset = 16 + (index * 16); // Skip header, then index
+        let offset = self.types.i64_type.const_int(elem_offset, false);
+        let elem_ptr = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), list_ptr, &[offset], "elem_ptr")
+                .unwrap()
+        };
+
+        // Cast to value type pointer and load
+        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr = self
+            .builder
+            .build_pointer_cast(elem_ptr, value_ptr_type, "value_ptr")
+            .unwrap();
+        let value = self
+            .builder
+            .build_load(self.types.value_type, value_ptr, "elem_val")
+            .unwrap();
+
+        Ok(value)
+    }
+
+    /// Create a slice of list from index onwards
+    fn compile_list_slice(
+        &mut self,
+        list_ptr: PointerValue<'ctx>,
+        start_index: u64,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        // Get list length
+        let len_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let len_ptr = self
+            .builder
+            .build_pointer_cast(list_ptr, len_ptr_type, "len_ptr")
+            .unwrap();
+        let total_len = self
+            .builder
+            .build_load(self.types.i64_type, len_ptr, "total_len")
+            .unwrap()
+            .into_int_value();
+
+        // Calculate slice length
+        let start = self.types.i64_type.const_int(start_index, false);
+        let slice_len = self
+            .builder
+            .build_int_sub(total_len, start, "slice_len")
+            .unwrap();
+
+        // Allocate new list
+        let header_size = self.types.i64_type.const_int(16, false);
+        let elem_size = self.types.i64_type.const_int(16, false);
+        let data_size = self
+            .builder
+            .build_int_mul(slice_len, elem_size, "data_size")
+            .unwrap();
+        let total_size = self
+            .builder
+            .build_int_add(header_size, data_size, "total_size")
+            .unwrap();
+
+        let new_list = self
+            .builder
+            .build_call(self.libc.malloc, &[total_size.into()], "new_list")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+
+        // Store length and capacity
+        let new_len_ptr = self
+            .builder
+            .build_pointer_cast(new_list, len_ptr_type, "new_len_ptr")
+            .unwrap();
+        self.builder.build_store(new_len_ptr, slice_len).unwrap();
+
+        let cap_offset = self.types.i64_type.const_int(8, false);
+        let cap_ptr = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), new_list, &[cap_offset], "cap_ptr")
+                .unwrap()
+        };
+        let cap_ptr = self
+            .builder
+            .build_pointer_cast(cap_ptr, len_ptr_type, "cap_ptr_typed")
+            .unwrap();
+        self.builder.build_store(cap_ptr, slice_len).unwrap();
+
+        // Copy elements
+        let src_offset = self.types.i64_type.const_int(16 + start_index * 16, false);
+        let src_ptr = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), list_ptr, &[src_offset], "src_ptr")
+                .unwrap()
+        };
+        let dst_offset = self.types.i64_type.const_int(16, false);
+        let dst_ptr = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), new_list, &[dst_offset], "dst_ptr")
+                .unwrap()
+        };
+        self.builder
+            .build_call(
+                self.libc.memcpy,
+                &[dst_ptr.into(), src_ptr.into(), data_size.into()],
+                "",
+            )
+            .unwrap();
+
+        // Create MdhValue for list
+        self.make_list(new_list)
     }
 
     /// Compile property get expression: obj.property
