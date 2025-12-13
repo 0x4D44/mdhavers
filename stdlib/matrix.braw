@@ -573,8 +573,8 @@ dae flood_fill(grid, start_row, start_col, new_val) {
         ken r = pos[0]
         ken c = pos[1]
 
-        gin nae in_bounds(grid, r, c) { skip }
-        gin grid[r][c] != old_val { skip }
+        gin nae in_bounds(grid, r, c) { haud }
+        gin grid[r][c] != old_val { haud }
 
         grid[r][c] = new_val
 

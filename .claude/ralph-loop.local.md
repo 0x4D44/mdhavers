@@ -1,14 +1,9 @@
 ---
 active: true
-iteration: 2
-max_iterations: 50
-completion_promise: "I
-  will achieve 95%+ LLVM build success (129+/136 files) by implementing callable fields, file I/O, Scots builtins, and
-  all remaining gaps."
-started_at: "2025-12-13T12:03:02Z"
+iteration: 1
+max_iterations: 0
+completion_promise: "cargo test --features llvm --test llvm_comprehensive_tests shows 0 failures"
+started_at: "2025-12-13T21:17:55Z"
 ---
 
-Complete the LLVM backend to 95%+ build success. Read the detailed implementation plan at
-  wrk_docs/2025.12.13 - ralph prompt - llvm backend completion.md and work through all 8 phases systematically. Current:
-   68/136 (50%). Target: 129/136 (95%). Test with: find examples -name *.braw -exec sh -c './target/release/mdhavers
-  build  >/dev/null 2>&1 && echo P' _ {} \; 2>/dev/null | grep -c P
+Read the detailed implementation prompt in wrk_docs/2025.12.13 - ralph prompt - llvm backend fixes and full coverage.md and execute it. Fix all 42 failing LLVM backend tests in src/llvm/codegen.rs. Start with list operations (they block many other tests), then control flow, dicts, math functions, and the rest. Debug each failure, identify the root cause in the codegen, and fix it. After all tests pass, add more tests for uncovered code paths. Run cargo test --features llvm --test llvm_comprehensive_tests after each fix to verify progress.

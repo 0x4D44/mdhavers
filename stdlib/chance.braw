@@ -458,19 +458,20 @@ dae random_scottish_name() {
 # UUID Generator (simplified)
 # ============================================================
 
+# Helper function for hex groups - takes hex_list as parameter
+dae _hex_group(n, hex_list) {
+    ken result = ""
+    fer i in 1..n+1 {
+        result = result + pick_one(hex_list)
+    }
+    gie result
+}
+
 dae generate_uuid() {
     ken hex_chars = "0123456789abcdef"
     ken hex_list = chars(hex_chars)
 
-    dae hex_group(n) {
-        ken result = ""
-        fer i in 1..n+1 {
-            result = result + pick_one(hex_list)
-        }
-        gie result
-    }
-
-    gie f"{hex_group(8)}-{hex_group(4)}-{hex_group(4)}-{hex_group(4)}-{hex_group(12)}"
+    gie f"{_hex_group(8, hex_list)}-{_hex_group(4, hex_list)}-{_hex_group(4, hex_list)}-{_hex_group(4, hex_list)}-{_hex_group(12, hex_list)}"
 }
 
 blether "Chance module loaded! Fortune favours the braw!"
