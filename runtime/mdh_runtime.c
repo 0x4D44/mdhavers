@@ -571,6 +571,47 @@ int64_t __mdh_list_len(MdhValue list) {
     return __mdh_get_list(list)->length;
 }
 
+/* Check if list contains element (returns bool as MdhValue) */
+MdhValue __mdh_list_contains(MdhValue list, MdhValue elem) {
+    if (list.tag != MDH_TAG_LIST) {
+        return __mdh_make_bool(false);
+    }
+    MdhList *l = __mdh_get_list(list);
+    for (int64_t i = 0; i < l->length; i++) {
+        if (__mdh_eq(l->items[i], elem)) {
+            return __mdh_make_bool(true);
+        }
+    }
+    return __mdh_make_bool(false);
+}
+
+/* Find index of element in list (returns -1 if not found) */
+MdhValue __mdh_list_index_of(MdhValue list, MdhValue elem) {
+    if (list.tag != MDH_TAG_LIST) {
+        return __mdh_make_int(-1);
+    }
+    MdhList *l = __mdh_get_list(list);
+    for (int64_t i = 0; i < l->length; i++) {
+        if (__mdh_eq(l->items[i], elem)) {
+            return __mdh_make_int(i);
+        }
+    }
+    return __mdh_make_int(-1);
+}
+
+/* Generic contains - works on both strings and lists */
+MdhValue __mdh_contains(MdhValue container, MdhValue elem) {
+    if (container.tag == MDH_TAG_LIST) {
+        return __mdh_list_contains(container, elem);
+    }
+    if (container.tag == MDH_TAG_STRING && elem.tag == MDH_TAG_STRING) {
+        const char *haystack = __mdh_get_string(container);
+        const char *needle = __mdh_get_string(elem);
+        return __mdh_make_bool(strstr(haystack, needle) != NULL);
+    }
+    return __mdh_make_bool(false);
+}
+
 int64_t __mdh_len(MdhValue a) {
     switch (a.tag) {
         case MDH_TAG_STRING: {
@@ -1212,6 +1253,136 @@ MdhValue __mdh_median(MdhValue list) {
 
     /* For simplicity, just return average - proper median would require sorting */
     return __mdh_average(list);
+}
+
+/* list_min - minimum value in a list */
+MdhValue __mdh_list_min(MdhValue list) {
+    if (list.tag != MDH_TAG_LIST) {
+        return __mdh_make_int(0);
+    }
+    MdhList *l = __mdh_get_list(list);
+    if (l->length == 0) return __mdh_make_int(0);
+
+    MdhValue min_val = l->items[0];
+    for (int64_t i = 1; i < l->length; i++) {
+        if (__mdh_lt(l->items[i], min_val)) {
+            min_val = l->items[i];
+        }
+    }
+    return min_val;
+}
+
+/* list_max - maximum value in a list */
+MdhValue __mdh_list_max(MdhValue list) {
+    if (list.tag != MDH_TAG_LIST) {
+        return __mdh_make_int(0);
+    }
+    MdhList *l = __mdh_get_list(list);
+    if (l->length == 0) return __mdh_make_int(0);
+
+    MdhValue max_val = l->items[0];
+    for (int64_t i = 1; i < l->length; i++) {
+        if (__mdh_gt(l->items[i], max_val)) {
+            max_val = l->items[i];
+        }
+    }
+    return max_val;
+}
+
+/* Comparison function for qsort */
+static int __mdh_compare_values(const void *a, const void *b) {
+    const MdhValue *va = (const MdhValue *)a;
+    const MdhValue *vb = (const MdhValue *)b;
+    if (__mdh_lt(*va, *vb)) return -1;
+    if (__mdh_gt(*va, *vb)) return 1;
+    return 0;
+}
+
+/* list_sort - return a sorted copy of the list */
+MdhValue __mdh_list_sort(MdhValue list) {
+    if (list.tag != MDH_TAG_LIST) {
+        return list;
+    }
+    MdhList *l = __mdh_get_list(list);
+    if (l->length == 0) return list;
+
+    /* Create a copy of the list */
+    MdhList *result = (MdhList *)GC_malloc(sizeof(MdhList));
+    result->capacity = l->length;
+    result->length = l->length;
+    result->items = (MdhValue *)GC_malloc(sizeof(MdhValue) * l->length);
+    for (int64_t i = 0; i < l->length; i++) {
+        result->items[i] = l->items[i];
+    }
+
+    /* Sort using qsort */
+    qsort(result->items, result->length, sizeof(MdhValue), __mdh_compare_values);
+
+    return (MdhValue){ .tag = MDH_TAG_LIST, .data = (int64_t)(intptr_t)result };
+}
+
+/* list_uniq - return a list with duplicates removed (preserving order) */
+MdhValue __mdh_list_uniq(MdhValue list) {
+    if (list.tag != MDH_TAG_LIST) {
+        return list;
+    }
+    MdhList *l = __mdh_get_list(list);
+    if (l->length == 0) return list;
+
+    /* Create new list */
+    MdhList *result = (MdhList *)GC_malloc(sizeof(MdhList));
+    result->capacity = l->length;
+    result->length = 0;
+    result->items = (MdhValue *)GC_malloc(sizeof(MdhValue) * l->length);
+
+    /* Add each element only if not already in result */
+    for (int64_t i = 0; i < l->length; i++) {
+        bool found = false;
+        for (int64_t j = 0; j < result->length; j++) {
+            if (__mdh_eq(l->items[i], result->items[j])) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            result->items[result->length++] = l->items[i];
+        }
+    }
+
+    return (MdhValue){ .tag = MDH_TAG_LIST, .data = (int64_t)(intptr_t)result };
+}
+
+/* list_slice - return a slice of the list [start, end) */
+MdhValue __mdh_list_slice(MdhValue list, int64_t start, int64_t end) {
+    if (list.tag != MDH_TAG_LIST) {
+        return list;
+    }
+    MdhList *l = __mdh_get_list(list);
+
+    /* Handle negative indices */
+    if (start < 0) start = l->length + start;
+    if (end < 0) end = l->length + end;
+    if (start < 0) start = 0;
+    if (end > l->length) end = l->length;
+    if (start >= end || start >= l->length) {
+        /* Return empty list */
+        MdhList *result = (MdhList *)GC_malloc(sizeof(MdhList));
+        result->capacity = 0;
+        result->length = 0;
+        result->items = NULL;
+        return (MdhValue){ .tag = MDH_TAG_LIST, .data = (int64_t)(intptr_t)result };
+    }
+
+    int64_t new_len = end - start;
+    MdhList *result = (MdhList *)GC_malloc(sizeof(MdhList));
+    result->capacity = new_len;
+    result->length = new_len;
+    result->items = (MdhValue *)GC_malloc(sizeof(MdhValue) * new_len);
+    for (int64_t i = 0; i < new_len; i++) {
+        result->items[i] = l->items[start + i];
+    }
+
+    return (MdhValue){ .tag = MDH_TAG_LIST, .data = (int64_t)(intptr_t)result };
 }
 
 MdhValue __mdh_is_space(MdhValue str) {
