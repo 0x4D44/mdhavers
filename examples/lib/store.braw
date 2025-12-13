@@ -180,8 +180,9 @@ kin _CombinedReducer {
 }
 
 dae combine_reducers(reducers) {
-    ken combined = _CombinedReducer(reducers)
-    gie |state, action| combined.call(state, action)
+    # Return the combined reducer object directly
+    # Callers should use .call(state, action) method
+    gie _CombinedReducer(reducers)
 }
 
 # ===============================================================
@@ -226,8 +227,9 @@ kin _ValidatorMiddleware {
 
 # Validator middleware - validates actions
 dae make_validator_middleware(validators) {
-    ken vm = _ValidatorMiddleware(validators)
-    gie |store, action| vm.call(store, action)
+    # Return the validator object directly
+    # Callers should use .call(store, action) method
+    gie _ValidatorMiddleware(validators)
 }
 
 # ===============================================================
@@ -254,8 +256,9 @@ kin _CachedSelector {
 }
 
 dae create_selector(selector_fn) {
-    ken cached = _CachedSelector(selector_fn)
-    gie |state| cached.call(state)
+    # Return the cached selector object directly
+    # Callers should use .call(state) method
+    gie _CachedSelector(selector_fn)
 }
 
 # ===============================================================
