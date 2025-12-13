@@ -120,6 +120,16 @@ struct LibcFunctions<'ctx> {
     speir: FunctionValue<'ctx>,
     // Generic print function for complex types
     blether: FunctionValue<'ctx>,
+    // List operations
+    list_push: FunctionValue<'ctx>,
+    list_contains: FunctionValue<'ctx>,
+    list_index_of: FunctionValue<'ctx>,
+    contains: FunctionValue<'ctx>,
+    list_min: FunctionValue<'ctx>,
+    list_max: FunctionValue<'ctx>,
+    list_sort: FunctionValue<'ctx>,
+    list_uniq: FunctionValue<'ctx>,
+    list_slice: FunctionValue<'ctx>,
 }
 
 /// Inferred type for optimization
@@ -629,6 +639,62 @@ impl<'ctx> CodeGen<'ctx> {
         let blether_type = void_type.fn_type(&[types.value_type.into()], false);
         let blether = module.add_function("__mdh_blether", blether_type, Some(Linkage::External));
 
+        // __mdh_list_push(list, value) -> void (append value to list)
+        let list_push_type =
+            void_type.fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let list_push =
+            module.add_function("__mdh_list_push", list_push_type, Some(Linkage::External));
+
+        // __mdh_list_contains(list, elem) -> MdhValue (bool)
+        let list_contains_type =
+            types.value_type.fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let list_contains =
+            module.add_function("__mdh_list_contains", list_contains_type, Some(Linkage::External));
+
+        // __mdh_list_index_of(list, elem) -> MdhValue (int)
+        let list_index_of_type =
+            types.value_type.fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let list_index_of =
+            module.add_function("__mdh_list_index_of", list_index_of_type, Some(Linkage::External));
+
+        // __mdh_contains(container, elem) -> MdhValue (bool) - works on strings and lists
+        let contains_type =
+            types.value_type.fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let contains =
+            module.add_function("__mdh_contains", contains_type, Some(Linkage::External));
+
+        // __mdh_list_min(list) -> MdhValue - minimum value in list
+        let list_min_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let list_min =
+            module.add_function("__mdh_list_min", list_min_type, Some(Linkage::External));
+
+        // __mdh_list_max(list) -> MdhValue - maximum value in list
+        let list_max_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let list_max =
+            module.add_function("__mdh_list_max", list_max_type, Some(Linkage::External));
+
+        // __mdh_list_sort(list) -> MdhValue - return sorted copy
+        let list_sort_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let list_sort =
+            module.add_function("__mdh_list_sort", list_sort_type, Some(Linkage::External));
+
+        // __mdh_list_uniq(list) -> MdhValue - return list with duplicates removed
+        let list_uniq_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let list_uniq =
+            module.add_function("__mdh_list_uniq", list_uniq_type, Some(Linkage::External));
+
+        // __mdh_list_slice(list, start, end) -> MdhValue - return slice [start, end)
+        let list_slice_type = types.value_type.fn_type(
+            &[
+                types.value_type.into(),
+                i64_type.into(),
+                i64_type.into(),
+            ],
+            false,
+        );
+        let list_slice =
+            module.add_function("__mdh_list_slice", list_slice_type, Some(Linkage::External));
+
         LibcFunctions {
             printf,
             malloc,
@@ -691,6 +757,15 @@ impl<'ctx> CodeGen<'ctx> {
             bit_xor,
             speir,
             blether,
+            list_push,
+            list_contains,
+            list_index_of,
+            contains,
+            list_min,
+            list_max,
+            list_sort,
+            list_uniq,
+            list_slice,
         }
     }
 
@@ -3699,848 +3774,109 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(phi.as_basic_value())
     }
 
+    /// Push element to list using runtime function
+    /// MdhList struct layout: { MdhValue *items; int64_t length; int64_t capacity; }
     fn inline_shove(
         &mut self,
         list_val: BasicValueEnum<'ctx>,
         elem_val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        // List layout: [capacity: i64][length: i64][elements...]
-        let tag = self.extract_tag(list_val)?;
-        let data = self.extract_data(list_val)?;
-
-        let function = self.current_function.unwrap();
-        let shove_list = self.context.append_basic_block(function, "shove_list");
-        let shove_default = self.context.append_basic_block(function, "shove_default");
-        let shove_merge = self.context.append_basic_block(function, "shove_merge");
-
-        // Check if it's a list (tag == 5)
-        let list_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::List.as_u8() as u64, false);
-        let is_list = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, tag, list_tag, "is_list")
-            .unwrap();
+        // Call runtime function __mdh_list_push(list, value) which handles growth
         self.builder
-            .build_conditional_branch(is_list, shove_list, shove_default)
-            .unwrap();
-
-        // Handle list case with capacity-based growth
-        self.builder.position_at_end(shove_list);
-
-        // Convert data to pointer
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let header_ptr = self
-            .builder
-            .build_int_to_ptr(data, i64_ptr_type, "header_ptr")
-            .unwrap();
-
-        // Load capacity from offset 0
-        let old_capacity = self
-            .builder
-            .build_load(self.types.i64_type, header_ptr, "old_capacity")
-            .unwrap()
-            .into_int_value();
-
-        // Get length pointer at offset 1
-        let one = self.types.i64_type.const_int(1, false);
-        let len_ptr = unsafe {
-            self.builder
-                .build_gep(self.types.i64_type, header_ptr, &[one], "len_ptr")
-                .unwrap()
-        };
-
-        // Load current length
-        let old_len = self
-            .builder
-            .build_load(self.types.i64_type, len_ptr, "old_len")
-            .unwrap()
-            .into_int_value();
-
-        // Calculate new length
-        let new_len = self.builder.build_int_add(old_len, one, "new_len").unwrap();
-
-        // Check if we need to grow: new_len > capacity?
-        let needs_grow = self
-            .builder
-            .build_int_compare(IntPredicate::UGT, new_len, old_capacity, "needs_grow")
-            .unwrap();
-
-        // Create blocks for grow vs no-grow paths
-        let grow_block = self.context.append_basic_block(function, "shove_grow");
-        let no_grow_block = self.context.append_basic_block(function, "shove_no_grow");
-        let store_block = self.context.append_basic_block(function, "shove_store");
-
-        self.builder
-            .build_conditional_branch(needs_grow, grow_block, no_grow_block)
-            .unwrap();
-
-        // GROW PATH: double capacity and realloc
-        self.builder.position_at_end(grow_block);
-        let two = self.types.i64_type.const_int(2, false);
-        let doubled_capacity = self
-            .builder
-            .build_int_mul(old_capacity, two, "doubled_capacity")
-            .unwrap();
-        // Ensure new_capacity is at least 8 (in case old_capacity was 0 or very small)
-        let eight = self.types.i64_type.const_int(8, false);
-        let cap_ok = self
-            .builder
-            .build_int_compare(IntPredicate::UGE, doubled_capacity, eight, "cap_ok")
-            .unwrap();
-        let new_capacity = self
-            .builder
-            .build_select(cap_ok, doubled_capacity, eight, "safe_cap")
-            .unwrap()
-            .into_int_value();
-
-        // Calculate new allocation size: 16 (header) + new_capacity * 16 (elements)
-        let header_size = self.types.i64_type.const_int(16, false);
-        let value_size = self.types.i64_type.const_int(16, false);
-        let elements_size = self
-            .builder
-            .build_int_mul(new_capacity, value_size, "elements_size")
-            .unwrap();
-        let total_size = self
-            .builder
-            .build_int_add(header_size, elements_size, "total_size")
-            .unwrap();
-
-        // Realloc
-        let old_ptr_i8 = self
-            .builder
-            .build_pointer_cast(header_ptr, i8_ptr_type, "old_ptr_i8")
-            .unwrap();
-        let new_ptr = self
-            .builder
             .build_call(
-                self.libc.realloc,
-                &[old_ptr_i8.into(), total_size.into()],
-                "new_list_alloc",
+                self.libc.list_push,
+                &[list_val.into(), elem_val.into()],
+                "",
             )
-            .unwrap()
-            .try_as_basic_value()
-            .left()
-            .unwrap()
-            .into_pointer_value();
-        let new_header_ptr = self
-            .builder
-            .build_pointer_cast(new_ptr, i64_ptr_type, "new_header_ptr")
-            .unwrap();
+            .map_err(|e| HaversError::CompileError(format!("Failed to call list_push: {}", e)))?;
 
-        // Store new capacity
-        self.builder
-            .build_store(new_header_ptr, new_capacity)
-            .unwrap();
-        self.builder
-            .build_unconditional_branch(store_block)
-            .unwrap();
-        let grow_end_block = self.builder.get_insert_block().unwrap();
-
-        // NO-GROW PATH: just use existing buffer
-        self.builder.position_at_end(no_grow_block);
-        self.builder
-            .build_unconditional_branch(store_block)
-            .unwrap();
-        let no_grow_end_block = self.builder.get_insert_block().unwrap();
-
-        // STORE BLOCK: use PHI to get final header pointer, then store element
-        self.builder.position_at_end(store_block);
-        let final_header_ptr = self
-            .builder
-            .build_phi(i64_ptr_type, "final_header_ptr")
-            .unwrap();
-        final_header_ptr.add_incoming(&[
-            (&new_header_ptr, grow_end_block),
-            (&header_ptr, no_grow_end_block),
-        ]);
-        let final_header_ptr = final_header_ptr.as_basic_value().into_pointer_value();
-
-        // Get length pointer in final buffer (at offset 1)
-        let final_len_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.i64_type,
-                    final_header_ptr,
-                    &[one],
-                    "final_len_ptr",
-                )
-                .unwrap()
-        };
-
-        // Store new length
-        self.builder.build_store(final_len_ptr, new_len).unwrap();
-
-        // Get pointer to elements array (at offset 2)
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
-        let elements_base = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.i64_type,
-                    final_header_ptr,
-                    &[two],
-                    "elements_base",
-                )
-                .unwrap()
-        };
-        let elements_ptr = self
-            .builder
-            .build_pointer_cast(elements_base, value_ptr_type, "elements_ptr")
-            .unwrap();
-
-        // Store new element at index old_len
-        let new_elem_ptr = unsafe {
-            self.builder
-                .build_gep(self.types.value_type, elements_ptr, &[old_len], "new_elem")
-                .unwrap()
-        };
-        self.builder.build_store(new_elem_ptr, elem_val).unwrap();
-
-        // Create result list value
-        let list_result = self.make_list(
-            self.builder
-                .build_pointer_cast(final_header_ptr, i8_ptr_type, "list_ptr")
-                .unwrap(),
-        )?;
-        self.builder
-            .build_unconditional_branch(shove_merge)
-            .unwrap();
-        let list_block = self.builder.get_insert_block().unwrap();
-
-        // Default case - return nil for non-lists
-        self.builder.position_at_end(shove_default);
-        let default_result = self.make_nil();
-        self.builder
-            .build_unconditional_branch(shove_merge)
-            .unwrap();
-        let default_block = self.builder.get_insert_block().unwrap();
-
-        // Merge
-        self.builder.position_at_end(shove_merge);
-        let phi = self
-            .builder
-            .build_phi(self.types.value_type, "shove_result")
-            .unwrap();
-        phi.add_incoming(&[(&list_result, list_block), (&default_result, default_block)]);
-
-        Ok(phi.as_basic_value())
+        // Return the original list (mutation in place)
+        Ok(list_val)
     }
 
     /// Fast path for shove when we know the argument is already a list
-    /// Skips the tag check and goes directly to list push logic
+    /// Uses runtime function for proper MdhList handling
     fn inline_shove_fast(
         &mut self,
         list_val: BasicValueEnum<'ctx>,
         elem_val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        // List layout: [capacity: i64][length: i64][elements...]
-        let data = self.extract_data(list_val)?;
-
-        let function = self.current_function.unwrap();
-
-        // Convert data to pointer
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let header_ptr = self
-            .builder
-            .build_int_to_ptr(data, i64_ptr_type, "header_ptr_fast")
-            .unwrap();
-
-        // Load capacity from offset 0
-        let old_capacity = self
-            .builder
-            .build_load(self.types.i64_type, header_ptr, "old_capacity_fast")
-            .unwrap()
-            .into_int_value();
-
-        // Get length pointer at offset 1
-        let one = self.types.i64_type.const_int(1, false);
-        let len_ptr = unsafe {
-            self.builder
-                .build_gep(self.types.i64_type, header_ptr, &[one], "len_ptr_fast")
-                .unwrap()
-        };
-
-        // Load current length
-        let old_len = self
-            .builder
-            .build_load(self.types.i64_type, len_ptr, "old_len_fast")
-            .unwrap()
-            .into_int_value();
-
-        // Calculate new length
-        let new_len = self
-            .builder
-            .build_int_add(old_len, one, "new_len_fast")
-            .unwrap();
-
-        // Check if we need to grow: new_len > capacity?
-        let needs_grow = self
-            .builder
-            .build_int_compare(IntPredicate::UGT, new_len, old_capacity, "needs_grow_fast")
-            .unwrap();
-
-        // Create blocks for grow vs no-grow paths
-        let grow_block = self.context.append_basic_block(function, "shove_grow_fast");
-        let no_grow_block = self
-            .context
-            .append_basic_block(function, "shove_no_grow_fast");
-        let merge_block = self
-            .context
-            .append_basic_block(function, "shove_merge_fast");
-
-        self.builder
-            .build_conditional_branch(needs_grow, grow_block, no_grow_block)
-            .unwrap();
-
-        // GROW PATH: double capacity and realloc
-        self.builder.position_at_end(grow_block);
-        let two = self.types.i64_type.const_int(2, false);
-        let doubled_capacity = self
-            .builder
-            .build_int_mul(old_capacity, two, "doubled_cap_fast")
-            .unwrap();
-        // Ensure new_capacity is at least 32 to reduce future reallocations
-        let min_cap = self.types.i64_type.const_int(32, false);
-        let cap_ok = self
-            .builder
-            .build_int_compare(IntPredicate::UGE, doubled_capacity, min_cap, "cap_ok_fast")
-            .unwrap();
-        let new_capacity = self
-            .builder
-            .build_select(cap_ok, doubled_capacity, min_cap, "safe_cap_fast")
-            .unwrap()
-            .into_int_value();
-
-        // Calculate new allocation size: 16 (header) + new_capacity * 16 (elements)
-        let header_size = self.types.i64_type.const_int(16, false);
-        let value_size = self.types.i64_type.const_int(16, false);
-        let elements_size = self
-            .builder
-            .build_int_mul(new_capacity, value_size, "elements_size_fast")
-            .unwrap();
-        let total_size = self
-            .builder
-            .build_int_add(header_size, elements_size, "total_size_fast")
-            .unwrap();
-
-        // Realloc
-        let old_ptr_i8 = self
-            .builder
-            .build_pointer_cast(header_ptr, i8_ptr_type, "old_ptr_i8_fast")
-            .unwrap();
-        let new_ptr = self
-            .builder
-            .build_call(
-                self.libc.realloc,
-                &[old_ptr_i8.into(), total_size.into()],
-                "new_list_alloc_fast",
-            )
-            .unwrap()
-            .try_as_basic_value()
-            .left()
-            .unwrap()
-            .into_pointer_value();
-        let new_header_ptr = self
-            .builder
-            .build_pointer_cast(new_ptr, i64_ptr_type, "new_header_ptr_fast")
-            .unwrap();
-
-        // Store new capacity
-        self.builder
-            .build_store(new_header_ptr, new_capacity)
-            .unwrap();
-
-        // Store new length (in grown buffer)
-        let grow_len_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.i64_type,
-                    new_header_ptr,
-                    &[one],
-                    "grow_len_ptr_fast",
-                )
-                .unwrap()
-        };
-        self.builder.build_store(grow_len_ptr, new_len).unwrap();
-
-        // Store element (in grown buffer)
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
-        let grow_elements_base = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.i64_type,
-                    new_header_ptr,
-                    &[two],
-                    "grow_elements_base_fast",
-                )
-                .unwrap()
-        };
-        let grow_elements_ptr = self
-            .builder
-            .build_pointer_cast(grow_elements_base, value_ptr_type, "grow_elements_ptr_fast")
-            .unwrap();
-        let grow_elem_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.value_type,
-                    grow_elements_ptr,
-                    &[old_len],
-                    "grow_new_elem_fast",
-                )
-                .unwrap()
-        };
-        self.builder.build_store(grow_elem_ptr, elem_val).unwrap();
-
-        // Create new MdhValue for grow path (pointer changed)
-        let grow_result = self.make_list(
-            self.builder
-                .build_pointer_cast(new_header_ptr, i8_ptr_type, "grow_list_ptr_fast")
-                .unwrap(),
-        )?;
-        self.builder
-            .build_unconditional_branch(merge_block)
-            .unwrap();
-        let grow_end_block = self.builder.get_insert_block().unwrap();
-
-        // NO-GROW PATH: use existing buffer, no need to create new MdhValue
-        self.builder.position_at_end(no_grow_block);
-
-        // Store new length (in existing buffer)
-        self.builder.build_store(len_ptr, new_len).unwrap();
-
-        // Store element (in existing buffer)
-        let elements_base = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.i64_type,
-                    header_ptr,
-                    &[two],
-                    "elements_base_fast",
-                )
-                .unwrap()
-        };
-        let elements_ptr = self
-            .builder
-            .build_pointer_cast(elements_base, value_ptr_type, "elements_ptr_fast")
-            .unwrap();
-        let new_elem_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.value_type,
-                    elements_ptr,
-                    &[old_len],
-                    "new_elem_fast",
-                )
-                .unwrap()
-        };
-        self.builder.build_store(new_elem_ptr, elem_val).unwrap();
-
-        // Return original MdhValue (pointer unchanged)
-        self.builder
-            .build_unconditional_branch(merge_block)
-            .unwrap();
-        let no_grow_end_block = self.builder.get_insert_block().unwrap();
-
-        // MERGE: PHI to select result
-        self.builder.position_at_end(merge_block);
-        let result_phi = self
-            .builder
-            .build_phi(self.types.value_type, "shove_result_fast")
-            .unwrap();
-        result_phi.add_incoming(&[
-            (&grow_result, grow_end_block),
-            (&list_val, no_grow_end_block), // Return original in no-grow case
-        ]);
-
-        Ok(result_phi.as_basic_value())
+        // Just use the runtime function - it's already efficient
+        self.inline_shove(list_val, elem_val)
     }
 
-    /// Ultra-optimized shove: Only updates the variable MdhValue when realloc happens
-    /// In the no-grow case (99%+ of calls), we just store length + element - no MdhValue work
+    /// Simplified shove: Uses runtime function for proper MdhList handling
+    /// Ignores var_ptr since the runtime function mutates the list in place
     fn inline_shove_fire_and_forget(
         &mut self,
         shadow: PointerValue<'ctx>,
         elem_val: BasicValueEnum<'ctx>,
-        var_ptr: Option<PointerValue<'ctx>>,
+        _var_ptr: Option<PointerValue<'ctx>>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        // List layout: [capacity: i64][length: i64][elements...]
-        let data = self
+        // Load the list MdhValue from shadow and call runtime push
+        let list_data = self
             .builder
-            .build_load(self.types.i64_type, shadow, "list_ptr_upd")
-            .unwrap()
+            .build_load(self.types.i64_type, shadow, "list_ptr")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?
             .into_int_value();
 
-        let function = self.current_function.unwrap();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let header_ptr = self
-            .builder
-            .build_int_to_ptr(data, i64_ptr_type, "hdr_upd")
-            .unwrap();
-
-        // Load capacity and length
-        let old_capacity = self
-            .builder
-            .build_load(self.types.i64_type, header_ptr, "cap_upd")
-            .unwrap()
-            .into_int_value();
-        let one = self.types.i64_type.const_int(1, false);
-        let len_ptr = unsafe {
-            self.builder
-                .build_gep(self.types.i64_type, header_ptr, &[one], "len_ptr_upd")
-                .unwrap()
-        };
-        let old_len = self
-            .builder
-            .build_load(self.types.i64_type, len_ptr, "len_upd")
-            .unwrap()
-            .into_int_value();
-        let new_len = self
-            .builder
-            .build_int_add(old_len, one, "new_len_upd")
-            .unwrap();
-
-        // Check if grow needed
-        let needs_grow = self
-            .builder
-            .build_int_compare(IntPredicate::UGT, new_len, old_capacity, "grow_upd")
-            .unwrap();
-        let grow_block = self.context.append_basic_block(function, "shove_grow_upd");
-        let no_grow_block = self
-            .context
-            .append_basic_block(function, "shove_no_grow_upd");
-        let merge_block = self.context.append_basic_block(function, "shove_merge_upd");
-        self.builder
-            .build_conditional_branch(needs_grow, grow_block, no_grow_block)
-            .unwrap();
-
-        // GROW PATH
-        self.builder.position_at_end(grow_block);
-        let two = self.types.i64_type.const_int(2, false);
-        let doubled = self
-            .builder
-            .build_int_mul(old_capacity, two, "dbl_upd")
-            .unwrap();
-        let min_cap = self.types.i64_type.const_int(64, false);
-        let cap_ok = self
-            .builder
-            .build_int_compare(IntPredicate::UGE, doubled, min_cap, "cok_upd")
-            .unwrap();
-        let new_cap = self
-            .builder
-            .build_select(cap_ok, doubled, min_cap, "ncap_upd")
-            .unwrap()
-            .into_int_value();
-        let header_size = self.types.i64_type.const_int(16, false);
-        let value_size = self.types.i64_type.const_int(16, false);
-        let elem_sz = self
-            .builder
-            .build_int_mul(new_cap, value_size, "esz_upd")
-            .unwrap();
-        let total = self
-            .builder
-            .build_int_add(header_size, elem_sz, "tot_upd")
-            .unwrap();
-        let old_i8 = self
-            .builder
-            .build_pointer_cast(header_ptr, i8_ptr_type, "oi8_upd")
-            .unwrap();
-        let new_ptr = self
-            .builder
-            .build_call(
-                self.libc.realloc,
-                &[old_i8.into(), total.into()],
-                "realloc_upd",
-            )
-            .unwrap()
-            .try_as_basic_value()
-            .left()
-            .unwrap()
-            .into_pointer_value();
-        let new_hdr = self
-            .builder
-            .build_pointer_cast(new_ptr, i64_ptr_type, "nhdr_upd")
-            .unwrap();
-        self.builder.build_store(new_hdr, new_cap).unwrap();
-        let new_i64 = self
-            .builder
-            .build_ptr_to_int(new_ptr, self.types.i64_type, "ni64_upd")
-            .unwrap();
-        self.builder.build_store(shadow, new_i64).unwrap();
-        let g_len = unsafe {
-            self.builder
-                .build_gep(self.types.i64_type, new_hdr, &[one], "gl_upd")
-                .unwrap()
-        };
-        self.builder.build_store(g_len, new_len).unwrap();
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
-        let g_base = unsafe {
-            self.builder
-                .build_gep(self.types.i64_type, new_hdr, &[two], "gb_upd")
-                .unwrap()
-        };
-        let g_elems = self
-            .builder
-            .build_pointer_cast(g_base, value_ptr_type, "ge_upd")
-            .unwrap();
-        let g_elem = unsafe {
-            self.builder
-                .build_gep(self.types.value_type, g_elems, &[old_len], "gep_upd")
-                .unwrap()
-        };
-        self.builder.build_store(g_elem, elem_val).unwrap();
-        let tag = self
+        // Construct a list MdhValue
+        let list_tag = self
             .types
             .i8_type
-            .const_int(crate::llvm::codegen::ValueTag::List.as_u8() as u64, false);
+            .const_int(ValueTag::List.as_u8() as u64, false);
         let undef = self.types.value_type.get_undef();
-        let gv1 = self
+        let v1 = self
             .builder
-            .build_insert_value(undef, tag, 0, "gv1_upd")
-            .unwrap();
-        let grow_result = self
+            .build_insert_value(undef, list_tag, 0, "v1")
+            .map_err(|e| HaversError::CompileError(format!("Failed to insert: {}", e)))?;
+        let list_val = self
             .builder
-            .build_insert_value(gv1, new_i64, 1, "gv2_upd")
-            .unwrap()
+            .build_insert_value(v1, list_data, 1, "list_val")
+            .map_err(|e| HaversError::CompileError(format!("Failed to insert: {}", e)))?
             .into_struct_value();
-        if let Some(vp) = var_ptr {
-            self.builder.build_store(vp, grow_result).unwrap();
-        }
-        self.builder
-            .build_unconditional_branch(merge_block)
-            .unwrap();
 
-        // NO-GROW PATH - fast path: just store length + element, no MdhValue work
-        self.builder.position_at_end(no_grow_block);
-        self.builder.build_store(len_ptr, new_len).unwrap();
-        let n_base = unsafe {
-            self.builder
-                .build_gep(self.types.i64_type, header_ptr, &[two], "nb_upd")
-                .unwrap()
-        };
-        let n_elems = self
-            .builder
-            .build_pointer_cast(n_base, value_ptr_type, "ne_upd")
-            .unwrap();
-        let n_elem = unsafe {
-            self.builder
-                .build_gep(self.types.value_type, n_elems, &[old_len], "nep_upd")
-                .unwrap()
-        };
-        self.builder.build_store(n_elem, elem_val).unwrap();
-        // Skip MdhValue creation - variable already has correct pointer
+        // Call runtime push
         self.builder
-            .build_unconditional_branch(merge_block)
-            .unwrap();
+            .build_call(
+                self.libc.list_push,
+                &[list_val.into(), elem_val.into()],
+                "",
+            )
+            .map_err(|e| HaversError::CompileError(format!("Failed to call list_push: {}", e)))?;
 
-        // MERGE - return nil since shove result is rarely used
-        self.builder.position_at_end(merge_block);
         Ok(self.make_nil())
     }
 
-    /// Ultra-fast shove for constant boolean values - stores only 8-byte data field
-    /// This is the fastest possible shove path for homogeneous boolean lists
+    /// Simplified shove for constant boolean values - uses runtime function
     fn inline_shove_bool_fast(
         &mut self,
         shadow: PointerValue<'ctx>,
         bool_val: bool,
         var_ptr: Option<PointerValue<'ctx>>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        // List layout: [capacity: i64][length: i64][elements...]
-        let data = self
-            .builder
-            .build_load(self.types.i64_type, shadow, "list_ptr_bf")
-            .unwrap()
-            .into_int_value();
-
-        let function = self.current_function.unwrap();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let header_ptr = self
-            .builder
-            .build_int_to_ptr(data, i64_ptr_type, "hdr_bf")
-            .unwrap();
-
-        // Load capacity and length
-        let old_capacity = self
-            .builder
-            .build_load(self.types.i64_type, header_ptr, "cap_bf")
-            .unwrap()
-            .into_int_value();
-        let one = self.types.i64_type.const_int(1, false);
-        let two = self.types.i64_type.const_int(2, false);
-        let len_ptr = unsafe {
-            self.builder
-                .build_gep(self.types.i64_type, header_ptr, &[one], "len_ptr_bf")
-                .unwrap()
-        };
-        let old_len = self
-            .builder
-            .build_load(self.types.i64_type, len_ptr, "len_bf")
-            .unwrap()
-            .into_int_value();
-        let new_len = self
-            .builder
-            .build_int_add(old_len, one, "new_len_bf")
-            .unwrap();
-
-        // Check if grow needed
-        let needs_grow = self
-            .builder
-            .build_int_compare(IntPredicate::UGT, new_len, old_capacity, "grow_bf")
-            .unwrap();
-        let grow_block = self.context.append_basic_block(function, "shove_grow_bf");
-        let no_grow_block = self
-            .context
-            .append_basic_block(function, "shove_no_grow_bf");
-        let merge_block = self.context.append_basic_block(function, "shove_merge_bf");
-        self.builder
-            .build_conditional_branch(needs_grow, grow_block, no_grow_block)
-            .unwrap();
-
-        // Constant for the data value
-        let data_val = self
-            .types
-            .i64_type
-            .const_int(if bool_val { 1 } else { 0 }, false);
+        // Build the bool MdhValue
         let bool_tag = self
             .types
             .i8_type
             .const_int(ValueTag::Bool.as_u8() as u64, false);
-
-        // GROW PATH - need full MdhValue store after realloc
-        self.builder.position_at_end(grow_block);
-        let doubled = self
-            .builder
-            .build_int_mul(old_capacity, two, "dbl_bf")
-            .unwrap();
-        let min_cap = self.types.i64_type.const_int(64, false);
-        let cap_ok = self
-            .builder
-            .build_int_compare(IntPredicate::UGE, doubled, min_cap, "cok_bf")
-            .unwrap();
-        let new_cap = self
-            .builder
-            .build_select(cap_ok, doubled, min_cap, "ncap_bf")
-            .unwrap()
-            .into_int_value();
-        let header_size = self.types.i64_type.const_int(16, false);
-        let value_size = self.types.i64_type.const_int(16, false);
-        let elem_sz = self
-            .builder
-            .build_int_mul(new_cap, value_size, "esz_bf")
-            .unwrap();
-        let total = self
-            .builder
-            .build_int_add(header_size, elem_sz, "tot_bf")
-            .unwrap();
-        let old_i8 = self
-            .builder
-            .build_pointer_cast(header_ptr, i8_ptr_type, "oi8_bf")
-            .unwrap();
-        let new_ptr = self
-            .builder
-            .build_call(
-                self.libc.realloc,
-                &[old_i8.into(), total.into()],
-                "realloc_bf",
-            )
-            .unwrap()
-            .try_as_basic_value()
-            .left()
-            .unwrap()
-            .into_pointer_value();
-        let new_hdr = self
-            .builder
-            .build_pointer_cast(new_ptr, i64_ptr_type, "nhdr_bf")
-            .unwrap();
-        self.builder.build_store(new_hdr, new_cap).unwrap();
-        let new_i64 = self
-            .builder
-            .build_ptr_to_int(new_ptr, self.types.i64_type, "ni64_bf")
-            .unwrap();
-        self.builder.build_store(shadow, new_i64).unwrap();
-        let g_len = unsafe {
-            self.builder
-                .build_gep(self.types.i64_type, new_hdr, &[one], "gl_bf")
-                .unwrap()
-        };
-        self.builder.build_store(g_len, new_len).unwrap();
-        // Store full MdhValue in grow path (tag + data)
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
-        let g_base = unsafe {
-            self.builder
-                .build_gep(self.types.i64_type, new_hdr, &[two], "gb_bf")
-                .unwrap()
-        };
-        let g_elems = self
-            .builder
-            .build_pointer_cast(g_base, value_ptr_type, "ge_bf")
-            .unwrap();
-        let g_elem = unsafe {
-            self.builder
-                .build_gep(self.types.value_type, g_elems, &[old_len], "gep_bf")
-                .unwrap()
-        };
-        // Build constant bool MdhValue
-        let elem_val = self
+        let data_val = self
             .types
-            .value_type
-            .const_named_struct(&[bool_tag.into(), data_val.into()]);
-        self.builder.build_store(g_elem, elem_val).unwrap();
-        let list_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::List.as_u8() as u64, false);
+            .i64_type
+            .const_int(if bool_val { 1 } else { 0 }, false);
         let undef = self.types.value_type.get_undef();
-        let gv1 = self
+        let v1 = self
             .builder
-            .build_insert_value(undef, list_tag, 0, "gv1_bf")
-            .unwrap();
-        let grow_result = self
+            .build_insert_value(undef, bool_tag, 0, "v1")
+            .map_err(|e| HaversError::CompileError(format!("Failed to insert: {}", e)))?;
+        let elem_val = self
             .builder
-            .build_insert_value(gv1, new_i64, 1, "gv2_bf")
-            .unwrap()
+            .build_insert_value(v1, data_val, 1, "elem_val")
+            .map_err(|e| HaversError::CompileError(format!("Failed to insert: {}", e)))?
             .into_struct_value();
-        if let Some(vp) = var_ptr {
-            self.builder.build_store(vp, grow_result).unwrap();
-        }
-        self.builder
-            .build_unconditional_branch(merge_block)
-            .unwrap();
 
-        // NO-GROW PATH - ultra-fast: store only length + data field (8 bytes instead of 16)
-        self.builder.position_at_end(no_grow_block);
-        self.builder.build_store(len_ptr, new_len).unwrap();
-        // Element layout: {i8 tag, i64 data} - for existing elements, tag is already set
-        // But for NEW elements, we need to set the tag too. So still use full struct here.
-        // However, we can optimize by using a constant struct store
-        let n_base = unsafe {
-            self.builder
-                .build_gep(self.types.i64_type, header_ptr, &[two], "nb_bf")
-                .unwrap()
-        };
-        let n_elems = self
-            .builder
-            .build_pointer_cast(n_base, value_ptr_type, "ne_bf")
-            .unwrap();
-        let n_elem = unsafe {
-            self.builder
-                .build_gep(self.types.value_type, n_elems, &[old_len], "nep_bf")
-                .unwrap()
-        };
-        // Store constant bool MdhValue
-        self.builder.build_store(n_elem, elem_val).unwrap();
-        self.builder
-            .build_unconditional_branch(merge_block)
-            .unwrap();
-
-        // MERGE - return nil since shove result is rarely used
-        self.builder.position_at_end(merge_block);
-        Ok(self.make_nil())
+        // Use the generic fire_and_forget path
+        self.inline_shove_fire_and_forget(shadow, elem_val.into(), var_ptr)
     }
 
     // ========== Phase 1: Math Functions ==========
@@ -4745,11 +4081,38 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let tag = self.extract_tag(val)?;
         let data = self.extract_data(val)?;
+
+        // Check if value is float (tag == ValueTag::Float)
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
+        let is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, float_tag, "is_float")
+            .map_err(|e| HaversError::CompileError(format!("Failed to compare: {}", e)))?;
+
+        // Convert to float: if Float, bitcast; if Int, sitofp
         let float_val = self
             .builder
-            .build_bitcast(data, self.types.f64_type, "as_float")
-            .map_err(|e| HaversError::CompileError(format!("Failed to bitcast: {}", e)))?
+            .build_select(
+                is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(data, self.types.f64_type, "as_float")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(data, self.types.f64_type, "int_to_float")
+                        .unwrap(),
+                ),
+                "float_val",
+            )
+            .map_err(|e| HaversError::CompileError(format!("Failed to select: {}", e)))?
             .into_float_value();
 
         let sqrt_fn = self.get_or_create_intrinsic(
@@ -4772,39 +4135,38 @@ impl<'ctx> CodeGen<'ctx> {
     // ========== Phase 2: List Operations ==========
 
     /// Helper to get element pointer at index in a list
+    /// Helper to get pointer to list element at given index
+    /// MdhList struct layout: { MdhValue *items; int64_t length; int64_t capacity; }
     fn get_list_element_ptr(
         &self,
         list_data: IntValue<'ctx>,
         index: IntValue<'ctx>,
     ) -> Result<PointerValue<'ctx>, HaversError> {
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let raw_ptr = self
-            .builder
-            .build_int_to_ptr(list_data, i8_ptr_type, "list_ptr")
-            .map_err(|e| HaversError::CompileError(format!("Failed to convert: {}", e)))?;
+        // Convert data to pointer to MdhList struct
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let len_ptr = self
+        let list_ptr = self
             .builder
-            .build_pointer_cast(raw_ptr, i64_ptr_type, "len_ptr")
-            .map_err(|e| HaversError::CompileError(format!("Failed to cast: {}", e)))?;
+            .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr")
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert: {}", e)))?;
+
+        // Load items pointer from offset 0
+        let items_ptr_as_i64 = self
+            .builder
+            .build_load(self.types.i64_type, list_ptr, "items_ptr_i64")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load items ptr: {}", e)))?
+            .into_int_value();
+
+        // Convert items pointer to MdhValue pointer
         let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
-        let elements_base = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.i64_type,
-                    len_ptr,
-                    &[self.types.i64_type.const_int(1, false)],
-                    "elements_base",
-                )
-                .map_err(|e| HaversError::CompileError(format!("Failed to compute base: {}", e)))?
-        };
-        let elements_ptr = self
+        let items_ptr = self
             .builder
-            .build_pointer_cast(elements_base, value_ptr_type, "elements_ptr")
-            .map_err(|e| HaversError::CompileError(format!("Failed to cast: {}", e)))?;
+            .build_int_to_ptr(items_ptr_as_i64, value_ptr_type, "items_ptr")
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert items ptr: {}", e)))?;
+
+        // Get pointer to the indexed element
         let elem_ptr = unsafe {
             self.builder
-                .build_gep(self.types.value_type, elements_ptr, &[index], "elem_ptr")
+                .build_gep(self.types.value_type, items_ptr, &[index], "elem_ptr")
                 .map_err(|e| {
                     HaversError::CompileError(format!("Failed to compute element ptr: {}", e))
                 })?
@@ -4813,17 +4175,27 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Helper to get list length
+    /// MdhList struct layout: { MdhValue *items; int64_t length; int64_t capacity; }
     fn get_list_length(&self, list_data: IntValue<'ctx>) -> Result<IntValue<'ctx>, HaversError> {
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let raw_ptr = self
-            .builder
-            .build_int_to_ptr(list_data, i8_ptr_type, "list_ptr")
-            .map_err(|e| HaversError::CompileError(format!("Failed to convert: {}", e)))?;
+        // Convert data to pointer to MdhList struct
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let len_ptr = self
+        let list_ptr = self
             .builder
-            .build_pointer_cast(raw_ptr, i64_ptr_type, "len_ptr")
-            .map_err(|e| HaversError::CompileError(format!("Failed to cast: {}", e)))?;
+            .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr")
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert: {}", e)))?;
+
+        // Length is at offset 1 in MdhList struct
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    list_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
+                .map_err(|e| HaversError::CompileError(format!("Failed to get len ptr: {}", e)))?
+        };
+
         let length = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
@@ -4833,42 +4205,87 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Helper to allocate a new list with given length
+    /// MdhList struct layout: { MdhValue *items; int64_t length; int64_t capacity; }
     fn allocate_list(&self, length: IntValue<'ctx>) -> Result<PointerValue<'ctx>, HaversError> {
-        // Size = 8 (length) + 16 * num_elements (each element is {i8, i64} = 16 bytes with padding)
-        let elem_size = self.types.i64_type.const_int(16, false);
-        let header_size = self.types.i64_type.const_int(16, false);
-        let elems_size = self
-            .builder
-            .build_int_mul(length, elem_size, "elems_size")
-            .map_err(|e| HaversError::CompileError(format!("Failed to multiply: {}", e)))?;
-        let total_size = self
-            .builder
-            .build_int_add(header_size, elems_size, "total_size")
-            .map_err(|e| HaversError::CompileError(format!("Failed to add: {}", e)))?;
+        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
 
-        let ptr = self
+        // Allocate MdhList struct (24 bytes: items pointer + length + capacity)
+        let struct_size = self.types.i64_type.const_int(24, false);
+        let list_ptr = self
             .builder
-            .build_call(self.libc.malloc, &[total_size.into()], "new_list")
-            .map_err(|e| HaversError::CompileError(format!("Failed to malloc: {}", e)))?
+            .build_call(self.libc.malloc, &[struct_size.into()], "list_struct")
+            .map_err(|e| HaversError::CompileError(format!("Failed to malloc struct: {}", e)))?
             .try_as_basic_value()
             .left()
             .unwrap()
             .into_pointer_value();
 
-        // Store the length
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let len_ptr = self
+        // Allocate items array (16 bytes per element)
+        let elem_size = self.types.i64_type.const_int(16, false);
+        let items_size = self
             .builder
-            .build_pointer_cast(ptr, i64_ptr_type, "len_ptr")
+            .build_int_mul(length, elem_size, "items_size")
+            .map_err(|e| HaversError::CompileError(format!("Failed to multiply: {}", e)))?;
+
+        let items_ptr = self
+            .builder
+            .build_call(self.libc.malloc, &[items_size.into()], "items_array")
+            .map_err(|e| HaversError::CompileError(format!("Failed to malloc items: {}", e)))?
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+
+        // Convert list_ptr to i64* for struct field access
+        let list_i64_ptr = self
+            .builder
+            .build_pointer_cast(list_ptr, i64_ptr_type, "list_i64_ptr")
             .map_err(|e| HaversError::CompileError(format!("Failed to cast: {}", e)))?;
+
+        // Store items pointer at offset 0
+        let items_as_i64 = self
+            .builder
+            .build_ptr_to_int(items_ptr, self.types.i64_type, "items_i64")
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert: {}", e)))?;
+        self.builder
+            .build_store(list_i64_ptr, items_as_i64)
+            .map_err(|e| HaversError::CompileError(format!("Failed to store items ptr: {}", e)))?;
+
+        // Store length at offset 1
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    list_i64_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
+                .map_err(|e| HaversError::CompileError(format!("Failed to get len ptr: {}", e)))?
+        };
         self.builder
             .build_store(len_ptr, length)
-            .map_err(|e| HaversError::CompileError(format!("Failed to store: {}", e)))?;
+            .map_err(|e| HaversError::CompileError(format!("Failed to store length: {}", e)))?;
 
-        Ok(ptr)
+        // Store capacity at offset 2 (same as length for new list)
+        let cap_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    list_i64_ptr,
+                    &[self.types.i64_type.const_int(2, false)],
+                    "cap_ptr",
+                )
+                .map_err(|e| HaversError::CompileError(format!("Failed to get cap ptr: {}", e)))?
+        };
+        self.builder
+            .build_store(cap_ptr, length)
+            .map_err(|e| HaversError::CompileError(format!("Failed to store capacity: {}", e)))?;
+
+        Ok(list_ptr)
     }
 
     /// yank(list) - pop last element from list
+    /// MdhList struct layout: { MdhValue *items; int64_t length; int64_t capacity; }
     fn inline_yank(
         &mut self,
         val: BasicValueEnum<'ctx>,
@@ -4888,17 +4305,22 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(self.types.value_type, elem_ptr, "yanked")
             .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?;
 
-        // Decrement length in place
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let raw_ptr = self
-            .builder
-            .build_int_to_ptr(list_data, i8_ptr_type, "list_ptr")
-            .map_err(|e| HaversError::CompileError(format!("Failed to convert: {}", e)))?;
+        // Decrement length in place - length is at offset 1 in MdhList struct
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let len_ptr = self
+        let list_ptr = self
             .builder
-            .build_pointer_cast(raw_ptr, i64_ptr_type, "len_ptr")
-            .map_err(|e| HaversError::CompileError(format!("Failed to cast: {}", e)))?;
+            .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr")
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert: {}", e)))?;
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    list_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
+                .map_err(|e| HaversError::CompileError(format!("Failed to get len ptr: {}", e)))?
+        };
         let new_len = self
             .builder
             .build_int_sub(length, one, "new_len")
@@ -5377,67 +4799,25 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ========== Phase 3: String Operations ==========
 
-    /// contains(str, substr) -> bool - check if string contains substring
+    /// contains(container, elem) -> bool - check if container (string or list) contains element
     fn inline_contains(
         &mut self,
         container: BasicValueEnum<'ctx>,
-        substr: BasicValueEnum<'ctx>,
+        elem: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        let container_data = self.extract_data(container)?;
-        let substr_data = self.extract_data(substr)?;
-
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let str_ptr = self
-            .builder
-            .build_int_to_ptr(container_data, i8_ptr_type, "str_ptr")
-            .unwrap();
-        let sub_ptr = self
-            .builder
-            .build_int_to_ptr(substr_data, i8_ptr_type, "sub_ptr")
-            .unwrap();
-
-        // Call strstr(str, substr) - returns NULL if not found
-        let result_ptr = self
+        // Use runtime function __mdh_contains which handles both strings and lists
+        let result = self
             .builder
             .build_call(
-                self.libc.strstr,
-                &[str_ptr.into(), sub_ptr.into()],
-                "strstr_result",
+                self.libc.contains,
+                &[container.into(), elem.into()],
+                "contains_result",
             )
-            .unwrap()
+            .map_err(|e| HaversError::CompileError(format!("Failed to call contains: {}", e)))?
             .try_as_basic_value()
             .left()
-            .unwrap()
-            .into_pointer_value();
-
-        // Compare with null
-        let null = i8_ptr_type.const_null();
-        let is_found = self
-            .builder
-            .build_int_compare(inkwell::IntPredicate::NE, result_ptr, null, "is_found")
-            .unwrap();
-
-        // Convert to i64 (0 or 1) for the bool tag's data
-        let found_i64 = self
-            .builder
-            .build_int_z_extend(is_found, self.types.i64_type, "found_i64")
-            .unwrap();
-
-        // Create bool tagged value
-        let bool_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::Bool.as_u8() as u64, false);
-        let undef = self.types.value_type.get_undef();
-        let v1 = self
-            .builder
-            .build_insert_value(undef, bool_tag, 0, "v1")
-            .unwrap();
-        let v2 = self
-            .builder
-            .build_insert_value(v1, found_i64, 1, "v2")
-            .unwrap();
-        Ok(v2.into_struct_value().into())
+            .ok_or_else(|| HaversError::CompileError("contains returned void".to_string()))?;
+        Ok(result)
     }
 
     /// upper(str) -> string - convert to uppercase
@@ -7757,24 +7137,48 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.inline_abs(arg);
                 }
                 "min" => {
-                    if args.len() != 2 {
+                    if args.len() == 1 {
+                        // min([list]) - get minimum of list elements
+                        let list_val = self.compile_expr(&args[0])?;
+                        let result = self
+                            .builder
+                            .build_call(self.libc.list_min, &[list_val.into()], "list_min_result")
+                            .map_err(|e| HaversError::CompileError(format!("Failed to call list_min: {}", e)))?
+                            .try_as_basic_value()
+                            .left()
+                            .ok_or_else(|| HaversError::CompileError("list_min returned void".to_string()))?;
+                        return Ok(result);
+                    } else if args.len() == 2 {
+                        let a = self.compile_expr(&args[0])?;
+                        let b = self.compile_expr(&args[1])?;
+                        return self.inline_min(a, b);
+                    } else {
                         return Err(HaversError::CompileError(
-                            "min expects 2 arguments".to_string(),
+                            "min expects 1 or 2 arguments".to_string(),
                         ));
                     }
-                    let a = self.compile_expr(&args[0])?;
-                    let b = self.compile_expr(&args[1])?;
-                    return self.inline_min(a, b);
                 }
                 "max" => {
-                    if args.len() != 2 {
+                    if args.len() == 1 {
+                        // max([list]) - get maximum of list elements
+                        let list_val = self.compile_expr(&args[0])?;
+                        let result = self
+                            .builder
+                            .build_call(self.libc.list_max, &[list_val.into()], "list_max_result")
+                            .map_err(|e| HaversError::CompileError(format!("Failed to call list_max: {}", e)))?
+                            .try_as_basic_value()
+                            .left()
+                            .ok_or_else(|| HaversError::CompileError("list_max returned void".to_string()))?;
+                        return Ok(result);
+                    } else if args.len() == 2 {
+                        let a = self.compile_expr(&args[0])?;
+                        let b = self.compile_expr(&args[1])?;
+                        return self.inline_max(a, b);
+                    } else {
                         return Err(HaversError::CompileError(
-                            "max expects 2 arguments".to_string(),
+                            "max expects 1 or 2 arguments".to_string(),
                         ));
                     }
-                    let a = self.compile_expr(&args[0])?;
-                    let b = self.compile_expr(&args[1])?;
-                    return self.inline_max(a, b);
                 }
                 "clamp" => {
                     if args.len() != 3 {
@@ -9076,7 +8480,15 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let list_arg = self.compile_expr(&args[0])?;
-                    return self.inline_sort(list_arg);
+                    // Use runtime function for sorting
+                    let result = self
+                        .builder
+                        .build_call(self.libc.list_sort, &[list_arg.into()], "sort_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call list_sort: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("list_sort returned void".to_string()))?;
+                    return Ok(result);
                 }
                 "shuffle" => {
                     if args.len() != 1 {
@@ -9509,7 +8921,15 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let list_arg = self.compile_expr(&args[0])?;
-                    return self.inline_uniq(list_arg);
+                    // Use runtime function for deduplication
+                    let result = self
+                        .builder
+                        .build_call(self.libc.list_uniq, &[list_arg.into()], "uniq_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call list_uniq: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("list_uniq returned void".to_string()))?;
+                    return Ok(result);
                 }
                 "dram" => {
                     // dram(list) - pick a random element from the list
@@ -11358,41 +10778,35 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Body: load element at idx into variable
+        // MdhList struct layout: { MdhValue *items; int64_t length; int64_t capacity; }
         self.builder.position_at_end(body_block);
 
-        // Calculate element offset: 8 (header) + idx * 16 (element size)
-        let header_size = self.types.i64_type.const_int(16, false);
-        let elem_size = self.types.i64_type.const_int(16, false);
-        let elem_offset = self
+        // Load items pointer from offset 0 of MdhList struct
+        let items_ptr_as_i64 = self
             .builder
-            .build_int_add(
-                header_size,
-                self.builder
-                    .build_int_mul(idx, elem_size, "idx_mul")
-                    .unwrap(),
-                "elem_offset",
-            )
+            .build_load(self.types.i64_type, header_ptr, "items_ptr_i64")
+            .unwrap()
+            .into_int_value();
+
+        // Convert to MdhValue pointer
+        let value_ptr_type = self
+            .types
+            .value_type
+            .ptr_type(inkwell::AddressSpace::default());
+        let items_ptr = self
+            .builder
+            .build_int_to_ptr(items_ptr_as_i64, value_ptr_type, "items_ptr")
             .unwrap();
 
-        // Get pointer to element
+        // Get pointer to element at idx
         let elem_ptr = unsafe {
             self.builder
-                .build_gep(self.context.i8_type(), list_ptr, &[elem_offset], "elem_ptr")
+                .build_gep(self.types.value_type, items_ptr, &[idx], "elem_ptr")
                 .unwrap()
         };
-        let value_ptr = self
-            .builder
-            .build_pointer_cast(
-                elem_ptr,
-                self.types
-                    .value_type
-                    .ptr_type(inkwell::AddressSpace::default()),
-                "value_ptr",
-            )
-            .unwrap();
         let elem_val = self
             .builder
-            .build_load(self.types.value_type, value_ptr, "elem_val")
+            .build_load(self.types.value_type, elem_ptr, "elem_val")
             .unwrap();
 
         // Store element in loop variable
@@ -12299,27 +11713,34 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Helper for list indexing
+    /// MdhList struct layout: { MdhValue *items; int64_t length; int64_t capacity; }
     fn compile_list_index(
         &self,
         list_data: IntValue<'ctx>,
         index: IntValue<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        // List layout: [capacity: i64][length: i64][elements...]
-        // Convert data to pointer
+        // Convert data to pointer to MdhList struct
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let header_ptr = self
+        let list_ptr = self
             .builder
             .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr")
             .map_err(|e| {
                 HaversError::CompileError(format!("Failed to convert to pointer: {}", e))
             })?;
 
+        // Load items pointer from offset 0
+        let items_ptr_as_i64 = self
+            .builder
+            .build_load(self.types.i64_type, list_ptr, "items_ptr_i64")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load items ptr: {}", e)))?
+            .into_int_value();
+
         // Get length pointer (at offset 1)
         let len_ptr = unsafe {
             self.builder
                 .build_gep(
                     self.types.i64_type,
-                    header_ptr,
+                    list_ptr,
                     &[self.types.i64_type.const_int(1, false)],
                     "len_ptr",
                 )
@@ -12351,31 +11772,19 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| HaversError::CompileError(format!("Failed to select: {}", e)))?
             .into_int_value();
 
-        // Get pointer to elements array (at offset 2, after capacity and length)
+        // Convert items pointer to MdhValue pointer
         let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
-        let elements_base = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.i64_type,
-                    header_ptr,
-                    &[self.types.i64_type.const_int(2, false)],
-                    "elements_base",
-                )
-                .map_err(|e| {
-                    HaversError::CompileError(format!("Failed to compute elements base: {}", e))
-                })?
-        };
-        let elements_ptr = self
+        let items_ptr = self
             .builder
-            .build_pointer_cast(elements_base, value_ptr_type, "elements_ptr")
-            .map_err(|e| HaversError::CompileError(format!("Failed to cast pointer: {}", e)))?;
+            .build_int_to_ptr(items_ptr_as_i64, value_ptr_type, "items_ptr")
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert items ptr: {}", e)))?;
 
         // Get pointer to the indexed element
         let elem_ptr = unsafe {
             self.builder
                 .build_gep(
                     self.types.value_type,
-                    elements_ptr,
+                    items_ptr,
                     &[final_index],
                     "elem_ptr",
                 )
@@ -12395,6 +11804,7 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Fast path for list indexing when types are known at compile time
     /// Skips type checking, negative index handling, and uses direct pointer arithmetic
+    /// MdhList struct layout: { MdhValue *items; int64_t length; int64_t capacity; }
     fn compile_list_index_fast(
         &mut self,
         object: &Expr,
@@ -12427,7 +11837,7 @@ impl<'ctx> CodeGen<'ctx> {
             self.extract_data(idx_val)?
         };
 
-        // Convert data to pointer - list layout is [capacity: i64][length: i64][elem0: {i8, i64}][elem1: {i8, i64}]...
+        // Convert data to pointer to MdhList struct
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
         let list_ptr = self
             .builder
@@ -12436,32 +11846,63 @@ impl<'ctx> CodeGen<'ctx> {
                 HaversError::CompileError(format!("Failed to convert to pointer: {}", e))
             })?;
 
-        // Skip past capacity and length (16 bytes = offset 2) to reach elements
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
-        let elements_base = unsafe {
+        // Load items pointer from offset 0
+        let items_ptr_as_i64 = self
+            .builder
+            .build_load(self.types.i64_type, list_ptr, "items_ptr_i64_fast")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load items ptr: {}", e)))?
+            .into_int_value();
+
+        // Get length pointer (at offset 1) for negative index handling
+        let len_ptr = unsafe {
             self.builder
                 .build_gep(
                     self.types.i64_type,
                     list_ptr,
-                    &[self.types.i64_type.const_int(2, false)],
-                    "elements_base_fast",
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr_fast",
                 )
-                .map_err(|e| {
-                    HaversError::CompileError(format!("Failed to compute elements base: {}", e))
-                })?
+                .map_err(|e| HaversError::CompileError(format!("Failed to get len ptr: {}", e)))?
         };
-        let elements_ptr = self
+
+        let length = self
             .builder
-            .build_pointer_cast(elements_base, value_ptr_type, "elements_ptr_fast")
-            .map_err(|e| HaversError::CompileError(format!("Failed to cast pointer: {}", e)))?;
+            .build_load(self.types.i64_type, len_ptr, "list_len_fast")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load length: {}", e)))?
+            .into_int_value();
+
+        // Handle negative indices: if index < 0, index = length + index
+        let zero = self.types.i64_type.const_int(0, false);
+        let is_negative = self
+            .builder
+            .build_int_compare(inkwell::IntPredicate::SLT, idx_i64, zero, "is_negative_fast")
+            .map_err(|e| HaversError::CompileError(format!("Failed to compare: {}", e)))?;
+
+        let adjusted_index = self
+            .builder
+            .build_int_add(length, idx_i64, "adjusted_fast")
+            .map_err(|e| HaversError::CompileError(format!("Failed to add: {}", e)))?;
+
+        let final_index = self
+            .builder
+            .build_select(is_negative, adjusted_index, idx_i64, "final_index_fast")
+            .map_err(|e| HaversError::CompileError(format!("Failed to select: {}", e)))?
+            .into_int_value();
+
+        // Convert items pointer to MdhValue pointer
+        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let items_ptr = self
+            .builder
+            .build_int_to_ptr(items_ptr_as_i64, value_ptr_type, "items_ptr_fast")
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert items ptr: {}", e)))?;
 
         // Get pointer to the indexed element
         let elem_ptr = unsafe {
             self.builder
                 .build_gep(
                     self.types.value_type,
-                    elements_ptr,
-                    &[idx_i64],
+                    items_ptr,
+                    &[final_index],
                     "elem_ptr_fast",
                 )
                 .map_err(|e| {
@@ -12666,6 +12107,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Compile an index set expression: list[index] = value
+    /// MdhList struct layout: { MdhValue *items; int64_t length; int64_t capacity; }
     fn compile_index_set(
         &mut self,
         object: &Expr,
@@ -12686,27 +12128,34 @@ impl<'ctx> CodeGen<'ctx> {
         let idx_val = self.compile_expr(index)?;
         let new_val = self.compile_expr(value)?;
 
-        // Extract the object's data (pointer to list)
+        // Extract the object's data (pointer to MdhList struct)
         let obj_data = self.extract_data(obj_val)?;
 
         // Extract the index (assume it's an integer)
         let idx_data = self.extract_data(idx_val)?;
 
-        // Convert list data to pointer - layout: [capacity][length][elements...]
+        // Convert list data to pointer to MdhList struct
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let header_ptr = self
+        let list_ptr = self
             .builder
-            .build_int_to_ptr(obj_data, i64_ptr_type, "list_header_ptr")
+            .build_int_to_ptr(obj_data, i64_ptr_type, "list_ptr")
             .map_err(|e| {
                 HaversError::CompileError(format!("Failed to convert to pointer: {}", e))
             })?;
+
+        // Load items pointer from offset 0
+        let items_ptr_as_i64 = self
+            .builder
+            .build_load(self.types.i64_type, list_ptr, "items_ptr_i64")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load items ptr: {}", e)))?
+            .into_int_value();
 
         // Get length pointer at offset 1
         let len_ptr = unsafe {
             self.builder
                 .build_gep(
                     self.types.i64_type,
-                    header_ptr,
+                    list_ptr,
                     &[self.types.i64_type.const_int(1, false)],
                     "len_ptr",
                 )
@@ -12738,31 +12187,19 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| HaversError::CompileError(format!("Failed to select: {}", e)))?
             .into_int_value();
 
-        // Get pointer to elements array (at offset 2, after capacity and length)
+        // Convert items pointer to MdhValue pointer
         let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
-        let elements_base = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.i64_type,
-                    header_ptr,
-                    &[self.types.i64_type.const_int(2, false)],
-                    "elements_base",
-                )
-                .map_err(|e| {
-                    HaversError::CompileError(format!("Failed to compute elements base: {}", e))
-                })?
-        };
-        let elements_ptr = self
+        let items_ptr = self
             .builder
-            .build_pointer_cast(elements_base, value_ptr_type, "elements_ptr")
-            .map_err(|e| HaversError::CompileError(format!("Failed to cast pointer: {}", e)))?;
+            .build_int_to_ptr(items_ptr_as_i64, value_ptr_type, "items_ptr")
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert items ptr: {}", e)))?;
 
         // Get pointer to the indexed element
         let elem_ptr = unsafe {
             self.builder
                 .build_gep(
                     self.types.value_type,
-                    elements_ptr,
+                    items_ptr,
                     &[final_index],
                     "elem_ptr",
                 )
@@ -12781,6 +12218,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Fast path for list index assignment when types are known at compile time
+    /// MdhList struct layout: { MdhValue *items; int64_t length; int64_t capacity; }
     fn compile_list_index_set_fast(
         &mut self,
         object: &Expr,
@@ -12814,7 +12252,7 @@ impl<'ctx> CodeGen<'ctx> {
             self.extract_data(idx_val)?
         };
 
-        // Convert data to pointer - list layout is [capacity: i64][length: i64][elem0: {i8, i64}][elem1: {i8, i64}]...
+        // Convert data to pointer to MdhList struct
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
         let list_ptr = self
             .builder
@@ -12823,76 +12261,29 @@ impl<'ctx> CodeGen<'ctx> {
                 HaversError::CompileError(format!("Failed to convert to pointer: {}", e))
             })?;
 
-        // Check for constant boolean - use data-only store (8 bytes vs 16 bytes)
-        // This is safe when storing same-type values into a homogeneous list
-        if let Expr::Literal {
-            value: Literal::Bool(b),
-            ..
-        } = value
-        {
-            // Ultra-fast path: store only the data field (8 bytes instead of 16)
-            // Skip header (16 bytes = 2 i64s), then compute data offset within element
-            // Element layout: {i8 tag, i64 data} - data is at offset 8 from element start
-            // In i64 terms: base + idx*2 + 1 (each element is 2 i64s, data is second)
-            let two = self.types.i64_type.const_int(2, false);
-            let one = self.types.i64_type.const_int(1, false);
-            let elements_base = unsafe {
-                self.builder
-                    .build_gep(self.types.i64_type, list_ptr, &[two], "eb_set")
-                    .unwrap()
-            };
-            let idx_times_2 = self
-                .builder
-                .build_int_mul(idx_i64, two, "idx2_set")
-                .unwrap();
-            let data_offset = self
-                .builder
-                .build_int_add(idx_times_2, one, "do_set")
-                .unwrap();
-            let data_ptr = unsafe {
-                self.builder
-                    .build_gep(self.types.i64_type, elements_base, &[data_offset], "dp_set")
-                    .unwrap()
-            };
-            // Store just the data value (0 for false, 1 for true)
-            let data_val = self.types.i64_type.const_int(if *b { 1 } else { 0 }, false);
-            self.builder.build_store(data_ptr, data_val).unwrap();
-            // Return the full MdhValue for correctness
-            return self.make_bool(
-                self.types
-                    .bool_type
-                    .const_int(if *b { 1 } else { 0 }, false),
-            );
-        }
+        // Load items pointer from offset 0
+        let items_ptr_as_i64 = self
+            .builder
+            .build_load(self.types.i64_type, list_ptr, "items_ptr_i64_set")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load items ptr: {}", e)))?
+            .into_int_value();
 
         // Compile the value to store
         let new_val = self.compile_expr(value)?;
 
-        // Skip past capacity and length (16 bytes = offset 2) to reach elements
+        // Convert items pointer to MdhValue pointer
         let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
-        let elements_base = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.i64_type,
-                    list_ptr,
-                    &[self.types.i64_type.const_int(2, false)],
-                    "elements_base_set_fast",
-                )
-                .map_err(|e| {
-                    HaversError::CompileError(format!("Failed to compute elements base: {}", e))
-                })?
-        };
-        let elements_ptr = self
+        let items_ptr = self
             .builder
-            .build_pointer_cast(elements_base, value_ptr_type, "elements_ptr_set_fast")
-            .map_err(|e| HaversError::CompileError(format!("Failed to cast pointer: {}", e)))?;
+            .build_int_to_ptr(items_ptr_as_i64, value_ptr_type, "items_ptr_set")
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert items ptr: {}", e)))?;
 
         // Get pointer to the indexed element
         let elem_ptr = unsafe {
             self.builder
                 .build_gep(
                     self.types.value_type,
-                    elements_ptr,
+                    items_ptr,
                     &[idx_i64],
                     "elem_ptr_set_fast",
                 )
@@ -20305,11 +19696,51 @@ impl<'ctx> CodeGen<'ctx> {
     /// index_of(str, substr) - Find first index of substring, or -1 if not found
     fn inline_index_of(
         &mut self,
-        str_val: BasicValueEnum<'ctx>,
-        substr_val: BasicValueEnum<'ctx>,
+        container_val: BasicValueEnum<'ctx>,
+        elem_val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        let str_data = self.extract_data(str_val)?;
-        let substr_data = self.extract_data(substr_val)?;
+        // Check container type and use appropriate method
+        let container_tag = self.extract_tag(container_val)?;
+        let list_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::List.as_u8() as u64, false);
+        let is_list = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, container_tag, list_tag, "is_list")
+            .unwrap();
+
+        let function = self.current_function.unwrap();
+        let list_case = self.context.append_basic_block(function, "index_of_list");
+        let string_case = self.context.append_basic_block(function, "index_of_string");
+        let merge_block = self.context.append_basic_block(function, "index_of_merge");
+
+        self.builder
+            .build_conditional_branch(is_list, list_case, string_case)
+            .unwrap();
+
+        // List case: use runtime function
+        self.builder.position_at_end(list_case);
+        let list_result = self
+            .builder
+            .build_call(
+                self.libc.list_index_of,
+                &[container_val.into(), elem_val.into()],
+                "list_index_of_result",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let list_case_end = self.builder.get_insert_block().unwrap();
+
+        // String case: use strstr
+        self.builder.position_at_end(string_case);
+        let str_data = self.extract_data(container_val)?;
+        let substr_data = self.extract_data(elem_val)?;
 
         let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
         let str_ptr = self
@@ -20321,7 +19752,6 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_to_ptr(substr_data, i8_ptr, "substr_ptr")
             .unwrap();
 
-        // Use strstr to find substring
         let found_ptr = self
             .builder
             .build_call(
@@ -20335,17 +19765,15 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_pointer_value();
 
-        // Check if found (not null)
         let null_ptr = i8_ptr.const_null();
         let is_null = self
             .builder
             .build_int_compare(IntPredicate::EQ, found_ptr, null_ptr, "is_null")
             .unwrap();
 
-        let function = self.current_function.unwrap();
-        let found_block = self.context.append_basic_block(function, "index_found");
-        let not_found_block = self.context.append_basic_block(function, "index_not_found");
-        let merge_block = self.context.append_basic_block(function, "index_merge");
+        let found_block = self.context.append_basic_block(function, "str_index_found");
+        let not_found_block = self.context.append_basic_block(function, "str_index_not_found");
+        let str_merge = self.context.append_basic_block(function, "str_index_merge");
 
         self.builder
             .build_conditional_branch(is_null, not_found_block, found_block)
@@ -20366,7 +19794,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_sub(found_int, str_int, "index")
             .unwrap();
         self.builder
-            .build_unconditional_branch(merge_block)
+            .build_unconditional_branch(str_merge)
             .unwrap();
         let found_block_end = self.builder.get_insert_block().unwrap();
 
@@ -20374,19 +19802,35 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(not_found_block);
         let neg_one = self.types.i64_type.const_int((-1i64) as u64, true);
         self.builder
-            .build_unconditional_branch(merge_block)
+            .build_unconditional_branch(str_merge)
             .unwrap();
         let not_found_block_end = self.builder.get_insert_block().unwrap();
 
-        // Merge
+        // String merge
+        self.builder.position_at_end(str_merge);
+        let str_phi = self
+            .builder
+            .build_phi(self.types.i64_type, "str_index_result")
+            .unwrap();
+        str_phi.add_incoming(&[(&index, found_block_end), (&neg_one, not_found_block_end)]);
+        let string_result = self.make_int(str_phi.as_basic_value().into_int_value())?;
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let string_case_end = self.builder.get_insert_block().unwrap();
+
+        // Final merge
         self.builder.position_at_end(merge_block);
         let phi = self
             .builder
-            .build_phi(self.types.i64_type, "index_result")
+            .build_phi(self.types.value_type, "index_of_result")
             .unwrap();
-        phi.add_incoming(&[(&index, found_block_end), (&neg_one, not_found_block_end)]);
+        phi.add_incoming(&[
+            (&list_result, list_case_end),
+            (&string_result, string_case_end),
+        ]);
 
-        self.make_int(phi.as_basic_value().into_int_value())
+        Ok(phi.as_basic_value())
     }
 
     /// replace(str, old, new) - Replace all occurrences of old with new
@@ -20848,19 +20292,63 @@ impl<'ctx> CodeGen<'ctx> {
         base_val: BasicValueEnum<'ctx>,
         exp_val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let base_tag = self.extract_tag(base_val)?;
         let base_data = self.extract_data(base_val)?;
+        let exp_tag = self.extract_tag(exp_val)?;
         let exp_data = self.extract_data(exp_val)?;
 
-        // Convert to floats
+        // Check if values are float (tag == ValueTag::Float)
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
+        let base_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, base_tag, float_tag, "base_is_float")
+            .unwrap();
+        let exp_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, exp_tag, float_tag, "exp_is_float")
+            .unwrap();
+
+        // Convert to floats: if Float, bitcast; if Int, sitofp
         let f64_type = self.context.f64_type();
         let base_float = self
             .builder
-            .build_bitcast(base_data, f64_type, "base_float")
+            .build_select(
+                base_is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(base_data, f64_type, "base_as_float")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(base_data, f64_type, "base_int_to_float")
+                        .unwrap(),
+                ),
+                "base_float",
+            )
             .unwrap()
             .into_float_value();
         let exp_float = self
             .builder
-            .build_bitcast(exp_data, f64_type, "exp_float")
+            .build_select(
+                exp_is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(exp_data, f64_type, "exp_as_float")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(exp_data, f64_type, "exp_int_to_float")
+                        .unwrap(),
+                ),
+                "exp_float",
+            )
             .unwrap()
             .into_float_value();
 
@@ -20889,19 +20377,63 @@ impl<'ctx> CodeGen<'ctx> {
         y_val: BasicValueEnum<'ctx>,
         x_val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let y_tag = self.extract_tag(y_val)?;
         let y_data = self.extract_data(y_val)?;
+        let x_tag = self.extract_tag(x_val)?;
         let x_data = self.extract_data(x_val)?;
 
-        // Convert to floats
+        // Check if values are float (tag == ValueTag::Float)
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
+        let y_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, y_tag, float_tag, "y_is_float")
+            .unwrap();
+        let x_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, x_tag, float_tag, "x_is_float")
+            .unwrap();
+
+        // Convert to floats: if Float, bitcast; if Int, sitofp
         let f64_type = self.context.f64_type();
         let y_float = self
             .builder
-            .build_bitcast(y_data, f64_type, "y_float")
+            .build_select(
+                y_is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(y_data, f64_type, "y_as_float")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(y_data, f64_type, "y_int_to_float")
+                        .unwrap(),
+                ),
+                "y_float",
+            )
             .unwrap()
             .into_float_value();
         let x_float = self
             .builder
-            .build_bitcast(x_data, f64_type, "x_float")
+            .build_select(
+                x_is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(x_data, f64_type, "x_as_float")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(x_data, f64_type, "x_int_to_float")
+                        .unwrap(),
+                ),
+                "x_float",
+            )
             .unwrap()
             .into_float_value();
 
@@ -21169,16 +20701,23 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(after_len).unwrap();
         let str_len_bb = self.builder.get_insert_block().unwrap();
 
-        // List length from header
+        // List length from header (offset 1 in new MdhList struct layout)
+        // MdhList struct layout: { MdhValue *items; int64_t length; int64_t capacity; }
         self.builder.position_at_end(get_len_list);
         let list_ptr = self
             .builder
-            .build_int_to_ptr(obj_data, i8_ptr, "list_ptr")
+            .build_int_to_ptr(obj_data, i64_ptr, "list_ptr")
             .unwrap();
-        let len_ptr = self
-            .builder
-            .build_pointer_cast(list_ptr, i64_ptr, "len_ptr")
-            .unwrap();
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    list_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
+                .unwrap()
+        };
         let list_len = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
@@ -21356,82 +20895,19 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let str_result_bb = self.builder.get_insert_block().unwrap();
 
-        // List slice memcpy
+        // List slice - use runtime function for proper handling of new MdhList layout
         self.builder.position_at_end(memcpy_list);
-        let list_ptr2 = self
+        let list_result = self
             .builder
-            .build_int_to_ptr(obj_data, i8_ptr, "list_ptr2")
-            .unwrap();
-        let sixteen = self.types.i64_type.const_int(16, false);
-        let header_size = self.types.i64_type.const_int(16, false);
-        let elems_size = self
-            .builder
-            .build_int_mul(new_len_clamped, sixteen, "elems_size")
-            .unwrap();
-        let total_size = self
-            .builder
-            .build_int_add(header_size, elems_size, "total_size")
-            .unwrap();
-        let new_list_ptr = self
-            .builder
-            .build_call(self.libc.malloc, &[total_size.into()], "new_list")
+            .build_call(
+                self.libc.list_slice,
+                &[obj_val.into(), start_val.into(), end_val.into()],
+                "list_slice_result",
+            )
             .unwrap()
             .try_as_basic_value()
             .left()
-            .unwrap()
-            .into_pointer_value();
-        // Store len and cap
-        let new_len_ptr = self
-            .builder
-            .build_pointer_cast(new_list_ptr, i64_ptr, "new_len_ptr")
             .unwrap();
-        self.builder
-            .build_store(new_len_ptr, new_len_clamped)
-            .unwrap();
-        let cap_offset = unsafe {
-            self.builder
-                .build_gep(
-                    self.context.i8_type(),
-                    new_list_ptr,
-                    &[self.types.i64_type.const_int(8, false)],
-                    "cap_offset",
-                )
-                .unwrap()
-        };
-        let new_cap_ptr = self
-            .builder
-            .build_pointer_cast(cap_offset, i64_ptr, "new_cap_ptr")
-            .unwrap();
-        self.builder
-            .build_store(new_cap_ptr, new_len_clamped)
-            .unwrap();
-        // Copy elements
-        let start_byte_offset = self
-            .builder
-            .build_int_mul(start_val, sixteen, "start_byte_off")
-            .unwrap();
-        let src_offset = self
-            .builder
-            .build_int_add(sixteen, start_byte_offset, "src_offset")
-            .unwrap();
-        let src_list = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), list_ptr2, &[src_offset], "src_list")
-                .unwrap()
-        };
-        let dst_list = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), new_list_ptr, &[sixteen], "dst_list")
-                .unwrap()
-        };
-        self.builder
-            .build_call(
-                self.libc.memcpy,
-                &[dst_list.into(), src_list.into(), elems_size.into()],
-                "",
-            )
-            .unwrap();
-        let list_result = self.make_list(new_list_ptr)?;
         self.builder
             .build_unconditional_branch(memcpy_merge)
             .unwrap();
