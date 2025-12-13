@@ -372,6 +372,38 @@ void __mdh_blether(MdhValue a) {
             printf("]\n");
             break;
         }
+        case MDH_TAG_DICT: {
+            int64_t *dict_ptr = (int64_t *)(intptr_t)a.data;
+            int64_t count = *dict_ptr;
+            MdhValue *entries = (MdhValue *)(dict_ptr + 1);
+            printf("{");
+            for (int64_t i = 0; i < count; i++) {
+                if (i > 0) printf(", ");
+                MdhValue key = entries[i * 2];
+                MdhValue value = entries[i * 2 + 1];
+                /* Print key */
+                switch (key.tag) {
+                    case MDH_TAG_NIL: printf("naething"); break;
+                    case MDH_TAG_BOOL: printf("%s", key.data ? "aye" : "nae"); break;
+                    case MDH_TAG_INT: printf("%lld", (long long)key.data); break;
+                    case MDH_TAG_FLOAT: printf("%g", __mdh_get_float(key)); break;
+                    case MDH_TAG_STRING: printf("\"%s\"", __mdh_get_string(key)); break;
+                    default: printf("<object>"); break;
+                }
+                printf(": ");
+                /* Print value */
+                switch (value.tag) {
+                    case MDH_TAG_NIL: printf("naething"); break;
+                    case MDH_TAG_BOOL: printf("%s", value.data ? "aye" : "nae"); break;
+                    case MDH_TAG_INT: printf("%lld", (long long)value.data); break;
+                    case MDH_TAG_FLOAT: printf("%g", __mdh_get_float(value)); break;
+                    case MDH_TAG_STRING: printf("\"%s\"", __mdh_get_string(value)); break;
+                    default: printf("<object>"); break;
+                }
+            }
+            printf("}\n");
+            break;
+        }
         default:
             printf("<object>\n");
             break;
@@ -604,6 +636,9 @@ MdhValue __mdh_contains(MdhValue container, MdhValue elem) {
     if (container.tag == MDH_TAG_LIST) {
         return __mdh_list_contains(container, elem);
     }
+    if (container.tag == MDH_TAG_DICT) {
+        return __mdh_dict_contains(container, elem);
+    }
     if (container.tag == MDH_TAG_STRING && elem.tag == MDH_TAG_STRING) {
         const char *haystack = __mdh_get_string(container);
         const char *needle = __mdh_get_string(elem);
@@ -805,6 +840,98 @@ MdhValue __mdh_dict_contains(MdhValue dict, MdhValue key) {
         }
     }
     return __mdh_make_bool(false);
+}
+
+MdhValue __mdh_dict_keys(MdhValue dict) {
+    if (dict.tag != MDH_TAG_DICT) {
+        return __mdh_make_list(0);
+    }
+
+    int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;
+    int64_t count = *dict_ptr;
+    MdhValue *entries = (MdhValue *)(dict_ptr + 1);
+
+    MdhValue result = __mdh_make_list((int32_t)count);
+    for (int64_t i = 0; i < count; i++) {
+        __mdh_list_push(result, entries[i * 2]);
+    }
+    return result;
+}
+
+MdhValue __mdh_dict_values(MdhValue dict) {
+    if (dict.tag != MDH_TAG_DICT) {
+        return __mdh_make_list(0);
+    }
+
+    int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;
+    int64_t count = *dict_ptr;
+    MdhValue *entries = (MdhValue *)(dict_ptr + 1);
+
+    MdhValue result = __mdh_make_list((int32_t)count);
+    for (int64_t i = 0; i < count; i++) {
+        __mdh_list_push(result, entries[i * 2 + 1]);
+    }
+    return result;
+}
+
+MdhValue __mdh_dict_set(MdhValue dict, MdhValue key, MdhValue value) {
+    if (dict.tag != MDH_TAG_DICT) {
+        return dict;
+    }
+
+    int64_t *old_ptr = (int64_t *)(intptr_t)dict.data;
+    int64_t count = *old_ptr;
+    MdhValue *entries = (MdhValue *)(old_ptr + 1);
+
+    /* Check if key already exists */
+    for (int64_t i = 0; i < count; i++) {
+        MdhValue entry_key = entries[i * 2];
+        if (__mdh_values_equal(entry_key, key)) {
+            /* Update existing entry */
+            entries[i * 2 + 1] = value;
+            return dict;
+        }
+    }
+
+    /* Add new entry: reallocate */
+    int64_t new_count = count + 1;
+    size_t new_size = 8 + new_count * 32;  /* 8 for count, 32 per entry */
+    int64_t *new_ptr = (int64_t *)GC_malloc(new_size);
+
+    /* Copy old data */
+    *new_ptr = new_count;
+    MdhValue *new_entries = (MdhValue *)(new_ptr + 1);
+    for (int64_t i = 0; i < count; i++) {
+        new_entries[i * 2] = entries[i * 2];       /* key */
+        new_entries[i * 2 + 1] = entries[i * 2 + 1]; /* value */
+    }
+
+    /* Add new entry */
+    new_entries[count * 2] = key;
+    new_entries[count * 2 + 1] = value;
+
+    MdhValue v;
+    v.tag = MDH_TAG_DICT;
+    v.data = (int64_t)(intptr_t)new_ptr;
+    return v;
+}
+
+MdhValue __mdh_dict_get(MdhValue dict, MdhValue key) {
+    if (dict.tag != MDH_TAG_DICT) {
+        return __mdh_make_nil();
+    }
+
+    int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;
+    int64_t count = *dict_ptr;
+    MdhValue *entries = (MdhValue *)(dict_ptr + 1);
+
+    for (int64_t i = 0; i < count; i++) {
+        MdhValue entry_key = entries[i * 2];
+        if (__mdh_values_equal(entry_key, key)) {
+            return entries[i * 2 + 1];
+        }
+    }
+    return __mdh_make_nil();
 }
 
 MdhValue __mdh_toss_in(MdhValue dict, MdhValue item) {
@@ -1347,6 +1474,35 @@ MdhValue __mdh_list_uniq(MdhValue list) {
         if (!found) {
             result->items[result->length++] = l->items[i];
         }
+    }
+
+    return (MdhValue){ .tag = MDH_TAG_LIST, .data = (int64_t)(intptr_t)result };
+}
+
+/* range - generate a list of integers from start to end with step */
+MdhValue __mdh_range(int64_t start, int64_t end, int64_t step) {
+    if (step == 0) step = 1;
+
+    /* Calculate length */
+    int64_t length = 0;
+    if (step > 0 && end > start) {
+        length = (end - start + step - 1) / step;
+    } else if (step < 0 && end < start) {
+        length = (start - end - step - 1) / (-step);
+    }
+    if (length < 0) length = 0;
+
+    /* Create list */
+    MdhList *result = (MdhList *)GC_malloc(sizeof(MdhList));
+    result->capacity = length > 0 ? length : 1;
+    result->length = length;
+    result->items = (MdhValue *)GC_malloc(sizeof(MdhValue) * result->capacity);
+
+    /* Fill list */
+    int64_t val = start;
+    for (int64_t i = 0; i < length; i++) {
+        result->items[i] = __mdh_make_int(val);
+        val += step;
     }
 
     return (MdhValue){ .tag = MDH_TAG_LIST, .data = (int64_t)(intptr_t)result };

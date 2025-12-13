@@ -1044,6 +1044,17 @@ impl Compiler {
                 self.compile_expr(else_expr)?;
                 self.output.push(')');
             }
+            Expr::BlockExpr { statements, .. } => {
+                // Block expressions compile to an IIFE (immediately invoked function expression)
+                self.output.push_str("(() => {\n");
+                self.indent += 1;
+                for stmt in statements {
+                    self.compile_stmt(stmt)?;
+                }
+                self.indent -= 1;
+                self.emit_indent();
+                self.output.push_str("})()");
+            }
         }
 
         Ok(())

@@ -6747,6 +6747,22 @@ impl Interpreter {
                     self.evaluate(else_expr)
                 }
             }
+            Expr::BlockExpr { statements, .. } => {
+                // Execute statements and return the value from 'gie' if any
+                // Use execute_stmt_with_control to handle return properly
+                for stmt in statements {
+                    match self.execute_stmt_with_control(stmt)? {
+                        Ok(_) => {}
+                        Err(ControlFlow::Return(value)) => {
+                            return Ok(value);
+                        }
+                        Err(ControlFlow::Break) | Err(ControlFlow::Continue) => {
+                            // Propagate break/continue - shouldn't happen in block expr
+                        }
+                    }
+                }
+                Ok(Value::Nil)
+            }
         }
     }
 

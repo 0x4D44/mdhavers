@@ -108,6 +108,7 @@ void __mdh_list_push(MdhValue list, MdhValue value);
 MdhValue __mdh_list_pop(MdhValue list);
 int64_t __mdh_list_len(MdhValue list);
 int64_t __mdh_len(MdhValue a);
+MdhValue __mdh_range(int64_t start, int64_t end, int64_t step);
 
 /* ========== String Operations ========== */
 
@@ -129,6 +130,10 @@ MdhValue __mdh_round(MdhValue a);
 
 MdhValue __mdh_empty_creel(void);
 MdhValue __mdh_dict_contains(MdhValue dict, MdhValue key);
+MdhValue __mdh_dict_keys(MdhValue dict);
+MdhValue __mdh_dict_values(MdhValue dict);
+MdhValue __mdh_dict_set(MdhValue dict, MdhValue key, MdhValue value);
+MdhValue __mdh_dict_get(MdhValue dict, MdhValue key);
 MdhValue __mdh_toss_in(MdhValue dict, MdhValue item);
 MdhValue __mdh_heave_oot(MdhValue dict, MdhValue item);
 MdhValue __mdh_creel_tae_list(MdhValue dict);

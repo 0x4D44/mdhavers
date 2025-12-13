@@ -1243,7 +1243,7 @@ impl Parser {
                 self.expect(&TokenKind::RightBrace, "}")?;
                 Ok(Expr::Dict { pairs, span })
             }
-            // Lambda expressions: |x, y| x + y
+            // Lambda expressions: |x, y| x + y  or  |x, y| { statements... }
             TokenKind::Pipe => {
                 self.advance();
                 let mut params = Vec::new();
@@ -1256,7 +1256,25 @@ impl Parser {
                     }
                 }
                 self.expect(&TokenKind::Pipe, "|")?;
-                let body = self.expression()?;
+                // Check for block body: |x, y| { ... }
+                let body = if self.check(&TokenKind::LeftBrace) {
+                    let brace_token = self.peek();
+                    let block_span = Span::new(brace_token.line, brace_token.column);
+                    self.advance(); // consume {
+                    self.skip_newlines();
+                    let mut statements = Vec::new();
+                    while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+                        statements.push(self.declaration()?);
+                        self.skip_newlines();
+                    }
+                    self.expect(&TokenKind::RightBrace, "}")?;
+                    Expr::BlockExpr {
+                        statements,
+                        span: block_span,
+                    }
+                } else {
+                    self.expression()?
+                };
                 Ok(Expr::Lambda {
                     params,
                     body: Box::new(body),
