@@ -130,6 +130,15 @@ struct LibcFunctions<'ctx> {
     list_sort: FunctionValue<'ctx>,
     list_uniq: FunctionValue<'ctx>,
     list_slice: FunctionValue<'ctx>,
+    // Dict operations
+    dict_keys: FunctionValue<'ctx>,
+    dict_values: FunctionValue<'ctx>,
+    dict_set: FunctionValue<'ctx>,
+    dict_get: FunctionValue<'ctx>,
+    // Range
+    range: FunctionValue<'ctx>,
+    // List creation
+    make_list: FunctionValue<'ctx>,
 }
 
 /// Inferred type for optimization
@@ -141,6 +150,7 @@ pub enum VarType {
     String,
     Bool,
     List,
+    Dict,
 }
 
 /// Main code generator with inlined runtime
@@ -695,6 +705,49 @@ impl<'ctx> CodeGen<'ctx> {
         let list_slice =
             module.add_function("__mdh_list_slice", list_slice_type, Some(Linkage::External));
 
+        // __mdh_range(start, end, step) -> MdhValue (list)
+        let range_type = types.value_type.fn_type(
+            &[i64_type.into(), i64_type.into(), i64_type.into()],
+            false,
+        );
+        let range = module.add_function("__mdh_range", range_type, Some(Linkage::External));
+
+        // __mdh_make_list(capacity) -> MdhValue (creates new empty list with capacity)
+        let make_list_type = types.value_type.fn_type(&[context.i32_type().into()], false);
+        let make_list =
+            module.add_function("__mdh_make_list", make_list_type, Some(Linkage::External));
+
+        // Dict operations
+        // __mdh_dict_keys(dict) -> MdhValue (list of keys)
+        let dict_keys_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let dict_keys =
+            module.add_function("__mdh_dict_keys", dict_keys_type, Some(Linkage::External));
+
+        // __mdh_dict_values(dict) -> MdhValue (list of values)
+        let dict_values_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let dict_values =
+            module.add_function("__mdh_dict_values", dict_values_type, Some(Linkage::External));
+
+        // __mdh_dict_set(dict, key, value) -> MdhValue (updated dict)
+        let dict_set_type = types.value_type.fn_type(
+            &[
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+            ],
+            false,
+        );
+        let dict_set =
+            module.add_function("__mdh_dict_set", dict_set_type, Some(Linkage::External));
+
+        // __mdh_dict_get(dict, key) -> MdhValue
+        let dict_get_type = types.value_type.fn_type(
+            &[types.value_type.into(), types.value_type.into()],
+            false,
+        );
+        let dict_get =
+            module.add_function("__mdh_dict_get", dict_get_type, Some(Linkage::External));
+
         LibcFunctions {
             printf,
             malloc,
@@ -766,6 +819,12 @@ impl<'ctx> CodeGen<'ctx> {
             list_sort,
             list_uniq,
             list_slice,
+            dict_keys,
+            dict_values,
+            dict_set,
+            dict_get,
+            range,
+            make_list,
         }
     }
 
@@ -1453,49 +1512,45 @@ impl<'ctx> CodeGen<'ctx> {
                         self.extract_data(idx_val)?
                     };
 
-                    // List layout: [cap:i64][len:i64][elem0:{i8,i64}][elem1:{i8,i64}]...
-                    // Element layout: {tag:i8, data:i64} - data is at offset 8 from element start
-                    let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-                    let list_ptr = self
+                    // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
+                    // Access items pointer at offset 0, then index into items array
+                    let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+                    let mdh_list_type = self.context.struct_type(
+                        &[value_ptr_type.into(), self.types.i64_type.into(), self.types.i64_type.into()],
+                        false,
+                    );
+                    let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+                    let list_struct_ptr = self
                         .builder
-                        .build_int_to_ptr(list_data, i64_ptr_type, "lp_cond")
+                        .build_int_to_ptr(list_data, mdh_list_ptr_type, "list_struct_ptr_cond")
                         .unwrap();
 
-                    // Skip header (16 bytes = 2 i64s) to reach elements
-                    let two = self.types.i64_type.const_int(2, false);
-                    let elements_base = unsafe {
+                    // Get items pointer (at index 0)
+                    let items_ptr_ptr = self
+                        .builder
+                        .build_struct_gep(mdh_list_type, list_struct_ptr, 0, "items_ptr_ptr_cond")
+                        .unwrap();
+                    let items_ptr = self
+                        .builder
+                        .build_load(value_ptr_type, items_ptr_ptr, "items_ptr_cond")
+                        .unwrap()
+                        .into_pointer_value();
+
+                    // Access element at index
+                    let elem_ptr = unsafe {
                         self.builder
-                            .build_gep(self.types.i64_type, list_ptr, &[two], "eb_cond")
+                            .build_gep(self.types.value_type, items_ptr, &[idx_i64], "elem_ptr_cond")
                             .unwrap()
                     };
 
-                    // Each element is 16 bytes. To reach element[idx].data, we need:
-                    // base + idx*16 + 8 (for data offset within element)
-                    // In i64 terms: base + idx*2 + 1
-                    let idx_times_2 = self
+                    // Load element and extract data field
+                    let elem_val = self
                         .builder
-                        .build_int_mul(idx_i64, two, "idx2_cond")
+                        .build_load(self.types.value_type, elem_ptr, "elem_val_cond")
                         .unwrap();
-                    let one = self.types.i64_type.const_int(1, false);
-                    let data_offset = self
-                        .builder
-                        .build_int_add(idx_times_2, one, "do_cond")
-                        .unwrap();
-                    let data_ptr = unsafe {
-                        self.builder
-                            .build_gep(
-                                self.types.i64_type,
-                                elements_base,
-                                &[data_offset],
-                                "dp_cond",
-                            )
-                            .unwrap()
-                    };
-
-                    // Load just the data field (8 bytes instead of 16)
                     let data = self
                         .builder
-                        .build_load(self.types.i64_type, data_ptr, "data_cond")
+                        .build_extract_value(elem_val.into_struct_value(), 1, "data_cond")
                         .unwrap()
                         .into_int_value();
                     let zero = self.types.i64_type.const_int(0, false);
@@ -1573,6 +1628,7 @@ impl<'ctx> CodeGen<'ctx> {
                 | BinaryOp::NotEqual => VarType::Bool,
             },
             Expr::List { .. } => VarType::List,
+            Expr::Dict { .. } => VarType::Dict,
             Expr::Unary { operand, .. } => self.infer_expr_type(operand),
             _ => VarType::Unknown,
         }
@@ -3459,6 +3515,7 @@ impl<'ctx> CodeGen<'ctx> {
         let int_bool = self.context.append_basic_block(function, "int_bool");
         let int_int = self.context.append_basic_block(function, "int_int");
         let int_float = self.context.append_basic_block(function, "int_float");
+        let int_string = self.context.append_basic_block(function, "int_string");
         let int_default = self.context.append_basic_block(function, "int_default");
         let int_merge = self.context.append_basic_block(function, "int_merge");
 
@@ -3478,6 +3535,10 @@ impl<'ctx> CodeGen<'ctx> {
             .types
             .i8_type
             .const_int(ValueTag::Float.as_u8() as u64, false);
+        let string_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::String.as_u8() as u64, false);
 
         self.builder
             .build_switch(
@@ -3488,6 +3549,7 @@ impl<'ctx> CodeGen<'ctx> {
                     (bool_tag, int_bool),
                     (int_tag, int_int),
                     (float_tag, int_float),
+                    (string_tag, int_string),
                 ],
             )
             .unwrap();
@@ -3526,6 +3588,42 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(int_merge).unwrap();
         let float_block = self.builder.get_insert_block().unwrap();
 
+        // string -> parse using strtoll
+        self.builder.position_at_end(int_string);
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let str_ptr = self
+            .builder
+            .build_int_to_ptr(data, i8_ptr_type, "str_ptr")
+            .unwrap();
+        // Declare strtoll if needed
+        let strtoll_fn = self.module.get_function("strtoll").unwrap_or_else(|| {
+            let fn_type = self.types.i64_type.fn_type(
+                &[
+                    i8_ptr_type.into(),
+                    i8_ptr_type.ptr_type(AddressSpace::default()).into(),
+                    self.types.i32_type.into(),
+                ],
+                false,
+            );
+            self.module
+                .add_function("strtoll", fn_type, Some(Linkage::External))
+        });
+        let null_ptr = i8_ptr_type
+            .ptr_type(AddressSpace::default())
+            .const_null();
+        let base_10 = self.types.i32_type.const_int(10, false);
+        let parsed = self
+            .builder
+            .build_call(strtoll_fn, &[str_ptr.into(), null_ptr.into(), base_10.into()], "parsed")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_int_value();
+        let string_result = self.make_int(parsed)?;
+        self.builder.build_unconditional_branch(int_merge).unwrap();
+        let string_block = self.builder.get_insert_block().unwrap();
+
         // default -> 0
         self.builder.position_at_end(int_default);
         let default_result = self.make_int(zero)?;
@@ -3543,6 +3641,7 @@ impl<'ctx> CodeGen<'ctx> {
             (&bool_result, bool_block),
             (&int_result, int_block),
             (&float_result, float_block),
+            (&string_result, string_block),
             (&default_result, default_block),
         ]);
 
@@ -3562,6 +3661,7 @@ impl<'ctx> CodeGen<'ctx> {
         let float_bool = self.context.append_basic_block(function, "float_bool");
         let float_int = self.context.append_basic_block(function, "float_int");
         let float_float = self.context.append_basic_block(function, "float_float");
+        let float_string = self.context.append_basic_block(function, "float_string");
         let float_default = self.context.append_basic_block(function, "float_default");
         let float_merge = self.context.append_basic_block(function, "float_merge");
 
@@ -3581,6 +3681,10 @@ impl<'ctx> CodeGen<'ctx> {
             .types
             .i8_type
             .const_int(ValueTag::Float.as_u8() as u64, false);
+        let string_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::String.as_u8() as u64, false);
 
         self.builder
             .build_switch(
@@ -3591,6 +3695,7 @@ impl<'ctx> CodeGen<'ctx> {
                     (bool_tag, float_bool),
                     (int_tag, float_int),
                     (float_tag, float_float),
+                    (string_tag, float_string),
                 ],
             )
             .unwrap();
@@ -3636,6 +3741,42 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let float_block = self.builder.get_insert_block().unwrap();
 
+        // string -> parse using strtod
+        self.builder.position_at_end(float_string);
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let str_ptr = self
+            .builder
+            .build_int_to_ptr(data, i8_ptr_type, "str_ptr")
+            .unwrap();
+        // Declare strtod if needed
+        let strtod_fn = self.module.get_function("strtod").unwrap_or_else(|| {
+            let fn_type = self.types.f64_type.fn_type(
+                &[
+                    i8_ptr_type.into(),
+                    i8_ptr_type.ptr_type(AddressSpace::default()).into(),
+                ],
+                false,
+            );
+            self.module
+                .add_function("strtod", fn_type, Some(Linkage::External))
+        });
+        let null_ptr = i8_ptr_type
+            .ptr_type(AddressSpace::default())
+            .const_null();
+        let parsed = self
+            .builder
+            .build_call(strtod_fn, &[str_ptr.into(), null_ptr.into()], "parsed")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_float_value();
+        let string_result = self.make_float(parsed)?;
+        self.builder
+            .build_unconditional_branch(float_merge)
+            .unwrap();
+        let string_block = self.builder.get_insert_block().unwrap();
+
         // default -> 0.0
         self.builder.position_at_end(float_default);
         let default_result = self.make_float(zero_f)?;
@@ -3655,6 +3796,7 @@ impl<'ctx> CodeGen<'ctx> {
             (&bool_result, bool_block),
             (&int_result, int_block),
             (&float_result, float_block),
+            (&string_result, string_block),
             (&default_result, default_block),
         ]);
 
@@ -5405,15 +5547,19 @@ impl<'ctx> CodeGen<'ctx> {
         // Create type name strings
         let nil_str = self
             .builder
-            .build_global_string_ptr("naething", "nil_kind")
+            .build_global_string_ptr("nil", "nil_kind")
             .unwrap();
         let bool_str = self
             .builder
-            .build_global_string_ptr("boolean", "bool_kind")
+            .build_global_string_ptr("bool", "bool_kind")
             .unwrap();
-        let number_str = self
+        let int_str = self
             .builder
-            .build_global_string_ptr("number", "number_kind")
+            .build_global_string_ptr("int", "int_kind")
+            .unwrap();
+        let float_str = self
+            .builder
+            .build_global_string_ptr("float", "float_kind")
             .unwrap();
         let string_str = self
             .builder
@@ -5460,14 +5606,14 @@ impl<'ctx> CodeGen<'ctx> {
         let bool_bb = self.builder.get_insert_block().unwrap();
 
         self.builder.position_at_end(int_block);
-        let int_result = self.make_string(number_str.as_pointer_value())?;
+        let int_result = self.make_string(int_str.as_pointer_value())?;
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
         let int_bb = self.builder.get_insert_block().unwrap();
 
         self.builder.position_at_end(float_block);
-        let float_result = self.make_string(number_str.as_pointer_value())?;
+        let float_result = self.make_string(float_str.as_pointer_value())?;
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -5994,10 +6140,13 @@ impl<'ctx> CodeGen<'ctx> {
 
             Expr::Variable { name, .. } => {
                 if let Some(&alloca) = self.variables.get(name) {
-                    // If we're in a loop body and have a shadow, construct fresh MdhValue from shadow
+                    // If we're in a loop body and have an int shadow AND we know the var is an int,
+                    // construct fresh MdhValue from shadow.
                     // This ensures function calls get the correct value even though we've been
-                    // skipping MdhValue stores for optimization
-                    if self.in_loop_body {
+                    // skipping MdhValue stores for optimization.
+                    // IMPORTANT: Only use shadow if we KNOW the type is Int, not for Unknown types
+                    // (function params have shadows but Unknown type - using shadow would be wrong for lists)
+                    if self.in_loop_body && self.var_types.get(name) == Some(&VarType::Int) {
                         if let Some(&shadow) = self.int_shadows.get(name) {
                             let int_val = self
                                 .builder
@@ -6368,6 +6517,8 @@ impl<'ctx> CodeGen<'ctx> {
                 step,
                 ..
             } => self.compile_slice_expr(object, start.as_ref(), end.as_ref(), step.as_ref()),
+
+            Expr::BlockExpr { statements, .. } => self.compile_block_expr(statements),
 
             // Not yet implemented
             _ => Err(HaversError::CompileError(format!(
@@ -8396,14 +8547,38 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.inline_whit_kind(arg);
                 }
                 "range" => {
-                    if args.len() != 2 {
+                    if args.len() < 2 || args.len() > 3 {
                         return Err(HaversError::CompileError(
-                            "range expects 2 arguments".to_string(),
+                            "range expects 2 or 3 arguments".to_string(),
                         ));
                     }
                     let start = self.compile_expr(&args[0])?;
                     let end = self.compile_expr(&args[1])?;
-                    return self.inline_range(start, end);
+                    let step = if args.len() == 3 {
+                        self.compile_expr(&args[2])?
+                    } else {
+                        self.make_int(self.types.i64_type.const_int(1, false))?
+                    };
+                    // Use runtime function
+                    let start_i64 = self.extract_data(start)?;
+                    let end_i64 = self.extract_data(end)?;
+                    let step_i64 = self.extract_data(step)?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.range,
+                            &[start_i64.into(), end_i64.into(), step_i64.into()],
+                            "range_result",
+                        )
+                        .map_err(|e| {
+                            HaversError::CompileError(format!("Failed to call range: {}", e))
+                        })?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| {
+                            HaversError::CompileError("range returned void".to_string())
+                        })?;
+                    return Ok(result);
                 }
                 // Phase 5: Timing functions
                 "noo" => {
@@ -10951,28 +11126,6 @@ impl<'ctx> CodeGen<'ctx> {
         params: &[crate::ast::Param],
         body: &[Stmt],
     ) -> Result<(), HaversError> {
-        // Pre-declare any nested functions in this body
-        // For nested functions, we need to analyze their bodies for captured variables
-        for stmt in body {
-            if let Stmt::Function {
-                name: nested_name,
-                params: nested_params,
-                body: nested_body,
-                ..
-            } = stmt
-            {
-                if !self.functions.contains_key(nested_name) {
-                    // Find free variables in the nested function
-                    let captures = self.find_free_variables_in_body(nested_body, nested_params);
-                    self.declare_function_with_captures(
-                        nested_name,
-                        nested_params.len(),
-                        &captures,
-                    )?;
-                }
-            }
-        }
-
         let function =
             self.functions.get(name).copied().ok_or_else(|| {
                 HaversError::CompileError(format!("Function not declared: {}", name))
@@ -11032,6 +11185,29 @@ impl<'ctx> CodeGen<'ctx> {
                 let alloca = self.create_entry_block_alloca(capture_name);
                 self.builder.build_store(alloca, param_val).unwrap();
                 self.variables.insert(capture_name.clone(), alloca);
+            }
+        }
+
+        // Pre-declare any nested functions in this body
+        // IMPORTANT: This must happen AFTER parameters are added to self.variables
+        // so that find_free_variables_in_body can see them as capturable
+        for stmt in body {
+            if let Stmt::Function {
+                name: nested_name,
+                params: nested_params,
+                body: nested_body,
+                ..
+            } = stmt
+            {
+                if !self.functions.contains_key(nested_name) {
+                    // Find free variables in the nested function
+                    let captures = self.find_free_variables_in_body(nested_body, nested_params);
+                    self.declare_function_with_captures(
+                        nested_name,
+                        nested_params.len(),
+                        &captures,
+                    )?;
+                }
             }
         }
 
@@ -12106,7 +12282,7 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(result)
     }
 
-    /// Compile an index set expression: list[index] = value
+    /// Compile an index set expression: list[index] = value or dict[key] = value
     /// MdhList struct layout: { MdhValue *items; int64_t length; int64_t capacity; }
     fn compile_index_set(
         &mut self,
@@ -12123,10 +12299,64 @@ impl<'ctx> CodeGen<'ctx> {
             return self.compile_list_index_set_fast(object, index, value);
         }
 
+        // Dict assignment: use runtime function __mdh_dict_set
+        if obj_type == VarType::Dict {
+            return self.compile_dict_index_set(object, index, value);
+        }
+
         // Compile the object, index, and value
         let obj_val = self.compile_expr(object)?;
         let idx_val = self.compile_expr(index)?;
         let new_val = self.compile_expr(value)?;
+
+        // Check at runtime if this is a dict - if so, use dict_set
+        let obj_tag = self.extract_tag(obj_val)?;
+        let dict_tag = self.types.i8_type.const_int(6, false); // MDH_TAG_DICT = 6
+        let is_dict = self
+            .builder
+            .build_int_compare(inkwell::IntPredicate::EQ, obj_tag, dict_tag, "is_dict")
+            .map_err(|e| HaversError::CompileError(format!("Failed to compare: {}", e)))?;
+
+        let function = self.current_function.unwrap();
+        let dict_block = self.context.append_basic_block(function, "set_dict");
+        let list_block = self.context.append_basic_block(function, "set_list");
+        let merge_block = self.context.append_basic_block(function, "set_merge");
+
+        self.builder
+            .build_conditional_branch(is_dict, dict_block, list_block)
+            .map_err(|e| HaversError::CompileError(format!("Failed to branch: {}", e)))?;
+
+        // Dict branch: use __mdh_dict_set
+        self.builder.position_at_end(dict_block);
+        let dict_result = self
+            .builder
+            .build_call(
+                self.libc.dict_set,
+                &[obj_val.into(), idx_val.into(), new_val.into()],
+                "dict_set_result",
+            )
+            .map_err(|e| HaversError::CompileError(format!("Failed to call dict_set: {}", e)))?
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| HaversError::CompileError("dict_set returned void".to_string()))?;
+
+        // Update the variable with the new dict (dict_set returns a new dict since it may reallocate)
+        if let Expr::Variable { name, .. } = object {
+            if let Some(ptr) = self.variables.get(name) {
+                let ptr = *ptr;
+                self.builder
+                    .build_store(ptr, dict_result)
+                    .map_err(|e| HaversError::CompileError(format!("Failed to store: {}", e)))?;
+            }
+        }
+
+        let dict_bb = self.builder.get_insert_block().unwrap();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .map_err(|e| HaversError::CompileError(format!("Failed to branch: {}", e)))?;
+
+        // List branch: continue with original list handling
+        self.builder.position_at_end(list_block);
 
         // Extract the object's data (pointer to MdhList struct)
         let obj_data = self.extract_data(obj_val)?;
@@ -12213,7 +12443,56 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(elem_ptr, new_val)
             .map_err(|e| HaversError::CompileError(format!("Failed to store element: {}", e)))?;
 
+        let list_bb = self.builder.get_insert_block().unwrap();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .map_err(|e| HaversError::CompileError(format!("Failed to branch: {}", e)))?;
+
+        // Merge block
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "set_result")
+            .map_err(|e| HaversError::CompileError(format!("Failed to build phi: {}", e)))?;
+        phi.add_incoming(&[(&dict_result, dict_bb), (&new_val, list_bb)]);
+
         // Return the value that was set (for chained assignments)
+        Ok(phi.as_basic_value())
+    }
+
+    /// Compile dict[key] = value using runtime function
+    fn compile_dict_index_set(
+        &mut self,
+        object: &Expr,
+        index: &Expr,
+        value: &Expr,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let obj_val = self.compile_expr(object)?;
+        let idx_val = self.compile_expr(index)?;
+        let new_val = self.compile_expr(value)?;
+
+        let dict_result = self
+            .builder
+            .build_call(
+                self.libc.dict_set,
+                &[obj_val.into(), idx_val.into(), new_val.into()],
+                "dict_set_result",
+            )
+            .map_err(|e| HaversError::CompileError(format!("Failed to call dict_set: {}", e)))?
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| HaversError::CompileError("dict_set returned void".to_string()))?;
+
+        // Update the variable with the new dict (dict_set returns a new dict since it may reallocate)
+        if let Expr::Variable { name, .. } = object {
+            if let Some(ptr) = self.variables.get(name) {
+                let ptr = *ptr;
+                self.builder
+                    .build_store(ptr, dict_result)
+                    .map_err(|e| HaversError::CompileError(format!("Failed to store: {}", e)))?;
+            }
+        }
+
         Ok(new_val)
     }
 
@@ -13000,35 +13279,25 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_add(sc_final_count, sc_one, "sc_list_len")
             .unwrap();
 
-        let sc_header_size = self.types.i64_type.const_int(16, false);
-        let sc_elem_size = self.types.i64_type.const_int(16, false);
-        let sc_list_size = self
-            .builder
-            .build_int_add(
-                sc_header_size,
-                self.builder
-                    .build_int_mul(sc_list_len, sc_elem_size, "sc_elems_size")
-                    .unwrap(),
-                "sc_list_size",
-            )
-            .unwrap();
+        // Use allocate_list which creates proper MdhList struct
+        let sc_list_ptr = self.allocate_list(sc_list_len)?;
 
-        let sc_list_ptr = self
-            .builder
-            .build_call(self.libc.malloc, &[sc_list_size.into()], "sc_list_ptr")
-            .unwrap()
-            .try_as_basic_value()
-            .left()
-            .unwrap()
-            .into_pointer_value();
-
-        // Store list length
+        // Get items pointer for storing elements
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let sc_len_ptr = self
+        let sc_list_i64_ptr = self
             .builder
-            .build_pointer_cast(sc_list_ptr, i64_ptr_type, "sc_len_ptr")
+            .build_pointer_cast(sc_list_ptr, i64_ptr_type, "sc_list_i64_ptr")
             .unwrap();
-        self.builder.build_store(sc_len_ptr, sc_list_len).unwrap();
+        let sc_items_ptr_i64 = self
+            .builder
+            .build_load(self.types.i64_type, sc_list_i64_ptr, "sc_items_ptr_i64")
+            .unwrap()
+            .into_int_value();
+        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let sc_items_ptr = self
+            .builder
+            .build_int_to_ptr(sc_items_ptr_i64, value_ptr_type, "sc_items_ptr")
+            .unwrap();
 
         // Phase 2: Split and fill list
         let sc_pos_ptr = self
@@ -13167,42 +13436,24 @@ impl<'ctx> CodeGen<'ctx> {
         // Create string value
         let sc_token_value = self.make_string(sc_token_ptr)?;
 
-        // Store in list
+        // Store in list using items pointer
         let sc_elem_idx = self
             .builder
             .build_load(self.types.i64_type, sc_elem_idx_ptr, "sc_elem_idx_val")
             .unwrap()
             .into_int_value();
-        let sc_elem_offset = self
-            .builder
-            .build_int_add(
-                sc_header_size,
-                self.builder
-                    .build_int_mul(sc_elem_idx, sc_elem_size, "sc_eo_mul")
-                    .unwrap(),
-                "sc_elem_offset",
-            )
-            .unwrap();
         let sc_elem_ptr = unsafe {
             self.builder
                 .build_gep(
-                    self.context.i8_type(),
-                    sc_list_ptr,
-                    &[sc_elem_offset],
+                    self.types.value_type,
+                    sc_items_ptr,
+                    &[sc_elem_idx],
                     "sc_elem_ptr",
                 )
                 .unwrap()
         };
-        let sc_value_ptr = self
-            .builder
-            .build_pointer_cast(
-                sc_elem_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "sc_value_ptr",
-            )
-            .unwrap();
         self.builder
-            .build_store(sc_value_ptr, sc_token_value)
+            .build_store(sc_elem_ptr, sc_token_value)
             .unwrap();
 
         // Update token start and element index
@@ -13289,42 +13540,24 @@ impl<'ctx> CodeGen<'ctx> {
         // Create final string value
         let sc_final_value = self.make_string(sc_final_ptr)?;
 
-        // Store final in list
+        // Store final in list using items pointer
         let sc_final_idx = self
             .builder
             .build_load(self.types.i64_type, sc_elem_idx_ptr, "sc_final_idx")
             .unwrap()
             .into_int_value();
-        let sc_final_offset = self
-            .builder
-            .build_int_add(
-                sc_header_size,
-                self.builder
-                    .build_int_mul(sc_final_idx, sc_elem_size, "sc_fo_mul")
-                    .unwrap(),
-                "sc_final_offset",
-            )
-            .unwrap();
         let sc_final_elem = unsafe {
             self.builder
                 .build_gep(
-                    self.context.i8_type(),
-                    sc_list_ptr,
-                    &[sc_final_offset],
+                    self.types.value_type,
+                    sc_items_ptr,
+                    &[sc_final_idx],
                     "sc_final_elem",
                 )
                 .unwrap()
         };
-        let sc_final_vptr = self
-            .builder
-            .build_pointer_cast(
-                sc_final_elem,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "sc_final_vptr",
-            )
-            .unwrap();
         self.builder
-            .build_store(sc_final_vptr, sc_final_value)
+            .build_store(sc_final_elem, sc_final_value)
             .unwrap();
 
         // Create result and branch to merge
@@ -13741,11 +13974,6 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_int_value();
         let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let list_ptr = self
-            .builder
-            .build_int_to_ptr(list_data, i8_ptr_type, "list_ptr")
-            .unwrap();
 
         // Extract delimiter string
         let delim_struct = delim_val.into_struct_value();
@@ -13769,26 +13997,39 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_int_value();
 
-        // Get list length from offset 1 (after capacity)
-        let header_ptr = self
+        // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
+        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let mdh_list_type = self.context.struct_type(
+            &[value_ptr_type.into(), self.types.i64_type.into(), self.types.i64_type.into()],
+            false,
+        );
+        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+        let list_struct_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
+            .build_int_to_ptr(list_data, mdh_list_ptr_type, "list_struct_ptr")
             .unwrap();
-        let len_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.i64_type,
-                    header_ptr,
-                    &[self.types.i64_type.const_int(1, false)],
-                    "len_ptr",
-                )
-                .unwrap()
-        };
+
+        // Get list->length (at index 1)
+        let len_ptr = self
+            .builder
+            .build_struct_gep(mdh_list_type, list_struct_ptr, 1, "len_ptr")
+            .unwrap();
         let list_len = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
             .unwrap()
             .into_int_value();
+
+        // Get list->items (at index 0)
+        let items_ptr_ptr = self
+            .builder
+            .build_struct_gep(mdh_list_type, list_struct_ptr, 0, "items_ptr_ptr")
+            .unwrap();
+        let items_ptr = self
+            .builder
+            .build_load(value_ptr_type, items_ptr_ptr, "items_ptr")
+            .unwrap()
+            .into_pointer_value();
 
         // Check for empty list
         let zero = self.types.i64_type.const_int(0, false);
@@ -13853,35 +14094,15 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(calc_body);
 
-        // Get element at index
-        let elem_size = self.types.i64_type.const_int(16, false);
-        let header_size = self.types.i64_type.const_int(16, false);
-        let elem_offset = self
-            .builder
-            .build_int_add(
-                header_size,
-                self.builder
-                    .build_int_mul(idx, elem_size, "elem_mul")
-                    .unwrap(),
-                "elem_offset",
-            )
-            .unwrap();
+        // Get element at index from items_ptr[idx]
         let elem_ptr = unsafe {
             self.builder
-                .build_gep(self.context.i8_type(), list_ptr, &[elem_offset], "elem_ptr")
+                .build_gep(self.types.value_type, items_ptr, &[idx], "elem_ptr")
                 .unwrap()
         };
-        let value_ptr = self
-            .builder
-            .build_pointer_cast(
-                elem_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "value_ptr",
-            )
-            .unwrap();
         let elem_value = self
             .builder
-            .build_load(self.types.value_type, value_ptr, "elem_value")
+            .build_load(self.types.value_type, elem_ptr, "elem_value")
             .unwrap();
 
         // Get string pointer from element (assuming all elements are strings)
@@ -13998,38 +14219,15 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(concat_body);
 
-        // Get element at index
-        let elem_offset2 = self
-            .builder
-            .build_int_add(
-                header_size,
-                self.builder
-                    .build_int_mul(idx2, elem_size, "elem_mul2")
-                    .unwrap(),
-                "elem_offset2",
-            )
-            .unwrap();
+        // Get element at index from items_ptr[idx2]
         let elem_ptr2 = unsafe {
             self.builder
-                .build_gep(
-                    self.context.i8_type(),
-                    list_ptr,
-                    &[elem_offset2],
-                    "elem_ptr2",
-                )
+                .build_gep(self.types.value_type, items_ptr, &[idx2], "elem_ptr2")
                 .unwrap()
         };
-        let value_ptr2 = self
-            .builder
-            .build_pointer_cast(
-                elem_ptr2,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "value_ptr2",
-            )
-            .unwrap();
         let elem_value2 = self
             .builder
-            .build_load(self.types.value_type, value_ptr2, "elem_value2")
+            .build_load(self.types.value_type, elem_ptr2, "elem_value2")
             .unwrap();
 
         let elem_data2 = self
@@ -14823,6 +15021,13 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::Input { prompt, .. } => {
                 self.collect_free_vars(prompt, bound, free);
             }
+            Expr::BlockExpr { statements, .. } => {
+                // Track bound variables through the block
+                let mut block_bound = bound.clone();
+                for stmt in statements {
+                    self.collect_free_vars_stmt(stmt, &mut block_bound, free);
+                }
+            }
             // Expressions without sub-expressions that don't reference variables
             Expr::Literal { .. } | Expr::Masel { .. } => {}
         }
@@ -14903,6 +15108,38 @@ impl<'ctx> CodeGen<'ctx> {
             }),
             Expr::Grouping { expr, .. } => self.expr_uses_masel(expr),
             Expr::Spread { expr, .. } => self.expr_uses_masel(expr),
+            Expr::BlockExpr { statements, .. } => {
+                statements.iter().any(|stmt| self.stmt_uses_masel(stmt))
+            }
+        }
+    }
+
+    /// Check if a statement uses 'masel' anywhere
+    fn stmt_uses_masel(&self, stmt: &Stmt) -> bool {
+        match stmt {
+            Stmt::Expression { expr, .. } => self.expr_uses_masel(expr),
+            Stmt::Print { value, .. } => self.expr_uses_masel(value),
+            Stmt::VarDecl { initializer, .. } => {
+                initializer.as_ref().map_or(false, |e| self.expr_uses_masel(e))
+            }
+            Stmt::Return { value, .. } => {
+                value.as_ref().map_or(false, |e| self.expr_uses_masel(e))
+            }
+            Stmt::If { condition, then_branch, else_branch, .. } => {
+                self.expr_uses_masel(condition)
+                    || self.stmt_uses_masel(then_branch)
+                    || else_branch.as_ref().map_or(false, |e| self.stmt_uses_masel(e))
+            }
+            Stmt::While { condition, body, .. } => {
+                self.expr_uses_masel(condition) || self.stmt_uses_masel(body)
+            }
+            Stmt::For { iterable, body, .. } => {
+                self.expr_uses_masel(iterable) || self.stmt_uses_masel(body)
+            }
+            Stmt::Block { statements, .. } => {
+                statements.iter().any(|s| self.stmt_uses_masel(s))
+            }
+            _ => false,
         }
     }
 
@@ -15187,8 +15424,21 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         // Compile the lambda body
-        let result = self.compile_expr(body)?;
-        self.builder.build_return(Some(&result)).unwrap();
+        // For BlockExpr, the block compiles statements and may contain 'gie' (return)
+        // For regular expressions, we return the value
+        if let Expr::BlockExpr { statements, .. } = body {
+            // Compile all statements
+            for stmt in statements {
+                self.compile_stmt(stmt)?;
+            }
+            // If the block didn't return (no gie), add implicit return of nil
+            if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+                self.builder.build_return(Some(&self.make_nil())).unwrap();
+            }
+        } else {
+            let result = self.compile_expr(body)?;
+            self.builder.build_return(Some(&result)).unwrap();
+        }
 
         // Restore state
         self.current_function = saved_function;
@@ -15881,81 +16131,82 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let function = self.current_function.unwrap();
 
-        // Extract list pointer and length
+        // Get MdhList* from list_val.data
         let list_struct = list_val.into_struct_value();
         let list_data = self
             .builder
             .build_extract_value(list_struct, 1, "list_data")
             .unwrap()
             .into_int_value();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+
+        // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
+        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let mdh_list_type = self.context.struct_type(
+            &[value_ptr_type.into(), self.types.i64_type.into(), self.types.i64_type.into()],
+            false,
+        );
+        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+
         let list_ptr = self
             .builder
-            .build_int_to_ptr(list_data, i8_ptr_type, "list_ptr")
+            .build_int_to_ptr(list_data, mdh_list_ptr_type, "list_ptr")
             .unwrap();
 
-        let header_ptr = self
+        // Get list->length (at index 1)
+        let len_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
+            .build_struct_gep(mdh_list_type, list_ptr, 1, "len_ptr")
             .unwrap();
-        let len_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.i64_type,
-                    header_ptr,
-                    &[self.types.i64_type.const_int(1, false)],
-                    "len_ptr",
-                )
-                .unwrap()
-        };
         let list_len = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
             .unwrap()
             .into_int_value();
 
-        // Allocate new list (max size = original size)
-        let header_size = self.types.i64_type.const_int(16, false);
-        let elem_size = self.types.i64_type.const_int(16, false);
-        let elems_total = self
+        // Get list->items (at index 0)
+        let items_ptr_ptr = self
             .builder
-            .build_int_mul(list_len, elem_size, "elems_total")
+            .build_struct_gep(mdh_list_type, list_ptr, 0, "items_ptr_ptr")
             .unwrap();
-        let total_size = self
+        let items_ptr = self
             .builder
-            .build_int_add(header_size, elems_total, "total_size")
-            .unwrap();
-
-        let new_list_ptr = self
-            .builder
-            .build_call(self.libc.malloc, &[total_size.into()], "new_list")
-            .unwrap()
-            .try_as_basic_value()
-            .left()
+            .build_load(value_ptr_type, items_ptr_ptr, "items_ptr")
             .unwrap()
             .into_pointer_value();
 
-        // Store func_val in an alloca
+        // Create new result list with same capacity
+        let len_i32 = self
+            .builder
+            .build_int_cast(list_len, self.context.i32_type(), "len_i32")
+            .unwrap();
+        let new_list_val = self
+            .builder
+            .build_call(self.libc.make_list, &[len_i32.into()], "new_list")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap();
+
+        // Store function and new list for use in loop
         let func_alloca = self
             .builder
             .build_alloca(self.types.value_type, "func_alloca")
             .unwrap();
         self.builder.build_store(func_alloca, func_val).unwrap();
 
-        // Counters
+        let result_alloca = self
+            .builder
+            .build_alloca(self.types.value_type, "result_alloca")
+            .unwrap();
+        self.builder.build_store(result_alloca, new_list_val).unwrap();
+
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
         let idx_ptr = self
             .builder
             .build_alloca(self.types.i64_type, "idx")
             .unwrap();
-        let count_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "count")
-            .unwrap();
         self.builder.build_store(idx_ptr, zero).unwrap();
-        self.builder.build_store(count_ptr, zero).unwrap();
 
         let loop_block = self.context.append_basic_block(function, "sieve_loop");
         let body_block = self.context.append_basic_block(function, "sieve_body");
@@ -15981,33 +16232,15 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(body_block);
 
-        // Get element at idx
-        let elem_offset = self
-            .builder
-            .build_int_add(
-                header_size,
-                self.builder
-                    .build_int_mul(idx, elem_size, "idx_mul")
-                    .unwrap(),
-                "elem_offset",
-            )
-            .unwrap();
+        // Get current element from items[idx]
         let elem_ptr = unsafe {
             self.builder
-                .build_gep(self.context.i8_type(), list_ptr, &[elem_offset], "elem_ptr")
+                .build_gep(self.types.value_type, items_ptr, &[idx], "elem_ptr")
                 .unwrap()
         };
-        let value_ptr = self
-            .builder
-            .build_pointer_cast(
-                elem_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "value_ptr",
-            )
-            .unwrap();
         let elem_val = self
             .builder
-            .build_load(self.types.value_type, value_ptr, "elem_val")
+            .build_load(self.types.value_type, elem_ptr, "elem_val")
             .unwrap();
 
         // Store elem_val in alloca for use in keep_block
@@ -16030,53 +16263,23 @@ impl<'ctx> CodeGen<'ctx> {
             .build_conditional_branch(is_truthy, keep_block, next_block)
             .unwrap();
 
-        // Keep element
+        // Keep element - push to result list
         self.builder.position_at_end(keep_block);
-        let count = self
+        let elem_to_keep = self
             .builder
-            .build_load(self.types.i64_type, count_ptr, "count_val")
-            .unwrap()
-            .into_int_value();
-        let new_elem_offset = self
-            .builder
-            .build_int_add(
-                header_size,
-                self.builder
-                    .build_int_mul(count, elem_size, "count_mul")
-                    .unwrap(),
-                "new_elem_offset",
-            )
+            .build_load(self.types.value_type, elem_alloca, "elem_to_keep")
             .unwrap();
-        let new_elem_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.context.i8_type(),
-                    new_list_ptr,
-                    &[new_elem_offset],
-                    "new_elem_ptr",
-                )
-                .unwrap()
-        };
-        let new_value_ptr = self
+        let result_list = self
             .builder
-            .build_pointer_cast(
-                new_elem_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "new_value_ptr",
-            )
-            .unwrap();
-        let elem_to_store = self
-            .builder
-            .build_load(self.types.value_type, elem_alloca, "elem_to_store")
+            .build_load(self.types.value_type, result_alloca, "result_list")
             .unwrap();
         self.builder
-            .build_store(new_value_ptr, elem_to_store)
+            .build_call(
+                self.libc.list_push,
+                &[result_list.into(), elem_to_keep.into()],
+                "",
+            )
             .unwrap();
-        let next_count = self
-            .builder
-            .build_int_add(count, one, "next_count")
-            .unwrap();
-        self.builder.build_store(count_ptr, next_count).unwrap();
         self.builder.build_unconditional_branch(next_block).unwrap();
 
         // Next iteration
@@ -16086,38 +16289,12 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
         self.builder.position_at_end(done_block);
-
-        // Store final count as length
-        let final_count = self
+        // Return the result list
+        let final_result = self
             .builder
-            .build_load(self.types.i64_type, count_ptr, "final_count")
-            .unwrap()
-            .into_int_value();
-        let new_len_ptr = self
-            .builder
-            .build_pointer_cast(new_list_ptr, i64_ptr_type, "new_len_ptr")
+            .build_load(self.types.value_type, result_alloca, "final_result")
             .unwrap();
-        self.builder.build_store(new_len_ptr, final_count).unwrap();
-
-        // Return new list
-        let list_as_int = self
-            .builder
-            .build_ptr_to_int(new_list_ptr, self.types.i64_type, "list_as_int")
-            .unwrap();
-        let list_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::List.as_u8() as u64, false);
-        let undef = self.types.value_type.get_undef();
-        let v1 = self
-            .builder
-            .build_insert_value(undef, list_tag, 0, "v1")
-            .unwrap();
-        let v2 = self
-            .builder
-            .build_insert_value(v1, list_as_int, 1, "v2")
-            .unwrap();
-        Ok(v2.into_struct_value().into())
+        Ok(final_result)
     }
 
     /// tumble(list, init, fn) - reduce/fold
@@ -16129,39 +16306,48 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let function = self.current_function.unwrap();
 
-        // Extract list pointer and length
+        // Get MdhList* from list_val.data
         let list_struct = list_val.into_struct_value();
         let list_data = self
             .builder
             .build_extract_value(list_struct, 1, "list_data")
             .unwrap()
             .into_int_value();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+
+        // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
+        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let mdh_list_type = self.context.struct_type(
+            &[value_ptr_type.into(), self.types.i64_type.into(), self.types.i64_type.into()],
+            false,
+        );
+        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+
         let list_ptr = self
             .builder
-            .build_int_to_ptr(list_data, i8_ptr_type, "list_ptr")
+            .build_int_to_ptr(list_data, mdh_list_ptr_type, "list_ptr")
             .unwrap();
 
-        let header_ptr = self
+        // Get list->length (at index 1)
+        let len_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
+            .build_struct_gep(mdh_list_type, list_ptr, 1, "len_ptr")
             .unwrap();
-        let len_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.i64_type,
-                    header_ptr,
-                    &[self.types.i64_type.const_int(1, false)],
-                    "len_ptr",
-                )
-                .unwrap()
-        };
         let list_len = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
             .unwrap()
             .into_int_value();
+
+        // Get list->items (at index 0)
+        let items_ptr_ptr = self
+            .builder
+            .build_struct_gep(mdh_list_type, list_ptr, 0, "items_ptr_ptr")
+            .unwrap();
+        let items_ptr = self
+            .builder
+            .build_load(value_ptr_type, items_ptr_ptr, "items_ptr")
+            .unwrap()
+            .into_pointer_value();
 
         // Store func_val and accumulator
         let func_alloca = self
@@ -16175,8 +16361,6 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         self.builder.build_store(acc_alloca, init_val).unwrap();
 
-        let header_size = self.types.i64_type.const_int(16, false);
-        let elem_size = self.types.i64_type.const_int(16, false);
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
         let idx_ptr = self
@@ -16207,33 +16391,15 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(body_block);
 
-        // Get element at idx
-        let elem_offset = self
-            .builder
-            .build_int_add(
-                header_size,
-                self.builder
-                    .build_int_mul(idx, elem_size, "idx_mul")
-                    .unwrap(),
-                "elem_offset",
-            )
-            .unwrap();
+        // Get current element from items[idx]
         let elem_ptr = unsafe {
             self.builder
-                .build_gep(self.context.i8_type(), list_ptr, &[elem_offset], "elem_ptr")
+                .build_gep(self.types.value_type, items_ptr, &[idx], "elem_ptr")
                 .unwrap()
         };
-        let value_ptr = self
-            .builder
-            .build_pointer_cast(
-                elem_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "value_ptr",
-            )
-            .unwrap();
         let elem_val = self
             .builder
-            .build_load(self.types.value_type, value_ptr, "elem_val")
+            .build_load(self.types.value_type, elem_ptr, "elem_val")
             .unwrap();
 
         // Call fn(acc, elem)
@@ -16269,38 +16435,48 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let function = self.current_function.unwrap();
 
+        // Get MdhList* from list_val.data
         let list_struct = list_val.into_struct_value();
         let list_data = self
             .builder
             .build_extract_value(list_struct, 1, "list_data")
             .unwrap()
             .into_int_value();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+
+        // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
+        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let mdh_list_type = self.context.struct_type(
+            &[value_ptr_type.into(), self.types.i64_type.into(), self.types.i64_type.into()],
+            false,
+        );
+        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+
         let list_ptr = self
             .builder
-            .build_int_to_ptr(list_data, i8_ptr_type, "list_ptr")
+            .build_int_to_ptr(list_data, mdh_list_ptr_type, "list_ptr")
             .unwrap();
 
-        let header_ptr = self
+        // Get list->length (at index 1)
+        let len_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
+            .build_struct_gep(mdh_list_type, list_ptr, 1, "len_ptr")
             .unwrap();
-        let len_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.i64_type,
-                    header_ptr,
-                    &[self.types.i64_type.const_int(1, false)],
-                    "len_ptr",
-                )
-                .unwrap()
-        };
         let list_len = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
             .unwrap()
             .into_int_value();
+
+        // Get list->items (at index 0)
+        let items_ptr_ptr = self
+            .builder
+            .build_struct_gep(mdh_list_type, list_ptr, 0, "items_ptr_ptr")
+            .unwrap();
+        let items_ptr = self
+            .builder
+            .build_load(value_ptr_type, items_ptr_ptr, "items_ptr")
+            .unwrap()
+            .into_pointer_value();
 
         let func_alloca = self
             .builder
@@ -16308,8 +16484,6 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         self.builder.build_store(func_alloca, func_val).unwrap();
 
-        let header_size = self.types.i64_type.const_int(16, false);
-        let elem_size = self.types.i64_type.const_int(16, false);
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
         let idx_ptr = self
@@ -16342,32 +16516,15 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(body_block);
 
-        let elem_offset = self
-            .builder
-            .build_int_add(
-                header_size,
-                self.builder
-                    .build_int_mul(idx, elem_size, "idx_mul")
-                    .unwrap(),
-                "elem_offset",
-            )
-            .unwrap();
+        // Get current element from items[idx]
         let elem_ptr = unsafe {
             self.builder
-                .build_gep(self.context.i8_type(), list_ptr, &[elem_offset], "elem_ptr")
+                .build_gep(self.types.value_type, items_ptr, &[idx], "elem_ptr")
                 .unwrap()
         };
-        let value_ptr = self
-            .builder
-            .build_pointer_cast(
-                elem_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "value_ptr",
-            )
-            .unwrap();
         let elem_val = self
             .builder
-            .build_load(self.types.value_type, value_ptr, "elem_val")
+            .build_load(self.types.value_type, elem_ptr, "elem_val")
             .unwrap();
 
         let func = self
@@ -16417,38 +16574,48 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let function = self.current_function.unwrap();
 
+        // Get MdhList* from list_val.data
         let list_struct = list_val.into_struct_value();
         let list_data = self
             .builder
             .build_extract_value(list_struct, 1, "list_data")
             .unwrap()
             .into_int_value();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+
+        // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
+        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let mdh_list_type = self.context.struct_type(
+            &[value_ptr_type.into(), self.types.i64_type.into(), self.types.i64_type.into()],
+            false,
+        );
+        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+
         let list_ptr = self
             .builder
-            .build_int_to_ptr(list_data, i8_ptr_type, "list_ptr")
+            .build_int_to_ptr(list_data, mdh_list_ptr_type, "list_ptr")
             .unwrap();
 
-        let header_ptr = self
+        // Get list->length (at index 1)
+        let len_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
+            .build_struct_gep(mdh_list_type, list_ptr, 1, "len_ptr")
             .unwrap();
-        let len_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.i64_type,
-                    header_ptr,
-                    &[self.types.i64_type.const_int(1, false)],
-                    "len_ptr",
-                )
-                .unwrap()
-        };
         let list_len = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
             .unwrap()
             .into_int_value();
+
+        // Get list->items (at index 0)
+        let items_ptr_ptr = self
+            .builder
+            .build_struct_gep(mdh_list_type, list_ptr, 0, "items_ptr_ptr")
+            .unwrap();
+        let items_ptr = self
+            .builder
+            .build_load(value_ptr_type, items_ptr_ptr, "items_ptr")
+            .unwrap()
+            .into_pointer_value();
 
         let func_alloca = self
             .builder
@@ -16456,8 +16623,6 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         self.builder.build_store(func_alloca, func_val).unwrap();
 
-        let header_size = self.types.i64_type.const_int(16, false);
-        let elem_size = self.types.i64_type.const_int(16, false);
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
         let idx_ptr = self
@@ -16490,32 +16655,15 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(body_block);
 
-        let elem_offset = self
-            .builder
-            .build_int_add(
-                header_size,
-                self.builder
-                    .build_int_mul(idx, elem_size, "idx_mul")
-                    .unwrap(),
-                "elem_offset",
-            )
-            .unwrap();
+        // Get current element from items[idx]
         let elem_ptr = unsafe {
             self.builder
-                .build_gep(self.context.i8_type(), list_ptr, &[elem_offset], "elem_ptr")
+                .build_gep(self.types.value_type, items_ptr, &[idx], "elem_ptr")
                 .unwrap()
         };
-        let value_ptr = self
-            .builder
-            .build_pointer_cast(
-                elem_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "value_ptr",
-            )
-            .unwrap();
         let elem_val = self
             .builder
-            .build_load(self.types.value_type, value_ptr, "elem_val")
+            .build_load(self.types.value_type, elem_ptr, "elem_val")
             .unwrap();
 
         let func = self
@@ -16565,38 +16713,48 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let function = self.current_function.unwrap();
 
+        // Get MdhList* from list_val.data
         let list_struct = list_val.into_struct_value();
         let list_data = self
             .builder
             .build_extract_value(list_struct, 1, "list_data")
             .unwrap()
             .into_int_value();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+
+        // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
+        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let mdh_list_type = self.context.struct_type(
+            &[value_ptr_type.into(), self.types.i64_type.into(), self.types.i64_type.into()],
+            false,
+        );
+        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+
         let list_ptr = self
             .builder
-            .build_int_to_ptr(list_data, i8_ptr_type, "list_ptr")
+            .build_int_to_ptr(list_data, mdh_list_ptr_type, "list_ptr")
             .unwrap();
 
-        let header_ptr = self
+        // Get list->length (at index 1)
+        let len_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
+            .build_struct_gep(mdh_list_type, list_ptr, 1, "len_ptr")
             .unwrap();
-        let len_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.i64_type,
-                    header_ptr,
-                    &[self.types.i64_type.const_int(1, false)],
-                    "len_ptr",
-                )
-                .unwrap()
-        };
         let list_len = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
             .unwrap()
             .into_int_value();
+
+        // Get list->items (at index 0)
+        let items_ptr_ptr = self
+            .builder
+            .build_struct_gep(mdh_list_type, list_ptr, 0, "items_ptr_ptr")
+            .unwrap();
+        let items_ptr = self
+            .builder
+            .build_load(value_ptr_type, items_ptr_ptr, "items_ptr")
+            .unwrap()
+            .into_pointer_value();
 
         let func_alloca = self
             .builder
@@ -16604,8 +16762,6 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         self.builder.build_store(func_alloca, func_val).unwrap();
 
-        let header_size = self.types.i64_type.const_int(16, false);
-        let elem_size = self.types.i64_type.const_int(16, false);
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
         let idx_ptr = self
@@ -16638,32 +16794,15 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(body_block);
 
-        let elem_offset = self
-            .builder
-            .build_int_add(
-                header_size,
-                self.builder
-                    .build_int_mul(idx, elem_size, "idx_mul")
-                    .unwrap(),
-                "elem_offset",
-            )
-            .unwrap();
+        // Get current element from items[idx]
         let elem_ptr = unsafe {
             self.builder
-                .build_gep(self.context.i8_type(), list_ptr, &[elem_offset], "elem_ptr")
+                .build_gep(self.types.value_type, items_ptr, &[idx], "elem_ptr")
                 .unwrap()
         };
-        let value_ptr = self
-            .builder
-            .build_pointer_cast(
-                elem_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "value_ptr",
-            )
-            .unwrap();
         let elem_val = self
             .builder
-            .build_load(self.types.value_type, value_ptr, "elem_val")
+            .build_load(self.types.value_type, elem_ptr, "elem_val")
             .unwrap();
 
         // Store elem in alloca for use in found block
@@ -16723,50 +16862,76 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let function = self.current_function.unwrap();
 
-        // Get list pointer and length
+        // Get MdhList* from list_val.data
         let list_struct = list_val.into_struct_value();
         let list_data = self
             .builder
             .build_extract_value(list_struct, 1, "list_data")
             .unwrap()
             .into_int_value();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+
+        // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
+        // Define MdhList type
+        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let mdh_list_type = self.context.struct_type(
+            &[value_ptr_type.into(), self.types.i64_type.into(), self.types.i64_type.into()],
+            false,
+        );
+        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+
         let list_ptr = self
             .builder
-            .build_int_to_ptr(list_data, i8_ptr_type, "list_ptr")
+            .build_int_to_ptr(list_data, mdh_list_ptr_type, "list_ptr")
             .unwrap();
 
-        // Get list length
-        let header_ptr = self
+        // Get list->length (at index 1)
+        let len_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
+            .build_struct_gep(mdh_list_type, list_ptr, 1, "len_ptr")
             .unwrap();
-        let len_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.i64_type,
-                    header_ptr,
-                    &[self.types.i64_type.const_int(1, false)],
-                    "len_ptr",
-                )
-                .unwrap()
-        };
         let list_len = self
             .builder
             .build_load(self.types.i64_type, len_ptr, "list_len")
             .unwrap()
             .into_int_value();
 
-        // Store function value for use in loop
+        // Get list->items (at index 0)
+        let items_ptr_ptr = self
+            .builder
+            .build_struct_gep(mdh_list_type, list_ptr, 0, "items_ptr_ptr")
+            .unwrap();
+        let items_ptr = self
+            .builder
+            .build_load(value_ptr_type, items_ptr_ptr, "items_ptr")
+            .unwrap()
+            .into_pointer_value();
+
+        // Create new result list with same capacity
+        let len_i32 = self
+            .builder
+            .build_int_cast(list_len, self.context.i32_type(), "len_i32")
+            .unwrap();
+        let new_list_val = self
+            .builder
+            .build_call(self.libc.make_list, &[len_i32.into()], "new_list")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap();
+
+        // Store function and new list for use in loop
         let func_alloca = self
             .builder
             .build_alloca(self.types.value_type, "func_alloca")
             .unwrap();
         self.builder.build_store(func_alloca, func_val).unwrap();
 
-        let header_size = self.types.i64_type.const_int(16, false);
-        let elem_size = self.types.i64_type.const_int(16, false);
+        let result_alloca = self
+            .builder
+            .build_alloca(self.types.value_type, "result_alloca")
+            .unwrap();
+        self.builder.build_store(result_alloca, new_list_val).unwrap();
+
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
         let idx_ptr = self
@@ -16797,41 +16962,36 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(body_block);
 
-        // Get current element
-        let elem_offset = self
-            .builder
-            .build_int_add(
-                header_size,
-                self.builder
-                    .build_int_mul(idx, elem_size, "idx_mul")
-                    .unwrap(),
-                "elem_offset",
-            )
-            .unwrap();
+        // Get current element from items[idx]
         let elem_ptr = unsafe {
             self.builder
-                .build_gep(self.context.i8_type(), list_ptr, &[elem_offset], "elem_ptr")
+                .build_gep(self.types.value_type, items_ptr, &[idx], "elem_ptr")
                 .unwrap()
         };
-        let value_ptr = self
-            .builder
-            .build_pointer_cast(
-                elem_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "value_ptr",
-            )
-            .unwrap();
         let elem_val = self
             .builder
-            .build_load(self.types.value_type, value_ptr, "elem_val")
+            .build_load(self.types.value_type, elem_ptr, "elem_val")
             .unwrap();
 
-        // Call function with element (ignore result)
+        // Call function with element
         let func = self
             .builder
             .build_load(self.types.value_type, func_alloca, "func")
             .unwrap();
-        let _result = self.call_function_value(func, &[elem_val])?;
+        let mapped_val = self.call_function_value(func, &[elem_val])?;
+
+        // Push mapped value to result list
+        let result_list = self
+            .builder
+            .build_load(self.types.value_type, result_alloca, "result_list")
+            .unwrap();
+        self.builder
+            .build_call(
+                self.libc.list_push,
+                &[result_list.into(), mapped_val.into()],
+                "",
+            )
+            .unwrap();
 
         // Increment and continue
         let next_idx = self.builder.build_int_add(idx, one, "next_idx").unwrap();
@@ -16839,8 +16999,12 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
         self.builder.position_at_end(done_block);
-        // Return nil (for-each doesn't return a value)
-        Ok(self.make_nil())
+        // Return the result list
+        let final_result = self
+            .builder
+            .build_load(self.types.value_type, result_alloca, "final_result")
+            .unwrap();
+        Ok(final_result)
     }
 
     /// keys(dict) - returns a list of all keys in the dict
@@ -16848,166 +17012,15 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         dict_val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        let function = self.current_function.unwrap();
-
-        // Dict layout: [i64 count][entry0][entry1]... where entry = [value key][value val]
-        let dict_struct = dict_val.into_struct_value();
-        let dict_data = self
+        // Use runtime function for proper MdhList struct handling
+        let result = self
             .builder
-            .build_extract_value(dict_struct, 1, "dict_data")
-            .unwrap()
-            .into_int_value();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let dict_ptr = self
-            .builder
-            .build_int_to_ptr(dict_data, i8_ptr_type, "dict_ptr")
-            .unwrap();
-
-        // Get dict count
-        let count_ptr = self
-            .builder
-            .build_pointer_cast(dict_ptr, i64_ptr_type, "count_ptr")
-            .unwrap();
-        let dict_count = self
-            .builder
-            .build_load(self.types.i64_type, count_ptr, "dict_count")
-            .unwrap()
-            .into_int_value();
-
-        // Allocate result list: 16 bytes header (capacity + length) + 16 bytes per key
-        let list_header_size = self.types.i64_type.const_int(16, false);
-        let elem_size = self.types.i64_type.const_int(16, false);
-        let result_data_size = self
-            .builder
-            .build_int_add(
-                list_header_size,
-                self.builder
-                    .build_int_mul(dict_count, elem_size, "data_size")
-                    .unwrap(),
-                "result_size",
-            )
-            .unwrap();
-        let result_ptr = self
-            .builder
-            .build_call(self.libc.malloc, &[result_data_size.into()], "result_ptr")
-            .map_err(|e| HaversError::CompileError(format!("Failed to malloc: {}", e)))?
+            .build_call(self.libc.dict_keys, &[dict_val.into()], "keys_result")
+            .map_err(|e| HaversError::CompileError(format!("Failed to call dict_keys: {}", e)))?
             .try_as_basic_value()
             .left()
-            .unwrap()
-            .into_pointer_value();
-        let result_len_ptr = self
-            .builder
-            .build_pointer_cast(result_ptr, i64_ptr_type, "result_len_ptr")
-            .unwrap();
-        self.builder
-            .build_store(result_len_ptr, dict_count)
-            .unwrap();
-
-        // Loop to copy keys
-        let zero = self.types.i64_type.const_int(0, false);
-        let one = self.types.i64_type.const_int(1, false);
-        let dict_header_size = self.types.i64_type.const_int(8, false); // sizeof(i64) for count
-        let entry_size = self.types.i64_type.const_int(32, false); // 16 bytes key + 16 bytes value
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "idx")
-            .unwrap();
-        self.builder.build_store(idx_ptr, zero).unwrap();
-
-        let loop_block = self.context.append_basic_block(function, "keys_loop");
-        let body_block = self.context.append_basic_block(function, "keys_body");
-        let done_block = self.context.append_basic_block(function, "keys_done");
-
-        self.builder.build_unconditional_branch(loop_block).unwrap();
-        self.builder.position_at_end(loop_block);
-
-        let idx = self
-            .builder
-            .build_load(self.types.i64_type, idx_ptr, "idx_val")
-            .unwrap()
-            .into_int_value();
-        let done_cond = self
-            .builder
-            .build_int_compare(IntPredicate::UGE, idx, dict_count, "done")
-            .unwrap();
-        self.builder
-            .build_conditional_branch(done_cond, done_block, body_block)
-            .unwrap();
-
-        self.builder.position_at_end(body_block);
-
-        // Get key from dict entry
-        let dict_entry_offset = self
-            .builder
-            .build_int_add(
-                dict_header_size,
-                self.builder
-                    .build_int_mul(idx, entry_size, "entry_mul")
-                    .unwrap(),
-                "entry_offset",
-            )
-            .unwrap();
-        let dict_key_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.context.i8_type(),
-                    dict_ptr,
-                    &[dict_entry_offset],
-                    "dict_key_ptr",
-                )
-                .unwrap()
-        };
-        let key_value_ptr = self
-            .builder
-            .build_pointer_cast(
-                dict_key_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "key_value_ptr",
-            )
-            .unwrap();
-        let key_val = self
-            .builder
-            .build_load(self.types.value_type, key_value_ptr, "key_val")
-            .unwrap();
-
-        // Store key in result list
-        let result_elem_offset = self
-            .builder
-            .build_int_add(
-                list_header_size,
-                self.builder
-                    .build_int_mul(idx, elem_size, "result_mul")
-                    .unwrap(),
-                "result_offset",
-            )
-            .unwrap();
-        let result_elem_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.context.i8_type(),
-                    result_ptr,
-                    &[result_elem_offset],
-                    "result_elem_ptr",
-                )
-                .unwrap()
-        };
-        let result_value_ptr = self
-            .builder
-            .build_pointer_cast(
-                result_elem_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "result_value_ptr",
-            )
-            .unwrap();
-        self.builder.build_store(result_value_ptr, key_val).unwrap();
-
-        let next_idx = self.builder.build_int_add(idx, one, "next_idx").unwrap();
-        self.builder.build_store(idx_ptr, next_idx).unwrap();
-        self.builder.build_unconditional_branch(loop_block).unwrap();
-
-        self.builder.position_at_end(done_block);
-        self.make_list(result_ptr)
+            .ok_or_else(|| HaversError::CompileError("dict_keys returned void".to_string()))?;
+        Ok(result)
     }
 
     /// values(dict) - returns a list of all values in the dict
@@ -17015,171 +17028,15 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         dict_val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        let function = self.current_function.unwrap();
-
-        // Dict layout: [i64 count][entry0][entry1]... where entry = [value key][value val]
-        let dict_struct = dict_val.into_struct_value();
-        let dict_data = self
+        // Use runtime function for proper MdhList struct handling
+        let result = self
             .builder
-            .build_extract_value(dict_struct, 1, "dict_data")
-            .unwrap()
-            .into_int_value();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let dict_ptr = self
-            .builder
-            .build_int_to_ptr(dict_data, i8_ptr_type, "dict_ptr")
-            .unwrap();
-
-        // Get dict count
-        let count_ptr = self
-            .builder
-            .build_pointer_cast(dict_ptr, i64_ptr_type, "count_ptr")
-            .unwrap();
-        let dict_count = self
-            .builder
-            .build_load(self.types.i64_type, count_ptr, "dict_count")
-            .unwrap()
-            .into_int_value();
-
-        // Allocate result list: 16 bytes header (capacity + length) + 16 bytes per value
-        let list_header_size = self.types.i64_type.const_int(16, false);
-        let elem_size = self.types.i64_type.const_int(16, false);
-        let result_data_size = self
-            .builder
-            .build_int_add(
-                list_header_size,
-                self.builder
-                    .build_int_mul(dict_count, elem_size, "data_size")
-                    .unwrap(),
-                "result_size",
-            )
-            .unwrap();
-        let result_ptr = self
-            .builder
-            .build_call(self.libc.malloc, &[result_data_size.into()], "result_ptr")
-            .map_err(|e| HaversError::CompileError(format!("Failed to malloc: {}", e)))?
+            .build_call(self.libc.dict_values, &[dict_val.into()], "values_result")
+            .map_err(|e| HaversError::CompileError(format!("Failed to call dict_values: {}", e)))?
             .try_as_basic_value()
             .left()
-            .unwrap()
-            .into_pointer_value();
-        let result_len_ptr = self
-            .builder
-            .build_pointer_cast(result_ptr, i64_ptr_type, "result_len_ptr")
-            .unwrap();
-        self.builder
-            .build_store(result_len_ptr, dict_count)
-            .unwrap();
-
-        // Loop to copy values
-        let zero = self.types.i64_type.const_int(0, false);
-        let one = self.types.i64_type.const_int(1, false);
-        let dict_header_size = self.types.i64_type.const_int(8, false); // sizeof(i64) for count
-        let entry_size = self.types.i64_type.const_int(32, false); // 16 bytes key + 16 bytes value
-        let value_offset_in_entry = self.types.i64_type.const_int(16, false); // Value comes after key
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "idx")
-            .unwrap();
-        self.builder.build_store(idx_ptr, zero).unwrap();
-
-        let loop_block = self.context.append_basic_block(function, "values_loop");
-        let body_block = self.context.append_basic_block(function, "values_body");
-        let done_block = self.context.append_basic_block(function, "values_done");
-
-        self.builder.build_unconditional_branch(loop_block).unwrap();
-        self.builder.position_at_end(loop_block);
-
-        let idx = self
-            .builder
-            .build_load(self.types.i64_type, idx_ptr, "idx_val")
-            .unwrap()
-            .into_int_value();
-        let done_cond = self
-            .builder
-            .build_int_compare(IntPredicate::UGE, idx, dict_count, "done")
-            .unwrap();
-        self.builder
-            .build_conditional_branch(done_cond, done_block, body_block)
-            .unwrap();
-
-        self.builder.position_at_end(body_block);
-
-        // Get value from dict entry (offset by 16 bytes from entry start)
-        let dict_entry_offset = self
-            .builder
-            .build_int_add(
-                dict_header_size,
-                self.builder
-                    .build_int_mul(idx, entry_size, "entry_mul")
-                    .unwrap(),
-                "entry_offset",
-            )
-            .unwrap();
-        let dict_value_offset = self
-            .builder
-            .build_int_add(dict_entry_offset, value_offset_in_entry, "value_offset")
-            .unwrap();
-        let dict_value_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.context.i8_type(),
-                    dict_ptr,
-                    &[dict_value_offset],
-                    "dict_value_ptr",
-                )
-                .unwrap()
-        };
-        let value_ptr = self
-            .builder
-            .build_pointer_cast(
-                dict_value_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "value_ptr",
-            )
-            .unwrap();
-        let val = self
-            .builder
-            .build_load(self.types.value_type, value_ptr, "val")
-            .unwrap();
-
-        // Store value in result list
-        let result_elem_offset = self
-            .builder
-            .build_int_add(
-                list_header_size,
-                self.builder
-                    .build_int_mul(idx, elem_size, "result_mul")
-                    .unwrap(),
-                "result_offset",
-            )
-            .unwrap();
-        let result_elem_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.context.i8_type(),
-                    result_ptr,
-                    &[result_elem_offset],
-                    "result_elem_ptr",
-                )
-                .unwrap()
-        };
-        let result_value_ptr = self
-            .builder
-            .build_pointer_cast(
-                result_elem_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "result_value_ptr",
-            )
-            .unwrap();
-        self.builder.build_store(result_value_ptr, val).unwrap();
-
-        let next_idx = self.builder.build_int_add(idx, one, "next_idx").unwrap();
-        self.builder.build_store(idx_ptr, next_idx).unwrap();
-        self.builder.build_unconditional_branch(loop_block).unwrap();
-
-        self.builder.position_at_end(done_block);
-        self.make_list(result_ptr)
+            .ok_or_else(|| HaversError::CompileError("dict_values returned void".to_string()))?;
+        Ok(result)
     }
 
     // ========== Class/OOP Support ==========
@@ -20635,6 +20492,22 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         self.make_list(new_ptr)
+    }
+
+    /// Compile a block expression: { statements... }
+    /// Returns nil since block expressions are primarily used for side effects
+    /// When used in lambda bodies, the return value comes from 'gie' statements
+    fn compile_block_expr(
+        &mut self,
+        statements: &[Stmt],
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        // Note: When called from lambda bodies, the block is handled specially
+        // in compile_lambda to handle 'gie' statements correctly.
+        // This function is for standalone block expressions which evaluate to nil.
+        for stmt in statements {
+            self.compile_stmt(stmt)?;
+        }
+        Ok(self.make_nil())
     }
 
     /// Compile slice expression: obj[start:end:step]

@@ -583,6 +583,16 @@ impl Formatter {
                     self.format_expr(else_expr)
                 )
             }
+            Expr::BlockExpr { statements, .. } => {
+                let mut result = String::from("{\n");
+                for stmt in statements {
+                    result.push_str("    ");
+                    result.push_str(&self.format_stmt_single(stmt));
+                    result.push('\n');
+                }
+                result.push('}');
+                result
+            }
         }
     }
 }

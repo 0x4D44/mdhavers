@@ -2031,3 +2031,632 @@ mod integration {
         assert_eq!(run(code).trim(), "13");
     }
 }
+
+// ============================================================================
+// ADDITIONAL BASIC TESTS
+// ============================================================================
+
+mod additional_basics {
+    use super::*;
+
+    #[test]
+    fn test_multiple_function_calls() {
+        let code = r#"
+            dae add(a, b) {
+                gie a + b
+            }
+            dae mul(a, b) {
+                gie a * b
+            }
+            blether add(mul(2, 3), mul(4, 5))
+        "#;
+        // 2*3 + 4*5 = 6 + 20 = 26
+        assert_eq!(run(code).trim(), "26");
+    }
+
+    #[test]
+    fn test_string_in_condition() {
+        let code = r#"
+            ken name = "Alice"
+            gin len(name) > 3 {
+                blether "long name"
+            } ither {
+                blether "short name"
+            }
+        "#;
+        assert_eq!(run(code).trim(), "long name");
+    }
+
+    #[test]
+    fn test_list_in_function() {
+        let code = r#"
+            dae sum_list(lst) {
+                ken total = 0
+                fer x in lst {
+                    total = total + x
+                }
+                gie total
+            }
+            blether sum_list([1, 2, 3, 4, 5])
+        "#;
+        assert_eq!(run(code).trim(), "15");
+    }
+
+    #[test]
+    fn test_nested_dict_access() {
+        let code = r#"
+            ken config = {"server": {"host": "localhost", "port": 8080}}
+            blether config["server"]["host"]
+        "#;
+        assert_eq!(run(code).trim(), "localhost");
+    }
+}
+
+// ============================================================================
+// ERROR HANDLING (try-catch without hurl)
+// ============================================================================
+
+mod error_handling {
+    use super::*;
+
+    #[test]
+    fn test_try_catch_success() {
+        // Try block executes successfully, catch is not executed
+        let code = r#"
+            hae_a_bash {
+                blether "Success"
+            } gin_it_gangs_wrang e {
+                blether "Error"
+            }
+        "#;
+        assert_eq!(run(code).trim(), "Success");
+    }
+
+    #[test]
+    fn test_try_catch_variable_access() {
+        // Variables from before try block should be accessible
+        let code = r#"
+            ken x = 42
+            hae_a_bash {
+                blether x
+            } gin_it_gangs_wrang e {
+                blether "Error"
+            }
+        "#;
+        assert_eq!(run(code).trim(), "42");
+    }
+
+    #[test]
+    fn test_try_catch_multiple_statements() {
+        // Multiple statements in try block
+        let code = r#"
+            hae_a_bash {
+                ken a = 10
+                ken b = 20
+                blether a + b
+            } gin_it_gangs_wrang e {
+                blether "Error"
+            }
+        "#;
+        assert_eq!(run(code).trim(), "30");
+    }
+}
+
+// ============================================================================
+// ADVANCED STRING OPERATIONS
+// ============================================================================
+
+mod advanced_strings {
+    use super::*;
+
+    #[test]
+    fn test_string_wheesht_trim() {
+        let code = r#"
+            ken s = "  hello world  "
+            blether wheesht(s)
+        "#;
+        assert_eq!(run(code).trim(), "hello world");
+    }
+
+    #[test]
+    fn test_string_slice_operations() {
+        let code = r#"
+            ken s = "hello world"
+            blether s[0:5]
+        "#;
+        assert_eq!(run(code).trim(), "hello");
+    }
+
+    #[test]
+    fn test_string_negative_slice() {
+        let code = r#"
+            ken s = "hello"
+            blether s[-2:]
+        "#;
+        assert_eq!(run(code).trim(), "lo");
+    }
+
+    #[test]
+    fn test_string_step_slice() {
+        let code = r#"
+            ken s = "abcdefgh"
+            blether s[::2]
+        "#;
+        assert_eq!(run(code).trim(), "aceg");
+    }
+
+    #[test]
+    fn test_string_reverse_slice() {
+        let code = r#"
+            ken s = "hello"
+            blether s[::-1]
+        "#;
+        assert_eq!(run(code).trim(), "olleh");
+    }
+
+    #[test]
+    fn test_fstring_with_expressions() {
+        let code = r#"
+            ken x = 5
+            ken y = 10
+            blether f"Sum: {x + y}, Product: {x * y}"
+        "#;
+        assert_eq!(run(code).trim(), "Sum: 15, Product: 50");
+    }
+
+    #[test]
+    fn test_fstring_nested() {
+        let code = r#"
+            ken name = "world"
+            ken greeting = f"Hello, {name}!"
+            blether f"Message: {greeting}"
+        "#;
+        assert_eq!(run(code).trim(), "Message: Hello, world!");
+    }
+}
+
+// ============================================================================
+// ADVANCED LIST OPERATIONS
+// ============================================================================
+
+mod advanced_lists {
+    use super::*;
+
+    #[test]
+    fn test_list_scran_take() {
+        let code = r#"
+            ken nums = [1, 2, 3, 4, 5]
+            blether scran(nums, 0, 3)
+        "#;
+        assert_eq!(run(code).trim(), "[1, 2, 3]");
+    }
+
+    #[test]
+    fn test_list_slap_concat() {
+        let code = r#"
+            ken a = [1, 2]
+            ken b = [3, 4]
+            blether slap(a, b)
+        "#;
+        assert_eq!(run(code).trim(), "[1, 2, 3, 4]");
+    }
+
+    #[test]
+    fn test_list_shuffle() {
+        let code = r#"
+            ken nums = [1, 2, 3, 4, 5]
+            ken shuffled = shuffle(nums)
+            blether len(shuffled)
+        "#;
+        // Shuffle should preserve length
+        assert_eq!(run(code).trim(), "5");
+    }
+
+    #[test]
+    fn test_list_bum_last() {
+        let code = r#"
+            ken nums = [1, 2, 3, 4, 5]
+            blether bum(nums)
+        "#;
+        assert_eq!(run(code).trim(), "5");
+    }
+
+    #[test]
+    fn test_list_sumaw() {
+        let code = r#"
+            ken nums = [1, 2, 3, 4, 5]
+            blether sumaw(nums)
+        "#;
+        assert_eq!(run(code).trim(), "15");
+    }
+
+    #[test]
+    fn test_list_slice_read() {
+        let code = r#"
+            ken nums = [1, 2, 3, 4, 5]
+            blether nums[1:4]
+        "#;
+        assert_eq!(run(code).trim(), "[2, 3, 4]");
+    }
+}
+
+// ============================================================================
+// ADVANCED CLOSURES
+// ============================================================================
+
+mod advanced_closures {
+    use super::*;
+
+    #[test]
+    fn test_closure_captures_multiple() {
+        let code = r#"
+            dae make_adder(x, y) {
+                gie |z| x + y + z
+            }
+            ken add = make_adder(10, 20)
+            blether add(5)
+        "#;
+        assert_eq!(run(code).trim(), "35");
+    }
+
+    #[test]
+    fn test_simple_closure() {
+        let code = r#"
+            ken x = 10
+            ken f = || x * 2
+            blether f()
+        "#;
+        assert_eq!(run(code).trim(), "20");
+    }
+}
+
+// ============================================================================
+// FOR LOOP VARIATIONS
+// ============================================================================
+
+mod for_loop_variations {
+    use super::*;
+
+    #[test]
+    fn test_for_with_index() {
+        let code = r#"
+            ken items = ["a", "b", "c"]
+            ken i = 0
+            fer item in items {
+                blether f"{i}: {item}"
+                i = i + 1
+            }
+        "#;
+        let output = run(code);
+        assert!(output.contains("0: a"));
+        assert!(output.contains("1: b"));
+        assert!(output.contains("2: c"));
+    }
+
+    #[test]
+    fn test_for_over_dict_keys() {
+        let code = r#"
+            ken d = {"x": 1, "y": 2}
+            fer k in keys(d) {
+                blether k
+            }
+        "#;
+        let output = run(code);
+        assert!(output.contains("x"));
+        assert!(output.contains("y"));
+    }
+
+    #[test]
+    fn test_nested_for_loops() {
+        let code = r#"
+            ken sum = 0
+            fer i in range(0, 3) {
+                fer j in range(0, 3) {
+                    sum = sum + i * j
+                }
+            }
+            blether sum
+        "#;
+        // (0*0 + 0*1 + 0*2) + (1*0 + 1*1 + 1*2) + (2*0 + 2*1 + 2*2) = 0 + 3 + 6 = 9
+        assert_eq!(run(code).trim(), "9");
+    }
+
+    #[test]
+    fn test_for_with_break() {
+        let code = r#"
+            ken result = 0
+            fer i in range(0, 10) {
+                gin i == 5 {
+                    brak
+                }
+                result = result + i
+            }
+            blether result
+        "#;
+        // 0 + 1 + 2 + 3 + 4 = 10
+        assert_eq!(run(code).trim(), "10");
+    }
+
+    #[test]
+    fn test_for_with_continue() {
+        let code = r#"
+            ken result = 0
+            fer i in range(0, 5) {
+                gin i == 2 {
+                    haud
+                }
+                result = result + i
+            }
+            blether result
+        "#;
+        // 0 + 1 + 3 + 4 = 8 (skips 2)
+        assert_eq!(run(code).trim(), "8");
+    }
+}
+
+// ============================================================================
+// HIGHER ORDER FUNCTIONS
+// ============================================================================
+
+mod higher_order {
+    use super::*;
+
+    #[test]
+    fn test_ilk_map_extended() {
+        let code = r#"
+            ken nums = [1, 2, 3, 4, 5]
+            ken doubled = ilk(nums, |x| x * 2)
+            blether doubled
+        "#;
+        assert_eq!(run(code).trim(), "[2, 4, 6, 8, 10]");
+    }
+
+    #[test]
+    fn test_sieve_filter_extended() {
+        let code = r#"
+            ken nums = [1, 2, 3, 4, 5, 6]
+            ken evens = sieve(nums, |x| x % 2 == 0)
+            blether evens
+        "#;
+        assert_eq!(run(code).trim(), "[2, 4, 6]");
+    }
+
+    #[test]
+    fn test_chained_higher_order() {
+        let code = r#"
+            ken nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+            ken result = ilk(sieve(nums, |x| x % 2 == 0), |x| x * x)
+            blether result
+        "#;
+        assert_eq!(run(code).trim(), "[4, 16, 36, 64, 100]");
+    }
+}
+
+// ============================================================================
+// TIMING AND PERFORMANCE
+// ============================================================================
+
+mod timing {
+    use super::*;
+
+    #[test]
+    fn test_noo_timestamp() {
+        let code = r#"
+            ken t1 = noo()
+            ken t2 = noo()
+            blether t2 >= t1
+        "#;
+        assert_eq!(run(code).trim(), "aye");
+    }
+
+    #[test]
+    fn test_tick_nanoseconds() {
+        let code = r#"
+            ken t1 = tick()
+            ken t2 = tick()
+            blether t2 >= t1
+        "#;
+        assert_eq!(run(code).trim(), "aye");
+    }
+}
+
+// ============================================================================
+// RECURSION
+// ============================================================================
+
+mod recursion {
+    use super::*;
+
+    #[test]
+    fn test_mutual_recursion() {
+        let code = r#"
+            dae is_even(n) {
+                gin n == 0 {
+                    gie aye
+                }
+                gie is_odd(n - 1)
+            }
+
+            dae is_odd(n) {
+                gin n == 0 {
+                    gie nae
+                }
+                gie is_even(n - 1)
+            }
+
+            blether is_even(10)
+        "#;
+        assert_eq!(run(code).trim(), "aye");
+    }
+
+    #[test]
+    fn test_tail_recursion_like() {
+        let code = r#"
+            dae sum_to(n, acc) {
+                gin n == 0 {
+                    gie acc
+                }
+                gie sum_to(n - 1, acc + n)
+            }
+            blether sum_to(100, 0)
+        "#;
+        assert_eq!(run(code).trim(), "5050");
+    }
+}
+
+// ============================================================================
+// EDGE CASES
+// ============================================================================
+
+mod edge_cases {
+    use super::*;
+
+    #[test]
+    fn test_empty_function() {
+        let code = r#"
+            dae empty() {
+            }
+            ken result = empty()
+            blether result
+        "#;
+        assert_eq!(run(code).trim(), "naething");
+    }
+
+    #[test]
+    fn test_single_element_list() {
+        let code = r#"
+            ken single = [42]
+            blether heid(single)
+            blether bum(single)
+            blether len(single)
+        "#;
+        let output = run(code);
+        assert!(output.contains("42"));
+        assert!(output.contains("1"));
+    }
+
+    #[test]
+    fn test_zero_division_check() {
+        let code = r#"
+            ken x = 10
+            ken y = 0
+            gin y != 0 {
+                blether x / y
+            } ither {
+                blether "cannot divide by zero"
+            }
+        "#;
+        assert!(run(code).contains("cannot divide by zero"));
+    }
+
+    #[test]
+    fn test_boolean_short_circuit() {
+        let code = r#"
+            ken called = nae
+            dae side_effect() {
+                called = aye
+                gie aye
+            }
+            ken result = nae an side_effect()
+            blether called
+        "#;
+        // Short-circuit: side_effect should not be called
+        assert_eq!(run(code).trim(), "nae");
+    }
+
+    #[test]
+    fn test_deeply_nested_access() {
+        let code = r#"
+            ken data = {"a": {"b": {"c": {"d": 42}}}}
+            blether data["a"]["b"]["c"]["d"]
+        "#;
+        assert_eq!(run(code).trim(), "42");
+    }
+
+    #[test]
+    fn test_very_long_string() {
+        let code = r#"
+            ken s = "a"
+            fer i in range(0, 10) {
+                s = s + s
+            }
+            blether len(s)
+        "#;
+        // 2^10 = 1024
+        assert_eq!(run(code).trim(), "1024");
+    }
+
+    #[test]
+    fn test_unicode_strings() {
+        let code = r#"
+            ken s = "héllo wörld 🌍"
+            blether s
+        "#;
+        assert!(run(code).contains("héllo wörld 🌍"));
+    }
+
+    #[test]
+    fn test_negative_modulo() {
+        let code = r#"
+            blether -7 % 3
+        "#;
+        // Behavior may vary, just ensure it doesn't crash
+        let output = run(code);
+        let result = output.trim();
+        assert!(result == "-1" || result == "2");
+    }
+
+    #[test]
+    fn test_float_precision() {
+        let code = r#"
+            ken x = 0.1 + 0.2
+            blether x
+        "#;
+        // Should be close to 0.3
+        let output = run(code);
+        let result = output.trim();
+        let val: f64 = result.parse().unwrap();
+        assert!((val - 0.3).abs() < 0.0001);
+    }
+}
+
+// ============================================================================
+// PIPE OPERATIONS
+// ============================================================================
+
+mod pipes {
+    use super::*;
+
+    #[test]
+    fn test_pipe_with_lambda() {
+        let code = r#"
+            ken result = 5 |> |x| x * 2 |> |x| x + 1
+            blether result
+        "#;
+        assert_eq!(run(code).trim(), "11");
+    }
+
+    #[test]
+    fn test_pipe_with_function() {
+        let code = r#"
+            dae double(x) {
+                gie x * 2
+            }
+            dae add_one(x) {
+                gie x + 1
+            }
+            ken result = 5 |> double |> add_one
+            blether result
+        "#;
+        assert_eq!(run(code).trim(), "11");
+    }
+
+    #[test]
+    fn test_pipe_with_list_operations() {
+        let code = r#"
+            ken result = [1, 2, 3, 4, 5] |> |arr| sieve(arr, |x| x > 2) |> |arr| ilk(arr, |x| x * 10)
+            blether result
+        "#;
+        assert_eq!(run(code).trim(), "[30, 40, 50]");
+    }
+}

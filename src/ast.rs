@@ -350,6 +350,13 @@ pub enum Expr {
         span: Span,
     },
 
+    /// Block expression: { statements... gie value }
+    /// Used for multiline lambda bodies
+    BlockExpr {
+        statements: Vec<Stmt>,
+        span: Span,
+    },
+
     /// Self reference: masel
     Masel { span: Span },
 
@@ -496,6 +503,7 @@ impl Expr {
             Expr::Range { span, .. } => *span,
             Expr::Grouping { span, .. } => *span,
             Expr::Lambda { span, .. } => *span,
+            Expr::BlockExpr { span, .. } => *span,
             Expr::Masel { span } => *span,
             Expr::Input { span, .. } => *span,
             Expr::FString { span, .. } => *span,
