@@ -131,6 +131,50 @@ MdhValue __mdh_empty_creel(void);
 MdhValue __mdh_dict_contains(MdhValue dict, MdhValue key);
 MdhValue __mdh_toss_in(MdhValue dict, MdhValue item);
 MdhValue __mdh_heave_oot(MdhValue dict, MdhValue item);
+MdhValue __mdh_creel_tae_list(MdhValue dict);
+
+/* ========== File I/O ========== */
+
+MdhValue __mdh_file_exists(MdhValue path);
+MdhValue __mdh_slurp(MdhValue path);
+MdhValue __mdh_scrieve(MdhValue path, MdhValue content);
+MdhValue __mdh_lines(MdhValue path);
+MdhValue __mdh_words(MdhValue str);
+
+/* ========== Logging/Debug ========== */
+
+MdhValue __mdh_get_log_level(void);
+MdhValue __mdh_set_log_level(MdhValue level);
+
+/* ========== Scots Builtins ========== */
+
+MdhValue __mdh_slainte(void);
+MdhValue __mdh_och(MdhValue msg);
+MdhValue __mdh_wee(MdhValue a, MdhValue b);
+MdhValue __mdh_tak(MdhValue list, MdhValue n);
+MdhValue __mdh_pair_up(MdhValue list1, MdhValue list2);
+MdhValue __mdh_tae_binary(MdhValue n);
+MdhValue __mdh_average(MdhValue list);
+MdhValue __mdh_chynge(MdhValue str, MdhValue old_sub, MdhValue new_sub);
+
+/* ========== Testing ========== */
+
+MdhValue __mdh_assert(MdhValue condition, MdhValue msg);
+MdhValue __mdh_skip(MdhValue reason);
+MdhValue __mdh_stacktrace(void);
+
+/* ========== Additional Scots Builtins ========== */
+
+MdhValue __mdh_muckle(MdhValue a, MdhValue b);
+MdhValue __mdh_median(MdhValue list);
+MdhValue __mdh_is_space(MdhValue str);
+MdhValue __mdh_is_digit(MdhValue str);
+MdhValue __mdh_wheesht_aw(MdhValue str);
+MdhValue __mdh_bonnie(MdhValue val);
+MdhValue __mdh_shuffle(MdhValue list);
+MdhValue __mdh_bit_and(MdhValue a, MdhValue b);
+MdhValue __mdh_bit_or(MdhValue a, MdhValue b);
+MdhValue __mdh_bit_xor(MdhValue a, MdhValue b);
 
 /* ========== Helpers ========== */
 
