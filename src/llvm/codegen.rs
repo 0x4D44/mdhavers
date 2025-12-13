@@ -65,6 +65,11 @@ struct LibcFunctions<'ctx> {
     random: FunctionValue<'ctx>,
     term_width: FunctionValue<'ctx>,
     term_height: FunctionValue<'ctx>,
+    // Dict/Creel runtime functions
+    empty_creel: FunctionValue<'ctx>,
+    dict_contains: FunctionValue<'ctx>,
+    toss_in: FunctionValue<'ctx>,
+    heave_oot: FunctionValue<'ctx>,
 }
 
 /// Inferred type for optimization
@@ -364,6 +369,32 @@ impl<'ctx> CodeGen<'ctx> {
         let term_height =
             module.add_function("__mdh_term_height", term_size_type, Some(Linkage::External));
 
+        // __mdh_empty_creel() -> MdhValue
+        let empty_creel_type = types.value_type.fn_type(&[], false);
+        let empty_creel =
+            module.add_function("__mdh_empty_creel", empty_creel_type, Some(Linkage::External));
+
+        // __mdh_dict_contains(dict, key) -> MdhValue (bool)
+        let dict_contains_type = types
+            .value_type
+            .fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let dict_contains =
+            module.add_function("__mdh_dict_contains", dict_contains_type, Some(Linkage::External));
+
+        // __mdh_toss_in(dict, item) -> MdhValue (new dict)
+        let toss_in_type = types
+            .value_type
+            .fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let toss_in =
+            module.add_function("__mdh_toss_in", toss_in_type, Some(Linkage::External));
+
+        // __mdh_heave_oot(dict, item) -> MdhValue (new dict)
+        let heave_oot_type = types
+            .value_type
+            .fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let heave_oot =
+            module.add_function("__mdh_heave_oot", heave_oot_type, Some(Linkage::External));
+
         LibcFunctions {
             printf,
             malloc,
@@ -391,6 +422,10 @@ impl<'ctx> CodeGen<'ctx> {
             random,
             term_width,
             term_height,
+            empty_creel,
+            dict_contains,
+            toss_in,
+            heave_oot,
         }
     }
 
@@ -7463,8 +7498,9 @@ impl<'ctx> CodeGen<'ctx> {
                     let arg = self.compile_expr(&args[0])?;
                     return self.inline_sumaw(arg);
                 }
-                // Phase 3: String operations
+                // Phase 3: String/Set operations
                 "contains" | "dict_has" => {
+                    // String contains or dict has key
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
                             "contains/dict_has expects 2 arguments".to_string(),
@@ -7473,6 +7509,98 @@ impl<'ctx> CodeGen<'ctx> {
                     let container = self.compile_expr(&args[0])?;
                     let key = self.compile_expr(&args[1])?;
                     return self.inline_contains(container, key);
+                }
+                "is_in_creel" => {
+                    // is_in_creel is Scots for "is in set/basket" - uses dict_contains runtime
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "is_in_creel expects 2 arguments (set, item)".to_string(),
+                        ));
+                    }
+                    let set_val = self.compile_expr(&args[0])?;
+                    let item = self.compile_expr(&args[1])?;
+                    // Call runtime function: __mdh_dict_contains(dict, key) -> MdhValue (bool)
+                    let result = self
+                        .builder
+                        .build_call(self.libc.dict_contains, &[set_val.into(), item.into()], "is_in_creel_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call dict_contains: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("dict_contains returned void".to_string()))?;
+                    return Ok(result);
+                }
+                "toss_in" => {
+                    // toss_in(set, item) - add item to set (Scots: toss it in the creel!)
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "toss_in expects 2 arguments (set, item)".to_string(),
+                        ));
+                    }
+                    let set_val = self.compile_expr(&args[0])?;
+                    let item = self.compile_expr(&args[1])?;
+                    // Call runtime function: __mdh_toss_in(dict, item) -> MdhValue
+                    let result = self
+                        .builder
+                        .build_call(self.libc.toss_in, &[set_val.into(), item.into()], "toss_in_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call toss_in: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("toss_in returned void".to_string()))?;
+                    return Ok(result);
+                }
+                "heave_oot" => {
+                    // heave_oot(set, item) - remove item from set (Scots: heave it out!)
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "heave_oot expects 2 arguments (set, item)".to_string(),
+                        ));
+                    }
+                    let set_val = self.compile_expr(&args[0])?;
+                    let item = self.compile_expr(&args[1])?;
+                    // Call runtime function: __mdh_heave_oot(dict, item) -> MdhValue
+                    let result = self
+                        .builder
+                        .build_call(self.libc.heave_oot, &[set_val.into(), item.into()], "heave_oot_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call heave_oot: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("heave_oot returned void".to_string()))?;
+                    return Ok(result);
+                }
+                "empty_creel" => {
+                    // empty_creel() - create empty set (empty basket)
+                    if !args.is_empty() {
+                        return Err(HaversError::CompileError(
+                            "empty_creel expects no arguments".to_string(),
+                        ));
+                    }
+                    // Call runtime function: __mdh_empty_creel() -> MdhValue
+                    let result = self
+                        .builder
+                        .build_call(self.libc.empty_creel, &[], "empty_creel_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call empty_creel: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("empty_creel returned void".to_string()))?;
+                    return Ok(result);
+                }
+                "make_creel" => {
+                    // make_creel(list) - create set from list items
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "make_creel expects 1 argument (list)".to_string(),
+                        ));
+                    }
+                    // For now, just return an empty creel - full implementation would iterate list
+                    // and add each item. This is a stub to allow files to compile.
+                    let result = self
+                        .builder
+                        .build_call(self.libc.empty_creel, &[], "make_creel_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call empty_creel: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("empty_creel returned void".to_string()))?;
+                    return Ok(result);
                 }
                 "upper" => {
                     if args.len() != 1 {
@@ -15283,6 +15411,22 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
+        // If no method found, try callable field pattern (e.g., masel.callback() where callback is a stored lambda)
+        if found_method.is_none() {
+            // Try to get the field value from the instance and call it
+            let field_val = self.compile_instance_get_field(instance, method_name)?;
+
+            // Build call arguments (without instance since this is a field call, not method call)
+            let mut field_call_args: Vec<BasicMetadataValueEnum> = vec![];
+            for arg in args {
+                let arg_val = self.compile_expr(arg)?;
+                field_call_args.push(arg_val.into());
+            }
+
+            // Call the field value as a function using the runtime's call mechanism
+            return self.call_callable_value(field_val, &field_call_args);
+        }
+
         let (method_func, func_name) = found_method.ok_or_else(|| {
             HaversError::CompileError(format!("Method '{}' not found", method_name))
         })?;
@@ -15323,6 +15467,41 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_call(method_func, &call_args, "method_result")
             .map_err(|e| HaversError::CompileError(format!("Failed to call method: {}", e)))?
+            .try_as_basic_value()
+            .left()
+            .unwrap_or_else(|| self.make_nil());
+
+        Ok(result)
+    }
+
+    /// Call a value that is expected to be callable (a function/lambda stored in a field)
+    fn call_callable_value(
+        &mut self,
+        callable: BasicValueEnum<'ctx>,
+        args: &[BasicMetadataValueEnum<'ctx>],
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        // Extract the function pointer from the callable value (tag should be Function=9)
+        let fn_ptr_int = self.extract_data(callable)?;
+
+        // Build function type based on number of arguments
+        let param_types: Vec<BasicMetadataTypeEnum> = args
+            .iter()
+            .map(|_| self.types.value_type.into())
+            .collect();
+        let fn_type = self.types.value_type.fn_type(&param_types, false);
+        let fn_ptr_type = fn_type.ptr_type(AddressSpace::default());
+
+        // Convert i64 to function pointer
+        let fn_ptr = self
+            .builder
+            .build_int_to_ptr(fn_ptr_int, fn_ptr_type, "callable_fn_ptr")
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert to fn ptr: {}", e)))?;
+
+        // Build indirect call
+        let result = self
+            .builder
+            .build_indirect_call(fn_type, fn_ptr, args, "callable_result")
+            .map_err(|e| HaversError::CompileError(format!("Failed indirect call: {}", e)))?
             .try_as_basic_value()
             .left()
             .unwrap_or_else(|| self.make_nil());

@@ -125,6 +125,13 @@ MdhValue __mdh_floor(MdhValue a);
 MdhValue __mdh_ceil(MdhValue a);
 MdhValue __mdh_round(MdhValue a);
 
+/* ========== Dict/Creel Operations ========== */
+
+MdhValue __mdh_empty_creel(void);
+MdhValue __mdh_dict_contains(MdhValue dict, MdhValue key);
+MdhValue __mdh_toss_in(MdhValue dict, MdhValue item);
+MdhValue __mdh_heave_oot(MdhValue dict, MdhValue item);
+
 /* ========== Helpers ========== */
 
 /* Get string pointer from MdhValue (assumes tag is STRING) */
