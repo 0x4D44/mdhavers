@@ -722,3 +722,133 @@ MdhValue __mdh_round(MdhValue a) {
     __mdh_type_error("round", a.tag, 0);
     return __mdh_make_nil();
 }
+
+/* ========== Dict/Creel Operations ========== */
+/* Dict memory layout: [i64 count][entry0][entry1]... where entry = [MdhValue key][MdhValue val] = 32 bytes */
+
+MdhValue __mdh_empty_creel(void) {
+    /* Allocate 8 bytes for count (which is 0) */
+    int64_t *dict_ptr = (int64_t *)GC_malloc(8);
+    *dict_ptr = 0;  /* count = 0 */
+
+    MdhValue v;
+    v.tag = MDH_TAG_DICT;
+    v.data = (int64_t)(intptr_t)dict_ptr;
+    return v;
+}
+
+/* Helper: Check if two MdhValues are equal */
+static bool __mdh_values_equal(MdhValue a, MdhValue b) {
+    if (a.tag != b.tag) return false;
+    if (a.tag == MDH_TAG_STRING) {
+        const char *sa = (const char *)(intptr_t)a.data;
+        const char *sb = (const char *)(intptr_t)b.data;
+        return strcmp(sa, sb) == 0;
+    }
+    return a.data == b.data;
+}
+
+MdhValue __mdh_dict_contains(MdhValue dict, MdhValue key) {
+    if (dict.tag != MDH_TAG_DICT) {
+        return __mdh_make_bool(false);
+    }
+
+    int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;
+    int64_t count = *dict_ptr;
+    MdhValue *entries = (MdhValue *)(dict_ptr + 1);
+
+    for (int64_t i = 0; i < count; i++) {
+        MdhValue entry_key = entries[i * 2];
+        if (__mdh_values_equal(entry_key, key)) {
+            return __mdh_make_bool(true);
+        }
+    }
+    return __mdh_make_bool(false);
+}
+
+MdhValue __mdh_toss_in(MdhValue dict, MdhValue item) {
+    if (dict.tag != MDH_TAG_DICT) {
+        return dict;
+    }
+
+    int64_t *old_ptr = (int64_t *)(intptr_t)dict.data;
+    int64_t count = *old_ptr;
+    MdhValue *entries = (MdhValue *)(old_ptr + 1);
+
+    /* Check if item already exists */
+    for (int64_t i = 0; i < count; i++) {
+        MdhValue entry_key = entries[i * 2];
+        if (__mdh_values_equal(entry_key, item)) {
+            /* Already exists, return unchanged */
+            return dict;
+        }
+    }
+
+    /* Add new entry: reallocate */
+    int64_t new_count = count + 1;
+    size_t new_size = 8 + new_count * 32;  /* 8 for count, 32 per entry */
+    int64_t *new_ptr = (int64_t *)GC_malloc(new_size);
+
+    /* Copy old data */
+    *new_ptr = new_count;
+    MdhValue *new_entries = (MdhValue *)(new_ptr + 1);
+    for (int64_t i = 0; i < count; i++) {
+        new_entries[i * 2] = entries[i * 2];       /* key */
+        new_entries[i * 2 + 1] = entries[i * 2 + 1]; /* value */
+    }
+
+    /* Add new entry (for sets, key == value) */
+    new_entries[count * 2] = item;
+    new_entries[count * 2 + 1] = item;
+
+    MdhValue v;
+    v.tag = MDH_TAG_DICT;
+    v.data = (int64_t)(intptr_t)new_ptr;
+    return v;
+}
+
+MdhValue __mdh_heave_oot(MdhValue dict, MdhValue item) {
+    if (dict.tag != MDH_TAG_DICT) {
+        return dict;
+    }
+
+    int64_t *old_ptr = (int64_t *)(intptr_t)dict.data;
+    int64_t count = *old_ptr;
+    MdhValue *entries = (MdhValue *)(old_ptr + 1);
+
+    /* Find the item */
+    int64_t found_idx = -1;
+    for (int64_t i = 0; i < count; i++) {
+        MdhValue entry_key = entries[i * 2];
+        if (__mdh_values_equal(entry_key, item)) {
+            found_idx = i;
+            break;
+        }
+    }
+
+    if (found_idx < 0) {
+        /* Not found, return unchanged */
+        return dict;
+    }
+
+    /* Remove entry: reallocate without it */
+    int64_t new_count = count - 1;
+    size_t new_size = 8 + new_count * 32;
+    int64_t *new_ptr = (int64_t *)GC_malloc(new_size);
+
+    *new_ptr = new_count;
+    MdhValue *new_entries = (MdhValue *)(new_ptr + 1);
+    int64_t j = 0;
+    for (int64_t i = 0; i < count; i++) {
+        if (i != found_idx) {
+            new_entries[j * 2] = entries[i * 2];
+            new_entries[j * 2 + 1] = entries[i * 2 + 1];
+            j++;
+        }
+    }
+
+    MdhValue v;
+    v.tag = MDH_TAG_DICT;
+    v.data = (int64_t)(intptr_t)new_ptr;
+    return v;
+}
