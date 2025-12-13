@@ -114,6 +114,9 @@ pub struct CodeGen<'ctx> {
     /// Inferred types for variables (for optimization)
     var_types: HashMap<String, VarType>,
 
+    /// Track which class a variable holds (for method dispatch)
+    variable_class_types: HashMap<String, String>,
+
     /// User-defined functions
     functions: HashMap<String, FunctionValue<'ctx>>,
 
@@ -205,6 +208,7 @@ impl<'ctx> CodeGen<'ctx> {
             string_cap_shadows: HashMap::new(),
             list_ptr_shadows: HashMap::new(),
             var_types: HashMap::new(),
+            variable_class_types: HashMap::new(),
             functions: HashMap::new(),
             function_defaults: HashMap::new(),
             loop_stack: Vec::new(),
@@ -445,6 +449,14 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(entry);
         self.current_function = Some(main_fn);
 
+        // Pre-register all classes and their methods (allows cross-class method calls)
+        // Must happen after main function is created so builder position is set
+        for stmt in &program.statements {
+            if let Stmt::Class { name, methods, .. } = stmt {
+                self.preregister_class(name, methods)?;
+            }
+        }
+
         // Compile all statements
         for stmt in &program.statements {
             self.compile_stmt(stmt)?;
@@ -467,6 +479,55 @@ impl<'ctx> CodeGen<'ctx> {
         let fn_type = self.types.value_type.fn_type(&param_types, false);
         let function = self.module.add_function(name, fn_type, None);
         self.functions.insert(name.to_string(), function);
+        Ok(())
+    }
+
+    /// Pre-register a class and its methods (allows cross-class method calls)
+    fn preregister_class(&mut self, name: &str, methods: &[Stmt]) -> Result<(), HaversError> {
+        // Skip if already registered
+        if self.classes.contains_key(name) {
+            return Ok(());
+        }
+
+        // Declare all methods (create function signatures)
+        let mut method_list: Vec<(String, FunctionValue<'ctx>)> = Vec::new();
+        for method in methods {
+            if let Stmt::Function {
+                name: method_name,
+                params,
+                ..
+            } = method
+            {
+                let func_name = format!("{}_{}", name, method_name);
+                // Skip if already declared
+                if self.functions.contains_key(&func_name) {
+                    continue;
+                }
+                let param_types: Vec<BasicMetadataTypeEnum> =
+                    std::iter::once(self.types.value_type.into())
+                        .chain(params.iter().map(|_| self.types.value_type.into()))
+                        .collect();
+                let fn_type = self.types.value_type.fn_type(&param_types, false);
+                let function = self.module.add_function(&func_name, fn_type, None);
+                self.functions.insert(func_name.clone(), function);
+                method_list.push((method_name.clone(), function));
+
+                // Store default parameter values for methods
+                let defaults: Vec<Option<Expr>> = params.iter().map(|p| p.default.clone()).collect();
+                if defaults.iter().any(|d| d.is_some()) {
+                    self.function_defaults.insert(func_name, defaults);
+                }
+            }
+        }
+
+        // Store class and method table
+        self.class_methods.insert(name.to_string(), method_list);
+        let class_name_global = self
+            .builder
+            .build_global_string_ptr(name, &format!("class_{}", name))
+            .unwrap();
+        self.classes.insert(name.to_string(), class_name_global);
+
         Ok(())
     }
 
@@ -5868,6 +5929,17 @@ impl<'ctx> CodeGen<'ctx> {
                 };
                 self.var_types.insert(name.clone(), var_type);
 
+                // Track class type if this is a class instantiation
+                if let Some(init) = initializer {
+                    if let Expr::Call { callee, .. } = init {
+                        if let Expr::Variable { name: class_name, .. } = callee.as_ref() {
+                            if self.classes.contains_key(class_name.as_str()) {
+                                self.variable_class_types.insert(name.clone(), class_name.clone());
+                            }
+                        }
+                    }
+                }
+
                 // Check if this is a top-level declaration (needs LLVM global)
                 // Variables inside user functions are never top-level
                 let is_top_level = !self.in_user_function
@@ -6167,6 +6239,13 @@ impl<'ctx> CodeGen<'ctx> {
                 patterns, value, ..
             } => self.compile_destructure(patterns, value),
 
+            Stmt::TryCatch {
+                try_block,
+                error_name,
+                catch_block,
+                ..
+            } => self.compile_try_catch(try_block, error_name, catch_block),
+
             // Not yet implemented
             _ => Err(HaversError::CompileError(format!(
                 "Statement not yet supported in LLVM backend: {:?}",
@@ -6389,6 +6468,15 @@ impl<'ctx> CodeGen<'ctx> {
                     None
                 };
 
+                // Track class type if this is a class instantiation reassignment
+                if let Expr::Call { callee, .. } = value.as_ref() {
+                    if let Expr::Variable { name: class_name, .. } = callee.as_ref() {
+                        if self.classes.contains_key(class_name.as_str()) {
+                            self.variable_class_types.insert(name.clone(), class_name.clone());
+                        }
+                    }
+                }
+
                 // Fall back to standard path
                 let val = self.compile_expr(value)?;
                 if let Some(&alloca) = self.variables.get(name) {
@@ -6521,6 +6609,10 @@ impl<'ctx> CodeGen<'ctx> {
                 Err(HaversError::CompileError(
                     "Spread operator can only be used inside list literals".to_string(),
                 ))
+            }
+
+            Expr::Slice { object, start, end, step, .. } => {
+                self.compile_slice_expr(object, start.as_ref(), end.as_ref(), step.as_ref())
             }
 
             // Not yet implemented
@@ -7246,6 +7338,19 @@ impl<'ctx> CodeGen<'ctx> {
                     let b = self.compile_expr(&args[1])?;
                     return self.inline_max(a, b);
                 }
+                "clamp" => {
+                    if args.len() != 3 {
+                        return Err(HaversError::CompileError(
+                            "clamp expects 3 arguments (value, min, max)".to_string(),
+                        ));
+                    }
+                    let val = self.compile_expr(&args[0])?;
+                    let min_val = self.compile_expr(&args[1])?;
+                    let max_val = self.compile_expr(&args[2])?;
+                    // clamp(x, min, max) = min(max(x, min_val), max_val)
+                    let clamped_low = self.inline_max(val, min_val)?;
+                    return self.inline_min(clamped_low, max_val);
+                }
                 "floor" => {
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
@@ -7359,15 +7464,15 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.inline_sumaw(arg);
                 }
                 // Phase 3: String operations
-                "contains" => {
+                "contains" | "dict_has" => {
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
-                            "contains expects 2 arguments".to_string(),
+                            "contains/dict_has expects 2 arguments".to_string(),
                         ));
                     }
                     let container = self.compile_expr(&args[0])?;
-                    let substr = self.compile_expr(&args[1])?;
-                    return self.inline_contains(container, substr);
+                    let key = self.compile_expr(&args[1])?;
+                    return self.inline_contains(container, key);
                 }
                 "upper" => {
                     if args.len() != 1 {
@@ -7642,6 +7747,16 @@ impl<'ctx> CodeGen<'ctx> {
                     let arg = self.compile_expr(&args[0])?;
                     return self.inline_ord(arg);
                 }
+                "chr" => {
+                    // chr(n) - convert codepoint to single-character string
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "chr expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_chr(arg);
+                }
                 "char_at" => {
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
@@ -7741,6 +7856,56 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let arg = self.compile_expr(&args[0])?;
                     return self.inline_math_func(arg, "sqrt");
+                }
+                "atan2" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError("atan2 expects 2 arguments (y, x)".to_string()));
+                    }
+                    let y_arg = self.compile_expr(&args[0])?;
+                    let x_arg = self.compile_expr(&args[1])?;
+                    return self.inline_atan2(y_arg, x_arg);
+                }
+                "asin" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError("asin expects 1 argument".to_string()));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_math_func(arg, "asin");
+                }
+                "acos" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError("acos expects 1 argument".to_string()));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_math_func(arg, "acos");
+                }
+                "atan" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError("atan expects 1 argument".to_string()));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_math_func(arg, "atan");
+                }
+                "log" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError("log expects 1 argument".to_string()));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_math_func(arg, "log");
+                }
+                "log10" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError("log10 expects 1 argument".to_string()));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_math_func(arg, "log10");
+                }
+                "exp" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError("exp expects 1 argument".to_string()));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_math_func(arg, "exp");
                 }
                 "pooer" | "pow" => {
                     if args.len() != 2 {
@@ -8302,6 +8467,7 @@ impl<'ctx> CodeGen<'ctx> {
         let entry = self.context.append_basic_block(function, "entry");
 
         let saved_function = self.current_function;
+        let saved_block = self.builder.get_insert_block(); // Save the actual block, not just function
         let saved_variables = std::mem::take(&mut self.variables);
         let saved_var_types = std::mem::take(&mut self.var_types);
         let saved_int_shadows = std::mem::take(&mut self.int_shadows);
@@ -8363,10 +8529,9 @@ impl<'ctx> CodeGen<'ctx> {
         self.string_cap_shadows = saved_string_cap_shadows;
         self.in_user_function = saved_in_user_function;
 
-        if let Some(func) = saved_function {
-            if let Some(last_block) = func.get_last_basic_block() {
-                self.builder.position_at_end(last_block);
-            }
+        // Restore the builder position to where it was before compiling this function
+        if let Some(block) = saved_block {
+            self.builder.position_at_end(block);
         }
 
         Ok(())
@@ -13576,7 +13741,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let program = crate::parser::parse(&source)?;
 
-        // First pass: Handle nested imports, declare functions, create global variables
+        // First pass: Handle nested imports, declare functions, pre-register classes
         for stmt in &program.statements {
             match stmt {
                 Stmt::Import { path: sub_path, .. } => {
@@ -13589,6 +13754,10 @@ impl<'ctx> CodeGen<'ctx> {
                 Stmt::Function { name, params, .. } => {
                     // Declare the function (forward declaration)
                     self.declare_function(name, params.len())?;
+                }
+                Stmt::Class { name, methods, .. } => {
+                    // Pre-register class and its methods (allows cross-class method calls)
+                    self.preregister_class(name, methods)?;
                 }
                 Stmt::VarDecl {
                     name, initializer, ..
@@ -13759,6 +13928,77 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Continue after assert pass
         self.builder.position_at_end(assert_pass);
+        Ok(())
+    }
+
+    /// Compile try/catch statement
+    /// For now, this uses a simplified implementation that just executes the try block.
+    /// The catch block becomes unreachable code - proper error handling would require
+    /// setjmp/longjmp or landing pads for C++ exceptions.
+    fn compile_try_catch(
+        &mut self,
+        try_block: &Stmt,
+        error_name: &str,
+        catch_block: &Stmt,
+    ) -> Result<(), HaversError> {
+        let function = self.current_function.unwrap();
+
+        // Create blocks for try, catch, and after
+        let try_body = self.context.append_basic_block(function, "try_body");
+        let catch_body = self.context.append_basic_block(function, "catch_body");
+        let try_after = self.context.append_basic_block(function, "try_after");
+
+        // For now, we'll execute the try block directly and skip catch
+        // A proper implementation would use setjmp here
+        self.builder.build_unconditional_branch(try_body).unwrap();
+
+        // Compile try block
+        self.builder.position_at_end(try_body);
+
+        // Compile the try block statements
+        if let Stmt::Block { statements, .. } = try_block {
+            for stmt in statements {
+                self.compile_stmt(stmt)?;
+            }
+        } else {
+            self.compile_stmt(try_block)?;
+        }
+
+        // If we get here (no error), skip catch and go to after
+        if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+            self.builder.build_unconditional_branch(try_after).unwrap();
+        }
+
+        // Compile catch block (will be unreachable for now, but we need valid IR)
+        self.builder.position_at_end(catch_body);
+
+        // Create error variable with a placeholder value
+        let error_alloca = self.create_entry_block_alloca(error_name);
+        let error_str_ptr = self
+            .builder
+            .build_global_string_ptr("No error", "err_msg")
+            .unwrap();
+        let error_msg = self.make_string(error_str_ptr.as_pointer_value())?;
+        self.builder.build_store(error_alloca, error_msg).unwrap();
+        self.variables.insert(error_name.to_string(), error_alloca);
+
+        // Compile catch block statements
+        if let Stmt::Block { statements, .. } = catch_block {
+            for stmt in statements {
+                self.compile_stmt(stmt)?;
+            }
+        } else {
+            self.compile_stmt(catch_block)?;
+        }
+
+        // Jump to after
+        if self.builder.get_insert_block().unwrap().get_terminator().is_none() {
+            self.builder.build_unconditional_branch(try_after).unwrap();
+        }
+
+        // Continue after try/catch
+        self.builder.position_at_end(try_after);
+
         Ok(())
     }
 
@@ -14714,42 +14954,48 @@ impl<'ctx> CodeGen<'ctx> {
         // Store current class name for method naming
         self.current_class = Some(name.to_string());
 
+        // Check if class was already pre-registered
+        let already_registered = self.classes.contains_key(name);
+
         // First pass: declare all methods (create function signatures)
         // This allows methods to call each other regardless of definition order
-        let mut method_list: Vec<(String, FunctionValue<'ctx>)> = Vec::new();
-        for method in methods {
-            if let Stmt::Function {
-                name: method_name,
-                params,
-                ..
-            } = method
-            {
-                let func_name = format!("{}_{}", name, method_name);
-                let param_types: Vec<BasicMetadataTypeEnum> =
-                    std::iter::once(self.types.value_type.into())
-                        .chain(params.iter().map(|_| self.types.value_type.into()))
-                        .collect();
-                let fn_type = self.types.value_type.fn_type(&param_types, false);
-                let function = self.module.add_function(&func_name, fn_type, None);
-                self.functions.insert(func_name.clone(), function);
-                method_list.push((method_name.clone(), function));
+        // Skip if already pre-registered
+        if !already_registered {
+            let mut method_list: Vec<(String, FunctionValue<'ctx>)> = Vec::new();
+            for method in methods {
+                if let Stmt::Function {
+                    name: method_name,
+                    params,
+                    ..
+                } = method
+                {
+                    let func_name = format!("{}_{}", name, method_name);
+                    let param_types: Vec<BasicMetadataTypeEnum> =
+                        std::iter::once(self.types.value_type.into())
+                            .chain(params.iter().map(|_| self.types.value_type.into()))
+                            .collect();
+                    let fn_type = self.types.value_type.fn_type(&param_types, false);
+                    let function = self.module.add_function(&func_name, fn_type, None);
+                    self.functions.insert(func_name.clone(), function);
+                    method_list.push((method_name.clone(), function));
 
-                // Store default parameter values for methods
-                let defaults: Vec<Option<Expr>> = params.iter().map(|p| p.default.clone()).collect();
-                if defaults.iter().any(|d| d.is_some()) {
-                    self.function_defaults.insert(func_name, defaults);
+                    // Store default parameter values for methods
+                    let defaults: Vec<Option<Expr>> = params.iter().map(|p| p.default.clone()).collect();
+                    if defaults.iter().any(|d| d.is_some()) {
+                        self.function_defaults.insert(func_name, defaults);
+                    }
                 }
             }
-        }
 
-        // Store method table and class name early so methods can be looked up
-        self.class_methods
-            .insert(name.to_string(), method_list.clone());
-        let class_name_global = self
-            .builder
-            .build_global_string_ptr(name, &format!("class_{}", name))
-            .unwrap();
-        self.classes.insert(name.to_string(), class_name_global);
+            // Store method table and class name early so methods can be looked up
+            self.class_methods
+                .insert(name.to_string(), method_list.clone());
+            let class_name_global = self
+                .builder
+                .build_global_string_ptr(name, &format!("class_{}", name))
+                .unwrap();
+            self.classes.insert(name.to_string(), class_name_global);
+        }
 
         // Second pass: define all methods (compile function bodies)
         for method in methods {
@@ -14998,7 +15244,19 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
-        // Check in class_methods table
+        // Check if we know the variable's class type (static type tracking)
+        if found_method.is_none() {
+            if let Expr::Variable { name: var_name, .. } = object {
+                if let Some(class_name) = self.variable_class_types.get(var_name).cloned() {
+                    let func_name = format!("{}_{}", class_name, method_name);
+                    if let Some(&func) = self.functions.get(&func_name) {
+                        found_method = Some((func, func_name));
+                    }
+                }
+            }
+        }
+
+        // Fallback: Check in class_methods table (first match)
         if found_method.is_none() {
             for (class_name, methods) in self.class_methods.clone().iter() {
                 for (name, func) in methods {
@@ -15188,6 +15446,39 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_z_extend(first_byte, self.types.i64_type, "byte_i64")
             .unwrap();
         self.make_int(byte_val)
+    }
+
+    /// chr(n) - Convert integer codepoint to single-character string
+    fn inline_chr(&mut self, val: BasicValueEnum<'ctx>) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let data = self.extract_data(val)?;
+
+        // Allocate 2 bytes for single char + null terminator
+        let two = self.types.i64_type.const_int(2, false);
+        let new_str = self
+            .builder
+            .build_call(self.libc.malloc, &[two.into()], "chr_str")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+
+        // Truncate i64 to i8 for the character
+        let char_val = self.builder.build_int_truncate(data, self.context.i8_type(), "char_byte").unwrap();
+        self.builder.build_store(new_str, char_val).unwrap();
+
+        // Add null terminator
+        let one = self.types.i64_type.const_int(1, false);
+        let null_ptr = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), new_str, &[one], "null_ptr")
+                .unwrap()
+        };
+        self.builder
+            .build_store(null_ptr, self.context.i8_type().const_int(0, false))
+            .unwrap();
+
+        self.make_string(new_str)
     }
 
     /// char_at(str, idx) - Get character at index as single-char string
@@ -16022,6 +16313,39 @@ impl<'ctx> CodeGen<'ctx> {
         self.make_float(result)
     }
 
+    /// atan2(y, x) - two-argument arctangent
+    fn inline_atan2(
+        &mut self,
+        y_val: BasicValueEnum<'ctx>,
+        x_val: BasicValueEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let y_data = self.extract_data(y_val)?;
+        let x_data = self.extract_data(x_val)?;
+
+        // Convert to floats
+        let f64_type = self.context.f64_type();
+        let y_float = self.builder.build_bitcast(y_data, f64_type, "y_float")
+            .unwrap().into_float_value();
+        let x_float = self.builder.build_bitcast(x_data, f64_type, "x_float")
+            .unwrap().into_float_value();
+
+        // Get or declare atan2 function
+        let atan2_fn = self.module.get_function("atan2").unwrap_or_else(|| {
+            let fn_type = f64_type.fn_type(&[f64_type.into(), f64_type.into()], false);
+            self.module.add_function("atan2", fn_type, Some(inkwell::module::Linkage::External))
+        });
+
+        let result = self.builder
+            .build_call(atan2_fn, &[y_float.into(), x_float.into()], "atan2_result")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_float_value();
+
+        self.make_float(result)
+    }
+
     /// snooze(ms) - sleep for given milliseconds
     fn inline_snooze(&mut self, val: BasicValueEnum<'ctx>) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let ms_data = self.extract_data(val)?;
@@ -16120,6 +16444,392 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_call(self.libc.memcpy, &[dst_ptr.into(), src_ptr.into(), elems_size.into()], "").unwrap();
 
         self.make_list(new_ptr)
+    }
+
+    /// Compile slice expression: obj[start:end:step]
+    fn compile_slice_expr(
+        &mut self,
+        object: &Expr,
+        start: Option<&Box<Expr>>,
+        end: Option<&Box<Expr>>,
+        step: Option<&Box<Expr>>,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let obj_val = self.compile_expr(object)?;
+        let obj_tag = self.extract_tag(obj_val)?;
+
+        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i64_ptr = self.types.i64_type.ptr_type(AddressSpace::default());
+
+        // Get step (default 1)
+        let step_val = if let Some(s) = step {
+            let compiled = self.compile_expr(s)?;
+            self.extract_data(compiled)?
+        } else {
+            self.types.i64_type.const_int(1, false)
+        };
+
+        // Check if we're slicing a list (tag 5) or string (tag 4)
+        let string_tag = self.context.i8_type().const_int(4, false);
+        let list_tag = self.context.i8_type().const_int(5, false);
+        let is_string = self.builder.build_int_compare(
+            inkwell::IntPredicate::EQ, obj_tag, string_tag, "is_string"
+        ).unwrap();
+
+        let obj_data = self.extract_data(obj_val)?;
+
+        // Get length (for lists: stored at ptr[0]; for strings: strlen)
+        let current_fn = self.builder.get_insert_block().unwrap().get_parent().unwrap();
+        let get_len_list = self.context.append_basic_block(current_fn, "get_len_list");
+        let get_len_str = self.context.append_basic_block(current_fn, "get_len_str");
+        let after_len = self.context.append_basic_block(current_fn, "after_len");
+
+        self.builder.build_conditional_branch(is_string, get_len_str, get_len_list).unwrap();
+
+        // String length via strlen
+        self.builder.position_at_end(get_len_str);
+        let str_ptr = self.builder.build_int_to_ptr(obj_data, i8_ptr, "str_ptr").unwrap();
+        let str_len = self.builder
+            .build_call(self.libc.strlen, &[str_ptr.into()], "str_len")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_int_value();
+        self.builder.build_unconditional_branch(after_len).unwrap();
+        let str_len_bb = self.builder.get_insert_block().unwrap();
+
+        // List length from header
+        self.builder.position_at_end(get_len_list);
+        let list_ptr = self.builder.build_int_to_ptr(obj_data, i8_ptr, "list_ptr").unwrap();
+        let len_ptr = self.builder.build_pointer_cast(list_ptr, i64_ptr, "len_ptr").unwrap();
+        let list_len = self.builder
+            .build_load(self.types.i64_type, len_ptr, "list_len")
+            .unwrap()
+            .into_int_value();
+        self.builder.build_unconditional_branch(after_len).unwrap();
+        let list_len_bb = self.builder.get_insert_block().unwrap();
+
+        // Merge lengths
+        self.builder.position_at_end(after_len);
+        let len_phi = self.builder.build_phi(self.types.i64_type, "len").unwrap();
+        len_phi.add_incoming(&[(&str_len, str_len_bb), (&list_len, list_len_bb)]);
+        let len = len_phi.as_basic_value().into_int_value();
+
+        // Get start (default: 0 if step > 0, len-1 if step < 0)
+        let zero = self.types.i64_type.const_int(0, false);
+        let one = self.types.i64_type.const_int(1, false);
+
+        let step_positive = self.builder.build_int_compare(
+            inkwell::IntPredicate::SGT, step_val, zero, "step_positive"
+        ).unwrap();
+
+        let start_default_neg = self.builder.build_int_sub(len, one, "start_default_neg").unwrap();
+        let start_default = self.builder.build_select(step_positive, zero, start_default_neg, "start_default")
+            .unwrap().into_int_value();
+
+        let start_val = if let Some(s) = start {
+            let compiled = self.compile_expr(s)?;
+            let raw_start = self.extract_data(compiled)?;
+            // Handle negative indices
+            let is_neg = self.builder.build_int_compare(
+                inkwell::IntPredicate::SLT, raw_start, zero, "start_neg"
+            ).unwrap();
+            let adjusted = self.builder.build_int_add(len, raw_start, "start_adjusted").unwrap();
+            self.builder.build_select(is_neg, adjusted, raw_start, "start_val").unwrap().into_int_value()
+        } else {
+            start_default
+        };
+
+        // Get end (default: len if step > 0, -1 if step < 0)
+        let neg_one_i64 = self.types.i64_type.const_int((-1i64) as u64, true);
+        let end_default = self.builder.build_select(step_positive, len, neg_one_i64, "end_default")
+            .unwrap().into_int_value();
+
+        let end_val = if let Some(e) = end {
+            let compiled = self.compile_expr(e)?;
+            let raw_end = self.extract_data(compiled)?;
+            // Handle negative indices
+            let is_neg = self.builder.build_int_compare(
+                inkwell::IntPredicate::SLT, raw_end, zero, "end_neg"
+            ).unwrap();
+            let adjusted = self.builder.build_int_add(len, raw_end, "end_adjusted").unwrap();
+            self.builder.build_select(is_neg, adjusted, raw_end, "end_val").unwrap().into_int_value()
+        } else {
+            end_default
+        };
+
+        // For simple case (step=1, positive indices), we can use memcpy
+        // For complex cases with steps, we need a loop
+        let step_is_one = self.builder.build_int_compare(
+            inkwell::IntPredicate::EQ, step_val, one, "step_is_one"
+        ).unwrap();
+        let can_memcpy = self.builder.build_and(step_positive, step_is_one, "can_memcpy").unwrap();
+
+        let do_memcpy_slice = self.context.append_basic_block(current_fn, "memcpy_slice");
+        let do_loop_slice = self.context.append_basic_block(current_fn, "loop_slice");
+        let slice_done = self.context.append_basic_block(current_fn, "slice_done");
+
+        self.builder.build_conditional_branch(can_memcpy, do_memcpy_slice, do_loop_slice).unwrap();
+
+        // MEMCPY path (simple contiguous slice with step=1)
+        self.builder.position_at_end(do_memcpy_slice);
+
+        // Calculate new length = end - start (clamped to >= 0)
+        let new_len_raw = self.builder.build_int_sub(end_val, start_val, "new_len_raw").unwrap();
+        let new_len_neg = self.builder.build_int_compare(
+            inkwell::IntPredicate::SLT, new_len_raw, zero, "new_len_neg"
+        ).unwrap();
+        let new_len_clamped = self.builder.build_select(new_len_neg, zero, new_len_raw, "new_len")
+            .unwrap().into_int_value();
+
+        // Branch on string vs list for result creation
+        let memcpy_str = self.context.append_basic_block(current_fn, "memcpy_str");
+        let memcpy_list = self.context.append_basic_block(current_fn, "memcpy_list");
+        let memcpy_merge = self.context.append_basic_block(current_fn, "memcpy_merge");
+
+        self.builder.build_conditional_branch(is_string, memcpy_str, memcpy_list).unwrap();
+
+        // String slice memcpy
+        self.builder.position_at_end(memcpy_str);
+        let str_ptr2 = self.builder.build_int_to_ptr(obj_data, i8_ptr, "str_ptr2").unwrap();
+        let src_str = unsafe {
+            self.builder.build_gep(self.context.i8_type(), str_ptr2, &[start_val], "src_str").unwrap()
+        };
+        let alloc_size = self.builder.build_int_add(new_len_clamped, one, "alloc_size").unwrap();
+        let new_str = self.builder
+            .build_call(self.libc.malloc, &[alloc_size.into()], "new_str")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+        self.builder.build_call(self.libc.memcpy, &[new_str.into(), src_str.into(), new_len_clamped.into()], "").unwrap();
+        // Add null terminator
+        let null_pos = unsafe {
+            self.builder.build_gep(self.context.i8_type(), new_str, &[new_len_clamped], "null_pos").unwrap()
+        };
+        self.builder.build_store(null_pos, self.context.i8_type().const_int(0, false)).unwrap();
+        let str_result = self.make_string(new_str)?;
+        self.builder.build_unconditional_branch(memcpy_merge).unwrap();
+        let str_result_bb = self.builder.get_insert_block().unwrap();
+
+        // List slice memcpy
+        self.builder.position_at_end(memcpy_list);
+        let list_ptr2 = self.builder.build_int_to_ptr(obj_data, i8_ptr, "list_ptr2").unwrap();
+        let sixteen = self.types.i64_type.const_int(16, false);
+        let header_size = self.types.i64_type.const_int(16, false);
+        let elems_size = self.builder.build_int_mul(new_len_clamped, sixteen, "elems_size").unwrap();
+        let total_size = self.builder.build_int_add(header_size, elems_size, "total_size").unwrap();
+        let new_list_ptr = self.builder
+            .build_call(self.libc.malloc, &[total_size.into()], "new_list")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+        // Store len and cap
+        let new_len_ptr = self.builder.build_pointer_cast(new_list_ptr, i64_ptr, "new_len_ptr").unwrap();
+        self.builder.build_store(new_len_ptr, new_len_clamped).unwrap();
+        let cap_offset = unsafe {
+            self.builder.build_gep(self.context.i8_type(), new_list_ptr,
+                &[self.types.i64_type.const_int(8, false)], "cap_offset").unwrap()
+        };
+        let new_cap_ptr = self.builder.build_pointer_cast(cap_offset, i64_ptr, "new_cap_ptr").unwrap();
+        self.builder.build_store(new_cap_ptr, new_len_clamped).unwrap();
+        // Copy elements
+        let start_byte_offset = self.builder.build_int_mul(start_val, sixteen, "start_byte_off").unwrap();
+        let src_offset = self.builder.build_int_add(sixteen, start_byte_offset, "src_offset").unwrap();
+        let src_list = unsafe {
+            self.builder.build_gep(self.context.i8_type(), list_ptr2, &[src_offset], "src_list").unwrap()
+        };
+        let dst_list = unsafe {
+            self.builder.build_gep(self.context.i8_type(), new_list_ptr, &[sixteen], "dst_list").unwrap()
+        };
+        self.builder.build_call(self.libc.memcpy, &[dst_list.into(), src_list.into(), elems_size.into()], "").unwrap();
+        let list_result = self.make_list(new_list_ptr)?;
+        self.builder.build_unconditional_branch(memcpy_merge).unwrap();
+        let list_result_bb = self.builder.get_insert_block().unwrap();
+
+        // Merge memcpy results
+        self.builder.position_at_end(memcpy_merge);
+        let memcpy_result_phi = self.builder.build_phi(self.types.value_type, "memcpy_result").unwrap();
+        memcpy_result_phi.add_incoming(&[
+            (&str_result, str_result_bb),
+            (&list_result, list_result_bb),
+        ]);
+        let memcpy_result = memcpy_result_phi.as_basic_value();
+        self.builder.build_unconditional_branch(slice_done).unwrap();
+        let memcpy_final_bb = self.builder.get_insert_block().unwrap();
+
+        // LOOP path (for step != 1 or negative step)
+        self.builder.position_at_end(do_loop_slice);
+
+        // Count how many elements: for step>0: (end-start+step-1)/step, for step<0: (start-end-step-1)/(-step)
+        // Simplified: iterate and count
+        // For now, just return a simple empty result and then iterate
+        // This is complex - let's use a runtime helper or simplified approach
+        // Actually, let's compute the count: count = max(0, ceil((end - start) / step))
+        let diff = self.builder.build_int_sub(end_val, start_val, "diff").unwrap();
+        let count_raw = self.builder.build_int_signed_div(diff, step_val, "count_raw").unwrap();
+        let count_neg = self.builder.build_int_compare(inkwell::IntPredicate::SLT, count_raw, zero, "count_neg").unwrap();
+        let count = self.builder.build_select(count_neg, zero, count_raw, "count").unwrap().into_int_value();
+
+        // Allocate result based on type
+        let loop_str = self.context.append_basic_block(current_fn, "loop_str");
+        let loop_list = self.context.append_basic_block(current_fn, "loop_list");
+        let loop_merge = self.context.append_basic_block(current_fn, "loop_merge");
+
+        self.builder.build_conditional_branch(is_string, loop_str, loop_list).unwrap();
+
+        // String loop slice
+        self.builder.position_at_end(loop_str);
+        let str_ptr3 = self.builder.build_int_to_ptr(obj_data, i8_ptr, "str_ptr3").unwrap();
+        let str_alloc = self.builder.build_int_add(count, one, "str_alloc").unwrap();
+        let new_str2 = self.builder
+            .build_call(self.libc.malloc, &[str_alloc.into()], "new_str_loop")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+
+        // Loop to copy characters
+        let str_loop_init = self.context.append_basic_block(current_fn, "str_loop_init");
+        let str_loop_cond = self.context.append_basic_block(current_fn, "str_loop_cond");
+        let str_loop_body = self.context.append_basic_block(current_fn, "str_loop_body");
+        let str_loop_end = self.context.append_basic_block(current_fn, "str_loop_end");
+
+        self.builder.build_unconditional_branch(str_loop_init).unwrap();
+        self.builder.position_at_end(str_loop_init);
+        self.builder.build_unconditional_branch(str_loop_cond).unwrap();
+
+        self.builder.position_at_end(str_loop_cond);
+        let str_i_phi = self.builder.build_phi(self.types.i64_type, "str_i").unwrap();
+        str_i_phi.add_incoming(&[(&zero, str_loop_init)]);
+        let str_src_phi = self.builder.build_phi(self.types.i64_type, "str_src").unwrap();
+        str_src_phi.add_incoming(&[(&start_val, str_loop_init)]);
+
+        let str_i = str_i_phi.as_basic_value().into_int_value();
+        let str_src_idx = str_src_phi.as_basic_value().into_int_value();
+        let str_continue = self.builder.build_int_compare(inkwell::IntPredicate::SLT, str_i, count, "str_continue").unwrap();
+        self.builder.build_conditional_branch(str_continue, str_loop_body, str_loop_end).unwrap();
+
+        self.builder.position_at_end(str_loop_body);
+        let char_ptr = unsafe {
+            self.builder.build_gep(self.context.i8_type(), str_ptr3, &[str_src_idx], "char_ptr").unwrap()
+        };
+        let ch = self.builder.build_load(self.context.i8_type(), char_ptr, "ch").unwrap();
+        let dst_char = unsafe {
+            self.builder.build_gep(self.context.i8_type(), new_str2, &[str_i], "dst_char").unwrap()
+        };
+        self.builder.build_store(dst_char, ch).unwrap();
+        let str_i_next = self.builder.build_int_add(str_i, one, "str_i_next").unwrap();
+        let str_src_next = self.builder.build_int_add(str_src_idx, step_val, "str_src_next").unwrap();
+        str_i_phi.add_incoming(&[(&str_i_next, str_loop_body)]);
+        str_src_phi.add_incoming(&[(&str_src_next, str_loop_body)]);
+        self.builder.build_unconditional_branch(str_loop_cond).unwrap();
+
+        self.builder.position_at_end(str_loop_end);
+        let null_pos2 = unsafe {
+            self.builder.build_gep(self.context.i8_type(), new_str2, &[count], "null_pos2").unwrap()
+        };
+        self.builder.build_store(null_pos2, self.context.i8_type().const_int(0, false)).unwrap();
+        let str_loop_result = self.make_string(new_str2)?;
+        self.builder.build_unconditional_branch(loop_merge).unwrap();
+        let str_loop_bb = self.builder.get_insert_block().unwrap();
+
+        // List loop slice
+        self.builder.position_at_end(loop_list);
+        let list_ptr3 = self.builder.build_int_to_ptr(obj_data, i8_ptr, "list_ptr3").unwrap();
+        let list_total = self.builder.build_int_add(
+            self.types.i64_type.const_int(16, false),
+            self.builder.build_int_mul(count, self.types.i64_type.const_int(16, false), "elems").unwrap(),
+            "list_total"
+        ).unwrap();
+        let new_list2 = self.builder
+            .build_call(self.libc.malloc, &[list_total.into()], "new_list_loop")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+        // Store len and cap
+        let len_ptr2 = self.builder.build_pointer_cast(new_list2, i64_ptr, "len_ptr2").unwrap();
+        self.builder.build_store(len_ptr2, count).unwrap();
+        let cap_ptr2 = unsafe {
+            self.builder.build_gep(self.context.i8_type(), new_list2,
+                &[self.types.i64_type.const_int(8, false)], "cap_ptr2").unwrap()
+        };
+        let cap_ptr2 = self.builder.build_pointer_cast(cap_ptr2, i64_ptr, "cap_ptr2_i64").unwrap();
+        self.builder.build_store(cap_ptr2, count).unwrap();
+
+        // Loop to copy elements
+        let list_loop_init = self.context.append_basic_block(current_fn, "list_loop_init");
+        let list_loop_cond = self.context.append_basic_block(current_fn, "list_loop_cond");
+        let list_loop_body = self.context.append_basic_block(current_fn, "list_loop_body");
+        let list_loop_end = self.context.append_basic_block(current_fn, "list_loop_end");
+
+        self.builder.build_unconditional_branch(list_loop_init).unwrap();
+        self.builder.position_at_end(list_loop_init);
+        self.builder.build_unconditional_branch(list_loop_cond).unwrap();
+
+        self.builder.position_at_end(list_loop_cond);
+        let list_i_phi = self.builder.build_phi(self.types.i64_type, "list_i").unwrap();
+        list_i_phi.add_incoming(&[(&zero, list_loop_init)]);
+        let list_src_phi = self.builder.build_phi(self.types.i64_type, "list_src").unwrap();
+        list_src_phi.add_incoming(&[(&start_val, list_loop_init)]);
+
+        let list_i = list_i_phi.as_basic_value().into_int_value();
+        let list_src_idx = list_src_phi.as_basic_value().into_int_value();
+        let list_continue = self.builder.build_int_compare(inkwell::IntPredicate::SLT, list_i, count, "list_continue").unwrap();
+        self.builder.build_conditional_branch(list_continue, list_loop_body, list_loop_end).unwrap();
+
+        self.builder.position_at_end(list_loop_body);
+        let sixteen = self.types.i64_type.const_int(16, false);
+        let src_byte_off = self.builder.build_int_mul(list_src_idx, sixteen, "src_byte_off").unwrap();
+        let src_off = self.builder.build_int_add(sixteen, src_byte_off, "src_off").unwrap();
+        let src_elem = unsafe {
+            self.builder.build_gep(self.context.i8_type(), list_ptr3, &[src_off], "src_elem").unwrap()
+        };
+        let dst_byte_off = self.builder.build_int_mul(list_i, sixteen, "dst_byte_off").unwrap();
+        let dst_off = self.builder.build_int_add(sixteen, dst_byte_off, "dst_off").unwrap();
+        let dst_elem = unsafe {
+            self.builder.build_gep(self.context.i8_type(), new_list2, &[dst_off], "dst_elem").unwrap()
+        };
+        // Copy 16 bytes for the MdhValue
+        self.builder.build_call(self.libc.memcpy, &[dst_elem.into(), src_elem.into(), sixteen.into()], "").unwrap();
+
+        let list_i_next = self.builder.build_int_add(list_i, one, "list_i_next").unwrap();
+        let list_src_next = self.builder.build_int_add(list_src_idx, step_val, "list_src_next").unwrap();
+        list_i_phi.add_incoming(&[(&list_i_next, list_loop_body)]);
+        list_src_phi.add_incoming(&[(&list_src_next, list_loop_body)]);
+        self.builder.build_unconditional_branch(list_loop_cond).unwrap();
+
+        self.builder.position_at_end(list_loop_end);
+        let list_loop_result = self.make_list(new_list2)?;
+        self.builder.build_unconditional_branch(loop_merge).unwrap();
+        let list_loop_bb = self.builder.get_insert_block().unwrap();
+
+        // Merge loop results
+        self.builder.position_at_end(loop_merge);
+        let loop_result_phi = self.builder.build_phi(self.types.value_type, "loop_result").unwrap();
+        loop_result_phi.add_incoming(&[
+            (&str_loop_result, str_loop_bb),
+            (&list_loop_result, list_loop_bb),
+        ]);
+        let loop_result = loop_result_phi.as_basic_value();
+        self.builder.build_unconditional_branch(slice_done).unwrap();
+        let loop_final_bb = self.builder.get_insert_block().unwrap();
+
+        // Final merge
+        self.builder.position_at_end(slice_done);
+        let final_phi = self.builder.build_phi(self.types.value_type, "slice_result").unwrap();
+        final_phi.add_incoming(&[
+            (&memcpy_result, memcpy_final_bb),
+            (&loop_result, loop_final_bb),
+        ]);
+
+        Ok(final_phi.as_basic_value())
     }
 
     /// uniq(list) - remove duplicates (returns copy for now - full dedup is complex)
