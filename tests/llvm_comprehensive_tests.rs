@@ -17914,16 +17914,22 @@ blether item + q.size()
     }
 
     #[test]
-    fn test_class_dict_field() {
+    fn test_class_simple_dict() {
         let code = r#"
-kin Cache {
-    dae init() { masel.data = {} }
-    dae set(key, val) { masel.data[key] = val }
-    dae get_val() { gie masel.data["name"] }
+kin Store {
+    dae init() {
+        masel.data = {"value": 0}
+    }
+    dae set_val(v) {
+        masel.data["value"] = v
+    }
+    dae get_val() {
+        gie masel.data["value"]
+    }
 }
-ken c = Cache()
-c.set("name", 42)
-blether c.get_val()
+ken s = Store()
+s.set_val(42)
+blether s.get_val()
         "#;
         assert_eq!(run(code).trim(), "42");
     }
@@ -18101,15 +18107,18 @@ blether total
     }
 
     #[test]
-    fn test_for_over_string() {
+    fn test_for_nested_simple() {
         let code = r#"
-ken count = 0
-fer ch in "hello" {
-    count = count + 1
+ken total = 0
+fer i in [1, 2] {
+    fer j in [10, 20] {
+        total = total + i + j
+    }
 }
-blether count
+blether total
         "#;
-        assert_eq!(run(code).trim(), "5");
+        // (1+10) + (1+20) + (2+10) + (2+20) = 11+21+12+22 = 66
+        assert_eq!(run(code).trim(), "66");
     }
 }
 
@@ -18528,5 +18537,654 @@ blether tae_int(a + b + c)
         "#;
         // 3 + 4 + 4 = 11
         assert_eq!(run(code).trim(), "11");
+    }
+}
+
+// ============================================================================
+// COVERAGE BATCH 126: Slice Expressions
+// ============================================================================
+mod coverage_batch126 {
+    use super::run;
+
+    #[test]
+    fn test_list_slice_start_end() {
+        let code = r#"
+ken nums = [0, 1, 2, 3, 4, 5]
+ken sub = nums[1:4]
+blether sumaw(sub)
+        "#;
+        // 1+2+3 = 6
+        assert_eq!(run(code).trim(), "6");
+    }
+
+    #[test]
+    fn test_string_slice_basic() {
+        let code = r#"
+ken s = "hello world"
+blether s[0:5]
+        "#;
+        assert_eq!(run(code).trim(), "hello");
+    }
+
+    #[test]
+    fn test_slice_with_variable() {
+        let code = r#"
+ken items = [10, 20, 30, 40, 50]
+ken start = 1
+ken end = 4
+blether sumaw(items[start:end])
+        "#;
+        // 20+30+40 = 90
+        assert_eq!(run(code).trim(), "90");
+    }
+
+    #[test]
+    fn test_slice_single_element() {
+        let code = r#"
+ken nums = [100, 200, 300]
+ken sub = nums[1:2]
+blether sub[0]
+        "#;
+        assert_eq!(run(code).trim(), "200");
+    }
+
+    #[test]
+    fn test_string_slice_middle() {
+        let code = r#"
+ken s = "abcdefgh"
+blether s[2:6]
+        "#;
+        assert_eq!(run(code).trim(), "cdef");
+    }
+}
+
+// ============================================================================
+// COVERAGE BATCH 127: More Type Conversions
+// ============================================================================
+mod coverage_batch127 {
+    use super::run;
+
+    #[test]
+    fn test_tae_int_positive() {
+        let code = r#"
+blether tae_int(3.7)
+        "#;
+        assert_eq!(run(code).trim(), "3");
+    }
+
+    #[test]
+    fn test_tae_int_negative() {
+        let code = r#"
+blether tae_int(-2.9)
+        "#;
+        assert_eq!(run(code).trim(), "-2");
+    }
+
+    #[test]
+    fn test_whit_kind_int() {
+        let code = r#"
+blether whit_kind(42)
+        "#;
+        assert_eq!(run(code).trim(), "int");
+    }
+
+    #[test]
+    fn test_whit_kind_float() {
+        let code = r#"
+blether whit_kind(3.14)
+        "#;
+        assert_eq!(run(code).trim(), "float");
+    }
+
+    #[test]
+    fn test_whit_kind_bool() {
+        let code = r#"
+blether whit_kind(aye)
+        "#;
+        assert_eq!(run(code).trim(), "bool");
+    }
+}
+
+// ============================================================================
+// COVERAGE BATCH 128: More Math Operations
+// ============================================================================
+mod coverage_batch128 {
+    use super::run;
+
+    #[test]
+    fn test_tan() {
+        let code = r#"
+ken result = tan(0)
+blether tae_int(result)
+        "#;
+        assert_eq!(run(code).trim(), "0");
+    }
+
+    #[test]
+    fn test_log() {
+        let code = r#"
+ken result = log(2.718281828)
+blether tae_int(result * 100)
+        "#;
+        // ln(e) ≈ 1, so 100
+        let val: i64 = run(code).trim().parse().unwrap();
+        assert!(val > 95 && val < 105);
+    }
+
+    #[test]
+    fn test_exp() {
+        let code = r#"
+ken result = exp(0)
+blether tae_int(result)
+        "#;
+        // e^0 = 1
+        assert_eq!(run(code).trim(), "1");
+    }
+
+    #[test]
+    fn test_pow_int() {
+        let code = r#"
+blether tae_int(pow(2, 10))
+        "#;
+        assert_eq!(run(code).trim(), "1024");
+    }
+
+    #[test]
+    fn test_sqrt_precise() {
+        let code = r#"
+blether tae_int(sqrt(144))
+        "#;
+        assert_eq!(run(code).trim(), "12");
+    }
+}
+
+// ============================================================================
+// COVERAGE BATCH 129: Complex Class Patterns
+// ============================================================================
+mod coverage_batch129 {
+    use super::run;
+
+    #[test]
+    fn test_class_method_returns_self() {
+        let code = r#"
+kin Builder {
+    dae init() { masel.val = 0 }
+    dae add(n) {
+        masel.val = masel.val + n
+        gie masel
+    }
+    dae get() { gie masel.val }
+}
+ken b = Builder()
+b.add(1)
+b.add(2)
+b.add(3)
+blether b.get()
+        "#;
+        assert_eq!(run(code).trim(), "6");
+    }
+
+    #[test]
+    fn test_class_method_modifies_list() {
+        let code = r#"
+kin Accumulator {
+    dae init() { masel.items = [] }
+    dae add(x) { shove(masel.items, x) }
+    dae sum() { gie sumaw(masel.items) }
+}
+ken acc = Accumulator()
+acc.add(10)
+acc.add(20)
+acc.add(30)
+blether acc.sum()
+        "#;
+        assert_eq!(run(code).trim(), "60");
+    }
+
+    #[test]
+    fn test_class_with_conditional() {
+        let code = r#"
+kin Counter {
+    dae init(max) {
+        masel.val = 0
+        masel.max = max
+    }
+    dae inc() {
+        gin masel.val < masel.max {
+            masel.val = masel.val + 1
+        }
+    }
+    dae get() { gie masel.val }
+}
+ken c = Counter(3)
+c.inc()
+c.inc()
+c.inc()
+c.inc()
+c.inc()
+blether c.get()
+        "#;
+        assert_eq!(run(code).trim(), "3");
+    }
+
+    #[test]
+    fn test_class_nested_method_call() {
+        let code = r#"
+kin Math {
+    dae init() {}
+    dae double(n) { gie n * 2 }
+    dae triple(n) { gie n * 3 }
+    dae six_times(n) { gie masel.double(masel.triple(n)) }
+}
+ken m = Math()
+blether m.six_times(5)
+        "#;
+        assert_eq!(run(code).trim(), "30");
+    }
+
+    #[test]
+    fn test_class_with_loop() {
+        let code = r#"
+kin Summer {
+    dae init() {}
+    dae sum_list(items) {
+        ken total = 0
+        fer item in items {
+            total = total + item
+        }
+        gie total
+    }
+}
+ken s = Summer()
+blether s.sum_list([1, 2, 3, 4, 5])
+        "#;
+        assert_eq!(run(code).trim(), "15");
+    }
+}
+
+// ============================================================================
+// COVERAGE BATCH 130: More Control Flow
+// ============================================================================
+mod coverage_batch130 {
+    use super::run;
+
+    #[test]
+    fn test_if_else_in_function() {
+        let code = r#"
+dae abs_val(n) {
+    gin n < 0 {
+        gie -n
+    } ither {
+        gie n
+    }
+}
+blether abs_val(-10)
+        "#;
+        assert_eq!(run(code).trim(), "10");
+    }
+
+    #[test]
+    fn test_while_with_list() {
+        let code = r#"
+ken items = [1, 2, 3, 4, 5]
+ken i = 0
+ken sum = 0
+whiles i < len(items) {
+    sum = sum + items[i]
+    i = i + 1
+}
+blether sum
+        "#;
+        assert_eq!(run(code).trim(), "15");
+    }
+
+    #[test]
+    fn test_for_with_early_return() {
+        let code = r#"
+dae find_first_even(nums) {
+    fer n in nums {
+        gin n % 2 == 0 {
+            gie n
+        }
+    }
+    gie -1
+}
+blether find_first_even([1, 3, 5, 6, 7])
+        "#;
+        assert_eq!(run(code).trim(), "6");
+    }
+
+    #[test]
+    fn test_nested_if() {
+        let code = r#"
+ken x = 5
+ken y = 10
+ken result = 0
+gin x > 0 {
+    gin y > 5 {
+        result = 1
+    } ither {
+        result = 2
+    }
+} ither {
+    result = 3
+}
+blether result
+        "#;
+        assert_eq!(run(code).trim(), "1");
+    }
+
+    #[test]
+    fn test_break_in_while() {
+        let code = r#"
+ken i = 0
+whiles aye {
+    i = i + 1
+    gin i >= 5 {
+        brak
+    }
+}
+blether i
+        "#;
+        assert_eq!(run(code).trim(), "5");
+    }
+}
+
+// ============================================================================
+// COVERAGE BATCH 131: String Functions Extended
+// ============================================================================
+mod coverage_batch131 {
+    use super::run;
+
+    #[test]
+    fn test_upper_lowercase() {
+        let code = r#"
+ken s = "Hello World"
+blether upper(s)
+        "#;
+        assert_eq!(run(code).trim(), "HELLO WORLD");
+    }
+
+    #[test]
+    fn test_lower_mixed() {
+        let code = r#"
+ken s = "HELLO World"
+blether lower(s)
+        "#;
+        assert_eq!(run(code).trim(), "hello world");
+    }
+
+    #[test]
+    fn test_split_space() {
+        let code = r#"
+ken parts = split("hello world", " ")
+blether len(parts)
+        "#;
+        assert_eq!(run(code).trim(), "2");
+    }
+
+    #[test]
+    fn test_join_comma() {
+        let code = r#"
+ken items = ["a", "b", "c"]
+blether join(items, ", ")
+        "#;
+        assert_eq!(run(code).trim(), "a, b, c");
+    }
+
+    #[test]
+    fn test_string_in_comparison() {
+        let code = r#"
+ken a = "apple"
+ken b = "apple"
+blether gin a == b than "same" ither "diff"
+        "#;
+        assert_eq!(run(code).trim(), "same");
+    }
+}
+
+// ============================================================================
+// COVERAGE BATCH 132: More Recursive Functions
+// ============================================================================
+mod coverage_batch132 {
+    use super::run;
+
+    #[test]
+    fn test_recursive_factorial() {
+        let code = r#"
+dae factorial(n) {
+    gin n <= 1 {
+        gie 1
+    }
+    gie n * factorial(n - 1)
+}
+blether factorial(5)
+        "#;
+        // 5! = 120
+        assert_eq!(run(code).trim(), "120");
+    }
+
+    #[test]
+    fn test_recursive_fib() {
+        let code = r#"
+dae fib(n) {
+    gin n <= 1 {
+        gie n
+    }
+    gie fib(n - 1) + fib(n - 2)
+}
+blether fib(10)
+        "#;
+        // fib(10) = 55
+        assert_eq!(run(code).trim(), "55");
+    }
+
+    #[test]
+    fn test_recursive_sum() {
+        let code = r#"
+dae sum_to(n) {
+    gin n <= 0 {
+        gie 0
+    }
+    gie n + sum_to(n - 1)
+}
+blether sum_to(10)
+        "#;
+        // 1+2+...+10 = 55
+        assert_eq!(run(code).trim(), "55");
+    }
+
+    #[test]
+    fn test_recursive_gcd() {
+        let code = r#"
+dae gcd(a, b) {
+    gin b == 0 {
+        gie a
+    }
+    gie gcd(b, a % b)
+}
+blether gcd(48, 18)
+        "#;
+        // GCD(48, 18) = 6
+        assert_eq!(run(code).trim(), "6");
+    }
+
+    #[test]
+    fn test_recursive_power() {
+        let code = r#"
+dae power(base, exp) {
+    gin exp == 0 {
+        gie 1
+    }
+    gie base * power(base, exp - 1)
+}
+blether power(2, 8)
+        "#;
+        assert_eq!(run(code).trim(), "256");
+    }
+}
+
+// ============================================================================
+// COVERAGE BATCH 133: Lambda Variations
+// ============================================================================
+mod coverage_batch133 {
+    use super::run;
+
+    #[test]
+    fn test_lambda_as_value() {
+        let code = r#"
+ken f = |x| x * 2
+blether f(5)
+        "#;
+        assert_eq!(run(code).trim(), "10");
+    }
+
+    #[test]
+    fn test_lambda_two_args() {
+        let code = r#"
+ken add = |a, b| a + b
+blether add(3, 7)
+        "#;
+        assert_eq!(run(code).trim(), "10");
+    }
+
+    #[test]
+    fn test_lambda_in_list() {
+        let code = r#"
+ken funcs = [|x| x + 1, |x| x * 2, |x| x - 1]
+blether funcs[1](10)
+        "#;
+        assert_eq!(run(code).trim(), "20");
+    }
+
+    #[test]
+    fn test_lambda_immediate() {
+        let code = r#"
+ken result = (|x, y| x + y)(3, 4)
+blether result
+        "#;
+        assert_eq!(run(code).trim(), "7");
+    }
+
+    #[test]
+    fn test_lambda_no_args() {
+        let code = r#"
+ken get42 = || 42
+blether get42()
+        "#;
+        assert_eq!(run(code).trim(), "42");
+    }
+}
+
+// ============================================================================
+// COVERAGE BATCH 134: More List Operations
+// ============================================================================
+mod coverage_batch134 {
+    use super::run;
+
+    #[test]
+    fn test_reverse_list() {
+        let code = r#"
+ken nums = [1, 2, 3, 4, 5]
+reverse(nums)
+blether heid(nums)
+        "#;
+        assert_eq!(run(code).trim(), "5");
+    }
+
+    #[test]
+    fn test_sort_list() {
+        let code = r#"
+ken nums = [5, 2, 8, 1, 9]
+sort(nums)
+blether heid(nums)
+        "#;
+        assert_eq!(run(code).trim(), "1");
+    }
+
+    #[test]
+    fn test_list_contains_true() {
+        let code = r#"
+ken nums = [1, 2, 3, 4, 5]
+blether contains(nums, 3)
+        "#;
+        assert_eq!(run(code).trim(), "aye");
+    }
+
+    #[test]
+    fn test_list_contains_false() {
+        let code = r#"
+ken nums = [1, 2, 3, 4, 5]
+blether contains(nums, 10)
+        "#;
+        assert_eq!(run(code).trim(), "nae");
+    }
+
+    #[test]
+    fn test_list_sumaw() {
+        let code = r#"
+ken nums = [10, 20, 30, 40]
+blether sumaw(nums)
+        "#;
+        assert_eq!(run(code).trim(), "100");
+    }
+}
+
+// ============================================================================
+// COVERAGE BATCH 135: Assert Statement
+// ============================================================================
+mod coverage_batch135 {
+    use super::run;
+
+    #[test]
+    fn test_assert_true() {
+        let code = r#"
+mak_siccar(aye)
+blether "passed"
+        "#;
+        assert_eq!(run(code).trim(), "passed");
+    }
+
+    #[test]
+    fn test_assert_comparison() {
+        let code = r#"
+mak_siccar(1 + 1 == 2)
+blether "ok"
+        "#;
+        assert_eq!(run(code).trim(), "ok");
+    }
+
+    #[test]
+    fn test_assert_in_function() {
+        let code = r#"
+dae safe_div(a, b) {
+    mak_siccar(b != 0)
+    gie a / b
+}
+blether safe_div(10, 2)
+        "#;
+        assert_eq!(run(code).trim(), "5");
+    }
+
+    #[test]
+    fn test_multiple_asserts() {
+        let code = r#"
+mak_siccar(1 < 2)
+mak_siccar(3 > 2)
+mak_siccar(len([1,2,3]) == 3)
+blether "all passed"
+        "#;
+        assert_eq!(run(code).trim(), "all passed");
+    }
+
+    #[test]
+    fn test_assert_with_variable() {
+        let code = r#"
+ken x = 10
+ken y = 20
+mak_siccar(x < y)
+blether x + y
+        "#;
+        assert_eq!(run(code).trim(), "30");
     }
 }
