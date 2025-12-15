@@ -571,6 +571,27 @@ impl Parser {
                 self.advance();
                 Ok(Pattern::Identifier(name))
             }
+            TokenKind::Minus => {
+                // Handle negative number patterns like -5 or -3.14
+                self.advance();
+                let next_token = self.peek().clone();
+                match &next_token.kind {
+                    TokenKind::Integer(n) => {
+                        let n = -*n;
+                        self.advance();
+                        Ok(Pattern::Literal(Literal::Integer(n)))
+                    }
+                    TokenKind::Float(n) => {
+                        let n = -*n;
+                        self.advance();
+                        Ok(Pattern::Literal(Literal::Float(n)))
+                    }
+                    _ => Err(HaversError::ParseError {
+                        message: format!("Expected number after '-' in pattern, got {}", next_token.kind),
+                        line: next_token.line,
+                    }),
+                }
+            }
             _ => Err(HaversError::ParseError {
                 message: format!("Expected pattern, got {}", token.kind),
                 line: token.line,
