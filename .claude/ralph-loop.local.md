@@ -1,6 +1,6 @@
 ---
 active: true
-iteration: 5
+iteration: 10
 max_iterations: 0
 completion_promise: "cargo llvm-cov --features llvm --test llvm_comprehensive_tests shows codegen.rs at 90%+ line coverage and parser.rs at 90%+ line coverage"
 started_at: "2025-12-14T12:32:40Z"
