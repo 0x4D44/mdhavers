@@ -1571,6 +1571,76 @@ impl<'ctx> CodeGen<'ctx> {
                     .unwrap();
                 Ok(Some(result))
             }
+            // Handle logical expressions (and/or) with short-circuit evaluation
+            Expr::Logical {
+                left,
+                operator,
+                right,
+                ..
+            } => {
+                let function = self.current_function.unwrap();
+
+                // Try to compile left side directly
+                let left_cond = if let Some(l) = self.compile_condition_direct(left)? {
+                    l
+                } else {
+                    // Fall back to full compilation for left
+                    let left_val = self.compile_expr(left)?;
+                    self.is_truthy(left_val)?
+                };
+
+                // Create blocks for short-circuit evaluation
+                let eval_right = self.context.append_basic_block(function, "eval_right_cond");
+                let merge_cond = self.context.append_basic_block(function, "merge_cond");
+
+                // Short-circuit: for AND, skip right if left is false
+                // for OR, skip right if left is true
+                match operator {
+                    LogicalOp::And => {
+                        self.builder
+                            .build_conditional_branch(left_cond, eval_right, merge_cond)
+                            .unwrap();
+                    }
+                    LogicalOp::Or => {
+                        self.builder
+                            .build_conditional_branch(left_cond, merge_cond, eval_right)
+                            .unwrap();
+                    }
+                }
+
+                let left_block = self.builder.get_insert_block().unwrap();
+
+                // Compile right side
+                self.builder.position_at_end(eval_right);
+                let right_cond = if let Some(r) = self.compile_condition_direct(right)? {
+                    r
+                } else {
+                    let right_val = self.compile_expr(right)?;
+                    self.is_truthy(right_val)?
+                };
+                let right_block = self.builder.get_insert_block().unwrap();
+                self.builder.build_unconditional_branch(merge_cond).unwrap();
+
+                // Merge results with phi
+                self.builder.position_at_end(merge_cond);
+                let phi = self
+                    .builder
+                    .build_phi(self.types.bool_type, "logical_cond")
+                    .unwrap();
+
+                // For AND: if we came from left_block, left was false -> result is false
+                // For OR: if we came from left_block, left was true -> result is true
+                let short_circuit_result = match operator {
+                    LogicalOp::And => self.types.bool_type.const_int(0, false), // false
+                    LogicalOp::Or => self.types.bool_type.const_int(1, false),  // true
+                };
+                phi.add_incoming(&[
+                    (&short_circuit_result, left_block),
+                    (&right_cond, right_block),
+                ]);
+
+                Ok(Some(phi.as_basic_value().into_int_value()))
+            }
             _ => Ok(None),
         }
     }

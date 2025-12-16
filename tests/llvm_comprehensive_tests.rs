@@ -43334,3 +43334,1301 @@ keek x {
         assert_eq!(lines[1], "dos");
     }
 }
+
+// =============================================================================
+// RANGE FUNCTION COMPREHENSIVE TESTS
+// =============================================================================
+mod range_coverage {
+    use super::run;
+
+    #[test]
+    fn test_range_basic() {
+        let code = r#"
+ken r = range(0, 5)
+blether r
+        "#;
+        assert_eq!(run(code).trim(), "[0, 1, 2, 3, 4]");
+    }
+
+    #[test]
+    fn test_range_start_end() {
+        let code = r#"
+ken r = range(3, 7)
+blether r
+        "#;
+        assert_eq!(run(code).trim(), "[3, 4, 5, 6]");
+    }
+
+    #[test]
+    fn test_range_negative_start() {
+        let code = r#"
+ken r = range(-3, 3)
+blether r
+        "#;
+        assert_eq!(run(code).trim(), "[-3, -2, -1, 0, 1, 2]");
+    }
+
+    #[test]
+    fn test_range_empty() {
+        let code = r#"
+ken r = range(5, 5)
+blether r
+        "#;
+        assert_eq!(run(code).trim(), "[]");
+    }
+
+    #[test]
+    fn test_range_negative_empty() {
+        let code = r#"
+ken r = range(10, 5)
+blether r
+        "#;
+        assert_eq!(run(code).trim(), "[]");
+    }
+
+    #[test]
+    fn test_range_iteration() {
+        let code = r#"
+ken total = 0
+fer i in range(1, 6) {
+    total = total + i
+}
+blether total
+        "#;
+        assert_eq!(run(code).trim(), "15");
+    }
+
+    #[test]
+    fn test_range_with_len() {
+        let code = r#"
+ken r = range(0, 10)
+blether len(r)
+        "#;
+        assert_eq!(run(code).trim(), "10");
+    }
+
+    #[test]
+    fn test_range_index() {
+        let code = r#"
+ken r = range(5, 10)
+blether r[2]
+        "#;
+        assert_eq!(run(code).trim(), "7");
+    }
+}
+
+// =============================================================================
+// DESTRUCTURING PATTERNS COVERAGE
+// =============================================================================
+mod destructuring_full_coverage {
+    use super::run;
+
+    #[test]
+    #[ignore = "destructuring not implemented in LLVM"]
+    fn test_destructure_basic() {
+        let code = r#"
+ken lst = [1, 2, 3]
+ken [a, b, c] = lst
+blether a
+blether b
+blether c
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "1");
+        assert_eq!(lines[1], "2");
+        assert_eq!(lines[2], "3");
+    }
+
+    #[test]
+    #[ignore = "destructuring not implemented in LLVM"]
+    fn test_destructure_two_elements() {
+        let code = r#"
+ken pair = [10, 20]
+ken [x, y] = pair
+blether x + y
+        "#;
+        assert_eq!(run(code).trim(), "30");
+    }
+
+    #[test]
+    #[ignore = "destructuring not implemented in LLVM"]
+    fn test_destructure_with_rest() {
+        let code = r#"
+ken lst = [1, 2, 3, 4, 5]
+ken [first, ...rest] = lst
+blether first
+blether rest
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "1");
+        assert_eq!(lines[1], "[2, 3, 4, 5]");
+    }
+
+    #[test]
+    #[ignore = "destructuring not implemented in LLVM"]
+    fn test_destructure_with_ignore() {
+        let code = r#"
+ken lst = [1, 2, 3]
+ken [a, _, c] = lst
+blether a
+blether c
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "1");
+        assert_eq!(lines[1], "3");
+    }
+
+    #[test]
+    #[ignore = "destructuring not implemented in LLVM"]
+    fn test_destructure_single() {
+        let code = r#"
+ken lst = [42]
+ken [x] = lst
+blether x
+        "#;
+        assert_eq!(run(code).trim(), "42");
+    }
+
+    #[test]
+    #[ignore = "destructuring not implemented in LLVM"]
+    fn test_destructure_function_result() {
+        let code = r#"
+dae make_pair() {
+    gie [100, 200]
+}
+ken [a, b] = make_pair()
+blether a + b
+        "#;
+        assert_eq!(run(code).trim(), "300");
+    }
+}
+
+// =============================================================================
+// SPREAD OPERATOR COVERAGE
+// =============================================================================
+mod spread_full_coverage {
+    use super::run;
+
+    #[test]
+    fn test_spread_in_list() {
+        let code = r#"
+ken a = [1, 2]
+ken b = [0, ...a, 3]
+blether b
+        "#;
+        assert_eq!(run(code).trim(), "[0, 1, 2, 3]");
+    }
+
+    #[test]
+    fn test_spread_concat() {
+        let code = r#"
+ken x = [1, 2]
+ken y = [3, 4]
+ken z = [...x, ...y]
+blether z
+        "#;
+        assert_eq!(run(code).trim(), "[1, 2, 3, 4]");
+    }
+
+    #[test]
+    fn test_spread_empty() {
+        let code = r#"
+ken empty = []
+ken lst = [1, ...empty, 2]
+blether lst
+        "#;
+        assert_eq!(run(code).trim(), "[1, 2]");
+    }
+
+    #[test]
+    fn test_spread_at_end() {
+        let code = r#"
+ken items = [3, 4, 5]
+ken result = [1, 2, ...items]
+blether result
+        "#;
+        assert_eq!(run(code).trim(), "[1, 2, 3, 4, 5]");
+    }
+
+    #[test]
+    fn test_spread_at_start() {
+        let code = r#"
+ken items = [1, 2, 3]
+ken result = [...items, 4, 5]
+blether result
+        "#;
+        assert_eq!(run(code).trim(), "[1, 2, 3, 4, 5]");
+    }
+}
+
+// =============================================================================
+// STRUCT COVERAGE (not supported in LLVM)
+// =============================================================================
+#[cfg(feature = "unimplemented")]
+mod struct_full_coverage {
+    use super::run;
+
+    #[test]
+    fn test_struct_basic_full() {
+        let code = r#"
+thing Point {
+x, y
+}
+ken p = Point(10, 20)
+blether p.x
+blether p.y
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "10");
+        assert_eq!(lines[1], "20");
+    }
+
+    #[test]
+    fn test_struct_three_fields_full() {
+        let code = r#"
+thing Vector3 {
+x, y, z
+}
+ken v = Vector3(1, 2, 3)
+blether v.x + v.y + v.z
+        "#;
+        assert_eq!(run(code).trim(), "6");
+    }
+
+    #[test]
+    fn test_struct_modify_full() {
+        let code = r#"
+thing Counter {
+value
+}
+ken c = Counter(0)
+c.value = 42
+blether c.value
+        "#;
+        assert_eq!(run(code).trim(), "42");
+    }
+
+    #[test]
+    fn test_struct_with_string_full() {
+        let code = r#"
+thing Person {
+name, age
+}
+ken p = Person("Alice", 30)
+blether p.name
+blether p.age
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "Alice");
+        assert_eq!(lines[1], "30");
+    }
+}
+
+// =============================================================================
+// PIPE OPERATOR COVERAGE
+// =============================================================================
+mod pipe_coverage {
+    use super::run;
+
+    #[test]
+    fn test_pipe_basic() {
+        let code = r#"
+dae double(x) {
+    gie x * 2
+}
+ken result = 5 |> double
+blether result
+        "#;
+        assert_eq!(run(code).trim(), "10");
+    }
+
+    #[test]
+    fn test_pipe_chain() {
+        let code = r#"
+dae add_one(x) {
+    gie x + 1
+}
+dae double(x) {
+    gie x * 2
+}
+ken result = 5 |> add_one |> double
+blether result
+        "#;
+        assert_eq!(run(code).trim(), "12");
+    }
+
+    #[test]
+    fn test_pipe_with_len() {
+        let code = r#"
+ken lst = [1, 2, 3, 4, 5]
+ken result = lst |> len
+blether result
+        "#;
+        assert_eq!(run(code).trim(), "5");
+    }
+}
+
+// =============================================================================
+// ADDITIONAL EXPRESSION COVERAGE
+// =============================================================================
+mod expression_full_coverage {
+    use super::run;
+
+    #[test]
+    fn test_compound_assignment_add() {
+        let code = r#"
+ken x = 10
+x += 5
+blether x
+        "#;
+        assert_eq!(run(code).trim(), "15");
+    }
+
+    #[test]
+    fn test_compound_assignment_sub() {
+        let code = r#"
+ken x = 10
+x -= 3
+blether x
+        "#;
+        assert_eq!(run(code).trim(), "7");
+    }
+
+    #[test]
+    fn test_compound_assignment_mul() {
+        let code = r#"
+ken x = 4
+x *= 3
+blether x
+        "#;
+        assert_eq!(run(code).trim(), "12");
+    }
+
+    #[test]
+    fn test_compound_assignment_div() {
+        let code = r#"
+ken x = 20
+x /= 4
+blether x
+        "#;
+        assert_eq!(run(code).trim(), "5");
+    }
+
+    #[test]
+    fn test_ternary_expression() {
+        let code = r#"
+ken a = 10
+ken b = 5
+ken max_val = gin a > b than a ither b
+blether max_val
+        "#;
+        assert_eq!(run(code).trim(), "10");
+    }
+
+    #[test]
+    fn test_ternary_nested() {
+        let code = r#"
+ken x = 5
+ken result = gin x > 10 than "big" ither gin x > 0 than "small" ither "zero"
+blether result
+        "#;
+        assert_eq!(run(code).trim(), "small");
+    }
+
+}
+
+// =============================================================================
+// ADVANCED CONTROL FLOW COVERAGE
+// =============================================================================
+mod advanced_control_flow {
+    use super::run;
+
+    #[test]
+    fn test_for_with_index() {
+        let code = r#"
+ken lst = ["a", "b", "c"]
+fer item in lst {
+    blether item
+}
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "a");
+        assert_eq!(lines[1], "b");
+        assert_eq!(lines[2], "c");
+    }
+
+    #[test]
+    fn test_for_nested_with_break() {
+        let code = r#"
+ken found = nae
+fer i in range(0, 5) {
+    fer j in range(0, 5) {
+        gin i == 2 an j == 3 {
+            found = aye
+            brak
+        }
+    }
+    gin found {
+        brak
+    }
+}
+blether found
+        "#;
+        assert_eq!(run(code).trim(), "aye");
+    }
+
+    #[test]
+    fn test_while_with_multiple_conditions() {
+        let code = r#"
+ken x = 0
+ken y = 10
+whiles x < 5 an y > 5 {
+    x = x + 1
+    y = y - 1
+}
+blether x
+blether y
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "5");
+        assert_eq!(lines[1], "5");
+    }
+
+    #[test]
+    fn test_if_elif_chain() {
+        let code = r#"
+dae check(n) {
+    gin n < 0 {
+        gie "negative"
+    } ither gin n == 0 {
+        gie "zero"
+    } ither gin n < 10 {
+        gie "small"
+    } ither {
+        gie "large"
+    }
+}
+blether check(-5)
+blether check(0)
+blether check(5)
+blether check(100)
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "negative");
+        assert_eq!(lines[1], "zero");
+        assert_eq!(lines[2], "small");
+        assert_eq!(lines[3], "large");
+    }
+}
+
+// =============================================================================
+// NUMERIC OPERATIONS COVERAGE
+// =============================================================================
+mod numeric_operations {
+    use super::run;
+
+    #[test]
+    fn test_modulo() {
+        let code = r#"
+blether 17 % 5
+blether 20 % 4
+blether 7 % 3
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "2");
+        assert_eq!(lines[1], "0");
+        assert_eq!(lines[2], "1");
+    }
+
+    #[test]
+    fn test_float_operations() {
+        let code = r#"
+ken a = 3.5
+ken b = 2.0
+blether a + b
+blether a - b
+blether a * b
+blether a / b
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "5.5");
+        assert_eq!(lines[1], "1.5");
+        assert_eq!(lines[2], "7");
+        assert_eq!(lines[3], "1.75");
+    }
+
+    #[test]
+    fn test_negative_numbers() {
+        let code = r#"
+ken a = -5
+ken b = -3
+blether a + b
+blether a - b
+blether a * b
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "-8");
+        assert_eq!(lines[1], "-2");
+        assert_eq!(lines[2], "15");
+    }
+
+    #[test]
+    fn test_power_operator() {
+        let code = r#"
+blether 2 ** 10
+blether 3 ** 4
+blether 10 ** 0
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "1024");
+        assert_eq!(lines[1], "81");
+        assert_eq!(lines[2], "1");
+    }
+}
+
+// =============================================================================
+// DICTIONARY OPERATIONS COVERAGE
+// =============================================================================
+mod dictionary_coverage {
+    use super::run;
+
+    #[test]
+    fn test_dict_basic() {
+        let code = r#"
+ken d = {"a": 1, "b": 2}
+blether d["a"]
+blether d["b"]
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "1");
+        assert_eq!(lines[1], "2");
+    }
+
+    #[test]
+    fn test_dict_set() {
+        let code = r#"
+ken d = {}
+d["key"] = "value"
+blether d["key"]
+        "#;
+        assert_eq!(run(code).trim(), "value");
+    }
+
+    #[test]
+    fn test_dict_overwrite() {
+        let code = r#"
+ken d = {"x": 10}
+d["x"] = 20
+blether d["x"]
+        "#;
+        assert_eq!(run(code).trim(), "20");
+    }
+
+    #[test]
+    fn test_dict_nested_values() {
+        let code = r#"
+ken d = {"nums": [1, 2, 3], "name": "test"}
+blether len(d["nums"])
+blether d["name"]
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "3");
+        assert_eq!(lines[1], "test");
+    }
+}
+
+// =============================================================================
+// SLICE OPERATIONS COVERAGE
+// =============================================================================
+mod slice_coverage {
+    use super::run;
+
+    #[test]
+    fn test_slice_basic() {
+        let code = r#"
+ken lst = [0, 1, 2, 3, 4, 5]
+blether lst[1:4]
+        "#;
+        assert_eq!(run(code).trim(), "[1, 2, 3]");
+    }
+
+    #[test]
+    fn test_slice_from_start() {
+        let code = r#"
+ken lst = [0, 1, 2, 3, 4]
+blether lst[:3]
+        "#;
+        assert_eq!(run(code).trim(), "[0, 1, 2]");
+    }
+
+    #[test]
+    fn test_slice_to_end() {
+        let code = r#"
+ken lst = [0, 1, 2, 3, 4]
+blether lst[2:]
+        "#;
+        assert_eq!(run(code).trim(), "[2, 3, 4]");
+    }
+
+    #[test]
+    fn test_slice_negative_index() {
+        let code = r#"
+ken lst = [0, 1, 2, 3, 4]
+blether lst[-3:]
+        "#;
+        assert_eq!(run(code).trim(), "[2, 3, 4]");
+    }
+
+    #[test]
+    fn test_slice_string() {
+        let code = r#"
+ken s = "hello"
+blether s[1:4]
+        "#;
+        assert_eq!(run(code).trim(), "ell");
+    }
+}
+
+// =============================================================================
+// CLOSURE AND CAPTURE COVERAGE
+// =============================================================================
+mod closure_full_coverage {
+    use super::run;
+
+    #[test]
+    fn test_closure_capture() {
+        let code = r#"
+dae make_counter() {
+    ken count = 0
+    dae increment() {
+        count = count + 1
+        gie count
+    }
+    gie increment
+}
+ken counter = make_counter()
+blether counter()
+blether counter()
+blether counter()
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "1");
+        assert_eq!(lines[1], "2");
+        assert_eq!(lines[2], "3");
+    }
+
+    #[test]
+    fn test_closure_multiple_captures() {
+        let code = r#"
+ken x = 10
+ken y = 20
+dae sum_with_xy(z) {
+    gie x + y + z
+}
+blether sum_with_xy(5)
+        "#;
+        assert_eq!(run(code).trim(), "35");
+    }
+}
+
+// =============================================================================
+// DEFAULT PARAMETERS COVERAGE
+// =============================================================================
+mod default_params_full_coverage {
+    use super::run;
+
+    #[test]
+    fn test_default_param_single() {
+        let code = r#"
+dae greet(name = "World") {
+    blether "Hello, " + name
+}
+greet()
+greet("Alice")
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "Hello, World");
+        assert_eq!(lines[1], "Hello, Alice");
+    }
+
+    #[test]
+    fn test_default_param_multiple() {
+        let code = r#"
+dae calc(a, b = 10, c = 100) {
+    gie a + b + c
+}
+blether calc(1)
+blether calc(1, 2)
+blether calc(1, 2, 3)
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "111");
+        assert_eq!(lines[1], "103");
+        assert_eq!(lines[2], "6");
+    }
+
+    #[test]
+    fn test_default_param_expression() {
+        let code = r#"
+ken default_val = 50
+dae add(x, y = default_val) {
+    gie x + y
+}
+blether add(10)
+blether add(10, 20)
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "60");
+        assert_eq!(lines[1], "30");
+    }
+}
+
+// =============================================================================
+// STRING INTERPOLATION COVERAGE
+// =============================================================================
+mod string_interpolation_coverage {
+    use super::run;
+
+    #[test]
+    fn test_interpolation_basic() {
+        let code = r#"
+ken name = "Alice"
+blether "Hello, {name}!"
+        "#;
+        assert_eq!(run(code).trim(), "Hello, Alice!");
+    }
+
+    #[test]
+    fn test_interpolation_expression() {
+        let code = r#"
+ken x = 5
+ken y = 3
+blether "{x} + {y} = {x + y}"
+        "#;
+        assert_eq!(run(code).trim(), "5 + 3 = 8");
+    }
+
+    #[test]
+    fn test_interpolation_nested_call() {
+        let code = r#"
+dae double(x) {
+    gie x * 2
+}
+ken n = 10
+blether "Double of {n} is {double(n)}"
+        "#;
+        assert_eq!(run(code).trim(), "Double of 10 is 20");
+    }
+}
+
+// =============================================================================
+// BUILTIN FUNCTIONS ADDITIONAL COVERAGE
+// =============================================================================
+mod builtin_additional_coverage {
+    use super::run;
+
+    #[test]
+    fn test_abs_positive() {
+        let code = r#"
+blether abs(42)
+        "#;
+        assert_eq!(run(code).trim(), "42");
+    }
+
+    #[test]
+    fn test_abs_negative() {
+        let code = r#"
+blether abs(-42)
+        "#;
+        assert_eq!(run(code).trim(), "42");
+    }
+
+    #[test]
+    fn test_abs_zero() {
+        let code = r#"
+blether abs(0)
+        "#;
+        assert_eq!(run(code).trim(), "0");
+    }
+
+    #[test]
+    fn test_floor_positive() {
+        let code = r#"
+blether floor(3.7)
+        "#;
+        assert_eq!(run(code).trim(), "3");
+    }
+
+    #[test]
+    fn test_floor_negative() {
+        let code = r#"
+blether floor(-3.2)
+        "#;
+        assert_eq!(run(code).trim(), "-4");
+    }
+
+    #[test]
+    fn test_ceil_positive() {
+        let code = r#"
+blether ceil(3.2)
+        "#;
+        assert_eq!(run(code).trim(), "4");
+    }
+
+    #[test]
+    fn test_ceil_negative() {
+        let code = r#"
+blether ceil(-3.7)
+        "#;
+        assert_eq!(run(code).trim(), "-3");
+    }
+
+    #[test]
+    fn test_round() {
+        let code = r#"
+blether round(3.5)
+blether round(3.4)
+blether round(3.6)
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "4");
+        assert_eq!(lines[1], "3");
+        assert_eq!(lines[2], "4");
+    }
+
+    #[test]
+    fn test_sqrt() {
+        let code = r#"
+blether sqrt(16)
+blether sqrt(25)
+blether sqrt(2)
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "4");
+        assert_eq!(lines[1], "5");
+        assert!(lines[2].starts_with("1.41"));
+    }
+
+    #[test]
+    fn test_min_max() {
+        let code = r#"
+blether min(5, 3)
+blether max(5, 3)
+blether min(-10, 10)
+blether max(-10, 10)
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "3");
+        assert_eq!(lines[1], "5");
+        assert_eq!(lines[2], "-10");
+        assert_eq!(lines[3], "10");
+    }
+
+    #[test]
+    fn test_sign() {
+        let code = r#"
+blether sign(42)
+blether sign(-42)
+blether sign(0)
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "1");
+        assert_eq!(lines[1], "-1");
+        assert_eq!(lines[2], "0");
+    }
+
+    #[test]
+    fn test_clamp() {
+        let code = r#"
+blether clamp(5, 0, 10)
+blether clamp(-5, 0, 10)
+blether clamp(15, 0, 10)
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "5");
+        assert_eq!(lines[1], "0");
+        assert_eq!(lines[2], "10");
+    }
+}
+
+// =============================================================================
+// TYPE CHECKING AND CONVERSION COVERAGE
+// =============================================================================
+mod type_checking_full_coverage {
+    use super::run;
+
+    #[test]
+    fn test_whit_kind_int() {
+        let code = r#"
+blether whit_kind(42)
+        "#;
+        assert_eq!(run(code).trim(), "integer");
+    }
+
+    #[test]
+    fn test_whit_kind_float() {
+        let code = r#"
+blether whit_kind(3.14)
+        "#;
+        assert_eq!(run(code).trim(), "float");
+    }
+
+    #[test]
+    fn test_whit_kind_string() {
+        let code = r#"
+blether whit_kind("hello")
+        "#;
+        assert_eq!(run(code).trim(), "string");
+    }
+
+    #[test]
+    fn test_whit_kind_bool() {
+        let code = r#"
+blether whit_kind(aye)
+blether whit_kind(nae)
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "boolean");
+        assert_eq!(lines[1], "boolean");
+    }
+
+    #[test]
+    fn test_whit_kind_list() {
+        let code = r#"
+blether whit_kind([1, 2, 3])
+        "#;
+        assert_eq!(run(code).trim(), "list");
+    }
+
+    #[test]
+    fn test_whit_kind_nil() {
+        let code = r#"
+blether whit_kind(naething)
+        "#;
+        assert_eq!(run(code).trim(), "nil");
+    }
+
+    #[test]
+    fn test_tae_int() {
+        let code = r#"
+blether tae_int("42")
+blether tae_int(3.7)
+blether tae_int(aye)
+blether tae_int(nae)
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "42");
+        assert_eq!(lines[1], "3");
+        assert_eq!(lines[2], "1");
+        assert_eq!(lines[3], "0");
+    }
+
+    #[test]
+    fn test_tae_float() {
+        let code = r#"
+blether tae_float("3.14")
+blether tae_float(42)
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert!(lines[0].starts_with("3.14"));
+        assert_eq!(lines[1], "42");
+    }
+
+    #[test]
+    fn test_tae_string() {
+        let code = r#"
+blether tae_string(42)
+blether tae_string(3.14)
+blether tae_string(aye)
+blether tae_string([1, 2])
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "42");
+        assert!(lines[1].starts_with("3.14"));
+        assert_eq!(lines[2], "aye");
+        assert_eq!(lines[3], "[1, 2]");
+    }
+
+    #[test]
+    fn test_tae_bool() {
+        let code = r#"
+blether tae_bool(1)
+blether tae_bool(0)
+blether tae_bool("")
+blether tae_bool("hello")
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "aye");
+        assert_eq!(lines[1], "nae");
+        assert_eq!(lines[2], "nae");
+        assert_eq!(lines[3], "aye");
+    }
+}
+
+// =============================================================================
+// LIST OPERATIONS COVERAGE
+// =============================================================================
+mod list_operations_coverage {
+    use super::run;
+
+    #[test]
+    fn test_push_pop() {
+        let code = r#"
+ken lst = [1, 2, 3]
+shove(lst, 4)
+blether lst
+ken last = yank(lst)
+blether last
+blether lst
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "[1, 2, 3, 4]");
+        assert_eq!(lines[1], "4");
+        assert_eq!(lines[2], "[1, 2, 3]");
+    }
+
+    #[test]
+    fn test_concat() {
+        let code = r#"
+ken a = [1, 2]
+ken b = [3, 4]
+ken c = slap(a, b)
+blether c
+        "#;
+        assert_eq!(run(code).trim(), "[1, 2, 3, 4]");
+    }
+
+    #[test]
+    fn test_reverse() {
+        let code = r#"
+ken lst = [1, 2, 3, 4, 5]
+blether reverse(lst)
+        "#;
+        assert_eq!(run(code).trim(), "[5, 4, 3, 2, 1]");
+    }
+
+    #[test]
+    fn test_contains() {
+        let code = r#"
+ken lst = [1, 2, 3, 4, 5]
+blether contains(lst, 3)
+blether contains(lst, 10)
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "aye");
+        assert_eq!(lines[1], "nae");
+    }
+
+    #[test]
+    #[ignore] // find/index_of not implemented in LLVM backend
+    fn test_index_of() {
+        let code = r#"
+ken lst = ["a", "b", "c", "d"]
+blether find(lst, "c")
+blether find(lst, "z")
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "2");
+        assert_eq!(lines[1], "-1");
+    }
+
+    #[test]
+    fn test_map_filter() {
+        let code = r#"
+dae double(x) {
+    gie x * 2
+}
+ken nums = [1, 2, 3, 4, 5]
+ken doubled = ilk(nums, double)
+blether doubled
+        "#;
+        assert_eq!(run(code).trim(), "[2, 4, 6, 8, 10]");
+    }
+
+    #[test]
+    fn test_filter() {
+        let code = r#"
+dae is_even(x) {
+    gie x % 2 == 0
+}
+ken nums = [1, 2, 3, 4, 5, 6]
+ken evens = sieve(nums, is_even)
+blether evens
+        "#;
+        assert_eq!(run(code).trim(), "[2, 4, 6]");
+    }
+
+    #[test]
+    fn test_reduce() {
+        let code = r#"
+dae sum(acc, x) {
+    gie acc + x
+}
+ken nums = [1, 2, 3, 4, 5]
+ken total = tumble(nums, 0, sum)
+blether total
+        "#;
+        assert_eq!(run(code).trim(), "15");
+    }
+}
+
+// =============================================================================
+// STRING OPERATIONS COVERAGE
+// =============================================================================
+mod string_operations_coverage {
+    use super::run;
+
+    #[test]
+    fn test_string_concat() {
+        let code = r#"
+ken s = "Hello" + " " + "World"
+blether s
+        "#;
+        assert_eq!(run(code).trim(), "Hello World");
+    }
+
+    #[test]
+    fn test_string_repeat() {
+        let code = r#"
+ken s = repeat("ab", 3)
+blether s
+        "#;
+        assert_eq!(run(code).trim(), "ababab");
+    }
+
+    #[test]
+    fn test_string_len() {
+        let code = r#"
+blether len("hello")
+blether len("")
+blether len("test string")
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "5");
+        assert_eq!(lines[1], "0");
+        assert_eq!(lines[2], "11");
+    }
+
+    #[test]
+    fn test_split() {
+        let code = r#"
+ken s = "a,b,c,d"
+ken parts = split(s, ",")
+blether len(parts)
+        "#;
+        assert_eq!(run(code).trim(), "4");
+    }
+
+    #[test]
+    fn test_join() {
+        let code = r#"
+ken parts = ["a", "b", "c"]
+ken s = join(parts, "-")
+blether s
+        "#;
+        assert_eq!(run(code).trim(), "a-b-c");
+    }
+
+    #[test]
+    fn test_uppercase_lowercase() {
+        let code = r#"
+blether heich("hello")
+blether laich("HELLO")
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "HELLO");
+        assert_eq!(lines[1], "hello");
+    }
+
+    #[test]
+    fn test_trim() {
+        let code = r#"
+blether trim("  hello  ")
+        "#;
+        assert_eq!(run(code).trim(), "hello");
+    }
+
+    #[test]
+    fn test_replace() {
+        let code = r#"
+blether swap("hello world", "world", "there")
+        "#;
+        assert_eq!(run(code).trim(), "hello there");
+    }
+
+    #[test]
+    fn test_starts_ends_with() {
+        let code = r#"
+ken s = "hello world"
+blether sterts_wi(s, "hello")
+blether sterts_wi(s, "world")
+blether ends_wi(s, "world")
+blether ends_wi(s, "hello")
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "aye");
+        assert_eq!(lines[1], "nae");
+        assert_eq!(lines[2], "aye");
+        assert_eq!(lines[3], "nae");
+    }
+
+    #[test]
+    fn test_substring() {
+        let code = r#"
+ken s = "hello world"
+blether substr(s, 0, 5)
+blether substr(s, 6, 5)
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "hello");
+        assert_eq!(lines[1], "world");
+    }
+
+    #[test]
+    fn test_char_at() {
+        let code = r#"
+ken s = "hello"
+blether s[0]
+blether s[4]
+        "#;
+        let output = run(code);
+        let lines: Vec<&str> = output.trim().lines().collect();
+        assert_eq!(lines[0], "h");
+        assert_eq!(lines[1], "o");
+    }
+}
