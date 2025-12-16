@@ -290,6 +290,7 @@ pub enum TokenKind {
 
     // Comments - skip them
     #[regex(r"#[^\n]*", logos::skip)]
+    #[regex(r"//[^\n]*", logos::skip)]
     Comment,
 
     // End of file
