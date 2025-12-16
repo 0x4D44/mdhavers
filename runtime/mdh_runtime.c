@@ -1237,6 +1237,430 @@ MdhValue __mdh_tae_binary(MdhValue n) {
     return __mdh_make_string(&buf[idx + 1]);
 }
 
+MdhValue __mdh_fae_binary(MdhValue str) {
+    /* Parse binary string to integer: "101" -> 5 */
+    if (str.tag != MDH_TAG_STRING) {
+        return __mdh_make_int(0);
+    }
+
+    const char *s = __mdh_get_string(str);
+    if (!s || *s == '\0') return __mdh_make_int(0);
+
+    int64_t result = 0;
+    for (int64_t i = 0; s[i] != '\0'; i++) {
+        char c = s[i];
+        if (c == '1') {
+            result = (result << 1) | 1;
+        } else if (c == '0') {
+            result = result << 1;
+        }
+        /* Skip other characters (like spaces or prefix) */
+    }
+    return __mdh_make_int(result);
+}
+
+MdhValue __mdh_fae_hex(MdhValue str) {
+    /* Parse hex string to integer: "ff" -> 255 */
+    if (str.tag != MDH_TAG_STRING) {
+        return __mdh_make_int(0);
+    }
+
+    const char *s = __mdh_get_string(str);
+    if (!s || *s == '\0') return __mdh_make_int(0);
+
+    int64_t result = 0;
+    for (int64_t i = 0; s[i] != '\0'; i++) {
+        char c = s[i];
+        int digit = -1;
+        if (c >= '0' && c <= '9') {
+            digit = c - '0';
+        } else if (c >= 'a' && c <= 'f') {
+            digit = 10 + (c - 'a');
+        } else if (c >= 'A' && c <= 'F') {
+            digit = 10 + (c - 'A');
+        }
+        if (digit >= 0) {
+            result = (result << 4) | digit;
+        }
+        /* Skip other characters (like 0x prefix) */
+    }
+    return __mdh_make_int(result);
+}
+
+MdhValue __mdh_ltrim(MdhValue str) {
+    /* Trim leading whitespace from string */
+    if (str.tag != MDH_TAG_STRING) {
+        return str;
+    }
+
+    const char *s = __mdh_get_string(str);
+    if (!s || *s == '\0') return str;
+
+    int64_t len = strlen(s);
+    int64_t start = 0;
+    while (start < len && (s[start] == ' ' || s[start] == '\t' ||
+           s[start] == '\n' || s[start] == '\r')) {
+        start++;
+    }
+
+    if (start == 0) return str;  /* No leading whitespace */
+    if (start == len) return __mdh_make_string("");  /* All whitespace */
+
+    return __mdh_make_string(s + start);
+}
+
+MdhValue __mdh_rtrim(MdhValue str) {
+    /* Trim trailing whitespace from string */
+    if (str.tag != MDH_TAG_STRING) {
+        return str;
+    }
+
+    const char *s = __mdh_get_string(str);
+    if (!s || *s == '\0') return str;
+
+    int64_t len = strlen(s);
+    int64_t end = len;
+    while (end > 0 && (s[end-1] == ' ' || s[end-1] == '\t' ||
+           s[end-1] == '\n' || s[end-1] == '\r')) {
+        end--;
+    }
+
+    if (end == len) return str;  /* No trailing whitespace */
+    if (end == 0) return __mdh_make_string("");  /* All whitespace */
+
+    char *buf = (char *)GC_malloc(end + 1);
+    memcpy(buf, s, end);
+    buf[end] = '\0';
+    return __mdh_make_string(buf);
+}
+
+MdhValue __mdh_reverse_str(MdhValue str) {
+    /* Reverse a string: "hello" -> "olleh" */
+    if (str.tag != MDH_TAG_STRING) {
+        return str;
+    }
+
+    const char *s = __mdh_get_string(str);
+    if (!s || *s == '\0') return str;
+
+    int64_t len = strlen(s);
+    char *buf = (char *)GC_malloc(len + 1);
+
+    for (int64_t i = 0; i < len; i++) {
+        buf[i] = s[len - 1 - i];
+    }
+    buf[len] = '\0';
+    return __mdh_make_string(buf);
+}
+
+MdhValue __mdh_title_case(MdhValue str) {
+    /* Title case a string: "hello world" -> "Hello World" */
+    if (str.tag != MDH_TAG_STRING) {
+        return str;
+    }
+
+    const char *s = __mdh_get_string(str);
+    if (!s || *s == '\0') return str;
+
+    int64_t len = strlen(s);
+    char *buf = (char *)GC_malloc(len + 1);
+
+    bool new_word = true;
+    for (int64_t i = 0; i < len; i++) {
+        char c = s[i];
+        if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+            new_word = true;
+            buf[i] = c;
+        } else if (new_word) {
+            buf[i] = toupper((unsigned char)c);
+            new_word = false;
+        } else {
+            buf[i] = tolower((unsigned char)c);
+        }
+    }
+    buf[len] = '\0';
+    return __mdh_make_string(buf);
+}
+
+MdhValue __mdh_tae_hex(MdhValue num) {
+    /* Convert integer to hex string */
+    if (num.tag != MDH_TAG_INT) {
+        return __mdh_make_string("0");
+    }
+    int64_t n = num.data;
+    char buf[32];
+    if (n < 0) {
+        snprintf(buf, sizeof(buf), "-%llx", (unsigned long long)(-n));
+    } else {
+        snprintf(buf, sizeof(buf), "%llx", (unsigned long long)n);
+    }
+    return __mdh_make_string(buf);
+}
+
+MdhValue __mdh_tae_octal(MdhValue num) {
+    /* Convert integer to octal string */
+    if (num.tag != MDH_TAG_INT) {
+        return __mdh_make_string("0");
+    }
+    int64_t n = num.data;
+    char buf[32];
+    if (n < 0) {
+        snprintf(buf, sizeof(buf), "-%llo", (unsigned long long)(-n));
+    } else {
+        snprintf(buf, sizeof(buf), "%llo", (unsigned long long)n);
+    }
+    return __mdh_make_string(buf);
+}
+
+MdhValue __mdh_center(MdhValue str, MdhValue width_val) {
+    /* Center string in given width */
+    if (str.tag != MDH_TAG_STRING || width_val.tag != MDH_TAG_INT) {
+        return str;
+    }
+    const char *s = __mdh_get_string(str);
+    if (!s) return __mdh_make_string("");
+
+    int64_t width = width_val.data;
+    int64_t len = strlen(s);
+
+    if (len >= width) return str;
+
+    int64_t total_pad = width - len;
+    int64_t left_pad = total_pad / 2;
+    int64_t right_pad = total_pad - left_pad;
+
+    char *buf = (char *)GC_malloc(width + 1);
+    memset(buf, ' ', width);
+    memcpy(buf + left_pad, s, len);
+    buf[width] = '\0';
+    return __mdh_make_string(buf);
+}
+
+MdhValue __mdh_repeat_say(MdhValue str, MdhValue count_val) {
+    /* Repeat string n times */
+    if (str.tag != MDH_TAG_STRING || count_val.tag != MDH_TAG_INT) {
+        return __mdh_make_string("");
+    }
+    const char *s = __mdh_get_string(str);
+    if (!s) return __mdh_make_string("");
+
+    int64_t count = count_val.data;
+    if (count <= 0) return __mdh_make_string("");
+
+    int64_t len = strlen(s);
+    int64_t total_len = len * count;
+
+    char *buf = (char *)GC_malloc(total_len + 1);
+    for (int64_t i = 0; i < count; i++) {
+        memcpy(buf + i * len, s, len);
+    }
+    buf[total_len] = '\0';
+    return __mdh_make_string(buf);
+}
+
+MdhValue __mdh_leftpad(MdhValue str, MdhValue width_val, MdhValue pad_val) {
+    /* Left pad string to width with pad char */
+    if (str.tag != MDH_TAG_STRING || width_val.tag != MDH_TAG_INT) {
+        return str;
+    }
+    const char *s = __mdh_get_string(str);
+    if (!s) return __mdh_make_string("");
+
+    int64_t width = width_val.data;
+    int64_t len = strlen(s);
+
+    if (len >= width) return str;
+
+    char pad_char = ' ';
+    if (pad_val.tag == MDH_TAG_STRING) {
+        const char *ps = __mdh_get_string(pad_val);
+        if (ps && ps[0]) pad_char = ps[0];
+    }
+
+    char *buf = (char *)GC_malloc(width + 1);
+    int64_t pad_len = width - len;
+    memset(buf, pad_char, pad_len);
+    memcpy(buf + pad_len, s, len);
+    buf[width] = '\0';
+    return __mdh_make_string(buf);
+}
+
+MdhValue __mdh_rightpad(MdhValue str, MdhValue width_val, MdhValue pad_val) {
+    /* Right pad string to width with pad char */
+    if (str.tag != MDH_TAG_STRING || width_val.tag != MDH_TAG_INT) {
+        return str;
+    }
+    const char *s = __mdh_get_string(str);
+    if (!s) return __mdh_make_string("");
+
+    int64_t width = width_val.data;
+    int64_t len = strlen(s);
+
+    if (len >= width) return str;
+
+    char pad_char = ' ';
+    if (pad_val.tag == MDH_TAG_STRING) {
+        const char *ps = __mdh_get_string(pad_val);
+        if (ps && ps[0]) pad_char = ps[0];
+    }
+
+    char *buf = (char *)GC_malloc(width + 1);
+    memcpy(buf, s, len);
+    memset(buf + len, pad_char, width - len);
+    buf[width] = '\0';
+    return __mdh_make_string(buf);
+}
+
+MdhValue __mdh_list_index(MdhValue list, MdhValue val) {
+    /* Find index of value in list, return -1 if not found */
+    if (list.tag != MDH_TAG_LIST) {
+        return __mdh_make_int(-1);
+    }
+    MdhList *l = (MdhList *)(intptr_t)list.data;
+    for (int64_t i = 0; i < l->length; i++) {
+        MdhValue item = l->items[i];
+        /* Compare tags and data */
+        if (item.tag == val.tag && item.data == val.data) {
+            return __mdh_make_int(i);
+        }
+    }
+    return __mdh_make_int(-1);
+}
+
+MdhValue __mdh_count_val(MdhValue list, MdhValue val) {
+    /* Count occurrences of value in list */
+    if (list.tag != MDH_TAG_LIST) {
+        return __mdh_make_int(0);
+    }
+    MdhList *l = (MdhList *)(intptr_t)list.data;
+    int64_t count = 0;
+    for (int64_t i = 0; i < l->length; i++) {
+        MdhValue item = l->items[i];
+        if (item.tag == val.tag && item.data == val.data) {
+            count++;
+        }
+    }
+    return __mdh_make_int(count);
+}
+
+MdhValue __mdh_list_copy(MdhValue list) {
+    /* Create a shallow copy of list */
+    if (list.tag != MDH_TAG_LIST) {
+        return list;
+    }
+    MdhList *src = (MdhList *)(intptr_t)list.data;
+    MdhList *dst = (MdhList *)GC_malloc(sizeof(MdhList));
+    dst->length = src->length;
+    dst->capacity = src->length;
+    dst->items = (MdhValue *)GC_malloc(sizeof(MdhValue) * src->length);
+    for (int64_t i = 0; i < src->length; i++) {
+        dst->items[i] = src->items[i];
+    }
+    MdhValue result;
+    result.tag = MDH_TAG_LIST;
+    result.data = (int64_t)(intptr_t)dst;
+    return result;
+}
+
+MdhValue __mdh_list_clear(MdhValue list) {
+    /* Clear a list (set length to 0) */
+    if (list.tag != MDH_TAG_LIST) {
+        return list;
+    }
+    MdhList *l = (MdhList *)(intptr_t)list.data;
+    l->length = 0;
+    return list;
+}
+
+MdhValue __mdh_last_index_of(MdhValue str, MdhValue substr) {
+    /* Find last occurrence of substring in string */
+    if (str.tag != MDH_TAG_STRING || substr.tag != MDH_TAG_STRING) {
+        return __mdh_make_int(-1);
+    }
+    const char *s = __mdh_get_string(str);
+    const char *sub = __mdh_get_string(substr);
+    if (!s || !sub) return __mdh_make_int(-1);
+
+    int64_t s_len = strlen(s);
+    int64_t sub_len = strlen(sub);
+    if (sub_len > s_len || sub_len == 0) return __mdh_make_int(-1);
+
+    int64_t last_idx = -1;
+    for (int64_t i = 0; i <= s_len - sub_len; i++) {
+        if (strncmp(s + i, sub, sub_len) == 0) {
+            last_idx = i;
+        }
+    }
+    return __mdh_make_int(last_idx);
+}
+
+MdhValue __mdh_replace_first(MdhValue str, MdhValue old_sub, MdhValue new_sub) {
+    /* Replace first occurrence of old_sub with new_sub */
+    if (str.tag != MDH_TAG_STRING || old_sub.tag != MDH_TAG_STRING || new_sub.tag != MDH_TAG_STRING) {
+        return str;
+    }
+    const char *s = __mdh_get_string(str);
+    const char *old_s = __mdh_get_string(old_sub);
+    const char *new_s = __mdh_get_string(new_sub);
+    if (!s || !old_s || !new_s) return str;
+
+    int64_t s_len = strlen(s);
+    int64_t old_len = strlen(old_s);
+    int64_t new_len = strlen(new_s);
+
+    if (old_len == 0 || old_len > s_len) return str;
+
+    /* Find first occurrence */
+    const char *pos = strstr(s, old_s);
+    if (!pos) return str;
+
+    int64_t idx = pos - s;
+    int64_t result_len = s_len - old_len + new_len;
+    char *buf = (char *)GC_malloc(result_len + 1);
+
+    memcpy(buf, s, idx);
+    memcpy(buf + idx, new_s, new_len);
+    memcpy(buf + idx + new_len, s + idx + old_len, s_len - idx - old_len);
+    buf[result_len] = '\0';
+
+    return __mdh_make_string(buf);
+}
+
+MdhValue __mdh_unique(MdhValue list) {
+    /* Remove duplicates from list */
+    if (list.tag != MDH_TAG_LIST) {
+        return list;
+    }
+    MdhList *src = (MdhList *)(intptr_t)list.data;
+    if (src->length == 0) return list;
+
+    /* Create result list with same capacity */
+    MdhList *dst = (MdhList *)GC_malloc(sizeof(MdhList));
+    dst->length = 0;
+    dst->capacity = src->length;
+    dst->items = (MdhValue *)GC_malloc(sizeof(MdhValue) * src->length);
+
+    /* Add items that aren't already in result */
+    for (int64_t i = 0; i < src->length; i++) {
+        MdhValue item = src->items[i];
+        int found = 0;
+        for (int64_t j = 0; j < dst->length; j++) {
+            if (dst->items[j].tag == item.tag && dst->items[j].data == item.data) {
+                found = 1;
+                break;
+            }
+        }
+        if (!found) {
+            dst->items[dst->length++] = item;
+        }
+    }
+
+    MdhValue result;
+    result.tag = MDH_TAG_LIST;
+    result.data = (int64_t)(intptr_t)dst;
+    return result;
+}
+
 MdhValue __mdh_average(MdhValue list) {
     /* Compute average of numeric list */
     if (list.tag != MDH_TAG_LIST) {
@@ -1619,4 +2043,62 @@ MdhValue __mdh_bit_xor(MdhValue a, MdhValue b) {
         return __mdh_make_int(a.data ^ b.data);
     }
     return __mdh_make_int(0);
+}
+
+// Type checking functions
+MdhValue __mdh_is_nil(MdhValue val) {
+    return __mdh_make_bool(val.tag == MDH_TAG_NIL);
+}
+
+MdhValue __mdh_is_bool(MdhValue val) {
+    return __mdh_make_bool(val.tag == MDH_TAG_BOOL);
+}
+
+MdhValue __mdh_is_int(MdhValue val) {
+    return __mdh_make_bool(val.tag == MDH_TAG_INT);
+}
+
+MdhValue __mdh_is_float(MdhValue val) {
+    return __mdh_make_bool(val.tag == MDH_TAG_FLOAT);
+}
+
+MdhValue __mdh_is_string(MdhValue val) {
+    return __mdh_make_bool(val.tag == MDH_TAG_STRING);
+}
+
+MdhValue __mdh_is_list(MdhValue val) {
+    return __mdh_make_bool(val.tag == MDH_TAG_LIST);
+}
+
+MdhValue __mdh_is_dict(MdhValue val) {
+    return __mdh_make_bool(val.tag == MDH_TAG_DICT);
+}
+
+MdhValue __mdh_is_function(MdhValue val) {
+    return __mdh_make_bool(val.tag == MDH_TAG_FUNCTION);
+}
+
+// String prefix/suffix checking functions
+MdhValue __mdh_starts_with(MdhValue str, MdhValue prefix) {
+    if (str.tag != MDH_TAG_STRING || prefix.tag != MDH_TAG_STRING) {
+        return __mdh_make_bool(0);
+    }
+    const char *s = __mdh_get_string(str);
+    const char *p = __mdh_get_string(prefix);
+    size_t plen = strlen(p);
+    return __mdh_make_bool(strncmp(s, p, plen) == 0);
+}
+
+MdhValue __mdh_ends_with(MdhValue str, MdhValue suffix) {
+    if (str.tag != MDH_TAG_STRING || suffix.tag != MDH_TAG_STRING) {
+        return __mdh_make_bool(0);
+    }
+    const char *s = __mdh_get_string(str);
+    const char *suf = __mdh_get_string(suffix);
+    size_t slen = strlen(s);
+    size_t suflen = strlen(suf);
+    if (suflen > slen) {
+        return __mdh_make_bool(0);
+    }
+    return __mdh_make_bool(strcmp(s + slen - suflen, suf) == 0);
 }

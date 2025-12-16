@@ -159,6 +159,25 @@ MdhValue __mdh_wee(MdhValue a, MdhValue b);
 MdhValue __mdh_tak(MdhValue list, MdhValue n);
 MdhValue __mdh_pair_up(MdhValue list1, MdhValue list2);
 MdhValue __mdh_tae_binary(MdhValue n);
+MdhValue __mdh_fae_binary(MdhValue str);
+MdhValue __mdh_fae_hex(MdhValue str);
+MdhValue __mdh_ltrim(MdhValue str);
+MdhValue __mdh_rtrim(MdhValue str);
+MdhValue __mdh_reverse_str(MdhValue str);
+MdhValue __mdh_title_case(MdhValue str);
+MdhValue __mdh_tae_hex(MdhValue num);
+MdhValue __mdh_tae_octal(MdhValue num);
+MdhValue __mdh_center(MdhValue str, MdhValue width);
+MdhValue __mdh_repeat_say(MdhValue str, MdhValue count);
+MdhValue __mdh_leftpad(MdhValue str, MdhValue width, MdhValue pad);
+MdhValue __mdh_rightpad(MdhValue str, MdhValue width, MdhValue pad);
+MdhValue __mdh_list_index(MdhValue list, MdhValue val);
+MdhValue __mdh_count_val(MdhValue list, MdhValue val);
+MdhValue __mdh_list_copy(MdhValue list);
+MdhValue __mdh_list_clear(MdhValue list);
+MdhValue __mdh_last_index_of(MdhValue str, MdhValue substr);
+MdhValue __mdh_replace_first(MdhValue str, MdhValue old_sub, MdhValue new_sub);
+MdhValue __mdh_unique(MdhValue list);
 MdhValue __mdh_average(MdhValue list);
 MdhValue __mdh_chynge(MdhValue str, MdhValue old_sub, MdhValue new_sub);
 
@@ -210,5 +229,19 @@ static inline double __mdh_get_float(MdhValue v) {
 static inline bool __mdh_get_bool(MdhValue v) {
     return v.data != 0;
 }
+
+/* Type checking functions */
+MdhValue __mdh_is_nil(MdhValue val);
+MdhValue __mdh_is_bool(MdhValue val);
+MdhValue __mdh_is_int(MdhValue val);
+MdhValue __mdh_is_float(MdhValue val);
+MdhValue __mdh_is_string(MdhValue val);
+MdhValue __mdh_is_list(MdhValue val);
+MdhValue __mdh_is_dict(MdhValue val);
+MdhValue __mdh_is_function(MdhValue val);
+
+/* String prefix/suffix checking */
+MdhValue __mdh_starts_with(MdhValue str, MdhValue prefix);
+MdhValue __mdh_ends_with(MdhValue str, MdhValue suffix);
 
 #endif /* MDH_RUNTIME_H */
