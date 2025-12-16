@@ -996,6 +996,7 @@ impl Parser {
                 | TokenKind::Minus
                 | TokenKind::Bang
                 | TokenKind::Aye
+                | TokenKind::Nae
                 | TokenKind::Naething
                 | TokenKind::Masel
                 | TokenKind::Speir
@@ -1238,6 +1239,11 @@ impl Parser {
                         if !self.match_token(&TokenKind::Comma) {
                             break;
                         }
+                        // Allow trailing comma: [1, 2, 3,]
+                        self.skip_newlines();
+                        if self.check(&TokenKind::RightBracket) {
+                            break;
+                        }
                         self.skip_newlines(); // Allow newline after comma
                     }
                 }
@@ -1256,6 +1262,11 @@ impl Parser {
                         pairs.push((key, value));
                         self.skip_newlines();
                         if !self.match_token(&TokenKind::Comma) {
+                            break;
+                        }
+                        // Allow trailing comma: {"a": 1, "b": 2,}
+                        self.skip_newlines();
+                        if self.check(&TokenKind::RightBrace) {
                             break;
                         }
                         self.skip_newlines();
