@@ -99,6 +99,25 @@ struct LibcFunctions<'ctx> {
     tak: FunctionValue<'ctx>,
     pair_up: FunctionValue<'ctx>,
     tae_binary: FunctionValue<'ctx>,
+    fae_binary: FunctionValue<'ctx>,
+    fae_hex: FunctionValue<'ctx>,
+    ltrim: FunctionValue<'ctx>,
+    rtrim: FunctionValue<'ctx>,
+    reverse_str: FunctionValue<'ctx>,
+    title_case: FunctionValue<'ctx>,
+    tae_hex: FunctionValue<'ctx>,
+    tae_octal: FunctionValue<'ctx>,
+    center: FunctionValue<'ctx>,
+    repeat_say: FunctionValue<'ctx>,
+    leftpad: FunctionValue<'ctx>,
+    rightpad: FunctionValue<'ctx>,
+    list_index: FunctionValue<'ctx>,
+    count_val: FunctionValue<'ctx>,
+    list_copy: FunctionValue<'ctx>,
+    list_clear: FunctionValue<'ctx>,
+    last_index_of: FunctionValue<'ctx>,
+    replace_first: FunctionValue<'ctx>,
+    unique: FunctionValue<'ctx>,
     average: FunctionValue<'ctx>,
     chynge: FunctionValue<'ctx>,
     // Testing runtime functions
@@ -139,6 +158,18 @@ struct LibcFunctions<'ctx> {
     range: FunctionValue<'ctx>,
     // List creation
     make_list: FunctionValue<'ctx>,
+    // Type checking functions
+    is_nil: FunctionValue<'ctx>,
+    is_bool: FunctionValue<'ctx>,
+    is_int: FunctionValue<'ctx>,
+    is_float: FunctionValue<'ctx>,
+    is_string: FunctionValue<'ctx>,
+    is_list: FunctionValue<'ctx>,
+    is_dict: FunctionValue<'ctx>,
+    is_function: FunctionValue<'ctx>,
+    // String prefix/suffix functions
+    starts_with: FunctionValue<'ctx>,
+    ends_with: FunctionValue<'ctx>,
 }
 
 /// Inferred type for optimization
@@ -568,6 +599,99 @@ impl<'ctx> CodeGen<'ctx> {
         let tae_binary =
             module.add_function("__mdh_tae_binary", tae_binary_type, Some(Linkage::External));
 
+        // __mdh_fae_binary(str) -> MdhValue (int) - parse binary string
+        let fae_binary_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let fae_binary =
+            module.add_function("__mdh_fae_binary", fae_binary_type, Some(Linkage::External));
+
+        // __mdh_fae_hex(str) -> MdhValue (int) - parse hex string
+        let fae_hex_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let fae_hex =
+            module.add_function("__mdh_fae_hex", fae_hex_type, Some(Linkage::External));
+
+        // __mdh_ltrim(str) -> MdhValue (string) - trim leading whitespace
+        let ltrim_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let ltrim = module.add_function("__mdh_ltrim", ltrim_type, Some(Linkage::External));
+
+        // __mdh_rtrim(str) -> MdhValue (string) - trim trailing whitespace
+        let rtrim_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let rtrim = module.add_function("__mdh_rtrim", rtrim_type, Some(Linkage::External));
+
+        // __mdh_reverse_str(str) -> MdhValue (string) - reverse string
+        let reverse_str_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let reverse_str =
+            module.add_function("__mdh_reverse_str", reverse_str_type, Some(Linkage::External));
+
+        // __mdh_title_case(str) -> MdhValue (string) - title case string
+        let title_case_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let title_case =
+            module.add_function("__mdh_title_case", title_case_type, Some(Linkage::External));
+
+        // __mdh_tae_hex(num) -> MdhValue (string) - convert int to hex string
+        let tae_hex_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let tae_hex =
+            module.add_function("__mdh_tae_hex", tae_hex_type, Some(Linkage::External));
+
+        // __mdh_tae_octal(num) -> MdhValue (string) - convert int to octal string
+        let tae_octal_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let tae_octal =
+            module.add_function("__mdh_tae_octal", tae_octal_type, Some(Linkage::External));
+
+        // __mdh_center(str, width) -> MdhValue (string) - center string
+        let center_type = types.value_type.fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let center =
+            module.add_function("__mdh_center", center_type, Some(Linkage::External));
+
+        // __mdh_repeat_say(str, count) -> MdhValue (string) - repeat string
+        let repeat_say_type = types.value_type.fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let repeat_say =
+            module.add_function("__mdh_repeat_say", repeat_say_type, Some(Linkage::External));
+
+        // __mdh_leftpad(str, width, pad) -> MdhValue (string) - left pad
+        let leftpad_type = types.value_type.fn_type(&[types.value_type.into(), types.value_type.into(), types.value_type.into()], false);
+        let leftpad =
+            module.add_function("__mdh_leftpad", leftpad_type, Some(Linkage::External));
+
+        // __mdh_rightpad(str, width, pad) -> MdhValue (string) - right pad
+        let rightpad_type = types.value_type.fn_type(&[types.value_type.into(), types.value_type.into(), types.value_type.into()], false);
+        let rightpad =
+            module.add_function("__mdh_rightpad", rightpad_type, Some(Linkage::External));
+
+        // __mdh_list_index(list, val) -> MdhValue (int) - find index of value
+        let list_index_type = types.value_type.fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let list_index =
+            module.add_function("__mdh_list_index", list_index_type, Some(Linkage::External));
+
+        // __mdh_count_val(list, val) -> MdhValue (int) - count occurrences
+        let count_val_type = types.value_type.fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let count_val =
+            module.add_function("__mdh_count_val", count_val_type, Some(Linkage::External));
+
+        // __mdh_list_copy(list) -> MdhValue (list) - shallow copy
+        let list_copy_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let list_copy =
+            module.add_function("__mdh_list_copy", list_copy_type, Some(Linkage::External));
+
+        // __mdh_list_clear(list) -> MdhValue (list) - clear list
+        let list_clear_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let list_clear =
+            module.add_function("__mdh_list_clear", list_clear_type, Some(Linkage::External));
+
+        // __mdh_last_index_of(str, substr) -> MdhValue (int) - find last occurrence
+        let last_index_of_type = types.value_type.fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let last_index_of =
+            module.add_function("__mdh_last_index_of", last_index_of_type, Some(Linkage::External));
+
+        // __mdh_replace_first(str, old, new) -> MdhValue (string) - replace first occurrence
+        let replace_first_type = types.value_type.fn_type(&[types.value_type.into(), types.value_type.into(), types.value_type.into()], false);
+        let replace_first =
+            module.add_function("__mdh_replace_first", replace_first_type, Some(Linkage::External));
+
+        // __mdh_unique(list) -> MdhValue (list) - remove duplicates
+        let unique_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let unique =
+            module.add_function("__mdh_unique", unique_type, Some(Linkage::External));
+
         // __mdh_average(list) -> MdhValue (float)
         let average_type = types.value_type.fn_type(&[types.value_type.into()], false);
         let average = module.add_function("__mdh_average", average_type, Some(Linkage::External));
@@ -758,6 +882,22 @@ impl<'ctx> CodeGen<'ctx> {
         let dict_get =
             module.add_function("__mdh_dict_get", dict_get_type, Some(Linkage::External));
 
+        // Type checking functions - all take single MdhValue, return MdhValue (bool)
+        let type_check_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let is_nil = module.add_function("__mdh_is_nil", type_check_type, Some(Linkage::External));
+        let is_bool = module.add_function("__mdh_is_bool", type_check_type, Some(Linkage::External));
+        let is_int = module.add_function("__mdh_is_int", type_check_type, Some(Linkage::External));
+        let is_float = module.add_function("__mdh_is_float", type_check_type, Some(Linkage::External));
+        let is_string = module.add_function("__mdh_is_string", type_check_type, Some(Linkage::External));
+        let is_list = module.add_function("__mdh_is_list", type_check_type, Some(Linkage::External));
+        let is_dict = module.add_function("__mdh_is_dict", type_check_type, Some(Linkage::External));
+        let is_function = module.add_function("__mdh_is_function", type_check_type, Some(Linkage::External));
+
+        // String prefix/suffix functions - take two MdhValues (str, prefix/suffix), return MdhValue (bool)
+        let str_prefix_type = types.value_type.fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let starts_with = module.add_function("__mdh_starts_with", str_prefix_type, Some(Linkage::External));
+        let ends_with = module.add_function("__mdh_ends_with", str_prefix_type, Some(Linkage::External));
+
         LibcFunctions {
             printf,
             malloc,
@@ -803,6 +943,25 @@ impl<'ctx> CodeGen<'ctx> {
             tak,
             pair_up,
             tae_binary,
+            fae_binary,
+            fae_hex,
+            ltrim,
+            rtrim,
+            reverse_str,
+            title_case,
+            tae_hex,
+            tae_octal,
+            center,
+            repeat_say,
+            leftpad,
+            rightpad,
+            list_index,
+            count_val,
+            list_copy,
+            list_clear,
+            last_index_of,
+            replace_first,
+            unique,
             average,
             chynge,
             assert_fn,
@@ -835,6 +994,16 @@ impl<'ctx> CodeGen<'ctx> {
             dict_get,
             range,
             make_list,
+            is_nil,
+            is_bool,
+            is_int,
+            is_float,
+            is_string,
+            is_list,
+            is_dict,
+            is_function,
+            starts_with,
+            ends_with,
         }
     }
 
@@ -7643,7 +7812,7 @@ impl<'ctx> CodeGen<'ctx> {
 
             // Check for built-in functions
             match name.as_str() {
-                "tae_string" => {
+                "tae_string" | "to_string" | "str" => {
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "tae_string expects 1 argument".to_string(),
@@ -7652,7 +7821,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let arg = self.compile_expr(&args[0])?;
                     return self.inline_tae_string(arg);
                 }
-                "tae_int" => {
+                "tae_int" | "to_int" | "int" => {
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "tae_int expects 1 argument".to_string(),
@@ -7661,7 +7830,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let arg = self.compile_expr(&args[0])?;
                     return self.inline_tae_int(arg);
                 }
-                "tae_float" => {
+                "tae_float" | "to_float" | "float" => {
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "tae_float expects 1 argument".to_string(),
@@ -7922,6 +8091,58 @@ impl<'ctx> CodeGen<'ctx> {
                     let container = self.compile_expr(&args[0])?;
                     let key = self.compile_expr(&args[1])?;
                     return self.inline_contains(container, key);
+                }
+                "starts_with" | "begins_with" => {
+                    // starts_with(str, prefix) - check if string starts with prefix
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "starts_with expects 2 arguments (string, prefix)".to_string(),
+                        ));
+                    }
+                    let str_val = self.compile_expr(&args[0])?;
+                    let prefix = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.starts_with,
+                            &[str_val.into(), prefix.into()],
+                            "starts_with_result",
+                        )
+                        .map_err(|e| {
+                            HaversError::CompileError(format!("Failed to call starts_with: {}", e))
+                        })?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| {
+                            HaversError::CompileError("starts_with returned void".to_string())
+                        })?;
+                    return Ok(result);
+                }
+                "ends_with" | "finishes_with" => {
+                    // ends_with(str, suffix) - check if string ends with suffix
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "ends_with expects 2 arguments (string, suffix)".to_string(),
+                        ));
+                    }
+                    let str_val = self.compile_expr(&args[0])?;
+                    let suffix = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.ends_with,
+                            &[str_val.into(), suffix.into()],
+                            "ends_with_result",
+                        )
+                        .map_err(|e| {
+                            HaversError::CompileError(format!("Failed to call ends_with: {}", e))
+                        })?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| {
+                            HaversError::CompileError("ends_with returned void".to_string())
+                        })?;
+                    return Ok(result);
                 }
                 "is_in_creel" => {
                     // is_in_creel is Scots for "is in set/basket" - uses dict_contains runtime
@@ -8779,15 +9000,25 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(result);
                 }
                 "minaw" => {
-                    // Minimum of list - return nil for now
+                    // Minimum of list
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "minaw expects 1 argument".to_string(),
                         ));
                     }
-                    // Just compile the argument to avoid unused
-                    let _list = self.compile_expr(&args[0])?;
-                    return Ok(self.make_nil());
+                    let list = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.list_min, &[list.into()], "minaw_result")
+                        .map_err(|e| {
+                            HaversError::CompileError(format!("Failed to call list_min: {}", e))
+                        })?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| {
+                            HaversError::CompileError("list_min returned void".to_string())
+                        })?;
+                    return Ok(result);
                 }
                 "is_wee" => {
                     // Check if value is small - placeholder returns true for now
@@ -8858,14 +9089,25 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 // More missing builtins
                 "maxaw" => {
-                    // Maximum of list - return nil for now
+                    // Maximum of list
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "maxaw expects 1 argument".to_string(),
                         ));
                     }
-                    let _list = self.compile_expr(&args[0])?;
-                    return Ok(self.make_nil());
+                    let list = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.list_max, &[list.into()], "maxaw_result")
+                        .map_err(|e| {
+                            HaversError::CompileError(format!("Failed to call list_max: {}", e))
+                        })?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| {
+                            HaversError::CompileError("list_max returned void".to_string())
+                        })?;
+                    return Ok(result);
                 }
                 "is_odd" => {
                     // Check if number is odd
@@ -8961,6 +9203,48 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let arg = self.compile_expr(&args[0])?;
                     return self.inline_wheesht(arg);
+                }
+                "ltrim" | "trim_left" | "lstrip" => {
+                    // ltrim(str) - trim leading whitespace
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "ltrim expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.ltrim, &[arg.into()], "ltrim_result")
+                        .map_err(|e| {
+                            HaversError::CompileError(format!("Failed to call ltrim: {}", e))
+                        })?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| {
+                            HaversError::CompileError("ltrim returned void".to_string())
+                        })?;
+                    return Ok(result);
+                }
+                "rtrim" | "trim_right" | "rstrip" => {
+                    // rtrim(str) - trim trailing whitespace
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "rtrim expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.rtrim, &[arg.into()], "rtrim_result")
+                        .map_err(|e| {
+                            HaversError::CompileError(format!("Failed to call rtrim: {}", e))
+                        })?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| {
+                            HaversError::CompileError("rtrim returned void".to_string())
+                        })?;
+                    return Ok(result);
                 }
                 "coont" | "count_str" => {
                     if args.len() != 2 {
@@ -9201,7 +9485,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let dict_arg = self.compile_expr(&args[0])?;
                     return self.inline_values(dict_arg);
                 }
-                "jammy" => {
+                "jammy" | "random_range" => {
                     // jammy(min, max) - random number between min and max (inclusive)
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
@@ -9211,6 +9495,17 @@ impl<'ctx> CodeGen<'ctx> {
                     let min_arg = self.compile_expr(&args[0])?;
                     let max_arg = self.compile_expr(&args[1])?;
                     return self.inline_jammy(min_arg, max_arg);
+                }
+                "random" | "rand" => {
+                    // random() - random number between 0 and 1000000
+                    if !args.is_empty() {
+                        return Err(HaversError::CompileError(
+                            "random expects 0 arguments".to_string(),
+                        ));
+                    }
+                    let zero = self.make_int(self.types.i64_type.const_int(0, false))?;
+                    let million = self.make_int(self.types.i64_type.const_int(1_000_000, false))?;
+                    return self.inline_jammy(zero, million);
                 }
                 "get_key" => {
                     // get_key() - read a single key press
@@ -9291,10 +9586,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let count_arg = self.compile_expr(&args[1])?;
                     return self.inline_repeat(str_arg, count_arg);
                 }
-                "index_of" => {
+                "index_of" | "find" => {
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
-                            "index_of expects 2 arguments".to_string(),
+                            "index_of/find expects 2 arguments".to_string(),
                         ));
                     }
                     let str_arg = self.compile_expr(&args[0])?;
@@ -9902,13 +10197,25 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.compile_expr(&args[0]);
                 }
                 "title" | "title_case" => {
-                    // title(str) - title case a string (placeholder: return as-is)
+                    // title(str) - title case a string
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "title expects 1 argument".to_string(),
                         ));
                     }
-                    return self.compile_expr(&args[0]);
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.title_case, &[arg.into()], "title_result")
+                        .map_err(|e| {
+                            HaversError::CompileError(format!("Failed to call title_case: {}", e))
+                        })?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| {
+                            HaversError::CompileError("title_case returned void".to_string())
+                        })?;
+                    return Ok(result);
                 }
                 "bit_shove_right" | "bit_shift_right" => {
                     // bit_shove_right(a, b) - logical right shift
@@ -10136,6 +10443,26 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return self.make_bool(result_i64);
                 }
+                "is_bool" | "is_boolean" => {
+                    // is_bool(val) - check if value is a boolean
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "is_bool expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let tag = self.extract_tag(arg)?;
+                    let bool_tag = self.types.i8_type.const_int(1, false);
+                    let is_bool = self
+                        .builder
+                        .build_int_compare(inkwell::IntPredicate::EQ, tag, bool_tag, "is_bool")
+                        .unwrap();
+                    let result_i64 = self
+                        .builder
+                        .build_int_z_extend(is_bool, self.types.i64_type, "is_bool_i64")
+                        .unwrap();
+                    return self.make_bool(result_i64);
+                }
                 "is_toom" | "is_empty" => {
                     // is_toom(val) - check if value is empty (list len 0, string len 0, etc)
                     if args.len() != 1 {
@@ -10280,13 +10607,21 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.compile_expr(&args[0]);
                 }
                 "tae_hex" | "to_hex" => {
-                    // tae_hex(n) - convert to hex string (placeholder)
+                    // tae_hex(n) - convert to hex string
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "tae_hex expects 1 argument".to_string(),
                         ));
                     }
-                    return self.compile_string_literal("0x0");
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.tae_hex, &[arg.into()], "tae_hex_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call tae_hex: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("tae_hex returned void".to_string()))?;
+                    return Ok(result);
                 }
                 "is_hale_nummer" | "is_whole" | "is_integer" => {
                     // is_hale_nummer(val) - check if value is a whole number
@@ -10439,13 +10774,21 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(self.make_nil());
                 }
                 "tae_octal" | "to_octal" => {
-                    // tae_octal(n) - convert to octal string (placeholder)
+                    // tae_octal(n) - convert to octal string
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "tae_octal expects 1 argument".to_string(),
                         ));
                     }
-                    return self.compile_string_literal("0o0");
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.tae_octal, &[arg.into()], "tae_octal_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call tae_octal: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("tae_octal returned void".to_string()))?;
+                    return Ok(result);
                 }
                 "is_positive" | "is_negative" | "is_zero" => {
                     // is_positive/negative/zero(n) - check sign
@@ -10476,13 +10819,28 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.make_bool(result_i64);
                 }
                 "backside_forrit" | "backwards" | "reverse_str" => {
-                    // backside_forrit(str) - reverse string (placeholder: return as-is)
+                    // backside_forrit(str) - reverse string
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "backside_forrit expects 1 argument".to_string(),
                         ));
                     }
-                    return self.compile_expr(&args[0]);
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.reverse_str, &[arg.into()], "reverse_result")
+                        .map_err(|e| {
+                            HaversError::CompileError(format!(
+                                "Failed to call reverse_str: {}",
+                                e
+                            ))
+                        })?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| {
+                            HaversError::CompileError("reverse_str returned void".to_string())
+                        })?;
+                    return Ok(result);
                 }
                 "key_down" | "key_pressed" | "key_up" | "key_released" => {
                     // Keyboard input (placeholder: return false)
@@ -10498,24 +10856,46 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.compile_string_literal("Tattie scone!");
                 }
                 "fae_binary" | "from_binary" => {
-                    // fae_binary(str) - parse binary string (placeholder: return 0)
+                    // fae_binary(str) - parse binary string to integer
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "fae_binary expects 1 argument".to_string(),
                         ));
                     }
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_int(zero);
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.fae_binary, &[arg.into()], "fae_binary_result")
+                        .map_err(|e| {
+                            HaversError::CompileError(format!("Failed to call fae_binary: {}", e))
+                        })?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| {
+                            HaversError::CompileError("fae_binary returned void".to_string())
+                        })?;
+                    return Ok(result);
                 }
                 "fae_hex" | "from_hex" => {
-                    // fae_hex(str) - parse hex string (placeholder: return 0)
+                    // fae_hex(str) - parse hex string to integer
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "fae_hex expects 1 argument".to_string(),
                         ));
                     }
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_int(zero);
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.fae_hex, &[arg.into()], "fae_hex_result")
+                        .map_err(|e| {
+                            HaversError::CompileError(format!("Failed to call fae_hex: {}", e))
+                        })?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| {
+                            HaversError::CompileError("fae_hex returned void".to_string())
+                        })?;
+                    return Ok(result);
                 }
                 "dae_times" | "times" | "repeat_n" => {
                     // dae_times(n, fn) - repeat fn n times (placeholder)
@@ -11075,11 +11455,21 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(self.make_nil());
                 }
                 "unique" | "dedupe" => {
-                    // unique(list) - remove duplicates (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
+                    // unique(list) - remove duplicates
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "unique expects 1 argument".to_string(),
+                        ));
                     }
-                    return Ok(self.make_nil());
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.unique, &[arg.into()], "unique_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call unique: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("unique returned void".to_string()))?;
+                    return Ok(result);
                 }
                 "scan" | "running_total" => {
                     // scan(list, init, fn) - running accumulator (placeholder: return nil)
@@ -11352,21 +11742,43 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.compile_string_literal("");
                 }
                 "center" | "centre" | "center_text" | "pad_center" => {
-                    // center(str, width, pad_char) - center pad string (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
+                    // center(str, width) - center string
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "center expects 2 arguments".to_string(),
+                        ));
                     }
-                    return self.compile_string_literal("");
+                    let str_arg = self.compile_expr(&args[0])?;
+                    let width_arg = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.center, &[str_arg.into(), width_arg.into()], "center_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call center: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("center returned void".to_string()))?;
+                    return Ok(result);
                 }
                 "repeat_say" | "repeat_string" | "str_repeat" => {
-                    // repeat_say(str, n) - repeat string n times (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
+                    // repeat_say(str, n) - repeat string n times
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "repeat_say expects 2 arguments".to_string(),
+                        ));
                     }
-                    return self.compile_string_literal("");
+                    let str_arg = self.compile_expr(&args[0])?;
+                    let count_arg = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.repeat_say, &[str_arg.into(), count_arg.into()], "repeat_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call repeat_say: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("repeat_say returned void".to_string()))?;
+                    return Ok(result);
                 }
                 "leftpad" | "lpad" => {
-                    // leftpad/lpad - alias for pad_left
+                    // leftpad(str, width, pad_char) - left pad string
                     if args.len() < 2 || args.len() > 3 {
                         return Err(HaversError::CompileError(format!(
                             "{} expects 2-3 arguments",
@@ -11375,15 +11787,22 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let str_arg = self.compile_expr(&args[0])?;
                     let width_arg = self.compile_expr(&args[1])?;
-                    let pad_char = if args.len() == 3 {
-                        Some(self.compile_expr(&args[2])?)
+                    let pad_arg = if args.len() == 3 {
+                        self.compile_expr(&args[2])?
                     } else {
-                        None
+                        self.compile_string_literal(" ")?
                     };
-                    return self.inline_pad(str_arg, width_arg, pad_char, true);
+                    let result = self
+                        .builder
+                        .build_call(self.libc.leftpad, &[str_arg.into(), width_arg.into(), pad_arg.into()], "leftpad_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call leftpad: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("leftpad returned void".to_string()))?;
+                    return Ok(result);
                 }
                 "rightpad" | "rpad" => {
-                    // rightpad/rpad - alias for pad_right
+                    // rightpad(str, width, pad_char) - right pad string
                     if args.len() < 2 || args.len() > 3 {
                         return Err(HaversError::CompileError(format!(
                             "{} expects 2-3 arguments",
@@ -11392,12 +11811,19 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let str_arg = self.compile_expr(&args[0])?;
                     let width_arg = self.compile_expr(&args[1])?;
-                    let pad_char = if args.len() == 3 {
-                        Some(self.compile_expr(&args[2])?)
+                    let pad_arg = if args.len() == 3 {
+                        self.compile_expr(&args[2])?
                     } else {
-                        None
+                        self.compile_string_literal(" ")?
                     };
-                    return self.inline_pad(str_arg, width_arg, pad_char, false);
+                    let result = self
+                        .builder
+                        .build_call(self.libc.rightpad, &[str_arg.into(), width_arg.into(), pad_arg.into()], "rightpad_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call rightpad: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("rightpad returned void".to_string()))?;
+                    return Ok(result);
                 }
                 "abbreviate" | "ellipsis" => {
                     // abbreviate(str, max_len) - truncate with ellipsis (placeholder: return as-is)
@@ -11516,8 +11942,21 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 "last_index_of" | "rfind" => {
                     // last_index_of(str, substr) - find last occurrence (-1 if not found)
-                    let neg_one = self.types.i64_type.const_int((-1i64) as u64, true);
-                    return self.make_int(neg_one);
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "last_index_of expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let str_arg = self.compile_expr(&args[0])?;
+                    let substr_arg = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.last_index_of, &[str_arg.into(), substr_arg.into()], "lastidx_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call last_index_of: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("last_index_of returned void".to_string()))?;
+                    return Ok(result);
                 }
                 "insert_at" | "list_insert" => {
                     // insert_at(list, index, value) - insert at index (placeholder: return as-is)
@@ -11535,27 +11974,73 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 "index" | "list_index" | "find_value" => {
                     // index(list, value) - find index of value (-1 if not found)
-                    let neg_one = self.types.i64_type.const_int((-1i64) as u64, true);
-                    return self.make_int(neg_one);
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "index expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let list_arg = self.compile_expr(&args[0])?;
+                    let val_arg = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.list_index, &[list_arg.into(), val_arg.into()], "index_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call list_index: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("list_index returned void".to_string()))?;
+                    return Ok(result);
                 }
                 "count_val" | "list_count" => {
                     // count_val(list, value) - count occurrences of value
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_int(zero);
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "count_val expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let list_arg = self.compile_expr(&args[0])?;
+                    let val_arg = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.count_val, &[list_arg.into(), val_arg.into()], "count_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call count_val: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("count_val returned void".to_string()))?;
+                    return Ok(result);
                 }
                 "clear" | "list_clear" | "dict_clear" => {
-                    // clear(collection) - clear all elements (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
+                    // clear(collection) - clear all elements
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "clear expects 1 argument".to_string(),
+                        ));
                     }
-                    return Ok(self.make_nil());
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.list_clear, &[arg.into()], "clear_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call list_clear: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("list_clear returned void".to_string()))?;
+                    return Ok(result);
                 }
                 "copy" | "clone" | "shallow_copy" => {
-                    // copy(val) - shallow copy (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
+                    // copy(val) - shallow copy
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "copy expects 1 argument".to_string(),
+                        ));
                     }
-                    return Ok(self.make_nil());
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.list_copy, &[arg.into()], "copy_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call list_copy: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("list_copy returned void".to_string()))?;
+                    return Ok(result);
                 }
                 "deep_copy" | "deepcopy" => {
                     // deep_copy(val) - deep copy (placeholder: return as-is)
@@ -11632,11 +12117,23 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.compile_string_literal("");
                 }
                 "replace_first" | "replace_one" => {
-                    // replace_first(str, old, new) - replace first occurrence (placeholder)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
+                    // replace_first(str, old, new) - replace first occurrence
+                    if args.len() != 3 {
+                        return Err(HaversError::CompileError(
+                            "replace_first expects 3 arguments".to_string(),
+                        ));
                     }
-                    return self.compile_string_literal("");
+                    let str_arg = self.compile_expr(&args[0])?;
+                    let old_arg = self.compile_expr(&args[1])?;
+                    let new_arg = self.compile_expr(&args[2])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.replace_first, &[str_arg.into(), old_arg.into(), new_arg.into()], "replf_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call replace_first: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("replace_first returned void".to_string()))?;
+                    return Ok(result);
                 }
                 "chr" | "from_char_code" => {
                     // chr(code) - character from code (placeholder)
