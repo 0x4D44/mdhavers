@@ -1179,11 +1179,44 @@ Try it in the playground at `playground/web/` tae see live compilation!
 git clone <repo-url>
 cd mdhavers
 
-# Build
-cargo build --release
+# Build (interpreter only, no LLVM)
+cargo build --release --no-default-features --features cli
 
 # Run tests
 cargo test
+```
+
+### Building with LLVM Support
+
+To enable native code compilation via LLVM, you need to install LLVM 15 and its dependencies:
+
+**Ubuntu/Debian:**
+```bash
+# Install LLVM 15 and required libraries
+sudo apt install llvm-15 llvm-15-dev libpolly-15-dev libzstd-dev
+
+# Set the LLVM prefix environment variable
+export LLVM_SYS_150_PREFIX=/usr/lib/llvm-15
+
+# Add to your shell config to make it permanent
+echo 'export LLVM_SYS_150_PREFIX=/usr/lib/llvm-15' >> ~/.bashrc
+```
+
+**Then build with LLVM:**
+```bash
+cargo build --release
+# or explicitly:
+cargo build --release --features llvm
+```
+
+**Verify LLVM detection (using the Makefile):**
+```bash
+make status
+```
+
+**Note:** The LLVM feature is enabled by default. To build without LLVM:
+```bash
+cargo build --release --no-default-features --features cli
 ```
 
 ## Editor Support
