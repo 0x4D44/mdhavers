@@ -153,6 +153,16 @@ pub enum VarType {
     Dict,
 }
 
+/// Character class for string classification functions
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CharClass {
+    Upper,  // A-Z
+    Lower,  // a-z
+    Alpha,  // A-Z, a-z
+    Digit,  // 0-9
+    Alnum,  // A-Z, a-z, 0-9
+}
+
 /// Main code generator with inlined runtime
 pub struct CodeGen<'ctx> {
     context: &'ctx Context,
@@ -1217,24 +1227,6 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(v2.into_struct_value().into())
     }
 
-    /// Extract data as list pointer
-    #[allow(dead_code)]
-    fn extract_list_ptr(
-        &self,
-        val: BasicValueEnum<'ctx>,
-    ) -> Result<PointerValue<'ctx>, HaversError> {
-        let data = self.extract_data(val)?;
-        let ptr = self
-            .builder
-            .build_int_to_ptr(
-                data,
-                self.context.i8_type().ptr_type(AddressSpace::default()),
-                "as_list",
-            )
-            .map_err(|e| HaversError::CompileError(format!("Failed to convert to ptr: {}", e)))?;
-        Ok(ptr)
-    }
-
     /// Extract tag from value
     fn extract_tag(&self, val: BasicValueEnum<'ctx>) -> Result<IntValue<'ctx>, HaversError> {
         let struct_val = val.into_struct_value();
@@ -1253,38 +1245,6 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(struct_val, 1, "data")
             .map_err(|e| HaversError::CompileError(format!("Failed to extract data: {}", e)))?;
         Ok(data.into_int_value())
-    }
-
-    /// Extract data as f64 (for float values)
-    #[allow(dead_code)]
-    fn extract_float(
-        &self,
-        val: BasicValueEnum<'ctx>,
-    ) -> Result<inkwell::values::FloatValue<'ctx>, HaversError> {
-        let data = self.extract_data(val)?;
-        let float_val = self
-            .builder
-            .build_bitcast(data, self.types.f64_type, "as_float")
-            .map_err(|e| HaversError::CompileError(format!("Failed to bitcast to float: {}", e)))?;
-        Ok(float_val.into_float_value())
-    }
-
-    /// Extract data as string pointer
-    #[allow(dead_code)]
-    fn extract_string_ptr(
-        &self,
-        val: BasicValueEnum<'ctx>,
-    ) -> Result<PointerValue<'ctx>, HaversError> {
-        let data = self.extract_data(val)?;
-        let ptr = self
-            .builder
-            .build_int_to_ptr(
-                data,
-                self.context.i8_type().ptr_type(AddressSpace::default()),
-                "as_str",
-            )
-            .map_err(|e| HaversError::CompileError(format!("Failed to convert to ptr: {}", e)))?;
-        Ok(ptr)
     }
 
     /// Check if value is truthy
@@ -3885,6 +3845,8 @@ impl<'ctx> CodeGen<'ctx> {
         let len_string = self.context.append_basic_block(function, "len_string");
         let len_check_list = self.context.append_basic_block(function, "len_check_list");
         let len_list = self.context.append_basic_block(function, "len_list");
+        let len_check_dict = self.context.append_basic_block(function, "len_check_dict");
+        let len_dict = self.context.append_basic_block(function, "len_dict");
         let len_default = self.context.append_basic_block(function, "len_default");
         let len_merge = self.context.append_basic_block(function, "len_merge");
 
@@ -3934,7 +3896,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_compare(IntPredicate::EQ, tag, list_tag, "is_list")
             .unwrap();
         self.builder
-            .build_conditional_branch(is_list, len_list, len_default)
+            .build_conditional_branch(is_list, len_list, len_check_dict)
             .unwrap();
 
         // List -> read length from offset 1 (after capacity)
@@ -3964,6 +3926,37 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(len_merge).unwrap();
         let list_block = self.builder.get_insert_block().unwrap();
 
+        // Check if dict (tag == 6)
+        self.builder.position_at_end(len_check_dict);
+        let dict_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Dict.as_u8() as u64, false);
+        let is_dict = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, dict_tag, "is_dict")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_dict, len_dict, len_default)
+            .unwrap();
+
+        // Dict -> read count from offset 0
+        // Layout: [count: i64][entry0][entry1]...
+        self.builder.position_at_end(len_dict);
+        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let dict_ptr = self
+            .builder
+            .build_int_to_ptr(data, i64_ptr_type, "dict_ptr")
+            .unwrap();
+        let dict_len = self
+            .builder
+            .build_load(self.types.i64_type, dict_ptr, "dict_len")
+            .unwrap()
+            .into_int_value();
+        let dict_result = self.make_int(dict_len)?;
+        self.builder.build_unconditional_branch(len_merge).unwrap();
+        let dict_block = self.builder.get_insert_block().unwrap();
+
         // Default -> 0
         self.builder.position_at_end(len_default);
         let zero = self.types.i64_type.const_int(0, false);
@@ -3980,6 +3973,7 @@ impl<'ctx> CodeGen<'ctx> {
         phi.add_incoming(&[
             (&string_result, string_block),
             (&list_result, list_block),
+            (&dict_result, dict_block),
             (&default_result, default_block),
         ]);
 
@@ -4117,9 +4111,27 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let function = self.current_function.unwrap();
+        let tag = self.extract_tag(val)?;
         let data = self.extract_data(val)?;
 
+        // Check if it's a float (tag == 2)
+        let float_tag = self.types.i8_type.const_int(ValueTag::Float as u64, false);
+        let is_float = self
+            .builder
+            .build_int_compare(inkwell::IntPredicate::EQ, tag, float_tag, "is_float")
+            .unwrap();
+
+        let int_block = self.context.append_basic_block(function, "abs_int");
+        let float_block = self.context.append_basic_block(function, "abs_float");
+        let merge_block = self.context.append_basic_block(function, "abs_merge");
+
+        self.builder
+            .build_conditional_branch(is_float, float_block, int_block)
+            .unwrap();
+
         // Integer abs: (x < 0) ? -x : x
+        self.builder.position_at_end(int_block);
         let zero = self.types.i64_type.const_int(0, false);
         let is_negative = self
             .builder
@@ -4129,13 +4141,55 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_neg(data, "negated")
             .map_err(|e| HaversError::CompileError(format!("Failed to negate: {}", e)))?;
-        let abs_val = self
+        let int_abs_val = self
             .builder
-            .build_select(is_negative, negated, data, "abs_val")
+            .build_select(is_negative, negated, data, "int_abs_val")
             .map_err(|e| HaversError::CompileError(format!("Failed to select: {}", e)))?
             .into_int_value();
+        let int_result = self.make_int(int_abs_val)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let int_block_end = self.builder.get_insert_block().unwrap();
 
-        self.make_int(abs_val)
+        // Float abs: use fabs intrinsic
+        self.builder.position_at_end(float_block);
+        let float_val = self
+            .builder
+            .build_bitcast(data, self.context.f64_type(), "float_val")
+            .unwrap()
+            .into_float_value();
+        // Manual float abs: clear sign bit by ANDing with 0x7FFFFFFFFFFFFFFF
+        let abs_float = self
+            .builder
+            .build_float_neg(float_val, "neg_float")
+            .unwrap();
+        let zero_f64 = self.context.f64_type().const_float(0.0);
+        let is_negative_f = self
+            .builder
+            .build_float_compare(
+                inkwell::FloatPredicate::OLT,
+                float_val,
+                zero_f64,
+                "is_neg_f",
+            )
+            .unwrap();
+        let abs_float_val = self
+            .builder
+            .build_select(is_negative_f, abs_float, float_val, "abs_float_val")
+            .unwrap()
+            .into_float_value();
+        let float_result = self.make_float(abs_float_val)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let float_block_end = self.builder.get_insert_block().unwrap();
+
+        // Merge
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "abs_result")
+            .unwrap();
+        phi.add_incoming(&[(&int_result, int_block_end), (&float_result, float_block_end)]);
+
+        Ok(phi.as_basic_value())
     }
 
     /// min(a, b) - minimum of two values
@@ -4856,78 +4910,225 @@ impl<'ctx> CodeGen<'ctx> {
         self.make_list(new_list_ptr)
     }
 
-    /// reverse(list) - return reversed copy
+    /// reverse(val) - return reversed copy (string or list)
     fn inline_reverse(
         &mut self,
         val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        let list_data = self.extract_data(val)?;
-        let length = self.get_list_length(list_data)?;
+        let tag = self.extract_tag(val)?;
+        let data = self.extract_data(val)?;
 
-        let new_list_ptr = self.allocate_list(length)?;
+        let function = self
+            .current_function
+            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+
+        // Create blocks for string vs list handling
+        let str_block = self.context.append_basic_block(function, "rev_str");
+        let list_block = self.context.append_basic_block(function, "rev_list");
+        let merge_block = self.context.append_basic_block(function, "rev_merge");
+
+        // Check if string (tag == 4)
+        let string_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::String.as_u8() as u64, false);
+        let is_string = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, string_tag, "is_str")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_string, str_block, list_block)
+            .unwrap();
+
+        // ===== String reverse =====
+        self.builder.position_at_end(str_block);
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let str_ptr = self
+            .builder
+            .build_int_to_ptr(data, i8_ptr_type, "str_ptr")
+            .unwrap();
+
+        // Get string length
+        let str_len = self
+            .builder
+            .build_call(self.libc.strlen, &[str_ptr.into()], "str_len")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_int_value();
+
+        // Allocate new buffer (length + 1 for null terminator)
+        let one_i64 = self.types.i64_type.const_int(1, false);
+        let buf_size = self
+            .builder
+            .build_int_add(str_len, one_i64, "buf_size")
+            .unwrap();
+        let new_str = self
+            .builder
+            .build_call(self.libc.malloc, &[buf_size.into()], "new_str")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+
+        // Create string reverse loop
+        let str_loop = self.context.append_basic_block(function, "str_rev_loop");
+        let str_body = self.context.append_basic_block(function, "str_rev_body");
+        let str_done = self.context.append_basic_block(function, "str_rev_done");
+
+        let str_i_ptr = self
+            .builder
+            .build_alloca(self.types.i64_type, "str_i")
+            .unwrap();
+        let zero = self.types.i64_type.const_int(0, false);
+        self.builder.build_store(str_i_ptr, zero).unwrap();
+        self.builder.build_unconditional_branch(str_loop).unwrap();
+
+        self.builder.position_at_end(str_loop);
+        let str_i = self
+            .builder
+            .build_load(self.types.i64_type, str_i_ptr, "str_i")
+            .unwrap()
+            .into_int_value();
+        let str_cond = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, str_i, str_len, "str_cond")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(str_cond, str_body, str_done)
+            .unwrap();
+
+        self.builder.position_at_end(str_body);
+        // Read char from source at position i
+        let src_char_ptr = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), str_ptr, &[str_i], "src_char_ptr")
+                .unwrap()
+        };
+        let src_char = self
+            .builder
+            .build_load(self.context.i8_type(), src_char_ptr, "src_char")
+            .unwrap();
+
+        // Calculate dest index: len - 1 - i
+        let len_minus_1 = self
+            .builder
+            .build_int_sub(str_len, one_i64, "len_m1")
+            .unwrap();
+        let dst_idx = self
+            .builder
+            .build_int_sub(len_minus_1, str_i, "dst_idx")
+            .unwrap();
+
+        // Write char to dest at dst_idx
+        let dst_char_ptr = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), new_str, &[dst_idx], "dst_char_ptr")
+                .unwrap()
+        };
+        self.builder.build_store(dst_char_ptr, src_char).unwrap();
+
+        // Increment counter
+        let str_next_i = self
+            .builder
+            .build_int_add(str_i, one_i64, "str_next_i")
+            .unwrap();
+        self.builder.build_store(str_i_ptr, str_next_i).unwrap();
+        self.builder.build_unconditional_branch(str_loop).unwrap();
+
+        self.builder.position_at_end(str_done);
+        // Add null terminator
+        let term_ptr = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), new_str, &[str_len], "term_ptr")
+                .unwrap()
+        };
+        let null_byte = self.context.i8_type().const_int(0, false);
+        self.builder.build_store(term_ptr, null_byte).unwrap();
+
+        let str_result = self.make_string(new_str)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let str_done_block = self.builder.get_insert_block().unwrap();
+
+        // ===== List reverse =====
+        self.builder.position_at_end(list_block);
+        let list_length = self.get_list_length(data)?;
+
+        let new_list_ptr = self.allocate_list(list_length)?;
         let new_list_data = self
             .builder
             .build_ptr_to_int(new_list_ptr, self.types.i64_type, "new_data")
             .map_err(|e| HaversError::CompileError(format!("Failed to convert: {}", e)))?;
 
-        let function = self
-            .current_function
-            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
-        let loop_block = self.context.append_basic_block(function, "rev_loop");
-        let body_block = self.context.append_basic_block(function, "rev_body");
-        let done_block = self.context.append_basic_block(function, "rev_done");
+        let list_loop = self.context.append_basic_block(function, "list_rev_loop");
+        let list_body = self.context.append_basic_block(function, "list_rev_body");
+        let list_done = self.context.append_basic_block(function, "list_rev_done");
 
-        let i_ptr = self
+        let list_i_ptr = self
             .builder
-            .build_alloca(self.types.i64_type, "i")
+            .build_alloca(self.types.i64_type, "list_i")
             .map_err(|e| HaversError::CompileError(format!("Failed to alloca: {}", e)))?;
-        let zero = self.types.i64_type.const_int(0, false);
-        let one = self.types.i64_type.const_int(1, false);
-        self.builder.build_store(i_ptr, zero).unwrap();
-        self.builder.build_unconditional_branch(loop_block).unwrap();
+        self.builder.build_store(list_i_ptr, zero).unwrap();
+        self.builder.build_unconditional_branch(list_loop).unwrap();
 
-        self.builder.position_at_end(loop_block);
-        let i = self
+        self.builder.position_at_end(list_loop);
+        let list_i = self
             .builder
-            .build_load(self.types.i64_type, i_ptr, "i")
+            .build_load(self.types.i64_type, list_i_ptr, "list_i")
             .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?
             .into_int_value();
-        let cond = self
+        let list_cond = self
             .builder
-            .build_int_compare(inkwell::IntPredicate::SLT, i, length, "cond")
+            .build_int_compare(IntPredicate::SLT, list_i, list_length, "list_cond")
             .map_err(|e| HaversError::CompileError(format!("Failed to compare: {}", e)))?;
         self.builder
-            .build_conditional_branch(cond, body_block, done_block)
+            .build_conditional_branch(list_cond, list_body, list_done)
             .unwrap();
 
-        self.builder.position_at_end(body_block);
-        let src_ptr = self.get_list_element_ptr(list_data, i)?;
+        self.builder.position_at_end(list_body);
+        let src_ptr = self.get_list_element_ptr(data, list_i)?;
         let elem = self
             .builder
             .build_load(self.types.value_type, src_ptr, "elem")
             .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?;
         // dst_idx = length - 1 - i
-        let len_minus_1 = self
+        let list_len_minus_1 = self
             .builder
-            .build_int_sub(length, one, "len_minus_1")
+            .build_int_sub(list_length, one_i64, "list_len_m1")
             .map_err(|e| HaversError::CompileError(format!("Failed to subtract: {}", e)))?;
-        let dst_idx = self
+        let list_dst_idx = self
             .builder
-            .build_int_sub(len_minus_1, i, "dst_idx")
+            .build_int_sub(list_len_minus_1, list_i, "list_dst_idx")
             .map_err(|e| HaversError::CompileError(format!("Failed to subtract: {}", e)))?;
-        let dst_ptr = self.get_list_element_ptr(new_list_data, dst_idx)?;
+        let dst_ptr = self.get_list_element_ptr(new_list_data, list_dst_idx)?;
         self.builder.build_store(dst_ptr, elem).unwrap();
 
-        let next_i = self
+        let list_next_i = self
             .builder
-            .build_int_add(i, one, "next_i")
+            .build_int_add(list_i, one_i64, "list_next_i")
             .map_err(|e| HaversError::CompileError(format!("Failed to add: {}", e)))?;
-        self.builder.build_store(i_ptr, next_i).unwrap();
-        self.builder.build_unconditional_branch(loop_block).unwrap();
+        self.builder.build_store(list_i_ptr, list_next_i).unwrap();
+        self.builder.build_unconditional_branch(list_loop).unwrap();
 
-        self.builder.position_at_end(done_block);
+        self.builder.position_at_end(list_done);
+        let list_result = self.make_list(new_list_ptr)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let list_done_block = self.builder.get_insert_block().unwrap();
 
-        self.make_list(new_list_ptr)
+        // ===== Merge results =====
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "rev_result")
+            .unwrap();
+        phi.add_incoming(&[
+            (&str_result, str_done_block),
+            (&list_result, list_done_block),
+        ]);
+
+        Ok(phi.as_basic_value())
     }
 
     /// sumaw(list) - sum all numeric elements
@@ -5007,6 +5208,85 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         self.make_int(final_sum)
+    }
+
+    /// product(list) - multiply all numeric elements
+    fn inline_product(
+        &mut self,
+        val: BasicValueEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let list_data = self.extract_data(val)?;
+        let length = self.get_list_length(list_data)?;
+
+        let function = self
+            .current_function
+            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+        let loop_block = self.context.append_basic_block(function, "product_loop");
+        let body_block = self.context.append_basic_block(function, "product_body");
+        let done_block = self.context.append_basic_block(function, "product_done");
+
+        let i_ptr = self
+            .builder
+            .build_alloca(self.types.i64_type, "i")
+            .map_err(|e| HaversError::CompileError(format!("Failed to alloca: {}", e)))?;
+        let product_ptr = self
+            .builder
+            .build_alloca(self.types.i64_type, "product")
+            .map_err(|e| HaversError::CompileError(format!("Failed to alloca: {}", e)))?;
+        let zero = self.types.i64_type.const_int(0, false);
+        let one = self.types.i64_type.const_int(1, false);
+        self.builder.build_store(i_ptr, zero).unwrap();
+        self.builder.build_store(product_ptr, one).unwrap(); // Start with 1 for multiplication
+        self.builder.build_unconditional_branch(loop_block).unwrap();
+
+        self.builder.position_at_end(loop_block);
+        let i = self
+            .builder
+            .build_load(self.types.i64_type, i_ptr, "i")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(inkwell::IntPredicate::SLT, i, length, "cond")
+            .map_err(|e| HaversError::CompileError(format!("Failed to compare: {}", e)))?;
+        self.builder
+            .build_conditional_branch(cond, body_block, done_block)
+            .unwrap();
+
+        self.builder.position_at_end(body_block);
+        let elem_ptr = self.get_list_element_ptr(list_data, i)?;
+        let elem = self
+            .builder
+            .build_load(self.types.value_type, elem_ptr, "elem")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?;
+        let elem_data = self.extract_data(elem)?;
+
+        let product = self
+            .builder
+            .build_load(self.types.i64_type, product_ptr, "product")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?
+            .into_int_value();
+        let new_product = self
+            .builder
+            .build_int_mul(product, elem_data, "new_product")
+            .map_err(|e| HaversError::CompileError(format!("Failed to mul: {}", e)))?;
+        self.builder.build_store(product_ptr, new_product).unwrap();
+
+        let next_i = self
+            .builder
+            .build_int_add(i, one, "next_i")
+            .map_err(|e| HaversError::CompileError(format!("Failed to add: {}", e)))?;
+        self.builder.build_store(i_ptr, next_i).unwrap();
+        self.builder.build_unconditional_branch(loop_block).unwrap();
+
+        self.builder.position_at_end(done_block);
+        let final_product = self
+            .builder
+            .build_load(self.types.i64_type, product_ptr, "final_product")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?
+            .into_int_value();
+
+        self.make_int(final_product)
     }
 
     // ========== Phase 3: String Operations ==========
@@ -5270,6 +5550,218 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         self.make_string(result_buf)
+    }
+
+    /// is_upper/is_lower/is_alpha/is_digit/is_alnum - check if all chars match class
+    fn inline_is_char_class(
+        &mut self,
+        val: BasicValueEnum<'ctx>,
+        class: CharClass,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let str_data = self.extract_data(val)?;
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let str_ptr = self
+            .builder
+            .build_int_to_ptr(str_data, i8_ptr_type, "str_ptr")
+            .unwrap();
+
+        let len = self
+            .builder
+            .build_call(self.libc.strlen, &[str_ptr.into()], "len")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_int_value();
+
+        let function = self.current_function.unwrap();
+        let empty_block = self.context.append_basic_block(function, "is_char_empty");
+        let loop_block = self.context.append_basic_block(function, "is_char_loop");
+        let body_block = self.context.append_basic_block(function, "is_char_body");
+        let check_block = self.context.append_basic_block(function, "is_char_check");
+        let continue_block = self.context.append_basic_block(function, "is_char_continue");
+        let fail_block = self.context.append_basic_block(function, "is_char_fail");
+        let pass_block = self.context.append_basic_block(function, "is_char_pass");
+        let merge_block = self.context.append_basic_block(function, "is_char_merge");
+
+        // Check if empty string (return false for empty)
+        let zero = self.types.i64_type.const_int(0, false);
+        let one = self.types.i64_type.const_int(1, false);
+        let is_empty = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, len, zero, "is_empty")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_empty, empty_block, loop_block)
+            .unwrap();
+
+        // Empty string returns false
+        self.builder.position_at_end(empty_block);
+        let empty_false = self.make_bool(zero)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let empty_block_end = self.builder.get_insert_block().unwrap();
+
+        // Loop setup
+        self.builder.position_at_end(loop_block);
+        let i_ptr = self.builder.build_alloca(self.types.i64_type, "i").unwrap();
+        self.builder.build_store(i_ptr, zero).unwrap();
+        self.builder.build_unconditional_branch(body_block).unwrap();
+
+        // Loop body - check if done
+        self.builder.position_at_end(body_block);
+        let i = self
+            .builder
+            .build_load(self.types.i64_type, i_ptr, "i")
+            .unwrap()
+            .into_int_value();
+
+        let done = self
+            .builder
+            .build_int_compare(IntPredicate::UGE, i, len, "done")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(done, pass_block, check_block)
+            .unwrap();
+
+        // Check character
+        self.builder.position_at_end(check_block);
+        let char_ptr = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), str_ptr, &[i], "char_ptr")
+                .unwrap()
+        };
+        let char_val = self
+            .builder
+            .build_load(self.context.i8_type(), char_ptr, "char")
+            .unwrap()
+            .into_int_value();
+
+        // Build the character class check
+        let i8_type = self.context.i8_type();
+        let is_valid = match class {
+            CharClass::Upper => {
+                let ge_a = self
+                    .builder
+                    .build_int_compare(IntPredicate::UGE, char_val, i8_type.const_int(65, false), "ge_a")
+                    .unwrap();
+                let le_z = self
+                    .builder
+                    .build_int_compare(IntPredicate::ULE, char_val, i8_type.const_int(90, false), "le_z")
+                    .unwrap();
+                self.builder.build_and(ge_a, le_z, "is_upper").unwrap()
+            }
+            CharClass::Lower => {
+                let ge_a = self
+                    .builder
+                    .build_int_compare(IntPredicate::UGE, char_val, i8_type.const_int(97, false), "ge_a")
+                    .unwrap();
+                let le_z = self
+                    .builder
+                    .build_int_compare(IntPredicate::ULE, char_val, i8_type.const_int(122, false), "le_z")
+                    .unwrap();
+                self.builder.build_and(ge_a, le_z, "is_lower").unwrap()
+            }
+            CharClass::Alpha => {
+                let ge_a_upper = self
+                    .builder
+                    .build_int_compare(IntPredicate::UGE, char_val, i8_type.const_int(65, false), "ge_a_upper")
+                    .unwrap();
+                let le_z_upper = self
+                    .builder
+                    .build_int_compare(IntPredicate::ULE, char_val, i8_type.const_int(90, false), "le_z_upper")
+                    .unwrap();
+                let is_upper = self.builder.build_and(ge_a_upper, le_z_upper, "is_upper").unwrap();
+                let ge_a_lower = self
+                    .builder
+                    .build_int_compare(IntPredicate::UGE, char_val, i8_type.const_int(97, false), "ge_a_lower")
+                    .unwrap();
+                let le_z_lower = self
+                    .builder
+                    .build_int_compare(IntPredicate::ULE, char_val, i8_type.const_int(122, false), "le_z_lower")
+                    .unwrap();
+                let is_lower = self.builder.build_and(ge_a_lower, le_z_lower, "is_lower").unwrap();
+                self.builder.build_or(is_upper, is_lower, "is_alpha").unwrap()
+            }
+            CharClass::Digit => {
+                let ge_0 = self
+                    .builder
+                    .build_int_compare(IntPredicate::UGE, char_val, i8_type.const_int(48, false), "ge_0")
+                    .unwrap();
+                let le_9 = self
+                    .builder
+                    .build_int_compare(IntPredicate::ULE, char_val, i8_type.const_int(57, false), "le_9")
+                    .unwrap();
+                self.builder.build_and(ge_0, le_9, "is_digit").unwrap()
+            }
+            CharClass::Alnum => {
+                let ge_a_upper = self
+                    .builder
+                    .build_int_compare(IntPredicate::UGE, char_val, i8_type.const_int(65, false), "ge_a_upper")
+                    .unwrap();
+                let le_z_upper = self
+                    .builder
+                    .build_int_compare(IntPredicate::ULE, char_val, i8_type.const_int(90, false), "le_z_upper")
+                    .unwrap();
+                let is_upper = self.builder.build_and(ge_a_upper, le_z_upper, "is_upper").unwrap();
+                let ge_a_lower = self
+                    .builder
+                    .build_int_compare(IntPredicate::UGE, char_val, i8_type.const_int(97, false), "ge_a_lower")
+                    .unwrap();
+                let le_z_lower = self
+                    .builder
+                    .build_int_compare(IntPredicate::ULE, char_val, i8_type.const_int(122, false), "le_z_lower")
+                    .unwrap();
+                let is_lower = self.builder.build_and(ge_a_lower, le_z_lower, "is_lower").unwrap();
+                let ge_0 = self
+                    .builder
+                    .build_int_compare(IntPredicate::UGE, char_val, i8_type.const_int(48, false), "ge_0")
+                    .unwrap();
+                let le_9 = self
+                    .builder
+                    .build_int_compare(IntPredicate::ULE, char_val, i8_type.const_int(57, false), "le_9")
+                    .unwrap();
+                let is_digit = self.builder.build_and(ge_0, le_9, "is_digit").unwrap();
+                let is_alpha = self.builder.build_or(is_upper, is_lower, "is_alpha").unwrap();
+                self.builder.build_or(is_alpha, is_digit, "is_alnum").unwrap()
+            }
+        };
+
+        // Branch based on validity
+        self.builder
+            .build_conditional_branch(is_valid, continue_block, fail_block)
+            .unwrap();
+
+        // Continue to next character
+        self.builder.position_at_end(continue_block);
+        let next_i = self.builder.build_int_add(i, one, "next_i").unwrap();
+        self.builder.build_store(i_ptr, next_i).unwrap();
+        self.builder.build_unconditional_branch(body_block).unwrap();
+
+        // Character didn't match - return false
+        self.builder.position_at_end(fail_block);
+        let fail_false = self.make_bool(zero)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let fail_block_end = self.builder.get_insert_block().unwrap();
+
+        // All characters passed - return true
+        self.builder.position_at_end(pass_block);
+        let pass_true = self.make_bool(one)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let pass_block_end = self.builder.get_insert_block().unwrap();
+
+        // Merge results
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "is_char_result")
+            .unwrap();
+        phi.add_incoming(&[
+            (&empty_false, empty_block_end),
+            (&fail_false, fail_block_end),
+            (&pass_true, pass_block_end),
+        ]);
+
+        Ok(phi.as_basic_value())
     }
 
     /// wheesht(str) -> string - trim whitespace
@@ -5734,113 +6226,6 @@ impl<'ctx> CodeGen<'ctx> {
         ]);
 
         Ok(phi.as_basic_value())
-    }
-
-    /// range(start, end) -> list - create list [start, start+1, ..., end-1]
-    fn inline_range(
-        &mut self,
-        start_val: BasicValueEnum<'ctx>,
-        end_val: BasicValueEnum<'ctx>,
-    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        let start = self.extract_data(start_val)?;
-        let end = self.extract_data(end_val)?;
-
-        let function = self.current_function.unwrap();
-
-        // Calculate length = max(0, end - start)
-        let diff = self.builder.build_int_sub(end, start, "diff").unwrap();
-        let zero = self.types.i64_type.const_int(0, false);
-        let is_positive = self
-            .builder
-            .build_int_compare(inkwell::IntPredicate::SGT, diff, zero, "is_pos")
-            .unwrap();
-        let length = self
-            .builder
-            .build_select(is_positive, diff, zero, "length")
-            .unwrap()
-            .into_int_value();
-
-        // Allocate list: 8 bytes header + length * 16 bytes
-        let header_size = self.types.i64_type.const_int(16, false);
-        let value_size = self.types.i64_type.const_int(16, false);
-        let elements_size = self
-            .builder
-            .build_int_mul(length, value_size, "elem_size")
-            .unwrap();
-        let total_size = self
-            .builder
-            .build_int_add(header_size, elements_size, "total")
-            .unwrap();
-
-        let raw_ptr = self
-            .builder
-            .build_call(self.libc.malloc, &[total_size.into()], "range_list")
-            .unwrap()
-            .try_as_basic_value()
-            .left()
-            .unwrap()
-            .into_pointer_value();
-
-        // Store length
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let len_ptr = self
-            .builder
-            .build_pointer_cast(raw_ptr, i64_ptr_type, "len_ptr")
-            .unwrap();
-        self.builder.build_store(len_ptr, length).unwrap();
-
-        // Get elements base
-        let one = self.types.i64_type.const_int(1, false);
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
-        let elements_base = unsafe {
-            self.builder
-                .build_gep(self.types.i64_type, len_ptr, &[one], "elements_base")
-                .unwrap()
-        };
-        let elements_ptr = self
-            .builder
-            .build_pointer_cast(elements_base, value_ptr_type, "elements_ptr")
-            .unwrap();
-
-        // Loop to fill elements
-        let loop_block = self.context.append_basic_block(function, "range_loop");
-        let body_block = self.context.append_basic_block(function, "range_body");
-        let done_block = self.context.append_basic_block(function, "range_done");
-
-        let i_ptr = self.builder.build_alloca(self.types.i64_type, "i").unwrap();
-        self.builder.build_store(i_ptr, zero).unwrap();
-        self.builder.build_unconditional_branch(loop_block).unwrap();
-
-        self.builder.position_at_end(loop_block);
-        let i = self
-            .builder
-            .build_load(self.types.i64_type, i_ptr, "i")
-            .unwrap()
-            .into_int_value();
-        let cond = self
-            .builder
-            .build_int_compare(inkwell::IntPredicate::ULT, i, length, "cond")
-            .unwrap();
-        self.builder
-            .build_conditional_branch(cond, body_block, done_block)
-            .unwrap();
-
-        self.builder.position_at_end(body_block);
-        let val = self.builder.build_int_add(start, i, "val").unwrap();
-        let elem_ptr = unsafe {
-            self.builder
-                .build_gep(self.types.value_type, elements_ptr, &[i], "elem_ptr")
-                .unwrap()
-        };
-        let elem = self.make_int(val)?;
-        self.builder.build_store(elem_ptr, elem).unwrap();
-
-        let next_i = self.builder.build_int_add(i, one, "next_i").unwrap();
-        self.builder.build_store(i_ptr, next_i).unwrap();
-        self.builder.build_unconditional_branch(loop_block).unwrap();
-
-        self.builder.position_at_end(done_block);
-        self.make_list(raw_ptr)
     }
 
     // ========== Statement Compilation ==========
@@ -7527,7 +7912,7 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.inline_sumaw(arg);
                 }
                 // Phase 3: String/Set operations
-                "contains" | "dict_has" => {
+                "contains" | "dict_has" | "has_key" | "contains_key" => {
                     // String contains or dict has key
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
@@ -7914,7 +8299,7 @@ impl<'ctx> CodeGen<'ctx> {
                         })?;
                     return Ok(result);
                 }
-                "tak" => {
+                "tak" | "take" => {
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
                             "tak expects 2 arguments (list, n)".to_string(),
@@ -8207,26 +8592,7 @@ impl<'ctx> CodeGen<'ctx> {
                         })?;
                     return Ok(result);
                 }
-                "is_digit" => {
-                    if args.len() != 1 {
-                        return Err(HaversError::CompileError(
-                            "is_digit expects 1 argument".to_string(),
-                        ));
-                    }
-                    let str_val = self.compile_expr(&args[0])?;
-                    let result = self
-                        .builder
-                        .build_call(self.libc.is_digit, &[str_val.into()], "is_digit_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call is_digit: {}", e))
-                        })?
-                        .try_as_basic_value()
-                        .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("is_digit returned void".to_string())
-                        })?;
-                    return Ok(result);
-                }
+                // is_digit now handled by inline_is_char_class later in the match
                 "wheesht_aw" => {
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
@@ -8423,11 +8789,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let _list = self.compile_expr(&args[0])?;
                     return Ok(self.make_nil());
                 }
-                "is_wee" | "is_alpha" => {
-                    // Check if value is small or alphabetic - return true for now
+                "is_wee" => {
+                    // Check if value is small - placeholder returns true for now
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
-                            "predicate expects 1 argument".to_string(),
+                            "is_wee expects 1 argument".to_string(),
                         ));
                     }
                     let _val = self.compile_expr(&args[0])?;
@@ -8587,19 +8953,19 @@ impl<'ctx> CodeGen<'ctx> {
                     let arg = self.compile_expr(&args[0])?;
                     return self.inline_lower(arg);
                 }
-                "wheesht" => {
+                "wheesht" | "trim" => {
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
-                            "wheesht expects 1 argument".to_string(),
+                            "wheesht/trim expects 1 argument".to_string(),
                         ));
                     }
                     let arg = self.compile_expr(&args[0])?;
                     return self.inline_wheesht(arg);
                 }
-                "coont" => {
+                "coont" | "count_str" => {
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
-                            "coont expects 2 arguments".to_string(),
+                            "coont/count_str expects 2 arguments".to_string(),
                         ));
                     }
                     let str_arg = self.compile_expr(&args[0])?;
@@ -9041,7 +9407,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let arg = self.compile_expr(&args[0])?;
                     return self.inline_math_func(arg, "atan");
                 }
-                "log" => {
+                "log" | "ln" => {
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "log expects 1 argument".to_string(),
@@ -9049,6 +9415,42 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let arg = self.compile_expr(&args[0])?;
                     return self.inline_math_func(arg, "log");
+                }
+                "sinh" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "sinh expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_math_func(arg, "sinh");
+                }
+                "cosh" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "cosh expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_math_func(arg, "cosh");
+                }
+                "tanh" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "tanh expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_math_func(arg, "tanh");
+                }
+                "log2" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "log2 expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_math_func(arg, "log2");
                 }
                 "log10" => {
                     if args.len() != 1 {
@@ -9340,14 +9742,142 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(self.make_nil());
                 }
                 "sclaff" | "flatten" => {
-                    // sclaff(list) - flatten nested list
+                    // sclaff(list) - flatten nested list (one level deep)
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "sclaff expects 1 argument".to_string(),
                         ));
                     }
-                    // Return the argument unchanged for now (shallow flatten placeholder)
-                    return self.compile_expr(&args[0]);
+                    let outer_list = self.compile_expr(&args[0])?;
+                    let outer_data = self.extract_data(outer_list)?;
+
+                    let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+                    let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+                    let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+                    let ptr_ptr_type = i8_ptr_type.ptr_type(AddressSpace::default());
+
+                    // Get outer list struct
+                    let outer_struct = self.builder.build_int_to_ptr(outer_data, i64_ptr_type, "outer_struct").unwrap();
+                    let outer_items_i64 = self.builder.build_load(self.types.i64_type, outer_struct, "outer_items_i64").unwrap().into_int_value();
+                    let outer_len_ptr = unsafe { self.builder.build_gep(self.types.i64_type, outer_struct, &[self.types.i64_type.const_int(1, false)], "outer_len_ptr").unwrap() };
+                    let outer_len = self.builder.build_load(self.types.i64_type, outer_len_ptr, "outer_len").unwrap().into_int_value();
+                    let outer_items = self.builder.build_int_to_ptr(outer_items_i64, value_ptr_type, "outer_items").unwrap();
+
+                    // Allocate result list (estimate capacity as outer_len * 10)
+                    let estimated_cap = self.builder.build_int_mul(outer_len, self.types.i64_type.const_int(10, false), "est_cap").unwrap();
+                    let list_struct_size = self.types.i64_type.const_int(24, false);
+                    let new_struct = self.builder.build_call(self.libc.malloc, &[list_struct_size.into()], "flat_struct").unwrap()
+                        .try_as_basic_value().left().unwrap().into_pointer_value();
+                    let items_size = self.builder.build_int_mul(estimated_cap, self.types.i64_type.const_int(16, false), "items_size").unwrap();
+                    let new_items = self.builder.build_call(self.libc.malloc, &[items_size.into()], "flat_items").unwrap()
+                        .try_as_basic_value().left().unwrap().into_pointer_value();
+
+                    // Store items ptr at offset 0
+                    let items_field = self.builder.build_pointer_cast(new_struct, ptr_ptr_type, "items_field").unwrap();
+                    self.builder.build_store(items_field, new_items).unwrap();
+                    // Capacity at offset 16
+                    let cap_field = unsafe { self.builder.build_gep(self.context.i8_type(), new_struct, &[self.types.i64_type.const_int(16, false)], "cap_field").unwrap() };
+                    let cap_ptr = self.builder.build_pointer_cast(cap_field, i64_ptr_type, "cap_ptr").unwrap();
+                    self.builder.build_store(cap_ptr, estimated_cap).unwrap();
+
+                    let new_items_val = self.builder.build_pointer_cast(new_items, value_ptr_type, "new_items_val").unwrap();
+                    let function = self.current_function.unwrap();
+
+                    // Result index counter
+                    let result_idx = self.builder.build_alloca(self.types.i64_type, "result_idx").unwrap();
+                    self.builder.build_store(result_idx, self.types.i64_type.const_int(0, false)).unwrap();
+
+                    // Loop over outer list
+                    let outer_idx = self.builder.build_alloca(self.types.i64_type, "outer_idx").unwrap();
+                    self.builder.build_store(outer_idx, self.types.i64_type.const_int(0, false)).unwrap();
+
+                    let outer_loop = self.context.append_basic_block(function, "flat_outer_loop");
+                    let outer_body = self.context.append_basic_block(function, "flat_outer_body");
+                    let outer_end = self.context.append_basic_block(function, "flat_outer_end");
+
+                    self.builder.build_unconditional_branch(outer_loop).unwrap();
+                    self.builder.position_at_end(outer_loop);
+                    let i = self.builder.build_load(self.types.i64_type, outer_idx, "i").unwrap().into_int_value();
+                    let cond = self.builder.build_int_compare(IntPredicate::ULT, i, outer_len, "cond").unwrap();
+                    self.builder.build_conditional_branch(cond, outer_body, outer_end).unwrap();
+
+                    self.builder.position_at_end(outer_body);
+                    // Get element
+                    let elem_ptr = unsafe { self.builder.build_gep(self.types.value_type, outer_items, &[i], "elem_ptr").unwrap() };
+                    let elem = self.builder.build_load(self.types.value_type, elem_ptr, "elem").unwrap();
+                    let elem_tag = self.extract_tag(elem)?;
+                    let elem_data = self.extract_data(elem)?;
+
+                    // Check if element is a list (tag=5)
+                    let list_tag = self.context.i8_type().const_int(5, false);
+                    let is_list = self.builder.build_int_compare(IntPredicate::EQ, elem_tag, list_tag, "is_list").unwrap();
+
+                    let copy_inner = self.context.append_basic_block(function, "copy_inner");
+                    let copy_single = self.context.append_basic_block(function, "copy_single");
+                    let after_copy = self.context.append_basic_block(function, "after_copy");
+
+                    self.builder.build_conditional_branch(is_list, copy_inner, copy_single).unwrap();
+
+                    // Copy inner list elements
+                    self.builder.position_at_end(copy_inner);
+                    let inner_struct = self.builder.build_int_to_ptr(elem_data, i64_ptr_type, "inner_struct").unwrap();
+                    let inner_items_i64 = self.builder.build_load(self.types.i64_type, inner_struct, "inner_items_i64").unwrap().into_int_value();
+                    let inner_len_ptr = unsafe { self.builder.build_gep(self.types.i64_type, inner_struct, &[self.types.i64_type.const_int(1, false)], "inner_len_ptr").unwrap() };
+                    let inner_len = self.builder.build_load(self.types.i64_type, inner_len_ptr, "inner_len").unwrap().into_int_value();
+                    let inner_items = self.builder.build_int_to_ptr(inner_items_i64, value_ptr_type, "inner_items").unwrap();
+
+                    // Inner loop
+                    let inner_idx = self.builder.build_alloca(self.types.i64_type, "inner_idx").unwrap();
+                    self.builder.build_store(inner_idx, self.types.i64_type.const_int(0, false)).unwrap();
+                    let inner_loop = self.context.append_basic_block(function, "inner_loop");
+                    let inner_body = self.context.append_basic_block(function, "inner_body");
+                    let inner_end = self.context.append_basic_block(function, "inner_end");
+
+                    self.builder.build_unconditional_branch(inner_loop).unwrap();
+                    self.builder.position_at_end(inner_loop);
+                    let j = self.builder.build_load(self.types.i64_type, inner_idx, "j").unwrap().into_int_value();
+                    let inner_cond = self.builder.build_int_compare(IntPredicate::ULT, j, inner_len, "inner_cond").unwrap();
+                    self.builder.build_conditional_branch(inner_cond, inner_body, inner_end).unwrap();
+
+                    self.builder.position_at_end(inner_body);
+                    let src_ptr = unsafe { self.builder.build_gep(self.types.value_type, inner_items, &[j], "src_ptr").unwrap() };
+                    let src_val = self.builder.build_load(self.types.value_type, src_ptr, "src_val").unwrap();
+                    let dst_idx = self.builder.build_load(self.types.i64_type, result_idx, "dst_idx").unwrap().into_int_value();
+                    let dst_ptr = unsafe { self.builder.build_gep(self.types.value_type, new_items_val, &[dst_idx], "dst_ptr").unwrap() };
+                    self.builder.build_store(dst_ptr, src_val).unwrap();
+                    // Increment both
+                    let next_j = self.builder.build_int_add(j, self.types.i64_type.const_int(1, false), "next_j").unwrap();
+                    self.builder.build_store(inner_idx, next_j).unwrap();
+                    let next_dst = self.builder.build_int_add(dst_idx, self.types.i64_type.const_int(1, false), "next_dst").unwrap();
+                    self.builder.build_store(result_idx, next_dst).unwrap();
+                    self.builder.build_unconditional_branch(inner_loop).unwrap();
+
+                    self.builder.position_at_end(inner_end);
+                    self.builder.build_unconditional_branch(after_copy).unwrap();
+
+                    // Copy single element
+                    self.builder.position_at_end(copy_single);
+                    let dst_idx2 = self.builder.build_load(self.types.i64_type, result_idx, "dst_idx2").unwrap().into_int_value();
+                    let dst_ptr2 = unsafe { self.builder.build_gep(self.types.value_type, new_items_val, &[dst_idx2], "dst_ptr2").unwrap() };
+                    self.builder.build_store(dst_ptr2, elem).unwrap();
+                    let next_dst2 = self.builder.build_int_add(dst_idx2, self.types.i64_type.const_int(1, false), "next_dst2").unwrap();
+                    self.builder.build_store(result_idx, next_dst2).unwrap();
+                    self.builder.build_unconditional_branch(after_copy).unwrap();
+
+                    // Continue outer loop
+                    self.builder.position_at_end(after_copy);
+                    let next_i = self.builder.build_int_add(i, self.types.i64_type.const_int(1, false), "next_i").unwrap();
+                    self.builder.build_store(outer_idx, next_i).unwrap();
+                    self.builder.build_unconditional_branch(outer_loop).unwrap();
+
+                    // Store final length
+                    self.builder.position_at_end(outer_end);
+                    let final_len = self.builder.build_load(self.types.i64_type, result_idx, "final_len").unwrap();
+                    let len_field = unsafe { self.builder.build_gep(self.context.i8_type(), new_struct, &[self.types.i64_type.const_int(8, false)], "len_field").unwrap() };
+                    let len_ptr = self.builder.build_pointer_cast(len_field, i64_ptr_type, "len_ptr").unwrap();
+                    self.builder.build_store(len_ptr, final_len).unwrap();
+
+                    return self.make_list(new_struct);
                 }
                 "inspect" | "debug" => {
                     // inspect(val) - print debug info about value
@@ -9476,14 +10006,46 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(self.make_nil());
                 }
                 "bit_coont" | "bit_count" | "popcount" => {
-                    // bit_coont(n) - count set bits (placeholder: return 0)
+                    // bit_coont(n) - count set bits using Kernighan's algorithm
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "bit_coont expects 1 argument".to_string(),
                         ));
                     }
+                    let arg = self.compile_expr(&args[0])?;
+                    let n = self.extract_data(arg)?;
+
+                    let function = self.current_function.unwrap();
+                    let loop_block = self.context.append_basic_block(function, "popcount_loop");
+                    let body_block = self.context.append_basic_block(function, "popcount_body");
+                    let done_block = self.context.append_basic_block(function, "popcount_done");
+
                     let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_int(zero);
+                    let one = self.types.i64_type.const_int(1, false);
+                    let n_ptr = self.builder.build_alloca(self.types.i64_type, "n").unwrap();
+                    let count_ptr = self.builder.build_alloca(self.types.i64_type, "count").unwrap();
+                    self.builder.build_store(n_ptr, n).unwrap();
+                    self.builder.build_store(count_ptr, zero).unwrap();
+                    self.builder.build_unconditional_branch(loop_block).unwrap();
+
+                    self.builder.position_at_end(loop_block);
+                    let cur_n = self.builder.build_load(self.types.i64_type, n_ptr, "cur_n").unwrap().into_int_value();
+                    let cond = self.builder.build_int_compare(IntPredicate::NE, cur_n, zero, "cond").unwrap();
+                    self.builder.build_conditional_branch(cond, body_block, done_block).unwrap();
+
+                    self.builder.position_at_end(body_block);
+                    // n = n & (n - 1) clears the lowest set bit
+                    let n_minus_1 = self.builder.build_int_sub(cur_n, one, "n_minus_1").unwrap();
+                    let new_n = self.builder.build_and(cur_n, n_minus_1, "new_n").unwrap();
+                    self.builder.build_store(n_ptr, new_n).unwrap();
+                    let count = self.builder.build_load(self.types.i64_type, count_ptr, "count").unwrap().into_int_value();
+                    let new_count = self.builder.build_int_add(count, one, "new_count").unwrap();
+                    self.builder.build_store(count_ptr, new_count).unwrap();
+                    self.builder.build_unconditional_branch(loop_block).unwrap();
+
+                    self.builder.position_at_end(done_block);
+                    let final_count = self.builder.build_load(self.types.i64_type, count_ptr, "final_count").unwrap().into_int_value();
+                    return self.make_int(final_count);
                 }
                 "is_nummer" | "is_number" | "is_int" | "is_float" => {
                     // is_nummer(val) - check if value is a number
@@ -9514,6 +10076,66 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return self.make_bool(result_i64);
                 }
+                "is_list" | "is_leet" => {
+                    // is_list(val) - check if value is a list
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "is_list expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let tag = self.extract_tag(arg)?;
+                    let list_tag = self.types.i8_type.const_int(5, false);
+                    let is_list = self
+                        .builder
+                        .build_int_compare(inkwell::IntPredicate::EQ, tag, list_tag, "is_list")
+                        .unwrap();
+                    let result_i64 = self
+                        .builder
+                        .build_int_z_extend(is_list, self.types.i64_type, "is_list_i64")
+                        .unwrap();
+                    return self.make_bool(result_i64);
+                }
+                "is_string" | "is_text" | "is_wird" => {
+                    // is_string(val) - check if value is a string
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "is_string expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let tag = self.extract_tag(arg)?;
+                    let string_tag = self.types.i8_type.const_int(4, false);
+                    let is_string = self
+                        .builder
+                        .build_int_compare(inkwell::IntPredicate::EQ, tag, string_tag, "is_string")
+                        .unwrap();
+                    let result_i64 = self
+                        .builder
+                        .build_int_z_extend(is_string, self.types.i64_type, "is_string_i64")
+                        .unwrap();
+                    return self.make_bool(result_i64);
+                }
+                "is_dict" | "is_buik" => {
+                    // is_dict(val) - check if value is a dict
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "is_dict expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let tag = self.extract_tag(arg)?;
+                    let dict_tag = self.types.i8_type.const_int(6, false);
+                    let is_dict = self
+                        .builder
+                        .build_int_compare(inkwell::IntPredicate::EQ, tag, dict_tag, "is_dict")
+                        .unwrap();
+                    let result_i64 = self
+                        .builder
+                        .build_int_z_extend(is_dict, self.types.i64_type, "is_dict_i64")
+                        .unwrap();
+                    return self.make_bool(result_i64);
+                }
                 "is_toom" | "is_empty" => {
                     // is_toom(val) - check if value is empty (list len 0, string len 0, etc)
                     if args.len() != 1 {
@@ -9534,14 +10156,87 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.make_bool(zero);
                 }
                 "is_prime" => {
-                    // is_prime(n) - check if n is prime (placeholder: return false)
+                    // is_prime(n) - check if n is prime using simple trial division
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "is_prime expects 1 argument".to_string(),
                         ));
                     }
+                    let n_val = self.compile_expr(&args[0])?;
+                    let n = self.extract_data(n_val)?;
+
+                    let function = self.current_function.unwrap();
+                    let not_prime = self.context.append_basic_block(function, "not_prime");
+                    let is_prime_block = self.context.append_basic_block(function, "is_prime");
+                    let done_block = self.context.append_basic_block(function, "prime_done");
+                    let loop_block = self.context.append_basic_block(function, "prime_loop");
+
                     let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_bool(zero);
+                    let one = self.types.i64_type.const_int(1, false);
+                    let two = self.types.i64_type.const_int(2, false);
+
+                    // If n < 2, not prime
+                    let lt_two = self.builder.build_int_compare(IntPredicate::SLT, n, two, "lt_two").unwrap();
+                    let check_2 = self.context.append_basic_block(function, "check_2");
+                    self.builder.build_conditional_branch(lt_two, not_prime, check_2).unwrap();
+
+                    // If n == 2, prime
+                    self.builder.position_at_end(check_2);
+                    let eq_two = self.builder.build_int_compare(IntPredicate::EQ, n, two, "eq_two").unwrap();
+                    let check_even = self.context.append_basic_block(function, "check_even");
+                    self.builder.build_conditional_branch(eq_two, is_prime_block, check_even).unwrap();
+
+                    // If n % 2 == 0 (and n > 2), not prime
+                    self.builder.position_at_end(check_even);
+                    let rem2 = self.builder.build_int_signed_rem(n, two, "rem2").unwrap();
+                    let is_even = self.builder.build_int_compare(IntPredicate::EQ, rem2, zero, "is_even").unwrap();
+                    let start_loop = self.context.append_basic_block(function, "start_loop");
+                    self.builder.build_conditional_branch(is_even, not_prime, start_loop).unwrap();
+
+                    // Set up loop: check odd divisors from 3 to sqrt(n)
+                    self.builder.position_at_end(start_loop);
+                    let three = self.types.i64_type.const_int(3, false);
+                    let i_ptr = self.builder.build_alloca(self.types.i64_type, "i").unwrap();
+                    self.builder.build_store(i_ptr, three).unwrap();
+                    self.builder.build_unconditional_branch(loop_block).unwrap();
+
+                    self.builder.position_at_end(loop_block);
+                    let i = self.builder.build_load(self.types.i64_type, i_ptr, "i").unwrap().into_int_value();
+                    let i_sq = self.builder.build_int_mul(i, i, "i_sq").unwrap();
+                    let i_sq_gt_n = self.builder.build_int_compare(IntPredicate::SGT, i_sq, n, "i_sq_gt_n").unwrap();
+
+                    let body_block = self.context.append_basic_block(function, "prime_body");
+                    self.builder.build_conditional_branch(i_sq_gt_n, is_prime_block, body_block).unwrap();
+
+                    self.builder.position_at_end(body_block);
+                    let rem_i = self.builder.build_int_signed_rem(n, i, "rem_i").unwrap();
+                    let div_by_i = self.builder.build_int_compare(IntPredicate::EQ, rem_i, zero, "div_by_i").unwrap();
+
+                    let next_block = self.context.append_basic_block(function, "prime_next");
+                    self.builder.build_conditional_branch(div_by_i, not_prime, next_block).unwrap();
+
+                    self.builder.position_at_end(next_block);
+                    let next_i = self.builder.build_int_add(i, two, "next_i").unwrap();
+                    self.builder.build_store(i_ptr, next_i).unwrap();
+                    self.builder.build_unconditional_branch(loop_block).unwrap();
+
+                    // Not prime block
+                    self.builder.position_at_end(not_prime);
+                    let false_val = self.make_bool(zero)?;
+                    self.builder.build_unconditional_branch(done_block).unwrap();
+                    let not_prime_end = self.builder.get_insert_block().unwrap();
+
+                    // Is prime block
+                    self.builder.position_at_end(is_prime_block);
+                    let true_val = self.make_bool(one)?;
+                    self.builder.build_unconditional_branch(done_block).unwrap();
+                    let is_prime_end = self.builder.get_insert_block().unwrap();
+
+                    // Done block with phi
+                    self.builder.position_at_end(done_block);
+                    let result = self.builder.build_phi(self.types.value_type, "prime_result").unwrap();
+                    result.add_incoming(&[(&false_val, not_prime_end), (&true_val, is_prime_end)]);
+                    return Ok(result.as_basic_value());
                 }
                 "sign" | "signum" => {
                     // sign(n) - return -1, 0, or 1
@@ -9614,13 +10309,19 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.make_bool(result_i64);
                 }
                 "drap" | "drop" => {
-                    // drap(list, n) - drop first n elements (placeholder: return as-is)
+                    // drap(list, n) - drop first n elements
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
                             "drap expects 2 arguments".to_string(),
                         ));
                     }
-                    return self.compile_expr(&args[0]);
+                    let list_val = self.compile_expr(&args[0])?;
+                    let n_val = self.compile_expr(&args[1])?;
+                    // Get list length
+                    let list_data = self.extract_data(list_val)?;
+                    let list_len = self.get_list_length(list_data)?;
+                    let end_val = self.make_int(list_len)?;
+                    return self.inline_scran(list_val, n_val, end_val);
                 }
                 "screen_width" | "screen_height" | "get_screen_width" | "get_screen_height" => {
                     // Graphics screen dimensions (placeholder: return 800/600)
@@ -9633,27 +10334,91 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.make_int(int_val);
                 }
                 "gcd" => {
-                    // gcd(a, b) - greatest common divisor (placeholder: return 1)
+                    // gcd(a, b) - greatest common divisor using Euclidean algorithm
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
                             "gcd expects 2 arguments".to_string(),
                         ));
                     }
-                    let one = self.types.i64_type.const_int(1, false);
-                    return self.make_int(one);
+                    let a_val = self.compile_expr(&args[0])?;
+                    let b_val = self.compile_expr(&args[1])?;
+                    let a = self.extract_data(a_val)?;
+                    let b = self.extract_data(b_val)?;
+
+                    let function = self.current_function.unwrap();
+                    let loop_block = self.context.append_basic_block(function, "gcd_loop");
+                    let done_block = self.context.append_basic_block(function, "gcd_done");
+
+                    let a_ptr = self.builder.build_alloca(self.types.i64_type, "a").unwrap();
+                    let b_ptr = self.builder.build_alloca(self.types.i64_type, "b").unwrap();
+                    self.builder.build_store(a_ptr, a).unwrap();
+                    self.builder.build_store(b_ptr, b).unwrap();
+                    self.builder.build_unconditional_branch(loop_block).unwrap();
+
+                    self.builder.position_at_end(loop_block);
+                    let b_val_loop = self.builder.build_load(self.types.i64_type, b_ptr, "b").unwrap().into_int_value();
+                    let zero = self.types.i64_type.const_int(0, false);
+                    let cond = self.builder.build_int_compare(IntPredicate::NE, b_val_loop, zero, "cond").unwrap();
+
+                    let body_block = self.context.append_basic_block(function, "gcd_body");
+                    self.builder.build_conditional_branch(cond, body_block, done_block).unwrap();
+
+                    self.builder.position_at_end(body_block);
+                    let a_val_loop = self.builder.build_load(self.types.i64_type, a_ptr, "a").unwrap().into_int_value();
+                    let b_val_loop = self.builder.build_load(self.types.i64_type, b_ptr, "b").unwrap().into_int_value();
+                    let rem = self.builder.build_int_signed_rem(a_val_loop, b_val_loop, "rem").unwrap();
+                    self.builder.build_store(a_ptr, b_val_loop).unwrap();
+                    self.builder.build_store(b_ptr, rem).unwrap();
+                    self.builder.build_unconditional_branch(loop_block).unwrap();
+
+                    self.builder.position_at_end(done_block);
+                    let result = self.builder.build_load(self.types.i64_type, a_ptr, "gcd").unwrap().into_int_value();
+                    return self.make_int(result);
                 }
                 "lcm" => {
-                    // lcm(a, b) - least common multiple (placeholder: return product)
+                    // lcm(a, b) = (a * b) / gcd(a, b)
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
                             "lcm expects 2 arguments".to_string(),
                         ));
                     }
-                    let a = self.compile_expr(&args[0])?;
-                    let b = self.compile_expr(&args[1])?;
-                    let a_data = self.extract_data(a)?;
-                    let b_data = self.extract_data(b)?;
-                    let result = self.builder.build_int_mul(a_data, b_data, "lcm").unwrap();
+                    let a_val = self.compile_expr(&args[0])?;
+                    let b_val = self.compile_expr(&args[1])?;
+                    let a = self.extract_data(a_val)?;
+                    let b = self.extract_data(b_val)?;
+
+                    // First compute gcd using Euclidean algorithm
+                    let function = self.current_function.unwrap();
+                    let loop_block = self.context.append_basic_block(function, "lcm_gcd_loop");
+                    let done_block = self.context.append_basic_block(function, "lcm_gcd_done");
+
+                    let ga_ptr = self.builder.build_alloca(self.types.i64_type, "ga").unwrap();
+                    let gb_ptr = self.builder.build_alloca(self.types.i64_type, "gb").unwrap();
+                    self.builder.build_store(ga_ptr, a).unwrap();
+                    self.builder.build_store(gb_ptr, b).unwrap();
+                    self.builder.build_unconditional_branch(loop_block).unwrap();
+
+                    self.builder.position_at_end(loop_block);
+                    let gb_val = self.builder.build_load(self.types.i64_type, gb_ptr, "gb").unwrap().into_int_value();
+                    let zero = self.types.i64_type.const_int(0, false);
+                    let cond = self.builder.build_int_compare(IntPredicate::NE, gb_val, zero, "cond").unwrap();
+
+                    let body_block = self.context.append_basic_block(function, "lcm_gcd_body");
+                    self.builder.build_conditional_branch(cond, body_block, done_block).unwrap();
+
+                    self.builder.position_at_end(body_block);
+                    let ga_val = self.builder.build_load(self.types.i64_type, ga_ptr, "ga").unwrap().into_int_value();
+                    let gb_val = self.builder.build_load(self.types.i64_type, gb_ptr, "gb").unwrap().into_int_value();
+                    let rem = self.builder.build_int_signed_rem(ga_val, gb_val, "rem").unwrap();
+                    self.builder.build_store(ga_ptr, gb_val).unwrap();
+                    self.builder.build_store(gb_ptr, rem).unwrap();
+                    self.builder.build_unconditional_branch(loop_block).unwrap();
+
+                    self.builder.position_at_end(done_block);
+                    let gcd = self.builder.build_load(self.types.i64_type, ga_ptr, "gcd").unwrap().into_int_value();
+                    // lcm = (a * b) / gcd
+                    let product = self.builder.build_int_mul(a, b, "product").unwrap();
+                    let result = self.builder.build_int_signed_div(product, gcd, "lcm").unwrap();
                     return self.make_int(result);
                 }
                 "scottify" | "scots_convert" => {
@@ -9756,24 +10521,25 @@ impl<'ctx> CodeGen<'ctx> {
                     // dae_times(n, fn) - repeat fn n times (placeholder)
                     return Ok(self.make_nil());
                 }
-                "first" | "heid" => {
-                    // first(list) - get first element (placeholder: return nil)
+                "first" => {
+                    // first(list) - get first element (same as heid)
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "first expects 1 argument".to_string(),
                         ));
                     }
-                    // For now, return nil as placeholder
-                    return Ok(self.make_nil());
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_heid(arg);
                 }
-                "last" | "tail_heid" => {
-                    // last(list) - get last element (placeholder: return nil)
+                "last" => {
+                    // last(list) - get last element (same as bum)
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "last expects 1 argument".to_string(),
                         ));
                     }
-                    return Ok(self.make_nil());
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_bum(arg);
                 }
                 "screen_end" | "end_graphics" => {
                     // Graphics cleanup placeholder
@@ -9875,22 +10641,25 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(self.make_nil());
                 }
                 "fin" | "find_first" => {
-                    // fin(list, predicate) - find first matching element (placeholder: return nil)
+                    // fin(list, predicate) - find first matching element
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
                             "fin expects 2 arguments (list, predicate)".to_string(),
                         ));
                     }
-                    return Ok(self.make_nil());
+                    let list_arg = self.compile_expr(&args[0])?;
+                    let func_arg = self.compile_expr(&args[1])?;
+                    return self.inline_hunt(list_arg, func_arg);
                 }
-                "end" | "tail" => {
-                    // end/tail(list) - get last element (placeholder: return nil)
+                "end" => {
+                    // end(list) - get last element
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
-                            "tail expects 1 argument".to_string(),
+                            "end expects 1 argument".to_string(),
                         ));
                     }
-                    return Ok(self.make_nil());
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_bum(arg);
                 }
                 "crabbit" | "grumpy" => {
                     // Scots fun - return grumpy message
@@ -9981,14 +10750,15 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.compile_expr(&args[0]);
                 }
                 "fin_index" | "find_index" => {
-                    // fin_index(list, predicate) - find index of first matching element (placeholder: return -1)
+                    // fin_index(list, predicate) - find index of first matching element
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
                             "fin_index expects 2 arguments (list, predicate)".to_string(),
                         ));
                     }
-                    let neg_one = self.types.i64_type.const_int((-1i64) as u64, true);
-                    return self.make_int(neg_one);
+                    let list_arg = self.compile_expr(&args[0])?;
+                    let func_arg = self.compile_expr(&args[1])?;
+                    return self.inline_find_index(list_arg, func_arg);
                 }
                 "bampot_mode" | "crazy_mode" => {
                     // Scots fun - bampot mode (placeholder: return true)
@@ -10167,8 +10937,126 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(self.make_nil());
                 }
                 "zip_up" | "zip" => {
-                    // zip_up(list1, list2) - combine two lists (placeholder: return nil/empty)
-                    return Ok(self.make_nil());
+                    // zip(list1, list2) - combine two lists into list of pairs
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "zip expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let list1 = self.compile_expr(&args[0])?;
+                    let list2 = self.compile_expr(&args[1])?;
+                    let data1 = self.extract_data(list1)?;
+                    let data2 = self.extract_data(list2)?;
+
+                    let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+                    let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+                    let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+                    let ptr_ptr_type = i8_ptr_type.ptr_type(AddressSpace::default());
+
+                    // Get list1 struct
+                    let struct1 = self.builder.build_int_to_ptr(data1, i64_ptr_type, "struct1").unwrap();
+                    let items1_i64 = self.builder.build_load(self.types.i64_type, struct1, "items1_i64").unwrap().into_int_value();
+                    let len1_ptr = unsafe { self.builder.build_gep(self.types.i64_type, struct1, &[self.types.i64_type.const_int(1, false)], "len1_ptr").unwrap() };
+                    let len1 = self.builder.build_load(self.types.i64_type, len1_ptr, "len1").unwrap().into_int_value();
+                    let items1 = self.builder.build_int_to_ptr(items1_i64, value_ptr_type, "items1").unwrap();
+
+                    // Get list2 struct
+                    let struct2 = self.builder.build_int_to_ptr(data2, i64_ptr_type, "struct2").unwrap();
+                    let items2_i64 = self.builder.build_load(self.types.i64_type, struct2, "items2_i64").unwrap().into_int_value();
+                    let len2_ptr = unsafe { self.builder.build_gep(self.types.i64_type, struct2, &[self.types.i64_type.const_int(1, false)], "len2_ptr").unwrap() };
+                    let len2 = self.builder.build_load(self.types.i64_type, len2_ptr, "len2").unwrap().into_int_value();
+                    let items2 = self.builder.build_int_to_ptr(items2_i64, value_ptr_type, "items2").unwrap();
+
+                    // Find minimum length
+                    let cmp = self.builder.build_int_compare(IntPredicate::ULT, len1, len2, "cmp").unwrap();
+                    let min_len = self.builder.build_select(cmp, len1, len2, "min_len").unwrap().into_int_value();
+
+                    // Allocate result list
+                    let list_struct_size = self.types.i64_type.const_int(24, false);
+                    let new_struct = self.builder.build_call(self.libc.malloc, &[list_struct_size.into()], "zip_struct").unwrap()
+                        .try_as_basic_value().left().unwrap().into_pointer_value();
+                    let items_size = self.builder.build_int_mul(min_len, self.types.i64_type.const_int(16, false), "items_size").unwrap();
+                    let new_items = self.builder.build_call(self.libc.malloc, &[items_size.into()], "zip_items").unwrap()
+                        .try_as_basic_value().left().unwrap().into_pointer_value();
+
+                    // Store items ptr at offset 0
+                    let items_field = self.builder.build_pointer_cast(new_struct, ptr_ptr_type, "items_field").unwrap();
+                    self.builder.build_store(items_field, new_items).unwrap();
+                    // Length at offset 8
+                    let len_field = unsafe { self.builder.build_gep(self.context.i8_type(), new_struct, &[self.types.i64_type.const_int(8, false)], "len_field").unwrap() };
+                    let len_ptr = self.builder.build_pointer_cast(len_field, i64_ptr_type, "len_ptr").unwrap();
+                    self.builder.build_store(len_ptr, min_len).unwrap();
+                    // Capacity at offset 16
+                    let cap_field = unsafe { self.builder.build_gep(self.context.i8_type(), new_struct, &[self.types.i64_type.const_int(16, false)], "cap_field").unwrap() };
+                    let cap_ptr = self.builder.build_pointer_cast(cap_field, i64_ptr_type, "cap_ptr").unwrap();
+                    self.builder.build_store(cap_ptr, min_len).unwrap();
+
+                    let new_items_val = self.builder.build_pointer_cast(new_items, value_ptr_type, "new_items_val").unwrap();
+                    let function = self.current_function.unwrap();
+
+                    // Loop to create pairs
+                    let idx = self.builder.build_alloca(self.types.i64_type, "idx").unwrap();
+                    self.builder.build_store(idx, self.types.i64_type.const_int(0, false)).unwrap();
+
+                    let loop_cond = self.context.append_basic_block(function, "zip_loop");
+                    let loop_body = self.context.append_basic_block(function, "zip_body");
+                    let loop_end = self.context.append_basic_block(function, "zip_end");
+
+                    self.builder.build_unconditional_branch(loop_cond).unwrap();
+                    self.builder.position_at_end(loop_cond);
+                    let i = self.builder.build_load(self.types.i64_type, idx, "i").unwrap().into_int_value();
+                    let cond = self.builder.build_int_compare(IntPredicate::ULT, i, min_len, "cond").unwrap();
+                    self.builder.build_conditional_branch(cond, loop_body, loop_end).unwrap();
+
+                    self.builder.position_at_end(loop_body);
+                    // Get elements from both lists
+                    let elem1_ptr = unsafe { self.builder.build_gep(self.types.value_type, items1, &[i], "elem1_ptr").unwrap() };
+                    let elem1 = self.builder.build_load(self.types.value_type, elem1_ptr, "elem1").unwrap();
+                    let elem2_ptr = unsafe { self.builder.build_gep(self.types.value_type, items2, &[i], "elem2_ptr").unwrap() };
+                    let elem2 = self.builder.build_load(self.types.value_type, elem2_ptr, "elem2").unwrap();
+
+                    // Create pair (2-element list)
+                    let pair_struct_size = self.types.i64_type.const_int(24, false);
+                    let pair_struct = self.builder.build_call(self.libc.malloc, &[pair_struct_size.into()], "pair_struct").unwrap()
+                        .try_as_basic_value().left().unwrap().into_pointer_value();
+                    let pair_items_size = self.types.i64_type.const_int(32, false); // 2 * 16 bytes
+                    let pair_items = self.builder.build_call(self.libc.malloc, &[pair_items_size.into()], "pair_items").unwrap()
+                        .try_as_basic_value().left().unwrap().into_pointer_value();
+
+                    // Store pair items ptr
+                    let pair_items_field = self.builder.build_pointer_cast(pair_struct, ptr_ptr_type, "pair_items_field").unwrap();
+                    self.builder.build_store(pair_items_field, pair_items).unwrap();
+                    // Pair length = 2
+                    let two = self.types.i64_type.const_int(2, false);
+                    let pair_len_field = unsafe { self.builder.build_gep(self.context.i8_type(), pair_struct, &[self.types.i64_type.const_int(8, false)], "pair_len_field").unwrap() };
+                    let pair_len_ptr = self.builder.build_pointer_cast(pair_len_field, i64_ptr_type, "pair_len_ptr").unwrap();
+                    self.builder.build_store(pair_len_ptr, two).unwrap();
+                    // Pair capacity = 2
+                    let pair_cap_field = unsafe { self.builder.build_gep(self.context.i8_type(), pair_struct, &[self.types.i64_type.const_int(16, false)], "pair_cap_field").unwrap() };
+                    let pair_cap_ptr = self.builder.build_pointer_cast(pair_cap_field, i64_ptr_type, "pair_cap_ptr").unwrap();
+                    self.builder.build_store(pair_cap_ptr, two).unwrap();
+
+                    // Store elements in pair
+                    let pair_items_val = self.builder.build_pointer_cast(pair_items, value_ptr_type, "pair_items_val").unwrap();
+                    let pair_elem0_ptr = unsafe { self.builder.build_gep(self.types.value_type, pair_items_val, &[self.types.i64_type.const_int(0, false)], "pair_elem0_ptr").unwrap() };
+                    self.builder.build_store(pair_elem0_ptr, elem1).unwrap();
+                    let pair_elem1_ptr = unsafe { self.builder.build_gep(self.types.value_type, pair_items_val, &[self.types.i64_type.const_int(1, false)], "pair_elem1_ptr").unwrap() };
+                    self.builder.build_store(pair_elem1_ptr, elem2).unwrap();
+
+                    // Create MdhValue for pair list
+                    let pair_list = self.make_list(pair_struct)?;
+
+                    // Store pair in result list
+                    let dst_ptr = unsafe { self.builder.build_gep(self.types.value_type, new_items_val, &[i], "dst_ptr").unwrap() };
+                    self.builder.build_store(dst_ptr, pair_list).unwrap();
+
+                    // Increment and continue loop
+                    let next_i = self.builder.build_int_add(i, self.types.i64_type.const_int(1, false), "next_i").unwrap();
+                    self.builder.build_store(idx, next_i).unwrap();
+                    self.builder.build_unconditional_branch(loop_cond).unwrap();
+
+                    self.builder.position_at_end(loop_end);
+                    return self.make_list(new_struct);
                 }
                 "unzip" | "unzip_list" => {
                     // unzip a list of pairs (placeholder: return nil)
@@ -10241,8 +11129,55 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(self.make_nil());
                 }
                 "mony" | "replicate" => {
-                    // mony(value, count) - create list with n copies (placeholder: return nil/empty)
-                    return Ok(self.make_nil());
+                    // mony(value, count) - create list with n copies
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "mony expects 2 arguments (value, count)".to_string(),
+                        ));
+                    }
+                    let value = self.compile_expr(&args[0])?;
+                    let count_val = self.compile_expr(&args[1])?;
+                    let count = self.extract_data(count_val)?;
+
+                    // Allocate list of given size
+                    let list_ptr = self.allocate_list(count)?;
+
+                    // Fill list with copies of value
+                    let function = self.current_function.unwrap();
+                    let loop_block = self.context.append_basic_block(function, "mony_loop");
+                    let done_block = self.context.append_basic_block(function, "mony_done");
+
+                    let i_ptr = self.builder.build_alloca(self.types.i64_type, "i").unwrap();
+                    let zero = self.types.i64_type.const_int(0, false);
+                    let one = self.types.i64_type.const_int(1, false);
+                    self.builder.build_store(i_ptr, zero).unwrap();
+                    self.builder.build_unconditional_branch(loop_block).unwrap();
+
+                    self.builder.position_at_end(loop_block);
+                    let i = self.builder.build_load(self.types.i64_type, i_ptr, "i").unwrap().into_int_value();
+                    let cond = self.builder.build_int_compare(IntPredicate::SLT, i, count, "cond").unwrap();
+
+                    let body_block = self.context.append_basic_block(function, "mony_body");
+                    self.builder.build_conditional_branch(cond, body_block, done_block).unwrap();
+
+                    self.builder.position_at_end(body_block);
+                    // Get items array and store value at index i
+                    let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+                    let mdh_list_type = self.context.struct_type(
+                        &[value_ptr_type.into(), self.types.i64_type.into(), self.types.i64_type.into()],
+                        false,
+                    );
+                    let items_ptr_ptr = self.builder.build_struct_gep(mdh_list_type, list_ptr, 0, "items_ptr_ptr").unwrap();
+                    let items_ptr = self.builder.build_load(value_ptr_type, items_ptr_ptr, "items").unwrap().into_pointer_value();
+                    let elem_ptr = unsafe { self.builder.build_gep(self.types.value_type, items_ptr, &[i], "elem").unwrap() };
+                    self.builder.build_store(elem_ptr, value).unwrap();
+
+                    let next_i = self.builder.build_int_add(i, one, "next_i").unwrap();
+                    self.builder.build_store(i_ptr, next_i).unwrap();
+                    self.builder.build_unconditional_branch(loop_block).unwrap();
+
+                    self.builder.position_at_end(done_block);
+                    return self.make_list(list_ptr);
                 }
                 "grup_runs" | "group_runs" | "runs" => {
                     // grup_runs(list) - group consecutive equal elements (placeholder: return nil)
@@ -10314,14 +11249,69 @@ impl<'ctx> CodeGen<'ctx> {
                     let zero = self.types.i64_type.const_int(0, false);
                     return self.make_bool(zero);
                 }
-                "ascii" | "char_code" => {
-                    // ascii(char) - get ASCII code (placeholder: return 0)
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_int(zero);
+                "ascii" | "char_code" | "ord" => {
+                    // ascii(str) - get ASCII code of first character
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "ascii expects 1 argument".to_string(),
+                        ));
+                    }
+                    let str_val = self.compile_expr(&args[0])?;
+                    let str_data = self.extract_data(str_val)?;
+                    let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+                    let str_ptr = self
+                        .builder
+                        .build_int_to_ptr(str_data, i8_ptr_type, "str_ptr")
+                        .unwrap();
+                    // Load first character
+                    let first_char = self
+                        .builder
+                        .build_load(self.context.i8_type(), str_ptr, "first_char")
+                        .unwrap()
+                        .into_int_value();
+                    // Zero-extend i8 to i64
+                    let char_code = self
+                        .builder
+                        .build_int_z_extend(first_char, self.types.i64_type, "char_code")
+                        .unwrap();
+                    return self.make_int(char_code);
                 }
-                "from_ascii" | "char" => {
-                    // from_ascii(code) - get char from ASCII code (placeholder: return empty string)
-                    return self.compile_string_literal("");
+                "from_ascii" | "chr" => {
+                    // from_ascii(code) - get char from ASCII code
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "from_ascii expects 1 argument".to_string(),
+                        ));
+                    }
+                    let code_val = self.compile_expr(&args[0])?;
+                    let code = self.extract_data(code_val)?;
+                    // Allocate 2-byte buffer (char + null terminator)
+                    let buf_size = self.types.i64_type.const_int(2, false);
+                    let buf = self
+                        .builder
+                        .build_call(self.libc.malloc, &[buf_size.into()], "char_buf")
+                        .unwrap()
+                        .try_as_basic_value()
+                        .left()
+                        .unwrap()
+                        .into_pointer_value();
+                    // Store character
+                    let char_i8 = self
+                        .builder
+                        .build_int_truncate(code, self.context.i8_type(), "char_i8")
+                        .unwrap();
+                    self.builder.build_store(buf, char_i8).unwrap();
+                    // Store null terminator
+                    let one = self.types.i64_type.const_int(1, false);
+                    let null_ptr = unsafe {
+                        self.builder
+                            .build_gep(self.context.i8_type(), buf, &[one], "null_ptr")
+                            .unwrap()
+                    };
+                    self.builder
+                        .build_store(null_ptr, self.context.i8_type().const_int(0, false))
+                        .unwrap();
+                    return self.make_string(buf);
                 }
                 "split_lines" | "lines" => {
                     // split_lines(str) - split string into lines (placeholder: return nil)
@@ -10375,19 +11365,39 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     return self.compile_string_literal("");
                 }
-                "leftpad" | "pad_left" | "lpad" => {
-                    // leftpad(str, width, pad_char) - left pad string (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
+                "leftpad" | "lpad" => {
+                    // leftpad/lpad - alias for pad_left
+                    if args.len() < 2 || args.len() > 3 {
+                        return Err(HaversError::CompileError(format!(
+                            "{} expects 2-3 arguments",
+                            name
+                        )));
                     }
-                    return self.compile_string_literal("");
+                    let str_arg = self.compile_expr(&args[0])?;
+                    let width_arg = self.compile_expr(&args[1])?;
+                    let pad_char = if args.len() == 3 {
+                        Some(self.compile_expr(&args[2])?)
+                    } else {
+                        None
+                    };
+                    return self.inline_pad(str_arg, width_arg, pad_char, true);
                 }
-                "rightpad" | "pad_right" | "rpad" => {
-                    // rightpad(str, width, pad_char) - right pad string (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
+                "rightpad" | "rpad" => {
+                    // rightpad/rpad - alias for pad_right
+                    if args.len() < 2 || args.len() > 3 {
+                        return Err(HaversError::CompileError(format!(
+                            "{} expects 2-3 arguments",
+                            name
+                        )));
                     }
-                    return self.compile_string_literal("");
+                    let str_arg = self.compile_expr(&args[0])?;
+                    let width_arg = self.compile_expr(&args[1])?;
+                    let pad_char = if args.len() == 3 {
+                        Some(self.compile_expr(&args[2])?)
+                    } else {
+                        None
+                    };
+                    return self.inline_pad(str_arg, width_arg, pad_char, false);
                 }
                 "abbreviate" | "ellipsis" => {
                     // abbreviate(str, max_len) - truncate with ellipsis (placeholder: return as-is)
@@ -10418,34 +11428,54 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.compile_string_literal("");
                 }
                 "is_upper" | "is_uppercase" => {
-                    // is_upper(str) - check if string is all uppercase
-                    // Placeholder: return false
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_bool(zero);
+                    // is_upper(str) - check if string is all uppercase letters
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "is_upper expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_is_char_class(arg, CharClass::Upper);
                 }
                 "is_lower" | "is_lowercase" => {
-                    // is_lower(str) - check if string is all lowercase
-                    // Placeholder: return false
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_bool(zero);
+                    // is_lower(str) - check if string is all lowercase letters
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "is_lower expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_is_char_class(arg, CharClass::Lower);
                 }
                 "is_alpha" | "is_alphabetic" => {
                     // is_alpha(str) - check if string is all letters
-                    // Placeholder: return false
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_bool(zero);
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "is_alpha expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_is_char_class(arg, CharClass::Alpha);
                 }
                 "is_digit" | "is_numeric" => {
                     // is_digit(str) - check if string is all digits
-                    // Placeholder: return false
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_bool(zero);
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "is_digit expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_is_char_class(arg, CharClass::Digit);
                 }
                 "is_alnum" | "is_alphanumeric" => {
                     // is_alnum(str) - check if string is alphanumeric
-                    // Placeholder: return false
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_bool(zero);
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "is_alnum expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_is_char_class(arg, CharClass::Alnum);
                 }
                 "is_nowt" | "is_nil" | "is_null" | "is_none" => {
                     // is_nowt(val) - check if value is nil
@@ -10545,8 +11575,18 @@ impl<'ctx> CodeGen<'ctx> {
                     // setdefault(dict, key, default) - get or set default (placeholder: return nil)
                     return Ok(self.make_nil());
                 }
-                "pop" | "dict_pop" | "list_pop" => {
-                    // pop(collection, key/index) - remove and return (placeholder: return nil)
+                "pop" | "list_pop" => {
+                    // pop(list) - remove and return last element (same as yank)
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "pop expects 1 argument".to_string(),
+                        ));
+                    }
+                    let list = self.compile_expr(&args[0])?;
+                    return self.inline_yank(list);
+                }
+                "dict_pop" => {
+                    // dict_pop(dict, key) - remove and return value (placeholder: return nil)
                     return Ok(self.make_nil());
                 }
                 "popitem" | "dict_popitem" => {
@@ -10612,20 +11652,76 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.compile_string_literal("");
                 }
                 "lerp" | "linear_interpolate" => {
-                    // lerp(a, b, t) - linear interpolation (placeholder: return a)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
+                    // lerp(a, b, t) - linear interpolation: a + t * (b - a)
+                    if args.len() != 3 {
+                        return Err(HaversError::CompileError(
+                            "lerp expects 3 arguments (a, b, t)".to_string(),
+                        ));
                     }
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_int(zero);
+                    let a_val = self.compile_expr(&args[0])?;
+                    let b_val = self.compile_expr(&args[1])?;
+                    let t_val = self.compile_expr(&args[2])?;
+                    let a_tag = self.extract_tag(a_val)?;
+                    let a_data = self.extract_data(a_val)?;
+                    let b_data = self.extract_data(b_val)?;
+                    let t_data = self.extract_data(t_val)?;
+
+                    let float_tag = self.types.i8_type.const_int(3, false);
+                    let is_float = self.builder.build_int_compare(IntPredicate::EQ, a_tag, float_tag, "is_float").unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let float_block = self.context.append_basic_block(function, "lerp_float");
+                    let int_block = self.context.append_basic_block(function, "lerp_int");
+                    let done_block = self.context.append_basic_block(function, "lerp_done");
+
+                    self.builder.build_conditional_branch(is_float, float_block, int_block).unwrap();
+
+                    // Float case: a + t * (b - a)
+                    self.builder.position_at_end(float_block);
+                    let a_f = self.builder.build_bitcast(a_data, self.types.f64_type, "a_f").unwrap().into_float_value();
+                    let b_f = self.builder.build_bitcast(b_data, self.types.f64_type, "b_f").unwrap().into_float_value();
+                    let t_f = self.builder.build_bitcast(t_data, self.types.f64_type, "t_f").unwrap().into_float_value();
+                    let diff_f = self.builder.build_float_sub(b_f, a_f, "diff_f").unwrap();
+                    let scaled_f = self.builder.build_float_mul(t_f, diff_f, "scaled_f").unwrap();
+                    let result_f = self.builder.build_float_add(a_f, scaled_f, "result_f").unwrap();
+                    let float_result = self.make_float(result_f)?;
+                    self.builder.build_unconditional_branch(done_block).unwrap();
+                    let float_block_end = self.builder.get_insert_block().unwrap();
+
+                    // Int case: a + t * (b - a) as integers
+                    self.builder.position_at_end(int_block);
+                    let diff_i = self.builder.build_int_sub(b_data, a_data, "diff_i").unwrap();
+                    let scaled_i = self.builder.build_int_mul(t_data, diff_i, "scaled_i").unwrap();
+                    let result_i = self.builder.build_int_add(a_data, scaled_i, "result_i").unwrap();
+                    let int_result = self.make_int(result_i)?;
+                    self.builder.build_unconditional_branch(done_block).unwrap();
+                    let int_block_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(done_block);
+                    let phi = self.builder.build_phi(self.types.value_type, "lerp_result").unwrap();
+                    phi.add_incoming(&[(&float_result, float_block_end), (&int_result, int_block_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 "clamp" | "clamp_value" => {
-                    // clamp(val, min, max) - clamp value (placeholder: return val)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
+                    // clamp(val, min, max) - clamp value between min and max
+                    if args.len() != 3 {
+                        return Err(HaversError::CompileError(
+                            "clamp expects 3 arguments (val, min, max)".to_string(),
+                        ));
                     }
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_int(zero);
+                    let val = self.compile_expr(&args[0])?;
+                    let min_val = self.compile_expr(&args[1])?;
+                    let max_val = self.compile_expr(&args[2])?;
+                    let val_data = self.extract_data(val)?;
+                    let min_data = self.extract_data(min_val)?;
+                    let max_data = self.extract_data(max_val)?;
+
+                    // if val < min then min else if val > max then max else val
+                    let lt_min = self.builder.build_int_compare(IntPredicate::SLT, val_data, min_data, "lt_min").unwrap();
+                    let gt_max = self.builder.build_int_compare(IntPredicate::SGT, val_data, max_data, "gt_max").unwrap();
+                    let clamped_min = self.builder.build_select(lt_min, min_data, val_data, "clamped_min").unwrap().into_int_value();
+                    let clamped = self.builder.build_select(gt_max, max_data, clamped_min, "clamped").unwrap().into_int_value();
+                    return self.make_int(clamped);
                 }
                 "median" | "middle_value" => {
                     // median(list) - get median value (placeholder: return 0)
@@ -10633,14 +11729,89 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.make_int(zero);
                 }
                 "average" | "avg" | "mean" => {
-                    // average(list) - get average (placeholder: return 0)
+                    // average(list) - get average (sum / length)
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "average expects 1 argument".to_string(),
+                        ));
+                    }
+                    let list_val = self.compile_expr(&args[0])?;
+                    let list_data = self.extract_data(list_val)?;
+                    let length = self.get_list_length(list_data)?;
+
+                    let function = self.current_function.unwrap();
+                    let loop_block = self.context.append_basic_block(function, "avg_loop");
+                    let body_block = self.context.append_basic_block(function, "avg_body");
+                    let done_block = self.context.append_basic_block(function, "avg_done");
+
                     let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_int(zero);
+                    let one = self.types.i64_type.const_int(1, false);
+                    let i_ptr = self.builder.build_alloca(self.types.i64_type, "i").unwrap();
+                    let sum_ptr = self.builder.build_alloca(self.types.i64_type, "sum").unwrap();
+                    self.builder.build_store(i_ptr, zero).unwrap();
+                    self.builder.build_store(sum_ptr, zero).unwrap();
+                    self.builder.build_unconditional_branch(loop_block).unwrap();
+
+                    self.builder.position_at_end(loop_block);
+                    let i = self.builder.build_load(self.types.i64_type, i_ptr, "i").unwrap().into_int_value();
+                    let cond = self.builder.build_int_compare(IntPredicate::SLT, i, length, "cond").unwrap();
+                    self.builder.build_conditional_branch(cond, body_block, done_block).unwrap();
+
+                    self.builder.position_at_end(body_block);
+                    let elem_ptr = self.get_list_element_ptr(list_data, i)?;
+                    let elem = self.builder.build_load(self.types.value_type, elem_ptr, "elem").unwrap();
+                    let elem_data = self.extract_data(elem)?;
+                    let sum = self.builder.build_load(self.types.i64_type, sum_ptr, "sum").unwrap().into_int_value();
+                    let new_sum = self.builder.build_int_add(sum, elem_data, "new_sum").unwrap();
+                    self.builder.build_store(sum_ptr, new_sum).unwrap();
+                    let next_i = self.builder.build_int_add(i, one, "next_i").unwrap();
+                    self.builder.build_store(i_ptr, next_i).unwrap();
+                    self.builder.build_unconditional_branch(loop_block).unwrap();
+
+                    self.builder.position_at_end(done_block);
+                    let final_sum = self.builder.build_load(self.types.i64_type, sum_ptr, "final_sum").unwrap().into_int_value();
+                    let avg = self.builder.build_int_signed_div(final_sum, length, "avg").unwrap();
+                    return self.make_int(avg);
                 }
                 "factorial" | "fact" => {
-                    // factorial(n) (placeholder: return 1)
+                    // factorial(n) - compute n!
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "factorial expects 1 argument".to_string(),
+                        ));
+                    }
+                    let n_val = self.compile_expr(&args[0])?;
+                    let n = self.extract_data(n_val)?;
+
+                    let function = self.current_function.unwrap();
+                    let loop_block = self.context.append_basic_block(function, "fact_loop");
+                    let done_block = self.context.append_basic_block(function, "fact_done");
+
                     let one = self.types.i64_type.const_int(1, false);
-                    return self.make_int(one);
+                    let i_ptr = self.builder.build_alloca(self.types.i64_type, "i").unwrap();
+                    let result_ptr = self.builder.build_alloca(self.types.i64_type, "result").unwrap();
+                    self.builder.build_store(i_ptr, one).unwrap();
+                    self.builder.build_store(result_ptr, one).unwrap();
+                    self.builder.build_unconditional_branch(loop_block).unwrap();
+
+                    self.builder.position_at_end(loop_block);
+                    let i = self.builder.build_load(self.types.i64_type, i_ptr, "i").unwrap().into_int_value();
+                    let cond = self.builder.build_int_compare(IntPredicate::SLE, i, n, "cond").unwrap();
+
+                    let body_block = self.context.append_basic_block(function, "fact_body");
+                    self.builder.build_conditional_branch(cond, body_block, done_block).unwrap();
+
+                    self.builder.position_at_end(body_block);
+                    let result = self.builder.build_load(self.types.i64_type, result_ptr, "result").unwrap().into_int_value();
+                    let new_result = self.builder.build_int_mul(result, i, "new_result").unwrap();
+                    self.builder.build_store(result_ptr, new_result).unwrap();
+                    let next_i = self.builder.build_int_add(i, one, "next_i").unwrap();
+                    self.builder.build_store(i_ptr, next_i).unwrap();
+                    self.builder.build_unconditional_branch(loop_block).unwrap();
+
+                    self.builder.position_at_end(done_block);
+                    let final_result = self.builder.build_load(self.types.i64_type, result_ptr, "final_result").unwrap().into_int_value();
+                    return self.make_int(final_result);
                 }
                 "tae_binary" | "to_binary" => {
                     // tae_binary(n) - convert to binary string (placeholder)
@@ -10713,13 +11884,6 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     return Ok(self.make_nil());
                 }
-                "tak" | "take" => {
-                    // tak(list, n) - take first n elements (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Ok(self.make_nil());
-                }
                 "constant" | "const" => {
                     // constant(val) - create constant function (placeholder: return val)
                     if !args.is_empty() {
@@ -10735,39 +11899,84 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(self.make_nil());
                 }
                 "product" | "prod" => {
-                    // product(list) - multiply all elements (placeholder: return 1)
-                    let one = self.types.i64_type.const_int(1, false);
-                    return self.make_int(one);
-                }
-                "dict_has" | "has_key" | "contains_key" => {
-                    // dict_has(dict, key) - check if dict has key (placeholder: return false)
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_bool(zero);
+                    // product(list) - multiply all elements
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "product expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_product(arg);
                 }
                 "bit_an" | "bit_and" | "bitand" => {
-                    // bit_an(a, b) - bitwise AND (placeholder: return 0)
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_int(zero);
+                    // bit_an(a, b) - bitwise AND
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError("bit_an expects 2 arguments".to_string()));
+                    }
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
+                    let a_int = self.extract_data(a)?;
+                    let b_int = self.extract_data(b)?;
+                    let result = self.builder.build_and(a_int, b_int, "bit_and").unwrap();
+                    return self.make_int(result);
                 }
                 "bit_or" | "bitor" => {
-                    // bit_or(a, b) - bitwise OR (placeholder: return 0)
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_int(zero);
+                    // bit_or(a, b) - bitwise OR
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError("bit_or expects 2 arguments".to_string()));
+                    }
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
+                    let a_int = self.extract_data(a)?;
+                    let b_int = self.extract_data(b)?;
+                    let result = self.builder.build_or(a_int, b_int, "bit_or").unwrap();
+                    return self.make_int(result);
                 }
                 "bit_xor" | "bitxor" => {
-                    // bit_xor(a, b) - bitwise XOR (placeholder: return 0)
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_int(zero);
+                    // bit_xor(a, b) - bitwise XOR
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError("bit_xor expects 2 arguments".to_string()));
+                    }
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
+                    let a_int = self.extract_data(a)?;
+                    let b_int = self.extract_data(b)?;
+                    let result = self.builder.build_xor(a_int, b_int, "bit_xor").unwrap();
+                    return self.make_int(result);
                 }
                 "bit_nae" | "bit_not" | "bitnot" => {
-                    // bit_nae(n) - bitwise NOT (placeholder: return 0)
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_int(zero);
+                    // bit_nae(n) - bitwise NOT
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError("bit_not expects 1 argument".to_string()));
+                    }
+                    let n = self.compile_expr(&args[0])?;
+                    let n_int = self.extract_data(n)?;
+                    let result = self.builder.build_not(n_int, "bit_not").unwrap();
+                    return self.make_int(result);
                 }
                 "bit_shove_left" | "bit_shl" | "shl" => {
-                    // bit_shove_left(n, amount) - left shift (placeholder: return 0)
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_int(zero);
+                    // bit_shove_left(n, amount) - left shift
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError("bit_shl expects 2 arguments".to_string()));
+                    }
+                    let n = self.compile_expr(&args[0])?;
+                    let amount = self.compile_expr(&args[1])?;
+                    let n_int = self.extract_data(n)?;
+                    let amount_int = self.extract_data(amount)?;
+                    let result = self.builder.build_left_shift(n_int, amount_int, "bit_shl").unwrap();
+                    return self.make_int(result);
+                }
+                "bit_shove_right" | "bit_shr" | "shr" => {
+                    // bit_shove_right(n, amount) - right shift
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError("bit_shr expects 2 arguments".to_string()));
+                    }
+                    let n = self.compile_expr(&args[0])?;
+                    let amount = self.compile_expr(&args[1])?;
+                    let n_int = self.extract_data(n)?;
+                    let amount_int = self.extract_data(amount)?;
+                    let result = self.builder.build_right_shift(n_int, amount_int, false, "bit_shr").unwrap();
+                    return self.make_int(result);
                 }
                 _ => {}
             }
@@ -10927,8 +12136,313 @@ impl<'ctx> CodeGen<'ctx> {
         {
             return self.compile_for_range(variable, start, end, *inclusive, body);
         }
-        // For-each loop over list
-        self.compile_for_list(variable, iterable, body)
+        // For-each loop over list or string (runtime check)
+        self.compile_for_iterable(variable, iterable, body)
+    }
+
+    fn compile_for_iterable(
+        &mut self,
+        variable: &str,
+        iterable: &Expr,
+        body: &Stmt,
+    ) -> Result<(), HaversError> {
+        let function = self.current_function.unwrap();
+
+        // Compile the iterable and check its type
+        let iter_val = self.compile_expr(iterable)?;
+        let iter_tag = self.extract_tag(iter_val)?;
+        let iter_data = self.extract_data(iter_val)?;
+
+        let string_tag = self.context.i8_type().const_int(4, false);
+
+        let is_string = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, iter_tag, string_tag, "is_string")
+            .unwrap();
+
+        let for_string_block = self.context.append_basic_block(function, "for_string");
+        let for_list_block = self.context.append_basic_block(function, "for_list");
+        let after_block = self.context.append_basic_block(function, "for_after");
+
+        self.builder
+            .build_conditional_branch(is_string, for_string_block, for_list_block)
+            .unwrap();
+
+        // String iteration
+        self.builder.position_at_end(for_string_block);
+        self.compile_for_string_impl(variable, iter_data, body, after_block)?;
+
+        // List iteration
+        self.builder.position_at_end(for_list_block);
+        self.compile_for_list_impl(variable, iter_data, body, after_block)?;
+
+        // After loop
+        self.builder.position_at_end(after_block);
+        Ok(())
+    }
+
+    fn compile_for_string_impl(
+        &mut self,
+        variable: &str,
+        str_data: inkwell::values::IntValue<'ctx>,
+        body: &Stmt,
+        after_block: inkwell::basic_block::BasicBlock<'ctx>,
+    ) -> Result<(), HaversError> {
+        let function = self.current_function.unwrap();
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+
+        // Get string pointer
+        let str_ptr = self
+            .builder
+            .build_int_to_ptr(str_data, i8_ptr_type, "str_ptr")
+            .unwrap();
+
+        // Get string length via strlen
+        let str_len = self
+            .builder
+            .build_call(self.libc.strlen, &[str_ptr.into()], "str_len")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_int_value();
+
+        // Create loop variable (holds single-char string)
+        let var_alloca = self.create_entry_block_alloca(variable);
+        self.variables.insert(variable.to_string(), var_alloca);
+
+        // Create index counter
+        let idx_alloca = self
+            .builder
+            .build_alloca(self.types.i64_type, "for_str_idx")
+            .unwrap();
+        let zero = self.types.i64_type.const_int(0, false);
+        self.builder.build_store(idx_alloca, zero).unwrap();
+
+        let loop_block = self.context.append_basic_block(function, "for_str_loop");
+        let body_block = self.context.append_basic_block(function, "for_str_body");
+        let incr_block = self.context.append_basic_block(function, "for_str_incr");
+
+        self.loop_stack.push(LoopContext {
+            break_block: after_block,
+            continue_block: incr_block,
+        });
+
+        self.builder.build_unconditional_branch(loop_block).unwrap();
+
+        // Loop condition: idx < len
+        self.builder.position_at_end(loop_block);
+        let idx = self
+            .builder
+            .build_load(self.types.i64_type, idx_alloca, "idx")
+            .unwrap()
+            .into_int_value();
+        let cmp = self
+            .builder
+            .build_int_compare(IntPredicate::ULT, idx, str_len, "for_str_cmp")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(cmp, body_block, after_block)
+            .unwrap();
+
+        // Body: extract character at idx and create single-char string
+        self.builder.position_at_end(body_block);
+        let char_ptr = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), str_ptr, &[idx], "char_ptr")
+                .unwrap()
+        };
+        let char_val = self
+            .builder
+            .build_load(self.context.i8_type(), char_ptr, "char_val")
+            .unwrap()
+            .into_int_value();
+
+        // Create single-char null-terminated string
+        let two = self.types.i64_type.const_int(2, false);
+        let char_str_ptr = self
+            .builder
+            .build_call(self.libc.malloc, &[two.into()], "char_str")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+        self.builder.build_store(char_str_ptr, char_val).unwrap();
+        let null_pos = unsafe {
+            self.builder
+                .build_gep(
+                    self.context.i8_type(),
+                    char_str_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "null_pos",
+                )
+                .unwrap()
+        };
+        self.builder
+            .build_store(null_pos, self.context.i8_type().const_int(0, false))
+            .unwrap();
+
+        // Create MdhValue for the char string
+        let char_str_val = self.make_string(char_str_ptr)?;
+        self.builder.build_store(var_alloca, char_str_val).unwrap();
+
+        // Compile body
+        self.compile_stmt(body)?;
+        if self
+            .builder
+            .get_insert_block()
+            .unwrap()
+            .get_terminator()
+            .is_none()
+        {
+            self.builder.build_unconditional_branch(incr_block).unwrap();
+        }
+
+        // Increment
+        self.builder.position_at_end(incr_block);
+        let idx_in_incr = self
+            .builder
+            .build_load(self.types.i64_type, idx_alloca, "idx_incr")
+            .unwrap()
+            .into_int_value();
+        let one = self.types.i64_type.const_int(1, false);
+        let next_idx = self
+            .builder
+            .build_int_add(idx_in_incr, one, "next_idx")
+            .unwrap();
+        self.builder.build_store(idx_alloca, next_idx).unwrap();
+        self.builder.build_unconditional_branch(loop_block).unwrap();
+
+        self.loop_stack.pop();
+        Ok(())
+    }
+
+    fn compile_for_list_impl(
+        &mut self,
+        variable: &str,
+        list_data: inkwell::values::IntValue<'ctx>,
+        body: &Stmt,
+        after_block: inkwell::basic_block::BasicBlock<'ctx>,
+    ) -> Result<(), HaversError> {
+        let function = self.current_function.unwrap();
+        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+
+        // Convert data to list struct pointer
+        let list_ptr = self
+            .builder
+            .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr")
+            .unwrap();
+
+        // Get list length from offset 1 (MdhList struct layout: {*items, length, capacity})
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    list_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr",
+                )
+                .unwrap()
+        };
+        let list_len = self
+            .builder
+            .build_load(self.types.i64_type, len_ptr, "list_len")
+            .unwrap()
+            .into_int_value();
+
+        // Load items pointer from offset 0
+        let items_ptr_as_i64 = self
+            .builder
+            .build_load(self.types.i64_type, list_ptr, "items_ptr_i64")
+            .unwrap()
+            .into_int_value();
+
+        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let items_ptr = self
+            .builder
+            .build_int_to_ptr(items_ptr_as_i64, value_ptr_type, "items_ptr")
+            .unwrap();
+
+        // Create loop variable
+        let var_alloca = self.create_entry_block_alloca(variable);
+        self.variables.insert(variable.to_string(), var_alloca);
+
+        // Create index counter
+        let idx_alloca = self
+            .builder
+            .build_alloca(self.types.i64_type, "for_lst_idx")
+            .unwrap();
+        let zero = self.types.i64_type.const_int(0, false);
+        self.builder.build_store(idx_alloca, zero).unwrap();
+
+        let loop_block = self.context.append_basic_block(function, "for_lst_loop");
+        let body_block = self.context.append_basic_block(function, "for_lst_body");
+        let incr_block = self.context.append_basic_block(function, "for_lst_incr");
+
+        self.loop_stack.push(LoopContext {
+            break_block: after_block,
+            continue_block: incr_block,
+        });
+
+        self.builder.build_unconditional_branch(loop_block).unwrap();
+
+        // Loop condition
+        self.builder.position_at_end(loop_block);
+        let idx = self
+            .builder
+            .build_load(self.types.i64_type, idx_alloca, "idx")
+            .unwrap()
+            .into_int_value();
+        let cmp = self
+            .builder
+            .build_int_compare(IntPredicate::ULT, idx, list_len, "for_lst_cmp")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(cmp, body_block, after_block)
+            .unwrap();
+
+        // Body
+        self.builder.position_at_end(body_block);
+        let elem_ptr = unsafe {
+            self.builder
+                .build_gep(self.types.value_type, items_ptr, &[idx], "elem_ptr")
+                .unwrap()
+        };
+        let elem_val = self
+            .builder
+            .build_load(self.types.value_type, elem_ptr, "elem_val")
+            .unwrap();
+        self.builder.build_store(var_alloca, elem_val).unwrap();
+
+        self.compile_stmt(body)?;
+        if self
+            .builder
+            .get_insert_block()
+            .unwrap()
+            .get_terminator()
+            .is_none()
+        {
+            self.builder.build_unconditional_branch(incr_block).unwrap();
+        }
+
+        // Increment
+        self.builder.position_at_end(incr_block);
+        let idx_in_incr = self
+            .builder
+            .build_load(self.types.i64_type, idx_alloca, "idx_incr")
+            .unwrap()
+            .into_int_value();
+        let one = self.types.i64_type.const_int(1, false);
+        let next_idx = self
+            .builder
+            .build_int_add(idx_in_incr, one, "next_idx")
+            .unwrap();
+        self.builder.build_store(idx_alloca, next_idx).unwrap();
+        self.builder.build_unconditional_branch(loop_block).unwrap();
+
+        self.loop_stack.pop();
+        Ok(())
     }
 
     fn compile_for_list(
@@ -11529,48 +13043,76 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Compile a list literal that contains spread expressions
     /// Uses runtime index tracking to handle dynamic element counts
+    /// Layout: struct MdhList { MdhValue* items, i64 length, i64 capacity } = 24 bytes
     fn compile_list_with_spread(&mut self, elements: &[Expr]) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let initial_capacity = 2048usize;
         let value_size = 16u64;
-        let header_size = 16u64;
-        let total_size = header_size + (initial_capacity as u64) * value_size;
 
-        // Allocate memory
-        let size_val = self.types.i64_type.const_int(total_size, false);
-        let raw_ptr = self
+        // MdhList struct: { MdhValue* items, i64 length, i64 capacity } = 24 bytes
+        let list_struct_size = self.types.i64_type.const_int(24, false);
+        let list_ptr = self
             .builder
-            .build_call(self.libc.malloc, &[size_val.into()], "spread_list_alloc")
+            .build_call(self.libc.malloc, &[list_struct_size.into()], "spread_list_struct")
             .map_err(|e| HaversError::CompileError(format!("Failed to call malloc: {}", e)))?
             .try_as_basic_value()
             .left()
             .ok_or_else(|| HaversError::CompileError("malloc returned void".to_string()))?
             .into_pointer_value();
 
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let header_ptr = self
+        // Allocate items array: capacity * sizeof(MdhValue) = capacity * 16
+        let items_size = self.types.i64_type.const_int(initial_capacity as u64 * value_size, false);
+        let items_ptr = self
             .builder
-            .build_pointer_cast(raw_ptr, i64_ptr_type, "header_ptr")
-            .map_err(|e| HaversError::CompileError(format!("Failed to cast pointer: {}", e)))?;
+            .build_call(self.libc.malloc, &[items_size.into()], "spread_list_items")
+            .map_err(|e| HaversError::CompileError(format!("Failed to call malloc: {}", e)))?
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| HaversError::CompileError("malloc returned void".to_string()))?
+            .into_pointer_value();
 
-        // Store capacity
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let ptr_ptr_type = i8_ptr_type.ptr_type(AddressSpace::default());
+
+        // Store items pointer at offset 0
+        let items_field_ptr = self
+            .builder
+            .build_pointer_cast(list_ptr, ptr_ptr_type, "items_field_ptr")
+            .map_err(|e| HaversError::CompileError(format!("Failed to cast: {}", e)))?;
+        self.builder
+            .build_store(items_field_ptr, items_ptr)
+            .map_err(|e| HaversError::CompileError(format!("Failed to store items ptr: {}", e)))?;
+
+        // Get length pointer at offset 8 (will be updated at the end)
+        let length_field_ptr = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), list_ptr, &[self.types.i64_type.const_int(8, false)], "length_field_ptr")
+                .unwrap()
+        };
+        let len_ptr = self
+            .builder
+            .build_pointer_cast(length_field_ptr, i64_ptr_type, "len_ptr")
+            .unwrap();
+
+        // Store capacity at offset 16
+        let capacity_field_ptr = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), list_ptr, &[self.types.i64_type.const_int(16, false)], "capacity_field_ptr")
+                .unwrap()
+        };
+        let capacity_ptr = self
+            .builder
+            .build_pointer_cast(capacity_field_ptr, i64_ptr_type, "capacity_ptr")
+            .unwrap();
         let cap_val = self.types.i64_type.const_int(initial_capacity as u64, false);
-        self.builder.build_store(header_ptr, cap_val).unwrap();
+        self.builder.build_store(capacity_ptr, cap_val).unwrap();
 
-        // Get length pointer (will be updated at the end)
-        let len_ptr = unsafe {
-            self.builder
-                .build_gep(self.types.i64_type, header_ptr, &[self.types.i64_type.const_int(1, false)], "len_ptr")
-                .unwrap()
-        };
-
-        // Get elements base pointer
+        // Cast items_ptr to MdhValue* for storing elements
         let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
-        let elements_base = unsafe {
-            self.builder
-                .build_gep(self.types.i64_type, header_ptr, &[self.types.i64_type.const_int(2, false)], "elements_base")
-                .unwrap()
-        };
-        let elements_ptr = self.builder.build_pointer_cast(elements_base, value_ptr_type, "elements_ptr").unwrap();
+        let elements_ptr = self
+            .builder
+            .build_pointer_cast(items_ptr, value_ptr_type, "elements_ptr")
+            .unwrap();
 
         // Create index counter alloca
         let idx_alloca = self.builder.build_alloca(self.types.i64_type, "spread_idx").unwrap();
@@ -11725,7 +13267,7 @@ impl<'ctx> CodeGen<'ctx> {
         let final_len = self.builder.build_load(self.types.i64_type, idx_alloca, "final_len").unwrap();
         self.builder.build_store(len_ptr, final_len).unwrap();
 
-        self.make_list(raw_ptr)
+        self.make_list(list_ptr)
     }
 
     /// Compile a dict literal expression: {key1: value1, key2: value2, ...}
@@ -12410,13 +13952,27 @@ impl<'ctx> CodeGen<'ctx> {
             .left()
             .ok_or_else(|| HaversError::CompileError("dict_set returned void".to_string()))?;
 
-        // Update the variable with the new dict (dict_set returns a new dict since it may reallocate)
-        if let Expr::Variable { name, .. } = object {
-            if let Some(ptr) = self.variables.get(name) {
-                let ptr = *ptr;
-                self.builder
-                    .build_store(ptr, dict_result)
-                    .map_err(|e| HaversError::CompileError(format!("Failed to store: {}", e)))?;
+        // Update the variable/field with the new dict (dict_set returns a new dict since it may reallocate)
+        match object {
+            Expr::Variable { name, .. } => {
+                if let Some(ptr) = self.variables.get(name) {
+                    let ptr = *ptr;
+                    self.builder
+                        .build_store(ptr, dict_result)
+                        .map_err(|e| HaversError::CompileError(format!("Failed to store: {}", e)))?;
+                }
+            }
+            Expr::Get {
+                object: inner_obj,
+                property,
+                ..
+            } => {
+                // Field access like masel.data - need to store updated dict back to the field
+                let instance_val = self.compile_expr(inner_obj)?;
+                self.compile_instance_set_field(instance_val, property, dict_result)?;
+            }
+            _ => {
+                // For other expressions we can't store back
             }
         }
 
@@ -12553,13 +14109,28 @@ impl<'ctx> CodeGen<'ctx> {
             .left()
             .ok_or_else(|| HaversError::CompileError("dict_set returned void".to_string()))?;
 
-        // Update the variable with the new dict (dict_set returns a new dict since it may reallocate)
-        if let Expr::Variable { name, .. } = object {
-            if let Some(ptr) = self.variables.get(name) {
-                let ptr = *ptr;
-                self.builder
-                    .build_store(ptr, dict_result)
-                    .map_err(|e| HaversError::CompileError(format!("Failed to store: {}", e)))?;
+        // Update the variable/field with the new dict (dict_set returns a new dict since it may reallocate)
+        match object {
+            Expr::Variable { name, .. } => {
+                if let Some(ptr) = self.variables.get(name) {
+                    let ptr = *ptr;
+                    self.builder
+                        .build_store(ptr, dict_result)
+                        .map_err(|e| HaversError::CompileError(format!("Failed to store: {}", e)))?;
+                }
+            }
+            Expr::Get {
+                object: inner_obj,
+                property,
+                ..
+            } => {
+                // Field access like masel.data - need to store updated dict back to the field
+                let instance_val = self.compile_expr(inner_obj)?;
+                self.compile_instance_set_field(instance_val, property, dict_result)?;
+            }
+            _ => {
+                // For other expressions we can't store back - the update is lost
+                // This is a limitation but covers the common cases
             }
         }
 
@@ -12977,178 +14548,6 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Return nil
         Ok(self.make_nil())
-    }
-
-    // ===== Phase 7: I/O functions =====
-
-    /// speir(prompt?) - Read a line from stdin, optionally printing a prompt first
-    fn inline_speir(
-        &mut self,
-        prompt: Option<BasicValueEnum<'ctx>>,
-    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        // If there's a prompt, print it first (without newline)
-        if let Some(prompt_val) = prompt {
-            // Extract string pointer from prompt
-            let prompt_struct = prompt_val.into_struct_value();
-            let prompt_data = self
-                .builder
-                .build_extract_value(prompt_struct, 1, "prompt_data")
-                .unwrap()
-                .into_int_value();
-            let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-            let prompt_ptr = self
-                .builder
-                .build_int_to_ptr(prompt_data, i8_ptr_type, "prompt_ptr")
-                .unwrap();
-
-            // Print the prompt using printf with %s format (no newline)
-            let fmt_ptr = self.get_string_ptr(self.fmt_string);
-            self.builder
-                .build_call(
-                    self.libc.printf,
-                    &[fmt_ptr.into(), prompt_ptr.into()],
-                    "print_prompt",
-                )
-                .unwrap();
-        }
-
-        // Allocate buffer for input (1024 bytes should be enough for most input)
-        let buf_size = self.types.i64_type.const_int(1024, false);
-        let buffer = self
-            .builder
-            .build_call(self.libc.malloc, &[buf_size.into()], "input_buffer")
-            .unwrap()
-            .try_as_basic_value()
-            .left()
-            .unwrap()
-            .into_pointer_value();
-
-        // Get stdin - declare it as an external global
-        let stdin_global = self.module.add_global(
-            self.context.i8_type().ptr_type(AddressSpace::default()),
-            Some(AddressSpace::default()),
-            "stdin",
-        );
-        stdin_global.set_linkage(Linkage::External);
-
-        // Load stdin pointer
-        let stdin_ptr = self
-            .builder
-            .build_load(
-                self.context.i8_type().ptr_type(AddressSpace::default()),
-                stdin_global.as_pointer_value(),
-                "stdin_val",
-            )
-            .unwrap()
-            .into_pointer_value();
-
-        // Call fgets(buffer, 1024, stdin)
-        let size_i32 = self.context.i32_type().const_int(1024, false);
-        let result = self
-            .builder
-            .build_call(
-                self.libc.fgets,
-                &[buffer.into(), size_i32.into(), stdin_ptr.into()],
-                "fgets_result",
-            )
-            .unwrap()
-            .try_as_basic_value()
-            .left()
-            .unwrap()
-            .into_pointer_value();
-
-        // Check if fgets returned NULL (EOF or error)
-        let null = self
-            .context
-            .i8_type()
-            .ptr_type(AddressSpace::default())
-            .const_null();
-        let is_null = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, result, null, "is_null")
-            .unwrap();
-
-        let function = self.current_function.unwrap();
-        let eof_block = self.context.append_basic_block(function, "speir_eof");
-        let ok_block = self.context.append_basic_block(function, "speir_ok");
-        let done_block = self.context.append_basic_block(function, "speir_done");
-
-        self.builder
-            .build_conditional_branch(is_null, eof_block, ok_block)
-            .unwrap();
-
-        // EOF case - return empty string
-        self.builder.position_at_end(eof_block);
-        let empty_str = self
-            .builder
-            .build_global_string_ptr("", "empty_str")
-            .unwrap();
-        let eof_result = self.make_string(empty_str.as_pointer_value())?;
-        self.builder.build_unconditional_branch(done_block).unwrap();
-        let eof_block_end = self.builder.get_insert_block().unwrap();
-
-        // OK case - strip the trailing newline if present
-        self.builder.position_at_end(ok_block);
-
-        // Get string length
-        let len = self
-            .builder
-            .build_call(self.libc.strlen, &[buffer.into()], "input_len")
-            .unwrap()
-            .try_as_basic_value()
-            .left()
-            .unwrap()
-            .into_int_value();
-
-        // Check if last char is newline
-        let one = self.types.i64_type.const_int(1, false);
-        let last_idx = self.builder.build_int_sub(len, one, "last_idx").unwrap();
-        let last_char_ptr = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), buffer, &[last_idx], "last_char_ptr")
-                .unwrap()
-        };
-        let last_char = self
-            .builder
-            .build_load(self.context.i8_type(), last_char_ptr, "last_char")
-            .unwrap()
-            .into_int_value();
-        let newline = self.context.i8_type().const_int(10, false); // '\n'
-        let is_newline = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, last_char, newline, "is_newline")
-            .unwrap();
-
-        let strip_block = self.context.append_basic_block(function, "strip_newline");
-        let no_strip_block = self.context.append_basic_block(function, "no_strip");
-
-        self.builder
-            .build_conditional_branch(is_newline, strip_block, no_strip_block)
-            .unwrap();
-
-        // Strip newline
-        self.builder.position_at_end(strip_block);
-        let null_byte = self.context.i8_type().const_int(0, false);
-        self.builder.build_store(last_char_ptr, null_byte).unwrap();
-        self.builder
-            .build_unconditional_branch(no_strip_block)
-            .unwrap();
-
-        // No strip (or after strip)
-        self.builder.position_at_end(no_strip_block);
-        let ok_result = self.make_string(buffer)?;
-        self.builder.build_unconditional_branch(done_block).unwrap();
-        let ok_block_end = self.builder.get_insert_block().unwrap();
-
-        // Done - use phi to select result
-        self.builder.position_at_end(done_block);
-        let phi = self
-            .builder
-            .build_phi(self.types.value_type, "speir_result")
-            .unwrap();
-        phi.add_incoming(&[(&eof_result, eof_block_end), (&ok_result, ok_block_end)]);
-
-        Ok(phi.as_basic_value())
     }
 
     // ===== Extra: String operations =====
@@ -14449,272 +15848,6 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(phi.as_basic_value())
     }
 
-    /// sort(list) - Return a sorted copy of the list (bubble sort for simplicity)
-    fn inline_sort(
-        &mut self,
-        list_val: BasicValueEnum<'ctx>,
-    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        let function = self.current_function.unwrap();
-
-        // First, create a copy of the list
-        let list_struct = list_val.into_struct_value();
-        let list_data = self
-            .builder
-            .build_extract_value(list_struct, 1, "list_data")
-            .unwrap()
-            .into_int_value();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let list_ptr = self
-            .builder
-            .build_int_to_ptr(list_data, i8_ptr_type, "list_ptr")
-            .unwrap();
-
-        // Get list length
-        let header_ptr = self
-            .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
-            .unwrap();
-        let len_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.i64_type,
-                    header_ptr,
-                    &[self.types.i64_type.const_int(1, false)],
-                    "len_ptr",
-                )
-                .unwrap()
-        };
-        let list_len = self
-            .builder
-            .build_load(self.types.i64_type, len_ptr, "list_len")
-            .unwrap()
-            .into_int_value();
-
-        // Calculate total size: 8 + len * 16
-        let header_size = self.types.i64_type.const_int(16, false);
-        let elem_size = self.types.i64_type.const_int(16, false);
-        let elems_total = self
-            .builder
-            .build_int_mul(list_len, elem_size, "elems_total")
-            .unwrap();
-        let total_size = self
-            .builder
-            .build_int_add(header_size, elems_total, "total_size")
-            .unwrap();
-
-        // Allocate new list
-        let new_list_ptr = self
-            .builder
-            .build_call(self.libc.malloc, &[total_size.into()], "new_list")
-            .unwrap()
-            .try_as_basic_value()
-            .left()
-            .unwrap()
-            .into_pointer_value();
-
-        // Copy entire list
-        self.builder
-            .build_call(
-                self.libc.memcpy,
-                &[new_list_ptr.into(), list_ptr.into(), total_size.into()],
-                "copy_list",
-            )
-            .unwrap();
-
-        // Bubble sort: outer loop i from 0 to len-1
-        let zero = self.types.i64_type.const_int(0, false);
-        let one = self.types.i64_type.const_int(1, false);
-
-        let i_ptr = self.builder.build_alloca(self.types.i64_type, "i").unwrap();
-        self.builder.build_store(i_ptr, zero).unwrap();
-
-        let outer_loop = self.context.append_basic_block(function, "sort_outer");
-        let outer_body = self.context.append_basic_block(function, "sort_outer_body");
-        let inner_loop = self.context.append_basic_block(function, "sort_inner");
-        let inner_body = self.context.append_basic_block(function, "sort_inner_body");
-        let inner_done = self.context.append_basic_block(function, "sort_inner_done");
-        let outer_done = self.context.append_basic_block(function, "sort_outer_done");
-
-        self.builder.build_unconditional_branch(outer_loop).unwrap();
-        self.builder.position_at_end(outer_loop);
-
-        let i = self
-            .builder
-            .build_load(self.types.i64_type, i_ptr, "i_val")
-            .unwrap()
-            .into_int_value();
-        let len_minus_one = self
-            .builder
-            .build_int_sub(list_len, one, "len_minus_one")
-            .unwrap();
-        let outer_done_cond = self
-            .builder
-            .build_int_compare(IntPredicate::UGE, i, len_minus_one, "outer_done")
-            .unwrap();
-        self.builder
-            .build_conditional_branch(outer_done_cond, outer_done, outer_body)
-            .unwrap();
-
-        self.builder.position_at_end(outer_body);
-        let j_ptr = self.builder.build_alloca(self.types.i64_type, "j").unwrap();
-        self.builder.build_store(j_ptr, zero).unwrap();
-
-        self.builder.build_unconditional_branch(inner_loop).unwrap();
-        self.builder.position_at_end(inner_loop);
-
-        let j = self
-            .builder
-            .build_load(self.types.i64_type, j_ptr, "j_val")
-            .unwrap()
-            .into_int_value();
-        let bound = self
-            .builder
-            .build_int_sub(len_minus_one, i, "bound")
-            .unwrap();
-        let inner_done_cond = self
-            .builder
-            .build_int_compare(IntPredicate::UGE, j, bound, "inner_done")
-            .unwrap();
-        self.builder
-            .build_conditional_branch(inner_done_cond, inner_done, inner_body)
-            .unwrap();
-
-        self.builder.position_at_end(inner_body);
-
-        // Get element at j
-        let j_offset = self
-            .builder
-            .build_int_add(
-                header_size,
-                self.builder.build_int_mul(j, elem_size, "j_mul").unwrap(),
-                "j_offset",
-            )
-            .unwrap();
-        let j_elem_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.context.i8_type(),
-                    new_list_ptr,
-                    &[j_offset],
-                    "j_elem_ptr",
-                )
-                .unwrap()
-        };
-        let j_value_ptr = self
-            .builder
-            .build_pointer_cast(
-                j_elem_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "j_value_ptr",
-            )
-            .unwrap();
-        let j_value = self
-            .builder
-            .build_load(self.types.value_type, j_value_ptr, "j_value")
-            .unwrap();
-
-        // Get element at j+1
-        let j_plus_one = self.builder.build_int_add(j, one, "j_plus_one").unwrap();
-        let j1_offset = self
-            .builder
-            .build_int_add(
-                header_size,
-                self.builder
-                    .build_int_mul(j_plus_one, elem_size, "j1_mul")
-                    .unwrap(),
-                "j1_offset",
-            )
-            .unwrap();
-        let j1_elem_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.context.i8_type(),
-                    new_list_ptr,
-                    &[j1_offset],
-                    "j1_elem_ptr",
-                )
-                .unwrap()
-        };
-        let j1_value_ptr = self
-            .builder
-            .build_pointer_cast(
-                j1_elem_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "j1_value_ptr",
-            )
-            .unwrap();
-        let j1_value = self
-            .builder
-            .build_load(self.types.value_type, j1_value_ptr, "j1_value")
-            .unwrap();
-
-        // Extract integer values for comparison (assuming numeric list)
-        let j_data = self
-            .builder
-            .build_extract_value(j_value.into_struct_value(), 1, "j_data")
-            .unwrap()
-            .into_int_value();
-        let j1_data = self
-            .builder
-            .build_extract_value(j1_value.into_struct_value(), 1, "j1_data")
-            .unwrap()
-            .into_int_value();
-
-        // Compare: if j_data > j1_data, swap
-        let should_swap = self
-            .builder
-            .build_int_compare(IntPredicate::SGT, j_data, j1_data, "should_swap")
-            .unwrap();
-
-        let swap_block = self.context.append_basic_block(function, "sort_swap");
-        let no_swap_block = self.context.append_basic_block(function, "sort_no_swap");
-
-        self.builder
-            .build_conditional_branch(should_swap, swap_block, no_swap_block)
-            .unwrap();
-
-        self.builder.position_at_end(swap_block);
-        // Swap values
-        self.builder.build_store(j_value_ptr, j1_value).unwrap();
-        self.builder.build_store(j1_value_ptr, j_value).unwrap();
-        self.builder
-            .build_unconditional_branch(no_swap_block)
-            .unwrap();
-
-        self.builder.position_at_end(no_swap_block);
-        let next_j = self.builder.build_int_add(j, one, "next_j").unwrap();
-        self.builder.build_store(j_ptr, next_j).unwrap();
-        self.builder.build_unconditional_branch(inner_loop).unwrap();
-
-        self.builder.position_at_end(inner_done);
-        let next_i = self.builder.build_int_add(i, one, "next_i").unwrap();
-        self.builder.build_store(i_ptr, next_i).unwrap();
-        self.builder.build_unconditional_branch(outer_loop).unwrap();
-
-        self.builder.position_at_end(outer_done);
-
-        // Return new list as value
-        let list_as_int = self
-            .builder
-            .build_ptr_to_int(new_list_ptr, self.types.i64_type, "list_as_int")
-            .unwrap();
-        let list_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::List.as_u8() as u64, false);
-        let undef = self.types.value_type.get_undef();
-        let v1 = self
-            .builder
-            .build_insert_value(undef, list_tag, 0, "v1")
-            .unwrap();
-        let v2 = self
-            .builder
-            .build_insert_value(v1, list_as_int, 1, "v2")
-            .unwrap();
-        Ok(v2.into_struct_value().into())
-    }
-
     /// shuffle(list) - Return a shuffled copy of the list (Fisher-Yates shuffle)
     fn inline_shuffle(
         &mut self,
@@ -15831,6 +16964,7 @@ impl<'ctx> CodeGen<'ctx> {
         let case0_block = self.context.append_basic_block(function, "closure_0");
         let case1_block = self.context.append_basic_block(function, "closure_1");
         let case2_block = self.context.append_basic_block(function, "closure_2");
+        let case3_block = self.context.append_basic_block(function, "closure_3");
         let default_block = self.context.append_basic_block(function, "closure_default");
 
         // Switch on num_captures
@@ -15838,15 +16972,6 @@ impl<'ctx> CodeGen<'ctx> {
         let is_0 = self
             .builder
             .build_int_compare(IntPredicate::EQ, num_captures, zero, "is_0")
-            .unwrap();
-        let is_1 = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, num_captures, one, "is_1")
-            .unwrap();
-        let two = self.types.i64_type.const_int(2, false);
-        let is_2 = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, num_captures, two, "is_2")
             .unwrap();
 
         self.builder
@@ -15874,22 +16999,24 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Case 1: 1 capture
         self.builder.position_at_end(case1_block);
+        let is_1 = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, num_captures, one, "is_1")
+            .unwrap();
         self.builder
             .build_conditional_branch(is_1, default_block, case2_block)
             .unwrap();
 
-        // For now, use default block for cases with captures - just call without captures
-        // This is a temporary solution; proper handling requires loading captures dynamically
+        // Case 2: >= 2 captures, go to case3_block (handles 2+ captures)
         self.builder.position_at_end(case2_block);
+        // For num_captures >= 2, we use the 2-capture handler
         self.builder
-            .build_conditional_branch(is_2, default_block, default_block)
+            .build_unconditional_branch(case3_block)
             .unwrap();
 
-        // Default: load captures dynamically (up to 4)
+        // Now handle each case with correct number of captures
+        // Default block: 1 capture
         self.builder.position_at_end(default_block);
-        // For now, just call with the args we have (ignoring captures)
-        // TODO: Properly load and pass captures
-        // For simplicity, read up to 4 captures and build a call with them
 
         // Load capture 1
         let cap1_offset = header_size + value_size;
@@ -15914,6 +17041,69 @@ impl<'ctx> CodeGen<'ctx> {
         let cap1 = self
             .builder
             .build_load(self.types.value_type, cap1_val_ptr, "cap1")
+            .unwrap();
+
+        // Build args with 1 capture prepended
+        let mut closure_args1: Vec<BasicMetadataValueEnum> = Vec::new();
+        closure_args1.push(cap1.into());
+        for arg in args {
+            closure_args1.push((*arg).into());
+        }
+
+        // Create function type with 1 capture + args
+        let closure_param_count1 = 1 + args.len();
+        let closure_param_types1: Vec<BasicMetadataTypeEnum> = (0..closure_param_count1)
+            .map(|_| self.types.value_type.into())
+            .collect();
+        let closure_fn_type1 = self.types.value_type.fn_type(&closure_param_types1, false);
+        let closure_fn_ptr_type1 = closure_fn_type1.ptr_type(AddressSpace::default());
+        let closure_fn_ptr1 = self
+            .builder
+            .build_int_to_ptr(fn_data_in_closure, closure_fn_ptr_type1, "closure_fn_ptr1")
+            .unwrap();
+
+        let result1 = self
+            .builder
+            .build_indirect_call(
+                closure_fn_type1,
+                closure_fn_ptr1,
+                &closure_args1,
+                "result1",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let case1_end = self.builder.get_insert_block().unwrap();
+
+        // Case 3: 2 captures
+        self.builder.position_at_end(case3_block);
+
+        // Load capture 1 again (we're in a different block)
+        let cap1_ptr_2 = unsafe {
+            self.builder
+                .build_gep(
+                    self.context.i8_type(),
+                    list_ptr,
+                    &[self.types.i64_type.const_int(cap1_offset, false)],
+                    "cap1_ptr_2",
+                )
+                .unwrap()
+        };
+        let cap1_val_ptr_2 = self
+            .builder
+            .build_pointer_cast(
+                cap1_ptr_2,
+                self.types.value_type.ptr_type(AddressSpace::default()),
+                "cap1_val_ptr_2",
+            )
+            .unwrap();
+        let cap1_2 = self
+            .builder
+            .build_load(self.types.value_type, cap1_val_ptr_2, "cap1_2")
             .unwrap();
 
         // Load capture 2
@@ -15941,40 +17131,33 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(self.types.value_type, cap2_val_ptr, "cap2")
             .unwrap();
 
-        // Build args with captures prepended
-        let mut closure_args: Vec<BasicMetadataValueEnum> = Vec::new();
-        closure_args.push(cap1.into());
-        // Conditionally add cap2 if num_captures >= 2
-        // For simplicity, just always include both for functions that expect them
-        // The function will ignore extra args
-
-        // Actually, we need to match the exact arity. Let's try a simpler approach:
-        // Just prepend all captures we loaded and let LLVM sort it out
-        // This works because we create the fn_type based on total args
-        closure_args.push(cap2.into());
+        // Build args with 2 captures prepended
+        let mut closure_args2: Vec<BasicMetadataValueEnum> = Vec::new();
+        closure_args2.push(cap1_2.into());
+        closure_args2.push(cap2.into());
         for arg in args {
-            closure_args.push((*arg).into());
+            closure_args2.push((*arg).into());
         }
 
-        // Create function type with captures + args
-        let closure_param_count = 2 + args.len(); // 2 captures + original args
-        let closure_param_types: Vec<BasicMetadataTypeEnum> = (0..closure_param_count)
+        // Create function type with 2 captures + args
+        let closure_param_count2 = 2 + args.len();
+        let closure_param_types2: Vec<BasicMetadataTypeEnum> = (0..closure_param_count2)
             .map(|_| self.types.value_type.into())
             .collect();
-        let closure_fn_type = self.types.value_type.fn_type(&closure_param_types, false);
-        let closure_fn_ptr_type = closure_fn_type.ptr_type(AddressSpace::default());
-        let closure_fn_ptr = self
+        let closure_fn_type2 = self.types.value_type.fn_type(&closure_param_types2, false);
+        let closure_fn_ptr_type2 = closure_fn_type2.ptr_type(AddressSpace::default());
+        let closure_fn_ptr2 = self
             .builder
-            .build_int_to_ptr(fn_data_in_closure, closure_fn_ptr_type, "closure_fn_ptr")
+            .build_int_to_ptr(fn_data_in_closure, closure_fn_ptr_type2, "closure_fn_ptr2")
             .unwrap();
 
-        let result_default = self
+        let result2 = self
             .builder
             .build_indirect_call(
-                closure_fn_type,
-                closure_fn_ptr,
-                &closure_args,
-                "result_default",
+                closure_fn_type2,
+                closure_fn_ptr2,
+                &closure_args2,
+                "result2",
             )
             .unwrap()
             .try_as_basic_value()
@@ -15983,7 +17166,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
-        let default_end = self.builder.get_insert_block().unwrap();
+        let case2_end = self.builder.get_insert_block().unwrap();
 
         // Merge results
         self.builder.position_at_end(merge_block);
@@ -15994,13 +17177,15 @@ impl<'ctx> CodeGen<'ctx> {
         phi.add_incoming(&[
             (&simple_result, simple_end),
             (&result0, case0_end),
-            (&result_default, default_end),
+            (&result1, case1_end),
+            (&result2, case2_end),
         ]);
 
         Ok(phi.as_basic_value())
     }
 
     /// gaun(list, fn) - map function over list
+    /// Uses proper MdhList format: { MdhValue *items; int64_t length; int64_t capacity; }
     fn inline_gaun(
         &mut self,
         list_val: BasicValueEnum<'ctx>,
@@ -16008,67 +17193,105 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let function = self.current_function.unwrap();
 
-        // Extract list pointer and length
-        let list_struct = list_val.into_struct_value();
-        let list_data = self
-            .builder
-            .build_extract_value(list_struct, 1, "list_data")
-            .unwrap()
-            .into_int_value();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        // Extract MdhList pointer from list value
+        let list_data = self.extract_data(list_val)?;
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
         let list_ptr = self
             .builder
-            .build_int_to_ptr(list_data, i8_ptr_type, "list_ptr")
+            .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr")
             .unwrap();
 
-        let header_ptr = self
+        // Load items pointer from MdhList offset 0
+        let items_ptr_as_i64 = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
+            .build_load(self.types.i64_type, list_ptr, "items_ptr_i64")
+            .unwrap()
+            .into_int_value();
+        let src_items_ptr = self
+            .builder
+            .build_int_to_ptr(items_ptr_as_i64, value_ptr_type, "src_items_ptr")
             .unwrap();
-        let len_ptr = unsafe {
+
+        // Load length from MdhList offset 1 (8 bytes after start)
+        let len_field_ptr = unsafe {
             self.builder
                 .build_gep(
                     self.types.i64_type,
-                    header_ptr,
+                    list_ptr,
                     &[self.types.i64_type.const_int(1, false)],
-                    "len_ptr",
+                    "len_field_ptr",
                 )
                 .unwrap()
         };
         let list_len = self
             .builder
-            .build_load(self.types.i64_type, len_ptr, "list_len")
+            .build_load(self.types.i64_type, len_field_ptr, "list_len")
             .unwrap()
             .into_int_value();
 
-        // Allocate new list
-        let header_size = self.types.i64_type.const_int(16, false);
-        let elem_size = self.types.i64_type.const_int(16, false);
-        let elems_total = self
-            .builder
-            .build_int_mul(list_len, elem_size, "elems_total")
-            .unwrap();
-        let total_size = self
-            .builder
-            .build_int_add(header_size, elems_total, "total_size")
-            .unwrap();
-
+        // Allocate new MdhList struct (24 bytes: ptr + len + cap)
+        let struct_size = self.types.i64_type.const_int(24, false);
         let new_list_ptr = self
             .builder
-            .build_call(self.libc.malloc, &[total_size.into()], "new_list")
+            .build_call(self.libc.malloc, &[struct_size.into()], "new_list_struct")
             .unwrap()
             .try_as_basic_value()
             .left()
             .unwrap()
             .into_pointer_value();
 
-        // Store length
-        let new_len_ptr = self
+        // Allocate new items array (len * 16 bytes per MdhValue)
+        let elem_size = self.types.i64_type.const_int(16, false);
+        let items_size = self
             .builder
-            .build_pointer_cast(new_list_ptr, i64_ptr_type, "new_len_ptr")
+            .build_int_mul(list_len, elem_size, "items_size")
             .unwrap();
+        let new_items_ptr = self
+            .builder
+            .build_call(self.libc.malloc, &[items_size.into()], "new_items")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+
+        // Store items pointer at offset 0
+        let new_list_i64_ptr = self
+            .builder
+            .build_pointer_cast(new_list_ptr, i64_ptr_type, "new_list_i64_ptr")
+            .unwrap();
+        let new_items_as_i64 = self
+            .builder
+            .build_ptr_to_int(new_items_ptr, self.types.i64_type, "new_items_i64")
+            .unwrap();
+        self.builder.build_store(new_list_i64_ptr, new_items_as_i64).unwrap();
+
+        // Store length at offset 1
+        let new_len_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    new_list_i64_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "new_len_ptr",
+                )
+                .unwrap()
+        };
         self.builder.build_store(new_len_ptr, list_len).unwrap();
+
+        // Store capacity at offset 2
+        let new_cap_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    new_list_i64_ptr,
+                    &[self.types.i64_type.const_int(2, false)],
+                    "new_cap_ptr",
+                )
+                .unwrap()
+        };
+        self.builder.build_store(new_cap_ptr, list_len).unwrap();
 
         // Store func_val in an alloca so we can use it in the loop
         let func_alloca = self
@@ -16108,33 +17331,15 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(body_block);
 
-        // Get element at idx
-        let elem_offset = self
-            .builder
-            .build_int_add(
-                header_size,
-                self.builder
-                    .build_int_mul(idx, elem_size, "idx_mul")
-                    .unwrap(),
-                "elem_offset",
-            )
-            .unwrap();
+        // Get element at idx from source items array
         let elem_ptr = unsafe {
             self.builder
-                .build_gep(self.context.i8_type(), list_ptr, &[elem_offset], "elem_ptr")
+                .build_gep(self.types.value_type, src_items_ptr, &[idx], "elem_ptr")
                 .unwrap()
         };
-        let value_ptr = self
-            .builder
-            .build_pointer_cast(
-                elem_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "value_ptr",
-            )
-            .unwrap();
         let elem_val = self
             .builder
-            .build_load(self.types.value_type, value_ptr, "elem_val")
+            .build_load(self.types.value_type, elem_ptr, "elem_val")
             .unwrap();
 
         // Load function and call it
@@ -16144,26 +17349,17 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let mapped = self.call_function_value(func, &[elem_val])?;
 
-        // Store result in new list
+        // Store result in new items array
+        let new_items_value_ptr = self
+            .builder
+            .build_pointer_cast(new_items_ptr, value_ptr_type, "new_items_value_ptr")
+            .unwrap();
         let new_elem_ptr = unsafe {
             self.builder
-                .build_gep(
-                    self.context.i8_type(),
-                    new_list_ptr,
-                    &[elem_offset],
-                    "new_elem_ptr",
-                )
+                .build_gep(self.types.value_type, new_items_value_ptr, &[idx], "new_elem_ptr")
                 .unwrap()
         };
-        let new_value_ptr = self
-            .builder
-            .build_pointer_cast(
-                new_elem_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "new_value_ptr",
-            )
-            .unwrap();
-        self.builder.build_store(new_value_ptr, mapped).unwrap();
+        self.builder.build_store(new_elem_ptr, mapped).unwrap();
 
         // Increment index
         let next_idx = self.builder.build_int_add(idx, one, "next_idx").unwrap();
@@ -16172,25 +17368,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(done_block);
 
-        // Return new list
-        let list_as_int = self
-            .builder
-            .build_ptr_to_int(new_list_ptr, self.types.i64_type, "list_as_int")
-            .unwrap();
-        let list_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::List.as_u8() as u64, false);
-        let undef = self.types.value_type.get_undef();
-        let v1 = self
-            .builder
-            .build_insert_value(undef, list_tag, 0, "v1")
-            .unwrap();
-        let v2 = self
-            .builder
-            .build_insert_value(v1, list_as_int, 1, "v2")
-            .unwrap();
-        Ok(v2.into_struct_value().into())
+        // Return new list as MdhValue
+        self.make_list(new_list_ptr)
     }
 
     /// sieve(list, fn) - filter list by predicate
@@ -16920,6 +18099,160 @@ impl<'ctx> CodeGen<'ctx> {
         phi.add_incoming(&[
             (&found_result, found_block_end),
             (&nil_result, notfound_block_end),
+        ]);
+        Ok(phi.as_basic_value())
+    }
+
+    /// find_index(list, fn) - find index of first element satisfying predicate, returns -1 if not found
+    fn inline_find_index(
+        &mut self,
+        list_val: BasicValueEnum<'ctx>,
+        func_val: BasicValueEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let function = self.current_function.unwrap();
+
+        // Get MdhList* from list_val.data
+        let list_struct = list_val.into_struct_value();
+        let list_data = self
+            .builder
+            .build_extract_value(list_struct, 1, "list_data")
+            .unwrap()
+            .into_int_value();
+
+        // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
+        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let mdh_list_type = self.context.struct_type(
+            &[value_ptr_type.into(), self.types.i64_type.into(), self.types.i64_type.into()],
+            false,
+        );
+        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+
+        let list_ptr = self
+            .builder
+            .build_int_to_ptr(list_data, mdh_list_ptr_type, "list_ptr")
+            .unwrap();
+
+        // Get list->length (at index 1)
+        let len_ptr = self
+            .builder
+            .build_struct_gep(mdh_list_type, list_ptr, 1, "len_ptr")
+            .unwrap();
+        let list_len = self
+            .builder
+            .build_load(self.types.i64_type, len_ptr, "list_len")
+            .unwrap()
+            .into_int_value();
+
+        // Get list->items (at index 0)
+        let items_ptr_ptr = self
+            .builder
+            .build_struct_gep(mdh_list_type, list_ptr, 0, "items_ptr_ptr")
+            .unwrap();
+        let items_ptr = self
+            .builder
+            .build_load(value_ptr_type, items_ptr_ptr, "items_ptr")
+            .unwrap()
+            .into_pointer_value();
+
+        let func_alloca = self
+            .builder
+            .build_alloca(self.types.value_type, "func_alloca")
+            .unwrap();
+        self.builder.build_store(func_alloca, func_val).unwrap();
+
+        let zero = self.types.i64_type.const_int(0, false);
+        let one = self.types.i64_type.const_int(1, false);
+        let idx_ptr = self
+            .builder
+            .build_alloca(self.types.i64_type, "idx")
+            .unwrap();
+        self.builder.build_store(idx_ptr, zero).unwrap();
+
+        let loop_block = self.context.append_basic_block(function, "findidx_loop");
+        let body_block = self.context.append_basic_block(function, "findidx_body");
+        let found_block = self.context.append_basic_block(function, "findidx_found");
+        let notfound_block = self.context.append_basic_block(function, "findidx_notfound");
+        let done_block = self.context.append_basic_block(function, "findidx_done");
+
+        self.builder.build_unconditional_branch(loop_block).unwrap();
+        self.builder.position_at_end(loop_block);
+
+        let idx = self
+            .builder
+            .build_load(self.types.i64_type, idx_ptr, "idx_val")
+            .unwrap()
+            .into_int_value();
+        let done_cond = self
+            .builder
+            .build_int_compare(IntPredicate::UGE, idx, list_len, "done")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(done_cond, notfound_block, body_block)
+            .unwrap();
+
+        self.builder.position_at_end(body_block);
+
+        // Get current element from items[idx]
+        let elem_ptr = unsafe {
+            self.builder
+                .build_gep(self.types.value_type, items_ptr, &[idx], "elem_ptr")
+                .unwrap()
+        };
+        let elem_val = self
+            .builder
+            .build_load(self.types.value_type, elem_ptr, "elem_val")
+            .unwrap();
+
+        // Store current index for use in found block
+        let found_idx_alloca = self
+            .builder
+            .build_alloca(self.types.i64_type, "found_idx_alloca")
+            .unwrap();
+        self.builder.build_store(found_idx_alloca, idx).unwrap();
+
+        let func = self
+            .builder
+            .build_load(self.types.value_type, func_alloca, "func")
+            .unwrap();
+        let pred_result = self.call_function_value(func, &[elem_val])?;
+        let is_truthy = self.is_truthy(pred_result)?;
+
+        let next_block = self.context.append_basic_block(function, "findidx_next");
+        self.builder
+            .build_conditional_branch(is_truthy, found_block, next_block)
+            .unwrap();
+
+        self.builder.position_at_end(next_block);
+        let next_idx = self.builder.build_int_add(idx, one, "next_idx").unwrap();
+        self.builder.build_store(idx_ptr, next_idx).unwrap();
+        self.builder.build_unconditional_branch(loop_block).unwrap();
+
+        // Found block: return the index as Int MdhValue
+        self.builder.position_at_end(found_block);
+        let found_idx = self
+            .builder
+            .build_load(self.types.i64_type, found_idx_alloca, "found_idx")
+            .unwrap()
+            .into_int_value();
+        let found_result = self.make_int(found_idx)?;
+        self.builder.build_unconditional_branch(done_block).unwrap();
+        let found_block_end = self.builder.get_insert_block().unwrap();
+
+        // Not found block: return -1 as Int MdhValue
+        self.builder.position_at_end(notfound_block);
+        let neg_one = self.types.i64_type.const_int((-1i64) as u64, true);
+        let notfound_result = self.make_int(neg_one)?;
+        self.builder.build_unconditional_branch(done_block).unwrap();
+        let notfound_block_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(done_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "findidx_result")
+            .unwrap();
+        phi.add_incoming(&[
+            (&found_result, found_block_end),
+            (&notfound_result, notfound_block_end),
         ]);
         Ok(phi.as_basic_value())
     }
@@ -17669,19 +19002,42 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<(), HaversError> {
         let list_val = self.compile_expr(value)?;
 
-        // Get list pointer and length
+        // Get list struct pointer
+        // MdhList format: { items_ptr: *MdhValue, length: i64, capacity: i64 }
         let list_data = self.extract_data(list_val)?;
         let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
-        let list_ptr = self
+        let list_struct_ptr = self
             .builder
-            .build_int_to_ptr(list_data, i8_ptr, "list_ptr")
+            .build_int_to_ptr(list_data, i8_ptr, "list_struct_ptr")
             .unwrap();
 
-        // Get list length
+        // Get items pointer from offset 0
+        let ptr_ptr_type = i8_ptr.ptr_type(AddressSpace::default());
+        let items_field_ptr = self
+            .builder
+            .build_pointer_cast(list_struct_ptr, ptr_ptr_type, "items_field_ptr")
+            .unwrap();
+        let items_ptr = self
+            .builder
+            .build_load(i8_ptr, items_field_ptr, "items_ptr")
+            .unwrap()
+            .into_pointer_value();
+
+        // Get list length from offset 8
         let len_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let len_field_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.context.i8_type(),
+                    list_struct_ptr,
+                    &[self.types.i64_type.const_int(8, false)],
+                    "len_field_ptr",
+                )
+                .unwrap()
+        };
         let len_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, len_ptr_type, "len_ptr")
+            .build_pointer_cast(len_field_ptr, len_ptr_type, "len_ptr")
             .unwrap();
         let list_len = self
             .builder
@@ -17714,13 +19070,13 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_int_sub(list_len, offset_val, "end_idx")
                             .unwrap();
-                        let elem = self.compile_list_index_dynamic(list_ptr, actual_index)?;
+                        let elem = self.compile_list_index_dynamic(items_ptr, actual_index)?;
                         let alloca = self.create_entry_block_alloca(name);
                         self.builder.build_store(alloca, elem).unwrap();
                         self.variables.insert(name.clone(), alloca);
                     } else {
                         // Normal forward indexing
-                        let elem = self.compile_list_index_ptr(list_ptr, index)?;
+                        let elem = self.compile_list_index_ptr(items_ptr, index)?;
                         let alloca = self.create_entry_block_alloca(name);
                         self.builder.build_store(alloca, elem).unwrap();
                         self.variables.insert(name.clone(), alloca);
@@ -17744,7 +19100,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     let start_idx = self.types.i64_type.const_int(index, false);
                     let rest_list =
-                        self.compile_list_slice_dynamic(list_ptr, start_idx, slice_end)?;
+                        self.compile_list_slice_dynamic(items_ptr, start_idx, slice_end)?;
                     let alloca = self.create_entry_block_alloca(name);
                     self.builder.build_store(alloca, rest_list).unwrap();
                     self.variables.insert(name.clone(), alloca);
@@ -17758,27 +19114,22 @@ impl<'ctx> CodeGen<'ctx> {
     /// Extract element from list at given dynamic index
     fn compile_list_index_dynamic(
         &mut self,
-        list_ptr: PointerValue<'ctx>,
+        items_ptr: PointerValue<'ctx>,
         index: inkwell::values::IntValue<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        // List structure: [len: i64][cap: i64][elem0][elem1]...
+        // items_ptr points directly to MdhValue array
         // Each element is a MdhValue (16 bytes)
-        let header_size = self.types.i64_type.const_int(16, false);
         let elem_size = self.types.i64_type.const_int(16, false);
         let data_offset = self
             .builder
             .build_int_mul(index, elem_size, "data_offset")
             .unwrap();
-        let total_offset = self
-            .builder
-            .build_int_add(header_size, data_offset, "total_offset")
-            .unwrap();
         let elem_ptr = unsafe {
             self.builder
                 .build_gep(
                     self.context.i8_type(),
-                    list_ptr,
-                    &[total_offset],
+                    items_ptr,
+                    &[data_offset],
                     "elem_ptr",
                 )
                 .unwrap()
@@ -17801,7 +19152,7 @@ impl<'ctx> CodeGen<'ctx> {
     /// Create a slice of list from start_index to end_index (exclusive)
     fn compile_list_slice_dynamic(
         &mut self,
-        list_ptr: PointerValue<'ctx>,
+        items_ptr: PointerValue<'ctx>,
         start_index: inkwell::values::IntValue<'ctx>,
         end_index: inkwell::values::IntValue<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
@@ -17811,70 +19162,94 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_sub(end_index, start_index, "slice_len")
             .unwrap();
 
-        // Allocate new list
-        let header_size = self.types.i64_type.const_int(16, false);
-        let elem_size = self.types.i64_type.const_int(16, false);
-        let data_size = self
+        // MdhList struct: { items_ptr: *, length: i64, capacity: i64 } = 24 bytes
+        let list_struct_size = self.types.i64_type.const_int(24, false);
+        let new_list_struct = self
             .builder
-            .build_int_mul(slice_len, elem_size, "data_size")
-            .unwrap();
-        let total_size = self
-            .builder
-            .build_int_add(header_size, data_size, "total_size")
-            .unwrap();
-
-        let new_list = self
-            .builder
-            .build_call(self.libc.malloc, &[total_size.into()], "new_list")
+            .build_call(self.libc.malloc, &[list_struct_size.into()], "new_list_struct")
             .unwrap()
             .try_as_basic_value()
             .left()
             .unwrap()
             .into_pointer_value();
 
-        // Store length and capacity
-        let len_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        // Allocate items array
+        let elem_size = self.types.i64_type.const_int(16, false);
+        let data_size = self
+            .builder
+            .build_int_mul(slice_len, elem_size, "data_size")
+            .unwrap();
+        let new_items = self
+            .builder
+            .build_call(self.libc.malloc, &[data_size.into()], "new_items")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+
+        // Store items_ptr at offset 0
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let ptr_ptr_type = i8_ptr_type.ptr_type(AddressSpace::default());
+        let items_field = self
+            .builder
+            .build_pointer_cast(new_list_struct, ptr_ptr_type, "items_field")
+            .unwrap();
+        self.builder.build_store(items_field, new_items).unwrap();
+
+        // Store length at offset 8
+        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let len_field = unsafe {
+            self.builder
+                .build_gep(
+                    self.context.i8_type(),
+                    new_list_struct,
+                    &[self.types.i64_type.const_int(8, false)],
+                    "len_field",
+                )
+                .unwrap()
+        };
         let len_ptr = self
             .builder
-            .build_pointer_cast(new_list, len_ptr_type, "new_len_ptr")
+            .build_pointer_cast(len_field, i64_ptr_type, "len_ptr")
             .unwrap();
         self.builder.build_store(len_ptr, slice_len).unwrap();
 
-        let one = self.types.i64_type.const_int(1, false);
-        let cap_ptr = unsafe {
+        // Store capacity at offset 16
+        let cap_field = unsafe {
             self.builder
-                .build_gep(self.types.i64_type, len_ptr, &[one], "cap_ptr")
-        }
-        .unwrap();
+                .build_gep(
+                    self.context.i8_type(),
+                    new_list_struct,
+                    &[self.types.i64_type.const_int(16, false)],
+                    "cap_field",
+                )
+                .unwrap()
+        };
+        let cap_ptr = self
+            .builder
+            .build_pointer_cast(cap_field, i64_ptr_type, "cap_ptr")
+            .unwrap();
         self.builder.build_store(cap_ptr, slice_len).unwrap();
 
-        // Copy elements using memcpy
+        // Copy elements from source items array
         let elem_start_offset = self
             .builder
             .build_int_mul(start_index, elem_size, "elem_start_offset")
             .unwrap();
-        let src_offset = self
-            .builder
-            .build_int_add(header_size, elem_start_offset, "src_offset")
-            .unwrap();
         let src_ptr = unsafe {
             self.builder
-                .build_gep(self.context.i8_type(), list_ptr, &[src_offset], "src_ptr")
-        }
-        .unwrap();
-        let dst_ptr = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), new_list, &[header_size], "dst_ptr")
+                .build_gep(self.context.i8_type(), items_ptr, &[elem_start_offset], "src_ptr")
         }
         .unwrap();
         self.builder
-            .build_memcpy(dst_ptr, 8, src_ptr, 8, data_size)
+            .build_memcpy(new_items, 8, src_ptr, 8, data_size)
             .unwrap();
 
         // Return as MdhValue
         let list_as_int = self
             .builder
-            .build_ptr_to_int(new_list, self.types.i64_type, "list_int")
+            .build_ptr_to_int(new_list_struct, self.types.i64_type, "list_int")
             .unwrap();
         let list_tag = self
             .types
@@ -17895,17 +19270,17 @@ impl<'ctx> CodeGen<'ctx> {
     /// Extract element from list at given index
     fn compile_list_index_ptr(
         &mut self,
-        list_ptr: PointerValue<'ctx>,
+        items_ptr: PointerValue<'ctx>,
         index: u64,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        // List structure: [len: i64][cap: i64][elem0][elem1]...
+        // items_ptr points directly to MdhValue array
         // Each element is a MdhValue (16 bytes)
 
-        let elem_offset = 16 + (index * 16); // Skip header, then index
+        let elem_offset = index * 16;
         let offset = self.types.i64_type.const_int(elem_offset, false);
         let elem_ptr = unsafe {
             self.builder
-                .build_gep(self.context.i8_type(), list_ptr, &[offset], "elem_ptr")
+                .build_gep(self.context.i8_type(), items_ptr, &[offset], "elem_ptr")
                 .unwrap()
         };
 
@@ -20181,7 +21556,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let data = self.extract_data(val)?;
 
-        // Convert to float
+        // Convert to float (bitcast assumes float format in data field)
         let float_val = self
             .builder
             .build_bitcast(data, self.context.f64_type(), "float_val")
@@ -20871,18 +22246,23 @@ impl<'ctx> CodeGen<'ctx> {
         // LOOP path (for step != 1 or negative step)
         self.builder.position_at_end(do_loop_slice);
 
-        // Count how many elements: for step>0: (end-start+step-1)/step, for step<0: (start-end-step-1)/(-step)
-        // Simplified: iterate and count
-        // For now, just return a simple empty result and then iterate
-        // This is complex - let's use a runtime helper or simplified approach
-        // Actually, let's compute the count: count = max(0, ceil((end - start) / step))
+        // Count how many elements using ceiling division: ceil((end - start) / step) = (end - start + step - 1) / step
         let diff = self
             .builder
             .build_int_sub(end_val, start_val, "diff")
             .unwrap();
+        // For ceiling division: (diff + step - 1) / step (when step > 0)
+        let step_minus_one = self
+            .builder
+            .build_int_sub(step_val, one, "step_minus_one")
+            .unwrap();
+        let diff_adjusted = self
+            .builder
+            .build_int_add(diff, step_minus_one, "diff_adjusted")
+            .unwrap();
         let count_raw = self
             .builder
-            .build_int_signed_div(diff, step_val, "count_raw")
+            .build_int_signed_div(diff_adjusted, step_val, "count_raw")
             .unwrap();
         let count_neg = self
             .builder
@@ -20998,49 +22378,87 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(loop_merge).unwrap();
         let str_loop_bb = self.builder.get_insert_block().unwrap();
 
-        // List loop slice
+        // List loop slice - using correct MdhList struct layout:
+        // { MdhValue* items, i64 length, i64 capacity } = 24 bytes
         self.builder.position_at_end(loop_list);
-        let list_ptr3 = self
+
+        // Get source list's items pointer from offset 0
+        let src_list_struct = self
             .builder
-            .build_int_to_ptr(obj_data, i8_ptr, "list_ptr3")
+            .build_int_to_ptr(obj_data, i64_ptr, "src_list_struct")
             .unwrap();
-        let list_total = self
+        let src_items_ptr_i64 = self
             .builder
-            .build_int_add(
-                self.types.i64_type.const_int(16, false),
-                self.builder
-                    .build_int_mul(count, self.types.i64_type.const_int(16, false), "elems")
-                    .unwrap(),
-                "list_total",
-            )
+            .build_load(self.types.i64_type, src_list_struct, "src_items_ptr_i64")
+            .unwrap()
+            .into_int_value();
+        let src_items_ptr = self
+            .builder
+            .build_int_to_ptr(src_items_ptr_i64, i8_ptr, "src_items_ptr")
             .unwrap();
-        let new_list2 = self
+
+        // Allocate new list struct (24 bytes)
+        let list_struct_size = self.types.i64_type.const_int(24, false);
+        let new_list_struct = self
             .builder
-            .build_call(self.libc.malloc, &[list_total.into()], "new_list_loop")
+            .build_call(self.libc.malloc, &[list_struct_size.into()], "new_list_struct")
             .unwrap()
             .try_as_basic_value()
             .left()
             .unwrap()
             .into_pointer_value();
-        // Store len and cap
-        let len_ptr2 = self
+
+        // Allocate items array: count * 16 bytes
+        let sixteen = self.types.i64_type.const_int(16, false);
+        let items_size = self.builder.build_int_mul(count, sixteen, "items_size").unwrap();
+        let new_items = self
             .builder
-            .build_pointer_cast(new_list2, i64_ptr, "len_ptr2")
+            .build_call(self.libc.malloc, &[items_size.into()], "new_items")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+
+        // Store items pointer at offset 0
+        let ptr_ptr_type = i8_ptr.ptr_type(AddressSpace::default());
+        let items_field = self
+            .builder
+            .build_pointer_cast(new_list_struct, ptr_ptr_type, "items_field")
             .unwrap();
-        self.builder.build_store(len_ptr2, count).unwrap();
-        let cap_ptr2 = unsafe {
+        self.builder.build_store(items_field, new_items).unwrap();
+
+        // Store length at offset 8
+        let len_field = unsafe {
             self.builder
                 .build_gep(
                     self.context.i8_type(),
-                    new_list2,
+                    new_list_struct,
                     &[self.types.i64_type.const_int(8, false)],
-                    "cap_ptr2",
+                    "len_field",
+                )
+                .unwrap()
+        };
+        let len_ptr2 = self
+            .builder
+            .build_pointer_cast(len_field, i64_ptr, "len_ptr2")
+            .unwrap();
+        self.builder.build_store(len_ptr2, count).unwrap();
+
+        // Store capacity at offset 16
+        let cap_field = unsafe {
+            self.builder
+                .build_gep(
+                    self.context.i8_type(),
+                    new_list_struct,
+                    &[self.types.i64_type.const_int(16, false)],
+                    "cap_field",
                 )
                 .unwrap()
         };
         let cap_ptr2 = self
             .builder
-            .build_pointer_cast(cap_ptr2, i64_ptr, "cap_ptr2_i64")
+            .build_pointer_cast(cap_field, i64_ptr, "cap_ptr2")
             .unwrap();
         self.builder.build_store(cap_ptr2, count).unwrap();
 
@@ -21087,31 +22505,24 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         self.builder.position_at_end(list_loop_body);
-        let sixteen = self.types.i64_type.const_int(16, false);
+        // Get source element from items array (not inline)
         let src_byte_off = self
             .builder
             .build_int_mul(list_src_idx, sixteen, "src_byte_off")
             .unwrap();
-        let src_off = self
-            .builder
-            .build_int_add(sixteen, src_byte_off, "src_off")
-            .unwrap();
         let src_elem = unsafe {
             self.builder
-                .build_gep(self.context.i8_type(), list_ptr3, &[src_off], "src_elem")
+                .build_gep(self.context.i8_type(), src_items_ptr, &[src_byte_off], "src_elem")
                 .unwrap()
         };
+        // Get destination element in new items array
         let dst_byte_off = self
             .builder
             .build_int_mul(list_i, sixteen, "dst_byte_off")
             .unwrap();
-        let dst_off = self
-            .builder
-            .build_int_add(sixteen, dst_byte_off, "dst_off")
-            .unwrap();
         let dst_elem = unsafe {
             self.builder
-                .build_gep(self.context.i8_type(), new_list2, &[dst_off], "dst_elem")
+                .build_gep(self.context.i8_type(), new_items, &[dst_byte_off], "dst_elem")
                 .unwrap()
         };
         // Copy 16 bytes for the MdhValue
@@ -21138,7 +22549,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         self.builder.position_at_end(list_loop_end);
-        let list_loop_result = self.make_list(new_list2)?;
+        let list_loop_result = self.make_list(new_list_struct)?;
         self.builder.build_unconditional_branch(loop_merge).unwrap();
         let list_loop_bb = self.builder.get_insert_block().unwrap();
 
@@ -21575,35 +22986,121 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         // Calculate pad length = max(0, width - str_len)
-        let pad_len = self
+        let pad_len_raw = self
             .builder
-            .build_int_sub(width_data, str_len, "pad_len")
+            .build_int_sub(width_data, str_len, "pad_len_raw")
             .unwrap();
         let zero = self.types.i64_type.const_int(0, false);
         let need_pad = self
             .builder
-            .build_int_compare(inkwell::IntPredicate::SGT, pad_len, zero, "need_pad")
+            .build_int_compare(inkwell::IntPredicate::SGT, pad_len_raw, zero, "need_pad")
+            .unwrap();
+        // pad_len = max(0, width - str_len)
+        let pad_len = self
+            .builder
+            .build_select(need_pad, pad_len_raw, zero, "pad_len")
+            .unwrap()
+            .into_int_value();
+
+        // Calculate total length: str_len + pad_len
+        let total_len = self
+            .builder
+            .build_int_add(str_len, pad_len, "total_len")
             .unwrap();
 
-        // Allocate new string: width + 1 (for null terminator)
+        // Allocate new string: total_len + 1 (for null terminator)
         let one = self.types.i64_type.const_int(1, false);
-        let new_len = self
+        let alloc_size = self
             .builder
-            .build_int_add(width_data, one, "new_len")
+            .build_int_add(total_len, one, "alloc_size")
             .unwrap();
         let new_ptr = self
             .builder
-            .build_call(self.libc.malloc, &[new_len.into()], "padded_str")
+            .build_call(self.libc.malloc, &[alloc_size.into()], "padded_str")
             .unwrap()
             .try_as_basic_value()
             .left()
             .unwrap()
             .into_pointer_value();
 
-        // For simplicity, just copy the original string (proper padding is complex)
-        // A proper implementation would fill with pad_byte then copy string
+        // Copy the original string to the correct position
+        let str_offset = if pad_left { pad_len } else { zero };
+        let str_dest = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), new_ptr, &[str_offset], "str_dest")
+                .unwrap()
+        };
         self.builder
-            .build_call(self.libc.strcpy, &[new_ptr.into(), str_ptr.into()], "")
+            .build_call(
+                self.libc.memcpy,
+                &[str_dest.into(), str_ptr.into(), str_len.into()],
+                "",
+            )
+            .unwrap();
+
+        // Fill padding positions with pad character using a loop
+        let current_func = self
+            .builder
+            .get_insert_block()
+            .unwrap()
+            .get_parent()
+            .unwrap();
+        let pre_loop_bb = self.builder.get_insert_block().unwrap();
+        let pad_loop_bb = self.context.append_basic_block(current_func, "pad_loop");
+        let pad_body_bb = self.context.append_basic_block(current_func, "pad_body");
+        let pad_done_bb = self.context.append_basic_block(current_func, "pad_done");
+
+        // Start padding loop
+        self.builder.build_unconditional_branch(pad_loop_bb).unwrap();
+        self.builder.position_at_end(pad_loop_bb);
+
+        // Loop counter phi
+        let i_phi = self.builder.build_phi(self.types.i64_type, "pad_i").unwrap();
+        i_phi.add_incoming(&[(&zero, pre_loop_bb)]);
+
+        let i_val = i_phi.as_basic_value().into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(inkwell::IntPredicate::SLT, i_val, pad_len, "pad_cond")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(cond, pad_body_bb, pad_done_bb)
+            .unwrap();
+
+        // Loop body: write pad char
+        self.builder.position_at_end(pad_body_bb);
+        let pad_offset = if pad_left {
+            // Padding at start
+            i_val
+        } else {
+            // Padding after string
+            self.builder
+                .build_int_add(str_len, i_val, "pad_off")
+                .unwrap()
+        };
+        let pad_pos = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), new_ptr, &[pad_offset], "pad_pos")
+                .unwrap()
+        };
+        self.builder.build_store(pad_pos, pad_byte).unwrap();
+
+        // Increment and loop
+        let next_i = self.builder.build_int_add(i_val, one, "next_i").unwrap();
+        i_phi.add_incoming(&[(&next_i, pad_body_bb)]);
+        self.builder.build_unconditional_branch(pad_loop_bb).unwrap();
+
+        // Done with padding
+        self.builder.position_at_end(pad_done_bb);
+
+        // Add null terminator
+        let null_pos = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), new_ptr, &[total_len], "null_pos")
+                .unwrap()
+        };
+        self.builder
+            .build_store(null_pos, self.context.i8_type().const_int(0, false))
             .unwrap();
 
         self.make_string(new_ptr)
