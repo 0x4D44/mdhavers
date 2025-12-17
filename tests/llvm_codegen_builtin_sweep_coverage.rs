@@ -5,13 +5,13 @@ use std::path::PathBuf;
 
 use mdhavers::{parse, LLVMCompiler};
 
-fn extract_reachable_builtin_arm_representatives_from_codegen_source() -> Vec<String> {
+fn extract_builtin_names_from_codegen_source() -> Vec<String> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let codegen_path = root.join("src/llvm/codegen.rs");
     let source = std::fs::read_to_string(&codegen_path)
         .unwrap_or_else(|e| panic!("failed to read {}: {}", codegen_path.display(), e));
 
-    let mut arms: Vec<Vec<String>> = Vec::new();
+    let mut names_in_order: Vec<String> = Vec::new();
 
     let mut in_match = false;
     let mut depth: i32 = 0;
@@ -32,19 +32,15 @@ fn extract_reachable_builtin_arm_representatives_from_codegen_source() -> Vec<St
 
         if let Some((before, _after)) = line.split_once("=>") {
             if before.contains('"') {
-                let mut names = Vec::new();
                 let mut rest = before;
                 while let Some(start) = rest.find('"') {
                     let tail = &rest[start + 1..];
                     if let Some(end) = tail.find('"') {
-                        names.push(tail[..end].to_string());
+                        names_in_order.push(tail[..end].to_string());
                         rest = &tail[end + 1..];
                     } else {
                         break;
                     }
-                }
-                if !names.is_empty() {
-                    arms.push(names);
                 }
             }
         }
@@ -53,28 +49,10 @@ fn extract_reachable_builtin_arm_representatives_from_codegen_source() -> Vec<St
         depth -= line.matches('}').count() as i32;
     }
 
-    // Choose a representative name per match arm that is actually reachable, taking into account
-    // that `src/llvm/codegen.rs` allows unreachable patterns and may have duplicated names across
-    // multiple arms.
-    //
-    // We mirror Rust `match` semantics: once a name appears in a prior arm, later arms matching the
-    // same name are unreachable.
-    let mut already_matched = HashSet::new();
-    let mut reps = Vec::new();
-    for names in arms {
-        let rep = names
-            .iter()
-            .find(|n| !already_matched.contains(*n))
-            .cloned();
-        for n in names {
-            already_matched.insert(n);
-        }
-        if let Some(rep) = rep {
-            reps.push(rep);
-        }
-    }
-
-    reps
+    // De-dup in order: we want to probe every callable alias at least once.
+    let mut seen = HashSet::new();
+    names_in_order.retain(|n| seen.insert(n.clone()));
+    names_in_order
 }
 
 fn compile_call_snippet(name: &str, args: &[&str]) -> Result<String, String> {
@@ -93,7 +71,7 @@ fn compile_call_snippet(name: &str, args: &[&str]) -> Result<String, String> {
 fn llvm_codegen_builtin_dispatch_is_exercised_broadly() {
     // This is intentionally coverage-only: it is a large, table-driven probe of the builtin
     // dispatch in `src/llvm/codegen.rs`.
-    let builtins = extract_reachable_builtin_arm_representatives_from_codegen_source();
+    let builtins = extract_builtin_names_from_codegen_source();
 
     // These are either syntactic keywords (not callables), or too dangerous to probe in bulk.
     let skip: HashSet<&'static str> = [
