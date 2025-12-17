@@ -1086,15 +1086,6 @@ impl Interpreter {
             }))),
         );
 
-        // clype - debug print with type info (Scots: tell/inform/snitch)
-        globals.borrow_mut().define(
-            "clype".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("clype", 1, |args| {
-                let val = &args[0];
-                Ok(Value::String(format!("[{}] {}", val.type_name(), val)))
-            }))),
-        );
-
         // is_a - type checking (returns aye/nae)
         globals.borrow_mut().define(
             "is_a".to_string(),
@@ -1228,53 +1219,6 @@ impl Interpreter {
                         Ok(Value::Integer(-1))
                     }
                     _ => Err("index_of() needs a string/list and a value".to_string()),
-                }
-            }))),
-        );
-
-        // === More String Functions ===
-
-        // pad_left - pad string on the left to reach target length
-        globals.borrow_mut().define(
-            "pad_left".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("pad_left", 3, |args| {
-                match (&args[0], &args[1], &args[2]) {
-                    (Value::String(s), Value::Integer(width), Value::String(pad_char)) => {
-                        let width = *width as usize;
-                        if s.len() >= width {
-                            Ok(Value::String(s.clone()))
-                        } else {
-                            let pad = pad_char.chars().next().unwrap_or(' ');
-                            let padding: String =
-                                std::iter::repeat_n(pad, width - s.len()).collect();
-                            Ok(Value::String(format!("{}{}", padding, s)))
-                        }
-                    }
-                    _ => Err(
-                        "pad_left() needs a string, integer width, and pad character".to_string(),
-                    ),
-                }
-            }))),
-        );
-
-        // pad_right - pad string on the right to reach target length
-        globals.borrow_mut().define(
-            "pad_right".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("pad_right", 3, |args| match (
-                &args[0], &args[1], &args[2],
-            ) {
-                (Value::String(s), Value::Integer(width), Value::String(pad_char)) => {
-                    let width = *width as usize;
-                    if s.len() >= width {
-                        Ok(Value::String(s.clone()))
-                    } else {
-                        let pad = pad_char.chars().next().unwrap_or(' ');
-                        let padding: String = std::iter::repeat_n(pad, width - s.len()).collect();
-                        Ok(Value::String(format!("{}{}", s, padding)))
-                    }
-                }
-                _ => {
-                    Err("pad_right() needs a string, integer width, and pad character".to_string())
                 }
             }))),
         );
@@ -1591,50 +1535,6 @@ impl Interpreter {
                     Ok(Value::List(Rc::new(RefCell::new(new_list))))
                 } else {
                     Err("dicht() needs a list".to_string())
-                }
-            }))),
-        );
-
-        // tak - take first n elements (Scots: take)
-        globals.borrow_mut().define(
-            "tak".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("tak", 2, |args| {
-                let n = args[1].as_integer().ok_or("tak() needs an integer count")?;
-                let n = n.max(0) as usize;
-                match &args[0] {
-                    Value::List(list) => {
-                        let list = list.borrow();
-                        let result: Vec<Value> = list.iter().take(n).cloned().collect();
-                        Ok(Value::List(Rc::new(RefCell::new(result))))
-                    }
-                    Value::String(s) => {
-                        let taken: String = s.chars().take(n).collect();
-                        Ok(Value::String(taken))
-                    }
-                    _ => Err("tak() needs a list or string".to_string()),
-                }
-            }))),
-        );
-
-        // drap - drop first n elements (Scots: drop)
-        globals.borrow_mut().define(
-            "drap".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("drap", 2, |args| {
-                let n = args[1]
-                    .as_integer()
-                    .ok_or("drap() needs an integer count")?;
-                let n = n.max(0) as usize;
-                match &args[0] {
-                    Value::List(list) => {
-                        let list = list.borrow();
-                        let result: Vec<Value> = list.iter().skip(n).cloned().collect();
-                        Ok(Value::List(Rc::new(RefCell::new(result))))
-                    }
-                    Value::String(s) => {
-                        let dropped: String = s.chars().skip(n).collect();
-                        Ok(Value::String(dropped))
-                    }
-                    _ => Err("drap() needs a list or string".to_string()),
                 }
             }))),
         );
@@ -2750,22 +2650,6 @@ impl Interpreter {
                     _ => false,
                 };
                 Ok(Value::Bool(is_glaikit))
-            }))),
-        );
-
-        // cannie - check if a value is "careful"/safe (within reasonable bounds)
-        globals.borrow_mut().define(
-            "cannie".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("cannie", 1, |args| {
-                let is_cannie = match &args[0] {
-                    Value::Integer(n) => *n >= -1000 && *n <= 1000,
-                    Value::Float(f) => *f >= -1000.0 && *f <= 1000.0 && f.is_finite(),
-                    Value::String(s) => s.len() <= 1000 && !s.contains(|c: char| c.is_control()),
-                    Value::List(l) => l.borrow().len() <= 1000,
-                    Value::Dict(d) => d.borrow().len() <= 100,
-                    _ => true,
-                };
-                Ok(Value::Bool(is_cannie))
             }))),
         );
 

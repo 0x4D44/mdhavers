@@ -1,6 +1,9 @@
 use std::process::Command;
 
 fn main() {
+    // `cargo llvm-cov` sets `cfg(coverage)`; register it so `unexpected_cfgs` doesn't warn.
+    println!("cargo:rustc-check-cfg=cfg(coverage)");
+
     // Tell cargo to rerun this script if the runtime source changes
     println!("cargo:rerun-if-changed=runtime/mdh_runtime.c");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime.h");
