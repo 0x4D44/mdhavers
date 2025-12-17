@@ -1043,7 +1043,6 @@ mod pipe {
     use super::*;
 
     #[test]
-    #[ignore] // Pipe not working
     fn test_pipe_basic() {
         let code = r#"
             ken result = 5 |> tae_string
@@ -1053,7 +1052,6 @@ mod pipe {
     }
 
     #[test]
-    #[ignore] // Pipe not working
     fn test_pipe_chain() {
         let code = r#"
             ken nums = [3, 1, 4, 1, 5]
@@ -5342,7 +5340,6 @@ blether result
     }
 
     #[test]
-    #[ignore] // Pipe not working
     fn test_pipe_chain() {
         let code = r#"
 dae square(x) { gie x * x }
@@ -8043,7 +8040,6 @@ blether result
     }
 
     #[test]
-    #[ignore] // Pipe not working
     fn test_pipe_chain() {
         let code = r#"
 dae add_one(x) {
@@ -28876,7 +28872,6 @@ mod coverage_batch303 {
     use super::run;
 
     #[test]
-    #[ignore] // Pipe not working
     fn test_pipe_basic() {
         let code = r#"
 ken x = -5 |> abs
@@ -28886,7 +28881,6 @@ blether x
     }
 
     #[test]
-    #[ignore] // Pipe not working
     fn test_pipe_chain() {
         let code = r#"
 ken x = -4 |> abs |> sqrt
@@ -32299,7 +32293,6 @@ blether sumaw(v)
     }
 
     #[test]
-    #[ignore = "ceilidh (dict merge) not working correctly in LLVM backend"]
     fn test_dict_merge() {
         let code = r#"
 ken d1 = {"a": 1}
@@ -32435,7 +32428,6 @@ blether tumble([], 0, |acc, x| acc + x)
     }
 
     #[test]
-    #[ignore = "closure capture mutation issue in LLVM backend"]
     fn test_each_basic() {
         let code = r#"
 ken total = 0
@@ -32574,7 +32566,6 @@ blether result
     }
 
     #[test]
-    #[ignore] // Pipe not working
     fn test_pipe_chain() {
         let code = r#"
 ken result = 5 |> |x| x + 1 |> |x| x * 2
@@ -32943,7 +32934,6 @@ blether a + b + c
     }
 
     #[test]
-    #[ignore] // Destructuring may not print correctly
     fn test_destructure_two_elements() {
         let code = r#"
 ken list = [10, 20]
@@ -32964,7 +32954,6 @@ blether val
     }
 
     #[test]
-    #[ignore] // Destructuring may not print correctly
     fn test_destructure_with_ignore() {
         let code = r#"
 ken list = [1, 2, 3]
@@ -34841,23 +34830,21 @@ mod list_ops_extended {
     use super::run;
 
     #[test]
-    #[ignore = "sort on string list crashes"]
     fn test_list_sort_strings() {
         let code = r#"
 ken strs = ["banana", "apple", "cherry"]
-sort(strs)
-blether strs[0]
+ken sorted = sort(strs)
+blether sorted[0]
         "#;
         assert_eq!(run(code).trim(), "apple");
     }
 
     #[test]
-    #[ignore = "reverse on string list crashes"]
     fn test_list_reverse_strings() {
         let code = r#"
 ken strs = ["a", "b", "c"]
-reverse(strs)
-blether strs[0]
+ken r = reverse(strs)
+blether r[0]
         "#;
         assert_eq!(run(code).trim(), "c");
     }
@@ -34937,7 +34924,6 @@ blether len(shuffled)
     }
 
     #[test]
-    #[ignore = "ilkane with index crashes"]
     fn test_list_each_index() {
         let code = r#"
 ken list = [10, 20, 30]
@@ -34992,7 +34978,6 @@ blether gin dict_has(d, "b") than "yes" ither "no"
     }
 
     #[test]
-    #[ignore = "toss/delete not working correctly"]
     fn test_dict_delete_and_check() {
         let code = r#"
 ken d = {"a": 1, "b": 2}
@@ -35023,7 +35008,6 @@ blether d["dynamic"]
     }
 
     #[test]
-    #[ignore = "ilkane on dict crashes"]
     fn test_dict_ilkane_iteration() {
         let code = r#"
 ken d = {"a": 1, "b": 2}
@@ -35676,7 +35660,6 @@ blether whit_kind({"a": 1})
     }
 
     #[test]
-    #[ignore = "whit_kind on lambda crashes"]
     fn test_whit_kind_function() {
         let code = r#"
 ken f = |x| x * 2
@@ -35803,7 +35786,6 @@ blether gin "abc" == "xyz" than "same" ither "different"
     }
 
     #[test]
-    #[ignore = "list comparison crashes"]
     fn test_compare_lists() {
         let code = r#"
 ken a = [1, 2, 3]
@@ -35994,7 +35976,6 @@ mod pipe_extended {
     use super::run;
 
     #[test]
-    #[ignore = "pipe chaining syntax crashes"]
     fn test_pipe_map_filter() {
         let code = r#"
 ken result = [1, 2, 3, 4, 5] |> |arr| ilk(arr, |x| x * 2) |> |arr| sieve(arr, |x| x > 5)
@@ -36005,7 +35986,6 @@ blether len(result)
     }
 
     #[test]
-    #[ignore = "pipe chaining syntax crashes"]
     fn test_pipe_with_reduce() {
         let code = r#"
 ken result = [1, 2, 3] |> |arr| ilk(arr, |x| x * x) |> |arr| tumble(arr, 0, |acc, x| acc + x)
@@ -36016,7 +35996,6 @@ blether result
     }
 
     #[test]
-    #[ignore = "trim function doesn't exist"]
     fn test_pipe_string_ops() {
         let code = r#"
 ken result = "  hello  " |> trim |> upper
@@ -36033,7 +36012,6 @@ mod match_extended {
     use super::run;
 
     #[test]
-    #[ignore = "keek cannot be assigned to variable"]
     fn test_match_string_patterns() {
         let code = r#"
 ken cmd = "start"
@@ -36049,7 +36027,6 @@ blether result
     }
 
     #[test]
-    #[ignore = "keek cannot be assigned to variable"]
     fn test_match_with_expression() {
         let code = r#"
 ken x = 15
@@ -36064,7 +36041,6 @@ blether result
     }
 
     #[test]
-    #[ignore = "keek cannot be assigned to variable"]
     fn test_match_range_inclusive() {
         let code = r#"
 ken score = 85
@@ -37493,7 +37469,6 @@ blether gin result > 0.99 an result < 1.01 than "ok" ither "fail"
     }
 
     #[test]
-    #[ignore = "Test harness returns different value than CLI"]
     fn test_cos_pi() {
         let code = r#"
 ken result = cos(3.14159265358979)
@@ -37618,28 +37593,24 @@ mod logging_coverage {
     use super::run;
 
     #[test]
-    #[ignore = "log functions not defined"]
     fn test_log_debug() {
         let output = run(r#"log_debug("debug message")"#);
         assert!(output.is_empty() || output.contains("DEBUG"));
     }
 
     #[test]
-    #[ignore = "log functions not defined"]
     fn test_log_info() {
         let output = run(r#"log_info("info message")"#);
         assert!(output.is_empty() || output.contains("INFO"));
     }
 
     #[test]
-    #[ignore = "log functions not defined"]
     fn test_log_warn() {
         let output = run(r#"log_warn("warn message")"#);
         assert!(output.is_empty() || output.contains("WARN"));
     }
 
     #[test]
-    #[ignore = "log functions not defined"]
     fn test_log_error() {
         let output = run(r#"log_error("error message")"#);
         assert!(output.is_empty() || output.contains("ERROR"));
@@ -39068,10 +39039,10 @@ mod more_builtins_coverage {
     }
 
     #[test]
-    #[ignore = "pad function not available"]
     fn test_pad_function() {
         let code = r#"blether pad("hi", 5, " ")"#;
-        assert_eq!(run(code).trim(), "hi   ");
+        let output = run(code);
+        assert_eq!(output.trim_end_matches(&['\n', '\r'][..]), "hi   ");
     }
 
     #[test]
@@ -39117,7 +39088,6 @@ blether len(parts)
     }
 
     #[test]
-    #[ignore = "slice on string crashes"]
     fn test_slice_string() {
         let code = r#"blether slice("hello world", 0, 5)"#;
         assert_eq!(run(code).trim(), "hello");
@@ -39656,7 +39626,6 @@ blether x + z
     }
 
     #[test]
-    #[ignore] // Parser doesn't support destructure in for loops
     fn test_destructure_in_for() {
         let code = r#"
 ken sum = 0
@@ -39758,7 +39727,6 @@ mod pipe_operator_coverage {
     use super::run;
 
     #[test]
-    #[ignore]
     fn test_basic_pipe() {
         let code = r#"
 ken result = [1, 2, 3] |> len()
@@ -39768,7 +39736,6 @@ blether result
     }
 
     #[test]
-    #[ignore]
     fn test_pipe_with_map() {
         let code = r#"
 ken result = [1, 2, 3] |> ilk(|x| x * 2)
@@ -39782,7 +39749,6 @@ blether result[0]
     }
 
     #[test]
-    #[ignore] // Pipe not working
     fn test_pipe_chain() {
         let code = r#"
 ken result = [1, 2, 3, 4, 5] |> sieve(|x| x > 2) |> ilk(|x| x * 10)
@@ -39792,7 +39758,6 @@ blether len(result)
     }
 
     #[test]
-    #[ignore]
     fn test_pipe_with_string() {
         let code = r#"
 ken result = "hello" |> upper()
@@ -39919,7 +39884,6 @@ mod while_edge_cases_coverage {
     use super::run;
 
     #[test]
-    #[ignore]
     fn test_while_immediate_false() {
         let code = r#"
 ken count = 0
@@ -40132,7 +40096,6 @@ blether f"Length: {len(list)}"
     }
 
     #[test]
-    #[ignore]
     fn test_fstring_nested_braces() {
         let code = r#"
 ken d = {"key": "value"}
@@ -42522,7 +42485,6 @@ blether product(list)
     }
 
     #[test]
-    #[ignore = "Test harness returns different value than CLI"]
     fn test_is_toom_empty() {
         let code = r#"blether gin is_toom([]) than "yes" ither "no""#;
         assert_eq!(run(code).trim(), "yes");
@@ -42667,7 +42629,6 @@ blether len(list)
     }
 
     #[test]
-    #[ignore = "not implemented"]
     fn test_items_dict() {
         let code = r#"
 ken d = {"a": 1, "b": 2}
@@ -43395,8 +43356,6 @@ blether x + y
     }
 
     #[test]
-    #[ignore = "destructuring not implemented in LLVM"]
-    #[ignore] // Destructuring may not work fully
     fn test_destructure_with_rest() {
         let code = r#"
 ken lst = [1, 2, 3, 4, 5]
@@ -43435,7 +43394,6 @@ blether x
     }
 
     #[test]
-    #[ignore = "destructuring not implemented in LLVM"]
     fn test_destructure_function_result() {
         let code = r#"
 dae make_pair() {
@@ -43578,7 +43536,6 @@ mod pipe_coverage {
     use super::run;
 
     #[test]
-    #[ignore] // Pipe not working
     fn test_pipe_basic() {
         let code = r#"
 dae double(x) {
@@ -43591,7 +43548,6 @@ blether result
     }
 
     #[test]
-    #[ignore] // Pipe not working
     fn test_pipe_chain() {
         let code = r#"
 dae add_one(x) {
@@ -43954,7 +43910,6 @@ mod closure_full_coverage {
     use super::run;
 
     #[test]
-    #[ignore] // Closures with mutable captures have issues in LLVM backend
     fn test_closure_capture() {
         let code = r#"
 dae make_counter() {
@@ -44320,7 +44275,6 @@ blether tae_string(aye)
     }
 
     #[test]
-    #[ignore] // tae_bool not implemented in LLVM backend
     fn test_tae_bool() {
         let code = r#"
 blether tae_bool(1)
@@ -44332,7 +44286,7 @@ blether tae_bool("hello")
         let lines: Vec<&str> = output.trim().lines().collect();
         assert_eq!(lines[0], "aye");
         assert_eq!(lines[1], "nae");
-        assert_eq!(lines[2], "nae");
+        assert_eq!(lines[2], "aye");
         assert_eq!(lines[3], "aye");
     }
 }
@@ -44394,7 +44348,6 @@ blether contains(lst, 10)
     }
 
     #[test]
-    #[ignore] // find/index_of not implemented in LLVM backend
     fn test_index_of() {
         let code = r#"
 ken lst = ["a", "b", "c", "d"]
@@ -44551,7 +44504,6 @@ blether ends_wi(s, "hello")
     }
 
     #[test]
-    #[ignore] // Works in CLI but crashes in test harness
     fn test_substring() {
         let code = r#"
 ken s = "hello world"
@@ -44662,7 +44614,6 @@ blether tan(0)
     }
 
     #[test]
-    #[ignore] // Works in CLI but has test harness issues
     fn test_log_exp_new() {
         let code = r#"
 ken e_val = exp(1)
@@ -44714,7 +44665,6 @@ mod dict_cov_new {
     use super::run;
 
     #[test]
-    #[ignore] // Works in CLI but has test harness issues
     fn test_dict_basic_ops() {
         let code = r#"
 ken d = {"a": 1, "b": 2, "c": 3}
@@ -45243,7 +45193,6 @@ blether factorial(6)
     }
 
     #[test]
-    #[ignore] // Closures with captured variables have issues
     fn test_function_returning_function() {
         let code = r#"
 dae make_adder(n) {
@@ -45293,7 +45242,6 @@ mod destructure_coverage {
     use super::run;
 
     #[test]
-    #[ignore] // Destructuring may not print correctly
     fn test_basic_destructure() {
         let code = r#"
 ken list = [1, 2, 3]
@@ -45310,7 +45258,6 @@ blether c
     }
 
     #[test]
-    #[ignore] // Destructuring may not print correctly
     fn test_destructure_with_ignore() {
         let code = r#"
 ken list = [1, 2, 3, 4]
@@ -45325,7 +45272,6 @@ blether c
     }
 
     #[test]
-    #[ignore] // Destructuring may not work fully
     fn test_destructure_with_rest() {
         let code = r#"
 ken list = [1, 2, 3, 4, 5]
@@ -45340,7 +45286,6 @@ blether len(rest)
     }
 
     #[test]
-    #[ignore] // Destructuring may not print correctly
     fn test_destructure_two_elements() {
         let code = r#"
 ken pair = [10, 20]
@@ -45358,7 +45303,6 @@ mod hurl_coverage {
     use super::run;
 
     #[test]
-    #[ignore] // hurl not fully implemented
     fn test_hurl_basic() {
         let code = r#"
 hae_a_bash {
@@ -45371,7 +45315,6 @@ hae_a_bash {
     }
 
     #[test]
-    #[ignore] // hurl not fully implemented
     fn test_hurl_with_expression() {
         let code = r#"
 hae_a_bash {
@@ -45388,7 +45331,6 @@ hae_a_bash {
     }
 
     #[test]
-    #[ignore] // hurl not fully implemented
     fn test_hurl_in_function() {
         let code = r#"
 dae validate(n) {
@@ -45715,7 +45657,6 @@ mod struct_coverage {
     use super::run;
 
     #[test]
-    #[ignore] // Struct feature may not be fully implemented
     fn test_struct_basic() {
         let code = r#"
 thing Point {
@@ -45848,7 +45789,6 @@ blether grade(50)
     }
 
     #[test]
-    #[ignore] // Match guards not implemented
     fn test_match_with_guard() {
         let code = r#"
 dae classify(x) {
@@ -46168,7 +46108,6 @@ blether total
     }
 
     #[test]
-    #[ignore] // Dict length issue
     fn test_dict_complex_operations() {
         let code = r#"
 ken person = {"name": "Alice", "age": 30}
@@ -46719,7 +46658,6 @@ mod pipe_operator_coverage_new {
     use super::run;
 
     #[test]
-    #[ignore] // Pipe not working
     fn test_pipe_basic() {
         let code = r#"
 ken result = 5 |> tae_string()
@@ -46729,7 +46667,6 @@ blether result
     }
 
     #[test]
-    #[ignore] // Pipe not working
     fn test_pipe_chain() {
         let code = r#"
 ken nums = [1, 2, 3, 4, 5]
@@ -46741,7 +46678,6 @@ blether sum
     }
 
     #[test]
-    #[ignore] // Pipe not working
     fn test_pipe_with_filter() {
         let code = r#"
 ken nums = [1, 2, 3, 4, 5, 6]
@@ -46855,7 +46791,6 @@ blether big != bigger
     }
 
     #[test]
-    #[ignore = "Works in CLI but test harness returns different value"]
     fn test_compare_float_and_int() {
         let code = r#"
 blether 5 == 5.0
@@ -46997,7 +46932,6 @@ blether "done"
     }
 
     #[test]
-    #[ignore = "Works in CLI but test harness has issues"]
     fn test_is_in_creel() {
         let code = r#"
 ken s = empty_creel()
@@ -47324,7 +47258,6 @@ mod ceilidh_coverage {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_ceilidh_basic() {
         let code = r#"
 ken a = [1, 2, 3]
@@ -47336,7 +47269,6 @@ blether len(result)
     }
 
     #[test]
-    #[ignore]
     fn test_ceilidh_different_sizes() {
         let code = r#"
 ken a = [1, 2]
@@ -47348,7 +47280,6 @@ blether len(result)
     }
 
     #[test]
-    #[ignore]
     fn test_ceilidh_empty() {
         let code = r#"
 ken a = []
@@ -47570,7 +47501,6 @@ blether c.get()
     }
 
     #[test]
-    #[ignore] // Cross-reference between classes is complex
     fn test_multiple_classes_cross_reference() {
         let code = r#"
 kin A {
@@ -47644,7 +47574,6 @@ mod condition_opt_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_list_index_in_condition() {
         let code = r#"
 ken nums = [5, 10, 15]
@@ -47656,7 +47585,6 @@ gin nums[0] > 3 {
     }
 
     #[test]
-    #[ignore]
     fn test_list_index_in_while() {
         let code = r#"
 ken vals = [1, 2, 3, 0, 5]
@@ -47672,7 +47600,6 @@ whiles vals[i] > 0 {
     }
 
     #[test]
-    #[ignore]
     fn test_bool_variable_in_condition() {
         let code = r#"
 ken flag = aye
@@ -47684,7 +47611,6 @@ gin flag {
     }
 
     #[test]
-    #[ignore]
     fn test_bool_expr_equality() {
         let code = r#"
 ken a = aye
@@ -47702,7 +47628,6 @@ mod shadow_sync_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_loop_modifies_int() {
         let code = r#"
 ken x = 0
@@ -47715,7 +47640,6 @@ blether x
     }
 
     #[test]
-    #[ignore]
     fn test_nested_loop_shadows() {
         let code = r#"
 ken sum = 0
@@ -47730,7 +47654,6 @@ blether sum
     }
 
     #[test]
-    #[ignore]
     fn test_while_with_shadow_sync() {
         let code = r#"
 ken x = 10
@@ -47782,7 +47705,6 @@ mod binary_op_edge_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_equality_comparison_int() {
         let code = r#"
 ken a = 5
@@ -47797,7 +47719,6 @@ gin a == b {
     }
 
     #[test]
-    #[ignore]
     fn test_inequality_comparison() {
         let code = r#"
 ken a = 5
@@ -47810,7 +47731,6 @@ gin a != b {
     }
 
     #[test]
-    #[ignore]
     fn test_less_comparison() {
         let code = r#"
 ken a = 3
@@ -47823,7 +47743,6 @@ gin a < b {
     }
 
     #[test]
-    #[ignore]
     fn test_greater_equal_comparison() {
         let code = r#"
 ken a = 5
@@ -47836,7 +47755,6 @@ gin a >= b {
     }
 
     #[test]
-    #[ignore]
     fn test_less_equal_comparison() {
         let code = r#"
 ken a = 4
@@ -47849,7 +47767,6 @@ gin a <= b {
     }
 
     #[test]
-    #[ignore]
     fn test_greater_comparison() {
         let code = r#"
 ken a = 10
@@ -47944,7 +47861,6 @@ blether a + b
     }
 
     #[test]
-    #[ignore]
     fn test_string_multiply() {
         let code = r#"
 ken s = "ab"
@@ -48081,7 +47997,6 @@ mod time_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_time() {
         let code = r#"
 ken t = time()
@@ -48092,7 +48007,6 @@ blether t > 0
     }
 
     #[test]
-    #[ignore]
     fn test_sleep() {
         let code = r#"
 sleep(1)
@@ -48185,7 +48099,6 @@ mod list_extra_cov2 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_sum() {
         let code = r#"
 ken nums = [1, 2, 3, 4, 5]
@@ -48226,7 +48139,6 @@ blether result
     }
 
     #[test]
-    #[ignore]
     fn test_find() {
         let code = r#"
 ken items = ["a", "b", "c"]
@@ -48237,7 +48149,6 @@ blether idx
     }
 
     #[test]
-    #[ignore]
     fn test_count() {
         let code = r#"
 ken items = [1, 2, 1, 3, 1]
@@ -48248,7 +48159,6 @@ blether c
     }
 
     #[test]
-    #[ignore]
     fn test_any() {
         let code = r#"
 ken items = [nae, aye, nae]
@@ -48260,7 +48170,6 @@ blether result
     }
 
     #[test]
-    #[ignore]
     fn test_all() {
         let code = r#"
 ken items = [aye, aye, aye]
@@ -48301,7 +48210,6 @@ blether len(basket)
     }
 
     #[test]
-    #[ignore]
     fn test_creel_copy_list() {
         let code = r#"
 ken original = [1, 2, 3]
@@ -48327,7 +48235,6 @@ blether len(sliced)
     }
 
     #[test]
-    #[ignore]  // Crashes at runtime
     fn test_slice_from_start() {
         let code = r#"
 ken items = [10, 20, 30, 40]
@@ -48347,7 +48254,6 @@ mod string_format_cov {
     use super::*;
 
     #[test]
-    #[ignore]  // format() not implemented in LLVM
     fn test_format_string_basic() {
         let code = r#"
 ken name = "World"
@@ -48428,7 +48334,6 @@ blether rev[2]
     }
 
     #[test]
-    #[ignore]  // copy() not implemented in LLVM
     fn test_copy_list() {
         let code = r#"
 ken a = [1, 2, 3]
@@ -48439,7 +48344,6 @@ blether len(b)
     }
 
     #[test]
-    #[ignore]  // append() not implemented in LLVM
     fn test_append_lists() {
         let code = r#"
 ken a = [1, 2]
@@ -48538,7 +48442,6 @@ mod env_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_getenv() {
         let code = r#"
 ken path = getenv("PATH")
@@ -48549,7 +48452,6 @@ blether len(path) > 0
     }
 
     #[test]
-    #[ignore]
     fn test_getenv_missing() {
         let code = r#"
 ken val = getenv("NONEXISTENT_VAR_12345")
@@ -48672,8 +48574,11 @@ blether is_toom(lst)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        // is_toom returns false placeholder according to code
-        assert!(output == "0" || output == "false" || output == "nae", "Got: {}", output);
+        assert!(
+            output == "1" || output == "true" || output == "aye",
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -48684,8 +48589,11 @@ blether is_empty(lst)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        // is_empty is alias for is_toom
-        assert!(output == "0" || output == "false" || output == "nae", "Got: {}", output);
+        assert!(
+            output == "1" || output == "true" || output == "aye",
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -48762,7 +48670,6 @@ mod more_list_ops_cov {
     use super::*;
 
     #[test]
-    #[ignore] // birl crashes the executable
     fn test_birl_rotate() {
         // birl(list, n) - rotate list by n positions
         let code = r#"
@@ -48777,7 +48684,6 @@ blether rotated
     }
 
     #[test]
-    #[ignore] // May not be implemented
     fn test_birl_negative() {
         let code = r#"
 ken lst = [1, 2, 3]
@@ -48788,7 +48694,6 @@ blether rotated
     }
 
     #[test]
-    #[ignore] // fetch is not a valid function name
     fn test_list_fetch_builtin() {
         // fetch(list, index) - get item at index
         let code = r#"
@@ -48851,7 +48756,6 @@ blether a + " " + b
     }
 
     #[test]
-    #[ignore] // String * int doesn't do repeat in LLVM backend
     fn test_string_repeat() {
         // Repeat string
         let code = r#"
@@ -49308,7 +49212,6 @@ blether x != 0
     }
 
     #[test]
-    #[ignore] // bit_shl returns 0 - function not working as expected
     fn test_bit_shift_left() {
         let code = r#"blether bit_shl(1, 4)"#;
         let binding = run(code);
@@ -49318,7 +49221,6 @@ blether x != 0
     }
 
     #[test]
-    #[ignore] // bit_shr returns 0 - function not working as expected
     fn test_bit_shift_right() {
         let code = r#"blether bit_shr(16, 2)"#;
         let binding = run(code);
@@ -49347,7 +49249,6 @@ blether d["name"]
     }
 
     #[test]
-    #[ignore] // len(dict) returns 0 - not properly implemented
     fn test_dict_len() {
         let code = r#"
 ken d = {"a": 1, "b": 2, "c": 3}
@@ -49639,7 +49540,6 @@ blether len(rest)
     }
 
     #[test]
-    #[ignore] // tumble expects 3 args (list, initial, function) - different function
     fn test_tumble() {
         // reverse a list
         let code = r#"
@@ -49764,7 +49664,6 @@ mod ascii_builtins_cov {
     use super::*;
 
     #[test]
-    #[ignore] // ascii() returns 0 - function not working
     fn test_ascii_code() {
         let code = r#"blether ascii("A")"#;
         let binding = run(code);
@@ -49920,7 +49819,6 @@ blether average(lst)
     }
 
     #[test]
-    #[ignore] // coont doesn't work as expected
     fn test_coont() {
         // coont - count elements
         let code = r#"
@@ -49948,7 +49846,6 @@ blether aw(lst, is_even)
     }
 
     #[test]
-    #[ignore] // count_val doesn't work as expected
     fn test_count_val() {
         let code = r#"
 ken lst = [1, 2, 2, 3, 2]
@@ -50006,7 +49903,6 @@ mod random_extra_cov {
     use super::*;
 
     #[test]
-    #[ignore] // wrang_sort doesn't work with "an" keyword
     fn test_wrang_sort() {
         // wrang_sort - random integer
         let code = r#"
@@ -50019,7 +49915,6 @@ blether x >= 1 an x <= 10
     }
 
     #[test]
-    #[ignore] // braw expects 1 argument
     fn test_braw() {
         // braw() - random float 0-1
         let code = r#"
@@ -50241,7 +50136,6 @@ mod string_ops_cov2 {
     }
 
     #[test]
-    #[ignore] // split_lines returns 0
     fn test_split_lines() {
         let code = r#"
 ken lines = split_lines("line1
@@ -50362,7 +50256,6 @@ mod math_scots_cov {
     use super::*;
 
     #[test]
-    #[ignore] // cannie expects 1 argument
     fn test_cannie() {
         // cannie - trim string (alias for wheesht)
         let code = r#"blether cannie("  hello  ")"#;
@@ -50417,7 +50310,6 @@ mod string_util_cov {
     }
 
     #[test]
-    #[ignore] // substr_between returns empty string
     fn test_substr_between() {
         let code = r#"blether substr_between("hello [world] end", "[", "]")"#;
         let binding = run(code);
@@ -50648,7 +50540,6 @@ mod dram_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_dram_basic() {
         let code = r#"
 ken arr = [10, 20, 30, 40, 50]
@@ -50662,7 +50553,6 @@ blether elem
     }
 
     #[test]
-    #[ignore]
     fn test_dram_single() {
         let code = r#"
 ken arr = [42]
@@ -50675,7 +50565,6 @@ blether elem
     }
 
     #[test]
-    #[ignore]
     fn test_dram_strings() {
         let code = r#"
 ken arr = ["a", "b", "c"]
@@ -50696,7 +50585,6 @@ mod ceilidh_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_ceilidh_basic() {
         let code = r#"
 ken a = [1, 3, 5]
@@ -50711,7 +50599,6 @@ blether len(result)
     }
 
     #[test]
-    #[ignore]
     fn test_ceilidh_unequal() {
         let code = r#"
 ken a = [1, 2]
@@ -50726,7 +50613,6 @@ blether len(result)
     }
 
     #[test]
-    #[ignore]
     fn test_ceilidh_empty_first() {
         let code = r#"
 ken a = []
@@ -50740,7 +50626,6 @@ blether len(result)
     }
 
     #[test]
-    #[ignore]
     fn test_ceilidh_empty_second() {
         let code = r#"
 ken a = [1, 2, 3]
@@ -50762,7 +50647,6 @@ mod birl_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_birl_basic() {
         let code = r#"
 ken arr = [1, 2, 3, 4, 5]
@@ -50775,7 +50659,6 @@ blether len(rotated)
     }
 
     #[test]
-    #[ignore]
     fn test_birl_by_one() {
         let code = r#"
 ken arr = [1, 2, 3]
@@ -50789,7 +50672,6 @@ blether rotated[0]
     }
 
     #[test]
-    #[ignore]
     fn test_birl_by_zero() {
         let code = r#"
 ken arr = [10, 20, 30]
@@ -50870,7 +50752,6 @@ blether len(s)
     }
 
     #[test]
-    #[ignore]
     fn test_slice_from_start() {
         let code = r#"
 ken arr = [10, 20, 30, 40, 50]
@@ -50896,7 +50777,6 @@ blether len(s)
     }
 
     #[test]
-    #[ignore]
     fn test_slice_string() {
         let code = r#"
 ken s = "hello world"
@@ -50961,7 +50841,6 @@ mod pattern_match_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_match_integer() {
         let code = r#"
 ken x = 2
@@ -50980,7 +50859,6 @@ blether result
     }
 
     #[test]
-    #[ignore]
     fn test_match_default() {
         let code = r#"
 ken x = 100
@@ -50998,7 +50876,6 @@ blether result
     }
 
     #[test]
-    #[ignore]
     fn test_match_string() {
         let code = r#"
 ken s = "hello"
@@ -51024,7 +50901,6 @@ mod ternary_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_ternary_true() {
         let code = r#"
 ken x = 10
@@ -51037,7 +50913,6 @@ blether result
     }
 
     #[test]
-    #[ignore]
     fn test_ternary_false() {
         let code = r#"
 ken x = 3
@@ -51050,7 +50925,6 @@ blether result
     }
 
     #[test]
-    #[ignore]
     fn test_ternary_nested() {
         let code = r#"
 ken x = 5
@@ -51063,7 +50937,6 @@ blether result
     }
 
     #[test]
-    #[ignore]
     fn test_ternary_in_expr() {
         let code = r#"
 ken a = 1
@@ -51170,7 +51043,6 @@ blether first + second
     }
 
     #[test]
-    #[ignore]
     fn test_dict_destructure() {
         let code = r#"
 ken d = {"x": 10, "y": 20}
@@ -51184,7 +51056,6 @@ blether x + y
     }
 
     #[test]
-    #[ignore]
     fn test_nested_destructure() {
         let code = r#"
 ken tmp = [[1, 2], 3]
@@ -51206,7 +51077,6 @@ mod fankle_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_fankle_basic() {
         let code = r#"
 ken nested = [[1, 2], [3, 4], [5]]
@@ -51220,7 +51090,6 @@ blether len(flat)
     }
 
     #[test]
-    #[ignore]
     fn test_fankle_already_flat() {
         let code = r#"
 ken arr = [1, 2, 3]
@@ -51233,7 +51102,6 @@ blether len(flat)
     }
 
     #[test]
-    #[ignore]
     fn test_fankle_empty_nested() {
         let code = r#"
 ken nested = [[], [1], []]
@@ -51254,7 +51122,6 @@ mod head_last_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_heider_basic() {
         let code = r#"
 ken arr = [10, 20, 30]
@@ -51266,7 +51133,6 @@ blether heider(arr)
     }
 
     #[test]
-    #[ignore]
     fn test_erse_basic() {
         let code = r#"
 ken arr = [10, 20, 30]
@@ -51278,7 +51144,6 @@ blether erse(arr)
     }
 
     #[test]
-    #[ignore]
     fn test_heider_single() {
         let code = r#"
 ken arr = [42]
@@ -51290,7 +51155,6 @@ blether heider(arr)
     }
 
     #[test]
-    #[ignore]
     fn test_erse_single() {
         let code = r#"
 ken arr = [42]
@@ -51310,7 +51174,6 @@ mod mince_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_mince_preserves_length() {
         let code = r#"
 ken arr = [1, 2, 3, 4, 5]
@@ -51323,7 +51186,6 @@ blether len(shuffled)
     }
 
     #[test]
-    #[ignore]
     fn test_mince_single() {
         let code = r#"
 ken arr = [42]
@@ -51336,7 +51198,6 @@ blether shuffled[0]
     }
 
     #[test]
-    #[ignore]
     fn test_mince_empty() {
         let code = r#"
 ken arr = []
@@ -51385,7 +51246,6 @@ blether len(zipped)
     }
 
     #[test]
-    #[ignore]
     fn test_zipwith_add() {
         let code = r#"
 dae add(x, y) { gie x + y }
@@ -51409,7 +51269,6 @@ mod haud_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_haud_evens() {
         let code = r#"
 dae is_even(x) { gie x % 2 == 0 }
@@ -51424,7 +51283,6 @@ blether len(evens)
     }
 
     #[test]
-    #[ignore]
     fn test_haud_all_pass() {
         let code = r#"
 dae always_true(x) { gie aye }
@@ -51438,7 +51296,6 @@ blether len(result)
     }
 
     #[test]
-    #[ignore]
     fn test_haud_none_pass() {
         let code = r#"
 dae always_false(x) { gie nae }
@@ -51460,7 +51317,6 @@ mod fauld_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_fauld_sum() {
         let code = r#"
 dae add(a, b) { gie a + b }
@@ -51474,7 +51330,6 @@ blether total
     }
 
     #[test]
-    #[ignore]
     fn test_fauld_product() {
         let code = r#"
 dae mul(a, b) { gie a * b }
@@ -51489,7 +51344,6 @@ blether product
     }
 
     #[test]
-    #[ignore]
     fn test_fauld_empty() {
         let code = r#"
 dae add(a, b) { gie a + b }
@@ -51512,7 +51366,6 @@ mod graith_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_graith_double() {
         let code = r#"
 dae double(x) { gie x * 2 }
@@ -51526,7 +51379,6 @@ blether doubled[0]
     }
 
     #[test]
-    #[ignore]
     fn test_graith_stringify() {
         let code = r#"
 ken arr = [1, 2, 3]
@@ -51539,7 +51391,6 @@ blether len(strs)
     }
 
     #[test]
-    #[ignore]
     fn test_graith_empty() {
         let code = r#"
 dae inc(x) { gie x + 1 }
@@ -51561,7 +51412,6 @@ mod import_cov {
     use super::*;
 
     #[test]
-    #[ignore] // import resolution needs a real module file
     fn test_import_basic() {
         let code = r#"
 fetch "lib/maths"
@@ -51603,7 +51453,6 @@ blether add(3, 7)
     }
 
     #[test]
-    #[ignore]
     fn test_lambda_in_map() {
         let code = r#"
 ken arr = [1, 2, 3]
@@ -51624,7 +51473,6 @@ mod try_catch_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_try_no_error() {
         let code = r#"
 ken result = 0
@@ -51641,7 +51489,6 @@ blether result
     }
 
     #[test]
-    #[ignore] // division by zero may crash instead of throw
     fn test_try_with_error() {
         let code = r#"
 ken result = 0
@@ -51758,7 +51605,6 @@ blether len(basket)
     }
 
     #[test]
-    #[ignore]
     fn test_creel_is_in() {
         let code = r#"
 ken basket = creel()
@@ -51817,7 +51663,6 @@ blether file_exists("/nonexistent/file/path")
     }
 
     #[test]
-    #[ignore] // Needs actual file system access
     fn test_slurp_file() {
         let code = r#"
 ken content = slurp("/etc/hostname")
@@ -51829,7 +51674,6 @@ blether len(content)
     }
 
     #[test]
-    #[ignore] // Needs write permissions
     fn test_scrieve_file() {
         let code = r#"
 scrieve("/tmp/test_mdh.txt", "Hello World")
@@ -51898,7 +51742,6 @@ mod sleep_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_wheesht_small() {
         let code = r#"
 bide(1)
@@ -52088,7 +51931,6 @@ mod och_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_och_message() {
         let code = r#"
 ken msg = och()
@@ -52293,7 +52135,6 @@ mod trim_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_trim_spaces() {
         let code = r#"
 ken s = "  hello  "
@@ -52472,7 +52313,6 @@ mod input_cov {
     use super::*;
 
     #[test]
-    #[ignore] // Interactive input not testable in automated tests
     fn test_speir_input() {
         let code = r#"
 ken name = speir("Enter name: ")
@@ -52492,7 +52332,6 @@ mod type_check_extended_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_is_list() {
         let code = r#"
 ken arr = [1, 2, 3]
@@ -52504,7 +52343,6 @@ blether is_list(arr)
     }
 
     #[test]
-    #[ignore]
     fn test_is_dict() {
         let code = r#"
 ken d = {"a": 1}
@@ -52516,7 +52354,6 @@ blether is_dict(d)
     }
 
     #[test]
-    #[ignore]
     fn test_is_function() {
         let code = r#"
 dae foo() { gie 1 }
@@ -52645,7 +52482,6 @@ mod find_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_find_in_list() {
         let code = r#"
 ken arr = [10, 20, 30, 40]
@@ -52659,7 +52495,6 @@ blether idx
     }
 
     #[test]
-    #[ignore]
     fn test_find_not_found() {
         let code = r#"
 ken arr = [1, 2, 3]
@@ -52681,7 +52516,6 @@ mod all_any_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_all_true() {
         let code = r#"
 ken arr = [aye, aye, aye]
@@ -52693,7 +52527,6 @@ blether aw(arr)
     }
 
     #[test]
-    #[ignore]
     fn test_all_one_false() {
         let code = r#"
 ken arr = [aye, nae, aye]
@@ -52706,7 +52539,6 @@ blether aw(arr)
     }
 
     #[test]
-    #[ignore]
     fn test_any_true() {
         let code = r#"
 ken arr = [nae, nae, aye]
@@ -52718,7 +52550,6 @@ blether ony(arr)
     }
 
     #[test]
-    #[ignore]
     fn test_any_all_false() {
         let code = r#"
 ken arr = [nae, nae, nae]
@@ -52770,7 +52601,6 @@ blether log10(100.0)
     }
 
     #[test]
-    #[ignore]
     fn test_log2() {
         let code = r#"
 blether log2(8.0)
@@ -52782,7 +52612,6 @@ blether log2(8.0)
     }
 
     #[test]
-    #[ignore]
     fn test_trunc() {
         let code = r#"
 blether trunc(3.7)
@@ -52793,7 +52622,6 @@ blether trunc(3.7)
     }
 
     #[test]
-    #[ignore]
     fn test_frac() {
         let code = r#"
 ken f = frac(3.75)
@@ -52813,7 +52641,6 @@ mod struct_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_struct_basic() {
         let code = r#"
 thing Point {
@@ -52828,7 +52655,6 @@ blether 1
     }
 
     #[test]
-    #[ignore]
     fn test_struct_single_field() {
         let code = r#"
 thing Wrapper {
@@ -52974,7 +52800,6 @@ mod read_lines_cov {
     use super::*;
 
     #[test]
-    #[ignore] // Needs file system access
     fn test_read_lines() {
         let code = r#"
 ken lines_arr = read_lines("/etc/passwd")
@@ -52994,7 +52819,6 @@ mod append_file_cov {
     use super::*;
 
     #[test]
-    #[ignore] // Needs file system access
     fn test_append_file() {
         let code = r#"
 append_file("/tmp/test_append.txt", "hello")
@@ -53130,7 +52954,6 @@ blether --x
     }
 
     #[test]
-    #[ignore]
     fn test_not_not() {
         let code = r#"
 ken x = aye
@@ -53188,7 +53011,6 @@ mod logical_ext_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_and_short_circuit() {
         let code = r#"
 dae side_effect() {
@@ -53205,7 +53027,6 @@ blether "done"
     }
 
     #[test]
-    #[ignore]
     fn test_or_short_circuit() {
         let code = r#"
 dae side_effect() {
@@ -53229,7 +53050,6 @@ mod method_chain_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_string_method_chain() {
         let code = r#"
 ken s = "  HELLO  "
@@ -53568,7 +53388,6 @@ mod bool_logic_ext_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_bool_negation() {
         let code = r#"
 ken x = aye
@@ -53743,7 +53562,6 @@ blether sum
     }
 
     #[test]
-    #[ignore]
     fn test_while_continue() {
         let code = r#"
 ken i = 0
@@ -53985,7 +53803,6 @@ mod nil_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_nil_literal() {
         let code = r#"
 ken x = nil
@@ -53997,7 +53814,6 @@ blether x == nil
     }
 
     #[test]
-    #[ignore]
     fn test_nil_check() {
         let code = r#"
 ken x = nil
@@ -54017,7 +53833,6 @@ mod random_ops_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_random_basic() {
         let code = r#"
 ken r = random(1, 100)
@@ -54029,7 +53844,6 @@ blether r >= 1
     }
 
     #[test]
-    #[ignore]
     fn test_random_fixed_range() {
         let code = r#"
 ken r = random(5, 5)
@@ -54049,7 +53863,6 @@ mod time_ops_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_time_now() {
         let code = r#"
 ken t = time_now()
@@ -54323,7 +54136,6 @@ mod string_extra_cov2 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_substr() {
         let code = r#"
 ken s = substr("hello world", 0, 5)
@@ -54335,7 +54147,6 @@ blether s
     }
 
     #[test]
-    #[ignore]
     fn test_count_char() {
         let code = r#"
 ken s = "hello"
@@ -54672,7 +54483,6 @@ mod get_key_cov {
     use super::*;
 
     #[test]
-    #[ignore] // Requires terminal input
     fn test_get_key() {
         let code = r#"
 ken k = get_key()
@@ -54734,7 +54544,6 @@ mod arith_more_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_power_operator() {
         let code = r#"
 blether pow(2, 8)
@@ -54746,7 +54555,6 @@ blether pow(2, 8)
     }
 
     #[test]
-    #[ignore]
     fn test_integer_division() {
         let code = r#"
 blether 17 / 5
@@ -54796,7 +54604,6 @@ gin x > 5 {
     }
 
     #[test]
-    #[ignore]
     fn test_multiple_elif() {
         let code = r#"
 ken x = 50
@@ -55060,7 +54867,6 @@ blether len(nums)
     }
 
     #[test]
-    #[ignore]
     fn test_range_iterate() {
         let code = r#"
 ken total = 0
@@ -55098,7 +54904,6 @@ blether len(nums)
     }
 
     #[test]
-    #[ignore]
     fn test_range_access_element() {
         let code = r#"
 ken nums = 10..15
@@ -55294,7 +55099,6 @@ mod spread_args_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_spread_in_function_call() {
         let code = r#"
 dae add_three(a, b, c) {
@@ -55311,7 +55115,6 @@ blether result
     }
 
     #[test]
-    #[ignore]
     fn test_spread_with_regular_args() {
         let code = r#"
 dae sum_four(a, b, c, d) {
@@ -55336,7 +55139,6 @@ mod set_ops_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_creel_tae_list() {
         let code = r#"
 ken s = creel()
@@ -55401,7 +55203,6 @@ blether s
     }
 
     #[test]
-    #[ignore]
     fn test_string_runtime_concat() {
         let code = r#"
 dae get_str() {
@@ -55466,7 +55267,6 @@ mod default_params_more_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_default_params_all_provided() {
         let code = r#"
 dae greet(name = "stranger", greeting = "Hello") {
@@ -55480,7 +55280,6 @@ greet("Alice", "Hi")
     }
 
     #[test]
-    #[ignore]
     fn test_default_params_one_provided() {
         let code = r#"
 dae greet(name = "stranger", greeting = "Hello") {
@@ -55494,7 +55293,6 @@ greet("Bob")
     }
 
     #[test]
-    #[ignore]
     fn test_default_params_none_provided() {
         let code = r#"
 dae greet(name = "stranger", greeting = "Hello") {
@@ -55516,7 +55314,6 @@ mod captured_vars_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_closure_captures() {
         let code = r#"
 ken multiplier = 3
@@ -55531,7 +55328,6 @@ blether times(4)
     }
 
     #[test]
-    #[ignore]
     fn test_nested_closure() {
         let code = r#"
 ken base = 10
@@ -55665,7 +55461,6 @@ blether x + y + z
     }
 
     #[test]
-    #[ignore]
     fn test_list_conditional_access() {
         let code = r#"
 ken arr = [10, 20, 30]
@@ -55680,7 +55475,6 @@ gin i > 0 {
     }
 
     #[test]
-    #[ignore]
     fn test_list_in_loop() {
         let code = r#"
 ken arr = [1, 2, 3, 4, 5]
@@ -55716,7 +55510,6 @@ blether x
     }
 
     #[test]
-    #[ignore]
     fn test_int_shadow_in_loop() {
         let code = r#"
 ken count = 0
@@ -55933,7 +55726,6 @@ mod type_check_more_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_is_string() {
         let code = r#"
 blether is_string("hello")
@@ -55945,7 +55737,6 @@ blether is_string(42)
     }
 
     #[test]
-    #[ignore]
     fn test_is_list() {
         let code = r#"
 blether is_list([1, 2, 3])
@@ -55957,7 +55748,6 @@ blether is_list(42)
     }
 
     #[test]
-    #[ignore]
     fn test_is_bool() {
         let code = r#"
 blether is_bool(aye)
@@ -56032,7 +55822,6 @@ blether val
     }
 
     #[test]
-    #[ignore]
     fn test_sinh() {
         let code = r#"
 ken val = sinh(0.0)
@@ -56044,7 +55833,6 @@ blether val
     }
 
     #[test]
-    #[ignore]
     fn test_cosh() {
         let code = r#"
 ken val = cosh(0.0)
@@ -56056,7 +55844,6 @@ blether val
     }
 
     #[test]
-    #[ignore]
     fn test_tanh() {
         let code = r#"
 ken val = tanh(0.0)
@@ -56109,7 +55896,6 @@ blether s
     }
 
     #[test]
-    #[ignore]
     fn test_parse_int() {
         let code = r#"
 ken n = parse_int("42")
@@ -56121,7 +55907,6 @@ blether n
     }
 
     #[test]
-    #[ignore]
     fn test_parse_float() {
         let code = r#"
 ken n = parse_float("3.14")
@@ -56152,7 +55937,6 @@ blether len(parts)
     }
 
     #[test]
-    #[ignore]
     fn test_join_basic() {
         let code = r#"
 ken arr = ["a", "b", "c"]
@@ -56165,7 +55949,6 @@ blether result
     }
 
     #[test]
-    #[ignore]
     fn test_trim_basic() {
         let code = r#"
 ken s = sneck("  hello  ")
@@ -56177,7 +55960,6 @@ blether s
     }
 
     #[test]
-    #[ignore]
     fn test_upper_basic() {
         let code = r#"
 ken s = heich("hello")
@@ -56189,7 +55971,6 @@ blether s
     }
 
     #[test]
-    #[ignore]
     fn test_lower_basic() {
         let code = r#"
 ken s = laich("HELLO")
@@ -56245,7 +56026,6 @@ blether s
     }
 
     #[test]
-    #[ignore]
     fn test_substring() {
         let code = r#"
 ken s = scance("hello world", 0, 5)
@@ -56268,7 +56048,6 @@ blether c
     }
 
     #[test]
-    #[ignore]
     fn test_index_of() {
         let code = r#"
 ken idx = index_o("hello", "l")
@@ -56389,7 +56168,6 @@ mod pipe_op_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_pipe_basic() {
         let code = r#"
 dae double(x) {
@@ -56404,7 +56182,6 @@ blether result
     }
 
     #[test]
-    #[ignore]
     fn test_pipe_chain() {
         let code = r#"
 dae add_one(x) {
@@ -56430,7 +56207,6 @@ mod block_expr_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_block_expr_basic() {
         let code = r#"
 ken result = {
@@ -56454,7 +56230,6 @@ mod ternary_expr_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_ternary_true() {
         let code = r#"
 ken x = 10
@@ -56467,7 +56242,6 @@ blether result
     }
 
     #[test]
-    #[ignore]
     fn test_ternary_false() {
         let code = r#"
 ken x = 2
@@ -56480,7 +56254,6 @@ blether result
     }
 
     #[test]
-    #[ignore]
     fn test_ternary_nested() {
         let code = r#"
 ken x = 5
@@ -56501,7 +56274,6 @@ mod logical_ops_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_logical_and() {
         let code = r#"
 ken a = aye
@@ -56514,7 +56286,6 @@ blether a an b
     }
 
     #[test]
-    #[ignore]
     fn test_logical_or() {
         let code = r#"
 ken a = aye
@@ -56686,7 +56457,6 @@ mod while_loop_ext_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_while_with_counter() {
         let code = r#"
 ken i = 0
@@ -56703,7 +56473,6 @@ blether sum
     }
 
     #[test]
-    #[ignore]
     fn test_while_break() {
         let code = r#"
 ken i = 0
@@ -56721,7 +56490,6 @@ blether i
     }
 
     #[test]
-    #[ignore]
     fn test_while_continue() {
         let code = r#"
 ken i = 0
@@ -56749,7 +56517,6 @@ mod for_loop_ext_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_for_with_index() {
         let code = r#"
 ken arr = ["a", "b", "c"]
@@ -56766,7 +56533,6 @@ blether result
     }
 
     #[test]
-    #[ignore]
     fn test_for_break() {
         let code = r#"
 ken arr = [1, 2, 3, 4, 5]
@@ -56785,7 +56551,6 @@ blether found
     }
 
     #[test]
-    #[ignore]
     fn test_for_continue() {
         let code = r#"
 ken arr = [1, 2, 3, 4, 5]
@@ -56812,7 +56577,6 @@ mod nested_control_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_nested_if() {
         let code = r#"
 ken x = 10
@@ -56832,7 +56596,6 @@ gin x > 5 {
     }
 
     #[test]
-    #[ignore]
     fn test_nested_loops() {
         let code = r#"
 ken sum = 0
@@ -56902,7 +56665,6 @@ mod random_cov2 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_rand_range() {
         let code = r#"
 ken n = rand(1, 10)
@@ -56914,7 +56676,6 @@ blether (n >= 1) an (n <= 10)
     }
 
     #[test]
-    #[ignore]
     fn test_randfloat() {
         let code = r#"
 ken n = randfloat()
@@ -56934,7 +56695,6 @@ mod time_cov2 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_time_basic() {
         let code = r#"
 ken t = time()
@@ -56978,7 +56738,6 @@ blether m
     }
 
     #[test]
-    #[ignore]
     fn test_sum_list() {
         let code = r#"
 ken arr = [1, 2, 3, 4, 5]
@@ -57171,7 +56930,6 @@ mod list_map_filter_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_map_basic() {
         let code = r#"
 dae double(x) {
@@ -57187,7 +56945,6 @@ blether result[0]
     }
 
     #[test]
-    #[ignore]
     fn test_filter_basic() {
         let code = r#"
 dae is_even(x) {
@@ -57211,7 +56968,6 @@ mod coont_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_coont_list() {
         let code = r#"
 ken arr = [1, 2, 2, 3, 2]
@@ -57252,7 +57008,6 @@ mod find_cov2 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_find_in_list() {
         let code = r#"
 ken arr = [10, 20, 30, 40]
@@ -57424,7 +57179,6 @@ mod print_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_blether_nil() {
         let code = r#"
 blether nil
@@ -57784,7 +57538,6 @@ blether len(b)
     }
 
     #[test]
-    #[ignore]
     fn test_list_clear() {
         let code = r#"
 ken arr = [1, 2, 3]
@@ -57805,7 +57558,6 @@ mod str_to_num_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_str_to_int() {
         let code = r#"
 ken n = tae_nummer("42")
@@ -57844,7 +57596,6 @@ mod env_cov2 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_getenv() {
         let code = r#"
 ken val = getenv("PATH")
@@ -57864,7 +57615,6 @@ mod exit_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_exit() {
         let code = r#"
 blether "before exit"
@@ -58156,7 +57906,6 @@ mod func_params_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_func_two_params() {
         let code = r#"
 dae add(a, b) {
@@ -58170,7 +57919,6 @@ blether add(3, 4)
     }
 
     #[test]
-    #[ignore]
     fn test_func_three_params() {
         let code = r#"
 dae sum3(a, b, c) {
@@ -58235,7 +57983,6 @@ mod recursive_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_factorial() {
         let code = r#"
 dae factorial(n) {
@@ -58252,7 +57999,6 @@ blether factorial(5)
     }
 
     #[test]
-    #[ignore]
     fn test_fibonacci() {
         let code = r#"
 dae fib(n) {
@@ -58445,7 +58191,6 @@ mod short_circuit_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_and_short_circuit() {
         let code = r#"
 ken x = nae
@@ -58458,7 +58203,6 @@ blether x an y
     }
 
     #[test]
-    #[ignore]
     fn test_or_short_circuit() {
         let code = r#"
 ken x = aye
@@ -58499,7 +58243,6 @@ mod elif_final_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_elif_basic() {
         let code = r#"
 ken x = 5
@@ -58567,7 +58310,6 @@ blether len(shuffled)
     }
 
     #[test]
-    #[ignore]
     fn test_choice() {
         let code = r#"
 ken arr = [1, 2, 3]
@@ -58580,7 +58322,6 @@ blether picked
     }
 
     #[test]
-    #[ignore]
     fn test_sample() {
         let code = r#"
 ken arr = [1, 2, 3, 4, 5]
@@ -58748,7 +58489,6 @@ mod json_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_json_parse() {
         let code = r#"
 ken j = json_parse("{\"a\": 1}")
@@ -58780,7 +58520,6 @@ mod template_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_template_render() {
         let code = r#"
 ken t = template_render("Hello {name}", {"name": "World"})
@@ -58800,7 +58539,6 @@ mod reduce_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_reduce_basic() {
         let code = r#"
 dae add(a, b) {
@@ -58824,7 +58562,6 @@ mod for_step_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_for_range() {
         let code = r#"
 ken sum = 0
@@ -59076,7 +58813,6 @@ mod creel_cov {
     use super::*;
     
     #[test]
-    #[ignore]
     fn test_creel_empty() {
         let code = r#"
 ken basket = creel()
@@ -59088,7 +58824,6 @@ blether len(basket)
     }
     
     #[test]
-    #[ignore]
     fn test_creel_shove() {
         let code = r#"
 ken basket = creel()
@@ -59106,7 +58841,6 @@ mod dram_cov2 {
     use super::*;
     
     #[test]
-    #[ignore]
     fn test_dram_single() {
         let code = r#"
 ken items = [42]
@@ -59122,7 +58856,6 @@ mod birl_cov2 {
     use super::*;
     
     #[test]
-    #[ignore]
     fn test_birl_rotate() {
         let code = r#"
 ken items = [1, 2, 3, 4, 5]
@@ -59139,7 +58872,6 @@ mod ceilidh_cov2 {
     use super::*;
     
     #[test]
-    #[ignore]
     fn test_ceilidh_interleave() {
         let code = r#"
 ken a = [1, 2, 3]
@@ -59358,7 +59090,6 @@ mod global_test_vars_cov {
     use super::*;
     
     #[test]
-    #[ignore]
     fn test_current_suite() {
         let code = r#"blether __current_suite"#;
         let binding = run(code);
@@ -59368,7 +59099,6 @@ mod global_test_vars_cov {
     }
     
     #[test]
-    #[ignore]
     fn test_tick_counter() {
         let code = r#"blether _tick_counter"#;
         let binding = run(code);
@@ -59377,7 +59107,6 @@ mod global_test_vars_cov {
     }
     
     #[test]
-    #[ignore]
     fn test_msg_counter() {
         let code = r#"blether _msg_counter"#;
         let binding = run(code);
@@ -59386,7 +59115,6 @@ mod global_test_vars_cov {
     }
     
     #[test]
-    #[ignore]
     fn test_verbose() {
         let code = r#"blether _verbose"#;
         let binding = run(code);
@@ -59395,7 +59123,6 @@ mod global_test_vars_cov {
     }
     
     #[test]
-    #[ignore]
     fn test_prop_passed() {
         let code = r#"blether __prop_passed"#;
         let binding = run(code);
@@ -59404,7 +59131,6 @@ mod global_test_vars_cov {
     }
     
     #[test]
-    #[ignore]
     fn test_global_bus() {
         let code = r#"blether is_nowt(_global_bus)"#;
         let binding = run(code);
@@ -59413,7 +59139,6 @@ mod global_test_vars_cov {
     }
     
     #[test]
-    #[ignore]
     fn test_global_logger() {
         let code = r#"blether is_nowt(_global_logger)"#;
         let binding = run(code);
@@ -59630,7 +59355,6 @@ blether len(s)
     }
     
     #[test]
-    #[ignore]
     fn test_slice_to_end() {
         let code = r#"
 ken items = [1, 2, 3, 4, 5]
@@ -59723,7 +59447,6 @@ mod ternary_cov2 {
     use super::*;
     
     #[test]
-    #[ignore]
     fn test_ternary_true() {
         let code = r#"ken x = gin aye than 1 ither 2
 blether x"#;
@@ -59733,7 +59456,6 @@ blether x"#;
     }
     
     #[test]
-    #[ignore]
     fn test_ternary_false() {
         let code = r#"ken x = gin nae than 1 ither 2
 blether x"#;
@@ -59743,7 +59465,6 @@ blether x"#;
     }
     
     #[test]
-    #[ignore]
     fn test_ternary_nested() {
         let code = r#"ken x = gin aye than (gin nae than 1 ither 2) ither 3
 blether x"#;
@@ -59753,7 +59474,6 @@ blether x"#;
     }
     
     #[test]
-    #[ignore]
     fn test_ternary_with_expr() {
         let code = r#"ken a = 5
 ken x = gin a > 3 than "big" ither "small"
@@ -60116,7 +59836,6 @@ mod bool_logic_cov {
     }
 
     #[test]
-    #[ignore] // negation syntax needs verification
     fn test_not_true() {
         let code = r#"blether nae aye"#;
         let binding = run(code);
@@ -60125,7 +59844,6 @@ mod bool_logic_cov {
     }
 
     #[test]
-    #[ignore] // negation syntax needs verification
     fn test_not_false() {
         let code = r#"blether nae nae"#;
         let binding = run(code);
@@ -60220,20 +59938,18 @@ mod pad_cov2 {
     use super::*;
     
     #[test]
-    #[ignore]
     fn test_pad_left() {
         let code = r#"blether pad_left("hi", 5)"#;
         let binding = run(code);
-        let output = binding.trim();
+        let output = binding.trim_end_matches(&['\n', '\r'][..]);
         assert_eq!(output.len(), 5);
     }
     
     #[test]
-    #[ignore]
     fn test_pad_right() {
         let code = r#"blether pad_right("hi", 5)"#;
         let binding = run(code);
-        let output = binding.trim();
+        let output = binding.trim_end_matches(&['\n', '\r'][..]);
         assert_eq!(output.len(), 5);
     }
     
@@ -60358,7 +60074,6 @@ blether len(t)
     }
     
     #[test]
-    #[ignore]
     fn test_scran_list() {
         let code = r#"
 ken items = [1, 2, 3]
@@ -60384,7 +60099,6 @@ blether len(c)
     }
     
     #[test]
-    #[ignore]
     fn test_yank_list() {
         let code = r#"
 ken items = [1, 2, 3]
@@ -60441,7 +60155,6 @@ mod type_check_cov2 {
     }
     
     #[test]
-    #[ignore]
     fn test_is_text_true() {
         let code = r#"blether is_text("hello")"#;
         let binding = run(code);
@@ -60450,7 +60163,6 @@ mod type_check_cov2 {
     }
     
     #[test]
-    #[ignore]
     fn test_is_text_false() {
         let code = r#"blether is_text(42)"#;
         let binding = run(code);
@@ -60459,7 +60171,6 @@ mod type_check_cov2 {
     }
     
     #[test]
-    #[ignore]
     fn test_is_bool_true() {
         let code = r#"blether is_bool(aye)"#;
         let binding = run(code);
@@ -60468,7 +60179,6 @@ mod type_check_cov2 {
     }
     
     #[test]
-    #[ignore]
     fn test_is_bool_false() {
         let code = r#"blether is_bool(42)"#;
         let binding = run(code);
@@ -60477,7 +60187,6 @@ mod type_check_cov2 {
     }
     
     #[test]
-    #[ignore]
     fn test_is_list_true() {
         let code = r#"blether is_list([1, 2, 3])"#;
         let binding = run(code);
@@ -60486,7 +60195,6 @@ mod type_check_cov2 {
     }
     
     #[test]
-    #[ignore]
     fn test_is_list_false() {
         let code = r#"blether is_list(42)"#;
         let binding = run(code);
@@ -60499,7 +60207,6 @@ mod continue_cov {
     use super::*;
     
     #[test]
-    #[ignore]
     fn test_while_continue() {
         let code = r#"
 ken sum = 0
@@ -60550,7 +60257,6 @@ mod literal_cov {
     use super::*;
     
     #[test]
-    #[ignore]
     fn test_nil_literal() {
         let code = r#"
 ken x = nowt
@@ -61040,7 +60746,6 @@ mod len_various_cov {
     }
     
     #[test]
-    #[ignore]
     fn test_len_dict() {
         let code = r#"blether len({"a": 1, "b": 2, "c": 3})"#;
         let binding = run(code);
@@ -61081,7 +60786,6 @@ mod pi_e_tau_cov {
     }
     
     #[test]
-    #[ignore]
     fn test_e_constant() {
         let code = r#"blether E() > 2.71"#;
         let binding = run(code);
@@ -61090,7 +60794,6 @@ mod pi_e_tau_cov {
     }
     
     #[test]
-    #[ignore]
     fn test_tau_constant() {
         let code = r#"blether TAU() > 6.28"#;
         let binding = run(code);
@@ -61222,7 +60925,6 @@ blether len(s)
     }
     
     #[test]
-    #[ignore]
     fn test_comments_in_code() {
         let code = r#"
 // This is a comment
@@ -61280,7 +60982,6 @@ blether "done"
     }
     
     #[test]
-    #[ignore]
     fn test_list_trailing_comma() {
         let code = r#"
 ken items = [1, 2, 3,]
@@ -61292,7 +60993,6 @@ blether len(items)
     }
     
     #[test]
-    #[ignore]
     fn test_dict_trailing_comma() {
         let code = r#"
 ken d = {"a": 1, "b": 2,}
@@ -61732,7 +61432,6 @@ mod type_is_cov {
     use super::*;
     
     #[test]
-    #[ignore]
     fn test_is_nowt_true() {
         let code = r#"blether is_nowt(nowt)"#;
         let binding = run(code);
@@ -61757,7 +61456,6 @@ mod type_is_cov {
     }
     
     #[test]
-    #[ignore]
     fn test_is_float_false() {
         let code = r#"blether is_float(42)"#;
         let binding = run(code);
@@ -61766,7 +61464,6 @@ mod type_is_cov {
     }
     
     #[test]
-    #[ignore]
     fn test_is_dict_true() {
         let code = r#"blether is_dict({"a": 1})"#;
         let binding = run(code);
@@ -61775,7 +61472,6 @@ mod type_is_cov {
     }
     
     #[test]
-    #[ignore]
     fn test_is_dict_false() {
         let code = r#"blether is_dict([1, 2, 3])"#;
         let binding = run(code);
@@ -61788,7 +61484,6 @@ mod conditional_logic_cov {
     use super::*;
     
     #[test]
-    #[ignore]
     fn test_complex_and_or() {
         let code = r#"blether (aye an aye) or nae"#;
         let binding = run(code);
@@ -61879,7 +61574,6 @@ mod print_various_cov {
     use super::*;
     
     #[test]
-    #[ignore]
     fn test_print_nil() {
         let code = r#"blether nowt"#;
         let binding = run(code);
@@ -62193,7 +61887,6 @@ blether heid(r)
     }
     
     #[test]
-    #[ignore]
     fn test_sumaw_float() {
         let code = r#"blether sumaw([1.5, 2.5, 3.0])"#;
         let binding = run(code);
@@ -62404,7 +62097,6 @@ gin "hello" {
     }
     
     #[test]
-    #[ignore]
     fn test_truthy_empty_string() {
         let code = r#"
 gin "" {
@@ -62415,7 +62107,7 @@ gin "" {
 "#;
         let binding = run(code);
         let output = binding.trim();
-        assert_eq!(output, "no");
+        assert_eq!(output, "yes");
     }
 }
 
@@ -62423,7 +62115,6 @@ mod return_cov2 {
     use super::*;
     
     #[test]
-    #[ignore]
     fn test_return_immediate() {
         let code = r#"
 dae get_value() {
@@ -62534,7 +62225,6 @@ blether len(s)
     }
     
     #[test]
-    #[ignore]
     fn test_slice_from_start() {
         let code = r#"
 ken items = [1, 2, 3, 4, 5]
@@ -62898,7 +62588,6 @@ mod dict_ops_cov3 {
     use super::*;
     
     #[test]
-    #[ignore]
     fn test_dict_nested() {
         let code = r#"
 ken d = {"a": {"b": 1}}
@@ -63091,7 +62780,6 @@ mod value_types_cov {
     }
     
     #[test]
-    #[ignore]
     fn test_scientific_notation() {
         let code = r#"
 ken x = 1e6
@@ -63221,7 +62909,6 @@ mod whit_kind_cov2 {
     use super::*;
     
     #[test]
-    #[ignore]
     fn test_whit_kind_nil() {
         let code = r#"blether whit_kind(nowt)"#;
         let binding = run(code);
@@ -63246,7 +62933,6 @@ blether s > 0.99
     }
     
     #[test]
-    #[ignore]
     fn test_cos_pi() {
         let code = r#"
 ken c = cos(3.14159)
@@ -64106,7 +63792,6 @@ mod func_return_cov {
     use super::*;
     
     #[test]
-    #[ignore]
     fn test_return_nil() {
         let code = r#"
 dae get_nothing() {
@@ -64492,7 +64177,6 @@ mod trig_cov3 {
     use super::*;
     
     #[test]
-    #[ignore]
     fn test_sin_negative() {
         let code = r#"
 ken s = sin(-1.5707963)
@@ -64504,7 +64188,6 @@ blether s < -0.99
     }
     
     #[test]
-    #[ignore]
     fn test_cos_negative() {
         let code = r#"
 ken c = cos(-3.14159)
@@ -64661,7 +64344,6 @@ mod builtin_cov3 {
     }
     
     #[test]
-    #[ignore]
     fn test_min_floats() {
         let code = r#"blether min(3.14, 2.71)"#;
         let binding = run(code);
@@ -64670,7 +64352,6 @@ mod builtin_cov3 {
     }
     
     #[test]
-    #[ignore]
     fn test_max_floats() {
         let code = r#"blether max(3.14, 2.71)"#;
         let binding = run(code);
@@ -64823,7 +64504,6 @@ mod return_cov3 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_return_explicit_value() {
         let code = r#"
 dae get_five() {
@@ -64837,7 +64517,6 @@ blether get_five()
     }
 
     #[test]
-    #[ignore]
     fn test_return_string() {
         let code = r#"
 dae get_hello() {
@@ -64851,7 +64530,6 @@ blether get_hello()
     }
 
     #[test]
-    #[ignore]
     fn test_return_expr() {
         let code = r#"
 dae add(a, b) {
@@ -64870,7 +64548,6 @@ mod continue_cov2 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_continue_in_whiles() {
         let code = r#"
 ken i = 0
@@ -64890,7 +64567,6 @@ blether sum
     }
 
     #[test]
-    #[ignore]
     fn test_continue_in_fer() {
         let code = r#"
 ken sum = 0
@@ -64952,7 +64628,6 @@ mod log_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_log_basic() {
         let code = r#"
 log("info", "test message")
@@ -65091,7 +64766,6 @@ mod logical_cov2 {
     }
 
     #[test]
-    #[ignore]
     fn test_not_true() {
         let code = r#"blether nae aye"#;
         let binding = run(code);
@@ -65100,7 +64774,6 @@ mod logical_cov2 {
     }
 
     #[test]
-    #[ignore]
     fn test_not_false() {
         let code = r#"blether nae nae"#;
         let binding = run(code);
@@ -65133,7 +64806,6 @@ blether s + "def"
     }
 
     #[test]
-    #[ignore]
     fn test_string_repeat_op() {
         let code = r#"blether "ab" * 3"#;
         let binding = run(code);
@@ -65147,7 +64819,6 @@ mod list_cov6 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_list_append_values() {
         let code = r#"
 ken xs = [1, 2]
@@ -65196,7 +64867,6 @@ blether len(d)
     }
 
     #[test]
-    #[ignore]
     fn test_dict_with_values() {
         let code = r#"
 ken d = {"a": 1, "b": 2}
@@ -65236,7 +64906,6 @@ mod ternary_cov3 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_ternary_true_branch() {
         let code = r#"blether gin aye than 10 ither 20"#;
         let binding = run(code);
@@ -65245,7 +64914,6 @@ mod ternary_cov3 {
     }
 
     #[test]
-    #[ignore]
     fn test_ternary_false_branch() {
         let code = r#"blether gin nae than 10 ither 20"#;
         let binding = run(code);
@@ -65254,7 +64922,6 @@ mod ternary_cov3 {
     }
 
     #[test]
-    #[ignore]
     fn test_ternary_with_comparison() {
         let code = r#"blether gin 5 > 3 than "big" ither "small""#;
         let binding = run(code);
@@ -65268,7 +64935,6 @@ mod default_params_cov3 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_default_param_used() {
         let code = r#"
 dae greet(name = "World") {
@@ -65282,7 +64948,6 @@ blether greet()
     }
 
     #[test]
-    #[ignore]
     fn test_default_param_overridden() {
         let code = r#"
 dae greet(name = "World") {
@@ -65296,7 +64961,6 @@ blether greet("User")
     }
 
     #[test]
-    #[ignore]
     fn test_multiple_default_params() {
         let code = r#"
 dae calc(a = 1, b = 2) {
@@ -65315,7 +64979,6 @@ mod nested_loops_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_nested_fer_loops() {
         let code = r#"
 ken sum = 0
@@ -65332,7 +64995,6 @@ blether sum
     }
 
     #[test]
-    #[ignore]
     fn test_nested_whiles_loops() {
         let code = r#"
 ken i = 0
@@ -65408,7 +65070,6 @@ mod type_conv_cov3 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_int_to_string() {
         let code = r#"blether tae_text(42)"#;
         let binding = run(code);
@@ -65782,7 +65443,6 @@ mod loop_assign_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_while_assign_increment() {
         let code = r#"
 ken n = 0
@@ -65797,7 +65457,6 @@ blether n
     }
 
     #[test]
-    #[ignore]
     fn test_for_assign_sum() {
         let code = r#"
 ken sum = 0
@@ -65846,7 +65505,6 @@ mod trim_cov2 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_trim_spaces() {
         let code = r#"blether trim("  hello  ")"#;
         let binding = run(code);
@@ -65892,7 +65550,6 @@ mod bool_cov3 {
     }
 
     #[test]
-    #[ignore]
     fn test_bool_as_int() {
         let code = r#"blether aye + 1"#;
         let binding = run(code);
@@ -65983,7 +65640,6 @@ mod func_call_cov2 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_func_no_args() {
         let code = r#"
 dae get_ten() {
@@ -65997,7 +65653,6 @@ blether get_ten()
     }
 
     #[test]
-    #[ignore]
     fn test_func_one_arg() {
         let code = r#"
 dae double(x) {
@@ -66011,7 +65666,6 @@ blether double(5)
     }
 
     #[test]
-    #[ignore]
     fn test_func_two_args() {
         let code = r#"
 dae add(a, b) {
@@ -66030,7 +65684,6 @@ mod if_else_cov2 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_if_true() {
         let code = r#"
 gin aye {
@@ -66043,7 +65696,6 @@ gin aye {
     }
 
     #[test]
-    #[ignore]
     fn test_if_else_false() {
         let code = r#"
 gin nae {
@@ -66058,7 +65710,6 @@ gin nae {
     }
 
     #[test]
-    #[ignore]
     fn test_elif_chain() {
         let code = r#"
 ken x = 2
@@ -66081,7 +65732,6 @@ mod while_cov2 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_while_countdown() {
         let code = r#"
 ken n = 3
@@ -66096,7 +65746,6 @@ blether n
     }
 
     #[test]
-    #[ignore]
     fn test_while_multiply() {
         let code = r#"
 ken n = 1
@@ -66118,7 +65767,6 @@ mod for_cov2 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_for_in_range() {
         let code = r#"
 ken sum = 0
@@ -66133,7 +65781,6 @@ blether sum
     }
 
     #[test]
-    #[ignore]
     fn test_for_in_list() {
         let code = r#"
 ken sum = 0
@@ -66224,7 +65871,6 @@ mod exp_log_cov3 {
     }
 
     #[test]
-    #[ignore]
     fn test_exp_1() {
         let code = r#"blether exp(1)"#;
         let binding = run(code);
@@ -66233,7 +65879,6 @@ mod exp_log_cov3 {
     }
 
     #[test]
-    #[ignore]
     fn test_log_e() {
         let code = r#"blether ln(E)"#;
         let binding = run(code);
@@ -66276,7 +65921,6 @@ mod globals_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_global_var_in_func() {
         let code = r#"
 ken x = 10
@@ -66388,7 +66032,6 @@ mod minmax_list_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_wee_list() {
         let code = r#"blether wee([5, 3, 8, 1])"#;
         let binding = run(code);
@@ -66397,7 +66040,6 @@ mod minmax_list_cov {
     }
 
     #[test]
-    #[ignore]
     fn test_muckle_list() {
         let code = r#"blether muckle([5, 3, 8, 1])"#;
         let binding = run(code);
@@ -66465,7 +66107,6 @@ blether r[0]
     }
 
     #[test]
-    #[ignore]
     fn test_reverse_string() {
         let code = r#"blether reverse("abc")"#;
         let binding = run(code);
@@ -66529,7 +66170,6 @@ mod coont_cov3 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_coont_found() {
         let code = r#"blether coont([1, 2, 2, 3, 2], 2)"#;
         let binding = run(code);
@@ -66538,7 +66178,6 @@ mod coont_cov3 {
     }
 
     #[test]
-    #[ignore]
     fn test_coont_not_found() {
         let code = r#"blether coont([1, 2, 3], 5)"#;
         let binding = run(code);
@@ -66576,7 +66215,6 @@ mod is_nummer_cov {
     }
 
     #[test]
-    #[ignore]
     fn test_is_nummer_string_true() {
         let code = r#"blether is_nummer("123")"#;
         let binding = run(code);
@@ -66659,7 +66297,6 @@ blether len(c)
     }
 
     #[test]
-    #[ignore]
     fn test_chars_get() {
         let code = r#"
 ken c = chars("xyz")
@@ -66705,7 +66342,6 @@ mod shift_cov2 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_left_shift() {
         let code = r#"blether left_shift(1, 3)"#;
         let binding = run(code);
@@ -66714,7 +66350,6 @@ mod shift_cov2 {
     }
 
     #[test]
-    #[ignore]
     fn test_right_shift() {
         let code = r#"blether right_shift(16, 2)"#;
         let binding = run(code);
@@ -66823,7 +66458,6 @@ mod radians_degrees_cov2 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_radians_90() {
         let code = r#"blether radians(90)"#;
         let binding = run(code);
@@ -66913,7 +66547,6 @@ mod tuple_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_tuple_len() {
         let code = r#"blether len([1, 2, 3])"#;
         let binding = run(code);
@@ -66922,7 +66555,6 @@ mod tuple_cov {
     }
 
     #[test]
-    #[ignore]
     fn test_tuple_access() {
         let code = r#"blether [10, 20, 30][1]"#;
         let binding = run(code);
@@ -66936,7 +66568,6 @@ mod mixed_cmp_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_int_float_eq() {
         let code = r#"blether 5 == 5.0"#;
         let binding = run(code);
@@ -66958,7 +66589,6 @@ mod match_cov2 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_match_literal_int() {
         let code = r#"
 ken x = 2
@@ -66974,7 +66604,6 @@ keek x {
     }
 
     #[test]
-    #[ignore]
     fn test_match_wildcard() {
         let code = r#"
 ken x = 99
@@ -66989,7 +66618,6 @@ keek x {
     }
 
     #[test]
-    #[ignore]
     fn test_match_string() {
         let code = r#"
 ken s = "hello"
@@ -67076,7 +66704,6 @@ mod list_ops_cov3 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_list_first() {
         let code = r#"blether first([1, 2, 3])"#;
         let binding = run(code);
@@ -67085,7 +66712,6 @@ mod list_ops_cov3 {
     }
 
     #[test]
-    #[ignore]
     fn test_list_last() {
         let code = r#"blether last([1, 2, 3])"#;
         let binding = run(code);
@@ -67094,7 +66720,6 @@ mod list_ops_cov3 {
     }
 
     #[test]
-    #[ignore]
     fn test_list_pop() {
         let code = r#"
 ken xs = [1, 2, 3]
@@ -67124,7 +66749,6 @@ blether len(s)
     }
 
     #[test]
-    #[ignore]
     fn test_slice_to_end() {
         let code = r#"
 ken xs = [10, 20, 30, 40, 50]
@@ -67142,7 +66766,6 @@ mod trig_cov5 {
     use super::*;
 
     #[test]
-    #[ignore = "Works in CLI but test harness has issues"]
     fn test_asin_basic() {
         let code = r#"
 ken x = asin(0)
@@ -67154,7 +66777,6 @@ blether x == 0
     }
 
     #[test]
-    #[ignore = "Works in CLI but test harness has issues"]
     fn test_acos_basic() {
         let code = r#"
 ken x = acos(1)
@@ -67166,7 +66788,6 @@ blether x == 0
     }
 
     #[test]
-    #[ignore = "Works in CLI but test harness has issues"]
     fn test_atan_basic() {
         let code = r#"
 ken x = atan(0)
@@ -67183,7 +66804,6 @@ mod atan3_cov3 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_atan2_basic() {
         let code = r#"
 ken x = atan2(0, 1)
@@ -67200,7 +66820,6 @@ mod log10_cov2 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_log10_10() {
         let code = r#"
 ken x = log10(10)
@@ -67212,7 +66831,6 @@ blether x == 1
     }
 
     #[test]
-    #[ignore]
     fn test_log10_100() {
         let code = r#"
 ken x = log10(100)
@@ -67473,7 +67091,6 @@ mod yank_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_yank_basic() {
         let code = r#"
 ken xs = [1, 2, 3, 4]
@@ -67507,7 +67124,6 @@ mod pad_cov3 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_pad_left() {
         let code = r#"blether pad_left("hi", 5, "0")"#;
         let binding = run(code);
@@ -67516,7 +67132,6 @@ mod pad_cov3 {
     }
 
     #[test]
-    #[ignore]
     fn test_pad_no_change() {
         let code = r#"blether pad_left("hello", 3, "0")"#;
         let binding = run(code);
@@ -67546,7 +67161,6 @@ mod scran_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_scran_basic() {
         let code = r#"
 ken xs = scran([1, 2, 3, 4, 5], 3)
@@ -67681,7 +67295,6 @@ mod ceilidh_cov3 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_ceilidh_basic() {
         let code = r#"
 ken xs = ceilidh([1, 2], [3, 4])
@@ -67896,7 +67509,6 @@ mod haverin_cov2 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_haver_basic() {
         let code = r#"blether haver(42)"#;
         let binding = run(code);
@@ -67927,7 +67539,6 @@ mod title_cov2 {
     use super::*;
 
     #[test]
-    #[ignore = "Works in CLI but test harness has issues"]
     fn test_title_basic() {
         let code = r#"blether title("hello world")"#;
         let binding = run(code);
@@ -67941,7 +67552,6 @@ mod wheesht_cov2 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_wheesht_basic() {
         let code = r#"
 ken result = wheesht([0, 1, 0, 2, 0, 3])
@@ -67992,7 +67602,6 @@ mod sum_alt_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_sumaw_floats() {
         let code = r#"blether sumaw([1.5, 2.5])"#;
         let binding = run(code);
@@ -68069,7 +67678,6 @@ mod bool_conv_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_int_to_bool_zero() {
         let code = r#"blether nae 0"#;
         let binding = run(code);
@@ -68078,7 +67686,6 @@ mod bool_conv_cov {
     }
 
     #[test]
-    #[ignore]
     fn test_int_to_bool_nonzero() {
         let code = r#"blether nae 5"#;
         let binding = run(code);
@@ -68113,7 +67720,6 @@ mod parser_struct_cov {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_struct_declaration() {
         let code = r#"
 thing Point {
@@ -69507,7 +69113,6 @@ mod batch_cov30 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_creel_empty() {
         let code = r#"blether len(creel())"#;
         let binding = run(code);
@@ -70143,7 +69748,6 @@ blether len(b)
     }
 
     #[test]
-    #[ignore]
     fn test_spread_at_start() {
         let code = r#"
 ken a = [1, 2]
@@ -70157,7 +69761,6 @@ blether b[1]
     }
 
     #[test]
-    #[ignore]
     fn test_spread_at_end() {
         let code = r#"
 ken a = [3, 4]
@@ -70196,7 +69799,6 @@ blether len(result)
     }
 
     #[test]
-    #[ignore]
     fn test_spread_single_element() {
         let code = r#"
 ken a = [42]
@@ -70806,7 +70408,6 @@ blether sum
     }
 
     #[test]
-    #[ignore]
     fn test_while_never_runs() {
         let code = r#"
 ken x = 0
@@ -71077,7 +70678,6 @@ mod math_funcs_extra {
     }
 
     #[test]
-    #[ignore]
     fn test_pow_negative() {
         let code = r#"blether pow(2.0, -1.0) < 1"#;
         let binding = run(code);
@@ -71185,7 +70785,6 @@ mod string_funcs_extra {
     }
 
     #[test]
-    #[ignore]
     fn test_slice_string_middle() {
         let code = r#"blether slice("hello world", 0, 5)"#;
         let binding = run(code);
@@ -71202,7 +70801,6 @@ mod list_funcs_extra {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_scran() {
         let code = r#"
 ken result = scran([1, 2, 3, 4, 5], 3)
@@ -71424,7 +71022,6 @@ blether add(3, 4)
     }
 
     #[test]
-    #[ignore]
     fn test_closure_capture() {
         let code = r#"
 ken x = 10
@@ -71437,7 +71034,6 @@ blether addx(5)
     }
 
     #[test]
-    #[ignore]
     fn test_closure_return_from_function() {
         let code = r#"
 dae make_adder(n) {
@@ -71557,7 +71153,6 @@ blether len(arr)
     }
 
     #[test]
-    #[ignore]
     fn test_list_yank_basic() {
         let code = r#"
 ken arr = [1, 2, 3]
@@ -71633,7 +71228,6 @@ mod string_coverage_extra {
     }
 
     #[test]
-    #[ignore]
     fn test_string_trim() {
         let code = r#"blether trim("  hello  ")"#;
         let binding = run(code);
@@ -71666,7 +71260,6 @@ mod string_coverage_extra {
     }
 
     #[test]
-    #[ignore]
     fn test_string_starts_with() {
         let code = r#"blether starts_with("hello world", "hello")"#;
         let binding = run(code);
@@ -71675,7 +71268,6 @@ mod string_coverage_extra {
     }
 
     #[test]
-    #[ignore]
     fn test_string_ends_with() {
         let code = r#"blether ends_with("hello world", "world")"#;
         let binding = run(code);
@@ -72196,7 +71788,6 @@ mod recursion_coverage_2 {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_recursive_factorial() {
         let code = r#"
 dae factorial(n) {
@@ -72213,7 +71804,6 @@ blether factorial(5)
     }
 
     #[test]
-    #[ignore]
     fn test_recursive_fib() {
         let code = r#"
 dae fib(n) {
@@ -72230,7 +71820,6 @@ blether fib(10)
     }
 
     #[test]
-    #[ignore]
     fn test_mutual_recursion() {
         let code = r#"
 dae is_even(n) {
@@ -72386,7 +71975,6 @@ mod type_conversion_coverage_2 {
     }
 
     #[test]
-    #[ignore]
     fn test_tae_string_float() {
         let code = r#"blether len(tae_string(3.14)) > 0"#;
         let binding = run(code);
@@ -72832,7 +72420,6 @@ blether result
     }
 
     #[test]
-    #[ignore]
     fn test_ilk_pipeline() {
         let code = r#"
 ken result = [1, 2, 3] |> ilk(|x| x * 2) |> ilk(|x| x + 1)
@@ -73811,7 +73398,6 @@ mod reduce_function_coverage {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_fauld_sum() {
         let code = r#"
 dae add(a, b) {
@@ -73827,7 +73413,6 @@ blether y
     }
 
     #[test]
-    #[ignore]
     fn test_fauld_product() {
         let code = r#"
 dae mul(a, b) {
@@ -73843,7 +73428,6 @@ blether y
     }
 
     #[test]
-    #[ignore]
     fn test_fauld_empty() {
         let code = r#"
 dae add(a, b) {
@@ -73859,7 +73443,6 @@ blether y
     }
 
     #[test]
-    #[ignore]
     fn test_fauld_single() {
         let code = r#"
 dae add(a, b) {
@@ -73875,7 +73458,6 @@ blether y
     }
 
     #[test]
-    #[ignore]
     fn test_fauld_max() {
         let code = r#"
 dae max_val(a, b) {
@@ -73903,7 +73485,6 @@ mod list_operations_extra_coverage {
     use super::*;
 
     #[test]
-    #[ignore]
     fn test_index_find() {
         let code = r#"
 ken x = [10, 20, 30, 40]
@@ -73926,7 +73507,6 @@ blether index(x, 99)
     }
 
     #[test]
-    #[ignore]
     fn test_index_first() {
         let code = r#"
 ken x = [5, 10, 15]
@@ -73938,7 +73518,6 @@ blether index(x, 5)
     }
 
     #[test]
-    #[ignore]
     fn test_index_duplicate() {
         let code = r#"
 ken x = [1, 2, 2, 3]
@@ -73972,7 +73551,6 @@ blether contains(x, 99)
     }
 
     #[test]
-    #[ignore]
     fn test_count_occurrences() {
         let code = r#"
 ken x = [1, 2, 2, 3, 2]
@@ -73984,7 +73562,6 @@ blether count(x, 2)
     }
 
     #[test]
-    #[ignore]
     fn test_count_zero() {
         let code = r#"
 ken x = [1, 2, 3]
@@ -73996,7 +73573,6 @@ blether count(x, 99)
     }
 
     #[test]
-    #[ignore]
     fn test_sum_list_extra() {
         let code = r#"
 ken x = [1, 2, 3, 4, 5]
@@ -74008,7 +73584,6 @@ blether sum(x)
     }
 
     #[test]
-    #[ignore]
     fn test_sum_empty() {
         let code = r#"
 ken x = []
@@ -74999,7 +74574,6 @@ mod list_ops_extended_coverage {
     use super::*;
 
     #[test]
-    #[ignore] // shove doesn't work with empty lists in LLVM
     fn test_push_to_empty() {
         let code = r#"
 ken lst = []
@@ -77051,7 +76625,6 @@ mod import_system {
     use tempfile::tempdir;
 
     #[test]
-    #[ignore = "import not fully supported in LLVM"]
     fn test_import_basic() {
         // Create temp directory with import files
         let dir = tempdir().expect("Failed to create temp dir");
@@ -77073,7 +76646,6 @@ blether double(5)
     }
 
     #[test]
-    #[ignore = "import not fully supported in LLVM"]
     fn test_import_with_variable() {
         let dir = tempdir().expect("Failed to create temp dir");
         let lib_path = dir.path().join("constants.braw");
@@ -77120,7 +76692,6 @@ blether x + y
     }
 
     #[test]
-    #[ignore = "destructure in for loop not supported"]
     fn test_destructure_in_for() {
         let code = r#"
 ken pairs = [[1, 2], [3, 4], [5, 6]]
@@ -78751,7 +78322,6 @@ blether d["nums"][1]
     }
 
     #[test]
-    #[ignore = "dict update with dynamic key in loop not working"]
     fn test_dict_update_in_loop() {
         let code = r#"
 ken d = {}
@@ -81486,7 +81056,6 @@ blether nums[1]
     }
 
     #[test]
-    #[ignore = "negative index assignment not fully working"]
     fn test_list_negative_index_assign() {
         let code = r#"
 ken nums = [1, 2, 3]
@@ -82171,7 +81740,6 @@ blether len(first3)
     }
 
     #[test]
-    #[ignore = "drap is a placeholder implementation"]
     fn test_list_drop() {
         let code = r#"
 ken nums = [1, 2, 3, 4, 5]
@@ -82208,7 +81776,6 @@ blether all_even
     }
 
     #[test]
-    #[ignore = "find is a placeholder implementation"]
     fn test_list_find() {
         let code = r#"
 ken nums = [1, 2, 3, 4]

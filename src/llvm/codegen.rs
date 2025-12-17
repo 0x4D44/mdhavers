@@ -19,12 +19,13 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use inkwell::basic_block::BasicBlock;
+use inkwell::attributes::{Attribute, AttributeLoc};
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::{Linkage, Module};
 use inkwell::types::BasicMetadataTypeEnum;
 use inkwell::values::{
-    BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue, PointerValue,
+    BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue,
 };
 use inkwell::AddressSpace;
 use inkwell::IntPredicate;
@@ -74,6 +75,7 @@ struct LibcFunctions<'ctx> {
     getenv: FunctionValue<'ctx>,
     qsort: FunctionValue<'ctx>,
     // Runtime functions
+    eq: FunctionValue<'ctx>,
     get_key: FunctionValue<'ctx>,
     random: FunctionValue<'ctx>,
     term_width: FunctionValue<'ctx>,
@@ -125,6 +127,13 @@ struct LibcFunctions<'ctx> {
     assert_fn: FunctionValue<'ctx>,
     skip: FunctionValue<'ctx>,
     stacktrace: FunctionValue<'ctx>,
+    // Exceptions (try/catch/hurl)
+    jmp_buf_size: FunctionValue<'ctx>,
+    try_push: FunctionValue<'ctx>,
+    try_pop: FunctionValue<'ctx>,
+    setjmp: FunctionValue<'ctx>,
+    hurl: FunctionValue<'ctx>,
+    get_last_error: FunctionValue<'ctx>,
     // Additional Scots runtime functions
     muckle: FunctionValue<'ctx>,
     median: FunctionValue<'ctx>,
@@ -228,6 +237,11 @@ pub struct CodeGen<'ctx> {
     /// Stores the raw list pointer as i64 so we don't need to extract from MdhValue
     list_ptr_shadows: HashMap<String, PointerValue<'ctx>>,
 
+    /// Variables that are boxed (captured-by-reference for closures/nested functions).
+    /// A boxed variable's storage contains a 1-element list cell, and reads/writes
+    /// dereference/update element 0.
+    boxed_vars: HashSet<String>,
+
     /// Inferred types for variables (for optimization)
     var_types: HashMap<String, VarType>,
 
@@ -330,6 +344,7 @@ impl<'ctx> CodeGen<'ctx> {
             string_len_shadows: HashMap::new(),
             string_cap_shadows: HashMap::new(),
             list_ptr_shadows: HashMap::new(),
+            boxed_vars: HashSet::new(),
             var_types: HashMap::new(),
             variable_class_types: HashMap::new(),
             functions: HashMap::new(),
@@ -473,6 +488,12 @@ impl<'ctx> CodeGen<'ctx> {
             false,
         );
         let qsort = module.add_function("qsort", qsort_type, Some(Linkage::External));
+
+        // __mdh_eq(MdhValue, MdhValue) -> bool
+        let eq_type = context
+            .bool_type()
+            .fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let eq = module.add_function("__mdh_eq", eq_type, Some(Linkage::External));
 
         // __mdh_get_key() -> MdhValue
         let get_key_type = types.value_type.fn_type(&[], false);
@@ -732,6 +753,56 @@ impl<'ctx> CodeGen<'ctx> {
         let stacktrace =
             module.add_function("__mdh_stacktrace", stacktrace_type, Some(Linkage::External));
 
+        // Exceptions (try/catch/hurl)
+        let i8_ptr_type = context.i8_type().ptr_type(AddressSpace::default());
+
+        // __mdh_jmp_buf_size() -> i64
+        let jmp_buf_size_type = types.i64_type.fn_type(&[], false);
+        let jmp_buf_size = module.add_function(
+            "__mdh_jmp_buf_size",
+            jmp_buf_size_type,
+            Some(Linkage::External),
+        );
+
+        // __mdh_try_push(ptr env)
+        let try_push_type = types.void_type.fn_type(&[i8_ptr_type.into()], false);
+        let try_push =
+            module.add_function("__mdh_try_push", try_push_type, Some(Linkage::External));
+
+        // __mdh_try_pop()
+        let try_pop_type = types.void_type.fn_type(&[], false);
+        let try_pop = module.add_function("__mdh_try_pop", try_pop_type, Some(Linkage::External));
+
+        // libc setjmp(env) -> i32 (returns twice)
+        let setjmp_type = context.i32_type().fn_type(&[i8_ptr_type.into()], false);
+        let setjmp = module.add_function("setjmp", setjmp_type, Some(Linkage::External));
+
+        let hurl_type = types.void_type.fn_type(&[types.value_type.into()], false);
+        let hurl = module.add_function("__mdh_hurl", hurl_type, Some(Linkage::External));
+
+        let get_last_error_type = types.value_type.fn_type(&[], false);
+        let get_last_error = module.add_function(
+            "__mdh_get_last_error",
+            get_last_error_type,
+            Some(Linkage::External),
+        );
+
+        // Tell LLVM these have special control-flow semantics (required for -O1+ correctness).
+        let returns_twice_id = Attribute::get_named_enum_kind_id("returns_twice");
+        if returns_twice_id != 0 {
+            setjmp.add_attribute(
+                AttributeLoc::Function,
+                context.create_enum_attribute(returns_twice_id, 0),
+            );
+        }
+        let noreturn_id = Attribute::get_named_enum_kind_id("noreturn");
+        if noreturn_id != 0 {
+            hurl.add_attribute(
+                AttributeLoc::Function,
+                context.create_enum_attribute(noreturn_id, 0),
+            );
+        }
+
         // Additional Scots runtime functions
         // __mdh_muckle(a, b) -> MdhValue (larger)
         let muckle_type = types
@@ -931,6 +1002,7 @@ impl<'ctx> CodeGen<'ctx> {
             time,
             getenv,
             qsort,
+            eq,
             get_key,
             random,
             term_width,
@@ -977,6 +1049,12 @@ impl<'ctx> CodeGen<'ctx> {
             assert_fn,
             skip,
             stacktrace,
+            jmp_buf_size,
+            try_push,
+            try_pop,
+            setjmp,
+            hurl,
+            get_last_error,
             muckle,
             median,
             is_space,
@@ -1452,13 +1530,16 @@ impl<'ctx> CodeGen<'ctx> {
         let data = self.extract_data(val)?;
 
         let function = self.current_function.unwrap();
-        let is_nil = self.context.append_basic_block(function, "is_nil");
-        let is_bool = self.context.append_basic_block(function, "is_bool");
-        let is_int = self.context.append_basic_block(function, "is_int");
-        let is_other = self.context.append_basic_block(function, "is_other");
-        let merge = self.context.append_basic_block(function, "truthy_merge");
+        let nil_block = self.context.append_basic_block(function, "truthy_nil");
+        let bool_block = self.context.append_basic_block(function, "truthy_bool");
+        let int_block = self.context.append_basic_block(function, "truthy_int");
+        let float_block = self.context.append_basic_block(function, "truthy_float");
+        let string_block = self.context.append_basic_block(function, "truthy_string");
+        let list_block = self.context.append_basic_block(function, "truthy_list");
+        let dict_block = self.context.append_basic_block(function, "truthy_dict");
+        let other_block = self.context.append_basic_block(function, "truthy_other");
+        let merge_block = self.context.append_basic_block(function, "truthy_merge");
 
-        // Switch on tag
         let nil_tag = self
             .types
             .i8_type
@@ -1471,57 +1552,162 @@ impl<'ctx> CodeGen<'ctx> {
             .types
             .i8_type
             .const_int(ValueTag::Int.as_u8() as u64, false);
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
+        let string_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::String.as_u8() as u64, false);
+        let list_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::List.as_u8() as u64, false);
+        let dict_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Dict.as_u8() as u64, false);
 
         self.builder
             .build_switch(
                 tag,
-                is_other,
-                &[(nil_tag, is_nil), (bool_tag, is_bool), (int_tag, is_int)],
+                other_block,
+                &[
+                    (nil_tag, nil_block),
+                    (bool_tag, bool_block),
+                    (int_tag, int_block),
+                    (float_tag, float_block),
+                    (string_tag, string_block),
+                    (list_tag, list_block),
+                    (dict_tag, dict_block),
+                ],
             )
             .map_err(|e| HaversError::CompileError(format!("Failed to build switch: {}", e)))?;
 
-        // nil -> false
-        self.builder.position_at_end(is_nil);
-        let nil_result = self.types.bool_type.const_int(0, false);
-        self.builder.build_unconditional_branch(merge).unwrap();
-        let nil_block = self.builder.get_insert_block().unwrap();
+        let zero_i64 = self.types.i64_type.const_int(0, false);
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
 
-        // bool -> value
-        self.builder.position_at_end(is_bool);
+        // nil -> false
+        self.builder.position_at_end(nil_block);
+        let nil_result = self.types.bool_type.const_int(0, false);
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let nil_end = self.builder.get_insert_block().unwrap();
+
+        // bool -> data != 0
+        self.builder.position_at_end(bool_block);
         let bool_result = self
             .builder
             .build_int_truncate(data, self.types.bool_type, "bool_val")
             .unwrap();
-        self.builder.build_unconditional_branch(merge).unwrap();
-        let bool_block = self.builder.get_insert_block().unwrap();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let bool_end = self.builder.get_insert_block().unwrap();
 
-        // int -> value != 0
-        self.builder.position_at_end(is_int);
-        let zero = self.types.i64_type.const_int(0, false);
+        // int -> data != 0
+        self.builder.position_at_end(int_block);
         let int_result = self
             .builder
-            .build_int_compare(IntPredicate::NE, data, zero, "int_truthy")
+            .build_int_compare(IntPredicate::NE, data, zero_i64, "int_truthy")
             .unwrap();
-        self.builder.build_unconditional_branch(merge).unwrap();
-        let int_block = self.builder.get_insert_block().unwrap();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let int_end = self.builder.get_insert_block().unwrap();
+
+        // float -> f != 0.0
+        self.builder.position_at_end(float_block);
+        let float_val = self
+            .builder
+            .build_bitcast(data, self.types.f64_type, "truthy_f")
+            .unwrap()
+            .into_float_value();
+        let zero_f = self.types.f64_type.const_float(0.0);
+        let float_result = self
+            .builder
+            .build_float_compare(
+                inkwell::FloatPredicate::ONE,
+                float_val,
+                zero_f,
+                "float_truthy",
+            )
+            .unwrap();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let float_end = self.builder.get_insert_block().unwrap();
+
+        // string -> always truthy (even empty)
+        self.builder.position_at_end(string_block);
+        let string_result = self.types.bool_type.const_int(1, false);
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let string_end = self.builder.get_insert_block().unwrap();
+
+        // list -> length != 0
+        self.builder.position_at_end(list_block);
+        let list_len = self.get_list_length(data)?;
+        let list_result = self
+            .builder
+            .build_int_compare(IntPredicate::NE, list_len, zero_i64, "list_truthy")
+            .unwrap();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let list_end = self.builder.get_insert_block().unwrap();
+
+        // dict -> count != 0 (layout: [i64 count][entries...])
+        self.builder.position_at_end(dict_block);
+        let dict_ptr = self
+            .builder
+            .build_int_to_ptr(data, i8_ptr_type, "truthy_dict_ptr")
+            .unwrap();
+        let dict_i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let dict_count_ptr = self
+            .builder
+            .build_pointer_cast(dict_ptr, dict_i64_ptr_type, "truthy_dict_count_ptr")
+            .unwrap();
+        let dict_count = self
+            .builder
+            .build_load(self.types.i64_type, dict_count_ptr, "truthy_dict_count")
+            .unwrap()
+            .into_int_value();
+        let dict_result = self
+            .builder
+            .build_int_compare(IntPredicate::NE, dict_count, zero_i64, "dict_truthy")
+            .unwrap();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let dict_end = self.builder.get_insert_block().unwrap();
 
         // other -> true
-        self.builder.position_at_end(is_other);
+        self.builder.position_at_end(other_block);
         let other_result = self.types.bool_type.const_int(1, false);
-        self.builder.build_unconditional_branch(merge).unwrap();
-        let other_block = self.builder.get_insert_block().unwrap();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let other_end = self.builder.get_insert_block().unwrap();
 
         // Merge
-        self.builder.position_at_end(merge);
+        self.builder.position_at_end(merge_block);
         let phi = self
             .builder
             .build_phi(self.types.bool_type, "truthy")
             .unwrap();
         phi.add_incoming(&[
-            (&nil_result, nil_block),
-            (&bool_result, bool_block),
-            (&int_result, int_block),
-            (&other_result, other_block),
+            (&nil_result, nil_end),
+            (&bool_result, bool_end),
+            (&int_result, int_end),
+            (&float_result, float_end),
+            (&string_result, string_end),
+            (&list_result, list_end),
+            (&dict_result, dict_end),
+            (&other_result, other_end),
         ]);
 
         Ok(phi.as_basic_value().into_int_value())
@@ -1548,13 +1734,11 @@ impl<'ctx> CodeGen<'ctx> {
                     BinaryOp::Equal | BinaryOp::NotEqual => {
                         let left_type = self.infer_expr_type(left);
                         let right_type = self.infer_expr_type(right);
-                        // Only use fast path if both are known to be non-string types
-                        if left_type == VarType::String
-                            || right_type == VarType::String
-                            || left_type == VarType::Unknown
-                            || right_type == VarType::Unknown
-                        {
-                            // Fall back to full compilation with strcmp support
+                        // Only use fast path when both sides are simple int-like values.
+                        // Anything else (floats, strings, lists, dicts, unknown) needs full compilation.
+                        let left_fast = matches!(left_type, VarType::Int | VarType::Bool);
+                        let right_fast = matches!(right_type, VarType::Int | VarType::Bool);
+                        if !left_fast || !right_fast {
                             return Ok(None);
                         }
                         // Both are known non-string types, safe to compare data directly
@@ -1583,6 +1767,13 @@ impl<'ctx> CodeGen<'ctx> {
                     | BinaryOp::LessEqual
                     | BinaryOp::Greater
                     | BinaryOp::GreaterEqual => {
+                        let left_type = self.infer_expr_type(left);
+                        let right_type = self.infer_expr_type(right);
+                        let left_fast = matches!(left_type, VarType::Int | VarType::Bool);
+                        let right_fast = matches!(right_type, VarType::Int | VarType::Bool);
+                        if !left_fast || !right_fast {
+                            return Ok(None);
+                        }
                         // Helper to get i64 value from expression (shadow or extract)
                         let get_int_data =
                             |s: &mut Self, expr: &Expr| -> Result<IntValue<'ctx>, HaversError> {
@@ -2007,6 +2198,10 @@ impl<'ctx> CodeGen<'ctx> {
             .types
             .i8_type
             .const_int(ValueTag::Int.as_u8() as u64, false);
+        let bool_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Bool.as_u8() as u64, false);
         let float_tag = self
             .types
             .i8_type
@@ -2016,7 +2211,7 @@ impl<'ctx> CodeGen<'ctx> {
             .i8_type
             .const_int(ValueTag::String.as_u8() as u64, false);
 
-        // Check if both are ints
+        // Check if both are int-like (int or bool)
         let left_is_int = self
             .builder
             .build_int_compare(IntPredicate::EQ, left_tag, int_tag, "l_int")
@@ -2025,9 +2220,25 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::EQ, right_tag, int_tag, "r_int")
             .unwrap();
+        let left_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, bool_tag, "l_bool")
+            .unwrap();
+        let right_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, bool_tag, "r_bool")
+            .unwrap();
+        let left_is_intlike = self
+            .builder
+            .build_or(left_is_int, left_is_bool, "l_intlike")
+            .unwrap();
+        let right_is_intlike = self
+            .builder
+            .build_or(right_is_int, right_is_bool, "r_intlike")
+            .unwrap();
         let both_int = self
             .builder
-            .build_and(left_is_int, right_is_int, "both_int")
+            .build_and(left_is_intlike, right_is_intlike, "both_intlike")
             .unwrap();
 
         // Check if either is float
@@ -2268,6 +2479,10 @@ impl<'ctx> CodeGen<'ctx> {
             .types
             .i8_type
             .const_int(ValueTag::Int.as_u8() as u64, false);
+        let bool_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Bool.as_u8() as u64, false);
         let float_tag = self
             .types
             .i8_type
@@ -2281,9 +2496,25 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::EQ, right_tag, int_tag, "r_int")
             .unwrap();
+        let left_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, bool_tag, "l_bool")
+            .unwrap();
+        let right_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, bool_tag, "r_bool")
+            .unwrap();
+        let left_is_intlike = self
+            .builder
+            .build_or(left_is_int, left_is_bool, "l_intlike")
+            .unwrap();
+        let right_is_intlike = self
+            .builder
+            .build_or(right_is_int, right_is_bool, "r_intlike")
+            .unwrap();
         let both_int = self
             .builder
-            .build_and(left_is_int, right_is_int, "both_int")
+            .build_and(left_is_intlike, right_is_intlike, "both_intlike")
             .unwrap();
 
         self.builder
@@ -2379,10 +2610,18 @@ impl<'ctx> CodeGen<'ctx> {
         let right_data = self.extract_data(right)?;
 
         let function = self.current_function.unwrap();
+        let check_numeric = self.context.append_basic_block(function, "mul_check_numeric");
+        let check_intlike = self.context.append_basic_block(function, "mul_check_intlike");
+        let string_case = self.context.append_basic_block(function, "mul_string");
         let int_int = self.context.append_basic_block(function, "mul_int");
         let float_case = self.context.append_basic_block(function, "mul_float");
+        let error_case = self.context.append_basic_block(function, "mul_error");
         let merge = self.context.append_basic_block(function, "mul_merge");
 
+        let bool_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Bool.as_u8() as u64, false);
         let int_tag = self
             .types
             .i8_type
@@ -2391,6 +2630,10 @@ impl<'ctx> CodeGen<'ctx> {
             .types
             .i8_type
             .const_int(ValueTag::Float.as_u8() as u64, false);
+        let string_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::String.as_u8() as u64, false);
 
         let left_is_int = self
             .builder
@@ -2400,16 +2643,125 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::EQ, right_tag, int_tag, "r_int")
             .unwrap();
-        let both_int = self
+        let left_is_bool = self
             .builder
-            .build_and(left_is_int, right_is_int, "both_int")
+            .build_int_compare(IntPredicate::EQ, left_tag, bool_tag, "l_bool")
+            .unwrap();
+        let right_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, bool_tag, "r_bool")
+            .unwrap();
+        let left_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, float_tag, "lf")
+            .unwrap();
+        let right_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, float_tag, "rf")
+            .unwrap();
+        let left_is_string = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, string_tag, "l_str")
+            .unwrap();
+        let right_is_string = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, string_tag, "r_str")
             .unwrap();
 
+        let left_is_intlike = self
+            .builder
+            .build_or(left_is_int, left_is_bool, "l_intlike")
+            .unwrap();
+        let right_is_intlike = self
+            .builder
+            .build_or(right_is_int, right_is_bool, "r_intlike")
+            .unwrap();
+        let both_intlike = self
+            .builder
+            .build_and(left_is_intlike, right_is_intlike, "both_intlike")
+            .unwrap();
+
+        let left_is_numeric = self
+            .builder
+            .build_or(left_is_intlike, left_is_float, "l_numeric")
+            .unwrap();
+        let right_is_numeric = self
+            .builder
+            .build_or(right_is_intlike, right_is_float, "r_numeric")
+            .unwrap();
+        let both_numeric = self
+            .builder
+            .build_and(left_is_numeric, right_is_numeric, "both_numeric")
+            .unwrap();
+
+        let left_str_right_intlike = self
+            .builder
+            .build_and(left_is_string, right_is_intlike, "lstr_rintlike")
+            .unwrap();
+        let right_str_left_intlike = self
+            .builder
+            .build_and(right_is_string, left_is_intlike, "rstr_lintlike")
+            .unwrap();
+        let is_string_repeat = self
+            .builder
+            .build_or(left_str_right_intlike, right_str_left_intlike, "is_str_repeat")
+            .unwrap();
+
+        // Branch: string repetition first, then numeric multiply, else error.
         self.builder
-            .build_conditional_branch(both_int, int_int, float_case)
+            .build_conditional_branch(is_string_repeat, string_case, check_numeric)
             .unwrap();
 
-        // int * int
+        // ===== String repetition =====
+        self.builder.position_at_end(string_case);
+        let str_val = self
+            .builder
+            .build_select(left_str_right_intlike, left, right, "mul_str_sel")
+            .unwrap();
+        let count_val = self
+            .builder
+            .build_select(left_str_right_intlike, right, left, "mul_count_sel")
+            .unwrap();
+        let count_data = self.extract_data(count_val)?;
+
+        let str_empty = self.context.append_basic_block(function, "mul_str_empty");
+        let str_repeat = self.context.append_basic_block(function, "mul_str_repeat");
+
+        let zero_i64 = self.types.i64_type.const_int(0, false);
+        let count_le_zero = self
+            .builder
+            .build_int_compare(IntPredicate::SLE, count_data, zero_i64, "count_le_zero")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(count_le_zero, str_empty, str_repeat)
+            .unwrap();
+
+        self.builder.position_at_end(str_empty);
+        let empty_ptr = self
+            .builder
+            .build_global_string_ptr("", "empty_repeat")
+            .unwrap();
+        let empty_result = self.make_string(empty_ptr.as_pointer_value())?;
+        self.builder.build_unconditional_branch(merge).unwrap();
+        let empty_block = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(str_repeat);
+        let repeat_result = self.inline_repeat(str_val, count_val)?;
+        self.builder.build_unconditional_branch(merge).unwrap();
+        let repeat_block = self.builder.get_insert_block().unwrap();
+
+        // ===== Numeric multiply =====
+        self.builder.position_at_end(check_numeric);
+        self.builder
+            .build_conditional_branch(both_numeric, check_intlike, error_case)
+            .unwrap();
+
+        self.builder.position_at_end(check_intlike);
+        self.builder
+            .build_conditional_branch(both_intlike, int_int, float_case)
+            .unwrap();
+
+        // intlike * intlike
         self.builder.position_at_end(int_int);
         let int_prod = self
             .builder
@@ -2419,16 +2771,8 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(merge).unwrap();
         let int_block = self.builder.get_insert_block().unwrap();
 
-        // float case
+        // float case (mixed numeric)
         self.builder.position_at_end(float_case);
-        let left_is_float = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, left_tag, float_tag, "lf")
-            .unwrap();
-        let right_is_float = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, right_tag, float_tag, "rf")
-            .unwrap();
         let left_f = self
             .builder
             .build_select(
@@ -2475,13 +2819,25 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(merge).unwrap();
         let float_block = self.builder.get_insert_block().unwrap();
 
+        // ===== Error =====
+        self.builder.position_at_end(error_case);
+        let error_result = self.make_nil();
+        self.builder.build_unconditional_branch(merge).unwrap();
+        let error_block = self.builder.get_insert_block().unwrap();
+
         // Merge
         self.builder.position_at_end(merge);
         let phi = self
             .builder
             .build_phi(self.types.value_type, "mul_result")
             .unwrap();
-        phi.add_incoming(&[(&int_result, int_block), (&float_result, float_block)]);
+        phi.add_incoming(&[
+            (&empty_result, empty_block),
+            (&repeat_result, repeat_block),
+            (&int_result, int_block),
+            (&float_result, float_block),
+            (&error_result, error_block),
+        ]);
 
         Ok(phi.as_basic_value())
     }
@@ -2506,6 +2862,10 @@ impl<'ctx> CodeGen<'ctx> {
             .types
             .i8_type
             .const_int(ValueTag::Int.as_u8() as u64, false);
+        let bool_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Bool.as_u8() as u64, false);
         let float_tag = self
             .types
             .i8_type
@@ -2519,9 +2879,25 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::EQ, right_tag, int_tag, "r_int")
             .unwrap();
+        let left_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, bool_tag, "l_bool")
+            .unwrap();
+        let right_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, bool_tag, "r_bool")
+            .unwrap();
+        let left_is_intlike = self
+            .builder
+            .build_or(left_is_int, left_is_bool, "l_intlike")
+            .unwrap();
+        let right_is_intlike = self
+            .builder
+            .build_or(right_is_int, right_is_bool, "r_intlike")
+            .unwrap();
         let both_int = self
             .builder
-            .build_and(left_is_int, right_is_int, "both_int")
+            .build_and(left_is_intlike, right_is_intlike, "both_intlike")
             .unwrap();
 
         self.builder
@@ -2626,97 +3002,16 @@ impl<'ctx> CodeGen<'ctx> {
         left: BasicValueEnum<'ctx>,
         right: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        let left_tag = self.extract_tag(left)?;
-        let right_tag = self.extract_tag(right)?;
-        let left_data = self.extract_data(left)?;
-        let right_data = self.extract_data(right)?;
-
-        // Tags must match first
-        let tags_equal = self
+        let eq_val = self
             .builder
-            .build_int_compare(IntPredicate::EQ, left_tag, right_tag, "tags_eq")
-            .unwrap();
-
-        // Check if both are strings (tag == 4)
-        let string_tag = self.types.i8_type.const_int(4, false);
-        let left_is_string = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, left_tag, string_tag, "left_is_str")
-            .unwrap();
-        let right_is_string = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, right_tag, string_tag, "right_is_str")
-            .unwrap();
-        let both_strings = self
-            .builder
-            .build_and(left_is_string, right_is_string, "both_str")
-            .unwrap();
-
-        // Create basic blocks for string vs non-string comparison
-        let function = self.current_function.unwrap();
-        let cmp_string = self.context.append_basic_block(function, "cmp_string");
-        let cmp_other = self.context.append_basic_block(function, "cmp_other");
-        let cmp_merge = self.context.append_basic_block(function, "cmp_merge");
-
-        self.builder
-            .build_conditional_branch(both_strings, cmp_string, cmp_other)
-            .unwrap();
-
-        // String comparison: use strcmp
-        self.builder.position_at_end(cmp_string);
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let left_str = self
-            .builder
-            .build_int_to_ptr(left_data, i8_ptr_type, "left_str")
-            .unwrap();
-        let right_str = self
-            .builder
-            .build_int_to_ptr(right_data, i8_ptr_type, "right_str")
-            .unwrap();
-        let strcmp_result = self
-            .builder
-            .build_call(
-                self.libc.strcmp,
-                &[left_str.into(), right_str.into()],
-                "strcmp_res",
-            )
-            .unwrap()
+            .build_call(self.libc.eq, &[left.into(), right.into()], "eq")
+            .map_err(|e| HaversError::CompileError(format!("Failed to call __mdh_eq: {}", e)))?
             .try_as_basic_value()
             .left()
-            .unwrap()
+            .ok_or_else(|| HaversError::CompileError("__mdh_eq returned void".to_string()))?
             .into_int_value();
-        let zero = self.types.i32_type.const_int(0, false);
-        let str_equal = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, strcmp_result, zero, "str_eq")
-            .unwrap();
-        self.builder.build_unconditional_branch(cmp_merge).unwrap();
-        let string_block = self.builder.get_insert_block().unwrap();
 
-        // Non-string comparison: compare data directly
-        self.builder.position_at_end(cmp_other);
-        let data_equal = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, left_data, right_data, "data_eq")
-            .unwrap();
-        // Both tags and data must match for non-strings
-        let other_equal = self
-            .builder
-            .build_and(tags_equal, data_equal, "other_eq")
-            .unwrap();
-        self.builder.build_unconditional_branch(cmp_merge).unwrap();
-        let other_block = self.builder.get_insert_block().unwrap();
-
-        // Merge results
-        self.builder.position_at_end(cmp_merge);
-        let phi = self
-            .builder
-            .build_phi(self.types.bool_type, "eq_result")
-            .unwrap();
-        phi.add_incoming(&[(&str_equal, string_block), (&other_equal, other_block)]);
-        let result = phi.as_basic_value().into_int_value();
-
-        self.make_bool(result)
+        self.make_bool(eq_val)
     }
 
     /// Compare two values for inequality
@@ -2743,142 +3038,106 @@ impl<'ctx> CodeGen<'ctx> {
         left: BasicValueEnum<'ctx>,
         right: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        let left_data = self.extract_data(left)?;
-        let right_data = self.extract_data(right)?;
-        let result = self
-            .builder
-            .build_int_compare(IntPredicate::SLT, left_data, right_data, "lt")
-            .unwrap();
-        self.make_bool(result)
-    }
-
-    /// Compare two values: less than or equal
-    fn inline_le(
-        &mut self,
-        left: BasicValueEnum<'ctx>,
-        right: BasicValueEnum<'ctx>,
-    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        let left_data = self.extract_data(left)?;
-        let right_data = self.extract_data(right)?;
-        let result = self
-            .builder
-            .build_int_compare(IntPredicate::SLE, left_data, right_data, "le")
-            .unwrap();
-        self.make_bool(result)
-    }
-
-    /// Compare two values: greater than
-    fn inline_gt(
-        &mut self,
-        left: BasicValueEnum<'ctx>,
-        right: BasicValueEnum<'ctx>,
-    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        let left_data = self.extract_data(left)?;
-        let right_data = self.extract_data(right)?;
-        let result = self
-            .builder
-            .build_int_compare(IntPredicate::SGT, left_data, right_data, "gt")
-            .unwrap();
-        self.make_bool(result)
-    }
-
-    /// Compare two values: greater than or equal
-    fn inline_ge(
-        &mut self,
-        left: BasicValueEnum<'ctx>,
-        right: BasicValueEnum<'ctx>,
-    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        let left_data = self.extract_data(left)?;
-        let right_data = self.extract_data(right)?;
-        let result = self
-            .builder
-            .build_int_compare(IntPredicate::SGE, left_data, right_data, "ge")
-            .unwrap();
-        self.make_bool(result)
-    }
-
-    /// Check if a value is truthy (returns raw i1 bool for conditionals)
-    fn inline_is_truthy(
-        &mut self,
-        val: BasicValueEnum<'ctx>,
-    ) -> Result<IntValue<'ctx>, HaversError> {
-        let tag = self.extract_tag(val)?;
-        let data = self.extract_data(val)?;
-
-        // Value is truthy if:
-        // - Bool: data != 0
-        // - Int: data != 0
-        // - Float: data != 0 (bit pattern)
-        // - String: len > 0
-        // - List: len > 0
-        // - Nil: false
-        // For simplicity, we check if data != 0 (works for most cases)
-        let nil_tag = self.types.i8_type.const_int(0, false);
-        let is_nil = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, tag, nil_tag, "is_nil")
-            .unwrap();
-
-        let zero = self.types.i64_type.const_int(0, false);
-        let data_nonzero = self
-            .builder
-            .build_int_compare(IntPredicate::NE, data, zero, "data_nonzero")
-            .unwrap();
-
-        // Truthy if not nil AND data is non-zero
-        let not_nil = self.builder.build_not(is_nil, "not_nil").unwrap();
-        let is_truthy = self
-            .builder
-            .build_and(not_nil, data_nonzero, "is_truthy")
-            .unwrap();
-
-        Ok(is_truthy)
-    }
-
-    /// Compare two values for equality (returns raw i1 bool for conditionals)
-    fn inline_eq_raw(
-        &mut self,
-        left: BasicValueEnum<'ctx>,
-        right: BasicValueEnum<'ctx>,
-    ) -> Result<IntValue<'ctx>, HaversError> {
         let left_tag = self.extract_tag(left)?;
         let right_tag = self.extract_tag(right)?;
         let left_data = self.extract_data(left)?;
         let right_data = self.extract_data(right)?;
 
-        // Tags must match first
-        let tags_equal = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, left_tag, right_tag, "tags_eq")
-            .unwrap();
+        let function = self.current_function.unwrap();
+        let str_block = self.context.append_basic_block(function, "lt_str");
+        let check_num = self.context.append_basic_block(function, "lt_check_num");
+        let num_block = self.context.append_basic_block(function, "lt_num");
+        let int_block = self.context.append_basic_block(function, "lt_int");
+        let float_block = self.context.append_basic_block(function, "lt_float");
+        let other_block = self.context.append_basic_block(function, "lt_other");
+        let merge_block = self.context.append_basic_block(function, "lt_merge");
 
-        // Check if both are strings (tag == 4)
-        let string_tag = self.types.i8_type.const_int(4, false);
+        let bool_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Bool.as_u8() as u64, false);
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
+        let string_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::String.as_u8() as u64, false);
+
         let left_is_string = self
             .builder
-            .build_int_compare(IntPredicate::EQ, left_tag, string_tag, "left_is_str")
+            .build_int_compare(IntPredicate::EQ, left_tag, string_tag, "l_str")
             .unwrap();
         let right_is_string = self
             .builder
-            .build_int_compare(IntPredicate::EQ, right_tag, string_tag, "right_is_str")
+            .build_int_compare(IntPredicate::EQ, right_tag, string_tag, "r_str")
             .unwrap();
         let both_strings = self
             .builder
             .build_and(left_is_string, right_is_string, "both_str")
             .unwrap();
 
-        // Create basic blocks for string vs non-string comparison
-        let function = self.current_function.unwrap();
-        let cmp_string = self.context.append_basic_block(function, "cmp_string_raw");
-        let cmp_other = self.context.append_basic_block(function, "cmp_other_raw");
-        let cmp_merge = self.context.append_basic_block(function, "cmp_merge_raw");
-
-        self.builder
-            .build_conditional_branch(both_strings, cmp_string, cmp_other)
+        let left_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, bool_tag, "l_bool")
+            .unwrap();
+        let right_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, bool_tag, "r_bool")
+            .unwrap();
+        let left_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, int_tag, "l_int")
+            .unwrap();
+        let right_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, int_tag, "r_int")
+            .unwrap();
+        let left_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, float_tag, "lf")
+            .unwrap();
+        let right_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, float_tag, "rf")
             .unwrap();
 
-        // String comparison: use strcmp
-        self.builder.position_at_end(cmp_string);
+        let left_is_intlike = self
+            .builder
+            .build_or(left_is_int, left_is_bool, "l_intlike")
+            .unwrap();
+        let right_is_intlike = self
+            .builder
+            .build_or(right_is_int, right_is_bool, "r_intlike")
+            .unwrap();
+        let left_is_numeric = self
+            .builder
+            .build_or(left_is_intlike, left_is_float, "l_numeric")
+            .unwrap();
+        let right_is_numeric = self
+            .builder
+            .build_or(right_is_intlike, right_is_float, "r_numeric")
+            .unwrap();
+        let both_numeric = self
+            .builder
+            .build_and(left_is_numeric, right_is_numeric, "both_numeric")
+            .unwrap();
+        let either_float = self
+            .builder
+            .build_or(left_is_float, right_is_float, "either_float")
+            .unwrap();
+
+        self.builder
+            .build_conditional_branch(both_strings, str_block, check_num)
+            .unwrap();
+
+        // string compare (strcmp < 0)
+        self.builder.position_at_end(str_block);
         let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
         let left_str = self
             .builder
@@ -2888,49 +3147,775 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_to_ptr(right_data, i8_ptr_type, "right_str")
             .unwrap();
-        let strcmp_result = self
+        let strcmp_res = self
             .builder
-            .build_call(
-                self.libc.strcmp,
-                &[left_str.into(), right_str.into()],
-                "strcmp_res",
-            )
+            .build_call(self.libc.strcmp, &[left_str.into(), right_str.into()], "strcmp")
             .unwrap()
             .try_as_basic_value()
             .left()
             .unwrap()
             .into_int_value();
-        let zero = self.types.i32_type.const_int(0, false);
-        let str_equal = self
+        let zero_i32 = self.types.i32_type.const_int(0, false);
+        let str_result = self
             .builder
-            .build_int_compare(IntPredicate::EQ, strcmp_result, zero, "str_eq")
+            .build_int_compare(IntPredicate::SLT, strcmp_res, zero_i32, "str_lt")
             .unwrap();
-        self.builder.build_unconditional_branch(cmp_merge).unwrap();
-        let string_block = self.builder.get_insert_block().unwrap();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let str_end = self.builder.get_insert_block().unwrap();
 
-        // Non-string comparison: compare data directly
-        self.builder.position_at_end(cmp_other);
-        let data_equal = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, left_data, right_data, "data_eq")
+        // numeric / other
+        self.builder.position_at_end(check_num);
+        self.builder
+            .build_conditional_branch(both_numeric, num_block, other_block)
             .unwrap();
-        // Both tags and data must match for non-strings
-        let other_equal = self
-            .builder
-            .build_and(tags_equal, data_equal, "other_eq")
-            .unwrap();
-        self.builder.build_unconditional_branch(cmp_merge).unwrap();
-        let other_block = self.builder.get_insert_block().unwrap();
 
-        // Merge results
-        self.builder.position_at_end(cmp_merge);
+        self.builder.position_at_end(num_block);
+        self.builder
+            .build_conditional_branch(either_float, float_block, int_block)
+            .unwrap();
+
+        self.builder.position_at_end(int_block);
+        let int_result = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, left_data, right_data, "int_lt")
+            .unwrap();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let int_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(float_block);
+        let left_f = self
+            .builder
+            .build_select(
+                left_is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(left_data, self.types.f64_type, "lf")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(left_data, self.types.f64_type, "li2f")
+                        .unwrap(),
+                ),
+                "left_as_float",
+            )
+            .unwrap()
+            .into_float_value();
+        let right_f = self
+            .builder
+            .build_select(
+                right_is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(right_data, self.types.f64_type, "rf")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(right_data, self.types.f64_type, "ri2f")
+                        .unwrap(),
+                ),
+                "right_as_float",
+            )
+            .unwrap()
+            .into_float_value();
+        let float_result = self
+            .builder
+            .build_float_compare(inkwell::FloatPredicate::OLT, left_f, right_f, "flt_lt")
+            .unwrap();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let float_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(other_block);
+        let other_result = self.types.bool_type.const_int(0, false);
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let other_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(merge_block);
         let phi = self
             .builder
-            .build_phi(self.types.bool_type, "eq_result_raw")
+            .build_phi(self.types.bool_type, "lt_result")
             .unwrap();
-        phi.add_incoming(&[(&str_equal, string_block), (&other_equal, other_block)]);
+        phi.add_incoming(&[
+            (&str_result, str_end),
+            (&int_result, int_end),
+            (&float_result, float_end),
+            (&other_result, other_end),
+        ]);
 
-        Ok(phi.as_basic_value().into_int_value())
+        self.make_bool(phi.as_basic_value().into_int_value())
+    }
+
+    /// Compare two values: less than or equal
+    fn inline_le(
+        &mut self,
+        left: BasicValueEnum<'ctx>,
+        right: BasicValueEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let left_tag = self.extract_tag(left)?;
+        let right_tag = self.extract_tag(right)?;
+        let left_data = self.extract_data(left)?;
+        let right_data = self.extract_data(right)?;
+
+        let function = self.current_function.unwrap();
+        let str_block = self.context.append_basic_block(function, "le_str");
+        let check_num = self.context.append_basic_block(function, "le_check_num");
+        let num_block = self.context.append_basic_block(function, "le_num");
+        let int_block = self.context.append_basic_block(function, "le_int");
+        let float_block = self.context.append_basic_block(function, "le_float");
+        let other_block = self.context.append_basic_block(function, "le_other");
+        let merge_block = self.context.append_basic_block(function, "le_merge");
+
+        let bool_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Bool.as_u8() as u64, false);
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
+        let string_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::String.as_u8() as u64, false);
+
+        let left_is_string = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, string_tag, "l_str")
+            .unwrap();
+        let right_is_string = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, string_tag, "r_str")
+            .unwrap();
+        let both_strings = self
+            .builder
+            .build_and(left_is_string, right_is_string, "both_str")
+            .unwrap();
+
+        let left_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, bool_tag, "l_bool")
+            .unwrap();
+        let right_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, bool_tag, "r_bool")
+            .unwrap();
+        let left_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, int_tag, "l_int")
+            .unwrap();
+        let right_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, int_tag, "r_int")
+            .unwrap();
+        let left_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, float_tag, "lf")
+            .unwrap();
+        let right_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, float_tag, "rf")
+            .unwrap();
+
+        let left_is_intlike = self
+            .builder
+            .build_or(left_is_int, left_is_bool, "l_intlike")
+            .unwrap();
+        let right_is_intlike = self
+            .builder
+            .build_or(right_is_int, right_is_bool, "r_intlike")
+            .unwrap();
+        let left_is_numeric = self
+            .builder
+            .build_or(left_is_intlike, left_is_float, "l_numeric")
+            .unwrap();
+        let right_is_numeric = self
+            .builder
+            .build_or(right_is_intlike, right_is_float, "r_numeric")
+            .unwrap();
+        let both_numeric = self
+            .builder
+            .build_and(left_is_numeric, right_is_numeric, "both_numeric")
+            .unwrap();
+        let either_float = self
+            .builder
+            .build_or(left_is_float, right_is_float, "either_float")
+            .unwrap();
+
+        self.builder
+            .build_conditional_branch(both_strings, str_block, check_num)
+            .unwrap();
+
+        // string compare (strcmp <= 0)
+        self.builder.position_at_end(str_block);
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let left_str = self
+            .builder
+            .build_int_to_ptr(left_data, i8_ptr_type, "left_str")
+            .unwrap();
+        let right_str = self
+            .builder
+            .build_int_to_ptr(right_data, i8_ptr_type, "right_str")
+            .unwrap();
+        let strcmp_res = self
+            .builder
+            .build_call(self.libc.strcmp, &[left_str.into(), right_str.into()], "strcmp")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_int_value();
+        let zero_i32 = self.types.i32_type.const_int(0, false);
+        let str_result = self
+            .builder
+            .build_int_compare(IntPredicate::SLE, strcmp_res, zero_i32, "str_le")
+            .unwrap();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let str_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(check_num);
+        self.builder
+            .build_conditional_branch(both_numeric, num_block, other_block)
+            .unwrap();
+
+        self.builder.position_at_end(num_block);
+        self.builder
+            .build_conditional_branch(either_float, float_block, int_block)
+            .unwrap();
+
+        self.builder.position_at_end(int_block);
+        let int_result = self
+            .builder
+            .build_int_compare(IntPredicate::SLE, left_data, right_data, "int_le")
+            .unwrap();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let int_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(float_block);
+        let left_f = self
+            .builder
+            .build_select(
+                left_is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(left_data, self.types.f64_type, "lf")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(left_data, self.types.f64_type, "li2f")
+                        .unwrap(),
+                ),
+                "left_as_float",
+            )
+            .unwrap()
+            .into_float_value();
+        let right_f = self
+            .builder
+            .build_select(
+                right_is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(right_data, self.types.f64_type, "rf")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(right_data, self.types.f64_type, "ri2f")
+                        .unwrap(),
+                ),
+                "right_as_float",
+            )
+            .unwrap()
+            .into_float_value();
+        let float_result = self
+            .builder
+            .build_float_compare(inkwell::FloatPredicate::OLE, left_f, right_f, "flt_le")
+            .unwrap();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let float_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(other_block);
+        let other_result = self.types.bool_type.const_int(0, false);
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let other_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.bool_type, "le_result")
+            .unwrap();
+        phi.add_incoming(&[
+            (&str_result, str_end),
+            (&int_result, int_end),
+            (&float_result, float_end),
+            (&other_result, other_end),
+        ]);
+
+        self.make_bool(phi.as_basic_value().into_int_value())
+    }
+
+    /// Compare two values: greater than
+    fn inline_gt(
+        &mut self,
+        left: BasicValueEnum<'ctx>,
+        right: BasicValueEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let left_tag = self.extract_tag(left)?;
+        let right_tag = self.extract_tag(right)?;
+        let left_data = self.extract_data(left)?;
+        let right_data = self.extract_data(right)?;
+
+        let function = self.current_function.unwrap();
+        let str_block = self.context.append_basic_block(function, "gt_str");
+        let check_num = self.context.append_basic_block(function, "gt_check_num");
+        let num_block = self.context.append_basic_block(function, "gt_num");
+        let int_block = self.context.append_basic_block(function, "gt_int");
+        let float_block = self.context.append_basic_block(function, "gt_float");
+        let other_block = self.context.append_basic_block(function, "gt_other");
+        let merge_block = self.context.append_basic_block(function, "gt_merge");
+
+        let bool_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Bool.as_u8() as u64, false);
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
+        let string_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::String.as_u8() as u64, false);
+
+        let left_is_string = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, string_tag, "l_str")
+            .unwrap();
+        let right_is_string = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, string_tag, "r_str")
+            .unwrap();
+        let both_strings = self
+            .builder
+            .build_and(left_is_string, right_is_string, "both_str")
+            .unwrap();
+
+        let left_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, bool_tag, "l_bool")
+            .unwrap();
+        let right_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, bool_tag, "r_bool")
+            .unwrap();
+        let left_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, int_tag, "l_int")
+            .unwrap();
+        let right_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, int_tag, "r_int")
+            .unwrap();
+        let left_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, float_tag, "lf")
+            .unwrap();
+        let right_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, float_tag, "rf")
+            .unwrap();
+
+        let left_is_intlike = self
+            .builder
+            .build_or(left_is_int, left_is_bool, "l_intlike")
+            .unwrap();
+        let right_is_intlike = self
+            .builder
+            .build_or(right_is_int, right_is_bool, "r_intlike")
+            .unwrap();
+        let left_is_numeric = self
+            .builder
+            .build_or(left_is_intlike, left_is_float, "l_numeric")
+            .unwrap();
+        let right_is_numeric = self
+            .builder
+            .build_or(right_is_intlike, right_is_float, "r_numeric")
+            .unwrap();
+        let both_numeric = self
+            .builder
+            .build_and(left_is_numeric, right_is_numeric, "both_numeric")
+            .unwrap();
+        let either_float = self
+            .builder
+            .build_or(left_is_float, right_is_float, "either_float")
+            .unwrap();
+
+        self.builder
+            .build_conditional_branch(both_strings, str_block, check_num)
+            .unwrap();
+
+        // string compare (strcmp > 0)
+        self.builder.position_at_end(str_block);
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let left_str = self
+            .builder
+            .build_int_to_ptr(left_data, i8_ptr_type, "left_str")
+            .unwrap();
+        let right_str = self
+            .builder
+            .build_int_to_ptr(right_data, i8_ptr_type, "right_str")
+            .unwrap();
+        let strcmp_res = self
+            .builder
+            .build_call(self.libc.strcmp, &[left_str.into(), right_str.into()], "strcmp")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_int_value();
+        let zero_i32 = self.types.i32_type.const_int(0, false);
+        let str_result = self
+            .builder
+            .build_int_compare(IntPredicate::SGT, strcmp_res, zero_i32, "str_gt")
+            .unwrap();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let str_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(check_num);
+        self.builder
+            .build_conditional_branch(both_numeric, num_block, other_block)
+            .unwrap();
+
+        self.builder.position_at_end(num_block);
+        self.builder
+            .build_conditional_branch(either_float, float_block, int_block)
+            .unwrap();
+
+        self.builder.position_at_end(int_block);
+        let int_result = self
+            .builder
+            .build_int_compare(IntPredicate::SGT, left_data, right_data, "int_gt")
+            .unwrap();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let int_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(float_block);
+        let left_f = self
+            .builder
+            .build_select(
+                left_is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(left_data, self.types.f64_type, "lf")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(left_data, self.types.f64_type, "li2f")
+                        .unwrap(),
+                ),
+                "left_as_float",
+            )
+            .unwrap()
+            .into_float_value();
+        let right_f = self
+            .builder
+            .build_select(
+                right_is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(right_data, self.types.f64_type, "rf")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(right_data, self.types.f64_type, "ri2f")
+                        .unwrap(),
+                ),
+                "right_as_float",
+            )
+            .unwrap()
+            .into_float_value();
+        let float_result = self
+            .builder
+            .build_float_compare(inkwell::FloatPredicate::OGT, left_f, right_f, "flt_gt")
+            .unwrap();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let float_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(other_block);
+        let other_result = self.types.bool_type.const_int(0, false);
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let other_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.bool_type, "gt_result")
+            .unwrap();
+        phi.add_incoming(&[
+            (&str_result, str_end),
+            (&int_result, int_end),
+            (&float_result, float_end),
+            (&other_result, other_end),
+        ]);
+
+        self.make_bool(phi.as_basic_value().into_int_value())
+    }
+
+    /// Compare two values: greater than or equal
+    fn inline_ge(
+        &mut self,
+        left: BasicValueEnum<'ctx>,
+        right: BasicValueEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let left_tag = self.extract_tag(left)?;
+        let right_tag = self.extract_tag(right)?;
+        let left_data = self.extract_data(left)?;
+        let right_data = self.extract_data(right)?;
+
+        let function = self.current_function.unwrap();
+        let str_block = self.context.append_basic_block(function, "ge_str");
+        let check_num = self.context.append_basic_block(function, "ge_check_num");
+        let num_block = self.context.append_basic_block(function, "ge_num");
+        let int_block = self.context.append_basic_block(function, "ge_int");
+        let float_block = self.context.append_basic_block(function, "ge_float");
+        let other_block = self.context.append_basic_block(function, "ge_other");
+        let merge_block = self.context.append_basic_block(function, "ge_merge");
+
+        let bool_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Bool.as_u8() as u64, false);
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
+        let string_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::String.as_u8() as u64, false);
+
+        let left_is_string = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, string_tag, "l_str")
+            .unwrap();
+        let right_is_string = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, string_tag, "r_str")
+            .unwrap();
+        let both_strings = self
+            .builder
+            .build_and(left_is_string, right_is_string, "both_str")
+            .unwrap();
+
+        let left_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, bool_tag, "l_bool")
+            .unwrap();
+        let right_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, bool_tag, "r_bool")
+            .unwrap();
+        let left_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, int_tag, "l_int")
+            .unwrap();
+        let right_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, int_tag, "r_int")
+            .unwrap();
+        let left_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, float_tag, "lf")
+            .unwrap();
+        let right_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, float_tag, "rf")
+            .unwrap();
+
+        let left_is_intlike = self
+            .builder
+            .build_or(left_is_int, left_is_bool, "l_intlike")
+            .unwrap();
+        let right_is_intlike = self
+            .builder
+            .build_or(right_is_int, right_is_bool, "r_intlike")
+            .unwrap();
+        let left_is_numeric = self
+            .builder
+            .build_or(left_is_intlike, left_is_float, "l_numeric")
+            .unwrap();
+        let right_is_numeric = self
+            .builder
+            .build_or(right_is_intlike, right_is_float, "r_numeric")
+            .unwrap();
+        let both_numeric = self
+            .builder
+            .build_and(left_is_numeric, right_is_numeric, "both_numeric")
+            .unwrap();
+        let either_float = self
+            .builder
+            .build_or(left_is_float, right_is_float, "either_float")
+            .unwrap();
+
+        self.builder
+            .build_conditional_branch(both_strings, str_block, check_num)
+            .unwrap();
+
+        // string compare (strcmp >= 0)
+        self.builder.position_at_end(str_block);
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let left_str = self
+            .builder
+            .build_int_to_ptr(left_data, i8_ptr_type, "left_str")
+            .unwrap();
+        let right_str = self
+            .builder
+            .build_int_to_ptr(right_data, i8_ptr_type, "right_str")
+            .unwrap();
+        let strcmp_res = self
+            .builder
+            .build_call(self.libc.strcmp, &[left_str.into(), right_str.into()], "strcmp")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_int_value();
+        let zero_i32 = self.types.i32_type.const_int(0, false);
+        let str_result = self
+            .builder
+            .build_int_compare(IntPredicate::SGE, strcmp_res, zero_i32, "str_ge")
+            .unwrap();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let str_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(check_num);
+        self.builder
+            .build_conditional_branch(both_numeric, num_block, other_block)
+            .unwrap();
+
+        self.builder.position_at_end(num_block);
+        self.builder
+            .build_conditional_branch(either_float, float_block, int_block)
+            .unwrap();
+
+        self.builder.position_at_end(int_block);
+        let int_result = self
+            .builder
+            .build_int_compare(IntPredicate::SGE, left_data, right_data, "int_ge")
+            .unwrap();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let int_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(float_block);
+        let left_f = self
+            .builder
+            .build_select(
+                left_is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(left_data, self.types.f64_type, "lf")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(left_data, self.types.f64_type, "li2f")
+                        .unwrap(),
+                ),
+                "left_as_float",
+            )
+            .unwrap()
+            .into_float_value();
+        let right_f = self
+            .builder
+            .build_select(
+                right_is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(right_data, self.types.f64_type, "rf")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(right_data, self.types.f64_type, "ri2f")
+                        .unwrap(),
+                ),
+                "right_as_float",
+            )
+            .unwrap()
+            .into_float_value();
+        let float_result = self
+            .builder
+            .build_float_compare(inkwell::FloatPredicate::OGE, left_f, right_f, "flt_ge")
+            .unwrap();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let float_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(other_block);
+        let other_result = self.types.bool_type.const_int(0, false);
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let other_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.bool_type, "ge_result")
+            .unwrap();
+        phi.add_incoming(&[
+            (&str_result, str_end),
+            (&int_result, int_end),
+            (&float_result, float_end),
+            (&other_result, other_end),
+        ]);
+
+        self.make_bool(phi.as_basic_value().into_int_value())
+    }
+
+    /// Check if a value is truthy (returns raw i1 bool for conditionals)
+    fn inline_is_truthy(
+        &mut self,
+        val: BasicValueEnum<'ctx>,
+    ) -> Result<IntValue<'ctx>, HaversError> {
+        self.is_truthy(val)
+    }
+
+    /// Compare two values for equality (returns raw i1 bool for conditionals)
+    fn inline_eq_raw(
+        &mut self,
+        left: BasicValueEnum<'ctx>,
+        right: BasicValueEnum<'ctx>,
+    ) -> Result<IntValue<'ctx>, HaversError> {
+        let eq_val = self
+            .builder
+            .build_call(self.libc.eq, &[left.into(), right.into()], "eq_raw")
+            .map_err(|e| HaversError::CompileError(format!("Failed to call __mdh_eq: {}", e)))?
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| HaversError::CompileError("__mdh_eq returned void".to_string()))?
+            .into_int_value();
+        Ok(eq_val)
     }
 
     /// Compare two values: greater than or equal (returns raw i1 bool)
@@ -4284,6 +5269,91 @@ impl<'ctx> CodeGen<'ctx> {
         self.inline_shove_fire_and_forget(shadow, elem_val.into(), var_ptr)
     }
 
+    // ========== Boxed Variable Helpers (Closure Captures) ==========
+
+    /// Ensure a variable is stored as a boxed 1-element list cell.
+    ///
+    /// After boxing, the variable's storage holds a List value whose element 0 is the actual value.
+    /// This allows closures/nested functions to share mutable state across calls.
+    fn ensure_boxed_variable(&mut self, name: &str) -> Result<(), HaversError> {
+        if self.boxed_vars.contains(name) {
+            return Ok(());
+        }
+
+        let Some(&alloca) = self
+            .variables
+            .get(name)
+            .or_else(|| self.globals.get(name))
+        else {
+            return Err(HaversError::CompileError(format!(
+                "Cannot box variable '{}': not found in scope",
+                name
+            )));
+        };
+
+        // Load current value
+        let current = self
+            .builder
+            .build_load(self.types.value_type, alloca, &format!("{name}_boxed_old"))
+            .map_err(|e| HaversError::CompileError(format!("Failed to load for boxing: {}", e)))?;
+
+        // Create a list cell and push the current value into it.
+        let one_i32 = self.context.i32_type().const_int(1, false);
+        let cell = self
+            .builder
+            .build_call(self.libc.make_list, &[one_i32.into()], "box_cell")
+            .map_err(|e| HaversError::CompileError(format!("Failed to call make_list: {}", e)))?
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| HaversError::CompileError("make_list returned void".to_string()))?;
+
+        self.builder
+            .build_call(self.libc.list_push, &[cell.into(), current.into()], "")
+            .map_err(|e| HaversError::CompileError(format!("Failed to call list_push: {}", e)))?;
+
+        // Store the boxed cell back into the variable.
+        self.builder
+            .build_store(alloca, cell)
+            .map_err(|e| HaversError::CompileError(format!("Failed to store boxed cell: {}", e)))?;
+
+        // Drop any shadow optimizations; boxed values are not compatible with them.
+        self.int_shadows.remove(name);
+        self.list_ptr_shadows.remove(name);
+        self.string_len_shadows.remove(name);
+        self.string_cap_shadows.remove(name);
+        self.var_types.insert(name.to_string(), VarType::Unknown);
+
+        self.boxed_vars.insert(name.to_string());
+        Ok(())
+    }
+
+    /// Load the current value from a boxed 1-element list cell.
+    fn box_get(&mut self, cell: BasicValueEnum<'ctx>) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let cell_data = self.extract_data(cell)?;
+        let zero = self.types.i64_type.const_int(0, false);
+        let elem_ptr = self.get_list_element_ptr(cell_data, zero)?;
+        let val = self
+            .builder
+            .build_load(self.types.value_type, elem_ptr, "box_get")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load box elem: {}", e)))?;
+        Ok(val)
+    }
+
+    /// Store a new value into a boxed 1-element list cell.
+    fn box_set(
+        &mut self,
+        cell: BasicValueEnum<'ctx>,
+        value: BasicValueEnum<'ctx>,
+    ) -> Result<(), HaversError> {
+        let cell_data = self.extract_data(cell)?;
+        let zero = self.types.i64_type.const_int(0, false);
+        let elem_ptr = self.get_list_element_ptr(cell_data, zero)?;
+        self.builder
+            .build_store(elem_ptr, value)
+            .map_err(|e| HaversError::CompileError(format!("Failed to store box elem: {}", e)))?;
+        Ok(())
+    }
+
     // ========== Phase 1: Math Functions ==========
 
     /// Get or create an LLVM intrinsic function
@@ -4397,22 +5467,169 @@ impl<'ctx> CodeGen<'ctx> {
         a: BasicValueEnum<'ctx>,
         b: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let a_tag = self.extract_tag(a)?;
+        let b_tag = self.extract_tag(b)?;
         let a_data = self.extract_data(a)?;
         let b_data = self.extract_data(b)?;
 
-        // Compare as signed integers
+        let function = self
+            .current_function
+            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+
+        let numeric_block = self.context.append_basic_block(function, "min_numeric");
+        let int_block = self.context.append_basic_block(function, "min_int");
+        let float_block = self.context.append_basic_block(function, "min_float");
+        let error_block = self.context.append_basic_block(function, "min_error");
+        let merge_block = self.context.append_basic_block(function, "min_merge");
+
+        let bool_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Bool.as_u8() as u64, false);
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
+
+        let a_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, a_tag, bool_tag, "a_is_bool")
+            .unwrap();
+        let a_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, a_tag, int_tag, "a_is_int")
+            .unwrap();
+        let a_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, a_tag, float_tag, "a_is_float")
+            .unwrap();
+        let a_is_intlike = self.builder.build_or(a_is_int, a_is_bool, "a_is_intlike").unwrap();
+        let a_is_numeric = self
+            .builder
+            .build_or(a_is_float, a_is_intlike, "a_is_numeric")
+            .unwrap();
+
+        let b_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, b_tag, bool_tag, "b_is_bool")
+            .unwrap();
+        let b_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, b_tag, int_tag, "b_is_int")
+            .unwrap();
+        let b_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, b_tag, float_tag, "b_is_float")
+            .unwrap();
+        let b_is_intlike = self.builder.build_or(b_is_int, b_is_bool, "b_is_intlike").unwrap();
+        let b_is_numeric = self
+            .builder
+            .build_or(b_is_float, b_is_intlike, "b_is_numeric")
+            .unwrap();
+
+        let both_numeric = self.builder.build_and(a_is_numeric, b_is_numeric, "both_numeric").unwrap();
+        self.builder
+            .build_conditional_branch(both_numeric, numeric_block, error_block)
+            .unwrap();
+
+        // Numeric: choose int or float path
+        self.builder.position_at_end(numeric_block);
+        let any_float = self.builder.build_or(a_is_float, b_is_float, "any_float").unwrap();
+        self.builder
+            .build_conditional_branch(any_float, float_block, int_block)
+            .unwrap();
+
+        // Int path
+        self.builder.position_at_end(int_block);
         let is_less = self
             .builder
-            .build_int_compare(inkwell::IntPredicate::SLT, a_data, b_data, "is_less")
+            .build_int_compare(IntPredicate::SLT, a_data, b_data, "min_is_less")
             .map_err(|e| HaversError::CompileError(format!("Failed to compare: {}", e)))?;
-
-        let min_val = self
+        let min_i = self
             .builder
-            .build_select(is_less, a_data, b_data, "min_val")
+            .build_select(is_less, a_data, b_data, "min_i")
             .map_err(|e| HaversError::CompileError(format!("Failed to select: {}", e)))?
             .into_int_value();
+        let int_result = self.make_int(min_i)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let int_end = self.builder.get_insert_block().unwrap();
 
-        self.make_int(min_val)
+        // Float path
+        self.builder.position_at_end(float_block);
+        let f64_type = self.types.f64_type;
+        let a_f = self
+            .builder
+            .build_select(
+                a_is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(a_data, f64_type, "min_a_as_float")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(a_data, f64_type, "min_a_int_to_float")
+                        .unwrap(),
+                ),
+                "min_a_f",
+            )
+            .unwrap()
+            .into_float_value();
+        let b_f = self
+            .builder
+            .build_select(
+                b_is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(b_data, f64_type, "min_b_as_float")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(b_data, f64_type, "min_b_int_to_float")
+                        .unwrap(),
+                ),
+                "min_b_f",
+            )
+            .unwrap()
+            .into_float_value();
+        let is_less_f = self
+            .builder
+            .build_float_compare(inkwell::FloatPredicate::OLT, a_f, b_f, "min_is_less_f")
+            .map_err(|e| HaversError::CompileError(format!("Failed to compare: {}", e)))?;
+        let min_f = self
+            .builder
+            .build_select(is_less_f, a_f, b_f, "min_f")
+            .map_err(|e| HaversError::CompileError(format!("Failed to select: {}", e)))?
+            .into_float_value();
+        let float_result = self.make_float(min_f)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let float_end = self.builder.get_insert_block().unwrap();
+
+        // Error path: return nil
+        self.builder.position_at_end(error_block);
+        let error_result = self.make_nil();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let error_end = self.builder.get_insert_block().unwrap();
+
+        // Merge
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "min_result")
+            .unwrap();
+        phi.add_incoming(&[
+            (&int_result, int_end),
+            (&float_result, float_end),
+            (&error_result, error_end),
+        ]);
+        Ok(phi.as_basic_value())
     }
 
     /// max(a, b) - maximum of two values
@@ -4421,22 +5638,169 @@ impl<'ctx> CodeGen<'ctx> {
         a: BasicValueEnum<'ctx>,
         b: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let a_tag = self.extract_tag(a)?;
+        let b_tag = self.extract_tag(b)?;
         let a_data = self.extract_data(a)?;
         let b_data = self.extract_data(b)?;
 
-        // Compare as signed integers
+        let function = self
+            .current_function
+            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+
+        let numeric_block = self.context.append_basic_block(function, "max_numeric");
+        let int_block = self.context.append_basic_block(function, "max_int");
+        let float_block = self.context.append_basic_block(function, "max_float");
+        let error_block = self.context.append_basic_block(function, "max_error");
+        let merge_block = self.context.append_basic_block(function, "max_merge");
+
+        let bool_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Bool.as_u8() as u64, false);
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
+
+        let a_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, a_tag, bool_tag, "a_is_bool")
+            .unwrap();
+        let a_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, a_tag, int_tag, "a_is_int")
+            .unwrap();
+        let a_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, a_tag, float_tag, "a_is_float")
+            .unwrap();
+        let a_is_intlike = self.builder.build_or(a_is_int, a_is_bool, "a_is_intlike").unwrap();
+        let a_is_numeric = self
+            .builder
+            .build_or(a_is_float, a_is_intlike, "a_is_numeric")
+            .unwrap();
+
+        let b_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, b_tag, bool_tag, "b_is_bool")
+            .unwrap();
+        let b_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, b_tag, int_tag, "b_is_int")
+            .unwrap();
+        let b_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, b_tag, float_tag, "b_is_float")
+            .unwrap();
+        let b_is_intlike = self.builder.build_or(b_is_int, b_is_bool, "b_is_intlike").unwrap();
+        let b_is_numeric = self
+            .builder
+            .build_or(b_is_float, b_is_intlike, "b_is_numeric")
+            .unwrap();
+
+        let both_numeric = self.builder.build_and(a_is_numeric, b_is_numeric, "both_numeric").unwrap();
+        self.builder
+            .build_conditional_branch(both_numeric, numeric_block, error_block)
+            .unwrap();
+
+        // Numeric: choose int or float path
+        self.builder.position_at_end(numeric_block);
+        let any_float = self.builder.build_or(a_is_float, b_is_float, "any_float").unwrap();
+        self.builder
+            .build_conditional_branch(any_float, float_block, int_block)
+            .unwrap();
+
+        // Int path
+        self.builder.position_at_end(int_block);
         let is_greater = self
             .builder
-            .build_int_compare(inkwell::IntPredicate::SGT, a_data, b_data, "is_greater")
+            .build_int_compare(IntPredicate::SGT, a_data, b_data, "max_is_greater")
             .map_err(|e| HaversError::CompileError(format!("Failed to compare: {}", e)))?;
-
-        let max_val = self
+        let max_i = self
             .builder
-            .build_select(is_greater, a_data, b_data, "max_val")
+            .build_select(is_greater, a_data, b_data, "max_i")
             .map_err(|e| HaversError::CompileError(format!("Failed to select: {}", e)))?
             .into_int_value();
+        let int_result = self.make_int(max_i)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let int_end = self.builder.get_insert_block().unwrap();
 
-        self.make_int(max_val)
+        // Float path
+        self.builder.position_at_end(float_block);
+        let f64_type = self.types.f64_type;
+        let a_f = self
+            .builder
+            .build_select(
+                a_is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(a_data, f64_type, "max_a_as_float")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(a_data, f64_type, "max_a_int_to_float")
+                        .unwrap(),
+                ),
+                "max_a_f",
+            )
+            .unwrap()
+            .into_float_value();
+        let b_f = self
+            .builder
+            .build_select(
+                b_is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(b_data, f64_type, "max_b_as_float")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(b_data, f64_type, "max_b_int_to_float")
+                        .unwrap(),
+                ),
+                "max_b_f",
+            )
+            .unwrap()
+            .into_float_value();
+        let is_greater_f = self
+            .builder
+            .build_float_compare(inkwell::FloatPredicate::OGT, a_f, b_f, "max_is_greater_f")
+            .map_err(|e| HaversError::CompileError(format!("Failed to compare: {}", e)))?;
+        let max_f = self
+            .builder
+            .build_select(is_greater_f, a_f, b_f, "max_f")
+            .map_err(|e| HaversError::CompileError(format!("Failed to select: {}", e)))?
+            .into_float_value();
+        let float_result = self.make_float(max_f)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let float_end = self.builder.get_insert_block().unwrap();
+
+        // Error path: return nil
+        self.builder.position_at_end(error_block);
+        let error_result = self.make_nil();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let error_end = self.builder.get_insert_block().unwrap();
+
+        // Merge
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "max_result")
+            .unwrap();
+        phi.add_incoming(&[
+            (&int_result, int_end),
+            (&float_result, float_end),
+            (&error_result, error_end),
+        ]);
+        Ok(phi.as_basic_value())
     }
 
     /// floor(x) - floor of float, returns int
@@ -4672,79 +6036,47 @@ impl<'ctx> CodeGen<'ctx> {
     /// Helper to allocate a new list with given length
     /// MdhList struct layout: { MdhValue *items; int64_t length; int64_t capacity; }
     fn allocate_list(&self, length: IntValue<'ctx>) -> Result<PointerValue<'ctx>, HaversError> {
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        // Prefer the runtime allocator so lists are GC-managed and compatible with
+        // runtime list_push/pop operations.
+        let cap_i32 = self
+            .builder
+            .build_int_truncate(length, self.types.i32_type, "alloc_list_cap_i32")
+            .map_err(|e| HaversError::CompileError(format!("Failed to truncate: {}", e)))?;
 
-        // Allocate MdhList struct (24 bytes: items pointer + length + capacity)
-        let struct_size = self.types.i64_type.const_int(24, false);
+        let list_val = self
+            .builder
+            .build_call(self.libc.make_list, &[cap_i32.into()], "alloc_list")
+            .map_err(|e| HaversError::CompileError(format!("Failed to call make_list: {}", e)))?
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| HaversError::CompileError("make_list returned void".to_string()))?;
+
+        let list_data = self.extract_data(list_val)?;
+        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i64_ptr = self.types.i64_type.ptr_type(AddressSpace::default());
         let list_ptr = self
             .builder
-            .build_call(self.libc.malloc, &[struct_size.into()], "list_struct")
-            .map_err(|e| HaversError::CompileError(format!("Failed to malloc struct: {}", e)))?
-            .try_as_basic_value()
-            .left()
-            .unwrap()
-            .into_pointer_value();
+            .build_int_to_ptr(list_data, i8_ptr, "alloc_list_ptr")
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert ptr: {}", e)))?;
 
-        // Allocate items array (16 bytes per element)
-        let elem_size = self.types.i64_type.const_int(16, false);
-        let items_size = self
-            .builder
-            .build_int_mul(length, elem_size, "items_size")
-            .map_err(|e| HaversError::CompileError(format!("Failed to multiply: {}", e)))?;
-
-        let items_ptr = self
-            .builder
-            .build_call(self.libc.malloc, &[items_size.into()], "items_array")
-            .map_err(|e| HaversError::CompileError(format!("Failed to malloc items: {}", e)))?
-            .try_as_basic_value()
-            .left()
-            .unwrap()
-            .into_pointer_value();
-
-        // Convert list_ptr to i64* for struct field access
+        // Set list->length (offset 8 bytes / i64 index 1).
         let list_i64_ptr = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "list_i64_ptr")
+            .build_pointer_cast(list_ptr, i64_ptr, "alloc_list_i64_ptr")
             .map_err(|e| HaversError::CompileError(format!("Failed to cast: {}", e)))?;
-
-        // Store items pointer at offset 0
-        let items_as_i64 = self
-            .builder
-            .build_ptr_to_int(items_ptr, self.types.i64_type, "items_i64")
-            .map_err(|e| HaversError::CompileError(format!("Failed to convert: {}", e)))?;
-        self.builder
-            .build_store(list_i64_ptr, items_as_i64)
-            .map_err(|e| HaversError::CompileError(format!("Failed to store items ptr: {}", e)))?;
-
-        // Store length at offset 1
         let len_ptr = unsafe {
             self.builder
                 .build_gep(
                     self.types.i64_type,
                     list_i64_ptr,
                     &[self.types.i64_type.const_int(1, false)],
-                    "len_ptr",
+                    "alloc_list_len_ptr",
                 )
-                .map_err(|e| HaversError::CompileError(format!("Failed to get len ptr: {}", e)))?
+                .map_err(|e| HaversError::CompileError(format!("Failed to gep: {}", e)))?
         };
         self.builder
             .build_store(len_ptr, length)
             .map_err(|e| HaversError::CompileError(format!("Failed to store length: {}", e)))?;
-
-        // Store capacity at offset 2 (same as length for new list)
-        let cap_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.i64_type,
-                    list_i64_ptr,
-                    &[self.types.i64_type.const_int(2, false)],
-                    "cap_ptr",
-                )
-                .map_err(|e| HaversError::CompileError(format!("Failed to get cap ptr: {}", e)))?
-        };
-        self.builder
-            .build_store(cap_ptr, length)
-            .map_err(|e| HaversError::CompileError(format!("Failed to store capacity: {}", e)))?;
 
         Ok(list_ptr)
     }
@@ -5254,6 +6586,99 @@ impl<'ctx> CodeGen<'ctx> {
         self.make_list(new_list_ptr)
     }
 
+    /// zipwith(fn, a, b) - apply fn(x, y) elementwise to two lists
+    fn inline_zipwith(
+        &mut self,
+        fn_val: BasicValueEnum<'ctx>,
+        a: BasicValueEnum<'ctx>,
+        b: BasicValueEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let a_data = self.extract_data(a)?;
+        let b_data = self.extract_data(b)?;
+        let a_len = self.get_list_length(a_data)?;
+        let b_len = self.get_list_length(b_data)?;
+
+        // min_len = min(a_len, b_len)
+        let cmp = self
+            .builder
+            .build_int_compare(IntPredicate::ULT, a_len, b_len, "zipwith_cmp")
+            .map_err(|e| HaversError::CompileError(format!("Failed to compare: {}", e)))?;
+        let min_len = self
+            .builder
+            .build_select(cmp, a_len, b_len, "zipwith_min")
+            .map_err(|e| HaversError::CompileError(format!("Failed to select: {}", e)))?
+            .into_int_value();
+
+        // result = make_list(min_len)
+        let min_i32 = self
+            .builder
+            .build_int_truncate(min_len, self.types.i32_type, "zipwith_min_i32")
+            .map_err(|e| HaversError::CompileError(format!("Failed to truncate: {}", e)))?;
+        let result_list = self
+            .builder
+            .build_call(self.libc.make_list, &[min_i32.into()], "zipwith_result_list")
+            .map_err(|e| HaversError::CompileError(format!("Failed to call make_list: {}", e)))?
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| HaversError::CompileError("make_list returned void".to_string()))?;
+
+        let function = self.current_function.ok_or_else(|| {
+            HaversError::CompileError("No current function".to_string())
+        })?;
+
+        // i = 0..min_len
+        let loop_block = self.context.append_basic_block(function, "zipwith_loop");
+        let body_block = self.context.append_basic_block(function, "zipwith_body");
+        let done_block = self.context.append_basic_block(function, "zipwith_done");
+
+        let i_ptr = self.builder.build_alloca(self.types.i64_type, "zipwith_i").unwrap();
+        let zero = self.types.i64_type.const_int(0, false);
+        let one = self.types.i64_type.const_int(1, false);
+        self.builder.build_store(i_ptr, zero).unwrap();
+        self.builder.build_unconditional_branch(loop_block).unwrap();
+
+        self.builder.position_at_end(loop_block);
+        let i = self
+            .builder
+            .build_load(self.types.i64_type, i_ptr, "zipwith_i_val")
+            .unwrap()
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::ULT, i, min_len, "zipwith_cond")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(cond, body_block, done_block)
+            .unwrap();
+
+        self.builder.position_at_end(body_block);
+        let a_ptr = self.get_list_element_ptr(a_data, i)?;
+        let a_elem = self
+            .builder
+            .build_load(self.types.value_type, a_ptr, "zipwith_a_elem")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?;
+        let b_ptr = self.get_list_element_ptr(b_data, i)?;
+        let b_elem = self
+            .builder
+            .build_load(self.types.value_type, b_ptr, "zipwith_b_elem")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?;
+
+        // call fn(a_elem, b_elem)
+        let out = self.call_function_value(fn_val, &[a_elem, b_elem])?;
+
+        // push to result
+        self.builder
+            .build_call(self.libc.list_push, &[result_list.into(), out.into()], "")
+            .map_err(|e| HaversError::CompileError(format!("Failed to call list_push: {}", e)))?;
+
+        let next_i = self.builder.build_int_add(i, one, "zipwith_next_i").unwrap();
+        self.builder.build_store(i_ptr, next_i).unwrap();
+        self.builder.build_unconditional_branch(loop_block).unwrap();
+
+        self.builder.position_at_end(done_block);
+        Ok(result_list)
+    }
+
     /// reverse(val) - return reversed copy (string or list)
     fn inline_reverse(
         &mut self,
@@ -5486,24 +6911,51 @@ impl<'ctx> CodeGen<'ctx> {
         let function = self
             .current_function
             .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+
         let loop_block = self.context.append_basic_block(function, "sum_loop");
         let body_block = self.context.append_basic_block(function, "sum_body");
         let done_block = self.context.append_basic_block(function, "sum_done");
+
+        let float_block = self.context.append_basic_block(function, "sum_elem_float");
+        let intlike_block = self.context.append_basic_block(function, "sum_elem_intlike");
+        let invalid_block = self.context.append_basic_block(function, "sum_elem_invalid");
+        let continue_block = self.context.append_basic_block(function, "sum_continue");
 
         let i_ptr = self
             .builder
             .build_alloca(self.types.i64_type, "i")
             .map_err(|e| HaversError::CompileError(format!("Failed to alloca: {}", e)))?;
-        let sum_ptr = self
+        let sum_i_ptr = self
             .builder
-            .build_alloca(self.types.i64_type, "sum")
+            .build_alloca(self.types.i64_type, "sum_i")
             .map_err(|e| HaversError::CompileError(format!("Failed to alloca: {}", e)))?;
-        let zero = self.types.i64_type.const_int(0, false);
-        let one = self.types.i64_type.const_int(1, false);
-        self.builder.build_store(i_ptr, zero).unwrap();
-        self.builder.build_store(sum_ptr, zero).unwrap();
+        let sum_f_ptr = self
+            .builder
+            .build_alloca(self.types.f64_type, "sum_f")
+            .map_err(|e| HaversError::CompileError(format!("Failed to alloca: {}", e)))?;
+        let has_float_ptr = self
+            .builder
+            .build_alloca(self.context.bool_type(), "has_float")
+            .map_err(|e| HaversError::CompileError(format!("Failed to alloca: {}", e)))?;
+        let invalid_ptr = self
+            .builder
+            .build_alloca(self.context.bool_type(), "invalid")
+            .map_err(|e| HaversError::CompileError(format!("Failed to alloca: {}", e)))?;
+
+        let zero_i64 = self.types.i64_type.const_int(0, false);
+        let one_i64 = self.types.i64_type.const_int(1, false);
+        let zero_f64 = self.types.f64_type.const_float(0.0);
+        let false_i1 = self.context.bool_type().const_int(0, false);
+        let true_i1 = self.context.bool_type().const_int(1, false);
+
+        self.builder.build_store(i_ptr, zero_i64).unwrap();
+        self.builder.build_store(sum_i_ptr, zero_i64).unwrap();
+        self.builder.build_store(sum_f_ptr, zero_f64).unwrap();
+        self.builder.build_store(has_float_ptr, false_i1).unwrap();
+        self.builder.build_store(invalid_ptr, false_i1).unwrap();
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
+        // Loop header
         self.builder.position_at_end(loop_block);
         let i = self
             .builder
@@ -5512,46 +6964,324 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let cond = self
             .builder
-            .build_int_compare(inkwell::IntPredicate::SLT, i, length, "cond")
+            .build_int_compare(IntPredicate::ULT, i, length, "cond")
             .map_err(|e| HaversError::CompileError(format!("Failed to compare: {}", e)))?;
         self.builder
             .build_conditional_branch(cond, body_block, done_block)
             .unwrap();
 
+        // Body: load element, dispatch by type
         self.builder.position_at_end(body_block);
         let elem_ptr = self.get_list_element_ptr(list_data, i)?;
         let elem = self
             .builder
             .build_load(self.types.value_type, elem_ptr, "elem")
             .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?;
+        let elem_tag = self.extract_tag(elem)?;
         let elem_data = self.extract_data(elem)?;
 
-        let sum = self
-            .builder
-            .build_load(self.types.i64_type, sum_ptr, "sum")
-            .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?
-            .into_int_value();
-        let new_sum = self
-            .builder
-            .build_int_add(sum, elem_data, "new_sum")
-            .map_err(|e| HaversError::CompileError(format!("Failed to add: {}", e)))?;
-        self.builder.build_store(sum_ptr, new_sum).unwrap();
+        let bool_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Bool.as_u8() as u64, false);
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
 
+        let is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, elem_tag, bool_tag, "is_bool")
+            .unwrap();
+        let is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, elem_tag, int_tag, "is_int")
+            .unwrap();
+        let is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, elem_tag, float_tag, "is_float")
+            .unwrap();
+        let is_intlike = self.builder.build_or(is_int, is_bool, "is_intlike").unwrap();
+        let is_numeric = self.builder.build_or(is_float, is_intlike, "is_numeric").unwrap();
+
+        let numeric_case = self.context.append_basic_block(function, "sum_numeric_case");
+        self.builder
+            .build_conditional_branch(is_numeric, numeric_case, invalid_block)
+            .unwrap();
+
+        self.builder.position_at_end(numeric_case);
+        self.builder
+            .build_conditional_branch(is_float, float_block, intlike_block)
+            .unwrap();
+
+        // Float element
+        self.builder.position_at_end(float_block);
+        let has_float = self
+            .builder
+            .build_load(self.context.bool_type(), has_float_ptr, "has_float")
+            .unwrap()
+            .into_int_value();
+        let needs_promote = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, has_float, false_i1, "needs_promote")
+            .unwrap();
+        let promote_block = self.context.append_basic_block(function, "sum_promote");
+        let promoted_block = self.context.append_basic_block(function, "sum_promoted");
+        self.builder
+            .build_conditional_branch(needs_promote, promote_block, promoted_block)
+            .unwrap();
+
+        // Promote int sum to float once
+        self.builder.position_at_end(promote_block);
+        let sum_i = self
+            .builder
+            .build_load(self.types.i64_type, sum_i_ptr, "sum_i")
+            .unwrap()
+            .into_int_value();
+        let sum_i_f = self
+            .builder
+            .build_signed_int_to_float(sum_i, self.types.f64_type, "sum_i_f")
+            .map_err(|e| HaversError::CompileError(format!("Failed to int->float: {}", e)))?;
+        self.builder.build_store(sum_f_ptr, sum_i_f).unwrap();
+        self.builder.build_store(has_float_ptr, true_i1).unwrap();
+        self.builder.build_unconditional_branch(promoted_block).unwrap();
+
+        // Add float element
+        self.builder.position_at_end(promoted_block);
+        let sum_f = self
+            .builder
+            .build_load(self.types.f64_type, sum_f_ptr, "sum_f")
+            .unwrap()
+            .into_float_value();
+        let elem_f = self
+            .builder
+            .build_bitcast(elem_data, self.types.f64_type, "elem_f")
+            .unwrap()
+            .into_float_value();
+        let new_sum_f = self
+            .builder
+            .build_float_add(sum_f, elem_f, "new_sum_f")
+            .map_err(|e| HaversError::CompileError(format!("Failed to add: {}", e)))?;
+        self.builder.build_store(sum_f_ptr, new_sum_f).unwrap();
+        self.builder.build_unconditional_branch(continue_block).unwrap();
+
+        // Int/bool element
+        self.builder.position_at_end(intlike_block);
+        let has_float2 = self
+            .builder
+            .build_load(self.context.bool_type(), has_float_ptr, "has_float2")
+            .unwrap()
+            .into_int_value();
+        let use_float_sum = self
+            .builder
+            .build_int_compare(IntPredicate::NE, has_float2, false_i1, "use_float_sum")
+            .unwrap();
+        let intlike_float_block = self.context.append_basic_block(function, "sum_intlike_float");
+        let intlike_int_block = self.context.append_basic_block(function, "sum_intlike_int");
+        self.builder
+            .build_conditional_branch(use_float_sum, intlike_float_block, intlike_int_block)
+            .unwrap();
+
+        // Add int element into float accumulator
+        self.builder.position_at_end(intlike_float_block);
+        let sum_f2 = self
+            .builder
+            .build_load(self.types.f64_type, sum_f_ptr, "sum_f2")
+            .unwrap()
+            .into_float_value();
+        let elem_i_f = self
+            .builder
+            .build_signed_int_to_float(elem_data, self.types.f64_type, "elem_i_f")
+            .map_err(|e| HaversError::CompileError(format!("Failed to int->float: {}", e)))?;
+        let new_sum_f2 = self
+            .builder
+            .build_float_add(sum_f2, elem_i_f, "new_sum_f2")
+            .map_err(|e| HaversError::CompileError(format!("Failed to add: {}", e)))?;
+        self.builder.build_store(sum_f_ptr, new_sum_f2).unwrap();
+        self.builder.build_unconditional_branch(continue_block).unwrap();
+
+        // Add int element into int accumulator
+        self.builder.position_at_end(intlike_int_block);
+        let sum_i2 = self
+            .builder
+            .build_load(self.types.i64_type, sum_i_ptr, "sum_i2")
+            .unwrap()
+            .into_int_value();
+        let new_sum_i = self
+            .builder
+            .build_int_add(sum_i2, elem_data, "new_sum_i")
+            .map_err(|e| HaversError::CompileError(format!("Failed to add: {}", e)))?;
+        self.builder.build_store(sum_i_ptr, new_sum_i).unwrap();
+        self.builder.build_unconditional_branch(continue_block).unwrap();
+
+        // Invalid element: bail out with nil
+        self.builder.position_at_end(invalid_block);
+        self.builder.build_store(invalid_ptr, true_i1).unwrap();
+        self.builder.build_unconditional_branch(done_block).unwrap();
+
+        // Continue loop
+        self.builder.position_at_end(continue_block);
         let next_i = self
             .builder
-            .build_int_add(i, one, "next_i")
+            .build_int_add(i, one_i64, "next_i")
             .map_err(|e| HaversError::CompileError(format!("Failed to add: {}", e)))?;
         self.builder.build_store(i_ptr, next_i).unwrap();
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
+        // Done: return nil if invalid, else float/int sum
         self.builder.position_at_end(done_block);
-        let final_sum = self
+        let invalid = self
             .builder
-            .build_load(self.types.i64_type, sum_ptr, "final_sum")
+            .build_load(self.context.bool_type(), invalid_ptr, "invalid")
+            .unwrap()
+            .into_int_value();
+        let invalid_ret = self.context.append_basic_block(function, "sum_invalid_ret");
+        let check_float_ret = self.context.append_basic_block(function, "sum_check_float_ret");
+        let float_ret = self.context.append_basic_block(function, "sum_float_ret");
+        let int_ret = self.context.append_basic_block(function, "sum_int_ret");
+        let merge_ret = self.context.append_basic_block(function, "sum_merge_ret");
+
+        self.builder
+            .build_conditional_branch(invalid, invalid_ret, check_float_ret)
+            .unwrap();
+
+        self.builder.position_at_end(invalid_ret);
+        let invalid_val = self.make_nil();
+        self.builder.build_unconditional_branch(merge_ret).unwrap();
+        let invalid_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(check_float_ret);
+        let has_float3 = self
+            .builder
+            .build_load(self.context.bool_type(), has_float_ptr, "has_float3")
+            .unwrap()
+            .into_int_value();
+        self.builder
+            .build_conditional_branch(has_float3, float_ret, int_ret)
+            .unwrap();
+
+        self.builder.position_at_end(float_ret);
+        let final_sum_f = self
+            .builder
+            .build_load(self.types.f64_type, sum_f_ptr, "final_sum_f")
+            .unwrap()
+            .into_float_value();
+        let float_val = self.make_float(final_sum_f)?;
+        self.builder.build_unconditional_branch(merge_ret).unwrap();
+        let float_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(int_ret);
+        let final_sum_i = self
+            .builder
+            .build_load(self.types.i64_type, sum_i_ptr, "final_sum_i")
+            .unwrap()
+            .into_int_value();
+        let int_val = self.make_int(final_sum_i)?;
+        self.builder.build_unconditional_branch(merge_ret).unwrap();
+        let int_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(merge_ret);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "sumaw_result")
+            .unwrap();
+        phi.add_incoming(&[
+            (&invalid_val, invalid_end),
+            (&float_val, float_end),
+            (&int_val, int_end),
+        ]);
+
+        Ok(phi.as_basic_value())
+    }
+
+    /// wheesht(list) - filter out falsy values (0, "", [], nil, false)
+    fn inline_wheesht_list(
+        &mut self,
+        list_val: BasicValueEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let list_data = self.extract_data(list_val)?;
+        let list_len = self.get_list_length(list_data)?;
+
+        let function = self
+            .current_function
+            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+
+        // Preallocate result list with capacity = len
+        let cap_i32 = self
+            .builder
+            .build_int_truncate(list_len, self.types.i32_type, "wheesht_cap_i32")
+            .map_err(|e| HaversError::CompileError(format!("Failed to truncate: {}", e)))?;
+        let result_list = self
+            .builder
+            .build_call(self.libc.make_list, &[cap_i32.into()], "wheesht_result")
+            .map_err(|e| HaversError::CompileError(format!("Failed to call make_list: {}", e)))?
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| HaversError::CompileError("make_list returned void".to_string()))?;
+
+        let idx_ptr = self
+            .builder
+            .build_alloca(self.types.i64_type, "wheesht_i")
+            .map_err(|e| HaversError::CompileError(format!("Failed to alloca: {}", e)))?;
+        let zero = self.types.i64_type.const_int(0, false);
+        let one = self.types.i64_type.const_int(1, false);
+        self.builder.build_store(idx_ptr, zero).unwrap();
+
+        let loop_block = self.context.append_basic_block(function, "wheesht_loop");
+        let body_block = self.context.append_basic_block(function, "wheesht_body");
+        let keep_block = self.context.append_basic_block(function, "wheesht_keep");
+        let next_block = self.context.append_basic_block(function, "wheesht_next");
+        let done_block = self.context.append_basic_block(function, "wheesht_done");
+
+        self.builder.build_unconditional_branch(loop_block).unwrap();
+
+        // Loop condition
+        self.builder.position_at_end(loop_block);
+        let idx = self
+            .builder
+            .build_load(self.types.i64_type, idx_ptr, "wheesht_i_val")
             .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?
             .into_int_value();
+        let at_end = self
+            .builder
+            .build_int_compare(IntPredicate::UGE, idx, list_len, "wheesht_at_end")
+            .map_err(|e| HaversError::CompileError(format!("Failed to compare: {}", e)))?;
+        self.builder
+            .build_conditional_branch(at_end, done_block, body_block)
+            .unwrap();
 
-        self.make_int(final_sum)
+        // Body: check element truthiness
+        self.builder.position_at_end(body_block);
+        let elem_ptr = self.get_list_element_ptr(list_data, idx)?;
+        let elem = self
+            .builder
+            .build_load(self.types.value_type, elem_ptr, "wheesht_elem")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?;
+        let is_truthy = self.is_truthy(elem)?;
+        self.builder
+            .build_conditional_branch(is_truthy, keep_block, next_block)
+            .unwrap();
+
+        // Keep: push element
+        self.builder.position_at_end(keep_block);
+        self.builder
+            .build_call(self.libc.list_push, &[result_list.into(), elem.into()], "")
+            .map_err(|e| HaversError::CompileError(format!("Failed to call list_push: {}", e)))?;
+        self.builder.build_unconditional_branch(next_block).unwrap();
+
+        // Next: increment
+        self.builder.position_at_end(next_block);
+        let next_idx = self.builder.build_int_add(idx, one, "wheesht_next_i").unwrap();
+        self.builder.build_store(idx_ptr, next_idx).unwrap();
+        self.builder.build_unconditional_branch(loop_block).unwrap();
+
+        // Done
+        self.builder.position_at_end(done_block);
+        Ok(result_list)
     }
 
     /// product(list) - multiply all numeric elements
@@ -6447,6 +8177,7 @@ impl<'ctx> CodeGen<'ctx> {
         let string_block = self.context.append_basic_block(function, "kind_string");
         let list_block = self.context.append_basic_block(function, "kind_list");
         let dict_block = self.context.append_basic_block(function, "kind_dict");
+        let function_block = self.context.append_basic_block(function, "kind_function");
         let default_block = self.context.append_basic_block(function, "kind_default");
         let merge_block = self.context.append_basic_block(function, "kind_merge");
 
@@ -6479,6 +8210,10 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_global_string_ptr("dict", "dict_kind")
             .unwrap();
+        let function_str = self
+            .builder
+            .build_global_string_ptr("function", "function_kind")
+            .unwrap();
 
         // Switch on tag
         self.builder
@@ -6493,6 +8228,7 @@ impl<'ctx> CodeGen<'ctx> {
                     (self.types.i8_type.const_int(4, false), string_block),
                     (self.types.i8_type.const_int(5, false), list_block),
                     (self.types.i8_type.const_int(6, false), dict_block),
+                    (self.types.i8_type.const_int(7, false), function_block),
                 ],
             )
             .unwrap();
@@ -6546,6 +8282,13 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let dict_bb = self.builder.get_insert_block().unwrap();
 
+        self.builder.position_at_end(function_block);
+        let function_result = self.make_string(function_str.as_pointer_value())?;
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let function_bb = self.builder.get_insert_block().unwrap();
+
         self.builder.position_at_end(default_block);
         let default_result = self.make_string(nil_str.as_pointer_value())?;
         self.builder
@@ -6566,6 +8309,7 @@ impl<'ctx> CodeGen<'ctx> {
             (&string_result, string_bb),
             (&list_result, list_bb),
             (&dict_result, dict_bb),
+            (&function_result, function_bb),
             (&default_result, default_bb),
         ]);
 
@@ -6579,6 +8323,66 @@ impl<'ctx> CodeGen<'ctx> {
             Stmt::VarDecl {
                 name, initializer, ..
             } => {
+                // Boxed variables: store a 1-element list cell instead of the raw value.
+                // Reads/writes dereference/update element 0, enabling mutable captures.
+                if self.boxed_vars.contains(name) {
+                    self.var_types.insert(name.clone(), VarType::Unknown);
+
+                    // Determine where to store the variable (global vs local alloca).
+                    let is_top_level = !self.in_user_function
+                        && self.current_class.is_none()
+                        && self.loop_stack.is_empty()
+                        && !self.variables.contains_key(name)
+                        && !self.globals.contains_key(name);
+
+                    let alloca = if let Some(&existing) = self.variables.get(name) {
+                        existing
+                    } else if let Some(&existing) = self.globals.get(name) {
+                        existing
+                    } else if is_top_level {
+                        let global = self.module.add_global(self.types.value_type, None, name);
+                        global.set_initializer(&self.types.value_type.const_zero());
+                        let global_ptr = global.as_pointer_value();
+                        self.globals.insert(name.clone(), global_ptr);
+                        self.variables.insert(name.clone(), global_ptr);
+                        global_ptr
+                    } else {
+                        let a = self.create_entry_block_alloca(name);
+                        self.variables.insert(name.clone(), a);
+                        a
+                    };
+
+                    let init_val = if let Some(init) = initializer {
+                        self.compile_expr(init)?
+                    } else {
+                        self.make_nil()
+                    };
+
+                    let one_i32 = self.context.i32_type().const_int(1, false);
+                    let cell = self
+                        .builder
+                        .build_call(self.libc.make_list, &[one_i32.into()], "box_cell")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call make_list: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("make_list returned void".to_string()))?;
+
+                    self.builder
+                        .build_call(self.libc.list_push, &[cell.into(), init_val.into()], "")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call list_push: {}", e)))?;
+
+                    self.builder
+                        .build_store(alloca, cell)
+                        .map_err(|e| HaversError::CompileError(format!("Failed to store boxed cell: {}", e)))?;
+
+                    // Boxed values are incompatible with shadows.
+                    self.int_shadows.remove(name);
+                    self.list_ptr_shadows.remove(name);
+                    self.string_len_shadows.remove(name);
+                    self.string_cap_shadows.remove(name);
+                    return Ok(());
+                }
+
                 // Track the inferred type for optimization
                 let var_type = if let Some(init) = initializer {
                     self.infer_expr_type(init)
@@ -6903,6 +8707,8 @@ impl<'ctx> CodeGen<'ctx> {
                 ..
             } => self.compile_class(name, methods),
 
+            Stmt::Struct { name, fields, .. } => self.compile_struct_decl(name, fields),
+
             Stmt::Import { path, .. } => self.compile_import(path),
 
             Stmt::Assert {
@@ -6921,6 +8727,15 @@ impl<'ctx> CodeGen<'ctx> {
                 catch_block,
                 ..
             } => self.compile_try_catch(try_block, error_name, catch_block),
+
+            Stmt::Hurl { message, .. } => {
+                let msg = self.compile_expr(message)?;
+                self.builder
+                    .build_call(self.libc.hurl, &[msg.into()], "")
+                    .map_err(|e| HaversError::CompileError(format!("Failed to call hurl: {}", e)))?;
+                self.builder.build_unreachable().unwrap();
+                Ok(())
+            }
 
             Stmt::Log {
                 level: _, message, ..
@@ -6947,6 +8762,15 @@ impl<'ctx> CodeGen<'ctx> {
 
             Expr::Variable { name, .. } => {
                 if let Some(&alloca) = self.variables.get(name) {
+                    if self.boxed_vars.contains(name) {
+                        let cell = self
+                            .builder
+                            .build_load(self.types.value_type, alloca, name)
+                            .map_err(|e| {
+                                HaversError::CompileError(format!("Failed to load: {}", e))
+                            })?;
+                        return self.box_get(cell);
+                    }
                     // If we're in a loop body and have an int shadow AND we know the var is an int,
                     // construct fresh MdhValue from shadow.
                     // This ensures function calls get the correct value even though we've been
@@ -6979,6 +8803,15 @@ impl<'ctx> CodeGen<'ctx> {
                     Ok(val)
                 } else if let Some(&global) = self.globals.get(name) {
                     // Global variable
+                    if self.boxed_vars.contains(name) {
+                        let cell = self
+                            .builder
+                            .build_load(self.types.value_type, global, &format!("{}_global", name))
+                            .map_err(|e| {
+                                HaversError::CompileError(format!("Failed to load global: {}", e))
+                            })?;
+                        return self.box_get(cell);
+                    }
                     let val = self
                         .builder
                         .build_load(self.types.value_type, global, &format!("{}_global", name))
@@ -6987,13 +8820,153 @@ impl<'ctx> CodeGen<'ctx> {
                         })?;
                     Ok(val)
                 } else if let Some(&func) = self.functions.get(name) {
-                    // User-defined function referenced as a value - return function pointer
+                    // User-defined function referenced as a value.
+                    // If the function has captures, create a closure cell so calls later can
+                    // supply captures automatically (and allow mutable captures via boxing).
                     let func_ptr = func.as_global_value().as_pointer_value();
                     let func_int = self
                         .builder
                         .build_ptr_to_int(func_ptr, self.types.i64_type, "func_int")
                         .unwrap();
-                    self.make_function(func_int)
+
+                    // Build the function MdhValue.
+                    let fn_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::Function.as_u8() as u64, false);
+                    let undef = self.types.value_type.get_undef();
+                    let v1 = self
+                        .builder
+                        .build_insert_value(undef, fn_tag, 0, "v1")
+                        .unwrap();
+                    let fn_val = self
+                        .builder
+                        .build_insert_value(v1, func_int, 1, "fn_val")
+                        .unwrap()
+                        .into_struct_value();
+
+                    if let Some(captures) = self.function_captures.get(name).cloned() {
+                        // Ensure captured variables are boxed and capture the boxes (cells).
+                        for cap in &captures {
+                            self.ensure_boxed_variable(cap)?;
+                        }
+
+                        // Closure layout matches call_function_value(): [cap][len][elem...]
+                        // (old inline-list layout used only for closures).
+                        let closure_len = 1 + captures.len(); // fn + captures
+                        let value_size = 16u64;
+                        let header_size = 16u64;
+                        let total_size = header_size + (closure_len as u64) * value_size;
+
+                        let size_val = self.types.i64_type.const_int(total_size, false);
+                        let list_ptr = self
+                            .builder
+                            .build_call(self.libc.malloc, &[size_val.into()], "closure_ptr")
+                            .unwrap()
+                            .try_as_basic_value()
+                            .left()
+                            .unwrap()
+                            .into_pointer_value();
+
+                        // Store capacity and length in header
+                        let i64_ptr_type =
+                            self.types.i64_type.ptr_type(inkwell::AddressSpace::default());
+                        let header_ptr = self
+                            .builder
+                            .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
+                            .unwrap();
+                        let cap_val = self.types.i64_type.const_int(closure_len as u64, false);
+                        self.builder.build_store(header_ptr, cap_val).unwrap();
+                        let len_ptr = unsafe {
+                            self.builder
+                                .build_gep(
+                                    self.types.i64_type,
+                                    header_ptr,
+                                    &[self.types.i64_type.const_int(1, false)],
+                                    "len_ptr",
+                                )
+                                .unwrap()
+                        };
+                        let len_val = self.types.i64_type.const_int(closure_len as u64, false);
+                        self.builder.build_store(len_ptr, len_val).unwrap();
+
+                        // Store function pointer as first element
+                        let elem0_ptr = unsafe {
+                            self.builder
+                                .build_gep(
+                                    self.context.i8_type(),
+                                    list_ptr,
+                                    &[self.types.i64_type.const_int(header_size, false)],
+                                    "elem0_ptr",
+                                )
+                                .unwrap()
+                        };
+                        let elem0_val_ptr = self
+                            .builder
+                            .build_pointer_cast(
+                                elem0_ptr,
+                                self.types.value_type.ptr_type(AddressSpace::default()),
+                                "elem0_val_ptr",
+                            )
+                            .unwrap();
+                        self.builder.build_store(elem0_val_ptr, fn_val).unwrap();
+
+                        // Store captured boxes
+                        for (i, cap_name) in captures.iter().enumerate() {
+                            let cap_alloca = self.variables.get(cap_name).copied().or_else(|| self.globals.get(cap_name).copied()).ok_or_else(|| {
+                                HaversError::CompileError(format!(
+                                    "Captured variable '{}' not found in scope when closing over '{}'",
+                                    cap_name, name
+                                ))
+                            })?;
+                            let cap_val = self
+                                .builder
+                                .build_load(self.types.value_type, cap_alloca, &format!("cap{}_val", i))
+                                .unwrap();
+                            let elem_offset = header_size + ((i + 1) as u64) * value_size;
+                            let elem_ptr = unsafe {
+                                self.builder
+                                    .build_gep(
+                                        self.context.i8_type(),
+                                        list_ptr,
+                                        &[self.types.i64_type.const_int(elem_offset, false)],
+                                        &format!("elem{}_ptr", i + 1),
+                                    )
+                                    .unwrap()
+                            };
+                            let elem_val_ptr = self
+                                .builder
+                                .build_pointer_cast(
+                                    elem_ptr,
+                                    self.types.value_type.ptr_type(AddressSpace::default()),
+                                    &format!("elem{}_val_ptr", i + 1),
+                                )
+                                .unwrap();
+                            self.builder.build_store(elem_val_ptr, cap_val).unwrap();
+                        }
+
+                        // Return closure as List value (tag=5 for List)
+                        let list_ptr_int = self
+                            .builder
+                            .build_ptr_to_int(list_ptr, self.types.i64_type, "closure_ptr_int")
+                            .unwrap();
+                        let closure_tag = self
+                            .types
+                            .i8_type
+                            .const_int(ValueTag::List.as_u8() as u64, false);
+                        let undef2 = self.types.value_type.get_undef();
+                        let c1 = self
+                            .builder
+                            .build_insert_value(undef2, closure_tag, 0, "c1")
+                            .unwrap();
+                        let c2 = self
+                            .builder
+                            .build_insert_value(c1, list_ptr_int, 1, "c2")
+                            .unwrap();
+                        Ok(c2.into_struct_value().into())
+                    } else {
+                        Ok(fn_val.into())
+                    }
                 } else if name == "PI" {
                     // Built-in constant: PI
                     let pi_val = self.context.f64_type().const_float(std::f64::consts::PI);
@@ -7015,6 +8988,28 @@ impl<'ctx> CodeGen<'ctx> {
             }
 
             Expr::Assign { name, value, .. } => {
+                // Boxed variables store a 1-element list cell. Assignment updates cell[0].
+                if self.boxed_vars.contains(name) {
+                    let new_val = self.compile_expr(value)?;
+                    let alloca = self
+                        .variables
+                        .get(name)
+                        .copied()
+                        .or_else(|| self.globals.get(name).copied())
+                        .ok_or_else(|| {
+                            HaversError::CompileError(format!(
+                                "Undefined variable: {}",
+                                name
+                            ))
+                        })?;
+                    let cell = self
+                        .builder
+                        .build_load(self.types.value_type, alloca, &format!("{name}_cell"))
+                        .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?;
+                    self.box_set(cell, new_val)?;
+                    return Ok(new_val);
+                }
+
                 // Try to use optimized int path if we have an int shadow
                 if let Some(&shadow) = self.int_shadows.get(name) {
                     // Try to compile the value directly as i64
@@ -7257,11 +9252,39 @@ impl<'ctx> CodeGen<'ctx> {
                 ..
             } => self.compile_ternary(condition, then_expr, else_expr),
 
-            Expr::Range { start, end, .. } => {
-                // For now, just compile as nil - ranges are handled in for loops
-                let _start_val = self.compile_expr(start)?;
-                let _end_val = self.compile_expr(end)?;
-                Ok(self.make_nil())
+            Expr::Range { start, end, inclusive, .. } => {
+                // Materialize range values as a list so ranges can be stored/indexed.
+                // For-loop ranges are still handled specially (see compile_for_range).
+                let start_val = self.compile_expr(start)?;
+                let end_val = self.compile_expr(end)?;
+                let start_i64 = self.extract_data(start_val)?;
+                let end_i64 = self.extract_data(end_val)?;
+
+                // Default step is 1
+                let step = self.types.i64_type.const_int(1, false);
+
+                // Inclusive ranges include the end value, so call runtime with end+1
+                let end_for_call = if *inclusive {
+                    self.builder
+                        .build_int_add(end_i64, self.types.i64_type.const_int(1, false), "range_end_inclusive")
+                        .unwrap()
+                } else {
+                    end_i64
+                };
+
+                let range_val = self
+                    .builder
+                    .build_call(
+                        self.libc.range,
+                        &[start_i64.into(), end_for_call.into(), step.into()],
+                        "range_val",
+                    )
+                    .map_err(|e| HaversError::CompileError(format!("Failed to call range: {}", e)))?
+                    .try_as_basic_value()
+                    .left()
+                    .ok_or_else(|| HaversError::CompileError("range returned void".to_string()))?;
+
+                Ok(range_val)
             }
 
             Expr::List { elements, .. } => self.compile_list(elements),
@@ -7940,10 +9963,14 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
 
-                // Add captured variables if this function has any
+                // Add captured variables if this function has any (captures-first convention)
                 if let Some(captures) = self.function_captures.get(name).cloned() {
+                    let mut cap_args: Vec<BasicMetadataValueEnum> = Vec::new();
                     for capture_name in captures {
-                        // Look up the captured variable in current scope and pass it
+                        if capture_name != "masel" {
+                            self.ensure_boxed_variable(&capture_name)?;
+                        }
+                        // Look up the captured variable in current scope and pass its cell.
                         if let Some(&alloca) = self.variables.get(&capture_name) {
                             let val = self
                                 .builder
@@ -7953,7 +9980,20 @@ impl<'ctx> CodeGen<'ctx> {
                                     &format!("{}_cap", capture_name),
                                 )
                                 .unwrap();
-                            compiled_args.push(val.into());
+                            cap_args.push(val.into());
+                        } else if capture_name == "masel" {
+                            if let Some(masel_ptr) = self.current_masel {
+                                let val = self
+                                    .builder
+                                    .build_load(self.types.value_type, masel_ptr, "masel_cap")
+                                    .unwrap();
+                                cap_args.push(val.into());
+                            } else {
+                                return Err(HaversError::CompileError(format!(
+                                    "Captured variable '{}' not found in scope when calling '{}'",
+                                    capture_name, name
+                                )));
+                            }
                         } else {
                             return Err(HaversError::CompileError(format!(
                                 "Captured variable '{}' not found in scope when calling '{}'",
@@ -7961,6 +10001,8 @@ impl<'ctx> CodeGen<'ctx> {
                             )));
                         }
                     }
+                    cap_args.extend(compiled_args);
+                    compiled_args = cap_args;
                 }
 
                 // Fill in default parameter values if fewer args provided than expected
@@ -8302,9 +10344,92 @@ impl<'ctx> CodeGen<'ctx> {
                                 .to_string(),
                         ));
                     }
-                    let list_arg = self.compile_expr(&args[0])?;
+                    let obj_arg = self.compile_expr(&args[0])?;
                     if args.len() == 1 {
-                        return self.inline_bum(list_arg);
+                        // Support scran(string) -> last character (or empty string)
+                        let tag = self.extract_tag(obj_arg)?;
+                        let string_tag = self
+                            .types
+                            .i8_type
+                            .const_int(ValueTag::String.as_u8() as u64, false);
+                        let is_string = self
+                            .builder
+                            .build_int_compare(IntPredicate::EQ, tag, string_tag, "scran_is_string")
+                            .unwrap();
+
+                        let function = self.current_function.unwrap();
+                        let str_block = self.context.append_basic_block(function, "scran_str");
+                        let list_block = self.context.append_basic_block(function, "scran_list");
+                        let merge_block = self.context.append_basic_block(function, "scran_merge");
+
+                        self.builder
+                            .build_conditional_branch(is_string, str_block, list_block)
+                            .unwrap();
+
+                        // String: return last character (or empty string)
+                        self.builder.position_at_end(str_block);
+                        let str_data = self.extract_data(obj_arg)?;
+                        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+                        let str_ptr = self
+                            .builder
+                            .build_int_to_ptr(str_data, i8_ptr_type, "scran_str_ptr")
+                            .unwrap();
+                        let str_len = self
+                            .builder
+                            .build_call(self.libc.strlen, &[str_ptr.into()], "scran_str_len")
+                            .unwrap()
+                            .try_as_basic_value()
+                            .left()
+                            .unwrap()
+                            .into_int_value();
+
+                        let zero = self.types.i64_type.const_int(0, false);
+                        let is_empty = self
+                            .builder
+                            .build_int_compare(IntPredicate::EQ, str_len, zero, "scran_str_empty")
+                            .unwrap();
+                        let empty_block = self.context.append_basic_block(function, "scran_str_empty");
+                        let nonempty_block =
+                            self.context.append_basic_block(function, "scran_str_nonempty");
+                        let done_block = self.context.append_basic_block(function, "scran_str_done");
+                        self.builder
+                            .build_conditional_branch(is_empty, empty_block, nonempty_block)
+                            .unwrap();
+
+                        self.builder.position_at_end(empty_block);
+                        let empty_str = self.compile_string_literal("")?;
+                        self.builder.build_unconditional_branch(done_block).unwrap();
+                        let empty_end = self.builder.get_insert_block().unwrap();
+
+                        self.builder.position_at_end(nonempty_block);
+                        let one = self.types.i64_type.const_int(1, false);
+                        let last_idx = self.builder.build_int_sub(str_len, one, "scran_last_idx").unwrap();
+                        let last_idx_val = self.make_int(last_idx)?;
+                        let last_char = self.inline_char_at(obj_arg, last_idx_val)?;
+                        self.builder.build_unconditional_branch(done_block).unwrap();
+                        let nonempty_end = self.builder.get_insert_block().unwrap();
+
+                        self.builder.position_at_end(done_block);
+                        let str_phi = self.builder.build_phi(self.types.value_type, "scran_str_phi").unwrap();
+                        str_phi.add_incoming(&[(&empty_str, empty_end), (&last_char, nonempty_end)]);
+                        let str_result = str_phi.as_basic_value();
+                        self.builder.build_unconditional_branch(merge_block).unwrap();
+                        let str_end = self.builder.get_insert_block().unwrap();
+
+                        // List: last element
+                        self.builder.position_at_end(list_block);
+                        let list_result = self.inline_bum(obj_arg)?;
+                        self.builder.build_unconditional_branch(merge_block).unwrap();
+                        let list_end = self.builder.get_insert_block().unwrap();
+
+                        // Merge
+                        self.builder.position_at_end(merge_block);
+                        let phi = self
+                            .builder
+                            .build_phi(self.types.value_type, "scran_result")
+                            .unwrap();
+                        phi.add_incoming(&[(&str_result, str_end), (&list_result, list_end)]);
+                        return Ok(phi.as_basic_value());
                     }
                     let (start_arg, end_arg) = if args.len() == 2 {
                         let start_arg = self.make_int(self.types.i64_type.const_int(0, false))?;
@@ -8315,7 +10440,8 @@ impl<'ctx> CodeGen<'ctx> {
                         let end_arg = self.compile_expr(&args[2])?;
                         (start_arg, end_arg)
                     };
-                    return self.inline_scran(list_arg, start_arg, end_arg);
+                    // Use the generic slice implementation (supports strings and lists)
+                    return self.inline_slice(obj_arg, start_arg, Some(end_arg));
                 }
                 "slap" => {
                     if args.len() != 2 {
@@ -8464,6 +10590,15 @@ impl<'ctx> CodeGen<'ctx> {
                         .ok_or_else(|| {
                             HaversError::CompileError("toss_in returned void".to_string())
                         })?;
+
+                    // If first argument is a variable, update it (toss_in may reallocate).
+                    if let Expr::Variable { name, .. } = &args[0] {
+                        if let Some(&ptr) = self.variables.get(name) {
+                            self.builder.build_store(ptr, result).unwrap();
+                        } else if let Some(&ptr) = self.globals.get(name) {
+                            self.builder.build_store(ptr, result).unwrap();
+                        }
+                    }
                     return Ok(result);
                 }
                 "heave_oot" => {
@@ -8491,6 +10626,42 @@ impl<'ctx> CodeGen<'ctx> {
                         .ok_or_else(|| {
                             HaversError::CompileError("heave_oot returned void".to_string())
                         })?;
+
+                    // If first argument is a variable, update it (heave_oot may reallocate).
+                    if let Expr::Variable { name, .. } = &args[0] {
+                        if let Some(&ptr) = self.variables.get(name) {
+                            self.builder.build_store(ptr, result).unwrap();
+                        } else if let Some(&ptr) = self.globals.get(name) {
+                            self.builder.build_store(ptr, result).unwrap();
+                        }
+                    }
+                    return Ok(result);
+                }
+                "toss" => {
+                    // toss(dict, key) - remove key/item from dict/creel (alias of heave_oot)
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "toss expects 2 arguments (dict, key)".to_string(),
+                        ));
+                    }
+                    let dict_val = self.compile_expr(&args[0])?;
+                    let key = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.heave_oot, &[dict_val.into(), key.into()], "toss_result")
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call heave_oot: {}", e)))?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| HaversError::CompileError("heave_oot returned void".to_string()))?;
+
+                    // If first argument is a variable, update it (heave_oot may reallocate).
+                    if let Expr::Variable { name, .. } = &args[0] {
+                        if let Some(&ptr) = self.variables.get(name) {
+                            self.builder.build_store(ptr, result).unwrap();
+                        } else if let Some(&ptr) = self.globals.get(name) {
+                            self.builder.build_store(ptr, result).unwrap();
+                        }
+                    }
                     return Ok(result);
                 }
                 "empty_creel" => {
@@ -9566,7 +11737,11 @@ impl<'ctx> CodeGen<'ctx> {
                             "wheesht/trim expects 1 argument".to_string(),
                         ));
                     }
+                    let arg_ty = self.infer_expr_type(&args[0]);
                     let arg = self.compile_expr(&args[0])?;
+                    if arg_ty == VarType::List {
+                        return self.inline_wheesht_list(arg);
+                    }
                     return self.inline_wheesht(arg);
                 }
                 "ltrim" | "trim_left" | "lstrip" => {
@@ -9904,17 +12079,137 @@ impl<'ctx> CodeGen<'ctx> {
                     let init_arg = self.compile_expr(&args[2])?;
                     return self.inline_tumble(list_arg, init_arg, func_arg);
                 }
-                "tumble" => {
-                    if args.len() != 3 {
-                        return Err(HaversError::CompileError(
-                            "tumble expects 3 arguments (list, initial, function)".to_string(),
-                        ));
-                    }
-                    let list_arg = self.compile_expr(&args[0])?;
-                    let init_arg = self.compile_expr(&args[1])?;
-                    let func_arg = self.compile_expr(&args[2])?;
-                    return self.inline_tumble(list_arg, init_arg, func_arg);
-                }
+	                "tumble" => {
+	                    if args.len() != 3 {
+	                        return Err(HaversError::CompileError(
+	                            "tumble expects 3 arguments (list, function, initial)".to_string(),
+	                        ));
+	                    }
+	                    // Accept historical orders used across the test suite:
+	                    // - tumble(list, fn, init)      (preferred)
+	                    // - tumble(fn, list, init)      (legacy)
+	                    // - tumble(list, init, fn)      (legacy)
+	                    let arg0 = self.compile_expr(&args[0])?;
+	                    let arg1 = self.compile_expr(&args[1])?;
+	                    let arg2 = self.compile_expr(&args[2])?;
+
+	                    let tag0 = self.extract_tag(arg0)?;
+	                    let tag1 = self.extract_tag(arg1)?;
+	                    let tag2 = self.extract_tag(arg2)?;
+
+	                    let list_tag = self
+	                        .types
+	                        .i8_type
+	                        .const_int(ValueTag::List.as_u8() as u64, false);
+	                    let fn_tag = self
+	                        .types
+	                        .i8_type
+	                        .const_int(ValueTag::Function.as_u8() as u64, false);
+
+	                    let is0_fn = self
+	                        .builder
+	                        .build_int_compare(IntPredicate::EQ, tag0, fn_tag, "tumble_is0_fn")
+	                        .unwrap();
+	                    let is1_fn = self
+	                        .builder
+	                        .build_int_compare(IntPredicate::EQ, tag1, fn_tag, "tumble_is1_fn")
+	                        .unwrap();
+	                    let is2_fn = self
+	                        .builder
+	                        .build_int_compare(IntPredicate::EQ, tag2, fn_tag, "tumble_is2_fn")
+	                        .unwrap();
+	                    let is0_list = self
+	                        .builder
+	                        .build_int_compare(IntPredicate::EQ, tag0, list_tag, "tumble_is0_list")
+	                        .unwrap();
+	                    let is1_list = self
+	                        .builder
+	                        .build_int_compare(IntPredicate::EQ, tag1, list_tag, "tumble_is1_list")
+	                        .unwrap();
+
+	                    let case_a = self
+	                        .builder
+	                        .build_and(is0_fn, is1_list, "tumble_case_fn_list_init")
+	                        .unwrap(); // (fn, list, init)
+	                    let case_b = self
+	                        .builder
+	                        .build_and(is0_list, is1_fn, "tumble_case_list_fn_init")
+	                        .unwrap(); // (list, fn, init)
+	                    let case_c = self
+	                        .builder
+	                        .build_and(is0_list, is2_fn, "tumble_case_list_init_fn")
+	                        .unwrap(); // (list, init, fn)
+
+	                    let function = self.current_function.unwrap();
+	                    let case_a_block = self.context.append_basic_block(function, "tumble_case_a");
+	                    let check_b_block = self.context.append_basic_block(function, "tumble_check_b");
+	                    let case_b_block = self.context.append_basic_block(function, "tumble_case_b");
+	                    let check_c_block = self.context.append_basic_block(function, "tumble_check_c");
+	                    let case_c_block = self.context.append_basic_block(function, "tumble_case_c");
+	                    let default_block = self.context.append_basic_block(function, "tumble_default");
+	                    let merge_block = self.context.append_basic_block(function, "tumble_merge");
+
+	                    self.builder
+	                        .build_conditional_branch(case_a, case_a_block, check_b_block)
+	                        .unwrap();
+
+	                    self.builder.position_at_end(check_b_block);
+	                    self.builder
+	                        .build_conditional_branch(case_b, case_b_block, check_c_block)
+	                        .unwrap();
+
+	                    self.builder.position_at_end(check_c_block);
+	                    self.builder
+	                        .build_conditional_branch(case_c, case_c_block, default_block)
+	                        .unwrap();
+
+	                    self.builder.position_at_end(case_a_block);
+	                    self.builder.build_unconditional_branch(merge_block).unwrap();
+	                    let case_a_end = self.builder.get_insert_block().unwrap();
+
+	                    self.builder.position_at_end(case_b_block);
+	                    self.builder.build_unconditional_branch(merge_block).unwrap();
+	                    let case_b_end = self.builder.get_insert_block().unwrap();
+
+	                    self.builder.position_at_end(case_c_block);
+	                    self.builder.build_unconditional_branch(merge_block).unwrap();
+	                    let case_c_end = self.builder.get_insert_block().unwrap();
+
+	                    self.builder.position_at_end(default_block);
+	                    self.builder.build_unconditional_branch(merge_block).unwrap();
+	                    let default_end = self.builder.get_insert_block().unwrap();
+
+	                    self.builder.position_at_end(merge_block);
+	                    let list_phi = self
+	                        .builder
+	                        .build_phi(self.types.value_type, "tumble_list")
+	                        .unwrap();
+	                    list_phi.add_incoming(&[
+	                        (&arg1, case_a_end), // fn, list, init
+	                        (&arg0, case_b_end), // list, fn, init
+	                        (&arg0, case_c_end), // list, init, fn
+	                        (&arg0, default_end),
+	                    ]);
+	                    let fn_phi = self.builder.build_phi(self.types.value_type, "tumble_fn").unwrap();
+	                    fn_phi.add_incoming(&[
+	                        (&arg0, case_a_end),
+	                        (&arg1, case_b_end),
+	                        (&arg2, case_c_end),
+	                        (&arg1, default_end),
+	                    ]);
+	                    let init_phi = self
+	                        .builder
+	                        .build_phi(self.types.value_type, "tumble_init")
+	                        .unwrap();
+	                    init_phi.add_incoming(&[
+	                        (&arg2, case_a_end),
+	                        (&arg2, case_b_end),
+	                        (&arg1, case_c_end),
+	                        (&arg2, default_end),
+	                    ]);
+
+	                    return self.inline_tumble(list_phi.as_basic_value(), init_phi.as_basic_value(), fn_phi.as_basic_value());
+	                }
                 "aw" | "all" => {
                     // aw(list) / all(list) - all elements truthy
                     // aw(list, fn) - all match predicate
@@ -9948,12 +12243,50 @@ impl<'ctx> CodeGen<'ctx> {
                 "hunt" => {
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
-                            "hunt expects 2 arguments (list, function)".to_string(),
+                            "hunt expects 2 arguments".to_string(),
                         ));
                     }
-                    let list_arg = self.compile_expr(&args[0])?;
-                    let func_arg = self.compile_expr(&args[1])?;
-                    return self.inline_hunt(list_arg, func_arg);
+                    let container_arg = self.compile_expr(&args[0])?;
+                    let needle_arg = self.compile_expr(&args[1])?;
+
+                    let needle_tag = self.extract_tag(needle_arg)?;
+                    let fn_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::Function.as_u8() as u64, false);
+                    let is_fn = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, needle_tag, fn_tag, "hunt_is_fn")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let pred_block = self.context.append_basic_block(function, "hunt_predicate");
+                    let idx_block = self.context.append_basic_block(function, "hunt_index");
+                    let merge_block = self.context.append_basic_block(function, "hunt_merge");
+
+                    self.builder
+                        .build_conditional_branch(is_fn, pred_block, idx_block)
+                        .unwrap();
+
+                    // Predicate: find element in list
+                    self.builder.position_at_end(pred_block);
+                    let pred_result = self.inline_hunt(container_arg, needle_arg)?;
+                    self.builder.build_unconditional_branch(merge_block).unwrap();
+                    let pred_end = self.builder.get_insert_block().unwrap();
+
+                    // Value: index-of (string substring or list element)
+                    self.builder.position_at_end(idx_block);
+                    let idx_result = self.inline_index_of(container_arg, needle_arg)?;
+                    self.builder.build_unconditional_branch(merge_block).unwrap();
+                    let idx_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "hunt_result")
+                        .unwrap();
+                    phi.add_incoming(&[(&pred_result, pred_end), (&idx_result, idx_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 "ilk" => {
                     if args.len() != 2 {
@@ -10124,6 +12457,16 @@ impl<'ctx> CodeGen<'ctx> {
                     let pi_val = self.context.f64_type().const_float(std::f64::consts::PI);
                     return self.make_float(pi_val);
                 }
+                "E" => {
+                    // E as a float constant
+                    let e_val = self.context.f64_type().const_float(std::f64::consts::E);
+                    return self.make_float(e_val);
+                }
+                "TAU" => {
+                    // TAU (2*PI) as a float constant
+                    let tau_val = self.context.f64_type().const_float(std::f64::consts::TAU);
+                    return self.make_float(tau_val);
+                }
                 "ord" => {
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
@@ -10183,15 +12526,64 @@ impl<'ctx> CodeGen<'ctx> {
                     let count_arg = self.compile_expr(&args[1])?;
                     return self.inline_repeat(str_arg, count_arg);
                 }
-                "index_of" | "index_o" | "find" => {
+                "index_of" | "index_o" => {
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
-                            "index_of/find expects 2 arguments".to_string(),
+                            "index_of expects 2 arguments".to_string(),
                         ));
                     }
-                    let str_arg = self.compile_expr(&args[0])?;
-                    let substr_arg = self.compile_expr(&args[1])?;
-                    return self.inline_index_of(str_arg, substr_arg);
+                    let container_arg = self.compile_expr(&args[0])?;
+                    let needle_arg = self.compile_expr(&args[1])?;
+                    return self.inline_index_of(container_arg, needle_arg);
+                }
+                "find" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "find expects 2 arguments".to_string(),
+                        ));
+                    }
+
+                    let container_arg = self.compile_expr(&args[0])?;
+                    let needle_arg = self.compile_expr(&args[1])?;
+                    let needle_tag = self.extract_tag(needle_arg)?;
+                    let fn_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::Function.as_u8() as u64, false);
+                    let is_fn = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, needle_tag, fn_tag, "find_is_fn")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let pred_block = self.context.append_basic_block(function, "find_predicate");
+                    let idx_block = self.context.append_basic_block(function, "find_index");
+                    let merge_block = self.context.append_basic_block(function, "find_merge");
+
+                    self.builder
+                        .build_conditional_branch(is_fn, pred_block, idx_block)
+                        .unwrap();
+
+                    // Predicate: return first matching element
+                    self.builder.position_at_end(pred_block);
+                    let pred_result = self.inline_find_predicate(container_arg, needle_arg)?;
+                    self.builder.build_unconditional_branch(merge_block).unwrap();
+                    let pred_end = self.builder.get_insert_block().unwrap();
+
+                    // Value: return index of element / substring
+                    self.builder.position_at_end(idx_block);
+                    let idx_result = self.inline_index_of(container_arg, needle_arg)?;
+                    self.builder.build_unconditional_branch(merge_block).unwrap();
+                    let idx_end = self.builder.get_insert_block().unwrap();
+
+                    // Merge
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "find_result")
+                        .unwrap();
+                    phi.add_incoming(&[(&pred_result, pred_end), (&idx_result, idx_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 // Phase 2: String operations
                 "replace" => {
@@ -10416,54 +12808,29 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.inline_snooze(arg);
                 }
                 "creel" => {
-                    // creel() - create empty list, or creel(list) - copy list (future: dedupe)
+                    // creel() - create empty list, or creel(list) - copy list
                     if args.is_empty() {
-                        // Create empty list with capacity 8
-                        let initial_cap = 8u64;
-                        let header_size = 16u64;
-                        let elem_size = 16u64;
-                        let total_size = header_size + initial_cap * elem_size;
-                        let size_val = self.types.i64_type.const_int(total_size, false);
-                        let list_ptr = self
+                        // Use runtime list allocator to ensure correct MdhList layout
+                        let cap = self.types.i32_type.const_int(8, false);
+                        let list = self
                             .builder
-                            .build_call(self.libc.malloc, &[size_val.into()], "creel_ptr")
-                            .unwrap()
+                            .build_call(self.libc.make_list, &[cap.into()], "creel_empty")
+                            .map_err(|e| HaversError::CompileError(format!("Failed to call make_list: {}", e)))?
                             .try_as_basic_value()
                             .left()
-                            .unwrap()
-                            .into_pointer_value();
-
-                        let i64_ptr = self.types.i64_type.ptr_type(AddressSpace::default());
-                        let len_ptr = self
-                            .builder
-                            .build_pointer_cast(list_ptr, i64_ptr, "len_ptr")
-                            .unwrap();
-                        self.builder
-                            .build_store(len_ptr, self.types.i64_type.const_int(0, false))
-                            .unwrap();
-                        let cap_ptr = unsafe {
-                            self.builder
-                                .build_gep(
-                                    self.context.i8_type(),
-                                    list_ptr,
-                                    &[self.types.i64_type.const_int(8, false)],
-                                    "cap_ptr",
-                                )
-                                .unwrap()
-                        };
-                        let cap_ptr = self
-                            .builder
-                            .build_pointer_cast(cap_ptr, i64_ptr, "cap_ptr_i64")
-                            .unwrap();
-                        self.builder
-                            .build_store(cap_ptr, self.types.i64_type.const_int(initial_cap, false))
-                            .unwrap();
-
-                        return self.make_list(list_ptr);
+                            .ok_or_else(|| HaversError::CompileError("make_list returned void".to_string()))?;
+                        return Ok(list);
                     } else if args.len() == 1 {
-                        // creel(list) - copy the list (simplified: just copy, no dedup)
+                        // creel(list) - copy the list
                         let list_arg = self.compile_expr(&args[0])?;
-                        return self.inline_uniq(list_arg);
+                        let copied = self
+                            .builder
+                            .build_call(self.libc.list_copy, &[list_arg.into()], "creel_copy")
+                            .map_err(|e| HaversError::CompileError(format!("Failed to call list_copy: {}", e)))?
+                            .try_as_basic_value()
+                            .left()
+                            .ok_or_else(|| HaversError::CompileError("list_copy returned void".to_string()))?;
+                        return Ok(copied);
                     } else {
                         return Err(HaversError::CompileError(
                             "creel expects 0 or 1 argument".to_string(),
@@ -10527,14 +12894,60 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 "ceilidh" => {
                     // ceilidh(list1, list2) - interleave two lists
+                    // ceilidh(dict1, dict2) - merge dictionaries
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
                             "ceilidh expects 2 arguments".to_string(),
                         ));
                     }
-                    let list1_arg = self.compile_expr(&args[0])?;
-                    let list2_arg = self.compile_expr(&args[1])?;
-                    return self.inline_ceilidh(list1_arg, list2_arg);
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
+
+                    let a_tag = self.extract_tag(a)?;
+                    let b_tag = self.extract_tag(b)?;
+                    let dict_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::Dict.as_u8() as u64, false);
+                    let a_is_dict = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, a_tag, dict_tag, "ceilidh_a_dict")
+                        .unwrap();
+                    let b_is_dict = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, b_tag, dict_tag, "ceilidh_b_dict")
+                        .unwrap();
+                    let both_dict = self
+                        .builder
+                        .build_and(a_is_dict, b_is_dict, "ceilidh_both_dict")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let dict_block = self.context.append_basic_block(function, "ceilidh_dict");
+                    let list_block = self.context.append_basic_block(function, "ceilidh_list");
+                    let merge_block = self.context.append_basic_block(function, "ceilidh_merge");
+
+                    self.builder
+                        .build_conditional_branch(both_dict, dict_block, list_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(dict_block);
+                    let dict_res = self.inline_dict_merge(a, b)?;
+                    self.builder.build_unconditional_branch(merge_block).unwrap();
+                    let dict_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(list_block);
+                    let list_res = self.inline_ceilidh(a, b)?;
+                    self.builder.build_unconditional_branch(merge_block).unwrap();
+                    let list_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "ceilidh_res")
+                        .unwrap();
+                    phi.add_incoming(&[(&dict_res, dict_end), (&list_res, list_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 "pad_left" | "pad_right" | "pad" => {
                     // pad_left/right(str, width, char) - pad string to width
@@ -10587,10 +13000,18 @@ impl<'ctx> CodeGen<'ctx> {
                     ));
                 }
                 "haverin" | "haver" => {
-                    // haverin() - return random nonsense/placeholder text
-                    // Return a simple placeholder string
-                    let placeholder = "Och aye, havers!";
-                    return self.compile_string_literal(placeholder);
+                    // haverin/haver:
+                    // - haverin() / haver() => placeholder text
+                    // - haver(x) => identity
+                    if args.is_empty() {
+                        return self.compile_string_literal("Och aye, havers!");
+                    }
+                    if args.len() == 1 {
+                        return self.compile_expr(&args[0]);
+                    }
+                    return Err(HaversError::CompileError(
+                        "haver/haverin expects 0-1 arguments".to_string(),
+                    ));
                 }
                 // Additional missing builtins
                 "atween" | "between" => {
@@ -10671,7 +13092,7 @@ impl<'ctx> CodeGen<'ctx> {
                     // Return nil for now (placeholder)
                     return Ok(self.make_nil());
                 }
-                "sclaff" | "flatten" => {
+                "sclaff" | "flatten" | "fankle" => {
                     // sclaff(list) - flatten nested list (one level deep)
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
@@ -10821,6 +13242,16 @@ impl<'ctx> CodeGen<'ctx> {
                     self.inline_blether(arg)?;
                     return Ok(self.make_nil());
                 }
+                "json_parse" => {
+                    // json_parse(str) - parse JSON (placeholder: return nil)
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "json_parse expects 1 argument".to_string(),
+                        ));
+                    }
+                    let _ = self.compile_expr(&args[0])?;
+                    return Ok(self.make_nil());
+                }
                 "json_stringify" | "tae_json" => {
                     // json_stringify(val) - convert to JSON string (placeholder)
                     if args.len() != 1 {
@@ -10830,6 +13261,17 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     // Return the argument as-is for now (placeholder)
                     return self.compile_expr(&args[0]);
+                }
+                "template_render" => {
+                    // template_render(template, ctx) - render template with context (placeholder)
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "template_render expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let template = self.compile_expr(&args[0])?;
+                    let _ = self.compile_expr(&args[1])?;
+                    return Ok(template);
                 }
                 "title" | "title_case" => {
                     // title(str) - title case a string
@@ -10989,34 +13431,205 @@ impl<'ctx> CodeGen<'ctx> {
                     let final_count = self.builder.build_load(self.types.i64_type, count_ptr, "final_count").unwrap().into_int_value();
                     return self.make_int(final_count);
                 }
-                "is_nummer" | "is_number" | "is_int" | "is_float" => {
-                    // is_nummer(val) - check if value is a number
+                "is_int" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "is_int expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let tag = self.extract_tag(arg)?;
+                    let int_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::Int.as_u8() as u64, false);
+                    let is_int = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, tag, int_tag, "is_int")
+                        .unwrap();
+                    let is_int_i64 = self
+                        .builder
+                        .build_int_z_extend(is_int, self.types.i64_type, "is_int_i64")
+                        .unwrap();
+                    return self.make_bool(is_int_i64);
+                }
+                "is_float" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "is_float expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let tag = self.extract_tag(arg)?;
+                    let float_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::Float.as_u8() as u64, false);
+                    let is_float = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, tag, float_tag, "is_float")
+                        .unwrap();
+                    let is_float_i64 = self
+                        .builder
+                        .build_int_z_extend(is_float, self.types.i64_type, "is_float_i64")
+                        .unwrap();
+                    return self.make_bool(is_float_i64);
+                }
+                "is_nummer" | "is_number" => {
+                    // is_nummer(val) - check if value is numeric (int/float) or a numeric string
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "is_nummer expects 1 argument".to_string(),
                         ));
                     }
+
                     let arg = self.compile_expr(&args[0])?;
                     let tag = self.extract_tag(arg)?;
-                    let int_tag = self.types.i8_type.const_int(2, false);
-                    let float_tag = self.types.i8_type.const_int(3, false);
+                    let data = self.extract_data(arg)?;
+
+                    let int_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::Int.as_u8() as u64, false);
+                    let float_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::Float.as_u8() as u64, false);
+                    let string_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::String.as_u8() as u64, false);
+
                     let is_int = self
                         .builder
-                        .build_int_compare(inkwell::IntPredicate::EQ, tag, int_tag, "is_int")
+                        .build_int_compare(IntPredicate::EQ, tag, int_tag, "is_int")
                         .unwrap();
                     let is_float = self
                         .builder
-                        .build_int_compare(inkwell::IntPredicate::EQ, tag, float_tag, "is_float")
+                        .build_int_compare(IntPredicate::EQ, tag, float_tag, "is_float")
                         .unwrap();
-                    let result = self
+                    let is_num_tag = self.builder.build_or(is_int, is_float, "is_num_tag").unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let num_block = self.context.append_basic_block(function, "is_nummer_num");
+                    let check_string_block =
+                        self.context.append_basic_block(function, "is_nummer_check_string");
+                    let string_block =
+                        self.context.append_basic_block(function, "is_nummer_string");
+                    let other_block = self.context.append_basic_block(function, "is_nummer_other");
+                    let merge_block = self.context.append_basic_block(function, "is_nummer_merge");
+
+                    self.builder
+                        .build_conditional_branch(is_num_tag, num_block, check_string_block)
+                        .unwrap();
+
+                    // Numeric tags => true
+                    self.builder.position_at_end(num_block);
+                    let one_i64 = self.types.i64_type.const_int(1, false);
+                    let num_res = self.make_bool(one_i64)?;
+                    self.builder.build_unconditional_branch(merge_block).unwrap();
+                    let num_end = self.builder.get_insert_block().unwrap();
+
+                    // Check string
+                    self.builder.position_at_end(check_string_block);
+                    let is_string = self
                         .builder
-                        .build_or(is_int, is_float, "is_nummer")
+                        .build_int_compare(IntPredicate::EQ, tag, string_tag, "is_string")
                         .unwrap();
-                    let result_i64 = self
+                    self.builder
+                        .build_conditional_branch(is_string, string_block, other_block)
+                        .unwrap();
+
+                    // String => try parse with strtod and ensure full consumption
+                    self.builder.position_at_end(string_block);
+                    let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+                    let str_ptr = self
                         .builder
-                        .build_int_z_extend(result, self.types.i64_type, "is_nummer_i64")
+                        .build_int_to_ptr(data, i8_ptr_type, "num_str_ptr")
                         .unwrap();
-                    return self.make_bool(result_i64);
+                    let endptr_ptr = self
+                        .builder
+                        .build_alloca(i8_ptr_type, "endptr")
+                        .unwrap();
+
+                    // Declare strtod if needed
+                    let strtod_fn = self.module.get_function("strtod").unwrap_or_else(|| {
+                        let fn_type = self.types.f64_type.fn_type(
+                            &[
+                                i8_ptr_type.into(),
+                                i8_ptr_type.ptr_type(AddressSpace::default()).into(),
+                            ],
+                            false,
+                        );
+                        self.module
+                            .add_function("strtod", fn_type, Some(Linkage::External))
+                    });
+                    let _ = self
+                        .builder
+                        .build_call(strtod_fn, &[str_ptr.into(), endptr_ptr.into()], "parsed")
+                        .unwrap();
+                    let end_ptr = self
+                        .builder
+                        .build_load(i8_ptr_type, endptr_ptr, "endptr_loaded")
+                        .unwrap()
+                        .into_pointer_value();
+
+                    let str_i = self
+                        .builder
+                        .build_ptr_to_int(str_ptr, self.types.i64_type, "str_i")
+                        .unwrap();
+                    let end_i = self
+                        .builder
+                        .build_ptr_to_int(end_ptr, self.types.i64_type, "end_i")
+                        .unwrap();
+                    let no_conv = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, end_i, str_i, "no_conv")
+                        .unwrap();
+                    let did_conv = self.builder.build_not(no_conv, "did_conv").unwrap();
+
+                    let end_ch = self
+                        .builder
+                        .build_load(self.context.i8_type(), end_ptr, "end_ch")
+                        .unwrap()
+                        .into_int_value();
+                    let end_is_nul = self
+                        .builder
+                        .build_int_compare(
+                            IntPredicate::EQ,
+                            end_ch,
+                            self.context.i8_type().const_int(0, false),
+                            "end_is_nul",
+                        )
+                        .unwrap();
+
+                    let ok = self.builder.build_and(did_conv, end_is_nul, "is_nummer_ok").unwrap();
+                    let ok_i64 = self
+                        .builder
+                        .build_int_z_extend(ok, self.types.i64_type, "ok_i64")
+                        .unwrap();
+                    let str_res = self.make_bool(ok_i64)?;
+                    self.builder.build_unconditional_branch(merge_block).unwrap();
+                    let str_end = self.builder.get_insert_block().unwrap();
+
+                    // Other => false
+                    self.builder.position_at_end(other_block);
+                    let zero_i64 = self.types.i64_type.const_int(0, false);
+                    let other_res = self.make_bool(zero_i64)?;
+                    self.builder.build_unconditional_branch(merge_block).unwrap();
+                    let other_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "is_nummer_result")
+                        .unwrap();
+                    phi.add_incoming(&[
+                        (&num_res, num_end),
+                        (&str_res, str_end),
+                        (&other_res, other_end),
+                    ]);
+                    return Ok(phi.as_basic_value());
                 }
                 "is_list" | "is_leet" => {
                     // is_list(val) - check if value is a list
@@ -11106,16 +13719,138 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let arg = self.compile_expr(&args[0])?;
-                    // Check length via len builtin concept
                     let tag = self.extract_tag(arg)?;
-                    let list_tag = self.types.i8_type.const_int(5, false);
-                    let is_list = self
-                        .builder
-                        .build_int_compare(inkwell::IntPredicate::EQ, tag, list_tag, "is_list")
+                    let data = self.extract_data(arg)?;
+
+                    let function = self.current_function.unwrap();
+                    let nil_block = self.context.append_basic_block(function, "is_toom_nil");
+                    let string_block =
+                        self.context.append_basic_block(function, "is_toom_string");
+                    let list_block = self.context.append_basic_block(function, "is_toom_list");
+                    let dict_block = self.context.append_basic_block(function, "is_toom_dict");
+                    let other_block =
+                        self.context.append_basic_block(function, "is_toom_other");
+                    let merge_block =
+                        self.context.append_basic_block(function, "is_toom_merge");
+
+                    let nil_tag = self.types.i8_type.const_int(ValueTag::Nil.as_u8() as u64, false);
+                    let string_tag =
+                        self.types.i8_type.const_int(ValueTag::String.as_u8() as u64, false);
+                    let list_tag =
+                        self.types.i8_type.const_int(ValueTag::List.as_u8() as u64, false);
+                    let dict_tag =
+                        self.types.i8_type.const_int(ValueTag::Dict.as_u8() as u64, false);
+
+                    self.builder
+                        .build_switch(
+                            tag,
+                            other_block,
+                            &[
+                                (nil_tag, nil_block),
+                                (string_tag, string_block),
+                                (list_tag, list_block),
+                                (dict_tag, dict_block),
+                            ],
+                        )
                         .unwrap();
-                    // For simplicity, return false (placeholder)
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_bool(zero);
+
+                    // nil => empty
+                    self.builder.position_at_end(nil_block);
+                    let one_i64 = self.types.i64_type.const_int(1, false);
+                    let nil_res = self.make_bool(one_i64)?;
+                    self.builder.build_unconditional_branch(merge_block).unwrap();
+                    let nil_end = self.builder.get_insert_block().unwrap();
+
+                    // string => strlen == 0
+                    self.builder.position_at_end(string_block);
+                    let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+                    let str_ptr = self
+                        .builder
+                        .build_int_to_ptr(data, i8_ptr_type, "is_toom_str_ptr")
+                        .unwrap();
+                    let len = self
+                        .builder
+                        .build_call(self.libc.strlen, &[str_ptr.into()], "is_toom_strlen")
+                        .unwrap()
+                        .try_as_basic_value()
+                        .left()
+                        .unwrap()
+                        .into_int_value();
+                    let zero_i64 = self.types.i64_type.const_int(0, false);
+                    let is_empty = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, len, zero_i64, "is_empty_str")
+                        .unwrap();
+                    let is_empty_i64 = self
+                        .builder
+                        .build_int_z_extend(is_empty, self.types.i64_type, "is_empty_str_i64")
+                        .unwrap();
+                    let str_res = self.make_bool(is_empty_i64)?;
+                    self.builder.build_unconditional_branch(merge_block).unwrap();
+                    let str_end = self.builder.get_insert_block().unwrap();
+
+                    // list => length == 0
+                    self.builder.position_at_end(list_block);
+                    let list_len = self.get_list_length(data)?;
+                    let zero_i64 = self.types.i64_type.const_int(0, false);
+                    let is_empty_list = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, list_len, zero_i64, "is_empty_list")
+                        .unwrap();
+                    let is_empty_list_i64 = self
+                        .builder
+                        .build_int_z_extend(is_empty_list, self.types.i64_type, "is_empty_list_i64")
+                        .unwrap();
+                    let list_res = self.make_bool(is_empty_list_i64)?;
+                    self.builder.build_unconditional_branch(merge_block).unwrap();
+                    let list_end = self.builder.get_insert_block().unwrap();
+
+                    // dict => count == 0
+                    self.builder.position_at_end(dict_block);
+                    let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+                    let dict_ptr = self
+                        .builder
+                        .build_int_to_ptr(data, i64_ptr_type, "is_toom_dict_ptr")
+                        .unwrap();
+                    let count = self
+                        .builder
+                        .build_load(self.types.i64_type, dict_ptr, "dict_count")
+                        .unwrap()
+                        .into_int_value();
+                    let zero_i64 = self.types.i64_type.const_int(0, false);
+                    let is_empty_dict = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, count, zero_i64, "is_empty_dict")
+                        .unwrap();
+                    let is_empty_dict_i64 = self
+                        .builder
+                        .build_int_z_extend(is_empty_dict, self.types.i64_type, "is_empty_dict_i64")
+                        .unwrap();
+                    let dict_res = self.make_bool(is_empty_dict_i64)?;
+                    self.builder.build_unconditional_branch(merge_block).unwrap();
+                    let dict_end = self.builder.get_insert_block().unwrap();
+
+                    // other => false
+                    self.builder.position_at_end(other_block);
+                    let zero_i64 = self.types.i64_type.const_int(0, false);
+                    let other_res = self.make_bool(zero_i64)?;
+                    self.builder.build_unconditional_branch(merge_block).unwrap();
+                    let other_end = self.builder.get_insert_block().unwrap();
+
+                    // merge
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "is_toom_result")
+                        .unwrap();
+                    phi.add_incoming(&[
+                        (&nil_res, nil_end),
+                        (&str_res, str_end),
+                        (&list_res, list_end),
+                        (&dict_res, dict_end),
+                        (&other_res, other_end),
+                    ]);
+                    return Ok(phi.as_basic_value());
                 }
                 "is_prime" => {
                     // is_prime(n) - check if n is prime using simple trial division
@@ -11405,8 +14140,15 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(self.make_nil());
                 }
                 "wrang_sort" | "wrong_type" => {
-                    // wrang_sort(val) - type error placeholder
-                    return Ok(self.make_nil());
+                    // wrang_sort(min, max) - random integer in [min, max]
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "wrang_sort expects 2 arguments (min, max)".to_string(),
+                        ));
+                    }
+                    let min_arg = self.compile_expr(&args[0])?;
+                    let max_arg = self.compile_expr(&args[1])?;
+                    return self.inline_jammy(min_arg, max_arg);
                 }
                 "tae_octal" | "to_octal" => {
                     // tae_octal(n) - convert to octal string
@@ -11583,8 +14325,15 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.compile_expr(&args[0]);
                 }
                 "ilka" | "each" | "for_each" => {
-                    // ilka(list, fn) - for each (placeholder)
-                    return Ok(self.make_nil());
+                    // ilka/each(list, fn) - for each element (side effects)
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "each expects 2 arguments (list, function)".to_string(),
+                        ));
+                    }
+                    let list_arg = self.compile_expr(&args[0])?;
+                    let func_arg = self.compile_expr(&args[1])?;
+                    return self.inline_each(list_arg, func_arg);
                 }
                 "skip" | "matrix_skip" => {
                     // skip - test skip marker (placeholder)
@@ -11685,13 +14434,119 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.compile_string_literal("Sporran's full!");
                 }
                 "enumerate" | "with_index" => {
-                    // enumerate(list) - add indices (placeholder: return as-is)
+                    // enumerate(list) - return list of [index, item] pairs
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "enumerate expects 1 argument".to_string(),
                         ));
                     }
-                    return self.compile_expr(&args[0]);
+                    let seq_val = self.compile_expr(&args[0])?;
+                    let seq_tag = self.extract_tag(seq_val)?;
+                    let seq_data = self.extract_data(seq_val)?;
+
+                    let list_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::List.as_u8() as u64, false);
+                    let is_list = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, seq_tag, list_tag, "enum_is_list")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let list_block = self.context.append_basic_block(function, "enum_list");
+                    let other_block = self.context.append_basic_block(function, "enum_other");
+                    let merge_block = self.context.append_basic_block(function, "enum_merge");
+
+                    self.builder
+                        .build_conditional_branch(is_list, list_block, other_block)
+                        .unwrap();
+
+                    // ===== list case =====
+                    self.builder.position_at_end(list_block);
+                    let list_len = self.get_list_length(seq_data)?;
+
+                    let cap_i32 = self
+                        .builder
+                        .build_int_truncate(list_len, self.types.i32_type, "enum_cap_i32")
+                        .unwrap();
+                    let result_list = self
+                        .builder
+                        .build_call(self.libc.make_list, &[cap_i32.into()], "enum_result")
+                        .unwrap()
+                        .try_as_basic_value()
+                        .left()
+                        .unwrap();
+
+                    let idx_ptr = self.create_entry_block_alloca("enum_i");
+                    let zero = self.types.i64_type.const_int(0, false);
+                    let one = self.types.i64_type.const_int(1, false);
+                    self.builder.build_store(idx_ptr, zero).unwrap();
+
+                    let loop_block = self.context.append_basic_block(function, "enum_loop");
+                    let body_block = self.context.append_basic_block(function, "enum_body");
+                    let done_block = self.context.append_basic_block(function, "enum_done");
+
+                    self.builder.build_unconditional_branch(loop_block).unwrap();
+                    self.builder.position_at_end(loop_block);
+                    let i = self
+                        .builder
+                        .build_load(self.types.i64_type, idx_ptr, "enum_i_val")
+                        .unwrap()
+                        .into_int_value();
+                    let cont = self
+                        .builder
+                        .build_int_compare(IntPredicate::ULT, i, list_len, "enum_cont")
+                        .unwrap();
+                    self.builder
+                        .build_conditional_branch(cont, body_block, done_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(body_block);
+                    let elem_ptr = self.get_list_element_ptr(seq_data, i)?;
+                    let elem = self
+                        .builder
+                        .build_load(self.types.value_type, elem_ptr, "enum_elem")
+                        .unwrap();
+
+                    // pair = [i, elem]
+                    let two_i32 = self.types.i32_type.const_int(2, false);
+                    let pair_list = self
+                        .builder
+                        .build_call(self.libc.make_list, &[two_i32.into()], "enum_pair")
+                        .unwrap()
+                        .try_as_basic_value()
+                        .left()
+                        .unwrap();
+                    let idx_val = self.make_int(i)?;
+                    self.builder
+                        .build_call(self.libc.list_push, &[pair_list.into(), idx_val.into()], "")
+                        .unwrap();
+                    self.builder
+                        .build_call(self.libc.list_push, &[pair_list.into(), elem.into()], "")
+                        .unwrap();
+                    self.builder
+                        .build_call(self.libc.list_push, &[result_list.into(), pair_list.into()], "")
+                        .unwrap();
+
+                    let next_i = self.builder.build_int_add(i, one, "enum_next").unwrap();
+                    self.builder.build_store(idx_ptr, next_i).unwrap();
+                    self.builder.build_unconditional_branch(loop_block).unwrap();
+
+                    self.builder.position_at_end(done_block);
+                    self.builder.build_unconditional_branch(merge_block).unwrap();
+                    let list_end = self.builder.get_insert_block().unwrap();
+
+                    // ===== other case =====
+                    self.builder.position_at_end(other_block);
+                    self.builder.build_unconditional_branch(merge_block).unwrap();
+                    let other_end = self.builder.get_insert_block().unwrap();
+
+                    // ===== merge =====
+                    self.builder.position_at_end(merge_block);
+                    let phi = self.builder.build_phi(self.types.value_type, "enum_phi").unwrap();
+                    phi.add_incoming(&[(&result_list, list_end), (&seq_val, other_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 "assert_equal" | "assertEqual" => {
                     // Test assertion - placeholder: do nothing
@@ -11852,10 +14707,9 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(self.make_nil());
                 }
                 "log_debug" | "log_info" | "log_warn" | "log_error" => {
-                    // Logging functions (placeholder: just print and return nil)
+                    // Logging functions: no-op (but still evaluate the argument for side effects)
                     if !args.is_empty() {
-                        let val = self.compile_expr(&args[0])?;
-                        self.inline_blether(val)?;
+                        let _ = self.compile_expr(&args[0])?;
                     }
                     return Ok(self.make_nil());
                 }
@@ -12146,6 +15000,18 @@ impl<'ctx> CodeGen<'ctx> {
                     self.builder.position_at_end(loop_end);
                     return self.make_list(new_struct);
                 }
+                "zipwith" => {
+                    // zipwith(fn, a, b) - apply fn elementwise to two lists
+                    if args.len() != 3 {
+                        return Err(HaversError::CompileError(
+                            "zipwith expects 3 arguments (fn, list1, list2)".to_string(),
+                        ));
+                    }
+                    let fn_val = self.compile_expr(&args[0])?;
+                    let list1 = self.compile_expr(&args[1])?;
+                    let list2 = self.compile_expr(&args[2])?;
+                    return self.inline_zipwith(fn_val, list1, list2);
+                }
                 "unzip" | "unzip_list" => {
                     // unzip a list of pairs (placeholder: return nil)
                     return Ok(self.make_nil());
@@ -12282,8 +15148,31 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(self.make_nil());
                 }
                 "items" | "dict_items" | "pairs" => {
-                    // items(dict) - get list of key-value pairs (placeholder: return nil)
-                    return Ok(self.make_nil());
+                    // items(dict) - get list of key-value pairs
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "items expects 1 argument (dict)".to_string(),
+                        ));
+                    }
+                    let dict_arg = self.compile_expr(&args[0])?;
+                    let keys = self.inline_keys(dict_arg)?;
+                    let values = self.inline_values(dict_arg)?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.pair_up,
+                            &[keys.into(), values.into()],
+                            "items_result",
+                        )
+                        .map_err(|e| {
+                            HaversError::CompileError(format!("Failed to call pair_up: {}", e))
+                        })?
+                        .try_as_basic_value()
+                        .left()
+                        .ok_or_else(|| {
+                            HaversError::CompileError("pair_up returned void".to_string())
+                        })?;
+                    return Ok(result);
                 }
                 "scots_wisdom" | "wisdom" => {
                     // Get random Scots wisdom/proverb
@@ -12412,8 +15301,15 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.make_string(buf);
                 }
                 "split_lines" | "lines" => {
-                    // split_lines(str) - split string into lines (placeholder: return nil)
-                    return Ok(self.make_nil());
+                    // split_lines(str) - split string into lines
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "split_lines expects 1 argument".to_string(),
+                        ));
+                    }
+                    let str_arg = self.compile_expr(&args[0])?;
+                    let delim = self.compile_string_literal("\n")?;
+                    return self.inline_split(str_arg, delim);
                 }
                 "split_words" | "words" => {
                     // split_words(str) - split string into words (placeholder: return nil)
@@ -12841,8 +15737,16 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.compile_string_literal("");
                 }
                 "substr_between" | "between" => {
-                    // substr_between(str, start, end) - get substring between markers (placeholder)
-                    return self.compile_string_literal("");
+                    // substr_between(str, start, end) - get substring between markers
+                    if args.len() != 3 {
+                        return Err(HaversError::CompileError(
+                            "substr_between expects 3 arguments (str, start, end)".to_string(),
+                        ));
+                    }
+                    let str_arg = self.compile_expr(&args[0])?;
+                    let start_arg = self.compile_expr(&args[1])?;
+                    let end_arg = self.compile_expr(&args[2])?;
+                    return self.inline_substr_between(str_arg, start_arg, end_arg);
                 }
                 "format" => {
                     // format("Hello, {}!", name) - very small formatting helper
@@ -13339,6 +16243,13 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
+        // Mark that we're in a hot loop (use shadows + skip MdhValue stores).
+        // This must be enabled for the condition block too; otherwise loop conditions
+        // that fall back to `compile_expr` can read stale MdhValues while the body
+        // updates only int shadows, leading to non-terminating loops and OOB crashes.
+        let was_in_loop = self.in_loop_body;
+        self.in_loop_body = true;
+
         self.builder.position_at_end(loop_block);
         // Optimization: try to compile condition directly to i1 without boxing
         let cond_bool = if let Some(direct) = self.compile_condition_direct(condition)? {
@@ -13353,11 +16264,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         self.builder.position_at_end(body_block);
-        // Mark that we're in a hot loop body (skip MdhValue stores)
-        let was_in_loop = self.in_loop_body;
-        self.in_loop_body = true;
         self.compile_stmt(body)?;
-        self.in_loop_body = was_in_loop;
         if self
             .builder
             .get_insert_block()
@@ -13368,6 +16275,7 @@ impl<'ctx> CodeGen<'ctx> {
             self.builder.build_unconditional_branch(loop_block).unwrap();
         }
 
+        self.in_loop_body = was_in_loop;
         self.loop_stack.pop();
         self.builder.position_at_end(after_block);
 
@@ -13984,56 +16892,47 @@ impl<'ctx> CodeGen<'ctx> {
         let saved_list_ptr_shadows = std::mem::take(&mut self.list_ptr_shadows);
         let saved_string_len_shadows = std::mem::take(&mut self.string_len_shadows);
         let saved_string_cap_shadows = std::mem::take(&mut self.string_cap_shadows);
+        let saved_boxed_vars = std::mem::take(&mut self.boxed_vars);
         let saved_in_user_function = self.in_user_function;
 
         self.builder.position_at_end(entry);
         self.current_function = Some(function);
         self.in_user_function = true;
 
-        // Set up parameters
-        // Create shadows for all parameters (optimistic: assume they're integers)
-        // The shadow will be used if the parameter is used in integer context
+        // Captures-first convention: captured variables (cells) come before user params.
+        let captures_for_this_fn = self.function_captures.get(name).cloned().unwrap_or_default();
+        let capture_count = captures_for_this_fn.len();
+
+        // Captured variables are boxed cells passed in.
+        for (i, capture_name) in captures_for_this_fn.iter().enumerate() {
+            let param_val = function.get_nth_param(i as u32).ok_or_else(|| {
+                HaversError::CompileError(format!("Missing captured param: {}", capture_name))
+            })?;
+            let alloca = self.create_entry_block_alloca(capture_name);
+            self.builder.build_store(alloca, param_val).unwrap();
+            self.variables.insert(capture_name.clone(), alloca);
+            self.var_types.insert(capture_name.clone(), VarType::Unknown);
+            self.boxed_vars.insert(capture_name.clone());
+        }
+
+        // Set up user parameters (after captures). Don't create shadows until we know boxing.
         for (i, param) in params.iter().enumerate() {
             let param_val = function
-                .get_nth_param(i as u32)
+                .get_nth_param((capture_count + i) as u32)
                 .ok_or_else(|| HaversError::CompileError("Missing parameter".to_string()))?;
             let alloca = self.create_entry_block_alloca(&param.name);
             self.builder.build_store(alloca, param_val).unwrap();
             self.variables.insert(param.name.clone(), alloca);
-
-            // Create shadow with extracted int value (optimistic)
-            // If parameter isn't actually an int at runtime, this is still safe
-            // because we only use the shadow when we KNOW it's an int context
-            let shadow = self.create_entry_block_alloca_i64(&format!("{}_shadow", param.name));
-            let data = self.extract_data(param_val)?;
-            self.builder.build_store(shadow, data).unwrap();
-            self.int_shadows.insert(param.name.clone(), shadow);
-
-            // Mark as Unknown - but shadow is available for optimizations
             self.var_types.insert(param.name.clone(), VarType::Unknown);
         }
 
-        // Set up captured variables (come after regular parameters)
-        if let Some(captures) = self.function_captures.get(name).cloned() {
-            let base_idx = params.len();
-            for (i, capture_name) in captures.iter().enumerate() {
-                let param_val = function
-                    .get_nth_param((base_idx + i) as u32)
-                    .ok_or_else(|| {
-                        HaversError::CompileError(format!(
-                            "Missing captured param: {}",
-                            capture_name
-                        ))
-                    })?;
-                let alloca = self.create_entry_block_alloca(capture_name);
-                self.builder.build_store(alloca, param_val).unwrap();
-                self.variables.insert(capture_name.clone(), alloca);
-            }
-        }
+        // Predeclare locals so nested-function capture discovery can see them.
+        self.predeclare_locals_for_capture(body)?;
 
         // Pre-declare any nested functions in this body
         // IMPORTANT: This must happen AFTER parameters are added to self.variables
         // so that find_free_variables_in_body can see them as capturable
+        let mut captured_in_body: HashSet<String> = HashSet::new();
         for stmt in body {
             if let Stmt::Function {
                 name: nested_name,
@@ -14045,6 +16944,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if !self.functions.contains_key(nested_name) {
                     // Find free variables in the nested function
                     let captures = self.find_free_variables_in_body(nested_body, nested_params);
+                    captured_in_body.extend(captures.iter().cloned());
                     self.declare_function_with_captures(
                         nested_name,
                         nested_params.len(),
@@ -14052,6 +16952,34 @@ impl<'ctx> CodeGen<'ctx> {
                     )?;
                 }
             }
+        }
+
+        // Box user parameters that are captured by nested functions.
+        for param in params {
+            if captured_in_body.contains(&param.name) {
+                self.ensure_boxed_variable(&param.name)?;
+            }
+        }
+        // Mark all captured locals/params as boxed in this scope (locals will be boxed at decl).
+        self.boxed_vars.extend(captured_in_body);
+
+        // Create optimistic i64 shadows for non-boxed user parameters.
+        for param in params {
+            if self.boxed_vars.contains(&param.name) {
+                continue;
+            }
+            if self.int_shadows.contains_key(&param.name) {
+                continue;
+            }
+            let shadow = self.create_entry_block_alloca_i64(&format!("{}_shadow", param.name));
+            let alloca = self.variables.get(&param.name).copied().unwrap();
+            let val = self
+                .builder
+                .build_load(self.types.value_type, alloca, &format!("{}_param", param.name))
+                .unwrap();
+            let data = self.extract_data(val)?;
+            self.builder.build_store(shadow, data).unwrap();
+            self.int_shadows.insert(param.name.clone(), shadow);
         }
 
         // Compile body
@@ -14087,6 +17015,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.list_ptr_shadows = saved_list_ptr_shadows;
         self.string_len_shadows = saved_string_len_shadows;
         self.string_cap_shadows = saved_string_cap_shadows;
+        self.boxed_vars = saved_boxed_vars;
         self.in_user_function = saved_in_user_function;
 
         // Restore the builder position to where it was before compiling this function
@@ -14095,6 +17024,89 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         Ok(())
+    }
+
+    /// Predeclare local bindings in a function body so nested-function capture discovery
+    /// can see variables that are declared later in the body.
+    ///
+    /// This is conservative (function-scoped) and intentionally does not recurse into
+    /// nested function bodies.
+    fn predeclare_locals_for_capture(&mut self, body: &[Stmt]) -> Result<(), HaversError> {
+        for stmt in body {
+            self.predeclare_locals_stmt(stmt)?;
+        }
+        Ok(())
+    }
+
+    fn predeclare_locals_stmt(&mut self, stmt: &Stmt) -> Result<(), HaversError> {
+        match stmt {
+            Stmt::VarDecl { name, .. } => {
+                self.predeclare_local_name(name);
+            }
+            Stmt::For { variable, body, .. } => {
+                self.predeclare_local_name(variable);
+                self.predeclare_locals_stmt(body)?;
+            }
+            Stmt::Block { statements, .. } => {
+                for s in statements {
+                    self.predeclare_locals_stmt(s)?;
+                }
+            }
+            Stmt::If {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                self.predeclare_locals_stmt(then_branch)?;
+                if let Some(e) = else_branch.as_ref() {
+                    self.predeclare_locals_stmt(e)?;
+                }
+            }
+            Stmt::While { body, .. } => {
+                self.predeclare_locals_stmt(body)?;
+            }
+            Stmt::TryCatch {
+                try_block,
+                error_name,
+                catch_block,
+                ..
+            } => {
+                self.predeclare_local_name(error_name);
+                self.predeclare_locals_stmt(try_block)?;
+                self.predeclare_locals_stmt(catch_block)?;
+            }
+            Stmt::Destructure { patterns, .. } => {
+                for pat in patterns {
+                    match pat {
+                        DestructPattern::Variable(n) | DestructPattern::Rest(n) => {
+                            self.predeclare_local_name(n);
+                        }
+                        DestructPattern::Ignore => {}
+                    }
+                }
+            }
+            Stmt::Match { arms, .. } => {
+                for arm in arms {
+                    if let Pattern::Identifier(name) = &arm.pattern {
+                        self.predeclare_local_name(name);
+                    }
+                    self.predeclare_locals_stmt(&arm.body)?;
+                }
+            }
+            // Do not recurse into nested functions; they have their own scope.
+            Stmt::Function { .. } => {}
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn predeclare_local_name(&mut self, name: &str) {
+        if self.variables.contains_key(name) || self.globals.contains_key(name) {
+            return;
+        }
+        let a = self.create_entry_block_alloca(name);
+        self.variables.insert(name.to_string(), a);
+        self.var_types.entry(name.to_string()).or_insert(VarType::Unknown);
     }
 
     fn compile_ternary(
@@ -15103,14 +18115,80 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::EQ, key_tag, entry_key_tag, "tags_match")
             .unwrap();
+
+        // For strings, compare by content (strcmp), not pointer equality.
+        let string_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::String.as_u8() as u64, false);
+        let is_string = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, key_tag, string_tag, "is_string_key")
+            .unwrap();
+
         let data_match = self
             .builder
             .build_int_compare(IntPredicate::EQ, key_data, entry_key_data, "data_match")
             .unwrap();
-        let keys_match = self
-            .builder
-            .build_and(tags_match, data_match, "keys_match")
+
+        let eq_str_block = self.context.append_basic_block(function, "dict_key_eq_str");
+        let eq_other_block = self
+            .context
+            .append_basic_block(function, "dict_key_eq_other");
+        let eq_merge_block = self
+            .context
+            .append_basic_block(function, "dict_key_eq_merge");
+
+        self.builder
+            .build_conditional_branch(is_string, eq_str_block, eq_other_block)
             .unwrap();
+
+        // String compare branch
+        self.builder.position_at_end(eq_str_block);
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let key_ptr = self
+            .builder
+            .build_int_to_ptr(key_data, i8_ptr_type, "key_ptr")
+            .unwrap();
+        let entry_key_ptr = self
+            .builder
+            .build_int_to_ptr(entry_key_data, i8_ptr_type, "entry_key_ptr")
+            .unwrap();
+        let cmp = self
+            .builder
+            .build_call(self.libc.strcmp, &[key_ptr.into(), entry_key_ptr.into()], "cmp")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_int_value();
+        let str_eq = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                cmp,
+                self.types.i32_type.const_int(0, false),
+                "str_eq",
+            )
+            .unwrap();
+        self.builder.build_unconditional_branch(eq_merge_block).unwrap();
+        let eq_str_end = self.builder.get_insert_block().unwrap();
+
+        // Non-string branch
+        self.builder.position_at_end(eq_other_block);
+        self.builder.build_unconditional_branch(eq_merge_block).unwrap();
+        let eq_other_end = self.builder.get_insert_block().unwrap();
+
+        // Merge data-equality result
+        self.builder.position_at_end(eq_merge_block);
+        let data_eq_phi = self
+            .builder
+            .build_phi(self.context.bool_type(), "key_data_eq")
+            .unwrap();
+        data_eq_phi.add_incoming(&[(&str_eq, eq_str_end), (&data_match, eq_other_end)]);
+        let data_eq = data_eq_phi.as_basic_value().into_int_value();
+
+        let keys_match = self.builder.build_and(tags_match, data_eq, "keys_match").unwrap();
 
         self.builder
             .build_conditional_branch(keys_match, found_block, continue_block)
@@ -15449,6 +18527,39 @@ impl<'ctx> CodeGen<'ctx> {
                 HaversError::CompileError(format!("Failed to convert to pointer: {}", e))
             })?;
 
+        // Load length from MdhList offset 1 for negative index handling
+        let len_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.types.i64_type,
+                    list_ptr,
+                    &[self.types.i64_type.const_int(1, false)],
+                    "len_ptr_set_fast",
+                )
+                .map_err(|e| HaversError::CompileError(format!("Failed to get len ptr: {}", e)))?
+        };
+        let length = self
+            .builder
+            .build_load(self.types.i64_type, len_ptr, "list_len_set_fast")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?
+            .into_int_value();
+
+        // Handle negative indices: final_index = (idx < 0) ? (len + idx) : idx
+        let zero_i64 = self.types.i64_type.const_int(0, false);
+        let is_negative = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, idx_i64, zero_i64, "idx_is_negative")
+            .map_err(|e| HaversError::CompileError(format!("Failed to compare: {}", e)))?;
+        let adjusted_index = self
+            .builder
+            .build_int_add(length, idx_i64, "idx_adjusted")
+            .map_err(|e| HaversError::CompileError(format!("Failed to add: {}", e)))?;
+        let final_index = self
+            .builder
+            .build_select(is_negative, adjusted_index, idx_i64, "idx_final")
+            .map_err(|e| HaversError::CompileError(format!("Failed to select: {}", e)))?
+            .into_int_value();
+
         // Load items pointer from offset 0
         let items_ptr_as_i64 = self
             .builder
@@ -15472,7 +18583,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_gep(
                     self.types.value_type,
                     items_ptr,
-                    &[idx_i64],
+                    &[final_index],
                     "elem_ptr_set_fast",
                 )
                 .map_err(|e| {
@@ -17819,6 +20930,11 @@ impl<'ctx> CodeGen<'ctx> {
             captures.push("masel".to_string());
         }
 
+        // Ensure captured variables are boxed so lambdas can mutate shared state.
+        for cap in captures.iter().filter(|c| c.as_str() != "masel") {
+            self.ensure_boxed_variable(cap)?;
+        }
+
         // Collect capture allocas from outer scope BEFORE we modify anything
         let mut capture_allocas: Vec<_> = captures
             .iter()
@@ -17849,6 +20965,7 @@ impl<'ctx> CodeGen<'ctx> {
         let saved_list_ptr_shadows = self.list_ptr_shadows.clone();
         let saved_string_len_shadows = self.string_len_shadows.clone();
         let saved_string_cap_shadows = self.string_cap_shadows.clone();
+        let saved_boxed_vars = self.boxed_vars.clone();
         let saved_block = self.builder.get_insert_block();
         let saved_masel = self.current_masel;
 
@@ -17864,6 +20981,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.list_ptr_shadows.clear();
         self.string_len_shadows.clear();
         self.string_cap_shadows.clear();
+        self.boxed_vars.clear();
         self.current_masel = None;
 
         // Bind captured variables (they come first in the parameter list)
@@ -17879,6 +20997,8 @@ impl<'ctx> CodeGen<'ctx> {
             // If this is the captured 'masel', set current_masel so Expr::Masel works
             if capture_name == "masel" {
                 self.current_masel = Some(alloca);
+            } else {
+                self.boxed_vars.insert(capture_name.clone());
             }
         }
 
@@ -17919,6 +21039,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.list_ptr_shadows = saved_list_ptr_shadows;
         self.string_len_shadows = saved_string_len_shadows;
         self.string_cap_shadows = saved_string_cap_shadows;
+        self.boxed_vars = saved_boxed_vars;
         self.current_masel = saved_masel;
         if let Some(block) = saved_block {
             self.builder.position_at_end(block);
@@ -18638,6 +21759,79 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Return new list as MdhValue
         self.make_list(new_list_ptr)
+    }
+
+    /// each(list, fn) - call fn for each element (side effects), return nil
+    fn inline_each(
+        &mut self,
+        list_val: BasicValueEnum<'ctx>,
+        func_val: BasicValueEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let function = self
+            .current_function
+            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+
+        let list_data = self.extract_data(list_val)?;
+        let list_len = self.get_list_length(list_data)?;
+
+        let func_alloca = self
+            .builder
+            .build_alloca(self.types.value_type, "each_func")
+            .map_err(|e| HaversError::CompileError(format!("Failed to alloca: {}", e)))?;
+        self.builder.build_store(func_alloca, func_val).unwrap();
+
+        let idx_ptr = self
+            .builder
+            .build_alloca(self.types.i64_type, "each_i")
+            .map_err(|e| HaversError::CompileError(format!("Failed to alloca: {}", e)))?;
+        let zero = self.types.i64_type.const_int(0, false);
+        let one = self.types.i64_type.const_int(1, false);
+        self.builder.build_store(idx_ptr, zero).unwrap();
+
+        let loop_block = self.context.append_basic_block(function, "each_loop");
+        let body_block = self.context.append_basic_block(function, "each_body");
+        let done_block = self.context.append_basic_block(function, "each_done");
+
+        self.builder.build_unconditional_branch(loop_block).unwrap();
+
+        // Loop condition
+        self.builder.position_at_end(loop_block);
+        let idx = self
+            .builder
+            .build_load(self.types.i64_type, idx_ptr, "each_i_val")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?
+            .into_int_value();
+        let cond = self
+            .builder
+            .build_int_compare(IntPredicate::ULT, idx, list_len, "each_cond")
+            .map_err(|e| HaversError::CompileError(format!("Failed to compare: {}", e)))?;
+        self.builder
+            .build_conditional_branch(cond, body_block, done_block)
+            .unwrap();
+
+        // Body: call fn(elem)
+        self.builder.position_at_end(body_block);
+        let elem_ptr = self.get_list_element_ptr(list_data, idx)?;
+        let elem = self
+            .builder
+            .build_load(self.types.value_type, elem_ptr, "each_elem")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?;
+        let func = self
+            .builder
+            .build_load(self.types.value_type, func_alloca, "each_fn")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?;
+        let _ = self.call_function_value(func, &[elem])?;
+
+        let next_idx = self
+            .builder
+            .build_int_add(idx, one, "each_next_i")
+            .map_err(|e| HaversError::CompileError(format!("Failed to add: {}", e)))?;
+        self.builder.build_store(idx_ptr, next_idx).unwrap();
+        self.builder.build_unconditional_branch(loop_block).unwrap();
+
+        // Done
+        self.builder.position_at_end(done_block);
+        Ok(self.make_nil())
     }
 
     /// sieve(list, fn) - filter list by predicate
@@ -20520,25 +23714,64 @@ impl<'ctx> CodeGen<'ctx> {
         // Create blocks for try, catch, and after
         let try_body = self.context.append_basic_block(function, "try_body");
         let catch_body = self.context.append_basic_block(function, "catch_body");
-        let try_after = self.context.append_basic_block(function, "try_after");
+        let after_block = self.context.append_basic_block(function, "try_after");
 
-        // For now, we'll execute the try block directly and skip catch
-        // A proper implementation would use setjmp here
-        self.builder.build_unconditional_branch(try_body).unwrap();
+        // Allocate jmp_buf storage and register it with the runtime.
+        // IMPORTANT: setjmp must occur in the same stack frame that remains active until longjmp.
+        let jmp_size = self
+            .builder
+            .build_call(self.libc.jmp_buf_size, &[], "jmp_buf_size")
+            .map_err(|e| HaversError::CompileError(format!("Failed to call jmp_buf_size: {}", e)))?
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| HaversError::CompileError("jmp_buf_size returned void".to_string()))?
+            .into_int_value();
+        let jmp_buf = self
+            .builder
+            .build_array_alloca(self.context.i8_type(), jmp_size, "jmp_buf")
+            .map_err(|e| HaversError::CompileError(format!("Failed to alloca jmp_buf: {}", e)))?;
+        if let Some(inst) = jmp_buf.as_instruction_value() {
+            let _ = inst.set_alignment(16);
+        }
+        self.builder
+            .build_call(self.libc.try_push, &[jmp_buf.into()], "")
+            .map_err(|e| HaversError::CompileError(format!("Failed to call try_push: {}", e)))?;
 
-        // Compile try block
+        // setjmp returns 0 initially, and nonzero when resuming from a hurl
+        let status = self
+            .builder
+            .build_call(self.libc.setjmp, &[jmp_buf.into()], "try_status")
+            .map_err(|e| HaversError::CompileError(format!("Failed to call setjmp: {}", e)))?
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| HaversError::CompileError("setjmp returned void".to_string()))?
+            .into_int_value();
+        let zero = self.types.i32_type.const_int(0, false);
+        let is_thrown = self
+            .builder
+            .build_int_compare(IntPredicate::NE, status, zero, "try_is_thrown")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_thrown, catch_body, try_body)
+            .unwrap();
+
+        // ===== Try path =====
         self.builder.position_at_end(try_body);
-
-        // Compile the try block statements
         if let Stmt::Block { statements, .. } = try_block {
             for stmt in statements {
                 self.compile_stmt(stmt)?;
+                if self
+                    .builder
+                    .get_insert_block()
+                    .and_then(|b| b.get_terminator())
+                    .is_some()
+                {
+                    break;
+                }
             }
         } else {
             self.compile_stmt(try_block)?;
         }
-
-        // If we get here (no error), skip catch and go to after
         if self
             .builder
             .get_insert_block()
@@ -20546,32 +23779,58 @@ impl<'ctx> CodeGen<'ctx> {
             .get_terminator()
             .is_none()
         {
-            self.builder.build_unconditional_branch(try_after).unwrap();
+            self.builder
+                .build_call(self.libc.try_pop, &[], "")
+                .map_err(|e| HaversError::CompileError(format!("Failed to call try_pop: {}", e)))?;
+            self.builder.build_unconditional_branch(after_block).unwrap();
         }
 
-        // Compile catch block (will be unreachable for now, but we need valid IR)
+        // ===== Catch path =====
         self.builder.position_at_end(catch_body);
+        // Pop try context for the handler we just caught.
+        self.builder
+            .build_call(self.libc.try_pop, &[], "")
+            .map_err(|e| HaversError::CompileError(format!("Failed to call try_pop: {}", e)))?;
 
-        // Create error variable with a placeholder value
+        // Bind error variable (shadowing within catch).
+        let saved_error_binding = self.variables.get(error_name).copied();
         let error_alloca = self.create_entry_block_alloca(error_name);
-        let error_str_ptr = self
+        let err_val = self
             .builder
-            .build_global_string_ptr("No error", "err_msg")
-            .unwrap();
-        let error_msg = self.make_string(error_str_ptr.as_pointer_value())?;
-        self.builder.build_store(error_alloca, error_msg).unwrap();
-        self.variables.insert(error_name.to_string(), error_alloca);
+            .build_call(self.libc.get_last_error, &[], "last_error")
+            .map_err(|e| {
+                HaversError::CompileError(format!("Failed to call get_last_error: {}", e))
+            })?
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| HaversError::CompileError("get_last_error returned void".to_string()))?;
+        self.builder.build_store(error_alloca, err_val).unwrap();
+        self.variables
+            .insert(error_name.to_string(), error_alloca);
 
-        // Compile catch block statements
         if let Stmt::Block { statements, .. } = catch_block {
             for stmt in statements {
                 self.compile_stmt(stmt)?;
+                if self
+                    .builder
+                    .get_insert_block()
+                    .and_then(|b| b.get_terminator())
+                    .is_some()
+                {
+                    break;
+                }
             }
         } else {
             self.compile_stmt(catch_block)?;
         }
 
-        // Jump to after
+        // Restore previous binding
+        if let Some(old) = saved_error_binding {
+            self.variables.insert(error_name.to_string(), old);
+        } else {
+            self.variables.remove(error_name);
+        }
+
         if self
             .builder
             .get_insert_block()
@@ -20579,11 +23838,11 @@ impl<'ctx> CodeGen<'ctx> {
             .get_terminator()
             .is_none()
         {
-            self.builder.build_unconditional_branch(try_after).unwrap();
+            self.builder.build_unconditional_branch(after_block).unwrap();
         }
 
         // Continue after try/catch
-        self.builder.position_at_end(try_after);
+        self.builder.position_at_end(after_block);
 
         Ok(())
     }
@@ -21092,14 +24351,150 @@ impl<'ctx> CodeGen<'ctx> {
         self.make_list(new_list)
     }
 
+    /// Compile a struct declaration by emitting a constructor function that returns a dict.
+    ///
+    /// Example:
+    ///   thing Point { x y }
+    /// becomes a callable `Point(a, b)` that returns `{"x": a, "y": b}`.
+    fn compile_struct_decl(&mut self, name: &str, fields: &[String]) -> Result<(), HaversError> {
+        // Skip if already compiled
+        if let Some(&existing) = self.functions.get(name) {
+            if existing.get_first_basic_block().is_some() {
+                return Ok(());
+            }
+        } else {
+            self.declare_function(name, fields.len())?;
+        }
+
+        let function = *self
+            .functions
+            .get(name)
+            .ok_or_else(|| HaversError::CompileError(format!("Struct ctor not declared: {}", name)))?;
+
+        let entry = self.context.append_basic_block(function, "entry");
+
+        // Save state
+        let saved_function = self.current_function;
+        let saved_block = self.builder.get_insert_block();
+        let saved_variables = std::mem::take(&mut self.variables);
+        let saved_var_types = std::mem::take(&mut self.var_types);
+        let saved_int_shadows = std::mem::take(&mut self.int_shadows);
+        let saved_list_ptr_shadows = std::mem::take(&mut self.list_ptr_shadows);
+        let saved_string_len_shadows = std::mem::take(&mut self.string_len_shadows);
+        let saved_string_cap_shadows = std::mem::take(&mut self.string_cap_shadows);
+        let saved_boxed_vars = std::mem::take(&mut self.boxed_vars);
+        let saved_in_user_function = self.in_user_function;
+
+        self.builder.position_at_end(entry);
+        self.current_function = Some(function);
+        self.in_user_function = true;
+
+        // Clear scope state for the constructor
+        self.variables.clear();
+        self.var_types.clear();
+        self.int_shadows.clear();
+        self.list_ptr_shadows.clear();
+        self.string_len_shadows.clear();
+        self.string_cap_shadows.clear();
+        self.boxed_vars.clear();
+
+        // Start with an empty dict
+        let mut dict_val = self
+            .builder
+            .build_call(self.libc.empty_creel, &[], "struct_empty_dict")
+            .map_err(|e| HaversError::CompileError(format!("Failed to call empty_creel: {}", e)))?
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| HaversError::CompileError("empty_creel returned void".to_string()))?;
+
+        // Populate fields
+        for (i, field) in fields.iter().enumerate() {
+            let key = self.compile_string_literal(field)?;
+            let val = function
+                .get_nth_param(i as u32)
+                .ok_or_else(|| HaversError::CompileError("Missing struct ctor param".to_string()))?;
+            dict_val = self
+                .builder
+                .build_call(
+                    self.libc.dict_set,
+                    &[dict_val.into(), key.into(), val.into()],
+                    "struct_set_field",
+                )
+                .map_err(|e| HaversError::CompileError(format!("Failed to call dict_set: {}", e)))?
+                .try_as_basic_value()
+                .left()
+                .ok_or_else(|| HaversError::CompileError("dict_set returned void".to_string()))?;
+        }
+
+        self.builder.build_return(Some(&dict_val)).unwrap();
+
+        // Restore state
+        self.current_function = saved_function;
+        self.variables = saved_variables;
+        self.var_types = saved_var_types;
+        self.int_shadows = saved_int_shadows;
+        self.list_ptr_shadows = saved_list_ptr_shadows;
+        self.string_len_shadows = saved_string_len_shadows;
+        self.string_cap_shadows = saved_string_cap_shadows;
+        self.boxed_vars = saved_boxed_vars;
+        self.in_user_function = saved_in_user_function;
+        if let Some(block) = saved_block {
+            self.builder.position_at_end(block);
+        }
+
+        Ok(())
+    }
+
     /// Compile property get expression: obj.property
     fn compile_get(
         &mut self,
         object: &Expr,
         property: &str,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let function = self.current_function.unwrap();
         let obj_val = self.compile_expr(object)?;
-        self.compile_instance_get_field(obj_val, property)
+        let tag = self.extract_tag(obj_val)?;
+
+        let dict_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Dict.as_u8() as u64, false);
+        let is_dict = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, dict_tag, "get_is_dict")
+            .unwrap();
+
+        let dict_block = self.context.append_basic_block(function, "get_dict");
+        let inst_block = self.context.append_basic_block(function, "get_inst");
+        let merge_block = self.context.append_basic_block(function, "get_merge");
+
+        self.builder
+            .build_conditional_branch(is_dict, dict_block, inst_block)
+            .unwrap();
+
+        // Dict: dict_get(obj, "property")
+        self.builder.position_at_end(dict_block);
+        let key = self.compile_string_literal(property)?;
+        let dict_res = self
+            .builder
+            .build_call(self.libc.dict_get, &[obj_val.into(), key.into()], "dict_get")
+            .map_err(|e| HaversError::CompileError(format!("Failed to call dict_get: {}", e)))?
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| HaversError::CompileError("dict_get returned void".to_string()))?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let dict_end = self.builder.get_insert_block().unwrap();
+
+        // Instance: instance_get_field(obj, property)
+        self.builder.position_at_end(inst_block);
+        let inst_res = self.compile_instance_get_field(obj_val, property)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let inst_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(merge_block);
+        let phi = self.builder.build_phi(self.types.value_type, "get_phi").unwrap();
+        phi.add_incoming(&[(&dict_res, dict_end), (&inst_res, inst_end)]);
+        Ok(phi.as_basic_value())
     }
 
     /// Compile property set expression: obj.property = value
@@ -21109,9 +24504,64 @@ impl<'ctx> CodeGen<'ctx> {
         property: &str,
         value: &Expr,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let function = self.current_function.unwrap();
         let obj_val = self.compile_expr(object)?;
         let val = self.compile_expr(value)?;
-        self.compile_instance_set_field(obj_val, property, val)
+        let tag = self.extract_tag(obj_val)?;
+
+        let dict_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Dict.as_u8() as u64, false);
+        let is_dict = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, dict_tag, "set_is_dict")
+            .unwrap();
+
+        let dict_block = self.context.append_basic_block(function, "set_dict");
+        let inst_block = self.context.append_basic_block(function, "set_inst");
+        let merge_block = self.context.append_basic_block(function, "set_merge");
+
+        self.builder
+            .build_conditional_branch(is_dict, dict_block, inst_block)
+            .unwrap();
+
+        // Dict: dict_set(obj, "property", value) and update variable if needed.
+        self.builder.position_at_end(dict_block);
+        let key = self.compile_string_literal(property)?;
+        let dict_res = self
+            .builder
+            .build_call(
+                self.libc.dict_set,
+                &[obj_val.into(), key.into(), val.into()],
+                "dict_set",
+            )
+            .map_err(|e| HaversError::CompileError(format!("Failed to call dict_set: {}", e)))?
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| HaversError::CompileError("dict_set returned void".to_string()))?;
+
+        if let Expr::Variable { name, .. } = object {
+            if let Some(&ptr) = self.variables.get(name) {
+                self.builder.build_store(ptr, dict_res).unwrap();
+            } else if let Some(&ptr) = self.globals.get(name) {
+                self.builder.build_store(ptr, dict_res).unwrap();
+            }
+        }
+
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let dict_end = self.builder.get_insert_block().unwrap();
+
+        // Instance: instance_set_field(obj, property, value)
+        self.builder.position_at_end(inst_block);
+        let inst_res = self.compile_instance_set_field(obj_val, property, val)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let inst_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(merge_block);
+        let phi = self.builder.build_phi(self.types.value_type, "set_phi").unwrap();
+        phi.add_incoming(&[(&dict_res, dict_end), (&inst_res, inst_end)]);
+        Ok(phi.as_basic_value())
     }
 
     /// Get a field from an instance
@@ -22217,36 +25667,231 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(result)
     }
 
-    /// jammy(min, max) - random number between min and max (inclusive)
+    /// jammy(min, max) - random number between bounds
+    /// - int/bool bounds: returns an int in [min, max]
+    /// - float bounds: returns a float in [min, max) (upper exclusive)
     fn inline_jammy(
         &mut self,
         min_val: BasicValueEnum<'ctx>,
         max_val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        // Extract integer data from both arguments
+        let min_tag = self.extract_tag(min_val)?;
+        let max_tag = self.extract_tag(max_val)?;
         let min_data = self.extract_data(min_val)?;
         let max_data = self.extract_data(max_val)?;
 
-        // Get or declare the __mdh_random function
+        let function = self
+            .current_function
+            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+
+        let numeric_block = self.context.append_basic_block(function, "jammy_numeric");
+        let int_block = self.context.append_basic_block(function, "jammy_int");
+        let float_block = self.context.append_basic_block(function, "jammy_float");
+        let error_block = self.context.append_basic_block(function, "jammy_error");
+        let merge_block = self.context.append_basic_block(function, "jammy_merge");
+
+        let bool_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Bool.as_u8() as u64, false);
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
+
+        let min_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, min_tag, bool_tag, "min_is_bool")
+            .unwrap();
+        let min_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, min_tag, int_tag, "min_is_int")
+            .unwrap();
+        let min_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, min_tag, float_tag, "min_is_float")
+            .unwrap();
+        let min_is_intlike = self
+            .builder
+            .build_or(min_is_int, min_is_bool, "min_is_intlike")
+            .unwrap();
+        let min_is_numeric = self
+            .builder
+            .build_or(min_is_float, min_is_intlike, "min_is_numeric")
+            .unwrap();
+
+        let max_is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, max_tag, bool_tag, "max_is_bool")
+            .unwrap();
+        let max_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, max_tag, int_tag, "max_is_int")
+            .unwrap();
+        let max_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, max_tag, float_tag, "max_is_float")
+            .unwrap();
+        let max_is_intlike = self
+            .builder
+            .build_or(max_is_int, max_is_bool, "max_is_intlike")
+            .unwrap();
+        let max_is_numeric = self
+            .builder
+            .build_or(max_is_float, max_is_intlike, "max_is_numeric")
+            .unwrap();
+
+        let both_numeric = self
+            .builder
+            .build_and(min_is_numeric, max_is_numeric, "both_numeric")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(both_numeric, numeric_block, error_block)
+            .unwrap();
+
+        // Numeric: choose float path if any float input, else int path.
+        self.builder.position_at_end(numeric_block);
+        let any_float = self
+            .builder
+            .build_or(min_is_float, max_is_float, "any_float")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(any_float, float_block, int_block)
+            .unwrap();
+
+        // Int path: use __mdh_random(min, max) with integer bounds
+        self.builder.position_at_end(int_block);
         let random_fn = self
             .module
             .get_function("__mdh_random")
             .ok_or_else(|| HaversError::CompileError("__mdh_random not found".to_string()))?;
-
-        // Call __mdh_random(min, max)
-        let result = self
+        let int_result = self
             .builder
-            .build_call(
-                random_fn,
-                &[min_data.into(), max_data.into()],
-                "random_result",
-            )
+            .build_call(random_fn, &[min_data.into(), max_data.into()], "random_result")
             .map_err(|e| HaversError::CompileError(format!("Failed to call __mdh_random: {}", e)))?
             .try_as_basic_value()
             .left()
             .ok_or_else(|| HaversError::CompileError("__mdh_random returned void".to_string()))?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let int_end = self.builder.get_insert_block().unwrap();
 
-        Ok(result)
+        // Float path: generate random float in [min, max)
+        self.builder.position_at_end(float_block);
+        let f64_type = self.types.f64_type;
+        let min_f = self
+            .builder
+            .build_select(
+                min_is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(min_data, f64_type, "min_as_float")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(min_data, f64_type, "min_int_to_float")
+                        .unwrap(),
+                ),
+                "min_f",
+            )
+            .unwrap()
+            .into_float_value();
+        let max_f = self
+            .builder
+            .build_select(
+                max_is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(max_data, f64_type, "max_as_float")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(max_data, f64_type, "max_int_to_float")
+                        .unwrap(),
+                ),
+                "max_f",
+            )
+            .unwrap()
+            .into_float_value();
+
+        // Ensure lo <= hi
+        let lo_le_hi = self
+            .builder
+            .build_float_compare(inkwell::FloatPredicate::OLE, min_f, max_f, "lo_le_hi")
+            .unwrap();
+        let lo = self
+            .builder
+            .build_select(lo_le_hi, min_f, max_f, "lo")
+            .unwrap()
+            .into_float_value();
+        let hi = self
+            .builder
+            .build_select(lo_le_hi, max_f, min_f, "hi")
+            .unwrap()
+            .into_float_value();
+
+        // frac in [0,1): random int in [0, 999_999] divided by 1_000_000
+        let zero_i64 = self.types.i64_type.const_int(0, false);
+        let max_i64 = self.types.i64_type.const_int(999_999, false);
+        let n_val = self
+            .builder
+            .build_call(random_fn, &[zero_i64.into(), max_i64.into()], "rand_unit_int")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap();
+        let n = self.extract_data(n_val)?;
+        let n_f = self
+            .builder
+            .build_signed_int_to_float(n, f64_type, "rand_unit_f")
+            .map_err(|e| HaversError::CompileError(format!("Failed to int->float: {}", e)))?;
+        let denom = f64_type.const_float(1_000_000.0);
+        let frac = self
+            .builder
+            .build_float_div(n_f, denom, "rand_unit")
+            .map_err(|e| HaversError::CompileError(format!("Failed to div: {}", e)))?;
+
+        let range = self
+            .builder
+            .build_float_sub(hi, lo, "range")
+            .map_err(|e| HaversError::CompileError(format!("Failed to sub: {}", e)))?;
+        let scaled = self
+            .builder
+            .build_float_mul(frac, range, "scaled")
+            .map_err(|e| HaversError::CompileError(format!("Failed to mul: {}", e)))?;
+        let out = self
+            .builder
+            .build_float_add(lo, scaled, "out")
+            .map_err(|e| HaversError::CompileError(format!("Failed to add: {}", e)))?;
+        let float_result = self.make_float(out)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let float_end = self.builder.get_insert_block().unwrap();
+
+        // Error: nil
+        self.builder.position_at_end(error_block);
+        let error_result = self.make_nil();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let error_end = self.builder.get_insert_block().unwrap();
+
+        // Merge
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "jammy_result")
+            .unwrap();
+        phi.add_incoming(&[
+            (&int_result, int_end),
+            (&float_result, float_end),
+            (&error_result, error_end),
+        ]);
+        Ok(phi.as_basic_value())
     }
 
     /// randfloat() - random float in [0, 1)
@@ -22582,43 +26227,18 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_int_value();
 
-        // Allocate list: 16 bytes header + len * 16 bytes for elements
-        let sixteen = self.types.i64_type.const_int(16, false);
-        let elem_size = self
+        // Allocate result list using runtime allocator (correct MdhList layout)
+        let cap_i32 = self
             .builder
-            .build_int_mul(len, sixteen, "elem_size")
+            .build_int_truncate(len, self.types.i32_type, "chars_cap_i32")
             .unwrap();
-        let total_size = self
+        let result_list = self
             .builder
-            .build_int_add(sixteen, elem_size, "total_size")
-            .unwrap();
-        let list_ptr = self
-            .builder
-            .build_call(self.libc.malloc, &[total_size.into()], "list_ptr")
+            .build_call(self.libc.make_list, &[cap_i32.into()], "chars_list")
             .unwrap()
             .try_as_basic_value()
             .left()
-            .unwrap()
-            .into_pointer_value();
-
-        // Store length and capacity
-        let i64_ptr = self.types.i64_type.ptr_type(AddressSpace::default());
-        let len_ptr = self
-            .builder
-            .build_pointer_cast(list_ptr, i64_ptr, "len_ptr")
-            .unwrap();
-        self.builder.build_store(len_ptr, len).unwrap();
-        let eight = self.types.i64_type.const_int(8, false);
-        let cap_ptr = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), list_ptr, &[eight], "cap_ptr")
-                .unwrap()
-        };
-        let cap_ptr = self
-            .builder
-            .build_pointer_cast(cap_ptr, i64_ptr, "cap_ptr_i64")
-            .unwrap();
-        self.builder.build_store(cap_ptr, len).unwrap();
+            .ok_or_else(|| HaversError::CompileError("make_list returned void".to_string()))?;
 
         // Loop to create single-char strings
         let function = self.current_function.unwrap();
@@ -22683,46 +26303,15 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(null_ptr, self.context.i8_type().const_int(0, false))
             .unwrap();
 
-        // Create MdhValue for the string
-        let str_int = self
-            .builder
-            .build_ptr_to_int(new_str, self.types.i64_type, "str_int")
-            .unwrap();
-        let string_tag = self.types.i8_type.const_int(4, false); // String tag
-        let undef = self.types.value_type.get_undef();
-        let v1 = self
-            .builder
-            .build_insert_value(undef, string_tag, 0, "v1")
-            .unwrap();
-        let v2 = self
-            .builder
-            .build_insert_value(v1, str_int, 1, "v2")
-            .unwrap();
-        let mdh_val = v2.into_struct_value();
-
-        // Store in list at position i
-        let elem_offset = self
-            .builder
-            .build_int_mul(i, sixteen, "elem_offset")
-            .unwrap();
-        let base_offset = self
-            .builder
-            .build_int_add(sixteen, elem_offset, "base_offset")
-            .unwrap();
-        let elem_ptr = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), list_ptr, &[base_offset], "elem_ptr")
-                .unwrap()
-        };
-        let elem_ptr = self
-            .builder
-            .build_pointer_cast(
-                elem_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "elem_ptr_val",
+        // Push into result list
+        let mdh_val = self.make_string(new_str)?;
+        self.builder
+            .build_call(
+                self.libc.list_push,
+                &[result_list.into(), mdh_val.into()],
+                "",
             )
             .unwrap();
-        self.builder.build_store(elem_ptr, mdh_val).unwrap();
 
         // Increment counter
         let next_i = self
@@ -22734,7 +26323,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // End
         self.builder.position_at_end(end_block);
-        self.make_list(list_ptr)
+        Ok(result_list)
     }
 
     /// repeat(str, n) - Repeat string n times
@@ -22969,6 +26558,279 @@ impl<'ctx> CodeGen<'ctx> {
             (&string_result, string_case_end),
         ]);
 
+        Ok(phi.as_basic_value())
+    }
+
+    /// find(list, predicate) - return first matching element, or nil if none
+    fn inline_find_predicate(
+        &mut self,
+        container_val: BasicValueEnum<'ctx>,
+        func_val: BasicValueEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let function = self
+            .current_function
+            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+
+        let container_tag = self.extract_tag(container_val)?;
+        let list_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::List.as_u8() as u64, false);
+        let is_list = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, container_tag, list_tag, "is_list")
+            .unwrap();
+
+        let list_block = self.context.append_basic_block(function, "find_pred_list");
+        let other_block = self.context.append_basic_block(function, "find_pred_other");
+        let merge_block = self.context.append_basic_block(function, "find_pred_merge");
+
+        self.builder
+            .build_conditional_branch(is_list, list_block, other_block)
+            .unwrap();
+
+        // List case
+        self.builder.position_at_end(list_block);
+        let list_data = self.extract_data(container_val)?;
+        let list_len = self.get_list_length(list_data)?;
+
+        let result_ptr = self
+            .builder
+            .build_alloca(self.types.value_type, "find_result")
+            .map_err(|e| HaversError::CompileError(format!("Failed to alloca: {}", e)))?;
+        self.builder.build_store(result_ptr, self.make_nil()).unwrap();
+
+        let func_alloca = self
+            .builder
+            .build_alloca(self.types.value_type, "find_func")
+            .map_err(|e| HaversError::CompileError(format!("Failed to alloca: {}", e)))?;
+        self.builder.build_store(func_alloca, func_val).unwrap();
+
+        let idx_ptr = self
+            .builder
+            .build_alloca(self.types.i64_type, "find_i")
+            .map_err(|e| HaversError::CompileError(format!("Failed to alloca: {}", e)))?;
+        let zero = self.types.i64_type.const_int(0, false);
+        let one = self.types.i64_type.const_int(1, false);
+        self.builder.build_store(idx_ptr, zero).unwrap();
+
+        let loop_block = self.context.append_basic_block(function, "find_loop");
+        let body_block = self.context.append_basic_block(function, "find_body");
+        let found_block = self.context.append_basic_block(function, "find_found");
+        let next_block = self.context.append_basic_block(function, "find_next");
+        let done_block = self.context.append_basic_block(function, "find_done");
+
+        self.builder.build_unconditional_branch(loop_block).unwrap();
+
+        // Loop
+        self.builder.position_at_end(loop_block);
+        let idx = self
+            .builder
+            .build_load(self.types.i64_type, idx_ptr, "find_i_val")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?
+            .into_int_value();
+        let at_end = self
+            .builder
+            .build_int_compare(IntPredicate::UGE, idx, list_len, "find_at_end")
+            .map_err(|e| HaversError::CompileError(format!("Failed to compare: {}", e)))?;
+        self.builder
+            .build_conditional_branch(at_end, done_block, body_block)
+            .unwrap();
+
+        // Body: call predicate
+        self.builder.position_at_end(body_block);
+        let elem_ptr = self.get_list_element_ptr(list_data, idx)?;
+        let elem = self
+            .builder
+            .build_load(self.types.value_type, elem_ptr, "find_elem")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?;
+        let func = self
+            .builder
+            .build_load(self.types.value_type, func_alloca, "find_fn")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?;
+        let pred = self.call_function_value(func, &[elem])?;
+        let is_truthy = self.is_truthy(pred)?;
+        self.builder
+            .build_conditional_branch(is_truthy, found_block, next_block)
+            .unwrap();
+
+        // Found: store result and finish
+        self.builder.position_at_end(found_block);
+        self.builder.build_store(result_ptr, elem).unwrap();
+        self.builder.build_unconditional_branch(done_block).unwrap();
+
+        // Next: increment and continue
+        self.builder.position_at_end(next_block);
+        let next_idx = self
+            .builder
+            .build_int_add(idx, one, "find_next_i")
+            .map_err(|e| HaversError::CompileError(format!("Failed to add: {}", e)))?;
+        self.builder.build_store(idx_ptr, next_idx).unwrap();
+        self.builder.build_unconditional_branch(loop_block).unwrap();
+
+        // Done: return result
+        self.builder.position_at_end(done_block);
+        let list_result = self
+            .builder
+            .build_load(self.types.value_type, result_ptr, "find_final")
+            .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let list_end = self.builder.get_insert_block().unwrap();
+
+        // Other types: nil
+        self.builder.position_at_end(other_block);
+        let other_result = self.make_nil();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let other_end = self.builder.get_insert_block().unwrap();
+
+        // Merge
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "find_pred_result")
+            .unwrap();
+        phi.add_incoming(&[(&list_result, list_end), (&other_result, other_end)]);
+        Ok(phi.as_basic_value())
+    }
+
+    /// substr_between(str, start, end) - substring between two markers, or nil if not found
+    fn inline_substr_between(
+        &mut self,
+        str_val: BasicValueEnum<'ctx>,
+        start_val: BasicValueEnum<'ctx>,
+        end_val: BasicValueEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let function = self
+            .current_function
+            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+
+        let str_data = self.extract_data(str_val)?;
+        let start_data = self.extract_data(start_val)?;
+        let end_data = self.extract_data(end_val)?;
+
+        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let str_ptr = self
+            .builder
+            .build_int_to_ptr(str_data, i8_ptr_type, "sb_str_ptr")
+            .unwrap();
+        let start_ptr = self
+            .builder
+            .build_int_to_ptr(start_data, i8_ptr_type, "sb_start_ptr")
+            .unwrap();
+        let end_ptr = self
+            .builder
+            .build_int_to_ptr(end_data, i8_ptr_type, "sb_end_ptr")
+            .unwrap();
+
+        let start_len = self
+            .builder
+            .build_call(self.libc.strlen, &[start_ptr.into()], "sb_start_len")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_int_value();
+
+        let found_start = self
+            .builder
+            .build_call(self.libc.strstr, &[str_ptr.into(), start_ptr.into()], "sb_found_start")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+
+        let null_ptr = i8_ptr_type.const_null();
+        let start_is_null = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, found_start, null_ptr, "sb_start_is_null")
+            .unwrap();
+
+        let check_end_block = self.context.append_basic_block(function, "sb_check_end");
+        let not_found_block = self.context.append_basic_block(function, "sb_not_found");
+        let found_block = self.context.append_basic_block(function, "sb_found");
+        let merge_block = self.context.append_basic_block(function, "sb_merge");
+
+        self.builder
+            .build_conditional_branch(start_is_null, not_found_block, check_end_block)
+            .unwrap();
+
+        // Start found: search for end marker after start
+        self.builder.position_at_end(check_end_block);
+        let after_start = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), found_start, &[start_len], "sb_after_start")
+                .unwrap()
+        };
+        let found_end = self
+            .builder
+            .build_call(self.libc.strstr, &[after_start.into(), end_ptr.into()], "sb_found_end")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+        let end_is_null = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, found_end, null_ptr, "sb_end_is_null")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(end_is_null, not_found_block, found_block)
+            .unwrap();
+
+        // Not found: return nil
+        self.builder.position_at_end(not_found_block);
+        let nil_res = self.make_nil();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let nil_end = self.builder.get_insert_block().unwrap();
+
+        // Found both: copy substring between markers
+        self.builder.position_at_end(found_block);
+        let after_i = self
+            .builder
+            .build_ptr_to_int(after_start, self.types.i64_type, "sb_after_i")
+            .unwrap();
+        let end_i = self
+            .builder
+            .build_ptr_to_int(found_end, self.types.i64_type, "sb_end_i")
+            .unwrap();
+        let len = self.builder.build_int_sub(end_i, after_i, "sb_len").unwrap();
+        let one = self.types.i64_type.const_int(1, false);
+        let buf_size = self.builder.build_int_add(len, one, "sb_buf_size").unwrap();
+
+        let buf = self
+            .builder
+            .build_call(self.libc.malloc, &[buf_size.into()], "sb_buf")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_pointer_value();
+
+        self.builder
+            .build_call(self.libc.memcpy, &[buf.into(), after_start.into(), len.into()], "sb_copy")
+            .unwrap();
+
+        let null_pos = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), buf, &[len], "sb_null_pos")
+                .unwrap()
+        };
+        self.builder
+            .build_store(null_pos, self.context.i8_type().const_int(0, false))
+            .unwrap();
+
+        let str_res = self.make_string(buf)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let str_end = self.builder.get_insert_block().unwrap();
+
+        // Merge
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "sb_result")
+            .unwrap();
+        phi.add_incoming(&[(&nil_res, nil_end), (&str_res, str_end)]);
         Ok(phi.as_basic_value())
     }
 
@@ -23391,17 +27253,76 @@ impl<'ctx> CodeGen<'ctx> {
         val: BasicValueEnum<'ctx>,
         func_name: &str,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let tag = self.extract_tag(val)?;
         let data = self.extract_data(val)?;
 
-        // Convert to float (bitcast assumes float format in data field)
+        // Convert numeric inputs to float:
+        // - Float: bitcast data bits to f64
+        // - Int/Bool: sitofp data to f64
+        let function = self.current_function.unwrap();
+        let numeric_block = self.context.append_basic_block(function, "math_numeric");
+        let error_block = self.context.append_basic_block(function, "math_error");
+        let merge_block = self.context.append_basic_block(function, "math_merge");
+
+        let bool_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Bool.as_u8() as u64, false);
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
+
+        let is_bool = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, bool_tag, "is_bool")
+            .unwrap();
+        let is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, int_tag, "is_int")
+            .unwrap();
+        let is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, float_tag, "is_float")
+            .unwrap();
+        let is_intlike = self.builder.build_or(is_int, is_bool, "is_intlike").unwrap();
+        let is_numeric = self
+            .builder
+            .build_or(is_float, is_intlike, "is_numeric")
+            .unwrap();
+
+        self.builder
+            .build_conditional_branch(is_numeric, numeric_block, error_block)
+            .unwrap();
+
+        // Numeric path
+        self.builder.position_at_end(numeric_block);
+        let f64_type = self.context.f64_type();
         let float_val = self
             .builder
-            .build_bitcast(data, self.context.f64_type(), "float_val")
-            .map_err(|e| HaversError::CompileError(format!("Failed to bitcast: {}", e)))?
+            .build_select(
+                is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(data, f64_type, "as_float")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(data, f64_type, "as_int_float")
+                        .unwrap(),
+                ),
+                "math_arg",
+            )
+            .unwrap()
             .into_float_value();
 
         // Get or declare the math function
-        let f64_type = self.context.f64_type();
         let math_fn = self.module.get_function(func_name).unwrap_or_else(|| {
             let fn_type = f64_type.fn_type(&[f64_type.into()], false);
             self.module
@@ -23422,7 +27343,24 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_float_value();
 
-        self.make_float(result)
+        let numeric_result = self.make_float(result)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let numeric_end = self.builder.get_insert_block().unwrap();
+
+        // Error path - return nil
+        self.builder.position_at_end(error_block);
+        let error_result = self.make_nil();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let error_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "math_result")
+            .unwrap();
+        phi.add_incoming(&[(&numeric_result, numeric_end), (&error_result, error_end)]);
+
+        Ok(phi.as_basic_value())
     }
 
     /// pow(base, exp) - power function
@@ -23669,111 +27607,107 @@ impl<'ctx> CodeGen<'ctx> {
         start_val: BasicValueEnum<'ctx>,
         end_val: Option<BasicValueEnum<'ctx>>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let tag = self.extract_tag(list_val)?;
+        let function = self.current_function.unwrap();
+
+        let check_string_block = self.context.append_basic_block(function, "slice_check_string");
+        let list_block = self.context.append_basic_block(function, "slice_list");
+        let string_block = self.context.append_basic_block(function, "slice_string");
+        let default_block = self.context.append_basic_block(function, "slice_default");
+        let merge_block = self.context.append_basic_block(function, "slice_merge");
+
+        // list?
+        let list_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::List.as_u8() as u64, false);
+        let is_list = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, list_tag, "slice_is_list")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_list, list_block, check_string_block)
+            .unwrap();
+
+        // string?
+        self.builder.position_at_end(check_string_block);
+        let string_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::String.as_u8() as u64, false);
+        let is_string = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, string_tag, "slice_is_string")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_string, string_block, default_block)
+            .unwrap();
+
+        // ===== list slice =====
+        self.builder.position_at_end(list_block);
+        let start_i64 = self.extract_data(start_val)?;
         let list_data = self.extract_data(list_val)?;
-        let start_data = self.extract_data(start_val)?;
-
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr = self.types.i64_type.ptr_type(AddressSpace::default());
-        let list_ptr = self
-            .builder
-            .build_int_to_ptr(list_data, i8_ptr, "list_ptr")
-            .unwrap();
-
-        // Get original list length
-        let len_ptr = self
-            .builder
-            .build_pointer_cast(list_ptr, i64_ptr, "len_ptr")
-            .unwrap();
-        let orig_len = self
-            .builder
-            .build_load(self.types.i64_type, len_ptr, "orig_len")
-            .unwrap()
-            .into_int_value();
-
-        // Get end index (default to orig_len if not provided)
-        let end_data = if let Some(end) = end_val {
+        let end_i64 = if let Some(end) = end_val {
             self.extract_data(end)?
         } else {
-            orig_len
+            self.get_list_length(list_data)?
         };
 
-        // Calculate new length = end - start
-        let new_len = self
+        let list_sliced = self
             .builder
-            .build_int_sub(end_data, start_data, "new_len")
-            .unwrap();
-
-        // Allocate new list
-        let header_size = self.types.i64_type.const_int(16, false);
-        let elem_size = self.types.i64_type.const_int(16, false);
-        let elems_size = self
-            .builder
-            .build_int_mul(new_len, elem_size, "elems_size")
-            .unwrap();
-        let total_size = self
-            .builder
-            .build_int_add(header_size, elems_size, "total_size")
-            .unwrap();
-
-        let new_ptr = self
-            .builder
-            .build_call(self.libc.malloc, &[total_size.into()], "new_list")
-            .unwrap()
+            .build_call(
+                self.libc.list_slice,
+                &[list_val.into(), start_i64.into(), end_i64.into()],
+                "list_slice",
+            )
+            .map_err(|e| HaversError::CompileError(format!("Failed to call list_slice: {}", e)))?
             .try_as_basic_value()
             .left()
-            .unwrap()
-            .into_pointer_value();
+            .ok_or_else(|| HaversError::CompileError("list_slice returned void".to_string()))?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let list_end = self.builder.get_insert_block().unwrap();
 
-        // Store new length and capacity
-        let new_len_ptr = self
-            .builder
-            .build_pointer_cast(new_ptr, i64_ptr, "new_len_ptr")
-            .unwrap();
-        self.builder.build_store(new_len_ptr, new_len).unwrap();
-        let eight = self.types.i64_type.const_int(8, false);
-        let new_cap_ptr = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), new_ptr, &[eight], "new_cap_ptr")
+        // ===== string slice =====
+        self.builder.position_at_end(string_block);
+        let end_mdh = if let Some(end) = end_val {
+            end
+        } else {
+            let str_data = self.extract_data(list_val)?;
+            let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+            let str_ptr = self
+                .builder
+                .build_int_to_ptr(str_data, i8_ptr, "slice_str_ptr")
+                .unwrap();
+            let str_len = self
+                .builder
+                .build_call(self.libc.strlen, &[str_ptr.into()], "slice_str_len")
                 .unwrap()
-        };
-        let new_cap_ptr = self
-            .builder
-            .build_pointer_cast(new_cap_ptr, i64_ptr, "new_cap_ptr_i64")
-            .unwrap();
-        self.builder.build_store(new_cap_ptr, new_len).unwrap();
-
-        // Copy elements using memcpy
-        // Source: list_ptr + 16 + start * 16
-        let sixteen = self.types.i64_type.const_int(16, false);
-        let start_offset = self
-            .builder
-            .build_int_mul(start_data, sixteen, "start_offset")
-            .unwrap();
-        let src_offset = self
-            .builder
-            .build_int_add(sixteen, start_offset, "src_offset")
-            .unwrap();
-        let src_ptr = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), list_ptr, &[src_offset], "src_ptr")
+                .try_as_basic_value()
+                .left()
                 .unwrap()
-        };
-        // Dest: new_ptr + 16
-        let dst_ptr = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), new_ptr, &[sixteen], "dst_ptr")
-                .unwrap()
+                .into_int_value();
+            self.make_int(str_len)?
         };
 
-        self.builder
-            .build_call(
-                self.libc.memcpy,
-                &[dst_ptr.into(), src_ptr.into(), elems_size.into()],
-                "",
-            )
-            .unwrap();
+        let string_sliced = self.inline_substring_range(list_val, start_val, end_mdh)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let str_end = self.builder.get_insert_block().unwrap();
 
-        self.make_list(new_ptr)
+        // ===== default =====
+        self.builder.position_at_end(default_block);
+        let default_result = self.make_nil();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let default_end = self.builder.get_insert_block().unwrap();
+
+        // ===== merge =====
+        self.builder.position_at_end(merge_block);
+        let phi = self.builder.build_phi(self.types.value_type, "slice_result").unwrap();
+        phi.add_incoming(&[
+            (&list_sliced, list_end),
+            (&string_sliced, str_end),
+            (&default_result, default_end),
+        ]);
+        Ok(phi.as_basic_value())
     }
 
     /// Compile a block expression: { statements... }
@@ -24481,71 +28415,49 @@ impl<'ctx> CodeGen<'ctx> {
         list_val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let list_data = self.extract_data(list_val)?;
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr = self.types.i64_type.ptr_type(AddressSpace::default());
-        let list_ptr = self
+        let list_len = self.get_list_length(list_data)?;
+
+        let function = self.current_function.unwrap();
+        let empty_block = self.context.append_basic_block(function, "dram_empty");
+        let nonempty_block = self.context.append_basic_block(function, "dram_nonempty");
+        let merge_block = self.context.append_basic_block(function, "dram_merge");
+
+        let zero = self.types.i64_type.const_int(0, false);
+        let is_empty = self
             .builder
-            .build_int_to_ptr(list_data, i8_ptr, "list_ptr")
+            .build_int_compare(IntPredicate::EQ, list_len, zero, "dram_is_empty")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_empty, empty_block, nonempty_block)
             .unwrap();
 
-        // Get list length
-        let len_ptr = self
-            .builder
-            .build_pointer_cast(list_ptr, i64_ptr, "len_ptr")
-            .unwrap();
-        let len = self
-            .builder
-            .build_load(self.types.i64_type, len_ptr, "len")
-            .unwrap()
-            .into_int_value();
+        self.builder.position_at_end(empty_block);
+        let empty_val = self.make_nil();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let empty_end = self.builder.get_insert_block().unwrap();
 
-        // Generate random index using rand() % len
+        self.builder.position_at_end(nonempty_block);
+        let one = self.types.i64_type.const_int(1, false);
+        let max_idx = self
+            .builder
+            .build_int_sub(list_len, one, "dram_max_idx")
+            .unwrap();
         let rand_val = self
             .builder
-            .build_call(self.libc.rand, &[], "rand")
+            .build_call(self.libc.random, &[zero.into(), max_idx.into()], "dram_rand")
             .unwrap()
             .try_as_basic_value()
             .left()
-            .unwrap()
-            .into_int_value();
-        let rand_i64 = self
-            .builder
-            .build_int_z_extend(rand_val, self.types.i64_type, "rand_i64")
             .unwrap();
-        let idx = self
-            .builder
-            .build_int_unsigned_rem(rand_i64, len, "idx")
-            .unwrap();
+        let idx = self.extract_data(rand_val)?;
+        let elem = self.compile_list_index(list_data, idx)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let nonempty_end = self.builder.get_insert_block().unwrap();
 
-        // Get element at index: list_ptr + 16 + idx * 16
-        let sixteen = self.types.i64_type.const_int(16, false);
-        let elem_offset = self
-            .builder
-            .build_int_mul(idx, sixteen, "elem_offset")
-            .unwrap();
-        let base_offset = self
-            .builder
-            .build_int_add(sixteen, elem_offset, "base_offset")
-            .unwrap();
-        let elem_ptr = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), list_ptr, &[base_offset], "elem_ptr")
-                .unwrap()
-        };
-        let elem_ptr = self
-            .builder
-            .build_pointer_cast(
-                elem_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "elem_ptr_val",
-            )
-            .unwrap();
-        let elem = self
-            .builder
-            .build_load(self.types.value_type, elem_ptr, "elem")
-            .unwrap();
-
-        Ok(elem)
+        self.builder.position_at_end(merge_block);
+        let phi = self.builder.build_phi(self.types.value_type, "dram_result").unwrap();
+        phi.add_incoming(&[(&empty_val, empty_end), (&elem, nonempty_end)]);
+        Ok(phi.as_basic_value())
     }
 
     /// birl(list, n) - rotate list by n positions
@@ -24555,90 +28467,95 @@ impl<'ctx> CodeGen<'ctx> {
         n_val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let list_data = self.extract_data(list_val)?;
-        let n_data = self.extract_data(n_val)?;
+        let list_len = self.get_list_length(list_data)?;
+        let n = self.extract_data(n_val)?;
 
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr = self.types.i64_type.ptr_type(AddressSpace::default());
-        let list_ptr = self
+        let function = self.current_function.unwrap();
+        let empty_block = self.context.append_basic_block(function, "birl_empty");
+        let nonempty_block = self.context.append_basic_block(function, "birl_nonempty");
+        let keep_block = self.context.append_basic_block(function, "birl_keep");
+        let rotate_block = self.context.append_basic_block(function, "birl_rotate");
+        let merge_block = self.context.append_basic_block(function, "birl_merge");
+
+        let zero = self.types.i64_type.const_int(0, false);
+        let is_empty = self
             .builder
-            .build_int_to_ptr(list_data, i8_ptr, "list_ptr")
+            .build_int_compare(IntPredicate::EQ, list_len, zero, "birl_is_empty")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_empty, empty_block, nonempty_block)
             .unwrap();
 
-        // Get list length
-        let len_ptr = self
+        // Empty -> return original
+        self.builder.position_at_end(empty_block);
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let empty_end = self.builder.get_insert_block().unwrap();
+
+        // Non-empty: normalize rotation k = n mod len, make it positive.
+        self.builder.position_at_end(nonempty_block);
+        let rem = self
             .builder
-            .build_pointer_cast(list_ptr, i64_ptr, "len_ptr")
+            .build_int_signed_rem(n, list_len, "birl_rem")
             .unwrap();
-        let len = self
+        let is_neg = self
             .builder
-            .build_load(self.types.i64_type, len_ptr, "len")
+            .build_int_compare(IntPredicate::SLT, rem, zero, "birl_rem_neg")
+            .unwrap();
+        let rem_plus_len = self.builder.build_int_add(rem, list_len, "birl_rem_plus").unwrap();
+        let k = self
+            .builder
+            .build_select(is_neg, rem_plus_len, rem, "birl_k")
             .unwrap()
             .into_int_value();
-
-        // Allocate new list with same size
-        let header_size = self.types.i64_type.const_int(16, false);
-        let elem_size = self.types.i64_type.const_int(16, false);
-        let elems_size = self
+        let k_is_zero = self
             .builder
-            .build_int_mul(len, elem_size, "elems_size")
+            .build_int_compare(IntPredicate::EQ, k, zero, "birl_k_zero")
             .unwrap();
-        let total_size = self
-            .builder
-            .build_int_add(header_size, elems_size, "total_size")
+        self.builder
+            .build_conditional_branch(k_is_zero, keep_block, rotate_block)
             .unwrap();
 
-        let new_ptr = self
+        // k == 0 -> return original
+        self.builder.position_at_end(keep_block);
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let keep_end = self.builder.get_insert_block().unwrap();
+
+        // rotate: slice(k..len) ++ slice(0..k)
+        self.builder.position_at_end(rotate_block);
+        let part1 = self
             .builder
-            .build_call(self.libc.malloc, &[total_size.into()], "birl_list")
+            .build_call(
+                self.libc.list_slice,
+                &[list_val.into(), k.into(), list_len.into()],
+                "birl_part1",
+            )
             .unwrap()
             .try_as_basic_value()
             .left()
-            .unwrap()
-            .into_pointer_value();
-
-        // Store length and capacity
-        let new_len_ptr = self
-            .builder
-            .build_pointer_cast(new_ptr, i64_ptr, "new_len_ptr")
             .unwrap();
-        self.builder.build_store(new_len_ptr, len).unwrap();
-        let eight = self.types.i64_type.const_int(8, false);
-        let new_cap_ptr = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), new_ptr, &[eight], "new_cap_ptr")
-                .unwrap()
-        };
-        let new_cap_ptr = self
+        let part2 = self
             .builder
-            .build_pointer_cast(new_cap_ptr, i64_ptr, "new_cap_ptr_i64")
-            .unwrap();
-        self.builder.build_store(new_cap_ptr, len).unwrap();
-
-        // For simplicity, copy the entire list (proper rotation is complex in LLVM)
-        // A proper implementation would use memcpy for two segments
-        let sixteen = self.types.i64_type.const_int(16, false);
-        let src_ptr = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), list_ptr, &[sixteen], "src_ptr")
-                .unwrap()
-        };
-        let dst_ptr = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), new_ptr, &[sixteen], "dst_ptr")
-                .unwrap()
-        };
-        self.builder
             .build_call(
-                self.libc.memcpy,
-                &[dst_ptr.into(), src_ptr.into(), elems_size.into()],
-                "",
+                self.libc.list_slice,
+                &[list_val.into(), zero.into(), k.into()],
+                "birl_part2",
             )
+            .unwrap()
+            .try_as_basic_value()
+            .left()
             .unwrap();
+        let rotated = self.inline_slap(part1, part2)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let rotate_end = self.builder.get_insert_block().unwrap();
 
-        // Note: This is a simplified version that just copies without rotation
-        // A proper implementation would rotate the elements
-
-        self.make_list(new_ptr)
+        self.builder.position_at_end(merge_block);
+        let phi = self.builder.build_phi(self.types.value_type, "birl_result").unwrap();
+        phi.add_incoming(&[
+            (&list_val, empty_end),
+            (&list_val, keep_end),
+            (&rotated, rotate_end),
+        ]);
+        Ok(phi.as_basic_value())
     }
 
     /// ceilidh(list1, list2) - interleave two lists
@@ -24649,135 +28566,295 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let list1_data = self.extract_data(list1_val)?;
         let list2_data = self.extract_data(list2_val)?;
+        let len1 = self.get_list_length(list1_data)?;
+        let len2 = self.get_list_length(list2_data)?;
 
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr = self.types.i64_type.ptr_type(AddressSpace::default());
-        let list1_ptr = self
+        let total_len = self.builder.build_int_add(len1, len2, "ceilidh_total_len").unwrap();
+        let cap_i32 = self
             .builder
-            .build_int_to_ptr(list1_data, i8_ptr, "list1_ptr")
+            .build_int_truncate(total_len, self.types.i32_type, "ceilidh_cap_i32")
             .unwrap();
-        let list2_ptr = self
+        let result_list = self
             .builder
-            .build_int_to_ptr(list2_data, i8_ptr, "list2_ptr")
-            .unwrap();
-
-        // Get lengths
-        let len1_ptr = self
-            .builder
-            .build_pointer_cast(list1_ptr, i64_ptr, "len1_ptr")
-            .unwrap();
-        let len1 = self
-            .builder
-            .build_load(self.types.i64_type, len1_ptr, "len1")
-            .unwrap()
-            .into_int_value();
-        let len2_ptr = self
-            .builder
-            .build_pointer_cast(list2_ptr, i64_ptr, "len2_ptr")
-            .unwrap();
-        let len2 = self
-            .builder
-            .build_load(self.types.i64_type, len2_ptr, "len2")
-            .unwrap()
-            .into_int_value();
-
-        // New length = len1 + len2
-        let new_len = self.builder.build_int_add(len1, len2, "new_len").unwrap();
-
-        // Allocate new list
-        let header_size = self.types.i64_type.const_int(16, false);
-        let elem_size = self.types.i64_type.const_int(16, false);
-        let elems_size = self
-            .builder
-            .build_int_mul(new_len, elem_size, "elems_size")
-            .unwrap();
-        let total_size = self
-            .builder
-            .build_int_add(header_size, elems_size, "total_size")
-            .unwrap();
-
-        let new_ptr = self
-            .builder
-            .build_call(self.libc.malloc, &[total_size.into()], "ceilidh_list")
+            .build_call(self.libc.make_list, &[cap_i32.into()], "ceilidh_result")
             .unwrap()
             .try_as_basic_value()
             .left()
+            .ok_or_else(|| HaversError::CompileError("make_list returned void".to_string()))?;
+
+        let function = self.current_function.unwrap();
+        let idx_ptr = self.create_entry_block_alloca("ceilidh_i");
+        let zero = self.types.i64_type.const_int(0, false);
+        let one = self.types.i64_type.const_int(1, false);
+        self.builder.build_store(idx_ptr, zero).unwrap();
+
+        let loop_block = self.context.append_basic_block(function, "ceilidh_loop");
+        let body_block = self.context.append_basic_block(function, "ceilidh_body");
+        let done_block = self.context.append_basic_block(function, "ceilidh_done");
+
+        self.builder.build_unconditional_branch(loop_block).unwrap();
+        self.builder.position_at_end(loop_block);
+        let i = self
+            .builder
+            .build_load(self.types.i64_type, idx_ptr, "ceilidh_i_val")
             .unwrap()
-            .into_pointer_value();
-
-        // Store length and capacity
-        let new_len_ptr = self
+            .into_int_value();
+        let has1 = self
             .builder
-            .build_pointer_cast(new_ptr, i64_ptr, "new_len_ptr")
+            .build_int_compare(IntPredicate::ULT, i, len1, "ceilidh_has1")
             .unwrap();
-        self.builder.build_store(new_len_ptr, new_len).unwrap();
-        let eight = self.types.i64_type.const_int(8, false);
-        let new_cap_ptr = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), new_ptr, &[eight], "new_cap_ptr")
-                .unwrap()
-        };
-        let new_cap_ptr = self
+        let has2 = self
             .builder
-            .build_pointer_cast(new_cap_ptr, i64_ptr, "new_cap_ptr_i64")
+            .build_int_compare(IntPredicate::ULT, i, len2, "ceilidh_has2")
             .unwrap();
-        self.builder.build_store(new_cap_ptr, new_len).unwrap();
-
-        // For simplicity, just concatenate (proper interleave is complex)
-        let sixteen = self.types.i64_type.const_int(16, false);
-        let src1_ptr = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), list1_ptr, &[sixteen], "src1_ptr")
-                .unwrap()
-        };
-        let dst_ptr = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), new_ptr, &[sixteen], "dst_ptr")
-                .unwrap()
-        };
-        let size1 = self
-            .builder
-            .build_int_mul(len1, elem_size, "size1")
-            .unwrap();
+        let cont = self.builder.build_or(has1, has2, "ceilidh_cont").unwrap();
         self.builder
-            .build_call(
-                self.libc.memcpy,
-                &[dst_ptr.into(), src1_ptr.into(), size1.into()],
-                "",
-            )
+            .build_conditional_branch(cont, body_block, done_block)
             .unwrap();
 
-        // Copy list2 after list1
-        let offset2 = self
+        // Body: push list1[i] if present, then list2[i] if present.
+        self.builder.position_at_end(body_block);
+        let has1b = self
             .builder
-            .build_int_add(sixteen, size1, "offset2")
+            .build_int_compare(IntPredicate::ULT, i, len1, "ceilidh_has1b")
             .unwrap();
-        let dst2_ptr = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), new_ptr, &[offset2], "dst2_ptr")
-                .unwrap()
-        };
-        let src2_ptr = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), list2_ptr, &[sixteen], "src2_ptr")
-                .unwrap()
-        };
-        let size2 = self
-            .builder
-            .build_int_mul(len2, elem_size, "size2")
-            .unwrap();
+        let push1_block = self.context.append_basic_block(function, "ceilidh_push1");
+        let after1_block = self.context.append_basic_block(function, "ceilidh_after1");
         self.builder
-            .build_call(
-                self.libc.memcpy,
-                &[dst2_ptr.into(), src2_ptr.into(), size2.into()],
-                "",
-            )
+            .build_conditional_branch(has1b, push1_block, after1_block)
             .unwrap();
 
-        // Note: This is actually concatenation, not interleaving
-        // Proper interleave would alternate elements
+        self.builder.position_at_end(push1_block);
+        let e1_ptr = self.get_list_element_ptr(list1_data, i)?;
+        let e1 = self.builder.build_load(self.types.value_type, e1_ptr, "ceilidh_e1").unwrap();
+        self.builder
+            .build_call(self.libc.list_push, &[result_list.into(), e1.into()], "")
+            .unwrap();
+        self.builder.build_unconditional_branch(after1_block).unwrap();
 
-        self.make_list(new_ptr)
+        self.builder.position_at_end(after1_block);
+        let has2b = self
+            .builder
+            .build_int_compare(IntPredicate::ULT, i, len2, "ceilidh_has2b")
+            .unwrap();
+        let push2_block = self.context.append_basic_block(function, "ceilidh_push2");
+        let after2_block = self.context.append_basic_block(function, "ceilidh_after2");
+        self.builder
+            .build_conditional_branch(has2b, push2_block, after2_block)
+            .unwrap();
+
+        self.builder.position_at_end(push2_block);
+        let e2_ptr = self.get_list_element_ptr(list2_data, i)?;
+        let e2 = self.builder.build_load(self.types.value_type, e2_ptr, "ceilidh_e2").unwrap();
+        self.builder
+            .build_call(self.libc.list_push, &[result_list.into(), e2.into()], "")
+            .unwrap();
+        self.builder.build_unconditional_branch(after2_block).unwrap();
+
+        self.builder.position_at_end(after2_block);
+        let next_i = self.builder.build_int_add(i, one, "ceilidh_next").unwrap();
+        self.builder.build_store(idx_ptr, next_i).unwrap();
+        self.builder.build_unconditional_branch(loop_block).unwrap();
+
+        self.builder.position_at_end(done_block);
+        Ok(result_list)
+    }
+
+    /// Merge two dictionaries into a new dict (d2 overrides d1 on duplicate keys).
+    /// Dict memory layout: [i64 count][entry0][entry1]... where entry = [MdhValue key][MdhValue val]
+    fn inline_dict_merge(
+        &mut self,
+        d1_val: BasicValueEnum<'ctx>,
+        d2_val: BasicValueEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let d1_data = self.extract_data(d1_val)?;
+        let d2_data = self.extract_data(d2_val)?;
+
+        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+
+        let d1_ptr = self
+            .builder
+            .build_int_to_ptr(d1_data, i64_ptr_type, "d1_ptr")
+            .unwrap();
+        let d2_ptr = self
+            .builder
+            .build_int_to_ptr(d2_data, i64_ptr_type, "d2_ptr")
+            .unwrap();
+
+        let count1 = self
+            .builder
+            .build_load(self.types.i64_type, d1_ptr, "d1_count")
+            .unwrap()
+            .into_int_value();
+        let count2 = self
+            .builder
+            .build_load(self.types.i64_type, d2_ptr, "d2_count")
+            .unwrap()
+            .into_int_value();
+
+        // entries start immediately after count (8 bytes)
+        let one_i64 = self.types.i64_type.const_int(1, false);
+        let d1_entries_i64 = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, d1_ptr, &[one_i64], "d1_entries_i64")
+                .unwrap()
+        };
+        let d2_entries_i64 = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, d2_ptr, &[one_i64], "d2_entries_i64")
+                .unwrap()
+        };
+        let d1_entries = self
+            .builder
+            .build_pointer_cast(d1_entries_i64, value_ptr_type, "d1_entries")
+            .unwrap();
+        let d2_entries = self
+            .builder
+            .build_pointer_cast(d2_entries_i64, value_ptr_type, "d2_entries")
+            .unwrap();
+
+        // merged accumulator lives in an alloca because dict_set may return a new pointer.
+        let merged_alloca = self
+            .builder
+            .build_alloca(self.types.value_type, "merged_alloca")
+            .unwrap();
+        let merged0 = self
+            .builder
+            .build_call(self.libc.empty_creel, &[], "merged0")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .ok_or_else(|| HaversError::CompileError("empty_creel returned void".to_string()))?;
+        self.builder.build_store(merged_alloca, merged0).unwrap();
+
+        let function = self.current_function.unwrap();
+        let zero = self.types.i64_type.const_int(0, false);
+        let one = self.types.i64_type.const_int(1, false);
+        let two = self.types.i64_type.const_int(2, false);
+
+        // ===== Loop over d1 entries =====
+        let i1_ptr = self.builder.build_alloca(self.types.i64_type, "i1").unwrap();
+        self.builder.build_store(i1_ptr, zero).unwrap();
+        let loop1 = self.context.append_basic_block(function, "dict_merge_loop1");
+        let body1 = self.context.append_basic_block(function, "dict_merge_body1");
+        let done1 = self.context.append_basic_block(function, "dict_merge_done1");
+        self.builder.build_unconditional_branch(loop1).unwrap();
+
+        self.builder.position_at_end(loop1);
+        let i1 = self
+            .builder
+            .build_load(self.types.i64_type, i1_ptr, "i1_val")
+            .unwrap()
+            .into_int_value();
+        let c1 = self
+            .builder
+            .build_int_compare(IntPredicate::ULT, i1, count1, "i1_lt")
+            .unwrap();
+        self.builder.build_conditional_branch(c1, body1, done1).unwrap();
+
+        self.builder.position_at_end(body1);
+        let entry_idx = self.builder.build_int_mul(i1, two, "entry_idx").unwrap();
+        let key_ptr = unsafe {
+            self.builder
+                .build_gep(self.types.value_type, d1_entries, &[entry_idx], "d1_key_ptr")
+                .unwrap()
+        };
+        let key = self.builder.build_load(self.types.value_type, key_ptr, "d1_key").unwrap();
+        let val_idx = self.builder.build_int_add(entry_idx, one, "val_idx").unwrap();
+        let val_ptr = unsafe {
+            self.builder
+                .build_gep(self.types.value_type, d1_entries, &[val_idx], "d1_val_ptr")
+                .unwrap()
+        };
+        let value = self.builder.build_load(self.types.value_type, val_ptr, "d1_val").unwrap();
+
+        let merged_cur = self
+            .builder
+            .build_load(self.types.value_type, merged_alloca, "merged_cur1")
+            .unwrap();
+        let merged_new = self
+            .builder
+            .build_call(
+                self.libc.dict_set,
+                &[merged_cur.into(), key.into(), value.into()],
+                "merged_set1",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap();
+        self.builder.build_store(merged_alloca, merged_new).unwrap();
+        let next_i1 = self.builder.build_int_add(i1, one, "next_i1").unwrap();
+        self.builder.build_store(i1_ptr, next_i1).unwrap();
+        self.builder.build_unconditional_branch(loop1).unwrap();
+
+        // ===== Loop over d2 entries =====
+        self.builder.position_at_end(done1);
+        let i2_ptr = self.builder.build_alloca(self.types.i64_type, "i2").unwrap();
+        self.builder.build_store(i2_ptr, zero).unwrap();
+        let loop2 = self.context.append_basic_block(function, "dict_merge_loop2");
+        let body2 = self.context.append_basic_block(function, "dict_merge_body2");
+        let done2 = self.context.append_basic_block(function, "dict_merge_done2");
+        self.builder.build_unconditional_branch(loop2).unwrap();
+
+        self.builder.position_at_end(loop2);
+        let i2 = self
+            .builder
+            .build_load(self.types.i64_type, i2_ptr, "i2_val")
+            .unwrap()
+            .into_int_value();
+        let c2 = self
+            .builder
+            .build_int_compare(IntPredicate::ULT, i2, count2, "i2_lt")
+            .unwrap();
+        self.builder.build_conditional_branch(c2, body2, done2).unwrap();
+
+        self.builder.position_at_end(body2);
+        let entry2_idx = self.builder.build_int_mul(i2, two, "entry2_idx").unwrap();
+        let key2_ptr = unsafe {
+            self.builder
+                .build_gep(self.types.value_type, d2_entries, &[entry2_idx], "d2_key_ptr")
+                .unwrap()
+        };
+        let key2 = self.builder.build_load(self.types.value_type, key2_ptr, "d2_key").unwrap();
+        let val2_idx = self.builder.build_int_add(entry2_idx, one, "val2_idx").unwrap();
+        let val2_ptr = unsafe {
+            self.builder
+                .build_gep(self.types.value_type, d2_entries, &[val2_idx], "d2_val_ptr")
+                .unwrap()
+        };
+        let value2 = self
+            .builder
+            .build_load(self.types.value_type, val2_ptr, "d2_val")
+            .unwrap();
+
+        let merged_cur2 = self
+            .builder
+            .build_load(self.types.value_type, merged_alloca, "merged_cur2")
+            .unwrap();
+        let merged_new2 = self
+            .builder
+            .build_call(
+                self.libc.dict_set,
+                &[merged_cur2.into(), key2.into(), value2.into()],
+                "merged_set2",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap();
+        self.builder.build_store(merged_alloca, merged_new2).unwrap();
+        let next_i2 = self.builder.build_int_add(i2, one, "next_i2").unwrap();
+        self.builder.build_store(i2_ptr, next_i2).unwrap();
+        self.builder.build_unconditional_branch(loop2).unwrap();
+
+        self.builder.position_at_end(done2);
+        let merged_final = self
+            .builder
+            .build_load(self.types.value_type, merged_alloca, "merged_final")
+            .unwrap();
+        Ok(merged_final)
     }
 
     /// pad_left/pad_right - pad string to given width
@@ -24948,21 +29025,95 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let tag = self.extract_tag(val)?;
         let data = self.extract_data(val)?;
-        let f64_type = self.context.f64_type();
-        let float_val = self
+
+        let function = self
+            .current_function
+            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+        let numeric_block = self.context.append_basic_block(function, "radians_numeric");
+        let error_block = self.context.append_basic_block(function, "radians_error");
+        let merge_block = self.context.append_basic_block(function, "radians_merge");
+
+        let bool_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Bool.as_u8() as u64, false);
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
+
+        let is_bool = self
             .builder
-            .build_bitcast(data, f64_type, "deg_float")
+            .build_int_compare(IntPredicate::EQ, tag, bool_tag, "is_bool")
+            .unwrap();
+        let is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, int_tag, "is_int")
+            .unwrap();
+        let is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, float_tag, "is_float")
+            .unwrap();
+        let is_intlike = self.builder.build_or(is_int, is_bool, "is_intlike").unwrap();
+        let is_numeric = self.builder.build_or(is_float, is_intlike, "is_numeric").unwrap();
+
+        self.builder
+            .build_conditional_branch(is_numeric, numeric_block, error_block)
+            .unwrap();
+
+        // Numeric: convert to f64
+        self.builder.position_at_end(numeric_block);
+        let f64_type = self.types.f64_type;
+        let deg = self
+            .builder
+            .build_select(
+                is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(data, f64_type, "deg_as_float")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(data, f64_type, "deg_int_to_float")
+                        .unwrap(),
+                ),
+                "deg",
+            )
             .unwrap()
             .into_float_value();
 
         // radians = degrees * PI / 180
         let pi = f64_type.const_float(std::f64::consts::PI);
         let c180 = f64_type.const_float(180.0);
-        let temp = self.builder.build_float_mul(float_val, pi, "temp").unwrap();
+        let temp = self.builder.build_float_mul(deg, pi, "temp").unwrap();
         let result = self.builder.build_float_div(temp, c180, "radians").unwrap();
 
-        self.make_float(result)
+        let numeric_result = self.make_float(result)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let numeric_end = self.builder.get_insert_block().unwrap();
+
+        // Error: return nil
+        self.builder.position_at_end(error_block);
+        let error_result = self.make_nil();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let error_end = self.builder.get_insert_block().unwrap();
+
+        // Merge
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "radians_result")
+            .unwrap();
+        phi.add_incoming(&[(&numeric_result, numeric_end), (&error_result, error_end)]);
+        Ok(phi.as_basic_value())
     }
 
     /// degrees(radians) - convert radians to degrees
@@ -24970,24 +29121,95 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let tag = self.extract_tag(val)?;
         let data = self.extract_data(val)?;
-        let f64_type = self.context.f64_type();
-        let float_val = self
+
+        let function = self
+            .current_function
+            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+        let numeric_block = self.context.append_basic_block(function, "degrees_numeric");
+        let error_block = self.context.append_basic_block(function, "degrees_error");
+        let merge_block = self.context.append_basic_block(function, "degrees_merge");
+
+        let bool_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Bool.as_u8() as u64, false);
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
+
+        let is_bool = self
             .builder
-            .build_bitcast(data, f64_type, "rad_float")
+            .build_int_compare(IntPredicate::EQ, tag, bool_tag, "is_bool")
+            .unwrap();
+        let is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, int_tag, "is_int")
+            .unwrap();
+        let is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, float_tag, "is_float")
+            .unwrap();
+        let is_intlike = self.builder.build_or(is_int, is_bool, "is_intlike").unwrap();
+        let is_numeric = self.builder.build_or(is_float, is_intlike, "is_numeric").unwrap();
+
+        self.builder
+            .build_conditional_branch(is_numeric, numeric_block, error_block)
+            .unwrap();
+
+        // Numeric: convert to f64
+        self.builder.position_at_end(numeric_block);
+        let f64_type = self.types.f64_type;
+        let rad = self
+            .builder
+            .build_select(
+                is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(data, f64_type, "rad_as_float")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(data, f64_type, "rad_int_to_float")
+                        .unwrap(),
+                ),
+                "rad",
+            )
             .unwrap()
             .into_float_value();
 
         // degrees = radians * 180 / PI
         let pi = f64_type.const_float(std::f64::consts::PI);
         let c180 = f64_type.const_float(180.0);
-        let temp = self
-            .builder
-            .build_float_mul(float_val, c180, "temp")
-            .unwrap();
+        let temp = self.builder.build_float_mul(rad, c180, "temp").unwrap();
         let result = self.builder.build_float_div(temp, pi, "degrees").unwrap();
 
-        self.make_float(result)
+        let numeric_result = self.make_float(result)?;
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let numeric_end = self.builder.get_insert_block().unwrap();
+
+        // Error: return nil
+        self.builder.position_at_end(error_block);
+        let error_result = self.make_nil();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let error_end = self.builder.get_insert_block().unwrap();
+
+        // Merge
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "degrees_result")
+            .unwrap();
+        phi.add_incoming(&[(&numeric_result, numeric_end), (&error_result, error_end)]);
+        Ok(phi.as_basic_value())
     }
 
     /// Compile a string literal directly
