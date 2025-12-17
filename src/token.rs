@@ -68,6 +68,8 @@ pub enum TokenKind {
 
     /// naething - null/none/nil
     #[token("naething")]
+    #[token("nil")]
+    #[token("nowt")]
     Naething,
 
     /// dae - function definition (do)
@@ -92,6 +94,8 @@ pub enum TokenKind {
 
     /// haud - continue (hold on)
     #[token("haud")]
+    #[token("haud_yer_wheesht")]
+    #[token("gang_on")]
     Haud,
 
     /// in - in (for loops)
@@ -155,7 +159,8 @@ pub enum TokenKind {
     #[regex(r"[0-9]+", |lex| lex.slice().parse::<i64>().ok())]
     Integer(i64),
 
-    #[regex(r"[0-9]+\.[0-9]+", |lex| lex.slice().parse::<f64>().ok())]
+    #[regex(r"[0-9]+\.[0-9]+([eE][+-]?[0-9]+)?", |lex| lex.slice().parse::<f64>().ok())]
+    #[regex(r"[0-9]+[eE][+-]?[0-9]+", |lex| lex.slice().parse::<f64>().ok())]
     Float(f64),
 
     // String with double quotes
