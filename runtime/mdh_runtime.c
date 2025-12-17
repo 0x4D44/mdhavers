@@ -13,6 +13,7 @@
 #include <math.h>
 #include <time.h>
 #include <unistd.h>
+#include <setjmp.h>
 #include <termios.h>
 #include <sys/ioctl.h>
 
@@ -229,6 +230,18 @@ bool __mdh_eq(MdhValue a, MdhValue b) {
             return __mdh_get_float(a) == __mdh_get_float(b);
         case MDH_TAG_STRING:
             return strcmp(__mdh_get_string(a), __mdh_get_string(b)) == 0;
+        case MDH_TAG_LIST: {
+            MdhList *la = __mdh_get_list(a);
+            MdhList *lb = __mdh_get_list(b);
+            if (!la || !lb) return la == lb;
+            if (la->length != lb->length) return false;
+            for (int64_t i = 0; i < la->length; i++) {
+                if (!__mdh_eq(la->items[i], lb->items[i])) {
+                    return false;
+                }
+            }
+            return true;
+        }
         default:
             /* Reference equality for complex types */
             return a.data == b.data;
@@ -286,10 +299,8 @@ bool __mdh_truthy(MdhValue a) {
             return a.data != 0;
         case MDH_TAG_FLOAT:
             return __mdh_get_float(a) != 0.0;
-        case MDH_TAG_STRING: {
-            MdhString *s = (MdhString *)(intptr_t)a.data;
-            return s && s->length > 0;
-        }
+        case MDH_TAG_STRING:
+            return true;
         case MDH_TAG_LIST: {
             MdhList *list = __mdh_get_list(a);
             return list && list->length > 0;
@@ -650,8 +661,8 @@ MdhValue __mdh_contains(MdhValue container, MdhValue elem) {
 int64_t __mdh_len(MdhValue a) {
     switch (a.tag) {
         case MDH_TAG_STRING: {
-            MdhString *s = (MdhString *)(intptr_t)a.data;
-            return s ? s->length : 0;
+            const char *s = __mdh_get_string(a);
+            return s ? (int64_t)strlen(s) : 0;
         }
         case MDH_TAG_LIST:
             return __mdh_list_len(a);
@@ -681,8 +692,8 @@ int64_t __mdh_str_len(MdhValue s) {
     if (s.tag != MDH_TAG_STRING) {
         return 0;
     }
-    MdhString *str = (MdhString *)(intptr_t)s.data;
-    return str ? str->length : 0;
+    const char *str = __mdh_get_string(s);
+    return str ? (int64_t)strlen(str) : 0;
 }
 
 MdhValue __mdh_to_string(MdhValue a) {
@@ -2101,4 +2112,43 @@ MdhValue __mdh_ends_with(MdhValue str, MdhValue suffix) {
         return __mdh_make_bool(0);
     }
     return __mdh_make_bool(strcmp(s + slen - suflen, suf) == 0);
+}
+
+/* ========== Exceptions (Try/Catch/Hurl) ========== */
+
+#define MDH_TRY_MAX_DEPTH 64
+static jmp_buf * __mdh_try_stack[MDH_TRY_MAX_DEPTH];
+static int __mdh_try_depth = 0;
+static MdhValue __mdh_last_error;
+
+int64_t __mdh_jmp_buf_size(void) {
+    return (int64_t)sizeof(jmp_buf);
+}
+
+void __mdh_try_push(void *env) {
+    if (__mdh_try_depth >= MDH_TRY_MAX_DEPTH) {
+        return;
+    }
+    __mdh_try_stack[__mdh_try_depth++] = (jmp_buf *)env;
+}
+
+void __mdh_try_pop(void) {
+    if (__mdh_try_depth > 0) {
+        __mdh_try_depth--;
+    }
+}
+
+MdhValue __mdh_get_last_error(void) {
+    return __mdh_last_error;
+}
+
+void __mdh_hurl(MdhValue msg) {
+    __mdh_last_error = msg;
+    if (__mdh_try_depth > 0) {
+        jmp_buf *envp = __mdh_try_stack[__mdh_try_depth - 1];
+        longjmp(*envp, 1);
+    }
+    /* Uncaught: print message and exit */
+    __mdh_blether(msg);
+    exit(1);
 }

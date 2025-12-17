@@ -200,6 +200,14 @@ MdhValue __mdh_bit_and(MdhValue a, MdhValue b);
 MdhValue __mdh_bit_or(MdhValue a, MdhValue b);
 MdhValue __mdh_bit_xor(MdhValue a, MdhValue b);
 
+/* ========== Exceptions (Try/Catch/Hurl) ========== */
+
+int64_t __mdh_jmp_buf_size(void);
+void __mdh_try_push(void *env);
+void __mdh_try_pop(void);
+void __mdh_hurl(MdhValue msg);
+MdhValue __mdh_get_last_error(void);
+
 /* ========== Helpers ========== */
 
 /* Get string pointer from MdhValue (assumes tag is STRING) */
