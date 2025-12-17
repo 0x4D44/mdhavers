@@ -226,10 +226,9 @@ impl Parser {
         let mut fields = Vec::new();
         while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
             fields.push(self.expect_identifier("field name")?);
-            if !self.match_token(&TokenKind::Comma) {
-                self.skip_newlines();
-                break;
-            }
+            // Allow fields separated by commas, newlines, or just whitespace.
+            self.skip_newlines();
+            self.match_token(&TokenKind::Comma);
             self.skip_newlines();
         }
 
@@ -992,7 +991,6 @@ impl Parser {
                 | TokenKind::Identifier(_)
                 | TokenKind::LeftParen
                 | TokenKind::LeftBracket
-                | TokenKind::LeftBrace
                 | TokenKind::Minus
                 | TokenKind::Bang
                 | TokenKind::Aye
@@ -1251,27 +1249,59 @@ impl Parser {
                 Ok(Expr::List { elements, span })
             }
             TokenKind::LeftBrace => {
-                self.advance();
-                let mut pairs = Vec::new();
+                self.advance(); // consume '{'
                 self.skip_newlines();
-                if !self.check(&TokenKind::RightBrace) {
-                    loop {
-                        let key = self.expression()?;
-                        self.expect(&TokenKind::Colon, ":")?;
-                        let value = self.expression()?;
-                        pairs.push((key, value));
-                        self.skip_newlines();
-                        if !self.match_token(&TokenKind::Comma) {
-                            break;
-                        }
-                        // Allow trailing comma: {"a": 1, "b": 2,}
-                        self.skip_newlines();
-                        if self.check(&TokenKind::RightBrace) {
-                            break;
-                        }
+
+                // Empty dict literal: {}
+                if self.check(&TokenKind::RightBrace) {
+                    self.advance(); // consume '}'
+                    return Ok(Expr::Dict {
+                        pairs: Vec::new(),
+                        span,
+                    });
+                }
+
+                // If it looks like a statement, parse as block expression.
+                // Otherwise, try dict-first and fall back to block expr if no ':' appears.
+                let checkpoint = self.current;
+                let key_attempt = self.expression();
+                let is_dict = matches!(key_attempt, Ok(_)) && self.check(&TokenKind::Colon);
+
+                if !is_dict {
+                    // Rewind and parse block expression statements until '}'
+                    self.current = checkpoint;
+                    let mut statements = Vec::new();
+                    self.skip_newlines();
+                    while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+                        statements.push(self.declaration()?);
                         self.skip_newlines();
                     }
+                    self.expect(&TokenKind::RightBrace, "}")?;
+                    return Ok(Expr::BlockExpr { statements, span });
                 }
+
+                // Dict literal
+                let mut pairs = Vec::new();
+
+                // Safe because is_dict implies key_attempt is Ok
+                let first_key = key_attempt.expect("dict key already parsed");
+                self.expect(&TokenKind::Colon, ":")?;
+                let first_value = self.expression()?;
+                pairs.push((first_key, first_value));
+
+                self.skip_newlines();
+                while self.match_token(&TokenKind::Comma) {
+                    self.skip_newlines();
+                    if self.check(&TokenKind::RightBrace) {
+                        break; // trailing comma
+                    }
+                    let key = self.expression()?;
+                    self.expect(&TokenKind::Colon, ":")?;
+                    let value = self.expression()?;
+                    pairs.push((key, value));
+                    self.skip_newlines();
+                }
+
                 self.expect(&TokenKind::RightBrace, "}")?;
                 Ok(Expr::Dict { pairs, span })
             }
