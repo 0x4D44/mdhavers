@@ -129,20 +129,38 @@ MdhValue __mdh_round(MdhValue a);
 /* ========== Dict/Creel Operations ========== */
 
 MdhValue __mdh_empty_creel(void);
+MdhValue __mdh_make_creel(MdhValue list);
 MdhValue __mdh_dict_contains(MdhValue dict, MdhValue key);
 MdhValue __mdh_dict_keys(MdhValue dict);
 MdhValue __mdh_dict_values(MdhValue dict);
 MdhValue __mdh_dict_set(MdhValue dict, MdhValue key, MdhValue value);
 MdhValue __mdh_dict_get(MdhValue dict, MdhValue key);
+MdhValue __mdh_dict_get_default(MdhValue dict, MdhValue key, MdhValue default_val);
+MdhValue __mdh_dict_merge(MdhValue a, MdhValue b);
+MdhValue __mdh_dict_remove(MdhValue dict, MdhValue key);
+MdhValue __mdh_dict_invert(MdhValue dict);
+MdhValue __mdh_fae_pairs(MdhValue pairs);
 MdhValue __mdh_toss_in(MdhValue dict, MdhValue item);
 MdhValue __mdh_heave_oot(MdhValue dict, MdhValue item);
 MdhValue __mdh_creel_tae_list(MdhValue dict);
+MdhValue __mdh_creels_thegither(MdhValue a, MdhValue b);
+MdhValue __mdh_creels_baith(MdhValue a, MdhValue b);
+MdhValue __mdh_creels_differ(MdhValue a, MdhValue b);
+MdhValue __mdh_is_subset(MdhValue a, MdhValue b);
+MdhValue __mdh_is_superset(MdhValue a, MdhValue b);
+MdhValue __mdh_is_disjoint(MdhValue a, MdhValue b);
 
 /* ========== File I/O ========== */
 
 MdhValue __mdh_file_exists(MdhValue path);
+MdhValue __mdh_file_size(MdhValue path);
+MdhValue __mdh_file_delete(MdhValue path);
+MdhValue __mdh_list_dir(MdhValue path);
+MdhValue __mdh_make_dir(MdhValue path);
+MdhValue __mdh_is_dir(MdhValue path);
 MdhValue __mdh_slurp(MdhValue path);
 MdhValue __mdh_scrieve(MdhValue path, MdhValue content);
+MdhValue __mdh_scrieve_append(MdhValue path, MdhValue content);
 MdhValue __mdh_lines(MdhValue path);
 MdhValue __mdh_words(MdhValue str);
 
@@ -199,6 +217,66 @@ MdhValue __mdh_shuffle(MdhValue list);
 MdhValue __mdh_bit_and(MdhValue a, MdhValue b);
 MdhValue __mdh_bit_or(MdhValue a, MdhValue b);
 MdhValue __mdh_bit_xor(MdhValue a, MdhValue b);
+
+/* ========== Environment/System ========== */
+
+void __mdh_set_args(int32_t argc, char **argv);
+MdhValue __mdh_args(void);
+MdhValue __mdh_cwd(void);
+MdhValue __mdh_chdir(MdhValue path);
+MdhValue __mdh_env_get(MdhValue key);
+MdhValue __mdh_env_set(MdhValue key, MdhValue value);
+MdhValue __mdh_env_all(void);
+MdhValue __mdh_path_join(MdhValue a, MdhValue b);
+MdhValue __mdh_shell(MdhValue cmd);
+MdhValue __mdh_shell_status(MdhValue cmd);
+
+/* ========== Date/Time ========== */
+
+MdhValue __mdh_date_now(void);
+MdhValue __mdh_date_format(MdhValue timestamp_ms, MdhValue format);
+MdhValue __mdh_date_parse(MdhValue date_str, MdhValue format);
+MdhValue __mdh_date_add(MdhValue timestamp_ms, MdhValue amount, MdhValue unit);
+MdhValue __mdh_date_diff(MdhValue ts1, MdhValue ts2, MdhValue unit);
+MdhValue __mdh_braw_date(MdhValue ts_or_nil);
+
+/* ========== Regex ========== */
+
+MdhValue __mdh_regex_test(MdhValue text, MdhValue pattern);
+MdhValue __mdh_regex_match(MdhValue text, MdhValue pattern);
+MdhValue __mdh_regex_match_all(MdhValue text, MdhValue pattern);
+MdhValue __mdh_regex_replace(MdhValue text, MdhValue pattern, MdhValue replacement);
+MdhValue __mdh_regex_replace_first(MdhValue text, MdhValue pattern, MdhValue replacement);
+MdhValue __mdh_regex_split(MdhValue text, MdhValue pattern);
+
+/* ========== JSON ========== */
+
+MdhValue __mdh_json_parse(MdhValue json_str);
+MdhValue __mdh_json_stringify(MdhValue value);
+MdhValue __mdh_json_pretty(MdhValue value);
+
+/* ========== Misc Parity Helpers ========== */
+
+MdhValue __mdh_is_a(MdhValue value, MdhValue type_name);
+MdhValue __mdh_numpty_check(MdhValue value);
+MdhValue __mdh_indices_o(MdhValue container, MdhValue needle);
+MdhValue __mdh_grup(MdhValue list, MdhValue size);
+MdhValue __mdh_chunks(MdhValue list, MdhValue size);
+MdhValue __mdh_interleave(MdhValue list_a, MdhValue list_b);
+MdhValue __mdh_pair_adjacent(MdhValue list);
+MdhValue __mdh_skelp(MdhValue str, MdhValue size);
+MdhValue __mdh_strip_left(MdhValue str, MdhValue chars);
+MdhValue __mdh_strip_right(MdhValue str, MdhValue chars);
+MdhValue __mdh_swapcase(MdhValue str);
+MdhValue __mdh_sporran_fill(MdhValue str, MdhValue width, MdhValue fill_char);
+MdhValue __mdh_scottify(MdhValue str);
+MdhValue __mdh_mutter(MdhValue str);
+MdhValue __mdh_blooter(MdhValue str);
+MdhValue __mdh_stooshie(MdhValue str);
+MdhValue __mdh_dreich(MdhValue str);
+MdhValue __mdh_geggie(MdhValue str);
+MdhValue __mdh_jings(MdhValue msg);
+MdhValue __mdh_crivvens(MdhValue msg);
 
 /* ========== Exceptions (Try/Catch/Hurl) ========== */
 

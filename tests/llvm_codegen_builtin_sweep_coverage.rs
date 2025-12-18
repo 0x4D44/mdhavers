@@ -138,6 +138,9 @@ fn llvm_codegen_builtin_dispatch_is_exercised_broadly() {
             }
         }
 
-        assert!(attempted_any, "expected to attempt compiling builtin call for {name}");
+        assert!(
+            attempted_any,
+            "expected to attempt compiling builtin call for {name}"
+        );
     }
 }

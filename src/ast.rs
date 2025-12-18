@@ -240,6 +240,7 @@ pub enum DestructPattern {
 
 /// Expressions in mdhavers
 #[derive(Debug, Clone)]
+#[allow(clippy::enum_variant_names)]
 pub enum Expr {
     /// Literal values
     Literal { value: Literal, span: Span },
@@ -352,10 +353,7 @@ pub enum Expr {
 
     /// Block expression: { statements... gie value }
     /// Used for multiline lambda bodies
-    BlockExpr {
-        statements: Vec<Stmt>,
-        span: Span,
-    },
+    BlockExpr { statements: Vec<Stmt>, span: Span },
 
     /// Self reference: masel
     Masel { span: Span },

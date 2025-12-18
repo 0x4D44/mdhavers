@@ -15,7 +15,11 @@ fn compile_and_run(source: &str) -> Result<String, String> {
         .map_err(|e| format!("Failed to run executable: {}", e))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Executable failed with exit code: {:?}, stderr: {}", output.status.code(), stderr));
+        return Err(format!(
+            "Executable failed with exit code: {:?}, stderr: {}",
+            output.status.code(),
+            stderr
+        ));
     }
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
@@ -31,7 +35,12 @@ fn main() {
         }
         blether outer(5)
     "#;
-    println!("Test 1 (no capture): {}", compile_and_run(code).unwrap_or_else(|e| format!("ERROR: {}", e)).trim());
+    println!(
+        "Test 1 (no capture): {}",
+        compile_and_run(code)
+            .unwrap_or_else(|e| format!("ERROR: {}", e))
+            .trim()
+    );
 
     // Test 2: inner uses outer's param
     let code = r#"
@@ -43,5 +52,10 @@ fn main() {
         }
         blether outer(5)
     "#;
-    println!("Test 2 (with capture): {}", compile_and_run(code).unwrap_or_else(|e| format!("ERROR: {}", e)).trim());
+    println!(
+        "Test 2 (with capture): {}",
+        compile_and_run(code)
+            .unwrap_or_else(|e| format!("ERROR: {}", e))
+            .trim()
+    );
 }

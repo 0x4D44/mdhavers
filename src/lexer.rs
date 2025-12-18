@@ -182,4 +182,17 @@ greet(message)
         assert!(tokens.len() > 10);
         // Just check it parses without error
     }
+
+    #[test]
+    fn test_invalid_token_error() {
+        let err = lex("@").unwrap_err();
+        assert!(matches!(
+            err,
+            HaversError::UnkentToken {
+                lexeme,
+                line: 1,
+                column: 1
+            } if lexeme == "@"
+        ));
+    }
 }

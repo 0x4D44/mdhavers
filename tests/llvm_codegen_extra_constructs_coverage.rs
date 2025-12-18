@@ -1,9 +1,10 @@
 #![cfg(all(feature = "llvm", coverage))]
 
-use mdhavers::{parse, llvm::LLVMCompiler};
+use mdhavers::{llvm::LLVMCompiler, parse};
 
 fn compile_to_ir_ok(source: &str) {
-    let program = parse(source).unwrap_or_else(|e| panic!("parse failed for:\n{source}\nerr={e:?}"));
+    let program =
+        parse(source).unwrap_or_else(|e| panic!("parse failed for:\n{source}\nerr={e:?}"));
     let ir = LLVMCompiler::new()
         .compile_to_ir(&program)
         .unwrap_or_else(|e| panic!("compile failed for:\n{source}\nerr={e:?}"));
@@ -11,7 +12,8 @@ fn compile_to_ir_ok(source: &str) {
 }
 
 fn compile_to_ir_err(source: &str) {
-    let program = parse(source).unwrap_or_else(|e| panic!("parse failed for:\n{source}\nerr={e:?}"));
+    let program =
+        parse(source).unwrap_or_else(|e| panic!("parse failed for:\n{source}\nerr={e:?}"));
     let err = LLVMCompiler::new()
         .compile_to_ir(&program)
         .expect_err("expected compile error");
@@ -115,6 +117,46 @@ kin Foo {
 }
 ken f = Foo(1)
 blether f.m(1)
+"#,
+        // Duplicate class declaration hits preregister short-circuit.
+        r#"
+kin D {
+    dae init() { }
+}
+kin D {
+    dae init() { }
+}
+ken d = D()
+blether "ok"
+"#,
+        // Duplicate method declaration hits per-method "already declared" continue.
+        r#"
+kin M {
+    dae m() { gie 1 }
+    dae m() { gie 2 }
+}
+ken m = M()
+blether m.m()
+"#,
+        // Boxed capture used in direct condition compilation paths (int shadow absent -> extract).
+        r#"
+dae outer() {
+    ken x = 0
+    dae inc() { x = x + 1 }
+    gin x == 0 { blether 1 }
+    inc()
+    gin x == 1 { blether 2 }
+}
+outer()
+"#,
+        // List index in condition, exercising list_ptr shadow and non-variable index objects.
+        r#"
+dae f() {
+    ken xs = [1, 2, 3]
+    gin xs[0] == 1 { blether 1 }
+    gin [1, 2, 3][0] == 1 { blether 1 }
+}
+f()
 "#,
     ];
 

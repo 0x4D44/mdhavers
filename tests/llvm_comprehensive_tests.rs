@@ -4,6 +4,7 @@
 //! correctness and catch regressions.
 
 #![cfg(feature = "llvm")]
+#![allow(clippy::all)]
 
 use std::process::Command;
 
@@ -280,7 +281,10 @@ mod strings {
 
     #[test]
     fn test_string_concatenation() {
-        assert_eq!(run(r#"blether "Hello, " + "World!""#).trim(), "Hello, World!");
+        assert_eq!(
+            run(r#"blether "Hello, " + "World!""#).trim(),
+            "Hello, World!"
+        );
     }
 
     #[test]
@@ -318,8 +322,14 @@ mod strings {
 
     #[test]
     fn test_string_contains() {
-        assert_eq!(run(r#"blether contains("hello world", "world")"#).trim(), "aye");
-        assert_eq!(run(r#"blether contains("hello world", "foo")"#).trim(), "nae");
+        assert_eq!(
+            run(r#"blether contains("hello world", "world")"#).trim(),
+            "aye"
+        );
+        assert_eq!(
+            run(r#"blether contains("hello world", "foo")"#).trim(),
+            "nae"
+        );
     }
 
     #[test]
@@ -662,8 +672,14 @@ mod control_flow {
     #[test]
     fn test_ternary() {
         // Use gin/than/ither for ternary expressions in Scots
-        assert_eq!(run("blether gin 5 > 3 than \"yes\" ither \"no\"").trim(), "yes");
-        assert_eq!(run("blether gin 2 > 3 than \"yes\" ither \"no\"").trim(), "no");
+        assert_eq!(
+            run("blether gin 5 > 3 than \"yes\" ither \"no\"").trim(),
+            "yes"
+        );
+        assert_eq!(
+            run("blether gin 2 > 3 than \"yes\" ither \"no\"").trim(),
+            "no"
+        );
     }
 
     #[test]
@@ -1383,7 +1399,10 @@ mod string_advanced {
 
     #[test]
     fn test_string_with_numbers() {
-        assert_eq!(run(r#"blether "value: " + tae_string(42)"#).trim(), "value: 42");
+        assert_eq!(
+            run(r#"blether "value: " + tae_string(42)"#).trim(),
+            "value: 42"
+        );
     }
 
     #[test]
@@ -2775,7 +2794,10 @@ blether join(list, "-")
 
     #[test]
     fn test_replace() {
-        assert_eq!(run(r#"blether replace("hello world", "world", "there")"#).trim(), "hello there");
+        assert_eq!(
+            run(r#"blether replace("hello world", "world", "there")"#).trim(),
+            "hello there"
+        );
     }
 
     // List operations
@@ -2955,12 +2977,18 @@ mod coverage_batch2 {
 
     #[test]
     fn test_sieve_simple() {
-        assert_eq!(run("blether sieve([1, 2, 3, 4, 5], |x| x > 2)").trim(), "[3, 4, 5]");
+        assert_eq!(
+            run("blether sieve([1, 2, 3, 4, 5], |x| x > 2)").trim(),
+            "[3, 4, 5]"
+        );
     }
 
     #[test]
     fn test_tumble_simple() {
-        assert_eq!(run("blether tumble([1, 2, 3, 4], 0, |acc, x| acc + x)").trim(), "10");
+        assert_eq!(
+            run("blether tumble([1, 2, 3, 4], 0, |acc, x| acc + x)").trim(),
+            "10"
+        );
     }
 
     #[test]
@@ -3217,7 +3245,10 @@ mod coverage_batch3 {
     // More string ops
     #[test]
     fn test_index_of_string() {
-        assert_eq!(run(r#"blether index_of("hello world", "world")"#).trim(), "6");
+        assert_eq!(
+            run(r#"blether index_of("hello world", "world")"#).trim(),
+            "6"
+        );
     }
 
     #[test]
@@ -3371,7 +3402,10 @@ blether -x
     // String concatenation
     #[test]
     fn test_string_concat() {
-        assert_eq!(run(r#"blether "hello" + " " + "world""#).trim(), "hello world");
+        assert_eq!(
+            run(r#"blether "hello" + " " + "world""#).trim(),
+            "hello world"
+        );
     }
 
     // Different integer sizes
@@ -3419,7 +3453,6 @@ mod coverage_batch4 {
     fn test_slap() {
         assert_eq!(run("blether slap([1, 2], [3, 4])").trim(), "[1, 2, 3, 4]");
     }
-
 
     // Test noo (current time)
     #[test]
@@ -3852,7 +3885,10 @@ blether last
     // Test scran (slice)
     #[test]
     fn test_scran() {
-        assert_eq!(run("blether scran([1, 2, 3, 4, 5], 1, 4)").trim(), "[2, 3, 4]");
+        assert_eq!(
+            run("blether scran([1, 2, 3, 4, 5], 1, 4)").trim(),
+            "[2, 3, 4]"
+        );
     }
 
     // Test sumaw (sum of list)
@@ -3898,7 +3934,10 @@ blether last
     // Test contains
     #[test]
     fn test_contains_string() {
-        assert_eq!(run(r#"blether contains("hello world", "world")"#).trim(), "aye");
+        assert_eq!(
+            run(r#"blether contains("hello world", "world")"#).trim(),
+            "aye"
+        );
         assert_eq!(run(r#"blether contains("hello", "xyz")"#).trim(), "nae");
     }
 
@@ -4075,7 +4114,10 @@ blether len(c)
     // Test string concatenation with +
     #[test]
     fn test_string_concat() {
-        assert_eq!(run(r#"blether "hello" + " " + "world""#).trim(), "hello world");
+        assert_eq!(
+            run(r#"blether "hello" + " " + "world""#).trim(),
+            "hello world"
+        );
     }
 
     // Test logical and
@@ -4139,9 +4181,11 @@ blether len(c)
     // Test sort
     #[test]
     fn test_sort() {
-        assert_eq!(run("blether sort([3, 1, 4, 1, 5])").trim(), "[1, 1, 3, 4, 5]");
+        assert_eq!(
+            run("blether sort([3, 1, 4, 1, 5])").trim(),
+            "[1, 1, 3, 4, 5]"
+        );
     }
-
 
     // Test shove (push to list)
     #[test]
@@ -4961,7 +5005,10 @@ blether f"Name: {name}, Age: {age}, Score: {score}"
     #[test]
     fn test_fstring_expr() {
         assert_eq!(run(r#"blether f"Sum: {1 + 2}""#).trim(), "Sum: 3");
-        assert_eq!(run(r#"blether f"List len: {len([1,2,3])}""#).trim(), "List len: 3");
+        assert_eq!(
+            run(r#"blether f"List len: {len([1,2,3])}""#).trim(),
+            "List len: 3"
+        );
     }
 
     // Test multiple prints
@@ -7146,12 +7193,12 @@ blether a != b
         "#;
         let output = run(code);
         let lines: Vec<&str> = output.trim().lines().collect();
-        assert_eq!(lines[0], "aye");  // 5 < 10
-        assert_eq!(lines[1], "aye");  // 5 <= 10
-        assert_eq!(lines[2], "nae");  // 5 > 10
-        assert_eq!(lines[3], "nae");  // 5 >= 10
-        assert_eq!(lines[4], "nae");  // 5 == 10
-        assert_eq!(lines[5], "aye");  // 5 != 10
+        assert_eq!(lines[0], "aye"); // 5 < 10
+        assert_eq!(lines[1], "aye"); // 5 <= 10
+        assert_eq!(lines[2], "nae"); // 5 > 10
+        assert_eq!(lines[3], "nae"); // 5 >= 10
+        assert_eq!(lines[4], "nae"); // 5 == 10
+        assert_eq!(lines[5], "aye"); // 5 != 10
     }
 
     // Test equal values
@@ -7199,8 +7246,8 @@ blether sum1
 blether sum2
         "#;
         let output = run(code);
-        assert!(output.contains("10"));  // 0+1+2+3+4
-        assert!(output.contains("35"));  // 5+6+7+8+9
+        assert!(output.contains("10")); // 0+1+2+3+4
+        assert!(output.contains("35")); // 5+6+7+8+9
     }
 
     // Test list literal variations
@@ -7538,17 +7585,28 @@ mod coverage_batch16 {
 
     #[test]
     fn test_ternary_basic() {
-        assert_eq!(run("ken x = 10\nken result = gin x > 5 than \"big\" ither \"small\"\nblether result").trim(), "big");
+        assert_eq!(
+            run("ken x = 10\nken result = gin x > 5 than \"big\" ither \"small\"\nblether result")
+                .trim(),
+            "big"
+        );
     }
 
     #[test]
     fn test_ternary_false_branch() {
-        assert_eq!(run("ken x = 3\nken result = gin x > 5 than \"big\" ither \"small\"\nblether result").trim(), "small");
+        assert_eq!(
+            run("ken x = 3\nken result = gin x > 5 than \"big\" ither \"small\"\nblether result")
+                .trim(),
+            "small"
+        );
     }
 
     #[test]
     fn test_ternary_with_numbers() {
-        assert_eq!(run("ken x = 10\nken result = gin x > 5 than 100 ither 0\nblether result").trim(), "100");
+        assert_eq!(
+            run("ken x = 10\nken result = gin x > 5 than 100 ither 0\nblether result").trim(),
+            "100"
+        );
     }
 
     #[test]
@@ -7568,7 +7626,10 @@ blether size
 
     #[test]
     fn test_ternary_in_expression() {
-        assert_eq!(run("ken a = 1\nken b = gin a == 1 than 10 ither 20\nblether b + 5").trim(), "15");
+        assert_eq!(
+            run("ken a = 1\nken b = gin a == 1 than 10 ither 20\nblether b + 5").trim(),
+            "15"
+        );
     }
 
     // --- DEFAULT PARAMETERS ---
@@ -7713,32 +7774,50 @@ blether b.get()
 
     #[test]
     fn test_slice_basic() {
-        assert_eq!(run("ken list = [0, 1, 2, 3, 4, 5]\nblether list[1:4]").trim(), "[1, 2, 3]");
+        assert_eq!(
+            run("ken list = [0, 1, 2, 3, 4, 5]\nblether list[1:4]").trim(),
+            "[1, 2, 3]"
+        );
     }
 
     #[test]
     fn test_slice_from_start() {
-        assert_eq!(run("ken list = [0, 1, 2, 3, 4, 5]\nblether list[:3]").trim(), "[0, 1, 2]");
+        assert_eq!(
+            run("ken list = [0, 1, 2, 3, 4, 5]\nblether list[:3]").trim(),
+            "[0, 1, 2]"
+        );
     }
 
     #[test]
     fn test_slice_to_end() {
-        assert_eq!(run("ken list = [0, 1, 2, 3, 4, 5]\nblether list[3:]").trim(), "[3, 4, 5]");
+        assert_eq!(
+            run("ken list = [0, 1, 2, 3, 4, 5]\nblether list[3:]").trim(),
+            "[3, 4, 5]"
+        );
     }
 
     #[test]
     fn test_slice_full() {
-        assert_eq!(run("ken list = [0, 1, 2, 3, 4, 5]\nblether list[:]").trim(), "[0, 1, 2, 3, 4, 5]");
+        assert_eq!(
+            run("ken list = [0, 1, 2, 3, 4, 5]\nblether list[:]").trim(),
+            "[0, 1, 2, 3, 4, 5]"
+        );
     }
 
     #[test]
     fn test_slice_negative_start() {
-        assert_eq!(run("ken list = [0, 1, 2, 3, 4, 5]\nblether list[-2:]").trim(), "[4, 5]");
+        assert_eq!(
+            run("ken list = [0, 1, 2, 3, 4, 5]\nblether list[-2:]").trim(),
+            "[4, 5]"
+        );
     }
 
     #[test]
     fn test_string_slice() {
-        assert_eq!(run("ken s = \"hello world\"\nblether s[0:5]").trim(), "hello");
+        assert_eq!(
+            run("ken s = \"hello world\"\nblether s[0:5]").trim(),
+            "hello"
+        );
     }
 
     // --- RANGE WITH STEP ---
@@ -7781,7 +7860,10 @@ blether result
 
     #[test]
     fn test_assert_comparison() {
-        assert_eq!(run("mak_siccar 5 > 3\nblether \"verified\"").trim(), "verified");
+        assert_eq!(
+            run("mak_siccar 5 > 3\nblether \"verified\"").trim(),
+            "verified"
+        );
     }
 
     // --- TRY-CATCH ---
@@ -8182,7 +8264,10 @@ blether n
 
     #[test]
     fn test_list_sort() {
-        assert_eq!(run("blether sort([3, 1, 4, 1, 5])").trim(), "[1, 1, 3, 4, 5]");
+        assert_eq!(
+            run("blether sort([3, 1, 4, 1, 5])").trim(),
+            "[1, 1, 3, 4, 5]"
+        );
     }
 
     #[test]
@@ -8319,36 +8404,54 @@ blether found
 
     #[test]
     fn test_split_basic() {
-        assert_eq!(run("blether split(\"a,b,c\", \",\")").trim(), "[\"a\", \"b\", \"c\"]");
+        assert_eq!(
+            run("blether split(\"a,b,c\", \",\")").trim(),
+            "[\"a\", \"b\", \"c\"]"
+        );
     }
 
     #[test]
     fn test_join_basic() {
-        assert_eq!(run("blether join([\"a\", \"b\", \"c\"], \"-\")").trim(), "a-b-c");
+        assert_eq!(
+            run("blether join([\"a\", \"b\", \"c\"], \"-\")").trim(),
+            "a-b-c"
+        );
     }
 
     // --- STRING STARTS/ENDS ---
 
     #[test]
     fn test_starts_wi() {
-        assert_eq!(run("blether starts_wi(\"hello world\", \"hello\")").trim(), "aye");
+        assert_eq!(
+            run("blether starts_wi(\"hello world\", \"hello\")").trim(),
+            "aye"
+        );
     }
 
     #[test]
     fn test_ends_wi() {
-        assert_eq!(run("blether ends_wi(\"hello world\", \"world\")").trim(), "aye");
+        assert_eq!(
+            run("blether ends_wi(\"hello world\", \"world\")").trim(),
+            "aye"
+        );
     }
 
     #[test]
     fn test_starts_wi_false() {
-        assert_eq!(run("blether starts_wi(\"hello world\", \"world\")").trim(), "nae");
+        assert_eq!(
+            run("blether starts_wi(\"hello world\", \"world\")").trim(),
+            "nae"
+        );
     }
 
     // --- STRING REPLACE ---
 
     #[test]
     fn test_replace_single() {
-        assert_eq!(run("blether replace(\"hello world\", \"world\", \"there\")").trim(), "hello there");
+        assert_eq!(
+            run("blether replace(\"hello world\", \"world\", \"there\")").trim(),
+            "hello there"
+        );
     }
 
     #[test]
@@ -8561,7 +8664,10 @@ blether inc(inc(inc(inc(1))))
 
     #[test]
     fn test_chained_list_ops() {
-        assert_eq!(run("blether reverse(sort([3, 1, 4, 1, 5]))").trim(), "[5, 4, 3, 1, 1]");
+        assert_eq!(
+            run("blether reverse(sort([3, 1, 4, 1, 5]))").trim(),
+            "[5, 4, 3, 1, 1]"
+        );
     }
 
     // --- TERNARY IN VARIOUS CONTEXTS ---
@@ -8681,12 +8787,18 @@ blether result > 0.78 an result < 0.79
 
     #[test]
     fn test_contains_string() {
-        assert_eq!(run("blether contains(\"hello world\", \"world\")").trim(), "aye");
+        assert_eq!(
+            run("blether contains(\"hello world\", \"world\")").trim(),
+            "aye"
+        );
     }
 
     #[test]
     fn test_contains_string_false() {
-        assert_eq!(run("blether contains(\"hello world\", \"foo\")").trim(), "nae");
+        assert_eq!(
+            run("blether contains(\"hello world\", \"foo\")").trim(),
+            "nae"
+        );
     }
 
     #[test]
@@ -8823,23 +8935,35 @@ fer key in k {
 
     #[test]
     fn test_bool_zero_is_false() {
-        assert_eq!(run("gin 0 { blether \"yes\" } ither { blether \"no\" }").trim(), "no");
+        assert_eq!(
+            run("gin 0 { blether \"yes\" } ither { blether \"no\" }").trim(),
+            "no"
+        );
     }
 
     #[test]
     fn test_bool_nonzero_is_true() {
-        assert_eq!(run("gin 1 { blether \"yes\" } ither { blether \"no\" }").trim(), "yes");
+        assert_eq!(
+            run("gin 1 { blether \"yes\" } ither { blether \"no\" }").trim(),
+            "yes"
+        );
     }
 
     #[test]
     fn test_bool_empty_string_is_truthy() {
         // In mdhavers, all strings (even empty) are truthy
-        assert_eq!(run("gin \"\" { blether \"yes\" } ither { blether \"no\" }").trim(), "yes");
+        assert_eq!(
+            run("gin \"\" { blether \"yes\" } ither { blether \"no\" }").trim(),
+            "yes"
+        );
     }
 
     #[test]
     fn test_bool_nonempty_string_is_true() {
-        assert_eq!(run("gin \"hello\" { blether \"yes\" } ither { blether \"no\" }").trim(), "yes");
+        assert_eq!(
+            run("gin \"hello\" { blether \"yes\" } ither { blether \"no\" }").trim(),
+            "yes"
+        );
     }
 
     // --- CONTROL FLOW EDGE CASES ---
@@ -9163,7 +9287,10 @@ blether d["key"]
 
     #[test]
     fn test_string_concat_numbers() {
-        assert_eq!(run("blether \"value: \" + tae_string(42)").trim(), "value: 42");
+        assert_eq!(
+            run("blether \"value: \" + tae_string(42)").trim(),
+            "value: 42"
+        );
     }
 
     // --- RANGE EDGE CASES ---
@@ -9201,7 +9328,10 @@ blether result
 
     #[test]
     fn test_sieve_all_pass() {
-        assert_eq!(run("blether sieve([1, 2, 3], |x| x > 0)").trim(), "[1, 2, 3]");
+        assert_eq!(
+            run("blether sieve([1, 2, 3], |x| x > 0)").trim(),
+            "[1, 2, 3]"
+        );
     }
 
     #[test]
@@ -9211,7 +9341,10 @@ blether result
 
     #[test]
     fn test_tumble_multiplication() {
-        assert_eq!(run("blether tumble([1, 2, 3, 4], 1, |acc, x| acc * x)").trim(), "24");
+        assert_eq!(
+            run("blether tumble([1, 2, 3, 4], 1, |acc, x| acc * x)").trim(),
+            "24"
+        );
     }
 
     // --- MATCH EDGE CASES ---
@@ -9508,7 +9641,10 @@ blether len(list)
 
     #[test]
     fn test_sort_numbers() {
-        assert_eq!(run("blether sort([5, 2, 8, 1, 9, 3])").trim(), "[1, 2, 3, 5, 8, 9]");
+        assert_eq!(
+            run("blether sort([5, 2, 8, 1, 9, 3])").trim(),
+            "[1, 2, 3, 5, 8, 9]"
+        );
     }
 
     #[test]
@@ -9688,7 +9824,10 @@ blether len(a)
     // --- STRING OPERATIONS CHAIN ---
     #[test]
     fn test_string_chain() {
-        assert_eq!(run("blether upper(lower(upper(\"hello\")))").trim(), "HELLO");
+        assert_eq!(
+            run("blether upper(lower(upper(\"hello\")))").trim(),
+            "HELLO"
+        );
     }
 
     // --- LIST OPERATIONS CHAIN ---
@@ -12452,7 +12591,10 @@ mod coverage_batch33 {
     #[test]
     fn test_string_split() {
         // Test string split
-        assert_eq!(run("blether split(\"a,b,c\", \",\")").trim(), "[\"a\", \"b\", \"c\"]");
+        assert_eq!(
+            run("blether split(\"a,b,c\", \",\")").trim(),
+            "[\"a\", \"b\", \"c\"]"
+        );
     }
 
     #[test]
@@ -12479,7 +12621,10 @@ mod coverage_batch33 {
     // --- LIST FUNCTIONS ---
     #[test]
     fn test_join() {
-        assert_eq!(run("blether join([\"a\", \"b\", \"c\"], \"-\")").trim(), "a-b-c");
+        assert_eq!(
+            run("blether join([\"a\", \"b\", \"c\"], \"-\")").trim(),
+            "a-b-c"
+        );
     }
 
     #[test]
@@ -13005,7 +13150,10 @@ blether list
 
     #[test]
     fn test_sort_list() {
-        assert_eq!(run("blether sort([3, 1, 4, 1, 5])").trim(), "[1, 1, 3, 4, 5]");
+        assert_eq!(
+            run("blether sort([3, 1, 4, 1, 5])").trim(),
+            "[1, 1, 3, 4, 5]"
+        );
     }
 
     #[test]
@@ -13039,17 +13187,26 @@ mod coverage_batch38 {
 
     #[test]
     fn test_join_list() {
-        assert_eq!(run("blether join([\"a\", \"b\", \"c\"], \"-\")").trim(), "a-b-c");
+        assert_eq!(
+            run("blether join([\"a\", \"b\", \"c\"], \"-\")").trim(),
+            "a-b-c"
+        );
     }
 
     #[test]
     fn test_split_string() {
-        assert_eq!(run("blether split(\"a-b-c\", \"-\")").trim(), "[\"a\", \"b\", \"c\"]");
+        assert_eq!(
+            run("blether split(\"a-b-c\", \"-\")").trim(),
+            "[\"a\", \"b\", \"c\"]"
+        );
     }
 
     #[test]
     fn test_contains_string() {
-        assert_eq!(run("blether contains(\"hello world\", \"world\")").trim(), "aye");
+        assert_eq!(
+            run("blether contains(\"hello world\", \"world\")").trim(),
+            "aye"
+        );
     }
 
     #[test]
@@ -13071,17 +13228,26 @@ mod coverage_batch38 {
 
     #[test]
     fn test_chynge_replace() {
-        assert_eq!(run("blether chynge(\"hello world\", \"world\", \"universe\")").trim(), "hello universe");
+        assert_eq!(
+            run("blether chynge(\"hello world\", \"world\", \"universe\")").trim(),
+            "hello universe"
+        );
     }
 
     #[test]
     fn test_replace_string() {
-        assert_eq!(run("blether replace(\"foo bar foo\", \"foo\", \"baz\")").trim(), "baz bar baz");
+        assert_eq!(
+            run("blether replace(\"foo bar foo\", \"foo\", \"baz\")").trim(),
+            "baz bar baz"
+        );
     }
 
     #[test]
     fn test_words_split() {
-        assert_eq!(run("blether words(\"hello world test\")").trim(), "[\"hello\", \"world\", \"test\"]");
+        assert_eq!(
+            run("blether words(\"hello world test\")").trim(),
+            "[\"hello\", \"world\", \"test\"]"
+        );
     }
 
     #[test]
@@ -13261,7 +13427,10 @@ blether d["a"] + d["b"] + d["c"]
 
     #[test]
     fn test_dict_string_value() {
-        assert_eq!(run("blether {\"name\": \"Alice\"}[\"name\"]").trim(), "Alice");
+        assert_eq!(
+            run("blether {\"name\": \"Alice\"}[\"name\"]").trim(),
+            "Alice"
+        );
     }
 
     #[test]
@@ -13494,7 +13663,10 @@ blether f"Result: {double(5)}"
 
     #[test]
     fn test_string_concat_plus() {
-        assert_eq!(run("blether \"hello\" + \" \" + \"world\"").trim(), "hello world");
+        assert_eq!(
+            run("blether \"hello\" + \" \" + \"world\"").trim(),
+            "hello world"
+        );
     }
 
     #[test]
@@ -13985,7 +14157,10 @@ mod coverage_batch48 {
 
     #[test]
     fn test_sieve_positive() {
-        assert_eq!(run("blether sieve([1, -2, 3, -4], |x| x > 0)").trim(), "[1, 3]");
+        assert_eq!(
+            run("blether sieve([1, -2, 3, -4], |x| x > 0)").trim(),
+            "[1, 3]"
+        );
     }
 
     #[test]
@@ -14839,12 +15014,18 @@ mod coverage_batch64 {
 
     #[test]
     fn test_sieve_odd() {
-        assert_eq!(run("blether sieve([1, 2, 3, 4, 5], |x| x % 2 == 1)").trim(), "[1, 3, 5]");
+        assert_eq!(
+            run("blether sieve([1, 2, 3, 4, 5], |x| x % 2 == 1)").trim(),
+            "[1, 3, 5]"
+        );
     }
 
     #[test]
     fn test_sieve_large() {
-        assert_eq!(run("blether sieve([1, 5, 10, 15], |x| x > 5)").trim(), "[10, 15]");
+        assert_eq!(
+            run("blether sieve([1, 5, 10, 15], |x| x > 5)").trim(),
+            "[10, 15]"
+        );
     }
 
     #[test]
@@ -32675,7 +32856,10 @@ blether list[len(list) - 1]
 
     #[test]
     fn test_sort_numbers() {
-        assert_eq!(run("blether sort([3, 1, 4, 1, 5])").trim(), "[1, 1, 3, 4, 5]");
+        assert_eq!(
+            run("blether sort([3, 1, 4, 1, 5])").trim(),
+            "[1, 1, 3, 4, 5]"
+        );
     }
 
     #[test]
@@ -32919,7 +33103,6 @@ blether x
 // =============================================================================
 // BATCH 361-380: DESTRUCTURE STATEMENTS
 // =============================================================================
-#[cfg(feature = "unimplemented")]
 mod destructure {
     use super::*;
 
@@ -33128,7 +33311,6 @@ blether first + last
 // =============================================================================
 // BATCH 381-400: STRUCT DECLARATIONS (thing)
 // =============================================================================
-#[cfg(feature = "unimplemented")]
 mod structs {
     use super::*;
 
@@ -33371,7 +33553,6 @@ blether q.a + q.b + q.c + q.d
 // =============================================================================
 // BATCH 401-420: HURL (throw) STATEMENTS
 // =============================================================================
-#[cfg(feature = "unimplemented")]
 mod hurl_statements {
     use super::*;
 
@@ -33669,7 +33850,6 @@ hae_a_bash {
 // =============================================================================
 // BATCH 421-440: ADDITIONAL MATCH PATTERNS
 // =============================================================================
-#[cfg(feature = "unimplemented")]
 mod match_advanced {
     use super::*;
 
@@ -33951,7 +34131,6 @@ blether sum
 // =============================================================================
 // BATCH 441-460: MORE STRUCT PATTERNS
 // =============================================================================
-#[cfg(feature = "unimplemented")]
 mod structs_advanced {
     use super::*;
 
@@ -34192,7 +34371,6 @@ blether c.hour % 12
 // =============================================================================
 // BATCH 461-480: MORE DESTRUCTURE PATTERNS
 // =============================================================================
-#[cfg(feature = "unimplemented")]
 mod destructure_advanced {
     use super::*;
 
@@ -35672,14 +35850,13 @@ blether whit_kind(f)
 // =============================================================================
 // BINARY OPERATIONS EXTENDED (Bitwise ops not supported)
 // =============================================================================
-#[cfg(feature = "unimplemented")]
-mod binary_ops_extended {
+mod binary_ops_bitwise_extended {
     use super::run;
 
     #[test]
     fn test_bitwise_and() {
         let code = r#"
-blether 15 & 9
+blether bit_and(15, 9)
         "#;
         // 1111 & 1001 = 1001 = 9
         assert_eq!(run(code).trim(), "9");
@@ -35688,7 +35865,7 @@ blether 15 & 9
     #[test]
     fn test_bitwise_or() {
         let code = r#"
-blether 8 | 1
+blether bit_or(8, 1)
         "#;
         // 1000 | 0001 = 1001 = 9
         assert_eq!(run(code).trim(), "9");
@@ -35697,7 +35874,7 @@ blether 8 | 1
     #[test]
     fn test_bitwise_xor() {
         let code = r#"
-blether 15 ^ 9
+blether bit_xor(15, 9)
         "#;
         // 1111 ^ 1001 = 0110 = 6
         assert_eq!(run(code).trim(), "6");
@@ -35706,7 +35883,7 @@ blether 15 ^ 9
     #[test]
     fn test_shift_left() {
         let code = r#"
-blether 1 << 4
+blether bit_shove_left(1, 4)
         "#;
         assert_eq!(run(code).trim(), "16");
     }
@@ -35714,7 +35891,7 @@ blether 1 << 4
     #[test]
     fn test_shift_right() {
         let code = r#"
-blether 16 >> 2
+blether bit_shove_right(16, 2)
         "#;
         assert_eq!(run(code).trim(), "4");
     }
@@ -35723,7 +35900,7 @@ blether 16 >> 2
     fn test_combined_shifts() {
         let code = r#"
 ken x = 1
-ken y = (x << 3) >> 1
+ken y = bit_shove_right(bit_shove_left(x, 3), 1)
 blether y
         "#;
         // (1 << 3) = 8, 8 >> 1 = 4
@@ -36252,7 +36429,10 @@ mod string_builtins_coverage {
 
     #[test]
     fn test_replace_not_found() {
-        assert_eq!(run(r#"blether replace("hello", "xyz", "abc")"#).trim(), "hello");
+        assert_eq!(
+            run(r#"blether replace("hello", "xyz", "abc")"#).trim(),
+            "hello"
+        );
     }
 
     #[test]
@@ -37349,7 +37529,10 @@ mod expression_coverage {
 
     #[test]
     fn test_string_concat() {
-        assert_eq!(run(r#"blether "hello" + " " + "world""#).trim(), "hello world");
+        assert_eq!(
+            run(r#"blether "hello" + " " + "world""#).trim(),
+            "hello world"
+        );
     }
 
     #[test]
@@ -37587,7 +37770,7 @@ blether gin result > 179.0 an result < 181.0 than "ok" ither "fail"
 }
 
 // =============================================================================
-// LOGGING FUNCTIONS COVERAGE  
+// LOGGING FUNCTIONS COVERAGE
 // =============================================================================
 mod logging_coverage {
     use super::run;
@@ -37958,9 +38141,9 @@ blether a.get() + b.get() + c.get()
 // IMPORT SYSTEM COVERAGE
 // =============================================================================
 mod import_coverage {
+    use mdhavers::{parse, LLVMCompiler};
     use std::fs;
     use std::process::Command;
-    use mdhavers::{parse, LLVMCompiler};
     use tempfile::tempdir;
 
     /// Helper to compile source code from a file path and run the result
@@ -42525,12 +42708,18 @@ mod builtins_coverage_batch2 {
 
     #[test]
     fn test_chynge_replace() {
-        assert_eq!(run(r#"blether chynge("hello world", "world", "there")"#).trim(), "hello there");
+        assert_eq!(
+            run(r#"blether chynge("hello world", "world", "there")"#).trim(),
+            "hello there"
+        );
     }
 
     #[test]
     fn test_replace_first() {
-        assert_eq!(run(r#"blether replace_first("hello hello", "hello", "hi")"#).trim(), "hi hello");
+        assert_eq!(
+            run(r#"blether replace_first("hello hello", "hello", "hi")"#).trim(),
+            "hi hello"
+        );
     }
 
     #[test]
@@ -43467,7 +43656,6 @@ blether result
 // =============================================================================
 // STRUCT COVERAGE (not supported in LLVM)
 // =============================================================================
-#[cfg(feature = "unimplemented")]
 mod struct_full_coverage {
     use super::run;
 
@@ -43639,7 +43827,6 @@ blether result
         "#;
         assert_eq!(run(code).trim(), "small");
     }
-
 }
 
 // =============================================================================
@@ -47014,10 +47201,13 @@ mod file_io_coverage {
         let path = "/tmp/test_file_exists_braw.txt";
         fs::write(path, "test content").unwrap();
 
-        let code = format!(r#"
+        let code = format!(
+            r#"
 ken result = file_exists("{}")
 blether result
-        "#, path);
+        "#,
+            path
+        );
         let output = run(&code).trim().to_lowercase();
         assert!(output == "aye" || output == "true" || output == "1");
 
@@ -47039,10 +47229,13 @@ blether result
         let path = "/tmp/test_slurp_braw.txt";
         fs::write(path, "hello world").unwrap();
 
-        let code = format!(r#"
+        let code = format!(
+            r#"
 ken content = slurp("{}")
 blether content
-        "#, path);
+        "#,
+            path
+        );
         assert_eq!(run(&code).trim(), "hello world");
 
         fs::remove_file(path).ok();
@@ -47051,11 +47244,14 @@ blether content
     #[test]
     fn test_scrieve() {
         let path = "/tmp/test_scrieve_braw.txt";
-        let code = format!(r#"
+        let code = format!(
+            r#"
 scrieve("{}", "test content")
 ken content = slurp("{}")
 blether content
-        "#, path, path);
+        "#,
+            path, path
+        );
         assert_eq!(run(&code).trim(), "test content");
 
         fs::remove_file(path).ok();
@@ -47066,10 +47262,13 @@ blether content
         let path = "/tmp/test_lines_braw.txt";
         fs::write(path, "line1\nline2\nline3").unwrap();
 
-        let code = format!(r#"
+        let code = format!(
+            r#"
 ken lns = lines("{}")
 blether len(lns)
-        "#, path);
+        "#,
+            path
+        );
         assert_eq!(run(&code).trim(), "3");
 
         fs::remove_file(path).ok();
@@ -47187,7 +47386,7 @@ blether len(taken)
         let code = r#"
 ken a = [1, 2, 3]
 ken b = ["a", "b", "c"]
-ken pairs = pair_up(a, b)
+ken pairs = zip(a, b)
 blether len(pairs)
         "#;
         assert_eq!(run(code).trim(), "3");
@@ -47786,7 +47985,7 @@ mod testing_builtins_cov {
     #[test]
     fn test_assert_true() {
         let code = r#"
-assert(aye)
+assert(aye, "should pass")
 blether "passed"
         "#;
         assert_eq!(run(code).trim(), "passed");
@@ -48192,29 +48391,28 @@ blether len(zipped)
     }
 }
 
-/// Tests for creel() function
+/// Tests for creel(list) (set constructor) function
 mod creel_coverage {
     use super::*;
 
     #[test]
     fn test_creel_empty() {
-        // creel() returns a list with capacity 8, len may show capacity
+        // creel([]) returns an empty set/creel
         let code = r#"
-ken basket = creel()
+ken basket = creel([])
 blether len(basket)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        // Accept either 0 or 8 (capacity) as valid
-        assert!(output == "0" || output == "8", "Expected 0 || 8, got {}", output);
+        assert_eq!(output, "0");
     }
 
     #[test]
-    fn test_creel_copy_list() {
+    fn test_creel_from_list() {
         let code = r#"
 ken original = [1, 2, 3]
-ken copy = creel(original)
-blether len(copy)
+ken s = creel(original)
+blether len(s)
         "#;
         assert_eq!(run(code).trim(), "3");
     }
@@ -48458,7 +48656,14 @@ ken val = getenv("NONEXISTENT_VAR_12345")
 blether is_nil(val)
         "#;
         let output = run(code).trim().to_lowercase();
-        assert!(output == "aye" || output == "true" || output == "1" || output == "nae" || output == "false" || output == "0");
+        assert!(
+            output == "aye"
+                || output == "true"
+                || output == "1"
+                || output == "nae"
+                || output == "false"
+                || output == "0"
+        );
     }
 }
 
@@ -48530,7 +48735,11 @@ blether is_nummer(x)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "true" || output == "aye", "Expected truthy for int: {}", output);
+        assert!(
+            output == "1" || output == "true" || output == "aye",
+            "Expected truthy for int: {}",
+            output
+        );
     }
 
     #[test]
@@ -48541,7 +48750,11 @@ blether is_nummer(x)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "true" || output == "aye", "Expected truthy for float: {}", output);
+        assert!(
+            output == "1" || output == "true" || output == "aye",
+            "Expected truthy for float: {}",
+            output
+        );
     }
 
     #[test]
@@ -48552,7 +48765,11 @@ blether is_nummer(x)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output == "false" || output == "nae", "Expected falsy for string: {}", output);
+        assert!(
+            output == "0" || output == "false" || output == "nae",
+            "Expected falsy for string: {}",
+            output
+        );
     }
 
     #[test]
@@ -48563,7 +48780,11 @@ blether is_number(x)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "true" || output == "aye", "Expected truthy: {}", output);
+        assert!(
+            output == "1" || output == "true" || output == "aye",
+            "Expected truthy: {}",
+            output
+        );
     }
 
     #[test]
@@ -48658,7 +48879,11 @@ blether is_empty(lst)
         let code = r#"blether is_prime(4)"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output == "false" || output == "nae", "Got: {}", output);
+        assert!(
+            output == "0" || output == "false" || output == "nae",
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -48833,42 +49058,66 @@ mod math_builtins_cov {
     fn test_floor_float() {
         let binding = run("blether floor(3.7)");
         let output = binding.trim();
-        assert!(output == "3" || output == "3.0", "Expected 3, got: {}", output);
+        assert!(
+            output == "3" || output == "3.0",
+            "Expected 3, got: {}",
+            output
+        );
     }
 
     #[test]
     fn test_ceil_float() {
         let binding = run("blether ceil(3.2)");
         let output = binding.trim();
-        assert!(output == "4" || output == "4.0", "Expected 4, got: {}", output);
+        assert!(
+            output == "4" || output == "4.0",
+            "Expected 4, got: {}",
+            output
+        );
     }
 
     #[test]
     fn test_round_float() {
         let binding = run("blether round(3.6)");
         let output = binding.trim();
-        assert!(output == "4" || output == "4.0", "Expected 4, got: {}", output);
+        assert!(
+            output == "4" || output == "4.0",
+            "Expected 4, got: {}",
+            output
+        );
     }
 
     #[test]
     fn test_sqrt() {
         let binding = run("blether sqrt(16.0)");
         let output = binding.trim();
-        assert!(output == "4" || output == "4.0", "Expected 4, got: {}", output);
+        assert!(
+            output == "4" || output == "4.0",
+            "Expected 4, got: {}",
+            output
+        );
     }
 
     #[test]
     fn test_pow() {
         let binding = run("blether pow(2, 8)");
         let output = binding.trim();
-        assert!(output == "256" || output == "256.0", "Expected 256, got: {}", output);
+        assert!(
+            output == "256" || output == "256.0",
+            "Expected 256, got: {}",
+            output
+        );
     }
 
     #[test]
     fn test_exp() {
         let binding = run("blether exp(0.0)");
         let output = binding.trim();
-        assert!(output == "1" || output == "1.0", "Expected 1, got: {}", output);
+        assert!(
+            output == "1" || output == "1.0",
+            "Expected 1, got: {}",
+            output
+        );
     }
 
     #[test]
@@ -48885,7 +49134,11 @@ mod math_builtins_cov {
     fn test_log10() {
         let binding = run("blether log10(100.0)");
         let output = binding.trim();
-        assert!(output == "2" || output == "2.0", "Expected 2, got: {}", output);
+        assert!(
+            output == "2" || output == "2.0",
+            "Expected 2, got: {}",
+            output
+        );
     }
 
     #[test]
@@ -48943,7 +49196,7 @@ blether lst[100]
         let binding = run(code);
         let output = binding.trim();
         // Out of bounds behavior varies
-        assert!(output.len() >= 0, "Got something");
+        assert!(!output.is_empty(), "Got something");
     }
 }
 
@@ -49032,7 +49285,11 @@ blether median(lst)
         let binding = run(code);
         let output = binding.trim();
         // median of [1,5,3,2,4] sorted = [1,2,3,4,5], median = 3
-        assert!(output == "3" || output == "3.0", "Expected 3, got: {}", output);
+        assert!(
+            output == "3" || output == "3.0",
+            "Expected 3, got: {}",
+            output
+        );
     }
 
     #[test]
@@ -49045,7 +49302,11 @@ blether median(lst)
         let output = binding.trim();
         // median of [1,2,3,4] = (2+3)/2 = 2.5
         let val: f64 = output.parse().unwrap_or(0.0);
-        assert!(val >= 2.0 && val <= 3.0, "Expected around 2.5, got: {}", output);
+        assert!(
+            val >= 2.0 && val <= 3.0,
+            "Expected around 2.5, got: {}",
+            output
+        );
     }
 
     #[test]
@@ -49053,7 +49314,11 @@ blether median(lst)
         let code = r#"blether is_space(" ")"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "true" || output == "aye", "Expected true, got: {}", output);
+        assert!(
+            output == "1" || output == "true" || output == "aye",
+            "Expected true, got: {}",
+            output
+        );
     }
 
     #[test]
@@ -49061,7 +49326,11 @@ blether median(lst)
         let code = r#"blether is_space("a")"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output == "false" || output == "nae", "Expected false, got: {}", output);
+        assert!(
+            output == "0" || output == "false" || output == "nae",
+            "Expected false, got: {}",
+            output
+        );
     }
 
     #[test]
@@ -49069,7 +49338,11 @@ blether median(lst)
         let code = r#"blether is_digit("5")"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "true" || output == "aye", "Expected true, got: {}", output);
+        assert!(
+            output == "1" || output == "true" || output == "aye",
+            "Expected true, got: {}",
+            output
+        );
     }
 
     #[test]
@@ -49077,7 +49350,11 @@ blether median(lst)
         let code = r#"blether is_digit("a")"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output == "false" || output == "nae", "Expected false, got: {}", output);
+        assert!(
+            output == "0" || output == "false" || output == "nae",
+            "Expected false, got: {}",
+            output
+        );
     }
 
     #[test]
@@ -49208,7 +49485,11 @@ blether x != 0
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "aye" || output == "1" || output == "true", "Got: {}", output);
+        assert!(
+            output == "aye" || output == "1" || output == "true",
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -49446,7 +49727,11 @@ mod string_transform_cov {
         let binding = run(code);
         let output = binding.trim();
         // Should title case
-        assert!(output.starts_with("H") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.starts_with("H") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -49591,7 +49876,11 @@ mod math_transform_cov {
         let code = r#"blether atween(5, 0, 10)"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output == "true", "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output == "true",
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -49599,7 +49888,11 @@ mod math_transform_cov {
         let code = r#"blether atween(15, 0, 10)"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output == "nae" || output == "false", "Got: {}", output);
+        assert!(
+            output == "0" || output == "nae" || output == "false",
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -49612,7 +49905,11 @@ blether result
         let binding = run(code);
         let output = binding.trim();
         // Result is either aye/nae or 0/1
-        assert!(output == "aye" || output == "nae" || output == "0" || output == "1", "Got: {}", output);
+        assert!(
+            output == "aye" || output == "nae" || output == "0" || output == "1",
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -49748,7 +50045,11 @@ mod conversion_cov {
         let binding = run(code);
         let output = binding.trim();
         // 5 in binary = 101
-        assert!(output.contains("101") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.contains("101") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -49774,7 +50075,11 @@ mod url_encoding_cov {
         let binding = run(code);
         let output = binding.trim();
         // Should encode space as %20 or +
-        assert!(output.contains("%20") || output.contains("+") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.contains("%20") || output.contains("+") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -49783,7 +50088,11 @@ mod url_encoding_cov {
         let binding = run(code);
         let output = binding.trim();
         // Should decode to "hello world"
-        assert!(output.contains("hello") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.contains("hello") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -49842,7 +50151,11 @@ blether aw(lst, is_even)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "aye" || output == "1" || output == "true", "Got: {}", output);
+        assert!(
+            output == "aye" || output == "1" || output == "true",
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -49875,7 +50188,7 @@ mod assert_cov {
     #[test]
     fn test_assert_pass() {
         let code = r#"
-assert(aye)
+assert(aye, "should pass")
 blether "passed"
         "#;
         let binding = run(code);
@@ -49911,7 +50224,11 @@ blether x >= 1 an x <= 10
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "aye" || output == "1" || output == "true", "Got: {}", output);
+        assert!(
+            output == "aye" || output == "1" || output == "true",
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -49923,7 +50240,11 @@ blether x >= 0.0
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "aye" || output == "1" || output == "true", "Got: {}", output);
+        assert!(
+            output == "aye" || output == "1" || output == "true",
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -49952,7 +50273,11 @@ blether p.greet()
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("Hello") && output.contains("Alice"), "Got: {}", output);
+        assert!(
+            output.contains("Hello") && output.contains("Alice"),
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -50048,7 +50373,11 @@ blether x
         let binding = run(code);
         let output = binding.trim();
         // Should print 20 and then 10
-        assert!(output.contains("20") && output.contains("10"), "Got: {}", output);
+        assert!(
+            output.contains("20") && output.contains("10"),
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -50067,7 +50396,11 @@ blether "done"
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("done") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.contains("done") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -50113,18 +50446,26 @@ mod string_ops_cov2 {
 
     #[test]
     fn test_strip_left() {
-        let code = r#"blether strip_left("  hello")"#;
+        let code = r#"blether strip_left("  hello", " ")"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "hello" || output.starts_with("hello"), "Got: {}", output);
+        assert!(
+            output == "hello" || output.starts_with("hello"),
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
     fn test_strip_right() {
-        let code = r#"blether strip_right("hello  ")"#;
+        let code = r#"blether strip_right("hello  ", " ")"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "hello" || output.contains("hello"), "Got: {}", output);
+        assert!(
+            output == "hello" || output.contains("hello"),
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -50132,7 +50473,11 @@ mod string_ops_cov2 {
         let code = r#"blether starts_wi("hello world", "hello")"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "aye" || output == "1" || output == "true", "Got: {}", output);
+        assert!(
+            output == "aye" || output == "1" || output == "true",
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -50172,7 +50517,11 @@ mod type_check_extra {
         let code = r#"blether is_hale_nummer(42)"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output == "true", "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output == "true",
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -50181,7 +50530,11 @@ mod type_check_extra {
         let binding = run(code);
         let output = binding.trim();
         // Float is not a whole number
-        assert!(output == "0" || output == "nae" || output == "false", "Got: {}", output);
+        assert!(
+            output == "0" || output == "nae" || output == "false",
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -50189,7 +50542,11 @@ mod type_check_extra {
         let code = r#"blether is_whole(100)"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output == "true", "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output == "true",
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -50197,7 +50554,11 @@ mod type_check_extra {
         let code = r#"blether is_integer(5)"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output == "true", "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output == "true",
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -50968,7 +51329,11 @@ greet("World")
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "Hello World" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "Hello World" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -51584,18 +51949,18 @@ mod creel_set_cov {
     #[test]
     fn test_creel_empty() {
         let code = r#"
-ken basket = creel()
+ken basket = empty_creel()
 blether len(basket)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output.len() > 0, "Got: {}", output);
+        assert_eq!(output, "0");
     }
 
     #[test]
     fn test_creel_toss_in() {
         let code = r#"
-ken basket = creel()
+ken basket = empty_creel()
 toss_in(basket, "apple")
 blether len(basket)
         "#;
@@ -51607,7 +51972,7 @@ blether len(basket)
     #[test]
     fn test_creel_is_in() {
         let code = r#"
-ken basket = creel()
+ken basket = empty_creel()
 toss_in(basket, "apple")
 blether is_in(basket, "apple")
         "#;
@@ -51619,7 +51984,7 @@ blether is_in(basket, "apple")
     #[test]
     fn test_creel_heave_oot() {
         let code = r#"
-ken basket = creel()
+ken basket = empty_creel()
 toss_in(basket, "apple")
 heave_oot(basket, "apple")
 blether len(basket)
@@ -51632,7 +51997,7 @@ blether len(basket)
     #[test]
     fn test_creel_to_list() {
         let code = r#"
-ken basket = creel()
+ken basket = empty_creel()
 toss_in(basket, "a")
 toss_in(basket, "b")
 ken list = creel_tae_list(basket)
@@ -51984,7 +52349,7 @@ blether joined
         let binding = run(code);
         let output = binding.trim();
         // Empty list joins to empty string
-        assert!(output.len() >= 0);
+        assert!(output.is_empty());
     }
 
     #[test]
@@ -52016,7 +52381,11 @@ blether contains(s, "world")
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -52060,7 +52429,11 @@ blether replaced
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "hello there" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "hello there" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -52123,7 +52496,11 @@ blether upper("Hello World")
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "HELLO WORLD" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "HELLO WORLD" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -52149,7 +52526,7 @@ blether trim(s)
     fn test_trim_left() {
         let code = r#"
 ken s = "   hello"
-blether strip_left(s)
+blether strip_left(s, " ")
         "#;
         let binding = run(code);
         let output = binding.trim();
@@ -52160,7 +52537,7 @@ blether strip_left(s)
     fn test_trim_right() {
         let code = r#"
 ken s = "hello   "
-blether strip_right(s)
+blether strip_right(s, " ")
         "#;
         let binding = run(code);
         let output = binding.trim();
@@ -52183,7 +52560,11 @@ blether starts_wi(s, "hello")
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -52194,7 +52575,11 @@ blether ends_wi(s, "world")
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -52271,7 +52656,11 @@ blether c
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "helloworld" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "helloworld" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -52318,9 +52707,7 @@ mod input_cov {
 ken name = speir("Enter name: ")
 blether name
         "#;
-        let binding = run(code);
-        let output = binding.trim();
-        assert!(output.len() >= 0);
+        let _ = run(code);
     }
 }
 
@@ -52339,7 +52726,11 @@ blether is_list(arr)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -52350,7 +52741,11 @@ blether is_dict(d)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -52523,7 +52918,11 @@ blether aw(arr)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -52546,7 +52945,11 @@ blether ony(arr)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -52597,7 +53000,11 @@ blether log10(100.0)
         let binding = run(code);
         let output = binding.trim();
         // log10(100) = 2
-        assert!(output == "2" || output.starts_with("2") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "2" || output.starts_with("2") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -52608,7 +53015,11 @@ blether log2(8.0)
         let binding = run(code);
         let output = binding.trim();
         // log2(8) = 3
-        assert!(output == "3" || output.starts_with("3") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "3" || output.starts_with("3") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -52709,7 +53120,7 @@ mod scots_exclaim_cov {
     #[test]
     fn test_jings() {
         let code = r#"
-jings()
+jings("wow")
 blether "done"
         "#;
         let binding = run(code);
@@ -52720,7 +53131,7 @@ blether "done"
     #[test]
     fn test_crivvens() {
         let code = r#"
-crivvens()
+crivvens("blimey")
 blether 1
         "#;
         let binding = run(code);
@@ -52731,7 +53142,7 @@ blether 1
     #[test]
     fn test_stooshie() {
         let code = r#"
-stooshie()
+stooshie("abc")
 blether 42
         "#;
         let binding = run(code);
@@ -52788,7 +53199,11 @@ blether s
         let binding = run(code);
         let output = binding.trim();
         // Currently returns as-is
-        assert!(output == "hello world" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "hello world" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -52931,7 +53346,11 @@ blether f"length is {len(arr)}"
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "length is 3" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "length is 3" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -52961,7 +53380,11 @@ blether nae nae x
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -52999,7 +53422,11 @@ blether 5 + 2.5
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "7.5" || output.starts_with("7") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "7.5" || output.starts_with("7") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -53128,7 +53555,11 @@ blether big + 1
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1000000000" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1000000000" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -53395,7 +53826,11 @@ blether nae x
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output == "nae" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "0" || output == "nae" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -53408,7 +53843,11 @@ blether (a an b) or (a an a)
         let binding = run(code);
         let output = binding.trim();
         // (true && false) || (true && true) = false || true = true
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -53421,7 +53860,11 @@ blether result
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -53618,7 +54061,11 @@ blether found
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -53653,7 +54100,11 @@ blether y
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "5" || output.starts_with("5") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "5" || output.starts_with("5") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -53718,7 +54169,11 @@ blether sqrt(16.0)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "4" || output.starts_with("4") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "4" || output.starts_with("4") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -53791,7 +54246,11 @@ blether 1 < x an x < 10
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -53810,7 +54269,11 @@ blether x == nil
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -53821,7 +54284,11 @@ blether is_nil(x)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -53840,7 +54307,11 @@ blether r >= 1
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -53870,7 +54341,11 @@ blether t > 0
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -53888,7 +54363,11 @@ blether is_nummer(42)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -53898,7 +54377,11 @@ blether is_nummer("hello")
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output == "nae" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "0" || output == "nae" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -53908,7 +54391,11 @@ blether is_toom("test string")
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -53975,7 +54462,11 @@ blether tae_hex(255)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "ff" || output == "FF" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "ff" || output == "FF" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -54013,7 +54504,11 @@ blether is_prime(7)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -54023,7 +54518,11 @@ blether is_prime(10)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output == "nae" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "0" || output == "nae" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -54033,7 +54532,11 @@ blether is_prime(2)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -54173,7 +54676,11 @@ blether 5 == 5
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -54183,7 +54690,11 @@ blether 5 != 3
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -54193,7 +54704,11 @@ blether "hello" == "hello"
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -54203,7 +54718,11 @@ blether 5 <= 5
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -54213,7 +54732,11 @@ blether 5 >= 3
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -54231,7 +54754,11 @@ blether 1.5 + 2.5
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "4" || output.starts_with("4") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "4" || output.starts_with("4") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -54241,7 +54768,11 @@ blether 5.5 - 2.5
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "3" || output.starts_with("3") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "3" || output.starts_with("3") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -54251,7 +54782,11 @@ blether 2.5 * 4.0
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "10" || output.starts_with("10") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "10" || output.starts_with("10") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -54261,7 +54796,11 @@ blether 10.0 / 4.0
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "2.5" || output.starts_with("2") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "2.5" || output.starts_with("2") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -54281,7 +54820,11 @@ blether s
         let binding = run(code);
         let output = binding.trim();
         // sin(0) = 0
-        assert!(output == "0" || output.starts_with("0") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "0" || output.starts_with("0") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -54293,7 +54836,11 @@ blether c
         let binding = run(code);
         let output = binding.trim();
         // cos(0) = 1
-        assert!(output == "1" || output.starts_with("1") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output.starts_with("1") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -54305,7 +54852,11 @@ blether t
         let binding = run(code);
         let output = binding.trim();
         // tan(0) = 0
-        assert!(output == "0" || output.starts_with("0") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "0" || output.starts_with("0") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -54325,7 +54876,11 @@ blether e
         let binding = run(code);
         let output = binding.trim();
         // exp(0) = 1
-        assert!(output == "1" || output.starts_with("1") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output.starts_with("1") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -54337,7 +54892,11 @@ blether l
         let binding = run(code);
         let output = binding.trim();
         // log(1) = 0
-        assert!(output == "0" || output.starts_with("0") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "0" || output.starts_with("0") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -54349,7 +54908,11 @@ blether l
         let binding = run(code);
         let output = binding.trim();
         // log10(1000) = 3
-        assert!(output == "3" || output.starts_with("3") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "3" || output.starts_with("3") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -54421,7 +54984,11 @@ blether 3.14159
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.starts_with("3.14") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.starts_with("3.14") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -54431,7 +54998,11 @@ blether "test output"
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "test output" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "test output" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -54441,7 +55012,11 @@ blether aye
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "aye" || output == "1" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "aye" || output == "1" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -54451,7 +55026,11 @@ blether nae
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "nae" || output == "0" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "nae" || output == "0" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -54488,9 +55067,7 @@ mod get_key_cov {
 ken k = get_key()
 blether k
         "#;
-        let binding = run(code);
-        let output = binding.trim();
-        assert!(output.len() >= 0);
+        let _ = run(code);
     }
 }
 
@@ -54889,7 +55466,7 @@ blether len(nums)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output.len() >= 0, "Got: {}", output);
+        assert_eq!(output, "0");
     }
 
     #[test]
@@ -55141,9 +55718,9 @@ mod set_ops_cov {
     #[test]
     fn test_creel_tae_list() {
         let code = r#"
-ken s = creel()
-shove(s, 1)
-shove(s, 2)
+ken s = empty_creel()
+toss_in(s, 1)
+toss_in(s, 2)
 ken lst = creel_tae_list(s)
 blether len(lst)
         "#;
@@ -55155,16 +55732,16 @@ blether len(lst)
     #[test]
     fn test_set_union() {
         let code = r#"
-ken s1 = creel()
-shove(s1, 1)
-ken s2 = creel()
-shove(s2, 2)
+ken s1 = empty_creel()
+toss_in(s1, 1)
+ken s2 = empty_creel()
+toss_in(s2, 2)
 ken combined = creels_thegither(s1, s2)
 blether len(combined)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.len() >= 0, "Got: {}", output);
+        assert_eq!(output, "2");
     }
 }
 
@@ -55185,7 +55762,11 @@ blether c
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "helloworld" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "helloworld" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -55214,7 +55795,11 @@ blether result
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "prefix_dynamic" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "prefix_dynamic" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -55233,7 +55818,7 @@ blether exists
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output == "nae" || output.len() >= 0, "Got: {}", output);
+        assert!(output == "0" || output == "nae", "Got: {}", output);
     }
 
     #[test]
@@ -55244,7 +55829,7 @@ blether content
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.len() >= 0, "Got: {}", output);
+        assert!(output.is_empty(), "Got: {}", output);
     }
 
     #[test]
@@ -55255,7 +55840,7 @@ blether len(file_lines)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.len() >= 0, "Got: {}", output);
+        assert!(!output.is_empty(), "Got: {}", output);
     }
 }
 
@@ -55289,7 +55874,11 @@ greet("Bob")
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("Bob") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.contains("Bob") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -55302,7 +55891,11 @@ greet()
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("stranger") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.contains("stranger") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -55371,7 +55964,7 @@ blether arr[0]
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output == "nae" || output.len() >= 0, "Got: {}", output);
+        assert!(output == "0" || output == "nae", "Got: {}", output);
     }
 
     #[test]
@@ -55403,7 +55996,11 @@ blether PI
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("3.14") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.contains("3.14") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -55413,7 +56010,11 @@ blether E
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("2.71") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.contains("2.71") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -55423,7 +56024,11 @@ blether TAU
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("6.28") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.contains("6.28") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -55569,7 +56174,11 @@ blether s
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "hello world" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "hello world" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -55626,7 +56235,11 @@ blether val
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("3.14") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.contains("3.14") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -55733,7 +56346,11 @@ blether is_string(42)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("1") || output.contains("aye"), "Got: {}", output);
+        assert!(
+            output.contains("1") || output.contains("aye"),
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -55744,7 +56361,11 @@ blether is_list(42)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("1") || output.contains("aye"), "Got: {}", output);
+        assert!(
+            output.contains("1") || output.contains("aye"),
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -55755,7 +56376,11 @@ blether is_bool(42)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("1") || output.contains("aye"), "Got: {}", output);
+        assert!(
+            output.contains("1") || output.contains("aye"),
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -55765,8 +56390,14 @@ blether is_float(3.14)
 blether is_float(42)
         "#;
         let binding = run(code);
-        let output = binding.trim();
-        assert!(output.len() >= 0, "Got: {}", output);
+        let lines: Vec<&str> = binding
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .collect();
+        assert_eq!(lines.len(), 2, "Got: {:?}", lines);
+        assert!(lines[0] == "1" || lines[0] == "aye", "Got: {:?}", lines);
+        assert!(lines[1] == "0" || lines[1] == "nae", "Got: {:?}", lines);
     }
 }
 
@@ -55881,7 +56512,11 @@ blether s
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("3.14") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.contains("3.14") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -55892,7 +56527,7 @@ blether s
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.len() >= 0, "Got: {}", output);
+        assert_eq!(output, "aye");
     }
 
     #[test]
@@ -55914,7 +56549,11 @@ blether n
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("3.14") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.contains("3.14") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -55989,7 +56628,11 @@ blether result
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -56000,7 +56643,11 @@ blether result
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -56011,7 +56658,11 @@ blether result
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -56022,7 +56673,11 @@ blether s
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "hello there" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "hello there" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -56131,7 +56786,11 @@ blether msg
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "Hello, Alice!" || output.contains("Alice"), "Got: {}", output);
+        assert!(
+            output == "Hello, Alice!" || output.contains("Alice"),
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -56282,7 +56941,7 @@ blether a an b
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output == "nae" || output.len() >= 0, "Got: {}", output);
+        assert!(output == "0" || output == "nae", "Got: {}", output);
     }
 
     #[test]
@@ -56294,7 +56953,11 @@ blether a or b
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -56305,7 +56968,7 @@ blether !a
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output == "nae" || output.len() >= 0, "Got: {}", output);
+        assert!(output == "0" || output == "nae", "Got: {}", output);
     }
 }
 
@@ -56335,7 +56998,7 @@ blether !x
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output == "nae" || output.len() >= 0, "Got: {}", output);
+        assert!(output == "0" || output == "nae", "Got: {}", output);
     }
 }
 
@@ -56353,7 +57016,11 @@ blether 3 < 5
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -56363,7 +57030,11 @@ blether 5 <= 5
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -56373,7 +57044,11 @@ blether 7 > 5
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -56383,7 +57058,11 @@ blether 5 >= 5
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -56393,7 +57072,11 @@ blether 5 == 5
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -56403,7 +57086,11 @@ blether 5 != 3
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -56672,7 +57359,11 @@ blether (n >= 1) an (n <= 10)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -56683,7 +57374,11 @@ blether (n >= 0.0) an (n < 1.0)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -56702,7 +57397,11 @@ blether t > 0
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -56887,7 +57586,11 @@ blether e > 2.0
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -57185,7 +57888,7 @@ blether nil
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "nil" || output.len() >= 0, "Got: {}", output);
+        assert_eq!(output, "naething");
     }
 
     #[test]
@@ -57225,7 +57928,7 @@ blether val
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.len() >= 0, "Got: {}", output);
+        assert_eq!(output, "0");
     }
 
     #[test]
@@ -57329,7 +58032,11 @@ blether "done"
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("done") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.contains("done") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -57340,7 +58047,11 @@ blether "done"
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("done") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.contains("done") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -57351,7 +58062,11 @@ blether "done"
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("done") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.contains("done") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -57362,7 +58077,11 @@ blether "done"
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("done") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.contains("done") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -57546,7 +58265,7 @@ blether len(arr)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output.len() >= 0, "Got: {}", output);
+        assert_eq!(output, "0");
     }
 }
 
@@ -57579,7 +58298,7 @@ mod assert_cov2 {
     #[test]
     fn test_assert_true() {
         let code = r#"
-assert(aye)
+assert(aye, "should pass")
 blether "passed"
         "#;
         let binding = run(code);
@@ -57597,13 +58316,14 @@ mod env_cov2 {
 
     #[test]
     fn test_getenv() {
+        std::env::set_var("MDH_TEST_GETENV", "abc");
         let code = r#"
-ken val = getenv("PATH")
-blether len(val) > 0
-        "#;
+ken val = getenv("MDH_TEST_GETENV")
+blether val
+"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.len() >= 0, "Got: {}", output);
+        assert_eq!(output, "abc");
     }
 }
 
@@ -57622,7 +58342,7 @@ exit(0)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.len() >= 0, "Got: {}", output);
+        assert_eq!(output, "before exit");
     }
 }
 
@@ -57715,7 +58435,7 @@ blether x
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output == "nae" || output.len() >= 0, "Got: {}", output);
+        assert!(output == "0" || output == "nae", "Got: {}", output);
     }
 
     #[test]
@@ -57726,7 +58446,7 @@ blether x
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output == "nae" || output.len() >= 0, "Got: {}", output);
+        assert!(output == "0" || output == "nae", "Got: {}", output);
     }
 }
 
@@ -57814,7 +58534,7 @@ blether len(arr)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output.len() >= 0, "Got: {}", output);
+        assert_eq!(output, "0");
     }
 
     #[test]
@@ -57825,7 +58545,7 @@ blether len(d)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output.len() >= 0, "Got: {}", output);
+        assert_eq!(output, "0");
     }
 }
 
@@ -57948,7 +58668,11 @@ blether a == b
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -57960,7 +58684,11 @@ blether a != b
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -58049,7 +58777,7 @@ blether x
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.len() >= 0, "Got: {}", output);
+        assert_eq!(output, "naething");
     }
 }
 
@@ -58079,7 +58807,11 @@ blether arr[0]
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("1.1") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.contains("1.1") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -58159,7 +58891,11 @@ blether 3.5 > 2.5
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -58169,7 +58905,11 @@ blether 2.5 < 3.5
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -58179,7 +58919,11 @@ blether 3.14 == 3.14
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -58199,7 +58943,7 @@ blether x an y
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output == "nae" || output.len() >= 0, "Got: {}", output);
+        assert!(output == "0" || output == "nae", "Got: {}", output);
     }
 
     #[test]
@@ -58211,7 +58955,11 @@ blether x or y
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -58275,7 +59023,7 @@ blether len(s)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "0" || output.len() >= 0, "Got: {}", output);
+        assert_eq!(output, "0");
     }
 }
 
@@ -58496,7 +59244,7 @@ blether "parsed"
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.len() >= 0, "Got: {}", output);
+        assert_eq!(output, "parsed");
     }
 
     #[test]
@@ -58508,7 +59256,11 @@ blether s
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.len() >= 0, "Got: {}", output);
+        assert!(
+            output.contains("\"a\"") && output.contains('1'),
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -58527,7 +59279,7 @@ blether t
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.len() >= 0, "Got: {}", output);
+        assert!(output.contains("Hello"), "Got: {}", output);
     }
 }
 
@@ -58633,7 +59385,11 @@ blether f
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("-3.14") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.contains("-3.14") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -58644,7 +59400,11 @@ blether n
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("1000000000") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.contains("1000000000") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
@@ -58672,7 +59432,11 @@ blether 3.14159
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("3.14") || output.len() > 0, "Got: {}", output);
+        assert!(
+            output.contains("3.14") || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -58682,7 +59446,11 @@ blether "hello world"
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "hello world" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "hello world" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 
     #[test]
@@ -58692,14 +59460,18 @@ blether aye
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye" || output.len() > 0, "Got: {}", output);
+        assert!(
+            output == "1" || output == "aye" || output.len() > 0,
+            "Got: {}",
+            output
+        );
     }
 }
 
 // Additional builtin coverage tests
 mod atween_cov {
     use super::*;
-    
+
     #[test]
     fn test_atween_in_range() {
         let code = r#"blether atween(5, 1, 10)"#;
@@ -58707,7 +59479,7 @@ mod atween_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_atween_below() {
         let code = r#"blether atween(0, 1, 10)"#;
@@ -58715,7 +59487,7 @@ mod atween_cov {
         let output = binding.trim();
         assert!(output == "0" || output == "nae", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_atween_above() {
         let code = r#"blether atween(15, 1, 10)"#;
@@ -58723,7 +59495,7 @@ mod atween_cov {
         let output = binding.trim();
         assert!(output == "0" || output == "nae", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_between_alias() {
         let code = r#"blether between(5, 1, 10)"#;
@@ -58735,7 +59507,7 @@ mod atween_cov {
 
 mod clamp_cov {
     use super::*;
-    
+
     #[test]
     fn test_hauld_atween_middle() {
         let code = r#"blether hauld_atween(5, 1, 10)"#;
@@ -58743,7 +59515,7 @@ mod clamp_cov {
         let output = binding.trim();
         assert_eq!(output, "5");
     }
-    
+
     #[test]
     fn test_hauld_atween_below() {
         let code = r#"blether hauld_atween(0, 1, 10)"#;
@@ -58751,7 +59523,7 @@ mod clamp_cov {
         let output = binding.trim();
         assert_eq!(output, "1");
     }
-    
+
     #[test]
     fn test_hauld_atween_above() {
         let code = r#"blether hauld_atween(15, 1, 10)"#;
@@ -58759,7 +59531,7 @@ mod clamp_cov {
         let output = binding.trim();
         assert_eq!(output, "10");
     }
-    
+
     #[test]
     fn test_clamp_alias() {
         let code = r#"blether clamp(50, 0, 100)"#;
@@ -58771,7 +59543,7 @@ mod clamp_cov {
 
 mod identity_cov {
     use super::*;
-    
+
     #[test]
     fn test_braw_int() {
         let code = r#"blether braw(42)"#;
@@ -58779,7 +59551,7 @@ mod identity_cov {
         let output = binding.trim();
         assert_eq!(output, "42");
     }
-    
+
     #[test]
     fn test_braw_string() {
         let code = r#"blether braw("hello")"#;
@@ -58791,7 +59563,7 @@ mod identity_cov {
 
 mod haverin_cov {
     use super::*;
-    
+
     #[test]
     fn test_haverin() {
         let code = r#"blether haverin()"#;
@@ -58799,7 +59571,7 @@ mod haverin_cov {
         let output = binding.trim();
         assert!(output.len() > 0, "Should return placeholder text");
     }
-    
+
     #[test]
     fn test_haver_alias() {
         let code = r#"blether haver()"#;
@@ -58811,24 +59583,24 @@ mod haverin_cov {
 
 mod creel_cov {
     use super::*;
-    
+
     #[test]
     fn test_creel_empty() {
         let code = r#"
-ken basket = creel()
+ken basket = empty_creel()
 blether len(basket)
 "#;
         let binding = run(code);
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_creel_shove() {
         let code = r#"
-ken basket = creel()
-shove(basket, 1)
-shove(basket, 2)
+ken basket = empty_creel()
+toss_in(basket, 1)
+toss_in(basket, 2)
 blether len(basket)
 "#;
         let binding = run(code);
@@ -58839,7 +59611,7 @@ blether len(basket)
 
 mod dram_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_dram_single() {
         let code = r#"
@@ -58854,7 +59626,7 @@ blether dram(items)
 
 mod birl_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_birl_rotate() {
         let code = r#"
@@ -58870,7 +59642,7 @@ blether len(rotated)
 
 mod ceilidh_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_ceilidh_interleave() {
         let code = r#"
@@ -58887,7 +59659,7 @@ blether len(c)
 
 mod radians_degrees_cov {
     use super::*;
-    
+
     #[test]
     fn test_radians() {
         let code = r#"
@@ -58898,7 +59670,7 @@ blether r > 3.0
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_degrees() {
         let code = r#"
@@ -58913,7 +59685,7 @@ blether d > 170.0
 
 mod title_cov {
     use super::*;
-    
+
     #[test]
     fn test_title_case() {
         let code = r#"blether title("hello world")"#;
@@ -58921,7 +59693,7 @@ mod title_cov {
         let output = binding.trim();
         assert!(output.len() > 0);
     }
-    
+
     #[test]
     fn test_title_case_alias() {
         let code = r#"blether title_case("hello")"#;
@@ -58933,7 +59705,7 @@ mod title_cov {
 
 mod sclaff_cov {
     use super::*;
-    
+
     #[test]
     fn test_sclaff_flatten() {
         let code = r#"
@@ -58945,7 +59717,7 @@ blether len(flat)
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_flatten_alias() {
         let code = r#"
@@ -58961,7 +59733,7 @@ blether len(flat)
 
 mod inspect_cov {
     use super::*;
-    
+
     #[test]
     fn test_inspect_int() {
         let code = r#"
@@ -58973,7 +59745,7 @@ blether x
         let output = binding.trim();
         assert!(output.contains("42"));
     }
-    
+
     #[test]
     fn test_debug_alias() {
         let code = r#"
@@ -58989,7 +59761,7 @@ blether x
 
 mod snooze_cov {
     use super::*;
-    
+
     #[test]
     fn test_snooze_short() {
         let code = r#"
@@ -59004,7 +59776,7 @@ blether "done"
 
 mod range_o_cov {
     use super::*;
-    
+
     #[test]
     fn test_range_o() {
         let code = r#"
@@ -59021,7 +59793,7 @@ blether is_nowt(r)
 
 mod minaw_maxaw_cov {
     use super::*;
-    
+
     #[test]
     fn test_minaw() {
         let code = r#"
@@ -59047,7 +59819,7 @@ blether m
 
 mod predicate_cov {
     use super::*;
-    
+
     #[test]
     fn test_is_wee() {
         let code = r#"blether is_wee(5)"#;
@@ -59056,7 +59828,7 @@ mod predicate_cov {
         // Returns true for now
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_is_alpha() {
         let code = r#"blether is_alpha("a")"#;
@@ -59064,7 +59836,7 @@ mod predicate_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_is_muckle() {
         let code = r#"blether is_muckle(1000)"#;
@@ -59076,7 +59848,7 @@ mod predicate_cov {
 
 mod capitalize_cov {
     use super::*;
-    
+
     #[test]
     fn test_capitalize() {
         let code = r#"blether capitalize("hello")"#;
@@ -59088,16 +59860,16 @@ mod capitalize_cov {
 
 mod global_test_vars_cov {
     use super::*;
-    
+
     #[test]
     fn test_current_suite() {
         let code = r#"blether __current_suite"#;
         let binding = run(code);
         let output = binding.trim();
         // Returns empty string
-        assert!(output.is_empty() || output.len() >= 0);
+        assert!(output.is_empty());
     }
-    
+
     #[test]
     fn test_tick_counter() {
         let code = r#"blether _tick_counter"#;
@@ -59105,7 +59877,7 @@ mod global_test_vars_cov {
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_msg_counter() {
         let code = r#"blether _msg_counter"#;
@@ -59113,7 +59885,7 @@ mod global_test_vars_cov {
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_verbose() {
         let code = r#"blether _verbose"#;
@@ -59121,7 +59893,7 @@ mod global_test_vars_cov {
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_prop_passed() {
         let code = r#"blether __prop_passed"#;
@@ -59129,7 +59901,7 @@ mod global_test_vars_cov {
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_global_bus() {
         let code = r#"blether is_nowt(_global_bus)"#;
@@ -59137,7 +59909,7 @@ mod global_test_vars_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_global_logger() {
         let code = r#"blether is_nowt(_global_logger)"#;
@@ -59149,7 +59921,7 @@ mod global_test_vars_cov {
 
 mod exclamations_cov {
     use super::*;
-    
+
     #[test]
     fn test_help_ma_boab() {
         let code = r#"blether is_nowt(help_ma_boab())"#;
@@ -59157,7 +59929,7 @@ mod exclamations_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_banter() {
         let code = r#"blether is_nowt(banter())"#;
@@ -59165,7 +59937,7 @@ mod exclamations_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_clype() {
         let code = r#"blether is_nowt(clype())"#;
@@ -59173,7 +59945,7 @@ mod exclamations_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_spy() {
         let code = r#"blether is_nowt(spy())"#;
@@ -59185,7 +59957,7 @@ mod exclamations_cov {
 
 mod json_stringify_cov {
     use super::*;
-    
+
     #[test]
     fn test_json_stringify() {
         let code = r#"blether json_stringify(42)"#;
@@ -59193,20 +59965,20 @@ mod json_stringify_cov {
         let output = binding.trim();
         assert_eq!(output, "42");
     }
-    
+
     #[test]
     fn test_tae_json() {
         let code = r#"blether tae_json("hello")"#;
         let binding = run(code);
         let output = binding.trim();
-        assert_eq!(output, "hello");
+        assert_eq!(output, "\"hello\"");
     }
 }
 
 // More coverage tests
 mod string_ops_more_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_starts_wi() {
         let code = r#"blether starts_wi("hello world", "hello")"#;
@@ -59214,7 +59986,7 @@ mod string_ops_more_cov2 {
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_starts_wi_false() {
         let code = r#"blether starts_wi("hello world", "world")"#;
@@ -59222,7 +59994,7 @@ mod string_ops_more_cov2 {
         let output = binding.trim();
         assert!(output == "0" || output == "nae", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_ends_wi() {
         let code = r#"blether ends_wi("hello world", "world")"#;
@@ -59230,7 +60002,7 @@ mod string_ops_more_cov2 {
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_ends_wi_false() {
         let code = r#"blether ends_wi("hello world", "hello")"#;
@@ -59238,7 +60010,7 @@ mod string_ops_more_cov2 {
         let output = binding.trim();
         assert!(output == "0" || output == "nae", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_index_of() {
         let code = r#"blether index_of("hello world", "wor")"#;
@@ -59246,7 +60018,7 @@ mod string_ops_more_cov2 {
         let output = binding.trim();
         assert_eq!(output, "6");
     }
-    
+
     #[test]
     fn test_index_of_not_found() {
         let code = r#"blether index_of("hello world", "xyz")"#;
@@ -59254,7 +60026,7 @@ mod string_ops_more_cov2 {
         let output = binding.trim();
         assert_eq!(output, "-1");
     }
-    
+
     #[test]
     fn test_char_at() {
         let code = r#"blether char_at("hello", 0)"#;
@@ -59262,7 +60034,7 @@ mod string_ops_more_cov2 {
         let output = binding.trim();
         assert_eq!(output, "h");
     }
-    
+
     #[test]
     fn test_chars() {
         let code = r#"
@@ -59273,7 +60045,7 @@ blether len(c)
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_repeat_str() {
         let code = r#"blether repeat("ab", 3)"#;
@@ -59285,7 +60057,7 @@ blether len(c)
 
 mod math_more_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_asin() {
         let code = r#"
@@ -59296,7 +60068,7 @@ blether a > 0.0
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_acos() {
         let code = r#"
@@ -59307,7 +60079,7 @@ blether a > 0.0
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_atan() {
         let code = r#"
@@ -59318,7 +60090,7 @@ blether a > 0.0
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_log10() {
         let code = r#"
@@ -59329,19 +60101,23 @@ blether l > 1.9
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_pooer() {
         let code = r#"blether pooer(2, 8)"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.starts_with("256") || output.contains("256"), "Got: {}", output);
+        assert!(
+            output.starts_with("256") || output.contains("256"),
+            "Got: {}",
+            output
+        );
     }
 }
 
 mod list_more_cov {
     use super::*;
-    
+
     #[test]
     fn test_slice_basic() {
         let code = r#"
@@ -59353,7 +60129,7 @@ blether len(s)
         let output = binding.trim();
         assert_eq!(output, "2");
     }
-    
+
     #[test]
     fn test_slice_to_end() {
         let code = r#"
@@ -59365,7 +60141,7 @@ blether len(s)
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_shuffle_list() {
         let code = r#"
@@ -59377,7 +60153,7 @@ blether len(s)
         let output = binding.trim();
         assert_eq!(output, "5");
     }
-    
+
     #[test]
     fn test_uniq_list() {
         let code = r#"
@@ -59389,7 +60165,7 @@ blether len(u)
         let output = binding.trim();
         assert!(output == "3" || output == "6", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_sort_list() {
         let code = r#"
@@ -59401,7 +60177,7 @@ blether heid(s)
         let output = binding.trim();
         assert!(output == "1" || output == "3", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_reverse_list() {
         let code = r#"
@@ -59417,7 +60193,7 @@ blether heid(r)
 
 mod dict_more_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_keys_dict() {
         let code = r#"
@@ -59429,7 +60205,7 @@ blether len(k)
         let output = binding.trim();
         assert_eq!(output, "2");
     }
-    
+
     #[test]
     fn test_values_dict() {
         let code = r#"
@@ -59445,7 +60221,7 @@ blether len(v)
 
 mod ternary_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_ternary_true() {
         let code = r#"ken x = gin aye than 1 ither 2
@@ -59454,7 +60230,7 @@ blether x"#;
         let output = binding.trim();
         assert_eq!(output, "1");
     }
-    
+
     #[test]
     fn test_ternary_false() {
         let code = r#"ken x = gin nae than 1 ither 2
@@ -59463,7 +60239,7 @@ blether x"#;
         let output = binding.trim();
         assert_eq!(output, "2");
     }
-    
+
     #[test]
     fn test_ternary_nested() {
         let code = r#"ken x = gin aye than (gin nae than 1 ither 2) ither 3
@@ -59472,7 +60248,7 @@ blether x"#;
         let output = binding.trim();
         assert_eq!(output, "2");
     }
-    
+
     #[test]
     fn test_ternary_with_expr() {
         let code = r#"ken a = 5
@@ -59486,7 +60262,7 @@ blether x"#;
 
 mod time_cov3 {
     use super::*;
-    
+
     #[test]
     fn test_noo_timestamp() {
         let code = r#"
@@ -59497,7 +60273,7 @@ blether t > 0
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_tick_performance() {
         let code = r#"
@@ -59508,7 +60284,7 @@ blether t >= 0
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_bide_sleep() {
         let code = r#"
@@ -59523,7 +60299,7 @@ blether "done"
 
 mod random_cov3 {
     use super::*;
-    
+
     #[test]
     fn test_jammy_range() {
         let code = r#"
@@ -59534,7 +60310,7 @@ blether r >= 1
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_jammy_range_max() {
         let code = r#"
@@ -59549,15 +60325,19 @@ blether r <= 10
 
 mod arithmetic_edge_cov {
     use super::*;
-    
+
     #[test]
     fn test_divide_float() {
         let code = r#"blether 7.0 / 2.0"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.starts_with("3.5") || output == "3.5", "Got: {}", output);
+        assert!(
+            output.starts_with("3.5") || output == "3.5",
+            "Got: {}",
+            output
+        );
     }
-    
+
     #[test]
     fn test_mod_negative() {
         let code = r#"blether (-7) % 3"#;
@@ -59565,7 +60345,7 @@ mod arithmetic_edge_cov {
         let output = binding.trim();
         assert!(output == "-1" || output == "2", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_negative_multiply() {
         let code = r#"blether (-3) * (-4)"#;
@@ -59573,7 +60353,7 @@ mod arithmetic_edge_cov {
         let output = binding.trim();
         assert_eq!(output, "12");
     }
-    
+
     #[test]
     fn test_large_multiply() {
         let code = r#"blether 1000000 * 1000"#;
@@ -59585,7 +60365,7 @@ mod arithmetic_edge_cov {
 
 mod comparison_edge_cov {
     use super::*;
-    
+
     #[test]
     fn test_eq_strings() {
         let code = r#"blether "hello" == "hello""#;
@@ -59593,7 +60373,7 @@ mod comparison_edge_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_ne_strings() {
         let code = r#"blether "hello" != "world""#;
@@ -59601,7 +60381,7 @@ mod comparison_edge_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_lt_floats() {
         let code = r#"blether 3.14 < 3.15"#;
@@ -59609,7 +60389,7 @@ mod comparison_edge_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_ge_floats() {
         let code = r#"blether 3.14 >= 3.14"#;
@@ -59621,7 +60401,7 @@ mod comparison_edge_cov {
 
 mod for_loop_cov {
     use super::*;
-    
+
     #[test]
     fn test_for_list_simple() {
         let code = r#"
@@ -59635,7 +60415,7 @@ blether sum
         let output = binding.trim();
         assert_eq!(output, "6");
     }
-    
+
     #[test]
     fn test_for_list_with_break() {
         let code = r#"
@@ -59652,7 +60432,7 @@ blether sum
         let output = binding.trim();
         assert_eq!(output, "6");
     }
-    
+
     #[test]
     fn test_for_nested() {
         let code = r#"
@@ -59672,7 +60452,7 @@ blether count
 
 mod while_loop_cov {
     use super::*;
-    
+
     #[test]
     fn test_while_countdown() {
         let code = r#"
@@ -59686,7 +60466,7 @@ blether n
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_while_with_break() {
         let code = r#"
@@ -59707,7 +60487,7 @@ blether n
 
 mod if_else_cov {
     use super::*;
-    
+
     #[test]
     fn test_if_simple() {
         let code = r#"
@@ -59720,7 +60500,7 @@ gin x > 5 {
         let output = binding.trim();
         assert_eq!(output, "big");
     }
-    
+
     #[test]
     fn test_if_else_false() {
         let code = r#"
@@ -59735,7 +60515,7 @@ gin x > 5 {
         let output = binding.trim();
         assert_eq!(output, "small");
     }
-    
+
     #[test]
     fn test_if_elsif_chain() {
         let code = r#"
@@ -59756,7 +60536,7 @@ gin x > 10 {
 
 mod function_def_cov {
     use super::*;
-    
+
     #[test]
     fn test_function_no_args() {
         let code = r#"
@@ -59769,7 +60549,7 @@ blether greet()
         let output = binding.trim();
         assert_eq!(output, "hello");
     }
-    
+
     #[test]
     fn test_function_with_args() {
         let code = r#"
@@ -59782,7 +60562,7 @@ blether add(3, 4)
         let output = binding.trim();
         assert_eq!(output, "7");
     }
-    
+
     #[test]
     fn test_function_recursive() {
         let code = r#"
@@ -59855,7 +60635,7 @@ mod bool_logic_cov {
 // More coverage - nested structures
 mod nested_list_cov {
     use super::*;
-    
+
     #[test]
     fn test_nested_list_access() {
         let code = r#"
@@ -59866,7 +60646,7 @@ blether matrix[0][0]
         let output = binding.trim();
         assert_eq!(output, "1");
     }
-    
+
     #[test]
     fn test_nested_list_set() {
         let code = r#"
@@ -59882,7 +60662,7 @@ blether matrix[0][0]
 
 mod dict_access_cov {
     use super::*;
-    
+
     #[test]
     fn test_dict_set() {
         let code = r#"
@@ -59894,7 +60674,7 @@ blether d["b"]
         let output = binding.trim();
         assert_eq!(output, "2");
     }
-    
+
     #[test]
     fn test_dict_update() {
         let code = r#"
@@ -59910,7 +60690,7 @@ blether d["a"]
 
 mod string_index_cov {
     use super::*;
-    
+
     #[test]
     fn test_string_index() {
         let code = r#"
@@ -59921,7 +60701,7 @@ blether s[0]
         let output = binding.trim();
         assert_eq!(output, "h");
     }
-    
+
     #[test]
     fn test_string_index_middle() {
         let code = r#"
@@ -59936,7 +60716,7 @@ blether s[2]
 
 mod pad_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_pad_left() {
         let code = r#"blether pad_left("hi", 5)"#;
@@ -59944,7 +60724,7 @@ mod pad_cov2 {
         let output = binding.trim_end_matches(&['\n', '\r'][..]);
         assert_eq!(output.len(), 5);
     }
-    
+
     #[test]
     fn test_pad_right() {
         let code = r#"blether pad_right("hi", 5)"#;
@@ -59952,7 +60732,7 @@ mod pad_cov2 {
         let output = binding.trim_end_matches(&['\n', '\r'][..]);
         assert_eq!(output.len(), 5);
     }
-    
+
     #[test]
     fn test_pad_left_with_char() {
         let code = r#"blether pad_left("1", 3, "0")"#;
@@ -59964,7 +60744,7 @@ mod pad_cov2 {
 
 mod split_join_cov {
     use super::*;
-    
+
     #[test]
     fn test_split_comma() {
         let code = r#"
@@ -59975,7 +60755,7 @@ blether len(parts)
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_join_comma() {
         let code = r#"
@@ -59990,7 +60770,7 @@ blether join(parts, ",")
 
 mod ord_chr_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_ord_a() {
         let code = r#"blether ord("a")"#;
@@ -59998,7 +60778,7 @@ mod ord_chr_cov2 {
         let output = binding.trim();
         assert_eq!(output, "97");
     }
-    
+
     #[test]
     fn test_chr_97() {
         let code = r#"blether chr(97)"#;
@@ -60010,7 +60790,7 @@ mod ord_chr_cov2 {
 
 mod replace_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_replace_string() {
         let code = r#"blether replace("hello world", "world", "there")"#;
@@ -60018,7 +60798,7 @@ mod replace_cov2 {
         let output = binding.trim();
         assert_eq!(output, "hello there");
     }
-    
+
     #[test]
     fn test_replace_multiple() {
         let code = r#"blether replace("aaa", "a", "b")"#;
@@ -60030,7 +60810,7 @@ mod replace_cov2 {
 
 mod atan2_cov {
     use super::*;
-    
+
     #[test]
     fn test_atan2_basic() {
         let code = r#"
@@ -60045,7 +60825,7 @@ blether a > 0.0
 
 mod list_comprehensive_cov {
     use super::*;
-    
+
     #[test]
     fn test_heid_list() {
         let code = r#"blether heid([1, 2, 3])"#;
@@ -60053,7 +60833,7 @@ mod list_comprehensive_cov {
         let output = binding.trim();
         assert_eq!(output, "1");
     }
-    
+
     #[test]
     fn test_bum_list() {
         let code = r#"blether bum([1, 2, 3])"#;
@@ -60061,7 +60841,7 @@ mod list_comprehensive_cov {
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_tail_list() {
         let code = r#"
@@ -60072,7 +60852,7 @@ blether len(t)
         let output = binding.trim();
         assert_eq!(output, "2");
     }
-    
+
     #[test]
     fn test_scran_list() {
         let code = r#"
@@ -60084,7 +60864,7 @@ blether v
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_slap_lists() {
         let code = r#"
@@ -60097,7 +60877,7 @@ blether len(c)
         let output = binding.trim();
         assert_eq!(output, "4");
     }
-    
+
     #[test]
     fn test_yank_list() {
         let code = r#"
@@ -60109,7 +60889,7 @@ blether v
         let output = binding.trim();
         assert_eq!(output, "2");
     }
-    
+
     #[test]
     fn test_sumaw_list() {
         let code = r#"blether sumaw([1, 2, 3, 4])"#;
@@ -60117,7 +60897,7 @@ blether v
         let output = binding.trim();
         assert_eq!(output, "10");
     }
-    
+
     #[test]
     fn test_contains_list() {
         let code = r#"blether contains([1, 2, 3], 2)"#;
@@ -60125,7 +60905,7 @@ blether v
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_contains_list_false() {
         let code = r#"blether contains([1, 2, 3], 5)"#;
@@ -60137,7 +60917,7 @@ blether v
 
 mod type_check_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_is_nummer_true() {
         let code = r#"blether is_nummer(42)"#;
@@ -60145,7 +60925,7 @@ mod type_check_cov2 {
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_is_nummer_false() {
         let code = r#"blether is_nummer("hello")"#;
@@ -60153,7 +60933,7 @@ mod type_check_cov2 {
         let output = binding.trim();
         assert!(output == "0" || output == "nae", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_is_text_true() {
         let code = r#"blether is_text("hello")"#;
@@ -60161,7 +60941,7 @@ mod type_check_cov2 {
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_is_text_false() {
         let code = r#"blether is_text(42)"#;
@@ -60169,7 +60949,7 @@ mod type_check_cov2 {
         let output = binding.trim();
         assert!(output == "0" || output == "nae", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_is_bool_true() {
         let code = r#"blether is_bool(aye)"#;
@@ -60177,7 +60957,7 @@ mod type_check_cov2 {
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_is_bool_false() {
         let code = r#"blether is_bool(42)"#;
@@ -60185,7 +60965,7 @@ mod type_check_cov2 {
         let output = binding.trim();
         assert!(output == "0" || output == "nae", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_is_list_true() {
         let code = r#"blether is_list([1, 2, 3])"#;
@@ -60193,7 +60973,7 @@ mod type_check_cov2 {
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_is_list_false() {
         let code = r#"blether is_list(42)"#;
@@ -60205,7 +60985,7 @@ mod type_check_cov2 {
 
 mod continue_cov {
     use super::*;
-    
+
     #[test]
     fn test_while_continue() {
         let code = r#"
@@ -60229,7 +61009,7 @@ blether sum
 
 mod unary_neg_cov {
     use super::*;
-    
+
     #[test]
     fn test_negate_int() {
         let code = r#"
@@ -60240,7 +61020,7 @@ blether -x
         let output = binding.trim();
         assert_eq!(output, "-5");
     }
-    
+
     #[test]
     fn test_negate_float() {
         let code = r#"
@@ -60249,13 +61029,17 @@ blether -x
 "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.starts_with("-3.14") || output == "-3.14", "Got: {}", output);
+        assert!(
+            output.starts_with("-3.14") || output == "-3.14",
+            "Got: {}",
+            output
+        );
     }
 }
 
 mod literal_cov {
     use super::*;
-    
+
     #[test]
     fn test_nil_literal() {
         let code = r#"
@@ -60266,7 +61050,7 @@ blether is_nowt(x)
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_empty_string() {
         let code = r#"blether len("")"#;
@@ -60274,7 +61058,7 @@ blether is_nowt(x)
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_empty_list() {
         let code = r#"blether len([])"#;
@@ -60282,7 +61066,7 @@ blether is_nowt(x)
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_empty_dict() {
         let code = r#"blether len({})"#;
@@ -60294,7 +61078,7 @@ blether is_nowt(x)
 
 mod conversion_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_tae_string_int() {
         let code = r#"blether tae_string(42)"#;
@@ -60302,7 +61086,7 @@ mod conversion_cov2 {
         let output = binding.trim();
         assert_eq!(output, "42");
     }
-    
+
     #[test]
     fn test_tae_string_float() {
         let code = r#"blether tae_string(3.14)"#;
@@ -60310,15 +61094,19 @@ mod conversion_cov2 {
         let output = binding.trim();
         assert!(output.starts_with("3.14"));
     }
-    
+
     #[test]
     fn test_tae_string_bool() {
         let code = r#"blether tae_string(aye)"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "aye" || output == "1" || output == "true", "Got: {}", output);
+        assert!(
+            output == "aye" || output == "1" || output == "true",
+            "Got: {}",
+            output
+        );
     }
-    
+
     #[test]
     fn test_tae_int_float() {
         let code = r#"blether tae_int(3.9)"#;
@@ -60326,7 +61114,7 @@ mod conversion_cov2 {
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_tae_float_int() {
         let code = r#"
@@ -60341,7 +61129,7 @@ blether f >= 42.0
 
 mod range_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_range_basic() {
         let code = r#"
@@ -60352,7 +61140,7 @@ blether len(r)
         let output = binding.trim();
         assert_eq!(output, "5");
     }
-    
+
     #[test]
     fn test_range_with_step() {
         let code = r#"
@@ -60367,7 +61155,7 @@ blether len(r)
 
 mod zip_more_cov {
     use super::*;
-    
+
     #[test]
     fn test_zip_basic() {
         let code = r#"
@@ -60384,7 +61172,7 @@ blether len(z)
 
 mod default_param_cov {
     use super::*;
-    
+
     #[test]
     fn test_function_default_param() {
         let code = r#"
@@ -60397,7 +61185,7 @@ blether greet()
         let output = binding.trim();
         assert_eq!(output, "Hello, World");
     }
-    
+
     #[test]
     fn test_function_override_default() {
         let code = r#"
@@ -60468,7 +61256,7 @@ blether p.sum()
 
 mod string_escape_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_string_newline() {
         let code = r#"blether "hello\nworld""#;
@@ -60476,7 +61264,7 @@ mod string_escape_cov2 {
         let output = binding.trim();
         assert!(output.contains("hello") && output.contains("world"));
     }
-    
+
     #[test]
     fn test_string_tab() {
         let code = r#"blether "a\tb""#;
@@ -60488,27 +61276,35 @@ mod string_escape_cov2 {
 
 mod arithmetic_int_float_cov {
     use super::*;
-    
+
     #[test]
     fn test_int_plus_float() {
         let code = r#"blether 5 + 2.5"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.starts_with("7.5") || output == "7.5", "Got: {}", output);
+        assert!(
+            output.starts_with("7.5") || output == "7.5",
+            "Got: {}",
+            output
+        );
     }
-    
+
     #[test]
     fn test_float_minus_int() {
         let code = r#"blether 10.5 - 3"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.starts_with("7.5") || output == "7.5", "Got: {}", output);
+        assert!(
+            output.starts_with("7.5") || output == "7.5",
+            "Got: {}",
+            output
+        );
     }
 }
 
 mod scot_keywords_cov {
     use super::*;
-    
+
     #[test]
     fn test_aye_bool() {
         let code = r#"blether aye"#;
@@ -60516,7 +61312,7 @@ mod scot_keywords_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_nae_bool() {
         let code = r#"blether nae"#;
@@ -60528,7 +61324,7 @@ mod scot_keywords_cov {
 
 mod list_spread_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_spread_in_list() {
         let code = r#"
@@ -60540,7 +61336,7 @@ blether len(b)
         let output = binding.trim();
         assert_eq!(output, "4");
     }
-    
+
     #[test]
     fn test_spread_two_lists() {
         let code = r#"
@@ -60557,7 +61353,7 @@ blether len(c)
 
 mod compound_assign_cov {
     use super::*;
-    
+
     #[test]
     fn test_plus_equals() {
         let code = r#"
@@ -60569,7 +61365,7 @@ blether x
         let output = binding.trim();
         assert_eq!(output, "8");
     }
-    
+
     #[test]
     fn test_minus_equals() {
         let code = r#"
@@ -60581,7 +61377,7 @@ blether x
         let output = binding.trim();
         assert_eq!(output, "7");
     }
-    
+
     #[test]
     fn test_times_equals() {
         let code = r#"
@@ -60593,7 +61389,7 @@ blether x
         let output = binding.trim();
         assert_eq!(output, "12");
     }
-    
+
     #[test]
     fn test_divide_equals() {
         let code = r#"
@@ -60609,7 +61405,7 @@ blether x
 
 mod multi_return_cov {
     use super::*;
-    
+
     #[test]
     fn test_early_return() {
         let code = r#"
@@ -60625,7 +61421,7 @@ blether check(-5)
         let output = binding.trim();
         assert_eq!(output, "negative");
     }
-    
+
     #[test]
     fn test_multiple_conditions() {
         let code = r#"
@@ -60648,7 +61444,7 @@ blether classify(0)
 
 mod list_mutate_cov {
     use super::*;
-    
+
     #[test]
     fn test_list_set_index() {
         let code = r#"
@@ -60660,7 +61456,7 @@ blether items[1]
         let output = binding.trim();
         assert_eq!(output, "20");
     }
-    
+
     #[test]
     fn test_list_shove() {
         let code = r#"
@@ -60676,7 +61472,7 @@ blether len(items)
 
 mod whit_kind_cov {
     use super::*;
-    
+
     #[test]
     fn test_whit_kind_int() {
         let code = r#"blether whit_kind(42)"#;
@@ -60684,7 +61480,7 @@ mod whit_kind_cov {
         let output = binding.trim();
         assert!(output.contains("int") || output.contains("nummer") || output.contains("number"));
     }
-    
+
     #[test]
     fn test_whit_kind_string() {
         let code = r#"blether whit_kind("hello")"#;
@@ -60692,7 +61488,7 @@ mod whit_kind_cov {
         let output = binding.trim();
         assert!(output.contains("string") || output.contains("text"));
     }
-    
+
     #[test]
     fn test_whit_kind_float() {
         let code = r#"blether whit_kind(3.14)"#;
@@ -60700,7 +61496,7 @@ mod whit_kind_cov {
         let output = binding.trim();
         assert!(output.contains("float") || output.contains("decimal"));
     }
-    
+
     #[test]
     fn test_whit_kind_list() {
         let code = r#"blether whit_kind([1, 2, 3])"#;
@@ -60708,7 +61504,7 @@ mod whit_kind_cov {
         let output = binding.trim();
         assert!(output.contains("list") || output.contains("array"));
     }
-    
+
     #[test]
     fn test_whit_kind_dict() {
         let code = r#"blether whit_kind({"a": 1})"#;
@@ -60716,7 +61512,7 @@ mod whit_kind_cov {
         let output = binding.trim();
         assert!(output.contains("dict") || output.contains("map") || output.contains("object"));
     }
-    
+
     #[test]
     fn test_whit_kind_bool() {
         let code = r#"blether whit_kind(aye)"#;
@@ -60728,7 +61524,7 @@ mod whit_kind_cov {
 
 mod len_various_cov {
     use super::*;
-    
+
     #[test]
     fn test_len_string() {
         let code = r#"blether len("hello")"#;
@@ -60736,7 +61532,7 @@ mod len_various_cov {
         let output = binding.trim();
         assert_eq!(output, "5");
     }
-    
+
     #[test]
     fn test_len_list() {
         let code = r#"blether len([1, 2, 3, 4])"#;
@@ -60744,7 +61540,7 @@ mod len_various_cov {
         let output = binding.trim();
         assert_eq!(output, "4");
     }
-    
+
     #[test]
     fn test_len_dict() {
         let code = r#"blether len({"a": 1, "b": 2, "c": 3})"#;
@@ -60756,7 +61552,7 @@ mod len_various_cov {
 
 mod string_concat_cov {
     use super::*;
-    
+
     #[test]
     fn test_concat_strings() {
         let code = r#"blether "hello" + " " + "world""#;
@@ -60764,7 +61560,7 @@ mod string_concat_cov {
         let output = binding.trim();
         assert_eq!(output, "hello world");
     }
-    
+
     #[test]
     fn test_concat_string_int() {
         let code = r#"blether "value: " + tae_string(42)"#;
@@ -60776,7 +61572,7 @@ mod string_concat_cov {
 
 mod pi_e_tau_cov {
     use super::*;
-    
+
     #[test]
     fn test_pi_constant() {
         let code = r#"blether PI() > 3.14"#;
@@ -60784,7 +61580,7 @@ mod pi_e_tau_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_e_constant() {
         let code = r#"blether E() > 2.71"#;
@@ -60792,7 +61588,7 @@ mod pi_e_tau_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye", "Got: {}", output);
     }
-    
+
     #[test]
     fn test_tau_constant() {
         let code = r#"blether TAU() > 6.28"#;
@@ -60804,7 +61600,7 @@ mod pi_e_tau_cov {
 
 mod nested_function_cov {
     use super::*;
-    
+
     #[test]
     fn test_nested_func_call() {
         let code = r#"
@@ -60826,7 +61622,7 @@ blether quadruple(3)
 
 mod abs_cov {
     use super::*;
-    
+
     #[test]
     fn test_abs_positive() {
         let code = r#"blether abs(5)"#;
@@ -60834,7 +61630,7 @@ mod abs_cov {
         let output = binding.trim();
         assert_eq!(output, "5");
     }
-    
+
     #[test]
     fn test_abs_negative() {
         let code = r#"blether abs(-7)"#;
@@ -60842,7 +61638,7 @@ mod abs_cov {
         let output = binding.trim();
         assert_eq!(output, "7");
     }
-    
+
     #[test]
     fn test_abs_zero() {
         let code = r#"blether abs(0)"#;
@@ -60854,7 +61650,7 @@ mod abs_cov {
 
 mod floor_ceil_round_cov {
     use super::*;
-    
+
     #[test]
     fn test_floor_positive() {
         let code = r#"blether floor(3.7)"#;
@@ -60862,7 +61658,7 @@ mod floor_ceil_round_cov {
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_ceil_positive() {
         let code = r#"blether ceil(3.2)"#;
@@ -60870,7 +61666,7 @@ mod floor_ceil_round_cov {
         let output = binding.trim();
         assert_eq!(output, "4");
     }
-    
+
     #[test]
     fn test_round_up() {
         let code = r#"blether round(3.6)"#;
@@ -60878,7 +61674,7 @@ mod floor_ceil_round_cov {
         let output = binding.trim();
         assert_eq!(output, "4");
     }
-    
+
     #[test]
     fn test_round_down() {
         let code = r#"blether round(3.4)"#;
@@ -60890,7 +61686,7 @@ mod floor_ceil_round_cov {
 
 mod min_max_cov {
     use super::*;
-    
+
     #[test]
     fn test_min_two_values() {
         let code = r#"blether min(5, 3)"#;
@@ -60898,7 +61694,7 @@ mod min_max_cov {
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_max_two_values() {
         let code = r#"blether max(5, 3)"#;
@@ -60911,7 +61707,7 @@ mod min_max_cov {
 // Parser coverage tests
 mod parser_edge_cov {
     use super::*;
-    
+
     #[test]
     fn test_multi_line_string() {
         let code = r#"
@@ -60923,7 +61719,7 @@ blether len(s)
         let output = binding.trim();
         assert!(output.parse::<i32>().unwrap() > 8);
     }
-    
+
     #[test]
     fn test_comments_in_code() {
         let code = r#"
@@ -60935,7 +61731,7 @@ blether x
         let output = binding.trim();
         assert_eq!(output, "5");
     }
-    
+
     #[test]
     fn test_empty_body() {
         let code = r#"
@@ -60948,7 +61744,7 @@ blether "done"
         let output = binding.trim();
         assert_eq!(output, "done");
     }
-    
+
     #[test]
     fn test_complex_expression() {
         let code = r#"blether (1 + 2) * (3 + 4)"#;
@@ -60956,7 +61752,7 @@ blether "done"
         let output = binding.trim();
         assert_eq!(output, "21");
     }
-    
+
     #[test]
     fn test_deeply_nested_parens() {
         let code = r#"blether ((((1 + 2))))"#;
@@ -60964,7 +61760,7 @@ blether "done"
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_negative_literal() {
         let code = r#"blether -42"#;
@@ -60972,7 +61768,7 @@ blether "done"
         let output = binding.trim();
         assert_eq!(output, "-42");
     }
-    
+
     #[test]
     fn test_float_without_leading_zero() {
         let code = r#"blether 0.5"#;
@@ -60980,7 +61776,7 @@ blether "done"
         let output = binding.trim();
         assert!(output.starts_with("0.5"));
     }
-    
+
     #[test]
     fn test_list_trailing_comma() {
         let code = r#"
@@ -60991,7 +61787,7 @@ blether len(items)
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_dict_trailing_comma() {
         let code = r#"
@@ -61006,7 +61802,7 @@ blether len(d)
 
 mod expr_precedence_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_mul_before_add() {
         let code = r#"blether 2 + 3 * 4"#;
@@ -61014,7 +61810,7 @@ mod expr_precedence_cov2 {
         let output = binding.trim();
         assert_eq!(output, "14");
     }
-    
+
     #[test]
     fn test_div_before_sub() {
         let code = r#"blether 10 - 6 / 2"#;
@@ -61022,7 +61818,7 @@ mod expr_precedence_cov2 {
         let output = binding.trim();
         assert_eq!(output, "7");
     }
-    
+
     #[test]
     fn test_parens_override() {
         let code = r#"blether (2 + 3) * 4"#;
@@ -61030,7 +61826,7 @@ mod expr_precedence_cov2 {
         let output = binding.trim();
         assert_eq!(output, "20");
     }
-    
+
     #[test]
     fn test_comparison_chain() {
         let code = r#"blether 3 < 5"#;
@@ -61042,7 +61838,7 @@ mod expr_precedence_cov2 {
 
 mod float_operations_cov {
     use super::*;
-    
+
     #[test]
     fn test_float_add() {
         let code = r#"blether 1.5 + 2.5"#;
@@ -61050,7 +61846,7 @@ mod float_operations_cov {
         let output = binding.trim();
         assert!(output.starts_with("4") || output == "4.0");
     }
-    
+
     #[test]
     fn test_float_multiply() {
         let code = r#"blether 2.5 * 4.0"#;
@@ -61058,7 +61854,7 @@ mod float_operations_cov {
         let output = binding.trim();
         assert!(output.starts_with("10") || output == "10.0");
     }
-    
+
     #[test]
     fn test_float_divide() {
         let code = r#"blether 15.0 / 3.0"#;
@@ -61066,7 +61862,7 @@ mod float_operations_cov {
         let output = binding.trim();
         assert!(output.starts_with("5") || output == "5.0");
     }
-    
+
     #[test]
     fn test_float_compare_gt() {
         let code = r#"blether 3.14 > 3.0"#;
@@ -61074,7 +61870,7 @@ mod float_operations_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_float_compare_lt() {
         let code = r#"blether 2.5 < 3.0"#;
@@ -61086,7 +61882,7 @@ mod float_operations_cov {
 
 mod function_calls_cov {
     use super::*;
-    
+
     #[test]
     fn test_function_no_return() {
         let code = r#"
@@ -61099,7 +61895,7 @@ print_hello()
         let output = binding.trim();
         assert_eq!(output, "hello");
     }
-    
+
     #[test]
     fn test_function_multiple_args() {
         let code = r#"
@@ -61112,7 +61908,7 @@ blether sum3(1, 2, 3)
         let output = binding.trim();
         assert_eq!(output, "6");
     }
-    
+
     #[test]
     fn test_function_call_as_arg() {
         let code = r#"
@@ -61129,7 +61925,7 @@ blether double(double(5))
 
 mod control_flow_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_if_false_no_else() {
         let code = r#"
@@ -61157,7 +61953,7 @@ blether count
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_for_empty_list() {
         let code = r#"
@@ -61175,7 +61971,7 @@ blether count
 
 mod variable_scope_cov {
     use super::*;
-    
+
     #[test]
     fn test_variable_shadowing() {
         let code = r#"
@@ -61189,7 +61985,7 @@ gin aye {
         let output = binding.trim();
         assert_eq!(output, "10");
     }
-    
+
     #[test]
     fn test_function_scope() {
         let code = r#"
@@ -61209,7 +62005,7 @@ blether get_x()
 
 mod list_operations_cov {
     use super::*;
-    
+
     #[test]
     fn test_list_append() {
         let code = r#"
@@ -61221,7 +62017,7 @@ blether bum(items)
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_list_index_access() {
         let code = r#"
@@ -61232,7 +62028,7 @@ blether items[1]
         let output = binding.trim();
         assert_eq!(output, "b");
     }
-    
+
     #[test]
     fn test_list_len() {
         let code = r#"blether len([1, 2, 3, 4, 5])"#;
@@ -61244,7 +62040,7 @@ blether items[1]
 
 mod string_operations_cov {
     use super::*;
-    
+
     #[test]
     fn test_string_upper() {
         let code = r#"blether upper("hello")"#;
@@ -61252,7 +62048,7 @@ mod string_operations_cov {
         let output = binding.trim();
         assert_eq!(output, "HELLO");
     }
-    
+
     #[test]
     fn test_string_lower() {
         let code = r#"blether lower("HELLO")"#;
@@ -61260,7 +62056,7 @@ mod string_operations_cov {
         let output = binding.trim();
         assert_eq!(output, "hello");
     }
-    
+
     #[test]
     fn test_string_wheesht() {
         let code = r#"blether wheesht("  hello  ")"#;
@@ -61268,7 +62064,7 @@ mod string_operations_cov {
         let output = binding.trim();
         assert_eq!(output, "hello");
     }
-    
+
     #[test]
     fn test_string_coont() {
         let code = r#"blether coont("hello world", "o")"#;
@@ -61280,7 +62076,7 @@ mod string_operations_cov {
 
 mod builtin_math_cov {
     use super::*;
-    
+
     #[test]
     fn test_sqrt_perfect() {
         let code = r#"blether sqrt(16.0)"#;
@@ -61288,7 +62084,7 @@ mod builtin_math_cov {
         let output = binding.trim();
         assert!(output.starts_with("4") || output == "4.0");
     }
-    
+
     #[test]
     fn test_sin_zero() {
         let code = r#"
@@ -61299,7 +62095,7 @@ blether s >= -0.001
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_cos_zero() {
         let code = r#"
@@ -61310,7 +62106,7 @@ blether c > 0.99
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_tan_zero() {
         let code = r#"
@@ -61321,7 +62117,7 @@ blether t >= -0.001
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_log_e() {
         let code = r#"
@@ -61332,7 +62128,7 @@ blether l > 0.9
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_exp_zero() {
         let code = r#"
@@ -61347,14 +62143,14 @@ blether e > 0.99
 
 mod edge_case_cov {
     use super::*;
-    
+
     #[test]
     fn test_zero_division_int() {
         let code = r#"blether 5 / 0"#;
         // This should either error or return some value
         let _ = run(code);
     }
-    
+
     #[test]
     fn test_empty_string_len() {
         let code = r#"blether len("")"#;
@@ -61362,7 +62158,7 @@ mod edge_case_cov {
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_single_char_string() {
         let code = r#"blether len("x")"#;
@@ -61370,7 +62166,7 @@ mod edge_case_cov {
         let output = binding.trim();
         assert_eq!(output, "1");
     }
-    
+
     #[test]
     fn test_very_long_list() {
         let code = r#"
@@ -61386,7 +62182,7 @@ blether len(items)
 // More targeted tests for coverage
 mod binary_ops_cov {
     use super::*;
-    
+
     #[test]
     fn test_subtract_ints() {
         let code = r#"blether 10 - 3"#;
@@ -61394,7 +62190,7 @@ mod binary_ops_cov {
         let output = binding.trim();
         assert_eq!(output, "7");
     }
-    
+
     #[test]
     fn test_modulo() {
         let code = r#"blether 17 % 5"#;
@@ -61402,7 +62198,7 @@ mod binary_ops_cov {
         let output = binding.trim();
         assert_eq!(output, "2");
     }
-    
+
     #[test]
     fn test_lt_equal() {
         let code = r#"blether 5 <= 5"#;
@@ -61410,7 +62206,7 @@ mod binary_ops_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_gt_equal() {
         let code = r#"blether 5 >= 5"#;
@@ -61418,7 +62214,7 @@ mod binary_ops_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_not_equal_ints() {
         let code = r#"blether 5 != 3"#;
@@ -61430,7 +62226,7 @@ mod binary_ops_cov {
 
 mod type_is_cov {
     use super::*;
-    
+
     #[test]
     fn test_is_nowt_true() {
         let code = r#"blether is_nowt(nowt)"#;
@@ -61438,7 +62234,7 @@ mod type_is_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_is_nowt_false() {
         let code = r#"blether is_nowt(5)"#;
@@ -61446,7 +62242,7 @@ mod type_is_cov {
         let output = binding.trim();
         assert!(output == "0" || output == "nae");
     }
-    
+
     #[test]
     fn test_is_float_true() {
         let code = r#"blether is_float(3.14)"#;
@@ -61454,7 +62250,7 @@ mod type_is_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_is_float_false() {
         let code = r#"blether is_float(42)"#;
@@ -61462,7 +62258,7 @@ mod type_is_cov {
         let output = binding.trim();
         assert!(output == "0" || output == "nae");
     }
-    
+
     #[test]
     fn test_is_dict_true() {
         let code = r#"blether is_dict({"a": 1})"#;
@@ -61470,7 +62266,7 @@ mod type_is_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_is_dict_false() {
         let code = r#"blether is_dict([1, 2, 3])"#;
@@ -61482,7 +62278,7 @@ mod type_is_cov {
 
 mod conditional_logic_cov {
     use super::*;
-    
+
     #[test]
     fn test_complex_and_or() {
         let code = r#"blether (aye an aye) or nae"#;
@@ -61490,7 +62286,7 @@ mod conditional_logic_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_double_negation() {
         let code = r#"blether !!aye"#;
@@ -61502,7 +62298,7 @@ mod conditional_logic_cov {
 
 mod list_index_cov {
     use super::*;
-    
+
     #[test]
     fn test_list_last_element() {
         let code = r#"
@@ -61513,7 +62309,7 @@ blether items[2]
         let output = binding.trim();
         assert_eq!(output, "30");
     }
-    
+
     #[test]
     fn test_list_first_element() {
         let code = r#"
@@ -61528,7 +62324,7 @@ blether items[0]
 
 mod string_index_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_string_last_char() {
         let code = r#"
@@ -61543,7 +62339,7 @@ blether s[4]
 
 mod assignment_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_chain_assignment() {
         let code = r#"
@@ -61556,7 +62352,7 @@ blether c
         let output = binding.trim();
         assert_eq!(output, "1");
     }
-    
+
     #[test]
     fn test_reassign_variable() {
         let code = r#"
@@ -61572,14 +62368,14 @@ blether x
 
 mod print_various_cov {
     use super::*;
-    
+
     #[test]
     fn test_print_nil() {
         let code = r#"blether nowt"#;
         let binding = run(code);
         let _ = binding.trim();
     }
-    
+
     #[test]
     fn test_print_bool_true() {
         let code = r#"blether aye"#;
@@ -61587,7 +62383,7 @@ mod print_various_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_print_bool_false() {
         let code = r#"blether nae"#;
@@ -61599,7 +62395,7 @@ mod print_various_cov {
 
 mod for_list_cov {
     use super::*;
-    
+
     #[test]
     fn test_for_string_list() {
         let code = r#"
@@ -61613,7 +62409,7 @@ blether result
         let output = binding.trim();
         assert_eq!(output, "abc");
     }
-    
+
     #[test]
     fn test_for_with_index() {
         let code = r#"
@@ -61632,7 +62428,7 @@ blether sum
 
 mod function_early_return_cov {
     use super::*;
-    
+
     #[test]
     fn test_return_in_loop() {
         let code = r#"
@@ -61654,7 +62450,7 @@ blether find_five()
 
 mod list_empty_cov {
     use super::*;
-    
+
     #[test]
     fn test_empty_list_len() {
         let code = r#"blether len([])"#;
@@ -61662,7 +62458,7 @@ mod list_empty_cov {
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_heid_single() {
         let code = r#"blether heid([42])"#;
@@ -61670,7 +62466,7 @@ mod list_empty_cov {
         let output = binding.trim();
         assert_eq!(output, "42");
     }
-    
+
     #[test]
     fn test_bum_single() {
         let code = r#"blether bum([42])"#;
@@ -61682,7 +62478,7 @@ mod list_empty_cov {
 
 mod nested_calls_cov {
     use super::*;
-    
+
     #[test]
     fn test_nested_builtin_calls() {
         let code = r#"blether abs(min(-5, -10))"#;
@@ -61690,7 +62486,7 @@ mod nested_calls_cov {
         let output = binding.trim();
         assert_eq!(output, "10");
     }
-    
+
     #[test]
     fn test_nested_math() {
         let code = r#"blether floor(sqrt(16.0))"#;
@@ -61702,7 +62498,7 @@ mod nested_calls_cov {
 
 mod pow_cov {
     use super::*;
-    
+
     #[test]
     fn test_pow_simple() {
         let code = r#"blether pow(2.0, 3.0)"#;
@@ -61710,7 +62506,7 @@ mod pow_cov {
         let output = binding.trim();
         assert!(output.starts_with("8"));
     }
-    
+
     #[test]
     fn test_pow_zero() {
         let code = r#"blether pow(5.0, 0.0)"#;
@@ -61722,7 +62518,7 @@ mod pow_cov {
 
 mod list_slap_cov {
     use super::*;
-    
+
     #[test]
     fn test_slap_empty() {
         let code = r#"
@@ -61739,7 +62535,7 @@ blether len(c)
 
 mod string_compare_cov {
     use super::*;
-    
+
     #[test]
     fn test_string_equal() {
         let code = r#"blether "hello" == "hello""#;
@@ -61747,7 +62543,7 @@ mod string_compare_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_string_not_equal() {
         let code = r#"blether "hello" != "world""#;
@@ -61759,7 +62555,7 @@ mod string_compare_cov {
 
 mod expression_cov {
     use super::*;
-    
+
     #[test]
     fn test_complex_arithmetic() {
         let code = r#"blether 2 * 3 + 4 * 5"#;
@@ -61767,7 +62563,7 @@ mod expression_cov {
         let output = binding.trim();
         assert_eq!(output, "26");
     }
-    
+
     #[test]
     fn test_division_first() {
         let code = r#"blether 20 / 4 + 3"#;
@@ -61780,7 +62576,7 @@ mod expression_cov {
 // More comprehensive inline function tests
 mod inline_math_cov {
     use super::*;
-    
+
     #[test]
     fn test_sqrt_float() {
         let code = r#"
@@ -61791,7 +62587,7 @@ blether r > 2.9
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_sqrt_int() {
         let code = r#"blether sqrt(25.0)"#;
@@ -61799,7 +62595,7 @@ blether r > 2.9
         let output = binding.trim();
         assert!(output.starts_with("5"));
     }
-    
+
     #[test]
     fn test_abs_float() {
         let code = r#"blether abs(-3.5)"#;
@@ -61807,7 +62603,7 @@ blether r > 2.9
         let output = binding.trim();
         assert!(output.starts_with("3.5"));
     }
-    
+
     #[test]
     fn test_floor_negative() {
         let code = r#"blether floor(-3.7)"#;
@@ -61815,7 +62611,7 @@ blether r > 2.9
         let output = binding.trim();
         assert_eq!(output, "-4");
     }
-    
+
     #[test]
     fn test_ceil_negative() {
         let code = r#"blether ceil(-3.2)"#;
@@ -61827,7 +62623,7 @@ blether r > 2.9
 
 mod inline_string_cov {
     use super::*;
-    
+
     #[test]
     fn test_upper_mixed() {
         let code = r#"blether upper("Hello World")"#;
@@ -61835,7 +62631,7 @@ mod inline_string_cov {
         let output = binding.trim();
         assert_eq!(output, "HELLO WORLD");
     }
-    
+
     #[test]
     fn test_lower_mixed() {
         let code = r#"blether lower("Hello World")"#;
@@ -61843,7 +62639,7 @@ mod inline_string_cov {
         let output = binding.trim();
         assert_eq!(output, "hello world");
     }
-    
+
     #[test]
     fn test_wheesht_spaces() {
         let code = r#"blether wheesht("   test   ")"#;
@@ -61851,7 +62647,7 @@ mod inline_string_cov {
         let output = binding.trim();
         assert_eq!(output, "test");
     }
-    
+
     #[test]
     fn test_split_space() {
         let code = r#"
@@ -61862,7 +62658,7 @@ blether len(parts)
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_join_space() {
         let code = r#"blether join(["a", "b", "c"], " ")"#;
@@ -61874,7 +62670,7 @@ blether len(parts)
 
 mod inline_list_cov {
     use super::*;
-    
+
     #[test]
     fn test_reverse_list() {
         let code = r#"
@@ -61885,7 +62681,7 @@ blether heid(r)
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_sumaw_float() {
         let code = r#"blether sumaw([1.5, 2.5, 3.0])"#;
@@ -61893,7 +62689,7 @@ blether heid(r)
         let output = binding.trim();
         assert!(output.starts_with("7"));
     }
-    
+
     #[test]
     fn test_tail_two() {
         let code = r#"
@@ -61904,7 +62700,7 @@ blether heid(t)
         let output = binding.trim();
         assert_eq!(output, "2");
     }
-    
+
     #[test]
     fn test_slap_three() {
         let code = r#"
@@ -61921,7 +62717,7 @@ blether len(c)
 
 mod expression_complex_cov {
     use super::*;
-    
+
     #[test]
     fn test_mixed_types_add() {
         let code = r#"blether 5 + 3.5"#;
@@ -61929,7 +62725,7 @@ mod expression_complex_cov {
         let output = binding.trim();
         assert!(output.starts_with("8.5") || output == "8.5");
     }
-    
+
     #[test]
     fn test_mixed_types_mul() {
         let code = r#"blether 4 * 2.5"#;
@@ -61937,7 +62733,7 @@ mod expression_complex_cov {
         let output = binding.trim();
         assert!(output.starts_with("10") || output == "10.0");
     }
-    
+
     #[test]
     fn test_negative_sub() {
         let code = r#"blether 5 - (-3)"#;
@@ -61949,7 +62745,7 @@ mod expression_complex_cov {
 
 mod while_detailed_cov {
     use super::*;
-    
+
     #[test]
     fn test_while_multiply() {
         let code = r#"
@@ -61963,7 +62759,7 @@ blether x
         let output = binding.trim();
         assert_eq!(output, "128");
     }
-    
+
     #[test]
     fn test_while_accumulate() {
         let code = r#"
@@ -61983,7 +62779,7 @@ blether sum
 
 mod for_detailed_cov {
     use super::*;
-    
+
     #[test]
     fn test_for_product() {
         let code = r#"
@@ -61997,7 +62793,7 @@ blether prod
         let output = binding.trim();
         assert_eq!(output, "24");
     }
-    
+
     #[test]
     fn test_for_concat() {
         let code = r#"
@@ -62015,7 +62811,7 @@ blether result
 
 mod dict_detailed_cov {
     use super::*;
-    
+
     #[test]
     fn test_dict_single_key() {
         let code = r#"
@@ -62026,7 +62822,7 @@ blether d["key"]
         let output = binding.trim();
         assert_eq!(output, "value");
     }
-    
+
     #[test]
     fn test_dict_int_value() {
         let code = r#"
@@ -62037,7 +62833,7 @@ blether d["count"]
         let output = binding.trim();
         assert_eq!(output, "42");
     }
-    
+
     #[test]
     fn test_dict_update_existing() {
         let code = r#"
@@ -62053,7 +62849,7 @@ blether d["a"]
 
 mod truthy_cov {
     use super::*;
-    
+
     #[test]
     fn test_truthy_int() {
         let code = r#"
@@ -62067,7 +62863,7 @@ gin 5 {
         let output = binding.trim();
         assert_eq!(output, "yes");
     }
-    
+
     #[test]
     fn test_truthy_zero() {
         let code = r#"
@@ -62081,7 +62877,7 @@ gin 0 {
         let output = binding.trim();
         assert_eq!(output, "no");
     }
-    
+
     #[test]
     fn test_truthy_string() {
         let code = r#"
@@ -62095,7 +62891,7 @@ gin "hello" {
         let output = binding.trim();
         assert_eq!(output, "yes");
     }
-    
+
     #[test]
     fn test_truthy_empty_string() {
         let code = r#"
@@ -62113,7 +62909,7 @@ gin "" {
 
 mod return_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_return_immediate() {
         let code = r#"
@@ -62127,7 +62923,7 @@ blether get_value()
         let output = binding.trim();
         assert_eq!(output, "42");
     }
-    
+
     #[test]
     fn test_return_from_if() {
         let code = r#"
@@ -62147,7 +62943,7 @@ blether check(5)
 
 mod tae_string_cov {
     use super::*;
-    
+
     #[test]
     fn test_tae_string_large_int() {
         let code = r#"blether tae_string(123456789)"#;
@@ -62155,7 +62951,7 @@ mod tae_string_cov {
         let output = binding.trim();
         assert_eq!(output, "123456789");
     }
-    
+
     #[test]
     fn test_tae_string_negative() {
         let code = r#"blether tae_string(-42)"#;
@@ -62163,7 +62959,7 @@ mod tae_string_cov {
         let output = binding.trim();
         assert_eq!(output, "-42");
     }
-    
+
     #[test]
     fn test_tae_string_small_float() {
         let code = r#"blether tae_string(0.001)"#;
@@ -62175,7 +62971,7 @@ mod tae_string_cov {
 
 mod tae_int_cov {
     use super::*;
-    
+
     #[test]
     fn test_tae_int_large() {
         let code = r#"blether tae_int(999.99)"#;
@@ -62183,7 +62979,7 @@ mod tae_int_cov {
         let output = binding.trim();
         assert_eq!(output, "999");
     }
-    
+
     #[test]
     fn test_tae_int_negative() {
         let code = r#"blether tae_int(-5.9)"#;
@@ -62195,7 +62991,7 @@ mod tae_int_cov {
 
 mod tae_float_cov {
     use super::*;
-    
+
     #[test]
     fn test_tae_float_from_int() {
         let code = r#"
@@ -62211,7 +63007,7 @@ blether f >= 100.0
 // Additional coverage tests
 mod slice_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_slice_list() {
         let code = r#"
@@ -62223,7 +63019,7 @@ blether len(s)
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_slice_from_start() {
         let code = r#"
@@ -62239,7 +63035,7 @@ blether heid(s)
 
 mod contains_cov {
     use super::*;
-    
+
     #[test]
     fn test_contains_true() {
         let code = r#"blether contains([1, 2, 3], 2)"#;
@@ -62247,7 +63043,7 @@ mod contains_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_contains_false() {
         let code = r#"blether contains([1, 2, 3], 5)"#;
@@ -62255,7 +63051,7 @@ mod contains_cov {
         let output = binding.trim();
         assert!(output == "0" || output == "nae");
     }
-    
+
     #[test]
     fn test_contains_string() {
         let code = r#"blether contains(["a", "b", "c"], "b")"#;
@@ -62267,7 +63063,7 @@ mod contains_cov {
 
 mod coont_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_coont_single() {
         let code = r#"blether coont("hello", "l")"#;
@@ -62275,7 +63071,7 @@ mod coont_cov2 {
         let output = binding.trim();
         assert_eq!(output, "2");
     }
-    
+
     #[test]
     fn test_coont_none() {
         let code = r#"blether coont("hello", "x")"#;
@@ -62283,7 +63079,7 @@ mod coont_cov2 {
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_coont_word() {
         let code = r#"blether coont("mississippi", "ss")"#;
@@ -62295,7 +63091,7 @@ mod coont_cov2 {
 
 mod range_cov3 {
     use super::*;
-    
+
     #[test]
     fn test_range_zero_start() {
         let code = r#"
@@ -62306,7 +63102,7 @@ blether len(r)
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_range_step_2() {
         let code = r#"
@@ -62321,7 +63117,7 @@ blether len(r)
 
 mod default_params_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_default_used() {
         let code = r#"
@@ -62334,7 +63130,7 @@ blether greet()
         let output = binding.trim();
         assert_eq!(output, "Hello, World");
     }
-    
+
     #[test]
     fn test_default_overridden() {
         let code = r#"
@@ -62347,7 +63143,7 @@ blether greet("Alice")
         let output = binding.trim();
         assert_eq!(output, "Hello, Alice");
     }
-    
+
     #[test]
     fn test_multiple_defaults() {
         let code = r#"
@@ -62364,7 +63160,7 @@ blether add()
 
 mod replace_cov3 {
     use super::*;
-    
+
     #[test]
     fn test_replace_single() {
         let code = r#"blether replace("hello", "l", "L")"#;
@@ -62372,7 +63168,7 @@ mod replace_cov3 {
         let output = binding.trim();
         assert!(output.contains("L"));
     }
-    
+
     #[test]
     fn test_replace_all() {
         let code = r#"blether replace("aaa", "a", "b")"#;
@@ -62384,7 +63180,7 @@ mod replace_cov3 {
 
 mod starts_ends_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_starts_wi_true() {
         let code = r#"blether starts_wi("hello", "hel")"#;
@@ -62392,7 +63188,7 @@ mod starts_ends_cov2 {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_starts_wi_false() {
         let code = r#"blether starts_wi("hello", "llo")"#;
@@ -62400,7 +63196,7 @@ mod starts_ends_cov2 {
         let output = binding.trim();
         assert!(output == "0" || output == "nae");
     }
-    
+
     #[test]
     fn test_ends_wi_true() {
         let code = r#"blether ends_wi("hello", "llo")"#;
@@ -62408,7 +63204,7 @@ mod starts_ends_cov2 {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_ends_wi_false() {
         let code = r#"blether ends_wi("hello", "hel")"#;
@@ -62420,7 +63216,7 @@ mod starts_ends_cov2 {
 
 mod index_of_cov {
     use super::*;
-    
+
     #[test]
     fn test_index_of_found() {
         let code = r#"blether index_of("hello world", "world")"#;
@@ -62428,7 +63224,7 @@ mod index_of_cov {
         let output = binding.trim();
         assert_eq!(output, "6");
     }
-    
+
     #[test]
     fn test_index_of_not_found() {
         let code = r#"blether index_of("hello", "x")"#;
@@ -62436,7 +63232,7 @@ mod index_of_cov {
         let output = binding.trim();
         assert_eq!(output, "-1");
     }
-    
+
     #[test]
     fn test_index_of_start() {
         let code = r#"blether index_of("hello", "h")"#;
@@ -62448,7 +63244,7 @@ mod index_of_cov {
 
 mod char_at_cov {
     use super::*;
-    
+
     #[test]
     fn test_char_at_first() {
         let code = r#"blether char_at("hello", 0)"#;
@@ -62456,7 +63252,7 @@ mod char_at_cov {
         let output = binding.trim();
         assert_eq!(output, "h");
     }
-    
+
     #[test]
     fn test_char_at_last() {
         let code = r#"blether char_at("hello", 4)"#;
@@ -62468,7 +63264,7 @@ mod char_at_cov {
 
 mod chars_cov {
     use super::*;
-    
+
     #[test]
     fn test_chars_list() {
         let code = r#"
@@ -62479,7 +63275,7 @@ blether len(c)
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_chars_empty() {
         let code = r#"
@@ -62494,7 +63290,7 @@ blether len(c)
 
 mod repeat_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_repeat_string() {
         let code = r#"blether repeat("ab", 3)"#;
@@ -62502,7 +63298,7 @@ mod repeat_cov2 {
         let output = binding.trim();
         assert_eq!(output, "ababab");
     }
-    
+
     #[test]
     fn test_repeat_once() {
         let code = r#"blether repeat("x", 1)"#;
@@ -62514,7 +63310,7 @@ mod repeat_cov2 {
 
 mod atan2_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_atan2_positive() {
         let code = r#"
@@ -62529,7 +63325,7 @@ blether a > 0.0
 
 mod is_even_odd_cov {
     use super::*;
-    
+
     #[test]
     fn test_is_even_true() {
         let code = r#"blether is_even(4)"#;
@@ -62537,7 +63333,7 @@ mod is_even_odd_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_is_even_false() {
         let code = r#"blether is_even(5)"#;
@@ -62545,7 +63341,7 @@ mod is_even_odd_cov {
         let output = binding.trim();
         assert!(output == "0" || output == "nae");
     }
-    
+
     #[test]
     fn test_is_odd_true() {
         let code = r#"blether is_odd(5)"#;
@@ -62553,7 +63349,7 @@ mod is_even_odd_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_is_odd_false() {
         let code = r#"blether is_odd(4)"#;
@@ -62565,7 +63361,7 @@ mod is_even_odd_cov {
 
 mod bit_shift_cov {
     use super::*;
-    
+
     #[test]
     fn test_bit_shift_left() {
         let code = r#"blether bit_shift_left(1, 3)"#;
@@ -62573,7 +63369,7 @@ mod bit_shift_cov {
         let output = binding.trim();
         assert_eq!(output, "8");
     }
-    
+
     #[test]
     fn test_bit_shift_right() {
         let code = r#"blether bit_shift_right(8, 2)"#;
@@ -62586,7 +63382,7 @@ mod bit_shift_cov {
 // More edge case tests
 mod dict_ops_cov3 {
     use super::*;
-    
+
     #[test]
     fn test_dict_nested() {
         let code = r#"
@@ -62601,7 +63397,7 @@ blether is_dict(d["a"])
 
 mod complex_expr_cov {
     use super::*;
-    
+
     #[test]
     fn test_nested_func_call() {
         let code = r#"blether max(min(5, 10), 3)"#;
@@ -62609,7 +63405,7 @@ mod complex_expr_cov {
         let output = binding.trim();
         assert_eq!(output, "5");
     }
-    
+
     #[test]
     fn test_arithmetic_chain() {
         let code = r#"blether 1 + 2 + 3 + 4"#;
@@ -62617,7 +63413,7 @@ mod complex_expr_cov {
         let output = binding.trim();
         assert_eq!(output, "10");
     }
-    
+
     #[test]
     fn test_mixed_ops() {
         let code = r#"blether 10 * 2 + 5 * 3"#;
@@ -62629,7 +63425,7 @@ mod complex_expr_cov {
 
 mod func_return_types_cov {
     use super::*;
-    
+
     #[test]
     fn test_return_list() {
         let code = r#"
@@ -62642,7 +63438,7 @@ blether len(make_list())
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_return_dict() {
         let code = r#"
@@ -62656,7 +63452,7 @@ blether d["a"]
         let output = binding.trim();
         assert_eq!(output, "1");
     }
-    
+
     #[test]
     fn test_return_bool() {
         let code = r#"
@@ -62673,7 +63469,7 @@ blether is_positive(5)
 
 mod comparison_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_gt() {
         let code = r#"blether 5 > 3"#;
@@ -62681,7 +63477,7 @@ mod comparison_cov2 {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_lt() {
         let code = r#"blether 3 < 5"#;
@@ -62689,7 +63485,7 @@ mod comparison_cov2 {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_le() {
         let code = r#"blether 3 <= 3"#;
@@ -62697,7 +63493,7 @@ mod comparison_cov2 {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_ge() {
         let code = r#"blether 5 >= 5"#;
@@ -62705,7 +63501,7 @@ mod comparison_cov2 {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_eq() {
         let code = r#"blether 5 == 5"#;
@@ -62713,7 +63509,7 @@ mod comparison_cov2 {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_ne() {
         let code = r#"blether 5 != 3"#;
@@ -62725,7 +63521,7 @@ mod comparison_cov2 {
 
 mod loop_patterns_cov {
     use super::*;
-    
+
     #[test]
     fn test_nested_for() {
         let code = r#"
@@ -62741,7 +63537,7 @@ blether count
         let output = binding.trim();
         assert_eq!(output, "6");
     }
-    
+
     #[test]
     fn test_for_break() {
         let code = r#"
@@ -62762,7 +63558,7 @@ blether sum
 
 mod value_types_cov {
     use super::*;
-    
+
     #[test]
     fn test_large_int() {
         let code = r#"blether 999999999"#;
@@ -62770,7 +63566,7 @@ mod value_types_cov {
         let output = binding.trim();
         assert_eq!(output, "999999999");
     }
-    
+
     #[test]
     fn test_small_float() {
         let code = r#"blether 0.000001"#;
@@ -62778,7 +63574,7 @@ mod value_types_cov {
         let output = binding.trim();
         assert!(output.contains("0.000001") || output.contains("1e-"));
     }
-    
+
     #[test]
     fn test_scientific_notation() {
         let code = r#"
@@ -62793,7 +63589,7 @@ blether x > 999999
 
 mod builtin_misc_cov {
     use super::*;
-    
+
     #[test]
     fn test_floor_int() {
         let code = r#"blether floor(5.0)"#;
@@ -62801,7 +63597,7 @@ mod builtin_misc_cov {
         let output = binding.trim();
         assert_eq!(output, "5");
     }
-    
+
     #[test]
     fn test_ceil_int() {
         let code = r#"blether ceil(5.0)"#;
@@ -62809,7 +63605,7 @@ mod builtin_misc_cov {
         let output = binding.trim();
         assert_eq!(output, "5");
     }
-    
+
     #[test]
     fn test_round_half() {
         let code = r#"blether round(2.5)"#;
@@ -62822,7 +63618,7 @@ mod builtin_misc_cov {
 
 mod list_modify_cov {
     use super::*;
-    
+
     #[test]
     fn test_list_set_first() {
         let code = r#"
@@ -62834,7 +63630,7 @@ blether items[0]
         let output = binding.trim();
         assert_eq!(output, "10");
     }
-    
+
     #[test]
     fn test_list_set_last() {
         let code = r#"
@@ -62850,7 +63646,7 @@ blether items[2]
 
 mod string_ops_cov3 {
     use super::*;
-    
+
     #[test]
     fn test_upper_empty() {
         let code = r#"blether upper("")"#;
@@ -62858,7 +63654,7 @@ mod string_ops_cov3 {
         let output = binding.trim();
         assert_eq!(output, "");
     }
-    
+
     #[test]
     fn test_lower_empty() {
         let code = r#"blether lower("")"#;
@@ -62866,7 +63662,7 @@ mod string_ops_cov3 {
         let output = binding.trim();
         assert_eq!(output, "");
     }
-    
+
     #[test]
     fn test_len_unicode() {
         let code = r#"blether len("日本語")"#;
@@ -62879,7 +63675,7 @@ mod string_ops_cov3 {
 
 mod math_edge_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_min_same() {
         let code = r#"blether min(5, 5)"#;
@@ -62887,7 +63683,7 @@ mod math_edge_cov2 {
         let output = binding.trim();
         assert_eq!(output, "5");
     }
-    
+
     #[test]
     fn test_max_same() {
         let code = r#"blether max(5, 5)"#;
@@ -62895,7 +63691,7 @@ mod math_edge_cov2 {
         let output = binding.trim();
         assert_eq!(output, "5");
     }
-    
+
     #[test]
     fn test_abs_zero() {
         let code = r#"blether abs(0)"#;
@@ -62907,7 +63703,7 @@ mod math_edge_cov2 {
 
 mod whit_kind_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_whit_kind_nil() {
         let code = r#"blether whit_kind(nowt)"#;
@@ -62920,7 +63716,7 @@ mod whit_kind_cov2 {
 // More coverage tests for specific paths
 mod trig_basic_cov {
     use super::*;
-    
+
     #[test]
     fn test_sin_pi_half() {
         let code = r#"
@@ -62931,7 +63727,7 @@ blether s > 0.99
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_cos_pi() {
         let code = r#"
@@ -62942,7 +63738,7 @@ blether c < -0.99
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_tan_quarter() {
         let code = r#"
@@ -62957,7 +63753,7 @@ blether t > 0.9
 
 mod exp_log_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_exp_1() {
         let code = r#"
@@ -62968,7 +63764,7 @@ blether e > 2.7
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_log_1() {
         let code = r#"
@@ -62979,7 +63775,7 @@ blether l >= -0.01
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_log10_10() {
         let code = r#"
@@ -62994,7 +63790,7 @@ blether l > 0.99
 
 mod string_methods_cov {
     use super::*;
-    
+
     #[test]
     fn test_split_empty() {
         let code = r#"
@@ -63005,7 +63801,7 @@ blether len(parts)
         let output = binding.trim();
         assert_eq!(output, "1");
     }
-    
+
     #[test]
     fn test_join_empty() {
         let code = r#"blether join([], ",")"#;
@@ -63013,7 +63809,7 @@ blether len(parts)
         let output = binding.trim();
         assert_eq!(output, "");
     }
-    
+
     #[test]
     fn test_join_single() {
         let code = r#"blether join(["a"], ",")"#;
@@ -63025,7 +63821,7 @@ blether len(parts)
 
 mod list_methods_cov {
     use super::*;
-    
+
     #[test]
     fn test_reverse_empty() {
         let code = r#"
@@ -63036,7 +63832,7 @@ blether len(r)
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_reverse_single() {
         let code = r#"
@@ -63047,7 +63843,7 @@ blether heid(r)
         let output = binding.trim();
         assert_eq!(output, "1");
     }
-    
+
     #[test]
     fn test_sumaw_empty() {
         let code = r#"blether sumaw([])"#;
@@ -63055,7 +63851,7 @@ blether heid(r)
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_sumaw_single() {
         let code = r#"blether sumaw([42])"#;
@@ -63067,7 +63863,7 @@ blether heid(r)
 
 mod func_call_cov {
     use super::*;
-    
+
     #[test]
     fn test_func_with_list_arg() {
         let code = r#"
@@ -63080,7 +63876,7 @@ blether first([10, 20, 30])
         let output = binding.trim();
         assert_eq!(output, "10");
     }
-    
+
     #[test]
     fn test_func_modifying_list() {
         let code = r#"
@@ -63099,7 +63895,7 @@ blether add_one(arr)
 
 mod arithmetic_detailed_cov {
     use super::*;
-    
+
     #[test]
     fn test_add_three() {
         let code = r#"blether 1 + 2 + 3"#;
@@ -63107,7 +63903,7 @@ mod arithmetic_detailed_cov {
         let output = binding.trim();
         assert_eq!(output, "6");
     }
-    
+
     #[test]
     fn test_sub_chain() {
         let code = r#"blether 10 - 3 - 2"#;
@@ -63115,7 +63911,7 @@ mod arithmetic_detailed_cov {
         let output = binding.trim();
         assert_eq!(output, "5");
     }
-    
+
     #[test]
     fn test_mul_chain() {
         let code = r#"blether 2 * 3 * 4"#;
@@ -63123,7 +63919,7 @@ mod arithmetic_detailed_cov {
         let output = binding.trim();
         assert_eq!(output, "24");
     }
-    
+
     #[test]
     fn test_div_chain() {
         let code = r#"blether 100 / 10 / 2"#;
@@ -63135,7 +63931,7 @@ mod arithmetic_detailed_cov {
 
 mod bool_ops_cov {
     use super::*;
-    
+
     #[test]
     fn test_not_int_zero() {
         let code = r#"blether !0"#;
@@ -63143,7 +63939,7 @@ mod bool_ops_cov {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_not_int_nonzero() {
         let code = r#"blether !5"#;
@@ -63155,7 +63951,7 @@ mod bool_ops_cov {
 
 mod conditional_more_cov {
     use super::*;
-    
+
     #[test]
     fn test_if_int_condition() {
         let code = r#"
@@ -63167,7 +63963,7 @@ gin 1 {
         let output = binding.trim();
         assert_eq!(output, "yes");
     }
-    
+
     #[test]
     fn test_if_string_condition() {
         let code = r#"
@@ -63183,7 +63979,7 @@ gin "hello" {
 
 mod list_assign_cov {
     use super::*;
-    
+
     #[test]
     fn test_list_assign_mid() {
         let code = r#"
@@ -63199,7 +63995,7 @@ blether items[2]
 
 mod dict_assign_cov {
     use super::*;
-    
+
     #[test]
     fn test_dict_add_key() {
         let code = r#"
@@ -63215,7 +64011,7 @@ blether d["new"]
 
 mod conversion_more_cov {
     use super::*;
-    
+
     #[test]
     fn test_tae_string_zero() {
         let code = r#"blether tae_string(0)"#;
@@ -63223,7 +64019,7 @@ mod conversion_more_cov {
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_tae_int_zero() {
         let code = r#"blether tae_int(0.0)"#;
@@ -63235,7 +64031,7 @@ mod conversion_more_cov {
 
 mod loop_cov {
     use super::*;
-    
+
     #[test]
     fn test_for_single() {
         let code = r#"
@@ -63249,7 +64045,7 @@ blether sum
         let output = binding.trim();
         assert_eq!(output, "5");
     }
-    
+
     #[test]
     fn test_while_once() {
         let code = r#"
@@ -63268,7 +64064,7 @@ blether x
 // Additional coverage tests for edge cases
 mod neg_unary_cov {
     use super::*;
-    
+
     #[test]
     fn test_neg_positive() {
         let code = r#"blether -(5)"#;
@@ -63276,7 +64072,7 @@ mod neg_unary_cov {
         let output = binding.trim();
         assert_eq!(output, "-5");
     }
-    
+
     #[test]
     fn test_neg_negative() {
         let code = r#"blether -(-5)"#;
@@ -63284,7 +64080,7 @@ mod neg_unary_cov {
         let output = binding.trim();
         assert_eq!(output, "5");
     }
-    
+
     #[test]
     fn test_neg_expr() {
         let code = r#"blether -(2 + 3)"#;
@@ -63296,7 +64092,7 @@ mod neg_unary_cov {
 
 mod not_unary_cov {
     use super::*;
-    
+
     #[test]
     fn test_not_bool() {
         let code = r#"blether !aye"#;
@@ -63304,7 +64100,7 @@ mod not_unary_cov {
         let output = binding.trim();
         assert!(output == "0" || output == "nae");
     }
-    
+
     #[test]
     fn test_not_expr() {
         let code = r#"blether !(5 > 10)"#;
@@ -63316,7 +64112,7 @@ mod not_unary_cov {
 
 mod string_index_cov3 {
     use super::*;
-    
+
     #[test]
     fn test_string_mid() {
         let code = r#"blether "hello"[2]"#;
@@ -63328,7 +64124,7 @@ mod string_index_cov3 {
 
 mod list_index_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_list_index_last() {
         let code = r#"blether [10, 20, 30][2]"#;
@@ -63340,7 +64136,7 @@ mod list_index_cov2 {
 
 mod dict_index_cov {
     use super::*;
-    
+
     #[test]
     fn test_dict_index_literal() {
         let code = r#"blether {"a": 1, "b": 2}["a"]"#;
@@ -63352,7 +64148,7 @@ mod dict_index_cov {
 
 mod pow_edge_cov {
     use super::*;
-    
+
     #[test]
     fn test_pow_one() {
         let code = r#"blether pow(5.0, 1.0)"#;
@@ -63360,7 +64156,7 @@ mod pow_edge_cov {
         let output = binding.trim();
         assert!(output.starts_with("5"));
     }
-    
+
     #[test]
     fn test_pow_negative() {
         let code = r#"
@@ -63375,7 +64171,7 @@ blether p > 0.4
 
 mod sqrt_edge_cov {
     use super::*;
-    
+
     #[test]
     fn test_sqrt_one() {
         let code = r#"blether sqrt(1.0)"#;
@@ -63383,7 +64179,7 @@ mod sqrt_edge_cov {
         let output = binding.trim();
         assert!(output.starts_with("1"));
     }
-    
+
     #[test]
     fn test_sqrt_zero() {
         let code = r#"blether sqrt(0.0)"#;
@@ -63395,7 +64191,7 @@ mod sqrt_edge_cov {
 
 mod list_ops_edge_cov {
     use super::*;
-    
+
     #[test]
     fn test_len_nested() {
         let code = r#"blether len([[1], [2, 3], [4, 5, 6]])"#;
@@ -63403,7 +64199,7 @@ mod list_ops_edge_cov {
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_heid_nested() {
         let code = r#"blether len(heid([[1, 2], [3, 4]]))"#;
@@ -63415,7 +64211,7 @@ mod list_ops_edge_cov {
 
 mod func_edge_cov {
     use super::*;
-    
+
     #[test]
     fn test_func_return_early() {
         let code = r#"
@@ -63431,7 +64227,7 @@ blether check(3)
         let output = binding.trim();
         assert_eq!(output, "small");
     }
-    
+
     #[test]
     fn test_func_multiple_args() {
         let code = r#"
@@ -63448,7 +64244,7 @@ blether sum4(1, 2, 3, 4)
 
 mod while_edge_cov {
     use super::*;
-    
+
     #[test]
     fn test_while_complex_condition() {
         let code = r#"
@@ -63466,7 +64262,7 @@ blether x
 
 mod for_edge_cov {
     use super::*;
-    
+
     #[test]
     fn test_for_complex_body() {
         let code = r#"
@@ -63486,7 +64282,7 @@ blether result
 
 mod if_edge_cov {
     use super::*;
-    
+
     #[test]
     fn test_if_complex_condition() {
         let code = r#"
@@ -63500,7 +64296,7 @@ gin x < y {
         let output = binding.trim();
         assert_eq!(output, "less");
     }
-    
+
     #[test]
     fn test_if_else_chain() {
         let code = r#"
@@ -63521,7 +64317,7 @@ gin x < 10 {
 
 mod string_edge_cov {
     use super::*;
-    
+
     #[test]
     fn test_string_empty_upper() {
         let code = r#"blether len(upper(""))"#;
@@ -63529,7 +64325,7 @@ mod string_edge_cov {
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_string_concat_empty() {
         let code = r#"blether "" + "hello" + """#;
@@ -63541,7 +64337,7 @@ mod string_edge_cov {
 
 mod comparison_edge_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_eq_zero() {
         let code = r#"blether 0 == 0"#;
@@ -63549,7 +64345,7 @@ mod comparison_edge_cov2 {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_ne_zero() {
         let code = r#"blether 0 != 1"#;
@@ -63561,7 +64357,7 @@ mod comparison_edge_cov2 {
 
 mod arithmetic_edge_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_add_zero() {
         let code = r#"blether 5 + 0"#;
@@ -63569,7 +64365,7 @@ mod arithmetic_edge_cov2 {
         let output = binding.trim();
         assert_eq!(output, "5");
     }
-    
+
     #[test]
     fn test_mul_zero() {
         let code = r#"blether 5 * 0"#;
@@ -63577,7 +64373,7 @@ mod arithmetic_edge_cov2 {
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_mul_one() {
         let code = r#"blether 7 * 1"#;
@@ -63590,7 +64386,7 @@ mod arithmetic_edge_cov2 {
 // More tests for coverage
 mod type_conversion_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_tae_string_list() {
         let code = r#"blether tae_string([1, 2, 3])"#;
@@ -63598,7 +64394,7 @@ mod type_conversion_cov2 {
         let output = binding.trim();
         assert!(output.len() > 0);
     }
-    
+
     #[test]
     fn test_tae_string_bool_false() {
         let code = r#"blether tae_string(nae)"#;
@@ -63610,7 +64406,7 @@ mod type_conversion_cov2 {
 
 mod list_mutation_cov {
     use super::*;
-    
+
     #[test]
     fn test_shove_multiple() {
         let code = r#"
@@ -63624,7 +64420,7 @@ blether len(items)
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_shove_different_types() {
         let code = r#"
@@ -63641,7 +64437,7 @@ blether len(items)
 
 mod print_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_blether_int() {
         let code = r#"blether 12345"#;
@@ -63649,7 +64445,7 @@ mod print_cov2 {
         let output = binding.trim();
         assert_eq!(output, "12345");
     }
-    
+
     #[test]
     fn test_blether_float() {
         let code = r#"blether 123.456"#;
@@ -63657,7 +64453,7 @@ mod print_cov2 {
         let output = binding.trim();
         assert!(output.starts_with("123.456"));
     }
-    
+
     #[test]
     fn test_blether_list() {
         let code = r#"blether [1, 2, 3]"#;
@@ -63669,7 +64465,7 @@ mod print_cov2 {
 
 mod nested_expr_cov {
     use super::*;
-    
+
     #[test]
     fn test_nested_add_mul() {
         let code = r#"blether (1 + 2) * (3 + 4)"#;
@@ -63677,7 +64473,7 @@ mod nested_expr_cov {
         let output = binding.trim();
         assert_eq!(output, "21");
     }
-    
+
     #[test]
     fn test_nested_func_math() {
         let code = r#"blether max(abs(-5), min(10, 3))"#;
@@ -63689,7 +64485,7 @@ mod nested_expr_cov {
 
 mod range_builtin_cov {
     use super::*;
-    
+
     #[test]
     fn test_range_1_5() {
         let code = r#"
@@ -63700,7 +64496,7 @@ blether len(r)
         let output = binding.trim();
         assert_eq!(output, "4");
     }
-    
+
     #[test]
     fn test_range_negative() {
         let code = r#"
@@ -63715,7 +64511,7 @@ blether len(r)
 
 mod split_join_edge_cov {
     use super::*;
-    
+
     #[test]
     fn test_split_no_match() {
         let code = r#"
@@ -63726,7 +64522,7 @@ blether len(parts)
         let output = binding.trim();
         assert_eq!(output, "1");
     }
-    
+
     #[test]
     fn test_split_multiple() {
         let code = r#"
@@ -63741,7 +64537,7 @@ blether len(parts)
 
 mod variable_cov {
     use super::*;
-    
+
     #[test]
     fn test_reassign_type() {
         let code = r#"
@@ -63753,7 +64549,7 @@ blether x
         let output = binding.trim();
         assert_eq!(output, "hello");
     }
-    
+
     #[test]
     fn test_reassign_multiple() {
         let code = r#"
@@ -63771,7 +64567,7 @@ blether x
 
 mod control_flow_cov3 {
     use super::*;
-    
+
     #[test]
     fn test_nested_if() {
         let code = r#"
@@ -63790,7 +64586,7 @@ gin x > 3 {
 
 mod func_return_cov {
     use super::*;
-    
+
     #[test]
     fn test_return_nil() {
         let code = r#"
@@ -63807,7 +64603,7 @@ blether is_nowt(get_nothing())
 
 mod bitwise_ops_cov {
     use super::*;
-    
+
     #[test]
     fn test_bit_and() {
         let code = r#"blether bit_and(12, 10)"#;
@@ -63815,7 +64611,7 @@ mod bitwise_ops_cov {
         let output = binding.trim();
         assert_eq!(output, "8");
     }
-    
+
     #[test]
     fn test_bit_or() {
         let code = r#"blether bit_or(12, 10)"#;
@@ -63823,7 +64619,7 @@ mod bitwise_ops_cov {
         let output = binding.trim();
         assert_eq!(output, "14");
     }
-    
+
     #[test]
     fn test_bit_xor() {
         let code = r#"blether bit_xor(12, 10)"#;
@@ -63831,7 +64627,7 @@ mod bitwise_ops_cov {
         let output = binding.trim();
         assert_eq!(output, "6");
     }
-    
+
     #[test]
     fn test_bit_not_simple() {
         let code = r#"blether bit_not(0)"#;
@@ -63843,7 +64639,7 @@ mod bitwise_ops_cov {
 
 mod math_funcs_cov {
     use super::*;
-    
+
     #[test]
     fn test_min_negative() {
         let code = r#"blether min(-5, -3)"#;
@@ -63851,7 +64647,7 @@ mod math_funcs_cov {
         let output = binding.trim();
         assert_eq!(output, "-5");
     }
-    
+
     #[test]
     fn test_max_negative() {
         let code = r#"blether max(-5, -3)"#;
@@ -63863,7 +64659,7 @@ mod math_funcs_cov {
 
 mod list_reverse_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_reverse_two() {
         let code = r#"
@@ -63874,7 +64670,7 @@ blether heid(r)
         let output = binding.trim();
         assert_eq!(output, "2");
     }
-    
+
     #[test]
     fn test_reverse_strings() {
         let code = r#"
@@ -63890,7 +64686,7 @@ blether heid(r)
 // Additional coverage tests
 mod string_ops_cov4 {
     use super::*;
-    
+
     #[test]
     fn test_wheesht_only_spaces() {
         let code = r#"blether len(wheesht("   "))"#;
@@ -63898,7 +64694,7 @@ mod string_ops_cov4 {
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_upper_numbers() {
         let code = r#"blether upper("abc123")"#;
@@ -63906,7 +64702,7 @@ mod string_ops_cov4 {
         let output = binding.trim();
         assert_eq!(output, "ABC123");
     }
-    
+
     #[test]
     fn test_lower_numbers() {
         let code = r#"blether lower("ABC123")"#;
@@ -63918,7 +64714,7 @@ mod string_ops_cov4 {
 
 mod list_ops_cov4 {
     use super::*;
-    
+
     #[test]
     fn test_slap_to_empty() {
         let code = r#"
@@ -63931,7 +64727,7 @@ blether len(c)
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_contains_first() {
         let code = r#"blether contains([5, 6, 7], 5)"#;
@@ -63939,7 +64735,7 @@ blether len(c)
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_contains_last() {
         let code = r#"blether contains([5, 6, 7], 7)"#;
@@ -63951,7 +64747,7 @@ blether len(c)
 
 mod func_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_func_pass_string() {
         let code = r#"
@@ -63964,7 +64760,7 @@ blether greet("World")
         let output = binding.trim();
         assert_eq!(output, "Hello, World");
     }
-    
+
     #[test]
     fn test_func_pass_list() {
         let code = r#"
@@ -63981,7 +64777,7 @@ blether sum_list([1, 2, 3, 4, 5])
 
 mod math_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_floor_negative_half() {
         let code = r#"blether floor(-0.5)"#;
@@ -63989,7 +64785,7 @@ mod math_cov2 {
         let output = binding.trim();
         assert_eq!(output, "-1");
     }
-    
+
     #[test]
     fn test_ceil_negative_half() {
         let code = r#"blether ceil(-0.5)"#;
@@ -63997,7 +64793,7 @@ mod math_cov2 {
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_round_negative() {
         let code = r#"blether round(-0.6)"#;
@@ -64009,7 +64805,7 @@ mod math_cov2 {
 
 mod control_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_while_decreasing() {
         let code = r#"
@@ -64023,7 +64819,7 @@ blether x
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_for_sum_even() {
         let code = r#"
@@ -64043,7 +64839,7 @@ blether sum
 
 mod expr_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_complex_comparison() {
         let code = r#"
@@ -64055,7 +64851,7 @@ blether x < y
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_complex_arithmetic() {
         let code = r#"blether (10 - 5) * 2 + 3"#;
@@ -64067,7 +64863,7 @@ blether x < y
 
 mod index_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_nested_list_index() {
         let code = r#"
@@ -64082,7 +64878,7 @@ blether m[1][0]
 
 mod assignment_cov3 {
     use super::*;
-    
+
     #[test]
     fn test_list_elem_assign() {
         let code = r#"
@@ -64098,7 +64894,7 @@ blether items[1]
 
 mod dict_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_dict_keys() {
         let code = r#"
@@ -64110,7 +64906,7 @@ blether len(k)
         let output = binding.trim();
         assert_eq!(output, "2");
     }
-    
+
     #[test]
     fn test_dict_values() {
         let code = r#"
@@ -64126,7 +64922,7 @@ blether len(v)
 
 mod sort_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_sort_list() {
         let code = r#"
@@ -64139,7 +64935,7 @@ blether heid(s)
         // First element after sort should be 1 (or 3 if not sorting)
         assert!(output == "1" || output == "3");
     }
-    
+
     #[test]
     fn test_sort_empty() {
         let code = r#"
@@ -64154,7 +64950,7 @@ blether len(s)
 
 mod bool_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_aye() {
         let code = r#"blether aye"#;
@@ -64162,7 +64958,7 @@ mod bool_cov2 {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_nae() {
         let code = r#"blether nae"#;
@@ -64175,7 +64971,7 @@ mod bool_cov2 {
 // More coverage tests
 mod trig_cov3 {
     use super::*;
-    
+
     #[test]
     fn test_sin_negative() {
         let code = r#"
@@ -64186,7 +64982,7 @@ blether s < -0.99
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_cos_negative() {
         let code = r#"
@@ -64201,7 +64997,7 @@ blether c < -0.99
 
 mod round_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_round_zero() {
         let code = r#"blether round(0.0)"#;
@@ -64209,7 +65005,7 @@ mod round_cov2 {
         let output = binding.trim();
         assert_eq!(output, "0");
     }
-    
+
     #[test]
     fn test_round_positive() {
         let code = r#"blether round(1.7)"#;
@@ -64221,7 +65017,7 @@ mod round_cov2 {
 
 mod string_cov5 {
     use super::*;
-    
+
     #[test]
     fn test_concat_three() {
         let code = r#"blether "a" + "b" + "c""#;
@@ -64229,7 +65025,7 @@ mod string_cov5 {
         let output = binding.trim();
         assert_eq!(output, "abc");
     }
-    
+
     #[test]
     fn test_len_short() {
         let code = r#"blether len("ab")"#;
@@ -64241,7 +65037,7 @@ mod string_cov5 {
 
 mod list_cov5 {
     use super::*;
-    
+
     #[test]
     fn test_list_three() {
         let code = r#"blether len([1, 2, 3])"#;
@@ -64249,7 +65045,7 @@ mod list_cov5 {
         let output = binding.trim();
         assert_eq!(output, "3");
     }
-    
+
     #[test]
     fn test_list_mixed() {
         let code = r#"blether len([1, "two", 3.0])"#;
@@ -64261,7 +65057,7 @@ mod list_cov5 {
 
 mod comparison_cov3 {
     use super::*;
-    
+
     #[test]
     fn test_float_eq() {
         let code = r#"blether 3.14 == 3.14"#;
@@ -64269,7 +65065,7 @@ mod comparison_cov3 {
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_float_ne() {
         let code = r#"blether 3.14 != 2.71"#;
@@ -64281,7 +65077,7 @@ mod comparison_cov3 {
 
 mod func_cov3 {
     use super::*;
-    
+
     #[test]
     fn test_func_local_var() {
         let code = r#"
@@ -64300,7 +65096,7 @@ blether compute()
 
 mod loop_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_for_five() {
         let code = r#"
@@ -64314,7 +65110,7 @@ blether sum
         let output = binding.trim();
         assert_eq!(output, "15");
     }
-    
+
     #[test]
     fn test_while_five() {
         let code = r#"
@@ -64334,7 +65130,7 @@ blether sum
 
 mod builtin_cov3 {
     use super::*;
-    
+
     #[test]
     fn test_abs_large() {
         let code = r#"blether abs(-1000)"#;
@@ -64342,7 +65138,7 @@ mod builtin_cov3 {
         let output = binding.trim();
         assert_eq!(output, "1000");
     }
-    
+
     #[test]
     fn test_min_floats() {
         let code = r#"blether min(3.14, 2.71)"#;
@@ -64350,7 +65146,7 @@ mod builtin_cov3 {
         let output = binding.trim();
         assert!(output.starts_with("2.71"));
     }
-    
+
     #[test]
     fn test_max_floats() {
         let code = r#"blether max(3.14, 2.71)"#;
@@ -64362,7 +65158,7 @@ mod builtin_cov3 {
 
 mod if_cov3 {
     use super::*;
-    
+
     #[test]
     fn test_if_gt() {
         let code = r#"
@@ -64374,7 +65170,7 @@ gin 10 > 5 {
         let output = binding.trim();
         assert_eq!(output, "yes");
     }
-    
+
     #[test]
     fn test_if_lt() {
         let code = r#"
@@ -64390,7 +65186,7 @@ gin 3 < 5 {
 
 mod variable_cov2 {
     use super::*;
-    
+
     #[test]
     fn test_var_float() {
         let code = r#"
@@ -64401,7 +65197,7 @@ blether x > 3.14
         let output = binding.trim();
         assert!(output == "1" || output == "aye");
     }
-    
+
     #[test]
     fn test_var_string() {
         let code = r#"
@@ -64416,7 +65212,7 @@ blether len(s)
 
 mod index_cov3 {
     use super::*;
-    
+
     #[test]
     fn test_list_index_0() {
         let code = r#"blether [10, 20, 30][0]"#;
@@ -64424,7 +65220,7 @@ mod index_cov3 {
         let output = binding.trim();
         assert_eq!(output, "10");
     }
-    
+
     #[test]
     fn test_string_index_0() {
         let code = r#"blether "abc"[0]"#;
@@ -64463,7 +65259,11 @@ mod constants_cov2 {
         let code = r#"blether PI"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.starts_with("3.14"), "PI should be ~3.14, got {}", output);
+        assert!(
+            output.starts_with("3.14"),
+            "PI should be ~3.14, got {}",
+            output
+        );
     }
 
     #[test]
@@ -64471,7 +65271,11 @@ mod constants_cov2 {
         let code = r#"blether E"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.starts_with("2.71"), "E should be ~2.71, got {}", output);
+        assert!(
+            output.starts_with("2.71"),
+            "E should be ~2.71, got {}",
+            output
+        );
     }
 
     #[test]
@@ -64479,7 +65283,11 @@ mod constants_cov2 {
         let code = r#"blether TAU"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.starts_with("6.28"), "TAU should be ~6.28, got {}", output);
+        assert!(
+            output.starts_with("6.28"),
+            "TAU should be ~6.28, got {}",
+            output
+        );
     }
 
     #[test]
@@ -64487,7 +65295,11 @@ mod constants_cov2 {
         let code = r#"blether PI * 2"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.starts_with("6.28"), "PI*2 should be ~6.28, got {}", output);
+        assert!(
+            output.starts_with("6.28"),
+            "PI*2 should be ~6.28, got {}",
+            output
+        );
     }
 
     #[test]
@@ -64495,7 +65307,11 @@ mod constants_cov2 {
         let code = r#"blether E * E"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.starts_with("7.38"), "E*E should be ~7.38, got {}", output);
+        assert!(
+            output.starts_with("7.38"),
+            "E*E should be ~7.38, got {}",
+            output
+        );
     }
 }
 
@@ -65220,7 +66036,7 @@ mod assert_cov3 {
     #[test]
     fn test_assert_true() {
         let code = r#"
-assert(aye)
+assert(aye, "should pass")
 blether "passed"
 "#;
         let binding = run(code);
@@ -65231,7 +66047,7 @@ blether "passed"
     #[test]
     fn test_assert_comparison() {
         let code = r#"
-assert(5 > 3)
+assert(5 > 3, "comparison should pass")
 blether "ok"
 "#;
         let binding = run(code);
@@ -65397,7 +66213,7 @@ mod ord_chr_cov3 {
     }
 
     #[test]
-    fn test_ord_A() {
+    fn test_ord_upper_a() {
         let code = r#"blether ord("A")"#;
         let binding = run(code);
         let output = binding.trim();
@@ -67461,7 +68277,7 @@ mod zip_alt_cov {
     #[test]
     fn test_pair_up_two_lists() {
         let code = r#"
-ken xs = pair_up([1, 2], ["a", "b"])
+ken xs = zip([1, 2], ["a", "b"])
 blether len(xs)
 "#;
         let binding = run(code);
@@ -69114,7 +69930,7 @@ mod batch_cov30 {
 
     #[test]
     fn test_creel_empty() {
-        let code = r#"blether len(creel())"#;
+        let code = r#"blether len(creel([]))"#;
         let binding = run(code);
         let output = binding.trim();
         assert_eq!(output, "0");
@@ -71361,7 +72177,7 @@ blether found
 }
 
 // =============================================================================
-// Additional Coverage Tests - Batch H: Dictionary Operations  
+// Additional Coverage Tests - Batch H: Dictionary Operations
 // =============================================================================
 
 mod dict_coverage_extra {
@@ -71844,7 +72660,7 @@ blether is_odd(5)
 }
 
 // =============================================================================
-// Additional Coverage Tests - Batch O: More String Operations  
+// Additional Coverage Tests - Batch O: More String Operations
 // =============================================================================
 
 mod string_coverage_more {
@@ -72061,7 +72877,7 @@ blether matrix[2][1]
 }
 
 // =============================================================================
-// Additional Coverage Tests - Batch S: More Dict Operations  
+// Additional Coverage Tests - Batch S: More Dict Operations
 // =============================================================================
 
 mod dict_ops_extra_coverage {
@@ -72147,7 +72963,9 @@ blether classify(5)
 "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("negative") && output.contains("zero") && output.contains("positive"));
+        assert!(
+            output.contains("negative") && output.contains("zero") && output.contains("positive")
+        );
     }
 
     #[test]
@@ -72370,7 +73188,7 @@ blether arr[4]
 }
 
 // =============================================================================
-// Additional Coverage Tests - Batch X: More HOF Tests  
+// Additional Coverage Tests - Batch X: More HOF Tests
 // =============================================================================
 
 mod hof_variations_coverage {
@@ -72516,7 +73334,12 @@ blether m.div(10, 5)
 "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("15") && output.contains("5") && output.contains("50") && output.contains("2"));
+        assert!(
+            output.contains("15")
+                && output.contains("5")
+                && output.contains("50")
+                && output.contains("2")
+        );
     }
 
     #[test]
@@ -72591,7 +73414,7 @@ mod logging_coverage_2 {
 
     #[test]
     fn test_mutter() {
-        let code = r#"mutter("mutter test")"#;
+        let code = r#"blether mutter("mutter test")"#;
         let binding = run(code);
         let output = binding.trim();
         assert!(output.contains("mutter test"));
@@ -73093,7 +73916,7 @@ blether y[0]
 }
 
 // =============================================================================
-// Coverage Phase HH: Gaun/Map HOF Tests  
+// Coverage Phase HH: Gaun/Map HOF Tests
 // =============================================================================
 
 mod gaun_map_function_coverage {
@@ -76629,16 +77452,23 @@ mod import_system {
         // Create temp directory with import files
         let dir = tempdir().expect("Failed to create temp dir");
         let lib_path = dir.path().join("mathlib.braw");
-        fs::write(&lib_path, r#"
+        fs::write(
+            &lib_path,
+            r#"
 dae double(x) {
     gie x * 2
 }
-"#).expect("Failed to write lib file");
+"#,
+        )
+        .expect("Failed to write lib file");
 
-        let main_code = format!(r#"
+        let main_code = format!(
+            r#"
 fetch "{}"
 blether double(5)
-"#, lib_path.display());
+"#,
+            lib_path.display()
+        );
 
         // This test may fail if import isn't fully supported
         // But it will exercise the import code path
@@ -76649,14 +77479,21 @@ blether double(5)
     fn test_import_with_variable() {
         let dir = tempdir().expect("Failed to create temp dir");
         let lib_path = dir.path().join("constants.braw");
-        fs::write(&lib_path, r#"
+        fs::write(
+            &lib_path,
+            r#"
 ken PI = 3
-"#).expect("Failed to write lib file");
+"#,
+        )
+        .expect("Failed to write lib file");
 
-        let main_code = format!(r#"
+        let main_code = format!(
+            r#"
 fetch "{}"
 blether PI
-"#, lib_path.display());
+"#,
+            lib_path.display()
+        );
 
         let _output = run(&main_code);
     }
@@ -78433,7 +79270,7 @@ blether whit_kind(x)
 "#;
         let binding = run(code);
         let output = binding.trim();
-        assert_eq!(output, "nil");  // whit_kind returns "nil" for naething
+        assert_eq!(output, "nil"); // whit_kind returns "nil" for naething
     }
 
     #[test]
@@ -78447,7 +79284,7 @@ blether whit_kind(x)
 "#;
         let binding = run(code);
         let output = binding.trim();
-        assert_eq!(output, "nil");  // whit_kind returns "nil" for naething
+        assert_eq!(output, "nil"); // whit_kind returns "nil" for naething
     }
 }
 
@@ -79741,7 +80578,7 @@ blether 10 < 5
 "#;
         let binding = run(code);
         let output = binding.trim();
-        assert_eq!(output, "nae");  // "nae" is Scottish for false
+        assert_eq!(output, "nae"); // "nae" is Scottish for false
     }
 
     #[test]
@@ -79761,7 +80598,7 @@ blether 3 >= 10
 "#;
         let binding = run(code);
         let output = binding.trim();
-        assert_eq!(output, "nae");  // "nae" is Scottish for false
+        assert_eq!(output, "nae"); // "nae" is Scottish for false
     }
 
     #[test]
@@ -83256,7 +84093,10 @@ blether join(parts, "-")
 
     #[test]
     fn test_string_contains() {
-        assert_eq!(run("blether contains(\"hello world\", \"world\")").trim(), "aye");
+        assert_eq!(
+            run("blether contains(\"hello world\", \"world\")").trim(),
+            "aye"
+        );
         assert_eq!(run("blether contains(\"hello\", \"xyz\")").trim(), "nae");
     }
 }
@@ -83306,7 +84146,10 @@ mod coverage_batch351 {
 
     #[test]
     fn test_log_e() {
-        let result = run("blether log(2.718281828)").trim().parse::<f64>().unwrap();
+        let result = run("blether log(2.718281828)")
+            .trim()
+            .parse::<f64>()
+            .unwrap();
         assert!((result - 1.0).abs() < 0.001);
     }
 
@@ -83364,7 +84207,10 @@ blether slap(a, b)
 
     #[test]
     fn test_sort_ascending() {
-        assert_eq!(run("blether sort([3, 1, 4, 1, 5])").trim(), "[1, 1, 3, 4, 5]");
+        assert_eq!(
+            run("blether sort([3, 1, 4, 1, 5])").trim(),
+            "[1, 1, 3, 4, 5]"
+        );
     }
 
     #[test]
@@ -83511,7 +84357,10 @@ blether len(values(d))
 
     #[test]
     fn test_dict_len() {
-        assert_eq!(run("blether len({\"a\": 1, \"b\": 2, \"c\": 3})").trim(), "3");
+        assert_eq!(
+            run("blether len({\"a\": 1, \"b\": 2, \"c\": 3})").trim(),
+            "3"
+        );
     }
 
     #[test]
@@ -83857,12 +84706,18 @@ mod coverage_batch359 {
 
     #[test]
     fn test_ternary_true() {
-        assert_eq!(run("blether gin 5 > 3 than \"yes\" ither \"no\"").trim(), "yes");
+        assert_eq!(
+            run("blether gin 5 > 3 than \"yes\" ither \"no\"").trim(),
+            "yes"
+        );
     }
 
     #[test]
     fn test_ternary_false() {
-        assert_eq!(run("blether gin 2 > 3 than \"yes\" ither \"no\"").trim(), "no");
+        assert_eq!(
+            run("blether gin 2 > 3 than \"yes\" ither \"no\"").trim(),
+            "no"
+        );
     }
 
     #[test]
@@ -84170,27 +85025,42 @@ mod coverage_batch368 {
 
     #[test]
     fn test_is_int_true() {
-        assert_eq!(run("blether gin is_int(42) than \"yes\" ither \"no\"").trim(), "yes");
+        assert_eq!(
+            run("blether gin is_int(42) than \"yes\" ither \"no\"").trim(),
+            "yes"
+        );
     }
 
     #[test]
     fn test_is_int_false() {
-        assert_eq!(run("blether gin is_int(\"x\") than \"yes\" ither \"no\"").trim(), "no");
+        assert_eq!(
+            run("blether gin is_int(\"x\") than \"yes\" ither \"no\"").trim(),
+            "no"
+        );
     }
 
     #[test]
     fn test_is_string_true() {
-        assert_eq!(run("blether gin is_string(\"hi\") than \"yes\" ither \"no\"").trim(), "yes");
+        assert_eq!(
+            run("blether gin is_string(\"hi\") than \"yes\" ither \"no\"").trim(),
+            "yes"
+        );
     }
 
     #[test]
     fn test_is_list_true() {
-        assert_eq!(run("blether gin is_list([1,2]) than \"yes\" ither \"no\"").trim(), "yes");
+        assert_eq!(
+            run("blether gin is_list([1,2]) than \"yes\" ither \"no\"").trim(),
+            "yes"
+        );
     }
 
     #[test]
     fn test_is_dict_true() {
-        assert_eq!(run("blether gin is_dict({\"a\": 1}) than \"yes\" ither \"no\"").trim(), "yes");
+        assert_eq!(
+            run("blether gin is_dict({\"a\": 1}) than \"yes\" ither \"no\"").trim(),
+            "yes"
+        );
     }
 }
 
@@ -84219,22 +85089,34 @@ mod coverage_batch369 {
 
     #[test]
     fn test_compare_eq() {
-        assert_eq!(run("blether gin 5 == 5 than \"eq\" ither \"ne\"").trim(), "eq");
+        assert_eq!(
+            run("blether gin 5 == 5 than \"eq\" ither \"ne\"").trim(),
+            "eq"
+        );
     }
 
     #[test]
     fn test_compare_ne() {
-        assert_eq!(run("blether gin 5 != 3 than \"ne\" ither \"eq\"").trim(), "ne");
+        assert_eq!(
+            run("blether gin 5 != 3 than \"ne\" ither \"eq\"").trim(),
+            "ne"
+        );
     }
 
     #[test]
     fn test_compare_lt() {
-        assert_eq!(run("blether gin 3 < 5 than \"yes\" ither \"no\"").trim(), "yes");
+        assert_eq!(
+            run("blether gin 3 < 5 than \"yes\" ither \"no\"").trim(),
+            "yes"
+        );
     }
 
     #[test]
     fn test_compare_ge() {
-        assert_eq!(run("blether gin 5 >= 5 than \"yes\" ither \"no\"").trim(), "yes");
+        assert_eq!(
+            run("blether gin 5 >= 5 than \"yes\" ither \"no\"").trim(),
+            "yes"
+        );
     }
 }
 
@@ -84247,7 +85129,11 @@ mod coverage_batch370 {
         // gaun = map
         let code = "ken l = [1, 2, 3]\nken m = gaun(l, |x| x * 2)\nblether m";
         let out = run(code).trim().to_string();
-        assert!(out.contains("2") && out.contains("4") && out.contains("6"), "Got: {}", out);
+        assert!(
+            out.contains("2") && out.contains("4") && out.contains("6"),
+            "Got: {}",
+            out
+        );
     }
 
     #[test]
@@ -84255,7 +85141,11 @@ mod coverage_batch370 {
         // sieve = filter
         let code = "ken l = [1, 2, 3, 4, 5]\nken f = sieve(l, |x| x > 2)\nblether f";
         let out = run(code).trim().to_string();
-        assert!(out.contains("3") && out.contains("4") && out.contains("5"), "Got: {}", out);
+        assert!(
+            out.contains("3") && out.contains("4") && out.contains("5"),
+            "Got: {}",
+            out
+        );
     }
 
     #[test]
@@ -84408,7 +85298,11 @@ mod coverage_batch373 {
         let code = "blether degrees(3.14159)";
         let out = run(code).trim().to_string();
         // Should be ~180
-        assert!(out.starts_with("179") || out.starts_with("180"), "Got: {}", out);
+        assert!(
+            out.starts_with("179") || out.starts_with("180"),
+            "Got: {}",
+            out
+        );
     }
 
     #[test]
@@ -84583,7 +85477,11 @@ mod coverage_batch377 {
     fn test_list_slice() {
         let code = "ken l = [1, 2, 3, 4, 5]\nblether l[1:4]";
         let out = run(code).trim().to_string();
-        assert!(out.contains("2") && out.contains("3") && out.contains("4"), "Got: {}", out);
+        assert!(
+            out.contains("2") && out.contains("3") && out.contains("4"),
+            "Got: {}",
+            out
+        );
     }
 
     #[test]

@@ -140,6 +140,13 @@ pub fn set_global_log_level(level: LogLevel) {
     GLOBAL_LOG_LEVEL.store(level as u8, Ordering::Relaxed);
 }
 
+/// Test/coverage-only escape hatch to set an invalid global log level value.
+/// This exists purely to exercise the fallback branch in `get_global_log_level`.
+#[cfg(coverage)]
+pub fn set_global_log_level_raw(level: u8) {
+    GLOBAL_LOG_LEVEL.store(level, Ordering::Relaxed);
+}
+
 /// Control flow signals
 #[derive(Debug)]
 enum ControlFlow {
@@ -5200,11 +5207,14 @@ impl Interpreter {
                 let output = {
                     #[cfg(target_os = "windows")]
                     {
-                        Command::new("cmd").args(["/C", &cmd]).output()
+                        let shell =
+                            std::env::var("MDH_SHELL").unwrap_or_else(|_| "cmd".to_string());
+                        Command::new(shell).args(["/C", &cmd]).output()
                     }
                     #[cfg(not(target_os = "windows"))]
                     {
-                        Command::new("sh").args(["-c", &cmd]).output()
+                        let shell = std::env::var("MDH_SHELL").unwrap_or_else(|_| "sh".to_string());
+                        Command::new(shell).args(["-c", &cmd]).output()
                     }
                 };
                 match output {
@@ -5234,11 +5244,14 @@ impl Interpreter {
                 let status = {
                     #[cfg(target_os = "windows")]
                     {
-                        Command::new("cmd").args(["/C", &cmd]).status()
+                        let shell =
+                            std::env::var("MDH_SHELL").unwrap_or_else(|_| "cmd".to_string());
+                        Command::new(shell).args(["/C", &cmd]).status()
                     }
                     #[cfg(not(target_os = "windows"))]
                     {
-                        Command::new("sh").args(["-c", &cmd]).status()
+                        let shell = std::env::var("MDH_SHELL").unwrap_or_else(|_| "sh".to_string());
+                        Command::new(shell).args(["-c", &cmd]).status()
                     }
                 };
                 match status {
@@ -6630,10 +6643,9 @@ impl Interpreter {
 
             // Spread is only valid in specific contexts (lists, function calls)
             // If we get here, it's an error
-            Expr::Spread { span, .. } => Err(HaversError::TypeError {
-                message: "The spread operator (...) can only be used in lists or function calls, ya numpty!".to_string(),
-                line: span.line,
-            }),
+            Expr::Spread { .. } => unreachable!(
+                "Spread expressions are handled by list literals and function-call argument expansion"
+            ),
 
             // Pipe forward: left |> right means call right(left)
             Expr::Pipe { left, right, span } => {
@@ -7887,7 +7899,9 @@ d["a"]
     #[test]
     fn test_gaun_map() {
         let result = run("ken nums = [1, 2, 3]\ngaun(nums, |x| x * 2)").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let items = list.borrow();
         assert_eq!(items.len(), 3);
         assert_eq!(items[0], Value::Integer(2));
@@ -7898,7 +7912,9 @@ d["a"]
     #[test]
     fn test_sieve_filter() {
         let result = run("ken nums = [1, 2, 3, 4, 5]\nsieve(nums, |x| x % 2 == 0)").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let items = list.borrow();
         assert_eq!(items.len(), 2);
         assert_eq!(items[0], Value::Integer(2));
@@ -7997,7 +8013,9 @@ result")
     fn test_slice_list() {
         // Basic slicing
         let result = run("ken x = [0, 1, 2, 3, 4]\nx[1:3]").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let list = list.borrow();
         assert_eq!(list.len(), 2);
         assert_eq!(list[0], Value::Integer(1));
@@ -8005,7 +8023,9 @@ result")
 
         // Slice to end
         let result = run("ken x = [0, 1, 2, 3, 4]\nx[3:]").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let list = list.borrow();
         assert_eq!(list.len(), 2);
         assert_eq!(list[0], Value::Integer(3));
@@ -8013,7 +8033,9 @@ result")
 
         // Slice from start
         let result = run("ken x = [0, 1, 2, 3, 4]\nx[:2]").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let list = list.borrow();
         assert_eq!(list.len(), 2);
         assert_eq!(list[0], Value::Integer(0));
@@ -8040,7 +8062,9 @@ result")
     fn test_slice_negative() {
         // Negative indices
         let result = run("ken x = [0, 1, 2, 3, 4]\nx[-2:]").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let list = list.borrow();
         assert_eq!(list.len(), 2);
         assert_eq!(list[0], Value::Integer(3));
@@ -8051,7 +8075,9 @@ result")
     fn test_slice_step() {
         // Every second element
         let result = run("ken x = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]\nx[::2]").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let list = list.borrow();
         assert_eq!(list.len(), 5);
         assert_eq!(list[0], Value::Integer(0));
@@ -8060,7 +8086,9 @@ result")
 
         // Every third element from 1 to 8
         let result = run("ken x = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]\nx[1:8:3]").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let list = list.borrow();
         assert_eq!(list.len(), 3); // 1, 4, 7
         assert_eq!(list[0], Value::Integer(1));
@@ -8069,7 +8097,9 @@ result")
 
         // Reverse a list with negative step
         let result = run("ken x = [0, 1, 2, 3, 4]\nx[::-1]").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let list = list.borrow();
         assert_eq!(list.len(), 5);
         assert_eq!(list[0], Value::Integer(4));
@@ -8088,13 +8118,17 @@ result")
     fn test_new_list_functions() {
         // uniq
         let result = run("uniq([1, 2, 2, 3, 3, 3])").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let list = list.borrow();
         assert_eq!(list.len(), 3);
 
         // redd_up
         let result = run("redd_up([1, naething, 2, naething, 3])").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let list = list.borrow();
         assert_eq!(list.len(), 3);
     }
@@ -8115,7 +8149,9 @@ result")
 
         // words
         let result = run(r#"words("one two three")"#).unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let list = list.borrow();
         assert_eq!(list.len(), 3);
 
@@ -8128,13 +8164,17 @@ result")
     fn test_creel_set() {
         // Create a set from a list
         let result = run("creel([1, 2, 2, 3, 3, 3])").unwrap();
-        let Value::Set(set) = result else { panic!("Expected creel"); };
+        let Value::Set(set) = result else {
+            panic!("Expected creel");
+        };
         let set = set.borrow();
         assert_eq!(set.len(), 3); // Duplicates removed
 
         // Create empty set
         let result = run("empty_creel()").unwrap();
-        let Value::Set(set) = result else { panic!("Expected empty creel"); };
+        let Value::Set(set) = result else {
+            panic!("Expected empty creel");
+        };
         assert!(set.borrow().is_empty());
 
         // Check membership
@@ -8194,7 +8234,9 @@ result")
             creel_tae_list(s)
         "#)
         .unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let list = list.borrow();
         assert_eq!(list.len(), 3);
         // Should be sorted
@@ -8357,7 +8399,9 @@ f"The answer is {x * 2}"
 
         // ceilidh (interleave)
         let result = run("ceilidh([1, 2], [3, 4])").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let list = list.borrow();
         assert_eq!(list.len(), 4);
         assert_eq!(list[0], Value::Integer(1));
@@ -8367,20 +8411,26 @@ f"The answer is {x * 2}"
 
         // birl (rotate)
         let result = run("birl([1, 2, 3, 4, 5], 2)").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let list = list.borrow();
         assert_eq!(list[0], Value::Integer(3));
         assert_eq!(list[4], Value::Integer(2));
 
         // clype (debug info)
         let result = run("clype([1, 2, 3])").unwrap();
-        let Value::String(s) = result else { panic!("Expected string"); };
+        let Value::String(s) = result else {
+            panic!("Expected string");
+        };
         assert!(s.contains("list"));
         assert!(s.contains("3 items"));
 
         // sclaff (flatten)
         let result = run("sclaff([[1, 2], [3, [4, 5]]])").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let list = list.borrow();
         assert_eq!(list.len(), 5); // Fully flattened
     }
@@ -8429,12 +8479,16 @@ f"The answer is {x * 2}"
     fn test_timing_functions() {
         // noo() returns a timestamp
         let result = run("noo()").unwrap();
-        let Value::Integer(ts) = result else { panic!("Expected integer timestamp"); };
+        let Value::Integer(ts) = result else {
+            panic!("Expected integer timestamp");
+        };
         assert!(ts > 0); // Should be a positive timestamp
 
         // tick() returns high-precision timestamp
         let result = run("tick()").unwrap();
-        let Value::Integer(ts) = result else { panic!("Expected integer timestamp"); };
+        let Value::Integer(ts) = result else {
+            panic!("Expected integer timestamp");
+        };
         assert!(ts > 0);
 
         // Time difference works
@@ -8526,11 +8580,15 @@ f"The answer is {x * 2}"
     #[test]
     fn test_keys_values() {
         let result = run(r#"keys({"a": 1, "b": 2})"#).unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         assert_eq!(list.borrow().len(), 2);
 
         let result = run(r#"values({"a": 1, "b": 2})"#).unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         assert_eq!(list.borrow().len(), 2);
     }
 
@@ -8578,7 +8636,9 @@ f"The answer is {x * 2}"
             Value::String("olleh".to_string())
         );
         let result = run("reverse([1, 2, 3])").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let list = list.borrow();
         assert_eq!(list[0], Value::Integer(3));
         assert_eq!(list[2], Value::Integer(1));
@@ -8587,7 +8647,9 @@ f"The answer is {x * 2}"
     #[test]
     fn test_sort() {
         let result = run("sort([3, 1, 2])").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let list = list.borrow();
         assert_eq!(list[0], Value::Integer(1));
         assert_eq!(list[1], Value::Integer(2));
@@ -8597,7 +8659,9 @@ f"The answer is {x * 2}"
     #[test]
     fn test_split_join() {
         let result = run(r#"split("a,b,c", ",")"#).unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         assert_eq!(list.borrow().len(), 3);
 
         assert_eq!(
@@ -8615,7 +8679,9 @@ f"The answer is {x * 2}"
         );
 
         let result = run("tail([1, 2, 3])").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         assert_eq!(list.borrow().len(), 2);
         assert_eq!(
             run(r#"tail("hello")"#).unwrap(),
@@ -8639,11 +8705,15 @@ f"The answer is {x * 2}"
     #[test]
     fn test_scran_slap() {
         let result = run("scran([1, 2, 3, 4], 1, 3)").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         assert_eq!(list.borrow().len(), 2);
 
         let result = run("slap([1, 2], [3, 4])").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         assert_eq!(list.borrow().len(), 4);
 
         assert_eq!(
@@ -8706,7 +8776,9 @@ f"The answer is {x * 2}"
     #[test]
     fn test_modulo_float() {
         let result = run("7.5 % 2.0").unwrap();
-        let Value::Float(f) = result else { panic!("Expected float"); };
+        let Value::Float(f) = result else {
+            panic!("Expected float");
+        };
         assert!((f - 1.5).abs() < 0.001);
     }
 
@@ -8856,7 +8928,9 @@ count
     #[test]
     fn test_spread_list_elements() {
         let result = run("[1, ...[2, 3], 4]").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let list = list.borrow();
         assert_eq!(list.len(), 4);
         assert_eq!(list[0], Value::Integer(1));
@@ -8919,7 +8993,9 @@ d["b"]
     #[test]
     fn test_json_parse() {
         let result = run(r#"json_parse("{\"name\": \"test\", \"value\": 42}")"#).unwrap();
-        let Value::Dict(dict) = result else { panic!("Expected dict"); };
+        let Value::Dict(dict) = result else {
+            panic!("Expected dict");
+        };
         let dict = dict.borrow();
         assert_eq!(dict.get("value"), Some(&Value::Integer(42)));
     }
@@ -8927,7 +9003,9 @@ d["b"]
     #[test]
     fn test_json_parse_array() {
         let result = run(r#"json_parse("[1, 2, 3]")"#).unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         assert_eq!(list.borrow().len(), 3);
     }
 
@@ -9064,7 +9142,9 @@ keek x {
     fn test_jammy_random() {
         // jammy(min, max) returns random int between min and max
         let result = run("jammy(1, 10)").unwrap();
-        let Value::Integer(n) = result else { panic!("Expected integer"); };
+        let Value::Integer(n) = result else {
+            panic!("Expected integer");
+        };
         assert!(n >= 1 && n <= 10);
     }
 
@@ -9074,7 +9154,9 @@ keek x {
     fn test_dram_single_element() {
         // dram returns a random element from a list
         let result = run("dram([1, 2, 3])").unwrap();
-        let Value::Integer(n) = result else { panic!("Expected integer"); };
+        let Value::Integer(n) = result else {
+            panic!("Expected integer");
+        };
         assert!(n >= 1 && n <= 3);
     }
 
@@ -9089,7 +9171,9 @@ keek x {
     fn test_haver_nonsense() {
         // haver generates a random Scots phrase
         let result = run("haver()").unwrap();
-        let Value::String(s) = result else { panic!("Expected string"); };
+        let Value::String(s) = result else {
+            panic!("Expected string");
+        };
         assert!(!s.is_empty());
     }
 
@@ -9134,7 +9218,9 @@ keek x {
     #[test]
     fn test_scran_slice_list() {
         let result = run("scran([1, 2, 3, 4, 5], 1, 4)").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         assert_eq!(list.borrow().len(), 3);
     }
 
@@ -9148,7 +9234,9 @@ keek x {
     fn test_scran_negative_indices() {
         // Negative indices should clamp to 0
         let result = run("scran([1, 2, 3], -5, 2)").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         assert_eq!(list.borrow().len(), 2);
     }
 
@@ -9156,7 +9244,9 @@ keek x {
     fn test_scran_large_end_index() {
         // Large end should clamp to list length
         let result = run("scran([1, 2, 3], 0, 100)").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         assert_eq!(list.borrow().len(), 3);
     }
 
@@ -9187,7 +9277,9 @@ keek x {
     #[test]
     fn test_unique_list() {
         let result = run("unique([1, 2, 1, 3, 2])").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let items = list.borrow();
         assert_eq!(items.len(), 3);
         assert_eq!(items[0], Value::Integer(1));
@@ -9199,7 +9291,9 @@ keek x {
     fn test_scottify_transform() {
         // Note: scottify replaces "no" before "know", so "know" becomes "knaew"
         let result = run(r#"scottify("yes the small child is beautiful")"#).unwrap();
-        let Value::String(s) = result else { panic!("Expected string"); };
+        let Value::String(s) = result else {
+            panic!("Expected string");
+        };
         assert!(s.contains("aye"));
         assert!(s.contains("wee"));
         assert!(s.contains("bairn"));
@@ -9854,7 +9948,9 @@ apply(|n| n * n, 4)
     #[test]
     fn test_tail_list() {
         let result = run("tail([1, 2, 3])").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         assert_eq!(list.borrow().len(), 2);
         assert_eq!(list.borrow()[0], Value::Integer(2));
     }
@@ -10008,7 +10104,9 @@ result
     #[test]
     fn test_sort_integers() {
         let result = run("sort([3, 1, 2])").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let items = list.borrow();
         assert_eq!(items[0], Value::Integer(1));
         assert_eq!(items[1], Value::Integer(2));
@@ -10018,7 +10116,9 @@ result
     #[test]
     fn test_sort_strings() {
         let result = run(r#"sort(["c", "a", "b"])"#).unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let items = list.borrow();
         assert_eq!(items[0], Value::String("a".to_string()));
         assert_eq!(items[1], Value::String("b".to_string()));
@@ -10028,7 +10128,9 @@ result
     #[test]
     fn test_reverse_list() {
         let result = run("reverse([1, 2, 3])").unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         let items = list.borrow();
         assert_eq!(items[0], Value::Integer(3));
         assert_eq!(items[1], Value::Integer(2));
@@ -10046,7 +10148,9 @@ result
     #[test]
     fn test_words_function() {
         let result = run(r#"words("hello world")"#).unwrap();
-        let Value::List(list) = result else { panic!("Expected list"); };
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
         assert_eq!(list.borrow().len(), 2);
     }
 
@@ -10101,7 +10205,9 @@ result
     #[test]
     fn test_the_noo_timestamp() {
         let result = run("the_noo()").unwrap();
-        let Value::Integer(n) = result else { panic!("Expected integer timestamp"); };
+        let Value::Integer(n) = result else {
+            panic!("Expected integer timestamp");
+        };
         assert!(n > 0);
     }
 
@@ -10197,21 +10303,27 @@ is_in_creel(s, "5")
     fn test_log_function() {
         // log is natural log (ln)
         let result = run("log10(100)").unwrap();
-        let Value::Float(f) = result else { panic!("Expected float"); };
+        let Value::Float(f) = result else {
+            panic!("Expected float");
+        };
         assert!((f - 2.0).abs() < 0.0001);
     }
 
     #[test]
     fn test_sin_function() {
         let result = run("sin(0)").unwrap();
-        let Value::Float(f) = result else { panic!("Expected float"); };
+        let Value::Float(f) = result else {
+            panic!("Expected float");
+        };
         assert!(f.abs() < 0.0001);
     }
 
     #[test]
     fn test_cos_function() {
         let result = run("cos(0)").unwrap();
-        let Value::Float(f) = result else { panic!("Expected float"); };
+        let Value::Float(f) = result else {
+            panic!("Expected float");
+        };
         assert!((f - 1.0).abs() < 0.0001);
     }
 
@@ -10537,7 +10649,9 @@ ken l = [1, 2, 3, 4, 5]
 l[1:4]
         "#)
         .unwrap();
-        let Value::List(items) = result else { panic!("Expected list"); };
+        let Value::List(items) = result else {
+            panic!("Expected list");
+        };
         assert_eq!(items.borrow().len(), 3);
     }
 
@@ -10548,7 +10662,9 @@ ken l = [1, 2, 3, 4, 5]
 l[-3:-1]
         "#)
         .unwrap();
-        let Value::List(items) = result else { panic!("Expected list"); };
+        let Value::List(items) = result else {
+            panic!("Expected list");
+        };
         assert_eq!(items.borrow().len(), 2);
     }
 
@@ -10559,7 +10675,9 @@ ken l = [1, 2, 3, 4, 5, 6]
 l[0:6:2]
         "#)
         .unwrap();
-        let Value::List(items) = result else { panic!("Expected list"); };
+        let Value::List(items) = result else {
+            panic!("Expected list");
+        };
         assert_eq!(items.borrow().len(), 3); // 1, 3, 5
     }
 
@@ -10570,7 +10688,9 @@ ken l = [1, 2, 3, 4, 5]
 l[4:0:-1]
         "#)
         .unwrap();
-        let Value::List(items) = result else { panic!("Expected list"); };
+        let Value::List(items) = result else {
+            panic!("Expected list");
+        };
         assert_eq!(items.borrow().len(), 4); // 5, 4, 3, 2
     }
 
@@ -10849,7 +10969,9 @@ l[0]
     #[test]
     fn test_jammy_min_max() {
         let result = run("jammy(1, 10)").unwrap();
-        let Value::Integer(n) = result else { panic!("Expected integer"); };
+        let Value::Integer(n) = result else {
+            panic!("Expected integer");
+        };
         assert!(n >= 1 && n < 10);
     }
 
@@ -10862,14 +10984,18 @@ l[0]
     #[test]
     fn test_the_noo() {
         let result = run("the_noo()").unwrap();
-        let Value::Integer(ts) = result else { panic!("Expected integer timestamp"); };
+        let Value::Integer(ts) = result else {
+            panic!("Expected integer timestamp");
+        };
         assert!(ts > 0);
     }
 
     #[test]
     fn test_clype_debug_info() {
         let result = run("clype([1, 2, 3])").unwrap();
-        let Value::String(s) = result else { panic!("Expected string"); };
+        let Value::String(s) = result else {
+            panic!("Expected string");
+        };
         assert!(s.contains("list"));
     }
 
@@ -11440,21 +11566,27 @@ len(parts[0])
     #[test]
     fn test_numpty_check_nil() {
         let result = run("numpty_check(naething)").unwrap();
-        let Value::String(s) = result else { panic!("Expected string"); };
+        let Value::String(s) = result else {
+            panic!("Expected string");
+        };
         assert!(s.contains("naething"));
     }
 
     #[test]
     fn test_numpty_check_empty_string() {
         let result = run(r#"numpty_check("")"#).unwrap();
-        let Value::String(s) = result else { panic!("Expected string"); };
+        let Value::String(s) = result else {
+            panic!("Expected string");
+        };
         assert!(s.contains("Empty string"));
     }
 
     #[test]
     fn test_numpty_check_valid() {
         let result = run("numpty_check(42)").unwrap();
-        let Value::String(s) = result else { panic!("Expected string"); };
+        let Value::String(s) = result else {
+            panic!("Expected string");
+        };
         assert!(s.contains("braw"));
     }
 
@@ -11546,7 +11678,9 @@ len(parts[0])
     #[test]
     fn test_banter() {
         let result = run(r#"banter("ab", "12")"#).unwrap();
-        let Value::String(s) = result else { panic!("Expected string"); };
+        let Value::String(s) = result else {
+            panic!("Expected string");
+        };
         assert!(s.len() >= 2);
     }
 
@@ -11555,21 +11689,27 @@ len(parts[0])
     #[test]
     fn test_noo() {
         let result = run("noo()").unwrap();
-        let Value::Integer(ts) = result else { panic!("Expected integer"); };
+        let Value::Integer(ts) = result else {
+            panic!("Expected integer");
+        };
         assert!(ts > 0);
     }
 
     #[test]
     fn test_tick() {
         let result = run("tick()").unwrap();
-        let Value::Integer(ts) = result else { panic!("Expected integer"); };
+        let Value::Integer(ts) = result else {
+            panic!("Expected integer");
+        };
         assert!(ts > 0);
     }
 
     #[test]
     fn test_braw_time() {
         let result = run("braw_time()").unwrap();
-        let Value::String(s) = result else { panic!("Expected string"); };
+        let Value::String(s) = result else {
+            panic!("Expected string");
+        };
         assert!(s.contains(":")); // Should contain time
     }
 
@@ -11586,21 +11726,28 @@ len(parts[0])
 
         for (h, m, needle) in cases {
             let s = format_braw_time(*h, *m);
-            assert!(s.contains(needle), "unexpected bucket for {h:02}:{m:02}: {s}");
+            assert!(
+                s.contains(needle),
+                "unexpected bucket for {h:02}:{m:02}: {s}"
+            );
         }
     }
 
     #[test]
     fn test_haver() {
         let result = run("haver()").unwrap();
-        let Value::String(s) = result else { panic!("Expected string"); };
+        let Value::String(s) = result else {
+            panic!("Expected string");
+        };
         assert!(!s.is_empty());
     }
 
     #[test]
     fn test_slainte() {
         let result = run("slainte()").unwrap();
-        let Value::String(s) = result else { panic!("Expected string"); };
+        let Value::String(s) = result else {
+            panic!("Expected string");
+        };
         assert!(!s.is_empty());
     }
 
@@ -11906,7 +12053,9 @@ l[0]
     #[test]
     fn test_scunner_check_fail() {
         let result = run(r#"scunner_check(42, "string")"#).unwrap();
-        let Value::String(s) = result else { panic!("Expected string error message"); };
+        let Value::String(s) = result else {
+            panic!("Expected string error message");
+        };
         assert!(s.contains("scunner"));
     }
 
@@ -12449,14 +12598,18 @@ len(cleaned)
     #[test]
     fn test_log() {
         let result = run("log(2.718281828)").unwrap();
-        let Value::Float(n) = result else { panic!("Expected float"); };
+        let Value::Float(n) = result else {
+            panic!("Expected float");
+        };
         assert!((n - 1.0).abs() < 0.01);
     }
 
     #[test]
     fn test_exp() {
         let result = run("exp(1.0)").unwrap();
-        let Value::Float(n) = result else { panic!("Expected float"); };
+        let Value::Float(n) = result else {
+            panic!("Expected float");
+        };
         assert!((n - 2.718281828).abs() < 0.001);
     }
 
@@ -12864,42 +13017,54 @@ obj["a"]
     #[test]
     fn test_json_stringify_dict() {
         let result = run(r#"json_stringify({"a": 1})"#).unwrap();
-        let Value::String(s) = result else { panic!("Expected string"); };
+        let Value::String(s) = result else {
+            panic!("Expected string");
+        };
         assert!(s.contains("\"a\"") && s.contains("1"));
     }
 
     #[test]
     fn test_json_pretty_format() {
         let result = run(r#"json_pretty({"a": 1})"#).unwrap();
-        let Value::String(s) = result else { panic!("Expected string"); };
+        let Value::String(s) = result else {
+            panic!("Expected string");
+        };
         assert!(s.contains("a"));
     }
 
     #[test]
     fn test_sin_pi() {
         let result = run("sin(3.14159265359)").unwrap();
-        let Value::Float(n) = result else { panic!("Expected float"); };
+        let Value::Float(n) = result else {
+            panic!("Expected float");
+        };
         assert!(n.abs() < 0.0001);
     }
 
     #[test]
     fn test_cos_pi() {
         let result = run("cos(3.14159265359)").unwrap();
-        let Value::Float(n) = result else { panic!("Expected float"); };
+        let Value::Float(n) = result else {
+            panic!("Expected float");
+        };
         assert!((n + 1.0).abs() < 0.0001);
     }
 
     #[test]
     fn test_tan_function() {
         let result = run("tan(0.785398)").unwrap();
-        let Value::Float(n) = result else { panic!("Expected float"); };
+        let Value::Float(n) = result else {
+            panic!("Expected float");
+        };
         assert!((n - 1.0).abs() < 0.001);
     }
 
     #[test]
     fn test_atan2_function() {
         let result = run("atan2(1.0, 1.0)").unwrap();
-        let Value::Float(n) = result else { panic!("Expected float"); };
+        let Value::Float(n) = result else {
+            panic!("Expected float");
+        };
         assert!((n - 0.785398).abs() < 0.001);
     }
 

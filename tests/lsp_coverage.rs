@@ -83,6 +83,14 @@ fn lsp_binary_handles_initialize_requests_and_shutdown() {
         stdin.write_all(lsp_frame(&did_change).as_bytes()).unwrap();
     }
 
+    // Restore to a normal document so hover/completion can find a word at the cursor.
+    let did_change_restore = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"textDocument":{{"uri":"{uri}","version":11}},"contentChanges":[{{"text":"ken x = 1\nblether x\n"}}]}}}}"#
+    );
+    stdin
+        .write_all(lsp_frame(&did_change_restore).as_bytes())
+        .unwrap();
+
     // 4) completion request
     let completion = format!(
         r#"{{"jsonrpc":"2.0","id":3,"method":"textDocument/completion","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":0,"character":1}}}}}}"#
@@ -95,19 +103,52 @@ fn lsp_binary_handles_initialize_requests_and_shutdown() {
     );
     stdin.write_all(lsp_frame(&hover).as_bytes()).unwrap();
 
-    // 5b) hover out of range (forces None path in word lookup)
+    // 5b) hover at whitespace (forces start==end None path)
+    let hover_whitespace = format!(
+        r#"{{"jsonrpc":"2.0","id":8,"method":"textDocument/hover","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":0,"character":3}}}}}}"#
+    );
+    stdin
+        .write_all(lsp_frame(&hover_whitespace).as_bytes())
+        .unwrap();
+
+    // 5c) hover out of range (forces None path in word lookup)
     let hover_oob = format!(
         r#"{{"jsonrpc":"2.0","id":6,"method":"textDocument/hover","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":999,"character":999}}}}}}"#
     );
     stdin.write_all(lsp_frame(&hover_oob).as_bytes()).unwrap();
 
-    // 5c) go-to-definition request (currently unsupported but should respond)
+    // 5d) hover beyond line length (col >= line.len() path)
+    let hover_col_oob = format!(
+        r#"{{"jsonrpc":"2.0","id":9,"method":"textDocument/hover","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":0,"character":999}}}}}}"#
+    );
+    stdin
+        .write_all(lsp_frame(&hover_col_oob).as_bytes())
+        .unwrap();
+
+    // 5e) go-to-definition request (currently unsupported but should respond)
     let def = format!(
         r#"{{"jsonrpc":"2.0","id":5,"method":"textDocument/definition","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":0,"character":1}}}}}}"#
     );
     stdin.write_all(lsp_frame(&def).as_bytes()).unwrap();
 
-    // 5d) close document
+    // 5f) unknown request type should be ignored (handle_request fallthrough).
+    let unknown_req = format!(
+        r#"{{"jsonrpc":"2.0","id":7,"method":"textDocument/formatting","params":{{"textDocument":{{"uri":"{uri}"}},"options":{{}}}}}}"#
+    );
+    stdin.write_all(lsp_frame(&unknown_req).as_bytes()).unwrap();
+
+    // 5g) unknown notification type should be ignored (handle_notification fallthrough).
+    let unknown_not =
+        r#"{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{}}"#;
+    stdin.write_all(lsp_frame(unknown_not).as_bytes()).unwrap();
+
+    // 5h) send a response frame (server ignores Message::Response)
+    let client_response = r#"{"jsonrpc":"2.0","id":999,"result":null}"#;
+    stdin
+        .write_all(lsp_frame(client_response).as_bytes())
+        .unwrap();
+
+    // 5i) close document
     let did_close = format!(
         r#"{{"jsonrpc":"2.0","method":"textDocument/didClose","params":{{"textDocument":{{"uri":"{uri}"}}}}}}"#
     );
@@ -133,8 +174,14 @@ fn lsp_binary_handles_initialize_requests_and_shutdown() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // We should at least see initialize response and our request ids.
-    assert!(stdout.contains(r#""id":1"#), "missing initialize response: {stdout}");
-    assert!(stdout.contains(r#""id":2"#), "missing shutdown response: {stdout}");
+    assert!(
+        stdout.contains(r#""id":1"#),
+        "missing initialize response: {stdout}"
+    );
+    assert!(
+        stdout.contains(r#""id":2"#),
+        "missing shutdown response: {stdout}"
+    );
 
     // Diagnostics publication is a notification; ensure it showed up.
     assert!(
