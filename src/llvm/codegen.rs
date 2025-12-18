@@ -102,6 +102,7 @@ struct LibcFunctions<'ctx> {
     term_width: FunctionValue<'ctx>,
     term_height: FunctionValue<'ctx>,
     // Dict/Creel runtime functions
+    empty_dict: FunctionValue<'ctx>,
     empty_creel: FunctionValue<'ctx>,
     make_creel: FunctionValue<'ctx>,
     dict_contains: FunctionValue<'ctx>,
@@ -176,6 +177,34 @@ struct LibcFunctions<'ctx> {
     geggie: FunctionValue<'ctx>,
     jings: FunctionValue<'ctx>,
     crivvens: FunctionValue<'ctx>,
+    help_ma_boab: FunctionValue<'ctx>,
+    haver: FunctionValue<'ctx>,
+    braw_time: FunctionValue<'ctx>,
+    braw: FunctionValue<'ctx>,
+    crabbit: FunctionValue<'ctx>,
+    gallus: FunctionValue<'ctx>,
+    drookit: FunctionValue<'ctx>,
+    clarty: FunctionValue<'ctx>,
+    glaikit: FunctionValue<'ctx>,
+    is_wee: FunctionValue<'ctx>,
+    is_muckle: FunctionValue<'ctx>,
+    is_blank: FunctionValue<'ctx>,
+    haverin: FunctionValue<'ctx>,
+    banter: FunctionValue<'ctx>,
+    capitalize: FunctionValue<'ctx>,
+    scunner: FunctionValue<'ctx>,
+    scunner_check: FunctionValue<'ctx>,
+    clype: FunctionValue<'ctx>,
+    stoater: FunctionValue<'ctx>,
+    dicht: FunctionValue<'ctx>,
+    redd_up: FunctionValue<'ctx>,
+    split_by: FunctionValue<'ctx>,
+    grup_runs: FunctionValue<'ctx>,
+    range_o: FunctionValue<'ctx>,
+    tattie_scone: FunctionValue<'ctx>,
+    haggis_hunt: FunctionValue<'ctx>,
+    blether_format: FunctionValue<'ctx>,
+    bampot_mode: FunctionValue<'ctx>,
     // Logging/Debug runtime functions
     get_log_level: FunctionValue<'ctx>,
     set_log_level: FunctionValue<'ctx>,
@@ -620,6 +649,11 @@ impl<'ctx> CodeGen<'ctx> {
         let term_height =
             module.add_function("__mdh_term_height", term_size_type, Some(Linkage::External));
 
+        // __mdh_empty_dict() -> MdhValue
+        let empty_dict_type = types.value_type.fn_type(&[], false);
+        let empty_dict =
+            module.add_function("__mdh_empty_dict", empty_dict_type, Some(Linkage::External));
+
         // __mdh_empty_creel() -> MdhValue
         let empty_creel_type = types.value_type.fn_type(&[], false);
         let empty_creel = module.add_function(
@@ -960,6 +994,73 @@ impl<'ctx> CodeGen<'ctx> {
         let jings = module.add_function("__mdh_jings", scottify_type, Some(Linkage::External));
         let crivvens =
             module.add_function("__mdh_crivvens", scottify_type, Some(Linkage::External));
+        let help_ma_boab =
+            module.add_function("__mdh_help_ma_boab", scottify_type, Some(Linkage::External));
+
+        let zero_arg_value_type = types.value_type.fn_type(&[], false);
+        let haver =
+            module.add_function("__mdh_haver", zero_arg_value_type, Some(Linkage::External));
+        let braw_time = module.add_function(
+            "__mdh_braw_time",
+            zero_arg_value_type,
+            Some(Linkage::External),
+        );
+
+        let braw = module.add_function("__mdh_braw", scottify_type, Some(Linkage::External));
+        let crabbit = module.add_function("__mdh_crabbit", scottify_type, Some(Linkage::External));
+        let gallus = module.add_function("__mdh_gallus", scottify_type, Some(Linkage::External));
+        let drookit = module.add_function("__mdh_drookit", scottify_type, Some(Linkage::External));
+        let clarty = module.add_function("__mdh_clarty", scottify_type, Some(Linkage::External));
+        let glaikit = module.add_function("__mdh_glaikit", scottify_type, Some(Linkage::External));
+        let is_wee = module.add_function("__mdh_is_wee", scottify_type, Some(Linkage::External));
+        let is_muckle =
+            module.add_function("__mdh_is_muckle", scottify_type, Some(Linkage::External));
+        let is_blank =
+            module.add_function("__mdh_is_blank", scottify_type, Some(Linkage::External));
+        let haverin = module.add_function("__mdh_haverin", scottify_type, Some(Linkage::External));
+        let capitalize =
+            module.add_function("__mdh_capitalize", scottify_type, Some(Linkage::External));
+        let scunner = module.add_function("__mdh_scunner", scottify_type, Some(Linkage::External));
+        let clype = module.add_function("__mdh_clype", scottify_type, Some(Linkage::External));
+        let stoater = module.add_function("__mdh_stoater", scottify_type, Some(Linkage::External));
+        let redd_up = module.add_function("__mdh_redd_up", scottify_type, Some(Linkage::External));
+        let grup_runs =
+            module.add_function("__mdh_grup_runs", scottify_type, Some(Linkage::External));
+        let range_o = module.add_function("__mdh_range_o", scottify_type, Some(Linkage::External));
+        let bampot_mode =
+            module.add_function("__mdh_bampot_mode", scottify_type, Some(Linkage::External));
+
+        let two_arg_value_type = types
+            .value_type
+            .fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let banter =
+            module.add_function("__mdh_banter", two_arg_value_type, Some(Linkage::External));
+        let scunner_check = module.add_function(
+            "__mdh_scunner_check",
+            two_arg_value_type,
+            Some(Linkage::External),
+        );
+        let dicht = module.add_function("__mdh_dicht", two_arg_value_type, Some(Linkage::External));
+        let split_by = module.add_function(
+            "__mdh_split_by",
+            two_arg_value_type,
+            Some(Linkage::External),
+        );
+        let tattie_scone = module.add_function(
+            "__mdh_tattie_scone",
+            two_arg_value_type,
+            Some(Linkage::External),
+        );
+        let haggis_hunt = module.add_function(
+            "__mdh_haggis_hunt",
+            two_arg_value_type,
+            Some(Linkage::External),
+        );
+        let blether_format = module.add_function(
+            "__mdh_blether_format",
+            two_arg_value_type,
+            Some(Linkage::External),
+        );
 
         // Logging/Debug functions
         // __mdh_get_log_level() -> MdhValue (int)
@@ -1488,6 +1589,7 @@ impl<'ctx> CodeGen<'ctx> {
             random,
             term_width,
             term_height,
+            empty_dict,
             empty_creel,
             make_creel,
             dict_contains,
@@ -1556,6 +1658,34 @@ impl<'ctx> CodeGen<'ctx> {
             geggie,
             jings,
             crivvens,
+            help_ma_boab,
+            haver,
+            braw_time,
+            braw,
+            crabbit,
+            gallus,
+            drookit,
+            clarty,
+            glaikit,
+            is_wee,
+            is_muckle,
+            is_blank,
+            haverin,
+            banter,
+            capitalize,
+            scunner,
+            scunner_check,
+            clype,
+            stoater,
+            dicht,
+            redd_up,
+            split_by,
+            grup_runs,
+            range_o,
+            tattie_scone,
+            haggis_hunt,
+            blether_format,
+            bampot_mode,
             get_log_level,
             set_log_level,
             slainte,
@@ -2188,7 +2318,20 @@ impl<'ctx> CodeGen<'ctx> {
 
         // string -> always truthy (even empty)
         self.builder.position_at_end(string_block);
-        let string_result = self.types.bool_type.const_int(1, false);
+        let str_ptr = self
+            .builder
+            .build_int_to_ptr(data, i8_ptr_type, "truthy_str_ptr")
+            .unwrap();
+        let first_char = self
+            .builder
+            .build_load(self.context.i8_type(), str_ptr, "truthy_str_first")
+            .unwrap()
+            .into_int_value();
+        let zero_i8 = self.context.i8_type().const_int(0, false);
+        let string_result = self
+            .builder
+            .build_int_compare(IntPredicate::NE, first_char, zero_i8, "string_truthy")
+            .unwrap();
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -2206,25 +2349,54 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let list_end = self.builder.get_insert_block().unwrap();
 
-        // dict -> count != 0 (layout: [i64 count][entries...])
+        // dict -> always truthy; but empty creels (sets) are falsy (tagged as dict in runtime)
         self.builder.position_at_end(dict_block);
+        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
         let dict_ptr = self
             .builder
-            .build_int_to_ptr(data, i8_ptr_type, "truthy_dict_ptr")
-            .unwrap();
-        let dict_i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let dict_count_ptr = self
-            .builder
-            .build_pointer_cast(dict_ptr, dict_i64_ptr_type, "truthy_dict_count_ptr")
+            .build_int_to_ptr(data, i64_ptr_type, "truthy_dict_ptr")
             .unwrap();
         let dict_count = self
             .builder
-            .build_load(self.types.i64_type, dict_count_ptr, "truthy_dict_count")
+            .build_load(self.types.i64_type, dict_ptr, "truthy_dict_count")
             .unwrap()
             .into_int_value();
+        let is_empty = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, dict_count, zero_i64, "dict_is_empty")
+            .unwrap();
+
+        // Empty creels are tagged by a sentinel i64 stored in slot 1.
+        // Sentinel must match runtime/mdh_runtime.c MDH_CREEL_SENTINEL.
+        let one_i64 = self.types.i64_type.const_int(1, false);
+        let marker_ptr = unsafe {
+            self.builder
+                .build_gep(self.types.i64_type, dict_ptr, &[one_i64], "dict_marker_ptr")
+                .unwrap()
+        };
+        let marker = self
+            .builder
+            .build_load(self.types.i64_type, marker_ptr, "dict_marker")
+            .unwrap()
+            .into_int_value();
+        let creel_sentinel = self.types.i64_type.const_int(0x4d4448435245454c, false);
+        let is_creel_marker = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                marker,
+                creel_sentinel,
+                "dict_marker_is_creel",
+            )
+            .unwrap();
+        let is_empty_creel = self
+            .builder
+            .build_and(is_empty, is_creel_marker, "dict_is_empty_creel")
+            .unwrap();
+
         let dict_result = self
             .builder
-            .build_int_compare(IntPredicate::NE, dict_count, zero_i64, "dict_truthy")
+            .build_not(is_empty_creel, "dict_truthy")
             .unwrap();
         self.builder
             .build_unconditional_branch(merge_block)
@@ -6076,9 +6248,7 @@ impl<'ctx> CodeGen<'ctx> {
         let a_data = self.extract_data(a)?;
         let b_data = self.extract_data(b)?;
 
-        let function = self
-            .current_function
-            .compile_ok_or("No current function")?;
+        let function = self.current_function.compile_ok_or("No current function")?;
 
         let numeric_block = self.context.append_basic_block(function, "min_numeric");
         let int_block = self.context.append_basic_block(function, "min_int");
@@ -6265,9 +6435,7 @@ impl<'ctx> CodeGen<'ctx> {
         let a_data = self.extract_data(a)?;
         let b_data = self.extract_data(b)?;
 
-        let function = self
-            .current_function
-            .compile_ok_or("No current function")?;
+        let function = self.current_function.compile_ok_or("No current function")?;
 
         let numeric_block = self.context.append_basic_block(function, "max_numeric");
         let int_block = self.context.append_basic_block(function, "max_int");
@@ -6969,9 +7137,7 @@ impl<'ctx> CodeGen<'ctx> {
         let new_list_ptr = self.allocate_list(new_len)?;
 
         // Copy elements 1..length to new list
-        let function = self
-            .current_function
-            .compile_ok_or("No current function")?;
+        let function = self.current_function.compile_ok_or("No current function")?;
         let loop_block = self.context.append_basic_block(function, "tail_loop");
         let done_block = self.context.append_basic_block(function, "tail_done");
 
@@ -7051,9 +7217,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let new_list_ptr = self.allocate_list(new_len)?;
 
-        let function = self
-            .current_function
-            .compile_ok_or("No current function")?;
+        let function = self.current_function.compile_ok_or("No current function")?;
         let loop_block = self.context.append_basic_block(function, "scran_loop");
         let done_block = self.context.append_basic_block(function, "scran_done");
 
@@ -7134,9 +7298,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_ptr_to_int(new_list_ptr, self.types.i64_type, "new_data")
             .map_err(Self::llvm_compile_error)?;
 
-        let function = self
-            .current_function
-            .compile_ok_or("No current function")?;
+        let function = self.current_function.compile_ok_or("No current function")?;
 
         // Copy first list
         let loop1 = self.context.append_basic_block(function, "slap_loop1");
@@ -7268,9 +7430,7 @@ impl<'ctx> CodeGen<'ctx> {
             .left()
             .compile_ok_or("make_list returned void")?;
 
-        let function = self
-            .current_function
-            .compile_ok_or("No current function")?;
+        let function = self.current_function.compile_ok_or("No current function")?;
 
         // i = 0..min_len
         let loop_block = self.context.append_basic_block(function, "zipwith_loop");
@@ -7339,9 +7499,7 @@ impl<'ctx> CodeGen<'ctx> {
         let tag = self.extract_tag(val)?;
         let data = self.extract_data(val)?;
 
-        let function = self
-            .current_function
-            .compile_ok_or("No current function")?;
+        let function = self.current_function.compile_ok_or("No current function")?;
 
         // Create blocks for string vs list handling
         let str_block = self.context.append_basic_block(function, "rev_str");
@@ -7564,9 +7722,7 @@ impl<'ctx> CodeGen<'ctx> {
         let list_data = self.extract_data(val)?;
         let length = self.get_list_length(list_data)?;
 
-        let function = self
-            .current_function
-            .compile_ok_or("No current function")?;
+        let function = self.current_function.compile_ok_or("No current function")?;
 
         let loop_block = self.context.append_basic_block(function, "sum_loop");
         let body_block = self.context.append_basic_block(function, "sum_body");
@@ -7886,9 +8042,7 @@ impl<'ctx> CodeGen<'ctx> {
         let list_data = self.extract_data(list_val)?;
         let list_len = self.get_list_length(list_data)?;
 
-        let function = self
-            .current_function
-            .compile_ok_or("No current function")?;
+        let function = self.current_function.compile_ok_or("No current function")?;
 
         // Preallocate result list with capacity = len
         let cap_i32 = self
@@ -7975,9 +8129,7 @@ impl<'ctx> CodeGen<'ctx> {
         let list_data = self.extract_data(val)?;
         let length = self.get_list_length(list_data)?;
 
-        let function = self
-            .current_function
-            .compile_ok_or("No current function")?;
+        let function = self.current_function.compile_ok_or("No current function")?;
         let loop_block = self.context.append_basic_block(function, "product_loop");
         let body_block = self.context.append_basic_block(function, "product_body");
         let done_block = self.context.append_basic_block(function, "product_done");
@@ -9664,26 +9816,26 @@ impl<'ctx> CodeGen<'ctx> {
                             .unwrap();
                         self.builder.build_store(elem0_val_ptr, fn_val).unwrap();
 
-	                        // Store captured boxes
-	                        for (i, cap_name) in captures.iter().enumerate() {
-	                            let cap_alloca = match self
-	                                .variables
-	                                .get(cap_name)
-	                                .copied()
-	                                .or(self.globals.get(cap_name).copied())
-	                            {
-	                                Some(a) => a,
-	                                None => {
-	                                    return Err(HaversError::CompileError(format!(
+                        // Store captured boxes
+                        for (i, cap_name) in captures.iter().enumerate() {
+                            let cap_alloca = match self
+                                .variables
+                                .get(cap_name)
+                                .copied()
+                                .or(self.globals.get(cap_name).copied())
+                            {
+                                Some(a) => a,
+                                None => {
+                                    return Err(HaversError::CompileError(format!(
 	                                        "Captured variable '{}' not found in scope when closing over '{}'",
 	                                        cap_name, name
 	                                    )));
-	                                }
-	                            };
-	                            let cap_val = self
-	                                .builder
-	                                .build_load(
-	                                    self.types.value_type,
+                                }
+                            };
+                            let cap_val = self
+                                .builder
+                                .build_load(
+                                    self.types.value_type,
                                     cap_alloca,
                                     &format!("cap{}_val", i),
                                 )
@@ -9752,28 +9904,28 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
 
-	            Expr::Assign { name, value, .. } => {
-	                // Boxed variables store a 1-element list cell. Assignment updates cell[0].
-	                if self.boxed_vars.contains(name) {
-	                    let new_val = self.compile_expr(value)?;
-	                    let alloca = match self
-	                        .variables
-	                        .get(name)
-	                        .copied()
-	                        .or(self.globals.get(name).copied())
-	                    {
-	                        Some(a) => a,
-	                        None => {
-	                            return Err(HaversError::CompileError(format!(
-	                                "Undefined variable: {}",
-	                                name
-	                            )));
-	                        }
-	                    };
-	                    let cell = self
-	                        .builder
-	                        .build_load(self.types.value_type, alloca, &format!("{name}_cell"))
-	                        .map_err(Self::llvm_compile_error)?;
+            Expr::Assign { name, value, .. } => {
+                // Boxed variables store a 1-element list cell. Assignment updates cell[0].
+                if self.boxed_vars.contains(name) {
+                    let new_val = self.compile_expr(value)?;
+                    let alloca = match self
+                        .variables
+                        .get(name)
+                        .copied()
+                        .or(self.globals.get(name).copied())
+                    {
+                        Some(a) => a,
+                        None => {
+                            return Err(HaversError::CompileError(format!(
+                                "Undefined variable: {}",
+                                name
+                            )));
+                        }
+                    };
+                    let cell = self
+                        .builder
+                        .build_load(self.types.value_type, alloca, &format!("{name}_cell"))
+                        .map_err(Self::llvm_compile_error)?;
                     self.box_set(cell, new_val)?;
                     return Ok(new_val);
                 }
@@ -10465,20 +10617,20 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_to_ptr(right_data, i8_ptr_type, "right_ptr")
             .unwrap();
 
-	        // Load current string pointer, length, and capacity
-	        let var_alloca = match self.variables.get(var_name) {
-	            Some(a) => *a,
-	            None => {
-	                return Err(HaversError::CompileError(format!(
-	                    "Variable not found: {}",
-	                    var_name
-	                )));
-	            }
-	        };
-	        let current_val = self
-	            .builder
-	            .build_load(self.types.value_type, var_alloca, "current_str")
-	            .unwrap();
+        // Load current string pointer, length, and capacity
+        let var_alloca = match self.variables.get(var_name) {
+            Some(a) => *a,
+            None => {
+                return Err(HaversError::CompileError(format!(
+                    "Variable not found: {}",
+                    var_name
+                )));
+            }
+        };
+        let current_val = self
+            .builder
+            .build_load(self.types.value_type, var_alloca, "current_str")
+            .unwrap();
         let current_data = self.extract_data(current_val)?;
         let current_ptr = self
             .builder
@@ -12605,6 +12757,11 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 // Scots builtins
                 "slainte" => {
+                    if !args.is_empty() {
+                        return Err(HaversError::CompileError(
+                            "slainte expects 0 arguments".to_string(),
+                        ));
+                    }
                     let result = self
                         .builder
                         .build_call(self.libc.slainte, &[], "slainte_result")
@@ -12615,14 +12772,9 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(result);
                 }
                 "och" => {
-                    // och() -> return a non-empty message string
-                    // och(msg) -> print warning message and return nil
-                    if args.is_empty() {
-                        return self.compile_string_literal("Och, something went wrang!");
-                    }
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
-                            "och expects 0-1 arguments".to_string(),
+                            "och expects 1 argument".to_string(),
                         ));
                     }
                     let msg = self.compile_expr(&args[0])?;
@@ -12809,7 +12961,7 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(result);
                 }
                 // Additional Scots aliases
-                "scots_greetin" | "scunner" => {
+                "scots_greetin" => {
                     // Return an error message string (Scots for "complaint")
                     let global = Self::create_global_string(
                         &self.module,
@@ -12820,8 +12972,8 @@ impl<'ctx> CodeGen<'ctx> {
                     let str_ptr = self.get_string_ptr(global);
                     return self.make_string(str_ptr);
                 }
-                "poetry_seed" | "braw_time" => {
-                    // Random seed / current time - return a random number for now
+                "poetry_seed" => {
+                    // Random seed
                     let min = self.types.i64_type.const_int(0, false);
                     let max = self.types.i64_type.const_int(i64::MAX as u64, false);
                     let result = self
@@ -12831,6 +12983,21 @@ impl<'ctx> CodeGen<'ctx> {
                         .try_as_basic_value()
                         .left()
                         .compile_ok_or("random returned void")?;
+                    return Ok(result);
+                }
+                "braw_time" => {
+                    if !args.is_empty() {
+                        return Err(HaversError::CompileError(
+                            "braw_time expects 0 arguments".to_string(),
+                        ));
+                    }
+                    let result = self
+                        .builder
+                        .build_call(self.libc.braw_time, &[], "braw_time_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("braw_time returned void")?;
                     return Ok(result);
                 }
                 // Additional builtins
@@ -12930,13 +13097,25 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(result);
                 }
                 "dicht" | "remove_at" => {
-                    // dicht(list, index) - remove element at index (placeholder: return list)
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
                             "dicht expects 2 arguments (list, index)".to_string(),
                         ));
                     }
-                    return self.compile_expr(&args[0]);
+                    let list = self.compile_expr(&args[0])?;
+                    let index = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.dicht,
+                            &[list.into(), index.into()],
+                            "dicht_result",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("dicht returned void")?;
+                    return Ok(result);
                 }
                 "bonnie" | "pretty" => {
                     if args.len() != 1 {
@@ -13106,10 +13285,31 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(result);
                 }
                 // Misc Scots aliases
-                "jings" | "scots_farewell" | "blether_format" | "stooshie" | "scots_exclaim"
-                | "crivvens" | "geggie" => {
+                "jings" | "scots_farewell" | "stooshie" | "scots_exclaim" | "crivvens"
+                | "geggie" => {
                     // These just return nil - they're exclamations or placeholders
                     return Ok(self.make_nil());
+                }
+                "blether_format" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "blether_format expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let template = self.compile_expr(&args[0])?;
+                    let dict = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.blether_format,
+                            &[template.into(), dict.into()],
+                            "blether_format_result",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("blether_format returned void")?;
+                    return Ok(result);
                 }
                 "read_lines" => {
                     // Alias for lines
@@ -13129,7 +13329,6 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(result);
                 }
                 "append_file" => {
-                    // Append to file - for now just call scrieve (overwrites)
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
                             "append_file expects 2 arguments".to_string(),
@@ -13140,14 +13339,14 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(
-                            self.libc.scrieve,
+                            self.libc.scrieve_append,
                             &[path.into(), content.into()],
                             "append_file_result",
                         )
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .compile_ok_or("scrieve returned void")?;
+                        .compile_ok_or("scrieve_append returned void")?;
                     return Ok(result);
                 }
                 "minaw" => {
@@ -13168,15 +13367,20 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(result);
                 }
                 "is_wee" => {
-                    // Check if value is small - placeholder returns true for now
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "is_wee expects 1 argument".to_string(),
                         ));
                     }
-                    let _val = self.compile_expr(&args[0])?;
-                    let one = self.types.i64_type.const_int(1, false);
-                    return self.make_bool(one);
+                    let val = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.is_wee, &[val.into()], "is_wee_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("is_wee returned void")?;
+                    return Ok(result);
                 }
                 "is_even" => {
                     // Check if number is even
@@ -13278,25 +13482,36 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.make_bool(is_odd_i64);
                 }
                 "is_muckle" => {
-                    // Check if value is large
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "is_muckle expects 1 argument".to_string(),
                         ));
                     }
-                    let _val = self.compile_expr(&args[0])?;
-                    let one = self.types.i64_type.const_int(1, false);
-                    return self.make_bool(one);
+                    let val = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.is_muckle, &[val.into()], "is_muckle_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("is_muckle returned void")?;
+                    return Ok(result);
                 }
                 "capitalize" => {
-                    // Capitalize string - for now just return the string
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "capitalize expects 1 argument".to_string(),
                         ));
                     }
                     let s = self.compile_expr(&args[0])?;
-                    return Ok(s);
+                    let result = self
+                        .builder
+                        .build_call(self.libc.capitalize, &[s.into()], "capitalize_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("capitalize returned void")?;
+                    return Ok(result);
                 }
                 "bit_shove_left" | "bit_shift_left" => {
                     // Bitwise left shift
@@ -13315,9 +13530,57 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return self.make_int(shifted);
                 }
-                // Scots exclamations and misc
-                "help_ma_boab" | "banter" | "clype" | "spy" => {
-                    // Just return nil
+                "help_ma_boab" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "help_ma_boab expects 1 argument".to_string(),
+                        ));
+                    }
+                    let msg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.help_ma_boab, &[msg.into()], "help_ma_boab_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("help_ma_boab returned void")?;
+                    return Ok(result);
+                }
+                "banter" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "banter expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.banter, &[a.into(), b.into()], "banter_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("banter returned void")?;
+                    return Ok(result);
+                }
+                "clype" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "clype expects 1 argument".to_string(),
+                        ));
+                    }
+                    let val = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.clype, &[val.into()], "clype_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("clype returned void")?;
+                    return Ok(result);
+                }
+                "spy" => {
+                    // Debug helper placeholder
                     return Ok(self.make_nil());
                 }
                 "upper" | "heich" => {
@@ -14343,18 +14606,13 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 "log" => {
                     // log(x) -> natural log
-                    // log(level, message) -> logging (no-op in LLVM backend for now)
-                    if args.len() == 1 {
-                        let arg = self.compile_expr(&args[0])?;
-                        return self.inline_math_func(arg, "log");
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "log expects 1 argument".to_string(),
+                        ));
                     }
-                    if args.len() == 2 {
-                        // Intentionally do nothing; logs shouldn't affect program output.
-                        return Ok(self.make_nil());
-                    }
-                    return Err(HaversError::CompileError(
-                        "log expects 1 argument (math) or 2 arguments (logging)".to_string(),
-                    ));
+                    let arg = self.compile_expr(&args[0])?;
+                    return self.inline_math_func(arg, "log");
                 }
                 "sinh" => {
                     if args.len() != 1 {
@@ -14689,31 +14947,51 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.inline_degrees(arg);
                 }
                 "braw" => {
-                    // braw() - random float in [0, 1)
-                    // braw(val) - identity
-                    if args.is_empty() {
-                        return self.inline_randfloat();
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "braw expects 1 argument".to_string(),
+                        ));
                     }
-                    if args.len() == 1 {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Err(HaversError::CompileError(
-                        "braw expects 0-1 arguments".to_string(),
-                    ));
+                    let val = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.braw, &[val.into()], "braw_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("braw returned void")?;
+                    return Ok(result);
                 }
-                "haverin" | "haver" => {
-                    // haverin/haver:
-                    // - haverin() / haver() => placeholder text
-                    // - haver(x) => identity
-                    if args.is_empty() {
-                        return self.compile_string_literal("Och aye, havers!");
+                "haver" => {
+                    if !args.is_empty() {
+                        return Err(HaversError::CompileError(
+                            "haver expects 0 arguments".to_string(),
+                        ));
                     }
-                    if args.len() == 1 {
-                        return self.compile_expr(&args[0]);
+                    let result = self
+                        .builder
+                        .build_call(self.libc.haver, &[], "haver_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("haver returned void")?;
+                    return Ok(result);
+                }
+                "haverin" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "haverin expects 1 argument".to_string(),
+                        ));
                     }
-                    return Err(HaversError::CompileError(
-                        "haver/haverin expects 0-1 arguments".to_string(),
-                    ));
+                    let val = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.haverin, &[val.into()], "haverin_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("haverin returned void")?;
+                    return Ok(result);
                 }
                 // Additional missing builtins
                 "atween" | "between" => {
@@ -14791,8 +15069,15 @@ impl<'ctx> CodeGen<'ctx> {
                             "range_o expects 1 argument".to_string(),
                         ));
                     }
-                    // Return nil for now (placeholder)
-                    return Ok(self.make_nil());
+                    let list = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.range_o, &[list.into()], "range_o_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("range_o returned void")?;
+                    return Ok(result);
                 }
                 "sclaff" | "flatten" | "fankle" => {
                     // sclaff(list) - flatten nested list (one level deep)
@@ -15990,13 +16275,20 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.make_int(result);
                 }
                 "glaikit" | "silly" => {
-                    // glaikit(str) - return silly/random string (placeholder: return as-is)
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "glaikit expects 1 argument".to_string(),
                         ));
                     }
-                    return self.compile_expr(&args[0]);
+                    let val = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.glaikit, &[val.into()], "glaikit_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("glaikit returned void")?;
+                    return Ok(result);
                 }
                 "tae_hex" | "to_hex" => {
                     // tae_hex(n) - convert to hex string
@@ -16308,8 +16600,25 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(self.make_nil());
                 }
                 "tattie_scone" | "potato" => {
-                    // Scots fun placeholder
-                    return self.compile_string_literal("Tattie scone!");
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "tattie_scone expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let s = self.compile_expr(&args[0])?;
+                    let n = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.tattie_scone,
+                            &[s.into(), n.into()],
+                            "tattie_scone_result",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("tattie_scone returned void")?;
+                    return Ok(result);
                 }
                 "fae_binary" | "from_binary" => {
                     // fae_binary(str) - parse binary string to integer
@@ -16374,8 +16683,25 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(self.make_nil());
                 }
                 "haggis_hunt" | "search_game" => {
-                    // Scots game placeholder
-                    return self.compile_string_literal("Haggis found!");
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "haggis_hunt expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let haystack = self.compile_expr(&args[0])?;
+                    let needle = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.haggis_hunt,
+                            &[haystack.into(), needle.into()],
+                            "haggis_hunt_result",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("haggis_hunt returned void")?;
+                    return Ok(result);
                 }
                 "dict_merge" | "merge" | "thegither" => {
                     if args.len() != 2 {
@@ -16579,8 +16905,20 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.inline_bum(arg);
                 }
                 "crabbit" | "grumpy" => {
-                    // Scots fun - return grumpy message
-                    return self.compile_string_literal("Och, I'm fair crabbit!");
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "crabbit expects 1 argument".to_string(),
+                        ));
+                    }
+                    let val = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.crabbit, &[val.into()], "crabbit_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("crabbit returned void")?;
+                    return Ok(result);
                 }
                 "sporran_fill" | "fill_bag" => {
                     if args.len() != 3 {
@@ -16761,22 +17099,73 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.make_bool(one);
                 }
                 "stoater" | "excellent" => {
-                    // Scots slang for "excellent" - return as-is or string
-                    if args.is_empty() {
-                        return self.compile_string_literal("Stoater!");
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "stoater expects 1 argument".to_string(),
+                        ));
                     }
-                    return self.compile_expr(&args[0]);
+                    let list = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.stoater, &[list.into()], "stoater_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("stoater returned void")?;
+                    return Ok(result);
                 }
                 "gallus" | "bold" => {
-                    // Scots slang for "bold/cheeky" - return as-is or string
-                    if args.is_empty() {
-                        return self.compile_string_literal("Gallus!");
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "gallus expects 1 argument".to_string(),
+                        ));
                     }
-                    return self.compile_expr(&args[0]);
+                    let val = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.gallus, &[val.into()], "gallus_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("gallus returned void")?;
+                    return Ok(result);
                 }
-                "scunner_check" | "scunner" | "scunnered" => {
-                    // Scots - disgust check (placeholder)
-                    return self.compile_string_literal("Scunnered!");
+                "scunner" | "scunnered" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "scunner expects 1 argument".to_string(),
+                        ));
+                    }
+                    let val = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.scunner, &[val.into()], "scunner_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("scunner returned void")?;
+                    return Ok(result);
+                }
+                "scunner_check" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "scunner_check expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let val = self.compile_expr(&args[0])?;
+                    let expected = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.scunner_check,
+                            &[val.into(), expected.into()],
+                            "scunner_check_result",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("scunner_check returned void")?;
+                    return Ok(result);
                 }
                 "dict_remove" | "dict_delete" | "remove_key" => {
                     if args.len() != 2 {
@@ -16810,8 +17199,20 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.compile_expr(&args[0]);
                 }
                 "clarty" | "dirty" => {
-                    // Scots - dirty/messy (placeholder)
-                    return self.compile_string_literal("Clarty!");
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "clarty expects 1 argument".to_string(),
+                        ));
+                    }
+                    let val = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.clarty, &[val.into()], "clarty_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("clarty returned void")?;
+                    return Ok(result);
                 }
                 "hex_group" | "group_by" => {
                     // Group items (placeholder: return nil)
@@ -16827,8 +17228,20 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.compile_expr(&args[0]);
                 }
                 "drookit" | "soaking_wet" => {
-                    // Scots - soaking wet
-                    return self.compile_string_literal("Drookit!");
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "drookit expects 1 argument".to_string(),
+                        ));
+                    }
+                    let list = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.drookit, &[list.into()], "drookit_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("drookit returned void")?;
+                    return Ok(result);
                 }
                 "dict_invert" | "invert" => {
                     if args.len() != 1 {
@@ -16862,13 +17275,36 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.inline_find_index(list_arg, func_arg);
                 }
                 "bampot_mode" | "crazy_mode" => {
-                    // Scots fun - bampot mode (placeholder: return true)
-                    let one = self.types.i64_type.const_int(1, false);
-                    return self.make_bool(one);
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "bampot_mode expects 1 argument".to_string(),
+                        ));
+                    }
+                    let list = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.bampot_mode, &[list.into()], "bampot_mode_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("bampot_mode returned void")?;
+                    return Ok(result);
                 }
                 "redd_up" | "tidy_up" | "cleanup" => {
-                    // Scots - tidy up/clean up (placeholder: return nil)
-                    return Ok(self.make_nil());
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "redd_up expects 1 argument".to_string(),
+                        ));
+                    }
+                    let list = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.redd_up, &[list.into()], "redd_up_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("redd_up returned void")?;
+                    return Ok(result);
                 }
                 "stanes_tae_kg" | "stones_to_kg" => {
                     // Convert stones to kilograms (1 stone = 6.35 kg)
@@ -17481,8 +17917,25 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(self.make_nil());
                 }
                 "partition" | "split_by" => {
-                    // partition(list, predicate) - split into two lists (placeholder: return nil)
-                    return Ok(self.make_nil());
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "split_by expects 2 arguments (list, predicate)".to_string(),
+                        ));
+                    }
+                    let list = self.compile_expr(&args[0])?;
+                    let pred = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.split_by,
+                            &[list.into(), pred.into()],
+                            "split_by_result",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("split_by returned void")?;
+                    return Ok(result);
                 }
                 "group_by" | "groupby" => {
                     // group_by(list, key_fn) - group by key (placeholder: return nil)
@@ -17632,8 +18085,20 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.make_list(list_ptr);
                 }
                 "grup_runs" | "group_runs" | "runs" => {
-                    // grup_runs(list) - group consecutive equal elements (placeholder: return nil)
-                    return Ok(self.make_nil());
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "grup_runs expects 1 argument".to_string(),
+                        ));
+                    }
+                    let list = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.grup_runs, &[list.into()], "grup_runs_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("grup_runs returned void")?;
+                    return Ok(result);
                 }
                 "items" | "dict_items" | "pairs" => {
                     // items(dict) - get list of key-value pairs
@@ -17728,9 +18193,15 @@ impl<'ctx> CodeGen<'ctx> {
                             "is_baw expects 1 argument".to_string(),
                         ));
                     }
-                    // Placeholder: return false
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_bool(zero);
+                    let s = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.is_blank, &[s.into()], "is_blank_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("is_blank returned void")?;
+                    return Ok(result);
                 }
                 "ascii" | "char_code" | "ord" => {
                     // ascii(str) - get ASCII code of first character
@@ -19423,16 +19894,16 @@ impl<'ctx> CodeGen<'ctx> {
         name: &str,
         params: &[crate::ast::Param],
         body: &[Stmt],
-	    ) -> Result<(), HaversError> {
-	        let function = match self.functions.get(name).copied() {
-	            Some(f) => f,
-	            None => {
-	                return Err(HaversError::CompileError(format!(
-	                    "Function not declared: {}",
-	                    name
-	                )));
-	            }
-	        };
+    ) -> Result<(), HaversError> {
+        let function = match self.functions.get(name).copied() {
+            Some(f) => f,
+            None => {
+                return Err(HaversError::CompileError(format!(
+                    "Function not declared: {}",
+                    name
+                )));
+            }
+        };
 
         let entry = self.context.append_basic_block(function, "entry");
 
@@ -19463,20 +19934,20 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap_or_default();
         let capture_count = captures_for_this_fn.len();
 
-	        // Captured variables are boxed cells passed in.
-	        for (i, capture_name) in captures_for_this_fn.iter().enumerate() {
-	            let param_val = match function.get_nth_param(i as u32) {
-	                Some(v) => v,
-	                None => {
-	                    return Err(HaversError::CompileError(format!(
-	                        "Missing captured param: {}",
-	                        capture_name
-	                    )));
-	                }
-	            };
-	            let alloca = self.create_entry_block_alloca(capture_name);
-	            self.builder.build_store(alloca, param_val).unwrap();
-	            self.variables.insert(capture_name.clone(), alloca);
+        // Captured variables are boxed cells passed in.
+        for (i, capture_name) in captures_for_this_fn.iter().enumerate() {
+            let param_val = match function.get_nth_param(i as u32) {
+                Some(v) => v,
+                None => {
+                    return Err(HaversError::CompileError(format!(
+                        "Missing captured param: {}",
+                        capture_name
+                    )));
+                }
+            };
+            let alloca = self.create_entry_block_alloca(capture_name);
+            self.builder.build_store(alloca, param_val).unwrap();
+            self.variables.insert(capture_name.clone(), alloca);
             self.var_types
                 .insert(capture_name.clone(), VarType::Unknown);
             if capture_name == "masel" {
@@ -20293,6 +20764,15 @@ impl<'ctx> CodeGen<'ctx> {
         pairs: &[(Expr, Expr)],
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let count = pairs.len();
+        if count == 0 {
+            return self
+                .builder
+                .build_call(self.libc.empty_dict, &[], "empty_dict_literal")
+                .map_err(Self::llvm_compile_error)?
+                .try_as_basic_value()
+                .left()
+                .compile_ok_or("empty_dict returned void");
+        }
 
         // Calculate memory size: 8 bytes for count + count * 32 bytes for entries (16 bytes key + 16 bytes value)
         let entry_size = 32u64; // 16 bytes for key + 16 bytes for value
@@ -20429,9 +20909,7 @@ impl<'ctx> CodeGen<'ctx> {
         let obj_data = self.extract_data(obj_val)?;
 
         // Create basic blocks for branching
-        let function = self
-            .current_function
-            .compile_ok_or("No current function")?;
+        let function = self.current_function.compile_ok_or("No current function")?;
         let list_block = self.context.append_basic_block(function, "index_list");
         let check_dict_block = self.context.append_basic_block(function, "check_dict");
         let dict_block = self.context.append_basic_block(function, "index_dict");
@@ -24247,9 +24725,7 @@ impl<'ctx> CodeGen<'ctx> {
         list_val: BasicValueEnum<'ctx>,
         func_val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        let function = self
-            .current_function
-            .compile_ok_or("No current function")?;
+        let function = self.current_function.compile_ok_or("No current function")?;
 
         let list_data = self.extract_data(list_val)?;
         let list_len = self.get_list_length(list_data)?;
@@ -26820,7 +27296,7 @@ impl<'ctx> CodeGen<'ctx> {
     /// Example:
     ///   thing Point { x y }
     /// becomes a callable `Point(a, b)` that returns `{"x": a, "y": b}`.
-	    fn compile_struct_decl(&mut self, name: &str, fields: &[String]) -> Result<(), HaversError> {
+    fn compile_struct_decl(&mut self, name: &str, fields: &[String]) -> Result<(), HaversError> {
         // Skip if already compiled
         if let Some(&existing) = self.functions.get(name) {
             if existing.get_first_basic_block().is_some() {
@@ -26830,15 +27306,15 @@ impl<'ctx> CodeGen<'ctx> {
             self.declare_function(name, fields.len())?;
         }
 
-	        let function = match self.functions.get(name) {
-	            Some(f) => *f,
-	            None => {
-	                return Err(HaversError::CompileError(format!(
-	                    "Struct ctor not declared: {}",
-	                    name
-	                )));
-	            }
-	        };
+        let function = match self.functions.get(name) {
+            Some(f) => *f,
+            None => {
+                return Err(HaversError::CompileError(format!(
+                    "Struct ctor not declared: {}",
+                    name
+                )));
+            }
+        };
 
         let entry = self.context.append_basic_block(function, "entry");
 
@@ -26870,16 +27346,18 @@ impl<'ctx> CodeGen<'ctx> {
         // Start with an empty dict
         let mut dict_val = self
             .builder
-            .build_call(self.libc.empty_creel, &[], "struct_empty_dict")
+            .build_call(self.libc.empty_dict, &[], "struct_empty_dict")
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .compile_ok_or("empty_creel returned void")?;
+            .compile_ok_or("empty_dict returned void")?;
 
         // Populate fields
         for (i, field) in fields.iter().enumerate() {
             let key = self.compile_string_literal(field)?;
-            let val = function.get_nth_param(i as u32).compile_ok_or("Missing struct ctor param")?;
+            let val = function
+                .get_nth_param(i as u32)
+                .compile_ok_or("Missing struct ctor param")?;
             dict_val = self
                 .builder
                 .build_call(
@@ -27772,24 +28250,24 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Compile the body of a method (function within a class)
     /// The function signature is already declared in compile_class
-	    fn compile_method_body(
+    fn compile_method_body(
         &mut self,
         class_name: &str,
         method_name: &str,
         params: &[crate::ast::Param],
         body: &[Stmt],
-	    ) -> Result<(), HaversError> {
-	        // Get the already-declared function
-	        let func_name = format!("{}_{}", class_name, method_name);
-	        let function = match self.functions.get(&func_name) {
-	            Some(f) => *f,
-	            None => {
-	                return Err(HaversError::CompileError(format!(
-	                    "Method {} not declared",
-	                    func_name
-	                )));
-	            }
-	        };
+    ) -> Result<(), HaversError> {
+        // Get the already-declared function
+        let func_name = format!("{}_{}", class_name, method_name);
+        let function = match self.functions.get(&func_name) {
+            Some(f) => *f,
+            None => {
+                return Err(HaversError::CompileError(format!(
+                    "Method {} not declared",
+                    func_name
+                )));
+            }
+        };
 
         // Save current state - IMPORTANT: save ALL shadow maps to prevent cross-method leakage
         let old_function = self.current_function;
@@ -27938,18 +28416,18 @@ impl<'ctx> CodeGen<'ctx> {
             .compile_ok_or("malloc returned void")?
             .into_pointer_value();
 
-	        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
 
-	        // Store class name pointer
-	        let class_name_global = match self.classes.get(class_name) {
-	            Some(g) => g,
-	            None => {
-	                return Err(HaversError::CompileError(format!(
-	                    "Unknown class: {}",
-	                    class_name
-	                )));
-	            }
-	        };
+        // Store class name pointer
+        let class_name_global = match self.classes.get(class_name) {
+            Some(g) => g,
+            None => {
+                return Err(HaversError::CompileError(format!(
+                    "Unknown class: {}",
+                    class_name
+                )));
+            }
+        };
         let class_name_ptr_slot = self
             .builder
             .build_pointer_cast(instance_ptr, i64_ptr_type, "class_name_slot")
@@ -28131,15 +28609,15 @@ impl<'ctx> CodeGen<'ctx> {
             return self.call_callable_value(field_val, &field_call_args);
         }
 
-	        let (method_func, func_name) = match found_method {
-	            Some(v) => v,
-	            None => {
-	                return Err(HaversError::CompileError(format!(
-	                    "Method '{}' not found",
-	                    method_name
-	                )));
-	            }
-	        };
+        let (method_func, func_name) = match found_method {
+            Some(v) => v,
+            None => {
+                return Err(HaversError::CompileError(format!(
+                    "Method '{}' not found",
+                    method_name
+                )));
+            }
+        };
 
         // Build call arguments: instance first, then regular args
         let mut call_args: Vec<BasicMetadataValueEnum> = vec![instance.into()];
@@ -28230,9 +28708,7 @@ impl<'ctx> CodeGen<'ctx> {
         let min_data = self.extract_data(min_val)?;
         let max_data = self.extract_data(max_val)?;
 
-        let function = self
-            .current_function
-            .compile_ok_or("No current function")?;
+        let function = self.current_function.compile_ok_or("No current function")?;
 
         let numeric_block = self.context.append_basic_block(function, "jammy_numeric");
         let int_block = self.context.append_basic_block(function, "jammy_int");
@@ -29131,9 +29607,7 @@ impl<'ctx> CodeGen<'ctx> {
         container_val: BasicValueEnum<'ctx>,
         func_val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        let function = self
-            .current_function
-            .compile_ok_or("No current function")?;
+        let function = self.current_function.compile_ok_or("No current function")?;
 
         let container_tag = self.extract_tag(container_val)?;
         let list_tag = self
@@ -29270,9 +29744,7 @@ impl<'ctx> CodeGen<'ctx> {
         start_val: BasicValueEnum<'ctx>,
         end_val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        let function = self
-            .current_function
-            .compile_ok_or("No current function")?;
+        let function = self.current_function.compile_ok_or("No current function")?;
 
         let str_data = self.extract_data(str_val)?;
         let start_data = self.extract_data(start_val)?;
@@ -31098,11 +31570,11 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let merged0 = self
             .builder
-            .build_call(self.libc.empty_creel, &[], "merged0")
+            .build_call(self.libc.empty_dict, &[], "merged0")
             .unwrap()
             .try_as_basic_value()
             .left()
-            .compile_ok_or("empty_creel returned void")?;
+            .compile_ok_or("empty_dict returned void")?;
         self.builder.build_store(merged_alloca, merged0).unwrap();
 
         let function = self.current_function.unwrap();
@@ -31461,9 +31933,7 @@ impl<'ctx> CodeGen<'ctx> {
         let tag = self.extract_tag(val)?;
         let data = self.extract_data(val)?;
 
-        let function = self
-            .current_function
-            .compile_ok_or("No current function")?;
+        let function = self.current_function.compile_ok_or("No current function")?;
         let numeric_block = self.context.append_basic_block(function, "radians_numeric");
         let error_block = self.context.append_basic_block(function, "radians_error");
         let merge_block = self.context.append_basic_block(function, "radians_merge");
@@ -31567,9 +32037,7 @@ impl<'ctx> CodeGen<'ctx> {
         let tag = self.extract_tag(val)?;
         let data = self.extract_data(val)?;
 
-        let function = self
-            .current_function
-            .compile_ok_or("No current function")?;
+        let function = self.current_function.compile_ok_or("No current function")?;
         let numeric_block = self.context.append_basic_block(function, "degrees_numeric");
         let error_block = self.context.append_basic_block(function, "degrees_error");
         let merge_block = self.context.append_basic_block(function, "degrees_merge");

@@ -128,6 +128,7 @@ MdhValue __mdh_round(MdhValue a);
 
 /* ========== Dict/Creel Operations ========== */
 
+MdhValue __mdh_empty_dict(void);
 MdhValue __mdh_empty_creel(void);
 MdhValue __mdh_make_creel(MdhValue list);
 MdhValue __mdh_dict_contains(MdhValue dict, MdhValue key);
@@ -173,6 +174,9 @@ MdhValue __mdh_set_log_level(MdhValue level);
 
 MdhValue __mdh_slainte(void);
 MdhValue __mdh_och(MdhValue msg);
+MdhValue __mdh_help_ma_boab(MdhValue msg);
+MdhValue __mdh_haver(void);
+MdhValue __mdh_braw_time(void);
 MdhValue __mdh_wee(MdhValue a, MdhValue b);
 MdhValue __mdh_tak(MdhValue list, MdhValue n);
 MdhValue __mdh_pair_up(MdhValue list1, MdhValue list2);
@@ -277,6 +281,31 @@ MdhValue __mdh_dreich(MdhValue str);
 MdhValue __mdh_geggie(MdhValue str);
 MdhValue __mdh_jings(MdhValue msg);
 MdhValue __mdh_crivvens(MdhValue msg);
+MdhValue __mdh_braw(MdhValue val);
+MdhValue __mdh_crabbit(MdhValue val);
+MdhValue __mdh_gallus(MdhValue val);
+MdhValue __mdh_drookit(MdhValue list);
+MdhValue __mdh_clarty(MdhValue val);
+MdhValue __mdh_glaikit(MdhValue val);
+MdhValue __mdh_is_wee(MdhValue val);
+MdhValue __mdh_is_muckle(MdhValue val);
+MdhValue __mdh_is_blank(MdhValue str);
+MdhValue __mdh_haverin(MdhValue val);
+MdhValue __mdh_banter(MdhValue a, MdhValue b);
+MdhValue __mdh_capitalize(MdhValue str);
+MdhValue __mdh_scunner(MdhValue val);
+MdhValue __mdh_scunner_check(MdhValue val, MdhValue expected_type);
+MdhValue __mdh_clype(MdhValue val);
+MdhValue __mdh_stoater(MdhValue list);
+MdhValue __mdh_dicht(MdhValue list, MdhValue index);
+MdhValue __mdh_redd_up(MdhValue list);
+MdhValue __mdh_split_by(MdhValue list, MdhValue pred);
+MdhValue __mdh_grup_runs(MdhValue list);
+MdhValue __mdh_range_o(MdhValue list);
+MdhValue __mdh_tattie_scone(MdhValue str, MdhValue n);
+MdhValue __mdh_haggis_hunt(MdhValue haystack, MdhValue needle);
+MdhValue __mdh_blether_format(MdhValue template, MdhValue dict);
+MdhValue __mdh_bampot_mode(MdhValue list);
 
 /* ========== Exceptions (Try/Catch/Hurl) ========== */
 

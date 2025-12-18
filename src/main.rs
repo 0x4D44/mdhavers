@@ -315,11 +315,7 @@ fn compile_file(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
     });
 
     if let Err(e) = fs::write(&output_path, &js_code) {
-        return Err(format!(
-            "Cannae write tae {}: {}",
-            output_path.display(),
-            e
-        ));
+        return Err(format!("Cannae write tae {}: {}", output_path.display(), e));
     }
 
     println!(
@@ -346,11 +342,7 @@ fn compile_wasm(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
     });
 
     if let Err(e) = fs::write(&output_path, &wat_code) {
-        return Err(format!(
-            "Cannae write tae {}: {}",
-            output_path.display(),
-            e
-        ));
+        return Err(format!("Cannae write tae {}: {}", output_path.display(), e));
     }
 
     println!(
@@ -446,11 +438,7 @@ fn build_native(
         });
 
         if let Err(e) = fs::write(&output_path, &ir) {
-            return Err(format!(
-                "Cannae write tae {}: {}",
-                output_path.display(),
-                e
-            ));
+            return Err(format!("Cannae write tae {}: {}", output_path.display(), e));
         }
 
         println!(
