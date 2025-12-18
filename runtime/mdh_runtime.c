@@ -32,6 +32,17 @@ extern void *GC_malloc(size_t size);
 extern void *GC_realloc(void *ptr, size_t size);
 extern char *GC_strdup(const char *s);
 
+/* Rust runtime FFI (JSON + regex) */
+extern MdhValue __mdh_rs_json_parse(MdhValue json_str);
+extern MdhValue __mdh_rs_json_stringify(MdhValue value);
+extern MdhValue __mdh_rs_json_pretty(MdhValue value);
+extern MdhValue __mdh_rs_regex_test(MdhValue text, MdhValue pattern);
+extern MdhValue __mdh_rs_regex_match(MdhValue text, MdhValue pattern);
+extern MdhValue __mdh_rs_regex_match_all(MdhValue text, MdhValue pattern);
+extern MdhValue __mdh_rs_regex_replace(MdhValue text, MdhValue pattern, MdhValue replacement);
+extern MdhValue __mdh_rs_regex_replace_first(MdhValue text, MdhValue pattern, MdhValue replacement);
+extern MdhValue __mdh_rs_regex_split(MdhValue text, MdhValue pattern);
+
 /* Random number generator state */
 static int __mdh_random_initialized = 0;
 
@@ -949,7 +960,7 @@ MdhValue __mdh_empty_creel(void) {
 }
 
 MdhValue __mdh_make_creel(MdhValue list) {
-    /* Create a creel (set) from a list by stringifying each element. */
+    /* Create a creel (set) from a list by inserting each element as-is. */
     if (list.tag != MDH_TAG_LIST) {
         __mdh_type_error("make_creel", list.tag, 0);
         return __mdh_empty_creel();
@@ -958,8 +969,7 @@ MdhValue __mdh_make_creel(MdhValue list) {
     MdhList *l = __mdh_get_list(list);
     MdhValue result = __mdh_empty_creel();
     for (int64_t i = 0; i < l->length; i++) {
-        MdhValue key = __mdh_to_string(l->items[i]);
-        result = __mdh_toss_in(result, key);
+        result = __mdh_toss_in(result, l->items[i]);
     }
     return result;
 }
@@ -1092,10 +1102,6 @@ MdhValue __mdh_dict_get_default(MdhValue dict, MdhValue key, MdhValue default_va
         __mdh_type_error("dict_get", dict.tag, 0);
         return default_val;
     }
-    if (key.tag != MDH_TAG_STRING) {
-        __mdh_type_error("dict_get", key.tag, 0);
-        return default_val;
-    }
 
     int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;
     int64_t count = *dict_ptr;
@@ -1144,10 +1150,6 @@ MdhValue __mdh_dict_remove(MdhValue dict, MdhValue key) {
         __mdh_type_error("dict_remove", dict.tag, 0);
         return __mdh_empty_dict();
     }
-    if (key.tag != MDH_TAG_STRING) {
-        __mdh_type_error("dict_remove", key.tag, 0);
-        return __mdh_empty_dict();
-    }
 
     MdhValue result = __mdh_empty_dict();
     int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;
@@ -1177,9 +1179,7 @@ MdhValue __mdh_dict_invert(MdhValue dict) {
         MdhValue key = entries[i * 2];
         MdhValue val = entries[i * 2 + 1];
 
-        MdhValue new_key = __mdh_to_string(val);
-        MdhValue new_val = (key.tag == MDH_TAG_STRING) ? key : __mdh_to_string(key);
-        result = __mdh_dict_set(result, new_key, new_val);
+        result = __mdh_dict_set(result, val, key);
     }
     return result;
 }
@@ -1201,7 +1201,7 @@ MdhValue __mdh_fae_pairs(MdhValue pairs) {
         if (pair->length < 2) {
             continue;
         }
-        MdhValue key = __mdh_to_string(pair->items[0]);
+        MdhValue key = pair->items[0];
         MdhValue val = pair->items[1];
         result = __mdh_dict_set(result, key, val);
     }
@@ -2051,6 +2051,19 @@ MdhValue __mdh_average(MdhValue list) {
     return __mdh_make_float(sum / (double)l->length);
 }
 
+typedef struct {
+    MdhValue value;
+    const char *key_str;
+} MdhCreelSortItem;
+
+static int __mdh_creel_sort_cmp(const void *a, const void *b) {
+    const MdhCreelSortItem *ia = (const MdhCreelSortItem *)a;
+    const MdhCreelSortItem *ib = (const MdhCreelSortItem *)b;
+    const char *sa = ia->key_str ? ia->key_str : "";
+    const char *sb = ib->key_str ? ib->key_str : "";
+    return strcmp(sa, sb);
+}
+
 MdhValue __mdh_creel_tae_list(MdhValue dict) {
     /* Convert set/dict keys to list */
     if (dict.tag != MDH_TAG_DICT) {
@@ -2061,9 +2074,23 @@ MdhValue __mdh_creel_tae_list(MdhValue dict) {
     int64_t count = *dict_ptr;
     MdhValue *entries = (MdhValue *)(dict_ptr + 1);
 
+    if (count <= 0) {
+        return __mdh_make_list(0);
+    }
+
+    MdhCreelSortItem *items = (MdhCreelSortItem *)GC_malloc(sizeof(MdhCreelSortItem) * (size_t)count);
+    for (int64_t i = 0; i < count; i++) {
+        MdhValue key = entries[i * 2];
+        MdhValue key_str_val = __mdh_to_string(key);
+        const char *key_str = key_str_val.tag == MDH_TAG_STRING ? __mdh_get_string(key_str_val) : "";
+        items[i].value = key;
+        items[i].key_str = key_str;
+    }
+    qsort(items, (size_t)count, sizeof(MdhCreelSortItem), __mdh_creel_sort_cmp);
+
     MdhValue result = __mdh_make_list((int32_t)count);
     for (int64_t i = 0; i < count; i++) {
-        __mdh_list_push(result, entries[i * 2]);  /* key */
+        __mdh_list_push(result, items[i].value);
     }
     return result;
 }
@@ -3001,14 +3028,13 @@ MdhValue __mdh_date_now(void) {
     return dict;
 }
 
-MdhValue __mdh_date_format(MdhValue timestamp_ms, MdhValue format) {
-    if (timestamp_ms.tag != MDH_TAG_INT || format.tag != MDH_TAG_STRING) {
-        __mdh_type_error("date_format", timestamp_ms.tag, format.tag);
+MdhValue __mdh_date_format(MdhValue timestamp_secs, MdhValue format) {
+    if (timestamp_secs.tag != MDH_TAG_INT || format.tag != MDH_TAG_STRING) {
+        __mdh_type_error("date_format", timestamp_secs.tag, format.tag);
         return __mdh_make_string("");
     }
 
-    int64_t ms = timestamp_ms.data;
-    time_t sec = (time_t)(ms / 1000);
+    time_t sec = (time_t)timestamp_secs.data;
     struct tm tm_val;
     localtime_r(&sec, &tm_val);
 
@@ -3060,46 +3086,43 @@ MdhValue __mdh_date_parse(MdhValue date_str, MdhValue format) {
         return __mdh_make_int(0);
     }
 
-    return __mdh_make_int((int64_t)t * 1000);
+    return __mdh_make_int((int64_t)t);
 }
 
-static int64_t __mdh_unit_ms(const char *unit, bool allow_millis) {
+static int64_t __mdh_unit_seconds(const char *unit) {
     if (!unit) {
         return 0;
     }
-    if (allow_millis && strcmp(unit, "milliseconds") == 0) {
+    if (strcmp(unit, "seconds") == 0) {
         return 1;
     }
-    if (strcmp(unit, "seconds") == 0) {
-        return 1000;
-    }
     if (strcmp(unit, "minutes") == 0) {
-        return 60000;
+        return 60;
     }
     if (strcmp(unit, "hours") == 0) {
-        return 3600000;
+        return 3600;
     }
     if (strcmp(unit, "days") == 0) {
-        return 86400000;
+        return 86400;
     }
     if (strcmp(unit, "weeks") == 0) {
-        return 604800000;
+        return 604800;
     }
     return 0;
 }
 
-MdhValue __mdh_date_add(MdhValue timestamp_ms, MdhValue amount, MdhValue unit) {
-    if (timestamp_ms.tag != MDH_TAG_INT || amount.tag != MDH_TAG_INT || unit.tag != MDH_TAG_STRING) {
-        __mdh_type_error("date_add", timestamp_ms.tag, amount.tag);
+MdhValue __mdh_date_add(MdhValue timestamp_secs, MdhValue amount, MdhValue unit) {
+    if (timestamp_secs.tag != MDH_TAG_INT || amount.tag != MDH_TAG_INT || unit.tag != MDH_TAG_STRING) {
+        __mdh_type_error("date_add", timestamp_secs.tag, amount.tag);
         return __mdh_make_int(0);
     }
     const char *u = __mdh_get_string(unit);
-    int64_t mul = __mdh_unit_ms(u, false);
+    int64_t mul = __mdh_unit_seconds(u);
     if (mul == 0) {
         __mdh_hurl(__mdh_make_string("Unknown time unit"));
         return __mdh_make_int(0);
     }
-    return __mdh_make_int(timestamp_ms.data + amount.data * mul);
+    return __mdh_make_int(timestamp_secs.data + amount.data * mul);
 }
 
 MdhValue __mdh_date_diff(MdhValue ts1, MdhValue ts2, MdhValue unit) {
@@ -3108,13 +3131,16 @@ MdhValue __mdh_date_diff(MdhValue ts1, MdhValue ts2, MdhValue unit) {
         return __mdh_make_int(0);
     }
     const char *u = __mdh_get_string(unit);
-    int64_t mul = __mdh_unit_ms(u, true);
-    if (mul == 0) {
+    int64_t diff_secs = ts2.data - ts1.data;
+    if (strcmp(u, "milliseconds") == 0) {
+        return __mdh_make_int(diff_secs * 1000);
+    }
+    int64_t div = __mdh_unit_seconds(u);
+    if (div == 0) {
         __mdh_hurl(__mdh_make_string("Unknown time unit"));
         return __mdh_make_int(0);
     }
-    int64_t diff_ms = ts2.data - ts1.data;
-    return __mdh_make_int(diff_ms / mul);
+    return __mdh_make_int(diff_secs / div);
 }
 
 MdhValue __mdh_braw_date(MdhValue ts_or_nil) {
@@ -3205,6 +3231,7 @@ MdhValue __mdh_braw_date(MdhValue ts_or_nil) {
     return __mdh_make_string(buf);
 }
 
+#if 0
 /* ========== Regex (POSIX ERE subset) ========== */
 
 static void __mdh_regex_compile_or_hurl(regex_t *re, const char *pattern) {
@@ -3426,10 +3453,37 @@ MdhValue __mdh_regex_split(MdhValue text, MdhValue pattern) {
     return result;
 }
 
+#endif
+
+/* ========== Regex (Rust FFI) ========== */
+
+MdhValue __mdh_regex_test(MdhValue text, MdhValue pattern) {
+    return __mdh_rs_regex_test(text, pattern);
+}
+
+MdhValue __mdh_regex_match(MdhValue text, MdhValue pattern) {
+    return __mdh_rs_regex_match(text, pattern);
+}
+
+MdhValue __mdh_regex_match_all(MdhValue text, MdhValue pattern) {
+    return __mdh_rs_regex_match_all(text, pattern);
+}
+
+MdhValue __mdh_regex_replace(MdhValue text, MdhValue pattern, MdhValue replacement) {
+    return __mdh_rs_regex_replace(text, pattern, replacement);
+}
+
+MdhValue __mdh_regex_replace_first(MdhValue text, MdhValue pattern, MdhValue replacement) {
+    return __mdh_rs_regex_replace_first(text, pattern, replacement);
+}
+
+MdhValue __mdh_regex_split(MdhValue text, MdhValue pattern) {
+    return __mdh_rs_regex_split(text, pattern);
+}
+
 /* ========== JSON ========== */
 
-
-/* ========== JSON ========== */
+#if 0
 
 static void __mdh_json_skip_ws(const char **p) {
     while (**p && isspace((unsigned char)**p)) {
@@ -3884,6 +3938,20 @@ MdhValue __mdh_json_pretty(MdhValue value) {
     __mdh_sb_init(&sb);
     __mdh_json_stringify_value(&sb, value, true, 0);
     return __mdh_string_from_buf(sb.buf);
+}
+
+#endif
+
+MdhValue __mdh_json_parse(MdhValue json_str) {
+    return __mdh_rs_json_parse(json_str);
+}
+
+MdhValue __mdh_json_stringify(MdhValue value) {
+    return __mdh_rs_json_stringify(value);
+}
+
+MdhValue __mdh_json_pretty(MdhValue value) {
+    return __mdh_rs_json_pretty(value);
 }
 
 /* ========== Misc Parity Helpers ========== */

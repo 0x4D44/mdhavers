@@ -11743,13 +11743,12 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let set_val = self.compile_expr(&args[0])?;
                     let item_val = self.compile_expr(&args[1])?;
-                    let item = self.inline_tae_string(item_val)?;
                     // Call runtime function: __mdh_dict_contains(dict, key) -> MdhValue (bool)
                     let result = self
                         .builder
                         .build_call(
                             self.libc.dict_contains,
-                            &[set_val.into(), item.into()],
+                            &[set_val.into(), item_val.into()],
                             "is_in_creel_result",
                         )
                         .map_err(Self::llvm_compile_error)?
@@ -11767,13 +11766,12 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let set_val = self.compile_expr(&args[0])?;
                     let item_val = self.compile_expr(&args[1])?;
-                    let item = self.inline_tae_string(item_val)?;
                     // Call runtime function: __mdh_toss_in(dict, item) -> MdhValue
                     let result = self
                         .builder
                         .build_call(
                             self.libc.toss_in,
-                            &[set_val.into(), item.into()],
+                            &[set_val.into(), item_val.into()],
                             "toss_in_result",
                         )
                         .map_err(Self::llvm_compile_error)?
@@ -11800,13 +11798,12 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let set_val = self.compile_expr(&args[0])?;
                     let item_val = self.compile_expr(&args[1])?;
-                    let item = self.inline_tae_string(item_val)?;
                     // Call runtime function: __mdh_heave_oot(dict, item) -> MdhValue
                     let result = self
                         .builder
                         .build_call(
                             self.libc.heave_oot,
-                            &[set_val.into(), item.into()],
+                            &[set_val.into(), item_val.into()],
                             "heave_oot_result",
                         )
                         .map_err(Self::llvm_compile_error)?
@@ -11833,12 +11830,11 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let dict_val = self.compile_expr(&args[0])?;
                     let key_val = self.compile_expr(&args[1])?;
-                    let key = self.inline_tae_string(key_val)?;
                     let result = self
                         .builder
                         .build_call(
                             self.libc.heave_oot,
-                            &[dict_val.into(), key.into()],
+                            &[dict_val.into(), key_val.into()],
                             "toss_result",
                         )
                         .map_err(Self::llvm_compile_error)?
@@ -20939,8 +20935,6 @@ impl<'ctx> CodeGen<'ctx> {
         for (i, (key_expr, val_expr)) in pairs.iter().enumerate() {
             let compiled_key = self.compile_expr(key_expr)?;
             let compiled_val = self.compile_expr(val_expr)?;
-            // Interpreter dict literals stringify keys; keep compiled dict keys as strings too.
-            let compiled_key = self.inline_tae_string(compiled_key)?;
 
             // Calculate entry offset: entry_size * i
             let entry_offset = self
@@ -21334,53 +21328,6 @@ impl<'ctx> CodeGen<'ctx> {
         let key_tag = self.extract_tag(key_val)?;
         let key_data = self.extract_data(key_val)?;
 
-        // Interpreter semantics: dict indexing requires a string key.
-        let string_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::String.as_u8() as u64, false);
-        let is_string_key = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, key_tag, string_tag, "dict_key_is_string")
-            .unwrap();
-
-        let key_ok_block = self
-            .context
-            .append_basic_block(function, "dict_index_key_ok");
-        let key_bad_block = self
-            .context
-            .append_basic_block(function, "dict_index_key_bad");
-
-        self.builder
-            .build_conditional_branch(is_string_key, key_ok_block, key_bad_block)
-            .unwrap();
-
-        // Key type error
-        self.builder.position_at_end(key_bad_block);
-        let op = self
-            .builder
-            .build_global_string_ptr("index", "dict_index_op")
-            .unwrap();
-        let dict_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::Dict.as_u8() as u64, false);
-        self.builder
-            .build_call(
-                self.libc.type_error,
-                &[
-                    op.as_pointer_value().into(),
-                    dict_tag.into(),
-                    key_tag.into(),
-                ],
-                "",
-            )
-            .unwrap();
-        self.builder.build_unreachable().unwrap();
-
-        // Normal key path
-        self.builder.position_at_end(key_ok_block);
-
         // Allocate result pointer and found flag
         let result_ptr = self
             .builder
@@ -21689,13 +21636,11 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Dict branch: use __mdh_dict_set
         self.builder.position_at_end(dict_block);
-        // Interpreter index-assign stringifies non-string dict keys.
-        let idx_key = self.inline_tae_string(idx_val)?;
         let dict_result = self
             .builder
             .build_call(
                 self.libc.dict_set,
-                &[obj_val.into(), idx_key.into(), new_val.into()],
+                &[obj_val.into(), idx_val.into(), new_val.into()],
                 "dict_set_result",
             )
             .map_err(Self::llvm_compile_error)?
@@ -21727,7 +21672,6 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
-        let dict_bb = self.builder.get_insert_block().unwrap();
         self.builder
             .build_unconditional_branch(merge_block)
             .map_err(Self::llvm_compile_error)?;
@@ -21811,21 +21755,14 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(elem_ptr, new_val)
             .map_err(Self::llvm_compile_error)?;
 
-        let list_bb = self.builder.get_insert_block().unwrap();
         self.builder
             .build_unconditional_branch(merge_block)
             .map_err(Self::llvm_compile_error)?;
 
         // Merge block
         self.builder.position_at_end(merge_block);
-        let phi = self
-            .builder
-            .build_phi(self.types.value_type, "set_result")
-            .map_err(Self::llvm_compile_error)?;
-        phi.add_incoming(&[(&dict_result, dict_bb), (&new_val, list_bb)]);
-
         // Return the value that was set (for chained assignments)
-        Ok(phi.as_basic_value())
+        Ok(new_val)
     }
 
     /// Compile dict[key] = value using runtime function
@@ -21836,8 +21773,7 @@ impl<'ctx> CodeGen<'ctx> {
         value: &Expr,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let obj_val = self.compile_expr(object)?;
-        let idx_val_raw = self.compile_expr(index)?;
-        let idx_val = self.inline_tae_string(idx_val_raw)?;
+        let idx_val = self.compile_expr(index)?;
         let new_val = self.compile_expr(value)?;
 
         let dict_result = self

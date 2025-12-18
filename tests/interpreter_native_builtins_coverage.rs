@@ -1,8 +1,8 @@
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
 use std::panic::AssertUnwindSafe;
 use std::rc::Rc;
 
+use mdhavers::value::{DictValue, SetValue};
 use mdhavers::{Interpreter, Value};
 
 fn sample_list() -> Value {
@@ -14,14 +14,14 @@ fn sample_list() -> Value {
 }
 
 fn sample_dict() -> Value {
-    let mut dict = HashMap::new();
-    dict.insert("a".to_string(), Value::Integer(1));
+    let mut dict = DictValue::new();
+    dict.set(Value::String("a".to_string()), Value::Integer(1));
     Value::Dict(Rc::new(RefCell::new(dict)))
 }
 
 fn sample_set() -> Value {
-    let mut set = HashSet::new();
-    set.insert("a".to_string());
+    let mut set = SetValue::new();
+    set.insert(Value::String("a".to_string()));
     Value::Set(Rc::new(RefCell::new(set)))
 }
 
