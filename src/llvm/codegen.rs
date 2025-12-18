@@ -2047,9 +2047,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let val = self
                         .builder
                         .build_load(self.types.i64_type, shadow, &format!("{}_i64", name))
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to load shadow: {}", e))
-                        })?;
+                        .map_err(|e| HaversError::CompileError(format!("Failed to load shadow: {}", e)))?;
                     Ok(Some(val.into_int_value()))
                 } else if self.var_types.get(name) == Some(&VarType::Int) {
                     // Known int but no shadow - extract from MdhValue
@@ -2057,9 +2055,7 @@ impl<'ctx> CodeGen<'ctx> {
                         let val = self
                             .builder
                             .build_load(self.types.value_type, alloca, name)
-                            .map_err(|e| {
-                                HaversError::CompileError(format!("Failed to load: {}", e))
-                            })?;
+                            .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?;
                         let data = self.extract_data(val)?;
                         Ok(Some(data))
                     } else {
@@ -2136,9 +2132,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let int_val = self
                     .builder
                     .build_load(self.types.i64_type, shadow, &format!("{}_sync", name))
-                    .map_err(|e| {
-                        HaversError::CompileError(format!("Failed to load shadow: {}", e))
-                    })?
+                    .map_err(|e| HaversError::CompileError(format!("Failed to load shadow: {}", e)))?
                     .into_int_value();
                 // Box to MdhValue
                 let boxed = self.make_int(int_val)?;
@@ -5973,9 +5967,7 @@ impl<'ctx> CodeGen<'ctx> {
         let elem_ptr = unsafe {
             self.builder
                 .build_gep(self.types.value_type, items_ptr, &[index], "elem_ptr")
-                .map_err(|e| {
-                    HaversError::CompileError(format!("Failed to compute element ptr: {}", e))
-                })?
+                .map_err(|e| HaversError::CompileError(format!("Failed to compute element ptr: {}", e)))?
         };
         Ok(elem_ptr)
     }
@@ -6599,9 +6591,9 @@ impl<'ctx> CodeGen<'ctx> {
             .left()
             .ok_or_else(|| HaversError::CompileError("make_list returned void".to_string()))?;
 
-        let function = self.current_function.ok_or_else(|| {
-            HaversError::CompileError("No current function".to_string())
-        })?;
+        let function = self
+            .current_function
+            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
 
         // i = 0..min_len
         let loop_block = self.context.append_basic_block(function, "zipwith_loop");
@@ -8305,29 +8297,16 @@ impl<'ctx> CodeGen<'ctx> {
                 if self.boxed_vars.contains(name) {
                     self.var_types.insert(name.clone(), VarType::Unknown);
 
-                    // Determine where to store the variable (global vs local alloca).
-                    let is_top_level = !self.in_user_function
-                        && self.current_class.is_none()
-                        && self.loop_stack.is_empty()
-                        && !self.variables.contains_key(name)
-                        && !self.globals.contains_key(name);
-
-                    let alloca = if let Some(&existing) = self.variables.get(name) {
-                        existing
-                    } else if let Some(&existing) = self.globals.get(name) {
-                        existing
-                    } else if is_top_level {
-                        let global = self.module.add_global(self.types.value_type, None, name);
-                        global.set_initializer(&self.types.value_type.const_zero());
-                        let global_ptr = global.as_pointer_value();
-                        self.globals.insert(name.clone(), global_ptr);
-                        self.variables.insert(name.clone(), global_ptr);
-                        global_ptr
-                    } else {
-                        let a = self.create_entry_block_alloca(name);
-                        self.variables.insert(name.clone(), a);
-                        a
-                    };
+                    let alloca = self
+                        .variables
+                        .get(name)
+                        .copied()
+                        .or_else(|| self.globals.get(name).copied())
+                        .unwrap_or_else(|| {
+                            let a = self.create_entry_block_alloca(name);
+                            self.variables.insert(name.clone(), a);
+                            a
+                        });
 
                     let init_val = if let Some(init) = initializer {
                         self.compile_expr(init)?
@@ -8403,23 +8382,23 @@ impl<'ctx> CodeGen<'ctx> {
                         s
                     };
 
-                    // Compile the initializer and store shadow
-                    if let Some(init) = initializer {
-                        let value = self.compile_expr(init)?;
-                        let list_ptr = self.extract_data(value)?;
-                        self.builder.build_store(shadow, list_ptr).unwrap();
+                    // Compile the initializer and store shadow.
+                    // Note: `var_type == List` implies `initializer.is_some()` (inferred from the initializer).
+                    let init = initializer.as_ref().unwrap();
+                    let value = self.compile_expr(init)?;
+                    let list_ptr = self.extract_data(value)?;
+                    self.builder.build_store(shadow, list_ptr).unwrap();
 
-                        // Also store the MdhValue
-                        let alloca = if let Some(&existing) = self.variables.get(name) {
-                            existing
-                        } else {
-                            let a = self.create_entry_block_alloca(name);
-                            self.variables.insert(name.clone(), a);
-                            a
-                        };
-                        self.builder.build_store(alloca, value).unwrap();
-                        return Ok(());
-                    }
+                    // Also store the MdhValue.
+                    let alloca = if let Some(&existing) = self.variables.get(name) {
+                        existing
+                    } else {
+                        let a = self.create_entry_block_alloca(name);
+                        self.variables.insert(name.clone(), a);
+                        a
+                    };
+                    self.builder.build_store(alloca, value).unwrap();
+                    return Ok(());
                 }
 
                 // For int variables, try to use optimized path
@@ -8436,11 +8415,11 @@ impl<'ctx> CodeGen<'ctx> {
 
                     // Try to get the int value directly
                     if let Some(init) = initializer {
-                        if let Some(int_val) = self.compile_int_expr(init)? {
-                            // Store to shadow
-                            self.builder.build_store(shadow, int_val).map_err(|e| {
-                                HaversError::CompileError(format!("Failed to store shadow: {}", e))
-                            })?;
+                            if let Some(int_val) = self.compile_int_expr(init)? {
+                                // Store to shadow
+                            self.builder
+                                .build_store(shadow, int_val)
+                                .map_err(|e| HaversError::CompileError(format!("Failed to store shadow: {}", e)))?;
 
                             // Skip MdhValue store in loop body
                             if !self.in_loop_body {
@@ -8453,9 +8432,9 @@ impl<'ctx> CodeGen<'ctx> {
                                     a
                                 };
                                 let boxed = self.make_int(int_val)?;
-                                self.builder.build_store(alloca, boxed).map_err(|e| {
-                                    HaversError::CompileError(format!("Failed to store: {}", e))
-                                })?;
+                                self.builder
+                                    .build_store(alloca, boxed)
+                                    .map_err(|e| HaversError::CompileError(format!("Failed to store: {}", e)))?;
                             } else {
                                 // In loop: just ensure alloca exists
                                 if !self.variables.contains_key(name) {
@@ -8510,9 +8489,9 @@ impl<'ctx> CodeGen<'ctx> {
                 if var_type == VarType::Int && !self.int_shadows.contains_key(name) {
                     let shadow = self.create_entry_block_alloca_i64(&format!("{}_shadow", name));
                     let data = self.extract_data(value)?;
-                    self.builder.build_store(shadow, data).map_err(|e| {
-                        HaversError::CompileError(format!("Failed to store shadow: {}", e))
-                    })?;
+                    self.builder
+                        .build_store(shadow, data)
+                        .map_err(|e| HaversError::CompileError(format!("Failed to store shadow: {}", e)))?;
                     self.int_shadows.insert(name.clone(), shadow);
                 }
 
@@ -8522,27 +8501,31 @@ impl<'ctx> CodeGen<'ctx> {
                         self.create_entry_block_alloca_i64(&format!("{}_strlen", name));
                     let cap_shadow =
                         self.create_entry_block_alloca_i64(&format!("{}_strcap", name));
-                    // Calculate initial string length and set initial capacity
+                    // Default: assume empty/externally-owned.
+                    let zero = self.types.i64_type.const_int(0, false);
+                    self.builder
+                        .build_store(len_shadow, zero)
+                        .map_err(|e| HaversError::CompileError(format!("Failed to store strlen: {}", e)))?;
+                    self.builder
+                        .build_store(cap_shadow, zero)
+                        .map_err(|e| HaversError::CompileError(format!("Failed to store strcap: {}", e)))?;
+
+                    // Calculate initial string length and set initial capacity.
                     if let Some(init) = initializer {
                         if let Expr::Literal {
                             value: Literal::String(s),
                             ..
                         } = init
                         {
-                            // Literal string - use compile-time length
+                            // Literal string - use compile-time length.
                             let len = s.len() as u64;
                             let len_val = self.types.i64_type.const_int(len, false);
-                            self.builder.build_store(len_shadow, len_val).map_err(|e| {
-                                HaversError::CompileError(format!("Failed to store strlen: {}", e))
-                            })?;
-                            // Set capacity to 0 to indicate it's a literal (not owned)
-                            // We'll reallocate on first append
-                            let zero = self.types.i64_type.const_int(0, false);
-                            self.builder.build_store(cap_shadow, zero).map_err(|e| {
-                                HaversError::CompileError(format!("Failed to store strcap: {}", e))
-                            })?;
+                            self.builder
+                                .build_store(len_shadow, len_val)
+                                .map_err(|e| HaversError::CompileError(format!("Failed to store strlen: {}", e)))?;
+                            // Capacity stays 0 to indicate it's a literal (not owned); we'll reallocate on first append.
                         } else {
-                            // Runtime string - compute with strlen
+                            // Runtime string - compute with strlen.
                             let data = self.extract_data(value)?;
                             let i8_ptr_type =
                                 self.context.i8_type().ptr_type(AddressSpace::default());
@@ -8558,24 +8541,11 @@ impl<'ctx> CodeGen<'ctx> {
                                 .left()
                                 .unwrap()
                                 .into_int_value();
-                            self.builder.build_store(len_shadow, len).map_err(|e| {
-                                HaversError::CompileError(format!("Failed to store strlen: {}", e))
-                            })?;
-                            // Capacity is 0 for externally-owned strings
-                            let zero = self.types.i64_type.const_int(0, false);
-                            self.builder.build_store(cap_shadow, zero).map_err(|e| {
-                                HaversError::CompileError(format!("Failed to store strcap: {}", e))
-                            })?;
+                            self.builder
+                                .build_store(len_shadow, len)
+                                .map_err(|e| HaversError::CompileError(format!("Failed to store strlen: {}", e)))?;
+                            // Capacity stays 0 for externally-owned strings.
                         }
-                    } else {
-                        // No initializer - length and capacity are 0
-                        let zero = self.types.i64_type.const_int(0, false);
-                        self.builder.build_store(len_shadow, zero).map_err(|e| {
-                            HaversError::CompileError(format!("Failed to store strlen: {}", e))
-                        })?;
-                        self.builder.build_store(cap_shadow, zero).map_err(|e| {
-                            HaversError::CompileError(format!("Failed to store strcap: {}", e))
-                        })?;
                     }
                     self.string_len_shadows.insert(name.clone(), len_shadow);
                     self.string_cap_shadows.insert(name.clone(), cap_shadow);
@@ -8643,9 +8613,9 @@ impl<'ctx> CodeGen<'ctx> {
                 } else {
                     self.make_nil()
                 };
-                self.builder.build_return(Some(&ret_val)).map_err(|e| {
-                    HaversError::CompileError(format!("Failed to build return: {}", e))
-                })?;
+                self.builder
+                    .build_return(Some(&ret_val))
+                    .map_err(|e| HaversError::CompileError(format!("Failed to build return: {}", e)))?;
                 Ok(())
             }
 
@@ -8653,9 +8623,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if let Some(loop_ctx) = self.loop_stack.last() {
                     self.builder
                         .build_unconditional_branch(loop_ctx.break_block)
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to build break: {}", e))
-                        })?;
+                        .map_err(|e| HaversError::CompileError(format!("Failed to build break: {}", e)))?;
                     Ok(())
                 } else {
                     Err(HaversError::CompileError("Break outside loop".to_string()))
@@ -8666,9 +8634,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if let Some(loop_ctx) = self.loop_stack.last() {
                     self.builder
                         .build_unconditional_branch(loop_ctx.continue_block)
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to build continue: {}", e))
-                        })?;
+                        .map_err(|e| HaversError::CompileError(format!("Failed to build continue: {}", e)))?;
                     Ok(())
                 } else {
                     Err(HaversError::CompileError(
@@ -8722,12 +8688,6 @@ impl<'ctx> CodeGen<'ctx> {
                 self.inline_blether(val)?;
                 Ok(())
             }
-
-            // Not yet implemented
-            _ => Err(HaversError::CompileError(format!(
-                "Statement not yet supported in LLVM backend: {:?}",
-                stmt
-            ))),
         }
     }
 
@@ -8743,9 +8703,7 @@ impl<'ctx> CodeGen<'ctx> {
                         let cell = self
                             .builder
                             .build_load(self.types.value_type, alloca, name)
-                            .map_err(|e| {
-                                HaversError::CompileError(format!("Failed to load: {}", e))
-                            })?;
+                            .map_err(|e| HaversError::CompileError(format!("Failed to load: {}", e)))?;
                         return self.box_get(cell);
                     }
                     // If we're in a loop body and have an int shadow AND we know the var is an int,
@@ -8763,12 +8721,7 @@ impl<'ctx> CodeGen<'ctx> {
                                     shadow,
                                     &format!("{}_shadow_load", name),
                                 )
-                                .map_err(|e| {
-                                    HaversError::CompileError(format!(
-                                        "Failed to load shadow: {}",
-                                        e
-                                    ))
-                                })?
+                                .map_err(|e| HaversError::CompileError(format!("Failed to load shadow: {}", e)))?
                                 .into_int_value();
                             return self.make_int(int_val);
                         }
@@ -8784,17 +8737,13 @@ impl<'ctx> CodeGen<'ctx> {
                         let cell = self
                             .builder
                             .build_load(self.types.value_type, global, &format!("{}_global", name))
-                            .map_err(|e| {
-                                HaversError::CompileError(format!("Failed to load global: {}", e))
-                            })?;
+                            .map_err(|e| HaversError::CompileError(format!("Failed to load global: {}", e)))?;
                         return self.box_get(cell);
                     }
                     let val = self
                         .builder
                         .build_load(self.types.value_type, global, &format!("{}_global", name))
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to load global: {}", e))
-                        })?;
+                        .map_err(|e| HaversError::CompileError(format!("Failed to load global: {}", e)))?;
                     Ok(val)
                 } else if let Some(&func) = self.functions.get(name) {
                     // User-defined function referenced as a value.
@@ -8888,14 +8837,14 @@ impl<'ctx> CodeGen<'ctx> {
                             .unwrap();
                         self.builder.build_store(elem0_val_ptr, fn_val).unwrap();
 
-                        // Store captured boxes
-                        for (i, cap_name) in captures.iter().enumerate() {
-                            let cap_alloca = self.variables.get(cap_name).copied().or_else(|| self.globals.get(cap_name).copied()).ok_or_else(|| {
-                                HaversError::CompileError(format!(
-                                    "Captured variable '{}' not found in scope when closing over '{}'",
-                                    cap_name, name
-                                ))
-                            })?;
+	                        // Store captured boxes
+	                        for (i, cap_name) in captures.iter().enumerate() {
+	                            let cap_alloca = self
+	                                .variables
+	                                .get(cap_name)
+	                                .copied()
+	                                .or_else(|| self.globals.get(cap_name).copied())
+	                                .ok_or_else(|| HaversError::CompileError(format!("Captured variable '{}' not found in scope when closing over '{}'", cap_name, name)))?;
                             let cap_val = self
                                 .builder
                                 .build_load(self.types.value_type, cap_alloca, &format!("cap{}_val", i))
@@ -8973,12 +8922,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .get(name)
                         .copied()
                         .or_else(|| self.globals.get(name).copied())
-                        .ok_or_else(|| {
-                            HaversError::CompileError(format!(
-                                "Undefined variable: {}",
-                                name
-                            ))
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError(format!("Undefined variable: {}", name)))?;
                     let cell = self
                         .builder
                         .build_load(self.types.value_type, alloca, &format!("{name}_cell"))
@@ -8992,9 +8936,9 @@ impl<'ctx> CodeGen<'ctx> {
                     // Try to compile the value directly as i64
                     if let Some(int_val) = self.compile_int_expr(value)? {
                         // Update the shadow with the new i64 value
-                        self.builder.build_store(shadow, int_val).map_err(|e| {
-                            HaversError::CompileError(format!("Failed to store shadow: {}", e))
-                        })?;
+                        self.builder
+                            .build_store(shadow, int_val)
+                            .map_err(|e| HaversError::CompileError(format!("Failed to store shadow: {}", e)))?;
 
                         // Skip MdhValue store in loop body (will sync at loop exit)
                         if self.in_loop_body {
@@ -9006,9 +8950,9 @@ impl<'ctx> CodeGen<'ctx> {
                         // Outside loop: also update the MdhValue
                         let boxed = self.make_int(int_val)?;
                         if let Some(&alloca) = self.variables.get(name) {
-                            self.builder.build_store(alloca, boxed).map_err(|e| {
-                                HaversError::CompileError(format!("Failed to store: {}", e))
-                            })?;
+                            self.builder
+                                .build_store(alloca, boxed)
+                                .map_err(|e| HaversError::CompileError(format!("Failed to store: {}", e)))?;
                         }
                         return Ok(boxed);
                     }
@@ -9150,23 +9094,23 @@ impl<'ctx> CodeGen<'ctx> {
                     .copied()
                     .or_else(|| self.globals.get(name).copied());
                 if let Some(alloca) = alloca {
-                    self.builder.build_store(alloca, val).map_err(|e| {
-                        HaversError::CompileError(format!("Failed to store: {}", e))
-                    })?;
+                    self.builder
+                        .build_store(alloca, val)
+                        .map_err(|e| HaversError::CompileError(format!("Failed to store: {}", e)))?;
                     // Update int shadow if we have one
                     if let Some(&shadow) = self.int_shadows.get(name) {
                         let data = self.extract_data(val)?;
-                        self.builder.build_store(shadow, data).map_err(|e| {
-                            HaversError::CompileError(format!("Failed to store shadow: {}", e))
-                        })?;
+                        self.builder
+                            .build_store(shadow, data)
+                            .map_err(|e| HaversError::CompileError(format!("Failed to store shadow: {}", e)))?;
                     }
                     // Update string length shadow if we have one
                     if let Some(&len_shadow) = self.string_len_shadows.get(name) {
                         if let Some(new_len) = new_str_len {
                             // Use pre-computed length
-                            self.builder.build_store(len_shadow, new_len).map_err(|e| {
-                                HaversError::CompileError(format!("Failed to store strlen: {}", e))
-                            })?;
+                            self.builder
+                                .build_store(len_shadow, new_len)
+                                .map_err(|e| HaversError::CompileError(format!("Failed to store strlen: {}", e)))?;
                         } else {
                             // Compute length with strlen
                             let data = self.extract_data(val)?;
@@ -9184,17 +9128,14 @@ impl<'ctx> CodeGen<'ctx> {
                                 .left()
                                 .unwrap()
                                 .into_int_value();
-                            self.builder.build_store(len_shadow, len).map_err(|e| {
-                                HaversError::CompileError(format!("Failed to store strlen: {}", e))
-                            })?;
+                            self.builder
+                                .build_store(len_shadow, len)
+                                .map_err(|e| HaversError::CompileError(format!("Failed to store strlen: {}", e)))?;
                         }
                     }
                     Ok(val)
                 } else {
-                    Err(HaversError::CompileError(format!(
-                        "Undefined variable: {}",
-                        name
-                    )))
+                    Err(HaversError::CompileError(format!("Undefined variable: {}", name)))
                 }
             }
 
@@ -9229,7 +9170,12 @@ impl<'ctx> CodeGen<'ctx> {
                 ..
             } => self.compile_ternary(condition, then_expr, else_expr),
 
-            Expr::Range { start, end, inclusive, .. } => {
+            Expr::Range {
+                start,
+                end,
+                inclusive: _,
+                ..
+            } => {
                 // Materialize range values as a list so ranges can be stored/indexed.
                 // For-loop ranges are still handled specially (see compile_for_range).
                 let start_val = self.compile_expr(start)?;
@@ -9240,14 +9186,7 @@ impl<'ctx> CodeGen<'ctx> {
                 // Default step is 1
                 let step = self.types.i64_type.const_int(1, false);
 
-                // Inclusive ranges include the end value, so call runtime with end+1
-                let end_for_call = if *inclusive {
-                    self.builder
-                        .build_int_add(end_i64, self.types.i64_type.const_int(1, false), "range_end_inclusive")
-                        .unwrap()
-                } else {
-                    end_i64
-                };
+                let end_for_call = end_i64;
 
                 let range_val = self
                     .builder
@@ -9326,12 +9265,6 @@ impl<'ctx> CodeGen<'ctx> {
             } => self.compile_slice_expr(object, start.as_ref(), end.as_ref(), step.as_ref()),
 
             Expr::BlockExpr { statements, .. } => self.compile_block_expr(statements),
-
-            // Not yet implemented
-            _ => Err(HaversError::CompileError(format!(
-                "Expression not yet supported in LLVM backend: {:?}",
-                expr
-            ))),
         }
     }
 
@@ -9358,9 +9291,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let str_ptr = self
                     .builder
                     .build_global_string_ptr(s, "str")
-                    .map_err(|e| {
-                        HaversError::CompileError(format!("Failed to create string: {}", e))
-                    })?;
+                    .map_err(|e| HaversError::CompileError(format!("Failed to create string: {}", e)))?;
                 self.make_string(str_ptr.as_pointer_value())
             }
         }
@@ -9631,9 +9562,10 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Load current string pointer, length, and capacity
-        let var_alloca = *self.variables.get(var_name).ok_or_else(|| {
-            HaversError::CompileError(format!("Variable not found: {}", var_name))
-        })?;
+        let var_alloca = *self
+            .variables
+            .get(var_name)
+            .ok_or_else(|| HaversError::CompileError(format!("Variable not found: {}", var_name)))?;
         let current_val = self
             .builder
             .build_load(self.types.value_type, var_alloca, "current_str")
@@ -9958,19 +9890,6 @@ impl<'ctx> CodeGen<'ctx> {
                                 )
                                 .unwrap();
                             cap_args.push(val.into());
-                        } else if capture_name == "masel" {
-                            if let Some(masel_ptr) = self.current_masel {
-                                let val = self
-                                    .builder
-                                    .build_load(self.types.value_type, masel_ptr, "masel_cap")
-                                    .unwrap();
-                                cap_args.push(val.into());
-                            } else {
-                                return Err(HaversError::CompileError(format!(
-                                    "Captured variable '{}' not found in scope when calling '{}'",
-                                    capture_name, name
-                                )));
-                            }
                         } else {
                             return Err(HaversError::CompileError(format!(
                                 "Captured variable '{}' not found in scope when calling '{}'",
@@ -10154,11 +10073,6 @@ impl<'ctx> CodeGen<'ctx> {
 
                     // If first argument is a variable, update both MdhValue and shadow
                     if let Expr::Variable { name, .. } = &args[0] {
-                        // Update shadow if exists (needed after realloc)
-                        if let Some(&shadow) = self.list_ptr_shadows.get(name) {
-                            let new_ptr = self.extract_data(result)?;
-                            self.builder.build_store(shadow, new_ptr).unwrap();
-                        }
                         // Update variable
                         if let Some(var_ptr) = self.variables.get(name).copied() {
                             self.builder.build_store(var_ptr, result).unwrap();
@@ -10476,14 +10390,10 @@ impl<'ctx> CodeGen<'ctx> {
                             &[str_val.into(), prefix.into()],
                             "starts_with_result",
                         )
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call starts_with: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call starts_with: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("starts_with returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("starts_with returned void".to_string()))?;
                     return Ok(result);
                 }
                 "ends_with" | "finishes_with" => {
@@ -10502,14 +10412,10 @@ impl<'ctx> CodeGen<'ctx> {
                             &[str_val.into(), suffix.into()],
                             "ends_with_result",
                         )
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call ends_with: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call ends_with: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("ends_with returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("ends_with returned void".to_string()))?;
                     return Ok(result);
                 }
                 "is_in_creel" | "is_in" => {
@@ -10529,17 +10435,10 @@ impl<'ctx> CodeGen<'ctx> {
                             &[set_val.into(), item.into()],
                             "is_in_creel_result",
                         )
-                        .map_err(|e| {
-                            HaversError::CompileError(format!(
-                                "Failed to call dict_contains: {}",
-                                e
-                            ))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call dict_contains: {e}")))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("dict_contains returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("dict_contains returned void".to_string()))?;
                     return Ok(result);
                 }
                 "toss_in" => {
@@ -10559,14 +10458,10 @@ impl<'ctx> CodeGen<'ctx> {
                             &[set_val.into(), item.into()],
                             "toss_in_result",
                         )
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call toss_in: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call toss_in: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("toss_in returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("toss_in returned void".to_string()))?;
 
                     // If first argument is a variable, update it (toss_in may reallocate).
                     if let Expr::Variable { name, .. } = &args[0] {
@@ -10595,14 +10490,10 @@ impl<'ctx> CodeGen<'ctx> {
                             &[set_val.into(), item.into()],
                             "heave_oot_result",
                         )
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call heave_oot: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call heave_oot: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("heave_oot returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("heave_oot returned void".to_string()))?;
 
                     // If first argument is a variable, update it (heave_oot may reallocate).
                     if let Expr::Variable { name, .. } = &args[0] {
@@ -10652,14 +10543,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.empty_creel, &[], "empty_creel_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call empty_creel: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call empty_creel: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("empty_creel returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("empty_creel returned void".to_string()))?;
                     return Ok(result);
                 }
                 "make_creel" => {
@@ -10674,14 +10561,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.empty_creel, &[], "make_creel_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call empty_creel: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call empty_creel: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("empty_creel returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("empty_creel returned void".to_string()))?;
                     return Ok(result);
                 }
                 "creel_tae_list" => {
@@ -10699,17 +10582,10 @@ impl<'ctx> CodeGen<'ctx> {
                             &[dict_val.into()],
                             "creel_to_list_result",
                         )
-                        .map_err(|e| {
-                            HaversError::CompileError(format!(
-                                "Failed to call creel_tae_list: {}",
-                                e
-                            ))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call creel_tae_list: {e}")))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("creel_tae_list returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("creel_tae_list returned void".to_string()))?;
                     return Ok(result);
                 }
                 "creels_thegither" | "set_union" => {
@@ -10732,14 +10608,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.file_exists, &[path.into()], "file_exists_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call file_exists: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call file_exists: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("file_exists returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("file_exists returned void".to_string()))?;
                     return Ok(result);
                 }
                 "slurp" => {
@@ -10752,14 +10624,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.slurp, &[path.into()], "slurp_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call slurp: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call slurp: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("slurp returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("slurp returned void".to_string()))?;
                     return Ok(result);
                 }
                 "scrieve" => {
@@ -10777,14 +10645,10 @@ impl<'ctx> CodeGen<'ctx> {
                             &[path.into(), content.into()],
                             "scrieve_result",
                         )
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call scrieve: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call scrieve: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("scrieve returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("scrieve returned void".to_string()))?;
                     return Ok(result);
                 }
                 "lines" => {
@@ -10797,14 +10661,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.lines, &[path.into()], "lines_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call lines: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call lines: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("lines returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("lines returned void".to_string()))?;
                     return Ok(result);
                 }
                 "words" => {
@@ -10817,14 +10677,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.words, &[str_val.into()], "words_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call words: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call words: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("words returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("words returned void".to_string()))?;
                     return Ok(result);
                 }
                 // Logging builtins
@@ -10837,17 +10693,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.get_log_level, &[], "get_log_level_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!(
-                                "Failed to call get_log_level: {}",
-                                e
-                            ))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call get_log_level: {e}")))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("get_log_level returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("get_log_level returned void".to_string()))?;
                     return Ok(result);
                 }
                 "set_log_level" => {
@@ -10864,17 +10713,10 @@ impl<'ctx> CodeGen<'ctx> {
                             &[level.into()],
                             "set_log_level_result",
                         )
-                        .map_err(|e| {
-                            HaversError::CompileError(format!(
-                                "Failed to call set_log_level: {}",
-                                e
-                            ))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call set_log_level: {e}")))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("set_log_level returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("set_log_level returned void".to_string()))?;
                     return Ok(result);
                 }
                 // Scots builtins
@@ -10882,14 +10724,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.slainte, &[], "slainte_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call slainte: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call slainte: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("slainte returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("slainte returned void".to_string()))?;
                     return Ok(result);
                 }
                 "och" => {
@@ -10953,14 +10791,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.tak, &[list.into(), n.into()], "tak_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call tak: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call tak: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("tak returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("tak returned void".to_string()))?;
                     return Ok(result);
                 }
                 "pair_up" => {
@@ -10975,14 +10809,10 @@ impl<'ctx> CodeGen<'ctx> {
                                 &[list1.into(), list2.into()],
                                 "pair_up_result",
                             )
-                            .map_err(|e| {
-                                HaversError::CompileError(format!("Failed to call pair_up: {}", e))
-                            })?
+                            .map_err(|e| HaversError::CompileError(format!("Failed to call pair_up: {}", e)))?
                             .try_as_basic_value()
                             .left()
-                            .ok_or_else(|| {
-                                HaversError::CompileError("pair_up returned void".to_string())
-                            })?;
+                            .ok_or_else(|| HaversError::CompileError("pair_up returned void".to_string()))?;
                         return Ok(result);
                     } else if args.len() == 1 {
                         // pair_up(list) - pair adjacent elements (placeholder: return as-is)
@@ -11003,14 +10833,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.tae_binary, &[n.into()], "tae_binary_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call tae_binary: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call tae_binary: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("tae_binary returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("tae_binary returned void".to_string()))?;
                     return Ok(result);
                 }
                 "average" => {
@@ -11023,14 +10849,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.average, &[list.into()], "average_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call average: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call average: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("average returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("average returned void".to_string()))?;
                     return Ok(result);
                 }
                 "chynge" | "replace" => {
@@ -11044,21 +10866,17 @@ impl<'ctx> CodeGen<'ctx> {
                     let new_val = self.compile_expr(&args[2])?;
                     let result = self
                         .builder
-                        .build_call(
-                            self.libc.chynge,
-                            &[str_val.into(), old_val.into(), new_val.into()],
-                            "chynge_result",
-                        )
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call chynge: {}", e))
-                        })?
-                        .try_as_basic_value()
-                        .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("chynge returned void".to_string())
-                        })?;
-                    return Ok(result);
-                }
+	                        .build_call(
+	                            self.libc.chynge,
+	                            &[str_val.into(), old_val.into(), new_val.into()],
+	                            "chynge_result",
+	                        )
+	                        .map_err(|e| HaversError::CompileError(format!("Failed to call chynge: {}", e)))?
+	                        .try_as_basic_value()
+	                        .left()
+	                        .ok_or_else(|| HaversError::CompileError("chynge returned void".to_string()))?;
+	                    return Ok(result);
+	                }
                 // Testing builtins
                 "assert" => {
                     if args.is_empty() || args.len() > 2 {
@@ -11074,21 +10892,17 @@ impl<'ctx> CodeGen<'ctx> {
                     };
                     let result = self
                         .builder
-                        .build_call(
-                            self.libc.assert_fn,
-                            &[cond.into(), msg.into()],
-                            "assert_result",
-                        )
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call assert: {}", e))
-                        })?
-                        .try_as_basic_value()
-                        .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("assert returned void".to_string())
-                        })?;
-                    return Ok(result);
-                }
+	                        .build_call(
+	                            self.libc.assert_fn,
+	                            &[cond.into(), msg.into()],
+	                            "assert_result",
+	                        )
+	                        .map_err(|e| HaversError::CompileError(format!("Failed to call assert: {}", e)))?
+	                        .try_as_basic_value()
+	                        .left()
+	                        .ok_or_else(|| HaversError::CompileError("assert returned void".to_string()))?;
+	                    return Ok(result);
+	                }
                 "skip" => {
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
@@ -11096,33 +10910,25 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let reason = self.compile_expr(&args[0])?;
-                    let result = self
-                        .builder
-                        .build_call(self.libc.skip, &[reason.into()], "skip_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call skip: {}", e))
-                        })?
-                        .try_as_basic_value()
-                        .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("skip returned void".to_string())
-                        })?;
-                    return Ok(result);
-                }
+	                    let result = self
+	                        .builder
+	                        .build_call(self.libc.skip, &[reason.into()], "skip_result")
+	                        .map_err(|e| HaversError::CompileError(format!("Failed to call skip: {}", e)))?
+	                        .try_as_basic_value()
+	                        .left()
+	                        .ok_or_else(|| HaversError::CompileError("skip returned void".to_string()))?;
+	                    return Ok(result);
+	                }
                 "stacktrace" => {
-                    let result = self
-                        .builder
-                        .build_call(self.libc.stacktrace, &[], "stacktrace_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call stacktrace: {}", e))
-                        })?
-                        .try_as_basic_value()
-                        .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("stacktrace returned void".to_string())
-                        })?;
-                    return Ok(result);
-                }
+	                    let result = self
+	                        .builder
+	                        .build_call(self.libc.stacktrace, &[], "stacktrace_result")
+	                        .map_err(|e| HaversError::CompileError(format!("Failed to call stacktrace: {}", e)))?
+	                        .try_as_basic_value()
+	                        .left()
+	                        .ok_or_else(|| HaversError::CompileError("stacktrace returned void".to_string()))?;
+	                    return Ok(result);
+	                }
                 // Additional Scots aliases
                 "scots_greetin" | "scunner" => {
                     // Return an error message string (Scots for "complaint")
@@ -11139,19 +10945,15 @@ impl<'ctx> CodeGen<'ctx> {
                     // Random seed / current time - return a random number for now
                     let min = self.types.i64_type.const_int(0, false);
                     let max = self.types.i64_type.const_int(i64::MAX as u64, false);
-                    let result = self
-                        .builder
-                        .build_call(self.libc.random, &[min.into(), max.into()], "seed_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call random: {}", e))
-                        })?
-                        .try_as_basic_value()
-                        .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("random returned void".to_string())
-                        })?;
-                    return Ok(result);
-                }
+	                    let result = self
+	                        .builder
+	                        .build_call(self.libc.random, &[min.into(), max.into()], "seed_result")
+	                        .map_err(|e| HaversError::CompileError(format!("Failed to call random: {}", e)))?
+	                        .try_as_basic_value()
+	                        .left()
+	                        .ok_or_else(|| HaversError::CompileError("random returned void".to_string()))?;
+	                    return Ok(result);
+	                }
                 // Additional builtins
                 "read_file" => {
                     // Alias for slurp
@@ -11160,20 +10962,16 @@ impl<'ctx> CodeGen<'ctx> {
                             "read_file expects 1 argument".to_string(),
                         ));
                     }
-                    let path = self.compile_expr(&args[0])?;
-                    let result = self
-                        .builder
-                        .build_call(self.libc.slurp, &[path.into()], "read_file_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call slurp: {}", e))
-                        })?
-                        .try_as_basic_value()
-                        .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("slurp returned void".to_string())
-                        })?;
-                    return Ok(result);
-                }
+	                    let path = self.compile_expr(&args[0])?;
+	                    let result = self
+	                        .builder
+	                        .build_call(self.libc.slurp, &[path.into()], "read_file_result")
+	                        .map_err(|e| HaversError::CompileError(format!("Failed to call slurp: {}", e)))?
+	                        .try_as_basic_value()
+	                        .left()
+	                        .ok_or_else(|| HaversError::CompileError("slurp returned void".to_string()))?;
+	                    return Ok(result);
+	                }
                 "muckle" | "max" => {
                     if args.len() == 1 {
                         // muckle([list]) - maximum of list elements
@@ -11210,19 +11008,15 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let list = self.compile_expr(&args[0])?;
-                    let result = self
-                        .builder
-                        .build_call(self.libc.median, &[list.into()], "median_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call median: {}", e))
-                        })?
-                        .try_as_basic_value()
-                        .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("median returned void".to_string())
-                        })?;
-                    return Ok(result);
-                }
+	                    let result = self
+	                        .builder
+	                        .build_call(self.libc.median, &[list.into()], "median_result")
+	                        .map_err(|e| HaversError::CompileError(format!("Failed to call median: {}", e)))?
+	                        .try_as_basic_value()
+	                        .left()
+	                        .ok_or_else(|| HaversError::CompileError("median returned void".to_string()))?;
+	                    return Ok(result);
+	                }
                 "is_space" => {
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
@@ -11230,19 +11024,15 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let str_val = self.compile_expr(&args[0])?;
-                    let result = self
-                        .builder
-                        .build_call(self.libc.is_space, &[str_val.into()], "is_space_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call is_space: {}", e))
-                        })?
-                        .try_as_basic_value()
-                        .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("is_space returned void".to_string())
-                        })?;
-                    return Ok(result);
-                }
+	                    let result = self
+	                        .builder
+	                        .build_call(self.libc.is_space, &[str_val.into()], "is_space_result")
+	                        .map_err(|e| HaversError::CompileError(format!("Failed to call is_space: {}", e)))?
+	                        .try_as_basic_value()
+	                        .left()
+	                        .ok_or_else(|| HaversError::CompileError("is_space returned void".to_string()))?;
+	                    return Ok(result);
+	                }
                 // is_digit now handled by inline_is_char_class later in the match
                 "wheesht_aw" => {
                     if args.len() != 1 {
@@ -11251,19 +11041,15 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let str_val = self.compile_expr(&args[0])?;
-                    let result = self
-                        .builder
-                        .build_call(self.libc.wheesht_aw, &[str_val.into()], "wheesht_aw_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call wheesht_aw: {}", e))
-                        })?
-                        .try_as_basic_value()
-                        .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("wheesht_aw returned void".to_string())
-                        })?;
-                    return Ok(result);
-                }
+	                    let result = self
+	                        .builder
+	                        .build_call(self.libc.wheesht_aw, &[str_val.into()], "wheesht_aw_result")
+	                        .map_err(|e| HaversError::CompileError(format!("Failed to call wheesht_aw: {}", e)))?
+	                        .try_as_basic_value()
+	                        .left()
+	                        .ok_or_else(|| HaversError::CompileError("wheesht_aw returned void".to_string()))?;
+	                    return Ok(result);
+	                }
                 "dicht" | "remove_at" => {
                     // dicht(list, index) - remove element at index (placeholder: return list)
                     if args.len() != 2 {
@@ -11283,14 +11069,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.bonnie, &[val.into()], "bonnie_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call bonnie: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call bonnie: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("bonnie returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("bonnie returned void".to_string()))?;
                     return Ok(result);
                 }
                 "deck" | "shuffle" | "mince" => {
@@ -11303,14 +11085,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.shuffle, &[list.into()], "shuffle_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call shuffle: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call shuffle: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("shuffle returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("shuffle returned void".to_string()))?;
                     return Ok(result);
                 }
                 "choice" => {
@@ -11407,14 +11185,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.bit_and, &[a.into(), b.into()], "bit_and_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call bit_and: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call bit_and: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("bit_and returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("bit_and returned void".to_string()))?;
                     return Ok(result);
                 }
                 "bit_or" => {
@@ -11428,14 +11202,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.bit_or, &[a.into(), b.into()], "bit_or_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call bit_or: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call bit_or: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("bit_or returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("bit_or returned void".to_string()))?;
                     return Ok(result);
                 }
                 "bit_xor" => {
@@ -11449,14 +11219,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.bit_xor, &[a.into(), b.into()], "bit_xor_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call bit_xor: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call bit_xor: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("bit_xor returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("bit_xor returned void".to_string()))?;
                     return Ok(result);
                 }
                 // Misc Scots aliases
@@ -11476,14 +11242,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.lines, &[path.into()], "read_lines_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call lines: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call lines: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("lines returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("lines returned void".to_string()))?;
                     return Ok(result);
                 }
                 "append_file" => {
@@ -11502,14 +11264,10 @@ impl<'ctx> CodeGen<'ctx> {
                             &[path.into(), content.into()],
                             "append_file_result",
                         )
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call scrieve: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call scrieve: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("scrieve returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("scrieve returned void".to_string()))?;
                     return Ok(result);
                 }
                 "minaw" => {
@@ -11523,14 +11281,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.list_min, &[list.into()], "minaw_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call list_min: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call list_min: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("list_min returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("list_min returned void".to_string()))?;
                     return Ok(result);
                 }
                 "is_wee" => {
@@ -11612,14 +11366,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.list_max, &[list.into()], "maxaw_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call list_max: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call list_max: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("list_max returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("list_max returned void".to_string()))?;
                     return Ok(result);
                 }
                 "is_odd" => {
@@ -11732,14 +11482,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.ltrim, &[arg.into()], "ltrim_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call ltrim: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call ltrim: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("ltrim returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("ltrim returned void".to_string()))?;
                     return Ok(result);
                 }
                 "rtrim" | "trim_right" | "rstrip" => {
@@ -11753,14 +11499,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.rtrim, &[arg.into()], "rtrim_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call rtrim: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call rtrim: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("rtrim returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("rtrim returned void".to_string()))?;
                     return Ok(result);
                 }
                 "count_str" | "str_count" | "count_char" => {
@@ -11882,23 +11624,19 @@ impl<'ctx> CodeGen<'ctx> {
                     let start_i64 = self.extract_data(start)?;
                     let end_i64 = self.extract_data(end)?;
                     let step_i64 = self.extract_data(step)?;
-                    let result = self
-                        .builder
-                        .build_call(
-                            self.libc.range,
-                            &[start_i64.into(), end_i64.into(), step_i64.into()],
-                            "range_result",
-                        )
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call range: {}", e))
-                        })?
-                        .try_as_basic_value()
-                        .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("range returned void".to_string())
-                        })?;
-                    return Ok(result);
-                }
+	                    let result = self
+	                        .builder
+	                        .build_call(
+	                            self.libc.range,
+	                            &[start_i64.into(), end_i64.into(), step_i64.into()],
+	                            "range_result",
+	                        )
+	                        .map_err(|e| HaversError::CompileError(format!("Failed to call range: {}", e)))?
+	                        .try_as_basic_value()
+	                        .left()
+	                        .ok_or_else(|| HaversError::CompileError("range returned void".to_string()))?;
+	                    return Ok(result);
+	                }
                 // Phase 5: Timing functions
                 "noo" => {
                     if !args.is_empty() {
@@ -11943,27 +11681,6 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let ms = self.compile_expr(&args[0])?;
                     return self.inline_bide(ms);
-                }
-                // Phase 7: I/O functions
-                "speir" => {
-                    // Use runtime function to handle stdin properly
-                    let prompt = if args.is_empty() {
-                        self.make_nil() // Pass nil for no prompt
-                    } else {
-                        self.compile_expr(&args[0])?
-                    };
-                    let result = self
-                        .builder
-                        .build_call(self.libc.speir, &[prompt.into()], "speir_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call speir: {}", e))
-                        })?
-                        .try_as_basic_value()
-                        .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("speir call failed".to_string())
-                        })?;
-                    return Ok(result);
                 }
                 // Extra: String operations
                 "split" => {
@@ -13240,14 +12957,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.title_case, &[arg.into()], "title_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call title_case: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call title_case: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("title_case returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("title_case returned void".to_string()))?;
                     return Ok(result);
                 }
                 "bit_shove_right" | "bit_shift_right" => {
@@ -14162,17 +13875,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.reverse_str, &[arg.into()], "reverse_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!(
-                                "Failed to call reverse_str: {}",
-                                e
-                            ))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call reverse_str: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("reverse_str returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("reverse_str returned void".to_string()))?;
                     return Ok(result);
                 }
                 "key_down" | "key_pressed" | "key_up" | "key_released" => {
@@ -14199,14 +13905,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.fae_binary, &[arg.into()], "fae_binary_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call fae_binary: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call fae_binary: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("fae_binary returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("fae_binary returned void".to_string()))?;
                     return Ok(result);
                 }
                 "fae_hex" | "from_hex" => {
@@ -14220,14 +13922,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.fae_hex, &[arg.into()], "fae_hex_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call fae_hex: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call fae_hex: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("fae_hex returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("fae_hex returned void".to_string()))?;
                     return Ok(result);
                 }
                 "dae_times" | "times" | "repeat_n" => {
@@ -15113,23 +14811,19 @@ impl<'ctx> CodeGen<'ctx> {
                     let dict_arg = self.compile_expr(&args[0])?;
                     let keys = self.inline_keys(dict_arg)?;
                     let values = self.inline_values(dict_arg)?;
-                    let result = self
-                        .builder
-                        .build_call(
-                            self.libc.pair_up,
-                            &[keys.into(), values.into()],
-                            "items_result",
-                        )
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call pair_up: {}", e))
-                        })?
-                        .try_as_basic_value()
-                        .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("pair_up returned void".to_string())
-                        })?;
-                    return Ok(result);
-                }
+	                    let result = self
+	                        .builder
+	                        .build_call(
+	                            self.libc.pair_up,
+	                            &[keys.into(), values.into()],
+	                            "items_result",
+	                        )
+	                        .map_err(|e| HaversError::CompileError(format!("Failed to call pair_up: {}", e)))?
+	                        .try_as_basic_value()
+	                        .left()
+	                        .ok_or_else(|| HaversError::CompileError("pair_up returned void".to_string()))?;
+	                    return Ok(result);
+	                }
                 "scots_wisdom" | "wisdom" => {
                     // Get random Scots wisdom/proverb
                     return self.compile_string_literal("Lang may yer lum reek!");
@@ -15493,14 +15187,10 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(self.libc.is_function, &[arg.into()], "is_function_result")
-                        .map_err(|e| {
-                            HaversError::CompileError(format!("Failed to call is_function: {}", e))
-                        })?
+                        .map_err(|e| HaversError::CompileError(format!("Failed to call is_function: {}", e)))?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("is_function returned void".to_string())
-                        })?;
+                        .ok_or_else(|| HaversError::CompileError("is_function returned void".to_string()))?;
                     return Ok(result);
                 }
                 "swapcase" | "swap_case" => {
@@ -15718,23 +15408,19 @@ impl<'ctx> CodeGen<'ctx> {
                     for arg in &args[1..] {
                         let compiled_arg = self.compile_expr(arg)?;
                         let repl_val = self.inline_tae_string(compiled_arg)?;
-                        let next = self
-                            .builder
-                            .build_call(
-                                self.libc.replace_first,
-                                &[out.into(), placeholder.into(), repl_val.into()],
-                                "format_repl",
-                            )
-                            .map_err(|e| {
-                                HaversError::CompileError(format!("Failed to call replace_first: {}", e))
-                            })?
-                            .try_as_basic_value()
-                            .left()
-                            .ok_or_else(|| {
-                                HaversError::CompileError("replace_first returned void".to_string())
-                            })?;
-                        out = next;
-                    }
+	                        let next = self
+	                            .builder
+	                            .build_call(
+	                                self.libc.replace_first,
+	                                &[out.into(), placeholder.into(), repl_val.into()],
+	                                "format_repl",
+	                            )
+	                            .map_err(|e| HaversError::CompileError(format!("Failed to call replace_first: {}", e)))?
+	                            .try_as_basic_value()
+	                            .left()
+	                            .ok_or_else(|| HaversError::CompileError("replace_first returned void".to_string()))?;
+	                        out = next;
+	                    }
 
                     return Ok(out);
                 }
@@ -16674,10 +16360,11 @@ impl<'ctx> CodeGen<'ctx> {
         params: &[crate::ast::Param],
         body: &[Stmt],
     ) -> Result<(), HaversError> {
-        let function =
-            self.functions.get(name).copied().ok_or_else(|| {
-                HaversError::CompileError(format!("Function not declared: {}", name))
-            })?;
+        let function = self
+            .functions
+            .get(name)
+            .copied()
+            .ok_or_else(|| HaversError::CompileError(format!("Function not declared: {}", name)))?;
 
         let entry = self.context.append_basic_block(function, "entry");
 
@@ -16690,11 +16377,15 @@ impl<'ctx> CodeGen<'ctx> {
         let saved_string_len_shadows = std::mem::take(&mut self.string_len_shadows);
         let saved_string_cap_shadows = std::mem::take(&mut self.string_cap_shadows);
         let saved_boxed_vars = std::mem::take(&mut self.boxed_vars);
+        let saved_masel = self.current_masel;
         let saved_in_user_function = self.in_user_function;
 
         self.builder.position_at_end(entry);
         self.current_function = Some(function);
         self.in_user_function = true;
+        // Avoid leaking an outer method's `masel` into a nested function body; captured `masel`
+        // will explicitly set this when present.
+        self.current_masel = None;
 
         // Captures-first convention: captured variables (cells) come before user params.
         let captures_for_this_fn = self.function_captures.get(name).cloned().unwrap_or_default();
@@ -16702,14 +16393,16 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Captured variables are boxed cells passed in.
         for (i, capture_name) in captures_for_this_fn.iter().enumerate() {
-            let param_val = function.get_nth_param(i as u32).ok_or_else(|| {
-                HaversError::CompileError(format!("Missing captured param: {}", capture_name))
-            })?;
+            let param_val = function.get_nth_param(i as u32).ok_or_else(|| HaversError::CompileError(format!("Missing captured param: {}", capture_name)))?;
             let alloca = self.create_entry_block_alloca(capture_name);
             self.builder.build_store(alloca, param_val).unwrap();
             self.variables.insert(capture_name.clone(), alloca);
             self.var_types.insert(capture_name.clone(), VarType::Unknown);
-            self.boxed_vars.insert(capture_name.clone());
+            if capture_name == "masel" {
+                self.current_masel = Some(alloca);
+            } else {
+                self.boxed_vars.insert(capture_name.clone());
+            }
         }
 
         // Set up user parameters (after captures). Don't create shadows until we know boxing.
@@ -16740,8 +16433,20 @@ impl<'ctx> CodeGen<'ctx> {
             {
                 if !self.functions.contains_key(nested_name) {
                     // Find free variables in the nested function
-                    let captures = self.find_free_variables_in_body(nested_body, nested_params);
-                    captured_in_body.extend(captures.iter().cloned());
+                    let mut captures = self.find_free_variables_in_body(nested_body, nested_params);
+                    if self.current_masel.is_some()
+                        && self.body_uses_masel(nested_body)
+                        && !captures.iter().any(|c| c == "masel")
+                    {
+                        captures.push("masel".to_string());
+                        captures.sort();
+                    }
+                    captured_in_body.extend(
+                        captures
+                            .iter()
+                            .filter(|c| c.as_str() != "masel")
+                            .cloned(),
+                    );
                     self.declare_function_with_captures(
                         nested_name,
                         nested_params.len(),
@@ -16814,6 +16519,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.string_cap_shadows = saved_string_cap_shadows;
         self.boxed_vars = saved_boxed_vars;
         self.in_user_function = saved_in_user_function;
+        self.current_masel = saved_masel;
 
         // Restore the builder position to where it was before compiling this function
         if let Some(block) = saved_block {
@@ -17053,23 +16759,19 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Store capacity at offset 16
         let capacity_field_ptr = unsafe {
-            self.builder
+                self.builder
                 .build_gep(
                     self.context.i8_type(),
                     list_ptr,
                     &[self.types.i64_type.const_int(16, false)],
                     "capacity_field_ptr",
                 )
-                .map_err(|e| {
-                    HaversError::CompileError(format!("Failed to get capacity ptr: {}", e))
-                })?
+                .map_err(|e| HaversError::CompileError(format!("Failed to get capacity ptr: {}", e)))?
         };
         let capacity_ptr = self
             .builder
             .build_pointer_cast(capacity_field_ptr, i64_ptr_type, "capacity_ptr")
-            .map_err(|e| {
-                HaversError::CompileError(format!("Failed to cast capacity ptr: {}", e))
-            })?;
+            .map_err(|e| HaversError::CompileError(format!("Failed to cast capacity ptr: {}", e)))?;
         let cap_val = self
             .types
             .i64_type
@@ -17083,9 +16785,7 @@ impl<'ctx> CodeGen<'ctx> {
         let elements_ptr = self
             .builder
             .build_pointer_cast(items_ptr, value_ptr_type, "elements_ptr")
-            .map_err(|e| {
-                HaversError::CompileError(format!("Failed to cast elements pointer: {}", e))
-            })?;
+            .map_err(|e| HaversError::CompileError(format!("Failed to cast elements pointer: {}", e)))?;
 
         // Compile and store each element
         for (i, elem) in elements.iter().enumerate() {
@@ -17100,18 +16800,13 @@ impl<'ctx> CodeGen<'ctx> {
                         &[self.types.i64_type.const_int(i as u64, false)],
                         &format!("elem_{}", i),
                     )
-                    .map_err(|e| {
-                        HaversError::CompileError(format!(
-                            "Failed to compute element pointer: {}",
-                            e
-                        ))
-                    })?
+                    .map_err(|e| HaversError::CompileError(format!("Failed to compute element pointer: {}", e)))?
             };
 
             // Store the element
-            self.builder.build_store(elem_ptr, compiled).map_err(|e| {
-                HaversError::CompileError(format!("Failed to store element: {}", e))
-            })?;
+            self.builder
+                .build_store(elem_ptr, compiled)
+                .map_err(|e| HaversError::CompileError(format!("Failed to store element: {}", e)))?;
         }
 
         // Return the list as a tagged value
@@ -17394,9 +17089,7 @@ impl<'ctx> CodeGen<'ctx> {
                     &[self.types.i64_type.const_int(1, false)],
                     "entries_base",
                 )
-                .map_err(|e| {
-                    HaversError::CompileError(format!("Failed to compute entries base: {}", e))
-                })?
+                .map_err(|e| HaversError::CompileError(format!("Failed to compute entries base: {}", e)))?
         };
 
         // Compile and store each key-value pair
@@ -17421,9 +17114,7 @@ impl<'ctx> CodeGen<'ctx> {
                         &[entry_offset],
                         &format!("entry_{}", i),
                     )
-                    .map_err(|e| {
-                        HaversError::CompileError(format!("Failed to compute entry pointer: {}", e))
-                    })?
+                    .map_err(|e| HaversError::CompileError(format!("Failed to compute entry pointer: {}", e)))?
             };
 
             // Store key at entry start
@@ -17434,9 +17125,7 @@ impl<'ctx> CodeGen<'ctx> {
                     self.types.value_type.ptr_type(AddressSpace::default()),
                     &format!("key_ptr_{}", i),
                 )
-                .map_err(|e| {
-                    HaversError::CompileError(format!("Failed to cast key pointer: {}", e))
-                })?;
+                .map_err(|e| HaversError::CompileError(format!("Failed to cast key pointer: {}", e)))?;
             self.builder
                 .build_store(key_ptr, compiled_key)
                 .map_err(|e| HaversError::CompileError(format!("Failed to store key: {}", e)))?;
@@ -17451,9 +17140,7 @@ impl<'ctx> CodeGen<'ctx> {
                         &[value_offset],
                         &format!("val_gep_{}", i),
                     )
-                    .map_err(|e| {
-                        HaversError::CompileError(format!("Failed to compute value pointer: {}", e))
-                    })?
+                    .map_err(|e| HaversError::CompileError(format!("Failed to compute value pointer: {}", e)))?
             };
             let val_typed_ptr = self
                 .builder
@@ -17462,9 +17149,7 @@ impl<'ctx> CodeGen<'ctx> {
                     self.types.value_type.ptr_type(AddressSpace::default()),
                     &format!("val_ptr_{}", i),
                 )
-                .map_err(|e| {
-                    HaversError::CompileError(format!("Failed to cast value pointer: {}", e))
-                })?;
+                .map_err(|e| HaversError::CompileError(format!("Failed to cast value pointer: {}", e)))?;
             self.builder
                 .build_store(val_typed_ptr, compiled_val)
                 .map_err(|e| HaversError::CompileError(format!("Failed to store value: {}", e)))?;
@@ -17589,9 +17274,7 @@ impl<'ctx> CodeGen<'ctx> {
         let list_ptr = self
             .builder
             .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr")
-            .map_err(|e| {
-                HaversError::CompileError(format!("Failed to convert to pointer: {}", e))
-            })?;
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert to pointer: {}", e)))?;
 
         // Load items pointer from offset 0
         let items_ptr_as_i64 = self
@@ -17653,9 +17336,7 @@ impl<'ctx> CodeGen<'ctx> {
                     &[final_index],
                     "elem_ptr",
                 )
-                .map_err(|e| {
-                    HaversError::CompileError(format!("Failed to compute element pointer: {}", e))
-                })?
+                .map_err(|e| HaversError::CompileError(format!("Failed to compute element pointer: {}", e)))?
         };
 
         // Load and return the element
@@ -17681,9 +17362,7 @@ impl<'ctx> CodeGen<'ctx> {
                 // Load raw pointer from shadow
                 self.builder
                     .build_load(self.types.i64_type, shadow, "list_ptr_shadow_rd")
-                    .map_err(|e| {
-                        HaversError::CompileError(format!("Failed to load shadow: {}", e))
-                    })?
+                    .map_err(|e| HaversError::CompileError(format!("Failed to load shadow: {}", e)))?
                     .into_int_value()
             } else {
                 let obj_val = self.compile_expr(object)?;
@@ -17707,9 +17386,7 @@ impl<'ctx> CodeGen<'ctx> {
         let list_ptr = self
             .builder
             .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr_fast")
-            .map_err(|e| {
-                HaversError::CompileError(format!("Failed to convert to pointer: {}", e))
-            })?;
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert to pointer: {}", e)))?;
 
         // Load items pointer from offset 0
         let items_ptr_as_i64 = self
@@ -17770,9 +17447,7 @@ impl<'ctx> CodeGen<'ctx> {
                     &[final_index],
                     "elem_ptr_fast",
                 )
-                .map_err(|e| {
-                    HaversError::CompileError(format!("Failed to compute element pointer: {}", e))
-                })?
+                .map_err(|e| HaversError::CompileError(format!("Failed to compute element pointer: {}", e)))?
         };
 
         // Load and return the element
@@ -17799,9 +17474,7 @@ impl<'ctx> CodeGen<'ctx> {
         let dict_ptr = self
             .builder
             .build_int_to_ptr(dict_data, i8_ptr_type, "dict_ptr")
-            .map_err(|e| {
-                HaversError::CompileError(format!("Failed to convert to pointer: {}", e))
-            })?;
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert to pointer: {}", e)))?;
 
         // Get dict count
         let count_ptr = self
@@ -18138,9 +17811,7 @@ impl<'ctx> CodeGen<'ctx> {
         let list_ptr = self
             .builder
             .build_int_to_ptr(obj_data, i64_ptr_type, "list_ptr")
-            .map_err(|e| {
-                HaversError::CompileError(format!("Failed to convert to pointer: {}", e))
-            })?;
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert to pointer: {}", e)))?;
 
         // Load items pointer from offset 0
         let items_ptr_as_i64 = self
@@ -18202,9 +17873,7 @@ impl<'ctx> CodeGen<'ctx> {
                     &[final_index],
                     "elem_ptr",
                 )
-                .map_err(|e| {
-                    HaversError::CompileError(format!("Failed to compute element pointer: {}", e))
-                })?
+                .map_err(|e| HaversError::CompileError(format!("Failed to compute element pointer: {}", e)))?
         };
 
         // Store the new value at that location
@@ -18294,9 +17963,7 @@ impl<'ctx> CodeGen<'ctx> {
                 // Load raw pointer from shadow
                 self.builder
                     .build_load(self.types.i64_type, shadow, "list_ptr_shadow")
-                    .map_err(|e| {
-                        HaversError::CompileError(format!("Failed to load shadow: {}", e))
-                    })?
+                    .map_err(|e| HaversError::CompileError(format!("Failed to load shadow: {}", e)))?
                     .into_int_value()
             } else {
                 let obj_val = self.compile_expr(object)?;
@@ -18320,9 +17987,7 @@ impl<'ctx> CodeGen<'ctx> {
         let list_ptr = self
             .builder
             .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr_set_fast")
-            .map_err(|e| {
-                HaversError::CompileError(format!("Failed to convert to pointer: {}", e))
-            })?;
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert to pointer: {}", e)))?;
 
         // Load length from MdhList offset 1 for negative index handling
         let len_ptr = unsafe {
@@ -18383,9 +18048,7 @@ impl<'ctx> CodeGen<'ctx> {
                     &[final_index],
                     "elem_ptr_set_fast",
                 )
-                .map_err(|e| {
-                    HaversError::CompileError(format!("Failed to compute element pointer: {}", e))
-                })?
+                .map_err(|e| HaversError::CompileError(format!("Failed to compute element pointer: {}", e)))?
         };
 
         // Store the new value at that location
@@ -18408,9 +18071,7 @@ impl<'ctx> CodeGen<'ctx> {
         let str_ptr = self
             .builder
             .build_int_to_ptr(str_data, i8_ptr_type, "str_ptr")
-            .map_err(|e| {
-                HaversError::CompileError(format!("Failed to convert to pointer: {}", e))
-            })?;
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert to pointer: {}", e)))?;
 
         // Get string length
         let length = self
@@ -18455,9 +18116,7 @@ impl<'ctx> CodeGen<'ctx> {
         let char_ptr = unsafe {
             self.builder
                 .build_gep(self.context.i8_type(), str_ptr, &[final_index], "char_ptr")
-                .map_err(|e| {
-                    HaversError::CompileError(format!("Failed to compute char pointer: {}", e))
-                })?
+                .map_err(|e| HaversError::CompileError(format!("Failed to compute char pointer: {}", e)))?
         };
 
         // Load the character
@@ -18480,9 +18139,7 @@ impl<'ctx> CodeGen<'ctx> {
                     &[self.types.i64_type.const_int(1, false)],
                     "null_ptr",
                 )
-                .map_err(|e| {
-                    HaversError::CompileError(format!("Failed to compute null pointer: {}", e))
-                })?
+                .map_err(|e| HaversError::CompileError(format!("Failed to compute null pointer: {}", e)))?
         };
         let null_byte = self.context.i8_type().const_int(0, false);
         self.builder
@@ -20277,6 +19934,10 @@ impl<'ctx> CodeGen<'ctx> {
             }
             _ => false,
         }
+    }
+
+    fn body_uses_masel(&self, body: &[Stmt]) -> bool {
+        body.iter().any(|s| self.stmt_uses_masel(s))
     }
 
     /// Find free variables in a function body (Vec<Stmt>)
@@ -23053,13 +22714,8 @@ impl<'ctx> CodeGen<'ctx> {
         self.imported_modules.insert(import_path.clone());
 
         // Read and parse the imported file
-        let source = std::fs::read_to_string(&import_path).map_err(|e| {
-            HaversError::CompileError(format!(
-                "Failed to read import '{}': {}",
-                import_path.display(),
-                e
-            ))
-        })?;
+        let source = std::fs::read_to_string(&import_path)
+            .map_err(|e| HaversError::CompileError(format!("Failed to read import '{}': {}", import_path.display(), e)))?;
 
         let program = crate::parser::parse(&source)?;
 
@@ -23352,9 +23008,7 @@ impl<'ctx> CodeGen<'ctx> {
         let err_val = self
             .builder
             .build_call(self.libc.get_last_error, &[], "last_error")
-            .map_err(|e| {
-                HaversError::CompileError(format!("Failed to call get_last_error: {}", e))
-            })?
+            .map_err(|e| HaversError::CompileError(format!("Failed to call get_last_error: {}", e)))?
             .try_as_basic_value()
             .left()
             .ok_or_else(|| HaversError::CompileError("get_last_error returned void".to_string()))?;
@@ -24760,9 +24414,10 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<(), HaversError> {
         // Get the already-declared function
         let func_name = format!("{}_{}", class_name, method_name);
-        let function = *self.functions.get(&func_name).ok_or_else(|| {
-            HaversError::CompileError(format!("Method {} not declared", func_name))
-        })?;
+        let function = *self
+            .functions
+            .get(&func_name)
+            .ok_or_else(|| HaversError::CompileError(format!("Method {} not declared", func_name)))?;
 
         // Save current state - IMPORTANT: save ALL shadow maps to prevent cross-method leakage
         let old_function = self.current_function;
@@ -24772,9 +24427,12 @@ impl<'ctx> CodeGen<'ctx> {
         let old_string_len_shadows = std::mem::take(&mut self.string_len_shadows);
         let old_string_cap_shadows = std::mem::take(&mut self.string_cap_shadows);
         let old_var_types = std::mem::take(&mut self.var_types);
+        let old_boxed_vars = std::mem::take(&mut self.boxed_vars);
         let old_masel = self.current_masel;
+        let old_in_user_function = self.in_user_function;
 
         self.current_function = Some(function);
+        self.in_user_function = true;
 
         // Create entry block
         let entry = self.context.append_basic_block(function, "entry");
@@ -24791,6 +24449,8 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| HaversError::CompileError(format!("Failed to store masel: {}", e)))?;
         self.current_masel = Some(masel_alloca);
         self.variables.insert("masel".to_string(), masel_alloca);
+        self.var_types
+            .insert("masel".to_string(), VarType::Unknown);
 
         // Bind remaining parameters
         for (i, param) in params.iter().enumerate() {
@@ -24803,7 +24463,55 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_store(alloca, param_val)
                 .map_err(|e| HaversError::CompileError(format!("Failed to store param: {}", e)))?;
             self.variables.insert(param.name.clone(), alloca);
+            self.var_types.insert(param.name.clone(), VarType::Unknown);
         }
+
+        // Predeclare locals so nested-function capture discovery can see variables that are declared
+        // later in the body (same approach as compile_function).
+        self.predeclare_locals_for_capture(body)?;
+
+        // Pre-declare any nested functions in this body with captures.
+        let mut captured_in_body: HashSet<String> = HashSet::new();
+        for stmt in body {
+            if let Stmt::Function {
+                name: nested_name,
+                params: nested_params,
+                body: nested_body,
+                ..
+            } = stmt
+            {
+                if !self.functions.contains_key(nested_name) {
+                    let mut captures = self.find_free_variables_in_body(nested_body, nested_params);
+                    if self.current_masel.is_some()
+                        && self.body_uses_masel(nested_body)
+                        && !captures.iter().any(|c| c == "masel")
+                    {
+                        captures.push("masel".to_string());
+                        captures.sort();
+                    }
+                    captured_in_body.extend(
+                        captures
+                            .iter()
+                            .filter(|c| c.as_str() != "masel")
+                            .cloned(),
+                    );
+                    self.declare_function_with_captures(
+                        nested_name,
+                        nested_params.len(),
+                        &captures,
+                    )?;
+                }
+            }
+        }
+
+        // Box method parameters captured by nested functions.
+        for param in params {
+            if captured_in_body.contains(&param.name) {
+                self.ensure_boxed_variable(&param.name)?;
+            }
+        }
+        // Mark all captured locals/params as boxed in this scope (locals will be boxed at decl).
+        self.boxed_vars.extend(captured_in_body);
 
         // Compile method body
         for stmt in body {
@@ -24838,7 +24546,9 @@ impl<'ctx> CodeGen<'ctx> {
         self.string_len_shadows = old_string_len_shadows;
         self.string_cap_shadows = old_string_cap_shadows;
         self.var_types = old_var_types;
+        self.boxed_vars = old_boxed_vars;
         self.current_masel = old_masel;
+        self.in_user_function = old_in_user_function;
 
         Ok(())
     }
@@ -25049,9 +24759,8 @@ impl<'ctx> CodeGen<'ctx> {
             return self.call_callable_value(field_val, &field_call_args);
         }
 
-        let (method_func, func_name) = found_method.ok_or_else(|| {
-            HaversError::CompileError(format!("Method '{}' not found", method_name))
-        })?;
+        let (method_func, func_name) = found_method
+            .ok_or_else(|| HaversError::CompileError(format!("Method '{}' not found", method_name)))?;
 
         // Build call arguments: instance first, then regular args
         let mut call_args: Vec<BasicMetadataValueEnum> = vec![instance.into()];
@@ -25115,9 +24824,7 @@ impl<'ctx> CodeGen<'ctx> {
         let fn_ptr = self
             .builder
             .build_int_to_ptr(fn_ptr_int, fn_ptr_type, "callable_fn_ptr")
-            .map_err(|e| {
-                HaversError::CompileError(format!("Failed to convert to fn ptr: {}", e))
-            })?;
+            .map_err(|e| HaversError::CompileError(format!("Failed to convert to fn ptr: {}", e)))?;
 
         // Build indirect call
         let result = self
@@ -25406,14 +25113,10 @@ impl<'ctx> CodeGen<'ctx> {
         let result = self
             .builder
             .build_call(term_width_fn, &[], "term_width_result")
-            .map_err(|e| {
-                HaversError::CompileError(format!("Failed to call __mdh_term_width: {}", e))
-            })?
+            .map_err(|e| HaversError::CompileError(format!("Failed to call __mdh_term_width: {}", e)))?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| {
-                HaversError::CompileError("__mdh_term_width returned void".to_string())
-            })?;
+            .ok_or_else(|| HaversError::CompileError("__mdh_term_width returned void".to_string()))?;
 
         Ok(result)
     }
@@ -25428,14 +25131,10 @@ impl<'ctx> CodeGen<'ctx> {
         let result = self
             .builder
             .build_call(term_height_fn, &[], "term_height_result")
-            .map_err(|e| {
-                HaversError::CompileError(format!("Failed to call __mdh_term_height: {}", e))
-            })?
+            .map_err(|e| HaversError::CompileError(format!("Failed to call __mdh_term_height: {}", e)))?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| {
-                HaversError::CompileError("__mdh_term_height returned void".to_string())
-            })?;
+            .ok_or_else(|| HaversError::CompileError("__mdh_term_height returned void".to_string()))?;
 
         Ok(result)
     }

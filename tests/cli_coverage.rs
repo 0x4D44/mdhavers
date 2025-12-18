@@ -168,6 +168,52 @@ blether x + 1
     assert_eq!(code, 0, "stderr: {err}");
     assert!(ll_out.exists());
 
+    // build --emit-llvm (default output path)
+    let default_ll = dir.path().join("ok.ll");
+    let (code, _out, err) = run_mdhavers(
+        &["build", ok_braw.to_str().unwrap(), "--emit-llvm", "-O", "0"],
+        None,
+        home,
+    );
+    assert_eq!(code, 0, "stderr: {err}");
+    assert!(default_ll.exists());
+
+    // build native executable (default output path)
+    let native_out = dir.path().join("ok");
+    let (code, _out, err) = run_mdhavers(
+        &["build", ok_braw.to_str().unwrap(), "-O", "0"],
+        None,
+        home,
+    );
+    assert_eq!(code, 0, "stderr: {err}");
+    assert!(native_out.exists());
+
+    // compile to JS (default output path)
+    let default_js = dir.path().join("ok.js");
+    let (code, _out, err) = run_mdhavers(&["compile", ok_braw.to_str().unwrap()], None, home);
+    assert_eq!(code, 0, "stderr: {err}");
+    assert!(default_js.exists());
+
+    // wasm (default output path)
+    let default_wat = dir.path().join("ok.wat");
+    let (code, _out, err) = run_mdhavers(&["wasm", ok_braw.to_str().unwrap()], None, home);
+    assert_eq!(code, 0, "stderr: {err}");
+    assert!(default_wat.exists());
+
+    // trace (verbose)
+    let (code, _out, err) = run_mdhavers(
+        &["trace", "--verbose", ok_braw.to_str().unwrap()],
+        None,
+        home,
+    );
+    assert_eq!(code, 0, "stderr: {err}");
+
+    // fmt without --check (writes file)
+    let (code, _out, err) = run_mdhavers(&["fmt", unformatted_braw.to_str().unwrap()], None, home);
+    assert_eq!(code, 0, "stderr: {err}");
+    let formatted = fs::read_to_string(&unformatted_braw).unwrap();
+    assert!(formatted.contains("ken x = 1"));
+
     // parse error path
     let (code, _out, _err) = run_mdhavers(&["check", bad_syntax_braw.to_str().unwrap()], None, home);
     assert_ne!(code, 0);
@@ -189,15 +235,26 @@ fn cli_repl_scripted_session_exits_cleanly() {
     let dir = tempdir().unwrap();
     let home = dir.path();
 
+    // Seed a history file to hit load_history path.
+    write_file(&home.join(".mdhavers_history"), "ken x = 1\n");
+
     let script = [
+        "",
         "help",
+        "clear",
         ":wisdom",
         ":codewisdom",
         ":examples",
+        ":vars",
+        ":trace",
         ":trace",
         ":trace verbose",
         "ken x = 41",
         "x + 1",
+        "ken big = \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"",
+        ":vars",
+        "ken =",
+        "1 / 0",
         ":vars",
         ":reset",
         "quit",
@@ -218,6 +275,26 @@ fn cli_repl_handles_eof() {
 
     // No input: causes EOF on first readline -> clean exit path.
     let (code, out, err) = run_mdhavers(&["repl"], None, home);
+    assert_eq!(code, 0, "stderr: {err}");
+    assert!(out.contains("mdhavers REPL"));
+}
+
+#[test]
+fn cli_no_args_starts_repl_and_accepts_quit() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let (code, out, err) = run_mdhavers(&[], Some("quit\n"), home);
+    assert_eq!(code, 0, "stderr: {err}");
+    assert!(out.contains("mdhavers REPL"));
+}
+
+#[test]
+fn cli_repl_history_save_error_path_is_non_fatal() {
+    let dir = tempdir().unwrap();
+    let home_as_file = dir.path().join("home_is_a_file");
+    write_file(&home_as_file, "not a directory");
+    let (code, out, err) = run_mdhavers(&["repl"], Some("quit\n"), &home_as_file);
     assert_eq!(code, 0, "stderr: {err}");
     assert!(out.contains("mdhavers REPL"));
 }

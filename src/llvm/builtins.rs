@@ -75,3 +75,27 @@ pub fn is_builtin(name: &str) -> bool {
 pub fn get_builtin(name: &str) -> Option<&'static BuiltinInfo> {
     BUILTINS.iter().find(|b| b.name == name)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn leak(s: &str) -> &'static str {
+        Box::leak(s.to_string().into_boxed_str())
+    }
+
+    #[test]
+    fn builtin_info_constructors_execute_at_runtime() {
+        let info = BuiltinInfo::new(leak("x"), leak("y"), 1, Some(2));
+        assert_eq!(info.name, "x");
+        assert_eq!(info.runtime_name, "y");
+        assert_eq!(info.min_arity, 1);
+        assert_eq!(info.max_arity, Some(2));
+
+        let fixed = BuiltinInfo::fixed(leak("z"), leak("w"), 0);
+        assert_eq!(fixed.name, "z");
+        assert_eq!(fixed.runtime_name, "w");
+        assert_eq!(fixed.min_arity, 0);
+        assert_eq!(fixed.max_arity, Some(0));
+    }
+}
