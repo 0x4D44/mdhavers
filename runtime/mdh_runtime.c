@@ -4042,6 +4042,39 @@ MdhValue __mdh_grup(MdhValue list, MdhValue size) {
     return __mdh_chunks(list, size);
 }
 
+MdhValue __mdh_window(MdhValue str, MdhValue size) {
+    if (str.tag != MDH_TAG_STRING) {
+        __mdh_type_error("window", str.tag, 0);
+        return __mdh_make_list(0);
+    }
+    if (size.tag != MDH_TAG_INT) {
+        __mdh_type_error("window", size.tag, 0);
+        return __mdh_make_list(0);
+    }
+
+    int64_t n = size.data;
+    if (n <= 0) {
+        __mdh_hurl(__mdh_make_string("window() size must be positive"));
+        return __mdh_make_list(0);
+    }
+
+    const char *s = __mdh_get_string(str);
+    int64_t len = s ? (int64_t)strlen(s) : 0;
+    if (n > len) {
+        return __mdh_make_list(0);
+    }
+
+    int64_t out_len = len - n + 1;
+    MdhValue out = __mdh_make_list((int32_t)out_len);
+    for (int64_t i = 0; i <= len - n; i++) {
+        char *buf = (char *)GC_malloc((size_t)n + 1);
+        memcpy(buf, s + i, (size_t)n);
+        buf[n] = '\0';
+        __mdh_list_push(out, __mdh_string_from_buf(buf));
+    }
+    return out;
+}
+
 MdhValue __mdh_interleave(MdhValue list_a, MdhValue list_b) {
     if (list_a.tag != MDH_TAG_LIST || list_b.tag != MDH_TAG_LIST) {
         __mdh_type_error("interleave", list_a.tag, list_b.tag);

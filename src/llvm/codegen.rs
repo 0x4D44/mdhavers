@@ -164,6 +164,7 @@ struct LibcFunctions<'ctx> {
     indices_o: FunctionValue<'ctx>,
     grup: FunctionValue<'ctx>,
     chunks: FunctionValue<'ctx>,
+    window: FunctionValue<'ctx>,
     interleave: FunctionValue<'ctx>,
     pair_adjacent: FunctionValue<'ctx>,
     skelp: FunctionValue<'ctx>,
@@ -954,6 +955,7 @@ impl<'ctx> CodeGen<'ctx> {
             .fn_type(&[types.value_type.into(), types.value_type.into()], false);
         let grup = module.add_function("__mdh_grup", grup_type, Some(Linkage::External));
         let chunks = module.add_function("__mdh_chunks", grup_type, Some(Linkage::External));
+        let window = module.add_function("__mdh_window", grup_type, Some(Linkage::External));
         let interleave =
             module.add_function("__mdh_interleave", grup_type, Some(Linkage::External));
 
@@ -1659,6 +1661,7 @@ impl<'ctx> CodeGen<'ctx> {
             indices_o,
             grup,
             chunks,
+            window,
             interleave,
             pair_adjacent,
             skelp,
@@ -2932,6 +2935,7 @@ impl<'ctx> CodeGen<'ctx> {
         let int_int = self.context.append_basic_block(function, "add_int_int");
         let float_case = self.context.append_basic_block(function, "add_float");
         let string_case = self.context.append_basic_block(function, "add_string");
+        let list_case = self.context.append_basic_block(function, "add_list");
         let error_case = self.context.append_basic_block(function, "add_error");
         let merge = self.context.append_basic_block(function, "add_merge");
 
@@ -2951,6 +2955,10 @@ impl<'ctx> CodeGen<'ctx> {
             .types
             .i8_type
             .const_int(ValueTag::String.as_u8() as u64, false);
+        let list_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::List.as_u8() as u64, false);
 
         // Check if both are int-like (int or bool)
         let left_is_int = self
@@ -3010,9 +3018,24 @@ impl<'ctx> CodeGen<'ctx> {
             .build_and(left_is_string, right_is_string, "both_str")
             .unwrap();
 
+        // Check if both are lists (list + list => concatenation)
+        let left_is_list = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, left_tag, list_tag, "l_list")
+            .unwrap();
+        let right_is_list = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, right_tag, list_tag, "r_list")
+            .unwrap();
+        let both_list = self
+            .builder
+            .build_and(left_is_list, right_is_list, "both_list")
+            .unwrap();
+
         // Branch based on types
         let check_float = self.context.append_basic_block(function, "check_float");
         let check_string = self.context.append_basic_block(function, "check_string");
+        let check_list = self.context.append_basic_block(function, "check_list");
 
         self.builder
             .build_conditional_branch(both_int, int_int, check_float)
@@ -3025,7 +3048,12 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(check_string);
         self.builder
-            .build_conditional_branch(both_string, string_case, error_case)
+            .build_conditional_branch(both_string, string_case, check_list)
+            .unwrap();
+
+        self.builder.position_at_end(check_list);
+        self.builder
+            .build_conditional_branch(both_list, list_case, error_case)
             .unwrap();
 
         // int + int
@@ -3178,6 +3206,12 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(merge).unwrap();
         let string_block = self.builder.get_insert_block().unwrap();
 
+        // list + list (concatenation)
+        self.builder.position_at_end(list_case);
+        let list_result = self.inline_slap(left, right)?;
+        self.builder.build_unconditional_branch(merge).unwrap();
+        let list_block = self.builder.get_insert_block().unwrap();
+
         // Error case - just return nil for now (should be runtime error)
         self.builder.position_at_end(error_case);
         let error_result = self.make_nil();
@@ -3194,6 +3228,7 @@ impl<'ctx> CodeGen<'ctx> {
             (&int_result, int_block),
             (&float_result, float_block),
             (&string_result, string_block),
+            (&list_result, list_block),
             (&error_result, error_block),
         ]);
 
@@ -18002,16 +18037,52 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(self.make_nil());
                 }
                 "window" | "sliding_window" => {
-                    // window(list, size) - sliding window (placeholder: return nil)
-                    return Ok(self.make_nil());
+                    // window(str, size) - sliding window
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "window expects 2 arguments (str, size)".to_string(),
+                        ));
+                    }
+                    let str_arg = self.compile_expr(&args[0])?;
+                    let size_arg = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.window,
+                            &[str_arg.into(), size_arg.into()],
+                            "window_result",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("window returned void")?;
+                    return Ok(result);
                 }
                 "interleave" | "weave" => {
                     // interleave(list1, list2) - alternate elements (placeholder: return nil)
                     return Ok(self.make_nil());
                 }
                 "chunk" | "chunks" | "batch" => {
-                    // chunk(list, size) - split into chunks (placeholder: return nil)
-                    return Ok(self.make_nil());
+                    // chunk(list, size) - split list into chunks
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "chunk expects 2 arguments (list, size)".to_string(),
+                        ));
+                    }
+                    let list_arg = self.compile_expr(&args[0])?;
+                    let size_arg = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.chunks,
+                            &[list_arg.into(), size_arg.into()],
+                            "chunks_result",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("chunks returned void")?;
+                    return Ok(result);
                 }
                 "rotate" | "rotate_list" => {
                     // rotate(list, n) - rotate elements (placeholder: return as-is)
@@ -18314,8 +18385,21 @@ impl<'ctx> CodeGen<'ctx> {
                     return self.inline_split(str_arg, delim);
                 }
                 "split_words" | "words" => {
-                    // split_words(str) - split string into words (placeholder: return nil)
-                    return Ok(self.make_nil());
+                    // split_words(str) - split string into words
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "split_words expects 1 argument".to_string(),
+                        ));
+                    }
+                    let str_arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.words, &[str_arg.into()], "words_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("words returned void")?;
+                    return Ok(result);
                 }
                 "encode_base64" | "base64_encode" => {
                     // Base64 encode (placeholder: return empty string)
@@ -21250,6 +21334,53 @@ impl<'ctx> CodeGen<'ctx> {
         let key_tag = self.extract_tag(key_val)?;
         let key_data = self.extract_data(key_val)?;
 
+        // Interpreter semantics: dict indexing requires a string key.
+        let string_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::String.as_u8() as u64, false);
+        let is_string_key = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, key_tag, string_tag, "dict_key_is_string")
+            .unwrap();
+
+        let key_ok_block = self
+            .context
+            .append_basic_block(function, "dict_index_key_ok");
+        let key_bad_block = self
+            .context
+            .append_basic_block(function, "dict_index_key_bad");
+
+        self.builder
+            .build_conditional_branch(is_string_key, key_ok_block, key_bad_block)
+            .unwrap();
+
+        // Key type error
+        self.builder.position_at_end(key_bad_block);
+        let op = self
+            .builder
+            .build_global_string_ptr("index", "dict_index_op")
+            .unwrap();
+        let dict_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Dict.as_u8() as u64, false);
+        self.builder
+            .build_call(
+                self.libc.type_error,
+                &[
+                    op.as_pointer_value().into(),
+                    dict_tag.into(),
+                    key_tag.into(),
+                ],
+                "",
+            )
+            .unwrap();
+        self.builder.build_unreachable().unwrap();
+
+        // Normal key path
+        self.builder.position_at_end(key_ok_block);
+
         // Allocate result pointer and found flag
         let result_ptr = self
             .builder
@@ -21257,6 +21388,14 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         self.builder
             .build_store(result_ptr, self.make_nil())
+            .unwrap();
+
+        let found_ptr = self
+            .builder
+            .build_alloca(self.context.bool_type(), "dict_key_found")
+            .unwrap();
+        self.builder
+            .build_store(found_ptr, self.context.bool_type().const_int(0, false))
             .unwrap();
 
         // Loop through entries to find matching key
@@ -21463,6 +21602,9 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(self.types.value_type, value_ptr, "found_val")
             .unwrap();
         self.builder.build_store(result_ptr, found_val).unwrap();
+        self.builder
+            .build_store(found_ptr, self.context.bool_type().const_int(1, false))
+            .unwrap();
         self.builder.build_unconditional_branch(done_block).unwrap();
 
         // Continue loop
@@ -21471,8 +21613,29 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(idx_ptr, next_idx).unwrap();
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
-        // Done - return result (nil if not found)
+        // Done - if missing, throw; otherwise return result (may be naething).
         self.builder.position_at_end(done_block);
+        let found = self
+            .builder
+            .build_load(self.context.bool_type(), found_ptr, "dict_found")
+            .unwrap()
+            .into_int_value();
+
+        let ok_block = self.context.append_basic_block(function, "dict_lookup_ok");
+        let missing_block = self
+            .context
+            .append_basic_block(function, "dict_lookup_missing");
+        self.builder
+            .build_conditional_branch(found, ok_block, missing_block)
+            .unwrap();
+
+        self.builder.position_at_end(missing_block);
+        self.builder
+            .build_call(self.libc.key_not_found, &[key_val.into()], "")
+            .unwrap();
+        self.builder.build_unreachable().unwrap();
+
+        self.builder.position_at_end(ok_block);
         let result = self
             .builder
             .build_load(self.types.value_type, result_ptr, "dict_result")

@@ -100,6 +100,7 @@ pub fn set_stack_file(file: &str) {
 }
 
 /// Print the current stack trace to stderr
+#[cfg_attr(coverage, allow(dead_code))]
 pub fn print_stack_trace() {
     let stack = get_stack_trace();
     if stack.is_empty() {
@@ -118,6 +119,7 @@ pub fn set_crash_handling(enabled: bool) {
 }
 
 /// Check if crash handling is enabled
+#[cfg_attr(coverage, allow(dead_code))]
 pub fn is_crash_handling_enabled() -> bool {
     CRASH_HANDLING_ENABLED.load(Ordering::Relaxed)
 }
@@ -143,6 +145,7 @@ pub fn set_global_log_level(level: LogLevel) {
 /// Test/coverage-only escape hatch to set an invalid global log level value.
 /// This exists purely to exercise the fallback branch in `get_global_log_level`.
 #[cfg(coverage)]
+#[allow(dead_code)]
 pub fn set_global_log_level_raw(level: u8) {
     GLOBAL_LOG_LEVEL.store(level, Ordering::Relaxed);
 }
@@ -535,11 +538,7 @@ impl Interpreter {
             "keys".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("keys", 1, |args| {
                 if let Value::Dict(dict) = &args[0] {
-                    let keys: Vec<Value> = dict
-                        .borrow()
-                        .keys()
-                        .map(|k| Value::String(k.clone()))
-                        .collect();
+                    let keys: Vec<Value> = dict.borrow().keys().cloned().collect();
                     Ok(Value::List(Rc::new(RefCell::new(keys))))
                 } else {
                     Err("keys() expects a dict".to_string())
@@ -796,13 +795,7 @@ impl Interpreter {
                             Err("contains() on string expects a string needle".to_string())
                         }
                     }
-                    Value::Dict(dict) => {
-                        if let Value::String(key) = &args[1] {
-                            Ok(Value::Bool(dict.borrow().contains_key(key)))
-                        } else {
-                            Err("contains() on dict expects a string key".to_string())
-                        }
-                    }
+                    Value::Dict(dict) => Ok(Value::Bool(dict.borrow().contains_key(&args[1]))),
                     _ => Err("contains() expects a list, string, or dict".to_string()),
                 },
             ))),
@@ -3110,13 +3103,17 @@ impl Interpreter {
                     Value::String(s) => s.clone(),
                     _ => return Err("blether_format needs a template string".to_string()),
                 };
+                let mut result = template;
                 let dict = match &args[1] {
-                    Value::Dict(d) => d.borrow().clone(),
+                    Value::Dict(d) => d.clone(),
                     _ => return Err("blether_format needs a dictionary o' values".to_string()),
                 };
-                let mut result = template;
-                for (key, value) in dict {
-                    let placeholder = format!("{{{}}}", key);
+                for (key, value) in dict.borrow().iter() {
+                    let key_str = match key {
+                        Value::String(s) => s.clone(),
+                        _ => format!("{}", key),
+                    };
+                    let placeholder = format!("{{{}}}", key_str);
                     result = result.replace(&placeholder, &format!("{}", value));
                 }
                 Ok(Value::String(result))

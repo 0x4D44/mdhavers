@@ -975,13 +975,13 @@ mod conversions {
 
     #[test]
     fn test_type_of() {
-        assert_eq!(run("blether whit_kind(42)").trim(), "int");
+        assert_eq!(run("blether whit_kind(42)").trim(), "integer");
         assert_eq!(run("blether whit_kind(3.14)").trim(), "float");
         assert_eq!(run(r#"blether whit_kind("hello")"#).trim(), "string");
         assert_eq!(run("blether whit_kind(aye)").trim(), "bool");
         assert_eq!(run("blether whit_kind([1,2,3])").trim(), "list");
         assert_eq!(run("blether whit_kind({})").trim(), "dict");
-        assert_eq!(run("blether whit_kind(naething)").trim(), "nil");
+        assert_eq!(run("blether whit_kind(naething)").trim(), "naething");
     }
 }
 
@@ -2765,6 +2765,18 @@ mod coverage_batch1 {
     }
 
     #[test]
+    fn test_len_invalid_type_is_catchable() {
+        let code = r#"
+hae_a_bash {
+    blether len(42)
+} gin_it_gangs_wrang e {
+    blether "caught"
+}
+        "#;
+        assert_eq!(run(code).trim(), "caught");
+    }
+
+    #[test]
     fn test_upper() {
         assert_eq!(run(r#"blether upper("hello")"#).trim(), "HELLO");
     }
@@ -4224,7 +4236,7 @@ blether len(parts)
     // Test type function (whit_kind in Scots)
     #[test]
     fn test_type() {
-        assert_eq!(run("blether whit_kind(42)").trim(), "int");
+        assert_eq!(run("blether whit_kind(42)").trim(), "integer");
         assert_eq!(run(r#"blether whit_kind("hello")"#).trim(), "string");
         assert_eq!(run("blether whit_kind([1, 2])").trim(), "list");
         assert_eq!(run("blether whit_kind(aye)").trim(), "bool");
@@ -6477,11 +6489,11 @@ blether tae_float(42)
 blether whit_kind(42)
 blether whit_kind("hello")
 blether whit_kind([1, 2, 3])
-blether whit_kind({"a": 1})
+        blether whit_kind({"a": 1})
 blether whit_kind(aye)
         "#;
         let output = run(code);
-        assert!(output.contains("int"));
+        assert!(output.contains("integer"));
         assert!(output.contains("string"));
         assert!(output.contains("list"));
         assert!(output.contains("dict"));
@@ -7992,7 +8004,7 @@ blether h >= 0
     #[test]
     fn test_whit_kind_int() {
         let output = run("blether whit_kind(42)").trim().to_string();
-        assert!(output.contains("int") || output.contains("number"));
+        assert!(output.contains("integer") || output.contains("number"));
     }
 
     #[test]
@@ -10837,7 +10849,7 @@ mod coverage_batch25 {
     // --- WHIT_KIND (TYPE INTROSPECTION) ---
     #[test]
     fn test_whit_kind_int() {
-        assert_eq!(run("blether whit_kind(42)").trim(), "int");
+        assert_eq!(run("blether whit_kind(42)").trim(), "integer");
     }
 
     #[test]
@@ -13297,7 +13309,7 @@ mod coverage_batch39 {
 
     #[test]
     fn test_whit_kind_int() {
-        assert_eq!(run("blether whit_kind(42)").trim(), "int");
+        assert_eq!(run("blether whit_kind(42)").trim(), "integer");
     }
 
     #[test]
@@ -13431,6 +13443,45 @@ ken outer = {"inner": {"value": 42}}
 blether outer["inner"]["value"]
         "#;
         assert_eq!(run(code).trim(), "42");
+    }
+
+    #[test]
+    fn test_dict_missing_key_is_catchable() {
+        let code = r#"
+hae_a_bash {
+    ken d = {"a": 1}
+    blether d["b"]
+} gin_it_gangs_wrang e {
+    blether "caught"
+}
+        "#;
+        assert_eq!(run(code).trim(), "caught");
+    }
+
+    #[test]
+    fn test_dict_present_nil_value_does_not_throw() {
+        let code = r#"
+hae_a_bash {
+    ken d = {"a": naething}
+    blether d["a"]
+} gin_it_gangs_wrang e {
+    blether "caught"
+}
+        "#;
+        assert_eq!(run(code).trim(), "naething");
+    }
+
+    #[test]
+    fn test_dict_non_string_key_type_error_is_catchable() {
+        let code = r#"
+hae_a_bash {
+    ken d = {"a": 1}
+    blether d[1]
+} gin_it_gangs_wrang e {
+    blether "caught"
+}
+        "#;
+        assert_eq!(run(code).trim(), "caught");
     }
 }
 
@@ -13989,7 +14040,7 @@ blether l1[0]
     #[test]
     fn test_input_type_check() {
         // Testing whit_kind on different types
-        assert_eq!(run("blether whit_kind(naething)").trim(), "nil");
+        assert_eq!(run("blether whit_kind(naething)").trim(), "naething");
     }
 
     #[test]
@@ -15159,7 +15210,7 @@ mod coverage_batch68 {
 ken x
 blether whit_kind(x)
         "#;
-        assert_eq!(run(code).trim(), "nil");
+        assert_eq!(run(code).trim(), "naething");
     }
 
     #[test]
@@ -15247,7 +15298,7 @@ dae get_nil() {
 }
 blether whit_kind(get_nil())
         "#;
-        assert_eq!(run(code).trim(), "nil");
+        assert_eq!(run(code).trim(), "naething");
     }
 }
 
@@ -18797,7 +18848,7 @@ blether tae_int(-2.9)
         let code = r#"
 blether whit_kind(42)
         "#;
-        assert_eq!(run(code).trim(), "int");
+        assert_eq!(run(code).trim(), "integer");
     }
 
     #[test]
@@ -20384,7 +20435,7 @@ blether f > 3.0 an f < 4.0
         let code = r#"
 blether whit_kind(42)
         "#;
-        assert_eq!(run(code).trim(), "int");
+        assert_eq!(run(code).trim(), "integer");
     }
 
     #[test]
@@ -26161,7 +26212,7 @@ blether tae_string(42)
         let code = r#"
 blether whit_kind(42)
         "#;
-        assert_eq!(run(code).trim(), "int");
+        assert_eq!(run(code).trim(), "integer");
     }
 
     #[test]
@@ -29394,7 +29445,7 @@ mod coverage_batch309 {
         let code = r#"
 blether whit_kind(42)
         "#;
-        assert_eq!(run(code).trim(), "int");
+        assert_eq!(run(code).trim(), "integer");
     }
 
     #[test]
@@ -32665,7 +32716,7 @@ mod type_conversion_comprehensive {
 
     #[test]
     fn test_whit_kind_all_types() {
-        assert_eq!(run("blether whit_kind(42)").trim(), "int");
+        assert_eq!(run("blether whit_kind(42)").trim(), "integer");
         assert_eq!(run(r#"blether whit_kind("hello")"#).trim(), "string");
         assert_eq!(run("blether whit_kind([1, 2, 3])").trim(), "list");
         assert_eq!(run(r#"blether whit_kind({"a": 1})"#).trim(), "dict");
@@ -37114,7 +37165,7 @@ mod type_checking_coverage {
 
     #[test]
     fn test_whit_kind_int() {
-        assert_eq!(run("blether whit_kind(42)").trim(), "int");
+        assert_eq!(run("blether whit_kind(42)").trim(), "integer");
     }
 
     #[test]
@@ -37149,8 +37200,7 @@ mod type_checking_coverage {
 
     #[test]
     fn test_whit_kind_naething() {
-        // naething (nil) returns "nil"
-        assert_eq!(run("blether whit_kind(naething)").trim(), "nil");
+        assert_eq!(run("blether whit_kind(naething)").trim(), "naething");
     }
 
     #[test]
@@ -39028,7 +39078,7 @@ dae do_nothing() {
 ken result = do_nothing()
 blether whit_kind(result)
         "#;
-        assert_eq!(run(code).trim(), "nil");
+        assert_eq!(run(code).trim(), "naething");
     }
 
     #[test]
@@ -41820,7 +41870,7 @@ blether sumaw(list)
     #[test]
     fn test_whit_kind_int() {
         let code = r#"blether whit_kind(42)"#;
-        assert_eq!(run(code).trim(), "int");
+        assert_eq!(run(code).trim(), "integer");
     }
 
     #[test]
@@ -44363,7 +44413,7 @@ mod type_checking_full_coverage {
         let code = r#"
 blether whit_kind(42)
         "#;
-        assert_eq!(run(code).trim(), "int");
+        assert_eq!(run(code).trim(), "integer");
     }
 
     #[test]
@@ -44407,7 +44457,7 @@ blether whit_kind([1, 2, 3])
         let code = r#"
 blether whit_kind(naething)
         "#;
-        assert_eq!(run(code).trim(), "nil");
+        assert_eq!(run(code).trim(), "naething");
     }
 
     #[test]
@@ -46821,7 +46871,7 @@ blether whit_kind(3.14)
         "#;
         let output = run(code);
         let lines: Vec<&str> = output.trim().lines().collect();
-        assert_eq!(lines[0], "int");
+        assert_eq!(lines[0], "integer");
         assert_eq!(lines[1], "string");
         assert_eq!(lines[2], "list");
         assert_eq!(lines[3], "bool");
@@ -61460,7 +61510,9 @@ mod whit_kind_cov {
         let code = r#"blether whit_kind(42)"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("int") || output.contains("nummer") || output.contains("number"));
+        assert!(
+            output.contains("integer") || output.contains("nummer") || output.contains("number")
+        );
     }
 
     #[test]
@@ -63691,7 +63743,7 @@ mod whit_kind_cov2 {
         let code = r#"blether whit_kind(nowt)"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("nil") || output.contains("nowt") || output.contains("null"));
+        assert!(output.contains("naething") || output.contains("nowt") || output.contains("null"));
     }
 }
 
@@ -75022,7 +75074,7 @@ mod type_conversion_coverage_phase_jj {
         let code = r#"blether whit_kind(42)"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("int") || output.contains("nummer"));
+        assert!(output.contains("integer") || output.contains("nummer"));
     }
 
     #[test]
@@ -77001,7 +77053,7 @@ mod whit_kind_boost {
         let code = r#"blether whit_kind(42)"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "number" || output == "int", "Got: {}", output);
+        assert_eq!(output, "integer");
     }
 
     #[test]
@@ -79252,7 +79304,7 @@ blether whit_kind(x)
 "#;
         let binding = run(code);
         let output = binding.trim();
-        assert_eq!(output, "nil"); // whit_kind returns "nil" for naething
+        assert_eq!(output, "naething");
     }
 
     #[test]
@@ -79266,7 +79318,7 @@ blether whit_kind(x)
 "#;
         let binding = run(code);
         let output = binding.trim();
-        assert_eq!(output, "nil"); // whit_kind returns "nil" for naething
+        assert_eq!(output, "naething");
     }
 }
 
@@ -81020,7 +81072,7 @@ blether whit_kind(42)
 "#;
         let binding = run(code);
         let output = binding.trim();
-        assert_eq!(output, "int");
+        assert_eq!(output, "integer");
     }
 
     #[test]
@@ -82178,7 +82230,7 @@ blether whit_kind(x)
 "#;
         let binding = run(code);
         let output = binding.trim();
-        assert_eq!(output, "nil");
+        assert_eq!(output, "naething");
     }
 
     #[test]
@@ -82211,7 +82263,7 @@ blether whit_kind(w)
 "#;
         let binding = run(code);
         let output = binding.trim();
-        assert_eq!(output, "int");
+        assert_eq!(output, "integer");
     }
 
     #[test]
@@ -82222,7 +82274,7 @@ blether whit_kind(h)
 "#;
         let binding = run(code);
         let output = binding.trim();
-        assert_eq!(output, "int");
+        assert_eq!(output, "integer");
     }
 
     #[test]
@@ -84279,7 +84331,7 @@ mod coverage_batch353 {
 
     #[test]
     fn test_whit_kind_int() {
-        assert_eq!(run("blether whit_kind(42)").trim(), "int");
+        assert_eq!(run("blether whit_kind(42)").trim(), "integer");
     }
 
     #[test]
@@ -84309,7 +84361,7 @@ mod coverage_batch353 {
 
     #[test]
     fn test_whit_kind_nil() {
-        assert_eq!(run("blether whit_kind(naething)").trim(), "nil");
+        assert_eq!(run("blether whit_kind(naething)").trim(), "naething");
     }
 }
 
@@ -85578,7 +85630,7 @@ mod coverage_batch379 {
     #[test]
     fn test_whit_kind_nil() {
         let code = "ken n = naething\nblether whit_kind(n)";
-        assert_eq!(run(code).trim(), "nil");
+        assert_eq!(run(code).trim(), "naething");
     }
 
     #[test]
@@ -85890,7 +85942,7 @@ mod coverage_batch387 {
     #[test]
     fn test_whit_kind_int() {
         let code = "blether whit_kind(42)";
-        assert_eq!(run(code).trim(), "int");
+        assert_eq!(run(code).trim(), "integer");
     }
 
     #[test]
