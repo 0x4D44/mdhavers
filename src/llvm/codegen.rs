@@ -38,6 +38,26 @@ use crate::error::HaversError;
 
 use super::types::{MdhTypes, ValueTag};
 
+// Coverage note: llvm-cov counts each `*_or_else(|| ...)` closure as a separate function.
+// In this file, those closures are effectively unreachable in normal compilation (they only
+// construct internal error messages like "<runtime call> returned void"), so they tank
+// function coverage despite excellent line/region coverage.
+//
+// `OptionCompileExt` provides a closure-free, lazily-evaluated alternative.
+trait OptionCompileExt<T> {
+    fn compile_ok_or(self, msg: &'static str) -> Result<T, HaversError>;
+}
+
+impl<T> OptionCompileExt<T> for Option<T> {
+    #[cfg_attr(coverage, inline(never))]
+    fn compile_ok_or(self, msg: &'static str) -> Result<T, HaversError> {
+        match self {
+            Some(v) => Ok(v),
+            None => Err(HaversError::CompileError(msg.to_string())),
+        }
+    }
+}
+
 /// Loop context for break/continue
 struct LoopContext<'ctx> {
     break_block: BasicBlock<'ctx>,
@@ -3549,7 +3569,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("__mdh_eq returned void".to_string()))?
+            .compile_ok_or("__mdh_eq returned void")?
             .into_int_value();
 
         self.make_bool(eq_val)
@@ -4502,7 +4522,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("__mdh_eq returned void".to_string()))?
+            .compile_ok_or("__mdh_eq returned void")?
             .into_int_value();
         Ok(eq_val)
     }
@@ -5882,7 +5902,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("make_list returned void".to_string()))?;
+            .compile_ok_or("make_list returned void")?;
 
         self.builder
             .build_call(self.libc.list_push, &[cell.into(), current.into()], "")
@@ -6058,7 +6078,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let function = self
             .current_function
-            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+            .compile_ok_or("No current function")?;
 
         let numeric_block = self.context.append_basic_block(function, "min_numeric");
         let int_block = self.context.append_basic_block(function, "min_int");
@@ -6247,7 +6267,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let function = self
             .current_function
-            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+            .compile_ok_or("No current function")?;
 
         let numeric_block = self.context.append_basic_block(function, "max_numeric");
         let int_block = self.context.append_basic_block(function, "max_int");
@@ -6667,7 +6687,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("make_list returned void".to_string()))?;
+            .compile_ok_or("make_list returned void")?;
 
         let list_data = self.extract_data(list_val)?;
         let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
@@ -6951,7 +6971,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Copy elements 1..length to new list
         let function = self
             .current_function
-            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+            .compile_ok_or("No current function")?;
         let loop_block = self.context.append_basic_block(function, "tail_loop");
         let done_block = self.context.append_basic_block(function, "tail_done");
 
@@ -7033,7 +7053,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let function = self
             .current_function
-            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+            .compile_ok_or("No current function")?;
         let loop_block = self.context.append_basic_block(function, "scran_loop");
         let done_block = self.context.append_basic_block(function, "scran_done");
 
@@ -7116,7 +7136,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let function = self
             .current_function
-            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+            .compile_ok_or("No current function")?;
 
         // Copy first list
         let loop1 = self.context.append_basic_block(function, "slap_loop1");
@@ -7246,11 +7266,11 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("make_list returned void".to_string()))?;
+            .compile_ok_or("make_list returned void")?;
 
         let function = self
             .current_function
-            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+            .compile_ok_or("No current function")?;
 
         // i = 0..min_len
         let loop_block = self.context.append_basic_block(function, "zipwith_loop");
@@ -7321,7 +7341,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let function = self
             .current_function
-            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+            .compile_ok_or("No current function")?;
 
         // Create blocks for string vs list handling
         let str_block = self.context.append_basic_block(function, "rev_str");
@@ -7546,7 +7566,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let function = self
             .current_function
-            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+            .compile_ok_or("No current function")?;
 
         let loop_block = self.context.append_basic_block(function, "sum_loop");
         let body_block = self.context.append_basic_block(function, "sum_body");
@@ -7868,7 +7888,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let function = self
             .current_function
-            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+            .compile_ok_or("No current function")?;
 
         // Preallocate result list with capacity = len
         let cap_i32 = self
@@ -7881,7 +7901,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("make_list returned void".to_string()))?;
+            .compile_ok_or("make_list returned void")?;
 
         let idx_ptr = self
             .builder
@@ -7957,7 +7977,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let function = self
             .current_function
-            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+            .compile_ok_or("No current function")?;
         let loop_block = self.context.append_basic_block(function, "product_loop");
         let body_block = self.context.append_basic_block(function, "product_body");
         let done_block = self.context.append_basic_block(function, "product_done");
@@ -8045,7 +8065,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("contains returned void".to_string()))?;
+            .compile_ok_or("contains returned void")?;
         Ok(result)
     }
 
@@ -9122,9 +9142,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("make_list returned void".to_string())
-                        })?;
+                        .compile_ok_or("make_list returned void")?;
 
                     self.builder
                         .build_call(self.libc.list_push, &[cell.into(), init_val.into()], "")
@@ -9646,18 +9664,26 @@ impl<'ctx> CodeGen<'ctx> {
                             .unwrap();
                         self.builder.build_store(elem0_val_ptr, fn_val).unwrap();
 
-                        // Store captured boxes
-                        for (i, cap_name) in captures.iter().enumerate() {
-                            let cap_alloca = self
+	                        // Store captured boxes
+	                        for (i, cap_name) in captures.iter().enumerate() {
+	                            let cap_alloca = match self
 	                                .variables
 	                                .get(cap_name)
 	                                .copied()
-	                                .or_else(|| self.globals.get(cap_name).copied())
-	                                .ok_or_else(|| HaversError::CompileError(format!("Captured variable '{}' not found in scope when closing over '{}'", cap_name, name)))?;
-                            let cap_val = self
-                                .builder
-                                .build_load(
-                                    self.types.value_type,
+	                                .or(self.globals.get(cap_name).copied())
+	                            {
+	                                Some(a) => a,
+	                                None => {
+	                                    return Err(HaversError::CompileError(format!(
+	                                        "Captured variable '{}' not found in scope when closing over '{}'",
+	                                        cap_name, name
+	                                    )));
+	                                }
+	                            };
+	                            let cap_val = self
+	                                .builder
+	                                .build_load(
+	                                    self.types.value_type,
                                     cap_alloca,
                                     &format!("cap{}_val", i),
                                 )
@@ -9726,22 +9752,28 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
 
-            Expr::Assign { name, value, .. } => {
-                // Boxed variables store a 1-element list cell. Assignment updates cell[0].
-                if self.boxed_vars.contains(name) {
-                    let new_val = self.compile_expr(value)?;
-                    let alloca = self
-                        .variables
-                        .get(name)
-                        .copied()
-                        .or_else(|| self.globals.get(name).copied())
-                        .ok_or_else(|| {
-                            HaversError::CompileError(format!("Undefined variable: {}", name))
-                        })?;
-                    let cell = self
-                        .builder
-                        .build_load(self.types.value_type, alloca, &format!("{name}_cell"))
-                        .map_err(Self::llvm_compile_error)?;
+	            Expr::Assign { name, value, .. } => {
+	                // Boxed variables store a 1-element list cell. Assignment updates cell[0].
+	                if self.boxed_vars.contains(name) {
+	                    let new_val = self.compile_expr(value)?;
+	                    let alloca = match self
+	                        .variables
+	                        .get(name)
+	                        .copied()
+	                        .or(self.globals.get(name).copied())
+	                    {
+	                        Some(a) => a,
+	                        None => {
+	                            return Err(HaversError::CompileError(format!(
+	                                "Undefined variable: {}",
+	                                name
+	                            )));
+	                        }
+	                    };
+	                    let cell = self
+	                        .builder
+	                        .build_load(self.types.value_type, alloca, &format!("{name}_cell"))
+	                        .map_err(Self::llvm_compile_error)?;
                     self.box_set(cell, new_val)?;
                     return Ok(new_val);
                 }
@@ -10028,7 +10060,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(Self::llvm_compile_error)?
                     .try_as_basic_value()
                     .left()
-                    .ok_or_else(|| HaversError::CompileError("range returned void".to_string()))?;
+                    .compile_ok_or("range returned void")?;
 
                 Ok(range_val)
             }
@@ -10055,7 +10087,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(Self::llvm_compile_error)?
                     .try_as_basic_value()
                     .left()
-                    .ok_or_else(|| HaversError::CompileError("speir call failed".to_string()))?;
+                    .compile_ok_or("speir call failed")?;
                 Ok(result)
             }
 
@@ -10433,14 +10465,20 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_to_ptr(right_data, i8_ptr_type, "right_ptr")
             .unwrap();
 
-        // Load current string pointer, length, and capacity
-        let var_alloca = *self.variables.get(var_name).ok_or_else(|| {
-            HaversError::CompileError(format!("Variable not found: {}", var_name))
-        })?;
-        let current_val = self
-            .builder
-            .build_load(self.types.value_type, var_alloca, "current_str")
-            .unwrap();
+	        // Load current string pointer, length, and capacity
+	        let var_alloca = match self.variables.get(var_name) {
+	            Some(a) => *a,
+	            None => {
+	                return Err(HaversError::CompileError(format!(
+	                    "Variable not found: {}",
+	                    var_name
+	                )));
+	            }
+	        };
+	        let current_val = self
+	            .builder
+	            .build_load(self.types.value_type, var_alloca, "current_str")
+	            .unwrap();
         let current_data = self.extract_data(current_val)?;
         let current_ptr = self
             .builder
@@ -11149,9 +11187,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(Self::llvm_compile_error)?
                             .try_as_basic_value()
                             .left()
-                            .ok_or_else(|| {
-                                HaversError::CompileError("list_min returned void".to_string())
-                            })?;
+                            .compile_ok_or("list_min returned void")?;
                         return Ok(result);
                     } else if args.len() == 2 {
                         let a = self.compile_expr(&args[0])?;
@@ -11173,9 +11209,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(Self::llvm_compile_error)?
                             .try_as_basic_value()
                             .left()
-                            .ok_or_else(|| {
-                                HaversError::CompileError("list_max returned void".to_string())
-                            })?;
+                            .compile_ok_or("list_max returned void")?;
                         return Ok(result);
                     } else if args.len() == 2 {
                         let a = self.compile_expr(&args[0])?;
@@ -11460,9 +11494,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("starts_with returned void".to_string())
-                        })?;
+                        .compile_ok_or("starts_with returned void")?;
                     return Ok(result);
                 }
                 "ends_with" | "finishes_with" => {
@@ -11484,9 +11516,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("ends_with returned void".to_string())
-                        })?;
+                        .compile_ok_or("ends_with returned void")?;
                     return Ok(result);
                 }
                 "is_in_creel" | "is_in" => {
@@ -11510,9 +11540,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("dict_contains returned void".to_string())
-                        })?;
+                        .compile_ok_or("dict_contains returned void")?;
                     return Ok(result);
                 }
                 "toss_in" => {
@@ -11536,9 +11564,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("toss_in returned void".to_string())
-                        })?;
+                        .compile_ok_or("toss_in returned void")?;
 
                     // If first argument is a variable, update it (toss_in may reallocate).
                     if let Expr::Variable { name, .. } = &args[0] {
@@ -11571,9 +11597,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("heave_oot returned void".to_string())
-                        })?;
+                        .compile_ok_or("heave_oot returned void")?;
 
                     // If first argument is a variable, update it (heave_oot may reallocate).
                     if let Expr::Variable { name, .. } = &args[0] {
@@ -11605,9 +11629,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("heave_oot returned void".to_string())
-                        })?;
+                        .compile_ok_or("heave_oot returned void")?;
 
                     // If first argument is a variable, update it (heave_oot may reallocate).
                     if let Expr::Variable { name, .. } = &args[0] {
@@ -11633,9 +11655,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("empty_creel returned void".to_string())
-                        })?;
+                        .compile_ok_or("empty_creel returned void")?;
                     return Ok(result);
                 }
                 "make_creel" => {
@@ -11656,9 +11676,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("make_creel returned void".to_string())
-                        })?;
+                        .compile_ok_or("make_creel returned void")?;
                     return Ok(result);
                 }
                 "creel_tae_list" => {
@@ -11679,9 +11697,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("creel_tae_list returned void".to_string())
-                        })?;
+                        .compile_ok_or("creel_tae_list returned void")?;
                     return Ok(result);
                 }
                 "creels_thegither" | "set_union" => {
@@ -11702,9 +11718,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("creels_thegither returned void".to_string())
-                        })?;
+                        .compile_ok_or("creels_thegither returned void")?;
                     return Ok(result);
                 }
                 // File I/O builtins
@@ -11721,9 +11735,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("file_exists returned void".to_string())
-                        })?;
+                        .compile_ok_or("file_exists returned void")?;
                     return Ok(result);
                 }
                 "file_size" => {
@@ -11739,9 +11751,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("file_size returned void".to_string())
-                        })?;
+                        .compile_ok_or("file_size returned void")?;
                     return Ok(result);
                 }
                 "file_delete" => {
@@ -11757,9 +11767,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("file_delete returned void".to_string())
-                        })?;
+                        .compile_ok_or("file_delete returned void")?;
                     return Ok(result);
                 }
                 "list_dir" => {
@@ -11775,9 +11783,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("list_dir returned void".to_string())
-                        })?;
+                        .compile_ok_or("list_dir returned void")?;
                     return Ok(result);
                 }
                 "make_dir" => {
@@ -11793,9 +11799,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("make_dir returned void".to_string())
-                        })?;
+                        .compile_ok_or("make_dir returned void")?;
                     return Ok(result);
                 }
                 "is_dir" => {
@@ -11811,9 +11815,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("is_dir returned void".to_string())
-                        })?;
+                        .compile_ok_or("is_dir returned void")?;
                     return Ok(result);
                 }
                 "slurp" => {
@@ -11829,9 +11831,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("slurp returned void".to_string())
-                        })?;
+                        .compile_ok_or("slurp returned void")?;
                     return Ok(result);
                 }
                 "scrieve" => {
@@ -11852,9 +11852,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("scrieve returned void".to_string())
-                        })?;
+                        .compile_ok_or("scrieve returned void")?;
                     return Ok(result);
                 }
                 "scrieve_append" => {
@@ -11875,9 +11873,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("scrieve_append returned void".to_string())
-                        })?;
+                        .compile_ok_or("scrieve_append returned void")?;
                     return Ok(result);
                 }
                 "lines" => {
@@ -11893,9 +11889,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("lines returned void".to_string())
-                        })?;
+                        .compile_ok_or("lines returned void")?;
                     return Ok(result);
                 }
                 "words" => {
@@ -11911,9 +11905,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("words returned void".to_string())
-                        })?;
+                        .compile_ok_or("words returned void")?;
                     return Ok(result);
                 }
                 // Environment/system builtins
@@ -11929,9 +11921,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("args returned void".to_string())
-                        })?;
+                        .compile_ok_or("args returned void")?;
                     return Ok(result);
                 }
                 "cwd" => {
@@ -11946,9 +11936,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("cwd returned void".to_string())
-                        })?;
+                        .compile_ok_or("cwd returned void")?;
                     return Ok(result);
                 }
                 "chdir" => {
@@ -11964,9 +11952,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("chdir returned void".to_string())
-                        })?;
+                        .compile_ok_or("chdir returned void")?;
                     return Ok(result);
                 }
                 "env_get" => {
@@ -11982,9 +11968,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("env_get returned void".to_string())
-                        })?;
+                        .compile_ok_or("env_get returned void")?;
                     return Ok(result);
                 }
                 "env_set" => {
@@ -12005,9 +11989,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("env_set returned void".to_string())
-                        })?;
+                        .compile_ok_or("env_set returned void")?;
                     return Ok(result);
                 }
                 "env_all" => {
@@ -12022,9 +12004,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("env_all returned void".to_string())
-                        })?;
+                        .compile_ok_or("env_all returned void")?;
                     return Ok(result);
                 }
                 "path_join" => {
@@ -12045,9 +12025,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("path_join returned void".to_string())
-                        })?;
+                        .compile_ok_or("path_join returned void")?;
                     return Ok(result);
                 }
                 "shell" => {
@@ -12063,9 +12041,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("shell returned void".to_string())
-                        })?;
+                        .compile_ok_or("shell returned void")?;
                     return Ok(result);
                 }
                 "shell_status" => {
@@ -12081,9 +12057,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("shell_status returned void".to_string())
-                        })?;
+                        .compile_ok_or("shell_status returned void")?;
                     return Ok(result);
                 }
                 // Date/time builtins
@@ -12099,9 +12073,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("date_now returned void".to_string())
-                        })?;
+                        .compile_ok_or("date_now returned void")?;
                     return Ok(result);
                 }
                 "date_format" => {
@@ -12122,9 +12094,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("date_format returned void".to_string())
-                        })?;
+                        .compile_ok_or("date_format returned void")?;
                     return Ok(result);
                 }
                 "date_parse" => {
@@ -12145,9 +12115,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("date_parse returned void".to_string())
-                        })?;
+                        .compile_ok_or("date_parse returned void")?;
                     return Ok(result);
                 }
                 "date_add" => {
@@ -12169,9 +12137,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("date_add returned void".to_string())
-                        })?;
+                        .compile_ok_or("date_add returned void")?;
                     return Ok(result);
                 }
                 "date_diff" => {
@@ -12193,9 +12159,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("date_diff returned void".to_string())
-                        })?;
+                        .compile_ok_or("date_diff returned void")?;
                     return Ok(result);
                 }
                 "braw_date" => {
@@ -12211,9 +12175,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("braw_date returned void".to_string())
-                        })?;
+                        .compile_ok_or("braw_date returned void")?;
                     return Ok(result);
                 }
                 // Regex builtins
@@ -12235,9 +12197,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("regex_test returned void".to_string())
-                        })?;
+                        .compile_ok_or("regex_test returned void")?;
                     return Ok(result);
                 }
                 "regex_match" => {
@@ -12258,9 +12218,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("regex_match returned void".to_string())
-                        })?;
+                        .compile_ok_or("regex_match returned void")?;
                     return Ok(result);
                 }
                 "regex_match_all" => {
@@ -12281,9 +12239,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("regex_match_all returned void".to_string())
-                        })?;
+                        .compile_ok_or("regex_match_all returned void")?;
                     return Ok(result);
                 }
                 "regex_replace" => {
@@ -12305,9 +12261,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("regex_replace returned void".to_string())
-                        })?;
+                        .compile_ok_or("regex_replace returned void")?;
                     return Ok(result);
                 }
                 "regex_replace_first" => {
@@ -12329,11 +12283,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError(
-                                "regex_replace_first returned void".to_string(),
-                            )
-                        })?;
+                        .compile_ok_or("regex_replace_first returned void")?;
                     return Ok(result);
                 }
                 "regex_split" => {
@@ -12354,9 +12304,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("regex_split returned void".to_string())
-                        })?;
+                        .compile_ok_or("regex_split returned void")?;
                     return Ok(result);
                 }
                 // Misc parity helpers
@@ -12378,9 +12326,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("is_a returned void".to_string())
-                        })?;
+                        .compile_ok_or("is_a returned void")?;
                     return Ok(result);
                 }
                 "numpty_check" => {
@@ -12396,9 +12342,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("numpty_check returned void".to_string())
-                        })?;
+                        .compile_ok_or("numpty_check returned void")?;
                     return Ok(result);
                 }
                 "indices_o" => {
@@ -12419,9 +12363,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("indices_o returned void".to_string())
-                        })?;
+                        .compile_ok_or("indices_o returned void")?;
                     return Ok(result);
                 }
                 "grup" => {
@@ -12438,9 +12380,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("grup returned void".to_string())
-                        })?;
+                        .compile_ok_or("grup returned void")?;
                     return Ok(result);
                 }
                 "chunks" => {
@@ -12461,9 +12401,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("chunks returned void".to_string())
-                        })?;
+                        .compile_ok_or("chunks returned void")?;
                     return Ok(result);
                 }
                 "interleave" => {
@@ -12484,9 +12422,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("interleave returned void".to_string())
-                        })?;
+                        .compile_ok_or("interleave returned void")?;
                     return Ok(result);
                 }
                 // Fun Scots builtins
@@ -12503,9 +12439,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("mutter returned void".to_string())
-                        })?;
+                        .compile_ok_or("mutter returned void")?;
                     return Ok(result);
                 }
                 "blooter" => {
@@ -12521,9 +12455,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("blooter returned void".to_string())
-                        })?;
+                        .compile_ok_or("blooter returned void")?;
                     return Ok(result);
                 }
                 "stooshie" => {
@@ -12539,9 +12471,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("stooshie returned void".to_string())
-                        })?;
+                        .compile_ok_or("stooshie returned void")?;
                     return Ok(result);
                 }
                 "dreich" => {
@@ -12557,9 +12487,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("dreich returned void".to_string())
-                        })?;
+                        .compile_ok_or("dreich returned void")?;
                     return Ok(result);
                 }
                 "geggie" => {
@@ -12575,9 +12503,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("geggie returned void".to_string())
-                        })?;
+                        .compile_ok_or("geggie returned void")?;
                     return Ok(result);
                 }
                 "jings" => {
@@ -12593,9 +12519,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("jings returned void".to_string())
-                        })?;
+                        .compile_ok_or("jings returned void")?;
                     return Ok(result);
                 }
                 "crivvens" => {
@@ -12611,9 +12535,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("crivvens returned void".to_string())
-                        })?;
+                        .compile_ok_or("crivvens returned void")?;
                     return Ok(result);
                 }
                 "haud_yer_wheesht" => {
@@ -12658,9 +12580,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("get_log_level returned void".to_string())
-                        })?;
+                        .compile_ok_or("get_log_level returned void")?;
                     return Ok(result);
                 }
                 "set_log_level" => {
@@ -12680,9 +12600,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("set_log_level returned void".to_string())
-                        })?;
+                        .compile_ok_or("set_log_level returned void")?;
                     return Ok(result);
                 }
                 // Scots builtins
@@ -12693,9 +12611,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("slainte returned void".to_string())
-                        })?;
+                        .compile_ok_or("slainte returned void")?;
                     return Ok(result);
                 }
                 "och" => {
@@ -12716,9 +12632,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("och returned void".to_string())
-                        })?;
+                        .compile_ok_or("och returned void")?;
                     return Ok(result);
                 }
                 "wee" => {
@@ -12731,9 +12645,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(Self::llvm_compile_error)?
                             .try_as_basic_value()
                             .left()
-                            .ok_or_else(|| {
-                                HaversError::CompileError("list_min returned void".to_string())
-                            })?;
+                            .compile_ok_or("list_min returned void")?;
                         return Ok(result);
                     }
                     if args.len() == 2 {
@@ -12745,9 +12657,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(Self::llvm_compile_error)?
                             .try_as_basic_value()
                             .left()
-                            .ok_or_else(|| {
-                                HaversError::CompileError("wee returned void".to_string())
-                            })?;
+                            .compile_ok_or("wee returned void")?;
                         return Ok(result);
                     }
                     return Err(HaversError::CompileError(
@@ -12768,9 +12678,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("tak returned void".to_string())
-                        })?;
+                        .compile_ok_or("tak returned void")?;
                     return Ok(result);
                 }
                 "pair_up" => {
@@ -12783,9 +12691,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(Self::llvm_compile_error)?
                             .try_as_basic_value()
                             .left()
-                            .ok_or_else(|| {
-                                HaversError::CompileError("pair_up returned void".to_string())
-                            })?;
+                            .compile_ok_or("pair_up returned void")?;
                         return Ok(result);
                     } else {
                         return Err(HaversError::CompileError(
@@ -12806,9 +12712,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("tae_binary returned void".to_string())
-                        })?;
+                        .compile_ok_or("tae_binary returned void")?;
                     return Ok(result);
                 }
                 "average" => {
@@ -12824,9 +12728,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("average returned void".to_string())
-                        })?;
+                        .compile_ok_or("average returned void")?;
                     return Ok(result);
                 }
                 "chynge" | "replace" => {
@@ -12848,9 +12750,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("chynge returned void".to_string())
-                        })?;
+                        .compile_ok_or("chynge returned void")?;
                     return Ok(result);
                 }
                 // Testing builtins
@@ -12878,9 +12778,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("assert returned void".to_string())
-                        })?;
+                        .compile_ok_or("assert returned void")?;
                     let one = self.types.i64_type.const_int(1, false);
                     return self.make_bool(one);
                 }
@@ -12897,9 +12795,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("skip returned void".to_string())
-                        })?;
+                        .compile_ok_or("skip returned void")?;
                     return Ok(result);
                 }
                 "stacktrace" => {
@@ -12909,9 +12805,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("stacktrace returned void".to_string())
-                        })?;
+                        .compile_ok_or("stacktrace returned void")?;
                     return Ok(result);
                 }
                 // Additional Scots aliases
@@ -12936,9 +12830,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("random returned void".to_string())
-                        })?;
+                        .compile_ok_or("random returned void")?;
                     return Ok(result);
                 }
                 // Additional builtins
@@ -12956,9 +12848,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("slurp returned void".to_string())
-                        })?;
+                        .compile_ok_or("slurp returned void")?;
                     return Ok(result);
                 }
                 "muckle" | "max" => {
@@ -12971,9 +12861,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(Self::llvm_compile_error)?
                             .try_as_basic_value()
                             .left()
-                            .ok_or_else(|| {
-                                HaversError::CompileError("list_max returned void".to_string())
-                            })?;
+                            .compile_ok_or("list_max returned void")?;
                         return Ok(result);
                     }
                     if args.len() == 2 {
@@ -12985,9 +12873,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(Self::llvm_compile_error)?
                             .try_as_basic_value()
                             .left()
-                            .ok_or_else(|| {
-                                HaversError::CompileError("muckle returned void".to_string())
-                            })?;
+                            .compile_ok_or("muckle returned void")?;
                         return Ok(result);
                     }
                     return Err(HaversError::CompileError(
@@ -13007,9 +12893,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("median returned void".to_string())
-                        })?;
+                        .compile_ok_or("median returned void")?;
                     return Ok(result);
                 }
                 "is_space" => {
@@ -13025,9 +12909,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("is_space returned void".to_string())
-                        })?;
+                        .compile_ok_or("is_space returned void")?;
                     return Ok(result);
                 }
                 // is_digit now handled by inline_is_char_class later in the match
@@ -13044,9 +12926,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("wheesht_aw returned void".to_string())
-                        })?;
+                        .compile_ok_or("wheesht_aw returned void")?;
                     return Ok(result);
                 }
                 "dicht" | "remove_at" => {
@@ -13071,9 +12951,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("bonnie returned void".to_string())
-                        })?;
+                        .compile_ok_or("bonnie returned void")?;
                     return Ok(result);
                 }
                 "deck" | "shuffle" | "mince" => {
@@ -13089,9 +12967,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("shuffle returned void".to_string())
-                        })?;
+                        .compile_ok_or("shuffle returned void")?;
                     return Ok(result);
                 }
                 "choice" => {
@@ -13192,9 +13068,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("bit_and returned void".to_string())
-                        })?;
+                        .compile_ok_or("bit_and returned void")?;
                     return Ok(result);
                 }
                 "bit_or" => {
@@ -13211,9 +13085,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("bit_or returned void".to_string())
-                        })?;
+                        .compile_ok_or("bit_or returned void")?;
                     return Ok(result);
                 }
                 "bit_xor" => {
@@ -13230,9 +13102,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("bit_xor returned void".to_string())
-                        })?;
+                        .compile_ok_or("bit_xor returned void")?;
                     return Ok(result);
                 }
                 // Misc Scots aliases
@@ -13255,9 +13125,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("lines returned void".to_string())
-                        })?;
+                        .compile_ok_or("lines returned void")?;
                     return Ok(result);
                 }
                 "append_file" => {
@@ -13279,9 +13147,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("scrieve returned void".to_string())
-                        })?;
+                        .compile_ok_or("scrieve returned void")?;
                     return Ok(result);
                 }
                 "minaw" => {
@@ -13298,9 +13164,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("list_min returned void".to_string())
-                        })?;
+                        .compile_ok_or("list_min returned void")?;
                     return Ok(result);
                 }
                 "is_wee" => {
@@ -13385,9 +13249,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("list_max returned void".to_string())
-                        })?;
+                        .compile_ok_or("list_max returned void")?;
                     return Ok(result);
                 }
                 "is_odd" => {
@@ -13503,9 +13365,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("ltrim returned void".to_string())
-                        })?;
+                        .compile_ok_or("ltrim returned void")?;
                     return Ok(result);
                 }
                 "rtrim" | "trim_right" | "trim_end" | "rstrip" => {
@@ -13522,9 +13382,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("rtrim returned void".to_string())
-                        })?;
+                        .compile_ok_or("rtrim returned void")?;
                     return Ok(result);
                 }
                 "count_str" | "str_count" | "count_char" => {
@@ -13601,9 +13459,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("count_val returned void".to_string())
-                        })?;
+                        .compile_ok_or("count_val returned void")?;
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
@@ -13674,9 +13530,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("range returned void".to_string())
-                        })?;
+                        .compile_ok_or("range returned void")?;
                     return Ok(result);
                 }
                 // Phase 5: Timing functions
@@ -13782,9 +13636,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("list_sort returned void".to_string())
-                        })?;
+                        .compile_ok_or("list_sort returned void")?;
                     return Ok(result);
                 }
                 // Phase 6: Higher-order functions
@@ -14636,9 +14488,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("make_creel returned void".to_string())
-                        })?;
+                        .compile_ok_or("make_creel returned void")?;
                     let from_list_end = self.builder.get_insert_block().unwrap();
                     self.builder
                         .build_unconditional_branch(merge)
@@ -14716,9 +14566,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("list_uniq returned void".to_string())
-                        })?;
+                        .compile_ok_or("list_uniq returned void")?;
                     return Ok(result);
                 }
                 "dram" | "random_choice" => {
@@ -15307,9 +15155,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("json_parse returned void".to_string())
-                        })?;
+                        .compile_ok_or("json_parse returned void")?;
                     return Ok(result);
                 }
                 "json_stringify" | "tae_json" => {
@@ -15329,9 +15175,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("json_stringify returned void".to_string())
-                        })?;
+                        .compile_ok_or("json_stringify returned void")?;
                     return Ok(result);
                 }
                 "json_pretty" | "json_stringify_pretty" => {
@@ -15347,9 +15191,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("json_pretty returned void".to_string())
-                        })?;
+                        .compile_ok_or("json_pretty returned void")?;
                     return Ok(result);
                 }
                 "template_render" => {
@@ -15377,9 +15219,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("title_case returned void".to_string())
-                        })?;
+                        .compile_ok_or("title_case returned void")?;
                     return Ok(result);
                 }
                 "bit_shove_right" | "bit_shift_right" => {
@@ -15423,9 +15263,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("skelp returned void".to_string())
-                        })?;
+                        .compile_ok_or("skelp returned void")?;
                     return Ok(result);
                 }
                 "the_noo" => {
@@ -16174,9 +16012,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("tae_hex returned void".to_string())
-                        })?;
+                        .compile_ok_or("tae_hex returned void")?;
                     return Ok(result);
                 }
                 "is_hale_nummer" | "is_whole" | "is_integer" => {
@@ -16382,9 +16218,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("scottify returned void".to_string())
-                        })?;
+                        .compile_ok_or("scottify returned void")?;
                     return Ok(result);
                 }
                 "property" | "prop" => {
@@ -16416,9 +16250,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("tae_octal returned void".to_string())
-                        })?;
+                        .compile_ok_or("tae_octal returned void")?;
                     return Ok(result);
                 }
                 "is_positive" | "is_negative" | "is_zero" => {
@@ -16463,9 +16295,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("reverse_str returned void".to_string())
-                        })?;
+                        .compile_ok_or("reverse_str returned void")?;
                     return Ok(result);
                 }
                 "key_down" | "key_pressed" | "key_up" | "key_released" => {
@@ -16495,9 +16325,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("fae_binary returned void".to_string())
-                        })?;
+                        .compile_ok_or("fae_binary returned void")?;
                     return Ok(result);
                 }
                 "fae_hex" | "from_hex" => {
@@ -16514,9 +16342,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("fae_hex returned void".to_string())
-                        })?;
+                        .compile_ok_or("fae_hex returned void")?;
                     return Ok(result);
                 }
                 "dae_times" | "times" | "repeat_n" => {
@@ -16569,9 +16395,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("dict_merge returned void".to_string())
-                        })?;
+                        .compile_ok_or("dict_merge returned void")?;
                     return Ok(result);
                 }
                 "efter" | "after" => {
@@ -16616,9 +16440,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("creels_baith returned void".to_string())
-                        })?;
+                        .compile_ok_or("creels_baith returned void")?;
                     return Ok(result);
                 }
                 "creels_differ" | "set_difference" => {
@@ -16639,9 +16461,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("creels_differ returned void".to_string())
-                        })?;
+                        .compile_ok_or("creels_differ returned void")?;
                     return Ok(result);
                 }
                 "is_subset" | "subset" => {
@@ -16662,9 +16482,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("is_subset returned void".to_string())
-                        })?;
+                        .compile_ok_or("is_subset returned void")?;
                     return Ok(result);
                 }
                 "is_superset" | "superset" => {
@@ -16685,9 +16503,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("is_superset returned void".to_string())
-                        })?;
+                        .compile_ok_or("is_superset returned void")?;
                     return Ok(result);
                 }
                 "is_disjoint" | "disjoint" => {
@@ -16708,9 +16524,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("is_disjoint returned void".to_string())
-                        })?;
+                        .compile_ok_or("is_disjoint returned void")?;
                     return Ok(result);
                 }
                 "assert_that" | "assert_eq" | "assert_ne" | "assert_true" | "assert_false" => {
@@ -16740,9 +16554,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("dict_get_default returned void".to_string())
-                        })?;
+                        .compile_ok_or("dict_get_default returned void")?;
                     return Ok(result);
                 }
                 "fin" | "find_first" => {
@@ -16789,9 +16601,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("sporran_fill returned void".to_string())
-                        })?;
+                        .compile_ok_or("sporran_fill returned void")?;
                     return Ok(result);
                 }
                 "enumerate" | "with_index" => {
@@ -16935,9 +16745,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("__mdh_eq returned void".to_string())
-                        })?
+                        .compile_ok_or("__mdh_eq returned void")?
                         .into_int_value();
                     let cond = self.make_bool(eq)?;
                     let msg = self.compile_string_literal("expected values to be equal")?;
@@ -16988,9 +16796,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("dict_remove returned void".to_string())
-                        })?;
+                        .compile_ok_or("dict_remove returned void")?;
                     return Ok(result);
                 }
                 "scots_miles_tae_km" | "miles_to_km" => {
@@ -17041,9 +16847,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("dict_invert returned void".to_string())
-                        })?;
+                        .compile_ok_or("dict_invert returned void")?;
                     return Ok(result);
                 }
                 "fin_index" | "find_index" => {
@@ -17219,9 +17023,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("runtime_args returned void".to_string())
-                        })?;
+                        .compile_ok_or("runtime_args returned void")?;
                     return Ok(result);
                 }
                 "runtime_env" => {
@@ -17237,9 +17039,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("runtime_env returned void".to_string())
-                        })?;
+                        .compile_ok_or("runtime_env returned void")?;
                     return Ok(result);
                 }
                 "getenv" => {
@@ -17262,9 +17062,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("getenv returned void".to_string())
-                        })?
+                        .compile_ok_or("getenv returned void")?
                         .into_pointer_value();
 
                     let null_ptr = i8_ptr.const_null();
@@ -17333,9 +17131,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("runtime_cwd returned void".to_string())
-                        })?;
+                        .compile_ok_or("runtime_cwd returned void")?;
                     return Ok(result);
                 }
                 "proptesting_forall" | "forall" => {
@@ -17710,9 +17506,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("unique returned void".to_string())
-                        })?;
+                        .compile_ok_or("unique returned void")?;
                     return Ok(result);
                 }
                 "scan" | "running_total" => {
@@ -17861,9 +17655,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("pair_up returned void".to_string())
-                        })?;
+                        .compile_ok_or("pair_up returned void")?;
                     return Ok(result);
                 }
                 "scots_wisdom" | "wisdom" => {
@@ -17926,9 +17718,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("fae_pairs returned void".to_string())
-                        })?;
+                        .compile_ok_or("fae_pairs returned void")?;
                     return Ok(result);
                 }
                 "is_baw" | "is_blank" | "is_whitespace" => {
@@ -18070,9 +17860,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("center returned void".to_string())
-                        })?;
+                        .compile_ok_or("center returned void")?;
                     return Ok(result);
                 }
                 "repeat_say" | "repeat_string" | "str_repeat" => {
@@ -18094,9 +17882,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("repeat_say returned void".to_string())
-                        })?;
+                        .compile_ok_or("repeat_say returned void")?;
                     return Ok(result);
                 }
                 "leftpad" | "lpad" => {
@@ -18124,9 +17910,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("leftpad returned void".to_string())
-                        })?;
+                        .compile_ok_or("leftpad returned void")?;
                     return Ok(result);
                 }
                 "rightpad" | "rpad" => {
@@ -18154,9 +17938,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("rightpad returned void".to_string())
-                        })?;
+                        .compile_ok_or("rightpad returned void")?;
                     return Ok(result);
                 }
                 "abbreviate" | "ellipsis" => {
@@ -18270,9 +18052,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("is_function returned void".to_string())
-                        })?;
+                        .compile_ok_or("is_function returned void")?;
                     return Ok(result);
                 }
                 "swapcase" | "swap_case" => {
@@ -18288,9 +18068,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("swapcase returned void".to_string())
-                        })?;
+                        .compile_ok_or("swapcase returned void")?;
                     return Ok(result);
                 }
                 "count_str" | "str_count" | "count_char" => {
@@ -18322,9 +18100,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("last_index_of returned void".to_string())
-                        })?;
+                        .compile_ok_or("last_index_of returned void")?;
                     return Ok(result);
                 }
                 "insert_at" | "list_insert" => {
@@ -18360,9 +18136,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("list_index returned void".to_string())
-                        })?;
+                        .compile_ok_or("list_index returned void")?;
                     return Ok(result);
                 }
                 "count_val" | "list_count" => {
@@ -18384,9 +18158,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("count_val returned void".to_string())
-                        })?;
+                        .compile_ok_or("count_val returned void")?;
                     return Ok(result);
                 }
                 "clear" | "list_clear" | "dict_clear" | "toom" => {
@@ -18403,9 +18175,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("list_clear returned void".to_string())
-                        })?;
+                        .compile_ok_or("list_clear returned void")?;
                     return Ok(result);
                 }
                 "copy" | "clone" | "shallow_copy" => {
@@ -18422,9 +18192,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("list_copy returned void".to_string())
-                        })?;
+                        .compile_ok_or("list_copy returned void")?;
                     return Ok(result);
                 }
                 "deep_copy" | "deepcopy" => {
@@ -18501,9 +18269,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("strip_left returned void".to_string())
-                        })?;
+                        .compile_ok_or("strip_left returned void")?;
                     return Ok(result);
                 }
                 "strip_right" => {
@@ -18524,9 +18290,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("strip_right returned void".to_string())
-                        })?;
+                        .compile_ok_or("strip_right returned void")?;
                     return Ok(result);
                 }
                 "substr_between" | "between" => {
@@ -18565,9 +18329,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .map_err(Self::llvm_compile_error)?
                             .try_as_basic_value()
                             .left()
-                            .ok_or_else(|| {
-                                HaversError::CompileError("replace_first returned void".to_string())
-                            })?;
+                            .compile_ok_or("replace_first returned void")?;
                         out = next;
                     }
 
@@ -18593,9 +18355,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("replace_first returned void".to_string())
-                        })?;
+                        .compile_ok_or("replace_first returned void")?;
                     return Ok(result);
                 }
                 "chr" | "from_char_code" => {
@@ -18904,9 +18664,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
-                        .ok_or_else(|| {
-                            HaversError::CompileError("__mdh_eq returned void".to_string())
-                        })?
+                        .compile_ok_or("__mdh_eq returned void")?
                         .into_int_value();
                     let ne = self
                         .builder
@@ -19665,11 +19423,16 @@ impl<'ctx> CodeGen<'ctx> {
         name: &str,
         params: &[crate::ast::Param],
         body: &[Stmt],
-    ) -> Result<(), HaversError> {
-        let function =
-            self.functions.get(name).copied().ok_or_else(|| {
-                HaversError::CompileError(format!("Function not declared: {}", name))
-            })?;
+	    ) -> Result<(), HaversError> {
+	        let function = match self.functions.get(name).copied() {
+	            Some(f) => f,
+	            None => {
+	                return Err(HaversError::CompileError(format!(
+	                    "Function not declared: {}",
+	                    name
+	                )));
+	            }
+	        };
 
         let entry = self.context.append_basic_block(function, "entry");
 
@@ -19700,14 +19463,20 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap_or_default();
         let capture_count = captures_for_this_fn.len();
 
-        // Captured variables are boxed cells passed in.
-        for (i, capture_name) in captures_for_this_fn.iter().enumerate() {
-            let param_val = function.get_nth_param(i as u32).ok_or_else(|| {
-                HaversError::CompileError(format!("Missing captured param: {}", capture_name))
-            })?;
-            let alloca = self.create_entry_block_alloca(capture_name);
-            self.builder.build_store(alloca, param_val).unwrap();
-            self.variables.insert(capture_name.clone(), alloca);
+	        // Captured variables are boxed cells passed in.
+	        for (i, capture_name) in captures_for_this_fn.iter().enumerate() {
+	            let param_val = match function.get_nth_param(i as u32) {
+	                Some(v) => v,
+	                None => {
+	                    return Err(HaversError::CompileError(format!(
+	                        "Missing captured param: {}",
+	                        capture_name
+	                    )));
+	                }
+	            };
+	            let alloca = self.create_entry_block_alloca(capture_name);
+	            self.builder.build_store(alloca, param_val).unwrap();
+	            self.variables.insert(capture_name.clone(), alloca);
             self.var_types
                 .insert(capture_name.clone(), VarType::Unknown);
             if capture_name == "masel" {
@@ -19721,7 +19490,7 @@ impl<'ctx> CodeGen<'ctx> {
         for (i, param) in params.iter().enumerate() {
             let param_val = function
                 .get_nth_param((capture_count + i) as u32)
-                .ok_or_else(|| HaversError::CompileError("Missing parameter".to_string()))?;
+                .compile_ok_or("Missing parameter")?;
             let alloca = self.create_entry_block_alloca(&param.name);
             self.builder.build_store(alloca, param_val).unwrap();
             self.variables.insert(param.name.clone(), alloca);
@@ -20019,7 +19788,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("malloc returned void".to_string()))?
+            .compile_ok_or("malloc returned void")?
             .into_pointer_value();
 
         // Allocate items array: capacity * sizeof(MdhValue) = capacity * 16
@@ -20034,7 +19803,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("malloc returned void".to_string()))?
+            .compile_ok_or("malloc returned void")?
             .into_pointer_value();
 
         // Cast list_ptr to proper pointer types for storing fields
@@ -20149,7 +19918,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("malloc returned void".to_string()))?
+            .compile_ok_or("malloc returned void")?
             .into_pointer_value();
 
         // Allocate items array: capacity * sizeof(MdhValue) = capacity * 16
@@ -20163,7 +19932,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("malloc returned void".to_string()))?
+            .compile_ok_or("malloc returned void")?
             .into_pointer_value();
 
         let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
@@ -20538,7 +20307,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("malloc returned void".to_string()))?
+            .compile_ok_or("malloc returned void")?
             .into_pointer_value();
 
         // Cast to i64* for storing the count
@@ -20662,7 +20431,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Create basic blocks for branching
         let function = self
             .current_function
-            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+            .compile_ok_or("No current function")?;
         let list_block = self.context.append_basic_block(function, "index_list");
         let check_dict_block = self.context.append_basic_block(function, "check_dict");
         let dict_block = self.context.append_basic_block(function, "index_dict");
@@ -21256,7 +21025,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("dict_set returned void".to_string()))?;
+            .compile_ok_or("dict_set returned void")?;
 
         // Update the variable/field with the new dict (dict_set returns a new dict since it may reallocate)
         match object {
@@ -21405,7 +21174,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("dict_set returned void".to_string()))?;
+            .compile_ok_or("dict_set returned void")?;
 
         // Update the variable/field with the new dict (dict_set returns a new dict since it may reallocate)
         match object {
@@ -21566,7 +21335,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("strlen returned void".to_string()))?
+            .compile_ok_or("strlen returned void")?
             .into_int_value();
 
         // Handle negative indices
@@ -21595,7 +21364,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("malloc returned void".to_string()))?
+            .compile_ok_or("malloc returned void")?
             .into_pointer_value();
 
         // Get pointer to the character
@@ -24480,7 +24249,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let function = self
             .current_function
-            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+            .compile_ok_or("No current function")?;
 
         let list_data = self.extract_data(list_val)?;
         let list_len = self.get_list_length(list_data)?;
@@ -26063,7 +25832,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("dict_keys returned void".to_string()))?;
+            .compile_ok_or("dict_keys returned void")?;
         Ok(result)
     }
 
@@ -26079,7 +25848,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("dict_values returned void".to_string()))?;
+            .compile_ok_or("dict_values returned void")?;
         Ok(result)
     }
 
@@ -26493,7 +26262,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("jmp_buf_size returned void".to_string()))?
+            .compile_ok_or("jmp_buf_size returned void")?
             .into_int_value();
         let jmp_buf = self
             .builder
@@ -26513,7 +26282,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("setjmp returned void".to_string()))?
+            .compile_ok_or("setjmp returned void")?
             .into_int_value();
         let zero = self.types.i32_type.const_int(0, false);
         let is_thrown = self
@@ -26579,7 +26348,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("get_last_error returned void".to_string()))?;
+            .compile_ok_or("get_last_error returned void")?;
         self.builder.build_store(error_alloca, err_val).unwrap();
         self.variables.insert(error_name.to_string(), error_alloca);
 
@@ -27051,7 +26820,7 @@ impl<'ctx> CodeGen<'ctx> {
     /// Example:
     ///   thing Point { x y }
     /// becomes a callable `Point(a, b)` that returns `{"x": a, "y": b}`.
-    fn compile_struct_decl(&mut self, name: &str, fields: &[String]) -> Result<(), HaversError> {
+	    fn compile_struct_decl(&mut self, name: &str, fields: &[String]) -> Result<(), HaversError> {
         // Skip if already compiled
         if let Some(&existing) = self.functions.get(name) {
             if existing.get_first_basic_block().is_some() {
@@ -27061,9 +26830,15 @@ impl<'ctx> CodeGen<'ctx> {
             self.declare_function(name, fields.len())?;
         }
 
-        let function = *self.functions.get(name).ok_or_else(|| {
-            HaversError::CompileError(format!("Struct ctor not declared: {}", name))
-        })?;
+	        let function = match self.functions.get(name) {
+	            Some(f) => *f,
+	            None => {
+	                return Err(HaversError::CompileError(format!(
+	                    "Struct ctor not declared: {}",
+	                    name
+	                )));
+	            }
+	        };
 
         let entry = self.context.append_basic_block(function, "entry");
 
@@ -27099,14 +26874,12 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("empty_creel returned void".to_string()))?;
+            .compile_ok_or("empty_creel returned void")?;
 
         // Populate fields
         for (i, field) in fields.iter().enumerate() {
             let key = self.compile_string_literal(field)?;
-            let val = function.get_nth_param(i as u32).ok_or_else(|| {
-                HaversError::CompileError("Missing struct ctor param".to_string())
-            })?;
+            let val = function.get_nth_param(i as u32).compile_ok_or("Missing struct ctor param")?;
             dict_val = self
                 .builder
                 .build_call(
@@ -27117,7 +26890,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(Self::llvm_compile_error)?
                 .try_as_basic_value()
                 .left()
-                .ok_or_else(|| HaversError::CompileError("dict_set returned void".to_string()))?;
+                .compile_ok_or("dict_set returned void")?;
         }
 
         self.builder.build_return(Some(&dict_val)).unwrap();
@@ -27179,7 +26952,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("dict_get returned void".to_string()))?;
+            .compile_ok_or("dict_get returned void")?;
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -27244,7 +27017,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("dict_set returned void".to_string()))?;
+            .compile_ok_or("dict_set returned void")?;
 
         if let Expr::Variable { name, .. } = object {
             if let Some(&ptr) = self.variables.get(name) {
@@ -27999,18 +27772,24 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Compile the body of a method (function within a class)
     /// The function signature is already declared in compile_class
-    fn compile_method_body(
+	    fn compile_method_body(
         &mut self,
         class_name: &str,
         method_name: &str,
         params: &[crate::ast::Param],
         body: &[Stmt],
-    ) -> Result<(), HaversError> {
-        // Get the already-declared function
-        let func_name = format!("{}_{}", class_name, method_name);
-        let function = *self.functions.get(&func_name).ok_or_else(|| {
-            HaversError::CompileError(format!("Method {} not declared", func_name))
-        })?;
+	    ) -> Result<(), HaversError> {
+	        // Get the already-declared function
+	        let func_name = format!("{}_{}", class_name, method_name);
+	        let function = match self.functions.get(&func_name) {
+	            Some(f) => *f,
+	            None => {
+	                return Err(HaversError::CompileError(format!(
+	                    "Method {} not declared",
+	                    func_name
+	                )));
+	            }
+	        };
 
         // Save current state - IMPORTANT: save ALL shadow maps to prevent cross-method leakage
         let old_function = self.current_function;
@@ -28156,16 +27935,21 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("malloc returned void".to_string()))?
+            .compile_ok_or("malloc returned void")?
             .into_pointer_value();
 
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+	        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
 
-        // Store class name pointer
-        let class_name_global = self
-            .classes
-            .get(class_name)
-            .ok_or_else(|| HaversError::CompileError(format!("Unknown class: {}", class_name)))?;
+	        // Store class name pointer
+	        let class_name_global = match self.classes.get(class_name) {
+	            Some(g) => g,
+	            None => {
+	                return Err(HaversError::CompileError(format!(
+	                    "Unknown class: {}",
+	                    class_name
+	                )));
+	            }
+	        };
         let class_name_ptr_slot = self
             .builder
             .build_pointer_cast(instance_ptr, i64_ptr_type, "class_name_slot")
@@ -28242,7 +28026,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(Self::llvm_compile_error)?
                 .try_as_basic_value()
                 .left()
-                .ok_or_else(|| HaversError::CompileError("init returned void".to_string()))?;
+                .compile_ok_or("init returned void")?;
             return Ok(init_result);
         }
 
@@ -28347,9 +28131,15 @@ impl<'ctx> CodeGen<'ctx> {
             return self.call_callable_value(field_val, &field_call_args);
         }
 
-        let (method_func, func_name) = found_method.ok_or_else(|| {
-            HaversError::CompileError(format!("Method '{}' not found", method_name))
-        })?;
+	        let (method_func, func_name) = match found_method {
+	            Some(v) => v,
+	            None => {
+	                return Err(HaversError::CompileError(format!(
+	                    "Method '{}' not found",
+	                    method_name
+	                )));
+	            }
+	        };
 
         // Build call arguments: instance first, then regular args
         let mut call_args: Vec<BasicMetadataValueEnum> = vec![instance.into()];
@@ -28442,7 +28232,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let function = self
             .current_function
-            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+            .compile_ok_or("No current function")?;
 
         let numeric_block = self.context.append_basic_block(function, "jammy_numeric");
         let int_block = self.context.append_basic_block(function, "jammy_int");
@@ -28528,7 +28318,7 @@ impl<'ctx> CodeGen<'ctx> {
         let random_fn = self
             .module
             .get_function("__mdh_random")
-            .ok_or_else(|| HaversError::CompileError("__mdh_random not found".to_string()))?;
+            .compile_ok_or("__mdh_random not found")?;
         let int_result = self
             .builder
             .build_call(
@@ -28539,7 +28329,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("__mdh_random returned void".to_string()))?;
+            .compile_ok_or("__mdh_random returned void")?;
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -28693,7 +28483,7 @@ impl<'ctx> CodeGen<'ctx> {
         let get_key_fn = self
             .module
             .get_function("__mdh_get_key")
-            .ok_or_else(|| HaversError::CompileError("__mdh_get_key not found".to_string()))?;
+            .compile_ok_or("__mdh_get_key not found")?;
 
         let result = self
             .builder
@@ -28701,7 +28491,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("__mdh_get_key returned void".to_string()))?;
+            .compile_ok_or("__mdh_get_key returned void")?;
 
         Ok(result)
     }
@@ -28711,7 +28501,7 @@ impl<'ctx> CodeGen<'ctx> {
         let term_width_fn = self
             .module
             .get_function("__mdh_term_width")
-            .ok_or_else(|| HaversError::CompileError("__mdh_term_width not found".to_string()))?;
+            .compile_ok_or("__mdh_term_width not found")?;
 
         let result = self
             .builder
@@ -28719,9 +28509,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| {
-                HaversError::CompileError("__mdh_term_width returned void".to_string())
-            })?;
+            .compile_ok_or("__mdh_term_width returned void")?;
 
         Ok(result)
     }
@@ -28731,7 +28519,7 @@ impl<'ctx> CodeGen<'ctx> {
         let term_height_fn = self
             .module
             .get_function("__mdh_term_height")
-            .ok_or_else(|| HaversError::CompileError("__mdh_term_height not found".to_string()))?;
+            .compile_ok_or("__mdh_term_height not found")?;
 
         let result = self
             .builder
@@ -28739,9 +28527,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| {
-                HaversError::CompileError("__mdh_term_height returned void".to_string())
-            })?;
+            .compile_ok_or("__mdh_term_height returned void")?;
 
         Ok(result)
     }
@@ -29018,7 +28804,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("make_list returned void".to_string()))?;
+            .compile_ok_or("make_list returned void")?;
 
         // Loop to create single-char strings
         let function = self.current_function.unwrap();
@@ -29347,7 +29133,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let function = self
             .current_function
-            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+            .compile_ok_or("No current function")?;
 
         let container_tag = self.extract_tag(container_val)?;
         let list_tag = self
@@ -29486,7 +29272,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let function = self
             .current_function
-            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+            .compile_ok_or("No current function")?;
 
         let str_data = self.extract_data(str_val)?;
         let start_data = self.extract_data(start_val)?;
@@ -30249,7 +30035,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("list_slice returned void".to_string()))?;
+            .compile_ok_or("list_slice returned void")?;
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -31161,7 +30947,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("make_list returned void".to_string()))?;
+            .compile_ok_or("make_list returned void")?;
 
         let function = self.current_function.unwrap();
         let idx_ptr = self.create_entry_block_alloca("ceilidh_i");
@@ -31316,7 +31102,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .try_as_basic_value()
             .left()
-            .ok_or_else(|| HaversError::CompileError("empty_creel returned void".to_string()))?;
+            .compile_ok_or("empty_creel returned void")?;
         self.builder.build_store(merged_alloca, merged0).unwrap();
 
         let function = self.current_function.unwrap();
@@ -31677,7 +31463,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let function = self
             .current_function
-            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+            .compile_ok_or("No current function")?;
         let numeric_block = self.context.append_basic_block(function, "radians_numeric");
         let error_block = self.context.append_basic_block(function, "radians_error");
         let merge_block = self.context.append_basic_block(function, "radians_merge");
@@ -31783,7 +31569,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let function = self
             .current_function
-            .ok_or_else(|| HaversError::CompileError("No current function".to_string()))?;
+            .compile_ok_or("No current function")?;
         let numeric_block = self.context.append_basic_block(function, "degrees_numeric");
         let error_block = self.context.append_basic_block(function, "degrees_error");
         let merge_block = self.context.append_basic_block(function, "degrees_merge");

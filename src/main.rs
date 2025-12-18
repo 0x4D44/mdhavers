@@ -206,14 +206,17 @@ fn main() {
 
 fn run_file(path: &PathBuf) -> Result<(), String> {
     let source = read_file(path)?;
-    let program = parse(&source).map_err(|e| format_parse_error(&source, e))?;
+    let program = match parse(&source) {
+        Ok(p) => p,
+        Err(e) => return Err(format_parse_error(&source, e)),
+    };
     let mut interpreter = Interpreter::new();
 
     // Set the current file name fer logging
     let filename = path
         .file_name()
         .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| path.display().to_string());
+        .unwrap_or(path.display().to_string());
     interpreter.set_current_file(&filename);
 
     // Set the current directory tae the file's directory fer module resolution
@@ -224,13 +227,13 @@ fn run_file(path: &PathBuf) -> Result<(), String> {
     }
 
     // Load the prelude (standard utility functions)
-    interpreter
-        .load_prelude()
-        .map_err(|e| format!("Error loading prelude: {}", e))?;
+    if let Err(e) = interpreter.load_prelude() {
+        return Err(format!("Error loading prelude: {}", e));
+    }
 
-    interpreter
-        .interpret(&program)
-        .map_err(|e| format_runtime_error(&source, e))?;
+    if let Err(e) = interpreter.interpret(&program) {
+        return Err(format_runtime_error(&source, e));
+    }
 
     Ok(())
 }
@@ -239,7 +242,10 @@ fn trace_file(path: &PathBuf, verbose: bool) -> Result<(), String> {
     use interpreter::TraceMode;
 
     let source = read_file(path)?;
-    let program = parse(&source).map_err(|e| format_parse_error(&source, e))?;
+    let program = match parse(&source) {
+        Ok(p) => p,
+        Err(e) => return Err(format_parse_error(&source, e)),
+    };
     let mut interpreter = Interpreter::new();
 
     // Set the trace mode
@@ -274,15 +280,15 @@ fn trace_file(path: &PathBuf, verbose: bool) -> Result<(), String> {
     // Load the prelude (but without tracing it - too noisy)
     let saved_mode = interpreter.trace_mode();
     interpreter.set_trace_mode(TraceMode::Off);
-    interpreter
-        .load_prelude()
-        .map_err(|e| format!("Error loading prelude: {}", e))?;
+    if let Err(e) = interpreter.load_prelude() {
+        return Err(format!("Error loading prelude: {}", e));
+    }
     interpreter.set_trace_mode(saved_mode);
 
     // Now run with tracing
-    interpreter
-        .interpret(&program)
-        .map_err(|e| format_runtime_error(&source, e))?;
+    if let Err(e) = interpreter.interpret(&program) {
+        return Err(format_runtime_error(&source, e));
+    }
 
     println!();
     println!("{}", "═".repeat(60).yellow());
@@ -297,7 +303,10 @@ fn trace_file(path: &PathBuf, verbose: bool) -> Result<(), String> {
 
 fn compile_file(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
     let source = read_file(path)?;
-    let js_code = compile(&source).map_err(|e| format_parse_error(&source, e))?;
+    let js_code = match compile(&source) {
+        Ok(js) => js,
+        Err(e) => return Err(format_parse_error(&source, e)),
+    };
 
     let output_path = output.unwrap_or_else(|| {
         let mut p = path.clone();
@@ -305,8 +314,13 @@ fn compile_file(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
         p
     });
 
-    fs::write(&output_path, &js_code)
-        .map_err(|e| format!("Cannae write tae {}: {}", output_path.display(), e))?;
+    if let Err(e) = fs::write(&output_path, &js_code) {
+        return Err(format!(
+            "Cannae write tae {}: {}",
+            output_path.display(),
+            e
+        ));
+    }
 
     println!(
         "{} Compiled {} tae {}",
@@ -320,8 +334,10 @@ fn compile_file(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
 
 fn compile_wasm(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
     let source = read_file(path)?;
-    let wat_code =
-        wasm_compiler::compile_to_wat(&source).map_err(|e| format_parse_error(&source, e))?;
+    let wat_code = match wasm_compiler::compile_to_wat(&source) {
+        Ok(wat) => wat,
+        Err(e) => return Err(format_parse_error(&source, e)),
+    };
 
     let output_path = output.unwrap_or_else(|| {
         let mut p = path.clone();
@@ -329,8 +345,13 @@ fn compile_wasm(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
         p
     });
 
-    fs::write(&output_path, &wat_code)
-        .map_err(|e| format!("Cannae write tae {}: {}", output_path.display(), e))?;
+    if let Err(e) = fs::write(&output_path, &wat_code) {
+        return Err(format!(
+            "Cannae write tae {}: {}",
+            output_path.display(),
+            e
+        ));
+    }
 
     println!(
         "{} Compiled {} tae WebAssembly (WAT)",
@@ -405,14 +426,18 @@ fn build_native(
     emit_llvm: bool,
 ) -> Result<(), String> {
     let source = read_file(path)?;
-    let program = parse(&source).map_err(|e| format_parse_error(&source, e))?;
+    let program = match parse(&source) {
+        Ok(p) => p,
+        Err(e) => return Err(format_parse_error(&source, e)),
+    };
 
     if emit_llvm {
         // Emit LLVM IR
         let compiler = llvm::LLVMCompiler::new().with_optimization(opt_level);
-        let ir = compiler
-            .compile_to_ir(&program)
-            .map_err(|e| format!("{}", e))?;
+        let ir = match compiler.compile_to_ir(&program) {
+            Ok(ir) => ir,
+            Err(e) => return Err(format!("{}", e)),
+        };
 
         let output_path = output.unwrap_or_else(|| {
             let mut p = path.clone();
@@ -420,8 +445,13 @@ fn build_native(
             p
         });
 
-        fs::write(&output_path, &ir)
-            .map_err(|e| format!("Cannae write tae {}: {}", output_path.display(), e))?;
+        if let Err(e) = fs::write(&output_path, &ir) {
+            return Err(format!(
+                "Cannae write tae {}: {}",
+                output_path.display(),
+                e
+            ));
+        }
 
         println!(
             "{} Compiled {} tae LLVM IR",
@@ -438,9 +468,11 @@ fn build_native(
         });
 
         let compiler = llvm::LLVMCompiler::new();
-        compiler
-            .compile_to_native_with_source(&program, &output_path, opt_level, Some(path))
-            .map_err(|e| format!("{}", e))?;
+        if let Err(e) =
+            compiler.compile_to_native_with_source(&program, &output_path, opt_level, Some(path))
+        {
+            return Err(format!("{}", e));
+        }
 
         println!(
             "{} Built native executable from {}",
@@ -475,12 +507,15 @@ fn run_repl() -> Result<(), String> {
     );
     println!();
 
-    let mut rl = DefaultEditor::new().map_err(|e| e.to_string())?;
+    let mut rl = match DefaultEditor::new() {
+        Ok(rl) => rl,
+        Err(e) => return Err(e.to_string()),
+    };
 
     // Try to load history from file
     let history_path = dirs::home_dir()
         .map(|h| h.join(".mdhavers_history"))
-        .unwrap_or_else(|| std::path::PathBuf::from(".mdhavers_history"));
+        .unwrap_or(std::path::PathBuf::from(".mdhavers_history"));
 
     if history_path.exists() {
         let _ = rl.load_history(&history_path);
@@ -941,11 +976,17 @@ fn check_file(path: &PathBuf) -> Result<(), String> {
     let source = read_file(path)?;
 
     // Lex
-    let tokens = lexer::lex(&source).map_err(|e| format_parse_error(&source, e))?;
+    let tokens = match lexer::lex(&source) {
+        Ok(t) => t,
+        Err(e) => return Err(format_parse_error(&source, e)),
+    };
     println!("{} Lexing passed ({} tokens)", "✓".green(), tokens.len());
 
     // Parse
-    let _program = parse(&source).map_err(|e| format_parse_error(&source, e))?;
+    let _program = match parse(&source) {
+        Ok(p) => p,
+        Err(e) => return Err(format_parse_error(&source, e)),
+    };
     println!("{} Parsing passed", "✓".green());
 
     println!(
@@ -961,8 +1002,10 @@ fn format_file(path: &PathBuf, check_only: bool) -> Result<(), String> {
     let source = read_file(path)?;
 
     // Format the code
-    let formatted =
-        formatter::format_source(&source).map_err(|e| format_parse_error(&source, e))?;
+    let formatted = match formatter::format_source(&source) {
+        Ok(s) => s,
+        Err(e) => return Err(format_parse_error(&source, e)),
+    };
 
     if check_only {
         // Just check if formatting would change anything
@@ -979,8 +1022,9 @@ fn format_file(path: &PathBuf, check_only: bool) -> Result<(), String> {
         }
     } else {
         // Write back to file
-        fs::write(path, &formatted)
-            .map_err(|e| format!("Cannae write tae {}: {}", path.display(), e))?;
+        if let Err(e) = fs::write(path, &formatted) {
+            return Err(format!("Cannae write tae {}: {}", path.display(), e));
+        }
 
         println!(
             "{} Formatted {} - lookin' braw!",
@@ -994,7 +1038,10 @@ fn format_file(path: &PathBuf, check_only: bool) -> Result<(), String> {
 
 fn show_tokens(path: &PathBuf) -> Result<(), String> {
     let source = read_file(path)?;
-    let tokens = lexer::lex(&source).map_err(|e| format_parse_error(&source, e))?;
+    let tokens = match lexer::lex(&source) {
+        Ok(t) => t,
+        Err(e) => return Err(format_parse_error(&source, e)),
+    };
 
     println!("{}", "Tokens:".cyan().bold());
     println!("{}", "─".repeat(50));
@@ -1017,7 +1064,10 @@ fn show_tokens(path: &PathBuf) -> Result<(), String> {
 
 fn show_ast(path: &PathBuf) -> Result<(), String> {
     let source = read_file(path)?;
-    let program = parse(&source).map_err(|e| format_parse_error(&source, e))?;
+    let program = match parse(&source) {
+        Ok(p) => p,
+        Err(e) => return Err(format_parse_error(&source, e)),
+    };
 
     println!("{}", "AST:".cyan().bold());
     println!("{}", "─".repeat(50));
@@ -1044,8 +1094,14 @@ fn read_file(path: &PathBuf) -> Result<String, String> {
         }
     }
 
-    fs::read_to_string(path)
-        .map_err(|e| format!("Dinnae be daft! Cannae read '{}': {}", path.display(), e))
+    match fs::read_to_string(path) {
+        Ok(s) => Ok(s),
+        Err(e) => Err(format!(
+            "Dinnae be daft! Cannae read '{}': {}",
+            path.display(),
+            e
+        )),
+    }
 }
 
 fn format_parse_error(source: &str, error: error::HaversError) -> String {
