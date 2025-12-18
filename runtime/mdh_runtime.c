@@ -52,6 +52,8 @@ typedef struct {
     size_t cap;
 } MdhStrBuf;
 
+static const char *__mdh_type_name(MdhValue v);
+
 static void __mdh_sb_init(MdhStrBuf *sb) {
     sb->cap = 128;
     sb->len = 0;
@@ -388,27 +390,48 @@ void __mdh_type_error(const char *op, uint8_t got1, uint8_t got2) {
         "list", "dict", "function", "class", "instance", "range"
     };
 
-    fprintf(stderr, "Och! Type error in '%s': ", op);
-    if (got1 < 11) {
-        fprintf(stderr, "got %s", type_names[got1]);
+    char buf[256];
+    if (got1 < 11 && got2 > 0 && got2 < 11) {
+        snprintf(
+            buf,
+            sizeof(buf),
+            "Och! Type error in '%s': got %s and %s",
+            op,
+            type_names[got1],
+            type_names[got2]
+        );
+    } else if (got1 < 11) {
+        snprintf(
+            buf,
+            sizeof(buf),
+            "Och! Type error in '%s': got %s",
+            op,
+            type_names[got1]
+        );
+    } else {
+        snprintf(buf, sizeof(buf), "Och! Type error in '%s'", op);
     }
-    if (got2 > 0 && got2 < 11) {
-        fprintf(stderr, " and %s", type_names[got2]);
-    }
-    fprintf(stderr, "\n");
-    exit(1);
+
+    __mdh_hurl(__mdh_make_string(buf));
 }
 
 MdhValue __mdh_type_of(MdhValue a) {
-    static const char *type_names[] = {
-        "naething", "bool", "integer", "float", "string",
-        "list", "dict", "function", "class", "instance", "range"
-    };
+    return __mdh_make_string(__mdh_type_name(a));
+}
 
-    if (a.tag < 11) {
-        return __mdh_make_string(type_names[a.tag]);
+void __mdh_key_not_found(MdhValue key) {
+    const char *k = "<non-string>";
+    if (key.tag == MDH_TAG_STRING) {
+        k = __mdh_get_string(key);
     }
-    return __mdh_make_string("unknown");
+    char buf[256];
+    snprintf(
+        buf,
+        sizeof(buf),
+        "Awa' an bile yer heid! '%s' hasnae been defined yet",
+        k
+    );
+    __mdh_hurl(__mdh_make_string(buf));
 }
 
 /* ========== I/O ========== */
@@ -5092,7 +5115,8 @@ void __mdh_hurl(MdhValue msg) {
         jmp_buf *envp = __mdh_try_stack[__mdh_try_depth - 1];
         longjmp(*envp, 1);
     }
-    /* Uncaught: print message and exit */
-    __mdh_blether(msg);
+    /* Uncaught: print message to stderr and exit */
+    MdhValue s = __mdh_to_string(msg);
+    fprintf(stderr, "%s\n", __mdh_get_string(s));
     exit(1);
 }

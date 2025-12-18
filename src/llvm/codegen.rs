@@ -97,6 +97,8 @@ struct LibcFunctions<'ctx> {
     // Runtime functions
     eq: FunctionValue<'ctx>,
     type_error: FunctionValue<'ctx>,
+    type_of: FunctionValue<'ctx>,
+    key_not_found: FunctionValue<'ctx>,
     get_key: FunctionValue<'ctx>,
     random: FunctionValue<'ctx>,
     term_width: FunctionValue<'ctx>,
@@ -629,6 +631,18 @@ impl<'ctx> CodeGen<'ctx> {
             void_type.fn_type(&[i8_ptr.into(), i8_type.into(), i8_type.into()], false);
         let type_error =
             module.add_function("__mdh_type_error", type_error_type, Some(Linkage::External));
+
+        // __mdh_type_of(MdhValue) -> MdhValue (string)
+        let type_of_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let type_of = module.add_function("__mdh_type_of", type_of_type, Some(Linkage::External));
+
+        // __mdh_key_not_found(MdhValue) -> void (throws)
+        let key_not_found_type = void_type.fn_type(&[types.value_type.into()], false);
+        let key_not_found = module.add_function(
+            "__mdh_key_not_found",
+            key_not_found_type,
+            Some(Linkage::External),
+        );
 
         // __mdh_get_key() -> MdhValue
         let get_key_type = types.value_type.fn_type(&[], false);
@@ -1585,6 +1599,8 @@ impl<'ctx> CodeGen<'ctx> {
             qsort,
             eq,
             type_error,
+            type_of,
+            key_not_found,
             get_key,
             random,
             term_width,
@@ -5924,6 +5940,18 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Default -> 0
         self.builder.position_at_end(len_default);
+        let op = self
+            .builder
+            .build_global_string_ptr("len", "len_op")
+            .unwrap();
+        let zero_i8 = self.types.i8_type.const_int(0, false);
+        self.builder
+            .build_call(
+                self.libc.type_error,
+                &[op.as_pointer_value().into(), tag.into(), zero_i8.into()],
+                "",
+            )
+            .unwrap();
         let zero = self.types.i64_type.const_int(0, false);
         let default_result = self.make_int(zero)?;
         self.builder.build_unconditional_branch(len_merge).unwrap();
@@ -13764,7 +13792,14 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let arg = self.compile_expr(&args[0])?;
-                    return self.inline_whit_kind(arg);
+                    let result = self
+                        .builder
+                        .build_call(self.libc.type_of, &[arg.into()], "type_of_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("type_of returned void")?;
+                    return Ok(result);
                 }
                 "range" => {
                     if args.len() < 2 || args.len() > 3 {
