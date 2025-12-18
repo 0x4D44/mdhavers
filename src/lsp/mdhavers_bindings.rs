@@ -760,10 +760,7 @@ mod tests {
         // Valid code should produce no diagnostics
         let source = "ken x = 42\nblether x";
         let diagnostics = get_diagnostics(source);
-        assert!(
-            diagnostics.is_empty(),
-            "Expected no diagnostics for valid code"
-        );
+        assert!(diagnostics.is_empty(), "Expected no diagnostics for valid code");
     }
 
     #[test]
@@ -771,10 +768,7 @@ mod tests {
         // Unclosed brace should produce an error
         let source = "gin x > 0 {\n    blether x\n";
         let diagnostics = get_diagnostics(source);
-        assert!(
-            !diagnostics.is_empty(),
-            "Expected diagnostics for unclosed brace"
-        );
+        assert!(!diagnostics.is_empty(), "Expected diagnostics for unclosed brace");
         assert!(diagnostics.iter().any(|d| d.2.contains("Unclosed")));
     }
 

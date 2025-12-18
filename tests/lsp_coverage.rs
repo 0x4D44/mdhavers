@@ -55,6 +55,34 @@ fn lsp_binary_handles_initialize_requests_and_shutdown() {
     );
     stdin.write_all(lsp_frame(&did_change).as_bytes()).unwrap();
 
+    // 3b) trigger lexer error paths
+    let did_change_lex_err = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"textDocument":{{"uri":"{uri}","version":3}},"contentChanges":[{{"text":"ken x = 1\n£\n"}}]}}}}"#
+    );
+    stdin
+        .write_all(lsp_frame(&did_change_lex_err).as_bytes())
+        .unwrap();
+
+    // 3c) trigger bracket-matching diagnostics branches
+    let bracket_cases = [
+        // Mismatched closing bracket with a different opener on stack
+        ("(}", 4),
+        ("{)", 5),
+        ("{]", 6),
+        // Closing bracket with empty stack
+        ("}", 7),
+        (")", 8),
+        ("]", 9),
+        // Unclosed opener at EOF
+        ("{", 10),
+    ];
+    for (text, version) in bracket_cases {
+        let did_change = format!(
+            r#"{{"jsonrpc":"2.0","method":"textDocument/didChange","params":{{"textDocument":{{"uri":"{uri}","version":{version}}},"contentChanges":[{{"text":"{text}\n"}}]}}}}"#
+        );
+        stdin.write_all(lsp_frame(&did_change).as_bytes()).unwrap();
+    }
+
     // 4) completion request
     let completion = format!(
         r#"{{"jsonrpc":"2.0","id":3,"method":"textDocument/completion","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":0,"character":1}}}}}}"#
@@ -66,6 +94,24 @@ fn lsp_binary_handles_initialize_requests_and_shutdown() {
         r#"{{"jsonrpc":"2.0","id":4,"method":"textDocument/hover","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":0,"character":1}}}}}}"#
     );
     stdin.write_all(lsp_frame(&hover).as_bytes()).unwrap();
+
+    // 5b) hover out of range (forces None path in word lookup)
+    let hover_oob = format!(
+        r#"{{"jsonrpc":"2.0","id":6,"method":"textDocument/hover","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":999,"character":999}}}}}}"#
+    );
+    stdin.write_all(lsp_frame(&hover_oob).as_bytes()).unwrap();
+
+    // 5c) go-to-definition request (currently unsupported but should respond)
+    let def = format!(
+        r#"{{"jsonrpc":"2.0","id":5,"method":"textDocument/definition","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":0,"character":1}}}}}}"#
+    );
+    stdin.write_all(lsp_frame(&def).as_bytes()).unwrap();
+
+    // 5d) close document
+    let did_close = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didClose","params":{{"textDocument":{{"uri":"{uri}"}}}}}}"#
+    );
+    stdin.write_all(lsp_frame(&did_close).as_bytes()).unwrap();
 
     // 6) shutdown + exit (required by lsp-server's handle_shutdown)
     let shutdown = r#"{"jsonrpc":"2.0","id":2,"method":"shutdown","params":null}"#;
