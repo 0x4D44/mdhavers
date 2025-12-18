@@ -68,4 +68,3 @@ fn llvm_types_helpers_cover_basic_invariants() {
     assert_eq!(InferredType::Int.tag(), Some(ValueTag::Int));
     assert_eq!(InferredType::Numeric.tag(), None);
 }
-

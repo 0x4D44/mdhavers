@@ -231,16 +231,19 @@ mod tests {
     #[test]
     fn test_run_list_operations() {
         let result = run("[1, 2, 3]").unwrap();
-        if let Value::List(items) = result {
-            assert_eq!(items.borrow().len(), 3);
-        } else {
-            panic!("Expected list");
-        }
+        assert!(matches!(result, Value::List(items) if items.borrow().len() == 3));
     }
 
     #[test]
     fn test_run_string_operations() {
         let result = run(r#""Hello" + " " + "World""#).unwrap();
         assert_eq!(result, Value::String("Hello World".to_string()));
+    }
+
+    #[cfg(feature = "llvm")]
+    #[test]
+    fn test_compile_to_llvm_ir_smoke() {
+        let ir = compile_to_llvm_ir("ken x = 1\nx").unwrap();
+        assert!(!ir.is_empty());
     }
 }

@@ -462,6 +462,12 @@ mod tests {
         assert_eq!(format!("{}", TokenKind::Keek), "keek");
         assert_eq!(format!("{}", TokenKind::Whan), "whan");
         assert_eq!(format!("{}", TokenKind::MakSiccar), "mak_siccar");
+        assert_eq!(format!("{}", TokenKind::LogWhisper), "log_whisper");
+        assert_eq!(format!("{}", TokenKind::LogMutter), "log_mutter");
+        assert_eq!(format!("{}", TokenKind::LogBlether), "log_blether");
+        assert_eq!(format!("{}", TokenKind::LogHoller), "log_holler");
+        assert_eq!(format!("{}", TokenKind::LogRoar), "log_roar");
+        assert_eq!(format!("{}", TokenKind::Hurl), "hurl");
     }
 
     #[test]

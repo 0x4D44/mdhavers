@@ -5,12 +5,21 @@
  * Uses Boehm GC for memory management.
  */
 
+#define _GNU_SOURCE
+#define _XOPEN_SOURCE 700
+
 #include "mdh_runtime.h"
 
+#include <ctype.h>
+#include <dirent.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <regex.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 #include <setjmp.h>
@@ -25,6 +34,61 @@ extern char *GC_strdup(const char *s);
 
 /* Random number generator state */
 static int __mdh_random_initialized = 0;
+
+/* Command-line args (set by the generated main) */
+static int32_t __mdh_argc = 0;
+static char **__mdh_argv = NULL;
+
+static void __mdh_ensure_rng(void) {
+    if (!__mdh_random_initialized) {
+        srand((unsigned int)time(NULL));
+        __mdh_random_initialized = 1;
+    }
+}
+
+typedef struct {
+    char *buf;
+    size_t len;
+    size_t cap;
+} MdhStrBuf;
+
+static void __mdh_sb_init(MdhStrBuf *sb) {
+    sb->cap = 128;
+    sb->len = 0;
+    sb->buf = (char *)GC_malloc(sb->cap);
+    sb->buf[0] = '\0';
+}
+
+static void __mdh_sb_reserve(MdhStrBuf *sb, size_t extra) {
+    while (sb->len + extra + 1 > sb->cap) {
+        sb->cap *= 2;
+        sb->buf = (char *)GC_realloc(sb->buf, sb->cap);
+    }
+}
+
+static void __mdh_sb_append_n(MdhStrBuf *sb, const char *s, size_t n) {
+    __mdh_sb_reserve(sb, n);
+    memcpy(sb->buf + sb->len, s, n);
+    sb->len += n;
+    sb->buf[sb->len] = '\0';
+}
+
+static void __mdh_sb_append(MdhStrBuf *sb, const char *s) {
+    __mdh_sb_append_n(sb, s, strlen(s));
+}
+
+static void __mdh_sb_append_char(MdhStrBuf *sb, char c) {
+    __mdh_sb_reserve(sb, 1);
+    sb->buf[sb->len++] = c;
+    sb->buf[sb->len] = '\0';
+}
+
+static MdhValue __mdh_string_from_buf(char *s) {
+    MdhValue v;
+    v.tag = MDH_TAG_STRING;
+    v.data = (int64_t)(intptr_t)s;
+    return v;
+}
 
 /* ========== Value Creation ========== */
 
@@ -768,10 +832,7 @@ MdhValue __mdh_abs(MdhValue a) {
 }
 
 MdhValue __mdh_random(int64_t min, int64_t max) {
-    if (!__mdh_random_initialized) {
-        srand((unsigned int)time(NULL));
-        __mdh_random_initialized = 1;
-    }
+    __mdh_ensure_rng();
 
     if (min > max) {
         int64_t tmp = min;
@@ -822,6 +883,22 @@ MdhValue __mdh_empty_creel(void) {
     v.tag = MDH_TAG_DICT;
     v.data = (int64_t)(intptr_t)dict_ptr;
     return v;
+}
+
+MdhValue __mdh_make_creel(MdhValue list) {
+    /* Create a creel (set) from a list by stringifying each element. */
+    if (list.tag != MDH_TAG_LIST) {
+        __mdh_type_error("make_creel", list.tag, 0);
+        return __mdh_empty_creel();
+    }
+
+    MdhList *l = __mdh_get_list(list);
+    MdhValue result = __mdh_empty_creel();
+    for (int64_t i = 0; i < l->length; i++) {
+        MdhValue key = __mdh_to_string(l->items[i]);
+        result = __mdh_toss_in(result, key);
+    }
+    return result;
 }
 
 /* Helper: Check if two MdhValues are equal */
@@ -943,6 +1020,129 @@ MdhValue __mdh_dict_get(MdhValue dict, MdhValue key) {
         }
     }
     return __mdh_make_nil();
+}
+
+MdhValue __mdh_dict_get_default(MdhValue dict, MdhValue key, MdhValue default_val) {
+    /* Like dict_get, but returns a caller-provided default when key is missing.
+       This must distinguish "missing" from "present but value is naething". */
+    if (dict.tag != MDH_TAG_DICT) {
+        __mdh_type_error("dict_get", dict.tag, 0);
+        return default_val;
+    }
+    if (key.tag != MDH_TAG_STRING) {
+        __mdh_type_error("dict_get", key.tag, 0);
+        return default_val;
+    }
+
+    int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;
+    int64_t count = *dict_ptr;
+    MdhValue *entries = (MdhValue *)(dict_ptr + 1);
+
+    for (int64_t i = 0; i < count; i++) {
+        MdhValue entry_key = entries[i * 2];
+        if (__mdh_values_equal(entry_key, key)) {
+            return entries[i * 2 + 1];
+        }
+    }
+    return default_val;
+}
+
+MdhValue __mdh_dict_merge(MdhValue a, MdhValue b) {
+    if (a.tag != MDH_TAG_DICT) {
+        __mdh_type_error("dict_merge", a.tag, 0);
+        return __mdh_empty_creel();
+    }
+    if (b.tag != MDH_TAG_DICT) {
+        __mdh_type_error("dict_merge", b.tag, 0);
+        return __mdh_empty_creel();
+    }
+
+    MdhValue result = __mdh_empty_creel();
+
+    int64_t *a_ptr = (int64_t *)(intptr_t)a.data;
+    int64_t a_count = *a_ptr;
+    MdhValue *a_entries = (MdhValue *)(a_ptr + 1);
+    for (int64_t i = 0; i < a_count; i++) {
+        result = __mdh_dict_set(result, a_entries[i * 2], a_entries[i * 2 + 1]);
+    }
+
+    int64_t *b_ptr = (int64_t *)(intptr_t)b.data;
+    int64_t b_count = *b_ptr;
+    MdhValue *b_entries = (MdhValue *)(b_ptr + 1);
+    for (int64_t i = 0; i < b_count; i++) {
+        result = __mdh_dict_set(result, b_entries[i * 2], b_entries[i * 2 + 1]);
+    }
+
+    return result;
+}
+
+MdhValue __mdh_dict_remove(MdhValue dict, MdhValue key) {
+    if (dict.tag != MDH_TAG_DICT) {
+        __mdh_type_error("dict_remove", dict.tag, 0);
+        return __mdh_empty_creel();
+    }
+    if (key.tag != MDH_TAG_STRING) {
+        __mdh_type_error("dict_remove", key.tag, 0);
+        return __mdh_empty_creel();
+    }
+
+    MdhValue result = __mdh_empty_creel();
+    int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;
+    int64_t count = *dict_ptr;
+    MdhValue *entries = (MdhValue *)(dict_ptr + 1);
+    for (int64_t i = 0; i < count; i++) {
+        MdhValue entry_key = entries[i * 2];
+        MdhValue entry_val = entries[i * 2 + 1];
+        if (!__mdh_values_equal(entry_key, key)) {
+            result = __mdh_dict_set(result, entry_key, entry_val);
+        }
+    }
+    return result;
+}
+
+MdhValue __mdh_dict_invert(MdhValue dict) {
+    if (dict.tag != MDH_TAG_DICT) {
+        __mdh_type_error("dict_invert", dict.tag, 0);
+        return __mdh_empty_creel();
+    }
+
+    MdhValue result = __mdh_empty_creel();
+    int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;
+    int64_t count = *dict_ptr;
+    MdhValue *entries = (MdhValue *)(dict_ptr + 1);
+    for (int64_t i = 0; i < count; i++) {
+        MdhValue key = entries[i * 2];
+        MdhValue val = entries[i * 2 + 1];
+
+        MdhValue new_key = __mdh_to_string(val);
+        MdhValue new_val = (key.tag == MDH_TAG_STRING) ? key : __mdh_to_string(key);
+        result = __mdh_dict_set(result, new_key, new_val);
+    }
+    return result;
+}
+
+MdhValue __mdh_fae_pairs(MdhValue pairs) {
+    if (pairs.tag != MDH_TAG_LIST) {
+        __mdh_type_error("fae_pairs", pairs.tag, 0);
+        return __mdh_empty_creel();
+    }
+
+    MdhValue result = __mdh_empty_creel();
+    MdhList *outer = __mdh_get_list(pairs);
+    for (int64_t i = 0; i < outer->length; i++) {
+        MdhValue item = outer->items[i];
+        if (item.tag != MDH_TAG_LIST) {
+            continue;
+        }
+        MdhList *pair = __mdh_get_list(item);
+        if (pair->length < 2) {
+            continue;
+        }
+        MdhValue key = __mdh_to_string(pair->items[0]);
+        MdhValue val = pair->items[1];
+        result = __mdh_dict_set(result, key, val);
+    }
+    return result;
 }
 
 MdhValue __mdh_toss_in(MdhValue dict, MdhValue item) {
@@ -1710,6 +1910,135 @@ MdhValue __mdh_creel_tae_list(MdhValue dict) {
     return result;
 }
 
+MdhValue __mdh_creels_thegither(MdhValue a, MdhValue b) {
+    /* Union of two creels/sets (dicts) */
+    if (a.tag != MDH_TAG_DICT) {
+        return b.tag == MDH_TAG_DICT ? b : __mdh_empty_creel();
+    }
+    if (b.tag != MDH_TAG_DICT) {
+        return a;
+    }
+
+    MdhValue result = __mdh_empty_creel();
+
+    int64_t *a_ptr = (int64_t *)(intptr_t)a.data;
+    int64_t a_count = *a_ptr;
+    MdhValue *a_entries = (MdhValue *)(a_ptr + 1);
+    for (int64_t i = 0; i < a_count; i++) {
+        result = __mdh_toss_in(result, a_entries[i * 2]);
+    }
+
+    int64_t *b_ptr = (int64_t *)(intptr_t)b.data;
+    int64_t b_count = *b_ptr;
+    MdhValue *b_entries = (MdhValue *)(b_ptr + 1);
+    for (int64_t i = 0; i < b_count; i++) {
+        result = __mdh_toss_in(result, b_entries[i * 2]);
+    }
+
+    return result;
+}
+
+MdhValue __mdh_creels_baith(MdhValue a, MdhValue b) {
+    /* Intersection of two creels/sets (dicts) */
+    if (a.tag != MDH_TAG_DICT) {
+        __mdh_type_error("creels_baith", a.tag, 0);
+        return __mdh_empty_creel();
+    }
+    if (b.tag != MDH_TAG_DICT) {
+        __mdh_type_error("creels_baith", b.tag, 0);
+        return __mdh_empty_creel();
+    }
+
+    MdhValue result = __mdh_empty_creel();
+    int64_t *a_ptr = (int64_t *)(intptr_t)a.data;
+    int64_t a_count = *a_ptr;
+    MdhValue *a_entries = (MdhValue *)(a_ptr + 1);
+    for (int64_t i = 0; i < a_count; i++) {
+        MdhValue key = a_entries[i * 2];
+        MdhValue contains = __mdh_dict_contains(b, key);
+        if (contains.tag == MDH_TAG_BOOL && contains.data != 0) {
+            result = __mdh_toss_in(result, key);
+        }
+    }
+    return result;
+}
+
+MdhValue __mdh_creels_differ(MdhValue a, MdhValue b) {
+    /* Difference of two creels/sets (a \\ b) */
+    if (a.tag != MDH_TAG_DICT) {
+        __mdh_type_error("creels_differ", a.tag, 0);
+        return __mdh_empty_creel();
+    }
+    if (b.tag != MDH_TAG_DICT) {
+        __mdh_type_error("creels_differ", b.tag, 0);
+        return __mdh_empty_creel();
+    }
+
+    MdhValue result = __mdh_empty_creel();
+    int64_t *a_ptr = (int64_t *)(intptr_t)a.data;
+    int64_t a_count = *a_ptr;
+    MdhValue *a_entries = (MdhValue *)(a_ptr + 1);
+    for (int64_t i = 0; i < a_count; i++) {
+        MdhValue key = a_entries[i * 2];
+        MdhValue contains = __mdh_dict_contains(b, key);
+        if (!(contains.tag == MDH_TAG_BOOL && contains.data != 0)) {
+            result = __mdh_toss_in(result, key);
+        }
+    }
+    return result;
+}
+
+MdhValue __mdh_is_subset(MdhValue a, MdhValue b) {
+    if (a.tag != MDH_TAG_DICT) {
+        __mdh_type_error("is_subset", a.tag, 0);
+        return __mdh_make_bool(false);
+    }
+    if (b.tag != MDH_TAG_DICT) {
+        __mdh_type_error("is_subset", b.tag, 0);
+        return __mdh_make_bool(false);
+    }
+
+    int64_t *a_ptr = (int64_t *)(intptr_t)a.data;
+    int64_t a_count = *a_ptr;
+    MdhValue *a_entries = (MdhValue *)(a_ptr + 1);
+    for (int64_t i = 0; i < a_count; i++) {
+        MdhValue key = a_entries[i * 2];
+        MdhValue contains = __mdh_dict_contains(b, key);
+        if (!(contains.tag == MDH_TAG_BOOL && contains.data != 0)) {
+            return __mdh_make_bool(false);
+        }
+    }
+    return __mdh_make_bool(true);
+}
+
+MdhValue __mdh_is_superset(MdhValue a, MdhValue b) {
+    /* a is superset of b iff b is subset of a */
+    return __mdh_is_subset(b, a);
+}
+
+MdhValue __mdh_is_disjoint(MdhValue a, MdhValue b) {
+    if (a.tag != MDH_TAG_DICT) {
+        __mdh_type_error("is_disjoint", a.tag, 0);
+        return __mdh_make_bool(false);
+    }
+    if (b.tag != MDH_TAG_DICT) {
+        __mdh_type_error("is_disjoint", b.tag, 0);
+        return __mdh_make_bool(false);
+    }
+
+    int64_t *a_ptr = (int64_t *)(intptr_t)a.data;
+    int64_t a_count = *a_ptr;
+    MdhValue *a_entries = (MdhValue *)(a_ptr + 1);
+    for (int64_t i = 0; i < a_count; i++) {
+        MdhValue key = a_entries[i * 2];
+        MdhValue contains = __mdh_dict_contains(b, key);
+        if (contains.tag == MDH_TAG_BOOL && contains.data != 0) {
+            return __mdh_make_bool(false);
+        }
+    }
+    return __mdh_make_bool(true);
+}
+
 /* Testing support */
 MdhValue __mdh_assert(MdhValue condition, MdhValue msg) {
     bool cond = false;
@@ -2112,6 +2441,1815 @@ MdhValue __mdh_ends_with(MdhValue str, MdhValue suffix) {
         return __mdh_make_bool(0);
     }
     return __mdh_make_bool(strcmp(s + slen - suflen, suf) == 0);
+}
+
+/* ========== Environment/System ========== */
+
+void __mdh_set_args(int32_t argc, char **argv) {
+    __mdh_argc = argc;
+    __mdh_argv = argv;
+}
+
+MdhValue __mdh_args(void) {
+    MdhValue result = __mdh_make_list(__mdh_argc);
+    for (int32_t i = 0; i < __mdh_argc; i++) {
+        const char *s = (__mdh_argv && __mdh_argv[i]) ? __mdh_argv[i] : "";
+        __mdh_list_push(result, __mdh_make_string(s));
+    }
+    return result;
+}
+
+MdhValue __mdh_cwd(void) {
+    char *cwd = getcwd(NULL, 0);
+    if (!cwd) {
+        return __mdh_make_nil();
+    }
+    MdhValue v = __mdh_make_string(cwd);
+    free(cwd);
+    return v;
+}
+
+MdhValue __mdh_chdir(MdhValue path) {
+    if (path.tag != MDH_TAG_STRING) {
+        __mdh_type_error("chdir", path.tag, 0);
+        return __mdh_make_nil();
+    }
+    const char *p = __mdh_get_string(path);
+    if (chdir(p) != 0) {
+        char buf[512];
+        snprintf(buf, sizeof(buf), "Couldnae change tae directory '%s': %s", p, strerror(errno));
+        __mdh_hurl(__mdh_make_string(buf));
+    }
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_env_get(MdhValue key) {
+    if (key.tag != MDH_TAG_STRING) {
+        __mdh_type_error("env_get", key.tag, 0);
+        return __mdh_make_nil();
+    }
+    const char *k = __mdh_get_string(key);
+    const char *v = getenv(k);
+    if (!v) {
+        return __mdh_make_nil();
+    }
+    return __mdh_make_string(v);
+}
+
+MdhValue __mdh_env_set(MdhValue key, MdhValue value) {
+    if (key.tag != MDH_TAG_STRING) {
+        __mdh_type_error("env_set", key.tag, 0);
+        return __mdh_make_nil();
+    }
+    MdhValue value_str = __mdh_to_string(value);
+    const char *k = __mdh_get_string(key);
+    const char *v = __mdh_get_string(value_str);
+    (void)setenv(k, v, 1);
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_env_all(void) {
+    extern char **environ;
+
+    MdhValue dict = __mdh_empty_creel();
+    if (!environ) {
+        return dict;
+    }
+
+    for (char **p = environ; *p; p++) {
+        const char *entry = *p;
+        const char *eq = strchr(entry, '=');
+        if (!eq) {
+            continue;
+        }
+        size_t klen = (size_t)(eq - entry);
+        char *kbuf = (char *)GC_malloc(klen + 1);
+        memcpy(kbuf, entry, klen);
+        kbuf[klen] = '\0';
+
+        MdhValue k = __mdh_string_from_buf(kbuf);
+        MdhValue v = __mdh_make_string(eq + 1);
+        dict = __mdh_dict_set(dict, k, v);
+    }
+
+    return dict;
+}
+
+MdhValue __mdh_path_join(MdhValue a, MdhValue b) {
+    if (a.tag != MDH_TAG_STRING || b.tag != MDH_TAG_STRING) {
+        __mdh_type_error("path_join", a.tag, b.tag);
+        return __mdh_make_string("");
+    }
+
+    const char *pa = __mdh_get_string(a);
+    const char *pb = __mdh_get_string(b);
+
+    if (pb[0] == '/') {
+        return __mdh_make_string(pb);
+    }
+
+    size_t la = strlen(pa);
+    size_t lb = strlen(pb);
+
+    if (la == 0) {
+        return __mdh_make_string(pb);
+    }
+
+    int need_slash = pa[la - 1] != '/';
+    char *out = (char *)GC_malloc(la + (size_t)need_slash + lb + 1);
+
+    memcpy(out, pa, la);
+    size_t pos = la;
+    if (need_slash) {
+        out[pos++] = '/';
+    }
+    memcpy(out + pos, pb, lb);
+    out[pos + lb] = '\0';
+
+    return __mdh_string_from_buf(out);
+}
+
+static char *__mdh_shell_quote_single(const char *s) {
+    size_t len = strlen(s);
+    size_t quotes = 0;
+    for (size_t i = 0; i < len; i++) {
+        if (s[i] == '\'') {
+            quotes++;
+        }
+    }
+
+    /* Surround with single quotes and escape internal single quotes as: '\'' */
+    size_t out_len = 2 + len + quotes * 3;
+    char *out = (char *)GC_malloc(out_len + 1);
+
+    size_t j = 0;
+    out[j++] = '\'';
+    for (size_t i = 0; i < len; i++) {
+        if (s[i] == '\'') {
+            out[j++] = '\'';
+            out[j++] = '\\';
+            out[j++] = '\'';
+            out[j++] = '\'';
+        } else {
+            out[j++] = s[i];
+        }
+    }
+    out[j++] = '\'';
+    out[j] = '\0';
+    return out;
+}
+
+static char *__mdh_build_shell_command(const char *cmd, bool redirect_stderr) {
+    const char *shell = getenv("MDH_SHELL");
+    if (!shell || shell[0] == '\0') {
+        shell = "sh";
+    }
+
+    char *quoted = __mdh_shell_quote_single(cmd);
+    const char *redir = redirect_stderr ? " 2>&1" : "";
+
+    size_t needed = strlen(shell) + strlen(" -c ") + strlen(quoted) + strlen(redir) + 1;
+    char *full = (char *)GC_malloc(needed);
+    snprintf(full, needed, "%s -c %s%s", shell, quoted, redir);
+    return full;
+}
+
+MdhValue __mdh_shell(MdhValue cmd) {
+    if (cmd.tag != MDH_TAG_STRING) {
+        __mdh_type_error("shell", cmd.tag, 0);
+        return __mdh_make_nil();
+    }
+
+    char *full = __mdh_build_shell_command(__mdh_get_string(cmd), true);
+    FILE *fp = popen(full, "r");
+    if (!fp) {
+        __mdh_hurl(__mdh_make_string("Shell command failed"));
+        return __mdh_make_nil();
+    }
+
+    MdhStrBuf sb;
+    __mdh_sb_init(&sb);
+
+    char buf[4096];
+    size_t nread = 0;
+    while ((nread = fread(buf, 1, sizeof(buf), fp)) > 0) {
+        __mdh_sb_append_n(&sb, buf, nread);
+    }
+
+    (void)pclose(fp);
+    return __mdh_string_from_buf(sb.buf);
+}
+
+MdhValue __mdh_shell_status(MdhValue cmd) {
+    if (cmd.tag != MDH_TAG_STRING) {
+        __mdh_type_error("shell_status", cmd.tag, 0);
+        return __mdh_make_int(-1);
+    }
+
+    char *full = __mdh_build_shell_command(__mdh_get_string(cmd), false);
+    int status = system(full);
+    if (status == -1) {
+        return __mdh_make_int(-1);
+    }
+    if (WIFEXITED(status)) {
+        return __mdh_make_int((int64_t)WEXITSTATUS(status));
+    }
+    return __mdh_make_int(-1);
+}
+
+/* ========== File I/O (extra parity) ========== */
+
+MdhValue __mdh_file_size(MdhValue path) {
+    if (path.tag != MDH_TAG_STRING) {
+        __mdh_type_error("file_size", path.tag, 0);
+        return __mdh_make_int(0);
+    }
+    const char *p = __mdh_get_string(path);
+    struct stat st;
+    if (stat(p, &st) != 0) {
+        char buf[512];
+        snprintf(buf, sizeof(buf), "Couldnae get file info fer '%s': %s", p, strerror(errno));
+        __mdh_hurl(__mdh_make_string(buf));
+        return __mdh_make_int(0);
+    }
+    return __mdh_make_int((int64_t)st.st_size);
+}
+
+MdhValue __mdh_file_delete(MdhValue path) {
+    if (path.tag != MDH_TAG_STRING) {
+        __mdh_type_error("file_delete", path.tag, 0);
+        return __mdh_make_nil();
+    }
+    const char *p = __mdh_get_string(path);
+    if (unlink(p) != 0) {
+        char buf[512];
+        snprintf(buf, sizeof(buf), "Couldnae delete '%s': %s", p, strerror(errno));
+        __mdh_hurl(__mdh_make_string(buf));
+    }
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_list_dir(MdhValue path) {
+    if (path.tag != MDH_TAG_STRING) {
+        __mdh_type_error("list_dir", path.tag, 0);
+        return __mdh_make_list(0);
+    }
+    const char *p = __mdh_get_string(path);
+    DIR *dir = opendir(p);
+    if (!dir) {
+        char buf[512];
+        snprintf(buf, sizeof(buf), "Couldnae read directory '%s': %s", p, strerror(errno));
+        __mdh_hurl(__mdh_make_string(buf));
+        return __mdh_make_list(0);
+    }
+
+    MdhValue result = __mdh_make_list(8);
+    struct dirent *ent = NULL;
+    while ((ent = readdir(dir)) != NULL) {
+        const char *name = ent->d_name;
+        if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) {
+            continue;
+        }
+        __mdh_list_push(result, __mdh_make_string(name));
+    }
+
+    closedir(dir);
+    return result;
+}
+
+static int __mdh_mkdir_p(const char *path) {
+    if (!path || path[0] == '\0') {
+        return -1;
+    }
+
+    char *tmp = GC_strdup(path);
+    size_t len = strlen(tmp);
+    if (len == 0) {
+        return -1;
+    }
+
+    if (tmp[len - 1] == '/') {
+        tmp[len - 1] = '\0';
+    }
+
+    for (char *p = tmp + 1; *p; p++) {
+        if (*p == '/') {
+            *p = '\0';
+            if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
+                *p = '/';
+                return -1;
+            }
+            *p = '/';
+        }
+    }
+
+    if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
+        return -1;
+    }
+
+    return 0;
+}
+
+MdhValue __mdh_make_dir(MdhValue path) {
+    if (path.tag != MDH_TAG_STRING) {
+        __mdh_type_error("make_dir", path.tag, 0);
+        return __mdh_make_nil();
+    }
+    const char *p = __mdh_get_string(path);
+    if (__mdh_mkdir_p(p) != 0) {
+        char buf[512];
+        snprintf(buf, sizeof(buf), "Couldnae create directory '%s': %s", p, strerror(errno));
+        __mdh_hurl(__mdh_make_string(buf));
+    }
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_is_dir(MdhValue path) {
+    if (path.tag != MDH_TAG_STRING) {
+        __mdh_type_error("is_dir", path.tag, 0);
+        return __mdh_make_bool(false);
+    }
+    const char *p = __mdh_get_string(path);
+    struct stat st;
+    if (stat(p, &st) != 0) {
+        return __mdh_make_bool(false);
+    }
+    return __mdh_make_bool(S_ISDIR(st.st_mode));
+}
+
+MdhValue __mdh_scrieve_append(MdhValue path, MdhValue content) {
+    if (path.tag != MDH_TAG_STRING) {
+        __mdh_type_error("scrieve_append", path.tag, 0);
+        return __mdh_make_nil();
+    }
+
+    const char *p = __mdh_get_string(path);
+    MdhValue content_str = content.tag == MDH_TAG_STRING ? content : __mdh_to_string(content);
+    const char *c = __mdh_get_string(content_str);
+
+    FILE *f = fopen(p, "ab");
+    if (!f) {
+        char buf[512];
+        snprintf(buf, sizeof(buf), "Couldnae open '%s' fer appendin': %s", p, strerror(errno));
+        __mdh_hurl(__mdh_make_string(buf));
+        return __mdh_make_nil();
+    }
+
+    if (c && c[0] != '\0') {
+        (void)fwrite(c, 1, strlen(c), f);
+    }
+
+    fclose(f);
+    return __mdh_make_nil();
+}
+
+/* ========== Date/Time ========== */
+
+MdhValue __mdh_date_now(void) {
+    time_t now = time(NULL);
+    struct tm tm_now;
+    localtime_r(&now, &tm_now);
+
+    int64_t weekday = (tm_now.tm_wday + 6) % 7; /* Monday=0 */
+
+    MdhValue dict = __mdh_empty_creel();
+    dict = __mdh_dict_set(dict, __mdh_make_string("year"), __mdh_make_int((int64_t)tm_now.tm_year + 1900));
+    dict = __mdh_dict_set(dict, __mdh_make_string("month"), __mdh_make_int((int64_t)tm_now.tm_mon + 1));
+    dict = __mdh_dict_set(dict, __mdh_make_string("day"), __mdh_make_int((int64_t)tm_now.tm_mday));
+    dict = __mdh_dict_set(dict, __mdh_make_string("hour"), __mdh_make_int((int64_t)tm_now.tm_hour));
+    dict = __mdh_dict_set(dict, __mdh_make_string("minute"), __mdh_make_int((int64_t)tm_now.tm_min));
+    dict = __mdh_dict_set(dict, __mdh_make_string("second"), __mdh_make_int((int64_t)tm_now.tm_sec));
+    dict = __mdh_dict_set(dict, __mdh_make_string("weekday"), __mdh_make_int(weekday));
+    return dict;
+}
+
+MdhValue __mdh_date_format(MdhValue timestamp_ms, MdhValue format) {
+    if (timestamp_ms.tag != MDH_TAG_INT || format.tag != MDH_TAG_STRING) {
+        __mdh_type_error("date_format", timestamp_ms.tag, format.tag);
+        return __mdh_make_string("");
+    }
+
+    int64_t ms = timestamp_ms.data;
+    time_t sec = (time_t)(ms / 1000);
+    struct tm tm_val;
+    localtime_r(&sec, &tm_val);
+
+    const char *fmt = __mdh_get_string(format);
+    size_t cap = 128;
+    char *buf = (char *)GC_malloc(cap);
+    size_t out = strftime(buf, cap, fmt, &tm_val);
+    while (out == 0 && cap < 8192) {
+        cap *= 2;
+        buf = (char *)GC_realloc(buf, cap);
+        out = strftime(buf, cap, fmt, &tm_val);
+    }
+    if (out == 0) {
+        __mdh_hurl(__mdh_make_string("Couldnae format date"));
+        return __mdh_make_string("");
+    }
+
+    return __mdh_string_from_buf(buf);
+}
+
+MdhValue __mdh_date_parse(MdhValue date_str, MdhValue format) {
+    if (date_str.tag != MDH_TAG_STRING || format.tag != MDH_TAG_STRING) {
+        __mdh_type_error("date_parse", date_str.tag, format.tag);
+        return __mdh_make_int(0);
+    }
+
+    const char *s = __mdh_get_string(date_str);
+    const char *fmt = __mdh_get_string(format);
+
+    struct tm tm_val;
+    memset(&tm_val, 0, sizeof(tm_val));
+
+    char *end = strptime(s, fmt, &tm_val);
+    if (!end) {
+        __mdh_hurl(__mdh_make_string("Couldnae parse date"));
+        return __mdh_make_int(0);
+    }
+    while (*end && isspace((unsigned char)*end)) {
+        end++;
+    }
+    if (*end) {
+        __mdh_hurl(__mdh_make_string("Couldnae parse date (trailing text)"));
+        return __mdh_make_int(0);
+    }
+
+    time_t t = timegm(&tm_val);
+    if (t == (time_t)-1) {
+        __mdh_hurl(__mdh_make_string("Couldnae parse date (invalid timestamp)"));
+        return __mdh_make_int(0);
+    }
+
+    return __mdh_make_int((int64_t)t * 1000);
+}
+
+static int64_t __mdh_unit_ms(const char *unit, bool allow_millis) {
+    if (!unit) {
+        return 0;
+    }
+    if (allow_millis && strcmp(unit, "milliseconds") == 0) {
+        return 1;
+    }
+    if (strcmp(unit, "seconds") == 0) {
+        return 1000;
+    }
+    if (strcmp(unit, "minutes") == 0) {
+        return 60000;
+    }
+    if (strcmp(unit, "hours") == 0) {
+        return 3600000;
+    }
+    if (strcmp(unit, "days") == 0) {
+        return 86400000;
+    }
+    if (strcmp(unit, "weeks") == 0) {
+        return 604800000;
+    }
+    return 0;
+}
+
+MdhValue __mdh_date_add(MdhValue timestamp_ms, MdhValue amount, MdhValue unit) {
+    if (timestamp_ms.tag != MDH_TAG_INT || amount.tag != MDH_TAG_INT || unit.tag != MDH_TAG_STRING) {
+        __mdh_type_error("date_add", timestamp_ms.tag, amount.tag);
+        return __mdh_make_int(0);
+    }
+    const char *u = __mdh_get_string(unit);
+    int64_t mul = __mdh_unit_ms(u, false);
+    if (mul == 0) {
+        __mdh_hurl(__mdh_make_string("Unknown time unit"));
+        return __mdh_make_int(0);
+    }
+    return __mdh_make_int(timestamp_ms.data + amount.data * mul);
+}
+
+MdhValue __mdh_date_diff(MdhValue ts1, MdhValue ts2, MdhValue unit) {
+    if (ts1.tag != MDH_TAG_INT || ts2.tag != MDH_TAG_INT || unit.tag != MDH_TAG_STRING) {
+        __mdh_type_error("date_diff", ts1.tag, ts2.tag);
+        return __mdh_make_int(0);
+    }
+    const char *u = __mdh_get_string(unit);
+    int64_t mul = __mdh_unit_ms(u, true);
+    if (mul == 0) {
+        __mdh_hurl(__mdh_make_string("Unknown time unit"));
+        return __mdh_make_int(0);
+    }
+    int64_t diff_ms = ts2.data - ts1.data;
+    return __mdh_make_int(diff_ms / mul);
+}
+
+MdhValue __mdh_braw_date(MdhValue ts_or_nil) {
+    uint64_t secs = 0;
+    if (ts_or_nil.tag == MDH_TAG_INT) {
+        secs = (uint64_t)ts_or_nil.data;
+    } else if (ts_or_nil.tag == MDH_TAG_NIL) {
+        secs = (uint64_t)time(NULL);
+    } else {
+        __mdh_type_error("braw_date", ts_or_nil.tag, 0);
+        return __mdh_make_string("");
+    }
+
+    uint64_t days_since_epoch = secs / 86400ULL;
+    size_t day_of_week = (size_t)((days_since_epoch + 4) % 7ULL); /* Jan 1 1970 was Thursday */
+
+    const char *scots_day_names[] = {
+        "the Sabbath",
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Setterday",
+    };
+
+    int64_t remaining_days = (int64_t)days_since_epoch;
+    int64_t year = 1970;
+    for (;;) {
+        int days_in_year = ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0) ? 366 : 365;
+        if (remaining_days < days_in_year) {
+            break;
+        }
+        remaining_days -= days_in_year;
+        year++;
+    }
+
+    const char *scots_months[] = {
+        "Januar",
+        "Februar",
+        "Mairch",
+        "Aprile",
+        "Mey",
+        "Juin",
+        "Julie",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    };
+
+    int is_leap = ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0);
+    int64_t days_in_months[] = {
+        31, is_leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
+    };
+
+    size_t month = 0;
+    for (size_t i = 0; i < 12; i++) {
+        if (remaining_days < days_in_months[i]) {
+            month = i;
+            break;
+        }
+        remaining_days -= days_in_months[i];
+    }
+
+    int64_t day = remaining_days + 1;
+    const char *ordinal = "th";
+    if (day == 1 || day == 21 || day == 31) {
+        ordinal = "st";
+    } else if (day == 2 || day == 22) {
+        ordinal = "nd";
+    } else if (day == 3 || day == 23) {
+        ordinal = "rd";
+    }
+
+    char buf[256];
+    snprintf(
+        buf,
+        sizeof(buf),
+        "%s, the %lld%s o' %s, %lld",
+        scots_day_names[day_of_week],
+        (long long)day,
+        ordinal,
+        scots_months[month],
+        (long long)year
+    );
+    return __mdh_make_string(buf);
+}
+
+/* ========== Regex (POSIX ERE subset) ========== */
+
+static void __mdh_regex_compile_or_hurl(regex_t *re, const char *pattern) {
+    int rc = regcomp(re, pattern, REG_EXTENDED);
+    if (rc != 0) {
+        char err[256];
+        regerror(rc, re, err, sizeof(err));
+        __mdh_hurl(__mdh_make_string(err));
+    }
+}
+
+static MdhValue __mdh_regex_match_dict(const char *text, int64_t start, int64_t end) {
+    MdhValue dict = __mdh_empty_creel();
+
+    size_t len = (size_t)(end - start);
+    char *m = (char *)GC_malloc(len + 1);
+    memcpy(m, text + start, len);
+    m[len] = '\0';
+
+    dict = __mdh_dict_set(dict, __mdh_make_string("match"), __mdh_string_from_buf(m));
+    dict = __mdh_dict_set(dict, __mdh_make_string("start"), __mdh_make_int(start));
+    dict = __mdh_dict_set(dict, __mdh_make_string("end"), __mdh_make_int(end));
+    return dict;
+}
+
+MdhValue __mdh_regex_test(MdhValue text, MdhValue pattern) {
+    if (text.tag != MDH_TAG_STRING || pattern.tag != MDH_TAG_STRING) {
+        __mdh_type_error("regex_test", text.tag, pattern.tag);
+        return __mdh_make_bool(false);
+    }
+
+    regex_t re;
+    __mdh_regex_compile_or_hurl(&re, __mdh_get_string(pattern));
+
+    int rc = regexec(&re, __mdh_get_string(text), 0, NULL, 0);
+    regfree(&re);
+    return __mdh_make_bool(rc == 0);
+}
+
+MdhValue __mdh_regex_match(MdhValue text, MdhValue pattern) {
+    if (text.tag != MDH_TAG_STRING || pattern.tag != MDH_TAG_STRING) {
+        __mdh_type_error("regex_match", text.tag, pattern.tag);
+        return __mdh_make_nil();
+    }
+
+    const char *s = __mdh_get_string(text);
+    regex_t re;
+    __mdh_regex_compile_or_hurl(&re, __mdh_get_string(pattern));
+
+    regmatch_t m;
+    int rc = regexec(&re, s, 1, &m, 0);
+    regfree(&re);
+    if (rc != 0 || m.rm_so < 0 || m.rm_eo < 0) {
+        return __mdh_make_nil();
+    }
+    return __mdh_regex_match_dict(s, (int64_t)m.rm_so, (int64_t)m.rm_eo);
+}
+
+MdhValue __mdh_regex_match_all(MdhValue text, MdhValue pattern) {
+    if (text.tag != MDH_TAG_STRING || pattern.tag != MDH_TAG_STRING) {
+        __mdh_type_error("regex_match_all", text.tag, pattern.tag);
+        return __mdh_make_list(0);
+    }
+
+    const char *s = __mdh_get_string(text);
+    size_t slen = strlen(s);
+
+    regex_t re;
+    __mdh_regex_compile_or_hurl(&re, __mdh_get_string(pattern));
+
+    MdhValue result = __mdh_make_list(8);
+    size_t offset = 0;
+    while (offset <= slen) {
+        regmatch_t m;
+        int rc = regexec(&re, s + offset, 1, &m, 0);
+        if (rc != 0 || m.rm_so < 0 || m.rm_eo < 0) {
+            break;
+        }
+        int64_t start = (int64_t)offset + (int64_t)m.rm_so;
+        int64_t end = (int64_t)offset + (int64_t)m.rm_eo;
+        __mdh_list_push(result, __mdh_regex_match_dict(s, start, end));
+
+        size_t adv = (size_t)m.rm_eo;
+        if (adv == 0) {
+            offset += 1;
+        } else {
+            offset += adv;
+        }
+    }
+
+    regfree(&re);
+    return result;
+}
+
+MdhValue __mdh_regex_replace(MdhValue text, MdhValue pattern, MdhValue replacement) {
+    if (text.tag != MDH_TAG_STRING || pattern.tag != MDH_TAG_STRING || replacement.tag != MDH_TAG_STRING) {
+        __mdh_type_error("regex_replace", text.tag, pattern.tag);
+        return text.tag == MDH_TAG_STRING ? text : __mdh_make_string("");
+    }
+
+    const char *s = __mdh_get_string(text);
+    size_t slen = strlen(s);
+    const char *repl = __mdh_get_string(replacement);
+
+    regex_t re;
+    __mdh_regex_compile_or_hurl(&re, __mdh_get_string(pattern));
+
+    MdhStrBuf sb;
+    __mdh_sb_init(&sb);
+
+    size_t offset = 0;
+    while (offset <= slen) {
+        regmatch_t m;
+        int rc = regexec(&re, s + offset, 1, &m, 0);
+        if (rc != 0 || m.rm_so < 0 || m.rm_eo < 0) {
+            break;
+        }
+
+        size_t match_start = offset + (size_t)m.rm_so;
+        size_t match_end = offset + (size_t)m.rm_eo;
+
+        __mdh_sb_append_n(&sb, s + offset, match_start - offset);
+        __mdh_sb_append(&sb, repl);
+
+        if (match_end == offset) {
+            offset += 1;
+        } else {
+            offset = match_end;
+        }
+    }
+
+    if (offset < slen) {
+        __mdh_sb_append_n(&sb, s + offset, slen - offset);
+    }
+
+    regfree(&re);
+    return __mdh_string_from_buf(sb.buf);
+}
+
+MdhValue __mdh_regex_replace_first(MdhValue text, MdhValue pattern, MdhValue replacement) {
+    if (text.tag != MDH_TAG_STRING || pattern.tag != MDH_TAG_STRING || replacement.tag != MDH_TAG_STRING) {
+        __mdh_type_error("regex_replace_first", text.tag, pattern.tag);
+        return text.tag == MDH_TAG_STRING ? text : __mdh_make_string("");
+    }
+
+    const char *s = __mdh_get_string(text);
+    size_t slen = strlen(s);
+    const char *repl = __mdh_get_string(replacement);
+
+    regex_t re;
+    __mdh_regex_compile_or_hurl(&re, __mdh_get_string(pattern));
+
+    regmatch_t m;
+    int rc = regexec(&re, s, 1, &m, 0);
+    regfree(&re);
+    if (rc != 0 || m.rm_so < 0 || m.rm_eo < 0) {
+        return text;
+    }
+
+    size_t start = (size_t)m.rm_so;
+    size_t end = (size_t)m.rm_eo;
+
+    MdhStrBuf sb;
+    __mdh_sb_init(&sb);
+    __mdh_sb_append_n(&sb, s, start);
+    __mdh_sb_append(&sb, repl);
+    __mdh_sb_append_n(&sb, s + end, slen - end);
+
+    return __mdh_string_from_buf(sb.buf);
+}
+
+MdhValue __mdh_regex_split(MdhValue text, MdhValue pattern) {
+    if (text.tag != MDH_TAG_STRING || pattern.tag != MDH_TAG_STRING) {
+        __mdh_type_error("regex_split", text.tag, pattern.tag);
+        return __mdh_make_list(0);
+    }
+
+    const char *s = __mdh_get_string(text);
+    size_t slen = strlen(s);
+
+    regex_t re;
+    __mdh_regex_compile_or_hurl(&re, __mdh_get_string(pattern));
+
+    MdhValue result = __mdh_make_list(8);
+    size_t offset = 0;
+    while (offset <= slen) {
+        regmatch_t m;
+        int rc = regexec(&re, s + offset, 1, &m, 0);
+        if (rc != 0 || m.rm_so < 0 || m.rm_eo < 0) {
+            break;
+        }
+
+        size_t match_start = offset + (size_t)m.rm_so;
+        size_t match_end = offset + (size_t)m.rm_eo;
+
+        size_t seg_len = match_start - offset;
+        char *seg = (char *)GC_malloc(seg_len + 1);
+        memcpy(seg, s + offset, seg_len);
+        seg[seg_len] = '\0';
+        __mdh_list_push(result, __mdh_string_from_buf(seg));
+
+        if (match_end == offset) {
+            offset += 1;
+        } else {
+            offset = match_end;
+        }
+    }
+
+    /* trailing segment */
+    if (offset <= slen) {
+        size_t seg_len = slen - offset;
+        char *seg = (char *)GC_malloc(seg_len + 1);
+        memcpy(seg, s + offset, seg_len);
+        seg[seg_len] = '\0';
+        __mdh_list_push(result, __mdh_string_from_buf(seg));
+    }
+
+    regfree(&re);
+    return result;
+}
+
+/* ========== JSON ========== */
+
+#if 0 /* disabled: corrupted patch artifact */
+static void __mdh_json_skip_ws(const char **p) {
+    while (**p && isspace((unsigned char)**p)) {
+        (*p)++;
+    }
+}
+
+static void __mdh_json_append_utf8(MdhStrBuf *sb, uint32_t code) {
+    if (code <= 0x7F) {
+        __mdh_sb_append_char(sb, (char)code);
+    } else if (code <= 0x7FF) {
+        __mdh_sb_append_char(sb, (char)(0xC0 | ((code >> 6) & 0x1F)));
+        __mdh_sb_append_char(sb, (char)(0x80 | (code & 0x3F)));
+    } else if (code <= 0xFFFF) {
+        __mdh_sb_append_char(sb, (char)(0xE0 | ((code >> 12) & 0x0F)));
+        __mdh_sb_append_char(sb, (char)(0x80 | ((code >> 6) & 0x3F)));
+        __mdh_sb_append_char(sb, (char)(0x80 | (code & 0x3F)));
+    } else {
+        __mdh_sb_append_char(sb, (char)(0xF0 | ((code >> 18) & 0x07)));
+        __mdh_sb_append_char(sb, (char)(0x80 | ((code >> 12) & 0x3F)));
+        __mdh_sb_append_char(sb, (char)(0x80 | ((code >> 6) & 0x3F)));
+        __mdh_sb_append_char(sb, (char)(0x80 | (code & 0x3F)));
+    }
+}
+
+static int __mdh_hex_val(char c) {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return 10 + (c - 'a');
+    }
+    if (c >= 'A' && c <= 'F') {
+        return 10 + (c - 'A');
+    }
+    return -1;
+}
+
+static MdhValue __mdh_json_parse_value(const char **p);
+
+static MdhValue __mdh_json_parse_string(const char **p) {
+    /* assumes *p points at '\"' */
+    (*p)++; /* skip '\"' */
+    MdhStrBuf sb;
+    __mdh_sb_init(&sb);
+
+    while (**p) {
+        char c = **p;
+        if (c == '\"') {
+            (*p)++; /* skip closing quote */
+            return __mdh_string_from_buf(sb.buf);
+        }
+        if (c == '\\\\') {
+            (*p)++;\n            if (!**p) {\n                __mdh_hurl(__mdh_make_string(\"Unterminated string escape\"));\n                return __mdh_make_string(\"\");\n            }\n            char e = **p;\n            switch (e) {\n                case 'n': __mdh_sb_append_char(&sb, '\\n'); break;\n                case 't': __mdh_sb_append_char(&sb, '\\t'); break;\n                case 'r': __mdh_sb_append_char(&sb, '\\r'); break;\n                case '\"': __mdh_sb_append_char(&sb, '\"'); break;\n                case '\\\\': __mdh_sb_append_char(&sb, '\\\\'); break;\n                case '/': __mdh_sb_append_char(&sb, '/'); break;\n                case 'u': {\n                    int h1 = __mdh_hex_val((*p)[1]);\n                    int h2 = __mdh_hex_val((*p)[2]);\n                    int h3 = __mdh_hex_val((*p)[3]);\n                    int h4 = __mdh_hex_val((*p)[4]);\n                    if (h1 < 0 || h2 < 0 || h3 < 0 || h4 < 0) {\n                        __mdh_hurl(__mdh_make_string(\"Invalid unicode escape\"));\n                        return __mdh_make_string(\"\");\n                    }\n                    uint32_t code = (uint32_t)((h1 << 12) | (h2 << 8) | (h3 << 4) | h4);\n                    __mdh_json_append_utf8(&sb, code);\n                    *p += 4;\n                    break;\n                }\n                default:\n                    __mdh_sb_append_char(&sb, e);\n                    break;\n            }\n        } else {\n            __mdh_sb_append_char(&sb, c);\n        }\n        (*p)++;\n    }\n\n+    __mdh_hurl(__mdh_make_string(\"Unterminated JSON string\"));\n+    return __mdh_make_string(\"\");\n+}\n+\n+static MdhValue __mdh_json_parse_number(const char **p) {\n+    const char *start = *p;\n+    char *endptr = NULL;\n+    double d = strtod(start, &endptr);\n+    if (endptr == start) {\n+        __mdh_hurl(__mdh_make_string(\"Invalid number\"));\n+        return __mdh_make_int(0);\n+    }\n+    size_t n = (size_t)(endptr - start);\n+    bool is_float = false;\n+    for (size_t i = 0; i < n; i++) {\n+        char c = start[i];\n+        if (c == '.' || c == 'e' || c == 'E') {\n+            is_float = true;\n+            break;\n+        }\n+    }\n+    *p = endptr;\n+    if (is_float) {\n+        return __mdh_make_float(d);\n+    }\n+    long long v = strtoll(start, NULL, 10);\n+    return __mdh_make_int((int64_t)v);\n+}\n+\n+static MdhValue __mdh_json_parse_array(const char **p) {\n+    (*p)++; /* skip '[' */\n+    __mdh_json_skip_ws(p);\n+\n+    MdhValue list = __mdh_make_list(8);\n+    if (**p == ']') {\n+        (*p)++;\n+        return list;\n+    }\n+\n+    for (;;) {\n+        MdhValue v = __mdh_json_parse_value(p);\n+        __mdh_list_push(list, v);\n+        __mdh_json_skip_ws(p);\n+        if (**p == ']') {\n+            (*p)++;\n+            break;\n+        }\n+        if (**p != ',') {\n+            __mdh_hurl(__mdh_make_string(\"Expected ']' or ',' in JSON array\"));\n+            return __mdh_make_list(0);\n+        }\n+        (*p)++;\n+        __mdh_json_skip_ws(p);\n+    }\n+    return list;\n+}\n+\n+static MdhValue __mdh_json_parse_object(const char **p) {\n+    (*p)++; /* skip '{' */\n+    __mdh_json_skip_ws(p);\n+\n+    MdhValue dict = __mdh_empty_creel();\n+    if (**p == '}') {\n+        (*p)++;\n+        return dict;\n+    }\n+\n+    for (;;) {\n+        __mdh_json_skip_ws(p);\n+        if (**p != '\"') {\n+            __mdh_hurl(__mdh_make_string(\"Expected string key in JSON object\"));\n+            return __mdh_empty_creel();\n+        }\n+        MdhValue key = __mdh_json_parse_string(p);\n+        __mdh_json_skip_ws(p);\n+        if (**p != ':') {\n+            __mdh_hurl(__mdh_make_string(\"Expected ':' in JSON object\"));\n+            return __mdh_empty_creel();\n+        }\n+        (*p)++;\n+        MdhValue val = __mdh_json_parse_value(p);\n+        dict = __mdh_dict_set(dict, key, val);\n+        __mdh_json_skip_ws(p);\n+\n+        if (**p == '}') {\n+            (*p)++;\n+            break;\n+        }\n+        if (**p != ',') {\n+            __mdh_hurl(__mdh_make_string(\"Expected '}' or ',' in JSON object\"));\n+            return __mdh_empty_creel();\n+        }\n+        (*p)++;\n+        __mdh_json_skip_ws(p);\n+    }\n+    return dict;\n+}\n+\n+static MdhValue __mdh_json_parse_value(const char **p) {\n+    __mdh_json_skip_ws(p);\n+    if (!**p) {\n+        __mdh_hurl(__mdh_make_string(\"Unexpected end of JSON\"));\n+        return __mdh_make_nil();\n+    }\n+\n+    switch (**p) {\n+        case '{':\n+            return __mdh_json_parse_object(p);\n+        case '[':\n+            return __mdh_json_parse_array(p);\n+        case '\"':\n+            return __mdh_json_parse_string(p);\n+        case 't':\n+            if (strncmp(*p, \"true\", 4) == 0) {\n+                *p += 4;\n+                return __mdh_make_bool(true);\n+            }\n+            break;\n+        case 'f':\n+            if (strncmp(*p, \"false\", 5) == 0) {\n+                *p += 5;\n+                return __mdh_make_bool(false);\n+            }\n+            break;\n+        case 'n':\n+            if (strncmp(*p, \"null\", 4) == 0) {\n+                *p += 4;\n+                return __mdh_make_nil();\n+            }\n+            break;\n+        default:\n+            break;\n+    }\n+\n+    if (**p == '-' || (**p >= '0' && **p <= '9')) {\n+        return __mdh_json_parse_number(p);\n+    }\n+\n+    __mdh_hurl(__mdh_make_string(\"Unexpected character in JSON\"));\n+    return __mdh_make_nil();\n+}\n+\n+static void __mdh_json_escape(const char *s, MdhStrBuf *sb) {\n+    __mdh_sb_append_char(sb, '\"');\n+    for (const unsigned char *p = (const unsigned char *)s; *p; p++) {\n+        unsigned char c = *p;\n+        switch (c) {\n+            case '\"':\n+                __mdh_sb_append(sb, \"\\\\\\\"\");\n+                break;\n+            case '\\\\':\n+                __mdh_sb_append(sb, \"\\\\\\\\\");\n+                break;\n+            case '\\n':\n+                __mdh_sb_append(sb, \"\\\\n\");\n+                break;\n+            case '\\t':\n+                __mdh_sb_append(sb, \"\\\\t\");\n+                break;\n+            case '\\r':\n+                __mdh_sb_append(sb, \"\\\\r\");\n+                break;\n+            default:\n+                if (c < 0x20) {\n+                    char esc[7];\n+                    snprintf(esc, sizeof(esc), \"\\\\u%04x\", (unsigned int)c);\n+                    __mdh_sb_append(sb, esc);\n+                } else {\n+                    __mdh_sb_append_char(sb, (char)c);\n+                }\n+                break;\n+        }\n+    }\n+    __mdh_sb_append_char(sb, '\"');\n+}\n+\n+static void __mdh_json_stringify_value(MdhValue value, MdhStrBuf *sb);\n+\n+static void __mdh_json_stringify_dict(MdhValue dict, MdhStrBuf *sb) {\n+    int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;\n+    int64_t count = *dict_ptr;\n+    MdhValue *entries = (MdhValue *)(dict_ptr + 1);\n+\n+    __mdh_sb_append_char(sb, '{');\n+    for (int64_t i = 0; i < count; i++) {\n+        if (i > 0) {\n+            __mdh_sb_append(sb, \", \");\n+        }\n+        MdhValue key = entries[i * 2];\n+        MdhValue val = entries[i * 2 + 1];\n+        MdhValue key_s = key.tag == MDH_TAG_STRING ? key : __mdh_to_string(key);\n+        __mdh_json_escape(__mdh_get_string(key_s), sb);\n+        __mdh_sb_append(sb, \": \");\n+        __mdh_json_stringify_value(val, sb);\n+    }\n+    __mdh_sb_append_char(sb, '}');\n+}\n+\n+static void __mdh_json_stringify_list(MdhValue list, MdhStrBuf *sb) {\n+    MdhList *l = __mdh_get_list(list);\n+    __mdh_sb_append_char(sb, '[');\n+    for (int64_t i = 0; i < l->length; i++) {\n+        if (i > 0) {\n+            __mdh_sb_append(sb, \", \");\n+        }\n+        __mdh_json_stringify_value(l->items[i], sb);\n+    }\n+    __mdh_sb_append_char(sb, ']');\n+}\n+\n+static void __mdh_json_stringify_value(MdhValue value, MdhStrBuf *sb) {\n+    switch (value.tag) {\n+        case MDH_TAG_NIL:\n+            __mdh_sb_append(sb, \"null\");\n+            break;\n+        case MDH_TAG_BOOL:\n+            __mdh_sb_append(sb, value.data ? \"true\" : \"false\");\n+            break;\n+        case MDH_TAG_INT: {\n+            char buf[64];\n+            snprintf(buf, sizeof(buf), \"%lld\", (long long)value.data);\n+            __mdh_sb_append(sb, buf);\n+            break;\n+        }\n+        case MDH_TAG_FLOAT: {\n+            double f = __mdh_get_float(value);\n+            if (isnan(f) || isinf(f)) {\n+                __mdh_sb_append(sb, \"null\");\n+            } else {\n+                char buf[128];\n+                snprintf(buf, sizeof(buf), \"%g\", f);\n+                __mdh_sb_append(sb, buf);\n+            }\n+            break;\n+        }\n+        case MDH_TAG_STRING:\n+            __mdh_json_escape(__mdh_get_string(value), sb);\n+            break;\n+        case MDH_TAG_LIST:\n+            __mdh_json_stringify_list(value, sb);\n+            break;\n+        case MDH_TAG_DICT:\n+            __mdh_json_stringify_dict(value, sb);\n+            break;\n+        default: {\n+            MdhValue s = __mdh_to_string(value);\n+            const char *raw = __mdh_get_string(s);\n+            MdhStrBuf tmp;\n+            __mdh_sb_init(&tmp);\n+            __mdh_json_escape(raw, &tmp);\n+            __mdh_sb_append(sb, tmp.buf);\n+            break;\n+        }\n+    }\n+}\n+\n+static void __mdh_json_indent(MdhStrBuf *sb, int indent) {\n+    for (int i = 0; i < indent; i++) {\n+        __mdh_sb_append(sb, \"  \");\n+    }\n+}\n+\n+static void __mdh_json_pretty_value(MdhValue value, MdhStrBuf *sb, int indent);\n+\n+static void __mdh_json_pretty_list(MdhValue list, MdhStrBuf *sb, int indent) {\n+    MdhList *l = __mdh_get_list(list);\n+    if (l->length == 0) {\n+        __mdh_sb_append(sb, \"[]\");\n+        return;\n+    }\n+    __mdh_sb_append(sb, \"[\\n\");\n+    for (int64_t i = 0; i < l->length; i++) {\n+        __mdh_json_indent(sb, indent + 1);\n+        __mdh_json_pretty_value(l->items[i], sb, indent + 1);\n+        if (i + 1 < l->length) {\n+            __mdh_sb_append(sb, \",\\n\");\n+        }\n+    }\n+    __mdh_sb_append(sb, \"\\n\");\n+    __mdh_json_indent(sb, indent);\n+    __mdh_sb_append(sb, \"]\");\n+}\n+\n+static void __mdh_json_pretty_dict(MdhValue dict, MdhStrBuf *sb, int indent) {\n+    int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;\n+    int64_t count = *dict_ptr;\n+    MdhValue *entries = (MdhValue *)(dict_ptr + 1);\n+\n+    if (count == 0) {\n+        __mdh_sb_append(sb, \"{}\");\n+        return;\n+    }\n+\n+    __mdh_sb_append(sb, \"{\\n\");\n+    for (int64_t i = 0; i < count; i++) {\n+        __mdh_json_indent(sb, indent + 1);\n+        MdhValue key = entries[i * 2];\n+        MdhValue val = entries[i * 2 + 1];\n+        MdhValue key_s = key.tag == MDH_TAG_STRING ? key : __mdh_to_string(key);\n+        __mdh_json_escape(__mdh_get_string(key_s), sb);\n+        __mdh_sb_append(sb, \": \");\n+        __mdh_json_pretty_value(val, sb, indent + 1);\n+        if (i + 1 < count) {\n+            __mdh_sb_append(sb, \",\\n\");\n+        }\n+    }\n+    __mdh_sb_append(sb, \"\\n\");\n+    __mdh_json_indent(sb, indent);\n+    __mdh_sb_append(sb, \"}\");\n+}\n+\n+static void __mdh_json_pretty_value(MdhValue value, MdhStrBuf *sb, int indent) {\n+    switch (value.tag) {\n+        case MDH_TAG_LIST:\n+            __mdh_json_pretty_list(value, sb, indent);\n+            break;\n+        case MDH_TAG_DICT:\n+            __mdh_json_pretty_dict(value, sb, indent);\n+            break;\n+        default:\n+            __mdh_json_stringify_value(value, sb);\n+            break;\n+    }\n+}\n+\n+MdhValue __mdh_json_parse(MdhValue json_str) {\n+    if (json_str.tag != MDH_TAG_STRING) {\n+        __mdh_type_error(\"json_parse\", json_str.tag, 0);\n+        return __mdh_make_nil();\n+    }\n+    const char *p = __mdh_get_string(json_str);\n+    __mdh_json_skip_ws(&p);\n+    if (!*p) {\n+        __mdh_hurl(__mdh_make_string(\"Empty JSON string\"));\n+        return __mdh_make_nil();\n+    }\n+    return __mdh_json_parse_value(&p);\n+}\n+\n+MdhValue __mdh_json_stringify(MdhValue value) {\n+    MdhStrBuf sb;\n+    __mdh_sb_init(&sb);\n+    __mdh_json_stringify_value(value, &sb);\n+    return __mdh_string_from_buf(sb.buf);\n+}\n+\n+MdhValue __mdh_json_pretty(MdhValue value) {\n+    MdhStrBuf sb;\n+    __mdh_sb_init(&sb);\n+    __mdh_json_pretty_value(value, &sb, 0);\n+    return __mdh_string_from_buf(sb.buf);\n+}\n+\n+/* ========== Misc Parity Helpers ========== */\n+\n+MdhValue __mdh_is_a(MdhValue value, MdhValue type_name) {\n+    if (type_name.tag != MDH_TAG_STRING) {\n+        __mdh_type_error(\"is_a\", type_name.tag, 0);\n+        return __mdh_make_bool(false);\n+    }\n+    const char *t = __mdh_get_string(type_name);\n+    bool matches = false;\n+\n+    if (strcmp(t, \"integer\") == 0 || strcmp(t, \"int\") == 0) {\n+        matches = value.tag == MDH_TAG_INT;\n+    } else if (strcmp(t, \"float\") == 0) {\n+        matches = value.tag == MDH_TAG_FLOAT;\n+    } else if (strcmp(t, \"string\") == 0 || strcmp(t, \"str\") == 0) {\n+        matches = value.tag == MDH_TAG_STRING;\n+    } else if (strcmp(t, \"bool\") == 0) {\n+        matches = value.tag == MDH_TAG_BOOL;\n+    } else if (strcmp(t, \"list\") == 0) {\n+        matches = value.tag == MDH_TAG_LIST;\n+    } else if (strcmp(t, \"dict\") == 0) {\n+        matches = value.tag == MDH_TAG_DICT;\n+    } else if (strcmp(t, \"function\") == 0 || strcmp(t, \"dae\") == 0) {\n+        matches = value.tag == MDH_TAG_FUNCTION;\n+    } else if (strcmp(t, \"naething\") == 0 || strcmp(t, \"nil\") == 0) {\n+        matches = value.tag == MDH_TAG_NIL;\n+    } else if (strcmp(t, \"range\") == 0) {\n+        matches = value.tag == MDH_TAG_RANGE;\n+    } else {\n+        matches = false;\n+    }\n+\n+    return __mdh_make_bool(matches);\n+}\n+\n+MdhValue __mdh_numpty_check(MdhValue value) {\n+    if (value.tag == MDH_TAG_NIL) {\n+        return __mdh_make_string(\"That's naething, ya numpty!\");\n+    }\n+    if (value.tag == MDH_TAG_STRING) {\n+        const char *s = __mdh_get_string(value);\n+        if (!s || s[0] == '\\0') {\n+            return __mdh_make_string(\"Empty string, ya numpty!\");\n+        }\n+        return __mdh_make_string(\"That's braw!\");\n+    }\n+    if (value.tag == MDH_TAG_LIST) {\n+        MdhList *l = __mdh_get_list(value);\n+        if (!l || l->length == 0) {\n+            return __mdh_make_string(\"Empty list, ya numpty!\");\n+        }\n+        return __mdh_make_string(\"That's braw!\");\n+    }\n+    return __mdh_make_string(\"That's braw!\");\n+}\n+\n+MdhValue __mdh_indices_o(MdhValue container, MdhValue needle) {\n+    if (container.tag == MDH_TAG_LIST) {\n+        MdhList *l = __mdh_get_list(container);\n+        MdhValue result = __mdh_make_list(8);\n+        for (int64_t i = 0; i < l->length; i++) {\n+            if (__mdh_eq(l->items[i], needle)) {\n+                __mdh_list_push(result, __mdh_make_int(i));\n+            }\n+        }\n+        return result;\n+    }\n+\n+    if (container.tag == MDH_TAG_STRING) {\n+        if (needle.tag != MDH_TAG_STRING) {\n+            __mdh_hurl(__mdh_make_string(\"indices_o() on string needs a string needle\"));\n+            return __mdh_make_list(0);\n+        }\n+        const char *s = __mdh_get_string(container);\n+        const char *n = __mdh_get_string(needle);\n+        size_t nlen = strlen(n);\n+        if (nlen == 0) {\n+            __mdh_hurl(__mdh_make_string(\"Cannae search fer an empty string, ya numpty!\"));\n+            return __mdh_make_list(0);\n+        }\n+        MdhValue result = __mdh_make_list(8);\n+        const char *p = s;\n+        while ((p = strstr(p, n)) != NULL) {\n+            int64_t idx = (int64_t)(p - s);\n+            __mdh_list_push(result, __mdh_make_int(idx));\n+            p += nlen;\n+        }\n+        return result;\n+    }\n+\n+    __mdh_type_error(\"indices_o\", container.tag, 0);\n+    return __mdh_make_list(0);\n+}\n+\n+MdhValue __mdh_chunks(MdhValue list, MdhValue size) {\n+    if (list.tag != MDH_TAG_LIST || size.tag != MDH_TAG_INT) {\n+        __mdh_type_error(\"chunks\", list.tag, size.tag);\n+        return __mdh_make_list(0);\n+    }\n+    if (size.data <= 0) {\n+        __mdh_hurl(__mdh_make_string(\"chunks() size must be positive\"));\n+        return __mdh_make_list(0);\n+    }\n+\n+    MdhList *l = __mdh_get_list(list);\n+    int64_t n = size.data;\n+    int64_t out_len = (l->length + n - 1) / n;\n+    MdhValue result = __mdh_make_list((int32_t)out_len);\n+\n+    for (int64_t i = 0; i < l->length; i += n) {\n+        int64_t chunk_len = l->length - i;\n+        if (chunk_len > n) {\n+            chunk_len = n;\n+        }\n+        MdhValue chunk = __mdh_make_list((int32_t)chunk_len);\n+        for (int64_t j = 0; j < chunk_len; j++) {\n+            __mdh_list_push(chunk, l->items[i + j]);\n+        }\n+        __mdh_list_push(result, chunk);\n+    }\n+    return result;\n+}\n+\n+MdhValue __mdh_grup(MdhValue list, MdhValue size) {\n+    return __mdh_chunks(list, size);\n+}\n+\n+MdhValue __mdh_interleave(MdhValue list_a, MdhValue list_b) {\n+    if (list_a.tag != MDH_TAG_LIST || list_b.tag != MDH_TAG_LIST) {\n+        __mdh_type_error(\"interleave\", list_a.tag, list_b.tag);\n+        return __mdh_make_list(0);\n+    }\n+    MdhList *a = __mdh_get_list(list_a);\n+    MdhList *b = __mdh_get_list(list_b);\n+\n+    int64_t max_len = a->length > b->length ? a->length : b->length;\n+    MdhValue result = __mdh_make_list((int32_t)(a->length + b->length));\n+    for (int64_t i = 0; i < max_len; i++) {\n+        if (i < a->length) {\n+            __mdh_list_push(result, a->items[i]);\n+        }\n+        if (i < b->length) {\n+            __mdh_list_push(result, b->items[i]);\n+        }\n+    }\n+    return result;\n+}\n+\n+MdhValue __mdh_pair_adjacent(MdhValue list) {\n+    if (list.tag != MDH_TAG_LIST) {\n+        __mdh_type_error(\"pair_up\", list.tag, 0);\n+        return __mdh_make_list(0);\n+    }\n+    MdhList *l = __mdh_get_list(list);\n+    int64_t out_len = (l->length + 1) / 2;\n+    MdhValue result = __mdh_make_list((int32_t)out_len);\n+    for (int64_t i = 0; i < l->length; i += 2) {\n+        MdhValue pair = __mdh_make_list(2);\n+        __mdh_list_push(pair, l->items[i]);\n+        if (i + 1 < l->length) {\n+            __mdh_list_push(pair, l->items[i + 1]);\n+        }\n+        __mdh_list_push(result, pair);\n+    }\n+    return result;\n+}\n+\n+MdhValue __mdh_skelp(MdhValue str, MdhValue size) {\n+    if (str.tag != MDH_TAG_STRING || size.tag != MDH_TAG_INT) {\n+        __mdh_type_error(\"skelp\", str.tag, size.tag);\n+        return __mdh_make_list(0);\n+    }\n+    if (size.data <= 0) {\n+        __mdh_hurl(__mdh_make_string(\"skelp() size must be positive\"));\n+        return __mdh_make_list(0);\n+    }\n+\n+    const char *s = __mdh_get_string(str);\n+    size_t len = strlen(s);\n+    size_t n = (size_t)size.data;\n+    size_t out_len = (len + n - 1) / n;\n+    MdhValue result = __mdh_make_list((int32_t)out_len);\n+\n+    for (size_t i = 0; i < len; i += n) {\n+        size_t chunk_len = len - i;\n+        if (chunk_len > n) {\n+            chunk_len = n;\n+        }\n+        char *chunk = (char *)GC_malloc(chunk_len + 1);\n+        memcpy(chunk, s + i, chunk_len);\n+        chunk[chunk_len] = '\\0';\n+        __mdh_list_push(result, __mdh_string_from_buf(chunk));\n+    }\n+    return result;\n+}\n+\n+static bool __mdh_char_in_set(unsigned char c, const unsigned char set[256]) {\n+    return set[c] != 0;\n+}\n+\n+MdhValue __mdh_strip_left(MdhValue str, MdhValue chars) {\n+    if (str.tag != MDH_TAG_STRING || chars.tag != MDH_TAG_STRING) {\n+        __mdh_type_error(\"strip_left\", str.tag, chars.tag);\n+        return __mdh_make_string(\"\");\n+    }\n+    const unsigned char *s = (const unsigned char *)__mdh_get_string(str);\n+    const unsigned char *cset_str = (const unsigned char *)__mdh_get_string(chars);\n+\n+    unsigned char set[256] = {0};\n+    for (const unsigned char *p = cset_str; *p; p++) {\n+        set[*p] = 1;\n+    }\n+\n+    size_t i = 0;\n+    while (s[i] && __mdh_char_in_set(s[i], set)) {\n+        i++;\n+    }\n+\n+    size_t len = strlen((const char *)s + i);\n+    char *out = (char *)GC_malloc(len + 1);\n+    memcpy(out, s + i, len);\n+    out[len] = '\\0';\n+    return __mdh_string_from_buf(out);\n+}\n+\n+MdhValue __mdh_strip_right(MdhValue str, MdhValue chars) {\n+    if (str.tag != MDH_TAG_STRING || chars.tag != MDH_TAG_STRING) {\n+        __mdh_type_error(\"strip_right\", str.tag, chars.tag);\n+        return __mdh_make_string(\"\");\n+    }\n+    const unsigned char *s = (const unsigned char *)__mdh_get_string(str);\n+    const unsigned char *cset_str = (const unsigned char *)__mdh_get_string(chars);\n+\n+    unsigned char set[256] = {0};\n+    for (const unsigned char *p = cset_str; *p; p++) {\n+        set[*p] = 1;\n+    }\n+\n+    size_t len = strlen((const char *)s);\n+    size_t end = len;\n+    while (end > 0 && __mdh_char_in_set(s[end - 1], set)) {\n+        end--;\n+    }\n+\n+    char *out = (char *)GC_malloc(end + 1);\n+    memcpy(out, s, end);\n+    out[end] = '\\0';\n+    return __mdh_string_from_buf(out);\n+}\n+\n+MdhValue __mdh_swapcase(MdhValue str) {\n+    if (str.tag != MDH_TAG_STRING) {\n+        __mdh_type_error(\"swapcase\", str.tag, 0);\n+        return __mdh_make_string(\"\");\n+    }\n+    const char *s = __mdh_get_string(str);\n+    size_t len = strlen(s);\n+    char *out = (char *)GC_malloc(len + 1);\n+    for (size_t i = 0; i < len; i++) {\n+        unsigned char c = (unsigned char)s[i];\n+        if (c >= 'A' && c <= 'Z') {\n+            out[i] = (char)(c + 32);\n+        } else if (c >= 'a' && c <= 'z') {\n+            out[i] = (char)(c - 32);\n+        } else {\n+            out[i] = (char)c;\n+        }\n+    }\n+    out[len] = '\\0';\n+    return __mdh_string_from_buf(out);\n+}\n+\n+MdhValue __mdh_sporran_fill(MdhValue str, MdhValue width, MdhValue fill_char) {\n+    if (str.tag != MDH_TAG_STRING || width.tag != MDH_TAG_INT || fill_char.tag != MDH_TAG_STRING) {\n+        __mdh_type_error(\"sporran_fill\", str.tag, width.tag);\n+        return __mdh_make_string(\"\");\n+    }\n+\n+    const char *s = __mdh_get_string(str);\n+    size_t len = strlen(s);\n+    int64_t w = width.data;\n+    if (w <= 0) {\n+        return __mdh_make_string(\"\");\n+    }\n+    size_t target = (size_t)w;\n+    if (len >= target) {\n+        return str;\n+    }\n+\n+    const char *fill = __mdh_get_string(fill_char);\n+    char fc = (fill && fill[0]) ? fill[0] : ' ';\n+\n+    size_t padding = target - len;\n+    size_t left = padding / 2;\n+    size_t right = padding - left;\n+\n+    char *out = (char *)GC_malloc(target + 1);\n+    size_t pos = 0;\n+    for (size_t i = 0; i < left; i++) {\n+        out[pos++] = fc;\n+    }\n+    memcpy(out + pos, s, len);\n+    pos += len;\n+    for (size_t i = 0; i < right; i++) {\n+        out[pos++] = fc;\n+    }\n+    out[pos] = '\\0';\n+    return __mdh_string_from_buf(out);\n+}\n+\n+MdhValue __mdh_scottify(MdhValue str) {\n+    if (str.tag != MDH_TAG_STRING) {\n+        __mdh_type_error(\"scottify\", str.tag, 0);\n+        return __mdh_make_string(\"\");\n+    }\n+\n+    MdhValue out = str;\n+    const char *pairs[][2] = {\n+        {\"yes\", \"aye\"},\n+        {\"Yes\", \"Aye\"},\n+        {\"no\", \"nae\"},\n+        {\"No\", \"Nae\"},\n+        {\"know\", \"ken\"},\n+        {\"Know\", \"Ken\"},\n+        {\"not\", \"nae\"},\n+        {\"from\", \"fae\"},\n+        {\"to\", \"tae\"},\n+        {\"do\", \"dae\"},\n+        {\"myself\", \"masel\"},\n+        {\"yourself\", \"yersel\"},\n+        {\"small\", \"wee\"},\n+        {\"little\", \"wee\"},\n+        {\"child\", \"bairn\"},\n+        {\"children\", \"bairns\"},\n+        {\"church\", \"kirk\"},\n+        {\"beautiful\", \"bonnie\"},\n+        {\"Beautiful\", \"Bonnie\"},\n+        {\"going\", \"gaun\"},\n+        {\"have\", \"hae\"},\n+        {\"nothing\", \"naething\"},\n+        {\"something\", \"somethin\"},\n+        {\"everything\", \"awthing\"},\n+        {\"everyone\", \"awbody\"},\n+        {\"about\", \"aboot\"},\n+        {\"out\", \"oot\"},\n+        {\"house\", \"hoose\"},\n+    };\n+\n+    for (size_t i = 0; i < sizeof(pairs) / sizeof(pairs[0]); i++) {\n+        out = __mdh_chynge(out, __mdh_make_string(pairs[i][0]), __mdh_make_string(pairs[i][1]));\n+    }\n+    return out;\n+}\n+\n+MdhValue __mdh_mutter(MdhValue str) {\n+    if (str.tag != MDH_TAG_STRING) {\n+        __mdh_type_error(\"mutter\", str.tag, 0);\n+        return __mdh_make_string(\"\");\n+    }\n+    const char *s = __mdh_get_string(str);\n+    size_t len = strlen(s);\n+    char *out = (char *)GC_malloc(len + 7);\n+    memcpy(out, \"...\", 3);\n+    for (size_t i = 0; i < len; i++) {\n+        unsigned char c = (unsigned char)s[i];\n+        if (c >= 'A' && c <= 'Z') {\n+            out[3 + i] = (char)(c + 32);\n+        } else {\n+            out[3 + i] = (char)c;\n+        }\n+    }\n+    memcpy(out + 3 + len, \"...\", 3);\n+    out[6 + len] = '\\0';\n+    return __mdh_string_from_buf(out);\n+}\n+\n+MdhValue __mdh_blooter(MdhValue str) {\n+    if (str.tag != MDH_TAG_STRING) {\n+        __mdh_type_error(\"blooter\", str.tag, 0);\n+        return __mdh_make_string(\"\");\n+    }\n+\n+    const char *s = __mdh_get_string(str);\n+    size_t len = strlen(s);\n+    char *out = (char *)GC_malloc(len + 1);\n+    memcpy(out, s, len + 1);\n+\n+    __mdh_ensure_rng();\n+    if (len > 1) {\n+        for (size_t i = len - 1; i > 0; i--) {\n+            size_t j = (size_t)(rand() % (int)(i + 1));\n+            char tmp = out[i];\n+            out[i] = out[j];\n+            out[j] = tmp;\n+        }\n+    }\n+\n+    return __mdh_string_from_buf(out);\n+}\n+\n+MdhValue __mdh_stooshie(MdhValue str) {\n+    return __mdh_blooter(str);\n+}\n+\n+MdhValue __mdh_dreich(MdhValue str) {\n+    if (str.tag != MDH_TAG_STRING) {\n+        __mdh_type_error(\"dreich\", str.tag, 0);\n+        return __mdh_make_bool(false);\n+    }\n+    const char *s = __mdh_get_string(str);\n+    if (!s || s[0] == '\\0') {\n+        return __mdh_make_bool(true);\n+    }\n+    unsigned char first = (unsigned char)s[0];\n+    for (const unsigned char *p = (const unsigned char *)s + 1; *p; p++) {\n+        if (*p != first) {\n+            return __mdh_make_bool(false);\n+        }\n+    }\n+    return __mdh_make_bool(true);\n+}\n+\n+MdhValue __mdh_geggie(MdhValue str) {\n+    if (str.tag != MDH_TAG_STRING) {\n+        __mdh_type_error(\"geggie\", str.tag, 0);\n+        return __mdh_make_string(\"\");\n+    }\n+    const char *s = __mdh_get_string(str);\n+    size_t len = strlen(s);\n+    if (len == 0) {\n+        return __mdh_make_string(\"\");\n+    }\n+    char *out = (char *)GC_malloc(3);\n+    out[0] = s[0];\n+    out[1] = s[len - 1];\n+    out[2] = '\\0';\n+    return __mdh_string_from_buf(out);\n+}\n+\n+MdhValue __mdh_jings(MdhValue msg) {\n+    MdhValue s = __mdh_to_string(msg);\n+    const char *m = __mdh_get_string(s);\n+    size_t mlen = strlen(m);\n+    const char *prefix = \"Jings! \";\n+    size_t plen = strlen(prefix);\n+    char *out = (char *)GC_malloc(plen + mlen + 1);\n+    memcpy(out, prefix, plen);\n+    memcpy(out + plen, m, mlen);\n+    out[plen + mlen] = '\\0';\n+    return __mdh_string_from_buf(out);\n+}\n+\n+MdhValue __mdh_crivvens(MdhValue msg) {\n+    MdhValue s = __mdh_to_string(msg);\n+    const char *m = __mdh_get_string(s);\n+    size_t mlen = strlen(m);\n+    const char *prefix = \"Crivvens! \";\n+    size_t plen = strlen(prefix);\n+    char *out = (char *)GC_malloc(plen + mlen + 1);\n+    memcpy(out, prefix, plen);\n+    memcpy(out + plen, m, mlen);\n+    out[plen + mlen] = '\\0';\n+    return __mdh_string_from_buf(out);\n+}\n+\n /* ========== Exceptions (Try/Catch/Hurl) ========== */
+#endif /* disabled: corrupted patch artifact */
+
+/* ========== JSON ========== */
+
+static void __mdh_json_skip_ws(const char **p) {
+    while (**p && isspace((unsigned char)**p)) {
+        (*p)++;
+    }
+}
+
+static int __mdh_hex_val(char c) {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return 10 + (c - 'a');
+    }
+    if (c >= 'A' && c <= 'F') {
+        return 10 + (c - 'A');
+    }
+    return -1;
+}
+
+static void __mdh_json_append_utf8(MdhStrBuf *sb, uint32_t code) {
+    if (code <= 0x7F) {
+        __mdh_sb_append_char(sb, (char)code);
+    } else if (code <= 0x7FF) {
+        __mdh_sb_append_char(sb, (char)(0xC0 | ((code >> 6) & 0x1F)));
+        __mdh_sb_append_char(sb, (char)(0x80 | (code & 0x3F)));
+    } else if (code <= 0xFFFF) {
+        __mdh_sb_append_char(sb, (char)(0xE0 | ((code >> 12) & 0x0F)));
+        __mdh_sb_append_char(sb, (char)(0x80 | ((code >> 6) & 0x3F)));
+        __mdh_sb_append_char(sb, (char)(0x80 | (code & 0x3F)));
+    } else {
+        __mdh_sb_append_char(sb, (char)(0xF0 | ((code >> 18) & 0x07)));
+        __mdh_sb_append_char(sb, (char)(0x80 | ((code >> 12) & 0x3F)));
+        __mdh_sb_append_char(sb, (char)(0x80 | ((code >> 6) & 0x3F)));
+        __mdh_sb_append_char(sb, (char)(0x80 | (code & 0x3F)));
+    }
+}
+
+static MdhValue __mdh_json_parse_value(const char **p);
+
+static MdhValue __mdh_json_parse_string(const char **p) {
+    if (**p != '\"') {
+        __mdh_hurl(__mdh_make_string("Expected JSON string"));
+        return __mdh_make_string("");
+    }
+
+    (*p)++; /* skip opening quote */
+    MdhStrBuf sb;
+    __mdh_sb_init(&sb);
+
+    while (**p) {
+        char c = **p;
+        if (c == '\"') {
+            (*p)++; /* skip closing quote */
+            return __mdh_string_from_buf(sb.buf);
+        }
+        if (c == '\\') {
+            (*p)++;
+            if (!**p) {
+                __mdh_hurl(__mdh_make_string("Unterminated string escape"));
+                return __mdh_make_string("");
+            }
+            char e = **p;
+            switch (e) {
+                case 'n':
+                    __mdh_sb_append_char(&sb, '\n');
+                    break;
+                case 't':
+                    __mdh_sb_append_char(&sb, '\t');
+                    break;
+                case 'r':
+                    __mdh_sb_append_char(&sb, '\r');
+                    break;
+                case 'b':
+                    __mdh_sb_append_char(&sb, '\b');
+                    break;
+                case 'f':
+                    __mdh_sb_append_char(&sb, '\f');
+                    break;
+                case '\"':
+                    __mdh_sb_append_char(&sb, '\"');
+                    break;
+                case '\\':
+                    __mdh_sb_append_char(&sb, '\\');
+                    break;
+                case '/':
+                    __mdh_sb_append_char(&sb, '/');
+                    break;
+                case 'u': {
+                    if (!(*p)[1] || !(*p)[2] || !(*p)[3] || !(*p)[4]) {
+                        __mdh_hurl(__mdh_make_string("Invalid unicode escape"));
+                        return __mdh_make_string("");
+                    }
+                    int h1 = __mdh_hex_val((*p)[1]);
+                    int h2 = __mdh_hex_val((*p)[2]);
+                    int h3 = __mdh_hex_val((*p)[3]);
+                    int h4 = __mdh_hex_val((*p)[4]);
+                    if (h1 < 0 || h2 < 0 || h3 < 0 || h4 < 0) {
+                        __mdh_hurl(__mdh_make_string("Invalid unicode escape"));
+                        return __mdh_make_string("");
+                    }
+                    uint32_t code = (uint32_t)((h1 << 12) | (h2 << 8) | (h3 << 4) | h4);
+                    __mdh_json_append_utf8(&sb, code);
+                    *p += 4;
+                    break;
+                }
+                default:
+                    __mdh_sb_append_char(&sb, e);
+                    break;
+            }
+        } else {
+            __mdh_sb_append_char(&sb, c);
+        }
+        (*p)++;
+    }
+
+    __mdh_hurl(__mdh_make_string("Unterminated JSON string"));
+    return __mdh_make_string("");
+}
+
+static MdhValue __mdh_json_parse_number(const char **p) {
+    const char *start = *p;
+    char *endptr = NULL;
+    double d = strtod(start, &endptr);
+    if (endptr == start) {
+        __mdh_hurl(__mdh_make_string("Invalid JSON number"));
+        return __mdh_make_int(0);
+    }
+
+    bool is_float = false;
+    for (const char *q = start; q < endptr; q++) {
+        if (*q == '.' || *q == 'e' || *q == 'E') {
+            is_float = true;
+            break;
+        }
+    }
+
+    *p = endptr;
+    if (is_float) {
+        return __mdh_make_float(d);
+    }
+
+    long long v = strtoll(start, NULL, 10);
+    return __mdh_make_int((int64_t)v);
+}
+
+static MdhValue __mdh_json_parse_array(const char **p) {
+    (*p)++; /* skip '[' */
+    __mdh_json_skip_ws(p);
+
+    MdhValue list = __mdh_make_list(8);
+    if (**p == ']') {
+        (*p)++;
+        return list;
+    }
+
+    for (;;) {
+        MdhValue v = __mdh_json_parse_value(p);
+        __mdh_list_push(list, v);
+        __mdh_json_skip_ws(p);
+
+        if (**p == ']') {
+            (*p)++;
+            break;
+        }
+        if (**p != ',') {
+            __mdh_hurl(__mdh_make_string("Expected ']' or ',' in JSON array"));
+            return __mdh_make_list(0);
+        }
+        (*p)++;
+        __mdh_json_skip_ws(p);
+    }
+    return list;
+}
+
+static MdhValue __mdh_json_parse_object(const char **p) {
+    (*p)++; /* skip '{' */
+    __mdh_json_skip_ws(p);
+
+    MdhValue dict = __mdh_empty_creel();
+    if (**p == '}') {
+        (*p)++;
+        return dict;
+    }
+
+    for (;;) {
+        __mdh_json_skip_ws(p);
+        if (**p != '\"') {
+            __mdh_hurl(__mdh_make_string("Expected string key in JSON object"));
+            return __mdh_empty_creel();
+        }
+        MdhValue key = __mdh_json_parse_string(p);
+        __mdh_json_skip_ws(p);
+        if (**p != ':') {
+            __mdh_hurl(__mdh_make_string("Expected ':' in JSON object"));
+            return __mdh_empty_creel();
+        }
+        (*p)++;
+        MdhValue val = __mdh_json_parse_value(p);
+        dict = __mdh_dict_set(dict, key, val);
+        __mdh_json_skip_ws(p);
+
+        if (**p == '}') {
+            (*p)++;
+            break;
+        }
+        if (**p != ',') {
+            __mdh_hurl(__mdh_make_string("Expected '}' or ',' in JSON object"));
+            return __mdh_empty_creel();
+        }
+        (*p)++;
+        __mdh_json_skip_ws(p);
+    }
+    return dict;
+}
+
+static MdhValue __mdh_json_parse_value(const char **p) {
+    __mdh_json_skip_ws(p);
+    if (!**p) {
+        __mdh_hurl(__mdh_make_string("Unexpected end of JSON"));
+        return __mdh_make_nil();
+    }
+
+    switch (**p) {
+        case '{':
+            return __mdh_json_parse_object(p);
+        case '[':
+            return __mdh_json_parse_array(p);
+        case '\"':
+            return __mdh_json_parse_string(p);
+        case 't':
+            if (strncmp(*p, "true", 4) == 0) {
+                *p += 4;
+                return __mdh_make_bool(true);
+            }
+            break;
+        case 'f':
+            if (strncmp(*p, "false", 5) == 0) {
+                *p += 5;
+                return __mdh_make_bool(false);
+            }
+            break;
+        case 'n':
+            if (strncmp(*p, "null", 4) == 0) {
+                *p += 4;
+                return __mdh_make_nil();
+            }
+            break;
+        default:
+            break;
+    }
+
+    if (**p == '-' || isdigit((unsigned char)**p)) {
+        return __mdh_json_parse_number(p);
+    }
+
+    __mdh_hurl(__mdh_make_string("Invalid JSON value"));
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_json_parse(MdhValue json_str) {
+    if (json_str.tag != MDH_TAG_STRING) {
+        __mdh_type_error("json_parse", json_str.tag, 0);
+        return __mdh_make_nil();
+    }
+
+    const char *p = __mdh_get_string(json_str);
+    MdhValue v = __mdh_json_parse_value(&p);
+    __mdh_json_skip_ws(&p);
+    if (*p != '\0') {
+        __mdh_hurl(__mdh_make_string("Trailing characters after JSON value"));
+        return __mdh_make_nil();
+    }
+    return v;
+}
+
+static void __mdh_json_indent(MdhStrBuf *sb, int indent) {
+    for (int i = 0; i < indent; i++) {
+        __mdh_sb_append(sb, "  ");
+    }
+}
+
+static void __mdh_json_escape_string(MdhStrBuf *sb, const char *s) {
+    __mdh_sb_append_char(sb, '\"');
+    for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
+        unsigned char c = *p;
+        switch (c) {
+            case '\"':
+                __mdh_sb_append(sb, "\\\"");
+                break;
+            case '\\':
+                __mdh_sb_append(sb, "\\\\");
+                break;
+            case '\n':
+                __mdh_sb_append(sb, "\\n");
+                break;
+            case '\t':
+                __mdh_sb_append(sb, "\\t");
+                break;
+            case '\r':
+                __mdh_sb_append(sb, "\\r");
+                break;
+            default:
+                if (c < 0x20) {
+                    char buf[16];
+                    snprintf(buf, sizeof(buf), "\\u%04x", (unsigned int)c);
+                    __mdh_sb_append(sb, buf);
+                } else {
+                    __mdh_sb_append_char(sb, (char)c);
+                }
+                break;
+        }
+    }
+    __mdh_sb_append_char(sb, '\"');
+}
+
+static void __mdh_json_stringify_value(MdhStrBuf *sb, MdhValue v, bool pretty, int indent) {
+    switch (v.tag) {
+        case MDH_TAG_NIL:
+            __mdh_sb_append(sb, "null");
+            return;
+        case MDH_TAG_BOOL:
+            __mdh_sb_append(sb, v.data ? "true" : "false");
+            return;
+        case MDH_TAG_INT: {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%lld", (long long)v.data);
+            __mdh_sb_append(sb, buf);
+            return;
+        }
+        case MDH_TAG_FLOAT: {
+            double f = __mdh_get_float(v);
+            if (isnan(f) || isinf(f)) {
+                __mdh_sb_append(sb, "null");
+            } else {
+                char buf[64];
+                snprintf(buf, sizeof(buf), "%.15g", f);
+                __mdh_sb_append(sb, buf);
+            }
+            return;
+        }
+        case MDH_TAG_STRING:
+            __mdh_json_escape_string(sb, __mdh_get_string(v));
+            return;
+        case MDH_TAG_LIST: {
+            MdhList *list = __mdh_get_list(v);
+            int64_t len = list ? list->length : 0;
+            if (!pretty) {
+                __mdh_sb_append_char(sb, '[');
+                for (int64_t i = 0; i < len; i++) {
+                    if (i > 0) {
+                        __mdh_sb_append(sb, ", ");
+                    }
+                    __mdh_json_stringify_value(sb, list->items[i], false, indent);
+                }
+                __mdh_sb_append_char(sb, ']');
+                return;
+            }
+
+            if (len == 0) {
+                __mdh_sb_append(sb, "[]");
+                return;
+            }
+
+            __mdh_sb_append(sb, "[\n");
+            for (int64_t i = 0; i < len; i++) {
+                __mdh_json_indent(sb, indent + 1);
+                __mdh_json_stringify_value(sb, list->items[i], true, indent + 1);
+                if (i + 1 < len) {
+                    __mdh_sb_append(sb, ",\n");
+                } else {
+                    __mdh_sb_append_char(sb, '\n');
+                }
+            }
+            __mdh_json_indent(sb, indent);
+            __mdh_sb_append_char(sb, ']');
+            return;
+        }
+        case MDH_TAG_DICT: {
+            int64_t *dict_ptr = (int64_t *)(intptr_t)v.data;
+            int64_t count = dict_ptr ? *dict_ptr : 0;
+            MdhValue *entries = dict_ptr ? (MdhValue *)(dict_ptr + 1) : NULL;
+
+            if (!pretty) {
+                __mdh_sb_append_char(sb, '{');
+                for (int64_t i = 0; i < count; i++) {
+                    if (i > 0) {
+                        __mdh_sb_append(sb, ", ");
+                    }
+                    MdhValue key_val = entries[i * 2];
+                    const char *key_str = NULL;
+                    if (key_val.tag == MDH_TAG_STRING) {
+                        key_str = __mdh_get_string(key_val);
+                    } else {
+                        MdhValue s = __mdh_to_string(key_val);
+                        key_str = __mdh_get_string(s);
+                    }
+                    __mdh_json_escape_string(sb, key_str ? key_str : "");
+                    __mdh_sb_append(sb, ": ");
+                    __mdh_json_stringify_value(sb, entries[i * 2 + 1], false, indent);
+                }
+                __mdh_sb_append_char(sb, '}');
+                return;
+            }
+
+            if (count == 0) {
+                __mdh_sb_append(sb, "{}");
+                return;
+            }
+
+            __mdh_sb_append(sb, "{\n");
+            for (int64_t i = 0; i < count; i++) {
+                __mdh_json_indent(sb, indent + 1);
+                MdhValue key_val = entries[i * 2];
+                const char *key_str = NULL;
+                if (key_val.tag == MDH_TAG_STRING) {
+                    key_str = __mdh_get_string(key_val);
+                } else {
+                    MdhValue s = __mdh_to_string(key_val);
+                    key_str = __mdh_get_string(s);
+                }
+                __mdh_json_escape_string(sb, key_str ? key_str : "");
+                __mdh_sb_append(sb, ": ");
+                __mdh_json_stringify_value(sb, entries[i * 2 + 1], true, indent + 1);
+                if (i + 1 < count) {
+                    __mdh_sb_append(sb, ",\n");
+                } else {
+                    __mdh_sb_append_char(sb, '\n');
+                }
+            }
+            __mdh_json_indent(sb, indent);
+            __mdh_sb_append_char(sb, '}');
+            return;
+        }
+        default: {
+            MdhValue s = __mdh_to_string(v);
+            __mdh_json_escape_string(sb, __mdh_get_string(s));
+            return;
+        }
+    }
+}
+
+MdhValue __mdh_json_stringify(MdhValue value) {
+    MdhStrBuf sb;
+    __mdh_sb_init(&sb);
+    __mdh_json_stringify_value(&sb, value, false, 0);
+    return __mdh_string_from_buf(sb.buf);
+}
+
+MdhValue __mdh_json_pretty(MdhValue value) {
+    MdhStrBuf sb;
+    __mdh_sb_init(&sb);
+    __mdh_json_stringify_value(&sb, value, true, 0);
+    return __mdh_string_from_buf(sb.buf);
+}
+
+/* ========== Misc Parity Helpers ========== */
+
+static bool __mdh_char_in_set(unsigned char c, const char *set) {
+    for (const unsigned char *p = (const unsigned char *)set; *p; p++) {
+        if (*p == c) {
+            return true;
+        }
+    }
+    return false;
+}
+
+MdhValue __mdh_is_a(MdhValue value, MdhValue type_name) {
+    if (type_name.tag != MDH_TAG_STRING) {
+        __mdh_type_error("is_a", type_name.tag, 0);
+        return __mdh_make_bool(false);
+    }
+    const char *t = __mdh_get_string(type_name);
+    if (!t) {
+        return __mdh_make_bool(false);
+    }
+
+    bool matches = false;
+    if (strcmp(t, "integer") == 0 || strcmp(t, "int") == 0) {
+        matches = value.tag == MDH_TAG_INT;
+    } else if (strcmp(t, "float") == 0) {
+        matches = value.tag == MDH_TAG_FLOAT;
+    } else if (strcmp(t, "string") == 0 || strcmp(t, "str") == 0) {
+        matches = value.tag == MDH_TAG_STRING;
+    } else if (strcmp(t, "bool") == 0) {
+        matches = value.tag == MDH_TAG_BOOL;
+    } else if (strcmp(t, "list") == 0) {
+        matches = value.tag == MDH_TAG_LIST;
+    } else if (strcmp(t, "dict") == 0) {
+        matches = value.tag == MDH_TAG_DICT;
+    } else if (strcmp(t, "function") == 0 || strcmp(t, "dae") == 0) {
+        matches = value.tag == MDH_TAG_FUNCTION;
+    } else if (strcmp(t, "naething") == 0 || strcmp(t, "nil") == 0) {
+        matches = value.tag == MDH_TAG_NIL;
+    } else if (strcmp(t, "range") == 0) {
+        matches = value.tag == MDH_TAG_RANGE;
+    } else {
+        matches = false;
+    }
+
+    return __mdh_make_bool(matches);
+}
+
+MdhValue __mdh_numpty_check(MdhValue value) {
+    if (value.tag == MDH_TAG_NIL) {
+        return __mdh_make_string("That's naething, ya numpty!");
+    }
+    if (value.tag == MDH_TAG_STRING) {
+        const char *s = __mdh_get_string(value);
+        if (!s || s[0] == '\0') {
+            return __mdh_make_string("Empty string, ya numpty!");
+        }
+    }
+    if (value.tag == MDH_TAG_LIST) {
+        MdhList *l = __mdh_get_list(value);
+        if (!l || l->length == 0) {
+            return __mdh_make_string("Empty list, ya numpty!");
+        }
+    }
+    return __mdh_make_string("That's braw!");
+}
+
+MdhValue __mdh_indices_o(MdhValue container, MdhValue needle) {
+    if (container.tag == MDH_TAG_LIST) {
+        MdhList *l = __mdh_get_list(container);
+        int64_t len = l ? l->length : 0;
+        MdhValue out = __mdh_make_list((int32_t)len);
+        for (int64_t i = 0; i < len; i++) {
+            if (__mdh_eq(l->items[i], needle)) {
+                __mdh_list_push(out, __mdh_make_int(i));
+            }
+        }
+        return out;
+    }
+
+    if (container.tag == MDH_TAG_STRING) {
+        if (needle.tag != MDH_TAG_STRING) {
+            __mdh_type_error("indices_o", needle.tag, 0);
+            return __mdh_make_list(0);
+        }
+
+        const char *haystack = __mdh_get_string(container);
+        const char *need = __mdh_get_string(needle);
+        size_t need_len = strlen(need);
+        if (need_len == 0) {
+            __mdh_hurl(__mdh_make_string("Cannae search fer an empty string, ya numpty!"));
+            return __mdh_make_list(0);
+        }
+
+        MdhValue out = __mdh_make_list(8);
+        const char *p = haystack;
+        while ((p = strstr(p, need)) != NULL) {
+            __mdh_list_push(out, __mdh_make_int((int64_t)(p - haystack)));
+            p += need_len;
+        }
+        return out;
+    }
+
+    __mdh_type_error("indices_o", container.tag, 0);
+    return __mdh_make_list(0);
+}
+
+MdhValue __mdh_chunks(MdhValue list, MdhValue size) {
+    if (list.tag != MDH_TAG_LIST) {
+        __mdh_type_error("chunks", list.tag, 0);
+        return __mdh_make_list(0);
+    }
+    if (size.tag != MDH_TAG_INT) {
+        __mdh_type_error("chunks", size.tag, 0);
+        return __mdh_make_list(0);
+    }
+    int64_t n = size.data;
+    if (n <= 0) {
+        __mdh_hurl(__mdh_make_string("chunks() size must be positive"));
+        return __mdh_make_list(0);
+    }
+
+    MdhList *src = __mdh_get_list(list);
+    int64_t len = src ? src->length : 0;
+    int64_t out_cap = (len + n - 1) / n;
+    MdhValue out = __mdh_make_list((int32_t)out_cap);
+
+    for (int64_t i = 0; i < len; i += n) {
+        int64_t end = i + n;
+        if (end > len) {
+            end = len;
+        }
+        MdhValue chunk = __mdh_make_list((int32_t)(end - i));
+        for (int64_t j = i; j < end; j++) {
+            __mdh_list_push(chunk, src->items[j]);
+        }
+        __mdh_list_push(out, chunk);
+    }
+    return out;
+}
+
+MdhValue __mdh_grup(MdhValue list, MdhValue size) {
+    if (list.tag != MDH_TAG_LIST) {
+        __mdh_type_error("grup", list.tag, 0);
+        return __mdh_make_list(0);
+    }
+    if (size.tag != MDH_TAG_INT) {
+        __mdh_type_error("grup", size.tag, 0);
+        return __mdh_make_list(0);
+    }
+    if (size.data <= 0) {
+        __mdh_hurl(__mdh_make_string("grup() needs a positive chunk size"));
+        return __mdh_make_list(0);
+    }
+    return __mdh_chunks(list, size);
+}
+
+MdhValue __mdh_interleave(MdhValue list_a, MdhValue list_b) {
+    if (list_a.tag != MDH_TAG_LIST || list_b.tag != MDH_TAG_LIST) {
+        __mdh_type_error("interleave", list_a.tag, list_b.tag);
+        return __mdh_make_list(0);
+    }
+
+    MdhList *a = __mdh_get_list(list_a);
+    MdhList *b = __mdh_get_list(list_b);
+    int64_t alen = a ? a->length : 0;
+    int64_t blen = b ? b->length : 0;
+    int64_t max_len = alen > blen ? alen : blen;
+
+    MdhValue out = __mdh_make_list((int32_t)(alen + blen));
+    for (int64_t i = 0; i < max_len; i++) {
+        if (i < alen) {
+            __mdh_list_push(out, a->items[i]);
+        }
+        if (i < blen) {
+            __mdh_list_push(out, b->items[i]);
+        }
+    }
+    return out;
+}
+
+MdhValue __mdh_pair_adjacent(MdhValue list) {
+    if (list.tag != MDH_TAG_LIST) {
+        __mdh_type_error("pair_up", list.tag, 0);
+        return __mdh_make_list(0);
+    }
+
+    MdhList *src = __mdh_get_list(list);
+    int64_t len = src ? src->length : 0;
+    int64_t out_cap = (len + 1) / 2;
+    MdhValue out = __mdh_make_list((int32_t)out_cap);
+
+    for (int64_t i = 0; i < len; i += 2) {
+        int64_t end = i + 2;
+        if (end > len) {
+            end = len;
+        }
+        MdhValue pair = __mdh_make_list((int32_t)(end - i));
+        for (int64_t j = i; j < end; j++) {
+            __mdh_list_push(pair, src->items[j]);
+        }
+        __mdh_list_push(out, pair);
+    }
+    return out;
+}
+
+MdhValue __mdh_skelp(MdhValue str, MdhValue size) {
+    if (str.tag != MDH_TAG_STRING || size.tag != MDH_TAG_INT) {
+        __mdh_type_error("skelp", str.tag, size.tag);
+        return __mdh_make_list(0);
+    }
+
+    const char *s = __mdh_get_string(str);
+    int64_t n = size.data;
+    if (n <= 0) {
+        __mdh_hurl(__mdh_make_string("skelp() size must be positive"));
+        return __mdh_make_list(0);
+    }
+
+    size_t slen = strlen(s);
+    MdhValue out = __mdh_make_list((int32_t)((slen + (size_t)n - 1) / (size_t)n));
+    for (size_t i = 0; i < slen; i += (size_t)n) {
+        size_t end = i + (size_t)n;
+        if (end > slen) {
+            end = slen;
+        }
+        size_t seg_len = end - i;
+        char *buf = (char *)GC_malloc(seg_len + 1);
+        memcpy(buf, s + i, seg_len);
+        buf[seg_len] = '\0';
+        __mdh_list_push(out, __mdh_string_from_buf(buf));
+    }
+    return out;
+}
+
+MdhValue __mdh_strip_left(MdhValue str, MdhValue chars) {
+    if (str.tag != MDH_TAG_STRING || chars.tag != MDH_TAG_STRING) {
+        __mdh_type_error("strip_left", str.tag, chars.tag);
+        return __mdh_make_string("");
+    }
+
+    const char *s = __mdh_get_string(str);
+    const char *set = __mdh_get_string(chars);
+    if (!set || set[0] == '\0') {
+        return str;
+    }
+
+    size_t start = 0;
+    while (s[start] && __mdh_char_in_set((unsigned char)s[start], set)) {
+        start++;
+    }
+
+    size_t slen = strlen(s);
+    size_t out_len = slen - start;
+    char *buf = (char *)GC_malloc(out_len + 1);
+    memcpy(buf, s + start, out_len);
+    buf[out_len] = '\0';
+    return __mdh_string_from_buf(buf);
+}
+
+MdhValue __mdh_strip_right(MdhValue str, MdhValue chars) {
+    if (str.tag != MDH_TAG_STRING || chars.tag != MDH_TAG_STRING) {
+        __mdh_type_error("strip_right", str.tag, chars.tag);
+        return __mdh_make_string("");
+    }
+
+    const char *s = __mdh_get_string(str);
+    const char *set = __mdh_get_string(chars);
+    if (!set || set[0] == '\0') {
+        return str;
+    }
+
+    size_t len = strlen(s);
+    while (len > 0 && __mdh_char_in_set((unsigned char)s[len - 1], set)) {
+        len--;
+    }
+
+    char *buf = (char *)GC_malloc(len + 1);
+    memcpy(buf, s, len);
+    buf[len] = '\0';
+    return __mdh_string_from_buf(buf);
+}
+
+MdhValue __mdh_swapcase(MdhValue str) {
+    if (str.tag != MDH_TAG_STRING) {
+        __mdh_type_error("swapcase", str.tag, 0);
+        return __mdh_make_string("");
+    }
+
+    const char *s = __mdh_get_string(str);
+    size_t len = strlen(s);
+    char *out = (char *)GC_malloc(len + 1);
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (isupper(c)) {
+            out[i] = (char)tolower(c);
+        } else if (islower(c)) {
+            out[i] = (char)toupper(c);
+        } else {
+            out[i] = (char)c;
+        }
+    }
+    out[len] = '\0';
+    return __mdh_string_from_buf(out);
+}
+
+MdhValue __mdh_sporran_fill(MdhValue str, MdhValue width, MdhValue fill_char) {
+    if (str.tag != MDH_TAG_STRING || width.tag != MDH_TAG_INT || fill_char.tag != MDH_TAG_STRING) {
+        __mdh_type_error("sporran_fill", str.tag, width.tag);
+        return __mdh_make_string("");
+    }
+
+    const char *s = __mdh_get_string(str);
+    size_t len = strlen(s);
+    size_t w = (size_t)width.data;
+    const char *fill_s = __mdh_get_string(fill_char);
+    char fc = (fill_s && fill_s[0] != '\0') ? fill_s[0] : ' ';
+
+    if (len >= w) {
+        return str;
+    }
+
+    size_t padding = w - len;
+    size_t left = padding / 2;
+    size_t right = padding - left;
+
+    char *out = (char *)GC_malloc(w + 1);
+    size_t pos = 0;
+    for (size_t i = 0; i < left; i++) {
+        out[pos++] = fc;
+    }
+    memcpy(out + pos, s, len);
+    pos += len;
+    for (size_t i = 0; i < right; i++) {
+        out[pos++] = fc;
+    }
+    out[pos] = '\0';
+    return __mdh_string_from_buf(out);
+}
+
+MdhValue __mdh_scottify(MdhValue str) {
+    if (str.tag != MDH_TAG_STRING) {
+        __mdh_type_error("scottify", str.tag, 0);
+        return __mdh_make_string("");
+    }
+
+    MdhValue out = str;
+    const char *pairs[][2] = {
+        {"yes", "aye"},
+        {"Yes", "Aye"},
+        {"no", "nae"},
+        {"No", "Nae"},
+        {"know", "ken"},
+        {"Know", "Ken"},
+        {"not", "nae"},
+        {"from", "fae"},
+        {"to", "tae"},
+        {"do", "dae"},
+        {"myself", "masel"},
+        {"yourself", "yersel"},
+        {"small", "wee"},
+        {"little", "wee"},
+        {"child", "bairn"},
+        {"children", "bairns"},
+        {"church", "kirk"},
+        {"beautiful", "bonnie"},
+        {"Beautiful", "Bonnie"},
+        {"going", "gaun"},
+        {"have", "hae"},
+        {"nothing", "naething"},
+        {"something", "somethin"},
+        {"everything", "awthing"},
+        {"everyone", "awbody"},
+        {"about", "aboot"},
+        {"out", "oot"},
+        {"house", "hoose"},
+    };
+
+    for (size_t i = 0; i < sizeof(pairs) / sizeof(pairs[0]); i++) {
+        out = __mdh_chynge(out, __mdh_make_string(pairs[i][0]), __mdh_make_string(pairs[i][1]));
+    }
+    return out;
+}
+
+MdhValue __mdh_mutter(MdhValue str) {
+    if (str.tag != MDH_TAG_STRING) {
+        __mdh_type_error("mutter", str.tag, 0);
+        return __mdh_make_string("");
+    }
+    const char *s = __mdh_get_string(str);
+    size_t len = strlen(s);
+    char *out = (char *)GC_malloc(len + 7);
+    memcpy(out, "...", 3);
+    for (size_t i = 0; i < len; i++) {
+        out[3 + i] = (char)tolower((unsigned char)s[i]);
+    }
+    memcpy(out + 3 + len, "...", 3);
+    out[6 + len] = '\0';
+    return __mdh_string_from_buf(out);
+}
+
+MdhValue __mdh_blooter(MdhValue str) {
+    if (str.tag != MDH_TAG_STRING) {
+        __mdh_type_error("blooter", str.tag, 0);
+        return __mdh_make_string("");
+    }
+
+    const char *s = __mdh_get_string(str);
+    size_t len = strlen(s);
+    char *out = (char *)GC_malloc(len + 1);
+    memcpy(out, s, len + 1);
+
+    __mdh_ensure_rng();
+    if (len > 1) {
+        for (size_t i = len - 1; i > 0; i--) {
+            size_t j = (size_t)(rand() % (int)(i + 1));
+            char tmp = out[i];
+            out[i] = out[j];
+            out[j] = tmp;
+        }
+    }
+
+    return __mdh_string_from_buf(out);
+}
+
+MdhValue __mdh_stooshie(MdhValue str) {
+    return __mdh_blooter(str);
+}
+
+MdhValue __mdh_dreich(MdhValue str) {
+    if (str.tag != MDH_TAG_STRING) {
+        __mdh_type_error("dreich", str.tag, 0);
+        return __mdh_make_bool(false);
+    }
+    const char *s = __mdh_get_string(str);
+    if (!s || s[0] == '\0') {
+        return __mdh_make_bool(true);
+    }
+    unsigned char first = (unsigned char)s[0];
+    for (const unsigned char *p = (const unsigned char *)s + 1; *p; p++) {
+        if (*p != first) {
+            return __mdh_make_bool(false);
+        }
+    }
+    return __mdh_make_bool(true);
+}
+
+MdhValue __mdh_geggie(MdhValue str) {
+    if (str.tag != MDH_TAG_STRING) {
+        __mdh_type_error("geggie", str.tag, 0);
+        return __mdh_make_string("");
+    }
+    const char *s = __mdh_get_string(str);
+    size_t len = strlen(s);
+    if (len == 0) {
+        return __mdh_make_string("");
+    }
+    char *out = (char *)GC_malloc(3);
+    out[0] = s[0];
+    out[1] = s[len - 1];
+    out[2] = '\0';
+    return __mdh_string_from_buf(out);
+}
+
+MdhValue __mdh_jings(MdhValue msg) {
+    MdhValue s = __mdh_to_string(msg);
+    const char *m = __mdh_get_string(s);
+    const char *prefix = "Jings! ";
+    size_t plen = strlen(prefix);
+    size_t mlen = strlen(m);
+    char *out = (char *)GC_malloc(plen + mlen + 1);
+    memcpy(out, prefix, plen);
+    memcpy(out + plen, m, mlen);
+    out[plen + mlen] = '\0';
+    return __mdh_string_from_buf(out);
+}
+
+MdhValue __mdh_crivvens(MdhValue msg) {
+    MdhValue s = __mdh_to_string(msg);
+    const char *m = __mdh_get_string(s);
+    const char *prefix = "Crivvens! ";
+    size_t plen = strlen(prefix);
+    size_t mlen = strlen(m);
+    char *out = (char *)GC_malloc(plen + mlen + 1);
+    memcpy(out, prefix, plen);
+    memcpy(out + plen, m, mlen);
+    out[plen + mlen] = '\0';
+    return __mdh_string_from_buf(out);
 }
 
 /* ========== Exceptions (Try/Catch/Hurl) ========== */

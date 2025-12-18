@@ -117,7 +117,8 @@ blether c.cb(41)
     ];
 
     for src in cases {
-        compile_to_ir(src).unwrap_or_else(|e| panic!("expected IR compile success for:\n{src}\n{e}"));
+        compile_to_ir(src)
+            .unwrap_or_else(|e| panic!("expected IR compile success for:\n{src}\n{e}"));
     }
 }
 

@@ -109,7 +109,8 @@ blether x + 1
 
     // fmt --check success (already formatted after we overwrite)
     write_file(&ok_braw, "ken x = 1\nblether x\n");
-    let (code, out, _err) = run_mdhavers(&["fmt", "--check", ok_braw.to_str().unwrap()], None, home);
+    let (code, out, _err) =
+        run_mdhavers(&["fmt", "--check", ok_braw.to_str().unwrap()], None, home);
     assert_eq!(code, 0);
     assert!(out.contains("already formatted"));
 
@@ -180,11 +181,8 @@ blether x + 1
 
     // build native executable (default output path)
     let native_out = dir.path().join("ok");
-    let (code, _out, err) = run_mdhavers(
-        &["build", ok_braw.to_str().unwrap(), "-O", "0"],
-        None,
-        home,
-    );
+    let (code, _out, err) =
+        run_mdhavers(&["build", ok_braw.to_str().unwrap(), "-O", "0"], None, home);
     assert_eq!(code, 0, "stderr: {err}");
     assert!(native_out.exists());
 
@@ -215,11 +213,13 @@ blether x + 1
     assert!(formatted.contains("ken x = 1"));
 
     // parse error path
-    let (code, _out, _err) = run_mdhavers(&["check", bad_syntax_braw.to_str().unwrap()], None, home);
+    let (code, _out, _err) =
+        run_mdhavers(&["check", bad_syntax_braw.to_str().unwrap()], None, home);
     assert_ne!(code, 0);
 
     // runtime error path
-    let (code, _out, _err) = run_mdhavers(&["run", runtime_error_braw.to_str().unwrap()], None, home);
+    let (code, _out, _err) =
+        run_mdhavers(&["run", runtime_error_braw.to_str().unwrap()], None, home);
     assert_ne!(code, 0);
 
     // extension warning path (non-.braw)

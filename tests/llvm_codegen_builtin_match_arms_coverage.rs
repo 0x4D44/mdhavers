@@ -10,11 +10,9 @@ fn compile_to_ir(source: &str) -> Result<String, String> {
 }
 
 fn extract_builtin_representatives_from_codegen_rs() -> Vec<String> {
-    let codegen_rs = std::fs::read_to_string(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/src/llvm/codegen.rs"
-    ))
-    .expect("failed to read src/llvm/codegen.rs");
+    let codegen_rs =
+        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/llvm/codegen.rs"))
+            .expect("failed to read src/llvm/codegen.rs");
 
     let start = codegen_rs
         .find("match name.as_str()")
@@ -45,14 +43,16 @@ fn extract_builtin_representatives_from_codegen_rs() -> Vec<String> {
     let end_idx = end_idx.expect("failed to find end of builtin match block");
     let match_block = &block[..end_idx];
 
-    let arm_re = regex::Regex::new(r#"^\s*(?P<lhs>.+?)\s*=>\s*\{"#)
-        .expect("failed to build arm regex");
+    let arm_re =
+        regex::Regex::new(r#"^\s*(?P<lhs>.+?)\s*=>\s*\{"#).expect("failed to build arm regex");
     let str_re =
         regex::Regex::new(r#""(?P<s>[^"]+)""#).expect("failed to build string literal regex");
 
     let mut reps = Vec::<String>::new();
     for line in match_block.lines() {
-        let Some(arm) = arm_re.captures(line) else { continue };
+        let Some(arm) = arm_re.captures(line) else {
+            continue;
+        };
         let lhs = arm.name("lhs").unwrap().as_str();
         let mut names = str_re
             .captures_iter(lhs)
@@ -108,4 +108,3 @@ fn llvm_codegen_builtin_match_arms_are_exercised_for_coverage() {
 
     assert!(attempted > 200, "expected to attempt many compile calls");
 }
-

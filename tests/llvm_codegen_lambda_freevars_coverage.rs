@@ -3,7 +3,8 @@
 use mdhavers::{parse, LLVMCompiler};
 
 fn compile_to_ir_ok(source: &str) {
-    let program = parse(source).unwrap_or_else(|e| panic!("parse failed for:\n{source}\nerr={e:?}"));
+    let program =
+        parse(source).unwrap_or_else(|e| panic!("parse failed for:\n{source}\nerr={e:?}"));
     let ir = LLVMCompiler::new()
         .compile_to_ir(&program)
         .unwrap_or_else(|e| panic!("compile failed for:\n{source}\nerr={e:?}"));

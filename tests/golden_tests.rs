@@ -17,7 +17,7 @@ fn discover_tests(dir: &Path) -> Vec<PathBuf> {
 
                 if path.is_dir() {
                     tests.extend(discover_tests(&path));
-                } else if path.extension().map_or(false, |e| e == "braw") {
+                } else if path.extension().is_some_and(|e| e == "braw") {
                     // Check if corresponding .expected file exists
                     let expected = path.with_extension("expected");
                     if expected.exists() {

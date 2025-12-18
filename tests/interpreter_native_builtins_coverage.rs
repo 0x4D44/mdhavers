@@ -77,7 +77,10 @@ fn interpreter_calls_all_native_builtins_for_coverage() {
             (_, 0) => vec![vec![]],
             (_, 1) => arity1_args.iter().cloned().map(|v| vec![v]).collect(),
             (_, 2) => vec![
-                vec![Value::String("hello".to_string()), Value::String("he".to_string())],
+                vec![
+                    Value::String("hello".to_string()),
+                    Value::String("he".to_string()),
+                ],
                 vec![sample_list(), Value::Integer(1)],
                 vec![sample_dict(), Value::String("a".to_string())],
                 vec![Value::Integer(1), Value::Integer(2)],
@@ -110,4 +113,3 @@ fn interpreter_calls_all_native_builtins_for_coverage() {
         }
     }
 }
-

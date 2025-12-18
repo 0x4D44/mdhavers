@@ -58,7 +58,11 @@ fn llvm_compiles_stdlib_and_examples_modules_to_ir_for_coverage() {
         // Not all repo modules are guaranteed to compile under the LLVM backend yet.
         // For coverage, we accept either Ok or Err, but avoid panics and ensure errors are non-empty.
         match compiler.compile_to_ir(&program) {
-            Ok(ir) => assert!(!ir.is_empty(), "IR output should not be empty for {}", path.display()),
+            Ok(ir) => assert!(
+                !ir.is_empty(),
+                "IR output should not be empty for {}",
+                path.display()
+            ),
             Err(e) => {
                 let err = format!("{e:?}");
                 assert!(

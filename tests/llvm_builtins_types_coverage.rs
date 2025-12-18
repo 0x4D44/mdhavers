@@ -56,4 +56,3 @@ fn llvm_types_helpers_are_exercised() {
         let _ = ty.tag();
     }
 }
-

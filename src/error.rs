@@ -649,12 +649,7 @@ mod tests {
             };
             let suggestion = get_error_suggestion(&err);
             assert!(suggestion.is_some(), "Expected suggestion for {}", keyword);
-            assert!(
-                suggestion.unwrap().to_lowercase().contains(expected),
-                "Expected '{}' in suggestion for '{}'",
-                expected,
-                keyword
-            );
+            assert!(suggestion.unwrap().to_lowercase().contains(expected));
         }
     }
 
@@ -1165,5 +1160,41 @@ mod tests {
         };
         let suggestion = get_error_suggestion(&err);
         assert!(suggestion.is_none());
+    }
+
+    #[test]
+    fn test_error_hint_and_line_coverage_gaps() {
+        let err = HaversError::UserError {
+            message: "nope".to_string(),
+            line: 123,
+        };
+        assert_eq!(err.line(), Some(123));
+        assert!(get_error_suggestion(&err).is_none());
+
+        let err = HaversError::TypeError {
+            message: "cannae add integer tae string".to_string(),
+            line: 1,
+        };
+        assert!(get_error_suggestion(&err).is_some());
+
+        let err = HaversError::TypeError {
+            message: "list index must be integer index".to_string(),
+            line: 1,
+        };
+        assert!(get_error_suggestion(&err).is_some());
+
+        let err = HaversError::TypeError {
+            message: "some other type error".to_string(),
+            line: 1,
+        };
+        assert!(get_error_suggestion(&err).is_none());
+
+        let err = HaversError::WrongArity {
+            name: "f".to_string(),
+            expected: 1,
+            got: 2,
+            line: 1,
+        };
+        assert!(get_error_suggestion(&err).is_none());
     }
 }

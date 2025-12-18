@@ -26,7 +26,7 @@ impl Compiler {
 
         // Compile all statements
         for stmt in &program.statements {
-            self.compile_stmt(stmt)?;
+            self.compile_stmt(stmt);
         }
 
         Ok(self.output.clone())
@@ -335,7 +335,7 @@ impl Compiler {
         self.emit_line("");
     }
 
-    fn compile_stmt(&mut self, stmt: &Stmt) -> HaversResult<()> {
+    fn compile_stmt(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::VarDecl {
                 name, initializer, ..
@@ -343,7 +343,7 @@ impl Compiler {
                 self.emit_indent();
                 self.output.push_str(&format!("let {} = ", name));
                 if let Some(init) = initializer {
-                    self.compile_expr(init)?;
+                    self.compile_expr(init);
                 } else {
                     self.output.push_str("null");
                 }
@@ -352,7 +352,7 @@ impl Compiler {
 
             Stmt::Expression { expr, .. } => {
                 self.emit_indent();
-                self.compile_expr(expr)?;
+                self.compile_expr(expr);
                 self.output.push_str(";\n");
             }
 
@@ -360,7 +360,7 @@ impl Compiler {
                 self.emit_line("{");
                 self.indent += 1;
                 for stmt in statements {
-                    self.compile_stmt(stmt)?;
+                    self.compile_stmt(stmt);
                 }
                 self.indent -= 1;
                 self.emit_line("}");
@@ -374,12 +374,12 @@ impl Compiler {
             } => {
                 self.emit_indent();
                 self.output.push_str("if (");
-                self.compile_expr(condition)?;
+                self.compile_expr(condition);
                 self.output.push_str(") ");
-                self.compile_stmt_inline(then_branch)?;
+                self.compile_stmt_inline(then_branch);
                 if let Some(else_br) = else_branch {
                     self.output.push_str(" else ");
-                    self.compile_stmt_inline(else_br)?;
+                    self.compile_stmt_inline(else_br);
                 }
                 self.output.push('\n');
             }
@@ -389,9 +389,9 @@ impl Compiler {
             } => {
                 self.emit_indent();
                 self.output.push_str("while (");
-                self.compile_expr(condition)?;
+                self.compile_expr(condition);
                 self.output.push_str(") ");
-                self.compile_stmt_inline(body)?;
+                self.compile_stmt_inline(body);
                 self.output.push('\n');
             }
 
@@ -404,9 +404,9 @@ impl Compiler {
                 self.emit_indent();
                 self.output
                     .push_str(&format!("for (const {} of ", variable));
-                self.compile_expr(iterable)?;
+                self.compile_expr(iterable);
                 self.output.push_str(") ");
-                self.compile_stmt_inline(body)?;
+                self.compile_stmt_inline(body);
                 self.output.push('\n');
             }
 
@@ -414,12 +414,12 @@ impl Compiler {
                 name, params, body, ..
             } => {
                 self.emit_indent();
-                let params_str = self.compile_params(params)?;
+                let params_str = self.compile_params(params);
                 self.output
                     .push_str(&format!("function {}({}) {{\n", name, params_str));
                 self.indent += 1;
                 for stmt in body {
-                    self.compile_stmt(stmt)?;
+                    self.compile_stmt(stmt);
                 }
                 self.indent -= 1;
                 self.emit_line("}");
@@ -430,7 +430,7 @@ impl Compiler {
                 self.output.push_str("return");
                 if let Some(expr) = value {
                     self.output.push(' ');
-                    self.compile_expr(expr)?;
+                    self.compile_expr(expr);
                 }
                 self.output.push_str(";\n");
             }
@@ -438,7 +438,7 @@ impl Compiler {
             Stmt::Print { value, .. } => {
                 self.emit_indent();
                 self.output.push_str("blether(");
-                self.compile_expr(value)?;
+                self.compile_expr(value);
                 self.output.push_str(");\n");
             }
 
@@ -478,12 +478,12 @@ impl Compiler {
                         } else {
                             method_name
                         };
-                        let params_str = self.compile_params(params)?;
+                        let params_str = self.compile_params(params);
                         self.output
                             .push_str(&format!("{}({}) {{\n", js_name, params_str));
                         self.indent += 1;
                         for stmt in body {
-                            self.compile_stmt(stmt)?;
+                            self.compile_stmt(stmt);
                         }
                         self.indent -= 1;
                         self.emit_line("}");
@@ -532,9 +532,9 @@ impl Compiler {
             } => {
                 self.emit_indent();
                 self.output.push_str("try ");
-                self.compile_stmt_inline(try_block)?;
+                self.compile_stmt_inline(try_block);
                 self.output.push_str(&format!(" catch ({}) ", error_name));
-                self.compile_stmt_inline(catch_block)?;
+                self.compile_stmt_inline(catch_block);
                 self.output.push('\n');
             }
 
@@ -546,7 +546,7 @@ impl Compiler {
 
                 self.emit_indent();
                 self.output.push_str(&format!("const {} = ", match_var));
-                self.compile_expr(value)?;
+                self.compile_expr(value);
                 self.output.push_str(";\n");
 
                 for (i, arm) in arms.iter().enumerate() {
@@ -556,7 +556,7 @@ impl Compiler {
                     } else {
                         self.output.push_str("else if (");
                     }
-                    self.compile_pattern(&arm.pattern, &match_var)?;
+                    self.compile_pattern(&arm.pattern, &match_var);
                     self.output.push_str(") {\n");
                     self.indent += 1;
 
@@ -569,11 +569,11 @@ impl Compiler {
                     match &arm.body {
                         Stmt::Block { statements, .. } => {
                             for s in statements {
-                                self.compile_stmt(s)?;
+                                self.compile_stmt(s);
                             }
                         }
                         other => {
-                            self.compile_stmt(other)?;
+                            self.compile_stmt(other);
                         }
                     }
 
@@ -596,13 +596,13 @@ impl Compiler {
             } => {
                 self.emit_indent();
                 self.output.push_str("if (!(");
-                self.compile_expr(condition)?;
+                self.compile_expr(condition);
                 self.output.push_str(")) {\n");
                 self.indent += 1;
                 self.emit_indent();
                 if let Some(msg) = message {
                     self.output.push_str("throw new Error(");
-                    self.compile_expr(msg)?;
+                    self.compile_expr(msg);
                     self.output.push_str(");\n");
                 } else {
                     self.emit_line("throw new Error('Assertion failed');");
@@ -633,14 +633,14 @@ impl Compiler {
                 }
 
                 self.output.push_str("] = ");
-                self.compile_expr(value)?;
+                self.compile_expr(value);
                 self.output.push_str(";\n");
             }
 
             Stmt::Log { level, message, .. } => {
                 // Compile log to console.error with level prefix
                 let level_name = match level {
-                    crate::ast::LogLevel::Wheesht => return Ok(()), // Silent - no output
+                    crate::ast::LogLevel::Wheesht => return, // Silent - no output
                     crate::ast::LogLevel::Roar => "ROAR",
                     crate::ast::LogLevel::Holler => "HOLLER",
                     crate::ast::LogLevel::Blether => "BLETHER",
@@ -652,41 +652,38 @@ impl Compiler {
                     "console.error(`[{}] ${{new Date().toISOString()}} | ` + ",
                     level_name
                 ));
-                self.compile_expr(message)?;
+                self.compile_expr(message);
                 self.output.push_str(");\n");
             }
 
             Stmt::Hurl { message, .. } => {
                 self.emit_indent();
                 self.output.push_str("throw new Error(");
-                self.compile_expr(message)?;
+                self.compile_expr(message);
                 self.output.push_str(");\n");
             }
         }
-
-        Ok(())
     }
 
-    fn compile_stmt_inline(&mut self, stmt: &Stmt) -> HaversResult<()> {
+    fn compile_stmt_inline(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::Block { statements, .. } => {
                 self.output.push_str("{\n");
                 self.indent += 1;
                 for s in statements {
-                    self.compile_stmt(s)?;
+                    self.compile_stmt(s);
                 }
                 self.indent -= 1;
                 self.emit_indent();
                 self.output.push('}');
             }
             _ => {
-                self.compile_stmt(stmt)?;
+                self.compile_stmt(stmt);
             }
         }
-        Ok(())
     }
 
-    fn compile_pattern(&mut self, pattern: &Pattern, match_var: &str) -> HaversResult<()> {
+    fn compile_pattern(&mut self, pattern: &Pattern, match_var: &str) {
         match pattern {
             Pattern::Literal(lit) => {
                 self.output.push_str(&format!("{} === ", match_var));
@@ -706,33 +703,32 @@ impl Compiler {
             }
             Pattern::Range { start, end } => {
                 self.output.push_str(&format!("({} >= ", match_var));
-                self.compile_expr(start)?;
+                self.compile_expr(start);
                 self.output.push_str(&format!(" && {} < ", match_var));
-                self.compile_expr(end)?;
+                self.compile_expr(end);
                 self.output.push(')');
             }
         }
-        Ok(())
     }
 
     /// Compile function parameters, handling default values
-    fn compile_params(&mut self, params: &[Param]) -> HaversResult<String> {
+    fn compile_params(&mut self, params: &[Param]) -> String {
         let mut result = Vec::new();
         for param in params {
             if let Some(default_expr) = &param.default {
                 // Compile the default value
                 let old_output = std::mem::take(&mut self.output);
-                self.compile_expr(default_expr)?;
+                self.compile_expr(default_expr);
                 let default_js = std::mem::replace(&mut self.output, old_output);
                 result.push(format!("{} = {}", param.name, default_js));
             } else {
                 result.push(param.name.clone());
             }
         }
-        Ok(result.join(", "))
+        result.join(", ")
     }
 
-    fn compile_expr(&mut self, expr: &Expr) -> HaversResult<()> {
+    fn compile_expr(&mut self, expr: &Expr) {
         match expr {
             Expr::Literal { value, .. } => {
                 match value {
@@ -760,7 +756,7 @@ impl Compiler {
 
             Expr::Assign { name, value, .. } => {
                 self.output.push_str(&format!("({} = ", name));
-                self.compile_expr(value)?;
+                self.compile_expr(value);
                 self.output.push(')');
             }
 
@@ -771,7 +767,7 @@ impl Compiler {
                 ..
             } => {
                 self.output.push('(');
-                self.compile_expr(left)?;
+                self.compile_expr(left);
                 let op_str = match operator {
                     BinaryOp::Add => " + ",
                     BinaryOp::Subtract => " - ",
@@ -786,7 +782,7 @@ impl Compiler {
                     BinaryOp::GreaterEqual => " >= ",
                 };
                 self.output.push_str(op_str);
-                self.compile_expr(right)?;
+                self.compile_expr(right);
                 self.output.push(')');
             }
 
@@ -795,12 +791,12 @@ impl Compiler {
             } => match operator {
                 UnaryOp::Negate => {
                     self.output.push_str("(-");
-                    self.compile_expr(operand)?;
+                    self.compile_expr(operand);
                     self.output.push(')');
                 }
                 UnaryOp::Not => {
                     self.output.push_str("(!");
-                    self.compile_expr(operand)?;
+                    self.compile_expr(operand);
                     self.output.push(')');
                 }
             },
@@ -812,13 +808,13 @@ impl Compiler {
                 ..
             } => {
                 self.output.push('(');
-                self.compile_expr(left)?;
+                self.compile_expr(left);
                 let op_str = match operator {
                     LogicalOp::And => " && ",
                     LogicalOp::Or => " || ",
                 };
                 self.output.push_str(op_str);
-                self.compile_expr(right)?;
+                self.compile_expr(right);
                 self.output.push(')');
             }
 
@@ -832,13 +828,13 @@ impl Compiler {
                     }
                 }
 
-                self.compile_expr(callee)?;
+                self.compile_expr(callee);
                 self.output.push('(');
                 for (i, arg) in arguments.iter().enumerate() {
                     if i > 0 {
                         self.output.push_str(", ");
                     }
-                    self.compile_expr(arg)?;
+                    self.compile_expr(arg);
                 }
                 self.output.push(')');
             }
@@ -846,7 +842,7 @@ impl Compiler {
             Expr::Get {
                 object, property, ..
             } => {
-                self.compile_expr(object)?;
+                self.compile_expr(object);
                 self.output.push('.');
                 self.output.push_str(property);
             }
@@ -858,18 +854,18 @@ impl Compiler {
                 ..
             } => {
                 self.output.push('(');
-                self.compile_expr(object)?;
+                self.compile_expr(object);
                 self.output.push('.');
                 self.output.push_str(property);
                 self.output.push_str(" = ");
-                self.compile_expr(value)?;
+                self.compile_expr(value);
                 self.output.push(')');
             }
 
             Expr::Index { object, index, .. } => {
-                self.compile_expr(object)?;
+                self.compile_expr(object);
                 self.output.push('[');
-                self.compile_expr(index)?;
+                self.compile_expr(index);
                 self.output.push(']');
             }
 
@@ -880,11 +876,11 @@ impl Compiler {
                 ..
             } => {
                 self.output.push('(');
-                self.compile_expr(object)?;
+                self.compile_expr(object);
                 self.output.push('[');
-                self.compile_expr(index)?;
+                self.compile_expr(index);
                 self.output.push_str("] = ");
-                self.compile_expr(value)?;
+                self.compile_expr(value);
                 self.output.push(')');
             }
 
@@ -896,39 +892,37 @@ impl Compiler {
                 ..
             } => {
                 // JavaScript: Use helper function fer step slices, or .slice() fer simple ones
-                if step.is_some() {
+                if let Some(st) = step {
                     // Need to use a helper function fer step slices
                     self.output.push_str("__havers.slice(");
-                    self.compile_expr(object)?;
+                    self.compile_expr(object);
                     self.output.push_str(", ");
                     if let Some(s) = start {
-                        self.compile_expr(s)?;
+                        self.compile_expr(s);
                     } else {
                         self.output.push_str("null");
                     }
                     self.output.push_str(", ");
                     if let Some(e) = end {
-                        self.compile_expr(e)?;
+                        self.compile_expr(e);
                     } else {
                         self.output.push_str("null");
                     }
                     self.output.push_str(", ");
-                    if let Some(st) = step {
-                        self.compile_expr(st)?;
-                    }
+                    self.compile_expr(st);
                     self.output.push(')');
                 } else {
                     // Simple slice: obj.slice(start, end)
-                    self.compile_expr(object)?;
+                    self.compile_expr(object);
                     self.output.push_str(".slice(");
                     if let Some(s) = start {
-                        self.compile_expr(s)?;
+                        self.compile_expr(s);
                     } else {
                         self.output.push('0');
                     }
                     if let Some(e) = end {
                         self.output.push_str(", ");
-                        self.compile_expr(e)?;
+                        self.compile_expr(e);
                     }
                     self.output.push(')');
                 }
@@ -940,7 +934,7 @@ impl Compiler {
                     if i > 0 {
                         self.output.push_str(", ");
                     }
-                    self.compile_expr(elem)?;
+                    self.compile_expr(elem);
                 }
                 self.output.push(']');
             }
@@ -951,24 +945,24 @@ impl Compiler {
                     if i > 0 {
                         self.output.push_str(", ");
                     }
-                    self.compile_expr(key)?;
+                    self.compile_expr(key);
                     self.output.push_str(": ");
-                    self.compile_expr(value)?;
+                    self.compile_expr(value);
                 }
                 self.output.push('}');
             }
 
             Expr::Range { start, end, .. } => {
                 self.output.push_str("__havers.range(");
-                self.compile_expr(start)?;
+                self.compile_expr(start);
                 self.output.push_str(", ");
-                self.compile_expr(end)?;
+                self.compile_expr(end);
                 self.output.push(')');
             }
 
             Expr::Grouping { expr, .. } => {
                 self.output.push('(');
-                self.compile_expr(expr)?;
+                self.compile_expr(expr);
                 self.output.push(')');
             }
 
@@ -976,7 +970,7 @@ impl Compiler {
                 self.output.push('(');
                 self.output.push_str(&params.join(", "));
                 self.output.push_str(") => ");
-                self.compile_expr(body)?;
+                self.compile_expr(body);
             }
 
             Expr::Masel { .. } => {
@@ -985,7 +979,7 @@ impl Compiler {
 
             Expr::Input { prompt, .. } => {
                 self.output.push_str("speir(");
-                self.compile_expr(prompt)?;
+                self.compile_expr(prompt);
                 self.output.push(')');
             }
 
@@ -1008,7 +1002,7 @@ impl Compiler {
                         }
                         FStringPart::Expr(expr) => {
                             self.output.push_str("${");
-                            self.compile_expr(expr)?;
+                            self.compile_expr(expr);
                             self.output.push('}');
                         }
                     }
@@ -1018,14 +1012,14 @@ impl Compiler {
 
             Expr::Spread { expr, .. } => {
                 self.output.push_str("...");
-                self.compile_expr(expr)?;
+                self.compile_expr(expr);
             }
 
             Expr::Pipe { left, right, .. } => {
                 // In JavaScript, we transform left |> right to right(left)
-                self.compile_expr(right)?;
+                self.compile_expr(right);
                 self.output.push('(');
-                self.compile_expr(left)?;
+                self.compile_expr(left);
                 self.output.push(')');
             }
 
@@ -1037,11 +1031,11 @@ impl Compiler {
             } => {
                 // JavaScript ternary: condition ? then : else
                 self.output.push('(');
-                self.compile_expr(condition)?;
+                self.compile_expr(condition);
                 self.output.push_str(" ? ");
-                self.compile_expr(then_expr)?;
+                self.compile_expr(then_expr);
                 self.output.push_str(" : ");
-                self.compile_expr(else_expr)?;
+                self.compile_expr(else_expr);
                 self.output.push(')');
             }
             Expr::BlockExpr { statements, .. } => {
@@ -1049,15 +1043,13 @@ impl Compiler {
                 self.output.push_str("(() => {\n");
                 self.indent += 1;
                 for stmt in statements {
-                    self.compile_stmt(stmt)?;
+                    self.compile_stmt(stmt);
                 }
                 self.indent -= 1;
                 self.emit_indent();
                 self.output.push_str("})()");
             }
         }
-
-        Ok(())
     }
 
     fn emit_indent(&mut self) {

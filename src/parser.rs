@@ -586,7 +586,10 @@ impl Parser {
                         Ok(Pattern::Literal(Literal::Float(n)))
                     }
                     _ => Err(HaversError::ParseError {
-                        message: format!("Expected number after '-' in pattern, got {}", next_token.kind),
+                        message: format!(
+                            "Expected number after '-' in pattern, got {}",
+                            next_token.kind
+                        ),
                         line: next_token.line,
                     }),
                 }
@@ -1265,7 +1268,7 @@ impl Parser {
                 // Otherwise, try dict-first and fall back to block expr if no ':' appears.
                 let checkpoint = self.current;
                 let key_attempt = self.expression();
-                let is_dict = matches!(key_attempt, Ok(_)) && self.check(&TokenKind::Colon);
+                let is_dict = key_attempt.is_ok() && self.check(&TokenKind::Colon);
 
                 if !is_dict {
                     // Rewind and parse block expression statements until '}'
@@ -1581,10 +1584,10 @@ impl Parser {
                 if chars.peek() == Some(&'}') {
                     chars.next();
                     current_text.push('}');
-                    continue;
+                } else {
+                    // Single } without matching { - just add it
+                    current_text.push(c);
                 }
-                // Single } without matching { - just add it
-                current_text.push(c);
             } else {
                 current_text.push(c);
             }
@@ -1628,13 +1631,8 @@ fn process_escapes(s: &str) -> String {
                         }
                     }
                     if hex.len() == 2 {
-                        if let Ok(byte) = u8::from_str_radix(&hex, 16) {
-                            result.push(byte as char);
-                        } else {
-                            // Invalid hex - keep as-is
-                            result.push_str("\\x");
-                            result.push_str(&hex);
-                        }
+                        let byte = u8::from_str_radix(&hex, 16).expect("validated two hex digits");
+                        result.push(byte as char);
                     } else {
                         // Not enough hex digits - keep as-is
                         result.push_str("\\x");
@@ -1725,15 +1723,11 @@ mod tests {
     fn test_multiline_list() {
         let program = parse("ken arr = [\n  1,\n  2,\n  3\n]").unwrap();
         assert_eq!(program.statements.len(), 1);
-        if let Stmt::VarDecl {
-            initializer: Some(expr),
-            ..
-        } = &program.statements[0]
-        {
-            assert!(matches!(expr, Expr::List { elements, .. } if elements.len() == 3));
-        } else {
-            panic!("Expected VarDecl with List");
-        }
+        assert!(matches!(
+            &program.statements[0],
+            Stmt::VarDecl { initializer: Some(expr), .. }
+                if matches!(expr, Expr::List { elements, .. } if elements.len() == 3)
+        ));
     }
 
     #[test]
@@ -1920,9 +1914,145 @@ mod tests {
     }
 
     #[test]
+    fn test_fstring_single_closing_brace_is_literal_text() {
+        let program = parse(r#"ken s = f"oops } here""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
     fn test_fstring_nested_expr() {
         let program = parse(r#"ken s = f"Result: {gin x > 0 than x ither -x}""#).unwrap();
         assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_class_declaration_requires_methods() {
+        let err = parse("kin C { ken x = 1 }").unwrap_err();
+        assert!(matches!(
+            err,
+            HaversError::ParseError { message, line: 1 }
+                if message == "Expected method definition in class"
+        ));
+    }
+
+    #[test]
+    fn test_pattern_identifier_underscore_is_wildcard() {
+        let tokens = vec![
+            Token::new(
+                TokenKind::Identifier("_".to_string()),
+                "_".to_string(),
+                1,
+                1,
+            ),
+            Token::eof(1),
+        ];
+        let mut parser = Parser::new(tokens);
+        let pat = parser.pattern().unwrap();
+        assert!(matches!(pat, Pattern::Wildcard));
+    }
+
+    #[test]
+    fn test_match_pattern_minus_requires_number() {
+        let err = parse("keek x { whan -foo -> 1 }").unwrap_err();
+        assert!(matches!(err, HaversError::ParseError { .. }));
+    }
+
+    #[test]
+    fn test_match_pattern_unexpected_token_errors() {
+        let err = parse("keek x { whan + -> 1 }").unwrap_err();
+        assert!(matches!(err, HaversError::ParseError { .. }));
+    }
+
+    #[test]
+    fn test_invalid_compound_assignment_target_errors() {
+        let err = parse("1 += 2").unwrap_err();
+        assert!(matches!(
+            err,
+            HaversError::ParseError { message, .. } if message == "Invalid compound assignment target"
+        ));
+    }
+
+    #[test]
+    fn test_slice_syntax_step_present_but_empty() {
+        let program = parse("ken a = arr[::]\nken b = arr[1::]").unwrap();
+        assert_eq!(program.statements.len(), 2);
+
+        assert!(matches!(
+            &program.statements[0],
+            Stmt::VarDecl { initializer: Some(expr), .. }
+                if matches!(expr, Expr::Slice { start: None, end: None, step: None, .. })
+        ));
+        assert!(matches!(
+            &program.statements[1],
+            Stmt::VarDecl { initializer: Some(expr), .. }
+                if matches!(expr, Expr::Slice { start: Some(_), end: None, step: None, .. })
+        ));
+    }
+
+    #[test]
+    fn test_import_requires_string_path() {
+        let err = parse("fetch 123").unwrap_err();
+        assert!(matches!(
+            err,
+            HaversError::UnexpectedToken { expected, .. } if expected == "module path"
+        ));
+    }
+
+    #[test]
+    fn test_lenient_statement_end_allows_next_statement_keyword() {
+        let program = parse("ken x = 1 ken y = 2").unwrap();
+        assert_eq!(program.statements.len(), 2);
+    }
+
+    #[test]
+    fn test_is_nae_followed_by_operand_handles_end_of_stream() {
+        let tokens = vec![Token::new(TokenKind::Nae, "nae".to_string(), 1, 1)];
+        let parser = Parser::new(tokens);
+        assert!(!parser.is_nae_followed_by_operand());
+    }
+
+    #[test]
+    fn test_previous_is_none_at_start() {
+        let tokens = vec![Token::eof(1)];
+        let parser = Parser::new(tokens);
+        assert!(parser.previous().is_none());
+    }
+
+    #[test]
+    fn test_fstring_interpolation_with_nested_braces() {
+        let program = parse(r#"ken s = f"{ {1: 2} }""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_fstring_interpolation_backslash_escapes() {
+        let program = parse(r#"ken s = f"{\"a\\\\b\nc\"}""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_fstring_expr_trailing_backslash_is_error() {
+        let tokens = vec![Token::eof(1)];
+        let mut parser = Parser::new(tokens);
+        let err = parser.parse_fstring("{\\", Span::new(1, 1)).unwrap_err();
+        assert!(matches!(err, HaversError::UnkentToken { .. }));
+    }
+
+    #[test]
+    fn test_escape_hex_incomplete_sequences_are_preserved() {
+        let program = parse(r#"ken a = "\x""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+
+        let program = parse(r#"ken a = "\x1""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+
+        let program = parse(r#"ken a = "\xZ""#).unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_process_escapes_trailing_backslash_is_preserved() {
+        assert_eq!(process_escapes("hello\\"), "hello\\");
     }
 
     // ==================== More Statement Tests ====================

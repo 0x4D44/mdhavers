@@ -1,6 +1,6 @@
 #![cfg(all(feature = "llvm", coverage))]
 
-use mdhavers::{parse, llvm::LLVMCompiler};
+use mdhavers::{llvm::LLVMCompiler, parse};
 
 #[test]
 fn llvm_compiler_object_and_native_paths_are_covered() {
@@ -20,7 +20,9 @@ fn llvm_compiler_object_and_native_paths_are_covered() {
     // Exercise the `compile_to_object` convenience wrapper.
     {
         let obj = dir.path().join("wrapper.o");
-        LLVMCompiler::new().compile_to_object(&program, &obj).unwrap();
+        LLVMCompiler::new()
+            .compile_to_object(&program, &obj)
+            .unwrap();
         assert!(obj.exists());
     }
 
@@ -33,4 +35,3 @@ fn llvm_compiler_object_and_native_paths_are_covered() {
         assert!(exe.exists(), "expected native executable output");
     }
 }
-

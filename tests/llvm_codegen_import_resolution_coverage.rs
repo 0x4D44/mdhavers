@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::Path;
 
-use mdhavers::{parse, llvm::LLVMCompiler};
+use mdhavers::{llvm::LLVMCompiler, parse};
 use tempfile::tempdir;
 
 fn compile_to_object_with_source_path(source: &str, source_path: &Path) -> Result<(), String> {
@@ -56,4 +56,3 @@ fn llvm_codegen_import_read_failure_path_is_exercised() {
         .expect_err("expected compile error when import is not readable");
     assert!(!err.is_empty());
 }
-

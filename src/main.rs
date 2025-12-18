@@ -28,6 +28,7 @@ use crate::interpreter::{is_crash_handling_enabled, print_stack_trace, Interpret
 use crate::parser::parse;
 
 /// Initialize crash handlers for graceful error reporting
+#[cfg(not(coverage))]
 fn setup_crash_handlers() {
     // Set up panic hook to print stack trace
     let default_panic = std::panic::take_hook();
@@ -54,6 +55,10 @@ fn setup_crash_handlers() {
         default_panic(panic_info);
     }));
 }
+
+/// No-op under source-based coverage: we don't deliberately test panic-reporting UX.
+#[cfg(coverage)]
+fn setup_crash_handlers() {}
 
 /// mdhavers - A Scots programming language
 /// Pure havers, but working havers!

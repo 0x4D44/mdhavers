@@ -118,11 +118,11 @@ blether len(rest)
 
 #[test]
 fn interpreter_public_helpers_stacktrace_and_log_level() {
+    use mdhavers::ast::LogLevel;
     use mdhavers::interpreter::{
         clear_stack_trace, get_global_log_level, get_stack_trace, print_stack_trace,
         push_stack_frame, set_crash_handling, set_global_log_level,
     };
-    use mdhavers::ast::LogLevel;
 
     // Empty stack trace path.
     clear_stack_trace();
@@ -372,7 +372,10 @@ d["1"]
         ("date_now()", true),
         ("date_format(0, \"%Y-%m-%d\")", true),
         ("date_format(0, 1)", false),
-        ("date_parse(\"2020-01-02 03:04:05\", \"%Y-%m-%d %H:%M:%S\")", true),
+        (
+            "date_parse(\"2020-01-02 03:04:05\", \"%Y-%m-%d %H:%M:%S\")",
+            true,
+        ),
         ("date_parse(\"2020-01-02\", 1)", false),
         ("date_add(0, 1, \"seconds\")", true),
         ("date_add(0, 1, \"minutes\")", true),
@@ -614,7 +617,10 @@ keek 99 {
         let mut interp = Interpreter::new();
         let result = interp.interpret(&program);
         if *should_succeed {
-            assert!(result.is_ok(), "expected success for:\n{src}\nerr={result:?}");
+            assert!(
+                result.is_ok(),
+                "expected success for:\n{src}\nerr={result:?}"
+            );
         } else {
             assert!(result.is_err(), "expected error for:\n{src}");
         }
@@ -680,11 +686,16 @@ fn interpreter_prelude_load_paths_for_coverage() {
     let old_cwd = std::env::current_dir().unwrap();
     std::env::set_current_dir(dir.path()).unwrap();
     let mut interp = Interpreter::new();
-    let err = interp.load_prelude().expect_err("expected prelude parse error");
+    let err = interp
+        .load_prelude()
+        .expect_err("expected prelude parse error");
     std::env::set_current_dir(&old_cwd).unwrap();
 
     let err_str = format!("{err:?}");
-    assert!(err_str.contains("Prelude"), "expected prelude error, got: {err_str}");
+    assert!(
+        err_str.contains("Prelude"),
+        "expected prelude error, got: {err_str}"
+    );
 
     // 4) No prelude file found -> Ok path (fallback)
     let empty_dir = tempfile::tempdir().unwrap();
@@ -715,9 +726,14 @@ fn interpreter_fetch_module_error_paths_for_coverage() {
         let program = parse("fetch \"syntaxmod\"").unwrap();
         let mut interp = Interpreter::new();
         interp.set_current_dir(dir.path());
-        let err = interp.interpret(&program).expect_err("expected module parse error");
+        let err = interp
+            .interpret(&program)
+            .expect_err("expected module parse error");
         let err_str = format!("{err:?}");
-        assert!(err_str.contains("Error in module"), "expected module error, got: {err_str}");
+        assert!(
+            err_str.contains("Error in module"),
+            "expected module error, got: {err_str}"
+        );
     }
 }
 
@@ -965,7 +981,10 @@ c.conty()
         let mut interp = Interpreter::new();
         let result = interp.interpret(&program);
         if *should_succeed {
-            assert!(result.is_ok(), "expected success for:\n{src}\nerr={result:?}");
+            assert!(
+                result.is_ok(),
+                "expected success for:\n{src}\nerr={result:?}"
+            );
         } else {
             assert!(result.is_err(), "expected error for:\n{src}");
         }

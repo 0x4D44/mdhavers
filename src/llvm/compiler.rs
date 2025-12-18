@@ -33,6 +33,11 @@ pub struct LLVMCompiler {
 }
 
 impl LLVMCompiler {
+    #[inline]
+    fn llvm_compile_error<E: std::fmt::Display>(e: E) -> HaversError {
+        HaversError::CompileError(e.to_string())
+    }
+
     pub fn new() -> Self {
         LLVMCompiler {
             opt_level: OptimizationLevel::Default,
@@ -86,13 +91,11 @@ impl LLVMCompiler {
         codegen.compile(program)?;
 
         // Initialize native target
-        Target::initialize_native(&InitializationConfig::default()).map_err(|e| {
-            HaversError::CompileError(format!("Failed to initialize target: {}", e))
-        })?;
+        Target::initialize_native(&InitializationConfig::default())
+            .map_err(Self::llvm_compile_error)?;
 
         let target_triple = TargetMachine::get_default_triple();
-        let target = Target::from_triple(&target_triple)
-            .map_err(|e| HaversError::CompileError(format!("Failed to get target: {}", e)))?;
+        let target = Target::from_triple(&target_triple).map_err(Self::llvm_compile_error)?;
 
         let target_machine = target
             .create_target_machine(
@@ -113,9 +116,7 @@ impl LLVMCompiler {
         // Write object file
         target_machine
             .write_to_file(codegen.get_module(), FileType::Object, output_path)
-            .map_err(|e| {
-                HaversError::CompileError(format!("Failed to write object file: {}", e))
-            })?;
+            .map_err(Self::llvm_compile_error)?;
 
         Ok(())
     }
@@ -153,12 +154,12 @@ impl LLVMCompiler {
         // Write embedded runtime to temp file for linking
         std::fs::File::create(&runtime_path)
             .and_then(|mut f| f.write_all(EMBEDDED_RUNTIME))
-            .map_err(|e| HaversError::CompileError(format!("Failed to write runtime: {}", e)))?;
+            .map_err(Self::llvm_compile_error)?;
 
         // Write embedded GC stub to temp file for linking
         std::fs::File::create(&gc_stub_path)
             .and_then(|mut f| f.write_all(EMBEDDED_GC_STUB))
-            .map_err(|e| HaversError::CompileError(format!("Failed to write GC stub: {}", e)))?;
+            .map_err(Self::llvm_compile_error)?;
 
         // Link with system linker
         let status = Command::new("cc")
@@ -171,7 +172,7 @@ impl LLVMCompiler {
                 output_path.to_str().unwrap(),
             ])
             .status()
-            .map_err(|e| HaversError::CompileError(format!("Failed to run linker: {}", e)))?;
+            .map_err(Self::llvm_compile_error)?;
 
         // Clean up temp files
         let _ = std::fs::remove_file(&obj_path);
