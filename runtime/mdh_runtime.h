@@ -93,6 +93,7 @@ bool __mdh_truthy(MdhValue a);
 uint8_t __mdh_get_tag(MdhValue a);
 void __mdh_type_error(const char *op, uint8_t got1, uint8_t got2);
 MdhValue __mdh_type_of(MdhValue a);
+void __mdh_key_not_found(MdhValue key);
 
 /* ========== I/O ========== */
 
