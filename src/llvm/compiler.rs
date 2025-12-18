@@ -10,6 +10,9 @@ use std::process::Command;
 /// Embedded runtime object file - compiled into the binary at build time
 static EMBEDDED_RUNTIME: &[u8] = include_bytes!("../../runtime/mdh_runtime.o");
 
+/// Embedded Rust runtime staticlib (JSON/regex helpers)
+static EMBEDDED_RUNTIME_RS: &[u8] = include_bytes!("../../runtime/mdh_runtime_rs.a");
+
 /// Embedded GC stub - minimal malloc wrappers for standalone builds
 static EMBEDDED_GC_STUB: &[u8] = include_bytes!("../../runtime/gc_stub.o");
 
@@ -149,11 +152,17 @@ impl LLVMCompiler {
         // This avoids race conditions when tests run in parallel
         let unique_id = format!("{}_{:?}", std::process::id(), std::thread::current().id());
         let runtime_path = std::env::temp_dir().join(format!("mdh_runtime_{}.o", unique_id));
+        let runtime_rs_path = std::env::temp_dir().join(format!("mdh_runtime_rs_{}.a", unique_id));
         let gc_stub_path = std::env::temp_dir().join(format!("mdh_gc_stub_{}.o", unique_id));
 
         // Write embedded runtime to temp file for linking
         std::fs::File::create(&runtime_path)
             .and_then(|mut f| f.write_all(EMBEDDED_RUNTIME))
+            .map_err(Self::llvm_compile_error)?;
+
+        // Write embedded Rust runtime to temp file for linking
+        std::fs::File::create(&runtime_rs_path)
+            .and_then(|mut f| f.write_all(EMBEDDED_RUNTIME_RS))
             .map_err(Self::llvm_compile_error)?;
 
         // Write embedded GC stub to temp file for linking
@@ -166,8 +175,12 @@ impl LLVMCompiler {
             .args([
                 obj_path.to_str().unwrap(),
                 runtime_path.to_str().unwrap(),
+                runtime_rs_path.to_str().unwrap(),
                 gc_stub_path.to_str().unwrap(),
                 "-lm", // Math library (for floor, ceil, etc.)
+                "-lpthread",
+                "-ldl",
+                "-lutil",
                 "-o",
                 output_path.to_str().unwrap(),
             ])
@@ -177,6 +190,7 @@ impl LLVMCompiler {
         // Clean up temp files
         let _ = std::fs::remove_file(&obj_path);
         let _ = std::fs::remove_file(&runtime_path);
+        let _ = std::fs::remove_file(&runtime_rs_path);
         let _ = std::fs::remove_file(&gc_stub_path);
 
         if status.success() {

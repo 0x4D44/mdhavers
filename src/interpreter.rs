@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 #[cfg(not(coverage))]
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -3331,8 +3331,10 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("creel", 1, |args| {
                 match &args[0] {
                     Value::List(list) => {
-                        let items: HashSet<String> =
-                            list.borrow().iter().map(|v| format!("{}", v)).collect();
+                        let mut items = SetValue::new();
+                        for item in list.borrow().iter() {
+                            items.insert(item.clone());
+                        }
                         Ok(Value::Set(Rc::new(RefCell::new(items))))
                     }
                     Value::Set(s) => Ok(Value::Set(s.clone())), // Already a set
@@ -3346,8 +3348,7 @@ impl Interpreter {
             "toss_in".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("toss_in", 2, |args| {
                 if let Value::Set(set) = &args[0] {
-                    let item = format!("{}", args[1]);
-                    set.borrow_mut().insert(item);
+                    set.borrow_mut().insert(args[1].clone());
                     Ok(Value::Set(set.clone()))
                 } else {
                     Err("toss_in() needs a creel (set)".to_string())
@@ -3360,8 +3361,7 @@ impl Interpreter {
             "heave_oot".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("heave_oot", 2, |args| {
                 if let Value::Set(set) = &args[0] {
-                    let item = format!("{}", args[1]);
-                    set.borrow_mut().remove(&item);
+                    set.borrow_mut().remove(&args[1]);
                     Ok(Value::Set(set.clone()))
                 } else {
                     Err("heave_oot() needs a creel (set)".to_string())
@@ -3374,8 +3374,7 @@ impl Interpreter {
             "is_in_creel".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("is_in_creel", 2, |args| {
                 if let Value::Set(set) = &args[0] {
-                    let item = format!("{}", args[1]);
-                    Ok(Value::Bool(set.borrow().contains(&item)))
+                    Ok(Value::Bool(set.borrow().contains(&args[1])))
                 } else {
                     Err("is_in_creel() needs a creel (set)".to_string())
                 }
@@ -3390,8 +3389,7 @@ impl Interpreter {
                 2,
                 |args| match (&args[0], &args[1]) {
                     (Value::Set(a), Value::Set(b)) => {
-                        let union: HashSet<String> =
-                            a.borrow().union(&*b.borrow()).cloned().collect();
+                        let union = a.borrow().union(&b.borrow());
                         Ok(Value::Set(Rc::new(RefCell::new(union))))
                     }
                     _ => Err("creels_thegither() needs two creels".to_string()),
@@ -3407,8 +3405,7 @@ impl Interpreter {
                 2,
                 |args| match (&args[0], &args[1]) {
                     (Value::Set(a), Value::Set(b)) => {
-                        let intersection: HashSet<String> =
-                            a.borrow().intersection(&*b.borrow()).cloned().collect();
+                        let intersection = a.borrow().intersection(&b.borrow());
                         Ok(Value::Set(Rc::new(RefCell::new(intersection))))
                     }
                     _ => Err("creels_baith() needs two creels".to_string()),
@@ -3424,8 +3421,7 @@ impl Interpreter {
                 2,
                 |args| match (&args[0], &args[1]) {
                     (Value::Set(a), Value::Set(b)) => {
-                        let difference: HashSet<String> =
-                            a.borrow().difference(&*b.borrow()).cloned().collect();
+                        let difference = a.borrow().difference(&b.borrow());
                         Ok(Value::Set(Rc::new(RefCell::new(difference))))
                     }
                     _ => Err("creels_differ() needs two creels".to_string()),
@@ -3438,9 +3434,13 @@ impl Interpreter {
             "creel_tae_list".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("creel_tae_list", 1, |args| {
                 if let Value::Set(set) = &args[0] {
-                    let mut items: Vec<String> = set.borrow().iter().cloned().collect();
-                    items.sort();
-                    let values: Vec<Value> = items.into_iter().map(Value::String).collect();
+                    let mut items: Vec<(String, Value)> = set
+                        .borrow()
+                        .iter()
+                        .map(|v| (format!("{}", v), v.clone()))
+                        .collect();
+                    items.sort_by(|a, b| a.0.cmp(&b.0));
+                    let values: Vec<Value> = items.into_iter().map(|(_, v)| v).collect();
                     Ok(Value::List(Rc::new(RefCell::new(values))))
                 } else {
                     Err("creel_tae_list() needs a creel".to_string())
@@ -3455,7 +3455,7 @@ impl Interpreter {
                 &args[0], &args[1],
             ) {
                 (Value::Set(a), Value::Set(b)) => {
-                    Ok(Value::Bool(a.borrow().is_subset(&*b.borrow())))
+                    Ok(Value::Bool(a.borrow().is_subset(&b.borrow())))
                 }
                 _ => Err("is_subset() needs two creels".to_string()),
             }))),
@@ -3469,7 +3469,7 @@ impl Interpreter {
                 2,
                 |args| match (&args[0], &args[1]) {
                     (Value::Set(a), Value::Set(b)) => {
-                        Ok(Value::Bool(a.borrow().is_superset(&*b.borrow())))
+                        Ok(Value::Bool(a.borrow().is_superset(&b.borrow())))
                     }
                     _ => Err("is_superset() needs two creels".to_string()),
                 },
@@ -3484,7 +3484,7 @@ impl Interpreter {
                 2,
                 |args| match (&args[0], &args[1]) {
                     (Value::Set(a), Value::Set(b)) => {
-                        Ok(Value::Bool(a.borrow().is_disjoint(&*b.borrow())))
+                        Ok(Value::Bool(a.borrow().is_disjoint(&b.borrow())))
                     }
                     _ => Err("is_disjoint() needs two creels".to_string()),
                 },
@@ -3495,7 +3495,7 @@ impl Interpreter {
         globals.borrow_mut().define(
             "empty_creel".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("empty_creel", 0, |_args| {
-                Ok(Value::Set(Rc::new(RefCell::new(HashSet::new()))))
+                Ok(Value::Set(Rc::new(RefCell::new(SetValue::new()))))
             }))),
         );
 
@@ -3709,7 +3709,7 @@ impl Interpreter {
                     (Value::Dict(a), Value::Dict(b)) => {
                         let mut result = a.borrow().clone();
                         for (k, v) in b.borrow().iter() {
-                            result.insert(k.clone(), v.clone());
+                            result.set(k.clone(), v.clone());
                         }
                         Ok(Value::Dict(Rc::new(RefCell::new(result))))
                     }
@@ -3725,16 +3725,11 @@ impl Interpreter {
                 "dict_get",
                 3,
                 |args| match &args[0] {
-                    Value::Dict(d) => {
-                        let key = match &args[1] {
-                            Value::String(s) => s.clone(),
-                            _ => return Err("dict_get() key must be a string".to_string()),
-                        };
-                        Ok(d.borrow()
-                            .get(&key)
-                            .cloned()
-                            .unwrap_or_else(|| args[2].clone()))
-                    }
+                    Value::Dict(d) => Ok(d
+                        .borrow()
+                        .get(&args[1])
+                        .cloned()
+                        .unwrap_or_else(|| args[2].clone())),
                     _ => Err("dict_get() needs a dictionary".to_string()),
                 },
             ))),
@@ -3747,13 +3742,7 @@ impl Interpreter {
                 "dict_has",
                 2,
                 |args| match &args[0] {
-                    Value::Dict(d) => {
-                        let key = match &args[1] {
-                            Value::String(s) => s.clone(),
-                            _ => return Err("dict_has() key must be a string".to_string()),
-                        };
-                        Ok(Value::Bool(d.borrow().contains_key(&key)))
-                    }
+                    Value::Dict(d) => Ok(Value::Bool(d.borrow().contains_key(&args[1]))),
                     _ => Err("dict_has() needs a dictionary".to_string()),
                 },
             ))),
@@ -3767,12 +3756,8 @@ impl Interpreter {
                 2,
                 |args| match &args[0] {
                     Value::Dict(d) => {
-                        let key = match &args[1] {
-                            Value::String(s) => s.clone(),
-                            _ => return Err("dict_remove() key must be a string".to_string()),
-                        };
                         let mut new_dict = d.borrow().clone();
-                        new_dict.remove(&key);
+                        new_dict.remove(&args[1]);
                         Ok(Value::Dict(Rc::new(RefCell::new(new_dict))))
                     }
                     _ => Err("dict_remove() needs a dictionary".to_string()),
@@ -3788,10 +3773,9 @@ impl Interpreter {
                 1,
                 |args| match &args[0] {
                     Value::Dict(d) => {
-                        let mut inverted = HashMap::new();
+                        let mut inverted = DictValue::new();
                         for (k, v) in d.borrow().iter() {
-                            let new_key = format!("{}", v);
-                            inverted.insert(new_key, Value::String(k.clone()));
+                            inverted.set(v.clone(), k.clone());
                         }
                         Ok(Value::Dict(Rc::new(RefCell::new(inverted))))
                     }
@@ -3812,10 +3796,7 @@ impl Interpreter {
                             .borrow()
                             .iter()
                             .map(|(k, v)| {
-                                Value::List(Rc::new(RefCell::new(vec![
-                                    Value::String(k.clone()),
-                                    v.clone(),
-                                ])))
+                                Value::List(Rc::new(RefCell::new(vec![k.clone(), v.clone()])))
                             })
                             .collect();
                         Ok(Value::List(Rc::new(RefCell::new(pairs))))
@@ -3833,13 +3814,12 @@ impl Interpreter {
                 1,
                 |args| match &args[0] {
                     Value::List(list) => {
-                        let mut dict = HashMap::new();
+                        let mut dict = DictValue::new();
                         for item in list.borrow().iter() {
                             if let Value::List(pair) = item {
                                 let pair = pair.borrow();
                                 if pair.len() >= 2 {
-                                    let key = format!("{}", pair[0]);
-                                    dict.insert(key, pair[1].clone());
+                                    dict.set(pair[0].clone(), pair[1].clone());
                                 }
                             }
                         }
@@ -4850,15 +4830,33 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("date_now", 0, |_args| {
                 use chrono::{Datelike, Local, Timelike};
                 let now = Local::now();
-                let mut dict = HashMap::new();
-                dict.insert("year".to_string(), Value::Integer(now.year() as i64));
-                dict.insert("month".to_string(), Value::Integer(now.month() as i64));
-                dict.insert("day".to_string(), Value::Integer(now.day() as i64));
-                dict.insert("hour".to_string(), Value::Integer(now.hour() as i64));
-                dict.insert("minute".to_string(), Value::Integer(now.minute() as i64));
-                dict.insert("second".to_string(), Value::Integer(now.second() as i64));
-                dict.insert(
-                    "weekday".to_string(),
+                let mut dict = DictValue::new();
+                dict.set(
+                    Value::String("year".to_string()),
+                    Value::Integer(now.year() as i64),
+                );
+                dict.set(
+                    Value::String("month".to_string()),
+                    Value::Integer(now.month() as i64),
+                );
+                dict.set(
+                    Value::String("day".to_string()),
+                    Value::Integer(now.day() as i64),
+                );
+                dict.set(
+                    Value::String("hour".to_string()),
+                    Value::Integer(now.hour() as i64),
+                );
+                dict.set(
+                    Value::String("minute".to_string()),
+                    Value::Integer(now.minute() as i64),
+                );
+                dict.set(
+                    Value::String("second".to_string()),
+                    Value::Integer(now.second() as i64),
+                );
+                dict.set(
+                    Value::String("weekday".to_string()),
                     Value::Integer(now.weekday().num_days_from_monday() as i64),
                 );
                 Ok(Value::Dict(Rc::new(RefCell::new(dict))))
@@ -4870,7 +4868,7 @@ impl Interpreter {
             "date_format".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("date_format", 2, |args| {
                 use chrono::{Local, TimeZone};
-                let timestamp_ms = args[0]
+                let timestamp_secs = args[0]
                     .as_integer()
                     .ok_or("date_format() needs a timestamp")?;
                 let format = match &args[1] {
@@ -4878,7 +4876,7 @@ impl Interpreter {
                     _ => return Err("date_format() needs a format string".to_string()),
                 };
                 let dt = Local
-                    .timestamp_millis_opt(timestamp_ms)
+                    .timestamp_opt(timestamp_secs, 0)
                     .single()
                     .ok_or("Invalid timestamp")?;
                 Ok(Value::String(dt.format(&format).to_string()))
@@ -4900,7 +4898,7 @@ impl Interpreter {
                 };
                 let dt = NaiveDateTime::parse_from_str(&date_str, &format)
                     .map_err(|e| format!("Couldnae parse date '{}': {}", date_str, e))?;
-                Ok(Value::Integer(dt.and_utc().timestamp_millis()))
+                Ok(Value::Integer(dt.and_utc().timestamp()))
             }))),
         );
 
@@ -4909,14 +4907,14 @@ impl Interpreter {
             "date_add".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("date_add", 3, |args| {
                 use chrono::{Duration, Local, TimeZone};
-                let timestamp_ms = args[0].as_integer().ok_or("date_add() needs a timestamp")?;
+                let timestamp_secs = args[0].as_integer().ok_or("date_add() needs a timestamp")?;
                 let amount = args[1].as_integer().ok_or("date_add() needs an amount")?;
                 let unit = match &args[2] {
                     Value::String(s) => s.clone(),
                     _ => return Err("date_add() needs a unit string".to_string()),
                 };
                 let dt = Local
-                    .timestamp_millis_opt(timestamp_ms)
+                    .timestamp_opt(timestamp_secs, 0)
                     .single()
                     .ok_or("Invalid timestamp")?;
                 let new_dt = match unit.as_str() {
@@ -4927,7 +4925,7 @@ impl Interpreter {
                     "weeks" => dt + Duration::weeks(amount),
                     _ => return Err(format!("Unknown time unit: {}", unit)),
                 };
-                Ok(Value::Integer(new_dt.timestamp_millis()))
+                Ok(Value::Integer(new_dt.timestamp()))
             }))),
         );
 
@@ -4941,14 +4939,14 @@ impl Interpreter {
                     Value::String(s) => s.clone(),
                     _ => return Err("date_diff() needs a unit string".to_string()),
                 };
-                let diff_ms = ts2 - ts1;
+                let diff_secs = ts2 - ts1;
                 let result = match unit.as_str() {
-                    "milliseconds" => diff_ms,
-                    "seconds" => diff_ms / 1000,
-                    "minutes" => diff_ms / 60000,
-                    "hours" => diff_ms / 3600000,
-                    "days" => diff_ms / 86400000,
-                    "weeks" => diff_ms / 604800000,
+                    "milliseconds" => diff_secs * 1000,
+                    "seconds" => diff_secs,
+                    "minutes" => diff_secs / 60,
+                    "hours" => diff_secs / 3600,
+                    "days" => diff_secs / 86400,
+                    "weeks" => diff_secs / 604800,
                     _ => return Err(format!("Unknown time unit: {}", unit)),
                 };
                 Ok(Value::Integer(result))
@@ -5024,10 +5022,19 @@ impl Interpreter {
                 let re = Regex::new(&pattern)
                     .map_err(|e| format!("Invalid regex '{}': {}", pattern, e))?;
                 if let Some(m) = re.find(&text) {
-                    let mut dict = HashMap::new();
-                    dict.insert("match".to_string(), Value::String(m.as_str().to_string()));
-                    dict.insert("start".to_string(), Value::Integer(m.start() as i64));
-                    dict.insert("end".to_string(), Value::Integer(m.end() as i64));
+                    let mut dict = DictValue::new();
+                    dict.set(
+                        Value::String("match".to_string()),
+                        Value::String(m.as_str().to_string()),
+                    );
+                    dict.set(
+                        Value::String("start".to_string()),
+                        Value::Integer(m.start() as i64),
+                    );
+                    dict.set(
+                        Value::String("end".to_string()),
+                        Value::Integer(m.end() as i64),
+                    );
                     Ok(Value::Dict(Rc::new(RefCell::new(dict))))
                 } else {
                     Ok(Value::Nil)
@@ -5053,10 +5060,19 @@ impl Interpreter {
                 let matches: Vec<Value> = re
                     .find_iter(&text)
                     .map(|m| {
-                        let mut dict = HashMap::new();
-                        dict.insert("match".to_string(), Value::String(m.as_str().to_string()));
-                        dict.insert("start".to_string(), Value::Integer(m.start() as i64));
-                        dict.insert("end".to_string(), Value::Integer(m.end() as i64));
+                        let mut dict = DictValue::new();
+                        dict.set(
+                            Value::String("match".to_string()),
+                            Value::String(m.as_str().to_string()),
+                        );
+                        dict.set(
+                            Value::String("start".to_string()),
+                            Value::Integer(m.start() as i64),
+                        );
+                        dict.set(
+                            Value::String("end".to_string()),
+                            Value::Integer(m.end() as i64),
+                        );
                         Value::Dict(Rc::new(RefCell::new(dict)))
                     })
                     .collect();
@@ -5185,9 +5201,10 @@ impl Interpreter {
         globals.borrow_mut().define(
             "env_all".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("env_all", 0, |_args| {
-                let vars: HashMap<String, Value> = std::env::vars()
-                    .map(|(k, v)| (k, Value::String(v)))
-                    .collect();
+                let mut vars = DictValue::new();
+                for (k, v) in std::env::vars() {
+                    vars.set(Value::String(k), Value::String(v));
+                }
                 Ok(Value::Dict(Rc::new(RefCell::new(vars))))
             }))),
         );
@@ -5393,7 +5410,11 @@ impl Interpreter {
         if let Some(alias_name) = alias {
             // Create a dictionary wi' the module's exports
             let exports = module_env.borrow().get_exports();
-            let module_dict = Value::Dict(Rc::new(RefCell::new(exports)));
+            let mut export_dict = DictValue::new();
+            for (name, value) in exports {
+                export_dict.set(Value::String(name), value);
+            }
+            let module_dict = Value::Dict(Rc::new(RefCell::new(export_dict)));
             self.environment
                 .borrow_mut()
                 .define(alias_name.to_string(), module_dict);
@@ -6176,7 +6197,7 @@ impl Interpreter {
                         }),
                     Value::Dict(dict) => dict
                         .borrow()
-                        .get(property)
+                        .get(&Value::String(property.clone()))
                         .cloned()
                         .ok_or_else(|| HaversError::UndefinedVariable {
                             name: property.clone(),
@@ -6207,7 +6228,8 @@ impl Interpreter {
                         Ok(val)
                     }
                     Value::Dict(dict) => {
-                        dict.borrow_mut().insert(property.clone(), val.clone());
+                        dict.borrow_mut()
+                            .set(Value::String(property.clone()), val.clone());
                         Ok(val)
                     }
                     _ => Err(HaversError::TypeError {
@@ -6259,12 +6281,12 @@ impl Interpreter {
                                 line: span.line,
                             })
                     }
-                    (Value::Dict(dict), Value::String(key)) => dict
+                    (Value::Dict(dict), key) => dict
                         .borrow()
                         .get(key)
                         .cloned()
                         .ok_or_else(|| HaversError::UndefinedVariable {
-                            name: key.clone(),
+                            name: format!("{}", key),
                             line: span.line,
                         }),
                     _ => Err(HaversError::TypeError {
@@ -6306,14 +6328,8 @@ impl Interpreter {
                         list_mut[idx as usize] = val.clone();
                         Ok(val)
                     }
-                    (Value::Dict(dict), Value::String(key)) => {
-                        dict.borrow_mut().insert(key.clone(), val.clone());
-                        Ok(val)
-                    }
                     (Value::Dict(dict), key) => {
-                        // Convert non-string key to string
-                        let key_str = format!("{}", key);
-                        dict.borrow_mut().insert(key_str, val.clone());
+                        dict.borrow_mut().set(key.clone(), val.clone());
                         Ok(val)
                     }
                     _ => Err(HaversError::TypeError {
@@ -6531,15 +6547,11 @@ impl Interpreter {
             }
 
             Expr::Dict { pairs, .. } => {
-                let mut map = HashMap::new();
+                let mut map = DictValue::new();
                 for (key, value) in pairs {
                     let k = self.evaluate(key)?;
                     let v = self.evaluate(value)?;
-                    let key_str = match k {
-                        Value::String(s) => s,
-                        _ => format!("{}", k),
-                    };
-                    map.insert(key_str, v);
+                    map.set(k, v);
                 }
                 Ok(Value::Dict(Rc::new(RefCell::new(map))))
             }
@@ -6973,9 +6985,9 @@ impl Interpreter {
                     });
                 }
 
-                let mut fields = HashMap::new();
+                let mut fields = DictValue::new();
                 for (field, value) in structure.fields.iter().zip(args) {
-                    fields.insert(field.clone(), value);
+                    fields.set(Value::String(field.clone()), value);
                 }
 
                 // Return as a dict for now
@@ -7215,19 +7227,20 @@ impl Interpreter {
                 };
                 let func = args[1].clone();
                 // Result is a dict where keys are the function results, values are lists
-                let result = Rc::new(RefCell::new(std::collections::HashMap::new()));
+                let mut result = DictValue::new();
                 for item in list {
                     let key = self.call_value(func.clone(), vec![item.clone()], line)?;
-                    let key_str = format!("{}", key);
-                    let mut dict = result.borrow_mut();
-                    let group = dict
-                        .entry(key_str)
-                        .or_insert_with(|| Value::List(Rc::new(RefCell::new(Vec::new()))));
-                    if let Value::List(l) = group {
+                    let key_value = key;
+                    if let Some(Value::List(l)) = result.get(&key_value).cloned() {
                         l.borrow_mut().push(item);
+                    } else {
+                        result.set(
+                            key_value.clone(),
+                            Value::List(Rc::new(RefCell::new(vec![item]))),
+                        );
                     }
                 }
-                Ok(Value::Dict(result))
+                Ok(Value::Dict(Rc::new(RefCell::new(result))))
             }
 
             // pairt_by(list, func) - partition into [matches, non_matches]
@@ -7407,8 +7420,7 @@ fn parse_json_object(chars: &[char], pos: &mut usize) -> Result<Value, String> {
     *pos += 1; // skip '{'
     skip_json_whitespace(chars, pos);
 
-    let map: HashMap<String, Value> = HashMap::new();
-    let dict = Rc::new(RefCell::new(map));
+    let dict = Rc::new(RefCell::new(DictValue::new()));
 
     if *pos < chars.len() && chars[*pos] == '}' {
         *pos += 1;
@@ -7439,7 +7451,7 @@ fn parse_json_object(chars: &[char], pos: &mut usize) -> Result<Value, String> {
 
         // Parse value
         let value = parse_json_inner(chars, pos)?;
-        dict.borrow_mut().insert(key, value);
+        dict.borrow_mut().set(Value::String(key), value);
 
         skip_json_whitespace(chars, pos);
 
@@ -7638,7 +7650,13 @@ fn value_to_json(value: &Value) -> String {
             let pairs: Vec<String> = d
                 .borrow()
                 .iter()
-                .map(|(k, v)| format!("{}: {}", json_escape_string(k), value_to_json(v)))
+                .map(|(k, v)| {
+                    let key_json = match k {
+                        Value::String(s) => json_escape_string(s),
+                        _ => json_escape_string(&format!("{}", k)),
+                    };
+                    format!("{}: {}", key_json, value_to_json(v))
+                })
                 .collect();
             format!("{{{}}}", pairs.join(", "))
         }
@@ -7684,10 +7702,14 @@ fn value_to_json_pretty(value: &Value, indent: usize) -> String {
                 let formatted: Vec<String> = dict
                     .iter()
                     .map(|(k, v)| {
+                        let key_json = match k {
+                            Value::String(s) => json_escape_string(s),
+                            _ => json_escape_string(&format!("{}", k)),
+                        };
                         format!(
                             "{}{}: {}",
                             ws_inner,
-                            json_escape_string(k),
+                            key_json,
                             value_to_json_pretty(v, indent + 1)
                         )
                     })
@@ -8237,9 +8259,9 @@ result")
         let list = list.borrow();
         assert_eq!(list.len(), 3);
         // Should be sorted
-        assert_eq!(list[0], Value::String("1".to_string()));
-        assert_eq!(list[1], Value::String("2".to_string()));
-        assert_eq!(list[2], Value::String("3".to_string()));
+        assert_eq!(list[0], Value::Integer(1));
+        assert_eq!(list[1], Value::Integer(2));
+        assert_eq!(list[2], Value::Integer(3));
     }
 
     #[test]
@@ -8994,7 +9016,10 @@ d["b"]
             panic!("Expected dict");
         };
         let dict = dict.borrow();
-        assert_eq!(dict.get("value"), Some(&Value::Integer(42)));
+        assert_eq!(
+            dict.get(&Value::String("value".to_string())),
+            Some(&Value::Integer(42))
+        );
     }
 
     #[test]
@@ -10261,7 +10286,7 @@ len(s)
     fn test_heave_oot_set() {
         let result = run(r#"
 ken s = creel([1, 2, 3])
-heave_oot(s, "1")
+heave_oot(s, 1)
 len(s)
 "#)
         .unwrap();
@@ -10272,7 +10297,7 @@ len(s)
     fn test_is_in_creel_true() {
         let result = run(r#"
 ken s = creel([1, 2, 3])
-is_in_creel(s, "1")
+is_in_creel(s, 1)
 "#)
         .unwrap();
         assert_eq!(result, Value::Bool(true));
@@ -10282,7 +10307,7 @@ is_in_creel(s, "1")
     fn test_is_in_creel_false() {
         let result = run(r#"
 ken s = creel([1, 2, 3])
-is_in_creel(s, "5")
+is_in_creel(s, 5)
 "#)
         .unwrap();
         assert_eq!(result, Value::Bool(false));
@@ -12214,9 +12239,8 @@ l[-1]
 ken d = {}
 d[42] = "answer"
 d["42"]
-"#)
-        .unwrap();
-        assert_eq!(result, Value::String("answer".to_string()));
+"#);
+        assert!(result.is_err());
     }
 
     // ==================== Property Access/Set ====================

@@ -269,7 +269,7 @@ f()
         ("index_of(\"hello\", \"lo\")", true),
         ("contains(\"hello\", \"z\")", true),
         ("contains(\"abc\", 1)", false),
-        ("contains({\"a\": 1}, 1)", false),
+        ("contains({\"a\": 1}, 1)", true),
         ("upper(123)", false),
         ("capitalize(\"\")", true),
         ("title(\"hello world\")", true),
@@ -331,15 +331,15 @@ f()
         ("keys({\"a\": 1, \"b\": 2})", true),
         ("values({\"a\": 1, \"b\": 2})", true),
         ("items({\"a\": 1})", true),
-        ("dict_get({\"a\": 1}, 1, 0)", false),
-        ("dict_has({\"a\": 1}, 1)", false),
-        ("dict_remove({\"a\": 1}, 1)", false),
+        ("dict_get({\"a\": 1}, 1, 0)", true),
+        ("dict_has({\"a\": 1}, 1)", true),
+        ("dict_remove({\"a\": 1}, 1)", true),
         (
             r#"
 ken d = {1: 2}
 d["1"]
 "#,
-            true,
+            false,
         ),
         ("keys([1, 2])", false),
         // debug helpers

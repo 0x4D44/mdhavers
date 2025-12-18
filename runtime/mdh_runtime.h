@@ -239,9 +239,9 @@ MdhValue __mdh_shell_status(MdhValue cmd);
 /* ========== Date/Time ========== */
 
 MdhValue __mdh_date_now(void);
-MdhValue __mdh_date_format(MdhValue timestamp_ms, MdhValue format);
+MdhValue __mdh_date_format(MdhValue timestamp_secs, MdhValue format);
 MdhValue __mdh_date_parse(MdhValue date_str, MdhValue format);
-MdhValue __mdh_date_add(MdhValue timestamp_ms, MdhValue amount, MdhValue unit);
+MdhValue __mdh_date_add(MdhValue timestamp_secs, MdhValue amount, MdhValue unit);
 MdhValue __mdh_date_diff(MdhValue ts1, MdhValue ts2, MdhValue unit);
 MdhValue __mdh_braw_date(MdhValue ts_or_nil);
 

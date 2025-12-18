@@ -20,7 +20,11 @@ pub enum ValueKey {
     Class(usize),
     Instance(usize),
     Struct(usize),
-    Range { start: i64, end: i64, inclusive: bool },
+    Range {
+        start: i64,
+        end: i64,
+        inclusive: bool,
+    },
 }
 
 /// Runtime values in mdhavers
@@ -154,7 +158,10 @@ impl fmt::Display for Value {
             }
             Value::Dict(map) => {
                 let map = map.borrow();
-                let strs: Vec<String> = map.iter().map(|(k, v)| format!("\"{}\": {}", k, v)).collect();
+                let strs: Vec<String> = map
+                    .iter()
+                    .map(|(k, v)| format!("\"{}\": {}", k, v))
+                    .collect();
                 write!(f, "{{{}}}", strs.join(", "))
             }
             Value::Set(set) => {
@@ -274,13 +281,6 @@ impl DictValue {
         }
 
         Some(v)
-    }
-
-    pub fn clone_shallow(&self) -> Self {
-        DictValue {
-            index: self.index.clone(),
-            entries: self.entries.clone(),
-        }
     }
 }
 
@@ -647,10 +647,10 @@ mod tests {
         let list = Value::List(Rc::new(RefCell::new(vec![Value::Integer(1)])));
         assert_eq!(list.type_name(), "list");
 
-        let dict = Value::Dict(Rc::new(RefCell::new(HashMap::new())));
+        let dict = Value::Dict(Rc::new(RefCell::new(DictValue::new())));
         assert_eq!(dict.type_name(), "dict");
 
-        let set = Value::Set(Rc::new(RefCell::new(HashSet::new())));
+        let set = Value::Set(Rc::new(RefCell::new(SetValue::new())));
         assert_eq!(set.type_name(), "creel");
 
         let func = HaversFunction::new("test".to_string(), vec![], vec![], None);
@@ -714,15 +714,15 @@ mod tests {
         assert!(non_empty_list.is_truthy());
 
         // Empty set is falsy, non-empty truthy
-        let empty_set = Value::Set(Rc::new(RefCell::new(HashSet::new())));
-        let mut non_empty = HashSet::new();
-        non_empty.insert("item".to_string());
+        let empty_set = Value::Set(Rc::new(RefCell::new(SetValue::new())));
+        let mut non_empty = SetValue::new();
+        non_empty.insert(Value::String("item".to_string()));
         let non_empty_set = Value::Set(Rc::new(RefCell::new(non_empty)));
         assert!(!empty_set.is_truthy());
         assert!(non_empty_set.is_truthy());
 
         // Dict is always truthy (even if empty - default case)
-        let empty_dict = Value::Dict(Rc::new(RefCell::new(HashMap::new())));
+        let empty_dict = Value::Dict(Rc::new(RefCell::new(DictValue::new())));
         assert!(empty_dict.is_truthy());
 
         // Functions are truthy
@@ -808,28 +808,28 @@ mod tests {
 
     #[test]
     fn test_value_display_dict() {
-        let empty = Value::Dict(Rc::new(RefCell::new(HashMap::new())));
+        let empty = Value::Dict(Rc::new(RefCell::new(DictValue::new())));
         assert_eq!(format!("{}", empty), "{}");
 
-        let mut map = HashMap::new();
-        map.insert("a".to_string(), Value::Integer(1));
+        let mut map = DictValue::new();
+        map.set(Value::String("a".to_string()), Value::Integer(1));
         let single = Value::Dict(Rc::new(RefCell::new(map)));
         assert_eq!(format!("{}", single), "{\"a\": 1}");
     }
 
     #[test]
     fn test_value_display_set() {
-        let empty = Value::Set(Rc::new(RefCell::new(HashSet::new())));
+        let empty = Value::Set(Rc::new(RefCell::new(SetValue::new())));
         assert_eq!(format!("{}", empty), "creel{}");
 
-        let mut set = HashSet::new();
-        set.insert("a".to_string());
+        let mut set = SetValue::new();
+        set.insert(Value::String("a".to_string()));
         let single = Value::Set(Rc::new(RefCell::new(set)));
         assert_eq!(format!("{}", single), "creel{\"a\"}");
 
-        let mut multi_set = HashSet::new();
-        multi_set.insert("a".to_string());
-        multi_set.insert("b".to_string());
+        let mut multi_set = SetValue::new();
+        multi_set.insert(Value::String("a".to_string()));
+        multi_set.insert(Value::String("b".to_string()));
         let multi = Value::Set(Rc::new(RefCell::new(multi_set)));
         // Sorted output
         assert_eq!(format!("{}", multi), "creel{\"a\", \"b\"}");

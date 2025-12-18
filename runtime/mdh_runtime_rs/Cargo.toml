@@ -1,0 +1,11 @@
+[package]
+name = "mdh_runtime_rs"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+regex = "1.10"
+serde_json = { version = "1.0", features = ["preserve_order"] }
