@@ -267,6 +267,7 @@ MdhValue __mdh_numpty_check(MdhValue value);
 MdhValue __mdh_indices_o(MdhValue container, MdhValue needle);
 MdhValue __mdh_grup(MdhValue list, MdhValue size);
 MdhValue __mdh_chunks(MdhValue list, MdhValue size);
+MdhValue __mdh_window(MdhValue str, MdhValue size);
 MdhValue __mdh_interleave(MdhValue list_a, MdhValue list_b);
 MdhValue __mdh_pair_adjacent(MdhValue list);
 MdhValue __mdh_skelp(MdhValue str, MdhValue size);

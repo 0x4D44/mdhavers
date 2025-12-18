@@ -1,9 +1,27 @@
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt;
 use std::rc::Rc;
 
 use crate::ast::{Expr, Stmt};
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ValueKey {
+    Nil,
+    Bool(bool),
+    Int(i64),
+    Float(u64),
+    String(String),
+    List(usize),
+    Dict(usize),
+    Set(usize),
+    Function(usize),
+    NativeFunction(usize),
+    Class(usize),
+    Instance(usize),
+    Struct(usize),
+    Range { start: i64, end: i64, inclusive: bool },
+}
 
 /// Runtime values in mdhavers
 #[derive(Debug, Clone)]
@@ -21,9 +39,9 @@ pub enum Value {
     /// List/Array
     List(Rc<RefCell<Vec<Value>>>),
     /// Dictionary/Map
-    Dict(Rc<RefCell<HashMap<String, Value>>>),
+    Dict(Rc<RefCell<DictValue>>),
     /// Set (creel = basket/set in Scots)
-    Set(Rc<RefCell<HashSet<String>>>),
+    Set(Rc<RefCell<SetValue>>),
     /// Function
     Function(Rc<HaversFunction>),
     /// Native/built-in function
@@ -95,6 +113,29 @@ impl Value {
             _ => None,
         }
     }
+
+    pub fn as_key(&self) -> ValueKey {
+        match self {
+            Value::Nil => ValueKey::Nil,
+            Value::Bool(b) => ValueKey::Bool(*b),
+            Value::Integer(n) => ValueKey::Int(*n),
+            Value::Float(f) => ValueKey::Float(f.to_bits()),
+            Value::String(s) => ValueKey::String(s.clone()),
+            Value::List(l) => ValueKey::List(Rc::as_ptr(l) as usize),
+            Value::Dict(d) => ValueKey::Dict(Rc::as_ptr(d) as usize),
+            Value::Set(s) => ValueKey::Set(Rc::as_ptr(s) as usize),
+            Value::Function(func) => ValueKey::Function(Rc::as_ptr(func) as usize),
+            Value::NativeFunction(func) => ValueKey::NativeFunction(Rc::as_ptr(func) as usize),
+            Value::Class(class) => ValueKey::Class(Rc::as_ptr(class) as usize),
+            Value::Instance(inst) => ValueKey::Instance(Rc::as_ptr(inst) as usize),
+            Value::Struct(s) => ValueKey::Struct(Rc::as_ptr(s) as usize),
+            Value::Range(r) => ValueKey::Range {
+                start: r.start,
+                end: r.end,
+                inclusive: r.inclusive,
+            },
+        }
+    }
 }
 
 impl fmt::Display for Value {
@@ -113,15 +154,12 @@ impl fmt::Display for Value {
             }
             Value::Dict(map) => {
                 let map = map.borrow();
-                let strs: Vec<String> = map
-                    .iter()
-                    .map(|(k, v)| format!("\"{}\": {}", k, v))
-                    .collect();
+                let strs: Vec<String> = map.iter().map(|(k, v)| format!("\"{}\": {}", k, v)).collect();
                 write!(f, "{{{}}}", strs.join(", "))
             }
             Value::Set(set) => {
                 let set = set.borrow();
-                let mut strs: Vec<&String> = set.iter().collect();
+                let mut strs: Vec<String> = set.iter().map(|v| format!("{}", v)).collect();
                 strs.sort(); // Sort fer consistent display
                 write!(
                     f,
@@ -153,8 +191,189 @@ impl PartialEq for Value {
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Nil, Value::Nil) => true,
             (Value::List(a), Value::List(b)) => *a.borrow() == *b.borrow(),
+            (Value::Dict(a), Value::Dict(b)) => Rc::ptr_eq(a, b),
+            (Value::Set(a), Value::Set(b)) => Rc::ptr_eq(a, b),
+            (Value::Function(a), Value::Function(b)) => Rc::ptr_eq(a, b),
+            (Value::NativeFunction(a), Value::NativeFunction(b)) => Rc::ptr_eq(a, b),
+            (Value::Class(a), Value::Class(b)) => Rc::ptr_eq(a, b),
+            (Value::Instance(a), Value::Instance(b)) => Rc::ptr_eq(a, b),
+            (Value::Struct(a), Value::Struct(b)) => Rc::ptr_eq(a, b),
             _ => false,
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DictValue {
+    index: HashMap<ValueKey, usize>,
+    entries: Vec<(Value, Value)>,
+}
+
+impl DictValue {
+    pub fn new() -> Self {
+        DictValue {
+            index: HashMap::new(),
+            entries: Vec::new(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    pub fn contains_key(&self, key: &Value) -> bool {
+        self.index.contains_key(&key.as_key())
+    }
+
+    pub fn get(&self, key: &Value) -> Option<&Value> {
+        self.index
+            .get(&key.as_key())
+            .and_then(|&idx| self.entries.get(idx))
+            .map(|(_, v)| v)
+    }
+
+    pub fn set(&mut self, key: Value, value: Value) {
+        let key_id = key.as_key();
+        if let Some(&idx) = self.index.get(&key_id) {
+            if let Some((_, v)) = self.entries.get_mut(idx) {
+                *v = value;
+            }
+            return;
+        }
+
+        let idx = self.entries.len();
+        self.entries.push((key, value));
+        self.index.insert(key_id, idx);
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&Value, &Value)> {
+        self.entries.iter().map(|(k, v)| (k, v))
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &Value> {
+        self.entries.iter().map(|(k, _)| k)
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = &Value> {
+        self.entries.iter().map(|(_, v)| v)
+    }
+
+    pub fn remove(&mut self, key: &Value) -> Option<Value> {
+        let key_id = key.as_key();
+        let idx = self.index.remove(&key_id)?;
+        let (_k, v) = self.entries.remove(idx);
+
+        // Rebuild index for shifted entries.
+        self.index.clear();
+        for (i, (k, _)) in self.entries.iter().enumerate() {
+            self.index.insert(k.as_key(), i);
+        }
+
+        Some(v)
+    }
+
+    pub fn clone_shallow(&self) -> Self {
+        DictValue {
+            index: self.index.clone(),
+            entries: self.entries.clone(),
+        }
+    }
+}
+
+impl Default for DictValue {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SetValue {
+    items: HashMap<ValueKey, Value>,
+}
+
+impl SetValue {
+    pub fn new() -> Self {
+        SetValue {
+            items: HashMap::new(),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
+    pub fn insert(&mut self, value: Value) -> bool {
+        let key = value.as_key();
+        self.items.insert(key, value).is_none()
+    }
+
+    pub fn remove(&mut self, value: &Value) -> bool {
+        self.items.remove(&value.as_key()).is_some()
+    }
+
+    pub fn contains(&self, value: &Value) -> bool {
+        self.items.contains_key(&value.as_key())
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Value> {
+        self.items.values()
+    }
+
+    pub fn is_subset(&self, other: &SetValue) -> bool {
+        self.items.keys().all(|k| other.items.contains_key(k))
+    }
+
+    pub fn is_superset(&self, other: &SetValue) -> bool {
+        other.is_subset(self)
+    }
+
+    pub fn is_disjoint(&self, other: &SetValue) -> bool {
+        self.items.keys().all(|k| !other.items.contains_key(k))
+    }
+
+    pub fn intersection(&self, other: &SetValue) -> SetValue {
+        let mut out = SetValue::new();
+        for (k, v) in &self.items {
+            if other.items.contains_key(k) {
+                out.items.insert(k.clone(), v.clone());
+            }
+        }
+        out
+    }
+
+    pub fn difference(&self, other: &SetValue) -> SetValue {
+        let mut out = SetValue::new();
+        for (k, v) in &self.items {
+            if !other.items.contains_key(k) {
+                out.items.insert(k.clone(), v.clone());
+            }
+        }
+        out
+    }
+
+    pub fn union(&self, other: &SetValue) -> SetValue {
+        let mut out = SetValue::new();
+        for (k, v) in &self.items {
+            out.items.insert(k.clone(), v.clone());
+        }
+        for (k, v) in &other.items {
+            out.items.insert(k.clone(), v.clone());
+        }
+        out
+    }
+}
+
+impl Default for SetValue {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

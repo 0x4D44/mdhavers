@@ -24,8 +24,12 @@ mod llvm;
 
 use crate::compiler::compile;
 use crate::error::{format_error_context, random_scots_exclamation};
-use crate::interpreter::{is_crash_handling_enabled, print_stack_trace, Interpreter};
+use crate::interpreter::Interpreter;
 use crate::parser::parse;
+
+// Crash handler helpers are excluded from source-based coverage runs.
+#[cfg(not(coverage))]
+use crate::interpreter::{is_crash_handling_enabled, print_stack_trace};
 
 /// Initialize crash handlers for graceful error reporting
 #[cfg(not(coverage))]

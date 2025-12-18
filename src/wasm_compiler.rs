@@ -691,11 +691,10 @@ mod tests {
 
     #[test]
     fn test_logical_not_wasm() {
-        // "no" requires parentheses and may not be fully supported in WASM
-        let source = "ken b = no aye";
-        let result = compile_to_wat(source);
-        // Just verify it doesn't panic - may or may not be supported
-        assert!(result.is_ok() || result.is_err());
+        let source = "ken b = nae aye";
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("i64.eqz"));
+        assert!(result.contains("i64.extend_i32_u"));
     }
 
     // ==================== Unary Operations ====================
@@ -902,5 +901,97 @@ mod tests {
         let source = r#"blether "Hello""#;
         let result = compile_to_wat(source).unwrap();
         assert!(result.contains("(module"));
+    }
+
+    #[test]
+    fn test_wasm_compiler_default_constructs() {
+        let _ = WasmCompiler::default();
+    }
+
+    #[test]
+    fn test_function_with_local_decl_wasm() {
+        let source = r#"
+            dae foo(a) {
+                ken x = a + 1
+                gie x
+            }
+        "#;
+        let wat = compile_to_wat(source).unwrap();
+        assert!(wat.contains("(local $x i64)"));
+    }
+
+    #[test]
+    fn test_var_decl_without_initializer_wasm_defaults_to_zero() {
+        let source = r#"
+            ken x
+            blether x
+        "#;
+        let wat = compile_to_wat(source).unwrap();
+        assert!(wat.contains("(local.set $x)"));
+        assert!(wat.contains("i64.const 0"));
+    }
+
+    #[test]
+    fn test_break_and_continue_wasm() {
+        let source = r#"
+            ken x = 0
+            whiles x < 10 {
+                x = x + 1
+                gin x == 2 {
+                    haud
+                }
+                gin x == 3 {
+                    brak
+                }
+            }
+        "#;
+        let wat = compile_to_wat(source).unwrap();
+        assert!(wat.contains("(br $continue)"));
+        assert!(wat.contains("(br $break)"));
+    }
+
+    #[test]
+    fn test_function_call_wasm() {
+        let source = r#"
+            dae add(a, b) {
+                gie a + b
+            }
+            blether add(1, 2)
+        "#;
+        let wat = compile_to_wat(source).unwrap();
+        assert!(wat.contains("(call $add)"));
+    }
+
+    #[test]
+    fn test_grouping_expr_wasm() {
+        let source = r#"blether (1 + 2)"#;
+        let wat = compile_to_wat(source).unwrap();
+        assert!(wat.contains("i64.add"));
+    }
+
+    #[test]
+    fn test_non_direct_call_wasm_returns_error() {
+        let source = r#"
+            dae add(a, b) {
+                gie a + b
+            }
+            blether (add)(1, 2)
+        "#;
+        let err = compile_to_wat(source).unwrap_err();
+        assert!(err.to_string().contains("Only direct function calls"));
+    }
+
+    #[test]
+    fn test_unsupported_expr_wasm_returns_error() {
+        let source = "ken x = [1, 2]";
+        let err = compile_to_wat(source).unwrap_err();
+        assert!(err.to_string().contains("expression type isnae supported"));
+    }
+
+    #[test]
+    fn test_escape_wat_string_covers_special_chars() {
+        let input = "\"\\\r\t\n\u{0001}";
+        let escaped = escape_wat_string(input);
+        assert_eq!(escaped, r#"\"\\\r\t\n\01"#);
     }
 }
