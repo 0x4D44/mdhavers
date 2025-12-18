@@ -8404,10 +8404,7 @@ blether found
 
     #[test]
     fn test_split_basic() {
-        assert_eq!(
-            run("blether split(\"a,b,c\", \",\")").trim(),
-            "[\"a\", \"b\", \"c\"]"
-        );
+        assert_eq!(run("blether split(\"a,b,c\", \",\")").trim(), "[a, b, c]");
     }
 
     #[test]
@@ -8951,10 +8948,10 @@ fer key in k {
 
     #[test]
     fn test_bool_empty_string_is_truthy() {
-        // In mdhavers, all strings (even empty) are truthy
+        // In mdhavers, empty strings are falsy
         assert_eq!(
             run("gin \"\" { blether \"yes\" } ither { blether \"no\" }").trim(),
-            "yes"
+            "no"
         );
     }
 
@@ -12591,10 +12588,7 @@ mod coverage_batch33 {
     #[test]
     fn test_string_split() {
         // Test string split
-        assert_eq!(
-            run("blether split(\"a,b,c\", \",\")").trim(),
-            "[\"a\", \"b\", \"c\"]"
-        );
+        assert_eq!(run("blether split(\"a,b,c\", \",\")").trim(), "[a, b, c]");
     }
 
     #[test]
@@ -13195,10 +13189,7 @@ mod coverage_batch38 {
 
     #[test]
     fn test_split_string() {
-        assert_eq!(
-            run("blether split(\"a-b-c\", \"-\")").trim(),
-            "[\"a\", \"b\", \"c\"]"
-        );
+        assert_eq!(run("blether split(\"a-b-c\", \"-\")").trim(), "[a, b, c]");
     }
 
     #[test]
@@ -13246,7 +13237,7 @@ mod coverage_batch38 {
     fn test_words_split() {
         assert_eq!(
             run("blether words(\"hello world test\")").trim(),
-            "[\"hello\", \"world\", \"test\"]"
+            "[hello, world, test]"
         );
     }
 
@@ -14648,13 +14639,13 @@ mod coverage_batch57 {
 
     #[test]
     fn test_braw_identity() {
-        assert_eq!(run("blether braw(42)").trim(), "42");
+        assert_eq!(run("blether braw(42)").trim(), "aye");
     }
 
     #[test]
     fn test_haverin() {
-        let output = run("blether whit_kind(haverin())").trim().to_string();
-        assert_eq!(output, "string");
+        let output = run("blether whit_kind(haverin(\"\"))").trim().to_string();
+        assert_eq!(output, "bool");
     }
 
     #[test]
@@ -44473,7 +44464,7 @@ blether tae_bool("hello")
         let lines: Vec<&str> = output.trim().lines().collect();
         assert_eq!(lines[0], "aye");
         assert_eq!(lines[1], "nae");
-        assert_eq!(lines[2], "aye");
+        assert_eq!(lines[2], "nae");
         assert_eq!(lines[3], "aye");
     }
 }
@@ -48841,19 +48832,13 @@ blether is_empty(lst)
 
     #[test]
     fn test_glaikit() {
-        // glaikit returns input as-is (placeholder)
-        let code = r#"blether glaikit("test")"#;
-        let binding = run(code);
-        let output = binding.trim();
-        assert!(output.contains("test"), "Got: {}", output);
+        assert_eq!(run(r#"blether glaikit("")"#).trim(), "aye");
+        assert_eq!(run(r#"blether glaikit("test")"#).trim(), "nae");
     }
 
     #[test]
     fn test_silly_alias() {
-        let code = r#"blether silly("hello")"#;
-        let binding = run(code);
-        let output = binding.trim();
-        assert!(output.contains("hello"), "Got: {}", output);
+        assert_eq!(run(r#"blether silly("")"#).trim(), "aye");
     }
 
     #[test]
@@ -50233,9 +50218,9 @@ blether x >= 1 an x <= 10
 
     #[test]
     fn test_braw() {
-        // braw() - random float 0-1
+        // random() - random float 0-1
         let code = r#"
-ken x = braw()
+ken x = random()
 blether x >= 0.0
         "#;
         let binding = run(code);
@@ -50628,11 +50613,11 @@ mod math_scots_cov {
 
     #[test]
     fn test_stoater() {
-        // stoater - great/large value indicator
-        let code = r#"blether stoater(1000)"#;
+        // stoater - find the "best" element in a list
+        let code = r#"blether stoater([1, 1000, 2])"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.len() > 0, "Got: {}", output);
+        assert_eq!(output, "1000");
     }
 
     #[test]
@@ -52267,24 +52252,22 @@ mod slainte_cov {
     #[test]
     fn test_slainte_true() {
         let code = r#"
-slainte(1 == 1, "equality works")
-blether "passed"
+ken msg = slainte()
+blether len(msg)
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "passed" || output.len() > 0, "Got: {}", output);
+        assert!(output.parse::<i64>().unwrap_or(0) > 0, "Got: {}", output);
     }
 
     #[test]
     fn test_slainte_with_message() {
         let code = r#"
-ken x = 5
-slainte(x > 0, "x should be positive")
-blether "ok"
+blether slainte()
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "ok" || output.len() > 0, "Got: {}", output);
+        assert!(!output.is_empty(), "Got: {}", output);
     }
 }
 
@@ -52298,7 +52281,7 @@ mod och_cov {
     #[test]
     fn test_och_message() {
         let code = r#"
-ken msg = och()
+ken msg = och("oops")
 blether len(msg)
         "#;
         let binding = run(code);
@@ -57524,7 +57507,7 @@ blether s
     #[test]
     fn test_help_ma_boab() {
         let code = r#"
-help_ma_boab()
+help_ma_boab("wow")
 blether "done"
         "#;
         let binding = run(code);
@@ -59549,7 +59532,7 @@ mod identity_cov {
         let code = r#"blether braw(42)"#;
         let binding = run(code);
         let output = binding.trim();
-        assert_eq!(output, "42");
+        assert_eq!(output, "aye");
     }
 
     #[test]
@@ -59557,7 +59540,7 @@ mod identity_cov {
         let code = r#"blether braw("hello")"#;
         let binding = run(code);
         let output = binding.trim();
-        assert_eq!(output, "hello");
+        assert_eq!(output, "aye");
     }
 }
 
@@ -59566,10 +59549,10 @@ mod haverin_cov {
 
     #[test]
     fn test_haverin() {
-        let code = r#"blether haverin()"#;
+        let code = r#"blether haverin("")"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.len() > 0, "Should return placeholder text");
+        assert_eq!(output, "aye");
     }
 
     #[test]
@@ -59577,7 +59560,7 @@ mod haverin_cov {
         let code = r#"blether haver()"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.len() > 0, "Should return placeholder text");
+        assert!(!output.is_empty(), "Should return some havers");
     }
 }
 
@@ -59782,12 +59765,11 @@ mod range_o_cov {
         let code = r#"
 ken items = [1, 5, 10]
 ken r = range_o(items)
-blether is_nowt(r)
+blether r
 "#;
         let binding = run(code);
         let output = binding.trim();
-        // Returns nil for now
-        assert!(output == "1" || output == "aye", "Got: {}", output);
+        assert_eq!(output, "9", "Got: {}", output);
     }
 }
 
@@ -59924,26 +59906,26 @@ mod exclamations_cov {
 
     #[test]
     fn test_help_ma_boab() {
-        let code = r#"blether is_nowt(help_ma_boab())"#;
+        let code = r#"blether help_ma_boab("wow")"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye", "Got: {}", output);
+        assert_eq!(output, "Help ma boab! wow");
     }
 
     #[test]
     fn test_banter() {
-        let code = r#"blether is_nowt(banter())"#;
+        let code = r#"blether banter("ab", "12")"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye", "Got: {}", output);
+        assert_eq!(output, "a1b2");
     }
 
     #[test]
     fn test_clype() {
-        let code = r#"blether is_nowt(clype())"#;
+        let code = r#"blether clype([1, 2, 3])"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye", "Got: {}", output);
+        assert_eq!(output, "[list] list wi' 3 items");
     }
 
     #[test]
@@ -62903,7 +62885,7 @@ gin "" {
 "#;
         let binding = run(code);
         let output = binding.trim();
-        assert_eq!(output, "yes");
+        assert_eq!(output, "no");
     }
 }
 
@@ -65446,7 +65428,7 @@ mod log_cov {
     #[test]
     fn test_log_basic() {
         let code = r#"
-log("info", "test message")
+blether log(1)
 blether "done"
 "#;
         let binding = run(code);
@@ -68326,10 +68308,10 @@ mod haverin_cov2 {
 
     #[test]
     fn test_haver_basic() {
-        let code = r#"blether haver(42)"#;
+        let code = r#"blether haver()"#;
         let binding = run(code);
         let output = binding.trim();
-        assert_eq!(output, "42");
+        assert!(!output.is_empty(), "Got: {}", output);
     }
 }
 
@@ -79559,7 +79541,7 @@ blether parts
 "#;
         let binding = run(code);
         let output = binding.trim();
-        assert_eq!(output, "[\"a\", \"b\", \"c\"]");
+        assert_eq!(output, "[a, b, c]");
     }
 
     #[test]
