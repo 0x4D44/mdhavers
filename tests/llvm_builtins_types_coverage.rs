@@ -33,6 +33,8 @@ fn llvm_types_helpers_are_exercised() {
     assert_eq!(types::ValueTag::Class.as_u8(), 8);
     assert_eq!(types::ValueTag::Instance.as_u8(), 9);
     assert_eq!(types::ValueTag::Range.as_u8(), 10);
+    assert_eq!(types::ValueTag::Set.as_u8(), 11);
+    assert_eq!(types::ValueTag::Closure.as_u8(), 12);
 
     // MdhTypes construction + basic type helper
     let ctx = Context::create();

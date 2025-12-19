@@ -21,6 +21,7 @@ fetch "lib/functional"
 |--------|-------------|--------------|
 | **prelude** | Auto-loaded core functions | Basic list/dict operations, type conversion |
 | **strings** | String manipulation | Advanced string functions |
+| **bytes** | Byte buffer helpers | Byte buffers, slicing, endian helpers |
 | **maths** | Mathematical functions | Trigonometry, statistics, number theory |
 | **collections** | Collection utilities | Advanced list/dict operations |
 
@@ -90,6 +91,8 @@ fetch "lib/functional"
 |--------|-------------|--------------|
 | **promise** | Promise patterns | Promise, Result (Either), Option (Maybe), Lazy evaluation |
 | **events** | Event system | EventEmitter, pub/sub |
+| **event_loop** | I/O event loop | Socket polling, timers, callback dispatch |
+| **concurrency** | Threads & sync | Threads, mutexes, condvars, atomics, channels |
 | **statemachine** | State machines | StateMachine class, transitions |
 
 ### Security & Identity
@@ -98,11 +101,16 @@ fetch "lib/functional"
 |--------|-------------|--------------|
 | **crypto** | Cryptographic utilities | Hash functions, encoding, checksums |
 | **uuid** | UUID generation | UUID v4, validation |
+| **srtp** | SRTP helpers | SRTP protect/unprotect wrappers |
 
 ### Networking
 
 | Module | Description | Key Features |
 |--------|-------------|--------------|
+| **network** | Simulated networking | Message passing, channels, pub/sub |
+| **network_real** | Real sockets & DNS | UDP/TCP sockets, DNS lookup |
+| **sip** | SIP utilities | NAPTR/SRV resolution, message parse/build helpers |
+| **tls** | TLS helpers | TLS session wrappers, send/recv helpers |
 | **http** | HTTP client utilities | URL parsing, Request/Response, Headers, Cookies, MockClient |
 
 ### Game Development

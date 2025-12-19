@@ -41,6 +41,14 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = "0.4"
 regex = "1.10"
+libc = "0.2"
+trust-dns-resolver = "0.23"
+rustls = { version = "0.21", features = ["dangerous_configuration"] }
+rustls-pemfile = "1.0"
+webpki-roots = "0.25"
+libsrtp = "0.1"
+udp-dtls = { version = "0.1", features = ["vendored"] }
+openssl = { version = "0.10", features = ["vendored"] }
 
 # CLI-only dependencies (not needed for WASM)
 clap = { version = "4.4", features = ["derive"], optional = true }
@@ -62,3 +70,4 @@ raylib = { version = "5.0", optional = true }
 [dev-dependencies]
 pretty_assertions = "1.4"
 tempfile = "3.10"
+rcgen = "0.12"

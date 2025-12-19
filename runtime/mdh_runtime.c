@@ -17,7 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include <regex.h>
+#include <limits.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -25,23 +25,56 @@
 #include <setjmp.h>
 #include <termios.h>
 #include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <pthread.h>
 
 /* Boehm GC - declared as extern */
 extern void GC_init(void);
 extern void *GC_malloc(size_t size);
 extern void *GC_realloc(void *ptr, size_t size);
 extern char *GC_strdup(const char *s);
+typedef struct GC_stack_base {
+    void *mem_base;
+} GC_stack_base;
+extern int GC_register_my_thread(const GC_stack_base *sb);
+extern int GC_unregister_my_thread(void);
+extern int GC_get_stack_base(GC_stack_base *sb);
+extern void GC_allow_register_threads(void);
+
+typedef struct {
+    uint8_t ok;
+    MdhValue value;
+    MdhValue error;
+} MdhRsResult;
 
 /* Rust runtime FFI (JSON + regex) */
-extern MdhValue __mdh_rs_json_parse(MdhValue json_str);
-extern MdhValue __mdh_rs_json_stringify(MdhValue value);
-extern MdhValue __mdh_rs_json_pretty(MdhValue value);
-extern MdhValue __mdh_rs_regex_test(MdhValue text, MdhValue pattern);
-extern MdhValue __mdh_rs_regex_match(MdhValue text, MdhValue pattern);
-extern MdhValue __mdh_rs_regex_match_all(MdhValue text, MdhValue pattern);
-extern MdhValue __mdh_rs_regex_replace(MdhValue text, MdhValue pattern, MdhValue replacement);
-extern MdhValue __mdh_rs_regex_replace_first(MdhValue text, MdhValue pattern, MdhValue replacement);
-extern MdhValue __mdh_rs_regex_split(MdhValue text, MdhValue pattern);
+extern MdhRsResult __mdh_rs_json_parse(MdhValue json_str);
+extern MdhRsResult __mdh_rs_json_stringify(MdhValue value);
+extern MdhRsResult __mdh_rs_json_pretty(MdhValue value);
+extern MdhRsResult __mdh_rs_regex_test(MdhValue text, MdhValue pattern);
+extern MdhRsResult __mdh_rs_regex_match(MdhValue text, MdhValue pattern);
+extern MdhRsResult __mdh_rs_regex_match_all(MdhValue text, MdhValue pattern);
+extern MdhRsResult __mdh_rs_regex_replace(MdhValue text, MdhValue pattern, MdhValue replacement);
+extern MdhRsResult __mdh_rs_regex_replace_first(MdhValue text, MdhValue pattern, MdhValue replacement);
+extern MdhRsResult __mdh_rs_regex_split(MdhValue text, MdhValue pattern);
+extern MdhRsResult __mdh_rs_dns_srv(MdhValue service, MdhValue domain);
+extern MdhRsResult __mdh_rs_dns_naptr(MdhValue domain);
+extern MdhRsResult __mdh_rs_tls_client_new(MdhValue config);
+extern MdhRsResult __mdh_rs_tls_connect(MdhValue tls, MdhValue sock_fd);
+extern MdhRsResult __mdh_rs_tls_send(MdhValue tls, MdhValue buf);
+extern MdhRsResult __mdh_rs_tls_recv(MdhValue tls, MdhValue max_len);
+extern MdhRsResult __mdh_rs_tls_close(MdhValue tls);
+extern MdhRsResult __mdh_rs_srtp_create(MdhValue config);
+extern MdhRsResult __mdh_rs_srtp_protect(MdhValue ctx, MdhValue packet);
+extern MdhRsResult __mdh_rs_srtp_unprotect(MdhValue ctx, MdhValue packet);
+extern MdhRsResult __mdh_rs_dtls_server_new(MdhValue config);
+extern MdhRsResult __mdh_rs_dtls_handshake(MdhValue dtls, MdhValue sock_fd);
 
 /* Random number generator state */
 static int __mdh_random_initialized = 0;
@@ -319,6 +352,14 @@ bool __mdh_eq(MdhValue a, MdhValue b) {
             }
             return true;
         }
+        case MDH_TAG_BYTES: {
+            MdhBytes *ba = __mdh_get_bytes(a);
+            MdhBytes *bb = __mdh_get_bytes(b);
+            if (!ba || !bb) return ba == bb;
+            if (ba->length != bb->length) return false;
+            if (ba->length == 0) return true;
+            return memcmp(ba->data, bb->data, (size_t)ba->length) == 0;
+        }
         default:
             /* Reference equality for complex types */
             return a.data == b.data;
@@ -384,6 +425,17 @@ bool __mdh_truthy(MdhValue a) {
             MdhList *list = __mdh_get_list(a);
             return list && list->length > 0;
         }
+        case MDH_TAG_BYTES: {
+            MdhBytes *bytes = __mdh_get_bytes(a);
+            return bytes && bytes->length > 0;
+        }
+        case MDH_TAG_SET: {
+            int64_t *set_ptr = (int64_t *)(intptr_t)a.data;
+            int64_t count = set_ptr ? *set_ptr : 0;
+            return count > 0;
+        }
+        case MDH_TAG_DICT:
+            return true;
         default:
             return true;  /* Objects are truthy */
     }
@@ -398,11 +450,11 @@ uint8_t __mdh_get_tag(MdhValue a) {
 void __mdh_type_error(const char *op, uint8_t got1, uint8_t got2) {
     static const char *type_names[] = {
         "naething", "bool", "integer", "float", "string",
-        "list", "dict", "function", "class", "instance", "range"
+        "list", "dict", "function", "class", "instance", "range", "creel", "function", "bytes"
     };
 
     char buf[256];
-    if (got1 < 11 && got2 > 0 && got2 < 11) {
+    if (got1 < 14 && got2 > 0 && got2 < 14) {
         snprintf(
             buf,
             sizeof(buf),
@@ -411,7 +463,7 @@ void __mdh_type_error(const char *op, uint8_t got1, uint8_t got2) {
             type_names[got1],
             type_names[got2]
         );
-    } else if (got1 < 11) {
+    } else if (got1 < 14) {
         snprintf(
             buf,
             sizeof(buf),
@@ -432,8 +484,9 @@ MdhValue __mdh_type_of(MdhValue a) {
 
 void __mdh_key_not_found(MdhValue key) {
     const char *k = "<non-string>";
-    if (key.tag == MDH_TAG_STRING) {
-        k = __mdh_get_string(key);
+    MdhValue key_str = __mdh_to_string(key);
+    if (key_str.tag == MDH_TAG_STRING) {
+        k = __mdh_get_string(key_str);
     }
     char buf[256];
     snprintf(
@@ -681,11 +734,16 @@ MdhValue __mdh_contains(MdhValue container, MdhValue elem) {
     if (container.tag == MDH_TAG_DICT) {
         return __mdh_dict_contains(container, elem);
     }
-    if (container.tag == MDH_TAG_STRING && elem.tag == MDH_TAG_STRING) {
+    if (container.tag == MDH_TAG_STRING) {
+        if (elem.tag != MDH_TAG_STRING) {
+            __mdh_type_error("contains", container.tag, elem.tag);
+            return __mdh_make_bool(false);
+        }
         const char *haystack = __mdh_get_string(container);
         const char *needle = __mdh_get_string(elem);
         return __mdh_make_bool(strstr(haystack, needle) != NULL);
     }
+    __mdh_type_error("contains", container.tag, elem.tag);
     return __mdh_make_bool(false);
 }
 
@@ -697,6 +755,18 @@ int64_t __mdh_len(MdhValue a) {
         }
         case MDH_TAG_LIST:
             return __mdh_list_len(a);
+        case MDH_TAG_BYTES: {
+            MdhBytes *bytes = __mdh_get_bytes(a);
+            return bytes ? bytes->length : 0;
+        }
+        case MDH_TAG_DICT: {
+            int64_t *dict_ptr = (int64_t *)(intptr_t)a.data;
+            return dict_ptr ? dict_ptr[0] : 0;
+        }
+        case MDH_TAG_SET: {
+            int64_t *set_ptr = (int64_t *)(intptr_t)a.data;
+            return set_ptr ? set_ptr[0] : 0;
+        }
         default:
             __mdh_type_error("len", a.tag, 0);
             return 0;
@@ -770,37 +840,45 @@ static void __mdh_value_to_string_sb(MdhStrBuf *out, MdhValue v) {
             __mdh_sb_append_char(out, ']');
             return;
         }
+        case MDH_TAG_BYTES: {
+            MdhBytes *bytes = __mdh_get_bytes(v);
+            int64_t len = bytes ? bytes->length : 0;
+            snprintf(tmp, sizeof(tmp), "bytes[%lld]", (long long)len);
+            __mdh_sb_append(out, tmp);
+            return;
+        }
+        case MDH_TAG_SET: {
+            int64_t *set_ptr = (int64_t *)(intptr_t)v.data;
+            int64_t count = set_ptr ? *set_ptr : 0;
+            MdhValue *entries = set_ptr ? (MdhValue *)(set_ptr + 1) : NULL;
+
+            __mdh_sb_append(out, "creel{");
+            if (count > 0) {
+                const char **items = (const char **)GC_malloc(sizeof(char *) * (size_t)count);
+                for (int64_t i = 0; i < count; i++) {
+                    MdhValue k = entries[i * 2];
+                    MdhValue ks = (k.tag == MDH_TAG_STRING)
+                                      ? k
+                                      : __mdh_to_string(k);
+                    items[i] = __mdh_get_string(ks);
+                }
+                qsort(items, (size_t)count, sizeof(char *), __mdh_cmp_cstr);
+                for (int64_t i = 0; i < count; i++) {
+                    if (i > 0) {
+                        __mdh_sb_append(out, ", ");
+                    }
+                    __mdh_sb_append_char(out, '"');
+                    __mdh_sb_append(out, items[i]);
+                    __mdh_sb_append_char(out, '"');
+                }
+            }
+            __mdh_sb_append_char(out, '}');
+            return;
+        }
         case MDH_TAG_DICT: {
             int64_t *dict_ptr = (int64_t *)(intptr_t)v.data;
             int64_t count = dict_ptr ? *dict_ptr : 0;
             MdhValue *entries = dict_ptr ? (MdhValue *)(dict_ptr + 1) : NULL;
-
-            bool is_set = __mdh_dict_is_creel(v);
-
-            if (is_set) {
-                __mdh_sb_append(out, "creel{");
-                if (count > 0) {
-                    const char **items = (const char **)GC_malloc(sizeof(char *) * (size_t)count);
-                    for (int64_t i = 0; i < count; i++) {
-                        MdhValue k = entries[i * 2];
-                        MdhValue ks = (k.tag == MDH_TAG_STRING)
-                                          ? k
-                                          : __mdh_to_string(k);
-                        items[i] = __mdh_get_string(ks);
-                    }
-                    qsort(items, (size_t)count, sizeof(char *), __mdh_cmp_cstr);
-                    for (int64_t i = 0; i < count; i++) {
-                        if (i > 0) {
-                            __mdh_sb_append(out, ", ");
-                        }
-                        __mdh_sb_append_char(out, '"');
-                        __mdh_sb_append(out, items[i]);
-                        __mdh_sb_append_char(out, '"');
-                    }
-                }
-                __mdh_sb_append_char(out, '}');
-                return;
-            }
 
             __mdh_sb_append_char(out, '{');
             for (int64_t i = 0; i < count; i++) {
@@ -850,10 +928,36 @@ MdhValue __mdh_to_int(MdhValue a) {
             return __mdh_make_int(a.data ? 1 : 0);
         case MDH_TAG_STRING: {
             const char *s = __mdh_get_string(a);
-            return __mdh_make_int(strtoll(s, NULL, 10));
+            if (!s) {
+                s = "";
+            }
+            if (*s != '\0' && isspace((unsigned char)*s)) {
+                char buf[256];
+                snprintf(buf, sizeof(buf), "Cannae turn '%s' intae an integer", s);
+                __mdh_hurl(__mdh_make_string(buf));
+                return __mdh_make_int(0);
+            }
+            errno = 0;
+            char *end = NULL;
+            long long val = strtoll(s, &end, 10);
+            if (errno == ERANGE || end == s || (end && *end != '\0')) {
+                char buf[256];
+                snprintf(buf, sizeof(buf), "Cannae turn '%s' intae an integer", s);
+                __mdh_hurl(__mdh_make_string(buf));
+                return __mdh_make_int(0);
+            }
+            return __mdh_make_int((int64_t)val);
         }
         default:
-            __mdh_type_error("tae_int", a.tag, 0);
+            const char *t = __mdh_type_name(a);
+            char buf[256];
+            snprintf(
+                buf,
+                sizeof(buf),
+                "Cannae turn %s intae an integer",
+                t ? t : "that"
+            );
+            __mdh_hurl(__mdh_make_string(buf));
             return __mdh_make_int(0);
     }
 }
@@ -864,16 +968,319 @@ MdhValue __mdh_to_float(MdhValue a) {
             return a;
         case MDH_TAG_INT:
             return __mdh_make_float((double)a.data);
-        case MDH_TAG_BOOL:
-            return __mdh_make_float(a.data ? 1.0 : 0.0);
         case MDH_TAG_STRING: {
             const char *s = __mdh_get_string(a);
-            return __mdh_make_float(strtod(s, NULL));
+            if (!s) {
+                s = "";
+            }
+            if (*s != '\0' && isspace((unsigned char)*s)) {
+                char buf[256];
+                snprintf(buf, sizeof(buf), "Cannae turn '%s' intae a float", s);
+                __mdh_hurl(__mdh_make_string(buf));
+                return __mdh_make_float(0.0);
+            }
+            errno = 0;
+            char *end = NULL;
+            double val = strtod(s, &end);
+            if (errno == ERANGE || end == s || (end && *end != '\0')) {
+                char buf[256];
+                snprintf(buf, sizeof(buf), "Cannae turn '%s' intae a float", s);
+                __mdh_hurl(__mdh_make_string(buf));
+                return __mdh_make_float(0.0);
+            }
+            return __mdh_make_float(val);
         }
         default:
-            __mdh_type_error("tae_float", a.tag, 0);
+            const char *t = __mdh_type_name(a);
+            char buf[256];
+            snprintf(
+                buf,
+                sizeof(buf),
+                "Cannae turn %s intae a float",
+                t ? t : "that"
+            );
+            __mdh_hurl(__mdh_make_string(buf));
             return __mdh_make_float(0.0);
     }
+}
+
+/* ========== Bytes Operations ========== */
+
+static void __mdh_bytes_ensure_capacity(MdhBytes *bytes, int64_t needed) {
+    if (!bytes) return;
+    if (needed <= bytes->capacity) {
+        return;
+    }
+    int64_t new_cap = bytes->capacity > 0 ? bytes->capacity : 8;
+    while (new_cap < needed) {
+        new_cap *= 2;
+    }
+    bytes->data = (uint8_t *)GC_realloc(bytes->data, (size_t)new_cap);
+    bytes->capacity = new_cap;
+}
+
+MdhValue __mdh_bytes_new(MdhValue size_val) {
+    int64_t size = 0;
+    if (size_val.tag == MDH_TAG_INT) {
+        size = size_val.data;
+    } else if (size_val.tag == MDH_TAG_FLOAT) {
+        size = (int64_t)__mdh_get_float(size_val);
+    } else {
+        __mdh_type_error("bytes_new", size_val.tag, 0);
+        size = 0;
+    }
+
+    if (size < 0) size = 0;
+
+    MdhBytes *bytes = (MdhBytes *)GC_malloc(sizeof(MdhBytes));
+    bytes->length = size;
+    bytes->capacity = size > 0 ? size : 0;
+    if (bytes->capacity > 0) {
+        bytes->data = (uint8_t *)GC_malloc((size_t)bytes->capacity);
+        memset(bytes->data, 0, (size_t)bytes->capacity);
+    } else {
+        bytes->data = NULL;
+    }
+
+    return (MdhValue){ .tag = MDH_TAG_BYTES, .data = (int64_t)(intptr_t)bytes };
+}
+
+MdhValue __mdh_bytes_from_string(MdhValue s) {
+    MdhValue str_val = s.tag == MDH_TAG_STRING ? s : __mdh_to_string(s);
+    const char *str = __mdh_get_string(str_val);
+    size_t len = str ? strlen(str) : 0;
+
+    MdhBytes *bytes = (MdhBytes *)GC_malloc(sizeof(MdhBytes));
+    bytes->length = (int64_t)len;
+    bytes->capacity = (int64_t)len;
+    if (len > 0) {
+        bytes->data = (uint8_t *)GC_malloc(len);
+        memcpy(bytes->data, str, len);
+    } else {
+        bytes->data = NULL;
+    }
+
+    return (MdhValue){ .tag = MDH_TAG_BYTES, .data = (int64_t)(intptr_t)bytes };
+}
+
+int64_t __mdh_bytes_len(MdhValue bytes_val) {
+    if (bytes_val.tag != MDH_TAG_BYTES) {
+        __mdh_type_error("bytes_len", bytes_val.tag, 0);
+        return 0;
+    }
+    MdhBytes *bytes = __mdh_get_bytes(bytes_val);
+    return bytes ? bytes->length : 0;
+}
+
+MdhValue __mdh_bytes_slice(MdhValue bytes_val, MdhValue start_val, MdhValue end_val) {
+    if (bytes_val.tag != MDH_TAG_BYTES) {
+        __mdh_type_error("bytes_slice", bytes_val.tag, 0);
+        return __mdh_bytes_new(__mdh_make_int(0));
+    }
+    if (start_val.tag != MDH_TAG_INT || end_val.tag != MDH_TAG_INT) {
+        __mdh_type_error("bytes_slice", start_val.tag, end_val.tag);
+        return __mdh_bytes_new(__mdh_make_int(0));
+    }
+
+    MdhBytes *bytes = __mdh_get_bytes(bytes_val);
+    int64_t len = bytes ? bytes->length : 0;
+    int64_t start = start_val.data;
+    int64_t end = end_val.data;
+
+    if (start < 0) start += len;
+    if (end < 0) end += len;
+    if (start < 0) start = 0;
+    if (end > len) end = len;
+    if (end < start) end = start;
+
+    int64_t out_len = end - start;
+    MdhValue out = __mdh_bytes_new(__mdh_make_int(out_len));
+    MdhBytes *out_bytes = __mdh_get_bytes(out);
+    if (out_len > 0 && bytes && bytes->data && out_bytes && out_bytes->data) {
+        memcpy(out_bytes->data, bytes->data + start, (size_t)out_len);
+    }
+    return out;
+}
+
+MdhValue __mdh_bytes_get(MdhValue bytes_val, MdhValue index_val) {
+    if (bytes_val.tag != MDH_TAG_BYTES) {
+        __mdh_type_error("bytes_get", bytes_val.tag, 0);
+        return __mdh_make_int(0);
+    }
+    if (index_val.tag != MDH_TAG_INT) {
+        __mdh_type_error("bytes_get", index_val.tag, 0);
+        return __mdh_make_int(0);
+    }
+
+    MdhBytes *bytes = __mdh_get_bytes(bytes_val);
+    int64_t len = bytes ? bytes->length : 0;
+    int64_t idx = index_val.data;
+    if (idx < 0) idx += len;
+
+    if (idx < 0 || idx >= len) {
+        fprintf(stderr, "Och! Index %lld oot o' bounds (bytes has %lld items)\n",
+                (long long)idx, (long long)len);
+        exit(1);
+    }
+
+    uint8_t val = bytes->data[idx];
+    return __mdh_make_int((int64_t)val);
+}
+
+MdhValue __mdh_bytes_set(MdhValue bytes_val, MdhValue index_val, MdhValue value_val) {
+    if (bytes_val.tag != MDH_TAG_BYTES) {
+        __mdh_type_error("bytes_set", bytes_val.tag, 0);
+        return bytes_val;
+    }
+    if (index_val.tag != MDH_TAG_INT) {
+        __mdh_type_error("bytes_set", index_val.tag, 0);
+        return bytes_val;
+    }
+    if (value_val.tag != MDH_TAG_INT && value_val.tag != MDH_TAG_FLOAT) {
+        __mdh_type_error("bytes_set", value_val.tag, 0);
+        return bytes_val;
+    }
+
+    int64_t v = value_val.tag == MDH_TAG_INT
+                    ? value_val.data
+                    : (int64_t)__mdh_get_float(value_val);
+    if (v < 0 || v > 255) {
+        __mdh_hurl(__mdh_make_string("bytes_set value must be between 0 and 255"));
+        return bytes_val;
+    }
+
+    MdhBytes *bytes = __mdh_get_bytes(bytes_val);
+    int64_t len = bytes ? bytes->length : 0;
+    int64_t idx = index_val.data;
+    if (idx < 0) idx += len;
+
+    if (idx < 0 || idx >= len) {
+        fprintf(stderr, "Och! Index %lld oot o' bounds (bytes has %lld items)\n",
+                (long long)idx, (long long)len);
+        exit(1);
+    }
+
+    bytes->data[idx] = (uint8_t)v;
+    return bytes_val;
+}
+
+MdhValue __mdh_bytes_append(MdhValue bytes_val, MdhValue other_val) {
+    if (bytes_val.tag != MDH_TAG_BYTES || other_val.tag != MDH_TAG_BYTES) {
+        __mdh_type_error("bytes_append", bytes_val.tag, other_val.tag);
+        return bytes_val;
+    }
+
+    MdhBytes *bytes = __mdh_get_bytes(bytes_val);
+    MdhBytes *other = __mdh_get_bytes(other_val);
+    if (!bytes || !other || other->length <= 0) {
+        return bytes_val;
+    }
+
+    int64_t new_len = bytes->length + other->length;
+    __mdh_bytes_ensure_capacity(bytes, new_len);
+    if (bytes->data && other->data) {
+        memcpy(bytes->data + bytes->length, other->data, (size_t)other->length);
+    }
+    bytes->length = new_len;
+    return bytes_val;
+}
+
+MdhValue __mdh_bytes_read_u16be(MdhValue bytes_val, MdhValue offset_val) {
+    if (bytes_val.tag != MDH_TAG_BYTES || offset_val.tag != MDH_TAG_INT) {
+        __mdh_type_error("bytes_read_u16be", bytes_val.tag, offset_val.tag);
+        return __mdh_make_int(0);
+    }
+    MdhBytes *bytes = __mdh_get_bytes(bytes_val);
+    int64_t len = bytes ? bytes->length : 0;
+    int64_t off = offset_val.data;
+    if (off < 0 || off + 2 > len) {
+        __mdh_hurl(__mdh_make_string("bytes_read_u16be out of bounds"));
+        return __mdh_make_int(0);
+    }
+    uint16_t val = ((uint16_t)bytes->data[off] << 8) |
+                   (uint16_t)bytes->data[off + 1];
+    return __mdh_make_int((int64_t)val);
+}
+
+MdhValue __mdh_bytes_read_u32be(MdhValue bytes_val, MdhValue offset_val) {
+    if (bytes_val.tag != MDH_TAG_BYTES || offset_val.tag != MDH_TAG_INT) {
+        __mdh_type_error("bytes_read_u32be", bytes_val.tag, offset_val.tag);
+        return __mdh_make_int(0);
+    }
+    MdhBytes *bytes = __mdh_get_bytes(bytes_val);
+    int64_t len = bytes ? bytes->length : 0;
+    int64_t off = offset_val.data;
+    if (off < 0 || off + 4 > len) {
+        __mdh_hurl(__mdh_make_string("bytes_read_u32be out of bounds"));
+        return __mdh_make_int(0);
+    }
+    uint32_t val = ((uint32_t)bytes->data[off] << 24) |
+                   ((uint32_t)bytes->data[off + 1] << 16) |
+                   ((uint32_t)bytes->data[off + 2] << 8) |
+                   (uint32_t)bytes->data[off + 3];
+    return __mdh_make_int((int64_t)val);
+}
+
+MdhValue __mdh_bytes_write_u16be(MdhValue bytes_val, MdhValue offset_val, MdhValue value_val) {
+    if (bytes_val.tag != MDH_TAG_BYTES || offset_val.tag != MDH_TAG_INT) {
+        __mdh_type_error("bytes_write_u16be", bytes_val.tag, offset_val.tag);
+        return bytes_val;
+    }
+    if (value_val.tag != MDH_TAG_INT && value_val.tag != MDH_TAG_FLOAT) {
+        __mdh_type_error("bytes_write_u16be", value_val.tag, 0);
+        return bytes_val;
+    }
+    int64_t v = value_val.tag == MDH_TAG_INT
+                    ? value_val.data
+                    : (int64_t)__mdh_get_float(value_val);
+    if (v < 0 || v > 0xFFFF) {
+        __mdh_hurl(__mdh_make_string("bytes_write_u16be value out of range"));
+        return bytes_val;
+    }
+
+    MdhBytes *bytes = __mdh_get_bytes(bytes_val);
+    int64_t len = bytes ? bytes->length : 0;
+    int64_t off = offset_val.data;
+    if (off < 0 || off + 2 > len) {
+        __mdh_hurl(__mdh_make_string("bytes_write_u16be out of bounds"));
+        return bytes_val;
+    }
+
+    bytes->data[off] = (uint8_t)((v >> 8) & 0xFF);
+    bytes->data[off + 1] = (uint8_t)(v & 0xFF);
+    return bytes_val;
+}
+
+MdhValue __mdh_bytes_write_u32be(MdhValue bytes_val, MdhValue offset_val, MdhValue value_val) {
+    if (bytes_val.tag != MDH_TAG_BYTES || offset_val.tag != MDH_TAG_INT) {
+        __mdh_type_error("bytes_write_u32be", bytes_val.tag, offset_val.tag);
+        return bytes_val;
+    }
+    if (value_val.tag != MDH_TAG_INT && value_val.tag != MDH_TAG_FLOAT) {
+        __mdh_type_error("bytes_write_u32be", value_val.tag, 0);
+        return bytes_val;
+    }
+    int64_t v = value_val.tag == MDH_TAG_INT
+                    ? value_val.data
+                    : (int64_t)__mdh_get_float(value_val);
+    if (v < 0 || v > 0xFFFFFFFFLL) {
+        __mdh_hurl(__mdh_make_string("bytes_write_u32be value out of range"));
+        return bytes_val;
+    }
+
+    MdhBytes *bytes = __mdh_get_bytes(bytes_val);
+    int64_t len = bytes ? bytes->length : 0;
+    int64_t off = offset_val.data;
+    if (off < 0 || off + 4 > len) {
+        __mdh_hurl(__mdh_make_string("bytes_write_u32be out of bounds"));
+        return bytes_val;
+    }
+
+    bytes->data[off] = (uint8_t)((v >> 24) & 0xFF);
+    bytes->data[off + 1] = (uint8_t)((v >> 16) & 0xFF);
+    bytes->data[off + 2] = (uint8_t)((v >> 8) & 0xFF);
+    bytes->data[off + 3] = (uint8_t)(v & 0xFF);
+    return bytes_val;
 }
 
 /* ========== Math ========== */
@@ -903,6 +1310,40 @@ MdhValue __mdh_random(int64_t min, int64_t max) {
     return __mdh_make_int(min + (rand() % range));
 }
 
+MdhValue __mdh_jammy(MdhValue min, MdhValue max) {
+    if ((min.tag != MDH_TAG_INT && min.tag != MDH_TAG_FLOAT) ||
+        (max.tag != MDH_TAG_INT && max.tag != MDH_TAG_FLOAT)) {
+        __mdh_hurl(__mdh_make_string("jammy() needs integer bounds"));
+        return __mdh_make_int(0);
+    }
+
+    int64_t min_i = (min.tag == MDH_TAG_FLOAT) ? (int64_t)__mdh_get_float(min) : min.data;
+    int64_t max_i = (max.tag == MDH_TAG_FLOAT) ? (int64_t)__mdh_get_float(max) : max.data;
+    if (min_i >= max_i) {
+        __mdh_hurl(__mdh_make_string("jammy() needs min < max, ya numpty!"));
+        return __mdh_make_int(0);
+    }
+
+    return __mdh_random(min_i, max_i - 1);
+}
+
+MdhValue __mdh_random_int(MdhValue min, MdhValue max) {
+    if ((min.tag != MDH_TAG_INT && min.tag != MDH_TAG_FLOAT) ||
+        (max.tag != MDH_TAG_INT && max.tag != MDH_TAG_FLOAT)) {
+        __mdh_hurl(__mdh_make_string("random_int() needs integer bounds"));
+        return __mdh_make_int(0);
+    }
+
+    int64_t min_i = (min.tag == MDH_TAG_FLOAT) ? (int64_t)__mdh_get_float(min) : min.data;
+    int64_t max_i = (max.tag == MDH_TAG_FLOAT) ? (int64_t)__mdh_get_float(max) : max.data;
+    if (min_i > max_i) {
+        __mdh_hurl(__mdh_make_string("random_int() min must be <= max"));
+        return __mdh_make_int(0);
+    }
+
+    return __mdh_random(min_i, max_i);
+}
+
 MdhValue __mdh_floor(MdhValue a) {
     if (a.tag == MDH_TAG_INT) return a;
     if (a.tag == MDH_TAG_FLOAT) {
@@ -930,6 +1371,1629 @@ MdhValue __mdh_round(MdhValue a) {
     return __mdh_make_nil();
 }
 
+/* ========== Timing ========== */
+
+MdhValue __mdh_mono_ms(void) {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+        return __mdh_make_int(0);
+    }
+    uint64_t ms = ((uint64_t)ts.tv_sec * 1000ULL) + (uint64_t)(ts.tv_nsec / 1000000ULL);
+    return __mdh_make_int((int64_t)ms);
+}
+
+MdhValue __mdh_mono_ns(void) {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+        return __mdh_make_int(0);
+    }
+    uint64_t ns = ((uint64_t)ts.tv_sec * 1000000000ULL) + (uint64_t)ts.tv_nsec;
+    return __mdh_make_int((int64_t)ns);
+}
+
+/* ========== Network (Sockets + DNS) ========== */
+
+static MdhValue __mdh_result_ok(MdhValue value) {
+    MdhValue dict = __mdh_empty_dict();
+    dict = __mdh_dict_set(dict, __mdh_make_string("ok"), __mdh_make_bool(true));
+    dict = __mdh_dict_set(dict, __mdh_make_string("value"), value);
+    return dict;
+}
+
+static MdhValue __mdh_result_err(const char *msg, int code) {
+    MdhValue dict = __mdh_empty_dict();
+    dict = __mdh_dict_set(dict, __mdh_make_string("ok"), __mdh_make_bool(false));
+    dict = __mdh_dict_set(dict, __mdh_make_string("error"), __mdh_make_string(msg ? msg : ""));
+    dict = __mdh_dict_set(dict, __mdh_make_string("code"), __mdh_make_int(code));
+    return dict;
+}
+
+static MdhValue __mdh_result_errno(const char *op) {
+    char buf[256];
+    const char *err = strerror(errno);
+    snprintf(buf, sizeof(buf), "%s failed: %s", op, err ? err : "unknown error");
+    return __mdh_result_err(buf, errno);
+}
+
+static int __mdh_sock_fd(MdhValue sock) {
+    if (sock.tag != MDH_TAG_INT) {
+        __mdh_type_error("socket", sock.tag, 0);
+        return -1;
+    }
+    return (int)sock.data;
+}
+
+static bool __mdh_port_value(MdhValue port, int *out_port) {
+    int64_t p = 0;
+    if (port.tag == MDH_TAG_INT) {
+        p = port.data;
+    } else if (port.tag == MDH_TAG_FLOAT) {
+        p = (int64_t)__mdh_get_float(port);
+    } else if (port.tag == MDH_TAG_STRING) {
+        const char *s = __mdh_get_string(port);
+        p = s ? strtoll(s, NULL, 10) : 0;
+    } else {
+        __mdh_type_error("port", port.tag, 0);
+        return false;
+    }
+    if (p < 0 || p > 65535) {
+        __mdh_hurl(__mdh_make_string("Port must be between 0 and 65535"));
+        return false;
+    }
+    *out_port = (int)p;
+    return true;
+}
+
+static bool __mdh_int_value(const char *op, MdhValue value, int64_t *out) {
+    if (value.tag == MDH_TAG_INT) {
+        *out = value.data;
+        return true;
+    }
+    if (value.tag == MDH_TAG_FLOAT) {
+        *out = (int64_t)__mdh_get_float(value);
+        return true;
+    }
+    __mdh_type_error(op, value.tag, 0);
+    return false;
+}
+
+static const char *__mdh_host_value(MdhValue host, bool allow_nil) {
+    if (host.tag == MDH_TAG_STRING) {
+        return __mdh_get_string(host);
+    }
+    if (allow_nil && host.tag == MDH_TAG_NIL) {
+        return NULL;
+    }
+    __mdh_type_error("host", host.tag, 0);
+    return NULL;
+}
+
+static int __mdh_resolve_addr(const char *host, const char *port, int socktype, struct addrinfo **out) {
+    struct addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = socktype;
+    if (!host) {
+        hints.ai_flags = AI_PASSIVE;
+    }
+    return getaddrinfo(host, port, &hints, out);
+}
+
+static MdhValue __mdh_addr_dict(const struct sockaddr_in *addr) {
+    char host_buf[INET_ADDRSTRLEN];
+    const char *host = inet_ntop(AF_INET, &addr->sin_addr, host_buf, sizeof(host_buf));
+    int port = ntohs(addr->sin_port);
+
+    MdhValue dict = __mdh_empty_dict();
+    dict = __mdh_dict_set(dict, __mdh_make_string("host"), __mdh_make_string(host ? host : ""));
+    dict = __mdh_dict_set(dict, __mdh_make_string("port"), __mdh_make_int(port));
+    return dict;
+}
+
+MdhValue __mdh_socket_udp(void) {
+    int fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd < 0) {
+        return __mdh_result_errno("socket_udp");
+    }
+    return __mdh_result_ok(__mdh_make_int(fd));
+}
+
+MdhValue __mdh_socket_tcp(void) {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+        return __mdh_result_errno("socket_tcp");
+    }
+    return __mdh_result_ok(__mdh_make_int(fd));
+}
+
+MdhValue __mdh_socket_bind(MdhValue sock, MdhValue host, MdhValue port) {
+    int fd = __mdh_sock_fd(sock);
+    if (fd < 0) {
+        return __mdh_result_err("Invalid socket", -1);
+    }
+    int port_num = 0;
+    if (!__mdh_port_value(port, &port_num)) {
+        return __mdh_result_err("Invalid port", -1);
+    }
+    const char *host_str = __mdh_host_value(host, true);
+
+    char port_buf[16];
+    snprintf(port_buf, sizeof(port_buf), "%d", port_num);
+    struct addrinfo *res = NULL;
+    int rc = __mdh_resolve_addr(host_str, port_buf, 0, &res);
+    if (rc != 0 || !res) {
+        return __mdh_result_err(gai_strerror(rc), rc);
+    }
+    int bind_rc = bind(fd, res->ai_addr, (socklen_t)res->ai_addrlen);
+    freeaddrinfo(res);
+    if (bind_rc != 0) {
+        return __mdh_result_errno("socket_bind");
+    }
+    return __mdh_result_ok(__mdh_make_nil());
+}
+
+MdhValue __mdh_socket_connect(MdhValue sock, MdhValue host, MdhValue port) {
+    int fd = __mdh_sock_fd(sock);
+    if (fd < 0) {
+        return __mdh_result_err("Invalid socket", -1);
+    }
+    int port_num = 0;
+    if (!__mdh_port_value(port, &port_num)) {
+        return __mdh_result_err("Invalid port", -1);
+    }
+    const char *host_str = __mdh_host_value(host, false);
+
+    char port_buf[16];
+    snprintf(port_buf, sizeof(port_buf), "%d", port_num);
+    struct addrinfo *res = NULL;
+    int rc = __mdh_resolve_addr(host_str, port_buf, 0, &res);
+    if (rc != 0 || !res) {
+        return __mdh_result_err(gai_strerror(rc), rc);
+    }
+    int conn_rc = connect(fd, res->ai_addr, (socklen_t)res->ai_addrlen);
+    freeaddrinfo(res);
+    if (conn_rc != 0) {
+        return __mdh_result_errno("socket_connect");
+    }
+    return __mdh_result_ok(__mdh_make_nil());
+}
+
+MdhValue __mdh_socket_listen(MdhValue sock, MdhValue backlog) {
+    int fd = __mdh_sock_fd(sock);
+    if (fd < 0) {
+        return __mdh_result_err("Invalid socket", -1);
+    }
+    int64_t bl = 0;
+    if (backlog.tag == MDH_TAG_INT) {
+        bl = backlog.data;
+    } else if (backlog.tag == MDH_TAG_FLOAT) {
+        bl = (int64_t)__mdh_get_float(backlog);
+    } else {
+        __mdh_type_error("socket_listen", backlog.tag, 0);
+        bl = 128;
+    }
+    if (bl < 0) bl = 0;
+    if (listen(fd, (int)bl) != 0) {
+        return __mdh_result_errno("socket_listen");
+    }
+    return __mdh_result_ok(__mdh_make_nil());
+}
+
+MdhValue __mdh_socket_accept(MdhValue sock) {
+    int fd = __mdh_sock_fd(sock);
+    if (fd < 0) {
+        return __mdh_result_err("Invalid socket", -1);
+    }
+    struct sockaddr_in addr;
+    socklen_t addr_len = sizeof(addr);
+    int new_fd = accept(fd, (struct sockaddr *)&addr, &addr_len);
+    if (new_fd < 0) {
+        return __mdh_result_errno("socket_accept");
+    }
+
+    MdhValue addr_dict = __mdh_addr_dict(&addr);
+    MdhValue info = __mdh_empty_dict();
+    info = __mdh_dict_set(info, __mdh_make_string("sock"), __mdh_make_int(new_fd));
+    info = __mdh_dict_set(info, __mdh_make_string("addr"), addr_dict);
+    return __mdh_result_ok(info);
+}
+
+MdhValue __mdh_socket_set_nonblocking(MdhValue sock, MdhValue on) {
+    int fd = __mdh_sock_fd(sock);
+    if (fd < 0) {
+        return __mdh_result_err("Invalid socket", -1);
+    }
+    bool enable = __mdh_truthy(on);
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0) {
+        return __mdh_result_errno("socket_set_nonblocking");
+    }
+    if (enable) {
+        flags |= O_NONBLOCK;
+    } else {
+        flags &= ~O_NONBLOCK;
+    }
+    if (fcntl(fd, F_SETFL, flags) != 0) {
+        return __mdh_result_errno("socket_set_nonblocking");
+    }
+    return __mdh_result_ok(__mdh_make_nil());
+}
+
+MdhValue __mdh_socket_set_reuseaddr(MdhValue sock, MdhValue on) {
+    int fd = __mdh_sock_fd(sock);
+    if (fd < 0) {
+        return __mdh_result_err("Invalid socket", -1);
+    }
+    int enable = __mdh_truthy(on) ? 1 : 0;
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable)) != 0) {
+        return __mdh_result_errno("socket_set_reuseaddr");
+    }
+    return __mdh_result_ok(__mdh_make_nil());
+}
+
+MdhValue __mdh_socket_set_reuseport(MdhValue sock, MdhValue on) {
+    int fd = __mdh_sock_fd(sock);
+    if (fd < 0) {
+        return __mdh_result_err("Invalid socket", -1);
+    }
+#ifdef SO_REUSEPORT
+    int enable = __mdh_truthy(on) ? 1 : 0;
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &enable, sizeof(enable)) != 0) {
+        return __mdh_result_errno("socket_set_reuseport");
+    }
+    return __mdh_result_ok(__mdh_make_nil());
+#else
+    (void)on;
+    return __mdh_result_err("socket_set_reuseport not supported", -1);
+#endif
+}
+
+MdhValue __mdh_socket_set_ttl(MdhValue sock, MdhValue ttl_val) {
+    int fd = __mdh_sock_fd(sock);
+    if (fd < 0) {
+        return __mdh_result_err("Invalid socket", -1);
+    }
+    int64_t ttl = 0;
+    if (!__mdh_int_value("socket_set_ttl", ttl_val, &ttl)) {
+        return __mdh_result_err("Invalid ttl", -1);
+    }
+    if (ttl < 0 || ttl > 255) {
+        __mdh_hurl(__mdh_make_string("socket_set_ttl expects 0..255"));
+        return __mdh_result_err("Invalid ttl", -1);
+    }
+#ifdef IP_TTL
+    int ttl_i = (int)ttl;
+    if (setsockopt(fd, IPPROTO_IP, IP_TTL, &ttl_i, sizeof(ttl_i)) != 0) {
+        return __mdh_result_errno("socket_set_ttl");
+    }
+    return __mdh_result_ok(__mdh_make_nil());
+#else
+    return __mdh_result_err("socket_set_ttl not supported", -1);
+#endif
+}
+
+MdhValue __mdh_socket_set_nodelay(MdhValue sock, MdhValue on) {
+    int fd = __mdh_sock_fd(sock);
+    if (fd < 0) {
+        return __mdh_result_err("Invalid socket", -1);
+    }
+#ifdef TCP_NODELAY
+    int enable = __mdh_truthy(on) ? 1 : 0;
+    if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &enable, sizeof(enable)) != 0) {
+        return __mdh_result_errno("socket_set_nodelay");
+    }
+    return __mdh_result_ok(__mdh_make_nil());
+#else
+    (void)on;
+    return __mdh_result_err("socket_set_nodelay not supported", -1);
+#endif
+}
+
+MdhValue __mdh_socket_set_rcvbuf(MdhValue sock, MdhValue bytes_val) {
+    int fd = __mdh_sock_fd(sock);
+    if (fd < 0) {
+        return __mdh_result_err("Invalid socket", -1);
+    }
+    int64_t bytes = 0;
+    if (!__mdh_int_value("socket_set_rcvbuf", bytes_val, &bytes)) {
+        return __mdh_result_err("Invalid rcvbuf size", -1);
+    }
+    if (bytes < 0 || bytes > INT_MAX) {
+        __mdh_hurl(__mdh_make_string("socket_set_rcvbuf expects a non-negative size"));
+        return __mdh_result_err("Invalid rcvbuf size", -1);
+    }
+    int buf = (int)bytes;
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &buf, sizeof(buf)) != 0) {
+        return __mdh_result_errno("socket_set_rcvbuf");
+    }
+    return __mdh_result_ok(__mdh_make_nil());
+}
+
+MdhValue __mdh_socket_set_sndbuf(MdhValue sock, MdhValue bytes_val) {
+    int fd = __mdh_sock_fd(sock);
+    if (fd < 0) {
+        return __mdh_result_err("Invalid socket", -1);
+    }
+    int64_t bytes = 0;
+    if (!__mdh_int_value("socket_set_sndbuf", bytes_val, &bytes)) {
+        return __mdh_result_err("Invalid sndbuf size", -1);
+    }
+    if (bytes < 0 || bytes > INT_MAX) {
+        __mdh_hurl(__mdh_make_string("socket_set_sndbuf expects a non-negative size"));
+        return __mdh_result_err("Invalid sndbuf size", -1);
+    }
+    int buf = (int)bytes;
+    if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &buf, sizeof(buf)) != 0) {
+        return __mdh_result_errno("socket_set_sndbuf");
+    }
+    return __mdh_result_ok(__mdh_make_nil());
+}
+
+MdhValue __mdh_socket_close(MdhValue sock) {
+    int fd = __mdh_sock_fd(sock);
+    if (fd < 0) {
+        return __mdh_result_err("Invalid socket", -1);
+    }
+    if (close(fd) != 0) {
+        return __mdh_result_errno("socket_close");
+    }
+    return __mdh_result_ok(__mdh_make_nil());
+}
+
+MdhValue __mdh_udp_send_to(MdhValue sock, MdhValue buf, MdhValue host, MdhValue port) {
+    int fd = __mdh_sock_fd(sock);
+    if (fd < 0) {
+        return __mdh_result_err("Invalid socket", -1);
+    }
+    if (buf.tag != MDH_TAG_BYTES) {
+        __mdh_type_error("udp_send_to", buf.tag, 0);
+        return __mdh_result_err("Invalid bytes", -1);
+    }
+    int port_num = 0;
+    if (!__mdh_port_value(port, &port_num)) {
+        return __mdh_result_err("Invalid port", -1);
+    }
+    const char *host_str = __mdh_host_value(host, false);
+
+    char port_buf[16];
+    snprintf(port_buf, sizeof(port_buf), "%d", port_num);
+    struct addrinfo *res = NULL;
+    int rc = __mdh_resolve_addr(host_str, port_buf, SOCK_DGRAM, &res);
+    if (rc != 0 || !res) {
+        return __mdh_result_err(gai_strerror(rc), rc);
+    }
+
+    MdhBytes *bytes = __mdh_get_bytes(buf);
+    ssize_t sent = sendto(fd, bytes ? bytes->data : NULL, bytes ? (size_t)bytes->length : 0,
+                          0, res->ai_addr, (socklen_t)res->ai_addrlen);
+    freeaddrinfo(res);
+    if (sent < 0) {
+        return __mdh_result_errno("udp_send_to");
+    }
+    return __mdh_result_ok(__mdh_make_int((int64_t)sent));
+}
+
+MdhValue __mdh_udp_recv_from(MdhValue sock, MdhValue max_len_val) {
+    int fd = __mdh_sock_fd(sock);
+    if (fd < 0) {
+        return __mdh_result_err("Invalid socket", -1);
+    }
+    if (max_len_val.tag != MDH_TAG_INT && max_len_val.tag != MDH_TAG_FLOAT) {
+        __mdh_type_error("udp_recv_from", max_len_val.tag, 0);
+        return __mdh_result_err("Invalid max_len", -1);
+    }
+    int64_t max_len = max_len_val.tag == MDH_TAG_INT
+                          ? max_len_val.data
+                          : (int64_t)__mdh_get_float(max_len_val);
+    if (max_len < 0) max_len = 0;
+
+    MdhValue bytes_val = __mdh_bytes_new(__mdh_make_int(max_len));
+    MdhBytes *bytes = __mdh_get_bytes(bytes_val);
+    if (!bytes || max_len == 0) {
+        return __mdh_result_ok(bytes_val);
+    }
+
+    struct sockaddr_in addr;
+    socklen_t addr_len = sizeof(addr);
+    ssize_t n = recvfrom(fd, bytes->data, (size_t)max_len, 0, (struct sockaddr *)&addr, &addr_len);
+    if (n < 0) {
+        return __mdh_result_errno("udp_recv_from");
+    }
+    bytes->length = (int64_t)n;
+
+    MdhValue addr_dict = __mdh_addr_dict(&addr);
+    MdhValue info = __mdh_empty_dict();
+    info = __mdh_dict_set(info, __mdh_make_string("buf"), bytes_val);
+    info = __mdh_dict_set(info, __mdh_make_string("addr"), addr_dict);
+    return __mdh_result_ok(info);
+}
+
+MdhValue __mdh_tcp_send(MdhValue sock, MdhValue buf) {
+    int fd = __mdh_sock_fd(sock);
+    if (fd < 0) {
+        return __mdh_result_err("Invalid socket", -1);
+    }
+    if (buf.tag != MDH_TAG_BYTES) {
+        __mdh_type_error("tcp_send", buf.tag, 0);
+        return __mdh_result_err("Invalid bytes", -1);
+    }
+    MdhBytes *bytes = __mdh_get_bytes(buf);
+    ssize_t sent = send(fd, bytes ? bytes->data : NULL, bytes ? (size_t)bytes->length : 0, 0);
+    if (sent < 0) {
+        return __mdh_result_errno("tcp_send");
+    }
+    return __mdh_result_ok(__mdh_make_int((int64_t)sent));
+}
+
+MdhValue __mdh_tcp_recv(MdhValue sock, MdhValue max_len_val) {
+    int fd = __mdh_sock_fd(sock);
+    if (fd < 0) {
+        return __mdh_result_err("Invalid socket", -1);
+    }
+    if (max_len_val.tag != MDH_TAG_INT && max_len_val.tag != MDH_TAG_FLOAT) {
+        __mdh_type_error("tcp_recv", max_len_val.tag, 0);
+        return __mdh_result_err("Invalid max_len", -1);
+    }
+    int64_t max_len = max_len_val.tag == MDH_TAG_INT
+                          ? max_len_val.data
+                          : (int64_t)__mdh_get_float(max_len_val);
+    if (max_len < 0) max_len = 0;
+
+    MdhValue bytes_val = __mdh_bytes_new(__mdh_make_int(max_len));
+    MdhBytes *bytes = __mdh_get_bytes(bytes_val);
+    if (!bytes || max_len == 0) {
+        return __mdh_result_ok(bytes_val);
+    }
+    ssize_t n = recv(fd, bytes->data, (size_t)max_len, 0);
+    if (n < 0) {
+        return __mdh_result_errno("tcp_recv");
+    }
+    bytes->length = (int64_t)n;
+    return __mdh_result_ok(bytes_val);
+}
+
+MdhValue __mdh_dns_lookup(MdhValue host) {
+    if (host.tag != MDH_TAG_STRING) {
+        __mdh_type_error("dns_lookup", host.tag, 0);
+        return __mdh_result_err("dns_lookup expects a hostname string", -1);
+    }
+    const char *host_str = __mdh_get_string(host);
+    if (!host_str || host_str[0] == '\0') {
+        return __mdh_result_err("dns_lookup expects a non-empty hostname", -1);
+    }
+
+    struct addrinfo hints;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    struct addrinfo *res = NULL;
+    int rc = getaddrinfo(host_str, NULL, &hints, &res);
+    if (rc != 0 || !res) {
+        return __mdh_result_err(gai_strerror(rc), rc);
+    }
+
+    MdhValue list = __mdh_make_list(4);
+    for (struct addrinfo *ai = res; ai != NULL; ai = ai->ai_next) {
+        char host_buf[INET6_ADDRSTRLEN];
+        const char *ip = NULL;
+        if (ai->ai_family == AF_INET) {
+            struct sockaddr_in *addr = (struct sockaddr_in *)ai->ai_addr;
+            ip = inet_ntop(AF_INET, &addr->sin_addr, host_buf, sizeof(host_buf));
+        } else if (ai->ai_family == AF_INET6) {
+            struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)ai->ai_addr;
+            ip = inet_ntop(AF_INET6, &addr6->sin6_addr, host_buf, sizeof(host_buf));
+        }
+        if (ip) {
+            __mdh_list_push(list, __mdh_make_string(ip));
+        }
+    }
+    freeaddrinfo(res);
+    return __mdh_result_ok(list);
+}
+
+MdhValue __mdh_dns_srv(MdhValue service, MdhValue domain) {
+    if (service.tag != MDH_TAG_STRING || domain.tag != MDH_TAG_STRING) {
+        __mdh_type_error("dns_srv", service.tag, domain.tag);
+        return __mdh_result_err("dns_srv expects service and domain strings", -1);
+    }
+
+    MdhRsResult r = __mdh_rs_dns_srv(service, domain);
+    if (!r.ok) {
+        const char *msg = __mdh_get_string(r.error);
+        if (!msg || msg[0] == '\0') {
+            msg = "dns_srv failed";
+        }
+        return __mdh_result_err(msg, -1);
+    }
+    return __mdh_result_ok(r.value);
+}
+
+MdhValue __mdh_dns_naptr(MdhValue domain) {
+    if (domain.tag != MDH_TAG_STRING) {
+        __mdh_type_error("dns_naptr", domain.tag, 0);
+        return __mdh_result_err("dns_naptr expects a domain string", -1);
+    }
+
+    MdhRsResult r = __mdh_rs_dns_naptr(domain);
+    if (!r.ok) {
+        const char *msg = __mdh_get_string(r.error);
+        if (!msg || msg[0] == '\0') {
+            msg = "dns_naptr failed";
+        }
+        return __mdh_result_err(msg, -1);
+    }
+    return __mdh_result_ok(r.value);
+}
+
+/* ========== TLS/DTLS/SRTP ========== */
+
+MdhValue __mdh_tls_client_new(MdhValue config) {
+    MdhRsResult r = __mdh_rs_tls_client_new(config);
+    if (!r.ok) {
+        const char *msg = __mdh_get_string(r.error);
+        if (!msg || msg[0] == '\0') {
+            msg = "tls_client_new failed";
+        }
+        return __mdh_result_err(msg, -1);
+    }
+    return __mdh_result_ok(r.value);
+}
+
+MdhValue __mdh_tls_connect(MdhValue tls, MdhValue sock) {
+    if (tls.tag != MDH_TAG_INT) {
+        __mdh_type_error("tls_connect", tls.tag, 0);
+        return __mdh_result_err("tls_connect expects TLS handle", -1);
+    }
+    if (sock.tag != MDH_TAG_INT && sock.tag != MDH_TAG_FLOAT) {
+        __mdh_type_error("tls_connect", sock.tag, 0);
+        return __mdh_result_err("tls_connect expects socket", -1);
+    }
+    int fd = sock.tag == MDH_TAG_INT ? (int)sock.data : (int)__mdh_get_float(sock);
+    int dup_fd = dup(fd);
+    if (dup_fd < 0) {
+        return __mdh_result_errno("tls_connect dup");
+    }
+    MdhValue fd_val = __mdh_make_int(dup_fd);
+    MdhRsResult r = __mdh_rs_tls_connect(tls, fd_val);
+    if (!r.ok) {
+        const char *msg = __mdh_get_string(r.error);
+        if (!msg || msg[0] == '\0') {
+            msg = "tls_connect failed";
+        }
+        close(dup_fd);
+        return __mdh_result_err(msg, -1);
+    }
+    return __mdh_result_ok(r.value);
+}
+
+MdhValue __mdh_tls_send(MdhValue tls, MdhValue buf) {
+    if (tls.tag != MDH_TAG_INT) {
+        __mdh_type_error("tls_send", tls.tag, 0);
+        return __mdh_result_err("tls_send expects TLS handle", -1);
+    }
+    if (buf.tag != MDH_TAG_BYTES) {
+        __mdh_type_error("tls_send", buf.tag, 0);
+        return __mdh_result_err("tls_send expects bytes", -1);
+    }
+    MdhRsResult r = __mdh_rs_tls_send(tls, buf);
+    if (!r.ok) {
+        const char *msg = __mdh_get_string(r.error);
+        if (!msg || msg[0] == '\0') {
+            msg = "tls_send failed";
+        }
+        return __mdh_result_err(msg, -1);
+    }
+    return __mdh_result_ok(r.value);
+}
+
+MdhValue __mdh_tls_recv(MdhValue tls, MdhValue max_len) {
+    if (tls.tag != MDH_TAG_INT) {
+        __mdh_type_error("tls_recv", tls.tag, 0);
+        return __mdh_result_err("tls_recv expects TLS handle", -1);
+    }
+    if (max_len.tag != MDH_TAG_INT && max_len.tag != MDH_TAG_FLOAT) {
+        __mdh_type_error("tls_recv", max_len.tag, 0);
+        return __mdh_result_err("tls_recv expects max_len", -1);
+    }
+    MdhRsResult r = __mdh_rs_tls_recv(tls, max_len);
+    if (!r.ok) {
+        const char *msg = __mdh_get_string(r.error);
+        if (!msg || msg[0] == '\0') {
+            msg = "tls_recv failed";
+        }
+        return __mdh_result_err(msg, -1);
+    }
+    return __mdh_result_ok(r.value);
+}
+
+MdhValue __mdh_tls_close(MdhValue tls) {
+    if (tls.tag != MDH_TAG_INT) {
+        __mdh_type_error("tls_close", tls.tag, 0);
+        return __mdh_result_err("tls_close expects TLS handle", -1);
+    }
+    MdhRsResult r = __mdh_rs_tls_close(tls);
+    if (!r.ok) {
+        const char *msg = __mdh_get_string(r.error);
+        if (!msg || msg[0] == '\0') {
+            msg = "tls_close failed";
+        }
+        return __mdh_result_err(msg, -1);
+    }
+    return __mdh_result_ok(r.value);
+}
+
+MdhValue __mdh_dtls_server_new(MdhValue config) {
+    MdhRsResult r = __mdh_rs_dtls_server_new(config);
+    if (!r.ok) {
+        const char *msg = __mdh_get_string(r.error);
+        if (!msg || msg[0] == '\0') {
+            msg = "dtls_server_new failed";
+        }
+        return __mdh_result_err(msg, -1);
+    }
+    return __mdh_result_ok(r.value);
+}
+
+MdhValue __mdh_dtls_handshake(MdhValue dtls, MdhValue sock) {
+    if (dtls.tag != MDH_TAG_INT) {
+        __mdh_type_error("dtls_handshake", dtls.tag, 0);
+        return __mdh_result_err("dtls_handshake expects DTLS handle", -1);
+    }
+    if (sock.tag != MDH_TAG_INT && sock.tag != MDH_TAG_FLOAT) {
+        __mdh_type_error("dtls_handshake", sock.tag, 0);
+        return __mdh_result_err("dtls_handshake expects socket", -1);
+    }
+    int fd = sock.tag == MDH_TAG_INT ? (int)sock.data : (int)__mdh_get_float(sock);
+    int dup_fd = dup(fd);
+    if (dup_fd < 0) {
+        return __mdh_result_errno("dtls_handshake dup");
+    }
+    MdhValue fd_val = __mdh_make_int(dup_fd);
+    MdhRsResult r = __mdh_rs_dtls_handshake(dtls, fd_val);
+    if (!r.ok) {
+        const char *msg = __mdh_get_string(r.error);
+        if (!msg || msg[0] == '\0') {
+            msg = "dtls_handshake failed";
+        }
+        close(dup_fd);
+        return __mdh_result_err(msg, -1);
+    }
+    return __mdh_result_ok(r.value);
+}
+
+MdhValue __mdh_srtp_create(MdhValue keys) {
+    MdhRsResult r = __mdh_rs_srtp_create(keys);
+    if (!r.ok) {
+        const char *msg = __mdh_get_string(r.error);
+        if (!msg || msg[0] == '\0') {
+            msg = "srtp_create failed";
+        }
+        return __mdh_result_err(msg, -1);
+    }
+    return __mdh_result_ok(r.value);
+}
+
+MdhValue __mdh_srtp_protect(MdhValue srtp, MdhValue rtp_packet) {
+    if (srtp.tag != MDH_TAG_INT) {
+        __mdh_type_error("srtp_protect", srtp.tag, 0);
+        return __mdh_result_err("srtp_protect expects SRTP handle", -1);
+    }
+    if (rtp_packet.tag != MDH_TAG_BYTES) {
+        __mdh_type_error("srtp_protect", rtp_packet.tag, 0);
+        return __mdh_result_err("srtp_protect expects bytes", -1);
+    }
+    MdhRsResult r = __mdh_rs_srtp_protect(srtp, rtp_packet);
+    if (!r.ok) {
+        const char *msg = __mdh_get_string(r.error);
+        if (!msg || msg[0] == '\0') {
+            msg = "srtp_protect failed";
+        }
+        return __mdh_result_err(msg, -1);
+    }
+    return __mdh_result_ok(r.value);
+}
+
+MdhValue __mdh_srtp_unprotect(MdhValue srtp, MdhValue rtp_packet) {
+    if (srtp.tag != MDH_TAG_INT) {
+        __mdh_type_error("srtp_unprotect", srtp.tag, 0);
+        return __mdh_result_err("srtp_unprotect expects SRTP handle", -1);
+    }
+    if (rtp_packet.tag != MDH_TAG_BYTES) {
+        __mdh_type_error("srtp_unprotect", rtp_packet.tag, 0);
+        return __mdh_result_err("srtp_unprotect expects bytes", -1);
+    }
+    MdhRsResult r = __mdh_rs_srtp_unprotect(srtp, rtp_packet);
+    if (!r.ok) {
+        const char *msg = __mdh_get_string(r.error);
+        if (!msg || msg[0] == '\0') {
+            msg = "srtp_unprotect failed";
+        }
+        return __mdh_result_err(msg, -1);
+    }
+    return __mdh_result_ok(r.value);
+}
+
+/* ========== Event Loop + Timers ========== */
+
+typedef struct {
+    int fd;
+    MdhValue read_cb;
+    MdhValue write_cb;
+} MdhWatch;
+
+typedef struct {
+    int64_t id;
+    int64_t next_fire_ms;
+    int64_t interval_ms;
+    MdhValue callback;
+    int cancelled;
+} MdhTimer;
+
+typedef struct {
+    MdhWatch *watches;
+    int64_t watch_len;
+    int64_t watch_cap;
+    MdhTimer *timers;
+    int64_t timer_len;
+    int64_t timer_cap;
+    int64_t next_timer_id;
+    int stopped;
+} MdhEventLoop;
+
+typedef struct {
+    int64_t next_id;
+    int64_t len;
+    int64_t cap;
+    int64_t *ids;
+    MdhEventLoop **loops;
+} MdhLoopRegistry;
+
+static MdhLoopRegistry __mdh_loop_registry = {1, 0, 0, NULL, NULL};
+
+static int64_t __mdh_mono_ms_now(void) {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+        return 0;
+    }
+    return (int64_t)((uint64_t)ts.tv_sec * 1000ULL + (uint64_t)(ts.tv_nsec / 1000000ULL));
+}
+
+static void __mdh_loop_ensure_watch_cap(MdhEventLoop *loop, int64_t needed) {
+    if (loop->watch_cap >= needed) return;
+    int64_t new_cap = loop->watch_cap > 0 ? loop->watch_cap * 2 : 8;
+    while (new_cap < needed) new_cap *= 2;
+    loop->watches = (MdhWatch *)GC_realloc(loop->watches, sizeof(MdhWatch) * (size_t)new_cap);
+    loop->watch_cap = new_cap;
+}
+
+static void __mdh_loop_ensure_timer_cap(MdhEventLoop *loop, int64_t needed) {
+    if (loop->timer_cap >= needed) return;
+    int64_t new_cap = loop->timer_cap > 0 ? loop->timer_cap * 2 : 8;
+    while (new_cap < needed) new_cap *= 2;
+    loop->timers = (MdhTimer *)GC_realloc(loop->timers, sizeof(MdhTimer) * (size_t)new_cap);
+    loop->timer_cap = new_cap;
+}
+
+static int64_t __mdh_loop_register(MdhEventLoop *loop) {
+    if (__mdh_loop_registry.cap == 0) {
+        __mdh_loop_registry.cap = 8;
+        __mdh_loop_registry.ids = (int64_t *)GC_malloc(sizeof(int64_t) * 8);
+        __mdh_loop_registry.loops = (MdhEventLoop **)GC_malloc(sizeof(MdhEventLoop *) * 8);
+    } else if (__mdh_loop_registry.len >= __mdh_loop_registry.cap) {
+        int64_t new_cap = __mdh_loop_registry.cap * 2;
+        __mdh_loop_registry.ids =
+            (int64_t *)GC_realloc(__mdh_loop_registry.ids, sizeof(int64_t) * (size_t)new_cap);
+        __mdh_loop_registry.loops = (MdhEventLoop **)GC_realloc(
+            __mdh_loop_registry.loops,
+            sizeof(MdhEventLoop *) * (size_t)new_cap
+        );
+        __mdh_loop_registry.cap = new_cap;
+    }
+    int64_t id = __mdh_loop_registry.next_id++;
+    __mdh_loop_registry.ids[__mdh_loop_registry.len] = id;
+    __mdh_loop_registry.loops[__mdh_loop_registry.len] = loop;
+    __mdh_loop_registry.len++;
+    return id;
+}
+
+static MdhEventLoop *__mdh_loop_get(MdhValue handle) {
+    if (handle.tag != MDH_TAG_INT) {
+        __mdh_type_error("event_loop", handle.tag, 0);
+        return NULL;
+    }
+    int64_t id = handle.data;
+    for (int64_t i = 0; i < __mdh_loop_registry.len; i++) {
+        if (__mdh_loop_registry.ids[i] == id) {
+            return __mdh_loop_registry.loops[i];
+        }
+    }
+    __mdh_hurl(__mdh_make_string("Unknown event loop handle"));
+    return NULL;
+}
+
+static MdhValue __mdh_make_event(const char *kind, int64_t sock, int64_t timer_id, MdhValue cb) {
+    MdhValue ev = __mdh_empty_dict();
+    ev = __mdh_dict_set(ev, __mdh_make_string("kind"), __mdh_make_string(kind ? kind : ""));
+    if (sock >= 0) {
+        ev = __mdh_dict_set(ev, __mdh_make_string("sock"), __mdh_make_int(sock));
+    }
+    if (timer_id >= 0) {
+        ev = __mdh_dict_set(ev, __mdh_make_string("id"), __mdh_make_int(timer_id));
+    }
+    if (cb.tag != MDH_TAG_NIL) {
+        ev = __mdh_dict_set(ev, __mdh_make_string("callback"), cb);
+    }
+    return ev;
+}
+
+MdhValue __mdh_event_loop_new(void) {
+    MdhEventLoop *loop = (MdhEventLoop *)GC_malloc(sizeof(MdhEventLoop));
+    memset(loop, 0, sizeof(MdhEventLoop));
+    loop->next_timer_id = 1;
+    int64_t id = __mdh_loop_register(loop);
+    return __mdh_make_int(id);
+}
+
+MdhValue __mdh_event_loop_stop(MdhValue loop_val) {
+    MdhEventLoop *loop = __mdh_loop_get(loop_val);
+    if (!loop) return __mdh_make_nil();
+    loop->stopped = 1;
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_event_watch_read(MdhValue loop_val, MdhValue sock, MdhValue callback) {
+    MdhEventLoop *loop = __mdh_loop_get(loop_val);
+    if (!loop) return __mdh_make_nil();
+    int fd = __mdh_sock_fd(sock);
+    if (fd < 0) {
+        __mdh_hurl(__mdh_make_string("Invalid socket for event_watch_read"));
+        return __mdh_make_nil();
+    }
+    for (int64_t i = 0; i < loop->watch_len; i++) {
+        if (loop->watches[i].fd == fd) {
+            loop->watches[i].read_cb = callback;
+            return __mdh_make_nil();
+        }
+    }
+    __mdh_loop_ensure_watch_cap(loop, loop->watch_len + 1);
+    loop->watches[loop->watch_len].fd = fd;
+    loop->watches[loop->watch_len].read_cb = callback;
+    loop->watches[loop->watch_len].write_cb = __mdh_make_nil();
+    loop->watch_len++;
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_event_watch_write(MdhValue loop_val, MdhValue sock, MdhValue callback) {
+    MdhEventLoop *loop = __mdh_loop_get(loop_val);
+    if (!loop) return __mdh_make_nil();
+    int fd = __mdh_sock_fd(sock);
+    if (fd < 0) {
+        __mdh_hurl(__mdh_make_string("Invalid socket for event_watch_write"));
+        return __mdh_make_nil();
+    }
+    for (int64_t i = 0; i < loop->watch_len; i++) {
+        if (loop->watches[i].fd == fd) {
+            loop->watches[i].write_cb = callback;
+            return __mdh_make_nil();
+        }
+    }
+    __mdh_loop_ensure_watch_cap(loop, loop->watch_len + 1);
+    loop->watches[loop->watch_len].fd = fd;
+    loop->watches[loop->watch_len].read_cb = __mdh_make_nil();
+    loop->watches[loop->watch_len].write_cb = callback;
+    loop->watch_len++;
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_event_unwatch(MdhValue loop_val, MdhValue sock) {
+    MdhEventLoop *loop = __mdh_loop_get(loop_val);
+    if (!loop) return __mdh_make_bool(false);
+    int fd = __mdh_sock_fd(sock);
+    if (fd < 0) {
+        __mdh_hurl(__mdh_make_string("Invalid socket for event_unwatch"));
+        return __mdh_make_bool(false);
+    }
+    for (int64_t i = 0; i < loop->watch_len; i++) {
+        if (loop->watches[i].fd == fd) {
+            loop->watches[i] = loop->watches[loop->watch_len - 1];
+            loop->watch_len--;
+            return __mdh_make_bool(true);
+        }
+    }
+    return __mdh_make_bool(false);
+}
+
+MdhValue __mdh_event_loop_poll(MdhValue loop_val, MdhValue timeout_val) {
+    MdhEventLoop *loop = __mdh_loop_get(loop_val);
+    if (!loop) return __mdh_make_list(0);
+
+    if (loop->stopped) {
+        MdhValue events = __mdh_make_list(1);
+        MdhValue ev = __mdh_make_event("stop", -1, -1, __mdh_make_nil());
+        __mdh_list_push(events, ev);
+        return events;
+    }
+
+    int64_t timeout_ms = -1;
+    if (timeout_val.tag == MDH_TAG_INT) {
+        timeout_ms = timeout_val.data;
+    } else if (timeout_val.tag == MDH_TAG_FLOAT) {
+        timeout_ms = (int64_t)__mdh_get_float(timeout_val);
+    } else if (timeout_val.tag != MDH_TAG_NIL) {
+        __mdh_type_error("event_loop_poll", timeout_val.tag, 0);
+        return __mdh_make_list(0);
+    }
+
+    int64_t now = __mdh_mono_ms_now();
+    int64_t next_due = -1;
+    for (int64_t i = 0; i < loop->timer_len; i++) {
+        MdhTimer *t = &loop->timers[i];
+        if (t->cancelled) continue;
+        int64_t diff = t->next_fire_ms - now;
+        if (diff < 0) diff = 0;
+        if (next_due < 0 || diff < next_due) {
+            next_due = diff;
+        }
+    }
+
+    int64_t wait_ms = timeout_ms;
+    if (wait_ms < 0) {
+        wait_ms = next_due;
+    } else if (next_due >= 0 && next_due < wait_ms) {
+        wait_ms = next_due;
+    }
+
+    int poll_timeout = -1;
+    if (wait_ms >= 0) {
+        if (wait_ms > INT_MAX) {
+            poll_timeout = INT_MAX;
+        } else {
+            poll_timeout = (int)wait_ms;
+        }
+    }
+
+    int64_t nfds = loop->watch_len;
+    struct pollfd *fds = NULL;
+    if (nfds > 0) {
+        fds = (struct pollfd *)GC_malloc(sizeof(struct pollfd) * (size_t)nfds);
+        for (int64_t i = 0; i < nfds; i++) {
+            fds[i].fd = loop->watches[i].fd;
+            fds[i].events = 0;
+            if (loop->watches[i].read_cb.tag != MDH_TAG_NIL) {
+                fds[i].events |= POLLIN;
+            }
+            if (loop->watches[i].write_cb.tag != MDH_TAG_NIL) {
+                fds[i].events |= POLLOUT;
+            }
+            fds[i].revents = 0;
+        }
+    }
+
+    if (poll_timeout != 0 || nfds > 0) {
+        int rc = poll(fds, (nfds_t)nfds, poll_timeout);
+        if (rc < 0 && errno != EINTR) {
+            __mdh_hurl(__mdh_make_string("event_loop_poll failed"));
+        }
+    }
+
+    MdhValue events = __mdh_make_list(4);
+    if (nfds > 0 && fds) {
+        for (int64_t i = 0; i < nfds; i++) {
+            if ((fds[i].revents & POLLIN) && loop->watches[i].read_cb.tag != MDH_TAG_NIL) {
+                MdhValue ev = __mdh_make_event("read", loop->watches[i].fd, -1, loop->watches[i].read_cb);
+                __mdh_list_push(events, ev);
+            }
+            if ((fds[i].revents & POLLOUT) && loop->watches[i].write_cb.tag != MDH_TAG_NIL) {
+                MdhValue ev = __mdh_make_event("write", loop->watches[i].fd, -1, loop->watches[i].write_cb);
+                __mdh_list_push(events, ev);
+            }
+        }
+    }
+
+    now = __mdh_mono_ms_now();
+    for (int64_t i = 0; i < loop->timer_len; i++) {
+        MdhTimer *t = &loop->timers[i];
+        if (t->cancelled) continue;
+        if (t->next_fire_ms <= now) {
+            MdhValue ev = __mdh_make_event("timer", -1, t->id, t->callback);
+            __mdh_list_push(events, ev);
+            if (t->interval_ms > 0) {
+                while (t->next_fire_ms <= now) {
+                    t->next_fire_ms += t->interval_ms;
+                }
+            } else {
+                t->cancelled = 1;
+            }
+        }
+    }
+
+    if (loop->timer_len > 0) {
+        int64_t write = 0;
+        for (int64_t i = 0; i < loop->timer_len; i++) {
+            if (!loop->timers[i].cancelled) {
+                if (write != i) {
+                    loop->timers[write] = loop->timers[i];
+                }
+                write++;
+            }
+        }
+        loop->timer_len = write;
+    }
+
+    return events;
+}
+
+MdhValue __mdh_timer_after(MdhValue loop_val, MdhValue ms_val, MdhValue callback) {
+    MdhEventLoop *loop = __mdh_loop_get(loop_val);
+    if (!loop) return __mdh_make_nil();
+    int64_t ms = 0;
+    if (!__mdh_int_value("timer_after", ms_val, &ms)) {
+        return __mdh_make_nil();
+    }
+    if (ms < 0) {
+        __mdh_hurl(__mdh_make_string("timer_after expects a non-negative delay"));
+        return __mdh_make_nil();
+    }
+    __mdh_loop_ensure_timer_cap(loop, loop->timer_len + 1);
+    int64_t id = loop->next_timer_id++;
+    int64_t now = __mdh_mono_ms_now();
+    MdhTimer t;
+    t.id = id;
+    t.next_fire_ms = now + ms;
+    t.interval_ms = 0;
+    t.callback = callback;
+    t.cancelled = 0;
+    loop->timers[loop->timer_len++] = t;
+    return __mdh_make_int(id);
+}
+
+MdhValue __mdh_timer_every(MdhValue loop_val, MdhValue ms_val, MdhValue callback) {
+    MdhEventLoop *loop = __mdh_loop_get(loop_val);
+    if (!loop) return __mdh_make_nil();
+    int64_t ms = 0;
+    if (!__mdh_int_value("timer_every", ms_val, &ms)) {
+        return __mdh_make_nil();
+    }
+    if (ms <= 0) {
+        __mdh_hurl(__mdh_make_string("timer_every expects a positive interval"));
+        return __mdh_make_nil();
+    }
+    __mdh_loop_ensure_timer_cap(loop, loop->timer_len + 1);
+    int64_t id = loop->next_timer_id++;
+    int64_t now = __mdh_mono_ms_now();
+    MdhTimer t;
+    t.id = id;
+    t.next_fire_ms = now + ms;
+    t.interval_ms = ms;
+    t.callback = callback;
+    t.cancelled = 0;
+    loop->timers[loop->timer_len++] = t;
+    return __mdh_make_int(id);
+}
+
+MdhValue __mdh_timer_cancel(MdhValue loop_val, MdhValue timer_id_val) {
+    MdhEventLoop *loop = __mdh_loop_get(loop_val);
+    if (!loop) return __mdh_make_bool(false);
+    int64_t timer_id = 0;
+    if (!__mdh_int_value("timer_cancel", timer_id_val, &timer_id)) {
+        return __mdh_make_bool(false);
+    }
+    bool found = false;
+    for (int64_t i = 0; i < loop->timer_len; i++) {
+        if (loop->timers[i].id == timer_id && !loop->timers[i].cancelled) {
+            loop->timers[i].cancelled = 1;
+            found = true;
+        }
+    }
+    return __mdh_make_bool(found);
+}
+
+/* ========== Threads + Sync ========== */
+
+typedef MdhValue (*MdhFn0)(void);
+typedef MdhValue (*MdhFn1)(MdhValue);
+typedef MdhValue (*MdhFn2)(MdhValue, MdhValue);
+typedef MdhValue (*MdhFn3)(MdhValue, MdhValue, MdhValue);
+typedef MdhValue (*MdhFn4)(MdhValue, MdhValue, MdhValue, MdhValue);
+typedef MdhValue (*MdhFn5)(MdhValue, MdhValue, MdhValue, MdhValue, MdhValue);
+typedef MdhValue (*MdhFn6)(MdhValue, MdhValue, MdhValue, MdhValue, MdhValue, MdhValue);
+
+typedef struct {
+    pthread_t thread;
+    MdhValue func;
+    MdhValue args;
+    MdhValue result;
+    int done;
+    int detached;
+} MdhThread;
+
+typedef struct {
+    pthread_mutex_t mutex;
+} MdhMutex;
+
+typedef struct {
+    pthread_cond_t cond;
+} MdhCondvar;
+
+typedef struct {
+    pthread_mutex_t lock;
+    int64_t value;
+} MdhAtomic;
+
+typedef struct {
+    pthread_mutex_t lock;
+    pthread_cond_t not_empty;
+    pthread_cond_t not_full;
+    MdhValue *buf;
+    int64_t cap;
+    int64_t count;
+    int64_t head;
+    int64_t tail;
+    int closed;
+    int unbounded;
+} MdhChan;
+
+static int __mdh_gc_threads_ready = 0;
+
+static MdhThread *__mdh_thread_ptr(MdhValue v) {
+    if (v.tag != MDH_TAG_INT) {
+        __mdh_type_error("thread", v.tag, 0);
+        return NULL;
+    }
+    return (MdhThread *)(intptr_t)v.data;
+}
+
+static MdhMutex *__mdh_mutex_ptr(MdhValue v) {
+    if (v.tag != MDH_TAG_INT) {
+        __mdh_type_error("mutex", v.tag, 0);
+        return NULL;
+    }
+    return (MdhMutex *)(intptr_t)v.data;
+}
+
+static MdhCondvar *__mdh_condvar_ptr(MdhValue v) {
+    if (v.tag != MDH_TAG_INT) {
+        __mdh_type_error("condvar", v.tag, 0);
+        return NULL;
+    }
+    return (MdhCondvar *)(intptr_t)v.data;
+}
+
+static MdhAtomic *__mdh_atomic_ptr(MdhValue v) {
+    if (v.tag != MDH_TAG_INT) {
+        __mdh_type_error("atomic", v.tag, 0);
+        return NULL;
+    }
+    return (MdhAtomic *)(intptr_t)v.data;
+}
+
+static MdhChan *__mdh_chan_ptr(MdhValue v) {
+    if (v.tag != MDH_TAG_INT) {
+        __mdh_type_error("chan", v.tag, 0);
+        return NULL;
+    }
+    return (MdhChan *)(intptr_t)v.data;
+}
+
+static MdhValue __mdh_call_with_list(MdhValue func_val, MdhValue args_list) {
+    MdhValue *args = NULL;
+    int64_t argc = 0;
+    if (args_list.tag == MDH_TAG_NIL) {
+        argc = 0;
+    } else if (args_list.tag == MDH_TAG_LIST) {
+        MdhList *list = __mdh_get_list(args_list);
+        if (list) {
+            argc = list->length;
+            args = list->items;
+        }
+    } else {
+        __mdh_type_error("thread_spawn", args_list.tag, 0);
+        return __mdh_make_nil();
+    }
+
+    MdhValue fn_val = func_val;
+    MdhValue call_args[6];
+    int64_t total_args = argc;
+
+    if (func_val.tag == MDH_TAG_CLOSURE) {
+        uint8_t *base = (uint8_t *)(intptr_t)func_val.data;
+        int64_t *header = (int64_t *)base;
+        int64_t len = header[1];
+        if (len <= 0) {
+            __mdh_hurl(__mdh_make_string("Invalid closure"));
+            return __mdh_make_nil();
+        }
+        MdhValue *elems = (MdhValue *)(base + 16);
+        fn_val = elems[0];
+        int64_t captures = len - 1;
+        if (captures > 3) {
+            __mdh_hurl(__mdh_make_string("Closure captures > 3 not supported in threads"));
+            return __mdh_make_nil();
+        }
+        if (captures + argc > 6) {
+            __mdh_hurl(__mdh_make_string("Too many arguments for thread spawn"));
+            return __mdh_make_nil();
+        }
+        for (int64_t i = 0; i < captures; i++) {
+            call_args[i] = elems[i + 1];
+        }
+        for (int64_t i = 0; i < argc; i++) {
+            call_args[captures + i] = args[i];
+        }
+        total_args = captures + argc;
+    } else if (func_val.tag == MDH_TAG_FUNCTION) {
+        if (argc > 6) {
+            __mdh_hurl(__mdh_make_string("Too many arguments for thread spawn"));
+            return __mdh_make_nil();
+        }
+        for (int64_t i = 0; i < argc; i++) {
+            call_args[i] = args[i];
+        }
+        total_args = argc;
+    } else {
+        __mdh_type_error("thread_spawn", func_val.tag, 0);
+        return __mdh_make_nil();
+    }
+
+    intptr_t fn_ptr = (intptr_t)fn_val.data;
+    switch (total_args) {
+        case 0:
+            return ((MdhFn0)fn_ptr)();
+        case 1:
+            return ((MdhFn1)fn_ptr)(call_args[0]);
+        case 2:
+            return ((MdhFn2)fn_ptr)(call_args[0], call_args[1]);
+        case 3:
+            return ((MdhFn3)fn_ptr)(call_args[0], call_args[1], call_args[2]);
+        case 4:
+            return ((MdhFn4)fn_ptr)(call_args[0], call_args[1], call_args[2], call_args[3]);
+        case 5:
+            return ((MdhFn5)fn_ptr)(
+                call_args[0],
+                call_args[1],
+                call_args[2],
+                call_args[3],
+                call_args[4]
+            );
+        case 6:
+            return ((MdhFn6)fn_ptr)(
+                call_args[0],
+                call_args[1],
+                call_args[2],
+                call_args[3],
+                call_args[4],
+                call_args[5]
+            );
+        default:
+            __mdh_hurl(__mdh_make_string("Too many arguments for thread spawn"));
+            return __mdh_make_nil();
+    }
+}
+
+static void *__mdh_thread_entry(void *arg) {
+    MdhThread *t = (MdhThread *)arg;
+    GC_stack_base sb;
+    if (GC_get_stack_base(&sb) == 0) {
+        GC_register_my_thread(&sb);
+    }
+    t->result = __mdh_call_with_list(t->func, t->args);
+    t->done = 1;
+    GC_unregister_my_thread();
+    return NULL;
+}
+
+MdhValue __mdh_thread_spawn(MdhValue func, MdhValue args_list) {
+    if (!__mdh_gc_threads_ready) {
+        GC_allow_register_threads();
+        __mdh_gc_threads_ready = 1;
+    }
+    MdhThread *t = (MdhThread *)GC_malloc(sizeof(MdhThread));
+    memset(t, 0, sizeof(MdhThread));
+    t->func = func;
+    t->args = args_list;
+    t->result = __mdh_make_nil();
+    t->done = 0;
+    t->detached = 0;
+
+    int rc = pthread_create(&t->thread, NULL, __mdh_thread_entry, t);
+    if (rc != 0) {
+        __mdh_hurl(__mdh_make_string("thread_spawn failed"));
+        return __mdh_make_nil();
+    }
+    return __mdh_make_int((int64_t)(intptr_t)t);
+}
+
+MdhValue __mdh_thread_join(MdhValue thread_handle) {
+    MdhThread *t = __mdh_thread_ptr(thread_handle);
+    if (!t) return __mdh_make_nil();
+    if (t->detached) {
+        __mdh_hurl(__mdh_make_string("Cannot join detached thread"));
+        return __mdh_make_nil();
+    }
+    pthread_join(t->thread, NULL);
+    return t->result;
+}
+
+MdhValue __mdh_thread_detach(MdhValue thread_handle) {
+    MdhThread *t = __mdh_thread_ptr(thread_handle);
+    if (!t) return __mdh_make_nil();
+    if (!t->detached) {
+        pthread_detach(t->thread);
+        t->detached = 1;
+    }
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_mutex_new(void) {
+    MdhMutex *m = (MdhMutex *)GC_malloc(sizeof(MdhMutex));
+    pthread_mutex_init(&m->mutex, NULL);
+    return __mdh_make_int((int64_t)(intptr_t)m);
+}
+
+MdhValue __mdh_mutex_lock(MdhValue mutex) {
+    MdhMutex *m = __mdh_mutex_ptr(mutex);
+    if (!m) return __mdh_make_nil();
+    pthread_mutex_lock(&m->mutex);
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_mutex_unlock(MdhValue mutex) {
+    MdhMutex *m = __mdh_mutex_ptr(mutex);
+    if (!m) return __mdh_make_nil();
+    pthread_mutex_unlock(&m->mutex);
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_mutex_try_lock(MdhValue mutex) {
+    MdhMutex *m = __mdh_mutex_ptr(mutex);
+    if (!m) return __mdh_make_bool(false);
+    int rc = pthread_mutex_trylock(&m->mutex);
+    return __mdh_make_bool(rc == 0);
+}
+
+MdhValue __mdh_condvar_new(void) {
+    MdhCondvar *c = (MdhCondvar *)GC_malloc(sizeof(MdhCondvar));
+    pthread_cond_init(&c->cond, NULL);
+    return __mdh_make_int((int64_t)(intptr_t)c);
+}
+
+MdhValue __mdh_condvar_wait(MdhValue condvar, MdhValue mutex) {
+    MdhCondvar *c = __mdh_condvar_ptr(condvar);
+    MdhMutex *m = __mdh_mutex_ptr(mutex);
+    if (!c || !m) return __mdh_make_bool(false);
+    pthread_cond_wait(&c->cond, &m->mutex);
+    return __mdh_make_bool(true);
+}
+
+MdhValue __mdh_condvar_timed_wait(MdhValue condvar, MdhValue mutex, MdhValue timeout_ms) {
+    MdhCondvar *c = __mdh_condvar_ptr(condvar);
+    MdhMutex *m = __mdh_mutex_ptr(mutex);
+    if (!c || !m) return __mdh_make_bool(false);
+    int64_t ms = 0;
+    if (!__mdh_int_value("condvar_timed_wait", timeout_ms, &ms)) {
+        return __mdh_make_bool(false);
+    }
+    if (ms < 0) {
+        __mdh_hurl(__mdh_make_string("condvar_timed_wait expects non-negative timeout"));
+        return __mdh_make_bool(false);
+    }
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += ms / 1000;
+    ts.tv_nsec += (ms % 1000) * 1000000LL;
+    if (ts.tv_nsec >= 1000000000L) {
+        ts.tv_sec += 1;
+        ts.tv_nsec -= 1000000000L;
+    }
+    int rc = pthread_cond_timedwait(&c->cond, &m->mutex, &ts);
+    return __mdh_make_bool(rc == 0);
+}
+
+MdhValue __mdh_condvar_signal(MdhValue condvar) {
+    MdhCondvar *c = __mdh_condvar_ptr(condvar);
+    if (!c) return __mdh_make_nil();
+    pthread_cond_signal(&c->cond);
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_condvar_broadcast(MdhValue condvar) {
+    MdhCondvar *c = __mdh_condvar_ptr(condvar);
+    if (!c) return __mdh_make_nil();
+    pthread_cond_broadcast(&c->cond);
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_atomic_new(MdhValue initial_int) {
+    int64_t val = 0;
+    if (!__mdh_int_value("atomic_new", initial_int, &val)) {
+        return __mdh_make_nil();
+    }
+    MdhAtomic *a = (MdhAtomic *)GC_malloc(sizeof(MdhAtomic));
+    pthread_mutex_init(&a->lock, NULL);
+    a->value = val;
+    return __mdh_make_int((int64_t)(intptr_t)a);
+}
+
+MdhValue __mdh_atomic_load(MdhValue atomic) {
+    MdhAtomic *a = __mdh_atomic_ptr(atomic);
+    if (!a) return __mdh_make_int(0);
+    pthread_mutex_lock(&a->lock);
+    int64_t val = a->value;
+    pthread_mutex_unlock(&a->lock);
+    return __mdh_make_int(val);
+}
+
+MdhValue __mdh_atomic_store(MdhValue atomic, MdhValue value) {
+    MdhAtomic *a = __mdh_atomic_ptr(atomic);
+    if (!a) return __mdh_make_nil();
+    int64_t val = 0;
+    if (!__mdh_int_value("atomic_store", value, &val)) {
+        return __mdh_make_nil();
+    }
+    pthread_mutex_lock(&a->lock);
+    a->value = val;
+    pthread_mutex_unlock(&a->lock);
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_atomic_add(MdhValue atomic, MdhValue delta) {
+    MdhAtomic *a = __mdh_atomic_ptr(atomic);
+    if (!a) return __mdh_make_int(0);
+    int64_t add = 0;
+    if (!__mdh_int_value("atomic_add", delta, &add)) {
+        return __mdh_make_int(0);
+    }
+    pthread_mutex_lock(&a->lock);
+    a->value += add;
+    int64_t val = a->value;
+    pthread_mutex_unlock(&a->lock);
+    return __mdh_make_int(val);
+}
+
+MdhValue __mdh_atomic_cas(MdhValue atomic, MdhValue expected, MdhValue desired) {
+    MdhAtomic *a = __mdh_atomic_ptr(atomic);
+    if (!a) return __mdh_make_bool(false);
+    int64_t exp = 0;
+    int64_t des = 0;
+    if (!__mdh_int_value("atomic_cas", expected, &exp)) {
+        return __mdh_make_bool(false);
+    }
+    if (!__mdh_int_value("atomic_cas", desired, &des)) {
+        return __mdh_make_bool(false);
+    }
+    pthread_mutex_lock(&a->lock);
+    bool ok = (a->value == exp);
+    if (ok) {
+        a->value = des;
+    }
+    pthread_mutex_unlock(&a->lock);
+    return __mdh_make_bool(ok);
+}
+
+static void __mdh_chan_grow(MdhChan *ch, int64_t new_cap) {
+    MdhValue *new_buf = (MdhValue *)GC_malloc(sizeof(MdhValue) * (size_t)new_cap);
+    for (int64_t i = 0; i < ch->count; i++) {
+        new_buf[i] = ch->buf[(ch->head + i) % ch->cap];
+    }
+    ch->buf = new_buf;
+    ch->cap = new_cap;
+    ch->head = 0;
+    ch->tail = ch->count;
+}
+
+MdhValue __mdh_chan_new(MdhValue capacity_int) {
+    int64_t cap = 0;
+    if (!__mdh_int_value("chan_new", capacity_int, &cap)) {
+        return __mdh_make_nil();
+    }
+    if (cap < 0) {
+        __mdh_hurl(__mdh_make_string("chan_new expects non-negative capacity"));
+        return __mdh_make_nil();
+    }
+    MdhChan *ch = (MdhChan *)GC_malloc(sizeof(MdhChan));
+    memset(ch, 0, sizeof(MdhChan));
+    pthread_mutex_init(&ch->lock, NULL);
+    pthread_cond_init(&ch->not_empty, NULL);
+    pthread_cond_init(&ch->not_full, NULL);
+    if (cap == 0) {
+        ch->unbounded = 1;
+        ch->cap = 0;
+        ch->buf = NULL;
+    } else {
+        ch->unbounded = 0;
+        ch->cap = cap;
+        ch->buf = (MdhValue *)GC_malloc(sizeof(MdhValue) * (size_t)cap);
+    }
+    return __mdh_make_int((int64_t)(intptr_t)ch);
+}
+
+MdhValue __mdh_chan_send(MdhValue chan, MdhValue value) {
+    MdhChan *ch = __mdh_chan_ptr(chan);
+    if (!ch) return __mdh_make_bool(false);
+    pthread_mutex_lock(&ch->lock);
+    while (!ch->unbounded && ch->count >= ch->cap && !ch->closed) {
+        pthread_cond_wait(&ch->not_full, &ch->lock);
+    }
+    if (ch->closed) {
+        pthread_mutex_unlock(&ch->lock);
+        return __mdh_make_bool(false);
+    }
+    if (ch->unbounded) {
+        if (ch->cap == 0) {
+            ch->cap = 16;
+            ch->buf = (MdhValue *)GC_malloc(sizeof(MdhValue) * 16);
+        } else if (ch->count >= ch->cap) {
+            __mdh_chan_grow(ch, ch->cap * 2);
+        }
+    }
+    ch->buf[ch->tail] = value;
+    ch->tail = (ch->tail + 1) % ch->cap;
+    ch->count++;
+    pthread_cond_signal(&ch->not_empty);
+    pthread_mutex_unlock(&ch->lock);
+    return __mdh_make_bool(true);
+}
+
+MdhValue __mdh_chan_recv(MdhValue chan) {
+    MdhChan *ch = __mdh_chan_ptr(chan);
+    if (!ch) return __mdh_make_nil();
+    pthread_mutex_lock(&ch->lock);
+    while (ch->count == 0 && !ch->closed) {
+        pthread_cond_wait(&ch->not_empty, &ch->lock);
+    }
+    if (ch->count == 0 && ch->closed) {
+        pthread_mutex_unlock(&ch->lock);
+        return __mdh_make_nil();
+    }
+    MdhValue v = ch->buf[ch->head];
+    ch->head = (ch->head + 1) % ch->cap;
+    ch->count--;
+    if (!ch->unbounded) {
+        pthread_cond_signal(&ch->not_full);
+    }
+    pthread_mutex_unlock(&ch->lock);
+    return v;
+}
+
+MdhValue __mdh_chan_try_recv(MdhValue chan) {
+    MdhChan *ch = __mdh_chan_ptr(chan);
+    if (!ch) return __mdh_make_nil();
+    pthread_mutex_lock(&ch->lock);
+    if (ch->count == 0) {
+        pthread_mutex_unlock(&ch->lock);
+        return __mdh_make_nil();
+    }
+    MdhValue v = ch->buf[ch->head];
+    ch->head = (ch->head + 1) % ch->cap;
+    ch->count--;
+    if (!ch->unbounded) {
+        pthread_cond_signal(&ch->not_full);
+    }
+    pthread_mutex_unlock(&ch->lock);
+    return v;
+}
+
+MdhValue __mdh_chan_close(MdhValue chan) {
+    MdhChan *ch = __mdh_chan_ptr(chan);
+    if (!ch) return __mdh_make_nil();
+    pthread_mutex_lock(&ch->lock);
+    ch->closed = 1;
+    pthread_cond_broadcast(&ch->not_empty);
+    pthread_cond_broadcast(&ch->not_full);
+    pthread_mutex_unlock(&ch->lock);
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_chan_is_closed(MdhValue chan) {
+    MdhChan *ch = __mdh_chan_ptr(chan);
+    if (!ch) return __mdh_make_bool(true);
+    pthread_mutex_lock(&ch->lock);
+    int closed = ch->closed;
+    pthread_mutex_unlock(&ch->lock);
+    return __mdh_make_bool(closed != 0);
+}
+
 /* ========== Dict/Creel Operations ========== */
 /* Dict memory layout: [i64 count][entry0][entry1]... where entry = [MdhValue key][MdhValue val] = 32 bytes */
 
@@ -954,7 +3018,7 @@ MdhValue __mdh_empty_creel(void) {
     dict_ptr[1] = MDH_CREEL_SENTINEL; /* marker */
 
     MdhValue v;
-    v.tag = MDH_TAG_DICT;
+    v.tag = MDH_TAG_SET;
     v.data = (int64_t)(intptr_t)dict_ptr;
     return v;
 }
@@ -987,6 +3051,7 @@ static bool __mdh_values_equal(MdhValue a, MdhValue b) {
 
 MdhValue __mdh_dict_contains(MdhValue dict, MdhValue key) {
     if (dict.tag != MDH_TAG_DICT) {
+        __mdh_type_error("dict_has", dict.tag, 0);
         return __mdh_make_bool(false);
     }
 
@@ -1003,8 +3068,28 @@ MdhValue __mdh_dict_contains(MdhValue dict, MdhValue key) {
     return __mdh_make_bool(false);
 }
 
+MdhValue __mdh_set_contains(MdhValue set, MdhValue key) {
+    if (set.tag != MDH_TAG_SET) {
+        __mdh_type_error("is_in_creel", set.tag, 0);
+        return __mdh_make_bool(false);
+    }
+
+    int64_t *set_ptr = (int64_t *)(intptr_t)set.data;
+    int64_t count = set_ptr ? *set_ptr : 0;
+    MdhValue *entries = set_ptr ? (MdhValue *)(set_ptr + 1) : NULL;
+
+    for (int64_t i = 0; i < count; i++) {
+        MdhValue entry_key = entries[i * 2];
+        if (__mdh_values_equal(entry_key, key)) {
+            return __mdh_make_bool(true);
+        }
+    }
+    return __mdh_make_bool(false);
+}
+
 MdhValue __mdh_dict_keys(MdhValue dict) {
     if (dict.tag != MDH_TAG_DICT) {
+        __mdh_type_error("keys", dict.tag, 0);
         return __mdh_make_list(0);
     }
 
@@ -1021,6 +3106,7 @@ MdhValue __mdh_dict_keys(MdhValue dict) {
 
 MdhValue __mdh_dict_values(MdhValue dict) {
     if (dict.tag != MDH_TAG_DICT) {
+        __mdh_type_error("values", dict.tag, 0);
         return __mdh_make_list(0);
     }
 
@@ -1037,7 +3123,8 @@ MdhValue __mdh_dict_values(MdhValue dict) {
 
 MdhValue __mdh_dict_set(MdhValue dict, MdhValue key, MdhValue value) {
     if (dict.tag != MDH_TAG_DICT) {
-        return dict;
+        __mdh_type_error("dict_set", dict.tag, 0);
+        return __mdh_empty_dict();
     }
 
     int64_t *old_ptr = (int64_t *)(intptr_t)dict.data;
@@ -1079,6 +3166,7 @@ MdhValue __mdh_dict_set(MdhValue dict, MdhValue key, MdhValue value) {
 
 MdhValue __mdh_dict_get(MdhValue dict, MdhValue key) {
     if (dict.tag != MDH_TAG_DICT) {
+        __mdh_type_error("dict_get", dict.tag, 0);
         return __mdh_make_nil();
     }
 
@@ -1092,6 +3180,7 @@ MdhValue __mdh_dict_get(MdhValue dict, MdhValue key) {
             return entries[i * 2 + 1];
         }
     }
+    __mdh_key_not_found(key);
     return __mdh_make_nil();
 }
 
@@ -1209,8 +3298,9 @@ MdhValue __mdh_fae_pairs(MdhValue pairs) {
 }
 
 MdhValue __mdh_toss_in(MdhValue dict, MdhValue item) {
-    if (dict.tag != MDH_TAG_DICT) {
-        return dict;
+    if (dict.tag != MDH_TAG_SET) {
+        __mdh_type_error("toss_in", dict.tag, 0);
+        return __mdh_empty_creel();
     }
 
     int64_t *old_ptr = (int64_t *)(intptr_t)dict.data;
@@ -1244,14 +3334,15 @@ MdhValue __mdh_toss_in(MdhValue dict, MdhValue item) {
     new_entries[count * 2 + 1] = item;
 
     MdhValue v;
-    v.tag = MDH_TAG_DICT;
+    v.tag = MDH_TAG_SET;
     v.data = (int64_t)(intptr_t)new_ptr;
     return v;
 }
 
 MdhValue __mdh_heave_oot(MdhValue dict, MdhValue item) {
-    if (dict.tag != MDH_TAG_DICT) {
-        return dict;
+    if (dict.tag != MDH_TAG_SET) {
+        __mdh_type_error("heave_oot", dict.tag, 0);
+        return __mdh_empty_creel();
     }
 
     int64_t *old_ptr = (int64_t *)(intptr_t)dict.data;
@@ -1290,7 +3381,7 @@ MdhValue __mdh_heave_oot(MdhValue dict, MdhValue item) {
     }
 
     MdhValue v;
-    v.tag = MDH_TAG_DICT;
+    v.tag = MDH_TAG_SET;
     v.data = (int64_t)(intptr_t)new_ptr;
     return v;
 }
@@ -2066,7 +4157,8 @@ static int __mdh_creel_sort_cmp(const void *a, const void *b) {
 
 MdhValue __mdh_creel_tae_list(MdhValue dict) {
     /* Convert set/dict keys to list */
-    if (dict.tag != MDH_TAG_DICT) {
+    if (dict.tag != MDH_TAG_SET) {
+        __mdh_type_error("creel_tae_list", dict.tag, 0);
         return __mdh_make_list(0);
     }
 
@@ -2097,11 +4189,13 @@ MdhValue __mdh_creel_tae_list(MdhValue dict) {
 
 MdhValue __mdh_creels_thegither(MdhValue a, MdhValue b) {
     /* Union of two creels/sets (dicts) */
-    if (a.tag != MDH_TAG_DICT) {
-        return b.tag == MDH_TAG_DICT ? b : __mdh_empty_creel();
+    if (a.tag != MDH_TAG_SET) {
+        __mdh_type_error("creels_thegither", a.tag, 0);
+        return __mdh_empty_creel();
     }
-    if (b.tag != MDH_TAG_DICT) {
-        return a;
+    if (b.tag != MDH_TAG_SET) {
+        __mdh_type_error("creels_thegither", b.tag, 0);
+        return __mdh_empty_creel();
     }
 
     MdhValue result = __mdh_empty_creel();
@@ -2125,11 +4219,11 @@ MdhValue __mdh_creels_thegither(MdhValue a, MdhValue b) {
 
 MdhValue __mdh_creels_baith(MdhValue a, MdhValue b) {
     /* Intersection of two creels/sets (dicts) */
-    if (a.tag != MDH_TAG_DICT) {
+    if (a.tag != MDH_TAG_SET) {
         __mdh_type_error("creels_baith", a.tag, 0);
         return __mdh_empty_creel();
     }
-    if (b.tag != MDH_TAG_DICT) {
+    if (b.tag != MDH_TAG_SET) {
         __mdh_type_error("creels_baith", b.tag, 0);
         return __mdh_empty_creel();
     }
@@ -2140,7 +4234,7 @@ MdhValue __mdh_creels_baith(MdhValue a, MdhValue b) {
     MdhValue *a_entries = (MdhValue *)(a_ptr + 1);
     for (int64_t i = 0; i < a_count; i++) {
         MdhValue key = a_entries[i * 2];
-        MdhValue contains = __mdh_dict_contains(b, key);
+        MdhValue contains = __mdh_set_contains(b, key);
         if (contains.tag == MDH_TAG_BOOL && contains.data != 0) {
             result = __mdh_toss_in(result, key);
         }
@@ -2150,11 +4244,11 @@ MdhValue __mdh_creels_baith(MdhValue a, MdhValue b) {
 
 MdhValue __mdh_creels_differ(MdhValue a, MdhValue b) {
     /* Difference of two creels/sets (a \\ b) */
-    if (a.tag != MDH_TAG_DICT) {
+    if (a.tag != MDH_TAG_SET) {
         __mdh_type_error("creels_differ", a.tag, 0);
         return __mdh_empty_creel();
     }
-    if (b.tag != MDH_TAG_DICT) {
+    if (b.tag != MDH_TAG_SET) {
         __mdh_type_error("creels_differ", b.tag, 0);
         return __mdh_empty_creel();
     }
@@ -2165,7 +4259,7 @@ MdhValue __mdh_creels_differ(MdhValue a, MdhValue b) {
     MdhValue *a_entries = (MdhValue *)(a_ptr + 1);
     for (int64_t i = 0; i < a_count; i++) {
         MdhValue key = a_entries[i * 2];
-        MdhValue contains = __mdh_dict_contains(b, key);
+        MdhValue contains = __mdh_set_contains(b, key);
         if (!(contains.tag == MDH_TAG_BOOL && contains.data != 0)) {
             result = __mdh_toss_in(result, key);
         }
@@ -2174,11 +4268,11 @@ MdhValue __mdh_creels_differ(MdhValue a, MdhValue b) {
 }
 
 MdhValue __mdh_is_subset(MdhValue a, MdhValue b) {
-    if (a.tag != MDH_TAG_DICT) {
+    if (a.tag != MDH_TAG_SET) {
         __mdh_type_error("is_subset", a.tag, 0);
         return __mdh_make_bool(false);
     }
-    if (b.tag != MDH_TAG_DICT) {
+    if (b.tag != MDH_TAG_SET) {
         __mdh_type_error("is_subset", b.tag, 0);
         return __mdh_make_bool(false);
     }
@@ -2188,7 +4282,7 @@ MdhValue __mdh_is_subset(MdhValue a, MdhValue b) {
     MdhValue *a_entries = (MdhValue *)(a_ptr + 1);
     for (int64_t i = 0; i < a_count; i++) {
         MdhValue key = a_entries[i * 2];
-        MdhValue contains = __mdh_dict_contains(b, key);
+        MdhValue contains = __mdh_set_contains(b, key);
         if (!(contains.tag == MDH_TAG_BOOL && contains.data != 0)) {
             return __mdh_make_bool(false);
         }
@@ -2202,11 +4296,11 @@ MdhValue __mdh_is_superset(MdhValue a, MdhValue b) {
 }
 
 MdhValue __mdh_is_disjoint(MdhValue a, MdhValue b) {
-    if (a.tag != MDH_TAG_DICT) {
+    if (a.tag != MDH_TAG_SET) {
         __mdh_type_error("is_disjoint", a.tag, 0);
         return __mdh_make_bool(false);
     }
-    if (b.tag != MDH_TAG_DICT) {
+    if (b.tag != MDH_TAG_SET) {
         __mdh_type_error("is_disjoint", b.tag, 0);
         return __mdh_make_bool(false);
     }
@@ -2216,7 +4310,7 @@ MdhValue __mdh_is_disjoint(MdhValue a, MdhValue b) {
     MdhValue *a_entries = (MdhValue *)(a_ptr + 1);
     for (int64_t i = 0; i < a_count; i++) {
         MdhValue key = a_entries[i * 2];
-        MdhValue contains = __mdh_dict_contains(b, key);
+        MdhValue contains = __mdh_set_contains(b, key);
         if (contains.tag == MDH_TAG_BOOL && contains.data != 0) {
             return __mdh_make_bool(false);
         }
@@ -2334,15 +4428,37 @@ MdhValue __mdh_median(MdhValue list) {
 /* list_min - minimum value in a list */
 MdhValue __mdh_list_min(MdhValue list) {
     if (list.tag != MDH_TAG_LIST) {
-        return __mdh_make_int(0);
+        __mdh_hurl(__mdh_make_string("minaw() needs a list"));
+        return __mdh_make_nil();
     }
     MdhList *l = __mdh_get_list(list);
-    if (l->length == 0) return __mdh_make_int(0);
+    if (l->length == 0) {
+        __mdh_hurl(__mdh_make_string("Cannae find minimum o' empty list!"));
+        return __mdh_make_nil();
+    }
 
     MdhValue min_val = l->items[0];
+    if (min_val.tag != MDH_TAG_INT && min_val.tag != MDH_TAG_FLOAT) {
+        __mdh_hurl(__mdh_make_string("minaw() needs a list o' comparable numbers"));
+        return __mdh_make_nil();
+    }
+
     for (int64_t i = 1; i < l->length; i++) {
-        if (__mdh_lt(l->items[i], min_val)) {
-            min_val = l->items[i];
+        MdhValue item = l->items[i];
+        if (item.tag != min_val.tag) {
+            __mdh_hurl(__mdh_make_string("minaw() needs a list o' comparable numbers"));
+            return __mdh_make_nil();
+        }
+        if (min_val.tag == MDH_TAG_INT) {
+            if (item.data < min_val.data) {
+                min_val = item;
+            }
+        } else {
+            double min_f = __mdh_get_float(min_val);
+            double item_f = __mdh_get_float(item);
+            if (item_f < min_f) {
+                min_val = item;
+            }
         }
     }
     return min_val;
@@ -2351,15 +4467,37 @@ MdhValue __mdh_list_min(MdhValue list) {
 /* list_max - maximum value in a list */
 MdhValue __mdh_list_max(MdhValue list) {
     if (list.tag != MDH_TAG_LIST) {
-        return __mdh_make_int(0);
+        __mdh_hurl(__mdh_make_string("maxaw() needs a list"));
+        return __mdh_make_nil();
     }
     MdhList *l = __mdh_get_list(list);
-    if (l->length == 0) return __mdh_make_int(0);
+    if (l->length == 0) {
+        __mdh_hurl(__mdh_make_string("Cannae find maximum o' empty list!"));
+        return __mdh_make_nil();
+    }
 
     MdhValue max_val = l->items[0];
+    if (max_val.tag != MDH_TAG_INT && max_val.tag != MDH_TAG_FLOAT) {
+        __mdh_hurl(__mdh_make_string("maxaw() needs a list o' comparable numbers"));
+        return __mdh_make_nil();
+    }
+
     for (int64_t i = 1; i < l->length; i++) {
-        if (__mdh_gt(l->items[i], max_val)) {
-            max_val = l->items[i];
+        MdhValue item = l->items[i];
+        if (item.tag != max_val.tag) {
+            __mdh_hurl(__mdh_make_string("maxaw() needs a list o' comparable numbers"));
+            return __mdh_make_nil();
+        }
+        if (max_val.tag == MDH_TAG_INT) {
+            if (item.data > max_val.data) {
+                max_val = item;
+            }
+        } else {
+            double max_f = __mdh_get_float(max_val);
+            double item_f = __mdh_get_float(item);
+            if (item_f > max_f) {
+                max_val = item;
+            }
         }
     }
     return max_val;
@@ -2620,7 +4758,7 @@ MdhValue __mdh_is_dict(MdhValue val) {
 }
 
 MdhValue __mdh_is_function(MdhValue val) {
-    return __mdh_make_bool(val.tag == MDH_TAG_FUNCTION);
+    return __mdh_make_bool(val.tag == MDH_TAG_FUNCTION || val.tag == MDH_TAG_CLOSURE);
 }
 
 // String prefix/suffix checking functions
@@ -2825,9 +4963,49 @@ MdhValue __mdh_shell(MdhValue cmd) {
         return __mdh_make_nil();
     }
 
-    char *full = __mdh_build_shell_command(__mdh_get_string(cmd), true);
+    char out_template[] = "/tmp/mdh_shell_out_XXXXXX";
+    char err_template[] = "/tmp/mdh_shell_err_XXXXXX";
+
+    int out_fd = mkstemp(out_template);
+    if (out_fd < 0) {
+        __mdh_hurl(__mdh_make_string("Shell command failed"));
+        return __mdh_make_nil();
+    }
+    close(out_fd);
+
+    int err_fd = mkstemp(err_template);
+    if (err_fd < 0) {
+        unlink(out_template);
+        __mdh_hurl(__mdh_make_string("Shell command failed"));
+        return __mdh_make_nil();
+    }
+    close(err_fd);
+
+    const char *cmd_str = __mdh_get_string(cmd);
+    char *out_q = __mdh_shell_quote_single(out_template);
+    char *err_q = __mdh_shell_quote_single(err_template);
+
+    size_t script_len = strlen(cmd_str) + strlen(out_q) * 4 + strlen(err_q) * 3 + 128;
+    char *script = (char *)GC_malloc(script_len);
+    snprintf(
+        script,
+        script_len,
+        "(%s) 1>%s 2>%s; if [ -s %s ]; then cat %s; else cat %s; fi; rm -f %s %s",
+        cmd_str,
+        out_q,
+        err_q,
+        out_q,
+        out_q,
+        err_q,
+        out_q,
+        err_q
+    );
+
+    char *full = __mdh_build_shell_command(script, false);
     FILE *fp = popen(full, "r");
     if (!fp) {
+        unlink(out_template);
+        unlink(err_template);
         __mdh_hurl(__mdh_make_string("Shell command failed"));
         return __mdh_make_nil();
     }
@@ -3458,27 +5636,89 @@ MdhValue __mdh_regex_split(MdhValue text, MdhValue pattern) {
 /* ========== Regex (Rust FFI) ========== */
 
 MdhValue __mdh_regex_test(MdhValue text, MdhValue pattern) {
-    return __mdh_rs_regex_test(text, pattern);
+    if (text.tag != MDH_TAG_STRING || pattern.tag != MDH_TAG_STRING) {
+        __mdh_type_error("regex_test", text.tag, pattern.tag);
+        return __mdh_make_bool(false);
+    }
+
+    MdhRsResult r = __mdh_rs_regex_test(text, pattern);
+    if (!r.ok) {
+        __mdh_hurl(r.error);
+        return __mdh_make_bool(false);
+    }
+    return r.value;
 }
 
 MdhValue __mdh_regex_match(MdhValue text, MdhValue pattern) {
-    return __mdh_rs_regex_match(text, pattern);
+    if (text.tag != MDH_TAG_STRING || pattern.tag != MDH_TAG_STRING) {
+        __mdh_type_error("regex_match", text.tag, pattern.tag);
+        return __mdh_make_nil();
+    }
+
+    MdhRsResult r = __mdh_rs_regex_match(text, pattern);
+    if (!r.ok) {
+        __mdh_hurl(r.error);
+        return __mdh_make_nil();
+    }
+    return r.value;
 }
 
 MdhValue __mdh_regex_match_all(MdhValue text, MdhValue pattern) {
-    return __mdh_rs_regex_match_all(text, pattern);
+    if (text.tag != MDH_TAG_STRING || pattern.tag != MDH_TAG_STRING) {
+        __mdh_type_error("regex_match_all", text.tag, pattern.tag);
+        return __mdh_make_list(0);
+    }
+
+    MdhRsResult r = __mdh_rs_regex_match_all(text, pattern);
+    if (!r.ok) {
+        __mdh_hurl(r.error);
+        return __mdh_make_list(0);
+    }
+    return r.value;
 }
 
 MdhValue __mdh_regex_replace(MdhValue text, MdhValue pattern, MdhValue replacement) {
-    return __mdh_rs_regex_replace(text, pattern, replacement);
+    if (text.tag != MDH_TAG_STRING || pattern.tag != MDH_TAG_STRING || replacement.tag != MDH_TAG_STRING) {
+        uint8_t got2 = pattern.tag != MDH_TAG_STRING ? pattern.tag : replacement.tag;
+        __mdh_type_error("regex_replace", text.tag, got2);
+        return text.tag == MDH_TAG_STRING ? text : __mdh_make_string("");
+    }
+
+    MdhRsResult r = __mdh_rs_regex_replace(text, pattern, replacement);
+    if (!r.ok) {
+        __mdh_hurl(r.error);
+        return __mdh_make_string("");
+    }
+    return r.value;
 }
 
 MdhValue __mdh_regex_replace_first(MdhValue text, MdhValue pattern, MdhValue replacement) {
-    return __mdh_rs_regex_replace_first(text, pattern, replacement);
+    if (text.tag != MDH_TAG_STRING || pattern.tag != MDH_TAG_STRING || replacement.tag != MDH_TAG_STRING) {
+        uint8_t got2 = pattern.tag != MDH_TAG_STRING ? pattern.tag : replacement.tag;
+        __mdh_type_error("regex_replace_first", text.tag, got2);
+        return text.tag == MDH_TAG_STRING ? text : __mdh_make_string("");
+    }
+
+    MdhRsResult r = __mdh_rs_regex_replace_first(text, pattern, replacement);
+    if (!r.ok) {
+        __mdh_hurl(r.error);
+        return __mdh_make_string("");
+    }
+    return r.value;
 }
 
 MdhValue __mdh_regex_split(MdhValue text, MdhValue pattern) {
-    return __mdh_rs_regex_split(text, pattern);
+    if (text.tag != MDH_TAG_STRING || pattern.tag != MDH_TAG_STRING) {
+        __mdh_type_error("regex_split", text.tag, pattern.tag);
+        return __mdh_make_list(0);
+    }
+
+    MdhRsResult r = __mdh_rs_regex_split(text, pattern);
+    if (!r.ok) {
+        __mdh_hurl(r.error);
+        return __mdh_make_list(0);
+    }
+    return r.value;
 }
 
 /* ========== JSON ========== */
@@ -3943,15 +6183,35 @@ MdhValue __mdh_json_pretty(MdhValue value) {
 #endif
 
 MdhValue __mdh_json_parse(MdhValue json_str) {
-    return __mdh_rs_json_parse(json_str);
+    if (json_str.tag != MDH_TAG_STRING) {
+        __mdh_type_error("json_parse", json_str.tag, 0);
+        return __mdh_make_nil();
+    }
+
+    MdhRsResult r = __mdh_rs_json_parse(json_str);
+    if (!r.ok) {
+        __mdh_hurl(r.error);
+        return __mdh_make_nil();
+    }
+    return r.value;
 }
 
 MdhValue __mdh_json_stringify(MdhValue value) {
-    return __mdh_rs_json_stringify(value);
+    MdhRsResult r = __mdh_rs_json_stringify(value);
+    if (!r.ok) {
+        __mdh_hurl(r.error);
+        return __mdh_make_string("");
+    }
+    return r.value;
 }
 
 MdhValue __mdh_json_pretty(MdhValue value) {
-    return __mdh_rs_json_pretty(value);
+    MdhRsResult r = __mdh_rs_json_pretty(value);
+    if (!r.ok) {
+        __mdh_hurl(r.error);
+        return __mdh_make_string("");
+    }
+    return r.value;
 }
 
 /* ========== Misc Parity Helpers ========== */
@@ -3986,10 +6246,12 @@ MdhValue __mdh_is_a(MdhValue value, MdhValue type_name) {
         matches = value.tag == MDH_TAG_BOOL;
     } else if (strcmp(t, "list") == 0) {
         matches = value.tag == MDH_TAG_LIST;
+    } else if (strcmp(t, "bytes") == 0 || strcmp(t, "byte") == 0) {
+        matches = value.tag == MDH_TAG_BYTES;
     } else if (strcmp(t, "dict") == 0) {
         matches = value.tag == MDH_TAG_DICT;
     } else if (strcmp(t, "function") == 0 || strcmp(t, "dae") == 0) {
-        matches = value.tag == MDH_TAG_FUNCTION;
+        matches = value.tag == MDH_TAG_FUNCTION || value.tag == MDH_TAG_CLOSURE;
     } else if (strcmp(t, "naething") == 0 || strcmp(t, "nil") == 0) {
         matches = value.tag == MDH_TAG_NIL;
     } else if (strcmp(t, "range") == 0) {
@@ -3999,6 +6261,22 @@ MdhValue __mdh_is_a(MdhValue value, MdhValue type_name) {
     }
 
     return __mdh_make_bool(matches);
+}
+
+MdhValue __mdh_wrang_sort(MdhValue value, MdhValue type_name) {
+    if (type_name.tag != MDH_TAG_STRING) {
+        __mdh_hurl(__mdh_make_string("Second arg must be a type name string"));
+        return __mdh_make_bool(1);
+    }
+
+    MdhValue actual = __mdh_type_of(value);
+    const char *actual_str = __mdh_get_string(actual);
+    const char *expected_str = __mdh_get_string(type_name);
+    bool wrong = true;
+    if (actual_str && expected_str) {
+        wrong = strcmp(actual_str, expected_str) != 0;
+    }
+    return __mdh_make_bool(wrong);
 }
 
 MdhValue __mdh_numpty_check(MdhValue value) {
@@ -4762,8 +7040,13 @@ static const char *__mdh_type_name(MdhValue v) {
         case MDH_TAG_LIST:
             return "list";
         case MDH_TAG_DICT:
-            return __mdh_dict_is_creel(v) ? "creel" : "dict";
+            return "dict";
+        case MDH_TAG_SET:
+            return "creel";
+        case MDH_TAG_BYTES:
+            return "bytes";
         case MDH_TAG_FUNCTION:
+        case MDH_TAG_CLOSURE:
             return "function";
         case MDH_TAG_CLASS:
             return "class";
@@ -4839,16 +7122,23 @@ MdhValue __mdh_clype(MdhValue val) {
         case MDH_TAG_DICT: {
             int64_t *dict_ptr = (int64_t *)(intptr_t)val.data;
             int64_t count = dict_ptr ? *dict_ptr : 0;
-            if (__mdh_dict_is_creel(val)) {
-                snprintf(info, sizeof(info), "creel wi' %lld items", (long long)count);
-            } else {
-                snprintf(info, sizeof(info), "dict wi' %lld entries", (long long)count);
-            }
+            snprintf(info, sizeof(info), "dict wi' %lld entries", (long long)count);
+            break;
+        }
+        case MDH_TAG_SET: {
+            int64_t *set_ptr = (int64_t *)(intptr_t)val.data;
+            int64_t count = set_ptr ? *set_ptr : 0;
+            snprintf(info, sizeof(info), "creel wi' %lld items", (long long)count);
             break;
         }
         case MDH_TAG_STRING: {
             const char *s = __mdh_get_string(val);
             snprintf(info, sizeof(info), "string o' %zu characters", s ? strlen(s) : 0);
+            break;
+        }
+        case MDH_TAG_BYTES: {
+            MdhBytes *bytes = __mdh_get_bytes(val);
+            snprintf(info, sizeof(info), "bytes wi' %lld items", (long long)(bytes ? bytes->length : 0));
             break;
         }
         case MDH_TAG_INT:

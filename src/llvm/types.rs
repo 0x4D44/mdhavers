@@ -20,6 +20,9 @@ pub enum ValueTag {
     Class = 8,
     Instance = 9,
     Range = 10,
+    Set = 11,
+    Closure = 12,
+    Bytes = 13,
 }
 
 impl ValueTag {

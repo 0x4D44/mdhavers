@@ -15,6 +15,7 @@ pub enum ValueKey {
     List(usize),
     Dict(usize),
     Set(usize),
+    Bytes(usize),
     Function(usize),
     NativeFunction(usize),
     Class(usize),
@@ -57,7 +58,11 @@ pub enum Value {
     /// Struct definition
     Struct(Rc<HaversStruct>),
     /// Range iterator
+    #[allow(dead_code)]
     Range(RangeValue),
+    /// Byte buffer
+    #[allow(dead_code)]
+    Bytes(Rc<RefCell<Vec<u8>>>),
 }
 
 impl Value {
@@ -71,6 +76,7 @@ impl Value {
             Value::List(_) => "list",
             Value::Dict(_) => "dict",
             Value::Set(_) => "creel",
+            Value::Bytes(_) => "bytes",
             Value::Function(_) => "function",
             Value::NativeFunction(_) => "native function",
             Value::Class(_) => "class",
@@ -89,6 +95,7 @@ impl Value {
             Value::String(s) if s.is_empty() => false,
             Value::List(l) if l.borrow().is_empty() => false,
             Value::Set(s) if s.borrow().is_empty() => false,
+            Value::Bytes(b) if b.borrow().is_empty() => false,
             _ => true,
         }
     }
@@ -128,6 +135,7 @@ impl Value {
             Value::List(l) => ValueKey::List(Rc::as_ptr(l) as usize),
             Value::Dict(d) => ValueKey::Dict(Rc::as_ptr(d) as usize),
             Value::Set(s) => ValueKey::Set(Rc::as_ptr(s) as usize),
+            Value::Bytes(b) => ValueKey::Bytes(Rc::as_ptr(b) as usize),
             Value::Function(func) => ValueKey::Function(Rc::as_ptr(func) as usize),
             Value::NativeFunction(func) => ValueKey::NativeFunction(Rc::as_ptr(func) as usize),
             Value::Class(class) => ValueKey::Class(Rc::as_ptr(class) as usize),
@@ -177,6 +185,10 @@ impl fmt::Display for Value {
                         .join(", ")
                 )
             }
+            Value::Bytes(bytes) => {
+                let len = bytes.borrow().len();
+                write!(f, "bytes[{}]", len)
+            }
             Value::Function(func) => write!(f, "<dae {}>", func.name),
             Value::NativeFunction(func) => write!(f, "<native dae {}>", func.name),
             Value::Class(class) => write!(f, "<kin {}>", class.name),
@@ -200,6 +212,7 @@ impl PartialEq for Value {
             (Value::List(a), Value::List(b)) => *a.borrow() == *b.borrow(),
             (Value::Dict(a), Value::Dict(b)) => Rc::ptr_eq(a, b),
             (Value::Set(a), Value::Set(b)) => Rc::ptr_eq(a, b),
+            (Value::Bytes(a), Value::Bytes(b)) => *a.borrow() == *b.borrow(),
             (Value::Function(a), Value::Function(b)) => Rc::ptr_eq(a, b),
             (Value::NativeFunction(a), Value::NativeFunction(b)) => Rc::ptr_eq(a, b),
             (Value::Class(a), Value::Class(b)) => Rc::ptr_eq(a, b),
@@ -525,6 +538,7 @@ pub struct RangeValue {
 }
 
 impl RangeValue {
+    #[allow(dead_code)]
     pub fn new(start: i64, end: i64, inclusive: bool) -> Self {
         RangeValue {
             start,

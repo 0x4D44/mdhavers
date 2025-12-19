@@ -1,9 +1,18 @@
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, VecDeque};
 #[cfg(not(coverage))]
-use std::io::{self, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::io::{Read, Write};
+use std::net::ToSocketAddrs;
+use std::os::unix::io::{FromRawFd, RawFd};
+use trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
+use trust_dns_resolver::proto::rr::{RData, RecordType};
+use trust_dns_resolver::Resolver;
+use rustls::client::{ServerCertVerified, ServerCertVerifier};
+use rustls::{Certificate, ClientConfig, ClientConnection, PrivateKey, RootCertStore, ServerConfig, ServerConnection, ServerName, StreamOwned, OwnedTrustAnchor};
+use rustls_pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 
 #[cfg(all(feature = "cli", not(coverage)))]
 use crossterm::{
@@ -16,7 +25,7 @@ use crate::error::{HaversError, HaversResult};
 use crate::value::*;
 use chrono::Local;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, OnceLock};
 
 /// Global log level that can be modified by native functions
 /// Default is Blether (3 = INFO)
@@ -24,6 +33,636 @@ static GLOBAL_LOG_LEVEL: AtomicU8 = AtomicU8::new(3);
 
 /// Whether crash handling is enabled (default: true)
 static CRASH_HANDLING_ENABLED: AtomicBool = AtomicBool::new(true);
+
+/// Monotonic clock anchor for mono_ms/mono_ns
+static MONO_START: OnceLock<std::time::Instant> = OnceLock::new();
+
+#[derive(Debug, Clone, Copy)]
+enum SocketKind {
+    Udp,
+    Tcp,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SocketEntry {
+    fd: RawFd,
+    kind: SocketKind,
+}
+
+struct SocketRegistry {
+    next_id: i64,
+    sockets: HashMap<i64, SocketEntry>,
+}
+
+impl SocketRegistry {
+    fn new() -> Self {
+        SocketRegistry {
+            next_id: 1,
+            sockets: HashMap::new(),
+        }
+    }
+}
+
+static SOCKETS: OnceLock<Mutex<SocketRegistry>> = OnceLock::new();
+
+fn socket_registry() -> &'static Mutex<SocketRegistry> {
+    SOCKETS.get_or_init(|| Mutex::new(SocketRegistry::new()))
+}
+
+fn register_socket(fd: RawFd, kind: SocketKind) -> i64 {
+    let mut reg = socket_registry().lock().unwrap();
+    let id = reg.next_id;
+    reg.next_id += 1;
+    reg.sockets.insert(id, SocketEntry { fd, kind });
+    id
+}
+
+fn get_socket(id: i64) -> Option<SocketEntry> {
+    let reg = socket_registry().lock().unwrap();
+    reg.sockets.get(&id).copied()
+}
+
+fn update_socket_kind(id: i64, kind: SocketKind) -> bool {
+    let mut reg = socket_registry().lock().unwrap();
+    if let Some(entry) = reg.sockets.get_mut(&id) {
+        entry.kind = kind;
+        true
+    } else {
+        false
+    }
+}
+
+fn remove_socket(id: i64) -> Option<SocketEntry> {
+    let mut reg = socket_registry().lock().unwrap();
+    reg.sockets.remove(&id)
+}
+
+#[derive(Debug, Clone)]
+struct LoopWatch {
+    sock_id: i64,
+    fd: RawFd,
+    read_cb: Value,
+    write_cb: Value,
+}
+
+#[derive(Debug, Clone)]
+struct LoopTimer {
+    id: i64,
+    next_fire_ms: i64,
+    interval_ms: i64,
+    callback: Value,
+    cancelled: bool,
+}
+
+#[derive(Debug, Clone)]
+struct EventLoop {
+    watches: Vec<LoopWatch>,
+    timers: Vec<LoopTimer>,
+    next_timer_id: i64,
+    stopped: bool,
+}
+
+struct EventLoopRegistry {
+    next_id: i64,
+    loops: HashMap<i64, EventLoop>,
+}
+
+impl EventLoopRegistry {
+    fn new() -> Self {
+        EventLoopRegistry {
+            next_id: 1,
+            loops: HashMap::new(),
+        }
+    }
+}
+
+thread_local! {
+    static LOOPS: RefCell<EventLoopRegistry> = RefCell::new(EventLoopRegistry::new());
+}
+
+fn register_loop(loop_val: EventLoop) -> i64 {
+    LOOPS.with(|cell| {
+        let mut reg = cell.borrow_mut();
+        let id = reg.next_id;
+        reg.next_id += 1;
+        reg.loops.insert(id, loop_val);
+        id
+    })
+}
+
+fn with_loop_mut<T, F>(id: i64, f: F) -> Result<T, String>
+where
+    F: FnOnce(&mut EventLoop) -> T,
+{
+    LOOPS.with(|cell| {
+        let mut reg = cell.borrow_mut();
+        let loop_ref = reg.loops.get_mut(&id).ok_or("Unknown event loop handle")?;
+        Ok(f(loop_ref))
+    })
+}
+
+#[derive(Debug, Clone)]
+struct ThreadHandle {
+    result: Value,
+    detached: bool,
+}
+
+struct ThreadRegistry {
+    next_id: i64,
+    threads: HashMap<i64, ThreadHandle>,
+}
+
+impl ThreadRegistry {
+    fn new() -> Self {
+        ThreadRegistry {
+            next_id: 1,
+            threads: HashMap::new(),
+        }
+    }
+}
+
+thread_local! {
+    static THREADS: RefCell<ThreadRegistry> = RefCell::new(ThreadRegistry::new());
+    static MUTEXES: RefCell<MutexRegistry> = RefCell::new(MutexRegistry::new());
+    static CONDVARS: RefCell<CondvarRegistry> = RefCell::new(CondvarRegistry::new());
+    static ATOMICS: RefCell<AtomicRegistry> = RefCell::new(AtomicRegistry::new());
+    static CHANNELS: RefCell<ChannelRegistry> = RefCell::new(ChannelRegistry::new());
+}
+
+fn register_thread(handle: ThreadHandle) -> i64 {
+    THREADS.with(|cell| {
+        let mut reg = cell.borrow_mut();
+        let id = reg.next_id;
+        reg.next_id += 1;
+        reg.threads.insert(id, handle);
+        id
+    })
+}
+
+fn with_thread_mut<T, F>(id: i64, f: F) -> Result<T, String>
+where
+    F: FnOnce(&mut ThreadHandle) -> T,
+{
+    THREADS.with(|cell| {
+        let mut reg = cell.borrow_mut();
+        let handle = reg.threads.get_mut(&id).ok_or("Unknown thread handle")?;
+        Ok(f(handle))
+    })
+}
+
+#[derive(Debug, Clone)]
+struct MutexState {
+    locked: bool,
+}
+
+struct MutexRegistry {
+    next_id: i64,
+    mutexes: HashMap<i64, MutexState>,
+}
+
+impl MutexRegistry {
+    fn new() -> Self {
+        MutexRegistry {
+            next_id: 1,
+            mutexes: HashMap::new(),
+        }
+    }
+}
+
+fn register_mutex(state: MutexState) -> i64 {
+    MUTEXES.with(|cell| {
+        let mut reg = cell.borrow_mut();
+        let id = reg.next_id;
+        reg.next_id += 1;
+        reg.mutexes.insert(id, state);
+        id
+    })
+}
+
+fn with_mutex_mut<T, F>(id: i64, f: F) -> Result<T, String>
+where
+    F: FnOnce(&mut MutexState) -> T,
+{
+    MUTEXES.with(|cell| {
+        let mut reg = cell.borrow_mut();
+        let state = reg.mutexes.get_mut(&id).ok_or("Unknown mutex handle")?;
+        Ok(f(state))
+    })
+}
+
+#[derive(Debug, Clone)]
+struct CondvarState;
+
+struct CondvarRegistry {
+    next_id: i64,
+    condvars: HashMap<i64, CondvarState>,
+}
+
+impl CondvarRegistry {
+    fn new() -> Self {
+        CondvarRegistry {
+            next_id: 1,
+            condvars: HashMap::new(),
+        }
+    }
+}
+
+fn register_condvar(state: CondvarState) -> i64 {
+    CONDVARS.with(|cell| {
+        let mut reg = cell.borrow_mut();
+        let id = reg.next_id;
+        reg.next_id += 1;
+        reg.condvars.insert(id, state);
+        id
+    })
+}
+
+fn with_condvar_mut<T, F>(id: i64, f: F) -> Result<T, String>
+where
+    F: FnOnce(&mut CondvarState) -> T,
+{
+    CONDVARS.with(|cell| {
+        let mut reg = cell.borrow_mut();
+        let state = reg.condvars.get_mut(&id).ok_or("Unknown condvar handle")?;
+        Ok(f(state))
+    })
+}
+
+#[derive(Debug, Clone)]
+struct AtomicState {
+    value: i64,
+}
+
+struct AtomicRegistry {
+    next_id: i64,
+    atomics: HashMap<i64, AtomicState>,
+}
+
+impl AtomicRegistry {
+    fn new() -> Self {
+        AtomicRegistry {
+            next_id: 1,
+            atomics: HashMap::new(),
+        }
+    }
+}
+
+fn register_atomic(state: AtomicState) -> i64 {
+    ATOMICS.with(|cell| {
+        let mut reg = cell.borrow_mut();
+        let id = reg.next_id;
+        reg.next_id += 1;
+        reg.atomics.insert(id, state);
+        id
+    })
+}
+
+fn with_atomic_mut<T, F>(id: i64, f: F) -> Result<T, String>
+where
+    F: FnOnce(&mut AtomicState) -> T,
+{
+    ATOMICS.with(|cell| {
+        let mut reg = cell.borrow_mut();
+        let state = reg.atomics.get_mut(&id).ok_or("Unknown atomic handle")?;
+        Ok(f(state))
+    })
+}
+
+#[derive(Debug, Clone)]
+struct ChannelState {
+    queue: VecDeque<Value>,
+    capacity: i64,
+    closed: bool,
+}
+
+struct ChannelRegistry {
+    next_id: i64,
+    channels: HashMap<i64, ChannelState>,
+}
+
+impl ChannelRegistry {
+    fn new() -> Self {
+        ChannelRegistry {
+            next_id: 1,
+            channels: HashMap::new(),
+        }
+    }
+}
+
+fn register_channel(state: ChannelState) -> i64 {
+    CHANNELS.with(|cell| {
+        let mut reg = cell.borrow_mut();
+        let id = reg.next_id;
+        reg.next_id += 1;
+        reg.channels.insert(id, state);
+        id
+    })
+}
+
+fn with_channel_mut<T, F>(id: i64, f: F) -> Result<T, String>
+where
+    F: FnOnce(&mut ChannelState) -> T,
+{
+    CHANNELS.with(|cell| {
+        let mut reg = cell.borrow_mut();
+        let state = reg.channels.get_mut(&id).ok_or("Unknown channel handle")?;
+        Ok(f(state))
+    })
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TlsMode {
+    Client,
+    Server,
+}
+
+struct TlsSession {
+    mode: TlsMode,
+    server_name: String,
+    client_config: Option<Arc<ClientConfig>>,
+    server_config: Option<Arc<ServerConfig>>,
+    stream: Option<TlsStream>,
+}
+
+enum TlsStream {
+    Client(StreamOwned<ClientConnection, std::net::TcpStream>),
+    Server(StreamOwned<ServerConnection, std::net::TcpStream>),
+}
+
+struct TlsRegistry {
+    next_id: i64,
+    sessions: HashMap<i64, TlsSession>,
+}
+
+impl TlsRegistry {
+    fn new() -> Self {
+        TlsRegistry {
+            next_id: 1,
+            sessions: HashMap::new(),
+        }
+    }
+}
+
+static TLS_REGISTRY: OnceLock<Mutex<TlsRegistry>> = OnceLock::new();
+
+fn tls_registry() -> &'static Mutex<TlsRegistry> {
+    TLS_REGISTRY.get_or_init(|| Mutex::new(TlsRegistry::new()))
+}
+
+fn register_tls(session: TlsSession) -> i64 {
+    let mut reg = tls_registry().lock().unwrap();
+    let id = reg.next_id;
+    reg.next_id += 1;
+    reg.sessions.insert(id, session);
+    id
+}
+
+fn with_tls_mut<T, F>(id: i64, f: F) -> Result<T, String>
+where
+    F: FnOnce(&mut TlsSession) -> Result<T, String>,
+{
+    let mut reg = tls_registry().lock().unwrap();
+    let session = reg.sessions.get_mut(&id).ok_or("Unknown TLS handle")?;
+    f(session)
+}
+
+fn remove_tls(id: i64) {
+    let mut reg = tls_registry().lock().unwrap();
+    reg.sessions.remove(&id);
+}
+
+fn result_ok(value: Value) -> Value {
+    let mut dict = DictValue::new();
+    dict.set(Value::String("ok".to_string()), Value::Bool(true));
+    dict.set(Value::String("value".to_string()), value);
+    Value::Dict(Rc::new(RefCell::new(dict)))
+}
+
+fn result_err(message: String, code: i64) -> Value {
+    let mut dict = DictValue::new();
+    dict.set(Value::String("ok".to_string()), Value::Bool(false));
+    dict.set(Value::String("error".to_string()), Value::String(message));
+    dict.set(Value::String("code".to_string()), Value::Integer(code));
+    Value::Dict(Rc::new(RefCell::new(dict)))
+}
+
+fn mono_ms_now() -> i64 {
+    let start = MONO_START.get_or_init(std::time::Instant::now);
+    start.elapsed().as_millis() as i64
+}
+
+fn make_resolver() -> Result<Resolver, String> {
+    Resolver::from_system_conf()
+        .or_else(|_| Resolver::new(ResolverConfig::default(), ResolverOpts::default()))
+        .map_err(|e| format!("DNS resolver init failed: {}", e))
+}
+
+struct InsecureVerifier;
+
+impl ServerCertVerifier for InsecureVerifier {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &Certificate,
+        _intermediates: &[Certificate],
+        _server_name: &ServerName,
+        _scts: &mut dyn Iterator<Item = &[u8]>,
+        _ocsp: &[u8],
+        _now: std::time::SystemTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        Ok(ServerCertVerified::assertion())
+    }
+}
+
+struct TlsConfigData {
+    mode: TlsMode,
+    server_name: String,
+    insecure: bool,
+    ca_pem: Option<String>,
+    cert_pem: Option<String>,
+    key_pem: Option<String>,
+}
+
+fn dict_get_string(dict: &DictValue, key: &str) -> Option<String> {
+    dict.get(&Value::String(key.to_string()))
+        .and_then(|v| match v {
+            Value::String(s) => Some(s.clone()),
+            _ => None,
+        })
+}
+
+fn dict_get_bool(dict: &DictValue, key: &str) -> Option<bool> {
+    dict.get(&Value::String(key.to_string()))
+        .and_then(|v| match v {
+            Value::Bool(b) => Some(*b),
+            _ => None,
+        })
+}
+
+fn tls_config_from_value(value: &Value) -> Result<TlsConfigData, String> {
+    if matches!(value, Value::Nil) {
+        return Ok(TlsConfigData {
+            mode: TlsMode::Client,
+            server_name: "localhost".to_string(),
+            insecure: false,
+            ca_pem: None,
+            cert_pem: None,
+            key_pem: None,
+        });
+    }
+    let dict = match value {
+        Value::Dict(d) => d.borrow(),
+        _ => return Err("tls_client_new() expects config dict".to_string()),
+    };
+
+    let mode = dict_get_string(&dict, "mode")
+        .unwrap_or_else(|| "client".to_string())
+        .to_lowercase();
+    let mode = if mode == "server" {
+        TlsMode::Server
+    } else {
+        TlsMode::Client
+    };
+
+    let mut server_name = dict_get_string(&dict, "server_name").unwrap_or_else(|| "localhost".to_string());
+    if server_name.is_empty() {
+        server_name = "localhost".to_string();
+    }
+
+    let insecure = dict_get_bool(&dict, "insecure").unwrap_or(false);
+    let ca_pem = dict_get_string(&dict, "ca_pem").filter(|s| !s.is_empty());
+    let cert_pem = dict_get_string(&dict, "cert_pem").filter(|s| !s.is_empty());
+    let key_pem = dict_get_string(&dict, "key_pem").filter(|s| !s.is_empty());
+
+    Ok(TlsConfigData {
+        mode,
+        server_name,
+        insecure,
+        ca_pem,
+        cert_pem,
+        key_pem,
+    })
+}
+
+fn build_client_config(cfg: &TlsConfigData) -> Result<Arc<ClientConfig>, String> {
+    let mut roots = RootCertStore::empty();
+    if let Some(pem) = &cfg.ca_pem {
+        let mut reader = std::io::Cursor::new(pem.as_bytes());
+        let certs = certs(&mut reader).map_err(|e| format!("Invalid CA certs: {}", e))?;
+        let (added, _ignored) = roots.add_parsable_certificates(&certs);
+        if added == 0 {
+            return Err("No valid CA certificates found".to_string());
+        }
+    } else {
+        roots.add_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(|ta| {
+            OwnedTrustAnchor::from_subject_spki_name_constraints(
+                ta.subject,
+                ta.spki,
+                ta.name_constraints,
+            )
+        }));
+    }
+
+    let mut config = ClientConfig::builder()
+        .with_safe_defaults()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+
+    if cfg.insecure {
+        config
+            .dangerous()
+            .set_certificate_verifier(Arc::new(InsecureVerifier));
+    }
+
+    Ok(Arc::new(config))
+}
+
+fn build_server_config(cfg: &TlsConfigData) -> Result<Arc<ServerConfig>, String> {
+    let cert_pem = cfg
+        .cert_pem
+        .as_ref()
+        .ok_or("Server cert_pem is required")?;
+    let key_pem = cfg.key_pem.as_ref().ok_or("Server key_pem is required")?;
+
+    let mut cert_reader = std::io::Cursor::new(cert_pem.as_bytes());
+    let certs = certs(&mut cert_reader).map_err(|e| format!("Invalid server cert: {}", e))?;
+    let certs = certs.into_iter().map(Certificate).collect::<Vec<_>>();
+
+    let mut key_reader = std::io::Cursor::new(key_pem.as_bytes());
+    let mut keys =
+        pkcs8_private_keys(&mut key_reader).map_err(|e| format!("Invalid server key: {}", e))?;
+    if keys.is_empty() {
+        let mut key_reader = std::io::Cursor::new(key_pem.as_bytes());
+        keys = rsa_private_keys(&mut key_reader)
+            .map_err(|e| format!("Invalid server key: {}", e))?;
+    }
+    let key = keys
+        .into_iter()
+        .next()
+        .ok_or("Server key_pem did not contain a private key")?;
+
+    let config = ServerConfig::builder()
+        .with_safe_defaults()
+        .with_no_client_auth()
+        .with_single_cert(certs, PrivateKey(key))
+        .map_err(|e| format!("Invalid server TLS config: {}", e))?;
+
+    Ok(Arc::new(config))
+}
+
+fn addr_dict(host: String, port: i64) -> Value {
+    let mut dict = DictValue::new();
+    dict.set(Value::String("host".to_string()), Value::String(host));
+    dict.set(Value::String("port".to_string()), Value::Integer(port));
+    Value::Dict(Rc::new(RefCell::new(dict)))
+}
+
+fn event_dict(kind: &str, sock: Option<i64>, timer_id: Option<i64>, callback: Option<Value>) -> Value {
+    let mut dict = DictValue::new();
+    dict.set(Value::String("kind".to_string()), Value::String(kind.to_string()));
+    if let Some(sock_id) = sock {
+        dict.set(Value::String("sock".to_string()), Value::Integer(sock_id));
+    }
+    if let Some(id) = timer_id {
+        dict.set(Value::String("id".to_string()), Value::Integer(id));
+    }
+    if let Some(cb) = callback {
+        dict.set(Value::String("callback".to_string()), cb);
+    }
+    Value::Dict(Rc::new(RefCell::new(dict)))
+}
+
+fn resolve_ipv4_addr(host: Option<&str>, port: u16) -> Result<libc::sockaddr_in, String> {
+    let mut addr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
+    addr.sin_family = libc::AF_INET as u16;
+    addr.sin_port = port.to_be();
+
+    if let Some(host_str) = host {
+        let mut resolved = None;
+        let iter = (host_str, port)
+            .to_socket_addrs()
+            .map_err(|e| format!("DNS lookup failed: {}", e))?;
+        for sock in iter {
+            if let std::net::SocketAddr::V4(v4) = sock {
+                resolved = Some(v4);
+                break;
+            }
+        }
+        let v4 = resolved.ok_or_else(|| "No IPv4 address found".to_string())?;
+        addr.sin_addr = libc::in_addr {
+            s_addr: u32::from_ne_bytes(v4.ip().octets()),
+        };
+    } else {
+        addr.sin_addr = libc::in_addr { s_addr: 0 };
+    }
+
+    Ok(addr)
+}
+
+fn sockaddr_to_host_port(addr: &libc::sockaddr_in) -> (String, i64) {
+    let host = std::net::Ipv4Addr::from(u32::from_be(addr.sin_addr.s_addr)).to_string();
+    let port = u16::from_be(addr.sin_port) as i64;
+    (host, port)
+}
 
 fn format_braw_time(hours: u64, minutes: u64) -> String {
     match hours {
@@ -445,8 +1084,1961 @@ impl Interpreter {
                     Value::List(l) => Ok(Value::Integer(l.borrow().len() as i64)),
                     Value::Dict(d) => Ok(Value::Integer(d.borrow().len() as i64)),
                     Value::Set(s) => Ok(Value::Integer(s.borrow().len() as i64)),
-                    _ => Err("len() expects a string, list, dict, or creel".to_string()),
+                    Value::Bytes(b) => Ok(Value::Integer(b.borrow().len() as i64)),
+                    _ => Err("len() expects a string, list, dict, creel, or bytes".to_string()),
                 }
+            }))),
+        );
+
+        // bytes - create a zeroed byte buffer of given size
+        globals.borrow_mut().define(
+            "bytes".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("bytes", 1, |args| {
+                let size = match &args[0] {
+                    Value::Integer(n) => *n,
+                    Value::Float(f) => *f as i64,
+                    _ => return Err("bytes() expects an integer size".to_string()),
+                };
+                let size = if size < 0 { 0 } else { size } as usize;
+                Ok(Value::Bytes(Rc::new(RefCell::new(vec![0u8; size]))))
+            }))),
+        );
+
+        // bytes_from_string - create bytes from string
+        globals.borrow_mut().define(
+            "bytes_from_string".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "bytes_from_string",
+                1,
+                |args| {
+                    let s = match &args[0] {
+                        Value::String(s) => s.clone(),
+                        _ => format!("{}", args[0]),
+                    };
+                    Ok(Value::Bytes(Rc::new(RefCell::new(
+                        s.as_bytes().to_vec(),
+                    ))))
+                },
+            ))),
+        );
+
+        // bytes_len - get length of a byte buffer
+        globals.borrow_mut().define(
+            "bytes_len".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("bytes_len", 1, |args| {
+                if let Value::Bytes(b) = &args[0] {
+                    Ok(Value::Integer(b.borrow().len() as i64))
+                } else {
+                    Err("bytes_len() expects bytes".to_string())
+                }
+            }))),
+        );
+
+        // bytes_slice - slice a byte buffer
+        globals.borrow_mut().define(
+            "bytes_slice".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "bytes_slice",
+                3,
+                |args| {
+                    let bytes = match &args[0] {
+                        Value::Bytes(b) => b.borrow(),
+                        _ => return Err("bytes_slice() expects bytes".to_string()),
+                    };
+                    let start = match &args[1] {
+                        Value::Integer(n) => *n,
+                        _ => return Err("bytes_slice() expects integer start".to_string()),
+                    };
+                    let end = match &args[2] {
+                        Value::Integer(n) => *n,
+                        _ => return Err("bytes_slice() expects integer end".to_string()),
+                    };
+                    let len = bytes.len() as i64;
+                    let mut s = start;
+                    let mut e = end;
+                    if s < 0 {
+                        s += len;
+                    }
+                    if e < 0 {
+                        e += len;
+                    }
+                    if s < 0 {
+                        s = 0;
+                    }
+                    if e > len {
+                        e = len;
+                    }
+                    if e < s {
+                        e = s;
+                    }
+                    let out = bytes[s as usize..e as usize].to_vec();
+                    Ok(Value::Bytes(Rc::new(RefCell::new(out))))
+                },
+            ))),
+        );
+
+        // bytes_get - get byte at index
+        globals.borrow_mut().define(
+            "bytes_get".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("bytes_get", 2, |args| {
+                let bytes = match &args[0] {
+                    Value::Bytes(b) => b.borrow(),
+                    _ => return Err("bytes_get() expects bytes".to_string()),
+                };
+                let mut idx = match &args[1] {
+                    Value::Integer(n) => *n,
+                    _ => return Err("bytes_get() expects integer index".to_string()),
+                };
+                let len = bytes.len() as i64;
+                if idx < 0 {
+                    idx += len;
+                }
+                if idx < 0 || idx >= len {
+                    return Err("bytes_get() index oot o' bounds".to_string());
+                }
+                Ok(Value::Integer(bytes[idx as usize] as i64))
+            }))),
+        );
+
+        // bytes_set - set byte at index
+        globals.borrow_mut().define(
+            "bytes_set".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "bytes_set",
+                3,
+                |args| {
+                    let bytes = match &args[0] {
+                        Value::Bytes(b) => b.clone(),
+                        _ => return Err("bytes_set() expects bytes".to_string()),
+                    };
+                    let mut idx = match &args[1] {
+                        Value::Integer(n) => *n,
+                        _ => return Err("bytes_set() expects integer index".to_string()),
+                    };
+                    let v = match &args[2] {
+                        Value::Integer(n) => *n,
+                        Value::Float(f) => *f as i64,
+                        _ => return Err("bytes_set() expects integer value".to_string()),
+                    };
+                    if v < 0 || v > 255 {
+                        return Err("bytes_set() value must be between 0 and 255".to_string());
+                    }
+                    {
+                        let mut buf = bytes.borrow_mut();
+                        let len = buf.len() as i64;
+                        if idx < 0 {
+                            idx += len;
+                        }
+                        if idx < 0 || idx >= len {
+                            return Err("bytes_set() index oot o' bounds".to_string());
+                        }
+                        buf[idx as usize] = v as u8;
+                    }
+                    Ok(Value::Bytes(bytes))
+                },
+            ))),
+        );
+
+        // bytes_append - append bytes to bytes
+        globals.borrow_mut().define(
+            "bytes_append".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "bytes_append",
+                2,
+                |args| {
+                    let bytes = match &args[0] {
+                        Value::Bytes(b) => b.clone(),
+                        _ => return Err("bytes_append() expects bytes".to_string()),
+                    };
+                    let other = match &args[1] {
+                        Value::Bytes(b) => b.borrow(),
+                        _ => return Err("bytes_append() expects bytes".to_string()),
+                    };
+                    bytes.borrow_mut().extend_from_slice(&other);
+                    Ok(Value::Bytes(bytes))
+                },
+            ))),
+        );
+
+        // bytes_read_u16be
+        globals.borrow_mut().define(
+            "bytes_read_u16be".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "bytes_read_u16be",
+                2,
+                |args| {
+                    let bytes = match &args[0] {
+                        Value::Bytes(b) => b.borrow(),
+                        _ => return Err("bytes_read_u16be() expects bytes".to_string()),
+                    };
+                    let off = match &args[1] {
+                        Value::Integer(n) => *n,
+                        _ => return Err("bytes_read_u16be() expects integer offset".to_string()),
+                    };
+                    if off < 0 || (off as usize + 2) > bytes.len() {
+                        return Err("bytes_read_u16be() out o' bounds".to_string());
+                    }
+                    let v = ((bytes[off as usize] as u16) << 8)
+                        | (bytes[off as usize + 1] as u16);
+                    Ok(Value::Integer(v as i64))
+                },
+            ))),
+        );
+
+        // bytes_read_u32be
+        globals.borrow_mut().define(
+            "bytes_read_u32be".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "bytes_read_u32be",
+                2,
+                |args| {
+                    let bytes = match &args[0] {
+                        Value::Bytes(b) => b.borrow(),
+                        _ => return Err("bytes_read_u32be() expects bytes".to_string()),
+                    };
+                    let off = match &args[1] {
+                        Value::Integer(n) => *n,
+                        _ => return Err("bytes_read_u32be() expects integer offset".to_string()),
+                    };
+                    if off < 0 || (off as usize + 4) > bytes.len() {
+                        return Err("bytes_read_u32be() out o' bounds".to_string());
+                    }
+                    let v = ((bytes[off as usize] as u32) << 24)
+                        | ((bytes[off as usize + 1] as u32) << 16)
+                        | ((bytes[off as usize + 2] as u32) << 8)
+                        | (bytes[off as usize + 3] as u32);
+                    Ok(Value::Integer(v as i64))
+                },
+            ))),
+        );
+
+        // bytes_write_u16be
+        globals.borrow_mut().define(
+            "bytes_write_u16be".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "bytes_write_u16be",
+                3,
+                |args| {
+                    let bytes = match &args[0] {
+                        Value::Bytes(b) => b.clone(),
+                        _ => return Err("bytes_write_u16be() expects bytes".to_string()),
+                    };
+                    let off = match &args[1] {
+                        Value::Integer(n) => *n,
+                        _ => return Err("bytes_write_u16be() expects integer offset".to_string()),
+                    };
+                    let v = match &args[2] {
+                        Value::Integer(n) => *n,
+                        Value::Float(f) => *f as i64,
+                        _ => return Err("bytes_write_u16be() expects integer value".to_string()),
+                    };
+                    if v < 0 || v > 0xFFFF {
+                        return Err("bytes_write_u16be() value out o' range".to_string());
+                    }
+                    {
+                        let mut buf = bytes.borrow_mut();
+                        if off < 0 || (off as usize + 2) > buf.len() {
+                            return Err("bytes_write_u16be() out o' bounds".to_string());
+                        }
+                        buf[off as usize] = ((v >> 8) & 0xFF) as u8;
+                        buf[off as usize + 1] = (v & 0xFF) as u8;
+                    }
+                    Ok(Value::Bytes(bytes))
+                },
+            ))),
+        );
+
+        // bytes_write_u32be
+        globals.borrow_mut().define(
+            "bytes_write_u32be".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "bytes_write_u32be",
+                3,
+                |args| {
+                    let bytes = match &args[0] {
+                        Value::Bytes(b) => b.clone(),
+                        _ => return Err("bytes_write_u32be() expects bytes".to_string()),
+                    };
+                    let off = match &args[1] {
+                        Value::Integer(n) => *n,
+                        _ => return Err("bytes_write_u32be() expects integer offset".to_string()),
+                    };
+                    let v = match &args[2] {
+                        Value::Integer(n) => *n,
+                        Value::Float(f) => *f as i64,
+                        _ => return Err("bytes_write_u32be() expects integer value".to_string()),
+                    };
+                    if v < 0 || v > 0xFFFF_FFFF {
+                        return Err("bytes_write_u32be() value out o' range".to_string());
+                    }
+                    {
+                        let mut buf = bytes.borrow_mut();
+                        if off < 0 || (off as usize + 4) > buf.len() {
+                            return Err("bytes_write_u32be() out o' bounds".to_string());
+                        }
+                        buf[off as usize] = ((v >> 24) & 0xFF) as u8;
+                        buf[off as usize + 1] = ((v >> 16) & 0xFF) as u8;
+                        buf[off as usize + 2] = ((v >> 8) & 0xFF) as u8;
+                        buf[off as usize + 3] = (v & 0xFF) as u8;
+                    }
+                    Ok(Value::Bytes(bytes))
+                },
+            ))),
+        );
+
+        // socket_udp - create UDP socket
+        globals.borrow_mut().define(
+            "socket_udp".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("socket_udp", 0, |_args| {
+                let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+                if fd < 0 {
+                    let err = std::io::Error::last_os_error();
+                    let code = err.raw_os_error().unwrap_or(-1) as i64;
+                    return Ok(result_err(err.to_string(), code));
+                }
+                let id = register_socket(fd, SocketKind::Udp);
+                Ok(result_ok(Value::Integer(id)))
+            }))),
+        );
+
+        // socket_tcp - create TCP socket
+        globals.borrow_mut().define(
+            "socket_tcp".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("socket_tcp", 0, |_args| {
+                let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) };
+                if fd < 0 {
+                    let err = std::io::Error::last_os_error();
+                    let code = err.raw_os_error().unwrap_or(-1) as i64;
+                    return Ok(result_err(err.to_string(), code));
+                }
+                let id = register_socket(fd, SocketKind::Tcp);
+                Ok(result_ok(Value::Integer(id)))
+            }))),
+        );
+
+        // socket_bind(sock, host, port)
+        globals.borrow_mut().define(
+            "socket_bind".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("socket_bind", 3, |args| {
+                let sock_id = args[0]
+                    .as_integer()
+                    .ok_or("socket_bind() expects socket id")?;
+                let host = match &args[1] {
+                    Value::Nil => None,
+                    Value::String(s) if s.is_empty() => None,
+                    Value::String(s) => Some(s.as_str()),
+                    _ => return Err("socket_bind() expects host string or nil".to_string()),
+                };
+                let port = args[2]
+                    .as_integer()
+                    .ok_or("socket_bind() expects port integer")?;
+                if port < 0 || port > 65535 {
+                    return Err("socket_bind() port must be 0..65535".to_string());
+                }
+
+                let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+                let addr = resolve_ipv4_addr(host, port as u16)
+                    .map_err(|e| format!("socket_bind() {}", e))?;
+                let rc = unsafe {
+                    libc::bind(
+                        entry.fd,
+                        &addr as *const _ as *const libc::sockaddr,
+                        std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                    )
+                };
+                if rc != 0 {
+                    let err = std::io::Error::last_os_error();
+                    let code = err.raw_os_error().unwrap_or(-1) as i64;
+                    return Ok(result_err(err.to_string(), code));
+                }
+                Ok(result_ok(Value::Nil))
+            }))),
+        );
+
+        // socket_connect(sock, host, port)
+        globals.borrow_mut().define(
+            "socket_connect".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "socket_connect",
+                3,
+                |args| {
+                    let sock_id = args[0]
+                        .as_integer()
+                        .ok_or("socket_connect() expects socket id")?;
+                    let host = match &args[1] {
+                        Value::String(s) => s.as_str(),
+                        _ => return Err("socket_connect() expects host string".to_string()),
+                    };
+                    let port = args[2]
+                        .as_integer()
+                        .ok_or("socket_connect() expects port integer")?;
+                    if port < 0 || port > 65535 {
+                        return Err("socket_connect() port must be 0..65535".to_string());
+                    }
+
+                    let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+                    let addr = resolve_ipv4_addr(Some(host), port as u16)
+                        .map_err(|e| format!("socket_connect() {}", e))?;
+                    let rc = unsafe {
+                        libc::connect(
+                            entry.fd,
+                            &addr as *const _ as *const libc::sockaddr,
+                            std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                        )
+                    };
+                    if rc != 0 {
+                        let err = std::io::Error::last_os_error();
+                        let code = err.raw_os_error().unwrap_or(-1) as i64;
+                        return Ok(result_err(err.to_string(), code));
+                    }
+                    Ok(result_ok(Value::Nil))
+                },
+            ))),
+        );
+
+        // socket_listen(sock, backlog)
+        globals.borrow_mut().define(
+            "socket_listen".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("socket_listen", 2, |args| {
+                let sock_id = args[0]
+                    .as_integer()
+                    .ok_or("socket_listen() expects socket id")?;
+                let backlog = args[1]
+                    .as_integer()
+                    .ok_or("socket_listen() expects backlog integer")?;
+                let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+                let rc = unsafe { libc::listen(entry.fd, backlog as i32) };
+                if rc != 0 {
+                    let err = std::io::Error::last_os_error();
+                    let code = err.raw_os_error().unwrap_or(-1) as i64;
+                    return Ok(result_err(err.to_string(), code));
+                }
+                let _ = update_socket_kind(sock_id, SocketKind::Tcp);
+                Ok(result_ok(Value::Nil))
+            }))),
+        );
+
+        // socket_accept(sock)
+        globals.borrow_mut().define(
+            "socket_accept".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("socket_accept", 1, |args| {
+                let sock_id = args[0]
+                    .as_integer()
+                    .ok_or("socket_accept() expects socket id")?;
+                let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+                let mut addr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
+                let mut addr_len = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+                let new_fd = unsafe {
+                    libc::accept(
+                        entry.fd,
+                        &mut addr as *mut _ as *mut libc::sockaddr,
+                        &mut addr_len,
+                    )
+                };
+                if new_fd < 0 {
+                    let err = std::io::Error::last_os_error();
+                    let code = err.raw_os_error().unwrap_or(-1) as i64;
+                    return Ok(result_err(err.to_string(), code));
+                }
+                let new_id = register_socket(new_fd, SocketKind::Tcp);
+                let (host, port) = sockaddr_to_host_port(&addr);
+                let mut info = DictValue::new();
+                info.set(Value::String("sock".to_string()), Value::Integer(new_id));
+                info.set(Value::String("addr".to_string()), addr_dict(host, port));
+                Ok(result_ok(Value::Dict(Rc::new(RefCell::new(info)))))
+            }))),
+        );
+
+        // socket_set_nonblocking(sock, on)
+        globals.borrow_mut().define(
+            "socket_set_nonblocking".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "socket_set_nonblocking",
+                2,
+                |args| {
+                    let sock_id = args[0]
+                        .as_integer()
+                        .ok_or("socket_set_nonblocking() expects socket id")?;
+                    let enable = args[1].is_truthy();
+                    let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+                    let flags = unsafe { libc::fcntl(entry.fd, libc::F_GETFL) };
+                    if flags < 0 {
+                        let err = std::io::Error::last_os_error();
+                        let code = err.raw_os_error().unwrap_or(-1) as i64;
+                        return Ok(result_err(err.to_string(), code));
+                    }
+                    let new_flags = if enable {
+                        flags | libc::O_NONBLOCK
+                    } else {
+                        flags & !libc::O_NONBLOCK
+                    };
+                    let rc = unsafe { libc::fcntl(entry.fd, libc::F_SETFL, new_flags) };
+                    if rc != 0 {
+                        let err = std::io::Error::last_os_error();
+                        let code = err.raw_os_error().unwrap_or(-1) as i64;
+                        return Ok(result_err(err.to_string(), code));
+                    }
+                    Ok(result_ok(Value::Nil))
+                },
+            ))),
+        );
+
+        // socket_set_reuseaddr(sock, on)
+        globals.borrow_mut().define(
+            "socket_set_reuseaddr".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "socket_set_reuseaddr",
+                2,
+                |args| {
+                    let sock_id = args[0]
+                        .as_integer()
+                        .ok_or("socket_set_reuseaddr() expects socket id")?;
+                    let enable = args[1].is_truthy();
+                    let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+                    let optval: libc::c_int = if enable { 1 } else { 0 };
+                    let rc = unsafe {
+                        libc::setsockopt(
+                            entry.fd,
+                            libc::SOL_SOCKET,
+                            libc::SO_REUSEADDR,
+                            &optval as *const _ as *const libc::c_void,
+                            std::mem::size_of_val(&optval) as libc::socklen_t,
+                        )
+                    };
+                    if rc != 0 {
+                        let err = std::io::Error::last_os_error();
+                        let code = err.raw_os_error().unwrap_or(-1) as i64;
+                        return Ok(result_err(err.to_string(), code));
+                    }
+                    Ok(result_ok(Value::Nil))
+                },
+            ))),
+        );
+
+        // socket_set_reuseport(sock, on)
+        globals.borrow_mut().define(
+            "socket_set_reuseport".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "socket_set_reuseport",
+                2,
+                |args| {
+                    let sock_id = args[0]
+                        .as_integer()
+                        .ok_or("socket_set_reuseport() expects socket id")?;
+                    let enable = args[1].is_truthy();
+                    let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+                    let optval: libc::c_int = if enable { 1 } else { 0 };
+                    let rc = unsafe {
+                        libc::setsockopt(
+                            entry.fd,
+                            libc::SOL_SOCKET,
+                            libc::SO_REUSEPORT,
+                            &optval as *const _ as *const libc::c_void,
+                            std::mem::size_of_val(&optval) as libc::socklen_t,
+                        )
+                    };
+                    if rc != 0 {
+                        let err = std::io::Error::last_os_error();
+                        let code = err.raw_os_error().unwrap_or(-1) as i64;
+                        return Ok(result_err(err.to_string(), code));
+                    }
+                    Ok(result_ok(Value::Nil))
+                },
+            ))),
+        );
+
+        // socket_set_ttl(sock, ttl)
+        globals.borrow_mut().define(
+            "socket_set_ttl".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("socket_set_ttl", 2, |args| {
+                let sock_id = args[0]
+                    .as_integer()
+                    .ok_or("socket_set_ttl() expects socket id")?;
+                let ttl = args[1]
+                    .as_integer()
+                    .ok_or("socket_set_ttl() expects ttl integer")?;
+                if ttl < 0 || ttl > 255 {
+                    return Err("socket_set_ttl() ttl must be 0..255".to_string());
+                }
+                let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+                let optval: libc::c_int = ttl as libc::c_int;
+                let rc = unsafe {
+                    libc::setsockopt(
+                        entry.fd,
+                        libc::IPPROTO_IP,
+                        libc::IP_TTL,
+                        &optval as *const _ as *const libc::c_void,
+                        std::mem::size_of_val(&optval) as libc::socklen_t,
+                    )
+                };
+                if rc != 0 {
+                    let err = std::io::Error::last_os_error();
+                    let code = err.raw_os_error().unwrap_or(-1) as i64;
+                    return Ok(result_err(err.to_string(), code));
+                }
+                Ok(result_ok(Value::Nil))
+            }))),
+        );
+
+        // socket_set_nodelay(sock, on)
+        globals.borrow_mut().define(
+            "socket_set_nodelay".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "socket_set_nodelay",
+                2,
+                |args| {
+                    let sock_id = args[0]
+                        .as_integer()
+                        .ok_or("socket_set_nodelay() expects socket id")?;
+                    let enable = args[1].is_truthy();
+                    let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+                    let optval: libc::c_int = if enable { 1 } else { 0 };
+                    let rc = unsafe {
+                        libc::setsockopt(
+                            entry.fd,
+                            libc::IPPROTO_TCP,
+                            libc::TCP_NODELAY,
+                            &optval as *const _ as *const libc::c_void,
+                            std::mem::size_of_val(&optval) as libc::socklen_t,
+                        )
+                    };
+                    if rc != 0 {
+                        let err = std::io::Error::last_os_error();
+                        let code = err.raw_os_error().unwrap_or(-1) as i64;
+                        return Ok(result_err(err.to_string(), code));
+                    }
+                    Ok(result_ok(Value::Nil))
+                },
+            ))),
+        );
+
+        // socket_set_rcvbuf(sock, bytes)
+        globals.borrow_mut().define(
+            "socket_set_rcvbuf".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "socket_set_rcvbuf",
+                2,
+                |args| {
+                    let sock_id = args[0]
+                        .as_integer()
+                        .ok_or("socket_set_rcvbuf() expects socket id")?;
+                    let size = args[1]
+                        .as_integer()
+                        .ok_or("socket_set_rcvbuf() expects size integer")?;
+                    if size < 0 || size > i32::MAX as i64 {
+                        return Err("socket_set_rcvbuf() size must be >= 0".to_string());
+                    }
+                    let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+                    let optval: libc::c_int = size as libc::c_int;
+                    let rc = unsafe {
+                        libc::setsockopt(
+                            entry.fd,
+                            libc::SOL_SOCKET,
+                            libc::SO_RCVBUF,
+                            &optval as *const _ as *const libc::c_void,
+                            std::mem::size_of_val(&optval) as libc::socklen_t,
+                        )
+                    };
+                    if rc != 0 {
+                        let err = std::io::Error::last_os_error();
+                        let code = err.raw_os_error().unwrap_or(-1) as i64;
+                        return Ok(result_err(err.to_string(), code));
+                    }
+                    Ok(result_ok(Value::Nil))
+                },
+            ))),
+        );
+
+        // socket_set_sndbuf(sock, bytes)
+        globals.borrow_mut().define(
+            "socket_set_sndbuf".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "socket_set_sndbuf",
+                2,
+                |args| {
+                    let sock_id = args[0]
+                        .as_integer()
+                        .ok_or("socket_set_sndbuf() expects socket id")?;
+                    let size = args[1]
+                        .as_integer()
+                        .ok_or("socket_set_sndbuf() expects size integer")?;
+                    if size < 0 || size > i32::MAX as i64 {
+                        return Err("socket_set_sndbuf() size must be >= 0".to_string());
+                    }
+                    let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+                    let optval: libc::c_int = size as libc::c_int;
+                    let rc = unsafe {
+                        libc::setsockopt(
+                            entry.fd,
+                            libc::SOL_SOCKET,
+                            libc::SO_SNDBUF,
+                            &optval as *const _ as *const libc::c_void,
+                            std::mem::size_of_val(&optval) as libc::socklen_t,
+                        )
+                    };
+                    if rc != 0 {
+                        let err = std::io::Error::last_os_error();
+                        let code = err.raw_os_error().unwrap_or(-1) as i64;
+                        return Ok(result_err(err.to_string(), code));
+                    }
+                    Ok(result_ok(Value::Nil))
+                },
+            ))),
+        );
+
+        // socket_close(sock)
+        globals.borrow_mut().define(
+            "socket_close".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("socket_close", 1, |args| {
+                let sock_id = args[0]
+                    .as_integer()
+                    .ok_or("socket_close() expects socket id")?;
+                let entry = remove_socket(sock_id).ok_or("Unknown socket handle")?;
+                let rc = unsafe { libc::close(entry.fd) };
+                if rc != 0 {
+                    let err = std::io::Error::last_os_error();
+                    let code = err.raw_os_error().unwrap_or(-1) as i64;
+                    return Ok(result_err(err.to_string(), code));
+                }
+                Ok(result_ok(Value::Nil))
+            }))),
+        );
+
+        // udp_send_to(sock, bytes, host, port)
+        globals.borrow_mut().define(
+            "udp_send_to".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("udp_send_to", 4, |args| {
+                let sock_id = args[0]
+                    .as_integer()
+                    .ok_or("udp_send_to() expects socket id")?;
+                let bytes = match &args[1] {
+                    Value::Bytes(b) => b.borrow(),
+                    _ => return Err("udp_send_to() expects bytes".to_string()),
+                };
+                let host = match &args[2] {
+                    Value::String(s) => s.as_str(),
+                    _ => return Err("udp_send_to() expects host string".to_string()),
+                };
+                let port = args[3]
+                    .as_integer()
+                    .ok_or("udp_send_to() expects port integer")?;
+                if port < 0 || port > 65535 {
+                    return Err("udp_send_to() port must be 0..65535".to_string());
+                }
+
+                let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+                let addr = resolve_ipv4_addr(Some(host), port as u16)
+                    .map_err(|e| format!("udp_send_to() {}", e))?;
+                let sent = unsafe {
+                    libc::sendto(
+                        entry.fd,
+                        bytes.as_ptr() as *const libc::c_void,
+                        bytes.len(),
+                        0,
+                        &addr as *const _ as *const libc::sockaddr,
+                        std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                    )
+                };
+                if sent < 0 {
+                    let err = std::io::Error::last_os_error();
+                    let code = err.raw_os_error().unwrap_or(-1) as i64;
+                    return Ok(result_err(err.to_string(), code));
+                }
+                Ok(result_ok(Value::Integer(sent as i64)))
+            }))),
+        );
+
+        // udp_recv_from(sock, max_len)
+        globals.borrow_mut().define(
+            "udp_recv_from".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("udp_recv_from", 2, |args| {
+                let sock_id = args[0]
+                    .as_integer()
+                    .ok_or("udp_recv_from() expects socket id")?;
+                let max_len = args[1]
+                    .as_integer()
+                    .ok_or("udp_recv_from() expects max_len integer")?;
+                let max_len = if max_len < 0 { 0 } else { max_len } as usize;
+                let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+
+                let mut buf = vec![0u8; max_len];
+                let mut addr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
+                let mut addr_len =
+                    std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+                let n = unsafe {
+                    libc::recvfrom(
+                        entry.fd,
+                        buf.as_mut_ptr() as *mut libc::c_void,
+                        buf.len(),
+                        0,
+                        &mut addr as *mut _ as *mut libc::sockaddr,
+                        &mut addr_len,
+                    )
+                };
+                if n < 0 {
+                    let err = std::io::Error::last_os_error();
+                    let code = err.raw_os_error().unwrap_or(-1) as i64;
+                    return Ok(result_err(err.to_string(), code));
+                }
+                buf.truncate(n as usize);
+                let (host, port) = sockaddr_to_host_port(&addr);
+                let mut info = DictValue::new();
+                info.set(
+                    Value::String("buf".to_string()),
+                    Value::Bytes(Rc::new(RefCell::new(buf))),
+                );
+                info.set(Value::String("addr".to_string()), addr_dict(host, port));
+                Ok(result_ok(Value::Dict(Rc::new(RefCell::new(info)))))
+            }))),
+        );
+
+        // tcp_send(sock, bytes)
+        globals.borrow_mut().define(
+            "tcp_send".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("tcp_send", 2, |args| {
+                let sock_id = args[0]
+                    .as_integer()
+                    .ok_or("tcp_send() expects socket id")?;
+                let bytes = match &args[1] {
+                    Value::Bytes(b) => b.borrow(),
+                    _ => return Err("tcp_send() expects bytes".to_string()),
+                };
+                let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+                let sent = unsafe {
+                    libc::send(
+                        entry.fd,
+                        bytes.as_ptr() as *const libc::c_void,
+                        bytes.len(),
+                        0,
+                    )
+                };
+                if sent < 0 {
+                    let err = std::io::Error::last_os_error();
+                    let code = err.raw_os_error().unwrap_or(-1) as i64;
+                    return Ok(result_err(err.to_string(), code));
+                }
+                Ok(result_ok(Value::Integer(sent as i64)))
+            }))),
+        );
+
+        // tcp_recv(sock, max_len)
+        globals.borrow_mut().define(
+            "tcp_recv".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("tcp_recv", 2, |args| {
+                let sock_id = args[0]
+                    .as_integer()
+                    .ok_or("tcp_recv() expects socket id")?;
+                let max_len = args[1]
+                    .as_integer()
+                    .ok_or("tcp_recv() expects max_len integer")?;
+                let max_len = if max_len < 0 { 0 } else { max_len } as usize;
+                let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+                let mut buf = vec![0u8; max_len];
+                let n = unsafe {
+                    libc::recv(
+                        entry.fd,
+                        buf.as_mut_ptr() as *mut libc::c_void,
+                        buf.len(),
+                        0,
+                    )
+                };
+                if n < 0 {
+                    let err = std::io::Error::last_os_error();
+                    let code = err.raw_os_error().unwrap_or(-1) as i64;
+                    return Ok(result_err(err.to_string(), code));
+                }
+                buf.truncate(n as usize);
+                Ok(result_ok(Value::Bytes(Rc::new(RefCell::new(buf)))))
+            }))),
+        );
+
+        // dns_lookup(host) -> result {ok,value:[ips]}
+        globals.borrow_mut().define(
+            "dns_lookup".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("dns_lookup", 1, |args| {
+                let host = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("dns_lookup() expects host string".to_string()),
+                };
+                let mut out = Vec::new();
+                let iter = match (host.as_str(), 0).to_socket_addrs() {
+                    Ok(iter) => iter,
+                    Err(e) => return Ok(result_err(format!("dns_lookup() {}", e), -1)),
+                };
+                for addr in iter {
+                    out.push(Value::String(addr.ip().to_string()));
+                }
+                Ok(result_ok(Value::List(Rc::new(RefCell::new(out)))))
+            }))),
+        );
+
+        // dns_srv(service, domain) -> result {ok,value:[{priority,weight,port,target}]}
+        globals.borrow_mut().define(
+            "dns_srv".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("dns_srv", 2, |args| {
+                let service = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("dns_srv() expects service string".to_string()),
+                };
+                let domain = match &args[1] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("dns_srv() expects domain string".to_string()),
+                };
+                let name = if service.is_empty() {
+                    domain.clone()
+                } else {
+                    let s = service.trim_end_matches('.');
+                    let d = domain.trim_start_matches('.');
+                    format!("{}.{}", s, d)
+                };
+                let resolver = match make_resolver() {
+                    Ok(resolver) => resolver,
+                    Err(e) => return Ok(result_err(format!("dns_srv() {}", e), -1)),
+                };
+                let lookup = match resolver.lookup(name.as_str(), RecordType::SRV) {
+                    Ok(lookup) => lookup,
+                    Err(e) => {
+                        return Ok(result_err(
+                            format!("dns_srv() DNS SRV lookup failed: {}", e),
+                            -1,
+                        ))
+                    }
+                };
+                let mut out = Vec::new();
+                for rdata in lookup.iter() {
+                    if let RData::SRV(srv) = rdata {
+                        let mut dict = DictValue::new();
+                        dict.set(
+                            Value::String("priority".to_string()),
+                            Value::Integer(srv.priority() as i64),
+                        );
+                        dict.set(
+                            Value::String("weight".to_string()),
+                            Value::Integer(srv.weight() as i64),
+                        );
+                        dict.set(
+                            Value::String("port".to_string()),
+                            Value::Integer(srv.port() as i64),
+                        );
+                        dict.set(
+                            Value::String("target".to_string()),
+                            Value::String(srv.target().to_string()),
+                        );
+                        out.push(Value::Dict(Rc::new(RefCell::new(dict))));
+                    }
+                }
+                Ok(result_ok(Value::List(Rc::new(RefCell::new(out)))))
+            }))),
+        );
+
+        // dns_naptr(domain) -> result {ok,value:[{order,preference,flags,service,regexp,replacement}]}
+        globals.borrow_mut().define(
+            "dns_naptr".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("dns_naptr", 1, |args| {
+                let domain = match &args[0] {
+                    Value::String(s) => s.clone(),
+                    _ => return Err("dns_naptr() expects domain string".to_string()),
+                };
+                let resolver = match make_resolver() {
+                    Ok(resolver) => resolver,
+                    Err(e) => return Ok(result_err(format!("dns_naptr() {}", e), -1)),
+                };
+                let lookup = match resolver.lookup(domain.as_str(), RecordType::NAPTR) {
+                    Ok(lookup) => lookup,
+                    Err(e) => {
+                        return Ok(result_err(
+                            format!("dns_naptr() DNS NAPTR lookup failed: {}", e),
+                            -1,
+                        ))
+                    }
+                };
+                let mut out = Vec::new();
+                for rdata in lookup.iter() {
+                    if let RData::NAPTR(naptr) = rdata {
+                        let mut dict = DictValue::new();
+                        dict.set(
+                            Value::String("order".to_string()),
+                            Value::Integer(naptr.order() as i64),
+                        );
+                        dict.set(
+                            Value::String("preference".to_string()),
+                            Value::Integer(naptr.preference() as i64),
+                        );
+                        dict.set(
+                            Value::String("flags".to_string()),
+                            Value::String(String::from_utf8_lossy(naptr.flags()).to_string()),
+                        );
+                        dict.set(
+                            Value::String("service".to_string()),
+                            Value::String(String::from_utf8_lossy(naptr.services()).to_string()),
+                        );
+                        dict.set(
+                            Value::String("regexp".to_string()),
+                            Value::String(String::from_utf8_lossy(naptr.regexp()).to_string()),
+                        );
+                        dict.set(
+                            Value::String("replacement".to_string()),
+                            Value::String(naptr.replacement().to_string()),
+                        );
+                        out.push(Value::Dict(Rc::new(RefCell::new(dict))));
+                    }
+                }
+                Ok(result_ok(Value::List(Rc::new(RefCell::new(out)))))
+            }))),
+        );
+
+        // tls_client_new(config) -> result {ok,value:tls_handle}
+        globals.borrow_mut().define(
+            "tls_client_new".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("tls_client_new", 1, |args| {
+                let cfg = tls_config_from_value(&args[0])?;
+                let session = if cfg.mode == TlsMode::Client {
+                    let client_config = build_client_config(&cfg)?;
+                    TlsSession {
+                        mode: TlsMode::Client,
+                        server_name: cfg.server_name,
+                        client_config: Some(client_config),
+                        server_config: None,
+                        stream: None,
+                    }
+                } else {
+                    let server_config = build_server_config(&cfg)?;
+                    TlsSession {
+                        mode: TlsMode::Server,
+                        server_name: cfg.server_name,
+                        client_config: None,
+                        server_config: Some(server_config),
+                        stream: None,
+                    }
+                };
+                let id = register_tls(session);
+                Ok(result_ok(Value::Integer(id)))
+            }))),
+        );
+
+        // tls_connect(tls, sock)
+        globals.borrow_mut().define(
+            "tls_connect".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("tls_connect", 2, |args| {
+                let tls_id = args[0]
+                    .as_integer()
+                    .ok_or("tls_connect() expects TLS handle")?;
+                let sock_id = args[1]
+                    .as_integer()
+                    .ok_or("tls_connect() expects socket id")?;
+                let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+                let dup_fd = unsafe { libc::dup(entry.fd) };
+                if dup_fd < 0 {
+                    let err = std::io::Error::last_os_error();
+                    let code = err.raw_os_error().unwrap_or(-1) as i64;
+                    return Ok(result_err(err.to_string(), code));
+                }
+
+                let res = with_tls_mut(tls_id, |session| {
+                    if session.stream.is_some() {
+                        return Err("TLS session already connected".to_string());
+                    }
+                    let mut stream = unsafe { std::net::TcpStream::from_raw_fd(dup_fd) };
+                    let _ = stream.set_nonblocking(false);
+
+                    match session.mode {
+                        TlsMode::Client => {
+                            let config = session
+                                .client_config
+                                .as_ref()
+                                .ok_or("Missing client config")?
+                                .clone();
+                            let server_name = ServerName::try_from(session.server_name.as_str())
+                                .map_err(|_| "Invalid server_name".to_string())?;
+                            let mut conn = ClientConnection::new(config, server_name)
+                                .map_err(|e| e.to_string())?;
+                            while conn.is_handshaking() {
+                                conn.complete_io(&mut stream)
+                                    .map_err(|e| format!("TLS handshake failed: {}", e))?;
+                            }
+                            session.stream = Some(TlsStream::Client(StreamOwned::new(conn, stream)));
+                        }
+                        TlsMode::Server => {
+                            let config = session
+                                .server_config
+                                .as_ref()
+                                .ok_or("Missing server config")?
+                                .clone();
+                            let mut conn =
+                                ServerConnection::new(config).map_err(|e| e.to_string())?;
+                            while conn.is_handshaking() {
+                                conn.complete_io(&mut stream)
+                                    .map_err(|e| format!("TLS handshake failed: {}", e))?;
+                            }
+                            session.stream = Some(TlsStream::Server(StreamOwned::new(conn, stream)));
+                        }
+                    }
+                    Ok(())
+                });
+
+                match res {
+                    Ok(_) => Ok(result_ok(Value::Nil)),
+                    Err(e) => Ok(result_err(e, -1)),
+                }
+            }))),
+        );
+
+        // tls_send(tls, bytes)
+        globals.borrow_mut().define(
+            "tls_send".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("tls_send", 2, |args| {
+                let tls_id = args[0]
+                    .as_integer()
+                    .ok_or("tls_send() expects TLS handle")?;
+                let bytes = match &args[1] {
+                    Value::Bytes(b) => b.borrow(),
+                    _ => return Err("tls_send() expects bytes".to_string()),
+                };
+                let res = with_tls_mut(tls_id, |session| {
+                    let stream = session.stream.as_mut().ok_or("TLS not connected")?;
+                    let n = match stream {
+                        TlsStream::Client(s) => s.write(bytes.as_slice()),
+                        TlsStream::Server(s) => s.write(bytes.as_slice()),
+                    }
+                    .map_err(|e| format!("TLS send failed: {}", e))?;
+                    match stream {
+                        TlsStream::Client(s) => {
+                            let _ = s.flush();
+                        }
+                        TlsStream::Server(s) => {
+                            let _ = s.flush();
+                        }
+                    }
+                    Ok(n as i64)
+                });
+                match res {
+                    Ok(n) => Ok(result_ok(Value::Integer(n))),
+                    Err(e) => Ok(result_err(e, -1)),
+                }
+            }))),
+        );
+
+        // tls_recv(tls, max_len)
+        globals.borrow_mut().define(
+            "tls_recv".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("tls_recv", 2, |args| {
+                let tls_id = args[0]
+                    .as_integer()
+                    .ok_or("tls_recv() expects TLS handle")?;
+                let max_len = args[1]
+                    .as_integer()
+                    .ok_or("tls_recv() expects max_len integer")?;
+                let max_len = if max_len < 0 { 0 } else { max_len } as usize;
+                let res = with_tls_mut(tls_id, |session| {
+                    let stream = session.stream.as_mut().ok_or("TLS not connected")?;
+                    let mut buf = vec![0u8; max_len];
+                    let n = match stream {
+                        TlsStream::Client(s) => s.read(&mut buf),
+                        TlsStream::Server(s) => s.read(&mut buf),
+                    }
+                    .map_err(|e| format!("TLS recv failed: {}", e))?;
+                    buf.truncate(n);
+                    Ok(buf)
+                });
+                match res {
+                    Ok(buf) => Ok(result_ok(Value::Bytes(Rc::new(RefCell::new(buf))))),
+                    Err(e) => Ok(result_err(e, -1)),
+                }
+            }))),
+        );
+
+        // tls_close(tls)
+        globals.borrow_mut().define(
+            "tls_close".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("tls_close", 1, |args| {
+                let tls_id = args[0]
+                    .as_integer()
+                    .ok_or("tls_close() expects TLS handle")?;
+                remove_tls(tls_id);
+                Ok(result_ok(Value::Nil))
+            }))),
+        );
+
+        // dtls_server_new(config) - stub
+        globals.borrow_mut().define(
+            "dtls_server_new".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("dtls_server_new", 1, |_args| {
+                Ok(result_err("dtls_server_new not implemented".to_string(), -1))
+            }))),
+        );
+
+        // dtls_handshake(dtls, sock) - stub
+        globals.borrow_mut().define(
+            "dtls_handshake".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("dtls_handshake", 2, |_args| {
+                Ok(result_err("dtls_handshake not implemented".to_string(), -1))
+            }))),
+        );
+
+        // srtp_create(keys) - stub
+        globals.borrow_mut().define(
+            "srtp_create".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("srtp_create", 1, |_args| {
+                Ok(result_err("srtp_create not implemented".to_string(), -1))
+            }))),
+        );
+
+        // srtp_protect(srtp, rtp_packet) - stub
+        globals.borrow_mut().define(
+            "srtp_protect".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("srtp_protect", 2, |_args| {
+                Ok(result_err("srtp_protect not implemented".to_string(), -1))
+            }))),
+        );
+
+        // srtp_unprotect(srtp, rtp_packet) - stub
+        globals.borrow_mut().define(
+            "srtp_unprotect".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("srtp_unprotect", 2, |_args| {
+                Ok(result_err("srtp_unprotect not implemented".to_string(), -1))
+            }))),
+        );
+
+        // event_loop_new() -> loop handle
+        globals.borrow_mut().define(
+            "event_loop_new".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("event_loop_new", 0, |_args| {
+                let loop_val = EventLoop {
+                    watches: Vec::new(),
+                    timers: Vec::new(),
+                    next_timer_id: 1,
+                    stopped: false,
+                };
+                let id = register_loop(loop_val);
+                Ok(Value::Integer(id))
+            }))),
+        );
+
+        // event_loop_stop(loop)
+        globals.borrow_mut().define(
+            "event_loop_stop".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("event_loop_stop", 1, |args| {
+                let loop_id = args[0]
+                    .as_integer()
+                    .ok_or("event_loop_stop() expects loop id")?;
+                let _ = with_loop_mut(loop_id, |loop_ref| loop_ref.stopped = true)?;
+                Ok(Value::Nil)
+            }))),
+        );
+
+        // event_watch_read(loop, sock, callback)
+        globals.borrow_mut().define(
+            "event_watch_read".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "event_watch_read",
+                3,
+                |args| {
+                    let loop_id = args[0]
+                        .as_integer()
+                        .ok_or("event_watch_read() expects loop id")?;
+                    let sock_id = args[1]
+                        .as_integer()
+                        .ok_or("event_watch_read() expects socket id")?;
+                    let callback = args[2].clone();
+                    let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+                    let _ = with_loop_mut(loop_id, |loop_ref| {
+                        if let Some(watch) = loop_ref
+                            .watches
+                            .iter_mut()
+                            .find(|w| w.sock_id == sock_id)
+                        {
+                            watch.read_cb = callback.clone();
+                        } else {
+                            loop_ref.watches.push(LoopWatch {
+                                sock_id,
+                                fd: entry.fd,
+                                read_cb: callback.clone(),
+                                write_cb: Value::Nil,
+                            });
+                        }
+                    })?;
+                    Ok(Value::Nil)
+                },
+            ))),
+        );
+
+        // event_watch_write(loop, sock, callback)
+        globals.borrow_mut().define(
+            "event_watch_write".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "event_watch_write",
+                3,
+                |args| {
+                    let loop_id = args[0]
+                        .as_integer()
+                        .ok_or("event_watch_write() expects loop id")?;
+                    let sock_id = args[1]
+                        .as_integer()
+                        .ok_or("event_watch_write() expects socket id")?;
+                    let callback = args[2].clone();
+                    let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+                    let _ = with_loop_mut(loop_id, |loop_ref| {
+                        if let Some(watch) = loop_ref
+                            .watches
+                            .iter_mut()
+                            .find(|w| w.sock_id == sock_id)
+                        {
+                            watch.write_cb = callback.clone();
+                        } else {
+                            loop_ref.watches.push(LoopWatch {
+                                sock_id,
+                                fd: entry.fd,
+                                read_cb: Value::Nil,
+                                write_cb: callback.clone(),
+                            });
+                        }
+                    })?;
+                    Ok(Value::Nil)
+                },
+            ))),
+        );
+
+        // event_unwatch(loop, sock)
+        globals.borrow_mut().define(
+            "event_unwatch".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("event_unwatch", 2, |args| {
+                let loop_id = args[0]
+                    .as_integer()
+                    .ok_or("event_unwatch() expects loop id")?;
+                let sock_id = args[1]
+                    .as_integer()
+                    .ok_or("event_unwatch() expects socket id")?;
+                let mut removed = false;
+                let _ = with_loop_mut(loop_id, |loop_ref| {
+                    let before = loop_ref.watches.len();
+                    loop_ref.watches.retain(|w| w.sock_id != sock_id);
+                    removed = loop_ref.watches.len() != before;
+                })?;
+                Ok(Value::Bool(removed))
+            }))),
+        );
+
+        // event_loop_poll(loop, timeout_ms) -> list of events
+        globals.borrow_mut().define(
+            "event_loop_poll".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "event_loop_poll",
+                2,
+                |args| {
+                    let loop_id = args[0]
+                        .as_integer()
+                        .ok_or("event_loop_poll() expects loop id")?;
+                    let timeout_ms = match &args[1] {
+                        Value::Nil => -1,
+                        Value::Integer(n) => *n,
+                        Value::Float(f) => *f as i64,
+                        _ => {
+                            return Err(
+                                "event_loop_poll() expects timeout integer or nil".to_string()
+                            )
+                        }
+                    };
+
+                    let events = with_loop_mut(loop_id, |loop_ref| {
+                        if loop_ref.stopped {
+                            return Value::List(Rc::new(RefCell::new(vec![event_dict(
+                                "stop",
+                                None,
+                                None,
+                                None,
+                            )])));
+                        }
+
+                        let now = mono_ms_now();
+                        let mut next_due: Option<i64> = None;
+                        for timer in loop_ref.timers.iter() {
+                            if timer.cancelled {
+                                continue;
+                            }
+                            let mut diff = timer.next_fire_ms - now;
+                            if diff < 0 {
+                                diff = 0;
+                            }
+                            next_due = Some(match next_due {
+                                Some(prev) => prev.min(diff),
+                                None => diff,
+                            });
+                        }
+
+                        let mut wait_ms = timeout_ms;
+                        if wait_ms < 0 {
+                            wait_ms = next_due.unwrap_or(-1);
+                        } else if let Some(due) = next_due {
+                            if due >= 0 && due < wait_ms {
+                                wait_ms = due;
+                            }
+                        }
+
+                        let poll_timeout = if wait_ms < 0 {
+                            -1
+                        } else if wait_ms > i32::MAX as i64 {
+                            i32::MAX
+                        } else {
+                            wait_ms as i32
+                        };
+
+                        let mut fds: Vec<libc::pollfd> = loop_ref
+                            .watches
+                            .iter()
+                            .map(|watch| libc::pollfd {
+                                fd: watch.fd,
+                                events: {
+                                    let mut ev = 0;
+                                    if !matches!(watch.read_cb, Value::Nil) {
+                                        ev |= libc::POLLIN;
+                                    }
+                                    if !matches!(watch.write_cb, Value::Nil) {
+                                        ev |= libc::POLLOUT;
+                                    }
+                                    ev
+                                },
+                                revents: 0,
+                            })
+                            .collect();
+
+                        if poll_timeout != 0 || !fds.is_empty() {
+                            let rc = unsafe {
+                                libc::poll(
+                                    fds.as_mut_ptr(),
+                                    fds.len() as libc::nfds_t,
+                                    poll_timeout,
+                                )
+                            };
+                            if rc < 0 {
+                                return Value::List(Rc::new(RefCell::new(Vec::new())));
+                            }
+                        }
+
+                        let mut out: Vec<Value> = Vec::new();
+                        for (idx, pfd) in fds.iter().enumerate() {
+                            let watch = &loop_ref.watches[idx];
+                            if (pfd.revents & libc::POLLIN) != 0
+                                && !matches!(watch.read_cb, Value::Nil)
+                            {
+                                out.push(event_dict(
+                                    "read",
+                                    Some(watch.sock_id),
+                                    None,
+                                    Some(watch.read_cb.clone()),
+                                ));
+                            }
+                            if (pfd.revents & libc::POLLOUT) != 0
+                                && !matches!(watch.write_cb, Value::Nil)
+                            {
+                                out.push(event_dict(
+                                    "write",
+                                    Some(watch.sock_id),
+                                    None,
+                                    Some(watch.write_cb.clone()),
+                                ));
+                            }
+                        }
+
+                        let now2 = mono_ms_now();
+                        for timer in loop_ref.timers.iter_mut() {
+                            if timer.cancelled {
+                                continue;
+                            }
+                            if timer.next_fire_ms <= now2 {
+                                out.push(event_dict(
+                                    "timer",
+                                    None,
+                                    Some(timer.id),
+                                    Some(timer.callback.clone()),
+                                ));
+                                if timer.interval_ms > 0 {
+                                    while timer.next_fire_ms <= now2 {
+                                        timer.next_fire_ms += timer.interval_ms;
+                                    }
+                                } else {
+                                    timer.cancelled = true;
+                                }
+                            }
+                        }
+                        loop_ref.timers.retain(|t| !t.cancelled);
+
+                        Value::List(Rc::new(RefCell::new(out)))
+                    })?;
+
+                    Ok(events)
+                },
+            ))),
+        );
+
+        // timer_after(loop, ms, callback) -> timer id
+        globals.borrow_mut().define(
+            "timer_after".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("timer_after", 3, |args| {
+                let loop_id = args[0]
+                    .as_integer()
+                    .ok_or("timer_after() expects loop id")?;
+                let delay_ms = match &args[1] {
+                    Value::Integer(n) => *n,
+                    Value::Float(f) => *f as i64,
+                    _ => return Err("timer_after() expects delay integer".to_string()),
+                };
+                if delay_ms < 0 {
+                    return Err("timer_after() expects non-negative delay".to_string());
+                }
+                let callback = args[2].clone();
+                let id = with_loop_mut(loop_id, |loop_ref| {
+                    let id = loop_ref.next_timer_id;
+                    loop_ref.next_timer_id += 1;
+                    loop_ref.timers.push(LoopTimer {
+                        id,
+                        next_fire_ms: mono_ms_now() + delay_ms,
+                        interval_ms: 0,
+                        callback: callback.clone(),
+                        cancelled: false,
+                    });
+                    id
+                })?;
+                Ok(Value::Integer(id))
+            }))),
+        );
+
+        // timer_every(loop, ms, callback) -> timer id
+        globals.borrow_mut().define(
+            "timer_every".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("timer_every", 3, |args| {
+                let loop_id = args[0]
+                    .as_integer()
+                    .ok_or("timer_every() expects loop id")?;
+                let interval_ms = match &args[1] {
+                    Value::Integer(n) => *n,
+                    Value::Float(f) => *f as i64,
+                    _ => return Err("timer_every() expects interval integer".to_string()),
+                };
+                if interval_ms <= 0 {
+                    return Err("timer_every() expects positive interval".to_string());
+                }
+                let callback = args[2].clone();
+                let id = with_loop_mut(loop_id, |loop_ref| {
+                    let id = loop_ref.next_timer_id;
+                    loop_ref.next_timer_id += 1;
+                    loop_ref.timers.push(LoopTimer {
+                        id,
+                        next_fire_ms: mono_ms_now() + interval_ms,
+                        interval_ms,
+                        callback: callback.clone(),
+                        cancelled: false,
+                    });
+                    id
+                })?;
+                Ok(Value::Integer(id))
+            }))),
+        );
+
+        // timer_cancel(loop, timer_id) -> bool
+        globals.borrow_mut().define(
+            "timer_cancel".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("timer_cancel", 2, |args| {
+                let loop_id = args[0]
+                    .as_integer()
+                    .ok_or("timer_cancel() expects loop id")?;
+                let timer_id = args[1]
+                    .as_integer()
+                    .ok_or("timer_cancel() expects timer id")?;
+                let mut cancelled = false;
+                let _ = with_loop_mut(loop_id, |loop_ref| {
+                    for timer in loop_ref.timers.iter_mut() {
+                        if timer.id == timer_id && !timer.cancelled {
+                            timer.cancelled = true;
+                            cancelled = true;
+                        }
+                    }
+                })?;
+                Ok(Value::Bool(cancelled))
+            }))),
+        );
+
+        // thread_spawn(func, args_list) -> thread handle (interpreter: native funcs only)
+        globals.borrow_mut().define(
+            "thread_spawn".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("thread_spawn", 2, |args| {
+                let func = args[0].clone();
+                let args_list = &args[1];
+                let arg_vec = match args_list {
+                    Value::Nil => Vec::new(),
+                    Value::List(list) => list.borrow().clone(),
+                    _ => {
+                        return Err(
+                            "thread_spawn() expects a list of arguments or nil".to_string()
+                        )
+                    }
+                };
+                let result = match func {
+                    Value::NativeFunction(native) => (native.func)(arg_vec)?,
+                    _ => {
+                        return Err(
+                            "thread_spawn() only supports native functions in interpreter"
+                                .to_string(),
+                        )
+                    }
+                };
+                let id = register_thread(ThreadHandle {
+                    result,
+                    detached: false,
+                });
+                Ok(Value::Integer(id))
+            }))),
+        );
+
+        // thread_join(thread_handle)
+        globals.borrow_mut().define(
+            "thread_join".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("thread_join", 1, |args| {
+                let thread_id = args[0]
+                    .as_integer()
+                    .ok_or("thread_join() expects thread handle")?;
+                let result = with_thread_mut(thread_id, |handle| {
+                    if handle.detached {
+                        None
+                    } else {
+                        Some(handle.result.clone())
+                    }
+                })?;
+                if let Some(val) = result {
+                    Ok(val)
+                } else {
+                    Err("thread_join() cannot join detached thread".to_string())
+                }
+            }))),
+        );
+
+        // thread_detach(thread_handle)
+        globals.borrow_mut().define(
+            "thread_detach".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("thread_detach", 1, |args| {
+                let thread_id = args[0]
+                    .as_integer()
+                    .ok_or("thread_detach() expects thread handle")?;
+                let _ = with_thread_mut(thread_id, |handle| handle.detached = true)?;
+                Ok(Value::Nil)
+            }))),
+        );
+
+        // mutex_new()
+        globals.borrow_mut().define(
+            "mutex_new".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("mutex_new", 0, |_args| {
+                let id = register_mutex(MutexState { locked: false });
+                Ok(Value::Integer(id))
+            }))),
+        );
+
+        // mutex_lock(mutex)
+        globals.borrow_mut().define(
+            "mutex_lock".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("mutex_lock", 1, |args| {
+                let mutex_id = args[0]
+                    .as_integer()
+                    .ok_or("mutex_lock() expects mutex handle")?;
+                let _ = with_mutex_mut(mutex_id, |state| state.locked = true)?;
+                Ok(Value::Nil)
+            }))),
+        );
+
+        // mutex_unlock(mutex)
+        globals.borrow_mut().define(
+            "mutex_unlock".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("mutex_unlock", 1, |args| {
+                let mutex_id = args[0]
+                    .as_integer()
+                    .ok_or("mutex_unlock() expects mutex handle")?;
+                let _ = with_mutex_mut(mutex_id, |state| state.locked = false)?;
+                Ok(Value::Nil)
+            }))),
+        );
+
+        // mutex_try_lock(mutex) -> bool
+        globals.borrow_mut().define(
+            "mutex_try_lock".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "mutex_try_lock",
+                1,
+                |args| {
+                    let mutex_id = args[0]
+                        .as_integer()
+                        .ok_or("mutex_try_lock() expects mutex handle")?;
+                    let locked = with_mutex_mut(mutex_id, |state| {
+                        if state.locked {
+                            false
+                        } else {
+                            state.locked = true;
+                            true
+                        }
+                    })?;
+                    Ok(Value::Bool(locked))
+                },
+            ))),
+        );
+
+        // condvar_new()
+        globals.borrow_mut().define(
+            "condvar_new".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("condvar_new", 0, |_args| {
+                let id = register_condvar(CondvarState);
+                Ok(Value::Integer(id))
+            }))),
+        );
+
+        // condvar_wait(condvar, mutex) -> bool (interpreter: immediate true)
+        globals.borrow_mut().define(
+            "condvar_wait".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("condvar_wait", 2, |args| {
+                let condvar_id = args[0]
+                    .as_integer()
+                    .ok_or("condvar_wait() expects condvar handle")?;
+                let _mutex_id = args[1]
+                    .as_integer()
+                    .ok_or("condvar_wait() expects mutex handle")?;
+                let _ = with_condvar_mut(condvar_id, |_state| ())?;
+                Ok(Value::Bool(true))
+            }))),
+        );
+
+        // condvar_timed_wait(condvar, mutex, timeout_ms) -> bool
+        globals.borrow_mut().define(
+            "condvar_timed_wait".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "condvar_timed_wait",
+                3,
+                |args| {
+                    let condvar_id = args[0]
+                        .as_integer()
+                        .ok_or("condvar_timed_wait() expects condvar handle")?;
+                    let _mutex_id = args[1]
+                        .as_integer()
+                        .ok_or("condvar_timed_wait() expects mutex handle")?;
+                    let _timeout = match &args[2] {
+                        Value::Integer(n) => *n,
+                        Value::Float(f) => *f as i64,
+                        _ => {
+                            return Err(
+                                "condvar_timed_wait() expects timeout integer".to_string()
+                            )
+                        }
+                    };
+                    let _ = with_condvar_mut(condvar_id, |_state| ())?;
+                    Ok(Value::Bool(true))
+                },
+            ))),
+        );
+
+        // condvar_signal(condvar)
+        globals.borrow_mut().define(
+            "condvar_signal".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("condvar_signal", 1, |args| {
+                let condvar_id = args[0]
+                    .as_integer()
+                    .ok_or("condvar_signal() expects condvar handle")?;
+                let _ = with_condvar_mut(condvar_id, |_state| ())?;
+                Ok(Value::Nil)
+            }))),
+        );
+
+        // condvar_broadcast(condvar)
+        globals.borrow_mut().define(
+            "condvar_broadcast".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "condvar_broadcast",
+                1,
+                |args| {
+                    let condvar_id = args[0]
+                        .as_integer()
+                        .ok_or("condvar_broadcast() expects condvar handle")?;
+                    let _ = with_condvar_mut(condvar_id, |_state| ())?;
+                    Ok(Value::Nil)
+                },
+            ))),
+        );
+
+        // atomic_new(initial_int)
+        globals.borrow_mut().define(
+            "atomic_new".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("atomic_new", 1, |args| {
+                let value = match &args[0] {
+                    Value::Integer(n) => *n,
+                    Value::Float(f) => *f as i64,
+                    _ => return Err("atomic_new() expects integer".to_string()),
+                };
+                let id = register_atomic(AtomicState { value });
+                Ok(Value::Integer(id))
+            }))),
+        );
+
+        // atomic_load(atomic)
+        globals.borrow_mut().define(
+            "atomic_load".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("atomic_load", 1, |args| {
+                let atomic_id = args[0]
+                    .as_integer()
+                    .ok_or("atomic_load() expects atomic handle")?;
+                let value = with_atomic_mut(atomic_id, |state| state.value)?;
+                Ok(Value::Integer(value))
+            }))),
+        );
+
+        // atomic_store(atomic, value)
+        globals.borrow_mut().define(
+            "atomic_store".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("atomic_store", 2, |args| {
+                let atomic_id = args[0]
+                    .as_integer()
+                    .ok_or("atomic_store() expects atomic handle")?;
+                let value = match &args[1] {
+                    Value::Integer(n) => *n,
+                    Value::Float(f) => *f as i64,
+                    _ => return Err("atomic_store() expects integer".to_string()),
+                };
+                let _ = with_atomic_mut(atomic_id, |state| state.value = value)?;
+                Ok(Value::Nil)
+            }))),
+        );
+
+        // atomic_add(atomic, delta) -> new value
+        globals.borrow_mut().define(
+            "atomic_add".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("atomic_add", 2, |args| {
+                let atomic_id = args[0]
+                    .as_integer()
+                    .ok_or("atomic_add() expects atomic handle")?;
+                let delta = match &args[1] {
+                    Value::Integer(n) => *n,
+                    Value::Float(f) => *f as i64,
+                    _ => return Err("atomic_add() expects integer".to_string()),
+                };
+                let value = with_atomic_mut(atomic_id, |state| {
+                    state.value += delta;
+                    state.value
+                })?;
+                Ok(Value::Integer(value))
+            }))),
+        );
+
+        // atomic_cas(atomic, expected, desired) -> bool
+        globals.borrow_mut().define(
+            "atomic_cas".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("atomic_cas", 3, |args| {
+                let atomic_id = args[0]
+                    .as_integer()
+                    .ok_or("atomic_cas() expects atomic handle")?;
+                let expected = match &args[1] {
+                    Value::Integer(n) => *n,
+                    Value::Float(f) => *f as i64,
+                    _ => return Err("atomic_cas() expects integer".to_string()),
+                };
+                let desired = match &args[2] {
+                    Value::Integer(n) => *n,
+                    Value::Float(f) => *f as i64,
+                    _ => return Err("atomic_cas() expects integer".to_string()),
+                };
+                let swapped = with_atomic_mut(atomic_id, |state| {
+                    if state.value == expected {
+                        state.value = desired;
+                        true
+                    } else {
+                        false
+                    }
+                })?;
+                Ok(Value::Bool(swapped))
+            }))),
+        );
+
+        // chan_new(capacity)
+        globals.borrow_mut().define(
+            "chan_new".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("chan_new", 1, |args| {
+                let cap = match &args[0] {
+                    Value::Integer(n) => *n,
+                    Value::Float(f) => *f as i64,
+                    _ => return Err("chan_new() expects capacity integer".to_string()),
+                };
+                if cap < 0 {
+                    return Err("chan_new() expects non-negative capacity".to_string());
+                }
+                let id = register_channel(ChannelState {
+                    queue: VecDeque::new(),
+                    capacity: cap,
+                    closed: false,
+                });
+                Ok(Value::Integer(id))
+            }))),
+        );
+
+        // chan_send(chan, value) -> bool
+        globals.borrow_mut().define(
+            "chan_send".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("chan_send", 2, |args| {
+                let chan_id = args[0]
+                    .as_integer()
+                    .ok_or("chan_send() expects channel handle")?;
+                let val = args[1].clone();
+                let sent = with_channel_mut(chan_id, |state| {
+                    if state.closed {
+                        return false;
+                    }
+                    if state.capacity > 0 && state.queue.len() as i64 >= state.capacity {
+                        return false;
+                    }
+                    state.queue.push_back(val.clone());
+                    true
+                })?;
+                Ok(Value::Bool(sent))
+            }))),
+        );
+
+        // chan_recv(chan) -> value or nil
+        globals.borrow_mut().define(
+            "chan_recv".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("chan_recv", 1, |args| {
+                let chan_id = args[0]
+                    .as_integer()
+                    .ok_or("chan_recv() expects channel handle")?;
+                let value = with_channel_mut(chan_id, |state| state.queue.pop_front())?;
+                Ok(value.unwrap_or(Value::Nil))
+            }))),
+        );
+
+        // chan_try_recv(chan) -> value or nil
+        globals.borrow_mut().define(
+            "chan_try_recv".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("chan_try_recv", 1, |args| {
+                let chan_id = args[0]
+                    .as_integer()
+                    .ok_or("chan_try_recv() expects channel handle")?;
+                let value = with_channel_mut(chan_id, |state| state.queue.pop_front())?;
+                Ok(value.unwrap_or(Value::Nil))
+            }))),
+        );
+
+        // chan_close(chan)
+        globals.borrow_mut().define(
+            "chan_close".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("chan_close", 1, |args| {
+                let chan_id = args[0]
+                    .as_integer()
+                    .ok_or("chan_close() expects channel handle")?;
+                let _ = with_channel_mut(chan_id, |state| state.closed = true)?;
+                Ok(Value::Nil)
+            }))),
+        );
+
+        // chan_is_closed(chan) -> bool
+        globals.borrow_mut().define(
+            "chan_is_closed".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("chan_is_closed", 1, |args| {
+                let chan_id = args[0]
+                    .as_integer()
+                    .ok_or("chan_is_closed() expects channel handle")?;
+                let closed = with_channel_mut(chan_id, |state| state.closed)?;
+                Ok(Value::Bool(closed))
             }))),
         );
 
@@ -565,7 +3157,7 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("range", 2, |args| {
                 let start = args[0].as_integer().ok_or("range() expects integers")?;
                 let end = args[1].as_integer().ok_or("range() expects integers")?;
-                Ok(Value::Range(RangeValue::new(start, end, false)))
+                Ok(Interpreter::range_to_list(start, end, false))
             }))),
         );
 
@@ -1099,6 +3691,26 @@ impl Interpreter {
             }))),
         );
 
+        // mono_ms - monotonic milliseconds since start
+        globals.borrow_mut().define(
+            "mono_ms".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("mono_ms", 0, |_args| {
+                let start = MONO_START.get_or_init(std::time::Instant::now);
+                let ms = start.elapsed().as_millis() as i64;
+                Ok(Value::Integer(ms))
+            }))),
+        );
+
+        // mono_ns - monotonic nanoseconds since start
+        globals.borrow_mut().define(
+            "mono_ns".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("mono_ns", 0, |_args| {
+                let start = MONO_START.get_or_init(std::time::Instant::now);
+                let ns = start.elapsed().as_nanos() as i64;
+                Ok(Value::Integer(ns))
+            }))),
+        );
+
         // is_a - type checking (returns aye/nae)
         globals.borrow_mut().define(
             "is_a".to_string(),
@@ -1113,6 +3725,7 @@ impl Interpreter {
                     "string" | "str" => matches!(args[0], Value::String(_)),
                     "bool" => matches!(args[0], Value::Bool(_)),
                     "list" => matches!(args[0], Value::List(_)),
+                    "bytes" | "byte" => matches!(args[0], Value::Bytes(_)),
                     "dict" => matches!(args[0], Value::Dict(_)),
                     "function" | "dae" => {
                         matches!(args[0], Value::Function(_) | Value::NativeFunction(_))
@@ -6036,6 +8649,24 @@ impl Interpreter {
         }
     }
 
+    fn range_to_list(start: i64, end: i64, inclusive: bool) -> Value {
+        let mut items = Vec::new();
+        if inclusive {
+            let mut i = start;
+            while i <= end {
+                items.push(Value::Integer(i));
+                i += 1;
+            }
+        } else {
+            let mut i = start;
+            while i < end {
+                items.push(Value::Integer(i));
+                i += 1;
+            }
+        }
+        Value::List(Rc::new(RefCell::new(items)))
+    }
+
     fn evaluate(&mut self, expr: &Expr) -> HaversResult<Value> {
         match expr {
             Expr::Literal { value, .. } => Ok(match value {
@@ -6565,7 +9196,7 @@ impl Interpreter {
                 let start_val = self.evaluate(start)?;
                 let end_val = self.evaluate(end)?;
                 match (start_val.as_integer(), end_val.as_integer()) {
-                    (Some(s), Some(e)) => Ok(Value::Range(RangeValue::new(s, e, *inclusive))),
+                    (Some(s), Some(e)) => Ok(Self::range_to_list(s, e, *inclusive)),
                     _ => Err(HaversError::TypeError {
                         message: "Range bounds must be integers".to_string(),
                         line: expr.span().line,
@@ -11046,6 +13677,8 @@ is_a(foo, "function")
     #[test]
     fn test_is_a_range() {
         let result = run(r#"is_a(1..10, "range")"#).unwrap();
+        assert_eq!(result, Value::Bool(false));
+        let result = run(r#"is_a(1..10, "list")"#).unwrap();
         assert_eq!(result, Value::Bool(true));
     }
 
