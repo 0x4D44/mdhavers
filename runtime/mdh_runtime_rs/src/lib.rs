@@ -19,6 +19,11 @@ use trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
 use trust_dns_resolver::proto::rr::{RData, RecordType};
 use trust_dns_resolver::Resolver;
 
+#[cfg(feature = "audio")]
+mod audio;
+#[cfg(not(feature = "audio"))]
+mod audio_stub;
+
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct MdhValue {
@@ -48,17 +53,17 @@ struct MdhBytes {
     capacity: i64,
 }
 
-const MDH_TAG_NIL: u8 = 0;
-const MDH_TAG_BOOL: u8 = 1;
-const MDH_TAG_INT: u8 = 2;
-const MDH_TAG_FLOAT: u8 = 3;
-const MDH_TAG_STRING: u8 = 4;
-const MDH_TAG_LIST: u8 = 5;
-const MDH_TAG_DICT: u8 = 6;
-const MDH_TAG_FUNCTION: u8 = 7;
-const MDH_TAG_SET: u8 = 11;
-const MDH_TAG_CLOSURE: u8 = 12;
-const MDH_TAG_BYTES: u8 = 13;
+pub(crate) const MDH_TAG_NIL: u8 = 0;
+pub(crate) const MDH_TAG_BOOL: u8 = 1;
+pub(crate) const MDH_TAG_INT: u8 = 2;
+pub(crate) const MDH_TAG_FLOAT: u8 = 3;
+pub(crate) const MDH_TAG_STRING: u8 = 4;
+pub(crate) const MDH_TAG_LIST: u8 = 5;
+pub(crate) const MDH_TAG_DICT: u8 = 6;
+pub(crate) const MDH_TAG_FUNCTION: u8 = 7;
+pub(crate) const MDH_TAG_SET: u8 = 11;
+pub(crate) const MDH_TAG_CLOSURE: u8 = 12;
+pub(crate) const MDH_TAG_BYTES: u8 = 13;
 
 extern "C" {
     fn __mdh_make_nil() -> MdhValue;
@@ -66,6 +71,7 @@ extern "C" {
     fn __mdh_make_int(value: i64) -> MdhValue;
     fn __mdh_make_float(value: f64) -> MdhValue;
     fn __mdh_make_string(value: *const c_char) -> MdhValue;
+    fn __mdh_hurl(value: MdhValue);
     fn __mdh_make_list(capacity: i32) -> MdhValue;
     fn __mdh_list_push(list: MdhValue, value: MdhValue);
     fn __mdh_bytes_new(size: MdhValue) -> MdhValue;
@@ -95,7 +101,7 @@ unsafe fn mdh_err(msg: &str) -> MdhRsResult {
     }
 }
 
-unsafe fn mdh_string_to_rust(value: MdhValue) -> String {
+pub(crate) unsafe fn mdh_string_to_rust(value: MdhValue) -> String {
     if value.tag != MDH_TAG_STRING || value.data == 0 {
         return String::new();
     }
@@ -106,7 +112,7 @@ unsafe fn mdh_string_to_rust(value: MdhValue) -> String {
     CStr::from_ptr(ptr).to_string_lossy().into_owned()
 }
 
-unsafe fn mdh_make_string_from_rust(s: &str) -> MdhValue {
+pub(crate) unsafe fn mdh_make_string_from_rust(s: &str) -> MdhValue {
     let cstr = cstring_lossy(s);
     __mdh_make_string(cstr.as_ptr())
 }
@@ -116,7 +122,7 @@ unsafe fn mdh_value_to_string(value: MdhValue) -> String {
     mdh_string_to_rust(s_val)
 }
 
-unsafe fn mdh_float_value(value: MdhValue) -> f64 {
+pub(crate) unsafe fn mdh_float_value(value: MdhValue) -> f64 {
     f64::from_bits(value.data as u64)
 }
 
@@ -1618,8 +1624,7 @@ pub extern "C" fn __mdh_rs_dtls_handshake(dtls: MdhValue, sock: MdhValue) -> Mdh
             remote_addr: remote,
         };
 
-        let mut selected_profile: Option<SrtpProfile> = None;
-        let stream = if cfg.mode == TlsMode::Client {
+        let (stream, selected_profile) = if cfg.mode == TlsMode::Client {
             let mut builder = DtlsConnector::builder();
             for profile in &cfg.srtp_profiles {
                 builder.add_srtp_profile(*profile);
@@ -1648,8 +1653,8 @@ pub extern "C" fn __mdh_rs_dtls_handshake(dtls: MdhValue, sock: MdhValue) -> Mdh
             };
             match connector.connect(&cfg.server_name, channel) {
                 Ok(stream) => {
-                    selected_profile = stream.selected_srtp_profile().ok().flatten();
-                    stream
+                    let selected_profile = stream.selected_srtp_profile().ok().flatten();
+                    (stream, selected_profile)
                 }
                 Err(err) => {
                     return mdh_err(&format!("DTLS connect failed: {:?}", err));
@@ -1678,8 +1683,8 @@ pub extern "C" fn __mdh_rs_dtls_handshake(dtls: MdhValue, sock: MdhValue) -> Mdh
             };
             match acceptor.accept(channel) {
                 Ok(stream) => {
-                    selected_profile = stream.selected_srtp_profile().ok().flatten();
-                    stream
+                    let selected_profile = stream.selected_srtp_profile().ok().flatten();
+                    (stream, selected_profile)
                 }
                 Err(err) => {
                     return mdh_err(&format!("DTLS accept failed: {:?}", err));

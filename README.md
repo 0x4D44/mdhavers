@@ -1240,6 +1240,35 @@ sudo apt install cmake libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev l
 ```
 If you don’t have those, build with `--no-default-features` and add only what you need.
 
+**Backend support:** Interpreter, LLVM/native, JavaScript, and WAT/WASM.
+
+For JavaScript/WASM, audio uses WebAudio and a small rustysynth WASM helper.
+You must host the following assets alongside your compiled output (or set overrides):
+- `assets/wasm/mdh_rustysynth.wasm`
+- `assets/soundfonts/MuseScore_General.sf2`
+
+Optional overrides (set before running audio code):
+```js
+globalThis.__havers_audio_base = "/static/"; // prefix for audio assets
+globalThis.__havers_soundfont = "/static/sf2/custom.sf2";
+globalThis.__havers_midi_wasm = "/static/wasm/mdh_rustysynth.wasm";
+```
+
+For WAT/WASM in the browser, wire audio imports via the helper runtime:
+```js
+// Load the audio runtime + WASM host helpers first.
+import "./runtime/js/audio_runtime.js";
+import "./runtime/js/wasm_audio_host.js";
+
+const imports = {
+  env: {
+    memory,
+    // print_i32/print_f64/print_str, etc.
+    ...mdh_wasm_audio_imports(memory),
+  },
+};
+```
+
 ### Troubleshooting Raylib Builds
 
 If you see an error like:
@@ -1269,13 +1298,14 @@ cargo build --release --no-default-features --features cli,llvm
 **Quick example:**
 ```scots
 soond_stairt()
-ken ding = soond_lade("assets/sfx/ding.wav")
+ken ding = soond_lade("assets/audio/ding.wav")
 soond_spiel(ding)
 ```
+Use `soond_ready(handle)` to check SFX load status on web backends.
 
 **Streaming (MP3 + MIDI) needs updates:**
 ```scots
-ken tune = muisic_lade("music/theme.mp3")
+ken tune = muisic_lade("assets/audio/theme.mp3")
 muisic_spiel(tune)
 
 whiles aye {
@@ -1286,7 +1316,7 @@ whiles aye {
 MIDI uses a bundled default SoundFont at `assets/soundfonts/MuseScore_General.sf2` when you pass `naething` as the soundfont path:
 
 ```scots
-ken song = midi_lade("music/air.mid", naething)
+ken song = midi_lade("assets/audio/wee_tune.mid", naething)
 midi_spiel(song)
 ```
 

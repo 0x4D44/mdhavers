@@ -114,6 +114,52 @@ struct LibcFunctions<'ctx> {
     bytes_write_u32be: FunctionValue<'ctx>,
     mono_ms: FunctionValue<'ctx>,
     mono_ns: FunctionValue<'ctx>,
+    // Audio runtime functions
+    soond_stairt: FunctionValue<'ctx>,
+    soond_steek: FunctionValue<'ctx>,
+    soond_wheesht: FunctionValue<'ctx>,
+    soond_luid: FunctionValue<'ctx>,
+    soond_hou_luid: FunctionValue<'ctx>,
+    soond_haud_gang: FunctionValue<'ctx>,
+    soond_lade: FunctionValue<'ctx>,
+    soond_spiel: FunctionValue<'ctx>,
+    soond_haud: FunctionValue<'ctx>,
+    soond_gae_on: FunctionValue<'ctx>,
+    soond_stap: FunctionValue<'ctx>,
+    soond_unlade: FunctionValue<'ctx>,
+    soond_is_spielin: FunctionValue<'ctx>,
+    soond_pit_luid: FunctionValue<'ctx>,
+    soond_pit_pan: FunctionValue<'ctx>,
+    soond_pit_tune: FunctionValue<'ctx>,
+    soond_pit_rin_roond: FunctionValue<'ctx>,
+    soond_ready: FunctionValue<'ctx>,
+    muisic_lade: FunctionValue<'ctx>,
+    muisic_spiel: FunctionValue<'ctx>,
+    muisic_haud: FunctionValue<'ctx>,
+    muisic_gae_on: FunctionValue<'ctx>,
+    muisic_stap: FunctionValue<'ctx>,
+    muisic_unlade: FunctionValue<'ctx>,
+    muisic_is_spielin: FunctionValue<'ctx>,
+    muisic_loup: FunctionValue<'ctx>,
+    muisic_hou_lang: FunctionValue<'ctx>,
+    muisic_whaur: FunctionValue<'ctx>,
+    muisic_pit_luid: FunctionValue<'ctx>,
+    muisic_pit_pan: FunctionValue<'ctx>,
+    muisic_pit_tune: FunctionValue<'ctx>,
+    muisic_pit_rin_roond: FunctionValue<'ctx>,
+    midi_lade: FunctionValue<'ctx>,
+    midi_spiel: FunctionValue<'ctx>,
+    midi_haud: FunctionValue<'ctx>,
+    midi_gae_on: FunctionValue<'ctx>,
+    midi_stap: FunctionValue<'ctx>,
+    midi_unlade: FunctionValue<'ctx>,
+    midi_is_spielin: FunctionValue<'ctx>,
+    midi_loup: FunctionValue<'ctx>,
+    midi_hou_lang: FunctionValue<'ctx>,
+    midi_whaur: FunctionValue<'ctx>,
+    midi_pit_luid: FunctionValue<'ctx>,
+    midi_pit_pan: FunctionValue<'ctx>,
+    midi_pit_rin_roond: FunctionValue<'ctx>,
     socket_udp: FunctionValue<'ctx>,
     socket_tcp: FunctionValue<'ctx>,
     socket_bind: FunctionValue<'ctx>,
@@ -739,15 +785,20 @@ impl<'ctx> CodeGen<'ctx> {
         let to_float = module.add_function("__mdh_to_float", type_of_type, Some(Linkage::External));
 
         // __mdh_bytes_new(MdhValue size) -> MdhValue
-        let bytes_new = module.add_function("__mdh_bytes_new", type_of_type, Some(Linkage::External));
+        let bytes_new =
+            module.add_function("__mdh_bytes_new", type_of_type, Some(Linkage::External));
 
         // __mdh_bytes_from_string(MdhValue) -> MdhValue
-        let bytes_from_string =
-            module.add_function("__mdh_bytes_from_string", type_of_type, Some(Linkage::External));
+        let bytes_from_string = module.add_function(
+            "__mdh_bytes_from_string",
+            type_of_type,
+            Some(Linkage::External),
+        );
 
         // __mdh_bytes_len(MdhValue) -> i64
         let bytes_len_type = i64_type.fn_type(&[types.value_type.into()], false);
-        let bytes_len = module.add_function("__mdh_bytes_len", bytes_len_type, Some(Linkage::External));
+        let bytes_len =
+            module.add_function("__mdh_bytes_len", bytes_len_type, Some(Linkage::External));
 
         // __mdh_bytes_slice(MdhValue, MdhValue, MdhValue) -> MdhValue
         let bytes_slice_type = types.value_type.fn_type(
@@ -758,12 +809,18 @@ impl<'ctx> CodeGen<'ctx> {
             ],
             false,
         );
-        let bytes_slice = module.add_function("__mdh_bytes_slice", bytes_slice_type, Some(Linkage::External));
+        let bytes_slice = module.add_function(
+            "__mdh_bytes_slice",
+            bytes_slice_type,
+            Some(Linkage::External),
+        );
 
         // __mdh_bytes_get(MdhValue, MdhValue) -> MdhValue
-        let bytes_get_type =
-            types.value_type.fn_type(&[types.value_type.into(), types.value_type.into()], false);
-        let bytes_get = module.add_function("__mdh_bytes_get", bytes_get_type, Some(Linkage::External));
+        let bytes_get_type = types
+            .value_type
+            .fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let bytes_get =
+            module.add_function("__mdh_bytes_get", bytes_get_type, Some(Linkage::External));
 
         // __mdh_bytes_set(MdhValue, MdhValue, MdhValue) -> MdhValue
         let bytes_set_type = types.value_type.fn_type(
@@ -774,17 +831,23 @@ impl<'ctx> CodeGen<'ctx> {
             ],
             false,
         );
-        let bytes_set = module.add_function("__mdh_bytes_set", bytes_set_type, Some(Linkage::External));
+        let bytes_set =
+            module.add_function("__mdh_bytes_set", bytes_set_type, Some(Linkage::External));
 
         // __mdh_bytes_append(MdhValue, MdhValue) -> MdhValue
-        let bytes_append_type =
-            types.value_type.fn_type(&[types.value_type.into(), types.value_type.into()], false);
-        let bytes_append =
-            module.add_function("__mdh_bytes_append", bytes_append_type, Some(Linkage::External));
+        let bytes_append_type = types
+            .value_type
+            .fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let bytes_append = module.add_function(
+            "__mdh_bytes_append",
+            bytes_append_type,
+            Some(Linkage::External),
+        );
 
         // __mdh_bytes_read_u16be(MdhValue, MdhValue) -> MdhValue
-        let bytes_read_u16be_type =
-            types.value_type.fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let bytes_read_u16be_type = types
+            .value_type
+            .fn_type(&[types.value_type.into(), types.value_type.into()], false);
         let bytes_read_u16be = module.add_function(
             "__mdh_bytes_read_u16be",
             bytes_read_u16be_type,
@@ -792,8 +855,9 @@ impl<'ctx> CodeGen<'ctx> {
         );
 
         // __mdh_bytes_read_u32be(MdhValue, MdhValue) -> MdhValue
-        let bytes_read_u32be_type =
-            types.value_type.fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let bytes_read_u32be_type = types
+            .value_type
+            .fn_type(&[types.value_type.into(), types.value_type.into()], false);
         let bytes_read_u32be = module.add_function(
             "__mdh_bytes_read_u32be",
             bytes_read_u32be_type,
@@ -837,15 +901,154 @@ impl<'ctx> CodeGen<'ctx> {
         // __mdh_mono_ns() -> MdhValue
         let mono_ns = module.add_function("__mdh_mono_ns", mono_ms_type, Some(Linkage::External));
 
+        // Audio runtime functions (MdhValue ABI)
+        let audio_0_type = types.value_type.fn_type(&[], false);
+        let audio_1_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let audio_2_type = types
+            .value_type
+            .fn_type(&[types.value_type.into(), types.value_type.into()], false);
+
+        let soond_stairt =
+            module.add_function("__mdh_soond_stairt", audio_0_type, Some(Linkage::External));
+        let soond_steek =
+            module.add_function("__mdh_soond_steek", audio_0_type, Some(Linkage::External));
+        let soond_wheesht =
+            module.add_function("__mdh_soond_wheesht", audio_1_type, Some(Linkage::External));
+        let soond_luid =
+            module.add_function("__mdh_soond_luid", audio_1_type, Some(Linkage::External));
+        let soond_hou_luid = module.add_function(
+            "__mdh_soond_hou_luid",
+            audio_0_type,
+            Some(Linkage::External),
+        );
+        let soond_haud_gang = module.add_function(
+            "__mdh_soond_haud_gang",
+            audio_0_type,
+            Some(Linkage::External),
+        );
+        let soond_lade =
+            module.add_function("__mdh_soond_lade", audio_1_type, Some(Linkage::External));
+        let soond_spiel =
+            module.add_function("__mdh_soond_spiel", audio_1_type, Some(Linkage::External));
+        let soond_haud =
+            module.add_function("__mdh_soond_haud", audio_1_type, Some(Linkage::External));
+        let soond_gae_on =
+            module.add_function("__mdh_soond_gae_on", audio_1_type, Some(Linkage::External));
+        let soond_stap =
+            module.add_function("__mdh_soond_stap", audio_1_type, Some(Linkage::External));
+        let soond_unlade =
+            module.add_function("__mdh_soond_unlade", audio_1_type, Some(Linkage::External));
+        let soond_is_spielin = module.add_function(
+            "__mdh_soond_is_spielin",
+            audio_1_type,
+            Some(Linkage::External),
+        );
+        let soond_pit_luid = module.add_function(
+            "__mdh_soond_pit_luid",
+            audio_2_type,
+            Some(Linkage::External),
+        );
+        let soond_pit_pan =
+            module.add_function("__mdh_soond_pit_pan", audio_2_type, Some(Linkage::External));
+        let soond_pit_tune = module.add_function(
+            "__mdh_soond_pit_tune",
+            audio_2_type,
+            Some(Linkage::External),
+        );
+        let soond_pit_rin_roond = module.add_function(
+            "__mdh_soond_pit_rin_roond",
+            audio_2_type,
+            Some(Linkage::External),
+        );
+        let soond_ready =
+            module.add_function("__mdh_soond_ready", audio_1_type, Some(Linkage::External));
+
+        let muisic_lade =
+            module.add_function("__mdh_muisic_lade", audio_1_type, Some(Linkage::External));
+        let muisic_spiel =
+            module.add_function("__mdh_muisic_spiel", audio_1_type, Some(Linkage::External));
+        let muisic_haud =
+            module.add_function("__mdh_muisic_haud", audio_1_type, Some(Linkage::External));
+        let muisic_gae_on =
+            module.add_function("__mdh_muisic_gae_on", audio_1_type, Some(Linkage::External));
+        let muisic_stap =
+            module.add_function("__mdh_muisic_stap", audio_1_type, Some(Linkage::External));
+        let muisic_unlade =
+            module.add_function("__mdh_muisic_unlade", audio_1_type, Some(Linkage::External));
+        let muisic_is_spielin = module.add_function(
+            "__mdh_muisic_is_spielin",
+            audio_1_type,
+            Some(Linkage::External),
+        );
+        let muisic_loup =
+            module.add_function("__mdh_muisic_loup", audio_2_type, Some(Linkage::External));
+        let muisic_hou_lang = module.add_function(
+            "__mdh_muisic_hou_lang",
+            audio_1_type,
+            Some(Linkage::External),
+        );
+        let muisic_whaur =
+            module.add_function("__mdh_muisic_whaur", audio_1_type, Some(Linkage::External));
+        let muisic_pit_luid = module.add_function(
+            "__mdh_muisic_pit_luid",
+            audio_2_type,
+            Some(Linkage::External),
+        );
+        let muisic_pit_pan = module.add_function(
+            "__mdh_muisic_pit_pan",
+            audio_2_type,
+            Some(Linkage::External),
+        );
+        let muisic_pit_tune = module.add_function(
+            "__mdh_muisic_pit_tune",
+            audio_2_type,
+            Some(Linkage::External),
+        );
+        let muisic_pit_rin_roond = module.add_function(
+            "__mdh_muisic_pit_rin_roond",
+            audio_2_type,
+            Some(Linkage::External),
+        );
+
+        let midi_lade =
+            module.add_function("__mdh_midi_lade", audio_2_type, Some(Linkage::External));
+        let midi_spiel =
+            module.add_function("__mdh_midi_spiel", audio_1_type, Some(Linkage::External));
+        let midi_haud =
+            module.add_function("__mdh_midi_haud", audio_1_type, Some(Linkage::External));
+        let midi_gae_on =
+            module.add_function("__mdh_midi_gae_on", audio_1_type, Some(Linkage::External));
+        let midi_stap =
+            module.add_function("__mdh_midi_stap", audio_1_type, Some(Linkage::External));
+        let midi_unlade =
+            module.add_function("__mdh_midi_unlade", audio_1_type, Some(Linkage::External));
+        let midi_is_spielin = module.add_function(
+            "__mdh_midi_is_spielin",
+            audio_1_type,
+            Some(Linkage::External),
+        );
+        let midi_loup =
+            module.add_function("__mdh_midi_loup", audio_2_type, Some(Linkage::External));
+        let midi_hou_lang =
+            module.add_function("__mdh_midi_hou_lang", audio_1_type, Some(Linkage::External));
+        let midi_whaur =
+            module.add_function("__mdh_midi_whaur", audio_1_type, Some(Linkage::External));
+        let midi_pit_luid =
+            module.add_function("__mdh_midi_pit_luid", audio_2_type, Some(Linkage::External));
+        let midi_pit_pan =
+            module.add_function("__mdh_midi_pit_pan", audio_2_type, Some(Linkage::External));
+        let midi_pit_rin_roond = module.add_function(
+            "__mdh_midi_pit_rin_roond",
+            audio_2_type,
+            Some(Linkage::External),
+        );
+
         // Network (Sockets + DNS)
         let socket_0_type = types.value_type.fn_type(&[], false);
-        let socket_1_type = types
+        let socket_1_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let socket_2_type = types
             .value_type
-            .fn_type(&[types.value_type.into()], false);
-        let socket_2_type = types.value_type.fn_type(
-            &[types.value_type.into(), types.value_type.into()],
-            false,
-        );
+            .fn_type(&[types.value_type.into(), types.value_type.into()], false);
         let socket_3_type = types.value_type.fn_type(
             &[
                 types.value_type.into(),
@@ -864,82 +1067,221 @@ impl<'ctx> CodeGen<'ctx> {
             false,
         );
 
-        let socket_udp = module.add_function("__mdh_socket_udp", socket_0_type, Some(Linkage::External));
-        let socket_tcp = module.add_function("__mdh_socket_tcp", socket_0_type, Some(Linkage::External));
-        let socket_bind = module.add_function("__mdh_socket_bind", socket_3_type, Some(Linkage::External));
-        let socket_connect = module.add_function("__mdh_socket_connect", socket_3_type, Some(Linkage::External));
-        let socket_listen = module.add_function("__mdh_socket_listen", socket_2_type, Some(Linkage::External));
-        let socket_accept = module.add_function("__mdh_socket_accept", socket_1_type, Some(Linkage::External));
-        let socket_set_nonblocking =
-            module.add_function("__mdh_socket_set_nonblocking", socket_2_type, Some(Linkage::External));
-        let socket_set_reuseaddr =
-            module.add_function("__mdh_socket_set_reuseaddr", socket_2_type, Some(Linkage::External));
-        let socket_set_reuseport =
-            module.add_function("__mdh_socket_set_reuseport", socket_2_type, Some(Linkage::External));
-        let socket_set_ttl =
-            module.add_function("__mdh_socket_set_ttl", socket_2_type, Some(Linkage::External));
-        let socket_set_nodelay =
-            module.add_function("__mdh_socket_set_nodelay", socket_2_type, Some(Linkage::External));
-        let socket_set_rcvbuf =
-            module.add_function("__mdh_socket_set_rcvbuf", socket_2_type, Some(Linkage::External));
-        let socket_set_sndbuf =
-            module.add_function("__mdh_socket_set_sndbuf", socket_2_type, Some(Linkage::External));
-        let socket_close = module.add_function("__mdh_socket_close", socket_1_type, Some(Linkage::External));
-        let udp_send_to = module.add_function("__mdh_udp_send_to", socket_4_type, Some(Linkage::External));
-        let udp_recv_from = module.add_function("__mdh_udp_recv_from", socket_2_type, Some(Linkage::External));
-        let tcp_send = module.add_function("__mdh_tcp_send", socket_2_type, Some(Linkage::External));
-        let tcp_recv = module.add_function("__mdh_tcp_recv", socket_2_type, Some(Linkage::External));
-        let dns_lookup = module.add_function("__mdh_dns_lookup", socket_1_type, Some(Linkage::External));
+        let socket_udp =
+            module.add_function("__mdh_socket_udp", socket_0_type, Some(Linkage::External));
+        let socket_tcp =
+            module.add_function("__mdh_socket_tcp", socket_0_type, Some(Linkage::External));
+        let socket_bind =
+            module.add_function("__mdh_socket_bind", socket_3_type, Some(Linkage::External));
+        let socket_connect = module.add_function(
+            "__mdh_socket_connect",
+            socket_3_type,
+            Some(Linkage::External),
+        );
+        let socket_listen = module.add_function(
+            "__mdh_socket_listen",
+            socket_2_type,
+            Some(Linkage::External),
+        );
+        let socket_accept = module.add_function(
+            "__mdh_socket_accept",
+            socket_1_type,
+            Some(Linkage::External),
+        );
+        let socket_set_nonblocking = module.add_function(
+            "__mdh_socket_set_nonblocking",
+            socket_2_type,
+            Some(Linkage::External),
+        );
+        let socket_set_reuseaddr = module.add_function(
+            "__mdh_socket_set_reuseaddr",
+            socket_2_type,
+            Some(Linkage::External),
+        );
+        let socket_set_reuseport = module.add_function(
+            "__mdh_socket_set_reuseport",
+            socket_2_type,
+            Some(Linkage::External),
+        );
+        let socket_set_ttl = module.add_function(
+            "__mdh_socket_set_ttl",
+            socket_2_type,
+            Some(Linkage::External),
+        );
+        let socket_set_nodelay = module.add_function(
+            "__mdh_socket_set_nodelay",
+            socket_2_type,
+            Some(Linkage::External),
+        );
+        let socket_set_rcvbuf = module.add_function(
+            "__mdh_socket_set_rcvbuf",
+            socket_2_type,
+            Some(Linkage::External),
+        );
+        let socket_set_sndbuf = module.add_function(
+            "__mdh_socket_set_sndbuf",
+            socket_2_type,
+            Some(Linkage::External),
+        );
+        let socket_close =
+            module.add_function("__mdh_socket_close", socket_1_type, Some(Linkage::External));
+        let udp_send_to =
+            module.add_function("__mdh_udp_send_to", socket_4_type, Some(Linkage::External));
+        let udp_recv_from = module.add_function(
+            "__mdh_udp_recv_from",
+            socket_2_type,
+            Some(Linkage::External),
+        );
+        let tcp_send =
+            module.add_function("__mdh_tcp_send", socket_2_type, Some(Linkage::External));
+        let tcp_recv =
+            module.add_function("__mdh_tcp_recv", socket_2_type, Some(Linkage::External));
+        let dns_lookup =
+            module.add_function("__mdh_dns_lookup", socket_1_type, Some(Linkage::External));
         let dns_srv = module.add_function("__mdh_dns_srv", socket_2_type, Some(Linkage::External));
-        let dns_naptr = module.add_function("__mdh_dns_naptr", socket_1_type, Some(Linkage::External));
-        let tls_client_new = module.add_function("__mdh_tls_client_new", socket_1_type, Some(Linkage::External));
-        let tls_connect = module.add_function("__mdh_tls_connect", socket_2_type, Some(Linkage::External));
-        let tls_send = module.add_function("__mdh_tls_send", socket_2_type, Some(Linkage::External));
-        let tls_recv = module.add_function("__mdh_tls_recv", socket_2_type, Some(Linkage::External));
-        let tls_close = module.add_function("__mdh_tls_close", socket_1_type, Some(Linkage::External));
-        let dtls_server_new = module.add_function("__mdh_dtls_server_new", socket_1_type, Some(Linkage::External));
-        let dtls_handshake = module.add_function("__mdh_dtls_handshake", socket_2_type, Some(Linkage::External));
-        let srtp_create = module.add_function("__mdh_srtp_create", socket_1_type, Some(Linkage::External));
-        let srtp_protect = module.add_function("__mdh_srtp_protect", socket_2_type, Some(Linkage::External));
-        let srtp_unprotect = module.add_function("__mdh_srtp_unprotect", socket_2_type, Some(Linkage::External));
+        let dns_naptr =
+            module.add_function("__mdh_dns_naptr", socket_1_type, Some(Linkage::External));
+        let tls_client_new = module.add_function(
+            "__mdh_tls_client_new",
+            socket_1_type,
+            Some(Linkage::External),
+        );
+        let tls_connect =
+            module.add_function("__mdh_tls_connect", socket_2_type, Some(Linkage::External));
+        let tls_send =
+            module.add_function("__mdh_tls_send", socket_2_type, Some(Linkage::External));
+        let tls_recv =
+            module.add_function("__mdh_tls_recv", socket_2_type, Some(Linkage::External));
+        let tls_close =
+            module.add_function("__mdh_tls_close", socket_1_type, Some(Linkage::External));
+        let dtls_server_new = module.add_function(
+            "__mdh_dtls_server_new",
+            socket_1_type,
+            Some(Linkage::External),
+        );
+        let dtls_handshake = module.add_function(
+            "__mdh_dtls_handshake",
+            socket_2_type,
+            Some(Linkage::External),
+        );
+        let srtp_create =
+            module.add_function("__mdh_srtp_create", socket_1_type, Some(Linkage::External));
+        let srtp_protect =
+            module.add_function("__mdh_srtp_protect", socket_2_type, Some(Linkage::External));
+        let srtp_unprotect = module.add_function(
+            "__mdh_srtp_unprotect",
+            socket_2_type,
+            Some(Linkage::External),
+        );
 
-        let event_loop_new = module.add_function("__mdh_event_loop_new", socket_0_type, Some(Linkage::External));
-        let event_loop_stop = module.add_function("__mdh_event_loop_stop", socket_1_type, Some(Linkage::External));
-        let event_watch_read = module.add_function("__mdh_event_watch_read", socket_3_type, Some(Linkage::External));
-        let event_watch_write = module.add_function("__mdh_event_watch_write", socket_3_type, Some(Linkage::External));
-        let event_unwatch = module.add_function("__mdh_event_unwatch", socket_2_type, Some(Linkage::External));
-        let event_loop_poll = module.add_function("__mdh_event_loop_poll", socket_2_type, Some(Linkage::External));
-        let timer_after = module.add_function("__mdh_timer_after", socket_3_type, Some(Linkage::External));
-        let timer_every = module.add_function("__mdh_timer_every", socket_3_type, Some(Linkage::External));
-        let timer_cancel = module.add_function("__mdh_timer_cancel", socket_2_type, Some(Linkage::External));
+        let event_loop_new = module.add_function(
+            "__mdh_event_loop_new",
+            socket_0_type,
+            Some(Linkage::External),
+        );
+        let event_loop_stop = module.add_function(
+            "__mdh_event_loop_stop",
+            socket_1_type,
+            Some(Linkage::External),
+        );
+        let event_watch_read = module.add_function(
+            "__mdh_event_watch_read",
+            socket_3_type,
+            Some(Linkage::External),
+        );
+        let event_watch_write = module.add_function(
+            "__mdh_event_watch_write",
+            socket_3_type,
+            Some(Linkage::External),
+        );
+        let event_unwatch = module.add_function(
+            "__mdh_event_unwatch",
+            socket_2_type,
+            Some(Linkage::External),
+        );
+        let event_loop_poll = module.add_function(
+            "__mdh_event_loop_poll",
+            socket_2_type,
+            Some(Linkage::External),
+        );
+        let timer_after =
+            module.add_function("__mdh_timer_after", socket_3_type, Some(Linkage::External));
+        let timer_every =
+            module.add_function("__mdh_timer_every", socket_3_type, Some(Linkage::External));
+        let timer_cancel =
+            module.add_function("__mdh_timer_cancel", socket_2_type, Some(Linkage::External));
 
-        let thread_spawn = module.add_function("__mdh_thread_spawn", socket_2_type, Some(Linkage::External));
-        let thread_join = module.add_function("__mdh_thread_join", socket_1_type, Some(Linkage::External));
-        let thread_detach = module.add_function("__mdh_thread_detach", socket_1_type, Some(Linkage::External));
+        let thread_spawn =
+            module.add_function("__mdh_thread_spawn", socket_2_type, Some(Linkage::External));
+        let thread_join =
+            module.add_function("__mdh_thread_join", socket_1_type, Some(Linkage::External));
+        let thread_detach = module.add_function(
+            "__mdh_thread_detach",
+            socket_1_type,
+            Some(Linkage::External),
+        );
 
-        let mutex_new = module.add_function("__mdh_mutex_new", socket_0_type, Some(Linkage::External));
-        let mutex_lock = module.add_function("__mdh_mutex_lock", socket_1_type, Some(Linkage::External));
-        let mutex_unlock = module.add_function("__mdh_mutex_unlock", socket_1_type, Some(Linkage::External));
-        let mutex_try_lock = module.add_function("__mdh_mutex_try_lock", socket_1_type, Some(Linkage::External));
+        let mutex_new =
+            module.add_function("__mdh_mutex_new", socket_0_type, Some(Linkage::External));
+        let mutex_lock =
+            module.add_function("__mdh_mutex_lock", socket_1_type, Some(Linkage::External));
+        let mutex_unlock =
+            module.add_function("__mdh_mutex_unlock", socket_1_type, Some(Linkage::External));
+        let mutex_try_lock = module.add_function(
+            "__mdh_mutex_try_lock",
+            socket_1_type,
+            Some(Linkage::External),
+        );
 
-        let condvar_new = module.add_function("__mdh_condvar_new", socket_0_type, Some(Linkage::External));
-        let condvar_wait = module.add_function("__mdh_condvar_wait", socket_2_type, Some(Linkage::External));
-        let condvar_timed_wait = module.add_function("__mdh_condvar_timed_wait", socket_3_type, Some(Linkage::External));
-        let condvar_signal = module.add_function("__mdh_condvar_signal", socket_1_type, Some(Linkage::External));
-        let condvar_broadcast = module.add_function("__mdh_condvar_broadcast", socket_1_type, Some(Linkage::External));
+        let condvar_new =
+            module.add_function("__mdh_condvar_new", socket_0_type, Some(Linkage::External));
+        let condvar_wait =
+            module.add_function("__mdh_condvar_wait", socket_2_type, Some(Linkage::External));
+        let condvar_timed_wait = module.add_function(
+            "__mdh_condvar_timed_wait",
+            socket_3_type,
+            Some(Linkage::External),
+        );
+        let condvar_signal = module.add_function(
+            "__mdh_condvar_signal",
+            socket_1_type,
+            Some(Linkage::External),
+        );
+        let condvar_broadcast = module.add_function(
+            "__mdh_condvar_broadcast",
+            socket_1_type,
+            Some(Linkage::External),
+        );
 
-        let atomic_new = module.add_function("__mdh_atomic_new", socket_1_type, Some(Linkage::External));
-        let atomic_load = module.add_function("__mdh_atomic_load", socket_1_type, Some(Linkage::External));
-        let atomic_store = module.add_function("__mdh_atomic_store", socket_2_type, Some(Linkage::External));
-        let atomic_add = module.add_function("__mdh_atomic_add", socket_2_type, Some(Linkage::External));
-        let atomic_cas = module.add_function("__mdh_atomic_cas", socket_3_type, Some(Linkage::External));
+        let atomic_new =
+            module.add_function("__mdh_atomic_new", socket_1_type, Some(Linkage::External));
+        let atomic_load =
+            module.add_function("__mdh_atomic_load", socket_1_type, Some(Linkage::External));
+        let atomic_store =
+            module.add_function("__mdh_atomic_store", socket_2_type, Some(Linkage::External));
+        let atomic_add =
+            module.add_function("__mdh_atomic_add", socket_2_type, Some(Linkage::External));
+        let atomic_cas =
+            module.add_function("__mdh_atomic_cas", socket_3_type, Some(Linkage::External));
 
-        let chan_new = module.add_function("__mdh_chan_new", socket_1_type, Some(Linkage::External));
-        let chan_send = module.add_function("__mdh_chan_send", socket_2_type, Some(Linkage::External));
-        let chan_recv = module.add_function("__mdh_chan_recv", socket_1_type, Some(Linkage::External));
-        let chan_try_recv = module.add_function("__mdh_chan_try_recv", socket_1_type, Some(Linkage::External));
-        let chan_close = module.add_function("__mdh_chan_close", socket_1_type, Some(Linkage::External));
-        let chan_is_closed = module.add_function("__mdh_chan_is_closed", socket_1_type, Some(Linkage::External));
+        let chan_new =
+            module.add_function("__mdh_chan_new", socket_1_type, Some(Linkage::External));
+        let chan_send =
+            module.add_function("__mdh_chan_send", socket_2_type, Some(Linkage::External));
+        let chan_recv =
+            module.add_function("__mdh_chan_recv", socket_1_type, Some(Linkage::External));
+        let chan_try_recv = module.add_function(
+            "__mdh_chan_try_recv",
+            socket_1_type,
+            Some(Linkage::External),
+        );
+        let chan_close =
+            module.add_function("__mdh_chan_close", socket_1_type, Some(Linkage::External));
+        let chan_is_closed = module.add_function(
+            "__mdh_chan_is_closed",
+            socket_1_type,
+            Some(Linkage::External),
+        );
 
         // __mdh_key_not_found(MdhValue) -> void (throws)
         let key_not_found_type = void_type.fn_type(&[types.value_type.into()], false);
@@ -1943,6 +2285,51 @@ impl<'ctx> CodeGen<'ctx> {
             bytes_write_u32be,
             mono_ms,
             mono_ns,
+            soond_stairt,
+            soond_steek,
+            soond_wheesht,
+            soond_luid,
+            soond_hou_luid,
+            soond_haud_gang,
+            soond_lade,
+            soond_spiel,
+            soond_haud,
+            soond_gae_on,
+            soond_stap,
+            soond_unlade,
+            soond_is_spielin,
+            soond_pit_luid,
+            soond_pit_pan,
+            soond_pit_tune,
+            soond_pit_rin_roond,
+            soond_ready,
+            muisic_lade,
+            muisic_spiel,
+            muisic_haud,
+            muisic_gae_on,
+            muisic_stap,
+            muisic_unlade,
+            muisic_is_spielin,
+            muisic_loup,
+            muisic_hou_lang,
+            muisic_whaur,
+            muisic_pit_luid,
+            muisic_pit_pan,
+            muisic_pit_tune,
+            muisic_pit_rin_roond,
+            midi_lade,
+            midi_spiel,
+            midi_haud,
+            midi_gae_on,
+            midi_stap,
+            midi_unlade,
+            midi_is_spielin,
+            midi_loup,
+            midi_hou_lang,
+            midi_whaur,
+            midi_pit_luid,
+            midi_pit_pan,
+            midi_pit_rin_roond,
             socket_udp,
             socket_tcp,
             socket_bind,
@@ -11075,8 +11462,790 @@ impl<'ctx> CodeGen<'ctx> {
                 return Ok(call_site.try_as_basic_value().left().unwrap());
             }
 
-            // Check for built-in functions
             match name.as_str() {
+                // Audio builtins
+                "soond_stairt" => {
+                    if !args.is_empty() {
+                        return Err(HaversError::CompileError(
+                            "soond_stairt expects 0 arguments".to_string(),
+                        ));
+                    }
+                    let result = self
+                        .builder
+                        .build_call(self.libc.soond_stairt, &[], "soond_stairt")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("soond_stairt returned void")?;
+                    return Ok(result);
+                }
+                "soond_steek" => {
+                    if !args.is_empty() {
+                        return Err(HaversError::CompileError(
+                            "soond_steek expects 0 arguments".to_string(),
+                        ));
+                    }
+                    let result = self
+                        .builder
+                        .build_call(self.libc.soond_steek, &[], "soond_steek")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("soond_steek returned void")?;
+                    return Ok(result);
+                }
+                "soond_wheesht" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "soond_wheesht expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.soond_wheesht, &[arg.into()], "soond_wheesht")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("soond_wheesht returned void")?;
+                    return Ok(result);
+                }
+                "soond_luid" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "soond_luid expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.soond_luid, &[arg.into()], "soond_luid")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("soond_luid returned void")?;
+                    return Ok(result);
+                }
+                "soond_hou_luid" => {
+                    if !args.is_empty() {
+                        return Err(HaversError::CompileError(
+                            "soond_hou_luid expects 0 arguments".to_string(),
+                        ));
+                    }
+                    let result = self
+                        .builder
+                        .build_call(self.libc.soond_hou_luid, &[], "soond_hou_luid")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("soond_hou_luid returned void")?;
+                    return Ok(result);
+                }
+                "soond_haud_gang" => {
+                    if !args.is_empty() {
+                        return Err(HaversError::CompileError(
+                            "soond_haud_gang expects 0 arguments".to_string(),
+                        ));
+                    }
+                    let result = self
+                        .builder
+                        .build_call(self.libc.soond_haud_gang, &[], "soond_haud_gang")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("soond_haud_gang returned void")?;
+                    return Ok(result);
+                }
+                "soond_lade" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "soond_lade expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.soond_lade, &[arg.into()], "soond_lade")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("soond_lade returned void")?;
+                    return Ok(result);
+                }
+                "soond_spiel" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "soond_spiel expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.soond_spiel, &[arg.into()], "soond_spiel")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("soond_spiel returned void")?;
+                    return Ok(result);
+                }
+                "soond_haud" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "soond_haud expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.soond_haud, &[arg.into()], "soond_haud")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("soond_haud returned void")?;
+                    return Ok(result);
+                }
+                "soond_gae_on" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "soond_gae_on expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.soond_gae_on, &[arg.into()], "soond_gae_on")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("soond_gae_on returned void")?;
+                    return Ok(result);
+                }
+                "soond_stap" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "soond_stap expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.soond_stap, &[arg.into()], "soond_stap")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("soond_stap returned void")?;
+                    return Ok(result);
+                }
+                "soond_unlade" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "soond_unlade expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.soond_unlade, &[arg.into()], "soond_unlade")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("soond_unlade returned void")?;
+                    return Ok(result);
+                }
+                "soond_is_spielin" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "soond_is_spielin expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.soond_is_spielin,
+                            &[arg.into()],
+                            "soond_is_spielin",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("soond_is_spielin returned void")?;
+                    return Ok(result);
+                }
+                "soond_pit_luid" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "soond_pit_luid expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.soond_pit_luid,
+                            &[a.into(), b.into()],
+                            "soond_pit_luid",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("soond_pit_luid returned void")?;
+                    return Ok(result);
+                }
+                "soond_pit_pan" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "soond_pit_pan expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.soond_pit_pan,
+                            &[a.into(), b.into()],
+                            "soond_pit_pan",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("soond_pit_pan returned void")?;
+                    return Ok(result);
+                }
+                "soond_pit_tune" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "soond_pit_tune expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.soond_pit_tune,
+                            &[a.into(), b.into()],
+                            "soond_pit_tune",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("soond_pit_tune returned void")?;
+                    return Ok(result);
+                }
+                "soond_pit_rin_roond" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "soond_pit_rin_roond expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.soond_pit_rin_roond,
+                            &[a.into(), b.into()],
+                            "soond_pit_rin_roond",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("soond_pit_rin_roond returned void")?;
+                    return Ok(result);
+                }
+                "soond_ready" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "soond_ready expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.soond_ready, &[arg.into()], "soond_ready")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("soond_ready returned void")?;
+                    return Ok(result);
+                }
+                "muisic_lade" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "muisic_lade expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.muisic_lade, &[arg.into()], "muisic_lade")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("muisic_lade returned void")?;
+                    return Ok(result);
+                }
+                "muisic_spiel" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "muisic_spiel expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.muisic_spiel, &[arg.into()], "muisic_spiel")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("muisic_spiel returned void")?;
+                    return Ok(result);
+                }
+                "muisic_haud" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "muisic_haud expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.muisic_haud, &[arg.into()], "muisic_haud")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("muisic_haud returned void")?;
+                    return Ok(result);
+                }
+                "muisic_gae_on" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "muisic_gae_on expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.muisic_gae_on, &[arg.into()], "muisic_gae_on")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("muisic_gae_on returned void")?;
+                    return Ok(result);
+                }
+                "muisic_stap" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "muisic_stap expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.muisic_stap, &[arg.into()], "muisic_stap")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("muisic_stap returned void")?;
+                    return Ok(result);
+                }
+                "muisic_unlade" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "muisic_unlade expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.muisic_unlade, &[arg.into()], "muisic_unlade")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("muisic_unlade returned void")?;
+                    return Ok(result);
+                }
+                "muisic_is_spielin" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "muisic_is_spielin expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.muisic_is_spielin,
+                            &[arg.into()],
+                            "muisic_is_spielin",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("muisic_is_spielin returned void")?;
+                    return Ok(result);
+                }
+                "muisic_loup" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "muisic_loup expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.muisic_loup, &[a.into(), b.into()], "muisic_loup")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("muisic_loup returned void")?;
+                    return Ok(result);
+                }
+                "muisic_hou_lang" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "muisic_hou_lang expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.muisic_hou_lang, &[arg.into()], "muisic_hou_lang")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("muisic_hou_lang returned void")?;
+                    return Ok(result);
+                }
+                "muisic_whaur" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "muisic_whaur expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.muisic_whaur, &[arg.into()], "muisic_whaur")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("muisic_whaur returned void")?;
+                    return Ok(result);
+                }
+                "muisic_pit_luid" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "muisic_pit_luid expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.muisic_pit_luid,
+                            &[a.into(), b.into()],
+                            "muisic_pit_luid",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("muisic_pit_luid returned void")?;
+                    return Ok(result);
+                }
+                "muisic_pit_pan" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "muisic_pit_pan expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.muisic_pit_pan,
+                            &[a.into(), b.into()],
+                            "muisic_pit_pan",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("muisic_pit_pan returned void")?;
+                    return Ok(result);
+                }
+                "muisic_pit_tune" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "muisic_pit_tune expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.muisic_pit_tune,
+                            &[a.into(), b.into()],
+                            "muisic_pit_tune",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("muisic_pit_tune returned void")?;
+                    return Ok(result);
+                }
+                "muisic_pit_rin_roond" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "muisic_pit_rin_roond expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.muisic_pit_rin_roond,
+                            &[a.into(), b.into()],
+                            "muisic_pit_rin_roond",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("muisic_pit_rin_roond returned void")?;
+                    return Ok(result);
+                }
+                "midi_lade" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "midi_lade expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.midi_lade, &[a.into(), b.into()], "midi_lade")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("midi_lade returned void")?;
+                    return Ok(result);
+                }
+                "midi_spiel" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "midi_spiel expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.midi_spiel, &[arg.into()], "midi_spiel")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("midi_spiel returned void")?;
+                    return Ok(result);
+                }
+                "midi_haud" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "midi_haud expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.midi_haud, &[arg.into()], "midi_haud")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("midi_haud returned void")?;
+                    return Ok(result);
+                }
+                "midi_gae_on" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "midi_gae_on expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.midi_gae_on, &[arg.into()], "midi_gae_on")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("midi_gae_on returned void")?;
+                    return Ok(result);
+                }
+                "midi_stap" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "midi_stap expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.midi_stap, &[arg.into()], "midi_stap")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("midi_stap returned void")?;
+                    return Ok(result);
+                }
+                "midi_unlade" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "midi_unlade expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.midi_unlade, &[arg.into()], "midi_unlade")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("midi_unlade returned void")?;
+                    return Ok(result);
+                }
+                "midi_is_spielin" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "midi_is_spielin expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.midi_is_spielin, &[arg.into()], "midi_is_spielin")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("midi_is_spielin returned void")?;
+                    return Ok(result);
+                }
+                "midi_loup" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "midi_loup expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.midi_loup, &[a.into(), b.into()], "midi_loup")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("midi_loup returned void")?;
+                    return Ok(result);
+                }
+                "midi_hou_lang" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "midi_hou_lang expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.midi_hou_lang, &[arg.into()], "midi_hou_lang")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("midi_hou_lang returned void")?;
+                    return Ok(result);
+                }
+                "midi_whaur" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "midi_whaur expects 1 argument".to_string(),
+                        ));
+                    }
+                    let arg = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(self.libc.midi_whaur, &[arg.into()], "midi_whaur")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("midi_whaur returned void")?;
+                    return Ok(result);
+                }
+                "midi_pit_luid" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "midi_pit_luid expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.midi_pit_luid,
+                            &[a.into(), b.into()],
+                            "midi_pit_luid",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("midi_pit_luid returned void")?;
+                    return Ok(result);
+                }
+                "midi_pit_pan" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "midi_pit_pan expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.midi_pit_pan,
+                            &[a.into(), b.into()],
+                            "midi_pit_pan",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("midi_pit_pan returned void")?;
+                    return Ok(result);
+                }
+                "midi_pit_rin_roond" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "midi_pit_rin_roond expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.midi_pit_rin_roond,
+                            &[a.into(), b.into()],
+                            "midi_pit_rin_roond",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("midi_pit_rin_roond returned void")?;
+                    return Ok(result);
+                }
                 "tae_string" | "tae_text" | "to_string" | "str" => {
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
@@ -11694,7 +12863,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let max_len = self.compile_expr(&args[1])?;
                     let result = self
                         .builder
-                        .build_call(self.libc.tcp_recv, &[sock.into(), max_len.into()], "tcp_recv")
+                        .build_call(
+                            self.libc.tcp_recv,
+                            &[sock.into(), max_len.into()],
+                            "tcp_recv",
+                        )
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
@@ -11727,7 +12900,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let domain = self.compile_expr(&args[1])?;
                     let result = self
                         .builder
-                        .build_call(self.libc.dns_srv, &[service.into(), domain.into()], "dns_srv")
+                        .build_call(
+                            self.libc.dns_srv,
+                            &[service.into(), domain.into()],
+                            "dns_srv",
+                        )
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
@@ -11776,7 +12953,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let sock = self.compile_expr(&args[1])?;
                     let result = self
                         .builder
-                        .build_call(self.libc.tls_connect, &[tls.into(), sock.into()], "tls_connect")
+                        .build_call(
+                            self.libc.tls_connect,
+                            &[tls.into(), sock.into()],
+                            "tls_connect",
+                        )
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
@@ -11810,7 +12991,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let max_len = self.compile_expr(&args[1])?;
                     let result = self
                         .builder
-                        .build_call(self.libc.tls_recv, &[tls.into(), max_len.into()], "tls_recv")
+                        .build_call(
+                            self.libc.tls_recv,
+                            &[tls.into(), max_len.into()],
+                            "tls_recv",
+                        )
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
@@ -11842,7 +13027,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let config = self.compile_expr(&args[0])?;
                     let result = self
                         .builder
-                        .build_call(self.libc.dtls_server_new, &[config.into()], "dtls_server_new")
+                        .build_call(
+                            self.libc.dtls_server_new,
+                            &[config.into()],
+                            "dtls_server_new",
+                        )
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
@@ -11859,7 +13048,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let sock = self.compile_expr(&args[1])?;
                     let result = self
                         .builder
-                        .build_call(self.libc.dtls_handshake, &[dtls.into(), sock.into()], "dtls_handshake")
+                        .build_call(
+                            self.libc.dtls_handshake,
+                            &[dtls.into(), sock.into()],
+                            "dtls_handshake",
+                        )
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
@@ -11892,7 +13085,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let packet = self.compile_expr(&args[1])?;
                     let result = self
                         .builder
-                        .build_call(self.libc.srtp_protect, &[srtp.into(), packet.into()], "srtp_protect")
+                        .build_call(
+                            self.libc.srtp_protect,
+                            &[srtp.into(), packet.into()],
+                            "srtp_protect",
+                        )
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
@@ -11909,7 +13106,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let packet = self.compile_expr(&args[1])?;
                     let result = self
                         .builder
-                        .build_call(self.libc.srtp_unprotect, &[srtp.into(), packet.into()], "srtp_unprotect")
+                        .build_call(
+                            self.libc.srtp_unprotect,
+                            &[srtp.into(), packet.into()],
+                            "srtp_unprotect",
+                        )
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
@@ -11940,7 +13141,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let loop_val = self.compile_expr(&args[0])?;
                     let result = self
                         .builder
-                        .build_call(self.libc.event_loop_stop, &[loop_val.into()], "event_loop_stop")
+                        .build_call(
+                            self.libc.event_loop_stop,
+                            &[loop_val.into()],
+                            "event_loop_stop",
+                        )
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()
@@ -12281,7 +13486,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let condvar = self.compile_expr(&args[0])?;
                     let result = self
                         .builder
-                        .build_call(self.libc.condvar_signal, &[condvar.into()], "condvar_signal")
+                        .build_call(
+                            self.libc.condvar_signal,
+                            &[condvar.into()],
+                            "condvar_signal",
+                        )
                         .map_err(Self::llvm_compile_error)?
                         .try_as_basic_value()
                         .left()

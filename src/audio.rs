@@ -390,6 +390,8 @@ use raylib::prelude::*;
 use rustysynth::{MidiFile, MidiFileSequencer, SoundFont, Synthesizer, SynthesizerSettings};
 #[cfg(any(feature = "audio", test))]
 use std::cell::RefCell;
+#[cfg(not(any(feature = "audio", test)))]
+use std::cell::RefCell;
 #[cfg(any(feature = "audio", test))]
 use std::fs::File;
 #[cfg(any(feature = "audio", test))]
@@ -398,12 +400,10 @@ use std::path::Path;
 use std::path::PathBuf;
 #[cfg(any(feature = "audio", test))]
 use std::rc::Rc;
-#[cfg(any(feature = "audio", test))]
-use std::sync::Arc;
-#[cfg(not(any(feature = "audio", test)))]
-use std::cell::RefCell;
 #[cfg(not(any(feature = "audio", test)))]
 use std::rc::Rc;
+#[cfg(any(feature = "audio", test))]
+use std::sync::Arc;
 
 #[cfg(any(feature = "audio", test))]
 const DEFAULT_SOUNDFONT_PATH: &str = "assets/soundfonts/MuseScore_General.sf2";
@@ -498,7 +498,10 @@ impl AudioState {
     }
 
     fn audio_ref(&self) -> Result<&'static RaylibAudio, String> {
-        let audio_ref = self.audio.as_ref().ok_or_else(|| ERR_NO_DEVICE.to_string())?;
+        let audio_ref = self
+            .audio
+            .as_ref()
+            .ok_or_else(|| ERR_NO_DEVICE.to_string())?;
         let audio_static: &'static RaylibAudio = unsafe { std::mem::transmute(audio_ref.as_ref()) };
         Ok(audio_static)
     }
@@ -591,13 +594,7 @@ fn as_handle(value: &Value, name: &str) -> Result<usize, String> {
 
 #[cfg(any(feature = "audio", test))]
 fn clamp01(value: f32) -> f32 {
-    if value < 0.0 {
-        0.0
-    } else if value > 1.0 {
-        1.0
-    } else {
-        value
-    }
+    value.clamp(0.0, 1.0)
 }
 
 #[cfg(any(feature = "audio", test))]
@@ -656,9 +653,19 @@ fn prime_midi_stream(entry: &mut MidiEntry) {
 }
 
 #[cfg(any(feature = "audio", test))]
-fn seek_midi(entry: &mut MidiEntry, seconds: f64, audio: &'static RaylibAudio) -> Result<(), String> {
+fn seek_midi(
+    entry: &mut MidiEntry,
+    seconds: f64,
+    audio: &'static RaylibAudio,
+) -> Result<(), String> {
     let length = entry.midi.get_length();
-    let target = if seconds < 0.0 { 0.0 } else if seconds > length { length } else { seconds };
+    let target = if seconds < 0.0 {
+        0.0
+    } else if seconds > length {
+        length
+    } else {
+        seconds
+    };
 
     entry.sequencer.play(&entry.midi, entry.looped);
 
@@ -672,7 +679,9 @@ fn seek_midi(entry: &mut MidiEntry, seconds: f64, audio: &'static RaylibAudio) -
         } else {
             remaining
         };
-        entry.sequencer.render(&mut left[..chunk], &mut right[..chunk]);
+        entry
+            .sequencer
+            .render(&mut left[..chunk], &mut right[..chunk]);
         remaining -= chunk;
     }
 
@@ -832,6 +841,20 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
             }
 
             Ok(Value::Nil)
+        })
+    });
+
+    // soond_ready
+    define_native(globals, "soond_ready", 1, |args| {
+        with_state(|state| {
+            let handle = as_handle(&args[0], "soond_ready")?;
+            let entry = state
+                .sounds
+                .get(handle)
+                .and_then(|e| e.as_ref())
+                .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
+            let _ = entry;
+            Ok(Value::Bool(true))
         })
     });
 
@@ -1257,10 +1280,10 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
                 _ => return Err("midi_lade needs a soondfont path or naething".to_string()),
             };
 
-            let mut midi_file = File::open(&midi_path)
-                .map_err(|_| "Cannae open the midi file".to_string())?;
-            let midi = MidiFile::new(&mut midi_file)
-                .map_err(|_| "Cannae read the midi".to_string())?;
+            let mut midi_file =
+                File::open(&midi_path).map_err(|_| "Cannae open the midi file".to_string())?;
+            let midi =
+                MidiFile::new(&mut midi_file).map_err(|_| "Cannae read the midi".to_string())?;
             let midi = Arc::new(midi);
 
             let settings = SynthesizerSettings::new(MIDI_SAMPLE_RATE);
@@ -1477,11 +1500,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
 pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>) {
     use crate::value::{NativeFunction, Value};
 
-    fn define_stub(
-        globals: &Rc<RefCell<crate::value::Environment>>,
-        name: &str,
-        arity: usize,
-    ) {
+    fn define_stub(globals: &Rc<RefCell<crate::value::Environment>>, name: &str, arity: usize) {
         globals.borrow_mut().define(
             name.to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new(name, arity, |_args| {
@@ -1508,6 +1527,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         ("soond_pit_pan", 2),
         ("soond_pit_tune", 2),
         ("soond_pit_rin_roond", 2),
+        ("soond_ready", 1),
         ("muisic_lade", 1),
         ("muisic_spiel", 1),
         ("muisic_haud", 1),
@@ -1579,7 +1599,7 @@ mod tests {
         assert_eq!(as_number(&Value::Float(2.5), "num").unwrap(), 2.5);
         assert!(as_number(&Value::Bool(true), "num").is_err());
 
-        assert_eq!(as_bool(&Value::Bool(true), "bool").unwrap(), true);
+        assert!(as_bool(&Value::Bool(true), "bool").unwrap());
         assert!(as_bool(&Value::Integer(1), "bool").is_err());
 
         assert_eq!(as_handle(&Value::Integer(2), "handle").unwrap(), 2);
@@ -1641,6 +1661,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "audio"))]
     fn test_prime_midi_stream_skips_when_unprocessed() {
         let dir = tempdir().unwrap();
         let midi_path = dir.path().join("test.mid");

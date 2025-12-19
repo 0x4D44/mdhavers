@@ -191,7 +191,10 @@ blether result
 
     let client_config = build_client_config(&cert_pem);
     let server_name = ServerName::try_from("localhost").unwrap();
-    let mut tls = StreamOwned::new(ClientConnection::new(client_config, server_name).unwrap(), stream);
+    let mut tls = StreamOwned::new(
+        ClientConnection::new(client_config, server_name).unwrap(),
+        stream,
+    );
     tls.write_all(b"ping").unwrap();
     tls.flush().unwrap();
     let mut buf = [0u8; 4];

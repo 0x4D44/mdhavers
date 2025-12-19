@@ -34,6 +34,11 @@ impl Compiler {
 
     fn emit_runtime(&mut self) {
         self.emit_line("// mdhavers runtime - pure havers, but working havers!");
+        self.output
+            .push_str(include_str!("../runtime/js/audio_runtime.js"));
+        if !self.output.ends_with('\n') {
+            self.output.push('\n');
+        }
         self.emit_line("const __havers = {");
         self.indent += 1;
 
@@ -326,12 +331,60 @@ impl Compiler {
         self.emit_line("ony: (arr, fn) => arr.some(fn),");
         self.emit_line("hunt: (arr, fn) => arr.find(fn),");
 
+        // Audio functions
+        self.emit_line("// Audio functions");
+        self.emit_line("soond_stairt: __havers_audio.soond_stairt,");
+        self.emit_line("soond_steek: __havers_audio.soond_steek,");
+        self.emit_line("soond_wheesht: __havers_audio.soond_wheesht,");
+        self.emit_line("soond_luid: __havers_audio.soond_luid,");
+        self.emit_line("soond_hou_luid: __havers_audio.soond_hou_luid,");
+        self.emit_line("soond_haud_gang: __havers_audio.soond_haud_gang,");
+        self.emit_line("soond_lade: __havers_audio.soond_lade,");
+        self.emit_line("soond_spiel: __havers_audio.soond_spiel,");
+        self.emit_line("soond_haud: __havers_audio.soond_haud,");
+        self.emit_line("soond_gae_on: __havers_audio.soond_gae_on,");
+        self.emit_line("soond_stap: __havers_audio.soond_stap,");
+        self.emit_line("soond_unlade: __havers_audio.soond_unlade,");
+        self.emit_line("soond_is_spielin: __havers_audio.soond_is_spielin,");
+        self.emit_line("soond_pit_luid: __havers_audio.soond_pit_luid,");
+        self.emit_line("soond_pit_pan: __havers_audio.soond_pit_pan,");
+        self.emit_line("soond_pit_tune: __havers_audio.soond_pit_tune,");
+        self.emit_line("soond_pit_rin_roond: __havers_audio.soond_pit_rin_roond,");
+        self.emit_line("soond_ready: __havers_audio.soond_ready,");
+        self.emit_line("muisic_lade: __havers_audio.muisic_lade,");
+        self.emit_line("muisic_spiel: __havers_audio.muisic_spiel,");
+        self.emit_line("muisic_haud: __havers_audio.muisic_haud,");
+        self.emit_line("muisic_gae_on: __havers_audio.muisic_gae_on,");
+        self.emit_line("muisic_stap: __havers_audio.muisic_stap,");
+        self.emit_line("muisic_unlade: __havers_audio.muisic_unlade,");
+        self.emit_line("muisic_is_spielin: __havers_audio.muisic_is_spielin,");
+        self.emit_line("muisic_loup: __havers_audio.muisic_loup,");
+        self.emit_line("muisic_hou_lang: __havers_audio.muisic_hou_lang,");
+        self.emit_line("muisic_whaur: __havers_audio.muisic_whaur,");
+        self.emit_line("muisic_pit_luid: __havers_audio.muisic_pit_luid,");
+        self.emit_line("muisic_pit_pan: __havers_audio.muisic_pit_pan,");
+        self.emit_line("muisic_pit_tune: __havers_audio.muisic_pit_tune,");
+        self.emit_line("muisic_pit_rin_roond: __havers_audio.muisic_pit_rin_roond,");
+        self.emit_line("midi_lade: __havers_audio.midi_lade,");
+        self.emit_line("midi_spiel: __havers_audio.midi_spiel,");
+        self.emit_line("midi_haud: __havers_audio.midi_haud,");
+        self.emit_line("midi_gae_on: __havers_audio.midi_gae_on,");
+        self.emit_line("midi_stap: __havers_audio.midi_stap,");
+        self.emit_line("midi_unlade: __havers_audio.midi_unlade,");
+        self.emit_line("midi_is_spielin: __havers_audio.midi_is_spielin,");
+        self.emit_line("midi_loup: __havers_audio.midi_loup,");
+        self.emit_line("midi_hou_lang: __havers_audio.midi_hou_lang,");
+        self.emit_line("midi_whaur: __havers_audio.midi_whaur,");
+        self.emit_line("midi_pit_luid: __havers_audio.midi_pit_luid,");
+        self.emit_line("midi_pit_pan: __havers_audio.midi_pit_pan,");
+        self.emit_line("midi_pit_rin_roond: __havers_audio.midi_pit_rin_roond,");
+
         self.indent -= 1;
         self.emit_line("};");
         self.emit_line("");
 
         // Import runtime functions to global scope
-        self.emit_line("const { len, whit_kind, tae_string, tae_int, tae_float, shove, yank, keys, values, range, abs, min, max, floor, ceil, round, sqrt, split, join, contains, reverse, sort, blether, speir, heid, tail, bum, scran, slap, sumaw, coont, wheesht, upper, lower, shuffle, noo, tick, bide, gaun, sieve, tumble, aw, ony, hunt } = __havers;");
+        self.emit_line("const { len, whit_kind, tae_string, tae_int, tae_float, shove, yank, keys, values, range, abs, min, max, floor, ceil, round, sqrt, split, join, contains, reverse, sort, blether, speir, heid, tail, bum, scran, slap, sumaw, coont, wheesht, upper, lower, shuffle, noo, tick, bide, gaun, sieve, tumble, aw, ony, hunt, soond_stairt, soond_steek, soond_wheesht, soond_luid, soond_hou_luid, soond_haud_gang, soond_lade, soond_spiel, soond_haud, soond_gae_on, soond_stap, soond_unlade, soond_is_spielin, soond_pit_luid, soond_pit_pan, soond_pit_tune, soond_pit_rin_roond, soond_ready, muisic_lade, muisic_spiel, muisic_haud, muisic_gae_on, muisic_stap, muisic_unlade, muisic_is_spielin, muisic_loup, muisic_hou_lang, muisic_whaur, muisic_pit_luid, muisic_pit_pan, muisic_pit_tune, muisic_pit_rin_roond, midi_lade, midi_spiel, midi_haud, midi_gae_on, midi_stap, midi_unlade, midi_is_spielin, midi_loup, midi_hou_lang, midi_whaur, midi_pit_luid, midi_pit_pan, midi_pit_rin_roond } = __havers;");
         self.emit_line("");
     }
 
@@ -1532,8 +1585,10 @@ kin Animal {
     fn test_runtime_emitted() {
         let result = compile("ken x = 1").unwrap();
         assert!(result.contains("const __havers = {"));
+        assert!(result.contains("const __havers_audio ="));
         assert!(result.contains("len:"));
         assert!(result.contains("whit_kind:"));
         assert!(result.contains("blether:"));
+        assert!(result.contains("soond_stairt"));
     }
 }
