@@ -37,8 +37,7 @@ pub fn register_graphics_functions(globals: &Rc<RefCell<crate::value::Environmen
     // Color helpers
     register_color_functions(globals);
 
-    // Audio functions
-    register_audio_functions(globals);
+    // Audio functions are registered separately in crate::audio
 }
 
 #[cfg(feature = "graphics")]
@@ -580,114 +579,6 @@ fn string_to_key(name: &str) -> Result<KeyboardKey, String> {
         "9" => Ok(KeyboardKey::KEY_NINE),
         _ => Err(format!("Unknown key: {}", name)),
     }
-}
-
-// ============================================
-// Audio Functions
-// ============================================
-
-#[cfg(feature = "graphics")]
-thread_local! {
-    static AUDIO_INITIALIZED: RefCell<bool> = RefCell::new(false);
-}
-
-#[cfg(feature = "graphics")]
-fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>) {
-    use std::rc::Rc;
-
-    // audio_init - Initialize audio device (must be called before playing sounds)
-    globals.borrow_mut().define(
-        "audio_init".to_string(),
-        Value::NativeFunction(Rc::new(NativeFunction::new("audio_init", 0, |_args| {
-            AUDIO_INITIALIZED.with(|init| {
-                if !*init.borrow() {
-                    // Note: raylib's InitAudioDevice is usually called automatically
-                    // with InitWindow, but we make it explicit for the user
-                    *init.borrow_mut() = true;
-                }
-            });
-            Ok(Value::Nil)
-        }))),
-    );
-
-    // audio_close - Close audio device
-    globals.borrow_mut().define(
-        "audio_close".to_string(),
-        Value::NativeFunction(Rc::new(NativeFunction::new("audio_close", 0, |_args| {
-            AUDIO_INITIALIZED.with(|init| {
-                *init.borrow_mut() = false;
-            });
-            Ok(Value::Nil)
-        }))),
-    );
-
-    // Note: Full audio implementation would require managing Sound and Music handles
-    // which need proper resource management. For simplicity, we provide the basic API
-    // but actual sound loading/playing would require additional infrastructure.
-
-    // sound_load - Load a sound file (returns a sound handle ID)
-    globals.borrow_mut().define(
-        "sound_load".to_string(),
-        Value::NativeFunction(Rc::new(NativeFunction::new("sound_load", 1, |args| {
-            let _path = match &args[0] {
-                Value::String(s) => s.clone(),
-                _ => return Err("path must be a string".to_string()),
-            };
-            // Note: Actual implementation would load the sound and return a handle
-            // For now, we return a placeholder
-            Err("Sound loading requires full graphics feature implementation".to_string())
-        }))),
-    );
-
-    // sound_play - Play a loaded sound
-    globals.borrow_mut().define(
-        "sound_play".to_string(),
-        Value::NativeFunction(Rc::new(NativeFunction::new("sound_play", 1, |_args| {
-            Err("Sound playing requires full graphics feature implementation".to_string())
-        }))),
-    );
-
-    // music_load - Load a music file (returns a music handle ID)
-    globals.borrow_mut().define(
-        "music_load".to_string(),
-        Value::NativeFunction(Rc::new(NativeFunction::new("music_load", 1, |args| {
-            let _path = match &args[0] {
-                Value::String(s) => s.clone(),
-                _ => return Err("path must be a string".to_string()),
-            };
-            Err("Music loading requires full graphics feature implementation".to_string())
-        }))),
-    );
-
-    // music_play - Play loaded music
-    globals.borrow_mut().define(
-        "music_play".to_string(),
-        Value::NativeFunction(Rc::new(NativeFunction::new("music_play", 1, |_args| {
-            Err("Music playing requires full graphics feature implementation".to_string())
-        }))),
-    );
-
-    // music_stop - Stop playing music
-    globals.borrow_mut().define(
-        "music_stop".to_string(),
-        Value::NativeFunction(Rc::new(NativeFunction::new("music_stop", 1, |_args| {
-            Err("Music stopping requires full graphics feature implementation".to_string())
-        }))),
-    );
-
-    // set_volume - Set master volume (0.0 to 1.0)
-    globals.borrow_mut().define(
-        "set_volume".to_string(),
-        Value::NativeFunction(Rc::new(NativeFunction::new("set_volume", 1, |args| {
-            let _volume = match &args[0] {
-                Value::Float(f) => *f,
-                Value::Integer(i) => *i as f64,
-                _ => return Err("volume must be a number".to_string()),
-            };
-            // Note: Would call SetMasterVolume(volume as f32)
-            Ok(Value::Nil)
-        }))),
-    );
 }
 
 /// Stub for when graphics feature is not enabled

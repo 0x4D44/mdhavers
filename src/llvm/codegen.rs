@@ -582,7 +582,15 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Set the source file path for resolving imports
     pub fn set_source_path(&mut self, path: &Path) {
-        self.source_path = Some(path.to_path_buf());
+        let mut resolved = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            std::env::current_dir()
+                .map(|cwd| cwd.join(path))
+                .unwrap_or_else(|_| path.to_path_buf())
+        };
+        resolved = resolved.canonicalize().unwrap_or(resolved);
+        self.source_path = Some(resolved);
     }
 
     #[inline]
@@ -29196,6 +29204,14 @@ impl<'ctx> CodeGen<'ctx> {
                         return Ok(grandparent_path.canonicalize().unwrap_or(grandparent_path));
                     }
                 }
+
+                // Walk up ancestors (helps locate stdlib/ from nested folders)
+                for ancestor in parent.ancestors() {
+                    let candidate = ancestor.join(&path_with_ext);
+                    if candidate.exists() {
+                        return Ok(candidate.canonicalize().unwrap_or(candidate));
+                    }
+                }
             }
         }
 
@@ -29209,6 +29225,16 @@ impl<'ctx> CodeGen<'ctx> {
         let examples_path = PathBuf::from("examples").join(&path_with_ext);
         if examples_path.exists() {
             return Ok(examples_path.canonicalize().unwrap_or(examples_path));
+        }
+
+        // Try next to the executable (bundled stdlib)
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(parent) = exe.parent() {
+                let exe_path = parent.join(&path_with_ext);
+                if exe_path.exists() {
+                    return Ok(exe_path.canonicalize().unwrap_or(exe_path));
+                }
+            }
         }
 
         Err(HaversError::CompileError(format!(
