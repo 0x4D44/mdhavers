@@ -159,6 +159,56 @@ MdhValue __mdh_round(MdhValue a);
 MdhValue __mdh_mono_ms(void);
 MdhValue __mdh_mono_ns(void);
 
+/* ========== Audio ========== */
+
+MdhValue __mdh_soond_stairt(void);
+MdhValue __mdh_soond_steek(void);
+MdhValue __mdh_soond_wheesht(MdhValue on);
+MdhValue __mdh_soond_luid(MdhValue volume);
+MdhValue __mdh_soond_hou_luid(void);
+MdhValue __mdh_soond_haud_gang(void);
+MdhValue __mdh_soond_lade(MdhValue path);
+MdhValue __mdh_soond_spiel(MdhValue handle);
+MdhValue __mdh_soond_haud(MdhValue handle);
+MdhValue __mdh_soond_gae_on(MdhValue handle);
+MdhValue __mdh_soond_stap(MdhValue handle);
+MdhValue __mdh_soond_unlade(MdhValue handle);
+MdhValue __mdh_soond_is_spielin(MdhValue handle);
+MdhValue __mdh_soond_pit_luid(MdhValue handle, MdhValue volume);
+MdhValue __mdh_soond_pit_pan(MdhValue handle, MdhValue pan);
+MdhValue __mdh_soond_pit_tune(MdhValue handle, MdhValue pitch);
+MdhValue __mdh_soond_pit_rin_roond(MdhValue handle, MdhValue looped);
+MdhValue __mdh_soond_ready(MdhValue handle);
+
+MdhValue __mdh_muisic_lade(MdhValue path);
+MdhValue __mdh_muisic_spiel(MdhValue handle);
+MdhValue __mdh_muisic_haud(MdhValue handle);
+MdhValue __mdh_muisic_gae_on(MdhValue handle);
+MdhValue __mdh_muisic_stap(MdhValue handle);
+MdhValue __mdh_muisic_unlade(MdhValue handle);
+MdhValue __mdh_muisic_is_spielin(MdhValue handle);
+MdhValue __mdh_muisic_loup(MdhValue handle, MdhValue seconds);
+MdhValue __mdh_muisic_hou_lang(MdhValue handle);
+MdhValue __mdh_muisic_whaur(MdhValue handle);
+MdhValue __mdh_muisic_pit_luid(MdhValue handle, MdhValue volume);
+MdhValue __mdh_muisic_pit_pan(MdhValue handle, MdhValue pan);
+MdhValue __mdh_muisic_pit_tune(MdhValue handle, MdhValue pitch);
+MdhValue __mdh_muisic_pit_rin_roond(MdhValue handle, MdhValue looped);
+
+MdhValue __mdh_midi_lade(MdhValue path, MdhValue soundfont);
+MdhValue __mdh_midi_spiel(MdhValue handle);
+MdhValue __mdh_midi_haud(MdhValue handle);
+MdhValue __mdh_midi_gae_on(MdhValue handle);
+MdhValue __mdh_midi_stap(MdhValue handle);
+MdhValue __mdh_midi_unlade(MdhValue handle);
+MdhValue __mdh_midi_is_spielin(MdhValue handle);
+MdhValue __mdh_midi_loup(MdhValue handle, MdhValue seconds);
+MdhValue __mdh_midi_hou_lang(MdhValue handle);
+MdhValue __mdh_midi_whaur(MdhValue handle);
+MdhValue __mdh_midi_pit_luid(MdhValue handle, MdhValue volume);
+MdhValue __mdh_midi_pit_pan(MdhValue handle, MdhValue pan);
+MdhValue __mdh_midi_pit_rin_roond(MdhValue handle, MdhValue looped);
+
 /* ========== Network (Sockets + DNS) ========== */
 
 MdhValue __mdh_socket_udp(void);

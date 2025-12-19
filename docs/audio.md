@@ -13,6 +13,34 @@ sudo apt install cmake libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev l
 ```
 If you don’t have those, build without the `audio` feature.
 
+Backend support: interpreter, LLVM/native, JavaScript, and WAT/WASM.
+
+For JavaScript/WASM, audio uses WebAudio and a rustysynth WASM helper. You must
+host these assets alongside your compiled output (or set overrides):
+- `assets/wasm/mdh_rustysynth.wasm`
+- `assets/soundfonts/MuseScore_General.sf2`
+
+Optional overrides (set before running audio code):
+```js
+globalThis.__havers_audio_base = "/static/";
+globalThis.__havers_soundfont = "/static/sf2/custom.sf2";
+globalThis.__havers_midi_wasm = "/static/wasm/mdh_rustysynth.wasm";
+```
+
+For WAT/WASM in the browser, wire audio imports via the helper runtime:
+```js
+import "../runtime/js/audio_runtime.js";
+import "../runtime/js/wasm_audio_host.js";
+
+const imports = {
+  env: {
+    memory,
+    // print_i32/print_f64/print_str, etc.
+    ...mdh_wasm_audio_imports(memory),
+  },
+};
+```
+
 If you see:
 ```
 Unable to find libclang
@@ -38,11 +66,12 @@ soond_wheesht(nae)     # unmute
 soond_luid(0.8)        # master volume 0..1
 soond_hou_luid()       # get master volume
 soond_haud_gang()      # tick streaming audio
+soond_ready(handle)    # check SFX load status (web backends)
 ```
 
 ## Sounds (SFX)
 ```scots
-ken ding = soond_lade("assets/sfx/ding.wav")
+ken ding = soond_lade("assets/audio/ding.wav")
 soond_pit_luid(ding, 0.6)
 soond_pit_pan(ding, -0.2)   # -1 left, 0 center, 1 right
 soond_spiel(ding)
@@ -52,10 +81,11 @@ Available:
 - `soond_lade`, `soond_spiel`, `soond_haud`, `soond_gae_on`, `soond_stap`, `soond_unlade`
 - `soond_is_spielin`
 - `soond_pit_luid`, `soond_pit_pan`, `soond_pit_tune`, `soond_pit_rin_roond`
+- `soond_ready`
 
 ## Music (MP3 / streaming)
 ```scots
-ken tune = muisic_lade("music/theme.mp3")
+ken tune = muisic_lade("assets/audio/theme.mp3")
 muisic_spiel(tune)
 
 whiles aye {
@@ -74,7 +104,7 @@ The default SoundFont is bundled at:
 `assets/soundfonts/MuseScore_General.sf2`
 
 ```scots
-ken song = midi_lade("music/air.mid", naething)
+ken song = midi_lade("assets/audio/wee_tune.mid", naething)
 midi_spiel(song)
 
 whiles aye {

@@ -55,6 +55,111 @@ impl WasmCompiler {
         self.emit_line("(import \"env\" \"print_f64\" (func $print_f64 (param f64)))");
         self.emit_line("(import \"env\" \"print_str\" (func $print_str (param i32 i32)))");
         self.emit_line("");
+        self.emit_line(";; Audio imports (i64 value ABI)");
+        self.emit_line("(import \"env\" \"soond_stairt\" (func $soond_stairt (result i64)))");
+        self.emit_line("(import \"env\" \"soond_steek\" (func $soond_steek (result i64)))");
+        self.emit_line(
+            "(import \"env\" \"soond_wheesht\" (func $soond_wheesht (param i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"soond_luid\" (func $soond_luid (param i64) (result i64)))",
+        );
+        self.emit_line("(import \"env\" \"soond_hou_luid\" (func $soond_hou_luid (result i64)))");
+        self.emit_line("(import \"env\" \"soond_haud_gang\" (func $soond_haud_gang (result i64)))");
+        self.emit_line(
+            "(import \"env\" \"soond_lade\" (func $soond_lade (param i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"soond_spiel\" (func $soond_spiel (param i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"soond_haud\" (func $soond_haud (param i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"soond_gae_on\" (func $soond_gae_on (param i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"soond_stap\" (func $soond_stap (param i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"soond_unlade\" (func $soond_unlade (param i64) (result i64)))",
+        );
+        self.emit_line("(import \"env\" \"soond_is_spielin\" (func $soond_is_spielin (param i64) (result i64)))");
+        self.emit_line("(import \"env\" \"soond_pit_luid\" (func $soond_pit_luid (param i64 i64) (result i64)))");
+        self.emit_line(
+            "(import \"env\" \"soond_pit_pan\" (func $soond_pit_pan (param i64 i64) (result i64)))",
+        );
+        self.emit_line("(import \"env\" \"soond_pit_tune\" (func $soond_pit_tune (param i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"soond_pit_rin_roond\" (func $soond_pit_rin_roond (param i64 i64) (result i64)))");
+        self.emit_line(
+            "(import \"env\" \"soond_ready\" (func $soond_ready (param i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"muisic_lade\" (func $muisic_lade (param i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"muisic_spiel\" (func $muisic_spiel (param i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"muisic_haud\" (func $muisic_haud (param i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"muisic_gae_on\" (func $muisic_gae_on (param i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"muisic_stap\" (func $muisic_stap (param i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"muisic_unlade\" (func $muisic_unlade (param i64) (result i64)))",
+        );
+        self.emit_line("(import \"env\" \"muisic_is_spielin\" (func $muisic_is_spielin (param i64) (result i64)))");
+        self.emit_line(
+            "(import \"env\" \"muisic_loup\" (func $muisic_loup (param i64 i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"muisic_hou_lang\" (func $muisic_hou_lang (param i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"muisic_whaur\" (func $muisic_whaur (param i64) (result i64)))",
+        );
+        self.emit_line("(import \"env\" \"muisic_pit_luid\" (func $muisic_pit_luid (param i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"muisic_pit_pan\" (func $muisic_pit_pan (param i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"muisic_pit_tune\" (func $muisic_pit_tune (param i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"muisic_pit_rin_roond\" (func $muisic_pit_rin_roond (param i64 i64) (result i64)))");
+        self.emit_line(
+            "(import \"env\" \"midi_lade\" (func $midi_lade (param i64 i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"midi_spiel\" (func $midi_spiel (param i64) (result i64)))",
+        );
+        self.emit_line("(import \"env\" \"midi_haud\" (func $midi_haud (param i64) (result i64)))");
+        self.emit_line(
+            "(import \"env\" \"midi_gae_on\" (func $midi_gae_on (param i64) (result i64)))",
+        );
+        self.emit_line("(import \"env\" \"midi_stap\" (func $midi_stap (param i64) (result i64)))");
+        self.emit_line(
+            "(import \"env\" \"midi_unlade\" (func $midi_unlade (param i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"midi_is_spielin\" (func $midi_is_spielin (param i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"midi_loup\" (func $midi_loup (param i64 i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"midi_hou_lang\" (func $midi_hou_lang (param i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"midi_whaur\" (func $midi_whaur (param i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"midi_pit_luid\" (func $midi_pit_luid (param i64 i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"midi_pit_pan\" (func $midi_pit_pan (param i64 i64) (result i64)))",
+        );
+        self.emit_line("(import \"env\" \"midi_pit_rin_roond\" (func $midi_pit_rin_roond (param i64 i64) (result i64)))");
+        self.emit_line("");
 
         // Collect all function declarations first
         let mut functions: Vec<&Stmt> = Vec::new();
@@ -85,14 +190,17 @@ impl WasmCompiler {
         if !self.string_data.is_empty() {
             self.emit_line("");
             self.emit_line(";; String data");
-            let mut offset = 0;
+            let mut offset = 1;
             // Collect string data first to avoid borrow issues
             let string_lines: Vec<String> = self
                 .string_data
                 .iter()
                 .map(|s| {
-                    let line =
-                        format!("(data (i32.const {}) \"{}\")", offset, escape_wat_string(s));
+                    let line = format!(
+                        "(data (i32.const {}) \"{}\\00\")",
+                        offset,
+                        escape_wat_string(s)
+                    );
                     offset += s.len() as i32 + 1; // +1 for null terminator
                     line
                 })
@@ -359,7 +467,8 @@ impl WasmCompiler {
                     }
                     Literal::String(s) => {
                         // Store string in data section and return offset
-                        let offset = self.string_data.iter().map(|s| s.len() + 1).sum::<usize>();
+                        let offset =
+                            1 + self.string_data.iter().map(|s| s.len() + 1).sum::<usize>();
                         self.string_data.push(s.clone());
                         self.emit_line(&format!("(i64.const {})", offset));
                     }
@@ -796,6 +905,13 @@ mod tests {
         assert!(result.contains("(data"));
     }
 
+    #[test]
+    fn test_string_data_null_terminated() {
+        let source = r#"ken s = "Hello""#;
+        let result = compile_to_wat(source).unwrap();
+        assert!(result.contains("\\00"));
+    }
+
     // ==================== String Escape ====================
 
     #[test]
@@ -993,5 +1109,13 @@ mod tests {
         let input = "\"\\\r\t\n\u{0001}";
         let escaped = escape_wat_string(input);
         assert_eq!(escaped, r#"\"\\\r\t\n\01"#);
+    }
+
+    #[test]
+    fn test_audio_imports_wasm() {
+        let wat = compile_to_wat("soond_stairt()").unwrap();
+        assert!(wat.contains("(import \"env\" \"soond_stairt\""));
+        assert!(wat.contains("(import \"env\" \"midi_lade\""));
+        assert!(wat.contains("(call $soond_stairt)"));
     }
 }

@@ -18,8 +18,8 @@ use crate::value::{NativeFunction, Value};
 
 #[cfg(feature = "graphics")]
 thread_local! {
-    static RAYLIB_HANDLE: RefCell<Option<RaylibHandle>> = RefCell::new(None);
-    static RAYLIB_THREAD: RefCell<Option<RaylibThread>> = RefCell::new(None);
+    static RAYLIB_HANDLE: RefCell<Option<RaylibHandle>> = const { RefCell::new(None) };
+    static RAYLIB_THREAD: RefCell<Option<RaylibThread>> = const { RefCell::new(None) };
 }
 
 /// Register all graphics functions in the interpreter globals
@@ -42,9 +42,6 @@ pub fn register_graphics_functions(globals: &Rc<RefCell<crate::value::Environmen
 
 #[cfg(feature = "graphics")]
 fn register_screen_functions(globals: &Rc<RefCell<crate::value::Environment>>) {
-    use std::cell::RefCell;
-    use std::rc::Rc;
-
     // screen_open - Open a graphics window
     globals.borrow_mut().define(
         "screen_open".to_string(),
@@ -517,8 +514,8 @@ fn string_to_color(name: &str) -> Result<Color, String> {
         "white" | "whit" => Ok(Color::WHITE),
         "black" | "bleck" => Ok(Color::BLACK),
         "yellow" | "yella" => Ok(Color::YELLOW),
-        "orange" | "orange" => Ok(Color::ORANGE),
-        "pink" | "pink" => Ok(Color::PINK),
+        "orange" => Ok(Color::ORANGE),
+        "pink" => Ok(Color::PINK),
         "purple" | "purpie" => Ok(Color::PURPLE),
         "gray" | "grey" => Ok(Color::GRAY),
         "darkgray" | "derkgrey" => Ok(Color::DARKGRAY),

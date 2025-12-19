@@ -13,6 +13,10 @@ static EMBEDDED_RUNTIME: &[u8] = include_bytes!("../../runtime/mdh_runtime.o");
 /// Embedded Rust runtime staticlib (JSON/regex helpers)
 static EMBEDDED_RUNTIME_RS: &[u8] = include_bytes!("../../runtime/mdh_runtime_rs.a");
 
+/// Embedded raylib static library for audio/graphics backends
+#[cfg(feature = "audio")]
+static EMBEDDED_RAYLIB: &[u8] = include_bytes!("../../runtime/libraylib.a");
+
 /// Embedded GC stub - minimal malloc wrappers for standalone builds
 static EMBEDDED_GC_STUB: &[u8] = include_bytes!("../../runtime/gc_stub.o");
 
@@ -153,6 +157,8 @@ impl LLVMCompiler {
         let unique_id = format!("{}_{:?}", std::process::id(), std::thread::current().id());
         let runtime_path = std::env::temp_dir().join(format!("mdh_runtime_{}.o", unique_id));
         let runtime_rs_path = std::env::temp_dir().join(format!("mdh_runtime_rs_{}.a", unique_id));
+        #[cfg(feature = "audio")]
+        let raylib_path = std::env::temp_dir().join(format!("mdh_raylib_{}.a", unique_id));
         let gc_stub_path = std::env::temp_dir().join(format!("mdh_gc_stub_{}.o", unique_id));
 
         // Write embedded runtime to temp file for linking
@@ -165,24 +171,74 @@ impl LLVMCompiler {
             .and_then(|mut f| f.write_all(EMBEDDED_RUNTIME_RS))
             .map_err(Self::llvm_compile_error)?;
 
+        // Write embedded raylib staticlib to temp file for linking
+        #[cfg(feature = "audio")]
+        {
+            std::fs::File::create(&raylib_path)
+                .and_then(|mut f| f.write_all(EMBEDDED_RAYLIB))
+                .map_err(Self::llvm_compile_error)?;
+        }
+
         // Write embedded GC stub to temp file for linking
         std::fs::File::create(&gc_stub_path)
             .and_then(|mut f| f.write_all(EMBEDDED_GC_STUB))
             .map_err(Self::llvm_compile_error)?;
 
         // Link with system linker
+        let mut link_args = vec![
+            obj_path.to_str().unwrap(),
+            runtime_path.to_str().unwrap(),
+            runtime_rs_path.to_str().unwrap(),
+            gc_stub_path.to_str().unwrap(),
+            "-lm", // Math library (for floor, ceil, etc.)
+            "-pthread",
+            "-static-libgcc",
+        ];
+
+        #[cfg(feature = "audio")]
+        {
+            link_args.insert(3, raylib_path.to_str().unwrap());
+
+            // Platform-specific raylib deps
+            if cfg!(target_os = "linux") {
+                link_args.extend([
+                    "-ldl",
+                    "-lGL",
+                    "-lX11",
+                    "-lXrandr",
+                    "-lXi",
+                    "-lXxf86vm",
+                    "-lXcursor",
+                    "-lXinerama",
+                ]);
+            } else if cfg!(target_os = "windows") {
+                link_args.extend([
+                    "-lwinmm",
+                    "-lgdi32",
+                    "-lopengl32",
+                    "-luser32",
+                    "-lshell32",
+                    "-lcomdlg32",
+                ]);
+            } else if cfg!(target_os = "macos") {
+                link_args.extend([
+                    "-framework",
+                    "OpenGL",
+                    "-framework",
+                    "Cocoa",
+                    "-framework",
+                    "IOKit",
+                    "-framework",
+                    "CoreVideo",
+                ]);
+            }
+        }
+
+        link_args.push("-o");
+        link_args.push(output_path.to_str().unwrap());
+
         let status = Command::new("cc")
-            .args([
-                obj_path.to_str().unwrap(),
-                runtime_path.to_str().unwrap(),
-                runtime_rs_path.to_str().unwrap(),
-                gc_stub_path.to_str().unwrap(),
-                "-lm", // Math library (for floor, ceil, etc.)
-                "-pthread",
-                "-static-libgcc",
-                "-o",
-                output_path.to_str().unwrap(),
-            ])
+            .args(&link_args)
             .status()
             .map_err(Self::llvm_compile_error)?;
 
@@ -190,6 +246,8 @@ impl LLVMCompiler {
         let _ = std::fs::remove_file(&obj_path);
         let _ = std::fs::remove_file(&runtime_path);
         let _ = std::fs::remove_file(&runtime_rs_path);
+        #[cfg(feature = "audio")]
+        let _ = std::fs::remove_file(&raylib_path);
         let _ = std::fs::remove_file(&gc_stub_path);
 
         if status.success() {
@@ -365,5 +423,66 @@ mod tests {
 
         assert!(ir.contains("loop"));
         assert!(ir.contains("body"));
+    }
+
+    #[test]
+    fn test_compile_audio_builtins() {
+        let source = r#"
+            soond_stairt()
+            soond_wheesht(aye)
+            soond_luid(0.5)
+            ken v = soond_hou_luid()
+            soond_haud_gang()
+            ken sfx = soond_lade("a.wav")
+            soond_ready(sfx)
+            soond_spiel(sfx)
+            soond_haud(sfx)
+            soond_gae_on(sfx)
+            soond_stap(sfx)
+            soond_is_spielin(sfx)
+            soond_pit_luid(sfx, 0.7)
+            soond_pit_pan(sfx, -0.2)
+            soond_pit_tune(sfx, 1.1)
+            soond_pit_rin_roond(sfx, aye)
+            soond_unlade(sfx)
+            soond_steek()
+
+            ken mus = muisic_lade("a.mp3")
+            muisic_spiel(mus)
+            muisic_haud(mus)
+            muisic_gae_on(mus)
+            muisic_stap(mus)
+            muisic_is_spielin(mus)
+            muisic_loup(mus, 0.2)
+            muisic_hou_lang(mus)
+            muisic_whaur(mus)
+            muisic_pit_luid(mus, 0.5)
+            muisic_pit_pan(mus, 0.0)
+            muisic_pit_tune(mus, 1.0)
+            muisic_pit_rin_roond(mus, nae)
+            muisic_unlade(mus)
+
+            ken song = midi_lade("a.mid", naething)
+            midi_spiel(song)
+            midi_haud(song)
+            midi_gae_on(song)
+            midi_stap(song)
+            midi_is_spielin(song)
+            midi_loup(song, 1.0)
+            midi_hou_lang(song)
+            midi_whaur(song)
+            midi_pit_luid(song, 0.4)
+            midi_pit_pan(song, -0.5)
+            midi_pit_rin_roond(song, aye)
+            midi_unlade(song)
+        "#;
+
+        let program = parse(source).unwrap();
+        let compiler = LLVMCompiler::new();
+        let ir = compiler.compile_to_ir(&program).unwrap();
+
+        assert!(ir.contains("@__mdh_soond_stairt"));
+        assert!(ir.contains("@__mdh_muisic_lade"));
+        assert!(ir.contains("@__mdh_midi_lade"));
     }
 }

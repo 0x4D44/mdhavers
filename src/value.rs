@@ -4,6 +4,7 @@ use std::fmt;
 use std::rc::Rc;
 
 use crate::ast::{Expr, Stmt};
+use crate::error::HaversResult;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ValueKey {
@@ -21,11 +22,22 @@ pub enum ValueKey {
     Class(usize),
     Instance(usize),
     Struct(usize),
+    NativeObject(usize),
     Range {
         start: i64,
         end: i64,
         inclusive: bool,
     },
+}
+
+pub trait NativeObject {
+    fn type_name(&self) -> &str;
+    fn get(&self, prop: &str) -> HaversResult<Value>;
+    fn set(&self, prop: &str, value: Value) -> HaversResult<Value>;
+    fn call(&self, method: &str, args: Vec<Value>) -> HaversResult<Value>;
+    fn to_string(&self) -> String {
+        format!("<native {}>", self.type_name())
+    }
 }
 
 /// Runtime values in mdhavers
@@ -57,6 +69,8 @@ pub enum Value {
     Instance(Rc<RefCell<HaversInstance>>),
     /// Struct definition
     Struct(Rc<HaversStruct>),
+    /// Native object with property/method hooks
+    NativeObject(Rc<dyn NativeObject>),
     /// Range iterator
     #[allow(dead_code)]
     Range(RangeValue),
@@ -83,6 +97,7 @@ impl Value {
             Value::Instance(_) => "instance",
             Value::Struct(_) => "struct",
             Value::Range(_) => "range",
+            Value::NativeObject(_) => "native object",
         }
     }
 
@@ -141,6 +156,7 @@ impl Value {
             Value::Class(class) => ValueKey::Class(Rc::as_ptr(class) as usize),
             Value::Instance(inst) => ValueKey::Instance(Rc::as_ptr(inst) as usize),
             Value::Struct(s) => ValueKey::Struct(Rc::as_ptr(s) as usize),
+            Value::NativeObject(obj) => ValueKey::NativeObject(Rc::as_ptr(obj) as usize),
             Value::Range(r) => ValueKey::Range {
                 start: r.start,
                 end: r.end,
@@ -195,6 +211,7 @@ impl fmt::Display for Value {
             Value::Instance(inst) => write!(f, "<{} instance>", inst.borrow().class.name),
             Value::Struct(s) => write!(f, "<thing {}>", s.name),
             Value::Range(r) => write!(f, "{}..{}", r.start, r.end),
+            Value::NativeObject(obj) => write!(f, "{}", obj.to_string()),
         }
     }
 }
@@ -218,6 +235,7 @@ impl PartialEq for Value {
             (Value::Class(a), Value::Class(b)) => Rc::ptr_eq(a, b),
             (Value::Instance(a), Value::Instance(b)) => Rc::ptr_eq(a, b),
             (Value::Struct(a), Value::Struct(b)) => Rc::ptr_eq(a, b),
+            (Value::NativeObject(a), Value::NativeObject(b)) => Rc::ptr_eq(a, b),
             _ => false,
         }
     }

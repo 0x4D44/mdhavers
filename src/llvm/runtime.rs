@@ -83,6 +83,55 @@ pub struct RuntimeFunctions<'ctx> {
     // Timing
     pub mono_ms: FunctionValue<'ctx>,
     pub mono_ns: FunctionValue<'ctx>,
+
+    // Audio
+    pub soond_stairt: FunctionValue<'ctx>,
+    pub soond_steek: FunctionValue<'ctx>,
+    pub soond_wheesht: FunctionValue<'ctx>,
+    pub soond_luid: FunctionValue<'ctx>,
+    pub soond_hou_luid: FunctionValue<'ctx>,
+    pub soond_haud_gang: FunctionValue<'ctx>,
+    pub soond_lade: FunctionValue<'ctx>,
+    pub soond_spiel: FunctionValue<'ctx>,
+    pub soond_haud: FunctionValue<'ctx>,
+    pub soond_gae_on: FunctionValue<'ctx>,
+    pub soond_stap: FunctionValue<'ctx>,
+    pub soond_unlade: FunctionValue<'ctx>,
+    pub soond_is_spielin: FunctionValue<'ctx>,
+    pub soond_pit_luid: FunctionValue<'ctx>,
+    pub soond_pit_pan: FunctionValue<'ctx>,
+    pub soond_pit_tune: FunctionValue<'ctx>,
+    pub soond_pit_rin_roond: FunctionValue<'ctx>,
+    pub soond_ready: FunctionValue<'ctx>,
+
+    pub muisic_lade: FunctionValue<'ctx>,
+    pub muisic_spiel: FunctionValue<'ctx>,
+    pub muisic_haud: FunctionValue<'ctx>,
+    pub muisic_gae_on: FunctionValue<'ctx>,
+    pub muisic_stap: FunctionValue<'ctx>,
+    pub muisic_unlade: FunctionValue<'ctx>,
+    pub muisic_is_spielin: FunctionValue<'ctx>,
+    pub muisic_loup: FunctionValue<'ctx>,
+    pub muisic_hou_lang: FunctionValue<'ctx>,
+    pub muisic_whaur: FunctionValue<'ctx>,
+    pub muisic_pit_luid: FunctionValue<'ctx>,
+    pub muisic_pit_pan: FunctionValue<'ctx>,
+    pub muisic_pit_tune: FunctionValue<'ctx>,
+    pub muisic_pit_rin_roond: FunctionValue<'ctx>,
+
+    pub midi_lade: FunctionValue<'ctx>,
+    pub midi_spiel: FunctionValue<'ctx>,
+    pub midi_haud: FunctionValue<'ctx>,
+    pub midi_gae_on: FunctionValue<'ctx>,
+    pub midi_stap: FunctionValue<'ctx>,
+    pub midi_unlade: FunctionValue<'ctx>,
+    pub midi_is_spielin: FunctionValue<'ctx>,
+    pub midi_loup: FunctionValue<'ctx>,
+    pub midi_hou_lang: FunctionValue<'ctx>,
+    pub midi_whaur: FunctionValue<'ctx>,
+    pub midi_pit_luid: FunctionValue<'ctx>,
+    pub midi_pit_pan: FunctionValue<'ctx>,
+    pub midi_pit_rin_roond: FunctionValue<'ctx>,
 }
 
 impl<'ctx> RuntimeFunctions<'ctx> {
@@ -419,6 +468,62 @@ impl<'ctx> RuntimeFunctions<'ctx> {
 
         let mono_ns = module.add_function("__mdh_mono_ns", value_type.fn_type(&[], false), None);
 
+        // Audio
+        let audio_0_type = value_type.fn_type(&[], false);
+        let audio_1_type = value_type.fn_type(&[value_type.into()], false);
+        let audio_2_type = value_type.fn_type(&[value_type.into(), value_type.into()], false);
+
+        let soond_stairt = module.add_function("__mdh_soond_stairt", audio_0_type, None);
+        let soond_steek = module.add_function("__mdh_soond_steek", audio_0_type, None);
+        let soond_wheesht = module.add_function("__mdh_soond_wheesht", audio_1_type, None);
+        let soond_luid = module.add_function("__mdh_soond_luid", audio_1_type, None);
+        let soond_hou_luid = module.add_function("__mdh_soond_hou_luid", audio_0_type, None);
+        let soond_haud_gang = module.add_function("__mdh_soond_haud_gang", audio_0_type, None);
+        let soond_lade = module.add_function("__mdh_soond_lade", audio_1_type, None);
+        let soond_spiel = module.add_function("__mdh_soond_spiel", audio_1_type, None);
+        let soond_haud = module.add_function("__mdh_soond_haud", audio_1_type, None);
+        let soond_gae_on = module.add_function("__mdh_soond_gae_on", audio_1_type, None);
+        let soond_stap = module.add_function("__mdh_soond_stap", audio_1_type, None);
+        let soond_unlade = module.add_function("__mdh_soond_unlade", audio_1_type, None);
+        let soond_is_spielin = module.add_function("__mdh_soond_is_spielin", audio_1_type, None);
+        let soond_pit_luid = module.add_function("__mdh_soond_pit_luid", audio_2_type, None);
+        let soond_pit_pan = module.add_function("__mdh_soond_pit_pan", audio_2_type, None);
+        let soond_pit_tune = module.add_function("__mdh_soond_pit_tune", audio_2_type, None);
+        let soond_pit_rin_roond =
+            module.add_function("__mdh_soond_pit_rin_roond", audio_2_type, None);
+        let soond_ready = module.add_function("__mdh_soond_ready", audio_1_type, None);
+
+        let muisic_lade = module.add_function("__mdh_muisic_lade", audio_1_type, None);
+        let muisic_spiel = module.add_function("__mdh_muisic_spiel", audio_1_type, None);
+        let muisic_haud = module.add_function("__mdh_muisic_haud", audio_1_type, None);
+        let muisic_gae_on = module.add_function("__mdh_muisic_gae_on", audio_1_type, None);
+        let muisic_stap = module.add_function("__mdh_muisic_stap", audio_1_type, None);
+        let muisic_unlade = module.add_function("__mdh_muisic_unlade", audio_1_type, None);
+        let muisic_is_spielin = module.add_function("__mdh_muisic_is_spielin", audio_1_type, None);
+        let muisic_loup = module.add_function("__mdh_muisic_loup", audio_2_type, None);
+        let muisic_hou_lang = module.add_function("__mdh_muisic_hou_lang", audio_1_type, None);
+        let muisic_whaur = module.add_function("__mdh_muisic_whaur", audio_1_type, None);
+        let muisic_pit_luid = module.add_function("__mdh_muisic_pit_luid", audio_2_type, None);
+        let muisic_pit_pan = module.add_function("__mdh_muisic_pit_pan", audio_2_type, None);
+        let muisic_pit_tune = module.add_function("__mdh_muisic_pit_tune", audio_2_type, None);
+        let muisic_pit_rin_roond =
+            module.add_function("__mdh_muisic_pit_rin_roond", audio_2_type, None);
+
+        let midi_lade = module.add_function("__mdh_midi_lade", audio_2_type, None);
+        let midi_spiel = module.add_function("__mdh_midi_spiel", audio_1_type, None);
+        let midi_haud = module.add_function("__mdh_midi_haud", audio_1_type, None);
+        let midi_gae_on = module.add_function("__mdh_midi_gae_on", audio_1_type, None);
+        let midi_stap = module.add_function("__mdh_midi_stap", audio_1_type, None);
+        let midi_unlade = module.add_function("__mdh_midi_unlade", audio_1_type, None);
+        let midi_is_spielin = module.add_function("__mdh_midi_is_spielin", audio_1_type, None);
+        let midi_loup = module.add_function("__mdh_midi_loup", audio_2_type, None);
+        let midi_hou_lang = module.add_function("__mdh_midi_hou_lang", audio_1_type, None);
+        let midi_whaur = module.add_function("__mdh_midi_whaur", audio_1_type, None);
+        let midi_pit_luid = module.add_function("__mdh_midi_pit_luid", audio_2_type, None);
+        let midi_pit_pan = module.add_function("__mdh_midi_pit_pan", audio_2_type, None);
+        let midi_pit_rin_roond =
+            module.add_function("__mdh_midi_pit_rin_roond", audio_2_type, None);
+
         RuntimeFunctions {
             make_nil,
             make_bool,
@@ -472,6 +577,51 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             round,
             mono_ms,
             mono_ns,
+            soond_stairt,
+            soond_steek,
+            soond_wheesht,
+            soond_luid,
+            soond_hou_luid,
+            soond_haud_gang,
+            soond_lade,
+            soond_spiel,
+            soond_haud,
+            soond_gae_on,
+            soond_stap,
+            soond_unlade,
+            soond_is_spielin,
+            soond_pit_luid,
+            soond_pit_pan,
+            soond_pit_tune,
+            soond_pit_rin_roond,
+            soond_ready,
+            muisic_lade,
+            muisic_spiel,
+            muisic_haud,
+            muisic_gae_on,
+            muisic_stap,
+            muisic_unlade,
+            muisic_is_spielin,
+            muisic_loup,
+            muisic_hou_lang,
+            muisic_whaur,
+            muisic_pit_luid,
+            muisic_pit_pan,
+            muisic_pit_tune,
+            muisic_pit_rin_roond,
+            midi_lade,
+            midi_spiel,
+            midi_haud,
+            midi_gae_on,
+            midi_stap,
+            midi_unlade,
+            midi_is_spielin,
+            midi_loup,
+            midi_hou_lang,
+            midi_whaur,
+            midi_pit_luid,
+            midi_pit_pan,
+            midi_pit_rin_roond,
         }
     }
 }

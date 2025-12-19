@@ -1,22 +1,27 @@
-use std::cell::RefCell;
-use std::collections::{HashMap, HashSet, VecDeque};
-#[cfg(not(coverage))]
-use std::io;
-use std::path::{Path, PathBuf};
-use std::rc::Rc;
-use std::io::{Read, Write};
-use std::net::ToSocketAddrs;
-use std::os::unix::io::{FromRawFd, RawFd};
-use trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
-use trust_dns_resolver::proto::rr::{RData, RecordType};
-use trust_dns_resolver::Resolver;
+#![allow(clippy::let_unit_value, clippy::manual_range_contains)]
+
 use libsrtp::{MasterKey, ProtectionProfile, RecvSession, SendSession, StreamConfig};
 use openssl::pkcs12::Pkcs12;
 use openssl::pkey::PKey;
 use openssl::x509::X509;
 use rustls::client::{ServerCertVerified, ServerCertVerifier};
-use rustls::{Certificate, ClientConfig, ClientConnection, PrivateKey, RootCertStore, ServerConfig, ServerConnection, ServerName, StreamOwned, OwnedTrustAnchor};
+use rustls::{
+    Certificate, ClientConfig, ClientConnection, OwnedTrustAnchor, PrivateKey, RootCertStore,
+    ServerConfig, ServerConnection, ServerName, StreamOwned,
+};
 use rustls_pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet, VecDeque};
+#[cfg(not(coverage))]
+use std::io;
+use std::io::{Read, Write};
+use std::net::ToSocketAddrs;
+use std::os::unix::io::{FromRawFd, RawFd};
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
+use trust_dns_resolver::proto::rr::{RData, RecordType};
+use trust_dns_resolver::Resolver;
 use udp_dtls::{DtlsAcceptor, DtlsConnector, Identity, SrtpProfile, UdpChannel};
 
 #[cfg(all(feature = "cli", not(coverage)))]
@@ -449,10 +454,12 @@ struct SrtpRegistry {
 static SRTP_REGISTRY: OnceLock<Mutex<SrtpRegistry>> = OnceLock::new();
 
 fn srtp_registry() -> &'static Mutex<SrtpRegistry> {
-    SRTP_REGISTRY.get_or_init(|| Mutex::new(SrtpRegistry {
-        next_id: 1,
-        sessions: HashMap::new(),
-    }))
+    SRTP_REGISTRY.get_or_init(|| {
+        Mutex::new(SrtpRegistry {
+            next_id: 1,
+            sessions: HashMap::new(),
+        })
+    })
 }
 
 fn register_srtp(session: SrtpSession) -> i64 {
@@ -493,10 +500,12 @@ struct DtlsRegistry {
 static DTLS_REGISTRY: OnceLock<Mutex<DtlsRegistry>> = OnceLock::new();
 
 fn dtls_registry() -> &'static Mutex<DtlsRegistry> {
-    DTLS_REGISTRY.get_or_init(|| Mutex::new(DtlsRegistry {
-        next_id: 1,
-        configs: HashMap::new(),
-    }))
+    DTLS_REGISTRY.get_or_init(|| {
+        Mutex::new(DtlsRegistry {
+            next_id: 1,
+            configs: HashMap::new(),
+        })
+    })
 }
 
 fn register_dtls(config: DtlsConfigData) -> i64 {
@@ -637,7 +646,8 @@ fn tls_config_from_value(value: &Value) -> Result<TlsConfigData, String> {
         TlsMode::Client
     };
 
-    let mut server_name = dict_get_string(&dict, "server_name").unwrap_or_else(|| "localhost".to_string());
+    let mut server_name =
+        dict_get_string(&dict, "server_name").unwrap_or_else(|| "localhost".to_string());
     if server_name.is_empty() {
         server_name = "localhost".to_string();
     }
@@ -691,10 +701,7 @@ fn build_client_config(cfg: &TlsConfigData) -> Result<Arc<ClientConfig>, String>
 }
 
 fn build_server_config(cfg: &TlsConfigData) -> Result<Arc<ServerConfig>, String> {
-    let cert_pem = cfg
-        .cert_pem
-        .as_ref()
-        .ok_or("Server cert_pem is required")?;
+    let cert_pem = cfg.cert_pem.as_ref().ok_or("Server cert_pem is required")?;
     let key_pem = cfg.key_pem.as_ref().ok_or("Server key_pem is required")?;
 
     let mut cert_reader = std::io::Cursor::new(cert_pem.as_bytes());
@@ -706,8 +713,8 @@ fn build_server_config(cfg: &TlsConfigData) -> Result<Arc<ServerConfig>, String>
         pkcs8_private_keys(&mut key_reader).map_err(|e| format!("Invalid server key: {}", e))?;
     if keys.is_empty() {
         let mut key_reader = std::io::Cursor::new(key_pem.as_bytes());
-        keys = rsa_private_keys(&mut key_reader)
-            .map_err(|e| format!("Invalid server key: {}", e))?;
+        keys =
+            rsa_private_keys(&mut key_reader).map_err(|e| format!("Invalid server key: {}", e))?;
     }
     let key = keys
         .into_iter()
@@ -788,7 +795,8 @@ fn dtls_config_from_value(value: &Value) -> Result<DtlsConfigData, String> {
         TlsMode::Server
     };
 
-    let mut server_name = dict_get_string(&dict, "server_name").unwrap_or_else(|| "localhost".to_string());
+    let mut server_name =
+        dict_get_string(&dict, "server_name").unwrap_or_else(|| "localhost".to_string());
     if server_name.is_empty() {
         server_name = "localhost".to_string();
     }
@@ -828,7 +836,8 @@ fn dtls_config_from_value(value: &Value) -> Result<DtlsConfigData, String> {
 }
 
 fn identity_from_pem(cert_pem: &str, key_pem: &str) -> Result<Identity, String> {
-    let cert = X509::from_pem(cert_pem.as_bytes()).map_err(|e| format!("Invalid cert PEM: {}", e))?;
+    let cert =
+        X509::from_pem(cert_pem.as_bytes()).map_err(|e| format!("Invalid cert PEM: {}", e))?;
     let key = PKey::private_key_from_pem(key_pem.as_bytes())
         .map_err(|e| format!("Invalid key PEM: {}", e))?;
     let mut builder = Pkcs12::builder();
@@ -836,7 +845,9 @@ fn identity_from_pem(cert_pem: &str, key_pem: &str) -> Result<Identity, String> 
     let pkcs12 = builder
         .build2("")
         .map_err(|e| format!("PKCS12 build failed: {}", e))?;
-    let der = pkcs12.to_der().map_err(|e| format!("PKCS12 serialize failed: {}", e))?;
+    let der = pkcs12
+        .to_der()
+        .map_err(|e| format!("PKCS12 serialize failed: {}", e))?;
     Identity::from_pkcs12(&der, "").map_err(|e| format!("Identity parse failed: {}", e))
 }
 
@@ -847,9 +858,17 @@ fn addr_dict(host: String, port: i64) -> Value {
     Value::Dict(Rc::new(RefCell::new(dict)))
 }
 
-fn event_dict(kind: &str, sock: Option<i64>, timer_id: Option<i64>, callback: Option<Value>) -> Value {
+fn event_dict(
+    kind: &str,
+    sock: Option<i64>,
+    timer_id: Option<i64>,
+    callback: Option<Value>,
+) -> Value {
     let mut dict = DictValue::new();
-    dict.set(Value::String("kind".to_string()), Value::String(kind.to_string()));
+    dict.set(
+        Value::String("kind".to_string()),
+        Value::String(kind.to_string()),
+    );
     if let Some(sock_id) = sock {
         dict.set(Value::String("sock".to_string()), Value::Integer(sock_id));
     }
@@ -1349,9 +1368,7 @@ impl Interpreter {
                         Value::String(s) => s.clone(),
                         _ => format!("{}", args[0]),
                     };
-                    Ok(Value::Bytes(Rc::new(RefCell::new(
-                        s.as_bytes().to_vec(),
-                    ))))
+                    Ok(Value::Bytes(Rc::new(RefCell::new(s.as_bytes().to_vec()))))
                 },
             ))),
         );
@@ -1371,44 +1388,40 @@ impl Interpreter {
         // bytes_slice - slice a byte buffer
         globals.borrow_mut().define(
             "bytes_slice".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new(
-                "bytes_slice",
-                3,
-                |args| {
-                    let bytes = match &args[0] {
-                        Value::Bytes(b) => b.borrow(),
-                        _ => return Err("bytes_slice() expects bytes".to_string()),
-                    };
-                    let start = match &args[1] {
-                        Value::Integer(n) => *n,
-                        _ => return Err("bytes_slice() expects integer start".to_string()),
-                    };
-                    let end = match &args[2] {
-                        Value::Integer(n) => *n,
-                        _ => return Err("bytes_slice() expects integer end".to_string()),
-                    };
-                    let len = bytes.len() as i64;
-                    let mut s = start;
-                    let mut e = end;
-                    if s < 0 {
-                        s += len;
-                    }
-                    if e < 0 {
-                        e += len;
-                    }
-                    if s < 0 {
-                        s = 0;
-                    }
-                    if e > len {
-                        e = len;
-                    }
-                    if e < s {
-                        e = s;
-                    }
-                    let out = bytes[s as usize..e as usize].to_vec();
-                    Ok(Value::Bytes(Rc::new(RefCell::new(out))))
-                },
-            ))),
+            Value::NativeFunction(Rc::new(NativeFunction::new("bytes_slice", 3, |args| {
+                let bytes = match &args[0] {
+                    Value::Bytes(b) => b.borrow(),
+                    _ => return Err("bytes_slice() expects bytes".to_string()),
+                };
+                let start = match &args[1] {
+                    Value::Integer(n) => *n,
+                    _ => return Err("bytes_slice() expects integer start".to_string()),
+                };
+                let end = match &args[2] {
+                    Value::Integer(n) => *n,
+                    _ => return Err("bytes_slice() expects integer end".to_string()),
+                };
+                let len = bytes.len() as i64;
+                let mut s = start;
+                let mut e = end;
+                if s < 0 {
+                    s += len;
+                }
+                if e < 0 {
+                    e += len;
+                }
+                if s < 0 {
+                    s = 0;
+                }
+                if e > len {
+                    e = len;
+                }
+                if e < s {
+                    e = s;
+                }
+                let out = bytes[s as usize..e as usize].to_vec();
+                Ok(Value::Bytes(Rc::new(RefCell::new(out))))
+            }))),
         );
 
         // bytes_get - get byte at index
@@ -1437,61 +1450,53 @@ impl Interpreter {
         // bytes_set - set byte at index
         globals.borrow_mut().define(
             "bytes_set".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new(
-                "bytes_set",
-                3,
-                |args| {
-                    let bytes = match &args[0] {
-                        Value::Bytes(b) => b.clone(),
-                        _ => return Err("bytes_set() expects bytes".to_string()),
-                    };
-                    let mut idx = match &args[1] {
-                        Value::Integer(n) => *n,
-                        _ => return Err("bytes_set() expects integer index".to_string()),
-                    };
-                    let v = match &args[2] {
-                        Value::Integer(n) => *n,
-                        Value::Float(f) => *f as i64,
-                        _ => return Err("bytes_set() expects integer value".to_string()),
-                    };
-                    if v < 0 || v > 255 {
-                        return Err("bytes_set() value must be between 0 and 255".to_string());
+            Value::NativeFunction(Rc::new(NativeFunction::new("bytes_set", 3, |args| {
+                let bytes = match &args[0] {
+                    Value::Bytes(b) => b.clone(),
+                    _ => return Err("bytes_set() expects bytes".to_string()),
+                };
+                let mut idx = match &args[1] {
+                    Value::Integer(n) => *n,
+                    _ => return Err("bytes_set() expects integer index".to_string()),
+                };
+                let v = match &args[2] {
+                    Value::Integer(n) => *n,
+                    Value::Float(f) => *f as i64,
+                    _ => return Err("bytes_set() expects integer value".to_string()),
+                };
+                if v < 0 || v > 255 {
+                    return Err("bytes_set() value must be between 0 and 255".to_string());
+                }
+                {
+                    let mut buf = bytes.borrow_mut();
+                    let len = buf.len() as i64;
+                    if idx < 0 {
+                        idx += len;
                     }
-                    {
-                        let mut buf = bytes.borrow_mut();
-                        let len = buf.len() as i64;
-                        if idx < 0 {
-                            idx += len;
-                        }
-                        if idx < 0 || idx >= len {
-                            return Err("bytes_set() index oot o' bounds".to_string());
-                        }
-                        buf[idx as usize] = v as u8;
+                    if idx < 0 || idx >= len {
+                        return Err("bytes_set() index oot o' bounds".to_string());
                     }
-                    Ok(Value::Bytes(bytes))
-                },
-            ))),
+                    buf[idx as usize] = v as u8;
+                }
+                Ok(Value::Bytes(bytes))
+            }))),
         );
 
         // bytes_append - append bytes to bytes
         globals.borrow_mut().define(
             "bytes_append".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new(
-                "bytes_append",
-                2,
-                |args| {
-                    let bytes = match &args[0] {
-                        Value::Bytes(b) => b.clone(),
-                        _ => return Err("bytes_append() expects bytes".to_string()),
-                    };
-                    let other = match &args[1] {
-                        Value::Bytes(b) => b.borrow(),
-                        _ => return Err("bytes_append() expects bytes".to_string()),
-                    };
-                    bytes.borrow_mut().extend_from_slice(&other);
-                    Ok(Value::Bytes(bytes))
-                },
-            ))),
+            Value::NativeFunction(Rc::new(NativeFunction::new("bytes_append", 2, |args| {
+                let bytes = match &args[0] {
+                    Value::Bytes(b) => b.clone(),
+                    _ => return Err("bytes_append() expects bytes".to_string()),
+                };
+                let other = match &args[1] {
+                    Value::Bytes(b) => b.borrow(),
+                    _ => return Err("bytes_append() expects bytes".to_string()),
+                };
+                bytes.borrow_mut().extend_from_slice(&other);
+                Ok(Value::Bytes(bytes))
+            }))),
         );
 
         // bytes_read_u16be
@@ -1512,8 +1517,7 @@ impl Interpreter {
                     if off < 0 || (off as usize + 2) > bytes.len() {
                         return Err("bytes_read_u16be() out o' bounds".to_string());
                     }
-                    let v = ((bytes[off as usize] as u16) << 8)
-                        | (bytes[off as usize + 1] as u16);
+                    let v = ((bytes[off as usize] as u16) << 8) | (bytes[off as usize + 1] as u16);
                     Ok(Value::Integer(v as i64))
                 },
             ))),
@@ -1692,42 +1696,38 @@ impl Interpreter {
         // socket_connect(sock, host, port)
         globals.borrow_mut().define(
             "socket_connect".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new(
-                "socket_connect",
-                3,
-                |args| {
-                    let sock_id = args[0]
-                        .as_integer()
-                        .ok_or("socket_connect() expects socket id")?;
-                    let host = match &args[1] {
-                        Value::String(s) => s.as_str(),
-                        _ => return Err("socket_connect() expects host string".to_string()),
-                    };
-                    let port = args[2]
-                        .as_integer()
-                        .ok_or("socket_connect() expects port integer")?;
-                    if port < 0 || port > 65535 {
-                        return Err("socket_connect() port must be 0..65535".to_string());
-                    }
+            Value::NativeFunction(Rc::new(NativeFunction::new("socket_connect", 3, |args| {
+                let sock_id = args[0]
+                    .as_integer()
+                    .ok_or("socket_connect() expects socket id")?;
+                let host = match &args[1] {
+                    Value::String(s) => s.as_str(),
+                    _ => return Err("socket_connect() expects host string".to_string()),
+                };
+                let port = args[2]
+                    .as_integer()
+                    .ok_or("socket_connect() expects port integer")?;
+                if port < 0 || port > 65535 {
+                    return Err("socket_connect() port must be 0..65535".to_string());
+                }
 
-                    let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
-                    let addr = resolve_ipv4_addr(Some(host), port as u16)
-                        .map_err(|e| format!("socket_connect() {}", e))?;
-                    let rc = unsafe {
-                        libc::connect(
-                            entry.fd,
-                            &addr as *const _ as *const libc::sockaddr,
-                            std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
-                        )
-                    };
-                    if rc != 0 {
-                        let err = std::io::Error::last_os_error();
-                        let code = err.raw_os_error().unwrap_or(-1) as i64;
-                        return Ok(result_err(err.to_string(), code));
-                    }
-                    Ok(result_ok(Value::Nil))
-                },
-            ))),
+                let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+                let addr = resolve_ipv4_addr(Some(host), port as u16)
+                    .map_err(|e| format!("socket_connect() {}", e))?;
+                let rc = unsafe {
+                    libc::connect(
+                        entry.fd,
+                        &addr as *const _ as *const libc::sockaddr,
+                        std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                    )
+                };
+                if rc != 0 {
+                    let err = std::io::Error::last_os_error();
+                    let code = err.raw_os_error().unwrap_or(-1) as i64;
+                    return Ok(result_err(err.to_string(), code));
+                }
+                Ok(result_ok(Value::Nil))
+            }))),
         );
 
         // socket_listen(sock, backlog)
@@ -2097,8 +2097,7 @@ impl Interpreter {
 
                 let mut buf = vec![0u8; max_len];
                 let mut addr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
-                let mut addr_len =
-                    std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+                let mut addr_len = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
                 let n = unsafe {
                     libc::recvfrom(
                         entry.fd,
@@ -2130,9 +2129,7 @@ impl Interpreter {
         globals.borrow_mut().define(
             "tcp_send".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("tcp_send", 2, |args| {
-                let sock_id = args[0]
-                    .as_integer()
-                    .ok_or("tcp_send() expects socket id")?;
+                let sock_id = args[0].as_integer().ok_or("tcp_send() expects socket id")?;
                 let bytes = match &args[1] {
                     Value::Bytes(b) => b.borrow(),
                     _ => return Err("tcp_send() expects bytes".to_string()),
@@ -2159,9 +2156,7 @@ impl Interpreter {
         globals.borrow_mut().define(
             "tcp_recv".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("tcp_recv", 2, |args| {
-                let sock_id = args[0]
-                    .as_integer()
-                    .ok_or("tcp_recv() expects socket id")?;
+                let sock_id = args[0].as_integer().ok_or("tcp_recv() expects socket id")?;
                 let max_len = args[1]
                     .as_integer()
                     .ok_or("tcp_recv() expects max_len integer")?;
@@ -2390,7 +2385,8 @@ impl Interpreter {
                                 conn.complete_io(&mut stream)
                                     .map_err(|e| format!("TLS handshake failed: {}", e))?;
                             }
-                            session.stream = Some(TlsStream::Client(StreamOwned::new(conn, stream)));
+                            session.stream =
+                                Some(TlsStream::Client(StreamOwned::new(conn, stream)));
                         }
                         TlsMode::Server => {
                             let config = session
@@ -2404,7 +2400,8 @@ impl Interpreter {
                                 conn.complete_io(&mut stream)
                                     .map_err(|e| format!("TLS handshake failed: {}", e))?;
                             }
-                            session.stream = Some(TlsStream::Server(StreamOwned::new(conn, stream)));
+                            session.stream =
+                                Some(TlsStream::Server(StreamOwned::new(conn, stream)));
                         }
                     }
                     Ok(())
@@ -2531,7 +2528,9 @@ impl Interpreter {
                     return Ok(result_err(format!("DTLS socket setup failed: {}", e), -1));
                 }
 
-                let remote = if let (Some(host), Some(port)) = (cfg.remote_host.clone(), cfg.remote_port) {
+                let remote = if let (Some(host), Some(port)) =
+                    (cfg.remote_host.clone(), cfg.remote_port)
+                {
                     match format!("{}:{}", host, port).parse() {
                         Ok(addr) => addr,
                         Err(_) => return Ok(result_err("Invalid remote address".to_string(), -1)),
@@ -2686,12 +2685,7 @@ impl Interpreter {
                     .unwrap_or_else(|| "SRTP_AES128_CM_SHA1_80".to_string());
                 let profile = match protection_profile_from_str(&profile_str) {
                     Some(p) => p,
-                    None => {
-                        return Ok(result_err(
-                            "Unsupported SRTP profile".to_string(),
-                            -1,
-                        ))
-                    }
+                    None => return Ok(result_err("Unsupported SRTP profile".to_string(), -1)),
                 };
 
                 let role = dict_get_string(&dict, "role").unwrap_or_else(|| "client".to_string());
@@ -2706,7 +2700,11 @@ impl Interpreter {
                 let server_key = dict_get_bytes(&dict, "server_key");
                 let server_salt = dict_get_bytes(&dict, "server_salt");
 
-                if send_key.is_none() || send_salt.is_none() || recv_key.is_none() || recv_salt.is_none() {
+                if send_key.is_none()
+                    || send_salt.is_none()
+                    || recv_key.is_none()
+                    || recv_salt.is_none()
+                {
                     if client_key.is_some()
                         && client_salt.is_some()
                         && server_key.is_some()
@@ -2863,10 +2861,8 @@ impl Interpreter {
                     let callback = args[2].clone();
                     let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
                     let _ = with_loop_mut(loop_id, |loop_ref| {
-                        if let Some(watch) = loop_ref
-                            .watches
-                            .iter_mut()
-                            .find(|w| w.sock_id == sock_id)
+                        if let Some(watch) =
+                            loop_ref.watches.iter_mut().find(|w| w.sock_id == sock_id)
                         {
                             watch.read_cb = callback.clone();
                         } else {
@@ -2899,10 +2895,8 @@ impl Interpreter {
                     let callback = args[2].clone();
                     let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
                     let _ = with_loop_mut(loop_id, |loop_ref| {
-                        if let Some(watch) = loop_ref
-                            .watches
-                            .iter_mut()
-                            .find(|w| w.sock_id == sock_id)
+                        if let Some(watch) =
+                            loop_ref.watches.iter_mut().find(|w| w.sock_id == sock_id)
                         {
                             watch.write_cb = callback.clone();
                         } else {
@@ -2942,153 +2936,137 @@ impl Interpreter {
         // event_loop_poll(loop, timeout_ms) -> list of events
         globals.borrow_mut().define(
             "event_loop_poll".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new(
-                "event_loop_poll",
-                2,
-                |args| {
-                    let loop_id = args[0]
-                        .as_integer()
-                        .ok_or("event_loop_poll() expects loop id")?;
-                    let timeout_ms = match &args[1] {
-                        Value::Nil => -1,
-                        Value::Integer(n) => *n,
-                        Value::Float(f) => *f as i64,
-                        _ => {
-                            return Err(
-                                "event_loop_poll() expects timeout integer or nil".to_string()
-                            )
+            Value::NativeFunction(Rc::new(NativeFunction::new("event_loop_poll", 2, |args| {
+                let loop_id = args[0]
+                    .as_integer()
+                    .ok_or("event_loop_poll() expects loop id")?;
+                let timeout_ms = match &args[1] {
+                    Value::Nil => -1,
+                    Value::Integer(n) => *n,
+                    Value::Float(f) => *f as i64,
+                    _ => return Err("event_loop_poll() expects timeout integer or nil".to_string()),
+                };
+
+                let events = with_loop_mut(loop_id, |loop_ref| {
+                    if loop_ref.stopped {
+                        return Value::List(Rc::new(RefCell::new(vec![event_dict(
+                            "stop", None, None, None,
+                        )])));
+                    }
+
+                    let now = mono_ms_now();
+                    let mut next_due: Option<i64> = None;
+                    for timer in loop_ref.timers.iter() {
+                        if timer.cancelled {
+                            continue;
                         }
+                        let mut diff = timer.next_fire_ms - now;
+                        if diff < 0 {
+                            diff = 0;
+                        }
+                        next_due = Some(match next_due {
+                            Some(prev) => prev.min(diff),
+                            None => diff,
+                        });
+                    }
+
+                    let mut wait_ms = timeout_ms;
+                    if wait_ms < 0 {
+                        wait_ms = next_due.unwrap_or(-1);
+                    } else if let Some(due) = next_due {
+                        if due >= 0 && due < wait_ms {
+                            wait_ms = due;
+                        }
+                    }
+
+                    let poll_timeout = if wait_ms < 0 {
+                        -1
+                    } else if wait_ms > i32::MAX as i64 {
+                        i32::MAX
+                    } else {
+                        wait_ms as i32
                     };
 
-                    let events = with_loop_mut(loop_id, |loop_ref| {
-                        if loop_ref.stopped {
-                            return Value::List(Rc::new(RefCell::new(vec![event_dict(
-                                "stop",
-                                None,
-                                None,
-                                None,
-                            )])));
-                        }
-
-                        let now = mono_ms_now();
-                        let mut next_due: Option<i64> = None;
-                        for timer in loop_ref.timers.iter() {
-                            if timer.cancelled {
-                                continue;
-                            }
-                            let mut diff = timer.next_fire_ms - now;
-                            if diff < 0 {
-                                diff = 0;
-                            }
-                            next_due = Some(match next_due {
-                                Some(prev) => prev.min(diff),
-                                None => diff,
-                            });
-                        }
-
-                        let mut wait_ms = timeout_ms;
-                        if wait_ms < 0 {
-                            wait_ms = next_due.unwrap_or(-1);
-                        } else if let Some(due) = next_due {
-                            if due >= 0 && due < wait_ms {
-                                wait_ms = due;
-                            }
-                        }
-
-                        let poll_timeout = if wait_ms < 0 {
-                            -1
-                        } else if wait_ms > i32::MAX as i64 {
-                            i32::MAX
-                        } else {
-                            wait_ms as i32
-                        };
-
-                        let mut fds: Vec<libc::pollfd> = loop_ref
-                            .watches
-                            .iter()
-                            .map(|watch| libc::pollfd {
-                                fd: watch.fd,
-                                events: {
-                                    let mut ev = 0;
-                                    if !matches!(watch.read_cb, Value::Nil) {
-                                        ev |= libc::POLLIN;
-                                    }
-                                    if !matches!(watch.write_cb, Value::Nil) {
-                                        ev |= libc::POLLOUT;
-                                    }
-                                    ev
-                                },
-                                revents: 0,
-                            })
-                            .collect();
-
-                        if poll_timeout != 0 || !fds.is_empty() {
-                            let rc = unsafe {
-                                libc::poll(
-                                    fds.as_mut_ptr(),
-                                    fds.len() as libc::nfds_t,
-                                    poll_timeout,
-                                )
-                            };
-                            if rc < 0 {
-                                return Value::List(Rc::new(RefCell::new(Vec::new())));
-                            }
-                        }
-
-                        let mut out: Vec<Value> = Vec::new();
-                        for (idx, pfd) in fds.iter().enumerate() {
-                            let watch = &loop_ref.watches[idx];
-                            if (pfd.revents & libc::POLLIN) != 0
-                                && !matches!(watch.read_cb, Value::Nil)
-                            {
-                                out.push(event_dict(
-                                    "read",
-                                    Some(watch.sock_id),
-                                    None,
-                                    Some(watch.read_cb.clone()),
-                                ));
-                            }
-                            if (pfd.revents & libc::POLLOUT) != 0
-                                && !matches!(watch.write_cb, Value::Nil)
-                            {
-                                out.push(event_dict(
-                                    "write",
-                                    Some(watch.sock_id),
-                                    None,
-                                    Some(watch.write_cb.clone()),
-                                ));
-                            }
-                        }
-
-                        let now2 = mono_ms_now();
-                        for timer in loop_ref.timers.iter_mut() {
-                            if timer.cancelled {
-                                continue;
-                            }
-                            if timer.next_fire_ms <= now2 {
-                                out.push(event_dict(
-                                    "timer",
-                                    None,
-                                    Some(timer.id),
-                                    Some(timer.callback.clone()),
-                                ));
-                                if timer.interval_ms > 0 {
-                                    while timer.next_fire_ms <= now2 {
-                                        timer.next_fire_ms += timer.interval_ms;
-                                    }
-                                } else {
-                                    timer.cancelled = true;
+                    let mut fds: Vec<libc::pollfd> = loop_ref
+                        .watches
+                        .iter()
+                        .map(|watch| libc::pollfd {
+                            fd: watch.fd,
+                            events: {
+                                let mut ev = 0;
+                                if !matches!(watch.read_cb, Value::Nil) {
+                                    ev |= libc::POLLIN;
                                 }
+                                if !matches!(watch.write_cb, Value::Nil) {
+                                    ev |= libc::POLLOUT;
+                                }
+                                ev
+                            },
+                            revents: 0,
+                        })
+                        .collect();
+
+                    if poll_timeout != 0 || !fds.is_empty() {
+                        let rc = unsafe {
+                            libc::poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, poll_timeout)
+                        };
+                        if rc < 0 {
+                            return Value::List(Rc::new(RefCell::new(Vec::new())));
+                        }
+                    }
+
+                    let mut out: Vec<Value> = Vec::new();
+                    for (idx, pfd) in fds.iter().enumerate() {
+                        let watch = &loop_ref.watches[idx];
+                        if (pfd.revents & libc::POLLIN) != 0 && !matches!(watch.read_cb, Value::Nil)
+                        {
+                            out.push(event_dict(
+                                "read",
+                                Some(watch.sock_id),
+                                None,
+                                Some(watch.read_cb.clone()),
+                            ));
+                        }
+                        if (pfd.revents & libc::POLLOUT) != 0
+                            && !matches!(watch.write_cb, Value::Nil)
+                        {
+                            out.push(event_dict(
+                                "write",
+                                Some(watch.sock_id),
+                                None,
+                                Some(watch.write_cb.clone()),
+                            ));
+                        }
+                    }
+
+                    let now2 = mono_ms_now();
+                    for timer in loop_ref.timers.iter_mut() {
+                        if timer.cancelled {
+                            continue;
+                        }
+                        if timer.next_fire_ms <= now2 {
+                            out.push(event_dict(
+                                "timer",
+                                None,
+                                Some(timer.id),
+                                Some(timer.callback.clone()),
+                            ));
+                            if timer.interval_ms > 0 {
+                                while timer.next_fire_ms <= now2 {
+                                    timer.next_fire_ms += timer.interval_ms;
+                                }
+                            } else {
+                                timer.cancelled = true;
                             }
                         }
-                        loop_ref.timers.retain(|t| !t.cancelled);
+                    }
+                    loop_ref.timers.retain(|t| !t.cancelled);
 
-                        Value::List(Rc::new(RefCell::new(out)))
-                    })?;
+                    Value::List(Rc::new(RefCell::new(out)))
+                })?;
 
-                    Ok(events)
-                },
-            ))),
+                Ok(events)
+            }))),
         );
 
         // timer_after(loop, ms, callback) -> timer id
@@ -3188,9 +3166,7 @@ impl Interpreter {
                     Value::Nil => Vec::new(),
                     Value::List(list) => list.borrow().clone(),
                     _ => {
-                        return Err(
-                            "thread_spawn() expects a list of arguments or nil".to_string()
-                        )
+                        return Err("thread_spawn() expects a list of arguments or nil".to_string())
                     }
                 };
                 let result = match func {
@@ -3280,24 +3256,20 @@ impl Interpreter {
         // mutex_try_lock(mutex) -> bool
         globals.borrow_mut().define(
             "mutex_try_lock".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new(
-                "mutex_try_lock",
-                1,
-                |args| {
-                    let mutex_id = args[0]
-                        .as_integer()
-                        .ok_or("mutex_try_lock() expects mutex handle")?;
-                    let locked = with_mutex_mut(mutex_id, |state| {
-                        if state.locked {
-                            false
-                        } else {
-                            state.locked = true;
-                            true
-                        }
-                    })?;
-                    Ok(Value::Bool(locked))
-                },
-            ))),
+            Value::NativeFunction(Rc::new(NativeFunction::new("mutex_try_lock", 1, |args| {
+                let mutex_id = args[0]
+                    .as_integer()
+                    .ok_or("mutex_try_lock() expects mutex handle")?;
+                let locked = with_mutex_mut(mutex_id, |state| {
+                    if state.locked {
+                        false
+                    } else {
+                        state.locked = true;
+                        true
+                    }
+                })?;
+                Ok(Value::Bool(locked))
+            }))),
         );
 
         // condvar_new()
@@ -3340,11 +3312,7 @@ impl Interpreter {
                     let _timeout = match &args[2] {
                         Value::Integer(n) => *n,
                         Value::Float(f) => *f as i64,
-                        _ => {
-                            return Err(
-                                "condvar_timed_wait() expects timeout integer".to_string()
-                            )
-                        }
+                        _ => return Err("condvar_timed_wait() expects timeout integer".to_string()),
                     };
                     let _ = with_condvar_mut(condvar_id, |_state| ())?;
                     Ok(Value::Bool(true))
@@ -16377,8 +16345,7 @@ r[0]
 
     #[test]
     fn test_audio_device_controls() {
-        let result = run(
-            r#"
+        let result = run(r#"
 soond_steek()
 soond_haud_gang()
 soond_stairt()
@@ -16389,8 +16356,7 @@ soond_stairt()
 ken v = soond_hou_luid()
 soond_steek()
 v
-"#,
-        )
+"#)
         .unwrap();
         let Value::Float(v) = result else {
             panic!("Expected float");
@@ -16406,6 +16372,7 @@ v
 soond_steek()
 soond_stairt()
 ken ding = soond_lade({})
+ken ready = soond_ready(ding)
 soond_pit_luid(ding, 0.4)
 soond_pit_pan(ding, -0.5)
 soond_pit_tune(ding, 1.1)

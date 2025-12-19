@@ -6,8 +6,8 @@
 //! including lexing, parsing, interpretation, and compilation.
 
 pub mod ast;
-pub mod compiler;
 pub mod audio;
+pub mod compiler;
 pub mod error;
 pub mod formatter;
 pub mod graphics;

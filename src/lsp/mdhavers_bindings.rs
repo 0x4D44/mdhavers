@@ -378,6 +378,55 @@ pub fn get_keyword_info(keyword: &str) -> Option<String> {
         "toss_in" => Some("**toss_in(creel, item)** - Add to set\n\n```mdhavers\ntoss_in(my_set, 42)\n```".to_string()),
         "chuck_oot" => Some("**chuck_oot(creel, item)** - Remove from set\n\n```mdhavers\nchuck_oot(my_set, 42)\n```".to_string()),
 
+        // Audio (soond/muisic/midi)
+        "soond_stairt" => Some("**soond_stairt()** - Start the audio device.".to_string()),
+        "soond_steek" => Some("**soond_steek()** - Shut the audio device and unload all audio.".to_string()),
+        "soond_wheesht" => Some("**soond_wheesht(aye|nae)** - Mute or unmute master audio.".to_string()),
+        "soond_luid" => Some("**soond_luid(v)** - Set master volume (0..1).".to_string()),
+        "soond_hou_luid" => Some("**soond_hou_luid()** - Get master volume.".to_string()),
+        "soond_haud_gang" => Some("**soond_haud_gang()** - Pump streaming audio (call in main loop).".to_string()),
+        "soond_lade" => Some("**soond_lade(path)** - Load a sound effect (WAV) and return a handle.".to_string()),
+        "soond_ready" => Some("**soond_ready(handle)** - Check if SFX is ready (web backends).".to_string()),
+        "soond_spiel" => Some("**soond_spiel(handle)** - Play a sound effect.".to_string()),
+        "soond_haud" => Some("**soond_haud(handle)** - Pause a sound effect.".to_string()),
+        "soond_gae_on" => Some("**soond_gae_on(handle)** - Resume a sound effect.".to_string()),
+        "soond_stap" => Some("**soond_stap(handle)** - Stop a sound effect.".to_string()),
+        "soond_unlade" => Some("**soond_unlade(handle)** - Unload a sound effect.".to_string()),
+        "soond_is_spielin" => Some("**soond_is_spielin(handle)** - Returns aye if playing.".to_string()),
+        "soond_pit_luid" => Some("**soond_pit_luid(handle, v)** - Set SFX volume (0..1).".to_string()),
+        "soond_pit_pan" => Some("**soond_pit_pan(handle, pan)** - Set SFX pan (-1..1).".to_string()),
+        "soond_pit_tune" => Some("**soond_pit_tune(handle, pitch)** - Set SFX pitch (1.0 normal).".to_string()),
+        "soond_pit_rin_roond" => Some("**soond_pit_rin_roond(handle, aye|nae)** - Loop a sound effect.".to_string()),
+
+        "muisic_lade" => Some("**muisic_lade(path)** - Load streaming music (MP3/long WAV).".to_string()),
+        "muisic_spiel" => Some("**muisic_spiel(handle)** - Play music.".to_string()),
+        "muisic_haud" => Some("**muisic_haud(handle)** - Pause music.".to_string()),
+        "muisic_gae_on" => Some("**muisic_gae_on(handle)** - Resume music.".to_string()),
+        "muisic_stap" => Some("**muisic_stap(handle)** - Stop music.".to_string()),
+        "muisic_unlade" => Some("**muisic_unlade(handle)** - Unload music.".to_string()),
+        "muisic_is_spielin" => Some("**muisic_is_spielin(handle)** - Returns aye if playing.".to_string()),
+        "muisic_loup" => Some("**muisic_loup(handle, seconds)** - Seek music position.".to_string()),
+        "muisic_hou_lang" => Some("**muisic_hou_lang(handle)** - Music length in seconds.".to_string()),
+        "muisic_whaur" => Some("**muisic_whaur(handle)** - Current music position in seconds.".to_string()),
+        "muisic_pit_luid" => Some("**muisic_pit_luid(handle, v)** - Set music volume (0..1).".to_string()),
+        "muisic_pit_pan" => Some("**muisic_pit_pan(handle, pan)** - Set music pan (-1..1).".to_string()),
+        "muisic_pit_tune" => Some("**muisic_pit_tune(handle, pitch)** - Set music pitch (1.0 normal).".to_string()),
+        "muisic_pit_rin_roond" => Some("**muisic_pit_rin_roond(handle, aye|nae)** - Loop music.".to_string()),
+
+        "midi_lade" => Some("**midi_lade(path, soundfont)** - Load MIDI (soundfont or naething).".to_string()),
+        "midi_spiel" => Some("**midi_spiel(handle)** - Play MIDI.".to_string()),
+        "midi_haud" => Some("**midi_haud(handle)** - Pause MIDI.".to_string()),
+        "midi_gae_on" => Some("**midi_gae_on(handle)** - Resume MIDI.".to_string()),
+        "midi_stap" => Some("**midi_stap(handle)** - Stop MIDI.".to_string()),
+        "midi_unlade" => Some("**midi_unlade(handle)** - Unload MIDI.".to_string()),
+        "midi_is_spielin" => Some("**midi_is_spielin(handle)** - Returns aye if playing.".to_string()),
+        "midi_loup" => Some("**midi_loup(handle, seconds)** - Seek MIDI position.".to_string()),
+        "midi_hou_lang" => Some("**midi_hou_lang(handle)** - MIDI length in seconds.".to_string()),
+        "midi_whaur" => Some("**midi_whaur(handle)** - Current MIDI position in seconds.".to_string()),
+        "midi_pit_luid" => Some("**midi_pit_luid(handle, v)** - Set MIDI volume (0..1).".to_string()),
+        "midi_pit_pan" => Some("**midi_pit_pan(handle, pan)** - Set MIDI pan (-1..1).".to_string()),
+        "midi_pit_rin_roond" => Some("**midi_pit_rin_roond(handle, aye|nae)** - Loop MIDI.".to_string()),
+
         _ => None,
     }
 }
@@ -748,6 +797,231 @@ pub fn get_keywords_and_builtins() -> Vec<(String, String, String)> {
             "function".to_string(),
             "Remove from set".to_string(),
         ),
+        (
+            "soond_stairt".to_string(),
+            "function".to_string(),
+            "Start audio device".to_string(),
+        ),
+        (
+            "soond_steek".to_string(),
+            "function".to_string(),
+            "Stop audio device".to_string(),
+        ),
+        (
+            "soond_wheesht".to_string(),
+            "function".to_string(),
+            "Mute/unmute audio".to_string(),
+        ),
+        (
+            "soond_luid".to_string(),
+            "function".to_string(),
+            "Set master volume".to_string(),
+        ),
+        (
+            "soond_hou_luid".to_string(),
+            "function".to_string(),
+            "Get master volume".to_string(),
+        ),
+        (
+            "soond_haud_gang".to_string(),
+            "function".to_string(),
+            "Pump streaming audio".to_string(),
+        ),
+        (
+            "soond_lade".to_string(),
+            "function".to_string(),
+            "Load SFX".to_string(),
+        ),
+        (
+            "soond_ready".to_string(),
+            "function".to_string(),
+            "Check SFX ready".to_string(),
+        ),
+        (
+            "soond_spiel".to_string(),
+            "function".to_string(),
+            "Play SFX".to_string(),
+        ),
+        (
+            "soond_haud".to_string(),
+            "function".to_string(),
+            "Pause SFX".to_string(),
+        ),
+        (
+            "soond_gae_on".to_string(),
+            "function".to_string(),
+            "Resume SFX".to_string(),
+        ),
+        (
+            "soond_stap".to_string(),
+            "function".to_string(),
+            "Stop SFX".to_string(),
+        ),
+        (
+            "soond_unlade".to_string(),
+            "function".to_string(),
+            "Unload SFX".to_string(),
+        ),
+        (
+            "soond_is_spielin".to_string(),
+            "function".to_string(),
+            "SFX playing?".to_string(),
+        ),
+        (
+            "soond_pit_luid".to_string(),
+            "function".to_string(),
+            "SFX volume".to_string(),
+        ),
+        (
+            "soond_pit_pan".to_string(),
+            "function".to_string(),
+            "SFX pan".to_string(),
+        ),
+        (
+            "soond_pit_tune".to_string(),
+            "function".to_string(),
+            "SFX pitch".to_string(),
+        ),
+        (
+            "soond_pit_rin_roond".to_string(),
+            "function".to_string(),
+            "Loop SFX".to_string(),
+        ),
+        (
+            "muisic_lade".to_string(),
+            "function".to_string(),
+            "Load music".to_string(),
+        ),
+        (
+            "muisic_spiel".to_string(),
+            "function".to_string(),
+            "Play music".to_string(),
+        ),
+        (
+            "muisic_haud".to_string(),
+            "function".to_string(),
+            "Pause music".to_string(),
+        ),
+        (
+            "muisic_gae_on".to_string(),
+            "function".to_string(),
+            "Resume music".to_string(),
+        ),
+        (
+            "muisic_stap".to_string(),
+            "function".to_string(),
+            "Stop music".to_string(),
+        ),
+        (
+            "muisic_unlade".to_string(),
+            "function".to_string(),
+            "Unload music".to_string(),
+        ),
+        (
+            "muisic_is_spielin".to_string(),
+            "function".to_string(),
+            "Music playing?".to_string(),
+        ),
+        (
+            "muisic_loup".to_string(),
+            "function".to_string(),
+            "Seek music".to_string(),
+        ),
+        (
+            "muisic_hou_lang".to_string(),
+            "function".to_string(),
+            "Music length".to_string(),
+        ),
+        (
+            "muisic_whaur".to_string(),
+            "function".to_string(),
+            "Music position".to_string(),
+        ),
+        (
+            "muisic_pit_luid".to_string(),
+            "function".to_string(),
+            "Music volume".to_string(),
+        ),
+        (
+            "muisic_pit_pan".to_string(),
+            "function".to_string(),
+            "Music pan".to_string(),
+        ),
+        (
+            "muisic_pit_tune".to_string(),
+            "function".to_string(),
+            "Music pitch".to_string(),
+        ),
+        (
+            "muisic_pit_rin_roond".to_string(),
+            "function".to_string(),
+            "Loop music".to_string(),
+        ),
+        (
+            "midi_lade".to_string(),
+            "function".to_string(),
+            "Load MIDI".to_string(),
+        ),
+        (
+            "midi_spiel".to_string(),
+            "function".to_string(),
+            "Play MIDI".to_string(),
+        ),
+        (
+            "midi_haud".to_string(),
+            "function".to_string(),
+            "Pause MIDI".to_string(),
+        ),
+        (
+            "midi_gae_on".to_string(),
+            "function".to_string(),
+            "Resume MIDI".to_string(),
+        ),
+        (
+            "midi_stap".to_string(),
+            "function".to_string(),
+            "Stop MIDI".to_string(),
+        ),
+        (
+            "midi_unlade".to_string(),
+            "function".to_string(),
+            "Unload MIDI".to_string(),
+        ),
+        (
+            "midi_is_spielin".to_string(),
+            "function".to_string(),
+            "MIDI playing?".to_string(),
+        ),
+        (
+            "midi_loup".to_string(),
+            "function".to_string(),
+            "Seek MIDI".to_string(),
+        ),
+        (
+            "midi_hou_lang".to_string(),
+            "function".to_string(),
+            "MIDI length".to_string(),
+        ),
+        (
+            "midi_whaur".to_string(),
+            "function".to_string(),
+            "MIDI position".to_string(),
+        ),
+        (
+            "midi_pit_luid".to_string(),
+            "function".to_string(),
+            "MIDI volume".to_string(),
+        ),
+        (
+            "midi_pit_pan".to_string(),
+            "function".to_string(),
+            "MIDI pan".to_string(),
+        ),
+        (
+            "midi_pit_rin_roond".to_string(),
+            "function".to_string(),
+            "Loop MIDI".to_string(),
+        ),
     ]
 }
 
@@ -806,5 +1080,6 @@ mod tests {
         assert!(names.contains(&"blether"));
         assert!(names.contains(&"len"));
         assert!(names.contains(&"gaun"));
+        assert!(names.contains(&"soond_stairt"));
     }
 }
