@@ -1069,6 +1069,9 @@ impl Interpreter {
         // Define native functions
         Self::define_natives(&globals);
 
+        // Register audio functions (if feature enabled)
+        crate::audio::register_audio_functions(&globals);
+
         // Register graphics functions (if feature enabled)
         crate::graphics::register_graphics_functions(&globals);
 
@@ -8569,17 +8572,40 @@ impl Interpreter {
             module_path.set_extension("braw");
         }
 
-        // If it's a relative path, resolve it fae the current directory
-        if module_path.is_relative() {
-            module_path = self.current_dir.join(module_path);
+        // If it's an absolute path, try that directly
+        if module_path.is_absolute() {
+            return module_path
+                .canonicalize()
+                .map_err(|_| HaversError::ModuleNotFound {
+                    name: path.to_string(),
+                });
         }
 
-        // Canonicalize the path
-        module_path
-            .canonicalize()
-            .map_err(|_| HaversError::ModuleNotFound {
-                name: path.to_string(),
-            })
+        let mut candidates = Vec::new();
+        candidates.push(self.current_dir.join(&module_path));
+        candidates.push(PathBuf::from(&module_path));
+
+        // Try searching up the directory tree (helps with stdlib/lib paths)
+        for ancestor in self.current_dir.ancestors() {
+            candidates.push(ancestor.join(&module_path));
+        }
+
+        // Try next to the executable (common for bundled stdlib)
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(parent) = exe.parent() {
+                candidates.push(parent.join(&module_path));
+            }
+        }
+
+        for candidate in candidates {
+            if candidate.exists() {
+                return Ok(candidate.canonicalize().unwrap_or(candidate));
+            }
+        }
+
+        Err(HaversError::ModuleNotFound {
+            name: path.to_string(),
+        })
     }
 
     fn execute_stmt(&mut self, stmt: &Stmt) -> HaversResult<Value> {
@@ -16343,5 +16369,238 @@ r[0]
 "#)
         .unwrap();
         assert_eq!(result, Value::Integer(3));
+    }
+
+    fn audio_path(rel: &str) -> String {
+        format!("\"{}\"", std::path::Path::new(rel).display())
+    }
+
+    #[test]
+    fn test_audio_device_controls() {
+        let result = run(
+            r#"
+soond_steek()
+soond_haud_gang()
+soond_stairt()
+soond_luid(0.7)
+soond_wheesht(aye)
+soond_wheesht(nae)
+soond_stairt()
+ken v = soond_hou_luid()
+soond_steek()
+v
+"#,
+        )
+        .unwrap();
+        let Value::Float(v) = result else {
+            panic!("Expected float");
+        };
+        assert!((v - 0.7).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_audio_sfx_cycle() {
+        let ding = audio_path("assets/audio/ding.wav");
+        let script = format!(
+            r#"
+soond_steek()
+soond_stairt()
+ken ding = soond_lade({})
+soond_pit_luid(ding, 0.4)
+soond_pit_pan(ding, -0.5)
+soond_pit_tune(ding, 1.1)
+soond_pit_rin_roond(ding, aye)
+soond_spiel(ding)
+ken a = soond_is_spielin(ding)
+soond_haud_gang()
+soond_haud_gang()
+soond_haud_gang()
+soond_haud(ding)
+ken b = soond_is_spielin(ding)
+soond_gae_on(ding)
+soond_stap(ding)
+soond_unlade(ding)
+soond_steek()
+[a, b]
+"#,
+            ding
+        );
+
+        let result = run(&script).unwrap();
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
+        let list = list.borrow();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0], Value::Bool(true));
+        assert_eq!(list[1], Value::Bool(false));
+    }
+
+    #[test]
+    fn test_audio_music_cycle() {
+        let theme = audio_path("assets/audio/theme.mp3");
+        let script = format!(
+            r#"
+soond_steek()
+soond_stairt()
+ken tune = muisic_lade({})
+muisic_pit_luid(tune, 0.5)
+muisic_pit_pan(tune, 0.25)
+muisic_pit_tune(tune, 1.1)
+muisic_pit_rin_roond(tune, aye)
+muisic_spiel(tune)
+soond_haud_gang()
+soond_haud_gang()
+ken playing = muisic_is_spielin(tune)
+
+muisic_haud(tune)
+ken paused = muisic_is_spielin(tune)
+muisic_gae_on(tune)
+
+ken len = muisic_hou_lang(tune)
+muisic_loup(tune, 0.1)
+ken pos = muisic_whaur(tune)
+
+muisic_pit_rin_roond(tune, nae)
+muisic_loup(tune, len)
+soond_haud_gang()
+ken stopped = muisic_is_spielin(tune)
+
+muisic_stap(tune)
+muisic_unlade(tune)
+soond_steek()
+[playing, paused, len > 0, pos >= 0, stopped]
+"#,
+            theme
+        );
+
+        let result = run(&script).unwrap();
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
+        let list = list.borrow();
+        assert_eq!(list.len(), 5);
+        assert_eq!(list[0], Value::Bool(true));
+        assert_eq!(list[1], Value::Bool(false));
+        assert_eq!(list[2], Value::Bool(true));
+        assert_eq!(list[3], Value::Bool(true));
+        assert_eq!(list[4], Value::Bool(false));
+    }
+
+    #[test]
+    fn test_audio_midi_cycle_explicit_soundfont() {
+        let midi = audio_path("assets/audio/wee_tune.mid");
+        let sf = audio_path("assets/soundfonts/MuseScore_General.sf2");
+        let script = format!(
+            r#"
+soond_steek()
+soond_stairt()
+ken song = midi_lade({}, {})
+midi_loup(song, 0.01)
+midi_spiel(song)
+soond_haud_gang()
+ken playing = midi_is_spielin(song)
+midi_haud(song)
+ken paused = midi_is_spielin(song)
+midi_loup(song, 0.02)
+midi_gae_on(song)
+midi_loup(song, 0.03)
+midi_pit_luid(song, 0.6)
+midi_pit_pan(song, -0.2)
+midi_pit_rin_roond(song, aye)
+soond_haud_gang()
+ken len = midi_hou_lang(song)
+ken pos = midi_whaur(song)
+midi_stap(song)
+midi_unlade(song)
+soond_steek()
+[playing, paused, len > 0, pos >= 0]
+"#,
+            midi, sf
+        );
+
+        let result = run(&script).unwrap();
+        let Value::List(list) = result else {
+            panic!("Expected list");
+        };
+        let list = list.borrow();
+        assert_eq!(list.len(), 4);
+        assert_eq!(list[0], Value::Bool(true));
+        assert_eq!(list[1], Value::Bool(false));
+        assert_eq!(list[2], Value::Bool(true));
+        assert_eq!(list[3], Value::Bool(true));
+    }
+
+    #[test]
+    fn test_audio_midi_cycle_default_soundfont() {
+        let midi = audio_path("assets/audio/wee_tune.mid");
+        let script = format!(
+            r#"
+soond_steek()
+soond_stairt()
+ken song = midi_lade({}, naething)
+midi_spiel(song)
+soond_haud_gang()
+midi_unlade(song)
+soond_steek()
+aye
+"#,
+            midi
+        );
+        let result = run(&script).unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_audio_midi_stops_at_end() {
+        let midi = audio_path("assets/audio/wee_tune.mid");
+        let sf = audio_path("assets/soundfonts/MuseScore_General.sf2");
+        let script = format!(
+            r#"
+soond_steek()
+soond_stairt()
+ken song = midi_lade({}, {})
+midi_pit_rin_roond(song, nae)
+midi_spiel(song)
+ken i = 0
+whiles i < 10 {{
+    soond_haud_gang()
+    i = i + 1
+}}
+ken stopped = midi_is_spielin(song)
+midi_unlade(song)
+soond_steek()
+stopped
+"#,
+            midi, sf
+        );
+        let result = run(&script).unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_audio_invalid_handles() {
+        assert!(run("soond_spiel(999)").is_err());
+        assert!(run("muisic_spiel(999)").is_err());
+        assert!(run("midi_spiel(999)").is_err());
+    }
+
+    #[test]
+    fn test_audio_bad_args_and_load_errors() {
+        assert!(run("soond_wheesht(\"aye\")").is_err());
+        assert!(run("soond_lade(123)").is_err());
+        assert!(run("soond_lade(\"nope.wav\")").is_err());
+        assert!(run("muisic_lade(\"nope.mp3\")").is_err());
+    }
+
+    #[test]
+    fn test_audio_midi_errors() {
+        let midi = audio_path("assets/audio/wee_tune.mid");
+        let bad_type = format!("midi_lade({}, 123)", midi);
+        let bad_sf = format!("midi_lade({}, \"nope.sf2\")", midi);
+
+        assert!(run(&bad_type).is_err());
+        assert!(run(&bad_sf).is_err());
+        assert!(run("midi_lade(\"nope.mid\", naething)").is_err());
     }
 }

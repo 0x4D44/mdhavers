@@ -8,6 +8,7 @@ use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
 mod ast;
+mod audio;
 mod compiler;
 mod error;
 mod formatter;

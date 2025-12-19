@@ -1179,7 +1179,7 @@ Try it in the playground at `playground/web/` tae see live compilation!
 git clone <repo-url>
 cd mdhavers
 
-# Build (interpreter only, no LLVM)
+# Build minimal (interpreter only, no LLVM/graphics/audio)
 cargo build --release --no-default-features --features cli
 
 # Run tests
@@ -1214,9 +1214,80 @@ cargo build --release --features llvm
 make status
 ```
 
-**Note:** The LLVM feature is enabled by default. To build without LLVM:
+**Note:** Default features now enable `cli`, `llvm`, `graphics`, and `audio`.
+If you want LLVM without graphics/audio:
+```bash
+cargo build --release --no-default-features --features cli,llvm
+```
+
+To build without LLVM (and without graphics/audio):
 ```bash
 cargo build --release --no-default-features --features cli
+```
+
+### Audio (Soond)
+
+Audio is enabled by default and independent of graphics. If you want to enable
+audio explicitly (for example, without graphics), build with:
+
+```bash
+cargo build --release --no-default-features --features cli,llvm,audio
+```
+
+**Note:** Audio and graphics use raylib. On Ubuntu/WSL you’ll need:
+```bash
+sudo apt install cmake libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev
+```
+If you don’t have those, build with `--no-default-features` and add only what you need.
+
+### Troubleshooting Raylib Builds
+
+If you see an error like:
+```
+RandR headers not found; install libxrandr development package
+```
+install the X11 dev packages:
+```bash
+sudo apt install cmake libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev
+```
+
+If you hit:
+```
+Unable to find libclang
+```
+install clang + libclang and retry:
+```bash
+sudo apt install clang libclang-dev llvm-dev
+export LIBCLANG_PATH=$(llvm-config --libdir)
+```
+
+If you want to avoid raylib entirely, build without graphics/audio:
+```bash
+cargo build --release --no-default-features --features cli,llvm
+```
+
+**Quick example:**
+```scots
+soond_stairt()
+ken ding = soond_lade("assets/sfx/ding.wav")
+soond_spiel(ding)
+```
+
+**Streaming (MP3 + MIDI) needs updates:**
+```scots
+ken tune = muisic_lade("music/theme.mp3")
+muisic_spiel(tune)
+
+whiles aye {
+    soond_haud_gang()  # keep streams flowing
+}
+```
+
+MIDI uses a bundled default SoundFont at `assets/soundfonts/MuseScore_General.sf2` when you pass `naething` as the soundfont path:
+
+```scots
+ken song = midi_lade("music/air.mid", naething)
+midi_spiel(song)
 ```
 
 ## Editor Support
