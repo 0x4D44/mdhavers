@@ -60,12 +60,29 @@ pub struct RuntimeFunctions<'ctx> {
     pub to_int: FunctionValue<'ctx>,
     pub to_float: FunctionValue<'ctx>,
 
+    // Bytes operations
+    pub bytes_new: FunctionValue<'ctx>,
+    pub bytes_from_string: FunctionValue<'ctx>,
+    pub bytes_len: FunctionValue<'ctx>,
+    pub bytes_slice: FunctionValue<'ctx>,
+    pub bytes_get: FunctionValue<'ctx>,
+    pub bytes_set: FunctionValue<'ctx>,
+    pub bytes_append: FunctionValue<'ctx>,
+    pub bytes_read_u16be: FunctionValue<'ctx>,
+    pub bytes_read_u32be: FunctionValue<'ctx>,
+    pub bytes_write_u16be: FunctionValue<'ctx>,
+    pub bytes_write_u32be: FunctionValue<'ctx>,
+
     // Math
     pub abs: FunctionValue<'ctx>,
     pub random: FunctionValue<'ctx>,
     pub floor: FunctionValue<'ctx>,
     pub ceil: FunctionValue<'ctx>,
     pub round: FunctionValue<'ctx>,
+
+    // Timing
+    pub mono_ms: FunctionValue<'ctx>,
+    pub mono_ns: FunctionValue<'ctx>,
 }
 
 impl<'ctx> RuntimeFunctions<'ctx> {
@@ -287,6 +304,85 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             None,
         );
 
+        // Bytes operations
+        let bytes_new = module.add_function(
+            "__mdh_bytes_new",
+            value_type.fn_type(&[value_type.into()], false),
+            None,
+        );
+
+        let bytes_from_string = module.add_function(
+            "__mdh_bytes_from_string",
+            value_type.fn_type(&[value_type.into()], false),
+            None,
+        );
+
+        let bytes_len = module.add_function(
+            "__mdh_bytes_len",
+            i64_type.fn_type(&[value_type.into()], false),
+            None,
+        );
+
+        let bytes_slice = module.add_function(
+            "__mdh_bytes_slice",
+            value_type.fn_type(
+                &[value_type.into(), value_type.into(), value_type.into()],
+                false,
+            ),
+            None,
+        );
+
+        let bytes_get = module.add_function(
+            "__mdh_bytes_get",
+            value_type.fn_type(&[value_type.into(), value_type.into()], false),
+            None,
+        );
+
+        let bytes_set = module.add_function(
+            "__mdh_bytes_set",
+            value_type.fn_type(
+                &[value_type.into(), value_type.into(), value_type.into()],
+                false,
+            ),
+            None,
+        );
+
+        let bytes_append = module.add_function(
+            "__mdh_bytes_append",
+            value_type.fn_type(&[value_type.into(), value_type.into()], false),
+            None,
+        );
+
+        let bytes_read_u16be = module.add_function(
+            "__mdh_bytes_read_u16be",
+            value_type.fn_type(&[value_type.into(), value_type.into()], false),
+            None,
+        );
+
+        let bytes_read_u32be = module.add_function(
+            "__mdh_bytes_read_u32be",
+            value_type.fn_type(&[value_type.into(), value_type.into()], false),
+            None,
+        );
+
+        let bytes_write_u16be = module.add_function(
+            "__mdh_bytes_write_u16be",
+            value_type.fn_type(
+                &[value_type.into(), value_type.into(), value_type.into()],
+                false,
+            ),
+            None,
+        );
+
+        let bytes_write_u32be = module.add_function(
+            "__mdh_bytes_write_u32be",
+            value_type.fn_type(
+                &[value_type.into(), value_type.into(), value_type.into()],
+                false,
+            ),
+            None,
+        );
+
         // Math
         let abs = module.add_function(
             "__mdh_abs",
@@ -317,6 +413,11 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             value_type.fn_type(&[value_type.into()], false),
             None,
         );
+
+        // Timing
+        let mono_ms = module.add_function("__mdh_mono_ms", value_type.fn_type(&[], false), None);
+
+        let mono_ns = module.add_function("__mdh_mono_ns", value_type.fn_type(&[], false), None);
 
         RuntimeFunctions {
             make_nil,
@@ -353,11 +454,24 @@ impl<'ctx> RuntimeFunctions<'ctx> {
             to_string,
             to_int,
             to_float,
+            bytes_new,
+            bytes_from_string,
+            bytes_len,
+            bytes_slice,
+            bytes_get,
+            bytes_set,
+            bytes_append,
+            bytes_read_u16be,
+            bytes_read_u32be,
+            bytes_write_u16be,
+            bytes_write_u32be,
             abs,
             random,
             floor,
             ceil,
             round,
+            mono_ms,
+            mono_ns,
         }
     }
 }

@@ -178,9 +178,8 @@ impl LLVMCompiler {
                 runtime_rs_path.to_str().unwrap(),
                 gc_stub_path.to_str().unwrap(),
                 "-lm", // Math library (for floor, ceil, etc.)
-                "-lpthread",
-                "-ldl",
-                "-lutil",
+                "-pthread",
+                "-static-libgcc",
                 "-o",
                 output_path.to_str().unwrap(),
             ])

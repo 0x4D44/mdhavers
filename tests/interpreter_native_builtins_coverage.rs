@@ -48,7 +48,41 @@ fn interpreter_calls_all_native_builtins_for_coverage() {
 
     // Keep this conservative: the goal is to execute native builtin bodies without hanging the test
     // suite (e.g., `get_key`), or terminating the process (`exit`).
-    let skip = ["exit", "get_key"];
+    let skip = [
+        "exit",
+        "get_key",
+        "socket_udp",
+        "socket_tcp",
+        "socket_bind",
+        "socket_connect",
+        "socket_listen",
+        "socket_accept",
+        "socket_set_nonblocking",
+        "socket_set_reuseaddr",
+        "socket_set_reuseport",
+        "socket_set_ttl",
+        "socket_set_nodelay",
+        "socket_set_rcvbuf",
+        "socket_set_sndbuf",
+        "socket_close",
+        "udp_send_to",
+        "udp_recv_from",
+        "tcp_send",
+        "tcp_recv",
+        "dns_lookup",
+        "dns_srv",
+        "dns_naptr",
+        "tls_client_new",
+        "tls_connect",
+        "tls_send",
+        "tls_recv",
+        "tls_close",
+        "dtls_server_new",
+        "dtls_handshake",
+        "srtp_create",
+        "srtp_protect",
+        "srtp_unprotect",
+    ];
 
     for (name, value) in exports {
         let Value::NativeFunction(native) = value else {

@@ -24,6 +24,9 @@ typedef enum {
     MDH_TAG_CLASS = 8,
     MDH_TAG_INSTANCE = 9,
     MDH_TAG_RANGE = 10,
+    MDH_TAG_SET = 11,
+    MDH_TAG_CLOSURE = 12,
+    MDH_TAG_BYTES = 13,
 } MdhTag;
 
 /*
@@ -42,6 +45,7 @@ typedef struct {
 typedef struct MdhList MdhList;
 typedef struct MdhDict MdhDict;
 typedef struct MdhString MdhString;
+typedef struct MdhBytes MdhBytes;
 
 /* List structure */
 struct MdhList {
@@ -54,6 +58,13 @@ struct MdhList {
 struct MdhString {
     char *data;
     int64_t length;
+};
+
+/* Bytes structure (GC-managed) */
+struct MdhBytes {
+    uint8_t *data;
+    int64_t length;
+    int64_t capacity;
 };
 
 /* ========== Value Creation ========== */
@@ -119,13 +130,116 @@ MdhValue __mdh_to_string(MdhValue a);
 MdhValue __mdh_to_int(MdhValue a);
 MdhValue __mdh_to_float(MdhValue a);
 
+/* ========== Bytes Operations ========== */
+
+MdhValue __mdh_bytes_new(MdhValue size);
+MdhValue __mdh_bytes_from_string(MdhValue s);
+int64_t __mdh_bytes_len(MdhValue bytes);
+MdhValue __mdh_bytes_slice(MdhValue bytes, MdhValue start, MdhValue end);
+MdhValue __mdh_bytes_get(MdhValue bytes, MdhValue index);
+MdhValue __mdh_bytes_set(MdhValue bytes, MdhValue index, MdhValue value);
+MdhValue __mdh_bytes_append(MdhValue bytes, MdhValue other);
+MdhValue __mdh_bytes_read_u16be(MdhValue bytes, MdhValue offset);
+MdhValue __mdh_bytes_read_u32be(MdhValue bytes, MdhValue offset);
+MdhValue __mdh_bytes_write_u16be(MdhValue bytes, MdhValue offset, MdhValue value);
+MdhValue __mdh_bytes_write_u32be(MdhValue bytes, MdhValue offset, MdhValue value);
+
 /* ========== Math ========== */
 
 MdhValue __mdh_abs(MdhValue a);
 MdhValue __mdh_random(int64_t min, int64_t max);
+MdhValue __mdh_jammy(MdhValue min, MdhValue max);
+MdhValue __mdh_random_int(MdhValue min, MdhValue max);
 MdhValue __mdh_floor(MdhValue a);
 MdhValue __mdh_ceil(MdhValue a);
 MdhValue __mdh_round(MdhValue a);
+
+/* ========== Timing ========== */
+
+MdhValue __mdh_mono_ms(void);
+MdhValue __mdh_mono_ns(void);
+
+/* ========== Network (Sockets + DNS) ========== */
+
+MdhValue __mdh_socket_udp(void);
+MdhValue __mdh_socket_tcp(void);
+MdhValue __mdh_socket_bind(MdhValue sock, MdhValue host, MdhValue port);
+MdhValue __mdh_socket_connect(MdhValue sock, MdhValue host, MdhValue port);
+MdhValue __mdh_socket_listen(MdhValue sock, MdhValue backlog);
+MdhValue __mdh_socket_accept(MdhValue sock);
+MdhValue __mdh_socket_set_nonblocking(MdhValue sock, MdhValue on);
+MdhValue __mdh_socket_set_reuseaddr(MdhValue sock, MdhValue on);
+MdhValue __mdh_socket_set_reuseport(MdhValue sock, MdhValue on);
+MdhValue __mdh_socket_set_ttl(MdhValue sock, MdhValue ttl);
+MdhValue __mdh_socket_set_nodelay(MdhValue sock, MdhValue on);
+MdhValue __mdh_socket_set_rcvbuf(MdhValue sock, MdhValue bytes);
+MdhValue __mdh_socket_set_sndbuf(MdhValue sock, MdhValue bytes);
+MdhValue __mdh_socket_close(MdhValue sock);
+
+MdhValue __mdh_udp_send_to(MdhValue sock, MdhValue buf, MdhValue host, MdhValue port);
+MdhValue __mdh_udp_recv_from(MdhValue sock, MdhValue max_len);
+MdhValue __mdh_tcp_send(MdhValue sock, MdhValue buf);
+MdhValue __mdh_tcp_recv(MdhValue sock, MdhValue max_len);
+
+MdhValue __mdh_dns_lookup(MdhValue host);
+MdhValue __mdh_dns_srv(MdhValue service, MdhValue domain);
+MdhValue __mdh_dns_naptr(MdhValue domain);
+
+/* ========== TLS/DTLS/SRTP ========== */
+
+MdhValue __mdh_tls_client_new(MdhValue config);
+MdhValue __mdh_tls_connect(MdhValue tls, MdhValue sock);
+MdhValue __mdh_tls_send(MdhValue tls, MdhValue buf);
+MdhValue __mdh_tls_recv(MdhValue tls, MdhValue max_len);
+MdhValue __mdh_tls_close(MdhValue tls);
+
+MdhValue __mdh_dtls_server_new(MdhValue config);
+MdhValue __mdh_dtls_handshake(MdhValue dtls, MdhValue sock);
+MdhValue __mdh_srtp_create(MdhValue keys);
+MdhValue __mdh_srtp_protect(MdhValue srtp, MdhValue rtp_packet);
+MdhValue __mdh_srtp_unprotect(MdhValue srtp, MdhValue rtp_packet);
+
+/* ========== Event Loop + Timers ========== */
+
+MdhValue __mdh_event_loop_new(void);
+MdhValue __mdh_event_loop_stop(MdhValue loop);
+MdhValue __mdh_event_watch_read(MdhValue loop, MdhValue sock, MdhValue callback);
+MdhValue __mdh_event_watch_write(MdhValue loop, MdhValue sock, MdhValue callback);
+MdhValue __mdh_event_unwatch(MdhValue loop, MdhValue sock);
+MdhValue __mdh_event_loop_poll(MdhValue loop, MdhValue timeout_ms);
+MdhValue __mdh_timer_after(MdhValue loop, MdhValue ms, MdhValue callback);
+MdhValue __mdh_timer_every(MdhValue loop, MdhValue ms, MdhValue callback);
+MdhValue __mdh_timer_cancel(MdhValue loop, MdhValue timer_id);
+
+/* ========== Threads + Sync ========== */
+
+MdhValue __mdh_thread_spawn(MdhValue func, MdhValue args_list);
+MdhValue __mdh_thread_join(MdhValue thread_handle);
+MdhValue __mdh_thread_detach(MdhValue thread_handle);
+
+MdhValue __mdh_mutex_new(void);
+MdhValue __mdh_mutex_lock(MdhValue mutex);
+MdhValue __mdh_mutex_unlock(MdhValue mutex);
+MdhValue __mdh_mutex_try_lock(MdhValue mutex);
+
+MdhValue __mdh_condvar_new(void);
+MdhValue __mdh_condvar_wait(MdhValue condvar, MdhValue mutex);
+MdhValue __mdh_condvar_timed_wait(MdhValue condvar, MdhValue mutex, MdhValue timeout_ms);
+MdhValue __mdh_condvar_signal(MdhValue condvar);
+MdhValue __mdh_condvar_broadcast(MdhValue condvar);
+
+MdhValue __mdh_atomic_new(MdhValue initial_int);
+MdhValue __mdh_atomic_load(MdhValue atomic);
+MdhValue __mdh_atomic_store(MdhValue atomic, MdhValue value);
+MdhValue __mdh_atomic_add(MdhValue atomic, MdhValue delta);
+MdhValue __mdh_atomic_cas(MdhValue atomic, MdhValue expected, MdhValue desired);
+
+MdhValue __mdh_chan_new(MdhValue capacity_int);
+MdhValue __mdh_chan_send(MdhValue chan, MdhValue value);
+MdhValue __mdh_chan_recv(MdhValue chan);
+MdhValue __mdh_chan_try_recv(MdhValue chan);
+MdhValue __mdh_chan_close(MdhValue chan);
+MdhValue __mdh_chan_is_closed(MdhValue chan);
 
 /* ========== Dict/Creel Operations ========== */
 
@@ -133,6 +247,7 @@ MdhValue __mdh_empty_dict(void);
 MdhValue __mdh_empty_creel(void);
 MdhValue __mdh_make_creel(MdhValue list);
 MdhValue __mdh_dict_contains(MdhValue dict, MdhValue key);
+MdhValue __mdh_set_contains(MdhValue set, MdhValue key);
 MdhValue __mdh_dict_keys(MdhValue dict);
 MdhValue __mdh_dict_values(MdhValue dict);
 MdhValue __mdh_dict_set(MdhValue dict, MdhValue key, MdhValue value);
@@ -263,6 +378,7 @@ MdhValue __mdh_json_pretty(MdhValue value);
 /* ========== Misc Parity Helpers ========== */
 
 MdhValue __mdh_is_a(MdhValue value, MdhValue type_name);
+MdhValue __mdh_wrang_sort(MdhValue value, MdhValue type_name);
 MdhValue __mdh_numpty_check(MdhValue value);
 MdhValue __mdh_indices_o(MdhValue container, MdhValue needle);
 MdhValue __mdh_grup(MdhValue list, MdhValue size);
@@ -328,6 +444,11 @@ static inline const char *__mdh_get_string(MdhValue v) {
 /* Get list pointer from MdhValue (assumes tag is LIST) */
 static inline MdhList *__mdh_get_list(MdhValue v) {
     return (MdhList *)(intptr_t)v.data;
+}
+
+/* Get bytes pointer from MdhValue (assumes tag is BYTES) */
+static inline MdhBytes *__mdh_get_bytes(MdhValue v) {
+    return (MdhBytes *)(intptr_t)v.data;
 }
 
 /* Get integer value from MdhValue (assumes tag is INT) */

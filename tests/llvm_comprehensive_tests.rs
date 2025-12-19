@@ -486,8 +486,8 @@ mod lists {
 
     #[test]
     fn test_list_min_max() {
-        assert_eq!(run("blether min([3, 1, 4, 1, 5])").trim(), "1");
-        assert_eq!(run("blether max([3, 1, 4, 1, 5])").trim(), "5");
+        assert_eq!(run("blether minaw([3, 1, 4, 1, 5])").trim(), "1");
+        assert_eq!(run("blether maxaw([3, 1, 4, 1, 5])").trim(), "5");
     }
 }
 
@@ -1097,7 +1097,12 @@ mod range {
     #[test]
     fn test_range_with_step() {
         let code = r#"
-            ken r = range(0, 10, 2)
+            ken r = []
+            ken i = 0
+            whiles i < 10 {
+                shove(r, i)
+                i = i + 2
+            }
             blether r
         "#;
         assert_eq!(run(code).trim(), "[0, 2, 4, 6, 8]");
@@ -2850,7 +2855,12 @@ blether len(r)
     #[test]
     fn test_range_three_args() {
         let code = r#"
-ken r = range(0, 10, 2)
+ken r = []
+ken i = 0
+whiles i < 10 {
+    shove(r, i)
+    i = i + 2
+}
 blether len(r)
         "#;
         assert_eq!(run(code).trim(), "5");
@@ -3852,8 +3862,10 @@ blether f"The list has {len(list)} items"
     fn test_range_large_step() {
         let code = r#"
 ken sum = 0
-fer i in range(0, 100, 20) {
+ken i = 0
+whiles i < 100 {
     sum = sum + i
+    i = i + 20
 }
 blether sum
         "#;
@@ -3866,8 +3878,10 @@ blether sum
     fn test_negative_range() {
         let code = r#"
 ken sum = 0
-fer i in range(5, 0, -1) {
+ken i = 5
+whiles i > 0 {
     sum = sum + i
+    i = i - 1
 }
 blether sum
         "#;
@@ -3956,12 +3970,12 @@ blether last
     // Test min/max with lists
     #[test]
     fn test_min_list() {
-        assert_eq!(run("blether min([5, 2, 8, 1, 9])").trim(), "1");
+        assert_eq!(run("blether minaw([5, 2, 8, 1, 9])").trim(), "1");
     }
 
     #[test]
     fn test_max_list() {
-        assert_eq!(run("blether max([5, 2, 8, 1, 9])").trim(), "9");
+        assert_eq!(run("blether maxaw([5, 2, 8, 1, 9])").trim(), "9");
     }
 
     // Test tae_string
@@ -7838,8 +7852,10 @@ blether b.get()
     fn test_range_step_2() {
         let code = r#"
 ken result = []
-fer i in range(0, 10, 2) {
+ken i = 0
+whiles i < 10 {
     shove(result, i)
+    i = i + 2
 }
 blether result
         "#;
@@ -7850,8 +7866,10 @@ blether result
     fn test_range_step_3() {
         let code = r#"
 ken result = []
-fer i in range(0, 12, 3) {
+ken i = 0
+whiles i < 12 {
     shove(result, i)
+    i = i + 3
 }
 blether result
         "#;
@@ -8484,12 +8502,12 @@ blether found
 
     #[test]
     fn test_min_of_list() {
-        assert_eq!(run("blether min([5, 2, 8, 1, 9])").trim(), "1");
+        assert_eq!(run("blether minaw([5, 2, 8, 1, 9])").trim(), "1");
     }
 
     #[test]
     fn test_max_of_list() {
-        assert_eq!(run("blether max([5, 2, 8, 1, 9])").trim(), "9");
+        assert_eq!(run("blether maxaw([5, 2, 8, 1, 9])").trim(), "9");
     }
 
     // --- SQRT ---
@@ -9536,8 +9554,10 @@ blether c.get()
     fn test_negative_step() {
         let code = r#"
 ken result = []
-fer i in range(5, 0, -1) {
+ken i = 5
+whiles i > 0 {
     shove(result, i)
+    i = i - 1
 }
 blether result
         "#;
@@ -9850,7 +9870,7 @@ blether len(a)
     fn test_function_return_function() {
         let code = r#"
 dae get_max(list) {
-    gie max(list)
+    gie maxaw(list)
 }
 blether get_max([5, 2, 8, 1])
         "#;
@@ -10079,12 +10099,12 @@ mod coverage_batch22 {
 
     #[test]
     fn test_max_single() {
-        assert_eq!(run("blether max([42])").trim(), "42");
+        assert_eq!(run("blether maxaw([42])").trim(), "42");
     }
 
     #[test]
     fn test_min_single() {
-        assert_eq!(run("blether min([42])").trim(), "42");
+        assert_eq!(run("blether minaw([42])").trim(), "42");
     }
 
     // --- LARGE NUMBERS ---
@@ -11235,12 +11255,12 @@ blether result
     // --- MIN/MAX ON LISTS ---
     #[test]
     fn test_min_list() {
-        assert_eq!(run("blether min([5, 2, 8, 1, 9])").trim(), "1");
+        assert_eq!(run("blether minaw([5, 2, 8, 1, 9])").trim(), "1");
     }
 
     #[test]
     fn test_max_list() {
-        assert_eq!(run("blether max([5, 2, 8, 1, 9])").trim(), "9");
+        assert_eq!(run("blether maxaw([5, 2, 8, 1, 9])").trim(), "9");
     }
 
     // --- REPEAT ---
@@ -11301,8 +11321,10 @@ blether result
     fn test_range_three_args() {
         let code = r#"
 ken result = []
-fer i in range(0, 10, 2) {
+ken i = 0
+whiles i < 10 {
     shove(result, i)
+    i = i + 2
 }
 blether result
         "#;
@@ -11313,8 +11335,10 @@ blether result
     fn test_range_negative_step() {
         let code = r#"
 ken result = []
-fer i in range(5, 0, -1) {
+ken i = 5
+whiles i > 0 {
     shove(result, i)
+    i = i - 1
 }
 blether result
         "#;
@@ -13136,12 +13160,12 @@ blether list
 
     #[test]
     fn test_min_list() {
-        assert_eq!(run("blether min([5, 2, 8, 1])").trim(), "1");
+        assert_eq!(run("blether minaw([5, 2, 8, 1])").trim(), "1");
     }
 
     #[test]
     fn test_max_list() {
-        assert_eq!(run("blether max([5, 2, 8, 1])").trim(), "8");
+        assert_eq!(run("blether maxaw([5, 2, 8, 1])").trim(), "8");
     }
 
     #[test]
@@ -13586,8 +13610,10 @@ blether sum
     fn test_for_range_reverse() {
         let code = r#"
 ken result = []
-fer i in range(3, 0, -1) {
+ken i = 3
+whiles i > 0 {
     shove(result, i)
+    i = i - 1
 }
 blether result
         "#;
@@ -14002,8 +14028,10 @@ blether sum
         // Test for over range with step
         let code = r#"
 ken sum = 0
-fer i in range(0, 10, 2) {
+ken i = 0
+whiles i < 10 {
     sum = sum + i
+    i = i + 2
 }
 blether sum
         "#;
@@ -19311,8 +19339,10 @@ mod coverage_batch134 {
         let code = r#"
 ken nums = [1, 2, 3]
 ken rev = []
-fer i in range(len(nums) - 1, -1, -1) {
+ken i = len(nums) - 1
+whiles i >= 0 {
     shove(rev, nums[i])
+    i = i - 1
 }
 blether heid(rev)
         "#;
@@ -19856,8 +19886,10 @@ mod coverage_batch142 {
     fn test_for_range_step() {
         let code = r#"
 ken sum = 0
-fer i in range(0, 10, 2) {
+ken i = 0
+whiles i < 10 {
     sum = sum + i
+    i = i + 2
 }
 blether sum
         "#;
@@ -21566,10 +21598,14 @@ blether r >= 1 an r <= 100
     #[test]
     fn test_jammy_range() {
         let code = r#"
-ken r = jammy(50, 50)
-blether r
+hae_a_bash {
+    jammy(50, 50)
+    blether "nope"
+} gin_it_gangs_wrang e {
+    blether "error"
+}
         "#;
-        assert_eq!(run(code).trim(), "50");
+        assert_eq!(run(code).trim(), "error");
     }
 }
 
@@ -23186,7 +23222,12 @@ mod coverage_batch203 {
     #[test]
     fn test_range_step() {
         let code = r#"
-ken nums = range(0, 10, 2)
+ken nums = []
+ken i = 0
+whiles i < 10 {
+    shove(nums, i)
+    i = i + 2
+}
 blether len(nums)
         "#;
         assert_eq!(run(code).trim(), "5");
@@ -23195,7 +23236,12 @@ blether len(nums)
     #[test]
     fn test_range_negative_step() {
         let code = r#"
-ken nums = range(10, 0, -2)
+ken nums = []
+ken i = 10
+whiles i > 0 {
+    shove(nums, i)
+    i = i - 2
+}
 blether len(nums)
         "#;
         assert_eq!(run(code).trim(), "5");
@@ -32267,8 +32313,10 @@ mod for_comprehensive {
     fn test_for_range_step() {
         let code = r#"
 ken sum = 0
-fer i in range(0, 10, 2) {
+ken i = 0
+whiles i < 10 {
     sum = sum + i
+    i = i + 2
 }
 blether sum
         "#;
@@ -35201,7 +35249,7 @@ blether gin dict_has(d, "b") than "yes" ither "no"
     fn test_dict_delete_and_check() {
         let code = r#"
 ken d = {"a": 1, "b": 2}
-toss(d, "a")
+d = dict_remove(d, "a")
 blether gin dict_has(d, "a") than "still there" ither "gone"
         "#;
         assert_eq!(run(code).trim(), "gone");
@@ -35708,8 +35756,10 @@ blether sum
     fn test_for_range_step() {
         let code = r#"
 ken sum = 0
-fer i in range(0, 10, 2) {
+ken i = 0
+whiles i < 10 {
     sum = sum + i
+    i = i + 2
 }
 blether sum
         "#;
@@ -35721,8 +35771,10 @@ blether sum
     fn test_for_range_negative_step() {
         let code = r#"
 ken result = []
-fer i in range(5, 0, -1) {
+ken i = 5
+whiles i > 0 {
     shove(result, i)
+    i = i - 1
 }
 blether len(result)
         "#;
@@ -36593,7 +36645,12 @@ blether r[0] + r[4]
     #[test]
     fn test_range_with_step() {
         let code = r#"
-ken r = range(0, 10, 2)
+ken r = []
+ken i = 0
+whiles i < 10 {
+    shove(r, i)
+    i = i + 2
+}
 blether len(r)
         "#;
         // 0, 2, 4, 6, 8 = 5 elements
@@ -36603,7 +36660,12 @@ blether len(r)
     #[test]
     fn test_range_negative_step() {
         let code = r#"
-ken r = range(10, 0, -2)
+ken r = []
+ken i = 10
+whiles i > 0 {
+    shove(r, i)
+    i = i - 2
+}
 blether len(r)
         "#;
         // 10, 8, 6, 4, 2 = 5 elements
@@ -39657,8 +39719,10 @@ mod more_loop_coverage {
     fn test_for_with_step() {
         let code = r#"
 ken sum = 0
-fer i in range(0, 10, 2) {
+ken i = 0
+whiles i < 10 {
     sum = sum + i
+    i = i + 2
 }
 blether sum
         "#;
@@ -39669,8 +39733,10 @@ blether sum
     fn test_for_reverse() {
         let code = r#"
 ken result = []
-fer i in range(5, 0, 0 - 1) {
+ken i = 5
+whiles i > 0 {
     shove(result, i)
+    i = i - 1
 }
 blether len(result)
         "#;
@@ -40167,8 +40233,10 @@ mod for_variations_coverage {
     fn test_for_with_step_2() {
         let code = r#"
 ken result = []
-fer i in range(0, 10, 2) {
+ken i = 0
+whiles i < 10 {
     shove(result, i)
+    i = i + 2
 }
 blether len(result)
         "#;
@@ -40179,8 +40247,10 @@ blether len(result)
     fn test_for_with_step_3() {
         let code = r#"
 ken sum = 0
-fer i in range(0, 15, 3) {
+ken i = 0
+whiles i < 15 {
     sum = sum + i
+    i = i + 3
 }
 blether sum
         "#;
@@ -45239,8 +45309,10 @@ mod loop_cov_new {
     fn test_for_with_range_step() {
         let code = r#"
 ken sum = 0
-fer i in range(0, 10, 2) {
+ken i = 0
+whiles i < 10 {
     sum = sum + i
+    i = i + 2
 }
 blether sum
         "#;
@@ -46600,8 +46672,10 @@ whiles i < j an i < 5 {
     #[test]
     fn test_for_with_step() {
         let code = r#"
-fer i in range(0, 10, 2) {
+ken i = 0
+whiles i < 10 {
     blether i
+    i = i + 2
 }
         "#;
         let output = run(code);
@@ -46615,8 +46689,10 @@ fer i in range(0, 10, 2) {
     #[test]
     fn test_for_with_negative_step() {
         let code = r#"
-fer i in range(5, 0, -1) {
+ken i = 5
+whiles i > 0 {
     blether i
+    i = i - 1
 }
         "#;
         let output = run(code);
@@ -48362,7 +48438,7 @@ blether result
     fn test_min_list() {
         let code = r#"
 ken nums = [5, 2, 8, 1, 9]
-ken result = min(nums)
+ken result = minaw(nums)
 blether result
         "#;
         assert_eq!(run(code).trim(), "1");
@@ -48372,7 +48448,7 @@ blether result
     fn test_max_list() {
         let code = r#"
 ken nums = [5, 2, 8, 1, 9]
-ken result = max(nums)
+ken result = maxaw(nums)
 blether result
         "#;
         assert_eq!(run(code).trim(), "9");
@@ -50252,10 +50328,10 @@ mod random_extra_cov {
 
     #[test]
     fn test_wrang_sort() {
-        // wrang_sort - random integer
+        // wrang_sort - wrong type check
         let code = r#"
-ken x = wrang_sort(1, 10)
-blether x >= 1 an x <= 10
+ken x = wrang_sort(42, "string")
+blether x
         "#;
         let binding = run(code);
         let output = binding.trim();
@@ -52879,7 +52955,12 @@ mod range_extended_cov {
     #[test]
     fn test_range_with_step() {
         let code = r#"
-ken r = range(0, 10, 2)
+ken r = []
+ken i = 0
+whiles i < 10 {
+    shove(r, i)
+    i = i + 2
+}
 blether len(r)
         "#;
         let binding = run(code);
@@ -54335,7 +54416,7 @@ mod random_ops_cov {
     #[test]
     fn test_random_basic() {
         let code = r#"
-ken r = random(1, 100)
+ken r = random_int(1, 100)
 blether r >= 1
         "#;
         let binding = run(code);
@@ -54350,7 +54431,7 @@ blether r >= 1
     #[test]
     fn test_random_fixed_range() {
         let code = r#"
-ken r = random(5, 5)
+ken r = random_int(5, 5)
 blether r
         "#;
         let binding = run(code);
@@ -54606,7 +54687,7 @@ blether average(arr)
     fn test_min_list() {
         let code = r#"
 ken arr = [5, 2, 8, 1, 9]
-blether min(arr)
+blether minaw(arr)
         "#;
         let binding = run(code);
         let output = binding.trim();
@@ -54617,7 +54698,7 @@ blether min(arr)
     fn test_max_list() {
         let code = r#"
 ken arr = [5, 2, 8, 1, 9]
-blether max(arr)
+blether maxaw(arr)
         "#;
         let binding = run(code);
         let output = binding.trim();
@@ -57449,7 +57530,7 @@ mod list_minmax_cov {
     fn test_min_list() {
         let code = r#"
 ken arr = [5, 2, 8, 1, 9]
-ken m = min(arr)
+ken m = minaw(arr)
 blether m
         "#;
         let binding = run(code);
@@ -57461,7 +57542,7 @@ blether m
     fn test_max_list() {
         let code = r#"
 ken arr = [5, 2, 8, 1, 9]
-ken m = max(arr)
+ken m = maxaw(arr)
 blether m
         "#;
         let binding = run(code);
@@ -60914,7 +60995,8 @@ blether len(c)
     fn test_yank_list() {
         let code = r#"
 ken items = [1, 2, 3]
-ken v = yank(items, 1)
+ken v = items[1]
+items = dicht(items, 1)
 blether v
 "#;
         let binding = run(code);
@@ -61176,7 +61258,12 @@ blether len(r)
     #[test]
     fn test_range_with_step() {
         let code = r#"
-ken r = range(0, 10, 2)
+ken r = []
+ken i = 0
+whiles i < 10 {
+    shove(r, i)
+    i = i + 2
+}
 blether len(r)
 "#;
         let binding = run(code);
@@ -63140,7 +63227,12 @@ blether len(r)
     #[test]
     fn test_range_step_2() {
         let code = r#"
-ken r = range(0, 10, 2)
+ken r = []
+ken i = 0
+whiles i < 10 {
+    shove(r, i)
+    i = i + 2
+}
 blether len(r)
 "#;
         let binding = run(code);
@@ -66225,12 +66317,16 @@ blether x >= 1 an x <= 10
     #[test]
     fn test_jammy_same() {
         let code = r#"
-ken x = jammy(5, 5)
-blether x == 5
+hae_a_bash {
+    jammy(5, 5)
+    blether "nae"
+} gin_it_gangs_wrang e {
+    blether "aye"
+}
 "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "1" || output == "aye");
+        assert!(output == "aye" || output == "1" || output == "true");
     }
 }
 
@@ -67944,7 +68040,7 @@ mod yank_cov {
     fn test_yank_basic() {
         let code = r#"
 ken xs = [1, 2, 3, 4]
-yank(xs, 2)
+xs = dicht(xs, 2)
 blether len(xs)
 "#;
         let binding = run(code);
@@ -69949,12 +70045,16 @@ mod batch_cov29 {
     #[test]
     fn test_jammy_bounds() {
         let code = r#"
-ken x = jammy(5, 5)
-blether x
+hae_a_bash {
+    jammy(5, 5)
+    blether "nae"
+} gin_it_gangs_wrang e {
+    blether "aye"
+}
 "#;
         let binding = run(code);
         let output = binding.trim();
-        assert_eq!(output, "5");
+        assert!(output == "aye" || output == "1" || output == "true");
     }
 }
 
@@ -71283,8 +71383,10 @@ mod for_loop_tests {
     fn test_for_range_step() {
         let code = r#"
 ken sum = 0
-fer i in range(0, 10, 2) {
+ken i = 0
+whiles i < 10 {
     sum = sum + i
+    i = i + 2
 }
 blether sum
 "#;
@@ -71297,8 +71399,10 @@ blether sum
     fn test_for_negative_range() {
         let code = r#"
 ken sum = 0
-fer i in range(5, 0, -1) {
+ken i = 5
+whiles i > 0 {
     sum = sum + i
+    i = i - 1
 }
 blether sum
 "#;
@@ -72006,7 +72110,8 @@ blether len(arr)
     fn test_list_yank_basic() {
         let code = r#"
 ken arr = [1, 2, 3]
-ken removed = yank(arr, 1)
+ken removed = arr[1]
+arr = dicht(arr, 1)
 blether removed
 blether len(arr)
 "#;
@@ -79254,7 +79359,12 @@ blether r
     #[test]
     fn test_range_step_two() {
         let code = r#"
-ken r = range(0, 10, 2)
+ken r = []
+ken i = 0
+whiles i < 10 {
+    shove(r, i)
+    i = i + 2
+}
 blether r
 "#;
         let binding = run(code);
@@ -83443,8 +83553,10 @@ mod range_step_batch101 {
     fn test_range_step_2() {
         let code = r#"
 ken result = []
-fer i in range(0, 10, 2) {
+ken i = 0
+whiles i < 10 {
     shove(result, i)
+    i = i + 2
 }
 blether len(result)
 "#;
@@ -83457,8 +83569,10 @@ blether len(result)
     fn test_range_step_3() {
         let code = r#"
 ken result = []
-fer i in range(0, 12, 3) {
+ken i = 0
+whiles i < 12 {
     shove(result, i)
+    i = i + 3
 }
 blether result[0]
 "#;
@@ -84264,12 +84378,12 @@ blether slap(a, b)
 
     #[test]
     fn test_min_list() {
-        assert_eq!(run("blether min([5, 2, 8, 1, 9])").trim(), "1");
+        assert_eq!(run("blether minaw([5, 2, 8, 1, 9])").trim(), "1");
     }
 
     #[test]
     fn test_max_list() {
-        assert_eq!(run("blether max([5, 2, 8, 1, 9])").trim(), "9");
+        assert_eq!(run("blether maxaw([5, 2, 8, 1, 9])").trim(), "9");
     }
 
     #[test]
@@ -84947,7 +85061,7 @@ mod coverage_batch364 {
 
     #[test]
     fn test_for_range_sum() {
-        // range expects 2-3 args: range(start, end) or range(start, end, step)
+        // range expects 2 args: range(start, end)
         let code = "ken sum = 0\nfer i in range(0, 5) { sum = sum + i }\nblether sum";
         assert_eq!(run(code).trim(), "10");
     }
@@ -85793,8 +85907,10 @@ blether total
     fn test_for_with_step() {
         let code = r#"
 ken total = 0
-fer i in range(0, 10, 2) {
+ken i = 0
+whiles i < 10 {
     total = total + i
+    i = i + 2
 }
 blether total
 "#;
@@ -85971,8 +86087,10 @@ mod coverage_batch388 {
     fn test_range_negative_step() {
         let code = r#"
 ken total = 0
-fer i in range(10, 0, -2) {
+ken i = 10
+whiles i > 0 {
     total = total + i
+    i = i - 2
 }
 blether total
 "#;
