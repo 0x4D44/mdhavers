@@ -1,8 +1,22 @@
 # Standard Library Reference
 
-mdhavers includes a standard library of modules in `examples/lib/`.
+mdhavers includes a standard library of modules in `stdlib/`, with additional example modules in `examples/lib/`.
 
-## Available Modules
+## Runtime Stdlib Modules (`stdlib/`)
+
+| Module | Description |
+|--------|-------------|
+| `bytes.braw` | Byte buffers + endian helpers |
+| `network_real.braw` | Real sockets & DNS |
+| `event_loop.braw` | Event loop + timers |
+| `concurrency.braw` | Threads, mutexes, channels |
+| `sip.braw` | SIP helpers + DNS SRV/NAPTR |
+| `rtp.braw` | RTP header/packet helpers |
+| `rtcp.braw` | RTCP receiver report helpers |
+| `tls.braw` | TLS wrappers |
+| `srtp.braw` | SRTP wrappers |
+
+## Example Modules (`examples/lib/`)
 
 | Module | Description |
 |--------|-------------|
@@ -21,7 +35,11 @@ mdhavers includes a standard library of modules in `examples/lib/`.
 ## Using Standard Library
 
 ```scots
-# Import a standard library module
+# Import a runtime stdlib module
+fetch "stdlib/bytes"
+fetch "stdlib/network_real"
+
+# Import an example module
 fetch "examples/lib/collections"
 fetch "examples/lib/strings" tae str
 ```

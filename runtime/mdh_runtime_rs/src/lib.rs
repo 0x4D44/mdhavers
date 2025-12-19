@@ -14,7 +14,7 @@ use libsrtp::{MasterKey, ProtectionProfile, RecvSession, SendSession, StreamConf
 use openssl::pkcs12::Pkcs12;
 use openssl::pkey::PKey;
 use openssl::x509::X509;
-use udp_dtls::{DtlsAcceptor, DtlsAcceptorBuilder, DtlsConnector, DtlsConnectorBuilder, Identity, SrtpProfile, UdpChannel};
+use udp_dtls::{DtlsAcceptor, DtlsConnector, Identity, SrtpProfile, UdpChannel};
 use trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
 use trust_dns_resolver::proto::rr::{RData, RecordType};
 use trust_dns_resolver::Resolver;
@@ -1553,9 +1553,10 @@ fn identity_from_pem(cert_pem: &str, key_pem: &str) -> Result<Identity, String> 
     let cert = X509::from_pem(cert_pem.as_bytes()).map_err(|e| format!("Invalid cert PEM: {}", e))?;
     let key = PKey::private_key_from_pem(key_pem.as_bytes())
         .map_err(|e| format!("Invalid key PEM: {}", e))?;
-    let builder = Pkcs12::builder();
+    let mut builder = Pkcs12::builder();
+    builder.name("mdhavers").pkey(&key).cert(&cert);
     let pkcs12 = builder
-        .build("", "mdhavers", &key, &cert)
+        .build2("")
         .map_err(|e| format!("PKCS12 build failed: {}", e))?;
     let der = pkcs12.to_der().map_err(|e| format!("PKCS12 serialize failed: {}", e))?;
     Identity::from_pkcs12(&der, "").map_err(|e| format!("Identity parse failed: {}", e))
@@ -1651,7 +1652,7 @@ pub extern "C" fn __mdh_rs_dtls_handshake(dtls: MdhValue, sock: MdhValue) -> Mdh
                     stream
                 }
                 Err(err) => {
-                    return mdh_err(&format!("DTLS connect failed: {}", err));
+                    return mdh_err(&format!("DTLS connect failed: {:?}", err));
                 }
             }
         } else {
@@ -1681,7 +1682,7 @@ pub extern "C" fn __mdh_rs_dtls_handshake(dtls: MdhValue, sock: MdhValue) -> Mdh
                     stream
                 }
                 Err(err) => {
-                    return mdh_err(&format!("DTLS accept failed: {}", err));
+                    return mdh_err(&format!("DTLS accept failed: {:?}", err));
                 }
             }
         };

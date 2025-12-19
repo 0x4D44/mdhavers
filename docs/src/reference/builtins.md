@@ -220,6 +220,8 @@ These functions have distinctly Scottish names and personality!
 | `noo()` | Current time (ms) | `noo()` → timestamp |
 | `the_noo()` | Current timestamp | `the_noo()` |
 | `tick()` | High-precision (ns) | `tick()` → nanoseconds |
+| `mono_ms()` | Monotonic ms since start | `mono_ms()` |
+| `mono_ns()` | Monotonic ns since start | `mono_ns()` |
 | `bide(ms)` | Sleep (wait) | `bide(1000)` → sleeps 1s |
 | `snooze(ms)` | Sleep | `snooze(500)` |
 
@@ -252,3 +254,109 @@ These functions have distinctly Scottish names and personality!
 | `assert_equal(a, b)` | Assert equal | `assert_equal(1+1, 2)` |
 | `assert_nae_equal(a, b)` | Assert not equal | `assert_nae_equal(1, 2)` |
 | `mak_siccar(cond, msg)` | Assert (Scots) | `mak_siccar(x > 0)` |
+
+## Bytes & Binary
+
+| Function | Description | Example |
+|----------|-------------|---------|
+| `bytes(n)` | Allocate zeroed bytes | `bytes(16)` |
+| `bytes_from_string(s)` | Encode string to bytes | `bytes_from_string("hi")` |
+| `bytes_len(b)` | Length of bytes | `bytes_len(b)` |
+| `bytes_slice(b, start, end)` | Slice bytes | `bytes_slice(b, 0, 4)` |
+| `bytes_get(b, idx)` | Read byte | `bytes_get(b, 0)` |
+| `bytes_set(b, idx, val)` | Write byte | `bytes_set(b, 0, 255)` |
+| `bytes_append(a, b)` | Append bytes | `bytes_append(a, b)` |
+| `bytes_read_u16be(b, off)` | Read u16 big-endian | `bytes_read_u16be(b, 2)` |
+| `bytes_read_u32be(b, off)` | Read u32 big-endian | `bytes_read_u32be(b, 4)` |
+| `bytes_write_u16be(b, off, val)` | Write u16 big-endian | `bytes_write_u16be(b, 2, 99)` |
+| `bytes_write_u32be(b, off, val)` | Write u32 big-endian | `bytes_write_u32be(b, 4, 999)` |
+
+## Networking & Sockets
+
+| Function | Description |
+|----------|-------------|
+| `socket_udp()` | Create UDP socket |
+| `socket_tcp()` | Create TCP socket |
+| `socket_bind(sock, host, port)` | Bind socket |
+| `socket_connect(sock, host, port)` | Connect socket |
+| `socket_listen(sock, backlog)` | Listen on TCP socket |
+| `socket_accept(sock)` | Accept TCP connection |
+| `socket_close(sock)` | Close socket |
+| `udp_send_to(sock, bytes, host, port)` | Send UDP packet |
+| `udp_recv_from(sock, max_len)` | Receive UDP packet |
+| `tcp_send(sock, bytes)` | Send TCP bytes |
+| `tcp_recv(sock, max_len)` | Receive TCP bytes |
+| `socket_set_nonblocking(sock, on)` | Toggle non-blocking |
+| `socket_set_reuseaddr(sock, on)` | Toggle SO_REUSEADDR |
+| `socket_set_reuseport(sock, on)` | Toggle SO_REUSEPORT |
+| `socket_set_ttl(sock, ttl)` | Set IP TTL |
+| `socket_set_nodelay(sock, on)` | Toggle TCP_NODELAY |
+| `socket_set_rcvbuf(sock, bytes)` | Set receive buffer size |
+| `socket_set_sndbuf(sock, bytes)` | Set send buffer size |
+
+## DNS
+
+| Function | Description |
+|----------|-------------|
+| `dns_lookup(host)` | A/AAAA lookup |
+| `dns_srv(domain)` | SRV lookup |
+| `dns_naptr(domain)` | NAPTR lookup |
+
+## Event Loop & Timers
+
+| Function | Description |
+|----------|-------------|
+| `event_loop_new()` | Create event loop |
+| `event_loop_stop(loop)` | Stop loop |
+| `event_loop_poll(loop, timeout_ms)` | Poll for events |
+| `event_watch_read(loop, sock, callback)` | Watch for readability |
+| `event_watch_write(loop, sock, callback)` | Watch for writability |
+| `event_unwatch(loop, sock)` | Remove watch |
+| `timer_after(loop, ms, callback)` | One-shot timer |
+| `timer_every(loop, ms, callback)` | Repeating timer |
+| `timer_cancel(loop, timer_id)` | Cancel timer |
+
+## Concurrency
+
+| Function | Description |
+|----------|-------------|
+| `thread_spawn(fn, args)` | Spawn thread |
+| `thread_join(handle)` | Join thread |
+| `thread_detach(handle)` | Detach thread |
+| `mutex_new()` | Create mutex |
+| `mutex_lock(m)` | Lock mutex |
+| `mutex_unlock(m)` | Unlock mutex |
+| `mutex_try_lock(m)` | Try lock mutex |
+| `condvar_new()` | Create condvar |
+| `condvar_wait(cv, m)` | Wait on condvar |
+| `condvar_timed_wait(cv, m, ms)` | Timed wait |
+| `condvar_signal(cv)` | Signal condvar |
+| `condvar_broadcast(cv)` | Broadcast condvar |
+| `atomic_new(val)` | Create atomic |
+| `atomic_load(a)` | Load atomic |
+| `atomic_store(a, val)` | Store atomic |
+| `atomic_add(a, val)` | Add atomic |
+| `atomic_sub(a, val)` | Subtract atomic |
+| `atomic_swap(a, val)` | Swap atomic |
+| `atomic_compare_exchange(a, expect, val)` | CAS |
+| `chan_new(capacity)` | Create channel |
+| `chan_send(chan, value)` | Send on channel |
+| `chan_recv(chan)` | Receive on channel |
+| `chan_try_recv(chan)` | Try receive |
+| `chan_close(chan)` | Close channel |
+| `chan_is_closed(chan)` | Check channel closed |
+
+## TLS / DTLS / SRTP
+
+| Function | Description |
+|----------|-------------|
+| `tls_client_new(config)` | Create TLS session |
+| `tls_connect(tls, sock)` | Handshake TLS |
+| `tls_send(tls, bytes)` | Send over TLS |
+| `tls_recv(tls, max_len)` | Receive over TLS |
+| `tls_close(tls)` | Close TLS session |
+| `dtls_server_new(config)` | Create DTLS config |
+| `dtls_handshake(dtls, sock)` | DTLS handshake + SRTP keys |
+| `srtp_create(config)` | Create SRTP context |
+| `srtp_protect(ctx, rtp_packet)` | Protect RTP packet |
+| `srtp_unprotect(ctx, rtp_packet)` | Unprotect RTP packet |
