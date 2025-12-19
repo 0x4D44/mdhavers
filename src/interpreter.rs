@@ -10,9 +10,14 @@ use std::os::unix::io::{FromRawFd, RawFd};
 use trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
 use trust_dns_resolver::proto::rr::{RData, RecordType};
 use trust_dns_resolver::Resolver;
+use libsrtp::{MasterKey, ProtectionProfile, RecvSession, SendSession, StreamConfig};
+use openssl::pkcs12::Pkcs12;
+use openssl::pkey::PKey;
+use openssl::x509::X509;
 use rustls::client::{ServerCertVerified, ServerCertVerifier};
 use rustls::{Certificate, ClientConfig, ClientConnection, PrivateKey, RootCertStore, ServerConfig, ServerConnection, ServerName, StreamOwned, OwnedTrustAnchor};
 use rustls_pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
+use udp_dtls::{DtlsAcceptor, DtlsConnector, Identity, SrtpProfile, UdpChannel};
 
 #[cfg(all(feature = "cli", not(coverage)))]
 use crossterm::{
@@ -431,6 +436,85 @@ fn remove_tls(id: i64) {
     reg.sessions.remove(&id);
 }
 
+struct SrtpSession {
+    send: SendSession,
+    recv: RecvSession,
+}
+
+struct SrtpRegistry {
+    next_id: i64,
+    sessions: HashMap<i64, SrtpSession>,
+}
+
+static SRTP_REGISTRY: OnceLock<Mutex<SrtpRegistry>> = OnceLock::new();
+
+fn srtp_registry() -> &'static Mutex<SrtpRegistry> {
+    SRTP_REGISTRY.get_or_init(|| Mutex::new(SrtpRegistry {
+        next_id: 1,
+        sessions: HashMap::new(),
+    }))
+}
+
+fn register_srtp(session: SrtpSession) -> i64 {
+    let mut reg = srtp_registry().lock().unwrap();
+    let id = reg.next_id;
+    reg.next_id += 1;
+    reg.sessions.insert(id, session);
+    id
+}
+
+fn with_srtp_mut<T, F>(id: i64, f: F) -> Result<T, String>
+where
+    F: FnOnce(&mut SrtpSession) -> Result<T, String>,
+{
+    let mut reg = srtp_registry().lock().unwrap();
+    let session = reg.sessions.get_mut(&id).ok_or("Unknown SRTP handle")?;
+    f(session)
+}
+
+#[derive(Clone)]
+struct DtlsConfigData {
+    mode: TlsMode,
+    server_name: String,
+    insecure: bool,
+    ca_pem: Option<String>,
+    cert_pem: Option<String>,
+    key_pem: Option<String>,
+    remote_host: Option<String>,
+    remote_port: Option<u16>,
+    srtp_profiles: Vec<SrtpProfile>,
+}
+
+struct DtlsRegistry {
+    next_id: i64,
+    configs: HashMap<i64, DtlsConfigData>,
+}
+
+static DTLS_REGISTRY: OnceLock<Mutex<DtlsRegistry>> = OnceLock::new();
+
+fn dtls_registry() -> &'static Mutex<DtlsRegistry> {
+    DTLS_REGISTRY.get_or_init(|| Mutex::new(DtlsRegistry {
+        next_id: 1,
+        configs: HashMap::new(),
+    }))
+}
+
+fn register_dtls(config: DtlsConfigData) -> i64 {
+    let mut reg = dtls_registry().lock().unwrap();
+    let id = reg.next_id;
+    reg.next_id += 1;
+    reg.configs.insert(id, config);
+    id
+}
+
+fn dtls_get(id: i64) -> Result<DtlsConfigData, String> {
+    let reg = dtls_registry().lock().unwrap();
+    reg.configs
+        .get(&id)
+        .cloned()
+        .ok_or("Unknown DTLS handle".to_string())
+}
+
 fn result_ok(value: Value) -> Value {
     let mut dict = DictValue::new();
     dict.set(Value::String("ok".to_string()), Value::Bool(true));
@@ -494,6 +578,36 @@ fn dict_get_bool(dict: &DictValue, key: &str) -> Option<bool> {
     dict.get(&Value::String(key.to_string()))
         .and_then(|v| match v {
             Value::Bool(b) => Some(*b),
+            _ => None,
+        })
+}
+
+fn dict_get_bytes(dict: &DictValue, key: &str) -> Option<Vec<u8>> {
+    dict.get(&Value::String(key.to_string()))
+        .and_then(|v| match v {
+            Value::Bytes(b) => Some(b.borrow().clone()),
+            _ => None,
+        })
+}
+
+fn dict_get_u16(dict: &DictValue, key: &str) -> Option<u16> {
+    dict.get(&Value::String(key.to_string()))
+        .and_then(|v| match v {
+            Value::Integer(n) => {
+                if *n >= 0 && *n <= u16::MAX as i64 {
+                    Some(*n as u16)
+                } else {
+                    None
+                }
+            }
+            Value::Float(f) => {
+                let v = *f as i64;
+                if v >= 0 && v <= u16::MAX as i64 {
+                    Some(v as u16)
+                } else {
+                    None
+                }
+            }
             _ => None,
         })
 }
@@ -607,6 +721,123 @@ fn build_server_config(cfg: &TlsConfigData) -> Result<Arc<ServerConfig>, String>
         .map_err(|e| format!("Invalid server TLS config: {}", e))?;
 
     Ok(Arc::new(config))
+}
+
+fn srtp_profile_from_str(s: &str) -> Option<SrtpProfile> {
+    match s.to_uppercase().as_str() {
+        "SRTP_AES128_CM_SHA1_80" | "AES128_CM_SHA1_80" | "AES128_CM_HMAC_SHA1_80" => {
+            Some(SrtpProfile::Aes128CmSha180)
+        }
+        "SRTP_AES128_CM_SHA1_32" | "AES128_CM_SHA1_32" | "AES128_CM_HMAC_SHA1_32" => {
+            Some(SrtpProfile::Aes128CmSha132)
+        }
+        "SRTP_AEAD_AES_128_GCM" | "AEAD_AES_128_GCM" => Some(SrtpProfile::AeadAes128Gcm),
+        "SRTP_AEAD_AES_256_GCM" | "AEAD_AES_256_GCM" => Some(SrtpProfile::AeadAes256Gcm),
+        _ => None,
+    }
+}
+
+fn protection_profile_from_str(s: &str) -> Option<ProtectionProfile> {
+    match s.to_uppercase().as_str() {
+        "SRTP_AES128_CM_SHA1_80" | "AES128_CM_SHA1_80" | "AES128_CM_HMAC_SHA1_80" => {
+            Some(ProtectionProfile::Aes128CmHmacSha180)
+        }
+        "SRTP_AES128_CM_SHA1_32" | "AES128_CM_SHA1_32" | "AES128_CM_HMAC_SHA1_32" => {
+            Some(ProtectionProfile::Aes128CmHmacSha132)
+        }
+        "SRTP_AEAD_AES_128_GCM" | "AEAD_AES_128_GCM" => Some(ProtectionProfile::AeadAes128Gcm),
+        "SRTP_AEAD_AES_256_GCM" | "AEAD_AES_256_GCM" => Some(ProtectionProfile::AeadAes256Gcm),
+        _ => None,
+    }
+}
+
+fn srtp_key_salt_len(profile: SrtpProfile) -> (usize, usize) {
+    match profile {
+        SrtpProfile::Aes128CmSha180 | SrtpProfile::Aes128CmSha132 => (16, 14),
+        SrtpProfile::AeadAes128Gcm => (16, 12),
+        SrtpProfile::AeadAes256Gcm => (32, 12),
+        SrtpProfile::__Nonexhaustive => (16, 14),
+    }
+}
+
+fn dtls_config_from_value(value: &Value) -> Result<DtlsConfigData, String> {
+    if matches!(value, Value::Nil) {
+        return Ok(DtlsConfigData {
+            mode: TlsMode::Server,
+            server_name: "localhost".to_string(),
+            insecure: false,
+            ca_pem: None,
+            cert_pem: None,
+            key_pem: None,
+            remote_host: None,
+            remote_port: None,
+            srtp_profiles: vec![SrtpProfile::Aes128CmSha180],
+        });
+    }
+    let dict = match value {
+        Value::Dict(d) => d.borrow(),
+        _ => return Err("dtls_server_new() expects config dict".to_string()),
+    };
+
+    let mode = dict_get_string(&dict, "mode")
+        .unwrap_or_else(|| "server".to_string())
+        .to_lowercase();
+    let mode = if mode == "client" {
+        TlsMode::Client
+    } else {
+        TlsMode::Server
+    };
+
+    let mut server_name = dict_get_string(&dict, "server_name").unwrap_or_else(|| "localhost".to_string());
+    if server_name.is_empty() {
+        server_name = "localhost".to_string();
+    }
+
+    let insecure = dict_get_bool(&dict, "insecure").unwrap_or(false);
+    let ca_pem = dict_get_string(&dict, "ca_pem").filter(|s| !s.is_empty());
+    let cert_pem = dict_get_string(&dict, "cert_pem").filter(|s| !s.is_empty());
+    let key_pem = dict_get_string(&dict, "key_pem").filter(|s| !s.is_empty());
+    let remote_host = dict_get_string(&dict, "remote_host").filter(|s| !s.is_empty());
+    let remote_port = dict_get_u16(&dict, "remote_port");
+
+    let mut profiles = Vec::new();
+    if let Some(Value::List(list)) = dict.get(&Value::String("srtp_profiles".to_string())) {
+        for item in list.borrow().iter() {
+            if let Value::String(s) = item {
+                if let Some(profile) = srtp_profile_from_str(s) {
+                    profiles.push(profile);
+                }
+            }
+        }
+    }
+    if profiles.is_empty() {
+        profiles.push(SrtpProfile::Aes128CmSha180);
+    }
+
+    Ok(DtlsConfigData {
+        mode,
+        server_name,
+        insecure,
+        ca_pem,
+        cert_pem,
+        key_pem,
+        remote_host,
+        remote_port,
+        srtp_profiles: profiles,
+    })
+}
+
+fn identity_from_pem(cert_pem: &str, key_pem: &str) -> Result<Identity, String> {
+    let cert = X509::from_pem(cert_pem.as_bytes()).map_err(|e| format!("Invalid cert PEM: {}", e))?;
+    let key = PKey::private_key_from_pem(key_pem.as_bytes())
+        .map_err(|e| format!("Invalid key PEM: {}", e))?;
+    let mut builder = Pkcs12::builder();
+    builder.name("mdhavers").pkey(&key).cert(&cert);
+    let pkcs12 = builder
+        .build2("")
+        .map_err(|e| format!("PKCS12 build failed: {}", e))?;
+    let der = pkcs12.to_der().map_err(|e| format!("PKCS12 serialize failed: {}", e))?;
+    Identity::from_pkcs12(&der, "").map_err(|e| format!("Identity parse failed: {}", e))
 }
 
 fn addr_dict(host: String, port: i64) -> Value {
@@ -2259,43 +2490,330 @@ impl Interpreter {
             }))),
         );
 
-        // dtls_server_new(config) - stub
+        // dtls_server_new(config)
         globals.borrow_mut().define(
             "dtls_server_new".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("dtls_server_new", 1, |_args| {
-                Ok(result_err("dtls_server_new not implemented".to_string(), -1))
+            Value::NativeFunction(Rc::new(NativeFunction::new("dtls_server_new", 1, |args| {
+                let cfg = dtls_config_from_value(&args[0])?;
+                let id = register_dtls(cfg);
+                Ok(result_ok(Value::Integer(id)))
             }))),
         );
 
-        // dtls_handshake(dtls, sock) - stub
+        // dtls_handshake(dtls, sock)
         globals.borrow_mut().define(
             "dtls_handshake".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("dtls_handshake", 2, |_args| {
-                Ok(result_err("dtls_handshake not implemented".to_string(), -1))
+            Value::NativeFunction(Rc::new(NativeFunction::new("dtls_handshake", 2, |args| {
+                let dtls_id = args[0]
+                    .as_integer()
+                    .ok_or("dtls_handshake() expects DTLS handle")?;
+                let sock_id = args[1]
+                    .as_integer()
+                    .ok_or("dtls_handshake() expects socket id")?;
+                let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+                let cfg = match dtls_get(dtls_id) {
+                    Ok(cfg) => cfg,
+                    Err(e) => return Ok(result_err(e, -1)),
+                };
+
+                let dup_fd = unsafe { libc::dup(entry.fd) };
+                if dup_fd < 0 {
+                    let err = std::io::Error::last_os_error();
+                    let code = err.raw_os_error().unwrap_or(-1) as i64;
+                    return Ok(result_err(err.to_string(), code));
+                }
+
+                let socket = unsafe { std::net::UdpSocket::from_raw_fd(dup_fd) };
+                if let Err(e) = socket.set_nonblocking(false) {
+                    return Ok(result_err(format!("DTLS socket setup failed: {}", e), -1));
+                }
+
+                let remote = if let (Some(host), Some(port)) = (cfg.remote_host.clone(), cfg.remote_port) {
+                    match format!("{}:{}", host, port).parse() {
+                        Ok(addr) => addr,
+                        Err(_) => return Ok(result_err("Invalid remote address".to_string(), -1)),
+                    }
+                } else {
+                    match socket.peer_addr() {
+                        Ok(addr) => addr,
+                        Err(_) => {
+                            return Ok(result_err(
+                                "dtls_handshake requires remote_host/remote_port".to_string(),
+                                -1,
+                            ))
+                        }
+                    }
+                };
+
+                if let Err(e) = socket.connect(remote) {
+                    return Ok(result_err(format!("DTLS connect failed: {}", e), -1));
+                }
+
+                let channel = UdpChannel {
+                    socket,
+                    remote_addr: remote,
+                };
+
+                let (stream, selected_profile) = if cfg.mode == TlsMode::Client {
+                    let mut builder = DtlsConnector::builder();
+                    for profile in &cfg.srtp_profiles {
+                        builder.add_srtp_profile(*profile);
+                    }
+                    if let Some(ca_pem) = &cfg.ca_pem {
+                        let cert = match udp_dtls::Certificate::from_pem(ca_pem.as_bytes()) {
+                            Ok(cert) => cert,
+                            Err(e) => return Ok(result_err(format!("Invalid CA cert: {}", e), -1)),
+                        };
+                        builder.add_root_certificate(cert);
+                    }
+                    if cfg.insecure {
+                        builder.danger_accept_invalid_certs(true);
+                        builder.danger_accept_invalid_hostnames(true);
+                    }
+                    if let (Some(cert_pem), Some(key_pem)) = (&cfg.cert_pem, &cfg.key_pem) {
+                        let identity = match identity_from_pem(cert_pem, key_pem) {
+                            Ok(identity) => identity,
+                            Err(e) => return Ok(result_err(e, -1)),
+                        };
+                        builder.identity(identity);
+                    }
+                    let connector = match DtlsConnector::new(&builder) {
+                        Ok(connector) => connector,
+                        Err(e) => return Ok(result_err(format!("{}", e), -1)),
+                    };
+                    match connector.connect(&cfg.server_name, channel) {
+                        Ok(stream) => {
+                            let selected = stream.selected_srtp_profile().ok().flatten();
+                            (stream, selected)
+                        }
+                        Err(err) => {
+                            return Ok(result_err(format!("DTLS connect failed: {:?}", err), -1))
+                        }
+                    }
+                } else {
+                    let cert_pem = match cfg.cert_pem.as_ref() {
+                        Some(v) => v,
+                        None => return Ok(result_err("Server cert_pem required".to_string(), -1)),
+                    };
+                    let key_pem = match cfg.key_pem.as_ref() {
+                        Some(v) => v,
+                        None => return Ok(result_err("Server key_pem required".to_string(), -1)),
+                    };
+                    let identity = match identity_from_pem(cert_pem, key_pem) {
+                        Ok(identity) => identity,
+                        Err(e) => return Ok(result_err(e, -1)),
+                    };
+                    let mut builder = DtlsAcceptor::builder(identity);
+                    for profile in &cfg.srtp_profiles {
+                        builder.add_srtp_profile(*profile);
+                    }
+                    let acceptor = match DtlsAcceptor::new(&builder) {
+                        Ok(acceptor) => acceptor,
+                        Err(e) => return Ok(result_err(format!("{}", e), -1)),
+                    };
+                    match acceptor.accept(channel) {
+                        Ok(stream) => {
+                            let selected = stream.selected_srtp_profile().ok().flatten();
+                            (stream, selected)
+                        }
+                        Err(err) => {
+                            return Ok(result_err(format!("DTLS accept failed: {:?}", err), -1))
+                        }
+                    }
+                };
+
+                let profile = selected_profile.unwrap_or(SrtpProfile::Aes128CmSha180);
+                let (key_len, salt_len) = srtp_key_salt_len(profile);
+                let total = 2 * (key_len + salt_len);
+                let material = match stream.keying_material(total) {
+                    Ok(material) => material,
+                    Err(e) => return Ok(result_err(format!("Keying material failed: {}", e), -1)),
+                };
+
+                let client_key = material[0..key_len].to_vec();
+                let server_key = material[key_len..(2 * key_len)].to_vec();
+                let client_salt = material[(2 * key_len)..(2 * key_len + salt_len)].to_vec();
+                let server_salt =
+                    material[(2 * key_len + salt_len)..(2 * key_len + 2 * salt_len)].to_vec();
+
+                let mut dict = DictValue::new();
+                dict.set(
+                    Value::String("profile".to_string()),
+                    Value::String(profile.to_string()),
+                );
+                dict.set(
+                    Value::String("client_key".to_string()),
+                    Value::Bytes(Rc::new(RefCell::new(client_key))),
+                );
+                dict.set(
+                    Value::String("client_salt".to_string()),
+                    Value::Bytes(Rc::new(RefCell::new(client_salt))),
+                );
+                dict.set(
+                    Value::String("server_key".to_string()),
+                    Value::Bytes(Rc::new(RefCell::new(server_key))),
+                );
+                dict.set(
+                    Value::String("server_salt".to_string()),
+                    Value::Bytes(Rc::new(RefCell::new(server_salt))),
+                );
+                dict.set(
+                    Value::String("key_len".to_string()),
+                    Value::Integer(key_len as i64),
+                );
+                dict.set(
+                    Value::String("salt_len".to_string()),
+                    Value::Integer(salt_len as i64),
+                );
+
+                Ok(result_ok(Value::Dict(Rc::new(RefCell::new(dict)))))
             }))),
         );
 
-        // srtp_create(keys) - stub
+        // srtp_create(keys)
         globals.borrow_mut().define(
             "srtp_create".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("srtp_create", 1, |_args| {
-                Ok(result_err("srtp_create not implemented".to_string(), -1))
+            Value::NativeFunction(Rc::new(NativeFunction::new("srtp_create", 1, |args| {
+                let dict = match &args[0] {
+                    Value::Dict(d) => d.borrow(),
+                    _ => return Err("srtp_create() expects config dict".to_string()),
+                };
+
+                let profile_str = dict_get_string(&dict, "profile")
+                    .unwrap_or_else(|| "SRTP_AES128_CM_SHA1_80".to_string());
+                let profile = match protection_profile_from_str(&profile_str) {
+                    Some(p) => p,
+                    None => {
+                        return Ok(result_err(
+                            "Unsupported SRTP profile".to_string(),
+                            -1,
+                        ))
+                    }
+                };
+
+                let role = dict_get_string(&dict, "role").unwrap_or_else(|| "client".to_string());
+
+                let mut send_key = dict_get_bytes(&dict, "send_key");
+                let mut send_salt = dict_get_bytes(&dict, "send_salt");
+                let mut recv_key = dict_get_bytes(&dict, "recv_key");
+                let mut recv_salt = dict_get_bytes(&dict, "recv_salt");
+
+                let client_key = dict_get_bytes(&dict, "client_key");
+                let client_salt = dict_get_bytes(&dict, "client_salt");
+                let server_key = dict_get_bytes(&dict, "server_key");
+                let server_salt = dict_get_bytes(&dict, "server_salt");
+
+                if send_key.is_none() || send_salt.is_none() || recv_key.is_none() || recv_salt.is_none() {
+                    if client_key.is_some()
+                        && client_salt.is_some()
+                        && server_key.is_some()
+                        && server_salt.is_some()
+                    {
+                        let is_client = role.to_lowercase() != "server";
+                        if is_client {
+                            send_key = client_key.clone();
+                            send_salt = client_salt.clone();
+                            recv_key = server_key.clone();
+                            recv_salt = server_salt.clone();
+                        } else {
+                            send_key = server_key.clone();
+                            send_salt = server_salt.clone();
+                            recv_key = client_key.clone();
+                            recv_salt = client_salt.clone();
+                        }
+                    } else {
+                        let master_key = dict_get_bytes(&dict, "master_key");
+                        let master_salt = dict_get_bytes(&dict, "master_salt");
+                        if master_key.is_some() && master_salt.is_some() {
+                            send_key = master_key.clone();
+                            send_salt = master_salt.clone();
+                            recv_key = master_key;
+                            recv_salt = master_salt;
+                        }
+                    }
+                }
+
+                let send_key = match send_key {
+                    Some(v) => v,
+                    None => return Ok(result_err("Missing SRTP send_key".to_string(), -1)),
+                };
+                let send_salt = match send_salt {
+                    Some(v) => v,
+                    None => return Ok(result_err("Missing SRTP send_salt".to_string(), -1)),
+                };
+                let recv_key = match recv_key {
+                    Some(v) => v,
+                    None => return Ok(result_err("Missing SRTP recv_key".to_string(), -1)),
+                };
+                let recv_salt = match recv_salt {
+                    Some(v) => v,
+                    None => return Ok(result_err("Missing SRTP recv_salt".to_string(), -1)),
+                };
+
+                let send_master = MasterKey::new(&send_key, &send_salt, &None);
+                let recv_master = MasterKey::new(&recv_key, &recv_salt, &None);
+                let send_cfg = StreamConfig::new(vec![send_master], &profile, &profile);
+                let recv_cfg = StreamConfig::new(vec![recv_master], &profile, &profile);
+
+                let mut send = SendSession::new();
+                if let Err(e) = send.add_stream(None, &send_cfg) {
+                    return Ok(result_err(format!("SRTP send session error: {}", e), -1));
+                }
+                let mut recv = RecvSession::new();
+                if let Err(e) = recv.add_stream(None, &recv_cfg) {
+                    return Ok(result_err(format!("SRTP recv session error: {}", e), -1));
+                }
+
+                let id = register_srtp(SrtpSession { send, recv });
+                Ok(result_ok(Value::Integer(id)))
             }))),
         );
 
-        // srtp_protect(srtp, rtp_packet) - stub
+        // srtp_protect(srtp, rtp_packet)
         globals.borrow_mut().define(
             "srtp_protect".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("srtp_protect", 2, |_args| {
-                Ok(result_err("srtp_protect not implemented".to_string(), -1))
+            Value::NativeFunction(Rc::new(NativeFunction::new("srtp_protect", 2, |args| {
+                let ctx_id = args[0]
+                    .as_integer()
+                    .ok_or("srtp_protect() expects SRTP handle")?;
+                let packet = match &args[1] {
+                    Value::Bytes(b) => b.borrow().clone(),
+                    _ => return Err("srtp_protect() expects bytes".to_string()),
+                };
+                let res = with_srtp_mut(ctx_id, |session| {
+                    session
+                        .send
+                        .rtp_protect(packet)
+                        .map_err(|e| format!("SRTP protect failed: {}", e))
+                });
+                match res {
+                    Ok(buf) => Ok(result_ok(Value::Bytes(Rc::new(RefCell::new(buf))))),
+                    Err(e) => Ok(result_err(e, -1)),
+                }
             }))),
         );
 
-        // srtp_unprotect(srtp, rtp_packet) - stub
+        // srtp_unprotect(srtp, rtp_packet)
         globals.borrow_mut().define(
             "srtp_unprotect".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("srtp_unprotect", 2, |_args| {
-                Ok(result_err("srtp_unprotect not implemented".to_string(), -1))
+            Value::NativeFunction(Rc::new(NativeFunction::new("srtp_unprotect", 2, |args| {
+                let ctx_id = args[0]
+                    .as_integer()
+                    .ok_or("srtp_unprotect() expects SRTP handle")?;
+                let packet = match &args[1] {
+                    Value::Bytes(b) => b.borrow().clone(),
+                    _ => return Err("srtp_unprotect() expects bytes".to_string()),
+                };
+                let res = with_srtp_mut(ctx_id, |session| {
+                    session
+                        .recv
+                        .rtp_unprotect(packet)
+                        .map_err(|e| format!("SRTP unprotect failed: {}", e))
+                });
+                match res {
+                    Ok(buf) => Ok(result_ok(Value::Bytes(Rc::new(RefCell::new(buf))))),
+                    Err(e) => Ok(result_err(e, -1)),
+                }
             }))),
         );
 

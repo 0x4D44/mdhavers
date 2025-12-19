@@ -110,6 +110,8 @@ fetch "lib/functional"
 | **network** | Simulated networking | Message passing, channels, pub/sub |
 | **network_real** | Real sockets & DNS | UDP/TCP sockets, DNS lookup |
 | **sip** | SIP utilities | NAPTR/SRV resolution, message parse/build helpers |
+| **rtp** | RTP helpers | Header build/parse, packet helpers |
+| **rtcp** | RTCP helpers | Receiver report build/parse |
 | **tls** | TLS helpers | TLS session wrappers, send/recv helpers |
 | **http** | HTTP client utilities | URL parsing, Request/Response, Headers, Cookies, MockClient |
 
