@@ -11060,7 +11060,11 @@ mod tests {
 
     #[test]
     fn test_tri_import_and_constructor() {
-        let program = parse(r#"fetch "tri" tae tri\nwhit_kind(tri.Sicht())"#).unwrap();
+        let program = parse(
+            r#"fetch "tri" tae tri
+whit_kind(tri.Sicht())"#,
+        )
+        .unwrap();
         let mut interp = Interpreter::new();
         let result = interp.interpret(&program).unwrap();
         assert_eq!(result, Value::String("Sicht".to_string()));

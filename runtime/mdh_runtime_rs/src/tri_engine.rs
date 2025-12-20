@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use bytemuck::{Pod, Zeroable};
 use glam::Mat4;
@@ -9,6 +9,7 @@ use wgpu::SurfaceError;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::ControlFlow;
 use winit::event_loop::EventLoop;
+use winit::platform::pump_events::EventLoopExtPumpEvents;
 use winit::window::{Window, WindowBuilder};
 
 thread_local! {
@@ -789,6 +790,7 @@ impl TriEngine {
         items: Vec<RenderItem>,
         wireframe: bool,
     ) -> Result<(), String> {
+        self.pump_events(handle);
         if let Some(renderer) = self.renderers.get_mut(&handle) {
             renderer.render_scene(
                 view_proj,
@@ -799,6 +801,41 @@ impl TriEngine {
             )?;
         }
         Ok(())
+    }
+
+    fn pump_events(&mut self, handle: usize) {
+        let event_loop = match self.event_loop.as_mut() {
+            Some(loop_ref) => loop_ref,
+            None => return,
+        };
+        let renderer = match self.renderers.get_mut(&handle) {
+            Some(renderer) => renderer,
+            None => return,
+        };
+        let window_id = renderer.window.id();
+        let _ = event_loop.pump_events(Some(Duration::from_millis(0)), |event, _target| {
+            match event {
+                Event::WindowEvent { window_id: id, event } if id == window_id => match event {
+                    WindowEvent::Resized(size) => {
+                        renderer.resize(size.width, size.height);
+                    }
+                    WindowEvent::ScaleFactorChanged {
+                        mut inner_size_writer,
+                        ..
+                    } => {
+                        let size = renderer.window.inner_size();
+                        let _ = inner_size_writer.request_inner_size(size);
+                        renderer.resize(size.width, size.height);
+                    }
+                    WindowEvent::CloseRequested => {}
+                    _ => {}
+                },
+                Event::AboutToWait => {
+                    renderer.window.request_redraw();
+                }
+                _ => {}
+            }
+        });
     }
 
     pub fn remove_mesh(&mut self, key: usize) {

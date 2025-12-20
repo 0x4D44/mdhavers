@@ -363,7 +363,15 @@ unsafe fn tri_make_object(kind: &str, args: &[MdhValue]) -> MdhValue {
     };
 
     let renderer_handle = if kind == "Renderar" {
-        with_engine(|engine| engine.create_renderer().ok())
+        match with_engine(|engine| engine.create_renderer()) {
+            Ok(handle) => Some(handle),
+            Err(msg) => {
+                __mdh_hurl(mdh_make_string_from_rust(&format!(
+                    "Renderar init failed: {msg}"
+                )));
+                None
+            }
+        }
     } else {
         None
     };
@@ -1310,8 +1318,11 @@ unsafe fn tri_object_call(obj: &mut TriObject, method: &str, args: &[MdhValue]) 
                     .and_then(|v| mdh_bool(*v))
                     .unwrap_or(false);
                 let (view_proj, items) = tri_render_items(scene_val, camera_val, aspect);
-                let _ =
-                    with_engine(|engine| engine.render_scene(handle, view_proj, items, wireframe));
+                if let Err(msg) =
+                    with_engine(|engine| engine.render_scene(handle, view_proj, items, wireframe))
+                {
+                    __mdh_hurl(mdh_make_string_from_rust(&format!("Render failed: {msg}")));
+                }
             }
             __mdh_make_nil()
         }
@@ -1326,8 +1337,11 @@ unsafe fn tri_object_call(obj: &mut TriObject, method: &str, args: &[MdhValue]) 
                     .and_then(|v| mdh_bool(*v))
                     .unwrap_or(false);
                 let (view_proj, items) = tri_render_items(scene_val, camera_val, aspect);
-                let _ =
-                    with_engine(|engine| engine.render_scene(handle, view_proj, items, wireframe));
+                if let Err(msg) =
+                    with_engine(|engine| engine.render_scene(handle, view_proj, items, wireframe))
+                {
+                    __mdh_hurl(mdh_make_string_from_rust(&format!("Render failed: {msg}")));
+                }
             }
             __mdh_make_nil()
         }
@@ -1344,7 +1358,11 @@ unsafe fn tri_object_call(obj: &mut TriObject, method: &str, args: &[MdhValue]) 
                     });
                     cb
                 });
-                let _ = with_engine(|engine| engine.run_loop(handle, loop_cb));
+                if let Err(msg) = with_engine(|engine| engine.run_loop(handle, loop_cb)) {
+                    __mdh_hurl(mdh_make_string_from_rust(&format!(
+                        "Render loop failed: {msg}"
+                    )));
+                }
             }
             __mdh_make_nil()
         }
