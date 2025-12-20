@@ -1,274 +1,155 @@
-//! Audio module for mdhavers using raylib + RustySynth
+//! Audio module for mdhavers using miniaudio + RustySynth
 //!
 //! Provides Scots-only audio API for sounds, music, and MIDI.
 
 // Test-only backend shims so we can exercise audio logic without a real
-// audio device or external libraries when the audio feature is off.
-#[cfg(all(test, not(feature = "audio")))]
-mod raylib {
-    pub mod prelude {
-        use std::cell::Cell;
-        use std::marker::PhantomData;
-        use std::path::Path;
+// audio device or external libraries.
+#[cfg(test)]
+mod miniaudio {
+    use std::marker::PhantomData;
+    use std::path::Path;
 
-        #[derive(Debug)]
-        pub struct RaylibAudio {
-            master_volume: Cell<f32>,
+    type DataCallback = dyn FnMut(&Device, &mut FramesMut, &mut FramesMut) + Send;
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum Format {
+        F32,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum DeviceType {
+        Playback,
+    }
+
+    pub struct PlaybackConfig {
+        format: Format,
+        channels: u32,
+    }
+
+    impl PlaybackConfig {
+        pub fn set_format(&mut self, format: Format) {
+            self.format = format;
         }
 
-        #[derive(Debug, Clone, Copy)]
-        pub struct RaylibAudioInitError;
-
-        impl RaylibAudio {
-            pub fn init_audio_device() -> Result<Self, RaylibAudioInitError> {
-                Ok(Self {
-                    master_volume: Cell::new(1.0),
-                })
-            }
-
-            pub fn set_master_volume(&self, value: f32) {
-                self.master_volume.set(value);
-            }
-
-            pub fn new_sound(&self, path: &str) -> Result<Sound<'static>, RaylibAudioInitError> {
-                if Path::new(path).exists() {
-                    Ok(Sound::new())
-                } else {
-                    Err(RaylibAudioInitError)
-                }
-            }
-
-            pub fn new_music(&self, path: &str) -> Result<Music<'static>, RaylibAudioInitError> {
-                if Path::new(path).exists() {
-                    Ok(Music::new())
-                } else {
-                    Err(RaylibAudioInitError)
-                }
-            }
-
-            pub fn new_audio_stream(
-                &self,
-                _sample_rate: u32,
-                _sample_size: u32,
-                _channels: u32,
-            ) -> AudioStream<'static> {
-                AudioStream::new()
-            }
+        pub fn set_channels(&mut self, channels: u32) {
+            self.channels = channels;
         }
+    }
 
-        #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-        enum SimpleState {
-            Stopped,
-            Playing,
-            Paused,
-        }
+    pub struct DeviceConfig {
+        sample_rate: u32,
+        playback: PlaybackConfig,
+        _callback: Option<Box<DataCallback>>,
+    }
 
-        pub struct Sound<'aud> {
-            state: Cell<SimpleState>,
-            play_checks: Cell<u8>,
-            volume: Cell<f32>,
-            pan: Cell<f32>,
-            pitch: Cell<f32>,
-            _marker: PhantomData<&'aud ()>,
-        }
-
-        impl<'aud> Sound<'aud> {
-            fn new() -> Sound<'static> {
-                Sound {
-                    state: Cell::new(SimpleState::Stopped),
-                    play_checks: Cell::new(0),
-                    volume: Cell::new(1.0),
-                    pan: Cell::new(0.0),
-                    pitch: Cell::new(1.0),
-                    _marker: PhantomData,
-                }
-            }
-
-            pub fn play(&self) {
-                self.state.set(SimpleState::Playing);
-                self.play_checks.set(2);
-            }
-
-            pub fn pause(&self) {
-                self.state.set(SimpleState::Paused);
-            }
-
-            pub fn resume(&self) {
-                self.state.set(SimpleState::Playing);
-            }
-
-            pub fn stop(&self) {
-                self.state.set(SimpleState::Stopped);
-            }
-
-            pub fn is_playing(&self) -> bool {
-                if self.state.get() != SimpleState::Playing {
-                    return false;
-                }
-                let remaining = self.play_checks.get();
-                if remaining > 0 {
-                    self.play_checks.set(remaining - 1);
-                    true
-                } else {
-                    false
-                }
-            }
-
-            pub fn set_volume(&self, value: f32) {
-                self.volume.set(value);
-            }
-
-            pub fn set_pan(&self, value: f32) {
-                self.pan.set(value);
-            }
-
-            pub fn set_pitch(&self, value: f32) {
-                self.pitch.set(value);
+    impl DeviceConfig {
+        pub fn new(_device_type: DeviceType) -> Self {
+            Self {
+                sample_rate: 44_100,
+                playback: PlaybackConfig {
+                    format: Format::F32,
+                    channels: 2,
+                },
+                _callback: None,
             }
         }
 
-        pub struct Music<'aud> {
-            playing: Cell<bool>,
-            time_played: Cell<f32>,
-            length: f32,
-            volume: Cell<f32>,
-            pan: Cell<f32>,
-            pitch: Cell<f32>,
-            _marker: PhantomData<&'aud ()>,
+        pub fn set_sample_rate(&mut self, sample_rate: u32) {
+            self.sample_rate = sample_rate;
         }
 
-        impl<'aud> Music<'aud> {
-            fn new() -> Music<'static> {
-                Music {
-                    playing: Cell::new(false),
-                    time_played: Cell::new(0.0),
-                    length: 1.0,
-                    volume: Cell::new(1.0),
-                    pan: Cell::new(0.0),
-                    pitch: Cell::new(1.0),
-                    _marker: PhantomData,
-                }
-            }
-
-            pub fn play_stream(&self) {
-                self.playing.set(true);
-            }
-
-            pub fn update_stream(&self) {
-                if self.playing.get() {
-                    let next = self.time_played.get() + 0.6;
-                    self.time_played.set(next);
-                }
-            }
-
-            pub fn stop_stream(&self) {
-                self.playing.set(false);
-                self.time_played.set(0.0);
-            }
-
-            pub fn pause_stream(&self) {
-                self.playing.set(false);
-            }
-
-            pub fn resume_stream(&self) {
-                self.playing.set(true);
-            }
-
-            pub fn is_stream_playing(&self) -> bool {
-                self.playing.get()
-            }
-
-            pub fn set_volume(&self, value: f32) {
-                self.volume.set(value);
-            }
-
-            pub fn set_pitch(&self, value: f32) {
-                self.pitch.set(value);
-            }
-
-            pub fn get_time_length(&self) -> f32 {
-                self.length
-            }
-
-            pub fn get_time_played(&self) -> f32 {
-                self.time_played.get()
-            }
-
-            pub fn seek_stream(&self, position: f32) {
-                self.time_played.set(position);
-            }
-
-            pub fn set_pan(&self, value: f32) {
-                self.pan.set(value);
-            }
+        pub fn playback_mut(&mut self) -> &mut PlaybackConfig {
+            &mut self.playback
         }
 
-        pub trait AudioSample {}
-        impl AudioSample for u8 {}
-        impl AudioSample for i16 {}
-        impl AudioSample for f32 {}
+        pub fn set_data_callback<F>(&mut self, callback: F)
+        where
+            F: FnMut(&Device, &mut FramesMut, &mut FramesMut) + Send + 'static,
+        {
+            self._callback = Some(Box::new(callback));
+        }
+    }
 
-        pub struct AudioStream<'aud> {
-            playing: Cell<bool>,
-            processed: Cell<bool>,
-            volume: Cell<f32>,
-            pan: Cell<f32>,
-            _marker: PhantomData<&'aud ()>,
+    pub struct Device;
+
+    impl Device {
+        pub fn new(_ctx: Option<()>, _config: &DeviceConfig) -> Result<Self, ()> {
+            Ok(Device)
         }
 
-        impl<'aud> AudioStream<'aud> {
-            fn new() -> AudioStream<'static> {
-                AudioStream {
-                    playing: Cell::new(false),
-                    processed: Cell::new(true),
-                    volume: Cell::new(1.0),
-                    pan: Cell::new(0.0),
-                    _marker: PhantomData,
-                }
+        pub fn start(&self) -> Result<(), ()> {
+            Ok(())
+        }
+
+        pub fn stop(&self) -> Result<(), ()> {
+            Ok(())
+        }
+    }
+
+    pub struct DecoderConfig {
+        _format: Format,
+        _channels: u32,
+        _sample_rate: u32,
+    }
+
+    impl DecoderConfig {
+        pub fn new(format: Format, channels: u32, sample_rate: u32) -> Self {
+            Self {
+                _format: format,
+                _channels: channels,
+                _sample_rate: sample_rate,
             }
+        }
+    }
 
-            pub fn update<T: AudioSample>(&mut self, _data: &[T]) {}
+    pub struct Decoder {
+        _marker: PhantomData<()>,
+    }
 
-            pub fn play(&self) {
-                self.playing.set(true);
+    impl Decoder {
+        pub fn from_file<P: AsRef<Path>>(
+            _path: P,
+            _config: Option<&DecoderConfig>,
+        ) -> Result<Self, ()> {
+            if !_path.as_ref().exists() {
+                return Err(());
             }
+            Ok(Self {
+                _marker: PhantomData,
+            })
+        }
 
-            pub fn pause(&self) {
-                self.playing.set(false);
+        pub fn read_pcm_frames(&mut self, _frames: &mut FramesMut) -> u64 {
+            0
+        }
+    }
+
+    pub struct FramesMut<'a> {
+        data: &'a mut [f32],
+        channels: u32,
+    }
+
+    impl<'a> FramesMut<'a> {
+        pub fn wrap(data: &'a mut [f32], _format: Format, channels: u32) -> Self {
+            Self { data, channels }
+        }
+
+        pub fn frame_count(&self) -> usize {
+            if self.channels == 0 {
+                return 0;
             }
+            self.data.len() / self.channels as usize
+        }
 
-            pub fn resume(&self) {
-                self.playing.set(true);
-            }
-
-            pub fn stop(&self) {
-                self.playing.set(false);
-            }
-
-            pub fn is_playing(&self) -> bool {
-                self.playing.get()
-            }
-
-            pub fn set_volume(&self, value: f32) {
-                self.volume.set(value);
-            }
-
-            pub fn is_processed(&self) -> bool {
-                self.processed.get()
-            }
-
-            pub fn set_pan(&self, value: f32) {
-                self.pan.set(value);
-            }
-
-            pub fn set_processed_for_test(&self, value: bool) {
-                self.processed.set(value);
+        pub fn as_samples_mut<T>(&mut self) -> &mut [T] {
+            unsafe {
+                std::slice::from_raw_parts_mut(self.data.as_mut_ptr() as *mut T, self.data.len())
             }
         }
     }
 }
 
-#[cfg(all(test, not(feature = "audio")))]
+#[cfg(test)]
 mod rustysynth {
     use std::io::Read;
     use std::sync::Arc;
@@ -385,7 +266,7 @@ mod rustysynth {
 #[cfg(any(feature = "audio", test))]
 use crate::value::{NativeFunction, Value};
 #[cfg(any(feature = "audio", test))]
-use raylib::prelude::*;
+use miniaudio::{Decoder, DecoderConfig, Device, DeviceConfig, DeviceType, Format, FramesMut};
 #[cfg(any(feature = "audio", test))]
 use rustysynth::{MidiFile, MidiFileSequencer, SoundFont, Synthesizer, SynthesizerSettings};
 #[cfg(any(feature = "audio", test))]
@@ -393,29 +274,29 @@ use std::cell::RefCell;
 #[cfg(not(any(feature = "audio", test)))]
 use std::cell::RefCell;
 #[cfg(any(feature = "audio", test))]
+use std::f32::consts::FRAC_PI_2;
+#[cfg(any(feature = "audio", test))]
 use std::fs::File;
 #[cfg(any(feature = "audio", test))]
-use std::path::Path;
-#[cfg(any(feature = "audio", test))]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 #[cfg(any(feature = "audio", test))]
 use std::rc::Rc;
 #[cfg(not(any(feature = "audio", test)))]
 use std::rc::Rc;
 #[cfg(any(feature = "audio", test))]
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 #[cfg(any(feature = "audio", test))]
 const DEFAULT_SOUNDFONT_PATH: &str = "assets/soundfonts/MuseScore_General.sf2";
 #[cfg(any(feature = "audio", test))]
-const MIDI_SAMPLE_RATE: i32 = 44_100;
+const OUTPUT_SAMPLE_RATE: u32 = 44_100;
 #[cfg(any(feature = "audio", test))]
-const MIDI_STREAM_FRAMES: usize = 1_024;
+const OUTPUT_CHANNELS: u32 = 2;
+#[cfg(any(feature = "audio", test))]
+const DECODE_CHUNK_FRAMES: usize = 1_024;
 
 #[cfg(not(any(feature = "audio", test)))]
 const ERR_NO_AUDIO: &str = "Soond isnae available - build wi' --features audio";
-#[cfg(any(feature = "audio", test))]
-const ERR_NO_DEVICE: &str = "Soond device isnae stairtit";
 #[cfg(any(feature = "audio", test))]
 const ERR_BAD_HANDLE: &str = "Thon handle isnae guid";
 
@@ -428,8 +309,16 @@ enum PlayState {
 }
 
 #[cfg(any(feature = "audio", test))]
-struct SoundEntry {
-    sound: Sound<'static>,
+#[derive(Clone, Debug)]
+struct SampleBuffer {
+    samples: Arc<Vec<f32>>,
+    frames: usize,
+}
+
+#[cfg(any(feature = "audio", test))]
+struct BufferEntry {
+    buffer: SampleBuffer,
+    position: f64,
     state: PlayState,
     looped: bool,
     volume: f32,
@@ -438,30 +327,25 @@ struct SoundEntry {
 }
 
 #[cfg(any(feature = "audio", test))]
-struct MusicEntry {
-    music: Music<'static>,
-    state: PlayState,
-    looped: bool,
-    volume: f32,
-    pan: f32,
-    pitch: f32,
-}
+type SoundEntry = BufferEntry;
+#[cfg(any(feature = "audio", test))]
+type MusicEntry = BufferEntry;
 
 #[cfg(any(feature = "audio", test))]
 struct MidiEntry {
     midi: Arc<MidiFile>,
     sequencer: MidiFileSequencer,
-    stream: AudioStream<'static>,
     state: PlayState,
     looped: bool,
     volume: f32,
     pan: f32,
-    sample_rate: i32,
+    sample_rate: u32,
+    scratch_left: Vec<f32>,
+    scratch_right: Vec<f32>,
 }
 
 #[cfg(any(feature = "audio", test))]
-struct AudioState {
-    audio: Option<Box<RaylibAudio>>,
+struct MixerState {
     master_volume: f32,
     muted: bool,
     sounds: Vec<Option<SoundEntry>>,
@@ -471,10 +355,9 @@ struct AudioState {
 }
 
 #[cfg(any(feature = "audio", test))]
-impl AudioState {
+impl MixerState {
     fn new() -> Self {
         Self {
-            audio: None,
             master_volume: 1.0,
             muted: false,
             sounds: Vec::new(),
@@ -484,26 +367,71 @@ impl AudioState {
         }
     }
 
-    fn ensure_audio(&mut self) -> Result<&'static RaylibAudio, String> {
-        if self.audio.is_none() {
-            let audio = RaylibAudio::init_audio_device()
-                .map_err(|_| "Cannae stairt the soond device".to_string())?;
-            self.audio = Some(Box::new(audio));
-            self.master_volume = 1.0;
-            self.muted = false;
+    fn reset(&mut self) {
+        self.master_volume = 1.0;
+        self.muted = false;
+        self.sounds.clear();
+        self.music.clear();
+        self.midi.clear();
+        self.default_soundfont = None;
+    }
+}
+
+#[cfg(any(feature = "audio", test))]
+struct AudioState {
+    device: Option<Device>,
+    shared: Arc<Mutex<MixerState>>,
+}
+
+#[cfg(any(feature = "audio", test))]
+impl AudioState {
+    fn new() -> Self {
+        Self {
+            device: None,
+            shared: Arc::new(Mutex::new(MixerState::new())),
         }
-        let audio_ref = self.audio.as_ref().unwrap().as_ref();
-        let audio_static: &'static RaylibAudio = unsafe { std::mem::transmute(audio_ref) };
-        Ok(audio_static)
     }
 
-    fn audio_ref(&self) -> Result<&'static RaylibAudio, String> {
-        let audio_ref = self
-            .audio
-            .as_ref()
-            .ok_or_else(|| ERR_NO_DEVICE.to_string())?;
-        let audio_static: &'static RaylibAudio = unsafe { std::mem::transmute(audio_ref.as_ref()) };
-        Ok(audio_static)
+    fn ensure_audio(&mut self) -> Result<(), String> {
+        if self.device.is_some() {
+            return Ok(());
+        }
+
+        let shared = Arc::clone(&self.shared);
+        let mut config = DeviceConfig::new(DeviceType::Playback);
+        config.set_sample_rate(OUTPUT_SAMPLE_RATE);
+        config.playback_mut().set_format(Format::F32);
+        config.playback_mut().set_channels(OUTPUT_CHANNELS);
+        config.set_data_callback(move |_device, output, _input| {
+            mix_output(&shared, output);
+        });
+
+        let device =
+            Device::new(None, &config).map_err(|_| "Cannae stairt the soond device".to_string())?;
+        device
+            .start()
+            .map_err(|_| "Cannae stairt the soond device".to_string())?;
+        self.device = Some(device);
+        Ok(())
+    }
+
+    fn mixer(&self) -> Result<std::sync::MutexGuard<'_, MixerState>, String> {
+        let guard = match self.shared.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        Ok(guard)
+    }
+
+    fn shutdown(&mut self) {
+        if let Some(device) = self.device.take() {
+            let _ = device.stop();
+        }
+        let mut mixer = match self.shared.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        mixer.reset();
     }
 
     fn alloc_handle<T>(slots: &mut Vec<Option<T>>, value: T) -> i64 {
@@ -516,50 +444,6 @@ impl AudioState {
         slots.push(Some(value));
         (slots.len() - 1) as i64
     }
-
-    fn shutdown(&mut self) {
-        self.sounds.clear();
-        self.music.clear();
-        self.midi.clear();
-        self.default_soundfont = None;
-        self.audio.take();
-    }
-}
-
-#[cfg(any(feature = "audio", test))]
-#[cfg(feature = "audio")]
-fn sound_to_static(sound: Sound<'_>) -> Sound<'static> {
-    unsafe { std::mem::transmute(sound) }
-}
-
-#[cfg(any(feature = "audio", test))]
-#[cfg(not(feature = "audio"))]
-fn sound_to_static(sound: Sound<'static>) -> Sound<'static> {
-    sound
-}
-
-#[cfg(any(feature = "audio", test))]
-#[cfg(feature = "audio")]
-fn music_to_static(music: Music<'_>) -> Music<'static> {
-    unsafe { std::mem::transmute(music) }
-}
-
-#[cfg(any(feature = "audio", test))]
-#[cfg(not(feature = "audio"))]
-fn music_to_static(music: Music<'static>) -> Music<'static> {
-    music
-}
-
-#[cfg(any(feature = "audio", test))]
-#[cfg(feature = "audio")]
-fn stream_to_static(stream: AudioStream<'_>) -> AudioStream<'static> {
-    unsafe { std::mem::transmute(stream) }
-}
-
-#[cfg(any(feature = "audio", test))]
-#[cfg(not(feature = "audio"))]
-fn stream_to_static(stream: AudioStream<'static>) -> AudioStream<'static> {
-    stream
 }
 
 #[cfg(any(feature = "audio", test))]
@@ -598,9 +482,35 @@ fn clamp01(value: f32) -> f32 {
 }
 
 #[cfg(any(feature = "audio", test))]
-fn pan_to_raylib(value: f32) -> f32 {
-    let mapped = (value + 1.0) * 0.5;
-    clamp01(mapped)
+fn pan_gains(pan: f32) -> (f32, f32) {
+    let clamped = pan.clamp(-1.0, 1.0);
+    let t = (clamped + 1.0) * 0.5;
+    let angle = t * FRAC_PI_2;
+    (angle.cos(), angle.sin())
+}
+
+#[cfg(any(feature = "audio", test))]
+fn decode_audio(path: &str, err_msg: &str) -> Result<SampleBuffer, String> {
+    let config = DecoderConfig::new(Format::F32, OUTPUT_CHANNELS, OUTPUT_SAMPLE_RATE);
+    let mut decoder = Decoder::from_file(path, Some(&config)).map_err(|_| err_msg.to_string())?;
+
+    let mut samples: Vec<f32> = Vec::new();
+    let mut temp = vec![0.0_f32; DECODE_CHUNK_FRAMES * OUTPUT_CHANNELS as usize];
+
+    loop {
+        let mut frames = FramesMut::wrap(&mut temp, Format::F32, OUTPUT_CHANNELS);
+        let read = decoder.read_pcm_frames(&mut frames) as usize;
+        if read == 0 {
+            break;
+        }
+        samples.extend_from_slice(&temp[..read * OUTPUT_CHANNELS as usize]);
+    }
+
+    let frames = samples.len() / OUTPUT_CHANNELS as usize;
+    Ok(SampleBuffer {
+        samples: Arc::new(samples),
+        frames,
+    })
 }
 
 #[cfg(any(feature = "audio", test))]
@@ -636,28 +546,149 @@ fn resolve_default_soundfont() -> Result<PathBuf, String> {
 }
 
 #[cfg(any(feature = "audio", test))]
-fn prime_midi_stream(entry: &mut MidiEntry) {
-    if !entry.stream.is_processed() {
-        return;
+fn mix_output(shared: &Arc<Mutex<MixerState>>, output: &mut FramesMut) {
+    let frames = output.frame_count();
+    let out_samples = output.as_samples_mut::<f32>();
+    for sample in out_samples.iter_mut() {
+        *sample = 0.0;
     }
-    let frames = MIDI_STREAM_FRAMES;
-    let mut left = vec![0.0_f32; frames];
-    let mut right = vec![0.0_f32; frames];
-    entry.sequencer.render(&mut left, &mut right);
-    let mut interleaved: Vec<f32> = Vec::with_capacity(frames * 2);
-    for i in 0..frames {
-        interleaved.push(left[i]);
-        interleaved.push(right[i]);
-    }
-    entry.stream.update(&interleaved);
+
+    let mut mixer = match shared.try_lock() {
+        Ok(guard) => guard,
+        Err(_) => return,
+    };
+
+    mix_state(&mut mixer, out_samples, frames);
 }
 
 #[cfg(any(feature = "audio", test))]
-fn seek_midi(
-    entry: &mut MidiEntry,
-    seconds: f64,
-    audio: &'static RaylibAudio,
-) -> Result<(), String> {
+fn mix_state(state: &mut MixerState, output: &mut [f32], frames: usize) {
+    let channels = OUTPUT_CHANNELS as usize;
+
+    for slot in state.sounds.iter_mut() {
+        if let Some(entry) = slot.as_mut() {
+            mix_buffer_entry(entry, output, frames, channels);
+        }
+    }
+
+    for slot in state.music.iter_mut() {
+        if let Some(entry) = slot.as_mut() {
+            mix_buffer_entry(entry, output, frames, channels);
+        }
+    }
+
+    for slot in state.midi.iter_mut() {
+        if let Some(entry) = slot.as_mut() {
+            mix_midi_entry(entry, output, frames, channels);
+        }
+    }
+
+    let master = if state.muted {
+        0.0
+    } else {
+        state.master_volume
+    };
+    if master != 1.0 {
+        for sample in output.iter_mut() {
+            *sample *= master;
+        }
+    }
+
+    for sample in output.iter_mut() {
+        *sample = sample.clamp(-1.0, 1.0);
+    }
+}
+
+#[cfg(any(feature = "audio", test))]
+fn mix_buffer_entry(entry: &mut BufferEntry, output: &mut [f32], frames: usize, channels: usize) {
+    if entry.state != PlayState::Playing {
+        return;
+    }
+
+    if entry.buffer.frames == 0 {
+        entry.state = PlayState::Stopped;
+        return;
+    }
+
+    let pitch = if entry.pitch <= 0.0 { 1.0 } else { entry.pitch };
+    let (left_gain, right_gain) = pan_gains(entry.pan);
+    let volume = entry.volume;
+    let total_frames = entry.buffer.frames;
+    let samples = &entry.buffer.samples;
+    let mut position = entry.position;
+
+    for frame in 0..frames {
+        if position >= total_frames as f64 {
+            if entry.looped {
+                position %= total_frames as f64;
+            } else {
+                entry.state = PlayState::Stopped;
+                break;
+            }
+        }
+
+        let idx = position.floor() as usize;
+        let frac = (position - idx as f64) as f32;
+        let next_idx = if idx + 1 < total_frames {
+            idx + 1
+        } else if entry.looped {
+            0
+        } else {
+            idx
+        };
+
+        let base = idx * channels;
+        let next_base = next_idx * channels;
+
+        let left = lerp(samples[base], samples[next_base], frac);
+        let right = lerp(samples[base + 1], samples[next_base + 1], frac);
+
+        let out_base = frame * channels;
+        output[out_base] += left * volume * left_gain;
+        output[out_base + 1] += right * volume * right_gain;
+
+        position += pitch as f64;
+    }
+
+    entry.position = position;
+}
+
+#[cfg(any(feature = "audio", test))]
+fn mix_midi_entry(entry: &mut MidiEntry, output: &mut [f32], frames: usize, channels: usize) {
+    if entry.state != PlayState::Playing {
+        return;
+    }
+
+    if entry.scratch_left.len() < frames {
+        entry.scratch_left.resize(frames, 0.0);
+        entry.scratch_right.resize(frames, 0.0);
+    }
+
+    let left_buf = &mut entry.scratch_left[..frames];
+    let right_buf = &mut entry.scratch_right[..frames];
+    entry.sequencer.render(left_buf, right_buf);
+
+    let (left_gain, right_gain) = pan_gains(entry.pan);
+    let volume = entry.volume;
+
+    for i in 0..frames {
+        let out_base = i * channels;
+        output[out_base] += left_buf[i] * volume * left_gain;
+        output[out_base + 1] += right_buf[i] * volume * right_gain;
+    }
+
+    if entry.sequencer.end_of_sequence() && !entry.looped {
+        entry.state = PlayState::Stopped;
+    }
+}
+
+#[cfg(any(feature = "audio", test))]
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
+}
+
+#[cfg(any(feature = "audio", test))]
+fn seek_midi(entry: &mut MidiEntry, seconds: f64) -> Result<(), String> {
     let length = entry.midi.get_length();
     let target = if seconds < 0.0 {
         0.0
@@ -670,12 +701,12 @@ fn seek_midi(
     entry.sequencer.play(&entry.midi, entry.looped);
 
     let total_frames = (target * entry.sample_rate as f64) as usize;
-    let mut left = vec![0.0_f32; MIDI_STREAM_FRAMES];
-    let mut right = vec![0.0_f32; MIDI_STREAM_FRAMES];
+    let mut left = vec![0.0_f32; DECODE_CHUNK_FRAMES];
+    let mut right = vec![0.0_f32; DECODE_CHUNK_FRAMES];
     let mut remaining = total_frames;
     while remaining > 0 {
-        let chunk = if remaining > MIDI_STREAM_FRAMES {
-            MIDI_STREAM_FRAMES
+        let chunk = if remaining > DECODE_CHUNK_FRAMES {
+            DECODE_CHUNK_FRAMES
         } else {
             remaining
         };
@@ -685,19 +716,6 @@ fn seek_midi(
         remaining -= chunk;
     }
 
-    entry.stream.stop();
-    entry.stream = stream_to_static(audio.new_audio_stream(MIDI_SAMPLE_RATE as u32, 32, 2));
-    entry.stream.set_volume(entry.volume);
-    entry.stream.set_pan(pan_to_raylib(entry.pan));
-
-    match entry.state {
-        PlayState::Playing => entry.stream.play(),
-        PlayState::Paused => {
-            entry.stream.play();
-            entry.stream.pause();
-        }
-        PlayState::Stopped => {}
-    }
     Ok(())
 }
 
@@ -746,13 +764,9 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "soond_wheesht", 1, |args| {
         with_state(|state| {
             let wheesht = as_bool(&args[0], "soond_wheesht")?;
-            let audio = state.ensure_audio()?;
-            state.muted = wheesht;
-            if wheesht {
-                audio.set_master_volume(0.0);
-            } else {
-                audio.set_master_volume(state.master_volume);
-            }
+            state.ensure_audio()?;
+            let mut mixer = state.mixer()?;
+            mixer.muted = wheesht;
             Ok(Value::Nil)
         })
     });
@@ -762,93 +776,32 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let mut value = as_number(&args[0], "soond_luid")? as f32;
             value = clamp01(value);
-            let audio = state.ensure_audio()?;
-            state.master_volume = value;
-            if !state.muted {
-                audio.set_master_volume(value);
-            }
+            state.ensure_audio()?;
+            let mut mixer = state.mixer()?;
+            mixer.master_volume = value;
             Ok(Value::Nil)
         })
     });
 
     // soond_hou_luid
     define_native(globals, "soond_hou_luid", 0, |_args| {
-        with_state(|state| Ok(Value::Float(state.master_volume as f64)))
+        with_state(|state| {
+            let mixer = state.mixer()?;
+            Ok(Value::Float(mixer.master_volume as f64))
+        })
     });
 
     // soond_haud_gang
     define_native(globals, "soond_haud_gang", 0, |_args| {
-        with_state(|state| {
-            if state.audio.is_none() {
-                return Ok(Value::Nil);
-            }
-
-            for slot in state.sounds.iter_mut() {
-                let entry = match slot {
-                    Some(entry) => entry,
-                    None => continue,
-                };
-                if entry.looped && entry.state == PlayState::Playing && !entry.sound.is_playing() {
-                    entry.sound.play();
-                }
-            }
-
-            for slot in state.music.iter_mut() {
-                let entry = match slot {
-                    Some(entry) => entry,
-                    None => continue,
-                };
-
-                if entry.state != PlayState::Playing {
-                    continue;
-                }
-
-                entry.music.update_stream();
-                let length = entry.music.get_time_length();
-                let played = entry.music.get_time_played();
-
-                if entry.looped && length > 0.0 && played >= length - 0.01 {
-                    entry.music.seek_stream(0.0);
-                    entry.music.play_stream();
-                } else if !entry.looped && length > 0.0 && played >= length - 0.01 {
-                    entry.music.stop_stream();
-                    entry.state = PlayState::Stopped;
-                }
-            }
-
-            for slot in state.midi.iter_mut() {
-                let entry = match slot {
-                    Some(entry) => entry,
-                    None => continue,
-                };
-
-                if entry.state != PlayState::Playing {
-                    continue;
-                }
-
-                if !entry.stream.is_playing() {
-                    entry.stream.play();
-                }
-
-                if entry.stream.is_processed() {
-                    prime_midi_stream(entry);
-                }
-
-                if entry.sequencer.end_of_sequence() && !entry.looped {
-                    entry.stream.stop();
-                    entry.state = PlayState::Stopped;
-                }
-            }
-
-            Ok(Value::Nil)
-        })
+        with_state(|_state| Ok(Value::Nil))
     });
 
     // soond_ready
     define_native(globals, "soond_ready", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "soond_ready")?;
-            let entry = state
+            let mixer = state.mixer()?;
+            let entry = mixer
                 .sounds
                 .get(handle)
                 .and_then(|e| e.as_ref())
@@ -865,23 +818,19 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
                 Value::String(s) => s.clone(),
                 _ => return Err("soond_lade needs a string path".to_string()),
             };
-            let audio = state.ensure_audio()?;
-            let sound = audio
-                .new_sound(&path)
-                .map_err(|_| "Cannae lade the soond".to_string())?;
-            let sound = sound_to_static(sound);
-            sound.set_volume(1.0);
-            sound.set_pan(pan_to_raylib(0.0));
-            sound.set_pitch(1.0);
+            state.ensure_audio()?;
+            let buffer = decode_audio(&path, "Cannae lade the soond")?;
             let entry = SoundEntry {
-                sound,
+                buffer,
+                position: 0.0,
                 state: PlayState::Stopped,
                 looped: false,
                 volume: 1.0,
                 pan: 0.0,
                 pitch: 1.0,
             };
-            let handle = AudioState::alloc_handle(&mut state.sounds, entry);
+            let mut mixer = state.mixer()?;
+            let handle = AudioState::alloc_handle(&mut mixer.sounds, entry);
             Ok(Value::Integer(handle))
         })
     });
@@ -890,12 +839,12 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "soond_spiel", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "soond_spiel")?;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .sounds
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
-            entry.sound.play();
             entry.state = PlayState::Playing;
             Ok(Value::Nil)
         })
@@ -905,12 +854,12 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "soond_haud", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "soond_haud")?;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .sounds
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
-            entry.sound.pause();
             entry.state = PlayState::Paused;
             Ok(Value::Nil)
         })
@@ -920,12 +869,12 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "soond_gae_on", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "soond_gae_on")?;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .sounds
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
-            entry.sound.resume();
             entry.state = PlayState::Playing;
             Ok(Value::Nil)
         })
@@ -935,13 +884,14 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "soond_stap", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "soond_stap")?;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .sounds
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
-            entry.sound.stop();
             entry.state = PlayState::Stopped;
+            entry.position = 0.0;
             Ok(Value::Nil)
         })
     });
@@ -950,10 +900,11 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "soond_unlade", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "soond_unlade")?;
-            if handle >= state.sounds.len() || state.sounds[handle].is_none() {
+            let mut mixer = state.mixer()?;
+            if handle >= mixer.sounds.len() || mixer.sounds[handle].is_none() {
                 return Err(ERR_BAD_HANDLE.to_string());
             }
-            state.sounds[handle] = None;
+            mixer.sounds[handle] = None;
             Ok(Value::Nil)
         })
     });
@@ -962,12 +913,13 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "soond_is_spielin", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "soond_is_spielin")?;
-            let entry = state
+            let mixer = state.mixer()?;
+            let entry = mixer
                 .sounds
                 .get(handle)
                 .and_then(|e| e.as_ref())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
-            Ok(Value::Bool(entry.sound.is_playing()))
+            Ok(Value::Bool(entry.state == PlayState::Playing))
         })
     });
 
@@ -977,13 +929,13 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
             let handle = as_handle(&args[0], "soond_pit_luid")?;
             let mut value = as_number(&args[1], "soond_pit_luid")? as f32;
             value = clamp01(value);
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .sounds
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
             entry.volume = value;
-            entry.sound.set_volume(value);
             Ok(Value::Nil)
         })
     });
@@ -993,13 +945,13 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let handle = as_handle(&args[0], "soond_pit_pan")?;
             let pan = as_number(&args[1], "soond_pit_pan")? as f32;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .sounds
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
             entry.pan = pan;
-            entry.sound.set_pan(pan_to_raylib(pan));
             Ok(Value::Nil)
         })
     });
@@ -1009,13 +961,13 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let handle = as_handle(&args[0], "soond_pit_tune")?;
             let pitch = as_number(&args[1], "soond_pit_tune")? as f32;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .sounds
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
             entry.pitch = pitch;
-            entry.sound.set_pitch(pitch);
             Ok(Value::Nil)
         })
     });
@@ -1025,7 +977,8 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let handle = as_handle(&args[0], "soond_pit_rin_roond")?;
             let looped = as_bool(&args[1], "soond_pit_rin_roond")?;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .sounds
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
@@ -1042,23 +995,19 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
                 Value::String(s) => s.clone(),
                 _ => return Err("muisic_lade needs a string path".to_string()),
             };
-            let audio = state.ensure_audio()?;
-            let music = audio
-                .new_music(&path)
-                .map_err(|_| "Cannae lade the muisic".to_string())?;
-            let music = music_to_static(music);
-            music.set_volume(1.0);
-            music.set_pan(pan_to_raylib(0.0));
-            music.set_pitch(1.0);
+            state.ensure_audio()?;
+            let buffer = decode_audio(&path, "Cannae lade the muisic")?;
             let entry = MusicEntry {
-                music,
+                buffer,
+                position: 0.0,
                 state: PlayState::Stopped,
                 looped: false,
                 volume: 1.0,
                 pan: 0.0,
                 pitch: 1.0,
             };
-            let handle = AudioState::alloc_handle(&mut state.music, entry);
+            let mut mixer = state.mixer()?;
+            let handle = AudioState::alloc_handle(&mut mixer.music, entry);
             Ok(Value::Integer(handle))
         })
     });
@@ -1067,16 +1016,12 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "muisic_spiel", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_spiel")?;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .music
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
-            if entry.state == PlayState::Paused {
-                entry.music.resume_stream();
-            } else {
-                entry.music.play_stream();
-            }
             entry.state = PlayState::Playing;
             Ok(Value::Nil)
         })
@@ -1086,12 +1031,12 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "muisic_haud", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_haud")?;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .music
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
-            entry.music.pause_stream();
             entry.state = PlayState::Paused;
             Ok(Value::Nil)
         })
@@ -1101,12 +1046,12 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "muisic_gae_on", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_gae_on")?;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .music
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
-            entry.music.resume_stream();
             entry.state = PlayState::Playing;
             Ok(Value::Nil)
         })
@@ -1116,13 +1061,14 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "muisic_stap", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_stap")?;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .music
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
-            entry.music.stop_stream();
             entry.state = PlayState::Stopped;
+            entry.position = 0.0;
             Ok(Value::Nil)
         })
     });
@@ -1131,10 +1077,11 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "muisic_unlade", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_unlade")?;
-            if handle >= state.music.len() || state.music[handle].is_none() {
+            let mut mixer = state.mixer()?;
+            if handle >= mixer.music.len() || mixer.music[handle].is_none() {
                 return Err(ERR_BAD_HANDLE.to_string());
             }
-            state.music[handle] = None;
+            mixer.music[handle] = None;
             Ok(Value::Nil)
         })
     });
@@ -1143,12 +1090,13 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "muisic_is_spielin", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_is_spielin")?;
-            let entry = state
+            let mixer = state.mixer()?;
+            let entry = mixer
                 .music
                 .get(handle)
                 .and_then(|e| e.as_ref())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
-            Ok(Value::Bool(entry.music.is_stream_playing()))
+            Ok(Value::Bool(entry.state == PlayState::Playing))
         })
     });
 
@@ -1156,13 +1104,15 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "muisic_loup", 2, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_loup")?;
-            let pos = as_number(&args[1], "muisic_loup")? as f32;
-            let entry = state
+            let pos = as_number(&args[1], "muisic_loup")? as f64;
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .music
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
-            entry.music.seek_stream(pos);
+            let target = (pos * OUTPUT_SAMPLE_RATE as f64).max(0.0);
+            entry.position = target.min(entry.buffer.frames as f64);
             Ok(Value::Nil)
         })
     });
@@ -1171,12 +1121,14 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "muisic_hou_lang", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_hou_lang")?;
-            let entry = state
+            let mixer = state.mixer()?;
+            let entry = mixer
                 .music
                 .get(handle)
                 .and_then(|e| e.as_ref())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
-            Ok(Value::Float(entry.music.get_time_length() as f64))
+            let length = entry.buffer.frames as f64 / OUTPUT_SAMPLE_RATE as f64;
+            Ok(Value::Float(length))
         })
     });
 
@@ -1184,12 +1136,14 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "muisic_whaur", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_whaur")?;
-            let entry = state
+            let mixer = state.mixer()?;
+            let entry = mixer
                 .music
                 .get(handle)
                 .and_then(|e| e.as_ref())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
-            Ok(Value::Float(entry.music.get_time_played() as f64))
+            let pos = entry.position / OUTPUT_SAMPLE_RATE as f64;
+            Ok(Value::Float(pos))
         })
     });
 
@@ -1199,13 +1153,13 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
             let handle = as_handle(&args[0], "muisic_pit_luid")?;
             let mut value = as_number(&args[1], "muisic_pit_luid")? as f32;
             value = clamp01(value);
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .music
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
             entry.volume = value;
-            entry.music.set_volume(value);
             Ok(Value::Nil)
         })
     });
@@ -1215,13 +1169,13 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_pit_pan")?;
             let pan = as_number(&args[1], "muisic_pit_pan")? as f32;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .music
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
             entry.pan = pan;
-            entry.music.set_pan(pan_to_raylib(pan));
             Ok(Value::Nil)
         })
     });
@@ -1231,13 +1185,13 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_pit_tune")?;
             let pitch = as_number(&args[1], "muisic_pit_tune")? as f32;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .music
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
             entry.pitch = pitch;
-            entry.music.set_pitch(pitch);
             Ok(Value::Nil)
         })
     });
@@ -1247,7 +1201,8 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_pit_rin_roond")?;
             let looped = as_bool(&args[1], "muisic_pit_rin_roond")?;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .music
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
@@ -1265,14 +1220,23 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
                 _ => return Err("midi_lade needs a midi filepath".to_string()),
             };
 
+            state.ensure_audio()?;
+
             let sf = match &args[1] {
                 Value::Nil => {
-                    if let Some(sf) = &state.default_soundfont {
-                        Arc::clone(sf)
+                    let existing = {
+                        let mixer = state.mixer()?;
+                        mixer.default_soundfont.clone()
+                    };
+                    if let Some(sf) = existing {
+                        sf
                     } else {
                         let path = resolve_default_soundfont()?;
                         let sf = load_soundfont(path.as_path())?;
-                        state.default_soundfont = Some(Arc::clone(&sf));
+                        let mut mixer = state.mixer()?;
+                        if mixer.default_soundfont.is_none() {
+                            mixer.default_soundfont = Some(Arc::clone(&sf));
+                        }
                         sf
                     }
                 }
@@ -1286,28 +1250,25 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
                 MidiFile::new(&mut midi_file).map_err(|_| "Cannae read the midi".to_string())?;
             let midi = Arc::new(midi);
 
-            let settings = SynthesizerSettings::new(MIDI_SAMPLE_RATE);
+            let settings = SynthesizerSettings::new(OUTPUT_SAMPLE_RATE as i32);
             let synth = Synthesizer::new(&sf, &settings)
                 .map_err(|_| "Cannae set up the synth".to_string())?;
             let sequencer = MidiFileSequencer::new(synth);
 
-            let audio = state.ensure_audio()?;
-            let stream = stream_to_static(audio.new_audio_stream(MIDI_SAMPLE_RATE as u32, 32, 2));
-            stream.set_volume(1.0);
-            stream.set_pan(pan_to_raylib(0.0));
-
             let entry = MidiEntry {
                 midi,
                 sequencer,
-                stream,
                 state: PlayState::Stopped,
                 looped: false,
                 volume: 1.0,
                 pan: 0.0,
-                sample_rate: MIDI_SAMPLE_RATE,
+                sample_rate: OUTPUT_SAMPLE_RATE,
+                scratch_left: Vec::new(),
+                scratch_right: Vec::new(),
             };
 
-            let handle = AudioState::alloc_handle(&mut state.midi, entry);
+            let mut mixer = state.mixer()?;
+            let handle = AudioState::alloc_handle(&mut mixer.midi, entry);
             Ok(Value::Integer(handle))
         })
     });
@@ -1316,18 +1277,14 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "midi_spiel", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_spiel")?;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .midi
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
             if entry.state == PlayState::Stopped {
                 entry.sequencer.play(&entry.midi, entry.looped);
-            }
-            if entry.state == PlayState::Paused {
-                entry.stream.resume();
-            } else {
-                entry.stream.play();
             }
             entry.state = PlayState::Playing;
             Ok(Value::Nil)
@@ -1338,12 +1295,12 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "midi_haud", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_haud")?;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .midi
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
-            entry.stream.pause();
             entry.state = PlayState::Paused;
             Ok(Value::Nil)
         })
@@ -1353,12 +1310,12 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "midi_gae_on", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_gae_on")?;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .midi
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
-            entry.stream.resume();
             entry.state = PlayState::Playing;
             Ok(Value::Nil)
         })
@@ -1368,12 +1325,12 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "midi_stap", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_stap")?;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .midi
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
-            entry.stream.stop();
             entry.sequencer.stop();
             entry.state = PlayState::Stopped;
             Ok(Value::Nil)
@@ -1384,10 +1341,11 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "midi_unlade", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_unlade")?;
-            if handle >= state.midi.len() || state.midi[handle].is_none() {
+            let mut mixer = state.mixer()?;
+            if handle >= mixer.midi.len() || mixer.midi[handle].is_none() {
                 return Err(ERR_BAD_HANDLE.to_string());
             }
-            state.midi[handle] = None;
+            mixer.midi[handle] = None;
             Ok(Value::Nil)
         })
     });
@@ -1396,12 +1354,13 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "midi_is_spielin", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_is_spielin")?;
-            let entry = state
+            let mixer = state.mixer()?;
+            let entry = mixer
                 .midi
                 .get(handle)
                 .and_then(|e| e.as_ref())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
-            Ok(Value::Bool(entry.stream.is_playing()))
+            Ok(Value::Bool(entry.state == PlayState::Playing))
         })
     });
 
@@ -1410,13 +1369,13 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_loup")?;
             let pos = as_number(&args[1], "midi_loup")?;
-            let audio = state.audio_ref()?;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .midi
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
-            seek_midi(entry, pos, audio)?;
+            seek_midi(entry, pos)?;
             Ok(Value::Nil)
         })
     });
@@ -1425,7 +1384,8 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "midi_hou_lang", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_hou_lang")?;
-            let entry = state
+            let mixer = state.mixer()?;
+            let entry = mixer
                 .midi
                 .get(handle)
                 .and_then(|e| e.as_ref())
@@ -1438,7 +1398,8 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "midi_whaur", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_whaur")?;
-            let entry = state
+            let mixer = state.mixer()?;
+            let entry = mixer
                 .midi
                 .get(handle)
                 .and_then(|e| e.as_ref())
@@ -1453,13 +1414,13 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
             let handle = as_handle(&args[0], "midi_pit_luid")?;
             let mut value = as_number(&args[1], "midi_pit_luid")? as f32;
             value = clamp01(value);
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .midi
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
             entry.volume = value;
-            entry.stream.set_volume(value);
             Ok(Value::Nil)
         })
     });
@@ -1469,13 +1430,13 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_pit_pan")?;
             let pan = as_number(&args[1], "midi_pit_pan")? as f32;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .midi
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
             entry.pan = pan;
-            entry.stream.set_pan(pan_to_raylib(pan));
             Ok(Value::Nil)
         })
     });
@@ -1485,7 +1446,8 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_pit_rin_roond")?;
             let looped = as_bool(&args[1], "midi_pit_rin_roond")?;
-            let entry = state
+            let mut mixer = state.mixer()?;
+            let entry = mixer
                 .midi
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
@@ -1581,22 +1543,40 @@ mod tests {
         result
     }
 
+    fn sample_buffer(frames: usize, left: f32, right: f32) -> SampleBuffer {
+        let mut samples = Vec::with_capacity(frames * 2);
+        for _ in 0..frames {
+            samples.push(left);
+            samples.push(right);
+        }
+        SampleBuffer {
+            samples: Arc::new(samples),
+            frames,
+        }
+    }
+
     #[test]
     fn test_clamp_and_pan_helpers() {
-        assert_eq!(clamp01(-0.1), 0.0);
-        assert_eq!(clamp01(0.5), 0.5);
-        assert_eq!(clamp01(1.5), 1.0);
+        assert!((clamp01(-0.1) - 0.0).abs() < 1e-6);
+        assert!((clamp01(0.5) - 0.5).abs() < 1e-6);
+        assert!((clamp01(1.5) - 1.0).abs() < 1e-6);
 
-        assert_eq!(pan_to_raylib(-1.0), 0.0);
-        assert_eq!(pan_to_raylib(0.0), 0.5);
-        assert_eq!(pan_to_raylib(1.0), 1.0);
-        assert_eq!(pan_to_raylib(2.0), 1.0);
+        let (l, r) = pan_gains(-1.0);
+        assert!((l - 1.0).abs() < 1e-6);
+        assert!((r - 0.0).abs() < 1e-6);
+
+        let (l, r) = pan_gains(0.0);
+        assert!((l - r).abs() < 1e-6);
+
+        let (l, r) = pan_gains(1.0);
+        assert!((l - 0.0).abs() < 1e-6);
+        assert!((r - 1.0).abs() < 1e-6);
     }
 
     #[test]
     fn test_value_parsing_helpers() {
-        assert_eq!(as_number(&Value::Integer(3), "num").unwrap(), 3.0);
-        assert_eq!(as_number(&Value::Float(2.5), "num").unwrap(), 2.5);
+        assert!((as_number(&Value::Integer(3), "num").unwrap() - 3.0).abs() < 1e-6);
+        assert!((as_number(&Value::Float(2.5), "num").unwrap() - 2.5).abs() < 1e-6);
         assert!(as_number(&Value::Bool(true), "num").is_err());
 
         assert!(as_bool(&Value::Bool(true), "bool").unwrap());
@@ -1649,20 +1629,120 @@ mod tests {
     }
 
     #[test]
-    fn test_audio_ref_and_ensure_audio() {
-        AUDIO_STATE.with(|state| {
-            let mut state = state.borrow_mut();
-            state.shutdown();
-            assert_eq!(state.audio_ref().unwrap_err(), ERR_NO_DEVICE);
-            state.ensure_audio().unwrap();
-            state.ensure_audio().unwrap();
-            assert!(state.audio_ref().is_ok());
-        });
+    fn test_decode_audio_missing_file() {
+        let err = decode_audio("nope.wav", "Cannae lade the soond").unwrap_err();
+        assert_eq!(err, "Cannae lade the soond");
     }
 
     #[test]
-    #[cfg(not(feature = "audio"))]
-    fn test_prime_midi_stream_skips_when_unprocessed() {
+    fn test_audio_state_ensure_and_shutdown() {
+        let mut state = AudioState::new();
+        state.ensure_audio().unwrap();
+        {
+            let mut mixer = state.mixer().unwrap();
+            mixer.master_volume = 0.2;
+            mixer.sounds.push(Some(SoundEntry {
+                buffer: sample_buffer(1, 0.5, 0.5),
+                position: 0.0,
+                state: PlayState::Playing,
+                looped: false,
+                volume: 1.0,
+                pan: 0.0,
+                pitch: 1.0,
+            }));
+        }
+        state.shutdown();
+        assert!(state.device.is_none());
+        let mixer = state.mixer().unwrap();
+        assert!(mixer.sounds.is_empty());
+        assert!(mixer.music.is_empty());
+        assert!(mixer.midi.is_empty());
+        assert_eq!(mixer.master_volume, 1.0);
+    }
+
+    #[test]
+    fn test_mix_buffer_entry_stops_and_advances() {
+        let buffer = sample_buffer(4, 1.0, 0.0);
+        let mut entry = BufferEntry {
+            buffer,
+            position: 0.0,
+            state: PlayState::Playing,
+            looped: false,
+            volume: 1.0,
+            pan: -1.0,
+            pitch: 1.0,
+        };
+        let mut output = vec![0.0_f32; 12];
+        mix_buffer_entry(&mut entry, &mut output, 6, 2);
+        for frame in 0..4 {
+            assert!((output[frame * 2] - 1.0).abs() < 1e-6);
+            assert!((output[frame * 2 + 1] - 0.0).abs() < 1e-6);
+        }
+        assert!(output[8].abs() < 1e-6);
+        assert!(output[10].abs() < 1e-6);
+        assert_eq!(entry.state, PlayState::Stopped);
+        assert!(entry.position >= 4.0);
+    }
+
+    #[test]
+    fn test_mix_buffer_entry_loops() {
+        let buffer = sample_buffer(4, 1.0, 0.0);
+        let mut entry = BufferEntry {
+            buffer,
+            position: 0.0,
+            state: PlayState::Playing,
+            looped: true,
+            volume: 1.0,
+            pan: -1.0,
+            pitch: 1.0,
+        };
+        let mut output = vec![0.0_f32; 12];
+        mix_buffer_entry(&mut entry, &mut output, 6, 2);
+        for frame in 0..6 {
+            assert!((output[frame * 2] - 1.0).abs() < 1e-6);
+            assert!(output[frame * 2 + 1].abs() < 1e-6);
+        }
+        assert_eq!(entry.state, PlayState::Playing);
+        assert!((entry.position - 2.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_mix_state_master_volume_and_mute() {
+        let mut state = MixerState::new();
+        state.master_volume = 0.5;
+        state.sounds.push(Some(SoundEntry {
+            buffer: sample_buffer(1, 1.0, 1.0),
+            position: 0.0,
+            state: PlayState::Playing,
+            looped: false,
+            volume: 1.0,
+            pan: -1.0,
+            pitch: 1.0,
+        }));
+        let mut output = vec![0.0_f32; 2];
+        mix_state(&mut state, &mut output, 1);
+        assert!((output[0] - 0.5).abs() < 1e-6);
+        assert!((output[1]).abs() < 1e-6);
+
+        let mut state = MixerState::new();
+        state.muted = true;
+        state.sounds.push(Some(SoundEntry {
+            buffer: sample_buffer(1, 1.0, 1.0),
+            position: 0.0,
+            state: PlayState::Playing,
+            looped: false,
+            volume: 1.0,
+            pan: -1.0,
+            pitch: 1.0,
+        }));
+        let mut output = vec![0.0_f32; 2];
+        mix_state(&mut state, &mut output, 1);
+        assert!((output[0]).abs() < 1e-6);
+        assert!((output[1]).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_mix_midi_entry_advances_and_stops() {
         let dir = tempdir().unwrap();
         let midi_path = dir.path().join("test.mid");
         let sf_path = dir.path().join("test.sf2");
@@ -1674,31 +1754,58 @@ mod tests {
         let midi = MidiFile::new(&mut midi_file).unwrap();
         let midi = Arc::new(midi);
 
-        let settings = SynthesizerSettings::new(MIDI_SAMPLE_RATE);
+        let settings = SynthesizerSettings::new(10);
         let synth = Synthesizer::new(&sf, &settings).unwrap();
         let mut sequencer = MidiFileSequencer::new(synth);
         sequencer.play(&midi, false);
 
-        let audio = RaylibAudio::init_audio_device().unwrap();
-        let stream = stream_to_static(audio.new_audio_stream(MIDI_SAMPLE_RATE as u32, 32, 2));
-
         let mut entry = MidiEntry {
             midi,
             sequencer,
-            stream,
             state: PlayState::Playing,
             looped: false,
             volume: 1.0,
             pan: 0.0,
-            sample_rate: MIDI_SAMPLE_RATE,
+            sample_rate: 10,
+            scratch_left: Vec::new(),
+            scratch_right: Vec::new(),
         };
 
-        entry.stream.set_processed_for_test(false);
-        prime_midi_stream(&mut entry);
-        assert_eq!(entry.sequencer.get_position(), 0.0);
+        let mut output = vec![0.0_f32; 4];
+        mix_midi_entry(&mut entry, &mut output, 2, 2);
+        assert_eq!(entry.state, PlayState::Stopped);
+    }
 
-        entry.stream.set_processed_for_test(true);
-        prime_midi_stream(&mut entry);
-        assert!(entry.sequencer.get_position() > 0.0);
+    #[test]
+    fn test_seek_midi_clamps() {
+        let dir = tempdir().unwrap();
+        let midi_path = dir.path().join("test.mid");
+        let sf_path = dir.path().join("test.sf2");
+        fs::write(&midi_path, b"midi").unwrap();
+        fs::write(&sf_path, b"sf").unwrap();
+
+        let sf = load_soundfont(sf_path.as_path()).unwrap();
+        let mut midi_file = File::open(&midi_path).unwrap();
+        let midi = MidiFile::new(&mut midi_file).unwrap();
+        let midi = Arc::new(midi);
+
+        let settings = SynthesizerSettings::new(10);
+        let synth = Synthesizer::new(&sf, &settings).unwrap();
+        let sequencer = MidiFileSequencer::new(synth);
+
+        let mut entry = MidiEntry {
+            midi,
+            sequencer,
+            state: PlayState::Stopped,
+            looped: false,
+            volume: 1.0,
+            pan: 0.0,
+            sample_rate: 10,
+            scratch_left: Vec::new(),
+            scratch_right: Vec::new(),
+        };
+
+        seek_midi(&mut entry, 5.0).unwrap();
+        assert!((entry.sequencer.get_position() - entry.midi.get_length()).abs() < 1e-6);
     }
 }

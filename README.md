@@ -1238,8 +1238,8 @@ cargo build --release --no-default-features --features cli,llvm,audio
 ```bash
 sudo apt install cmake libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev
 ```
-The native (LLVM) audio backend uses miniaudio and does **not** require X11. Interpreter audio
-still uses raylib, so X11 deps are only needed for graphics or interpreter audio.
+Audio (interpreter + native) uses miniaudio and does **not** require X11. X11 deps are only
+needed for graphics.
 
 **Backend support:** Interpreter, LLVM/native, JavaScript, and WAT/WASM.
 
@@ -1291,10 +1291,11 @@ sudo apt install clang libclang-dev llvm-dev
 export LIBCLANG_PATH=$(llvm-config --libdir)
 ```
 
-If you want to avoid raylib entirely, build without graphics/audio:
+If you want to avoid raylib entirely, build without graphics:
 ```bash
-cargo build --release --no-default-features --features cli,llvm
+cargo build --release --no-default-features --features cli,llvm,audio
 ```
+Drop `audio` too if you want a CLI-only build.
 
 **Quick example:**
 ```scots

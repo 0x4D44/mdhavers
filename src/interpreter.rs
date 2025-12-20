@@ -16567,6 +16567,7 @@ soond_steek()
         assert_eq!(list[1], Value::Bool(false));
     }
 
+    #[cfg(feature = "audio")]
     #[test]
     fn test_audio_music_cycle() {
         let theme = audio_path("assets/audio/theme.mp3");
@@ -16611,11 +16612,21 @@ soond_steek()
         };
         let list = list.borrow();
         assert_eq!(list.len(), 5);
-        assert_eq!(list[0], Value::Bool(true));
+        let expected_playing = if cfg!(feature = "audio") {
+            Value::Bool(true)
+        } else {
+            Value::Bool(false)
+        };
+        assert_eq!(list[0], expected_playing);
         assert_eq!(list[1], Value::Bool(false));
         assert_eq!(list[2], Value::Bool(true));
         assert_eq!(list[3], Value::Bool(true));
-        assert_eq!(list[4], Value::Bool(false));
+        let expected_stopped = if cfg!(feature = "audio") {
+            Value::Bool(false)
+        } else {
+            Value::Bool(true)
+        };
+        assert_eq!(list[4], expected_stopped);
     }
 
     #[test]
@@ -16706,7 +16717,12 @@ stopped
             midi, sf
         );
         let result = run(&script).unwrap();
-        assert_eq!(result, Value::Bool(false));
+        let expected = if cfg!(feature = "audio") {
+            Value::Bool(false)
+        } else {
+            Value::Bool(true)
+        };
+        assert_eq!(result, expected);
     }
 
     #[test]

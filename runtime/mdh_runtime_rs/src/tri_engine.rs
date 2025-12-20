@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::env;
 use std::time::{Duration, Instant};
 
 use bytemuck::{Pod, Zeroable};
@@ -7,9 +8,12 @@ use glam::Mat4;
 use wgpu::util::DeviceExt;
 use wgpu::SurfaceError;
 use winit::event::{Event, WindowEvent};
-use winit::event_loop::ControlFlow;
-use winit::event_loop::EventLoop;
+use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
 use winit::platform::pump_events::EventLoopExtPumpEvents;
+#[cfg(wayland_platform)]
+use winit::platform::wayland::EventLoopBuilderExtWayland;
+#[cfg(x11_platform)]
+use winit::platform::x11::EventLoopBuilderExtX11;
 use winit::window::{Window, WindowBuilder};
 
 thread_local! {
@@ -24,6 +28,43 @@ where
 }
 
 pub type LoopCallback = Box<dyn FnMut(f64)>;
+
+fn create_event_loop() -> Result<EventLoop<()>, String> {
+    let mut builder = EventLoopBuilder::new();
+    #[cfg(any(x11_platform, wayland_platform))]
+    {
+        let backend = env::var("MDH_TRI_BACKEND")
+            .or_else(|_| env::var("WINIT_UNIX_BACKEND"))
+            .ok()
+            .map(|val| val.to_ascii_lowercase());
+        match backend.as_deref() {
+            Some("x11") => {
+                #[cfg(x11_platform)]
+                {
+                    builder.with_x11();
+                }
+                #[cfg(not(x11_platform))]
+                {
+                    return Err("Requested X11 backend, but winit/x11 is disabled".to_string());
+                }
+            }
+            Some("wayland") => {
+                #[cfg(wayland_platform)]
+                {
+                    builder.with_wayland();
+                }
+                #[cfg(not(wayland_platform))]
+                {
+                    return Err("Requested Wayland backend, but winit/wayland is disabled".to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    builder
+        .build()
+        .map_err(|e| format!("event loop: {e:?}"))
+}
 
 pub struct MeshData {
     pub vertices: Vec<[f32; 3]>,
@@ -752,7 +793,7 @@ impl TriEngine {
 
     pub fn create_renderer(&mut self) -> Result<usize, String> {
         if self.event_loop.is_none() {
-            self.event_loop = Some(EventLoop::new().map_err(|e| format!("event loop: {e:?}"))?);
+            self.event_loop = Some(create_event_loop()?);
         }
         let event_loop = self
             .event_loop
@@ -856,7 +897,7 @@ impl TriEngine {
         mut callback: Option<LoopCallback>,
     ) -> Result<(), String> {
         if self.event_loop.is_none() {
-            self.event_loop = Some(EventLoop::new().map_err(|e| format!("event loop: {e:?}"))?);
+            self.event_loop = Some(create_event_loop()?);
         }
         let event_loop = self
             .event_loop

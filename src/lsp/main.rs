@@ -350,3 +350,173 @@ where
 {
     not.extract(N::METHOD)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lsp_server::{Connection, Message, Notification as LspNotification, Request as LspRequest};
+    use lsp_types::notification::{DidOpenTextDocument, Notification as LspNotificationTrait};
+    use lsp_types::request::{
+        Completion, GotoDefinition, HoverRequest, Request as LspRequestTrait,
+    };
+    use lsp_types::{
+        CompletionParams, DidChangeTextDocumentParams, DidOpenTextDocumentParams, Position,
+        TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
+        TextDocumentPositionParams, Uri, VersionedTextDocumentIdentifier,
+    };
+    use serde_json::Value as JsonValue;
+    use std::str::FromStr;
+
+    fn hover_params(uri: &Uri, line: u32, character: u32) -> HoverParams {
+        HoverParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                position: Position { line, character },
+            },
+            work_done_progress_params: Default::default(),
+        }
+    }
+
+    #[test]
+    fn get_word_at_position_handles_oob_and_whitespace() {
+        let mut docs = DocumentStore::new();
+        let uri = Uri::from_str("file:///tmp/coverage_lsp.braw").unwrap();
+        docs.open(uri.clone(), "ken x = 1\n".to_string());
+
+        let params = hover_params(&uri, 0, 1);
+        let word = get_word_at_position(&params, &docs);
+        assert_eq!(word.as_deref(), Some("ken"));
+
+        let whitespace = hover_params(&uri, 0, 3);
+        let word = get_word_at_position(&whitespace, &docs);
+        assert_eq!(word.as_deref(), Some("ken"));
+
+        let oob = hover_params(&uri, 99, 99);
+        assert!(get_word_at_position(&oob, &docs).is_none());
+    }
+
+    #[test]
+    fn main_loop_processes_requests_and_notifications() {
+        let (server, client) = Connection::memory();
+        let params = serde_json::to_value(InitializeParams::default()).unwrap();
+        let handle = std::thread::spawn(move || main_loop(server, params));
+
+        let uri = Uri::from_str("file:///tmp/coverage_lsp.braw").unwrap();
+        let open_params = DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "mdhavers".to_string(),
+                version: 1,
+                text: "ken x = 1\nblether x\n".to_string(),
+            },
+        };
+        client
+            .sender
+            .send(Message::Notification(LspNotification::new(
+                DidOpenTextDocument::METHOD.to_string(),
+                open_params,
+            )))
+            .unwrap();
+
+        let change_params = DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier {
+                uri: uri.clone(),
+                version: 2,
+            },
+            content_changes: vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "ken =\n".to_string(),
+            }],
+        };
+        client
+            .sender
+            .send(Message::Notification(LspNotification::new(
+                lsp_types::notification::DidChangeTextDocument::METHOD.to_string(),
+                change_params,
+            )))
+            .unwrap();
+
+        let hover = hover_params(&uri, 0, 3);
+        client
+            .sender
+            .send(Message::Request(LspRequest::new(
+                lsp_server::RequestId::from(1),
+                HoverRequest::METHOD.to_string(),
+                hover,
+            )))
+            .unwrap();
+
+        let completion = CompletionParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                position: Position {
+                    line: 0,
+                    character: 1,
+                },
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+            context: None,
+        };
+        client
+            .sender
+            .send(Message::Request(LspRequest::new(
+                lsp_server::RequestId::from(2),
+                Completion::METHOD.to_string(),
+                completion,
+            )))
+            .unwrap();
+
+        let goto_params = GotoDefinitionParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                position: Position {
+                    line: 0,
+                    character: 1,
+                },
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+        client
+            .sender
+            .send(Message::Request(LspRequest::new(
+                lsp_server::RequestId::from(3),
+                GotoDefinition::METHOD.to_string(),
+                goto_params,
+            )))
+            .unwrap();
+
+        client
+            .sender
+            .send(Message::Request(LspRequest::new(
+                lsp_server::RequestId::from(4),
+                "textDocument/formatting".to_string(),
+                JsonValue::Null,
+            )))
+            .unwrap();
+
+        client
+            .sender
+            .send(Message::Request(LspRequest::new(
+                lsp_server::RequestId::from(5),
+                "shutdown".to_string(),
+                JsonValue::Null,
+            )))
+            .unwrap();
+        client
+            .sender
+            .send(Message::Notification(LspNotification::new(
+                "exit".to_string(),
+                JsonValue::Null,
+            )))
+            .unwrap();
+        drop(client.sender);
+
+        let result = handle.join().expect("join main_loop");
+        if let Err(err) = result {
+            panic!("main_loop error: {err}");
+        }
+    }
+}

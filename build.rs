@@ -2,6 +2,13 @@ use std::process::Command;
 use std::{env, fs};
 
 fn main() {
+    if env::var("CARGO_FEATURE_AUDIO").is_ok() && env::var("CARGO_FEATURE_GRAPHICS").is_ok() {
+        panic!(
+            "Features `audio` and `graphics` both bundle miniaudio (via om-fork-miniaudio and raylib), \
+             which causes duplicate symbols at link time. Build with only one enabled."
+        );
+    }
+
     // `cargo llvm-cov` sets `cfg(coverage)`; register it so `unexpected_cfgs` doesn't warn.
     println!("cargo:rustc-check-cfg=cfg(coverage)");
 
