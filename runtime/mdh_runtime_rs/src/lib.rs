@@ -23,6 +23,10 @@ use trust_dns_resolver::Resolver;
 mod audio;
 #[cfg(not(feature = "audio"))]
 mod audio_stub;
+#[cfg(feature = "graphics3d")]
+mod tri_engine;
+#[cfg(feature = "graphics3d")]
+mod tri_runtime;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -64,6 +68,7 @@ pub(crate) const MDH_TAG_FUNCTION: u8 = 7;
 pub(crate) const MDH_TAG_SET: u8 = 11;
 pub(crate) const MDH_TAG_CLOSURE: u8 = 12;
 pub(crate) const MDH_TAG_BYTES: u8 = 13;
+pub(crate) const MDH_TAG_NATIVE: u8 = 14;
 
 extern "C" {
     fn __mdh_make_nil() -> MdhValue;

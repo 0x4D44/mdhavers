@@ -1,8 +1,10 @@
 use std::cell::RefCell;
 use std::fs::File;
+use std::os::raw::c_void;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use raylib::ffi;
 use raylib::prelude::*;
 use rustysynth::{MidiFile, MidiFileSequencer, SoundFont, Synthesizer, SynthesizerSettings};
 
@@ -200,7 +202,14 @@ fn prime_midi_stream(entry: &mut MidiEntry) {
         interleaved.push(left[i]);
         interleaved.push(right[i]);
     }
-    entry.stream.update(&interleaved);
+    update_audio_stream(&mut entry.stream, &interleaved, frames);
+}
+
+fn update_audio_stream(stream: &mut AudioStream<'static>, data: &[f32], frames: usize) {
+    let raw = *stream.as_ref();
+    unsafe {
+        ffi::UpdateAudioStream(raw, data.as_ptr() as *const c_void, frames as i32);
+    }
 }
 
 fn seek_midi(entry: &mut MidiEntry, seconds: f64, audio: &'static RaylibAudio) -> Result<(), String> {
