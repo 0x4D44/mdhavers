@@ -463,11 +463,19 @@ impl Parser {
         self.advance(); // consume 'log_whisper', 'log_mutter', etc.
 
         let message = self.expression()?;
+        let mut extras = Vec::new();
+        if self.match_token(&TokenKind::Comma) {
+            extras.push(self.expression()?);
+            if self.match_token(&TokenKind::Comma) {
+                extras.push(self.expression()?);
+            }
+        }
         self.expect_statement_end()?;
 
         Ok(Stmt::Log {
             level,
             message,
+            extras,
             span,
         })
     }

@@ -15,6 +15,7 @@ mod formatter;
 mod graphics;
 mod interpreter;
 mod lexer;
+mod logging;
 mod parser;
 mod token;
 mod tri;

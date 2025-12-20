@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
+use std::{env, fmt};
 
 use crate::{
     mdh_float_value, mdh_make_string_from_rust, mdh_value_to_string, MdhList, MdhValue,
@@ -26,6 +28,7 @@ const MDH_NATIVE_TRI_CTOR: i32 = 3;
 struct TriObject {
     kind: String,
     fields: HashMap<String, MdhValue>,
+    native_key: usize,
     renderer_handle: Option<usize>,
 }
 
@@ -59,6 +62,19 @@ impl TriState {
 
 static TRI_STATE: OnceLock<Mutex<TriState>> = OnceLock::new();
 static TRI_MODULE: OnceLock<MdhValue> = OnceLock::new();
+static TRI_DEBUG_EMPTY_MESH_LOGGED: AtomicBool = AtomicBool::new(false);
+static TRI_DEBUG_RENDER_CALLED: AtomicBool = AtomicBool::new(false);
+static TRI_DEBUG_RENDERER_CREATED: AtomicBool = AtomicBool::new(false);
+
+fn tri_debug_enabled() -> bool {
+    env::var_os("MDH_TRI_DEBUG").is_some()
+}
+
+fn tri_debug_once(flag: &AtomicBool, msg: impl fmt::Display) {
+    if tri_debug_enabled() && !flag.swap(true, Ordering::Relaxed) {
+        eprintln!("{msg}");
+    }
+}
 
 fn tri_state() -> &'static Mutex<TriState> {
     TRI_STATE.get_or_init(|| Mutex::new(TriState::new()))
@@ -281,9 +297,13 @@ unsafe fn tri_make_vec3(kind: &str, x: f64, y: f64, z: f64) -> MdhValue {
     let tri = TriObject {
         kind: kind.to_string(),
         fields,
+        native_key: 0,
         renderer_handle: None,
     };
     let native_ptr = new_native_object(MDH_NATIVE_TRI_OBJECT, kind, None);
+    let mut tri = tri;
+    tri.native_key = native_ptr as usize;
+    tri_sync_fields(&tri);
     register_object(native_ptr, tri);
     mdh_make_native(native_ptr)
 }
@@ -375,6 +395,9 @@ unsafe fn tri_make_object(kind: &str, args: &[MdhValue]) -> MdhValue {
     } else {
         None
     };
+    if renderer_handle.is_some() && tri_debug_enabled() {
+        tri_debug_once(&TRI_DEBUG_RENDERER_CREATED, "tri: renderer created");
+    }
     if let Some(handle) = renderer_handle {
         if let (Some(width), Some(height)) = (opt_width, opt_height) {
             with_engine(|engine| engine.set_size(handle, width, height));
@@ -387,9 +410,13 @@ unsafe fn tri_make_object(kind: &str, args: &[MdhValue]) -> MdhValue {
     let tri = TriObject {
         kind: kind.to_string(),
         fields,
+        native_key: 0,
         renderer_handle,
     };
     let native_ptr = new_native_object(MDH_NATIVE_TRI_OBJECT, kind, None);
+    let mut tri = tri;
+    tri.native_key = native_ptr as usize;
+    tri_sync_fields(&tri);
     register_object(native_ptr, tri);
     mdh_make_native(native_ptr)
 }
@@ -405,12 +432,21 @@ unsafe fn tri_method_add(obj: &mut TriObject, args: &[MdhValue]) {
         Some(val) if val.tag == MDH_TAG_LIST => val,
         _ => {
             let list = __mdh_make_list(0);
-            obj.fields.insert("children".to_string(), list);
+            tri_method_set_field(obj, "children", list);
             list
         }
     };
+    let parent_val = if obj.native_key != 0 {
+        mdh_make_native(obj.native_key as *mut MdhNativeObject)
+    } else {
+        __mdh_make_nil()
+    };
     for arg in args {
         __mdh_list_push(list_val, *arg);
+        if parent_val.tag != MDH_TAG_NIL && arg.tag == MDH_TAG_NATIVE && arg.data != 0 {
+            let ptr = arg.data as *mut MdhNativeObject;
+            let _ = with_object(ptr, |_key, tri| tri_method_set_field(tri, "parent", parent_val));
+        }
     }
 }
 
@@ -438,7 +474,14 @@ unsafe fn tri_method_remove(obj: &mut TriObject, args: &[MdhValue]) {
                 break;
             }
         }
-        if !remove {
+        if remove {
+            if item.tag == MDH_TAG_NATIVE && item.data != 0 {
+                let ptr = item.data as *mut MdhNativeObject;
+                let _ = with_object(ptr, |_key, tri| {
+                    tri_method_set_field(tri, "parent", __mdh_make_nil())
+                });
+            }
+        } else {
             *items.add(write) = item;
             write += 1;
         }
@@ -454,15 +497,39 @@ unsafe fn tri_method_clone(obj: &TriObject) -> MdhValue {
     let clone = TriObject {
         kind: obj.kind.clone(),
         fields,
+        native_key: 0,
         renderer_handle: obj.renderer_handle,
     };
     let native_ptr = new_native_object(MDH_NATIVE_TRI_OBJECT, &obj.kind, None);
+    let mut clone = clone;
+    clone.native_key = native_ptr as usize;
+    tri_sync_fields(&clone);
     register_object(native_ptr, clone);
     mdh_make_native(native_ptr)
 }
 
+unsafe fn tri_sync_fields(obj: &TriObject) {
+    if obj.native_key == 0 {
+        return;
+    }
+    let native_ptr = obj.native_key as *mut MdhNativeObject;
+    let mut dict = unsafe { (*native_ptr).fields };
+    for (key, value) in &obj.fields {
+        dict = unsafe { __mdh_dict_set(dict, mdh_make_string_from_rust(key), *value) };
+    }
+    unsafe {
+        (*native_ptr).fields = dict;
+    }
+}
+
 unsafe fn tri_method_set_field(obj: &mut TriObject, key: &str, value: MdhValue) {
     obj.fields.insert(key.to_string(), value);
+    if obj.native_key != 0 {
+        let native_ptr = obj.native_key as *mut MdhNativeObject;
+        let dict = (*native_ptr).fields;
+        let dict = __mdh_dict_set(dict, mdh_make_string_from_rust(key), value);
+        (*native_ptr).fields = dict;
+    }
 }
 
 unsafe fn mdh_number(value: MdhValue) -> Option<f64> {
@@ -1194,6 +1261,29 @@ unsafe fn tri_render_items(
         tri_collect_meshes(scene, Mat4::IDENTITY, &lights, &mut items);
     }
     let view_proj = tri_camera_view_proj(camera_val, aspect);
+    if items.is_empty() {
+        tri_debug_once(&TRI_DEBUG_EMPTY_MESH_LOGGED, format!(
+            "tri: no meshes collected (aspect={aspect:.3})"
+        ));
+        if tri_debug_enabled() {
+            if let Some(scene) = scene_val.and_then(|val| tri_snapshot_from_value(val)) {
+                let child_count = scene
+                    .fields
+                    .get("children")
+                    .filter(|v| v.tag == MDH_TAG_LIST)
+                    .map(|v| unsafe { __mdh_list_len(*v) })
+                    .unwrap_or(0);
+                eprintln!("tri: scene kind={}, children={}", scene.kind, child_count);
+            } else {
+                eprintln!("tri: scene missing or not a native tri object");
+            }
+            if let Some(camera) = camera_val.and_then(|val| tri_snapshot_from_value(val)) {
+                eprintln!("tri: camera kind={}", camera.kind);
+            } else {
+                eprintln!("tri: camera missing or not a native tri object");
+            }
+        }
+    }
     (view_proj, items)
 }
 
@@ -1296,6 +1386,7 @@ unsafe fn tri_object_call(obj: &mut TriObject, method: &str, args: &[MdhValue]) 
             __mdh_make_nil()
         }
         "render" => {
+            tri_debug_once(&TRI_DEBUG_RENDER_CALLED, "tri: render called");
             if let Some(scene) = args.first() {
                 tri_method_set_field(obj, "scene", *scene);
             }
@@ -1327,6 +1418,7 @@ unsafe fn tri_object_call(obj: &mut TriObject, method: &str, args: &[MdhValue]) 
             __mdh_make_nil()
         }
         "tick" | "poll" => {
+            tri_debug_once(&TRI_DEBUG_RENDER_CALLED, "tri: render tick called");
             if let Some(handle) = obj.renderer_handle {
                 let scene_val = obj.fields.get("scene").copied();
                 let camera_val = obj.fields.get("camera").copied();
@@ -1436,7 +1528,7 @@ pub unsafe extern "C" fn __mdh_tri_rs_set(
     let prop = mdh_value_to_string(key);
     match (*obj).kind {
         MDH_NATIVE_TRI_OBJECT => {
-            let _ = with_object(obj, |_key, tri| tri.fields.insert(prop, value));
+            let _ = with_object(obj, |_key, tri| tri_method_set_field(tri, &prop, value));
             value
         }
         MDH_NATIVE_TRI_MODULE | MDH_NATIVE_TRI_CTOR => {
@@ -1497,6 +1589,7 @@ extern "C" {
     fn __mdh_list_push(list: MdhValue, value: MdhValue);
     fn __mdh_list_len(list: MdhValue) -> i64;
     fn __mdh_empty_dict() -> MdhValue;
+    fn __mdh_dict_set(dict: MdhValue, key: MdhValue, value: MdhValue) -> MdhValue;
     fn __mdh_dict_get_default(dict: MdhValue, key: MdhValue, default_val: MdhValue) -> MdhValue;
     fn __mdh_hurl(value: MdhValue);
     fn __mdh_key_not_found(key: MdhValue);

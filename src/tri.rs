@@ -88,6 +88,10 @@ impl NativeObject for TriModule {
             line: 0,
         })
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -219,6 +223,10 @@ impl NativeObject for TriObject {
             }
             _ => Ok(Value::Nil),
         }
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 

@@ -191,6 +191,7 @@ pub enum Stmt {
     Log {
         level: LogLevel,
         message: Expr,
+        extras: Vec<Expr>,
         span: Span,
     },
 
@@ -1137,6 +1138,7 @@ mod tests {
         let log_stmt = Stmt::Log {
             level: LogLevel::Mutter,
             message: msg.clone(),
+            extras: Vec::new(),
             span,
         };
         let hurl_stmt = Stmt::Hurl { message: msg, span };

@@ -272,7 +272,12 @@ impl Formatter {
                 self.writeln(&format!("ken [{}] = {}", patterns_str, val_str));
             }
 
-            Stmt::Log { level, message, .. } => {
+            Stmt::Log {
+                level,
+                message,
+                extras,
+                ..
+            } => {
                 let keyword = match level {
                     crate::ast::LogLevel::Wheesht => "log_wheesht",
                     crate::ast::LogLevel::Roar => "log_roar",
@@ -282,7 +287,16 @@ impl Formatter {
                     crate::ast::LogLevel::Whisper => "log_whisper",
                 };
                 let msg = self.format_expr(message);
-                self.writeln(&format!("{} {}", keyword, msg));
+                if extras.is_empty() {
+                    self.writeln(&format!("{} {}", keyword, msg));
+                } else {
+                    let extras_str = extras
+                        .iter()
+                        .map(|expr| self.format_expr(expr))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    self.writeln(&format!("{} {}, {}", keyword, msg, extras_str));
+                }
             }
 
             Stmt::Hurl { message, .. } => {

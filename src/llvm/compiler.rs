@@ -3,7 +3,7 @@
 //! Provides high-level API for compiling mdhavers to LLVM IR, object files,
 //! and native executables.
 
-use std::io::Write;
+use std::io::{self, IsTerminal, Write};
 use std::path::Path;
 use std::process::Command;
 
@@ -28,6 +28,110 @@ use crate::ast::Program;
 use crate::error::HaversError;
 
 use super::codegen::CodeGen;
+
+#[derive(Copy, Clone)]
+enum StatusColor {
+    Cyan,
+    Yellow,
+    Green,
+    Red,
+    Dim,
+}
+
+struct BuildStatus {
+    label: &'static str,
+    enabled: bool,
+    use_color: bool,
+    wrote_any: bool,
+}
+
+impl BuildStatus {
+    fn new(label: &'static str) -> Self {
+        let enabled = io::stderr().is_terminal();
+        let term_ok = std::env::var("TERM")
+            .map(|term| term != "dumb")
+            .unwrap_or(true);
+        let use_color = enabled && term_ok && std::env::var_os("NO_COLOR").is_none();
+        Self {
+            label,
+            enabled,
+            use_color,
+            wrote_any: false,
+        }
+    }
+
+    fn guard(&mut self) -> BuildStatusGuard {
+        BuildStatusGuard {
+            status: self as *mut BuildStatus,
+        }
+    }
+
+    fn update(&mut self, stage: &str, color: StatusColor) {
+        if !self.enabled {
+            return;
+        }
+
+        let label = self.paint(self.label, StatusColor::Cyan, true);
+        let stage = self.paint(stage, color, false);
+        eprint!("\r\x1b[2K{} -> {}", label, stage);
+        let _ = io::stderr().flush();
+        self.wrote_any = true;
+    }
+
+    fn finish(&mut self, stage: &str, color: StatusColor) {
+        self.update(stage, color);
+        self.ensure_newline();
+    }
+
+    fn fail(&mut self, stage: &str) {
+        self.finish(stage, StatusColor::Red);
+    }
+
+    fn ensure_newline(&mut self) {
+        if self.enabled && self.wrote_any {
+            eprintln!();
+            self.wrote_any = false;
+        }
+    }
+
+    fn paint(&self, text: &str, color: StatusColor, bold: bool) -> String {
+        if !self.use_color {
+            return text.to_string();
+        }
+
+        let code = match color {
+            StatusColor::Cyan => "36",
+            StatusColor::Yellow => "33",
+            StatusColor::Green => "32",
+            StatusColor::Red => "31",
+            StatusColor::Dim => "2",
+        };
+
+        let prefix = if bold {
+            format!("\x1b[1;{}m", code)
+        } else {
+            format!("\x1b[{}m", code)
+        };
+
+        format!("{prefix}{text}\x1b[0m")
+    }
+}
+
+struct BuildStatusGuard {
+    status: *mut BuildStatus,
+}
+
+impl Drop for BuildStatusGuard {
+    fn drop(&mut self) {
+        // SAFETY: BuildStatusGuard is created from a valid mutable reference
+        // and dropped before the status goes out of scope.
+        unsafe {
+            if let Some(status) = self.status.as_mut() {
+                status.ensure_newline();
+            }
+        }
+    }
+}
 
 /// LLVM Compiler for mdhavers
 pub struct LLVMCompiler {
@@ -85,6 +189,20 @@ impl LLVMCompiler {
         output_path: &Path,
         source_path: Option<&Path>,
     ) -> Result<(), HaversError> {
+        self.compile_to_object_with_source_status(program, output_path, source_path, None)
+    }
+
+    fn compile_to_object_with_source_status(
+        &self,
+        program: &Program,
+        output_path: &Path,
+        source_path: Option<&Path>,
+        mut status: Option<&mut BuildStatus>,
+    ) -> Result<(), HaversError> {
+        if let Some(status) = status.as_mut() {
+            status.update("Generating LLVM IR", StatusColor::Yellow);
+        }
+
         let context = Context::create();
         let mut codegen = CodeGen::new(&context, "mdhavers_module");
         if let Some(path) = source_path {
@@ -92,6 +210,10 @@ impl LLVMCompiler {
         }
 
         codegen.compile(program)?;
+
+        if let Some(status) = status.as_mut() {
+            status.update("Initializing target", StatusColor::Yellow);
+        }
 
         // Initialize native target
         Target::initialize_native(&InitializationConfig::default())
@@ -113,8 +235,20 @@ impl LLVMCompiler {
                 HaversError::CompileError("Failed to create target machine".to_string())
             })?;
 
+        if let Some(status) = status.as_mut() {
+            if matches!(self.opt_level, OptimizationLevel::None) {
+                status.update("Skipping optimizations", StatusColor::Dim);
+            } else {
+                status.update("Optimizing LLVM", StatusColor::Yellow);
+            }
+        }
+
         // Run optimization passes
         self.run_optimization_passes(codegen.get_module())?;
+
+        if let Some(status) = status.as_mut() {
+            status.update("Writing object file", StatusColor::Yellow);
+        }
 
         // Write object file
         target_machine
@@ -143,10 +277,21 @@ impl LLVMCompiler {
         opt_level: u8,
         source_path: Option<&Path>,
     ) -> Result<(), HaversError> {
+        let mut status = BuildStatus::new("Native build");
+        let _status_guard = status.guard();
+
         // First compile to object file
         let obj_path = output_path.with_extension("o");
         let compiler = LLVMCompiler::new().with_optimization(opt_level);
-        compiler.compile_to_object_with_source(program, &obj_path, source_path)?;
+        if let Err(err) = compiler.compile_to_object_with_source_status(
+            program,
+            &obj_path,
+            source_path,
+            Some(&mut status),
+        ) {
+            status.fail("Native build failed");
+            return Err(err);
+        }
 
         // Generate unique temp file names using process ID and a counter
         // This avoids race conditions when tests run in parallel
@@ -154,6 +299,8 @@ impl LLVMCompiler {
         let runtime_path = std::env::temp_dir().join(format!("mdh_runtime_{}.o", unique_id));
         let runtime_rs_path = std::env::temp_dir().join(format!("mdh_runtime_rs_{}.a", unique_id));
         let gc_stub_path = std::env::temp_dir().join(format!("mdh_gc_stub_{}.o", unique_id));
+
+        status.update("Preparing runtime", StatusColor::Yellow);
 
         // Write embedded runtime to temp file for linking
         std::fs::File::create(&runtime_path)
@@ -169,6 +316,8 @@ impl LLVMCompiler {
         std::fs::File::create(&gc_stub_path)
             .and_then(|mut f| f.write_all(EMBEDDED_GC_STUB))
             .map_err(Self::llvm_compile_error)?;
+
+        status.update("Linking native executable", StatusColor::Yellow);
 
         // Link with system linker
         let mut link_args = vec![
@@ -192,7 +341,7 @@ impl LLVMCompiler {
         link_args.push("-o");
         link_args.push(output_path.to_str().unwrap());
 
-        let status = Command::new("cc")
+        let link_status = Command::new("cc")
             .args(&link_args)
             .status()
             .map_err(Self::llvm_compile_error)?;
@@ -203,12 +352,14 @@ impl LLVMCompiler {
         let _ = std::fs::remove_file(&runtime_rs_path);
         let _ = std::fs::remove_file(&gc_stub_path);
 
-        if status.success() {
+        if link_status.success() {
+            status.finish("Native build complete", StatusColor::Green);
             Ok(())
         } else {
+            status.fail("Link failed");
             Err(HaversError::CompileError(format!(
                 "Linker failed with exit code: {:?}",
-                status.code()
+                link_status.code()
             )))
         }
     }

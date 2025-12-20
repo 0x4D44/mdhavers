@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
@@ -35,6 +36,7 @@ pub trait NativeObject: fmt::Debug {
     fn get(&self, prop: &str) -> HaversResult<Value>;
     fn set(&self, prop: &str, value: Value) -> HaversResult<Value>;
     fn call(&self, method: &str, args: Vec<Value>) -> HaversResult<Value>;
+    fn as_any(&self) -> &dyn Any;
     fn to_string(&self) -> String {
         format!("<native {}>", self.type_name())
     }
@@ -685,6 +687,10 @@ mod tests {
 
         fn call(&self, _method: &str, _args: Vec<Value>) -> HaversResult<Value> {
             Ok(Value::Nil)
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
         }
     }
 

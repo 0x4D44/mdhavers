@@ -17,7 +17,7 @@ This document provides a comprehensive overview of the `mdhavers` project, desig
 *   **Language Server (LSP):** Provides editor support (diagnostics, autocomplete, hover info) for a modern IDE experience.
 *   **Standard Library:** An extensive library of built-in functions, many with Scots-themed names (e.g., `blether` for print, `ken` for variable declaration).
 *   **Web Playground:** A `wasm-pack` based web interface for trying the language in a browser.
-*   **Example Code:** A large collection of `.braw` files in the `/examples` directory, demonstrating everything from basic syntax to a full Tetris game.
+*   **Example Code:** A collection of `.braw` files in the `/examples` directory, covering basics plus newer features like audio, graphics, 3D, threading, and logging. The Tetris demo lives in `games/tetris/` as a browser HTML/JS project.
 
 The project is structured as a Rust workspace with several key crates: the main `mdhavers` CLI, the `mdhavers-lsp` server, and the core library.
 

@@ -113,6 +113,7 @@ fn compiler_exercises_unreachable_or_hard_to_parse_paths_for_coverage() {
     let wheesht_log_stmt = Stmt::Log {
         level: LogLevel::Wheesht,
         message: lit_str("quiet"),
+        extras: Vec::new(),
         span,
     };
 
@@ -135,31 +136,37 @@ fn formatter_exercises_uncovered_branches_for_coverage() {
         Stmt::Log {
             level: LogLevel::Wheesht,
             message: lit_str("w"),
+            extras: Vec::new(),
             span: Span::new(1, 1),
         },
         Stmt::Log {
             level: LogLevel::Roar,
             message: lit_str("r"),
+            extras: Vec::new(),
             span: Span::new(1, 1),
         },
         Stmt::Log {
             level: LogLevel::Holler,
             message: lit_str("h"),
+            extras: Vec::new(),
             span: Span::new(1, 1),
         },
         Stmt::Log {
             level: LogLevel::Blether,
             message: lit_str("b"),
+            extras: Vec::new(),
             span: Span::new(1, 1),
         },
         Stmt::Log {
             level: LogLevel::Mutter,
             message: lit_str("m"),
+            extras: Vec::new(),
             span: Span::new(1, 1),
         },
         Stmt::Log {
             level: LogLevel::Whisper,
             message: lit_str("t"),
+            extras: Vec::new(),
             span: Span::new(1, 1),
         },
         Stmt::Hurl {

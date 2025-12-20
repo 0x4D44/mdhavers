@@ -45,6 +45,8 @@ impl Compiler {
         self.emit_line("// mdhavers runtime - pure havers, but working havers!");
         self.output
             .push_str(include_str!("../runtime/js/audio_runtime.js"));
+        self.output
+            .push_str(include_str!("../runtime/js/logging_runtime.js"));
         if !self.output.ends_with('\n') {
             self.output.push('\n');
         }
@@ -173,6 +175,20 @@ impl Compiler {
 
         // blether (print) function
         self.emit_line("blether: console.log,");
+
+        // logging helpers
+        self.emit_line("set_log_level: __mdh_log_set_level,");
+        self.emit_line("get_log_level: __mdh_log_get_level,");
+        self.emit_line("log_set_filter: __mdh_log_set_filter,");
+        self.emit_line("log_get_filter: () => __mdh_log_state.filter,");
+        self.emit_line("log_enabled: __mdh_log_enabled,");
+        self.emit_line("log_event: __mdh_log_event,");
+        self.emit_line("log_init: __mdh_log_init,");
+        self.emit_line("log_span: __mdh_log_span,");
+        self.emit_line("log_span_enter: __mdh_log_span_enter,");
+        self.emit_line("log_span_exit: __mdh_log_span_exit,");
+        self.emit_line("log_span_current: __mdh_log_span_current,");
+        self.emit_line("log_span_in: __mdh_log_span_in,");
 
         // speir (input) - for Node.js
         self.emit_line("speir: (prompt) => {");
@@ -472,7 +488,7 @@ impl Compiler {
         self.emit_line("");
 
         // Import runtime functions to global scope
-        self.emit_line("const { len, whit_kind, tae_string, tae_int, tae_float, shove, yank, keys, values, range, abs, min, max, floor, ceil, round, sqrt, split, join, contains, reverse, sort, blether, speir, heid, tail, bum, scran, slap, sumaw, coont, wheesht, upper, lower, shuffle, noo, tick, bide, gaun, sieve, tumble, aw, ony, hunt, soond_stairt, soond_steek, soond_wheesht, soond_luid, soond_hou_luid, soond_haud_gang, soond_lade, soond_spiel, soond_haud, soond_gae_on, soond_stap, soond_unlade, soond_is_spielin, soond_pit_luid, soond_pit_pan, soond_pit_tune, soond_pit_rin_roond, soond_ready, muisic_lade, muisic_spiel, muisic_haud, muisic_gae_on, muisic_stap, muisic_unlade, muisic_is_spielin, muisic_loup, muisic_hou_lang, muisic_whaur, muisic_pit_luid, muisic_pit_pan, muisic_pit_tune, muisic_pit_rin_roond, midi_lade, midi_spiel, midi_haud, midi_gae_on, midi_stap, midi_unlade, midi_is_spielin, midi_loup, midi_hou_lang, midi_whaur, midi_pit_luid, midi_pit_pan, midi_pit_rin_roond } = __havers;");
+        self.emit_line("const { len, whit_kind, tae_string, tae_int, tae_float, shove, yank, keys, values, range, abs, min, max, floor, ceil, round, sqrt, split, join, contains, reverse, sort, blether, set_log_level, get_log_level, log_set_filter, log_get_filter, log_enabled, log_event, log_init, log_span, log_span_enter, log_span_exit, log_span_current, log_span_in, speir, heid, tail, bum, scran, slap, sumaw, coont, wheesht, upper, lower, shuffle, noo, tick, bide, gaun, sieve, tumble, aw, ony, hunt, soond_stairt, soond_steek, soond_wheesht, soond_luid, soond_hou_luid, soond_haud_gang, soond_lade, soond_spiel, soond_haud, soond_gae_on, soond_stap, soond_unlade, soond_is_spielin, soond_pit_luid, soond_pit_pan, soond_pit_tune, soond_pit_rin_roond, soond_ready, muisic_lade, muisic_spiel, muisic_haud, muisic_gae_on, muisic_stap, muisic_unlade, muisic_is_spielin, muisic_loup, muisic_hou_lang, muisic_whaur, muisic_pit_luid, muisic_pit_pan, muisic_pit_tune, muisic_pit_rin_roond, midi_lade, midi_spiel, midi_haud, midi_gae_on, midi_stap, midi_unlade, midi_is_spielin, midi_loup, midi_hou_lang, midi_whaur, midi_pit_luid, midi_pit_pan, midi_pit_rin_roond } = __havers;");
         self.emit_line("");
     }
 
@@ -783,22 +799,29 @@ impl Compiler {
                 self.output.push_str(";\n");
             }
 
-            Stmt::Log { level, message, .. } => {
-                // Compile log to console.error with level prefix
+            Stmt::Log {
+                level,
+                message,
+                extras,
+                ..
+            } => {
+                // Compile log to log_event with optional fields/target
                 let level_name = match level {
                     crate::ast::LogLevel::Wheesht => return, // Silent - no output
-                    crate::ast::LogLevel::Roar => "ROAR",
-                    crate::ast::LogLevel::Holler => "HOLLER",
-                    crate::ast::LogLevel::Blether => "BLETHER",
-                    crate::ast::LogLevel::Mutter => "MUTTER",
-                    crate::ast::LogLevel::Whisper => "WHISPER",
+                    crate::ast::LogLevel::Roar => "roar",
+                    crate::ast::LogLevel::Holler => "holler",
+                    crate::ast::LogLevel::Blether => "blether",
+                    crate::ast::LogLevel::Mutter => "mutter",
+                    crate::ast::LogLevel::Whisper => "whisper",
                 };
                 self.emit_indent();
-                self.output.push_str(&format!(
-                    "console.error(`[{}] ${{new Date().toISOString()}} | ` + ",
-                    level_name
-                ));
+                self.output
+                    .push_str(&format!("log_event(\"{}\", ", level_name));
                 self.compile_expr(message);
+                for extra in extras {
+                    self.output.push_str(", ");
+                    self.compile_expr(extra);
+                }
                 self.output.push_str(");\n");
             }
 

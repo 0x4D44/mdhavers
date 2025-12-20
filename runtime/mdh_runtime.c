@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <math.h>
 #include <limits.h>
 #include <sys/stat.h>
@@ -104,6 +105,7 @@ typedef enum {
     MDH_NATIVE_TRI_MODULE = 1,
     MDH_NATIVE_TRI_OBJECT = 2,
     MDH_NATIVE_TRI_CTOR = 3,
+    MDH_NATIVE_LOG_SPAN = 4,
 } MdhNativeKind;
 
 typedef struct {
@@ -4111,6 +4113,464 @@ MdhValue __mdh_get_log_level(void) {
 MdhValue __mdh_set_log_level(MdhValue level) {
     if (level.tag == MDH_TAG_INT) {
         __mdh_log_level = (int)level.data;
+    }
+    return __mdh_make_nil();
+}
+
+static char *__mdh_log_filter = NULL;
+static int __mdh_log_format = 0; /* 0=text, 1=json, 2=compact */
+static int __mdh_log_timestamps = 1;
+static int __mdh_log_sink_stderr = 1;
+static int __mdh_log_sink_stdout = 0;
+static int __mdh_log_sink_file = 0;
+static FILE *__mdh_log_file = NULL;
+static MdhValue __mdh_log_callback = { MDH_TAG_NIL, 0 };
+
+typedef struct {
+    MdhNativeObject **items;
+    size_t len;
+    size_t cap;
+} MdhSpanStack;
+
+static __thread MdhSpanStack __mdh_span_stack = { NULL, 0, 0 };
+static uint64_t __mdh_span_next_id = 1;
+
+static uint64_t __mdh_next_span_id(void) {
+    return (uint64_t)__sync_fetch_and_add(&__mdh_span_next_id, 1);
+}
+
+static void __mdh_span_stack_push(MdhNativeObject *span) {
+    if (!__mdh_span_stack.items) {
+        __mdh_span_stack.cap = 8;
+        __mdh_span_stack.items = (MdhNativeObject **)GC_malloc(sizeof(MdhNativeObject *) * __mdh_span_stack.cap);
+    }
+    if (__mdh_span_stack.len >= __mdh_span_stack.cap) {
+        size_t new_cap = __mdh_span_stack.cap * 2;
+        MdhNativeObject **next = (MdhNativeObject **)GC_malloc(sizeof(MdhNativeObject *) * new_cap);
+        memcpy(next, __mdh_span_stack.items, sizeof(MdhNativeObject *) * __mdh_span_stack.len);
+        __mdh_span_stack.items = next;
+        __mdh_span_stack.cap = new_cap;
+    }
+    __mdh_span_stack.items[__mdh_span_stack.len++] = span;
+}
+
+static MdhNativeObject *__mdh_span_stack_top(void) {
+    if (__mdh_span_stack.len == 0) return NULL;
+    return __mdh_span_stack.items[__mdh_span_stack.len - 1];
+}
+
+static MdhNativeObject *__mdh_span_stack_pop(void) {
+    if (__mdh_span_stack.len == 0) return NULL;
+    return __mdh_span_stack.items[--__mdh_span_stack.len];
+}
+
+static int __mdh_log_parse_level_str(const char *s) {
+    if (!s) return 3;
+    if (strcasecmp(s, "wheesht") == 0) return 0;
+    if (strcasecmp(s, "roar") == 0) return 1;
+    if (strcasecmp(s, "holler") == 0) return 2;
+    if (strcasecmp(s, "blether") == 0) return 3;
+    if (strcasecmp(s, "mutter") == 0) return 4;
+    if (strcasecmp(s, "whisper") == 0) return 5;
+    return 3;
+}
+
+static int __mdh_log_parse_level_val(MdhValue level, int *out) {
+    if (level.tag == MDH_TAG_INT) {
+        *out = (int)level.data;
+        return 1;
+    }
+    if (level.tag == MDH_TAG_STRING) {
+        *out = __mdh_log_parse_level_str(__mdh_get_string(level));
+        return 1;
+    }
+    return 0;
+}
+
+static int __mdh_log_enabled_raw(int level, const char *target) {
+    if (!__mdh_log_filter || __mdh_log_filter[0] == '\0') {
+        return level <= __mdh_log_level;
+    }
+
+    int default_level = __mdh_log_level;
+    int effective = default_level;
+    size_t best_len = 0;
+
+    char *spec = strdup(__mdh_log_filter);
+    if (!spec) {
+        return level <= __mdh_log_level;
+    }
+    char *token = strtok(spec, ",");
+    while (token) {
+        while (*token == ' ' || *token == '\t') token++;
+        char *eq = strchr(token, '=');
+        if (eq) {
+            *eq = '\0';
+            const char *tgt = token;
+            const char *lvl = eq + 1;
+            int lvl_val = __mdh_log_parse_level_str(lvl);
+            size_t len = strlen(tgt);
+            if (target && strncmp(target, tgt, len) == 0 && len > best_len) {
+                best_len = len;
+                effective = lvl_val;
+            }
+        } else {
+            default_level = __mdh_log_parse_level_str(token);
+            effective = default_level;
+        }
+        token = strtok(NULL, ",");
+    }
+    free(spec);
+    return level <= effective;
+}
+
+MdhValue __mdh_log_set_filter(MdhValue spec) {
+    if (spec.tag == MDH_TAG_STRING) {
+        const char *s = __mdh_get_string(spec);
+        size_t len = strlen(s);
+        char *buf = (char *)GC_malloc(len + 1);
+        memcpy(buf, s, len);
+        buf[len] = '\0';
+        __mdh_log_filter = buf;
+    }
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_log_get_filter(void) {
+    if (!__mdh_log_filter) {
+        return __mdh_make_string("");
+    }
+    return __mdh_make_string(__mdh_log_filter);
+}
+
+MdhValue __mdh_log_enabled(MdhValue level, MdhValue target) {
+    int lvl = 3;
+    if (!__mdh_log_parse_level_val(level, &lvl)) {
+        return __mdh_make_bool(0);
+    }
+    const char *tgt = "";
+    if (target.tag == MDH_TAG_STRING) {
+        tgt = __mdh_get_string(target);
+    }
+    return __mdh_make_bool(__mdh_log_enabled_raw(lvl, tgt));
+}
+
+MdhValue __mdh_log_set_callback(MdhValue func) {
+    __mdh_log_callback = func;
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_log_get_callback(void) {
+    return __mdh_log_callback;
+}
+
+static const char *__mdh_log_level_name(int level) {
+    switch (level) {
+        case 0: return "WHEESHT";
+        case 1: return "ROAR";
+        case 2: return "HOLLER";
+        case 3: return "BLETHER";
+        case 4: return "MUTTER";
+        case 5: return "WHISPER";
+        default: return "BLETHER";
+    }
+}
+
+static char *__mdh_span_path_string(void) {
+    MdhStrBuf sb;
+    __mdh_sb_init(&sb);
+    for (size_t i = 0; i < __mdh_span_stack.len; i++) {
+        MdhNativeObject *obj = __mdh_span_stack.items[i];
+        if (!obj) continue;
+        MdhValue name_val = __mdh_dict_get(obj->fields, __mdh_make_string("name"));
+        if (name_val.tag == MDH_TAG_STRING) {
+            if (i > 0) {
+                __mdh_sb_append_char(&sb, '>');
+            }
+            __mdh_sb_append(&sb, __mdh_get_string(name_val));
+        }
+    }
+    return sb.buf;
+}
+
+MdhValue __mdh_log_event(
+    MdhValue level,
+    MdhValue msg,
+    MdhValue fields,
+    MdhValue target,
+    MdhValue file,
+    MdhValue line) {
+    int lvl = 3;
+    if (!__mdh_log_parse_level_val(level, &lvl)) {
+        return __mdh_make_nil();
+    }
+    const char *tgt = "";
+    MdhValue fields_val = fields;
+    if (target.tag == MDH_TAG_NIL) {
+        if (fields.tag == MDH_TAG_STRING) {
+            tgt = __mdh_get_string(fields);
+            fields_val = __mdh_make_nil();
+        } else if (fields.tag == MDH_TAG_DICT || fields.tag == MDH_TAG_NIL) {
+            if (file.tag == MDH_TAG_STRING) {
+                tgt = __mdh_get_string(file);
+            }
+        } else {
+            __mdh_type_error("log_event", fields.tag, 0);
+            return __mdh_make_nil();
+        }
+    } else {
+        if (target.tag != MDH_TAG_STRING) {
+            __mdh_type_error("log_event", target.tag, 0);
+            return __mdh_make_nil();
+        }
+        tgt = __mdh_get_string(target);
+        if (fields.tag != MDH_TAG_DICT && fields.tag != MDH_TAG_NIL) {
+            __mdh_type_error("log_event", fields.tag, 0);
+            return __mdh_make_nil();
+        }
+    }
+    if (!__mdh_log_enabled_raw(lvl, tgt)) {
+        return __mdh_make_nil();
+    }
+
+    MdhValue msg_str = __mdh_to_string(msg);
+    const char *msg_c = __mdh_get_string(msg_str);
+    const char *lvl_name = __mdh_log_level_name(lvl);
+    const char *file_c = file.tag == MDH_TAG_STRING ? __mdh_get_string(file) : "";
+    int64_t line_n = line.tag == MDH_TAG_INT ? line.data : 0;
+    char ts_buf[64] = {0};
+
+    if (__mdh_log_timestamps) {
+        struct timespec ts;
+        if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
+            struct tm tm_now;
+            localtime_r(&ts.tv_sec, &tm_now);
+            snprintf(
+                ts_buf,
+                sizeof(ts_buf),
+                "%04d-%02d-%02d %02d:%02d:%02d.%03ld",
+                tm_now.tm_year + 1900,
+                tm_now.tm_mon + 1,
+                tm_now.tm_mday,
+                tm_now.tm_hour,
+                tm_now.tm_min,
+                tm_now.tm_sec,
+                ts.tv_nsec / 1000000);
+        }
+    }
+
+    MdhValue fields_str = __mdh_make_string("");
+    if (fields_val.tag == MDH_TAG_DICT) {
+        fields_str = __mdh_to_string(fields_val);
+    }
+
+    char *span_path = __mdh_span_path_string();
+
+    if (__mdh_log_format == 1) {
+        MdhValue record = __mdh_empty_dict();
+        record = __mdh_dict_set(record, __mdh_make_string("level"), __mdh_make_string(lvl_name));
+        record = __mdh_dict_set(record, __mdh_make_string("message"), msg_str);
+        record = __mdh_dict_set(record, __mdh_make_string("target"), __mdh_make_string(tgt));
+        record = __mdh_dict_set(record, __mdh_make_string("file"), __mdh_make_string(file_c));
+        record = __mdh_dict_set(record, __mdh_make_string("line"), __mdh_make_int(line_n));
+        record = __mdh_dict_set(record, __mdh_make_string("fields"), fields_val);
+        record = __mdh_dict_set(record, __mdh_make_string("span"), __mdh_make_string(span_path));
+        MdhValue json = __mdh_json_stringify(record);
+        const char *json_c = __mdh_get_string(json);
+        if (__mdh_log_sink_stderr) fprintf(stderr, "%s\n", json_c);
+        if (__mdh_log_sink_stdout) printf("%s\n", json_c);
+        if (__mdh_log_sink_file && __mdh_log_file) fprintf(__mdh_log_file, "%s\n", json_c);
+    } else {
+        char buf[1024];
+        if (__mdh_log_format == 2) {
+            snprintf(buf, sizeof(buf), "[%s] %s", lvl_name, msg_c);
+        } else if (__mdh_log_timestamps && ts_buf[0] != '\0') {
+            snprintf(
+                buf,
+                sizeof(buf),
+                "[%s] %s %s %s:%lld | %s",
+                lvl_name,
+                ts_buf,
+                tgt,
+                file_c,
+                (long long)line_n,
+                msg_c);
+        } else {
+            snprintf(
+                buf,
+                sizeof(buf),
+                "[%s] %s %s:%lld | %s",
+                lvl_name,
+                tgt,
+                file_c,
+                (long long)line_n,
+                msg_c);
+        }
+        if (fields_val.tag == MDH_TAG_DICT) {
+            if (strlen(__mdh_get_string(fields_str)) > 0) {
+                strncat(buf, " ", sizeof(buf) - strlen(buf) - 1);
+                strncat(buf, __mdh_get_string(fields_str), sizeof(buf) - strlen(buf) - 1);
+            }
+        }
+        if (span_path && span_path[0] != '\0') {
+            strncat(buf, " span=", sizeof(buf) - strlen(buf) - 1);
+            strncat(buf, span_path, sizeof(buf) - strlen(buf) - 1);
+        }
+        if (__mdh_log_sink_stderr) fprintf(stderr, "%s\n", buf);
+        if (__mdh_log_sink_stdout) printf("%s\n", buf);
+        if (__mdh_log_sink_file && __mdh_log_file) fprintf(__mdh_log_file, "%s\n", buf);
+    }
+
+    if (__mdh_log_callback.tag != MDH_TAG_NIL) {
+        MdhValue record = __mdh_empty_dict();
+        record = __mdh_dict_set(record, __mdh_make_string("level"), __mdh_make_int(lvl));
+        record = __mdh_dict_set(record, __mdh_make_string("message"), msg_str);
+        record = __mdh_dict_set(record, __mdh_make_string("target"), __mdh_make_string(tgt));
+        record = __mdh_dict_set(record, __mdh_make_string("file"), __mdh_make_string(file_c));
+        record = __mdh_dict_set(record, __mdh_make_string("line"), __mdh_make_int(line_n));
+        record = __mdh_dict_set(record, __mdh_make_string("fields"), fields_val);
+        record = __mdh_dict_set(record, __mdh_make_string("span"), __mdh_make_string(span_path));
+        MdhValue args = __mdh_make_list(1);
+        __mdh_list_push(args, record);
+        __mdh_call_with_list(__mdh_log_callback, args);
+    }
+
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_log_span_begin(MdhValue name, MdhValue level, MdhValue fields, MdhValue target) {
+    if (name.tag != MDH_TAG_STRING) {
+        __mdh_type_error("log_span", name.tag, 0);
+        return __mdh_make_nil();
+    }
+    MdhNativeObject *obj = (MdhNativeObject *)GC_malloc(sizeof(MdhNativeObject));
+    obj->kind = MDH_NATIVE_LOG_SPAN;
+    obj->type_name = "log_span";
+    obj->ctor_kind = NULL;
+    obj->fields = __mdh_empty_dict();
+    obj->fields = __mdh_dict_set(obj->fields, __mdh_make_string("name"), name);
+    obj->fields = __mdh_dict_set(obj->fields, __mdh_make_string("target"),
+        target.tag == MDH_TAG_STRING ? target : __mdh_make_string(""));
+    int lvl = 3;
+    __mdh_log_parse_level_val(level, &lvl);
+    obj->fields = __mdh_dict_set(obj->fields, __mdh_make_string("level"), __mdh_make_int(lvl));
+    if (fields.tag == MDH_TAG_DICT) {
+        obj->fields = __mdh_dict_set(obj->fields, __mdh_make_string("fields"), fields);
+    }
+    obj->fields = __mdh_dict_set(obj->fields, __mdh_make_string("__span_id"), __mdh_make_int((int64_t)__mdh_next_span_id()));
+    return __mdh_make_native(obj);
+}
+
+MdhValue __mdh_log_span_enter(MdhValue span) {
+    MdhNativeObject *obj = __mdh_get_native(span);
+    if (!obj || obj->kind != MDH_NATIVE_LOG_SPAN) {
+        __mdh_type_error("log_span_enter", span.tag, 0);
+        return __mdh_make_nil();
+    }
+    __mdh_span_stack_push(obj);
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_log_span_exit(MdhValue span) {
+    MdhNativeObject *obj = __mdh_get_native(span);
+    if (!obj || obj->kind != MDH_NATIVE_LOG_SPAN) {
+        __mdh_type_error("log_span_exit", span.tag, 0);
+        return __mdh_make_nil();
+    }
+    MdhNativeObject *top = __mdh_span_stack_pop();
+    if (top != obj) {
+        __mdh_hurl(__mdh_make_string("log_span_exit() got a mismatched span"));
+    }
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_log_span_current(void) {
+    MdhNativeObject *top = __mdh_span_stack_top();
+    if (!top) return __mdh_make_nil();
+    return __mdh_make_native(top);
+}
+
+MdhValue __mdh_log_span_in(MdhValue span, MdhValue func) {
+    __mdh_log_span_enter(span);
+    MdhValue args = __mdh_make_list(0);
+    MdhValue result = __mdh_call_with_list(func, args);
+    __mdh_log_span_exit(span);
+    return result;
+}
+
+MdhValue __mdh_log_init(MdhValue config) {
+    if (config.tag == MDH_TAG_NIL) {
+        __mdh_log_level = 2;
+        __mdh_log_filter = NULL;
+        __mdh_log_format = 0;
+        __mdh_log_timestamps = 1;
+        __mdh_log_sink_stderr = 1;
+        __mdh_log_sink_stdout = 0;
+        __mdh_log_sink_file = 0;
+        __mdh_log_callback = __mdh_make_nil();
+        return __mdh_make_nil();
+    }
+    if (config.tag != MDH_TAG_DICT) {
+        __mdh_type_error("log_init", config.tag, 0);
+        return __mdh_make_nil();
+    }
+    MdhValue level = __mdh_dict_get(config, __mdh_make_string("level"));
+    if (level.tag != MDH_TAG_NIL) {
+        if (level.tag == MDH_TAG_INT) {
+            __mdh_log_level = (int)level.data;
+        } else if (level.tag == MDH_TAG_STRING) {
+            __mdh_log_level = __mdh_log_parse_level_str(__mdh_get_string(level));
+        }
+    }
+    MdhValue filter = __mdh_dict_get(config, __mdh_make_string("filter"));
+    if (filter.tag == MDH_TAG_STRING) {
+        __mdh_log_set_filter(filter);
+    }
+    MdhValue format = __mdh_dict_get(config, __mdh_make_string("format"));
+    if (format.tag == MDH_TAG_STRING) {
+        const char *fmt = __mdh_get_string(format);
+        if (strcmp(fmt, "json") == 0) __mdh_log_format = 1;
+        else if (strcmp(fmt, "compact") == 0) __mdh_log_format = 2;
+        else __mdh_log_format = 0;
+    }
+    MdhValue timestamps = __mdh_dict_get(config, __mdh_make_string("timestamps"));
+    if (timestamps.tag == MDH_TAG_BOOL) {
+        __mdh_log_timestamps = timestamps.data ? 1 : 0;
+    }
+    MdhValue sinks = __mdh_dict_get(config, __mdh_make_string("sinks"));
+    if (sinks.tag == MDH_TAG_LIST) {
+        __mdh_log_sink_stderr = 0;
+        __mdh_log_sink_stdout = 0;
+        __mdh_log_sink_file = 0;
+        __mdh_log_callback = __mdh_make_nil();
+        MdhList *list = __mdh_get_list(sinks);
+        for (int64_t i = 0; list && i < list->length; i++) {
+            MdhValue spec = list->items[i];
+            if (spec.tag != MDH_TAG_DICT) continue;
+            MdhValue kind = __mdh_dict_get(spec, __mdh_make_string("kind"));
+            if (kind.tag != MDH_TAG_STRING) continue;
+            const char *k = __mdh_get_string(kind);
+            if (strcmp(k, "stderr") == 0) {
+                __mdh_log_sink_stderr = 1;
+            } else if (strcmp(k, "stdout") == 0) {
+                __mdh_log_sink_stdout = 1;
+            } else if (strcmp(k, "file") == 0) {
+                MdhValue path = __mdh_dict_get(spec, __mdh_make_string("path"));
+                if (path.tag == MDH_TAG_STRING) {
+                    const char *p = __mdh_get_string(path);
+                    __mdh_log_file = fopen(p, "a");
+                    if (__mdh_log_file) {
+                        __mdh_log_sink_file = 1;
+                    }
+                }
+            } else if (strcmp(k, "callback") == 0) {
+                MdhValue fn = __mdh_dict_get(spec, __mdh_make_string("fn"));
+                __mdh_log_callback = fn;
+            }
+        }
+        if (!__mdh_log_sink_stderr && !__mdh_log_sink_stdout && !__mdh_log_sink_file) {
+            __mdh_log_sink_stderr = 1;
+        }
     }
     return __mdh_make_nil();
 }

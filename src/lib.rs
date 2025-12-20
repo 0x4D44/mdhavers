@@ -13,6 +13,7 @@ pub mod formatter;
 pub mod graphics;
 pub mod interpreter;
 pub mod lexer;
+pub mod logging;
 pub mod parser;
 pub mod token;
 pub mod tri;

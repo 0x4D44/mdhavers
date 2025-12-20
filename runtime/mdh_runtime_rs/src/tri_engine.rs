@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use bytemuck::{Pod, Zeroable};
@@ -10,9 +11,23 @@ use wgpu::SurfaceError;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopBuilder};
 use winit::platform::pump_events::EventLoopExtPumpEvents;
-#[cfg(wayland_platform)]
+#[cfg(all(
+    unix,
+    not(target_os = "android"),
+    not(target_os = "ios"),
+    not(target_os = "macos"),
+    not(target_family = "wasm"),
+    not(target_os = "redox")
+))]
 use winit::platform::wayland::EventLoopBuilderExtWayland;
-#[cfg(x11_platform)]
+#[cfg(all(
+    unix,
+    not(target_os = "android"),
+    not(target_os = "ios"),
+    not(target_os = "macos"),
+    not(target_family = "wasm"),
+    not(target_os = "redox")
+))]
 use winit::platform::x11::EventLoopBuilderExtX11;
 use winit::window::{Window, WindowBuilder};
 
@@ -29,41 +44,70 @@ where
 
 pub type LoopCallback = Box<dyn FnMut(f64)>;
 
-fn create_event_loop() -> Result<EventLoop<()>, String> {
+static TRI_DEBUG_EMPTY_SCENE_LOGGED: AtomicBool = AtomicBool::new(false);
+static TRI_DEBUG_EMPTY_BATCH_LOGGED: AtomicBool = AtomicBool::new(false);
+static TRI_DEBUG_DRAW_LOGGED: AtomicBool = AtomicBool::new(false);
+
+fn tri_debug_enabled() -> bool {
+    env::var_os("MDH_TRI_DEBUG").is_some()
+}
+
+fn build_event_loop(backend: Option<&str>) -> Result<EventLoop<()>, String> {
     let mut builder = EventLoopBuilder::new();
-    #[cfg(any(x11_platform, wayland_platform))]
+    #[cfg(all(
+        unix,
+        not(target_os = "android"),
+        not(target_os = "ios"),
+        not(target_os = "macos"),
+        not(target_family = "wasm"),
+        not(target_os = "redox")
+    ))]
     {
-        let backend = env::var("MDH_TRI_BACKEND")
-            .or_else(|_| env::var("WINIT_UNIX_BACKEND"))
-            .ok()
-            .map(|val| val.to_ascii_lowercase());
-        match backend.as_deref() {
-            Some("x11") => {
-                #[cfg(x11_platform)]
-                {
-                    builder.with_x11();
-                }
-                #[cfg(not(x11_platform))]
-                {
-                    return Err("Requested X11 backend, but winit/x11 is disabled".to_string());
-                }
-            }
-            Some("wayland") => {
-                #[cfg(wayland_platform)]
-                {
-                    builder.with_wayland();
-                }
-                #[cfg(not(wayland_platform))]
-                {
-                    return Err("Requested Wayland backend, but winit/wayland is disabled".to_string());
-                }
-            }
-            _ => {}
-        }
+        match backend {
+            Some("x11") => builder.with_x11(),
+            Some("wayland") => builder.with_wayland(),
+            _ => &mut builder,
+        };
     }
     builder
         .build()
         .map_err(|e| format!("event loop: {e:?}"))
+}
+
+fn create_event_loop() -> Result<EventLoop<()>, String> {
+    let backend = env::var("MDH_TRI_BACKEND")
+        .or_else(|_| env::var("WINIT_UNIX_BACKEND"))
+        .ok()
+        .map(|val| val.to_ascii_lowercase());
+    let backend_hint = backend.as_deref();
+    match build_event_loop(backend_hint) {
+        Ok(loop_handle) => Ok(loop_handle),
+        Err(err) => {
+            #[cfg(all(
+                unix,
+                not(target_os = "android"),
+                not(target_os = "ios"),
+                not(target_os = "macos"),
+                not(target_family = "wasm"),
+                not(target_os = "redox")
+            ))]
+            {
+                let err_lower = err.to_ascii_lowercase();
+                if backend_hint.is_none()
+                    && err_lower.contains("waylanderror")
+                    && err_lower.contains("nocompositor")
+                {
+                    if tri_debug_enabled() {
+                        eprintln!("tri: wayland init failed, falling back to x11");
+                    }
+                    if let Ok(loop_handle) = build_event_loop(Some("x11")) {
+                        return Ok(loop_handle);
+                    }
+                }
+            }
+            Err(err)
+        }
+    }
 }
 
 pub struct MeshData {
@@ -176,7 +220,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let l = normalize(-ld);
     let diff = max(dot(n, l), 0.0);
     let diffuse = select(0.0, diff, has_light);
-    let mut lighting = uniforms.ambient.rgb + diffuse * uniforms.light_color.rgb;
+    var lighting = uniforms.ambient.rgb + diffuse * uniforms.light_color.rgb;
 
     let point_color = uniforms.point_color.rgb;
     if length(point_color) > 0.0001 {
@@ -419,7 +463,7 @@ impl RendererState {
     fn render(&mut self) -> Result<(), String> {
         let frame = match self.surface.get_current_texture() {
             Ok(frame) => frame,
-            Err(SurfaceError::Lost) => {
+            Err(SurfaceError::Lost | SurfaceError::Outdated) => {
                 let size = self.window.inner_size();
                 self.resize(size.width, size.height);
                 return Ok(());
@@ -427,7 +471,7 @@ impl RendererState {
             Err(SurfaceError::OutOfMemory) => {
                 return Err("Surface out of memory".to_string());
             }
-            Err(_) => return Ok(()),
+            Err(SurfaceError::Timeout) => return Ok(()),
         };
 
         let view = frame
@@ -480,12 +524,15 @@ impl RendererState {
         wireframe: bool,
     ) -> Result<(), String> {
         if items.is_empty() {
+            if tri_debug_enabled() && !TRI_DEBUG_EMPTY_SCENE_LOGGED.swap(true, Ordering::Relaxed) {
+                eprintln!("tri: render_scene with 0 items");
+            }
             return self.render();
         }
 
         let frame = match self.surface.get_current_texture() {
             Ok(frame) => frame,
-            Err(SurfaceError::Lost) => {
+            Err(SurfaceError::Lost | SurfaceError::Outdated) => {
                 let size = self.window.inner_size();
                 self.resize(size.width, size.height);
                 return Ok(());
@@ -493,7 +540,7 @@ impl RendererState {
             Err(SurfaceError::OutOfMemory) => {
                 return Err("Surface out of memory".to_string());
             }
-            Err(_) => return Ok(()),
+            Err(SurfaceError::Timeout) => return Ok(()),
         };
 
         let view = frame
@@ -662,6 +709,26 @@ impl RendererState {
             };
 
             batches.push(DrawBatch { source, uniform });
+        }
+
+        if tri_debug_enabled() && batches.is_empty() {
+            if !TRI_DEBUG_EMPTY_BATCH_LOGGED.swap(true, Ordering::Relaxed) {
+                eprintln!(
+                    "tri: no drawable batches (items={}, wireframe={})",
+                    items.len(),
+                    wireframe
+                );
+            }
+        }
+        if tri_debug_enabled() && !batches.is_empty() {
+            if !TRI_DEBUG_DRAW_LOGGED.swap(true, Ordering::Relaxed) {
+                eprintln!(
+                    "tri: draw batches ready (items={}, batches={}, wireframe={})",
+                    items.len(),
+                    batches.len(),
+                    wireframe
+                );
+            }
         }
 
         let mut encoder = self.device.create_command_encoder(

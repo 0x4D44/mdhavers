@@ -52,6 +52,32 @@ SKIPPED=0
 # Categories to build (excluding lib which contains modules, not executables)
 CATEGORIES=(basics features algorithms games stdlib scottish builtins testing apps)
 
+# Build top-level examples (e.g., examples/hello.braw)
+if [[ -z "$CATEGORY_FILTER" || "$CATEGORY_FILTER" == "root" ]]; then
+    echo -e "\n${CYAN}=== root ===${NC}"
+    mkdir -p "${OUTPUT_DIR}/root"
+
+    for braw_file in "$SCRIPT_DIR"/*.braw; do
+        if [[ ! -f "$braw_file" ]]; then
+            continue
+        fi
+
+        name=$(basename "$braw_file" .braw)
+        output_file="${OUTPUT_DIR}/root/${name}"
+
+        echo -ne "  ${name}... "
+
+        if output=$("$MDHAVERS" build "$braw_file" -o "$output_file" 2>&1); then
+            echo -e "${GREEN}ok${NC}"
+            ((BUILT++))
+        else
+            echo -e "${RED}FAILED${NC}"
+            echo -e "${DIM}    ${output}${NC}" | head -1
+            ((FAILED++))
+        fi
+    done
+fi
+
 for category in "${CATEGORIES[@]}"; do
     # Skip if filtering and doesn't match
     if [[ -n "$CATEGORY_FILTER" && "$category" != "$CATEGORY_FILTER" ]]; then
@@ -101,6 +127,25 @@ if [[ -z "$CATEGORY_FILTER" || "$CATEGORY_FILTER" == "showcases" ]]; then
     echo -e "\n${CYAN}=== showcases ===${NC}"
     mkdir -p "${OUTPUT_DIR}/showcases"
 
+    # Top-level showcase files
+    for braw_file in "$SCRIPT_DIR"/showcases/*.braw; do
+        if [[ ! -f "$braw_file" ]]; then
+            continue
+        fi
+
+        name=$(basename "$braw_file" .braw)
+        output_file="${OUTPUT_DIR}/showcases/${name}"
+        echo -ne "  ${name}... "
+
+        if "$MDHAVERS" build "$braw_file" -o "$output_file" >/dev/null 2>&1; then
+            echo -e "${GREEN}ok${NC}"
+            ((BUILT++))
+        else
+            echo -e "${RED}FAILED${NC}"
+            ((FAILED++))
+        fi
+    done
+
     for demo_dir in "$SCRIPT_DIR"/showcases/*/; do
         if [[ -d "$demo_dir" ]]; then
             demo_name=$(basename "$demo_dir")
@@ -131,7 +176,7 @@ echo ""
 echo -e "Outputs in: ${CYAN}${OUTPUT_DIR}${NC}"
 echo ""
 echo -e "${DIM}Run examples:${NC}"
-echo "  ./outputs/basics/hello"
-echo "  ./outputs/games/hangman"
-echo "  ./outputs/showcases/game_2048"
+echo "  ./outputs/root/hello"
+echo "  ./outputs/basics/spread"
+echo "  ./outputs/showcases/soond_showcase"
 echo ""

@@ -352,6 +352,24 @@ MdhValue __mdh_words(MdhValue str);
 
 MdhValue __mdh_get_log_level(void);
 MdhValue __mdh_set_log_level(MdhValue level);
+MdhValue __mdh_log_event(
+    MdhValue level,
+    MdhValue msg,
+    MdhValue fields,
+    MdhValue target,
+    MdhValue file,
+    MdhValue line);
+MdhValue __mdh_log_enabled(MdhValue level, MdhValue target);
+MdhValue __mdh_log_set_filter(MdhValue spec);
+MdhValue __mdh_log_get_filter(void);
+MdhValue __mdh_log_span_begin(MdhValue name, MdhValue level, MdhValue fields, MdhValue target);
+MdhValue __mdh_log_span_enter(MdhValue span);
+MdhValue __mdh_log_span_exit(MdhValue span);
+MdhValue __mdh_log_span_current(void);
+MdhValue __mdh_log_span_in(MdhValue span, MdhValue func);
+MdhValue __mdh_log_set_callback(MdhValue func);
+MdhValue __mdh_log_get_callback(void);
+MdhValue __mdh_log_init(MdhValue config);
 
 /* ========== Scots Builtins ========== */
 

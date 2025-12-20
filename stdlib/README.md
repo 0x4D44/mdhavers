@@ -229,7 +229,6 @@ logger.havers("Debug message")      # [HAVERS]
 logger.ken_this("Info message")     # [KEN]
 logger.watch_yersel("Warning")      # [WATCH]
 logger.fankle("Error message")      # [FANKLE]
-logger.deid("Fatal error")          # [DEID]
 
 # Structured logging
 ken struct_log = StructuredLogger("api")
