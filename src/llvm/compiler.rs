@@ -200,17 +200,9 @@ impl LLVMCompiler {
             link_args.insert(3, raylib_path.to_str().unwrap());
 
             // Platform-specific raylib deps
+            // Audio-only paths avoid graphics/X11 deps; keep minimal linkage.
             if cfg!(target_os = "linux") {
-                link_args.extend([
-                    "-ldl",
-                    "-lGL",
-                    "-lX11",
-                    "-lXrandr",
-                    "-lXi",
-                    "-lXxf86vm",
-                    "-lXcursor",
-                    "-lXinerama",
-                ]);
+                link_args.push("-ldl");
             } else if cfg!(target_os = "windows") {
                 link_args.extend([
                     "-lwinmm",
