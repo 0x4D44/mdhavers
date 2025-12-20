@@ -30,7 +30,7 @@ pub enum ValueKey {
     },
 }
 
-pub trait NativeObject {
+pub trait NativeObject: fmt::Debug {
     fn type_name(&self) -> &str;
     fn get(&self, prop: &str) -> HaversResult<Value>;
     fn set(&self, prop: &str, value: Value) -> HaversResult<Value>;
@@ -156,7 +156,9 @@ impl Value {
             Value::Class(class) => ValueKey::Class(Rc::as_ptr(class) as usize),
             Value::Instance(inst) => ValueKey::Instance(Rc::as_ptr(inst) as usize),
             Value::Struct(s) => ValueKey::Struct(Rc::as_ptr(s) as usize),
-            Value::NativeObject(obj) => ValueKey::NativeObject(Rc::as_ptr(obj) as usize),
+            Value::NativeObject(obj) => {
+                ValueKey::NativeObject(Rc::as_ptr(obj) as *const () as usize)
+            }
             Value::Range(r) => ValueKey::Range {
                 start: r.start,
                 end: r.end,
@@ -665,6 +667,27 @@ impl Default for Environment {
 mod tests {
     use super::*;
 
+    #[derive(Debug)]
+    struct TestNative;
+
+    impl NativeObject for TestNative {
+        fn type_name(&self) -> &str {
+            "test_native"
+        }
+
+        fn get(&self, _prop: &str) -> HaversResult<Value> {
+            Ok(Value::Nil)
+        }
+
+        fn set(&self, _prop: &str, _value: Value) -> HaversResult<Value> {
+            Ok(Value::Nil)
+        }
+
+        fn call(&self, _method: &str, _args: Vec<Value>) -> HaversResult<Value> {
+            Ok(Value::Nil)
+        }
+    }
+
     // ==================== Value::type_name() Tests ====================
 
     #[test]
@@ -709,6 +732,9 @@ mod tests {
 
         let range = RangeValue::new(0, 10, false);
         assert_eq!(Value::Range(range).type_name(), "range");
+
+        let native = Value::NativeObject(Rc::new(TestNative));
+        assert_eq!(native.type_name(), "native object");
     }
 
     // ==================== Value::is_truthy() Tests ====================

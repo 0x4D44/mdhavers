@@ -15,6 +15,7 @@ pub mod interpreter;
 pub mod lexer;
 pub mod parser;
 pub mod token;
+pub mod tri;
 pub mod value;
 pub mod wasm_compiler;
 

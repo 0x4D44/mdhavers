@@ -32,7 +32,7 @@ use inkwell::IntPredicate;
 
 use crate::ast::{
     BinaryOp, DestructPattern, Expr, FStringPart, Literal, LogicalOp, MatchArm, Pattern, Program,
-    Stmt, UnaryOp,
+    Span, Stmt, UnaryOp,
 };
 use crate::error::HaversError;
 
@@ -101,6 +101,18 @@ struct LibcFunctions<'ctx> {
     to_string: FunctionValue<'ctx>,
     to_int: FunctionValue<'ctx>,
     to_float: FunctionValue<'ctx>,
+    native_get: FunctionValue<'ctx>,
+    native_set: FunctionValue<'ctx>,
+    native_call0: FunctionValue<'ctx>,
+    native_call1: FunctionValue<'ctx>,
+    native_call2: FunctionValue<'ctx>,
+    native_call3: FunctionValue<'ctx>,
+    native_call4: FunctionValue<'ctx>,
+    native_call5: FunctionValue<'ctx>,
+    native_call6: FunctionValue<'ctx>,
+    native_call7: FunctionValue<'ctx>,
+    native_call8: FunctionValue<'ctx>,
+    tri_module: FunctionValue<'ctx>,
     bytes_new: FunctionValue<'ctx>,
     bytes_from_string: FunctionValue<'ctx>,
     bytes_len: FunctionValue<'ctx>,
@@ -444,6 +456,14 @@ pub enum VarType {
     Dict,
 }
 
+#[derive(Debug, Default)]
+struct ImportBindings {
+    variables: HashSet<String>,
+    globals: HashSet<String>,
+    functions: HashSet<String>,
+    classes: HashSet<String>,
+}
+
 /// Character class for string classification functions
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CharClass {
@@ -543,6 +563,10 @@ pub struct CodeGen<'ctx> {
 
     /// Imported modules (to avoid duplicate imports)
     imported_modules: HashSet<PathBuf>,
+    /// Import alias names mapped to exported symbol names
+    import_alias_exports: HashMap<String, HashSet<String>>,
+    /// Import alias bindings mapped to their backing storage
+    import_alias_bindings: HashMap<String, PointerValue<'ctx>>,
 
     /// Format strings for printf
     fmt_int: inkwell::values::GlobalValue<'ctx>,
@@ -616,6 +640,8 @@ impl<'ctx> CodeGen<'ctx> {
             current_class: None,
             source_path: None,
             imported_modules: HashSet::new(),
+            import_alias_exports: HashMap::new(),
+            import_alias_bindings: HashMap::new(),
             fmt_int,
             fmt_float,
             fmt_string,
@@ -783,6 +809,180 @@ impl<'ctx> CodeGen<'ctx> {
 
         // __mdh_to_float(MdhValue) -> MdhValue (float)
         let to_float = module.add_function("__mdh_to_float", type_of_type, Some(Linkage::External));
+
+        // __mdh_native_get(MdhValue, MdhValue) -> MdhValue
+        let native_get_type = types
+            .value_type
+            .fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let native_get =
+            module.add_function("__mdh_native_get", native_get_type, Some(Linkage::External));
+
+        // __mdh_native_set(MdhValue, MdhValue, MdhValue) -> MdhValue
+        let native_set_type = types.value_type.fn_type(
+            &[
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+            ],
+            false,
+        );
+        let native_set =
+            module.add_function("__mdh_native_set", native_set_type, Some(Linkage::External));
+
+        // __mdh_native_callN(MdhValue obj, MdhValue method, ...) -> MdhValue
+        let native_call0_type = types
+            .value_type
+            .fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let native_call0 = module.add_function(
+            "__mdh_native_call0",
+            native_call0_type,
+            Some(Linkage::External),
+        );
+
+        let native_call1_type = types.value_type.fn_type(
+            &[
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+            ],
+            false,
+        );
+        let native_call1 = module.add_function(
+            "__mdh_native_call1",
+            native_call1_type,
+            Some(Linkage::External),
+        );
+
+        let native_call2_type = types.value_type.fn_type(
+            &[
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+            ],
+            false,
+        );
+        let native_call2 = module.add_function(
+            "__mdh_native_call2",
+            native_call2_type,
+            Some(Linkage::External),
+        );
+
+        let native_call3_type = types.value_type.fn_type(
+            &[
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+            ],
+            false,
+        );
+        let native_call3 = module.add_function(
+            "__mdh_native_call3",
+            native_call3_type,
+            Some(Linkage::External),
+        );
+
+        let native_call4_type = types.value_type.fn_type(
+            &[
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+            ],
+            false,
+        );
+        let native_call4 = module.add_function(
+            "__mdh_native_call4",
+            native_call4_type,
+            Some(Linkage::External),
+        );
+
+        let native_call5_type = types.value_type.fn_type(
+            &[
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+            ],
+            false,
+        );
+        let native_call5 = module.add_function(
+            "__mdh_native_call5",
+            native_call5_type,
+            Some(Linkage::External),
+        );
+
+        let native_call6_type = types.value_type.fn_type(
+            &[
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+            ],
+            false,
+        );
+        let native_call6 = module.add_function(
+            "__mdh_native_call6",
+            native_call6_type,
+            Some(Linkage::External),
+        );
+
+        let native_call7_type = types.value_type.fn_type(
+            &[
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+            ],
+            false,
+        );
+        let native_call7 = module.add_function(
+            "__mdh_native_call7",
+            native_call7_type,
+            Some(Linkage::External),
+        );
+
+        let native_call8_type = types.value_type.fn_type(
+            &[
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+            ],
+            false,
+        );
+        let native_call8 = module.add_function(
+            "__mdh_native_call8",
+            native_call8_type,
+            Some(Linkage::External),
+        );
+
+        // __mdh_tri_module() -> MdhValue
+        let tri_module_type = types.value_type.fn_type(&[], false);
+        let tri_module =
+            module.add_function("__mdh_tri_module", tri_module_type, Some(Linkage::External));
 
         // __mdh_bytes_new(MdhValue size) -> MdhValue
         let bytes_new =
@@ -2272,6 +2472,18 @@ impl<'ctx> CodeGen<'ctx> {
             to_string,
             to_int,
             to_float,
+            native_get,
+            native_set,
+            native_call0,
+            native_call1,
+            native_call2,
+            native_call3,
+            native_call4,
+            native_call5,
+            native_call6,
+            native_call7,
+            native_call8,
+            tri_module,
             bytes_new,
             bytes_from_string,
             bytes_len,
@@ -10093,7 +10305,42 @@ impl<'ctx> CodeGen<'ctx> {
 
             Stmt::Struct { name, fields, .. } => self.compile_struct_decl(name, fields),
 
-            Stmt::Import { path, .. } => self.compile_import(path),
+            Stmt::Import { path, alias, .. } => {
+                let is_tri = path == "tri" || path == "tri.braw";
+                if is_tri && alias.is_none() {
+                    return Err(HaversError::CompileError(
+                        "tri import requires an alias (fetch \"tri\" tae name)".to_string(),
+                    ));
+                }
+                if is_tri {
+                    let tri_val = self
+                        .builder
+                        .build_call(self.libc.tri_module, &[], "tri_module")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("tri_module returned void")?;
+                    if let Some(alias_name) = alias {
+                        self.store_import_alias(alias_name, tri_val)?;
+                    }
+                    return Ok(());
+                }
+                let before = self.capture_import_bindings();
+                self.compile_import(path)?;
+                if let Some(alias_name) = alias {
+                    let exports_all = self.collect_import_exports(path)?;
+                    let mut exports_public = exports_all.clone();
+                    if is_tri {
+                        exports_public.retain(|name| !name.starts_with('_'));
+                    }
+                    self.import_alias_exports
+                        .insert(alias_name.clone(), exports_public.iter().cloned().collect());
+                    let module_val = self.build_module_dict(&exports_public)?;
+                    self.store_import_alias(alias_name, module_val)?;
+                    self.hide_imported_exports(&exports_all, &before);
+                }
+                Ok(())
+            }
 
             Stmt::Assert {
                 condition, message, ..
@@ -10372,6 +10619,10 @@ impl<'ctx> CodeGen<'ctx> {
             }
 
             Expr::Assign { name, value, .. } => {
+                if self.import_alias_exports.contains_key(name) {
+                    self.import_alias_exports.remove(name);
+                    self.import_alias_bindings.remove(name);
+                }
                 // Boxed variables store a 1-element list cell. Assignment updates cell[0].
                 if self.boxed_vars.contains(name) {
                     let new_val = self.compile_expr(value)?;
@@ -11343,6 +11594,32 @@ impl<'ctx> CodeGen<'ctx> {
             object, property, ..
         } = callee
         {
+            if let Expr::Variable { name, .. } = object.as_ref() {
+                if let Some(exports) = self.import_alias_exports.get(name) {
+                    let current_ptr = self
+                        .variables
+                        .get(name)
+                        .copied()
+                        .or_else(|| self.globals.get(name).copied());
+                    let bound_ptr = self.import_alias_bindings.get(name).copied();
+                    if current_ptr.is_some()
+                        && current_ptr == bound_ptr
+                        && exports.contains(property)
+                    {
+                        if let Some(func) = self.module.get_function(property) {
+                            return self.compile_user_function_call(property, func, args);
+                        }
+                    }
+                }
+            }
+            if self.infer_expr_type(object) == VarType::Dict {
+                let callable = self.compile_get(object, property)?;
+                let mut call_args = Vec::new();
+                for arg in args {
+                    call_args.push(self.compile_expr(arg)?);
+                }
+                return self.call_function_value(callable, &call_args);
+            }
             return self.compile_method_call(object, property, args);
         }
 
@@ -11354,112 +11631,7 @@ impl<'ctx> CodeGen<'ctx> {
 
             // Check for user-defined functions FIRST to allow shadowing built-ins
             if let Some(&func) = self.functions.get(name) {
-                let mut compiled_args: Vec<BasicMetadataValueEnum> = Vec::new();
-
-                // Check if any argument is a spread expression
-                let has_spread = args.iter().any(|a| matches!(a, Expr::Spread { .. }));
-
-                if has_spread {
-                    // Handle spread arguments - need to unpack list elements at runtime
-                    let expected_params = func.count_params() as usize;
-                    let capture_count = self.function_captures.get(name).map_or(0, |c| c.len());
-                    let user_param_count = expected_params.saturating_sub(capture_count);
-
-                    // Count non-spread args to know how many elements to extract from spread
-                    let non_spread_count = args
-                        .iter()
-                        .filter(|a| !matches!(a, Expr::Spread { .. }))
-                        .count();
-                    let spread_elements_needed = user_param_count.saturating_sub(non_spread_count);
-                    let mut spread_elements_used = 0;
-
-                    for arg in args {
-                        if let Expr::Spread { expr, .. } = arg {
-                            // Compile the spread expression to get the list
-                            let list_val = self.compile_expr(expr)?;
-                            let list_struct = list_val.into_struct_value();
-                            let list_data = self
-                                .builder
-                                .build_extract_value(list_struct, 1, "spread_data")
-                                .unwrap()
-                                .into_int_value();
-
-                            // Extract elements from the list
-                            let elements_to_extract = spread_elements_needed - spread_elements_used;
-                            for i in 0..elements_to_extract {
-                                let idx = self.types.i64_type.const_int(i as u64, false);
-                                let elem = self.compile_list_index(list_data, idx)?;
-                                compiled_args.push(elem.into());
-                            }
-                            spread_elements_used += elements_to_extract;
-                        } else {
-                            compiled_args.push(self.compile_expr(arg)?.into());
-                        }
-                    }
-                } else {
-                    // No spread - use simple path
-                    for arg in args {
-                        compiled_args.push(self.compile_expr(arg)?.into());
-                    }
-                }
-
-                // Add captured variables if this function has any (captures-first convention)
-                if let Some(captures) = self.function_captures.get(name).cloned() {
-                    let mut cap_args: Vec<BasicMetadataValueEnum> = Vec::new();
-                    for capture_name in captures {
-                        if capture_name != "masel" {
-                            self.ensure_boxed_variable(&capture_name)?;
-                        }
-                        // Look up the captured variable in current scope and pass its cell.
-                        if let Some(&alloca) = self.variables.get(&capture_name) {
-                            let val = self
-                                .builder
-                                .build_load(
-                                    self.types.value_type,
-                                    alloca,
-                                    &format!("{}_cap", capture_name),
-                                )
-                                .unwrap();
-                            cap_args.push(val.into());
-                        } else {
-                            return Err(HaversError::CompileError(format!(
-                                "Captured variable '{}' not found in scope when calling '{}'",
-                                capture_name, name
-                            )));
-                        }
-                    }
-                    cap_args.extend(compiled_args);
-                    compiled_args = cap_args;
-                }
-
-                // Fill in default parameter values if fewer args provided than expected
-                let expected_param_count = func.count_params() as usize;
-                if compiled_args.len() < expected_param_count {
-                    if let Some(defaults) = self.function_defaults.get(name).cloned() {
-                        for i in compiled_args.len()..expected_param_count {
-                            if let Some(Some(ref default_expr)) = defaults.get(i) {
-                                compiled_args.push(self.compile_expr(default_expr)?.into());
-                            } else {
-                                // No default for this parameter - fill with nil
-                                compiled_args.push(self.make_nil().into());
-                            }
-                        }
-                    } else {
-                        // No defaults defined - fill remaining with nil
-                        for _ in compiled_args.len()..expected_param_count {
-                            compiled_args.push(self.make_nil().into());
-                        }
-                    }
-                }
-
-                let call_site = self
-                    .builder
-                    .build_call(func, &compiled_args, "call")
-                    .map_err(Self::llvm_compile_error)?;
-
-                call_site.set_tail_call(true);
-
-                return Ok(call_site.try_as_basic_value().left().unwrap());
+                return self.compile_user_function_call(name, func, args);
             }
 
             match name.as_str() {
@@ -27539,6 +27711,8 @@ impl<'ctx> CodeGen<'ctx> {
         let simple_block = self.context.append_basic_block(function, "simple_call");
         let check_closure_block = self.context.append_basic_block(function, "check_closure");
         let closure_block = self.context.append_basic_block(function, "closure_call");
+        let check_native_block = self.context.append_basic_block(function, "check_native");
+        let native_block = self.context.append_basic_block(function, "native_call");
         let error_block = self.context.append_basic_block(function, "call_type_error");
         let merge_block = self.context.append_basic_block(function, "call_merge");
 
@@ -27588,8 +27762,34 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap();
         self.builder
-            .build_conditional_branch(is_closure, closure_block, error_block)
+            .build_conditional_branch(is_closure, closure_block, check_native_block)
             .unwrap();
+
+        // Check for native object tag before erroring
+        self.builder.position_at_end(check_native_block);
+        let is_native = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                tag,
+                self.types
+                    .i8_type
+                    .const_int(ValueTag::NativeObject.as_u8() as u64, false),
+                "is_native",
+            )
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_native, native_block, error_block)
+            .unwrap();
+
+        // Native call path (direct call on native object)
+        self.builder.position_at_end(native_block);
+        let empty_method = self.compile_string_literal("")?;
+        let native_result = self.build_native_call(func_val, empty_method, args)?;
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let native_end = self.builder.get_insert_block().unwrap();
 
         // Error path for non-callable values
         self.builder.position_at_end(error_block);
@@ -27895,6 +28095,7 @@ impl<'ctx> CodeGen<'ctx> {
             (&result0, case0_end),
             (&result1, case1_end),
             (&result2, case2_end),
+            (&native_result, native_end),
         ]);
 
         Ok(phi.as_basic_value())
@@ -30307,6 +30508,128 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Compile import statement - inline imported module's declarations
+    fn collect_import_exports(&mut self, path: &str) -> Result<Vec<String>, HaversError> {
+        let import_path = self.resolve_import_path(path)?;
+        let source = std::fs::read_to_string(&import_path).map_err(Self::llvm_compile_error)?;
+        let program = crate::parser::parse(&source)?;
+        Ok(Self::collect_module_exports(&program))
+    }
+
+    fn collect_module_exports(program: &Program) -> Vec<String> {
+        let mut exports = Vec::new();
+        for stmt in &program.statements {
+            match stmt {
+                Stmt::Function { name, .. } | Stmt::VarDecl { name, .. } => {
+                    exports.push(name.clone());
+                }
+                _ => {}
+            }
+        }
+        exports
+    }
+
+    fn build_module_dict(
+        &mut self,
+        exports: &[String],
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let mut dict = self
+            .builder
+            .build_call(self.libc.empty_dict, &[], "module_dict")
+            .map_err(Self::llvm_compile_error)?
+            .try_as_basic_value()
+            .left()
+            .compile_ok_or("empty_dict returned void")?;
+
+        for name in exports {
+            let key = self.compile_string_literal(name)?;
+            let var_expr = Expr::Variable {
+                name: name.clone(),
+                span: Span::new(0, 0),
+            };
+            let value = self.compile_expr(&var_expr)?;
+            dict = self
+                .builder
+                .build_call(
+                    self.libc.dict_set,
+                    &[dict.into(), key.into(), value.into()],
+                    "module_dict_set",
+                )
+                .map_err(Self::llvm_compile_error)?
+                .try_as_basic_value()
+                .left()
+                .compile_ok_or("dict_set returned void")?;
+        }
+
+        Ok(dict)
+    }
+
+    fn store_import_alias(
+        &mut self,
+        name: &str,
+        value: BasicValueEnum<'ctx>,
+    ) -> Result<(), HaversError> {
+        self.var_types.insert(name.to_string(), VarType::Dict);
+
+        let is_top_level = !self.in_user_function
+            && self.current_class.is_none()
+            && self.loop_stack.is_empty()
+            && !self.variables.contains_key(name);
+
+        let alloca = if let Some(&existing) = self.variables.get(name) {
+            existing
+        } else if let Some(&existing) = self.globals.get(name) {
+            existing
+        } else if is_top_level {
+            let global = self.module.add_global(self.types.value_type, None, name);
+            global.set_initializer(&self.types.value_type.const_zero());
+            let global_ptr = global.as_pointer_value();
+            self.globals.insert(name.to_string(), global_ptr);
+            self.variables.insert(name.to_string(), global_ptr);
+            global_ptr
+        } else {
+            let a = self.create_entry_block_alloca(name);
+            self.variables.insert(name.to_string(), a);
+            a
+        };
+
+        self.import_alias_bindings.insert(name.to_string(), alloca);
+
+        self.builder
+            .build_store(alloca, value)
+            .map_err(Self::llvm_compile_error)?;
+
+        Ok(())
+    }
+
+    fn capture_import_bindings(&self) -> ImportBindings {
+        ImportBindings {
+            variables: self.variables.keys().cloned().collect(),
+            globals: self.globals.keys().cloned().collect(),
+            functions: self.functions.keys().cloned().collect(),
+            classes: self.classes.keys().cloned().collect(),
+        }
+    }
+
+    fn hide_imported_exports(&mut self, exports: &[String], before: &ImportBindings) {
+        for name in exports {
+            if !before.functions.contains(name) {
+                self.functions.remove(name);
+            }
+            if !before.variables.contains(name) {
+                self.variables.remove(name);
+            }
+            if !before.globals.contains(name) {
+                self.globals.remove(name);
+            }
+            if !before.classes.contains(name) {
+                self.classes.remove(name);
+                self.class_methods.remove(name);
+            }
+            self.var_types.remove(name);
+            self.variable_class_types.remove(name);
+        }
+    }
+
     fn compile_import(&mut self, path: &str) -> Result<(), HaversError> {
         // Resolve the import path relative to the source file
         let import_path = self.resolve_import_path(path)?;
@@ -30398,6 +30721,18 @@ impl<'ctx> CodeGen<'ctx> {
             format!("{}.braw", path)
         };
 
+        if self.source_path.is_none() {
+            let cwd_path = PathBuf::from(&path_with_ext);
+            if !cwd_path.exists() {
+                let examples_path = PathBuf::from("examples").join(&path_with_ext);
+                if examples_path.exists() {
+                    return Ok(examples_path.canonicalize().unwrap_or(examples_path));
+                }
+            }
+        }
+
+        let lib_stripped = Path::new(&path_with_ext).strip_prefix("lib").ok();
+
         // Try relative to source file first
         if let Some(ref source_path) = self.source_path {
             if let Some(parent) = source_path.parent() {
@@ -30405,12 +30740,24 @@ impl<'ctx> CodeGen<'ctx> {
                 if relative_path.exists() {
                     return Ok(relative_path.canonicalize().unwrap_or(relative_path));
                 }
+                if let Some(stripped) = lib_stripped {
+                    let stdlib_path = parent.join("stdlib").join(stripped);
+                    if stdlib_path.exists() {
+                        return Ok(stdlib_path.canonicalize().unwrap_or(stdlib_path));
+                    }
+                }
 
                 // Try parent's parent (e.g., for stdlib/foo.braw importing lib/bar.braw)
                 if let Some(grandparent) = parent.parent() {
                     let grandparent_path = grandparent.join(&path_with_ext);
                     if grandparent_path.exists() {
                         return Ok(grandparent_path.canonicalize().unwrap_or(grandparent_path));
+                    }
+                    if let Some(stripped) = lib_stripped {
+                        let stdlib_path = grandparent.join("stdlib").join(stripped);
+                        if stdlib_path.exists() {
+                            return Ok(stdlib_path.canonicalize().unwrap_or(stdlib_path));
+                        }
                     }
                 }
 
@@ -30420,6 +30767,16 @@ impl<'ctx> CodeGen<'ctx> {
                     if candidate.exists() {
                         return Ok(candidate.canonicalize().unwrap_or(candidate));
                     }
+                    let stdlib_candidate = ancestor.join("stdlib").join(&path_with_ext);
+                    if stdlib_candidate.exists() {
+                        return Ok(stdlib_candidate.canonicalize().unwrap_or(stdlib_candidate));
+                    }
+                    if let Some(stripped) = lib_stripped {
+                        let stdlib_path = ancestor.join("stdlib").join(stripped);
+                        if stdlib_path.exists() {
+                            return Ok(stdlib_path.canonicalize().unwrap_or(stdlib_path));
+                        }
+                    }
                 }
             }
         }
@@ -30428,6 +30785,16 @@ impl<'ctx> CodeGen<'ctx> {
         let cwd_path = PathBuf::from(&path_with_ext);
         if cwd_path.exists() {
             return Ok(cwd_path.canonicalize().unwrap_or(cwd_path));
+        }
+        let cwd_stdlib_path = PathBuf::from("stdlib").join(&path_with_ext);
+        if cwd_stdlib_path.exists() {
+            return Ok(cwd_stdlib_path.canonicalize().unwrap_or(cwd_stdlib_path));
+        }
+        if let Some(stripped) = lib_stripped {
+            let cwd_stripped = PathBuf::from("stdlib").join(stripped);
+            if cwd_stripped.exists() {
+                return Ok(cwd_stripped.canonicalize().unwrap_or(cwd_stripped));
+            }
         }
 
         // Try examples directory (common pattern)
@@ -30443,6 +30810,16 @@ impl<'ctx> CodeGen<'ctx> {
                 if exe_path.exists() {
                     return Ok(exe_path.canonicalize().unwrap_or(exe_path));
                 }
+                let exe_stdlib_path = parent.join("stdlib").join(&path_with_ext);
+                if exe_stdlib_path.exists() {
+                    return Ok(exe_stdlib_path.canonicalize().unwrap_or(exe_stdlib_path));
+                }
+                if let Some(stripped) = lib_stripped {
+                    let exe_stripped = parent.join("stdlib").join(stripped);
+                    if exe_stripped.exists() {
+                        return Ok(exe_stripped.canonicalize().unwrap_or(exe_stripped));
+                    }
+                }
             }
         }
 
@@ -30450,6 +30827,120 @@ impl<'ctx> CodeGen<'ctx> {
             "Cannot find module to import: {}",
             path
         )))
+    }
+
+    fn compile_user_function_call(
+        &mut self,
+        func_name: &str,
+        func: FunctionValue<'ctx>,
+        args: &[Expr],
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let mut compiled_args: Vec<BasicMetadataValueEnum> = Vec::new();
+
+        // Check if any argument is a spread expression
+        let has_spread = args.iter().any(|a| matches!(a, Expr::Spread { .. }));
+
+        if has_spread {
+            // Handle spread arguments - need to unpack list elements at runtime
+            let expected_params = func.count_params() as usize;
+            let capture_count = self.function_captures.get(func_name).map_or(0, |c| c.len());
+            let user_param_count = expected_params.saturating_sub(capture_count);
+
+            // Count non-spread args to know how many elements to extract from spread
+            let non_spread_count = args
+                .iter()
+                .filter(|a| !matches!(a, Expr::Spread { .. }))
+                .count();
+            let spread_elements_needed = user_param_count.saturating_sub(non_spread_count);
+            let mut spread_elements_used = 0;
+
+            for arg in args {
+                if let Expr::Spread { expr, .. } = arg {
+                    // Compile the spread expression to get the list
+                    let list_val = self.compile_expr(expr)?;
+                    let list_struct = list_val.into_struct_value();
+                    let list_data = self
+                        .builder
+                        .build_extract_value(list_struct, 1, "spread_data")
+                        .unwrap()
+                        .into_int_value();
+
+                    // Extract elements from the list
+                    let elements_to_extract = spread_elements_needed - spread_elements_used;
+                    for i in 0..elements_to_extract {
+                        let idx = self.types.i64_type.const_int(i as u64, false);
+                        let elem = self.compile_list_index(list_data, idx)?;
+                        compiled_args.push(elem.into());
+                    }
+                    spread_elements_used += elements_to_extract;
+                } else {
+                    compiled_args.push(self.compile_expr(arg)?.into());
+                }
+            }
+        } else {
+            // No spread - use simple path
+            for arg in args {
+                compiled_args.push(self.compile_expr(arg)?.into());
+            }
+        }
+
+        // Add captured variables if this function has any (captures-first convention)
+        if let Some(captures) = self.function_captures.get(func_name).cloned() {
+            let mut cap_args: Vec<BasicMetadataValueEnum> = Vec::new();
+            for capture_name in captures {
+                if capture_name != "masel" {
+                    self.ensure_boxed_variable(&capture_name)?;
+                }
+                // Look up the captured variable in current scope and pass its cell.
+                if let Some(&alloca) = self.variables.get(&capture_name) {
+                    let val = self
+                        .builder
+                        .build_load(
+                            self.types.value_type,
+                            alloca,
+                            &format!("{}_cap", capture_name),
+                        )
+                        .unwrap();
+                    cap_args.push(val.into());
+                } else {
+                    return Err(HaversError::CompileError(format!(
+                        "Captured variable '{}' not found in scope when calling '{}'",
+                        capture_name, func_name
+                    )));
+                }
+            }
+            cap_args.extend(compiled_args);
+            compiled_args = cap_args;
+        }
+
+        // Fill in default parameter values if fewer args provided than expected
+        let expected_param_count = func.count_params() as usize;
+        if compiled_args.len() < expected_param_count {
+            if let Some(defaults) = self.function_defaults.get(func_name).cloned() {
+                for i in compiled_args.len()..expected_param_count {
+                    if let Some(Some(ref default_expr)) = defaults.get(i) {
+                        compiled_args.push(self.compile_expr(default_expr)?.into());
+                    } else {
+                        // No default for this parameter - fill with nil
+                        compiled_args.push(self.make_nil().into());
+                    }
+                }
+            } else {
+                // No defaults defined - fill remaining with nil
+                for _ in compiled_args.len()..expected_param_count {
+                    compiled_args.push(self.make_nil().into());
+                }
+            }
+        }
+
+        let call_site = self
+            .builder
+            .build_call(func, &compiled_args, "call")
+            .map_err(Self::llvm_compile_error)?;
+
+        call_site.set_tail_call(true);
+
+        Ok(call_site.try_as_basic_value().left().unwrap())
     }
 
     /// Compile assert statement: mak_siccar condition, "message"
@@ -31231,13 +31722,17 @@ impl<'ctx> CodeGen<'ctx> {
             .const_int(ValueTag::Instance.as_u8() as u64, false);
 
         let dict_block = self.context.append_basic_block(function, "get_dict");
+        let check_native_block = self
+            .context
+            .append_basic_block(function, "get_check_native");
+        let native_block = self.context.append_basic_block(function, "get_native");
         let check_inst_block = self.context.append_basic_block(function, "get_check_inst");
         let inst_block = self.context.append_basic_block(function, "get_inst");
         let type_error_block = self.context.append_basic_block(function, "get_type_error");
         let merge_block = self.context.append_basic_block(function, "get_merge");
 
         self.builder
-            .build_conditional_branch(is_dict, dict_block, check_inst_block)
+            .build_conditional_branch(is_dict, dict_block, check_native_block)
             .unwrap();
 
         // Dict: dict_get(obj, "property")
@@ -31258,6 +31753,39 @@ impl<'ctx> CodeGen<'ctx> {
             .build_unconditional_branch(merge_block)
             .unwrap();
         let dict_end = self.builder.get_insert_block().unwrap();
+
+        // Check for native object tag
+        self.builder.position_at_end(check_native_block);
+        let native_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::NativeObject.as_u8() as u64, false);
+        let is_native = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, native_tag, "get_is_native")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_native, native_block, check_inst_block)
+            .unwrap();
+
+        // Native object: native_get(obj, "property")
+        self.builder.position_at_end(native_block);
+        let key = self.compile_string_literal(property)?;
+        let native_res = self
+            .builder
+            .build_call(
+                self.libc.native_get,
+                &[obj_val.into(), key.into()],
+                "native_get",
+            )
+            .map_err(Self::llvm_compile_error)?
+            .try_as_basic_value()
+            .left()
+            .compile_ok_or("native_get returned void")?;
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let native_end = self.builder.get_insert_block().unwrap();
 
         // Check for instance tag
         self.builder.position_at_end(check_inst_block);
@@ -31304,6 +31832,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         phi.add_incoming(&[
             (&dict_res, dict_end),
+            (&native_res, native_end),
             (&inst_res, inst_end),
             (&err_val, err_end),
         ]);
@@ -31336,13 +31865,17 @@ impl<'ctx> CodeGen<'ctx> {
             .const_int(ValueTag::Instance.as_u8() as u64, false);
 
         let dict_block = self.context.append_basic_block(function, "set_dict");
+        let check_native_block = self
+            .context
+            .append_basic_block(function, "set_check_native");
+        let native_block = self.context.append_basic_block(function, "set_native");
         let check_inst_block = self.context.append_basic_block(function, "set_check_inst");
         let inst_block = self.context.append_basic_block(function, "set_inst");
         let type_error_block = self.context.append_basic_block(function, "set_type_error");
         let merge_block = self.context.append_basic_block(function, "set_merge");
 
         self.builder
-            .build_conditional_branch(is_dict, dict_block, check_inst_block)
+            .build_conditional_branch(is_dict, dict_block, check_native_block)
             .unwrap();
 
         // Dict: dict_set(obj, "property", value) and update variable if needed.
@@ -31372,6 +31905,39 @@ impl<'ctx> CodeGen<'ctx> {
             .build_unconditional_branch(merge_block)
             .unwrap();
         let dict_end = self.builder.get_insert_block().unwrap();
+
+        // Check for native object tag
+        self.builder.position_at_end(check_native_block);
+        let native_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::NativeObject.as_u8() as u64, false);
+        let is_native = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, native_tag, "set_is_native")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_native, native_block, check_inst_block)
+            .unwrap();
+
+        // Native object: native_set(obj, "property", value)
+        self.builder.position_at_end(native_block);
+        let key = self.compile_string_literal(property)?;
+        let native_res = self
+            .builder
+            .build_call(
+                self.libc.native_set,
+                &[obj_val.into(), key.into(), val.into()],
+                "native_set",
+            )
+            .map_err(Self::llvm_compile_error)?
+            .try_as_basic_value()
+            .left()
+            .compile_ok_or("native_set returned void")?;
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let native_end = self.builder.get_insert_block().unwrap();
 
         // Check for instance tag
         self.builder.position_at_end(check_inst_block);
@@ -31418,6 +31984,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         phi.add_incoming(&[
             (&dict_res, dict_end),
+            (&native_res, native_end),
             (&inst_res, inst_end),
             (&err_val, err_end),
         ]);
@@ -32409,15 +32976,112 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Compile a method call: obj.method(args)
+    fn build_native_call(
+        &mut self,
+        obj_val: BasicValueEnum<'ctx>,
+        method_val: BasicValueEnum<'ctx>,
+        args: &[BasicValueEnum<'ctx>],
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let mut call_args: Vec<BasicMetadataValueEnum> = vec![obj_val.into(), method_val.into()];
+        for arg in args {
+            call_args.push((*arg).into());
+        }
+        let func = match args.len() {
+            0 => self.libc.native_call0,
+            1 => self.libc.native_call1,
+            2 => self.libc.native_call2,
+            3 => self.libc.native_call3,
+            4 => self.libc.native_call4,
+            5 => self.libc.native_call5,
+            6 => self.libc.native_call6,
+            7 => self.libc.native_call7,
+            8 => self.libc.native_call8,
+            _ => {
+                return Err(HaversError::CompileError(
+                    "Native method call supports up to 8 arguments".to_string(),
+                ))
+            }
+        };
+
+        let result = self
+            .builder
+            .build_call(func, &call_args, "native_call")
+            .map_err(Self::llvm_compile_error)?
+            .try_as_basic_value()
+            .left()
+            .compile_ok_or("native_call returned void")?;
+        Ok(result)
+    }
+
+    /// Compile a method call: obj.method(args)
     fn compile_method_call(
         &mut self,
         object: &Expr,
         method_name: &str,
         args: &[Expr],
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        // Compile the object (instance)
+        let function = self.current_function.unwrap();
         let instance = self.compile_expr(object)?;
 
+        let mut arg_vals = Vec::with_capacity(args.len());
+        for arg in args {
+            arg_vals.push(self.compile_expr(arg)?);
+        }
+
+        let tag = self.extract_tag(instance)?;
+        let native_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::NativeObject.as_u8() as u64, false);
+        let is_native = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, native_tag, "method_is_native")
+            .unwrap();
+
+        let native_block = self.context.append_basic_block(function, "method_native");
+        let non_native_block = self
+            .context
+            .append_basic_block(function, "method_non_native");
+        let merge_block = self.context.append_basic_block(function, "method_merge");
+
+        self.builder
+            .build_conditional_branch(is_native, native_block, non_native_block)
+            .unwrap();
+
+        // Native object path
+        self.builder.position_at_end(native_block);
+        let method_val = self.compile_string_literal(method_name)?;
+        let native_res = self.build_native_call(instance, method_val, &arg_vals)?;
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let native_end = self.builder.get_insert_block().unwrap();
+
+        // Non-native path (classes/instances)
+        self.builder.position_at_end(non_native_block);
+        let non_native_res =
+            self.compile_non_native_method_call(instance, object, method_name, &arg_vals)?;
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let non_native_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "method_result")
+            .unwrap();
+        phi.add_incoming(&[(&native_res, native_end), (&non_native_res, non_native_end)]);
+        Ok(phi.as_basic_value())
+    }
+
+    fn compile_non_native_method_call(
+        &mut self,
+        instance: BasicValueEnum<'ctx>,
+        object: &Expr,
+        method_name: &str,
+        arg_vals: &[BasicValueEnum<'ctx>],
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         // Try to find the method - track both the function and the func_name for defaults
         let mut found_method: Option<(FunctionValue<'ctx>, String)> = None;
 
@@ -32442,8 +33106,8 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         // Fallback: Check in class_methods table (prefer methods with matching arg count)
-        // Method has masel + args, so expected_params = args.len() + 1
-        let expected_param_count = args.len() + 1;
+        // Method has masel + args, so expected_params = arg_vals.len() + 1
+        let expected_param_count = arg_vals.len() + 1;
         if found_method.is_none() {
             let mut best_match: Option<(FunctionValue<'ctx>, String)> = None;
             for (class_name, methods) in self.class_methods.clone().iter() {
@@ -32496,11 +33160,8 @@ impl<'ctx> CodeGen<'ctx> {
             let field_val = self.compile_instance_get_field(instance, method_name)?;
 
             // Build call arguments (without instance since this is a field call, not method call)
-            let mut field_call_args: Vec<BasicMetadataValueEnum> = vec![];
-            for arg in args {
-                let arg_val = self.compile_expr(arg)?;
-                field_call_args.push(arg_val.into());
-            }
+            let field_call_args: Vec<BasicMetadataValueEnum> =
+                arg_vals.iter().map(|v| (*v).into()).collect();
 
             // Call the field value as a function using the runtime's call mechanism
             return self.call_callable_value(field_val, &field_call_args);
@@ -32518,9 +33179,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Build call arguments: instance first, then regular args
         let mut call_args: Vec<BasicMetadataValueEnum> = vec![instance.into()];
-        for arg in args {
-            let arg_val = self.compile_expr(arg)?;
-            call_args.push(arg_val.into());
+        for arg in arg_vals {
+            call_args.push((*arg).into());
         }
 
         // Fill in default parameter values if fewer args provided than expected

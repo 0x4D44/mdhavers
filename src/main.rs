@@ -17,8 +17,11 @@ mod interpreter;
 mod lexer;
 mod parser;
 mod token;
+mod tri;
 mod value;
 mod wasm_compiler;
+#[cfg(feature = "wasm_runner")]
+mod wasm_runner;
 
 #[cfg(feature = "llvm")]
 mod llvm;
@@ -151,6 +154,13 @@ enum Commands {
         output: Option<PathBuf>,
     },
 
+    /// Run a .wat or .wasm file using the built-in host runner
+    #[cfg(feature = "wasm_runner")]
+    WasmRun {
+        /// The .wat or .wasm file to run
+        file: PathBuf,
+    },
+
     /// Build a native executable using LLVM
     Build {
         /// The .braw file to compile
@@ -186,6 +196,8 @@ fn main() {
         Some(Commands::Ast { file }) => show_ast(&file),
         Some(Commands::Trace { file, verbose }) => trace_file(&file, verbose),
         Some(Commands::Wasm { file, output }) => compile_wasm(&file, output),
+        #[cfg(feature = "wasm_runner")]
+        Some(Commands::WasmRun { file }) => wasm_runner::run_wasm_file(&file),
         Some(Commands::Build {
             file,
             output,

@@ -27,6 +27,7 @@ typedef enum {
     MDH_TAG_SET = 11,
     MDH_TAG_CLOSURE = 12,
     MDH_TAG_BYTES = 13,
+    MDH_TAG_NATIVE = 14,
 } MdhTag;
 
 /*
@@ -105,6 +106,22 @@ uint8_t __mdh_get_tag(MdhValue a);
 void __mdh_type_error(const char *op, uint8_t got1, uint8_t got2);
 MdhValue __mdh_type_of(MdhValue a);
 void __mdh_key_not_found(MdhValue key);
+
+/* ========== Native Object Operations ========== */
+
+MdhValue __mdh_native_get(MdhValue obj, MdhValue key);
+MdhValue __mdh_native_set(MdhValue obj, MdhValue key, MdhValue value);
+MdhValue __mdh_native_call0(MdhValue obj, MdhValue method);
+MdhValue __mdh_native_call1(MdhValue obj, MdhValue method, MdhValue a0);
+MdhValue __mdh_native_call2(MdhValue obj, MdhValue method, MdhValue a0, MdhValue a1);
+MdhValue __mdh_native_call3(MdhValue obj, MdhValue method, MdhValue a0, MdhValue a1, MdhValue a2);
+MdhValue __mdh_native_call4(MdhValue obj, MdhValue method, MdhValue a0, MdhValue a1, MdhValue a2, MdhValue a3);
+MdhValue __mdh_native_call5(MdhValue obj, MdhValue method, MdhValue a0, MdhValue a1, MdhValue a2, MdhValue a3, MdhValue a4);
+MdhValue __mdh_native_call6(MdhValue obj, MdhValue method, MdhValue a0, MdhValue a1, MdhValue a2, MdhValue a3, MdhValue a4, MdhValue a5);
+MdhValue __mdh_native_call7(MdhValue obj, MdhValue method, MdhValue a0, MdhValue a1, MdhValue a2, MdhValue a3, MdhValue a4, MdhValue a5, MdhValue a6);
+MdhValue __mdh_native_call8(MdhValue obj, MdhValue method, MdhValue a0, MdhValue a1, MdhValue a2, MdhValue a3, MdhValue a4, MdhValue a5, MdhValue a6, MdhValue a7);
+
+MdhValue __mdh_tri_module(void);
 
 /* ========== I/O ========== */
 

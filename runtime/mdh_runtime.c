@@ -98,6 +98,32 @@ typedef struct {
 
 static const char *__mdh_type_name(MdhValue v);
 
+/* ========== Native Object Support ========== */
+
+typedef enum {
+    MDH_NATIVE_TRI_MODULE = 1,
+    MDH_NATIVE_TRI_OBJECT = 2,
+    MDH_NATIVE_TRI_CTOR = 3,
+} MdhNativeKind;
+
+typedef struct {
+    MdhNativeKind kind;
+    const char *type_name;
+    const char *ctor_kind;
+    MdhValue fields;
+} MdhNativeObject;
+
+static MdhValue __mdh_make_native(MdhNativeObject *obj);
+static MdhNativeObject *__mdh_get_native(MdhValue v);
+static MdhValue __mdh_dict_clone(MdhValue dict);
+static MdhValue __mdh_tri_make_vec3(const char *kind, double x, double y, double z);
+static MdhNativeObject *__mdh_tri_object_new(const char *kind);
+static MdhValue __mdh_tri_make_object(const char *kind, int argc, MdhValue *args);
+static MdhValue __mdh_tri_make_ctor(const char *kind);
+static const char *__mdh_tri_constructor_kind(const char *name);
+static int __mdh_tri_has_transform(const char *kind);
+static MdhValue __mdh_native_call_internal(MdhValue obj, MdhValue method, int argc, MdhValue *args);
+
 static void __mdh_sb_init(MdhStrBuf *sb) {
     sb->cap = 128;
     sb->len = 0;
@@ -450,11 +476,12 @@ uint8_t __mdh_get_tag(MdhValue a) {
 void __mdh_type_error(const char *op, uint8_t got1, uint8_t got2) {
     static const char *type_names[] = {
         "naething", "bool", "integer", "float", "string",
-        "list", "dict", "function", "class", "instance", "range", "creel", "function", "bytes"
+        "list", "dict", "function", "class", "instance", "range", "creel", "function", "bytes",
+        "native object"
     };
 
     char buf[256];
-    if (got1 < 14 && got2 > 0 && got2 < 14) {
+    if (got1 < 15 && got2 > 0 && got2 < 15) {
         snprintf(
             buf,
             sizeof(buf),
@@ -496,6 +523,528 @@ void __mdh_key_not_found(MdhValue key) {
         k
     );
     __mdh_hurl(__mdh_make_string(buf));
+}
+
+/* ========== Native Object Operations ========== */
+
+static MdhValue __mdh_make_native(MdhNativeObject *obj) {
+    MdhValue v;
+    v.tag = MDH_TAG_NATIVE;
+    v.data = (int64_t)(intptr_t)obj;
+    return v;
+}
+
+static MdhNativeObject *__mdh_get_native(MdhValue v) {
+    if (v.tag != MDH_TAG_NATIVE) return NULL;
+    return (MdhNativeObject *)(intptr_t)v.data;
+}
+
+static MdhValue __mdh_dict_clone(MdhValue dict) {
+    if (dict.tag != MDH_TAG_DICT) {
+        return __mdh_empty_dict();
+    }
+    int64_t *ptr = (int64_t *)(intptr_t)dict.data;
+    int64_t count = *ptr;
+    MdhValue *entries = (MdhValue *)(ptr + 1);
+    MdhValue out = __mdh_empty_dict();
+    for (int64_t i = 0; i < count; i++) {
+        MdhValue k = entries[i * 2];
+        MdhValue v = entries[i * 2 + 1];
+        out = __mdh_dict_set(out, k, v);
+    }
+    return out;
+}
+
+static const char *__mdh_tri_constructor_kind(const char *name) {
+    if (!name) return NULL;
+    if (strcmp(name, "Sicht") == 0) return "Sicht";
+    if (strcmp(name, "Thing3D") == 0) return "Thing3D";
+    if (strcmp(name, "Clump") == 0) return "Clump";
+    if (strcmp(name, "Mesch") == 0) return "Mesch";
+    if (strcmp(name, "Kamera") == 0) return "Kamera";
+    if (strcmp(name, "PerspectivKamera") == 0) return "PerspectivKamera";
+    if (strcmp(name, "OrthograffikKamera") == 0) return "OrthograffikKamera";
+    if (strcmp(name, "Geometrie") == 0) return "Geometrie";
+    if (strcmp(name, "BoxGeometrie") == 0) return "BoxGeometrie";
+    if (strcmp(name, "SpherGeometrie") == 0) return "SpherGeometrie";
+    if (strcmp(name, "Maiterial") == 0) return "Maiterial";
+    if (strcmp(name, "MeshBasicMaiterial") == 0) return "MeshBasicMaiterial";
+    if (strcmp(name, "MeshStandardMaiterial") == 0) return "MeshStandardMaiterial";
+    if (strcmp(name, "Licht") == 0) return "Licht";
+    if (strcmp(name, "AmbiantLicht") == 0) return "AmbiantLicht";
+    if (strcmp(name, "DireksionalLicht") == 0) return "DireksionalLicht";
+    if (strcmp(name, "PyntLicht") == 0) return "PyntLicht";
+    if (strcmp(name, "Textur") == 0) return "Textur";
+    if (strcmp(name, "Renderar") == 0) return "Renderar";
+    if (strcmp(name, "Colour") == 0) return "Colour";
+    return NULL;
+}
+
+static int __mdh_tri_has_transform(const char *kind) {
+    return kind && (
+        strcmp(kind, "Sicht") == 0 ||
+        strcmp(kind, "Thing3D") == 0 ||
+        strcmp(kind, "Clump") == 0 ||
+        strcmp(kind, "Mesch") == 0 ||
+        strcmp(kind, "Kamera") == 0 ||
+        strcmp(kind, "PerspectivKamera") == 0 ||
+        strcmp(kind, "OrthograffikKamera") == 0 ||
+        strcmp(kind, "Licht") == 0 ||
+        strcmp(kind, "AmbiantLicht") == 0 ||
+        strcmp(kind, "DireksionalLicht") == 0 ||
+        strcmp(kind, "PyntLicht") == 0
+    );
+}
+
+static MdhNativeObject *__mdh_tri_object_new(const char *kind) {
+    MdhNativeObject *obj = (MdhNativeObject *)GC_malloc(sizeof(MdhNativeObject));
+    obj->kind = MDH_NATIVE_TRI_OBJECT;
+    obj->type_name = kind;
+    obj->ctor_kind = NULL;
+    obj->fields = __mdh_empty_dict();
+
+    obj->fields = __mdh_dict_set(
+        obj->fields,
+        __mdh_make_string("type"),
+        __mdh_make_string(kind ? kind : "")
+    );
+
+    if (__mdh_tri_has_transform(kind)) {
+        obj->fields = __mdh_dict_set(
+            obj->fields,
+            __mdh_make_string("position"),
+            __mdh_tri_make_vec3("Vec3", 0.0, 0.0, 0.0)
+        );
+        obj->fields = __mdh_dict_set(
+            obj->fields,
+            __mdh_make_string("rotation"),
+            __mdh_tri_make_vec3("Euler", 0.0, 0.0, 0.0)
+        );
+        obj->fields = __mdh_dict_set(
+            obj->fields,
+            __mdh_make_string("scale"),
+            __mdh_tri_make_vec3("Vec3", 1.0, 1.0, 1.0)
+        );
+        obj->fields = __mdh_dict_set(
+            obj->fields,
+            __mdh_make_string("children"),
+            __mdh_make_list(0)
+        );
+        obj->fields = __mdh_dict_set(
+            obj->fields,
+            __mdh_make_string("parent"),
+            __mdh_make_nil()
+        );
+    }
+
+    return obj;
+}
+
+static MdhValue __mdh_tri_make_vec3(const char *kind, double x, double y, double z) {
+    MdhNativeObject *obj = __mdh_tri_object_new(kind);
+    obj->fields = __mdh_dict_set(obj->fields, __mdh_make_string("x"), __mdh_make_float(x));
+    obj->fields = __mdh_dict_set(obj->fields, __mdh_make_string("y"), __mdh_make_float(y));
+    obj->fields = __mdh_dict_set(obj->fields, __mdh_make_string("z"), __mdh_make_float(z));
+    return __mdh_make_native(obj);
+}
+
+static void __mdh_tri_set_arg(
+    MdhNativeObject *obj,
+    const char *name,
+    int index,
+    int argc,
+    MdhValue *args,
+    MdhValue default_value
+) {
+    if (!obj || !name || index < 0) return;
+    MdhValue value = default_value;
+    if (args && index < argc) {
+        value = args[index];
+    }
+    obj->fields = __mdh_dict_set(obj->fields, __mdh_make_string(name), value);
+}
+
+static void __mdh_tri_apply_constructor_args(
+    MdhNativeObject *obj,
+    const char *kind,
+    int argc,
+    MdhValue *args
+) {
+    if (!obj || !kind) return;
+    if (strcmp(kind, "Mesch") == 0) {
+        __mdh_tri_set_arg(obj, "geometry", 0, argc, args, __mdh_make_nil());
+        __mdh_tri_set_arg(obj, "material", 1, argc, args, __mdh_make_nil());
+    } else if (strcmp(kind, "PerspectivKamera") == 0) {
+        __mdh_tri_set_arg(obj, "fov", 0, argc, args, __mdh_make_int(50));
+        __mdh_tri_set_arg(obj, "aspect", 1, argc, args, __mdh_make_int(1));
+        __mdh_tri_set_arg(obj, "near", 2, argc, args, __mdh_make_float(0.1));
+        __mdh_tri_set_arg(obj, "far", 3, argc, args, __mdh_make_int(2000));
+    } else if (strcmp(kind, "OrthograffikKamera") == 0) {
+        __mdh_tri_set_arg(obj, "left", 0, argc, args, __mdh_make_int(-1));
+        __mdh_tri_set_arg(obj, "right", 1, argc, args, __mdh_make_int(1));
+        __mdh_tri_set_arg(obj, "top", 2, argc, args, __mdh_make_int(1));
+        __mdh_tri_set_arg(obj, "bottom", 3, argc, args, __mdh_make_int(-1));
+        __mdh_tri_set_arg(obj, "near", 4, argc, args, __mdh_make_float(0.1));
+        __mdh_tri_set_arg(obj, "far", 5, argc, args, __mdh_make_int(2000));
+    } else if (strcmp(kind, "BoxGeometrie") == 0) {
+        __mdh_tri_set_arg(obj, "width", 0, argc, args, __mdh_make_int(1));
+        __mdh_tri_set_arg(obj, "height", 1, argc, args, __mdh_make_int(1));
+        __mdh_tri_set_arg(obj, "depth", 2, argc, args, __mdh_make_int(1));
+    } else if (strcmp(kind, "SpherGeometrie") == 0) {
+        __mdh_tri_set_arg(obj, "radius", 0, argc, args, __mdh_make_int(1));
+        __mdh_tri_set_arg(obj, "widthSegments", 1, argc, args, __mdh_make_int(8));
+        __mdh_tri_set_arg(obj, "heightSegments", 2, argc, args, __mdh_make_int(6));
+    } else if (
+        strcmp(kind, "Maiterial") == 0 ||
+        strcmp(kind, "MeshBasicMaiterial") == 0 ||
+        strcmp(kind, "MeshStandardMaiterial") == 0 ||
+        strcmp(kind, "Renderar") == 0
+    ) {
+        __mdh_tri_set_arg(obj, "opts", 0, argc, args, __mdh_make_nil());
+    } else if (
+        strcmp(kind, "Licht") == 0 ||
+        strcmp(kind, "AmbiantLicht") == 0 ||
+        strcmp(kind, "DireksionalLicht") == 0
+    ) {
+        __mdh_tri_set_arg(obj, "color", 0, argc, args, __mdh_make_nil());
+        __mdh_tri_set_arg(obj, "intensity", 1, argc, args, __mdh_make_int(1));
+    } else if (strcmp(kind, "PyntLicht") == 0) {
+        __mdh_tri_set_arg(obj, "color", 0, argc, args, __mdh_make_nil());
+        __mdh_tri_set_arg(obj, "intensity", 1, argc, args, __mdh_make_int(1));
+        __mdh_tri_set_arg(obj, "distance", 2, argc, args, __mdh_make_int(0));
+        __mdh_tri_set_arg(obj, "decay", 3, argc, args, __mdh_make_int(2));
+    } else if (strcmp(kind, "Colour") == 0) {
+        __mdh_tri_set_arg(obj, "value", 0, argc, args, __mdh_make_nil());
+    }
+}
+
+static void __mdh_tri_add_children(MdhNativeObject *obj, int argc, MdhValue *args) {
+    if (!obj || argc <= 0) return;
+    MdhValue key = __mdh_make_string("children");
+    MdhValue children = __mdh_dict_get_default(obj->fields, key, __mdh_make_nil());
+    if (children.tag != MDH_TAG_LIST) {
+        children = __mdh_make_list(0);
+        obj->fields = __mdh_dict_set(obj->fields, key, children);
+    }
+    for (int i = 0; i < argc; i++) {
+        __mdh_list_push(children, args[i]);
+    }
+}
+
+static void __mdh_tri_remove_children(MdhNativeObject *obj, int argc, MdhValue *args) {
+    if (!obj || argc <= 0) return;
+    MdhValue key = __mdh_make_string("children");
+    MdhValue children = __mdh_dict_get_default(obj->fields, key, __mdh_make_nil());
+    if (children.tag != MDH_TAG_LIST) return;
+    MdhList *list = __mdh_get_list(children);
+    if (!list) return;
+
+    int64_t write = 0;
+    for (int64_t i = 0; i < list->length; i++) {
+        MdhValue item = list->items[i];
+        bool remove = false;
+        for (int j = 0; j < argc; j++) {
+            if (__mdh_eq(item, args[j])) {
+                remove = true;
+                break;
+            }
+        }
+        if (!remove) {
+            list->items[write++] = item;
+        }
+    }
+    list->length = write;
+}
+
+static MdhValue __mdh_tri_clone_object(MdhNativeObject *obj) {
+    if (!obj) return __mdh_make_nil();
+    MdhNativeObject *clone = (MdhNativeObject *)GC_malloc(sizeof(MdhNativeObject));
+    clone->kind = MDH_NATIVE_TRI_OBJECT;
+    clone->type_name = obj->type_name;
+    clone->ctor_kind = NULL;
+    clone->fields = __mdh_dict_clone(obj->fields);
+    return __mdh_make_native(clone);
+}
+
+static MdhValue __mdh_tri_make_object(const char *kind, int argc, MdhValue *args) {
+    MdhNativeObject *obj = __mdh_tri_object_new(kind);
+    __mdh_tri_apply_constructor_args(obj, kind, argc, args);
+    return __mdh_make_native(obj);
+}
+
+static MdhValue __mdh_tri_make_ctor(const char *kind) {
+    MdhNativeObject *obj = (MdhNativeObject *)GC_malloc(sizeof(MdhNativeObject));
+    obj->kind = MDH_NATIVE_TRI_CTOR;
+    obj->type_name = "native function";
+    obj->ctor_kind = kind;
+    obj->fields = __mdh_empty_dict();
+    return __mdh_make_native(obj);
+}
+
+MdhValue __mdh_native_get(MdhValue obj, MdhValue key) {
+    MdhNativeObject *native = __mdh_get_native(obj);
+    if (!native) {
+        __mdh_type_error("get", obj.tag, 0);
+        return __mdh_make_nil();
+    }
+
+    MdhValue key_str = key;
+    if (key_str.tag != MDH_TAG_STRING) {
+        key_str = __mdh_to_string(key_str);
+    }
+    const char *prop = (key_str.tag == MDH_TAG_STRING) ? __mdh_get_string(key_str) : "";
+
+    if (native->kind == MDH_NATIVE_TRI_MODULE) {
+        const double pi = 3.141592653589793;
+        if (strcmp(prop, "DEG_TO_RAD") == 0) {
+            return __mdh_make_float(pi / 180.0);
+        }
+        if (strcmp(prop, "RAD_TO_DEG") == 0) {
+            return __mdh_make_float(180.0 / pi);
+        }
+        const char *ctor = __mdh_tri_constructor_kind(prop);
+        if (ctor) {
+            return __mdh_tri_make_ctor(ctor);
+        }
+        __mdh_key_not_found(key_str);
+        return __mdh_make_nil();
+    }
+
+    if (native->kind == MDH_NATIVE_TRI_OBJECT) {
+        return __mdh_dict_get(native->fields, key_str);
+    }
+
+    __mdh_type_error("get", obj.tag, 0);
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_native_set(MdhValue obj, MdhValue key, MdhValue value) {
+    MdhNativeObject *native = __mdh_get_native(obj);
+    if (!native) {
+        __mdh_type_error("set", obj.tag, 0);
+        return __mdh_make_nil();
+    }
+
+    MdhValue key_str = key;
+    if (key_str.tag != MDH_TAG_STRING) {
+        key_str = __mdh_to_string(key_str);
+    }
+    const char *prop = (key_str.tag == MDH_TAG_STRING) ? __mdh_get_string(key_str) : "";
+
+    if (native->kind == MDH_NATIVE_TRI_OBJECT) {
+        native->fields = __mdh_dict_set(native->fields, key_str, value);
+        return value;
+    }
+
+    const char *target = "native object";
+    if (native->kind == MDH_NATIVE_TRI_MODULE) {
+        target = "tri module";
+    } else if (native->kind == MDH_NATIVE_TRI_CTOR) {
+        target = "tri constructor";
+    }
+    char buf[256];
+    snprintf(
+        buf,
+        sizeof(buf),
+        "Cannae set '%s' on %s",
+        prop ? prop : "",
+        target
+    );
+    __mdh_hurl(__mdh_make_string(buf));
+    return __mdh_make_nil();
+}
+
+static const char *__mdh_native_method_name(MdhValue method) {
+    if (method.tag == MDH_TAG_STRING) {
+        return __mdh_get_string(method);
+    }
+    if (method.tag == MDH_TAG_NIL) {
+        return "";
+    }
+    MdhValue m = __mdh_to_string(method);
+    if (m.tag == MDH_TAG_STRING) {
+        return __mdh_get_string(m);
+    }
+    return "";
+}
+
+static MdhValue __mdh_native_call_internal(MdhValue obj, MdhValue method, int argc, MdhValue *args) {
+    MdhNativeObject *native = __mdh_get_native(obj);
+    if (!native) {
+        __mdh_type_error("call", obj.tag, 0);
+        return __mdh_make_nil();
+    }
+
+    const char *name = __mdh_native_method_name(method);
+
+    if (native->kind == MDH_NATIVE_TRI_MODULE) {
+        if (!name || name[0] == '\0') {
+            __mdh_type_error("call", obj.tag, 0);
+            return __mdh_make_nil();
+        }
+        const char *ctor = __mdh_tri_constructor_kind(name);
+        if (ctor) {
+            return __mdh_tri_make_object(ctor, argc, args);
+        }
+        __mdh_key_not_found(method);
+        return __mdh_make_nil();
+    }
+
+    if (native->kind == MDH_NATIVE_TRI_CTOR) {
+        if (!name || name[0] == '\0' || (native->ctor_kind && strcmp(name, native->ctor_kind) == 0)) {
+            return __mdh_tri_make_object(native->ctor_kind, argc, args);
+        }
+        __mdh_type_error("call", obj.tag, 0);
+        return __mdh_make_nil();
+    }
+
+    if (native->kind == MDH_NATIVE_TRI_OBJECT) {
+        if (!name || name[0] == '\0') {
+            __mdh_type_error("call", obj.tag, 0);
+            return __mdh_make_nil();
+        }
+        if (strcmp(name, "cloan") == 0 || strcmp(name, "clone") == 0) {
+            return __mdh_tri_clone_object(native);
+        }
+        if (strcmp(name, "adde") == 0 || strcmp(name, "add") == 0) {
+            __mdh_tri_add_children(native, argc, args);
+            return __mdh_make_nil();
+        }
+        if (strcmp(name, "remuiv") == 0 || strcmp(name, "remove") == 0) {
+            __mdh_tri_remove_children(native, argc, args);
+            return __mdh_make_nil();
+        }
+        if (strcmp(name, "dyspos") == 0 || strcmp(name, "dispose") == 0) {
+            return __mdh_make_nil();
+        }
+        if (strcmp(name, "luik_at") == 0 || strcmp(name, "lookAt") == 0) {
+            if (argc > 0) {
+                native->fields = __mdh_dict_set(
+                    native->fields,
+                    __mdh_make_string("lookAtTarget"),
+                    args[0]
+                );
+            }
+            return __mdh_make_nil();
+        }
+        if (strcmp(name, "set_sise") == 0 || strcmp(name, "setSize") == 0) {
+            if (argc > 0) {
+                native->fields = __mdh_dict_set(
+                    native->fields,
+                    __mdh_make_string("width"),
+                    args[0]
+                );
+            }
+            if (argc > 1) {
+                native->fields = __mdh_dict_set(
+                    native->fields,
+                    __mdh_make_string("height"),
+                    args[1]
+                );
+            }
+            return __mdh_make_nil();
+        }
+        if (strcmp(name, "set_pixel_ratio") == 0 || strcmp(name, "setPixelRatio") == 0) {
+            if (argc > 0) {
+                native->fields = __mdh_dict_set(
+                    native->fields,
+                    __mdh_make_string("pixelRatio"),
+                    args[0]
+                );
+            }
+            return __mdh_make_nil();
+        }
+        if (strcmp(name, "render") == 0) {
+            if (argc > 0) {
+                native->fields = __mdh_dict_set(
+                    native->fields,
+                    __mdh_make_string("scene"),
+                    args[0]
+                );
+            }
+            if (argc > 1) {
+                native->fields = __mdh_dict_set(
+                    native->fields,
+                    __mdh_make_string("camera"),
+                    args[1]
+                );
+            }
+            return __mdh_make_nil();
+        }
+        if (strcmp(name, "loop") == 0) {
+            if (argc > 0) {
+                native->fields = __mdh_dict_set(
+                    native->fields,
+                    __mdh_make_string("loopFn"),
+                    args[0]
+                );
+            }
+            return __mdh_make_nil();
+        }
+        return __mdh_make_nil();
+    }
+
+    __mdh_type_error("call", obj.tag, 0);
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_native_call0(MdhValue obj, MdhValue method) {
+    return __mdh_native_call_internal(obj, method, 0, NULL);
+}
+
+MdhValue __mdh_native_call1(MdhValue obj, MdhValue method, MdhValue a0) {
+    MdhValue args[1] = { a0 };
+    return __mdh_native_call_internal(obj, method, 1, args);
+}
+
+MdhValue __mdh_native_call2(MdhValue obj, MdhValue method, MdhValue a0, MdhValue a1) {
+    MdhValue args[2] = { a0, a1 };
+    return __mdh_native_call_internal(obj, method, 2, args);
+}
+
+MdhValue __mdh_native_call3(MdhValue obj, MdhValue method, MdhValue a0, MdhValue a1, MdhValue a2) {
+    MdhValue args[3] = { a0, a1, a2 };
+    return __mdh_native_call_internal(obj, method, 3, args);
+}
+
+MdhValue __mdh_native_call4(MdhValue obj, MdhValue method, MdhValue a0, MdhValue a1, MdhValue a2, MdhValue a3) {
+    MdhValue args[4] = { a0, a1, a2, a3 };
+    return __mdh_native_call_internal(obj, method, 4, args);
+}
+
+MdhValue __mdh_native_call5(MdhValue obj, MdhValue method, MdhValue a0, MdhValue a1, MdhValue a2, MdhValue a3, MdhValue a4) {
+    MdhValue args[5] = { a0, a1, a2, a3, a4 };
+    return __mdh_native_call_internal(obj, method, 5, args);
+}
+
+MdhValue __mdh_native_call6(MdhValue obj, MdhValue method, MdhValue a0, MdhValue a1, MdhValue a2, MdhValue a3, MdhValue a4, MdhValue a5) {
+    MdhValue args[6] = { a0, a1, a2, a3, a4, a5 };
+    return __mdh_native_call_internal(obj, method, 6, args);
+}
+
+MdhValue __mdh_native_call7(MdhValue obj, MdhValue method, MdhValue a0, MdhValue a1, MdhValue a2, MdhValue a3, MdhValue a4, MdhValue a5, MdhValue a6) {
+    MdhValue args[7] = { a0, a1, a2, a3, a4, a5, a6 };
+    return __mdh_native_call_internal(obj, method, 7, args);
+}
+
+MdhValue __mdh_native_call8(MdhValue obj, MdhValue method, MdhValue a0, MdhValue a1, MdhValue a2, MdhValue a3, MdhValue a4, MdhValue a5, MdhValue a6, MdhValue a7) {
+    MdhValue args[8] = { a0, a1, a2, a3, a4, a5, a6, a7 };
+    return __mdh_native_call_internal(obj, method, 8, args);
+}
+
+MdhValue __mdh_tri_module(void) {
+    static int initialized = 0;
+    static MdhValue module;
+    if (!initialized) {
+        MdhNativeObject *obj = (MdhNativeObject *)GC_malloc(sizeof(MdhNativeObject));
+        obj->kind = MDH_NATIVE_TRI_MODULE;
+        obj->type_name = "tri.module";
+        obj->ctor_kind = NULL;
+        obj->fields = __mdh_empty_dict();
+        module = __mdh_make_native(obj);
+        initialized = 1;
+    }
+    return module;
 }
 
 /* ========== I/O ========== */
@@ -899,6 +1448,25 @@ static void __mdh_value_to_string_sb(MdhStrBuf *out, MdhValue v) {
                 __mdh_value_to_string_sb(out, val);
             }
             __mdh_sb_append_char(out, '}');
+            return;
+        }
+        case MDH_TAG_NATIVE: {
+            MdhNativeObject *native = __mdh_get_native(v);
+            if (!native) {
+                __mdh_sb_append(out, "<native>");
+                return;
+            }
+            if (native->kind == MDH_NATIVE_TRI_CTOR) {
+                const char *ctor = native->ctor_kind ? native->ctor_kind : "function";
+                char buf[128];
+                snprintf(buf, sizeof(buf), "<native dae tri.%s>", ctor);
+                __mdh_sb_append(out, buf);
+                return;
+            }
+            const char *name = native->type_name ? native->type_name : "native";
+            char buf[128];
+            snprintf(buf, sizeof(buf), "<native %s>", name);
+            __mdh_sb_append(out, buf);
             return;
         }
         default:
@@ -4758,7 +5326,16 @@ MdhValue __mdh_is_dict(MdhValue val) {
 }
 
 MdhValue __mdh_is_function(MdhValue val) {
-    return __mdh_make_bool(val.tag == MDH_TAG_FUNCTION || val.tag == MDH_TAG_CLOSURE);
+    if (val.tag == MDH_TAG_FUNCTION || val.tag == MDH_TAG_CLOSURE) {
+        return __mdh_make_bool(true);
+    }
+    if (val.tag == MDH_TAG_NATIVE) {
+        MdhNativeObject *native = __mdh_get_native(val);
+        if (native && native->kind == MDH_NATIVE_TRI_CTOR) {
+            return __mdh_make_bool(true);
+        }
+    }
+    return __mdh_make_bool(false);
 }
 
 // String prefix/suffix checking functions
@@ -6251,7 +6828,14 @@ MdhValue __mdh_is_a(MdhValue value, MdhValue type_name) {
     } else if (strcmp(t, "dict") == 0) {
         matches = value.tag == MDH_TAG_DICT;
     } else if (strcmp(t, "function") == 0 || strcmp(t, "dae") == 0) {
-        matches = value.tag == MDH_TAG_FUNCTION || value.tag == MDH_TAG_CLOSURE;
+        if (value.tag == MDH_TAG_FUNCTION || value.tag == MDH_TAG_CLOSURE) {
+            matches = true;
+        } else if (value.tag == MDH_TAG_NATIVE) {
+            MdhNativeObject *native = __mdh_get_native(value);
+            matches = native && native->kind == MDH_NATIVE_TRI_CTOR;
+        } else {
+            matches = false;
+        }
     } else if (strcmp(t, "naething") == 0 || strcmp(t, "nil") == 0) {
         matches = value.tag == MDH_TAG_NIL;
     } else if (strcmp(t, "range") == 0) {
@@ -7054,6 +7638,13 @@ static const char *__mdh_type_name(MdhValue v) {
             return "instance";
         case MDH_TAG_RANGE:
             return "range";
+        case MDH_TAG_NATIVE: {
+            MdhNativeObject *native = __mdh_get_native(v);
+            if (!native) return "native object";
+            if (native->kind == MDH_NATIVE_TRI_CTOR) return "native function";
+            if (native->type_name) return native->type_name;
+            return "native object";
+        }
         default:
             return "unknown";
     }

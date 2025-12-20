@@ -3534,9 +3534,14 @@ impl Interpreter {
         // type - get type of value (whit_kind in Scots!)
         globals.borrow_mut().define(
             "whit_kind".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("whit_kind", 1, |args| {
-                Ok(Value::String(args[0].type_name().to_string()))
-            }))),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "whit_kind",
+                1,
+                |args| match &args[0] {
+                    Value::NativeObject(obj) => Ok(Value::String(obj.type_name().to_string())),
+                    _ => Ok(Value::String(args[0].type_name().to_string())),
+                },
+            ))),
         );
 
         // str - convert to string (tae_string in Scots!)
@@ -8461,6 +8466,9 @@ impl Interpreter {
         alias: Option<&str>,
         span: Span,
     ) -> Result<Result<Value, ControlFlow>, HaversError> {
+        if crate::tri::is_tri_module(path) {
+            return self.load_tri_module(alias, span);
+        }
         // Resolve the module path
         let module_path = self.resolve_module_path(path)?;
 
@@ -8531,6 +8539,22 @@ impl Interpreter {
         Ok(Ok(Value::Nil))
     }
 
+    fn load_tri_module(
+        &mut self,
+        alias: Option<&str>,
+        span: Span,
+    ) -> Result<Result<Value, ControlFlow>, HaversError> {
+        let alias_name = alias.ok_or_else(|| HaversError::TypeError {
+            message: "tri import requires an alias (fetch \"tri\" tae name)".to_string(),
+            line: span.line,
+        })?;
+        let module_val = crate::tri::tri_module_value();
+        self.environment
+            .borrow_mut()
+            .define(alias_name.to_string(), module_val);
+        Ok(Ok(Value::Nil))
+    }
+
     /// Resolve a module path relative tae the current directory
     fn resolve_module_path(&self, path: &str) -> HaversResult<PathBuf> {
         let mut module_path = PathBuf::from(path);
@@ -8552,16 +8576,28 @@ impl Interpreter {
         let mut candidates = Vec::new();
         candidates.push(self.current_dir.join(&module_path));
         candidates.push(PathBuf::from(&module_path));
+        candidates.push(self.current_dir.join("stdlib").join(&module_path));
+        if let Ok(stripped) = module_path.strip_prefix("lib") {
+            candidates.push(self.current_dir.join("stdlib").join(stripped));
+        }
 
         // Try searching up the directory tree (helps with stdlib/lib paths)
         for ancestor in self.current_dir.ancestors() {
             candidates.push(ancestor.join(&module_path));
+            candidates.push(ancestor.join("stdlib").join(&module_path));
+            if let Ok(stripped) = module_path.strip_prefix("lib") {
+                candidates.push(ancestor.join("stdlib").join(stripped));
+            }
         }
 
         // Try next to the executable (common for bundled stdlib)
         if let Ok(exe) = std::env::current_exe() {
             if let Some(parent) = exe.parent() {
                 candidates.push(parent.join(&module_path));
+                candidates.push(parent.join("stdlib").join(&module_path));
+                if let Ok(stripped) = module_path.strip_prefix("lib") {
+                    candidates.push(parent.join("stdlib").join(stripped));
+                }
             }
         }
 
@@ -9287,6 +9323,10 @@ impl Interpreter {
                 // Check if this is a method call (callee is a Get expression)
                 if let Expr::Get { object, property, .. } = callee.as_ref() {
                     let obj = self.evaluate(object)?;
+                    if let Value::NativeObject(native) = &obj {
+                        let args = self.evaluate_call_args(arguments, span.line)?;
+                        return native.call(property, args);
+                    }
                     if let Value::Instance(inst) = &obj {
                         // It's a method call - get the method and bind 'masel'
                         // Clone what we need to avoid holding the borrow
@@ -9331,6 +9371,7 @@ impl Interpreter {
             } => {
                 let obj = self.evaluate(object)?;
                 match obj {
+                    Value::NativeObject(native) => native.get(property),
                     Value::Instance(inst) => inst
                         .borrow()
                         .get(property)
@@ -9366,6 +9407,7 @@ impl Interpreter {
                 let obj = self.evaluate(object)?;
                 let val = self.evaluate(value)?;
                 match obj {
+                    Value::NativeObject(native) => native.set(property, val),
                     Value::Instance(inst) => {
                         inst.borrow_mut().set(property.clone(), val.clone());
                         Ok(val)
@@ -10087,7 +10129,7 @@ impl Interpreter {
         match callee {
             Value::Function(func) => self.call_function(&func, args, line),
             Value::NativeFunction(native) => {
-                if args.len() != native.arity {
+                if native.arity != usize::MAX && args.len() != native.arity {
                     return Err(HaversError::WrongArity {
                         name: native.name.clone(),
                         expected: native.arity,
@@ -10097,6 +10139,10 @@ impl Interpreter {
                 }
                 (native.func)(args).map_err(HaversError::InternalError)
             }
+            Value::NativeObject(_) => Err(HaversError::TypeError {
+                message: "Cannae ca' a native object like a function".to_string(),
+                line,
+            }),
             // Higher-order function builtins
             Value::String(ref s) if s.starts_with("__builtin_") => {
                 self.call_builtin_hof(s, args, line)
@@ -10890,6 +10936,61 @@ fn json_escape_string(s: &str) -> String {
 mod tests {
     use super::*;
     use crate::parser::parse;
+    use crate::value::NativeObject;
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    use std::rc::Rc;
+
+    #[derive(Debug)]
+    struct TestNative {
+        fields: RefCell<HashMap<String, Value>>,
+    }
+
+    impl TestNative {
+        fn new() -> Self {
+            TestNative {
+                fields: RefCell::new(HashMap::new()),
+            }
+        }
+    }
+
+    impl NativeObject for TestNative {
+        fn type_name(&self) -> &str {
+            "test_native"
+        }
+
+        fn get(&self, prop: &str) -> HaversResult<Value> {
+            self.fields
+                .borrow()
+                .get(prop)
+                .cloned()
+                .ok_or_else(|| HaversError::UndefinedVariable {
+                    name: prop.to_string(),
+                    line: 0,
+                })
+        }
+
+        fn set(&self, prop: &str, value: Value) -> HaversResult<Value> {
+            self.fields
+                .borrow_mut()
+                .insert(prop.to_string(), value.clone());
+            Ok(value)
+        }
+
+        fn call(&self, method: &str, args: Vec<Value>) -> HaversResult<Value> {
+            match method {
+                "add" => {
+                    let a = args.first().and_then(|v| v.as_integer()).unwrap_or(0);
+                    let b = args.get(1).and_then(|v| v.as_integer()).unwrap_or(0);
+                    Ok(Value::Integer(a + b))
+                }
+                _ => Err(HaversError::UndefinedVariable {
+                    name: method.to_string(),
+                    line: 0,
+                }),
+            }
+        }
+    }
 
     fn run(source: &str) -> HaversResult<Value> {
         let program = parse(source)?;
@@ -10930,6 +11031,65 @@ mod tests {
         assert_eq!(run("nae").unwrap(), Value::Bool(false));
         assert_eq!(run("5 > 3").unwrap(), Value::Bool(true));
         assert_eq!(run("5 < 3").unwrap(), Value::Bool(false));
+    }
+
+    #[test]
+    fn test_native_object_get_set_call() {
+        let program = parse("obj.foo = 42\nobj.foo").unwrap();
+        let mut interp = Interpreter::new();
+        let native = Rc::new(TestNative::new());
+        interp
+            .globals
+            .borrow_mut()
+            .define("obj".to_string(), Value::NativeObject(native));
+        let result = interp.interpret(&program).unwrap();
+        assert_eq!(result, Value::Integer(42));
+
+        let program = parse("obj.add(3, 4)").unwrap();
+        let result = interp.interpret(&program).unwrap();
+        assert_eq!(result, Value::Integer(7));
+    }
+
+    #[test]
+    fn test_tri_import_requires_alias() {
+        let program = parse(r#"fetch "tri""#).unwrap();
+        let mut interp = Interpreter::new();
+        let err = interp.interpret(&program).unwrap_err();
+        assert!(matches!(err, HaversError::TypeError { .. }));
+    }
+
+    #[test]
+    fn test_tri_import_and_constructor() {
+        let program = parse(r#"fetch "tri" tae tri\nwhit_kind(tri.Sicht())"#).unwrap();
+        let mut interp = Interpreter::new();
+        let result = interp.interpret(&program).unwrap();
+        assert_eq!(result, Value::String("Sicht".to_string()));
+    }
+
+    #[test]
+    fn test_tri_constructor_via_property() {
+        let program = parse(
+            r#"fetch "tri" tae tri
+ken ctor = tri.Sicht
+whit_kind(ctor())"#,
+        )
+        .unwrap();
+        let mut interp = Interpreter::new();
+        let result = interp.interpret(&program).unwrap();
+        assert_eq!(result, Value::String("Sicht".to_string()));
+    }
+
+    #[test]
+    fn test_tri_constructor_defaults() {
+        let program = parse(
+            r#"fetch "tri" tae tri
+ken box = tri.BoxGeometrie()
+box.width"#,
+        )
+        .unwrap();
+        let mut interp = Interpreter::new();
+        let result = interp.interpret(&program).unwrap();
+        assert_eq!(result, Value::Integer(1));
     }
 
     #[test]

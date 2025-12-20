@@ -23,6 +23,7 @@ pub enum ValueTag {
     Set = 11,
     Closure = 12,
     Bytes = 13,
+    NativeObject = 14,
 }
 
 impl ValueTag {

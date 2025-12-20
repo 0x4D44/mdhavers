@@ -549,6 +549,17 @@ mod dicts {
         "#;
         assert_eq!(run(code).trim(), "aye");
     }
+
+    #[test]
+    fn test_dict_function_call() {
+        let code = r#"
+            ken mod = {}
+            dae add1(x) { gie x + 1 }
+            mod.add1 = add1
+            blether mod.add1(41)
+        "#;
+        assert_eq!(run(code).trim(), "42");
+    }
 }
 
 // ============================================================================
@@ -38244,6 +38255,7 @@ blether a.get() + b.get() + c.get()
 // IMPORT SYSTEM COVERAGE
 // =============================================================================
 mod import_coverage {
+    use super::run;
     use mdhavers::{parse, LLVMCompiler};
     use std::fs;
     use std::process::Command;
@@ -38435,6 +38447,77 @@ blether use_helper()
 
         let result = compile_file_and_run(dir.path(), "main.braw").expect("Should compile and run");
         assert_eq!(result.trim(), "150");
+    }
+
+    #[test]
+    fn test_import_alias_shadowing() {
+        let dir = tempdir().unwrap();
+
+        let lib_content = r#"
+dae inc(x) {
+    gie x + 1
+}
+"#;
+        fs::write(dir.path().join("mylib.braw"), lib_content).unwrap();
+
+        let main_content = r#"
+fetch "mylib" tae mod
+
+dae inc(x) {
+    gie x + 10
+}
+
+mod = {}
+mod.inc = inc
+blether mod.inc(1)
+"#;
+        fs::write(dir.path().join("main.braw"), main_content).unwrap();
+
+        let result = compile_file_and_run(dir.path(), "main.braw").expect("Should compile and run");
+        assert_eq!(result.trim(), "11");
+    }
+
+    #[test]
+    fn test_import_tri_module() {
+        let code = r#"
+fetch "tri" tae tri
+ken sicht = tri.Sicht()
+blether sicht.type
+        "#;
+        assert_eq!(run(code).trim(), "Sicht");
+    }
+
+    #[test]
+    fn test_tri_constructor_value_call() {
+        let code = r#"
+fetch "tri" tae tri
+ken ctor = tri.Sicht
+ken sicht = ctor()
+blether sicht.type
+        "#;
+        assert_eq!(run(code).trim(), "Sicht");
+    }
+
+    #[test]
+    fn test_tri_native_methods() {
+        let code = r#"
+fetch "tri" tae tri
+ken sicht = tri.Sicht()
+ken child = tri.Sicht()
+sicht.adde(child)
+blether len(sicht.children)
+        "#;
+        assert_eq!(run(code).trim(), "1");
+    }
+
+    #[test]
+    fn test_tri_constructor_defaults() {
+        let code = r#"
+fetch "tri" tae tri
+ken box = tri.BoxGeometrie()
+blether box.width
+        "#;
+        assert_eq!(run(code).trim(), "1");
     }
 }
 
