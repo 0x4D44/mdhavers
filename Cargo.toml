@@ -23,7 +23,7 @@ path = "src/lsp/main.rs"
 required-features = ["cli"]
 
 [features]
-default = ["cli", "llvm", "graphics", "graphics3d"]
+default = ["cli", "llvm", "graphics", "graphics3d", "audio"]
 cli = ["clap", "rustyline", "crossterm", "dirs", "colored", "lsp-types", "lsp-server"]
 llvm = ["inkwell"]
 audio = ["miniaudio", "rustysynth"]
@@ -38,7 +38,6 @@ wasm_runner = ["wasmtime", "wat"]
 #   Requires: cmake, libxrandr-dev, libxinerama-dev, libxcursor-dev, libxi-dev
 # Audio (miniaudio for all native/interpreter backends) - optional feature:
 #   To enable: cargo build --features audio
-#   Note: `audio` and `graphics` are currently incompatible (both bundle miniaudio).
 #   Requires: an audio backend on the host system (no X11/cmake needed)
 
 [dependencies]
@@ -82,3 +81,6 @@ wat = { version = "1.0", optional = true }
 pretty_assertions = "1.4"
 tempfile = "3.10"
 rcgen = "0.12"
+
+[patch.crates-io]
+raylib-sys = { path = "vendor/raylib-sys-5.5.1" }
