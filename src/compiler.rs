@@ -1,5 +1,5 @@
 use crate::ast::*;
-use crate::error::HaversResult;
+use crate::error::{HaversError, HaversResult};
 
 /// Compiler - transpiles mdhavers tae JavaScript
 pub struct Compiler {
@@ -26,6 +26,15 @@ impl Compiler {
 
         // Compile all statements
         for stmt in &program.statements {
+            if let Stmt::Import { path, alias, span } = stmt {
+                if (path == "tri" || path == "tri.js" || path == "tri.braw") && alias.is_none() {
+                    return Err(HaversError::TypeError {
+                        message: "tri import requires an alias (fetch \"tri\" tae name)"
+                            .to_string(),
+                        line: span.line,
+                    });
+                }
+            }
             self.compile_stmt(stmt);
         }
 
@@ -383,6 +392,85 @@ impl Compiler {
         self.emit_line("};");
         self.emit_line("");
 
+        // tri module (three.js adapter with Scots naming)
+        self.emit_line("const __havers_tri_wrap = (obj) => {");
+        self.indent += 1;
+        self.emit_line("if (!obj || typeof obj !== 'object') return obj;");
+        self.emit_line("const bind = (alias, target) => {");
+        self.indent += 1;
+        self.emit_line(
+            "if (typeof obj[target] === 'function' && typeof obj[alias] !== 'function') {",
+        );
+        self.indent += 1;
+        self.emit_line("obj[alias] = obj[target].bind(obj);");
+        self.indent -= 1;
+        self.emit_line("}");
+        self.indent -= 1;
+        self.emit_line("};");
+        self.emit_line("bind('adde', 'add');");
+        self.emit_line("bind('remuiv', 'remove');");
+        self.emit_line("bind('cloan', 'clone');");
+        self.emit_line("bind('dyspos', 'dispose');");
+        self.emit_line("bind('luik_at', 'lookAt');");
+        self.emit_line("bind('set_sise', 'setSize');");
+        self.emit_line("bind('set_pixel_ratio', 'setPixelRatio');");
+        self.emit_line(
+            "if (typeof obj.setAnimationLoop === 'function' && typeof obj.loop !== 'function') {",
+        );
+        self.indent += 1;
+        self.emit_line("obj.loop = (fn) => obj.setAnimationLoop((t) => fn(t / 1000));");
+        self.indent -= 1;
+        self.emit_line("}");
+        self.emit_line("return obj;");
+        self.indent -= 1;
+        self.emit_line("};");
+        self.emit_line("");
+        self.emit_line("const __havers_tri = (() => {");
+        self.indent += 1;
+        self.emit_line("const THREE = (typeof globalThis !== 'undefined' && globalThis.THREE)");
+        self.emit_line("  ? globalThis.THREE");
+        self.emit_line("  : (typeof require !== 'undefined' ? require('three') : null);");
+        self.emit_line("if (!THREE) throw new Error(\"three.js (THREE) is required for tri\");");
+        self.emit_line("return {");
+        self.indent += 1;
+        self.emit_line("Sicht: (...args) => __havers_tri_wrap(new THREE.Scene(...args)),");
+        self.emit_line("Thing3D: (...args) => __havers_tri_wrap(new THREE.Object3D(...args)),");
+        self.emit_line("Clump: (...args) => __havers_tri_wrap(new THREE.Group(...args)),");
+        self.emit_line("Mesch: (...args) => __havers_tri_wrap(new THREE.Mesh(...args)),");
+        self.emit_line("Kamera: (...args) => __havers_tri_wrap(new THREE.Camera(...args)),");
+        self.emit_line("PerspectivKamera: (...args) => __havers_tri_wrap(new THREE.PerspectiveCamera(...args)),");
+        self.emit_line("OrthograffikKamera: (...args) => __havers_tri_wrap(new THREE.OrthographicCamera(...args)),");
+        self.emit_line(
+            "Geometrie: (...args) => __havers_tri_wrap(new THREE.BufferGeometry(...args)),",
+        );
+        self.emit_line(
+            "BoxGeometrie: (...args) => __havers_tri_wrap(new THREE.BoxGeometry(...args)),",
+        );
+        self.emit_line(
+            "SpherGeometrie: (...args) => __havers_tri_wrap(new THREE.SphereGeometry(...args)),",
+        );
+        self.emit_line("Maiterial: (...args) => __havers_tri_wrap(new THREE.Material(...args)),");
+        self.emit_line("MeshBasicMaiterial: (...args) => __havers_tri_wrap(new THREE.MeshBasicMaterial(...args)),");
+        self.emit_line("MeshStandardMaiterial: (...args) => __havers_tri_wrap(new THREE.MeshStandardMaterial(...args)),");
+        self.emit_line("Licht: (...args) => __havers_tri_wrap(new THREE.Light(...args)),");
+        self.emit_line(
+            "AmbiantLicht: (...args) => __havers_tri_wrap(new THREE.AmbientLight(...args)),",
+        );
+        self.emit_line("DireksionalLicht: (...args) => __havers_tri_wrap(new THREE.DirectionalLight(...args)),");
+        self.emit_line("PyntLicht: (...args) => __havers_tri_wrap(new THREE.PointLight(...args)),");
+        self.emit_line("Textur: (...args) => __havers_tri_wrap(new THREE.Texture(...args)),");
+        self.emit_line(
+            "Renderar: (...args) => __havers_tri_wrap(new THREE.WebGLRenderer(...args)),",
+        );
+        self.emit_line("Colour: (...args) => __havers_tri_wrap(new THREE.Color(...args)),");
+        self.emit_line("DEG_TO_RAD: Math.PI / 180,");
+        self.emit_line("RAD_TO_DEG: 180 / Math.PI,");
+        self.indent -= 1;
+        self.emit_line("};");
+        self.indent -= 1;
+        self.emit_line("})();");
+        self.emit_line("");
+
         // Import runtime functions to global scope
         self.emit_line("const { len, whit_kind, tae_string, tae_int, tae_float, shove, yank, keys, values, range, abs, min, max, floor, ceil, round, sqrt, split, join, contains, reverse, sort, blether, speir, heid, tail, bum, scran, slap, sumaw, coont, wheesht, upper, lower, shuffle, noo, tick, bide, gaun, sieve, tumble, aw, ony, hunt, soond_stairt, soond_steek, soond_wheesht, soond_luid, soond_hou_luid, soond_haud_gang, soond_lade, soond_spiel, soond_haud, soond_gae_on, soond_stap, soond_unlade, soond_is_spielin, soond_pit_luid, soond_pit_pan, soond_pit_tune, soond_pit_rin_roond, soond_ready, muisic_lade, muisic_spiel, muisic_haud, muisic_gae_on, muisic_stap, muisic_unlade, muisic_is_spielin, muisic_loup, muisic_hou_lang, muisic_whaur, muisic_pit_luid, muisic_pit_pan, muisic_pit_tune, muisic_pit_rin_roond, midi_lade, midi_spiel, midi_haud, midi_gae_on, midi_stap, midi_unlade, midi_is_spielin, midi_loup, midi_hou_lang, midi_whaur, midi_pit_luid, midi_pit_pan, midi_pit_rin_roond } = __havers;");
         self.emit_line("");
@@ -566,15 +654,20 @@ impl Compiler {
             }
 
             Stmt::Import { path, alias, .. } => {
-                let module_name = alias.clone().unwrap_or_else(|| {
-                    // Extract filename from path
-                    path.rsplit('/')
-                        .next()
-                        .unwrap_or(path)
-                        .replace(".braw", "")
-                        .replace(".js", "")
-                });
-                self.emit_line(&format!("const {} = require('{}');", module_name, path));
+                if path == "tri" || path == "tri.js" || path == "tri.braw" {
+                    let module_name = alias.clone().unwrap_or_else(|| "tri".to_string());
+                    self.emit_line(&format!("const {} = __havers_tri;", module_name));
+                } else {
+                    let module_name = alias.clone().unwrap_or_else(|| {
+                        // Extract filename from path
+                        path.rsplit('/')
+                            .next()
+                            .unwrap_or(path)
+                            .replace(".braw", "")
+                            .replace(".js", "")
+                    });
+                    self.emit_line(&format!("const {} = require('{}');", module_name, path));
+                }
             }
 
             Stmt::TryCatch {
@@ -1302,6 +1395,18 @@ kin Animal {
     fn test_import_with_alias() {
         let result = compile("fetch \"math\" tae m").unwrap();
         assert!(result.contains("const m = require('math')"));
+    }
+
+    #[test]
+    fn test_import_tri_compile() {
+        let result = compile("fetch \"tri\" tae tri").unwrap();
+        assert!(result.contains("const tri = __havers_tri"));
+    }
+
+    #[test]
+    fn test_import_tri_requires_alias() {
+        let err = compile("fetch \"tri\"").unwrap_err();
+        assert!(err.to_string().contains("requires an alias"));
     }
 
     // ==================== Try-Catch Tests ====================

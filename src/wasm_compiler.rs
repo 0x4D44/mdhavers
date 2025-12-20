@@ -21,6 +21,9 @@ pub struct WasmCompiler {
     string_data: Vec<String>,
 }
 
+const TMP_LOGIC: &str = "__mdh$tmp0";
+const TMP_BUILD: &str = "__mdh$tmp1";
+
 impl Default for WasmCompiler {
     fn default() -> Self {
         Self::new()
@@ -51,9 +54,64 @@ impl WasmCompiler {
         self.emit_line("");
         self.emit_line(";; Imports fae the host environment");
         self.emit_line("(import \"env\" \"memory\" (memory 1))");
-        self.emit_line("(import \"env\" \"print_i32\" (func $print_i32 (param i32)))");
-        self.emit_line("(import \"env\" \"print_f64\" (func $print_f64 (param f64)))");
-        self.emit_line("(import \"env\" \"print_str\" (func $print_str (param i32 i32)))");
+        self.emit_line("(import \"env\" \"__mdh_make_nil\" (func $mdh_make_nil (result i64)))");
+        self.emit_line(
+            "(import \"env\" \"__mdh_make_bool\" (func $mdh_make_bool (param i32) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"__mdh_make_int\" (func $mdh_make_int (param i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"__mdh_make_float\" (func $mdh_make_float (param f64) (result i64)))",
+        );
+        self.emit_line("(import \"env\" \"__mdh_make_string\" (func $mdh_make_string (param i32 i32) (result i64)))");
+        self.emit_line(
+            "(import \"env\" \"__mdh_truthy\" (func $mdh_truthy (param i64) (result i32)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"__mdh_add\" (func $mdh_add (param i64 i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"__mdh_sub\" (func $mdh_sub (param i64 i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"__mdh_mul\" (func $mdh_mul (param i64 i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"__mdh_div\" (func $mdh_div (param i64 i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"__mdh_mod\" (func $mdh_mod (param i64 i64) (result i64)))",
+        );
+        self.emit_line("(import \"env\" \"__mdh_eq\" (func $mdh_eq (param i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_ne\" (func $mdh_ne (param i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_lt\" (func $mdh_lt (param i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_le\" (func $mdh_le (param i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_gt\" (func $mdh_gt (param i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_ge\" (func $mdh_ge (param i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_neg\" (func $mdh_neg (param i64) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_not\" (func $mdh_not (param i64) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_blether\" (func $mdh_blether (param i64)))");
+        self.emit_line(
+            "(import \"env\" \"__mdh_make_list\" (func $mdh_make_list (param i32) (result i64)))",
+        );
+        self.emit_line("(import \"env\" \"__mdh_list_push\" (func $mdh_list_push (param i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_make_dict\" (func $mdh_make_dict (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_dict_set\" (func $mdh_dict_set (param i64 i64 i64) (result i64)))");
+        self.emit_line(
+            "(import \"env\" \"__mdh_prop_get\" (func $mdh_prop_get (param i64 i64) (result i64)))",
+        );
+        self.emit_line("(import \"env\" \"__mdh_prop_set\" (func $mdh_prop_set (param i64 i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_method_call0\" (func $mdh_method_call0 (param i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_method_call1\" (func $mdh_method_call1 (param i64 i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_method_call2\" (func $mdh_method_call2 (param i64 i64 i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_method_call3\" (func $mdh_method_call3 (param i64 i64 i64 i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_method_call4\" (func $mdh_method_call4 (param i64 i64 i64 i64 i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_method_call5\" (func $mdh_method_call5 (param i64 i64 i64 i64 i64 i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_method_call6\" (func $mdh_method_call6 (param i64 i64 i64 i64 i64 i64 i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_method_call7\" (func $mdh_method_call7 (param i64 i64 i64 i64 i64 i64 i64 i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_method_call8\" (func $mdh_method_call8 (param i64 i64 i64 i64 i64 i64 i64 i64 i64 i64) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_tri_module\" (func $mdh_tri_module (result i64)))");
         self.emit_line("");
         self.emit_line(";; Audio imports (i64 value ABI)");
         self.emit_line("(import \"env\" \"soond_stairt\" (func $soond_stairt (result i64)))");
@@ -190,7 +248,7 @@ impl WasmCompiler {
         if !self.string_data.is_empty() {
             self.emit_line("");
             self.emit_line(";; String data");
-            let mut offset = 1;
+            let mut offset = 0;
             // Collect string data first to avoid borrow issues
             let string_lines: Vec<String> = self
                 .string_data
@@ -238,6 +296,8 @@ impl WasmCompiler {
             // Collect locals from body
             self.collect_locals(body);
 
+            self.ensure_temp_locals();
+
             // Declare locals (collect first to avoid borrow issues)
             let local_decls: Vec<String> = self
                 .local_vars
@@ -254,7 +314,7 @@ impl WasmCompiler {
             }
 
             // Default return value
-            self.emit_line("(i64.const 0)");
+            self.emit_nil();
 
             self.indent -= 1;
             self.emit_line(")");
@@ -275,6 +335,8 @@ impl WasmCompiler {
             self.collect_locals_stmt(stmt);
         }
 
+        self.ensure_temp_locals();
+
         // Declare locals
         for var in &self.local_vars.clone() {
             self.emit_line(&format!("(local ${} i64)", var));
@@ -285,8 +347,8 @@ impl WasmCompiler {
             self.compile_stmt(stmt)?;
         }
 
-        // Return 0
-        self.emit_line("(i64.const 0)");
+        // Return nil
+        self.emit_nil();
 
         self.indent -= 1;
         self.emit_line(")");
@@ -330,8 +392,75 @@ impl WasmCompiler {
                 }
                 self.collect_locals_stmt(body);
             }
+            Stmt::Import {
+                alias: Some(name), ..
+            } => {
+                if !self.func_params.contains(name) && !self.local_vars.contains(name) {
+                    self.local_vars.push(name.clone());
+                }
+            }
             _ => {}
         }
+    }
+
+    fn ensure_temp_locals(&mut self) {
+        self.ensure_temp_local(TMP_LOGIC);
+        self.ensure_temp_local(TMP_BUILD);
+    }
+
+    fn ensure_temp_local(&mut self, name: &str) {
+        if !self.func_params.contains(&name.to_string())
+            && !self.local_vars.contains(&name.to_string())
+        {
+            self.local_vars.push(name.to_string());
+        }
+    }
+
+    fn emit_nil(&mut self) {
+        self.emit_line("(call $mdh_make_nil)");
+    }
+
+    fn intern_string(&mut self, s: &str) -> usize {
+        let offset = self.string_data.iter().map(|v| v.len() + 1).sum::<usize>();
+        self.string_data.push(s.to_string());
+        offset
+    }
+
+    fn emit_string_handle(&mut self, s: &str) {
+        let offset = self.intern_string(s);
+        self.emit_line(&format!("(i32.const {})", offset));
+        self.emit_line(&format!("(i32.const {})", s.len()));
+        self.emit_line("(call $mdh_make_string)");
+    }
+
+    fn is_local_or_param(&self, name: &str) -> bool {
+        self.func_params.iter().any(|n| n == name) || self.local_vars.iter().any(|n| n == name)
+    }
+
+    fn emit_value_call(&mut self, callee: &Expr, arguments: &[Expr]) -> HaversResult<()> {
+        self.compile_expr(callee)?;
+        self.emit_string_handle("call");
+        for arg in arguments {
+            self.compile_expr(arg)?;
+        }
+        let call_name = match arguments.len() {
+            0 => "$mdh_method_call0",
+            1 => "$mdh_method_call1",
+            2 => "$mdh_method_call2",
+            3 => "$mdh_method_call3",
+            4 => "$mdh_method_call4",
+            5 => "$mdh_method_call5",
+            6 => "$mdh_method_call6",
+            7 => "$mdh_method_call7",
+            8 => "$mdh_method_call8",
+            _ => {
+                return Err(HaversError::InternalError(
+                    "Method call arity too large for WASM backend (max 8)".to_string(),
+                ));
+            }
+        };
+        self.emit_line(&format!("(call {})", call_name));
+        Ok(())
     }
 
     fn compile_stmt(&mut self, stmt: &Stmt) -> HaversResult<()> {
@@ -342,7 +471,7 @@ impl WasmCompiler {
                 if let Some(init) = initializer {
                     self.compile_expr(init)?;
                 } else {
-                    self.emit_line("(i64.const 0)");
+                    self.emit_nil();
                 }
                 self.emit_line(&format!("(local.set ${})", name));
             }
@@ -366,7 +495,7 @@ impl WasmCompiler {
             } => {
                 // Compile condition
                 self.compile_expr(condition)?;
-                self.emit_line("(i32.wrap_i64)");
+                self.emit_line("(call $mdh_truthy)");
 
                 self.emit_line("(if");
                 self.indent += 1;
@@ -398,7 +527,7 @@ impl WasmCompiler {
 
                 // Check condition
                 self.compile_expr(condition)?;
-                self.emit_line("(i32.wrap_i64)");
+                self.emit_line("(call $mdh_truthy)");
                 self.emit_line("(i32.eqz)");
                 self.emit_line("(br_if $break)");
 
@@ -418,16 +547,14 @@ impl WasmCompiler {
                 if let Some(val) = value {
                     self.compile_expr(val)?;
                 } else {
-                    self.emit_line("(i64.const 0)");
+                    self.emit_nil();
                 }
                 self.emit_line("(return)");
             }
 
             Stmt::Print { value, .. } => {
-                // For now, only support printing integers
                 self.compile_expr(value)?;
-                self.emit_line("(i32.wrap_i64)");
-                self.emit_line("(call $print_i32)");
+                self.emit_line("(call $mdh_blether)");
             }
 
             Stmt::Break { .. } => {
@@ -436,6 +563,22 @@ impl WasmCompiler {
 
             Stmt::Continue { .. } => {
                 self.emit_line("(br $continue)");
+            }
+
+            Stmt::Import { path, alias, .. } => {
+                let is_tri = path == "tri" || path == "tri.braw";
+                if !is_tri {
+                    return Err(HaversError::InternalError(
+                        "Only the tri module is supported in WASM imports".to_string(),
+                    ));
+                }
+                let alias_name = alias.as_ref().ok_or_else(|| {
+                    HaversError::InternalError(
+                        "WASM import requires an alias (fetch \"tri\" tae name)".to_string(),
+                    )
+                })?;
+                self.emit_line("(call $mdh_tri_module)");
+                self.emit_line(&format!("(local.set ${})", alias_name));
             }
 
             _ => {
@@ -450,30 +593,26 @@ impl WasmCompiler {
 
     fn compile_expr(&mut self, expr: &Expr) -> HaversResult<()> {
         match expr {
-            Expr::Literal { value, .. } => {
-                match value {
-                    Literal::Integer(n) => {
-                        self.emit_line(&format!("(i64.const {})", n));
-                    }
-                    Literal::Float(f) => {
-                        // Convert float to i64 bits for now (simplified)
-                        self.emit_line(&format!("(i64.const {})", (*f as i64)));
-                    }
-                    Literal::Bool(b) => {
-                        self.emit_line(&format!("(i64.const {})", if *b { 1 } else { 0 }));
-                    }
-                    Literal::Nil => {
-                        self.emit_line("(i64.const 0)");
-                    }
-                    Literal::String(s) => {
-                        // Store string in data section and return offset
-                        let offset =
-                            1 + self.string_data.iter().map(|s| s.len() + 1).sum::<usize>();
-                        self.string_data.push(s.clone());
-                        self.emit_line(&format!("(i64.const {})", offset));
-                    }
+            Expr::Literal { value, .. } => match value {
+                Literal::Integer(n) => {
+                    self.emit_line(&format!("(i64.const {})", n));
+                    self.emit_line("(call $mdh_make_int)");
                 }
-            }
+                Literal::Float(f) => {
+                    self.emit_line(&format!("(f64.const {})", f));
+                    self.emit_line("(call $mdh_make_float)");
+                }
+                Literal::Bool(b) => {
+                    self.emit_line(&format!("(i32.const {})", if *b { 1 } else { 0 }));
+                    self.emit_line("(call $mdh_make_bool)");
+                }
+                Literal::Nil => {
+                    self.emit_nil();
+                }
+                Literal::String(s) => {
+                    self.emit_string_handle(s);
+                }
+            },
 
             Expr::Variable { name, .. } => {
                 self.emit_line(&format!("(local.get ${})", name));
@@ -494,35 +633,17 @@ impl WasmCompiler {
                 self.compile_expr(right)?;
 
                 match operator {
-                    BinaryOp::Add => self.emit_line("(i64.add)"),
-                    BinaryOp::Subtract => self.emit_line("(i64.sub)"),
-                    BinaryOp::Multiply => self.emit_line("(i64.mul)"),
-                    BinaryOp::Divide => self.emit_line("(i64.div_s)"),
-                    BinaryOp::Modulo => self.emit_line("(i64.rem_s)"),
-                    BinaryOp::Equal => {
-                        self.emit_line("(i64.eq)");
-                        self.emit_line("(i64.extend_i32_u)");
-                    }
-                    BinaryOp::NotEqual => {
-                        self.emit_line("(i64.ne)");
-                        self.emit_line("(i64.extend_i32_u)");
-                    }
-                    BinaryOp::Less => {
-                        self.emit_line("(i64.lt_s)");
-                        self.emit_line("(i64.extend_i32_u)");
-                    }
-                    BinaryOp::LessEqual => {
-                        self.emit_line("(i64.le_s)");
-                        self.emit_line("(i64.extend_i32_u)");
-                    }
-                    BinaryOp::Greater => {
-                        self.emit_line("(i64.gt_s)");
-                        self.emit_line("(i64.extend_i32_u)");
-                    }
-                    BinaryOp::GreaterEqual => {
-                        self.emit_line("(i64.ge_s)");
-                        self.emit_line("(i64.extend_i32_u)");
-                    }
+                    BinaryOp::Add => self.emit_line("(call $mdh_add)"),
+                    BinaryOp::Subtract => self.emit_line("(call $mdh_sub)"),
+                    BinaryOp::Multiply => self.emit_line("(call $mdh_mul)"),
+                    BinaryOp::Divide => self.emit_line("(call $mdh_div)"),
+                    BinaryOp::Modulo => self.emit_line("(call $mdh_mod)"),
+                    BinaryOp::Equal => self.emit_line("(call $mdh_eq)"),
+                    BinaryOp::NotEqual => self.emit_line("(call $mdh_ne)"),
+                    BinaryOp::Less => self.emit_line("(call $mdh_lt)"),
+                    BinaryOp::LessEqual => self.emit_line("(call $mdh_le)"),
+                    BinaryOp::Greater => self.emit_line("(call $mdh_gt)"),
+                    BinaryOp::GreaterEqual => self.emit_line("(call $mdh_ge)"),
                 }
             }
 
@@ -530,14 +651,12 @@ impl WasmCompiler {
                 operator, operand, ..
             } => match operator {
                 UnaryOp::Negate => {
-                    self.emit_line("(i64.const 0)");
                     self.compile_expr(operand)?;
-                    self.emit_line("(i64.sub)");
+                    self.emit_line("(call $mdh_neg)");
                 }
                 UnaryOp::Not => {
                     self.compile_expr(operand)?;
-                    self.emit_line("(i64.eqz)");
-                    self.emit_line("(i64.extend_i32_u)");
+                    self.emit_line("(call $mdh_not)");
                 }
             },
 
@@ -549,7 +668,8 @@ impl WasmCompiler {
             } => match operator {
                 LogicalOp::And => {
                     self.compile_expr(left)?;
-                    self.emit_line("(i32.wrap_i64)");
+                    self.emit_line(&format!("(local.tee ${})", TMP_LOGIC));
+                    self.emit_line("(call $mdh_truthy)");
                     self.emit_line("(if (result i64)");
                     self.indent += 1;
                     self.emit_line("(then");
@@ -557,16 +677,17 @@ impl WasmCompiler {
                     self.compile_expr(right)?;
                     self.indent -= 1;
                     self.emit_line(")");
-                    self.emit_line("(else (i64.const 0))");
+                    self.emit_line(&format!("(else (local.get ${}))", TMP_LOGIC));
                     self.indent -= 1;
                     self.emit_line(")");
                 }
                 LogicalOp::Or => {
                     self.compile_expr(left)?;
-                    self.emit_line("(i32.wrap_i64)");
+                    self.emit_line(&format!("(local.tee ${})", TMP_LOGIC));
+                    self.emit_line("(call $mdh_truthy)");
                     self.emit_line("(if (result i64)");
                     self.indent += 1;
-                    self.emit_line("(then (i64.const 1))");
+                    self.emit_line(&format!("(then (local.get ${}))", TMP_LOGIC));
                     self.emit_line("(else");
                     self.indent += 1;
                     self.compile_expr(right)?;
@@ -580,19 +701,95 @@ impl WasmCompiler {
             Expr::Call {
                 callee, arguments, ..
             } => {
-                // Compile arguments
-                for arg in arguments {
-                    self.compile_expr(arg)?;
-                }
-
-                // Get function name
-                if let Expr::Variable { name, .. } = callee.as_ref() {
-                    self.emit_line(&format!("(call ${})", name));
+                if let Expr::Get {
+                    object, property, ..
+                } = callee.as_ref()
+                {
+                    self.compile_expr(object)?;
+                    self.emit_string_handle(property);
+                    for arg in arguments {
+                        self.compile_expr(arg)?;
+                    }
+                    let argc = arguments.len();
+                    let call_name = match argc {
+                        0 => "$mdh_method_call0",
+                        1 => "$mdh_method_call1",
+                        2 => "$mdh_method_call2",
+                        3 => "$mdh_method_call3",
+                        4 => "$mdh_method_call4",
+                        5 => "$mdh_method_call5",
+                        6 => "$mdh_method_call6",
+                        7 => "$mdh_method_call7",
+                        8 => "$mdh_method_call8",
+                        _ => {
+                            return Err(HaversError::InternalError(
+                                "Method call arity too large for WASM backend (max 8)".to_string(),
+                            ));
+                        }
+                    };
+                    self.emit_line(&format!("(call {})", call_name));
+                } else if let Expr::Variable { name, .. } = callee.as_ref() {
+                    if self.is_local_or_param(name) {
+                        self.emit_value_call(callee, arguments)?;
+                    } else {
+                        // Direct function call (compiled function)
+                        for arg in arguments {
+                            self.compile_expr(arg)?;
+                        }
+                        self.emit_line(&format!("(call ${})", name));
+                    }
                 } else {
                     return Err(HaversError::InternalError(
-                        "Only direct function calls are supported in WASM".to_string(),
+                        "Only direct, property, or local-value calls are supported in WASM"
+                            .to_string(),
                     ));
                 }
+            }
+
+            Expr::Get {
+                object, property, ..
+            } => {
+                self.compile_expr(object)?;
+                self.emit_string_handle(property);
+                self.emit_line("(call $mdh_prop_get)");
+            }
+
+            Expr::Set {
+                object,
+                property,
+                value,
+                ..
+            } => {
+                self.compile_expr(object)?;
+                self.emit_string_handle(property);
+                self.compile_expr(value)?;
+                self.emit_line("(call $mdh_prop_set)");
+            }
+
+            Expr::List { elements, .. } => {
+                self.emit_line(&format!("(i32.const {})", elements.len()));
+                self.emit_line("(call $mdh_make_list)");
+                self.emit_line(&format!("(local.tee ${})", TMP_BUILD));
+                for elem in elements {
+                    self.emit_line(&format!("(local.get ${})", TMP_BUILD));
+                    self.compile_expr(elem)?;
+                    self.emit_line("(call $mdh_list_push)");
+                    self.emit_line(&format!("(local.set ${})", TMP_BUILD));
+                }
+                self.emit_line(&format!("(local.get ${})", TMP_BUILD));
+            }
+
+            Expr::Dict { pairs, .. } => {
+                self.emit_line("(call $mdh_make_dict)");
+                self.emit_line(&format!("(local.tee ${})", TMP_BUILD));
+                for (key, value) in pairs {
+                    self.emit_line(&format!("(local.get ${})", TMP_BUILD));
+                    self.compile_expr(key)?;
+                    self.compile_expr(value)?;
+                    self.emit_line("(call $mdh_dict_set)");
+                    self.emit_line(&format!("(local.set ${})", TMP_BUILD));
+                }
+                self.emit_line(&format!("(local.get ${})", TMP_BUILD));
             }
 
             Expr::Grouping { expr, .. } => {
@@ -663,7 +860,7 @@ mod tests {
         let result = compile_to_wat(source);
         assert!(result.is_ok());
         let wat = result.unwrap();
-        assert!(wat.contains("i64.add"));
+        assert!(wat.contains("call $mdh_add"));
     }
 
     #[test]
@@ -714,28 +911,28 @@ mod tests {
     fn test_subtraction_wasm() {
         let source = "ken x = 50 - 8";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("i64.sub"));
+        assert!(result.contains("call $mdh_sub"));
     }
 
     #[test]
     fn test_multiplication_wasm() {
         let source = "ken x = 6 * 7";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("i64.mul"));
+        assert!(result.contains("call $mdh_mul"));
     }
 
     #[test]
     fn test_division_wasm() {
         let source = "ken x = 84 / 2";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("i64.div_s"));
+        assert!(result.contains("call $mdh_div"));
     }
 
     #[test]
     fn test_modulo_wasm() {
         let source = "ken x = 10 % 3";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("i64.rem_s"));
+        assert!(result.contains("call $mdh_mod"));
     }
 
     // ==================== Comparison Operations ====================
@@ -744,42 +941,42 @@ mod tests {
     fn test_greater_than_wasm() {
         let source = "ken b = 5 > 3";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("i64.gt_s"));
+        assert!(result.contains("call $mdh_gt"));
     }
 
     #[test]
     fn test_less_than_wasm() {
         let source = "ken b = 3 < 5";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("i64.lt_s"));
+        assert!(result.contains("call $mdh_lt"));
     }
 
     #[test]
     fn test_greater_equal_wasm() {
         let source = "ken b = 5 >= 5";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("i64.ge_s"));
+        assert!(result.contains("call $mdh_ge"));
     }
 
     #[test]
     fn test_less_equal_wasm() {
         let source = "ken b = 3 <= 5";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("i64.le_s"));
+        assert!(result.contains("call $mdh_le"));
     }
 
     #[test]
     fn test_equal_wasm() {
         let source = "ken b = 5 == 5";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("i64.eq"));
+        assert!(result.contains("call $mdh_eq"));
     }
 
     #[test]
     fn test_not_equal_wasm() {
         let source = "ken b = 5 != 3";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("i64.ne"));
+        assert!(result.contains("call $mdh_ne"));
     }
 
     // ==================== Logical Operations ====================
@@ -802,8 +999,7 @@ mod tests {
     fn test_logical_not_wasm() {
         let source = "ken b = nae aye";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("i64.eqz"));
-        assert!(result.contains("i64.extend_i32_u"));
+        assert!(result.contains("(call $mdh_not)"));
     }
 
     // ==================== Unary Operations ====================
@@ -812,8 +1008,7 @@ mod tests {
     fn test_negate_wasm() {
         let source = "ken x = -42";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("i64.const 0"));
-        assert!(result.contains("i64.sub"));
+        assert!(result.contains("(call $mdh_neg)"));
     }
 
     // ==================== Control Flow ====================
@@ -874,21 +1069,21 @@ mod tests {
     fn test_boolean_true_wasm() {
         let source = "ken b = aye";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("i64.const 1"));
+        assert!(result.contains("(call $mdh_make_bool)"));
     }
 
     #[test]
     fn test_boolean_false_wasm() {
         let source = "ken b = nae";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("i64.const 0"));
+        assert!(result.contains("(call $mdh_make_bool)"));
     }
 
     #[test]
     fn test_nil_wasm() {
         let source = "ken n = naething";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("i64.const 0"));
+        assert!(result.contains("(call $mdh_make_nil)"));
     }
 
     #[test]
@@ -1009,7 +1204,7 @@ mod tests {
     fn test_print_wasm() {
         let source = "blether 42";
         let result = compile_to_wat(source).unwrap();
-        assert!(result.contains("call $print"));
+        assert!(result.contains("call $mdh_blether"));
     }
 
     #[test]
@@ -1044,7 +1239,7 @@ mod tests {
         "#;
         let wat = compile_to_wat(source).unwrap();
         assert!(wat.contains("(local.set $x)"));
-        assert!(wat.contains("i64.const 0"));
+        assert!(wat.contains("call $mdh_make_nil"));
     }
 
     #[test]
@@ -1082,7 +1277,42 @@ mod tests {
     fn test_grouping_expr_wasm() {
         let source = r#"blether (1 + 2)"#;
         let wat = compile_to_wat(source).unwrap();
-        assert!(wat.contains("i64.add"));
+        assert!(wat.contains("call $mdh_add"));
+    }
+
+    #[test]
+    fn test_import_tri_wasm() {
+        let source = r#"fetch "tri" tae tri"#;
+        let wat = compile_to_wat(source).unwrap();
+        assert!(wat.contains("call $mdh_tri_module"));
+    }
+
+    #[test]
+    fn test_tri_method_call_six_args() {
+        let source = r#"
+            fetch "tri" tae tri
+            ken cam = tri.OrthograffikKamera(1, 2, 3, 4, 5, 6)
+        "#;
+        let wat = compile_to_wat(source).unwrap();
+        assert!(wat.contains("call $mdh_method_call6"));
+    }
+
+    #[test]
+    fn test_tri_constructor_value_call_wasm() {
+        let source = r#"
+            fetch "tri" tae tri
+            ken ctor = tri.Sicht
+            ken sicht = ctor()
+        "#;
+        let wat = compile_to_wat(source).unwrap();
+        assert!(wat.contains("call $mdh_method_call0"));
+    }
+
+    #[test]
+    fn test_import_tri_requires_alias_wasm() {
+        let source = r#"fetch "tri""#;
+        let err = compile_to_wat(source).unwrap_err();
+        assert!(err.to_string().contains("requires an alias"));
     }
 
     #[test]
@@ -1094,12 +1324,14 @@ mod tests {
             blether (add)(1, 2)
         "#;
         let err = compile_to_wat(source).unwrap_err();
-        assert!(err.to_string().contains("Only direct function calls"));
+        assert!(err
+            .to_string()
+            .contains("Only direct, property, or local-value calls"));
     }
 
     #[test]
     fn test_unsupported_expr_wasm_returns_error() {
-        let source = "ken x = [1, 2]";
+        let source = "ken x = [1, 2][0]";
         let err = compile_to_wat(source).unwrap_err();
         assert!(err.to_string().contains("expression type isnae supported"));
     }
