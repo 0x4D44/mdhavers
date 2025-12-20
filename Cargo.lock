@@ -1980,8 +1980,6 @@ dependencies = [
 [[package]]
 name = "raylib-sys"
 version = "5.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ce5adc950b042db67f1f78f24f7e76563652ce24db032afe9ca9e534d8b7a13"
 dependencies = [
  "bindgen 0.70.1",
  "cc",
