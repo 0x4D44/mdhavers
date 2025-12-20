@@ -31,17 +31,24 @@ fn main() {
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/Cargo.toml");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/lib.rs");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/audio.rs");
+    println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/tri_runtime.rs");
+    println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/tri_engine.rs");
 
     // Compile the main runtime
+    let mut c_args = vec![
+        "-c",
+        "-O2",
+        "-fPIC",
+        "runtime/mdh_runtime.c",
+        "-o",
+        "runtime/mdh_runtime.o",
+    ];
+    if env::var("CARGO_FEATURE_GRAPHICS3D").is_ok() {
+        c_args.push("-DMDH_TRI_RUST");
+    }
+
     let status = Command::new("gcc")
-        .args([
-            "-c",
-            "-O2",
-            "-fPIC",
-            "runtime/mdh_runtime.c",
-            "-o",
-            "runtime/mdh_runtime.o",
-        ])
+        .args(&c_args)
         .status()
         .expect("Failed to run gcc");
 
@@ -69,16 +76,23 @@ fn main() {
     // Build Rust runtime helpers (JSON + regex) as a staticlib.
     let profile = env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
     let mut cargo_args = vec![
-        "build",
-        "--manifest-path",
-        "runtime/mdh_runtime_rs/Cargo.toml",
+        "build".to_string(),
+        "--manifest-path".to_string(),
+        "runtime/mdh_runtime_rs/Cargo.toml".to_string(),
     ];
+    let mut features = Vec::new();
     if env::var("CARGO_FEATURE_AUDIO").is_ok() {
-        cargo_args.push("--features");
-        cargo_args.push("audio");
+        features.push("audio");
+    }
+    if env::var("CARGO_FEATURE_GRAPHICS3D").is_ok() {
+        features.push("graphics3d");
+    }
+    if !features.is_empty() {
+        cargo_args.push("--features".to_string());
+        cargo_args.push(features.join(","));
     }
     if profile == "release" {
-        cargo_args.push("--release");
+        cargo_args.push("--release".to_string());
     }
 
     let status = Command::new("cargo")

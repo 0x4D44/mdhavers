@@ -28,6 +28,7 @@ cli = ["clap", "rustyline", "crossterm", "dirs", "colored", "lsp-types", "lsp-se
 llvm = ["inkwell"]
 audio = ["raylib", "rustysynth"]
 graphics = ["raylib"]
+graphics3d = []
 wasm_runner = ["wasmtime", "wat"]
 # LLVM native compilation (enabled by default):
 #   To disable: cargo build --no-default-features --features cli

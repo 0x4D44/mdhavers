@@ -113,6 +113,13 @@ typedef struct {
     MdhValue fields;
 } MdhNativeObject;
 
+#ifdef MDH_TRI_RUST
+extern MdhValue __mdh_tri_rs_module(void);
+extern MdhValue __mdh_tri_rs_get(MdhNativeObject *obj, MdhValue key);
+extern MdhValue __mdh_tri_rs_set(MdhNativeObject *obj, MdhValue key, MdhValue value);
+extern MdhValue __mdh_tri_rs_call(MdhNativeObject *obj, MdhValue method, int argc, MdhValue *args);
+#endif
+
 static MdhValue __mdh_make_native(MdhNativeObject *obj);
 static MdhNativeObject *__mdh_get_native(MdhValue v);
 static MdhValue __mdh_dict_clone(MdhValue dict);
@@ -788,6 +795,14 @@ MdhValue __mdh_native_get(MdhValue obj, MdhValue key) {
         return __mdh_make_nil();
     }
 
+#ifdef MDH_TRI_RUST
+    if (native->kind == MDH_NATIVE_TRI_MODULE ||
+        native->kind == MDH_NATIVE_TRI_OBJECT ||
+        native->kind == MDH_NATIVE_TRI_CTOR) {
+        return __mdh_tri_rs_get(native, key);
+    }
+#endif
+
     MdhValue key_str = key;
     if (key_str.tag != MDH_TAG_STRING) {
         key_str = __mdh_to_string(key_str);
@@ -824,6 +839,14 @@ MdhValue __mdh_native_set(MdhValue obj, MdhValue key, MdhValue value) {
         __mdh_type_error("set", obj.tag, 0);
         return __mdh_make_nil();
     }
+
+#ifdef MDH_TRI_RUST
+    if (native->kind == MDH_NATIVE_TRI_MODULE ||
+        native->kind == MDH_NATIVE_TRI_OBJECT ||
+        native->kind == MDH_NATIVE_TRI_CTOR) {
+        return __mdh_tri_rs_set(native, key, value);
+    }
+#endif
 
     MdhValue key_str = key;
     if (key_str.tag != MDH_TAG_STRING) {
@@ -874,6 +897,14 @@ static MdhValue __mdh_native_call_internal(MdhValue obj, MdhValue method, int ar
         __mdh_type_error("call", obj.tag, 0);
         return __mdh_make_nil();
     }
+
+#ifdef MDH_TRI_RUST
+    if (native->kind == MDH_NATIVE_TRI_MODULE ||
+        native->kind == MDH_NATIVE_TRI_OBJECT ||
+        native->kind == MDH_NATIVE_TRI_CTOR) {
+        return __mdh_tri_rs_call(native, method, argc, args);
+    }
+#endif
 
     const char *name = __mdh_native_method_name(method);
 
@@ -1033,6 +1064,9 @@ MdhValue __mdh_native_call8(MdhValue obj, MdhValue method, MdhValue a0, MdhValue
 }
 
 MdhValue __mdh_tri_module(void) {
+#ifdef MDH_TRI_RUST
+    return __mdh_tri_rs_module();
+#else
     static int initialized = 0;
     static MdhValue module;
     if (!initialized) {
@@ -1045,6 +1079,7 @@ MdhValue __mdh_tri_module(void) {
         initialized = 1;
     }
     return module;
+#endif
 }
 
 /* ========== I/O ========== */
