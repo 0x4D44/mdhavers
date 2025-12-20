@@ -7,11 +7,9 @@ explicitly (for example, without graphics), build with:
 cargo build --release --no-default-features --features cli,llvm,audio
 ```
 
-Note: audio uses raylib. On Ubuntu/WSL you’ll need:
-```bash
-sudo apt install cmake libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev
-```
-If you don’t have those, build without the `audio` feature.
+Note: graphics uses raylib (X11 deps on Ubuntu/WSL). Native (LLVM) audio uses miniaudio and
+does not require X11. Interpreter audio still uses raylib, so X11 deps are only needed for
+graphics or interpreter audio.
 
 Backend support: interpreter, LLVM/native, JavaScript, and WAT/WASM.
 
@@ -55,7 +53,8 @@ export LIBCLANG_PATH=$(llvm-config --libdir)
 - **Sounds (soond)**: short SFX loaded into memory.
 - **Music (muisic)**: streaming audio (MP3 / long WAV).
 - **MIDI**: synthesized via bundled SoundFont.
-- **Updates**: streaming sources require `soond_haud_gang()` to be called regularly.
+- **Updates**: some backends (JS/WASM) require `soond_haud_gang()` to be called regularly.
+  Native audio is driven by the device callback, but it is always safe to call.
 
 ## Device / Global
 ```scots
@@ -65,7 +64,7 @@ soond_wheesht(aye)     # mute
 soond_wheesht(nae)     # unmute
 soond_luid(0.8)        # master volume 0..1
 soond_hou_luid()       # get master volume
-soond_haud_gang()      # tick streaming audio
+soond_haud_gang()      # tick streaming audio on backends that need it
 soond_ready(handle)    # check SFX load status (web backends)
 ```
 
@@ -119,6 +118,6 @@ Available:
 - `midi_pit_luid`, `midi_pit_pan`, `midi_pit_rin_roond`
 
 ## Notes
-- Pan uses -1..1 in the API and is mapped to raylib’s 0..1 range.
+- Pan uses -1..1 in the API; backends map this to their mixer panning.
 - Streaming audio requires periodic updates; call `soond_haud_gang()` in your main loop.
 - MIDI loop flag affects playback start; set it before `midi_spiel` for best results.

@@ -1214,7 +1214,7 @@ cargo build --release --features llvm
 make status
 ```
 
-**Note:** Default features now enable `cli`, `llvm`, `graphics`, and `audio`.
+**Note:** Default features now enable `cli`, `llvm`, `graphics`, `graphics3d`, and `audio`.
 If you want LLVM without graphics/audio:
 ```bash
 cargo build --release --no-default-features --features cli,llvm
@@ -1234,11 +1234,12 @@ audio explicitly (for example, without graphics), build with:
 cargo build --release --no-default-features --features cli,llvm,audio
 ```
 
-**Note:** Audio and graphics use raylib. On Ubuntu/WSL you’ll need:
+**Note:** Graphics uses raylib. On Ubuntu/WSL you’ll need:
 ```bash
 sudo apt install cmake libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev
 ```
-If you don’t have those, build with `--no-default-features` and add only what you need.
+The native (LLVM) audio backend uses miniaudio and does **not** require X11. Interpreter audio
+still uses raylib, so X11 deps are only needed for graphics or interpreter audio.
 
 **Backend support:** Interpreter, LLVM/native, JavaScript, and WAT/WASM.
 
@@ -1303,13 +1304,13 @@ soond_spiel(ding)
 ```
 Use `soond_ready(handle)` to check SFX load status on web backends.
 
-**Streaming (MP3 + MIDI) needs updates:**
+**Streaming (MP3 + MIDI) needs updates on web backends:**
 ```scots
 ken tune = muisic_lade("assets/audio/theme.mp3")
 muisic_spiel(tune)
 
 whiles aye {
-    soond_haud_gang()  # keep streams flowing
+    soond_haud_gang()  # keep streams flowing on backends that need it
 }
 ```
 

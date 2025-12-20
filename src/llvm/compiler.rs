@@ -13,10 +13,6 @@ static EMBEDDED_RUNTIME: &[u8] = include_bytes!("../../runtime/mdh_runtime.o");
 /// Embedded Rust runtime staticlib (JSON/regex helpers)
 static EMBEDDED_RUNTIME_RS: &[u8] = include_bytes!("../../runtime/mdh_runtime_rs.a");
 
-/// Embedded raylib static library for audio/graphics backends
-#[cfg(feature = "audio")]
-static EMBEDDED_RAYLIB: &[u8] = include_bytes!("../../runtime/libraylib.a");
-
 /// Embedded GC stub - minimal malloc wrappers for standalone builds
 static EMBEDDED_GC_STUB: &[u8] = include_bytes!("../../runtime/gc_stub.o");
 
@@ -157,8 +153,6 @@ impl LLVMCompiler {
         let unique_id = format!("{}_{:?}", std::process::id(), std::thread::current().id());
         let runtime_path = std::env::temp_dir().join(format!("mdh_runtime_{}.o", unique_id));
         let runtime_rs_path = std::env::temp_dir().join(format!("mdh_runtime_rs_{}.a", unique_id));
-        #[cfg(feature = "audio")]
-        let raylib_path = std::env::temp_dir().join(format!("mdh_raylib_{}.a", unique_id));
         let gc_stub_path = std::env::temp_dir().join(format!("mdh_gc_stub_{}.o", unique_id));
 
         // Write embedded runtime to temp file for linking
@@ -170,14 +164,6 @@ impl LLVMCompiler {
         std::fs::File::create(&runtime_rs_path)
             .and_then(|mut f| f.write_all(EMBEDDED_RUNTIME_RS))
             .map_err(Self::llvm_compile_error)?;
-
-        // Write embedded raylib staticlib to temp file for linking
-        #[cfg(feature = "audio")]
-        {
-            std::fs::File::create(&raylib_path)
-                .and_then(|mut f| f.write_all(EMBEDDED_RAYLIB))
-                .map_err(Self::llvm_compile_error)?;
-        }
 
         // Write embedded GC stub to temp file for linking
         std::fs::File::create(&gc_stub_path)
@@ -197,32 +183,9 @@ impl LLVMCompiler {
 
         #[cfg(feature = "audio")]
         {
-            link_args.insert(3, raylib_path.to_str().unwrap());
-
-            // Platform-specific raylib deps
-            // Audio-only paths avoid graphics/X11 deps; keep minimal linkage.
+            // miniaudio uses dlopen on Linux for backend loading
             if cfg!(target_os = "linux") {
                 link_args.push("-ldl");
-            } else if cfg!(target_os = "windows") {
-                link_args.extend([
-                    "-lwinmm",
-                    "-lgdi32",
-                    "-lopengl32",
-                    "-luser32",
-                    "-lshell32",
-                    "-lcomdlg32",
-                ]);
-            } else if cfg!(target_os = "macos") {
-                link_args.extend([
-                    "-framework",
-                    "OpenGL",
-                    "-framework",
-                    "Cocoa",
-                    "-framework",
-                    "IOKit",
-                    "-framework",
-                    "CoreVideo",
-                ]);
             }
         }
 
@@ -238,8 +201,6 @@ impl LLVMCompiler {
         let _ = std::fs::remove_file(&obj_path);
         let _ = std::fs::remove_file(&runtime_path);
         let _ = std::fs::remove_file(&runtime_rs_path);
-        #[cfg(feature = "audio")]
-        let _ = std::fs::remove_file(&raylib_path);
         let _ = std::fs::remove_file(&gc_stub_path);
 
         if status.success() {

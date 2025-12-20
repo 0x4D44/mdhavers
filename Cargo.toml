@@ -23,7 +23,7 @@ path = "src/lsp/main.rs"
 required-features = ["cli"]
 
 [features]
-default = ["cli", "llvm", "graphics", "audio"]
+default = ["cli", "llvm", "graphics", "graphics3d", "audio"]
 cli = ["clap", "rustyline", "crossterm", "dirs", "colored", "lsp-types", "lsp-server"]
 llvm = ["inkwell"]
 audio = ["raylib", "rustysynth"]
@@ -36,9 +36,9 @@ wasm_runner = ["wasmtime", "wat"]
 # Graphics (raylib) - optional feature:
 #   To enable: cargo build --features graphics
 #   Requires: cmake, libxrandr-dev, libxinerama-dev, libxcursor-dev, libxi-dev
-# Audio (raylib + MIDI) - optional feature:
+# Audio (interpreter uses raylib; native uses miniaudio) - optional feature:
 #   To enable: cargo build --features audio
-#   Requires: cmake, and an audio backend on the host system
+#   Requires: cmake (for raylib) and an audio backend on the host system
 
 [dependencies]
 thiserror = "1.0"
