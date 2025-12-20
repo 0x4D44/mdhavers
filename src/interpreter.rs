@@ -32,14 +32,10 @@ use crossterm::{
 
 use crate::ast::{LogLevel, *};
 use crate::error::{HaversError, HaversResult};
+use crate::logging;
 use crate::value::*;
-use chrono::Local;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-
-/// Global log level that can be modified by native functions
-/// Default is Blether (3 = INFO)
-static GLOBAL_LOG_LEVEL: AtomicU8 = AtomicU8::new(3);
 
 /// Whether crash handling is enabled (default: true)
 static CRASH_HANDLING_ENABLED: AtomicBool = AtomicBool::new(true);
@@ -197,6 +193,51 @@ thread_local! {
     static CONDVARS: RefCell<CondvarRegistry> = RefCell::new(CondvarRegistry::new());
     static ATOMICS: RefCell<AtomicRegistry> = RefCell::new(AtomicRegistry::new());
     static CHANNELS: RefCell<ChannelRegistry> = RefCell::new(ChannelRegistry::new());
+}
+
+thread_local! {
+    static CURRENT_INTERPRETER: RefCell<*mut Interpreter> =
+        const { RefCell::new(std::ptr::null_mut()) };
+}
+
+struct InterpreterGuard {
+    prev: *mut Interpreter,
+}
+
+impl InterpreterGuard {
+    fn new(interp: &mut Interpreter) -> Self {
+        let ptr = interp as *mut Interpreter;
+        let prev = CURRENT_INTERPRETER.with(|cell| {
+            let mut cur = cell.borrow_mut();
+            let prev = *cur;
+            *cur = ptr;
+            prev
+        });
+        InterpreterGuard { prev }
+    }
+}
+
+impl Drop for InterpreterGuard {
+    fn drop(&mut self) {
+        CURRENT_INTERPRETER.with(|cell| {
+            *cell.borrow_mut() = self.prev;
+        });
+    }
+}
+
+fn with_current_interpreter<F, R>(f: F) -> Option<R>
+where
+    F: FnOnce(&mut Interpreter) -> R,
+{
+    CURRENT_INTERPRETER.with(|cell| {
+        let ptr = *cell.borrow();
+        if ptr.is_null() {
+            None
+        } else {
+            // Safety: pointer is only set while an Interpreter call is active.
+            Some(unsafe { f(&mut *ptr) })
+        }
+    })
 }
 
 fn register_thread(handle: ThreadHandle) -> i64 {
@@ -1015,20 +1056,12 @@ pub fn is_crash_handling_enabled() -> bool {
 
 /// Get the global log level
 pub fn get_global_log_level() -> LogLevel {
-    match GLOBAL_LOG_LEVEL.load(Ordering::Relaxed) {
-        0 => LogLevel::Wheesht,
-        1 => LogLevel::Roar,
-        2 => LogLevel::Holler,
-        3 => LogLevel::Blether,
-        4 => LogLevel::Mutter,
-        5 => LogLevel::Whisper,
-        _ => LogLevel::Blether,
-    }
+    logging::get_global_log_level()
 }
 
 /// Set the global log level
 pub fn set_global_log_level(level: LogLevel) {
-    GLOBAL_LOG_LEVEL.store(level as u8, Ordering::Relaxed);
+    logging::set_global_log_level(level);
 }
 
 /// Test/coverage-only escape hatch to set an invalid global log level value.
@@ -1036,7 +1069,56 @@ pub fn set_global_log_level(level: LogLevel) {
 #[cfg(coverage)]
 #[allow(dead_code)]
 pub fn set_global_log_level_raw(level: u8) {
-    GLOBAL_LOG_LEVEL.store(level, Ordering::Relaxed);
+    logging::set_global_log_level_raw(level);
+}
+
+fn parse_log_level_value(value: &Value) -> Result<LogLevel, String> {
+    match value {
+        Value::String(s) => {
+            LogLevel::parse_level(s).ok_or_else(|| format!("Invalid log level '{}'", s))
+        }
+        Value::Integer(n) => match n {
+            0 => Ok(LogLevel::Wheesht),
+            1 => Ok(LogLevel::Roar),
+            2 => Ok(LogLevel::Holler),
+            3 => Ok(LogLevel::Blether),
+            4 => Ok(LogLevel::Mutter),
+            5 => Ok(LogLevel::Whisper),
+            _ => Err(format!("Invalid log level {}. Use 0-5", n)),
+        },
+        _ => Err("Log level must be a string or integer".to_string()),
+    }
+}
+
+fn parse_log_target_value(value: &Value) -> Result<String, String> {
+    match value {
+        Value::String(s) => Ok(s.clone()),
+        _ => Err("Log target must be a string".to_string()),
+    }
+}
+
+fn resolve_log_args(args: &[Value]) -> Result<(Option<Value>, Option<String>), String> {
+    match args.len() {
+        0 => Ok((None, None)),
+        1 => match &args[0] {
+            v @ Value::Dict(_) => Ok((Some(v.clone()), None)),
+            Value::String(s) => Ok((None, Some(s.clone()))),
+            _ => Err("Expected dict or string for log fields/target".to_string()),
+        },
+        2 => {
+            let fields = match &args[0] {
+                v @ Value::Dict(_) => Some(v.clone()),
+                _ => return Err("Expected dict for log fields".to_string()),
+            };
+            let target = parse_log_target_value(&args[1])?;
+            Ok((fields, Some(target)))
+        }
+        _ => Err("Expected at most two extra arguments".to_string()),
+    }
+}
+
+fn dict_get(dict: &DictValue, key: &str) -> Option<Value> {
+    dict.get(&Value::String(key.to_string())).cloned()
 }
 
 /// Control flow signals
@@ -1074,9 +1156,10 @@ pub struct Interpreter {
     trace_mode: TraceMode,
     /// Current trace indentation level
     trace_depth: usize,
-    /// Current log level (default: Blether/INFO)
-    #[allow(dead_code)]
-    log_level: LogLevel,
+    /// Logger configuration and sinks
+    logger: logging::LoggerCore,
+    /// Optional callback hook for log events
+    log_callback: Option<Value>,
     /// Current source file name for log messages
     current_file: String,
 }
@@ -1094,14 +1177,19 @@ impl Interpreter {
         // Register graphics functions (if feature enabled)
         crate::graphics::register_graphics_functions(&globals);
 
-        // Check fer MDH_LOG_LEVEL environment variable
-        let log_level = std::env::var("MDH_LOG_LEVEL")
-            .ok()
-            .and_then(|s| LogLevel::parse_level(&s))
-            .unwrap_or(LogLevel::Blether);
-
-        // Set the global log level too
-        set_global_log_level(log_level);
+        // Check fer MDH_LOG or MDH_LOG_LEVEL environment variables
+        if let Ok(spec) = std::env::var("MDH_LOG") {
+            if let Ok(filter) = logging::parse_filter(&spec) {
+                let _ = logging::set_filter(&spec);
+                set_global_log_level(filter.default);
+            } else {
+                eprintln!("Warning: Invalid MDH_LOG filter '{}'", spec);
+            }
+        } else if let Ok(level_str) = std::env::var("MDH_LOG_LEVEL") {
+            if let Some(level) = LogLevel::parse_level(&level_str) {
+                set_global_log_level(level);
+            }
+        }
 
         Interpreter {
             globals: globals.clone(),
@@ -1112,7 +1200,8 @@ impl Interpreter {
             prelude_loaded: false,
             trace_mode: TraceMode::Off,
             trace_depth: 0,
-            log_level,
+            logger: logging::LoggerCore::new(),
+            log_callback: None,
             current_file: "<repl>".to_string(),
         }
     }
@@ -1127,48 +1216,235 @@ impl Interpreter {
     /// Set the log level
     #[allow(dead_code)]
     pub fn set_log_level(&mut self, level: LogLevel) {
-        self.log_level = level;
+        set_global_log_level(level);
     }
 
     /// Get current log level
     #[allow(dead_code)]
     pub fn get_log_level(&self) -> LogLevel {
-        self.log_level
+        get_global_log_level()
     }
 
-    /// Check if a log level should be output
-    fn should_log(&self, level: LogLevel) -> bool {
-        // Use the global log level (can be changed at runtime)
-        let current_level = get_global_log_level();
-        (level as u8) <= (current_level as u8)
+    /// Check if a log level should be output for a given target
+    fn should_log(&self, level: LogLevel, target: &str) -> bool {
+        logging::log_enabled(level, target)
     }
 
-    /// Format and output a log message
-    fn log_message(&self, level: LogLevel, message: &str, line: usize) {
-        if !self.should_log(level) {
-            return;
+    fn emit_log(
+        &mut self,
+        level: LogLevel,
+        message: Value,
+        fields: Option<Value>,
+        target: Option<String>,
+        line: usize,
+    ) -> HaversResult<()> {
+        let target = target.unwrap_or_else(|| self.current_file.clone());
+        if !self.should_log(level, &target) {
+            return Ok(());
         }
 
-        let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S%.3f");
-        let thread_id = std::thread::current().id();
-        // Extract numeric part from thread ID (format is ThreadId(N))
-        let thread_num: u64 = format!("{:?}", thread_id)
-            .chars()
-            .filter(|c| c.is_ascii_digit())
-            .collect::<String>()
-            .parse()
-            .unwrap_or(0)
-            % 10000;
+        let mut field_vec = Vec::new();
+        if let Some(fields_val) = fields {
+            field_vec = logging::fields_from_dict(&fields_val)
+                .map_err(|msg| HaversError::TypeError { message: msg, line })?;
+        }
 
-        eprintln!(
-            "[{:7}] {} [thread:{:04}] {}:{} | {}",
-            level.name(),
-            timestamp,
-            thread_num,
-            self.current_file,
+        let record = logging::LogRecord {
+            level,
+            message: format!("{}", message),
+            target: target.clone(),
+            file: self.current_file.clone(),
             line,
-            message
-        );
+            fields: field_vec,
+            span_path: logging::span_path(),
+        };
+
+        self.logger.log(&record);
+
+        if let Some(callback) = self.log_callback.clone() {
+            let payload = logging::record_to_value(&record, Some(logging::timestamp_string()));
+            let _ = self.call_value(callback, vec![payload], line);
+        }
+
+        Ok(())
+    }
+
+    fn parse_log_extras(
+        &mut self,
+        extras: &[Expr],
+        line: usize,
+    ) -> HaversResult<(Option<Value>, Option<String>)> {
+        if extras.is_empty() {
+            return Ok((None, None));
+        }
+
+        let mut values = Vec::new();
+        for expr in extras {
+            values.push(self.evaluate(expr)?);
+        }
+
+        match values.len() {
+            1 => match values.remove(0) {
+                v @ Value::Dict(_) => Ok((Some(v), None)),
+                Value::String(s) => Ok((None, Some(s))),
+                _ => Err(HaversError::TypeError {
+                    message: "log_* expects a dict or string for the extra argument".to_string(),
+                    line,
+                }),
+            },
+            2 => {
+                let fields_val = values.remove(0);
+                let target_val = values.remove(0);
+                let fields = match fields_val {
+                    v @ Value::Dict(_) => Some(v),
+                    _ => {
+                        return Err(HaversError::TypeError {
+                            message: "log_* expects fields as a dict when passing two extras"
+                                .to_string(),
+                            line,
+                        })
+                    }
+                };
+                let target = match target_val {
+                    Value::String(s) => Some(s),
+                    _ => {
+                        return Err(HaversError::TypeError {
+                            message: "log_* expects target as a string".to_string(),
+                            line,
+                        })
+                    }
+                };
+                Ok((fields, target))
+            }
+            _ => Err(HaversError::InternalError(
+                "log_* supports at most two extra arguments".to_string(),
+            )),
+        }
+    }
+
+    fn apply_log_config(&mut self, config: Option<Value>) -> Result<(), String> {
+        if config.is_none() {
+            self.logger = logging::LoggerCore::new();
+            self.log_callback = None;
+            return Ok(());
+        }
+
+        let dict = match config {
+            Some(Value::Dict(d)) => d,
+            Some(_) => return Err("log_init() expects a dict".to_string()),
+            None => return Ok(()),
+        };
+
+        let dict_ref = dict.borrow();
+
+        if let Some(level_val) = dict_get(&dict_ref, "level") {
+            let level = parse_log_level_value(&level_val)?;
+            set_global_log_level(level);
+        }
+
+        if let Some(filter_val) = dict_get(&dict_ref, "filter") {
+            let filter_str = match filter_val {
+                Value::String(s) => s,
+                _ => return Err("log_init() filter must be a string".to_string()),
+            };
+            logging::set_filter(&filter_str)?;
+        }
+
+        if let Some(format_val) = dict_get(&dict_ref, "format") {
+            let format_str = match format_val {
+                Value::String(s) => s,
+                _ => return Err("log_init() format must be a string".to_string()),
+            };
+            self.logger.format = match format_str.as_str() {
+                "text" => logging::LogFormat::Text,
+                "json" => logging::LogFormat::Json,
+                "compact" => logging::LogFormat::Compact,
+                _ => return Err("log_init() format must be text, json, or compact".to_string()),
+            };
+        }
+
+        if let Some(color_val) = dict_get(&dict_ref, "color") {
+            match color_val {
+                Value::Bool(b) => self.logger.color = b,
+                _ => return Err("log_init() color must be a bool".to_string()),
+            }
+        }
+
+        if let Some(ts_val) = dict_get(&dict_ref, "timestamps") {
+            match ts_val {
+                Value::Bool(b) => self.logger.timestamps = b,
+                _ => return Err("log_init() timestamps must be a bool".to_string()),
+            }
+        }
+
+        if let Some(sinks_val) = dict_get(&dict_ref, "sinks") {
+            let list = match sinks_val {
+                Value::List(list) => list.borrow().clone(),
+                _ => return Err("log_init() sinks must be a list".to_string()),
+            };
+            let mut sinks = Vec::new();
+            let mut callback: Option<Value> = None;
+
+            for spec in list {
+                let spec_dict = match spec {
+                    Value::Dict(d) => d,
+                    _ => return Err("log_init() sink specs must be dicts".to_string()),
+                };
+                let spec_ref = spec_dict.borrow();
+                let kind = match dict_get(&spec_ref, "kind") {
+                    Some(Value::String(s)) => s,
+                    _ => return Err("log_init() sink kind must be a string".to_string()),
+                };
+
+                match kind.as_str() {
+                    "stderr" => sinks.push(logging::LogSink::Stderr),
+                    "stdout" => sinks.push(logging::LogSink::Stdout),
+                    "file" => {
+                        let path = match dict_get(&spec_ref, "path") {
+                            Some(Value::String(s)) => s,
+                            _ => {
+                                return Err("log_init() file sink requires string path".to_string())
+                            }
+                        };
+                        let append = match dict_get(&spec_ref, "append") {
+                            Some(Value::Bool(b)) => b,
+                            None => true,
+                            _ => return Err("log_init() file append must be bool".to_string()),
+                        };
+                        sinks.push(logging::LogSink::File {
+                            path,
+                            append,
+                            file: None,
+                        });
+                    }
+                    "memory" => {
+                        let max = match dict_get(&spec_ref, "max") {
+                            Some(Value::Integer(n)) if n > 0 => n as usize,
+                            None => 1000,
+                            _ => return Err("log_init() memory max must be integer".to_string()),
+                        };
+                        sinks.push(logging::LogSink::Memory {
+                            entries: Vec::new(),
+                            max,
+                        });
+                    }
+                    "callback" => {
+                        let cb = dict_get(&spec_ref, "fn")
+                            .ok_or_else(|| "log_init() callback sink requires fn".to_string())?;
+                        callback = Some(cb);
+                    }
+                    _ => return Err(format!("Unknown log sink kind '{}'", kind)),
+                }
+            }
+
+            if sinks.is_empty() {
+                sinks.push(logging::LogSink::Stderr);
+            }
+            self.logger.sinks = sinks;
+            self.log_callback = callback;
+        }
+
+        Ok(())
     }
 
     /// Enable trace mode fer debugging
@@ -3793,6 +4069,227 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("get_log_level", 0, |_args| {
                 let level = get_global_log_level();
                 Ok(Value::String(level.name().to_lowercase()))
+            }))),
+        );
+
+        // log_set_filter(filter_string)
+        globals.borrow_mut().define(
+            "log_set_filter".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("log_set_filter", 1, |args| {
+                match &args[0] {
+                    Value::String(spec) => {
+                        logging::set_filter(spec).map_err(|e| format!("log_set_filter() {}", e))?;
+                        Ok(Value::Nil)
+                    }
+                    _ => Err("log_set_filter() expects a string".to_string()),
+                }
+            }))),
+        );
+
+        // log_get_filter() -> string
+        globals.borrow_mut().define(
+            "log_get_filter".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("log_get_filter", 0, |_args| {
+                Ok(Value::String(logging::get_filter()))
+            }))),
+        );
+
+        // log_enabled(level, target = "") -> bool
+        globals.borrow_mut().define(
+            "log_enabled".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "log_enabled",
+                usize::MAX,
+                |args| {
+                    if args.is_empty() || args.len() > 2 {
+                        return Err("log_enabled() expects 1 or 2 arguments".to_string());
+                    }
+                    let level = parse_log_level_value(&args[0])?;
+                    let target = if args.len() == 2 {
+                        parse_log_target_value(&args[1])?
+                    } else {
+                        String::new()
+                    };
+                    Ok(Value::Bool(logging::log_enabled(level, &target)))
+                },
+            ))),
+        );
+
+        // log_event(level, message, fields = {}, target = "") -> nil
+        globals.borrow_mut().define(
+            "log_event".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "log_event",
+                usize::MAX,
+                |args| {
+                    if args.len() < 2 || args.len() > 4 {
+                        return Err("log_event() expects 2-4 arguments".to_string());
+                    }
+                    let level = parse_log_level_value(&args[0])?;
+                    let message = args[1].clone();
+                    let (fields, target) = if args.len() > 2 {
+                        resolve_log_args(&args[2..])?
+                    } else {
+                        (None, None)
+                    };
+                    let result = with_current_interpreter(|interp| {
+                        interp.emit_log(level, message, fields, target, 0)
+                    });
+                    match result {
+                        Some(Ok(())) => Ok(Value::Nil),
+                        Some(Err(err)) => Err(format!("{}", err)),
+                        None => {
+                            Err("log_event() is unavailable outside the interpreter".to_string())
+                        }
+                    }
+                },
+            ))),
+        );
+
+        // log_init(config = {}) -> nil
+        globals.borrow_mut().define(
+            "log_init".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "log_init",
+                usize::MAX,
+                |args| {
+                    if args.len() > 1 {
+                        return Err("log_init() expects 0 or 1 arguments".to_string());
+                    }
+                    let config = args.first().cloned();
+                    let result = with_current_interpreter(|interp| interp.apply_log_config(config));
+                    match result {
+                        Some(Ok(())) => Ok(Value::Nil),
+                        Some(Err(err)) => Err(err),
+                        None => {
+                            Err("log_init() is unavailable outside the interpreter".to_string())
+                        }
+                    }
+                },
+            ))),
+        );
+
+        // log_span(name, level = "blether", fields = {}, target = "") -> span_handle
+        globals.borrow_mut().define(
+            "log_span".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "log_span",
+                usize::MAX,
+                |args| {
+                    if args.is_empty() || args.len() > 4 {
+                        return Err("log_span() expects 1-4 arguments".to_string());
+                    }
+                    let name = match &args[0] {
+                        Value::String(s) => s.clone(),
+                        _ => return Err("log_span() name must be a string".to_string()),
+                    };
+                    let level = if args.len() >= 2 {
+                        parse_log_level_value(&args[1])?
+                    } else {
+                        LogLevel::Blether
+                    };
+                    let fields = if args.len() >= 3 {
+                        logging::fields_from_dict(&args[2])?
+                    } else {
+                        Vec::new()
+                    };
+                    let target = if args.len() >= 4 {
+                        parse_log_target_value(&args[3])?
+                    } else {
+                        with_current_interpreter(|interp| interp.current_file.clone())
+                            .unwrap_or_else(|| "".to_string())
+                    };
+                    let span = logging::new_span(name, level, target, fields);
+                    Ok(Value::NativeObject(Rc::new(logging::LogSpanHandle::new(
+                        span,
+                    ))))
+                },
+            ))),
+        );
+
+        // log_span_enter(span_handle)
+        globals.borrow_mut().define(
+            "log_span_enter".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("log_span_enter", 1, |args| {
+                match &args[0] {
+                    Value::NativeObject(obj) => {
+                        if let Some(handle) = obj.as_any().downcast_ref::<logging::LogSpanHandle>()
+                        {
+                            logging::span_enter(handle.span());
+                            Ok(Value::Nil)
+                        } else {
+                            Err("log_span_enter() expects a log span handle".to_string())
+                        }
+                    }
+                    _ => Err("log_span_enter() expects a log span handle".to_string()),
+                }
+            }))),
+        );
+
+        // log_span_exit(span_handle)
+        globals.borrow_mut().define(
+            "log_span_exit".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "log_span_exit",
+                1,
+                |args| match &args[0] {
+                    Value::NativeObject(obj) => {
+                        if let Some(handle) = obj.as_any().downcast_ref::<logging::LogSpanHandle>()
+                        {
+                            logging::span_exit(handle.span().id)
+                                .map_err(|e| format!("log_span_exit() {}", e))?;
+                            Ok(Value::Nil)
+                        } else {
+                            Err("log_span_exit() expects a log span handle".to_string())
+                        }
+                    }
+                    _ => Err("log_span_exit() expects a log span handle".to_string()),
+                },
+            ))),
+        );
+
+        // log_span_current() -> span_handle | nil
+        globals.borrow_mut().define(
+            "log_span_current".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "log_span_current",
+                0,
+                |_args| {
+                    if let Some(span) = logging::span_current() {
+                        Ok(Value::NativeObject(Rc::new(logging::LogSpanHandle::new(
+                            span,
+                        ))))
+                    } else {
+                        Ok(Value::Nil)
+                    }
+                },
+            ))),
+        );
+
+        // log_span_in(span_handle, fn) -> value
+        globals.borrow_mut().define(
+            "log_span_in".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("log_span_in", 2, |args| {
+                let span = match &args[0] {
+                    Value::NativeObject(obj) => obj
+                        .as_any()
+                        .downcast_ref::<logging::LogSpanHandle>()
+                        .map(|h| h.span())
+                        .ok_or_else(|| "log_span_in() expects a log span handle".to_string())?,
+                    _ => return Err("log_span_in() expects a log span handle".to_string()),
+                };
+                let func = args[1].clone();
+
+                logging::span_enter(span.clone());
+                let result =
+                    with_current_interpreter(|interp| interp.call_value(func, Vec::new(), 0));
+                let _ = logging::span_exit(span.id);
+
+                match result {
+                    Some(Ok(val)) => Ok(val),
+                    Some(Err(err)) => Err(format!("{}", err)),
+                    None => Err("log_span_in() is unavailable outside the interpreter".to_string()),
+                }
             }))),
         );
 
@@ -9120,10 +9617,12 @@ impl Interpreter {
             Stmt::Log {
                 level,
                 message,
+                extras,
                 span,
             } => {
                 let msg = self.evaluate(message)?;
-                self.log_message(*level, &format!("{}", msg), span.line);
+                let (fields, target) = self.parse_log_extras(extras, span.line)?;
+                self.emit_log(*level, msg, fields, target, span.line)?;
                 Ok(Ok(Value::Nil))
             }
 
@@ -10126,6 +10625,7 @@ impl Interpreter {
     }
 
     fn call_value(&mut self, callee: Value, args: Vec<Value>, line: usize) -> HaversResult<Value> {
+        let _guard = InterpreterGuard::new(self);
         match callee {
             Value::Function(func) => self.call_function(&func, args, line),
             Value::NativeFunction(native) => {
@@ -10989,6 +11489,10 @@ mod tests {
                     line: 0,
                 }),
             }
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
         }
     }
 

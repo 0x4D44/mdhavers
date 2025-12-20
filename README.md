@@ -1100,62 +1100,63 @@ Yer bum's oot the windae! Function 'greet' expects 1 arguments but ye gave it 3
 
 See the `examples/` directory for sample programs:
 
-### Core Examples
+### Quickstart
 
-- `hello.braw` - Hello World
-- `variables.braw` - Variable types and operations
-- `control_flow.braw` - If statements and loops
-- `functions.braw` - Functions and recursion
-- `classes.braw` - Object-oriented programming
-- `fizzbuzz.braw` - Classic FizzBuzz (Scottish style!)
-- `primes.braw` - Prime number finder
-- `sorting.braw` - Sorting demonstrations
-- `bubblesort.braw` - Bubblesort with index assignment
+- `examples/hello.braw` - Hello World
+- `examples/fizzbuzz.braw` - Classic FizzBuzz (Scottish style!)
+- `examples/functions.braw` - Functions, defaults, recursion, lambdas
 
-### Advanced Features
+### Basics
 
-- `scots_stdlib.braw` - Scots-flavored standard library demo
-- `try_catch.braw` - Error handling examples
-- `match.braw` - Pattern matching examples
-- `higher_order.braw` - Lambdas and higher-order functions
-- `fstrings.braw` - F-string interpolation examples
-- `inheritance.braw` - Class inheritance with `fae`
-- `operator_overload.braw` - Operator overloading with classes
-- `destructure.braw` - Destructuring assignment examples
-- `spread.braw` - Spread operator (...) examples
-- `pipe.braw` - Pipe operator (|>) examples
-- `defaults.braw` - Default parameter values (staundart values)
+- `examples/basics/variables.braw` - Variables and basic types
+- `examples/basics/control_flow.braw` - If/else, loops, break/continue
+- `examples/basics/classes.braw` - Classes and methods
+- `examples/basics/inheritance.braw` - Inheritance with `fae`
+- `examples/basics/operator_overload.braw` - Operator overloading
+- `examples/basics/match.braw` - Pattern matching with `keek`
+- `examples/basics/fstrings.braw` - F-string interpolation
+- `examples/basics/pipe.braw` - Pipe operator (|>)
+- `examples/basics/defaults.braw` - Default parameters
+- `examples/basics/spread.braw` - Spread operator and destructuring
+- `examples/basics/higher_order.braw` - Lambdas and HOF builtins
 
-### Fun Examples
+### Utilities
 
-- `scottish_pub.braw` - A wee Scottish pub simulation (classes, dicts, HOF)
-- `ceilidh.braw` - Scottish dance party (math functions, lists, shuffling)
-- `scots_words.braw` - Scottish vocabulary functions demo
-- `scots_fun.braw` - New Scots vocabulary functions demo
+- `examples/basics/assert_demo.braw` - Assertions with `mak_siccar`
+- `examples/basics/file_io.braw` - File I/O and filesystem helpers
+- `examples/basics/modules_demo.braw` - Importing modules with `fetch`
 
-### Utility Examples
+### Features
 
-- `file_io.braw` - File I/O operations
-- `modules_demo.braw` - Demonstrating the module import system
-- `assert_demo.braw` - Assertions with mak_siccar
-- `test_example.braw` - Testing library demonstration
-- `prelude_demo.braw` - Auto-loaded prelude functions demo
-- `prelude_showcase.braw` - Demo of prelude functions (greetings, debug, validation)
-- `new_functions.braw` - New higher-order functions demo
-- `trace_demo.braw` - Demo file for the tracer (try `mdhavers trace`)
-- `benchmark.braw` - Timing and benchmarking demo (noo, tick, bide)
+- `examples/features/audio_basics.braw` - Audio playback
+- `examples/features/graphics_basics.braw` - 2D graphics
+- `examples/features/graphics3d_basics.braw` - 3D graphics (tri)
+- `examples/features/threading_basics.braw` - Threads, atomics, channels
+- `examples/features/logging_basics.braw` - Logging stdlib demo
+- `examples/features/logging_keywords.braw` - log_* statements and spans
+- `examples/features/try_catch.braw` - Try/catch with hurl
 
-### Standard Library
+### Standard Library Demos
 
-- `lib/maths.braw` - Mathematics utility library
-- `lib/strings.braw` - String manipulation library
-- `lib/collections.braw` - Data structures (stacks, queues, sets)
-- `lib/functional.braw` - Functional programming utilities
-- `lib/testing.braw` - Testing framework with assertions
+- `examples/stdlib/collections_demo.braw` - Stacks, queues, sets
+
+### Showcases
+
+- `examples/showcases/soond_showcase.braw` - Audio and music showcase
+- `examples/showcases/sip_rtp_echo.braw` - SIP/RTP echo demo
+- `examples/showcases/tri_showcase/tri_showcase.braw` - 3D scene demo
+
+### Library Modules (importable, not standalone)
+
+- `examples/lib/collections.braw` - Data structures and utilities
+- `examples/lib/functional.braw` - Higher‑order helpers
+- `examples/lib/logging.braw` - Logging helpers
+- `examples/lib/testing.braw` - Simple testing helpers
+- `examples/lib/strings.braw` - String helpers
 
 ### Games
 
-- `games/tetris/tetris.braw` - Full Tetris game implementation
+- `games/tetris/` - Browser Tetris demo (HTML/JS)
 
 ### Compilation Examples
 

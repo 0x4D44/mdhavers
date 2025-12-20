@@ -35,6 +35,7 @@
 - [Operators](./reference/operators.md)
 - [Built-in Functions](./reference/builtins.md)
 - [Standard Library](./reference/stdlib.md)
+- [Examples](./reference/examples.md)
 - [CLI Reference](./reference/cli.md)
 
 # Appendix

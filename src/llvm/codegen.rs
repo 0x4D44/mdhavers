@@ -31,8 +31,8 @@ use inkwell::AddressSpace;
 use inkwell::IntPredicate;
 
 use crate::ast::{
-    BinaryOp, DestructPattern, Expr, FStringPart, Literal, LogicalOp, MatchArm, Pattern, Program,
-    Span, Stmt, UnaryOp,
+    BinaryOp, DestructPattern, Expr, FStringPart, Literal, LogLevel, LogicalOp, MatchArm, Pattern,
+    Program, Span, Stmt, UnaryOp,
 };
 use crate::error::HaversError;
 
@@ -352,6 +352,16 @@ struct LibcFunctions<'ctx> {
     // Logging/Debug runtime functions
     get_log_level: FunctionValue<'ctx>,
     set_log_level: FunctionValue<'ctx>,
+    log_event: FunctionValue<'ctx>,
+    log_enabled: FunctionValue<'ctx>,
+    log_set_filter: FunctionValue<'ctx>,
+    log_get_filter: FunctionValue<'ctx>,
+    log_span_begin: FunctionValue<'ctx>,
+    log_span_enter: FunctionValue<'ctx>,
+    log_span_exit: FunctionValue<'ctx>,
+    log_span_current: FunctionValue<'ctx>,
+    log_span_in: FunctionValue<'ctx>,
+    log_init: FunctionValue<'ctx>,
     // Scots builtin runtime functions
     slainte: FunctionValue<'ctx>,
     och: FunctionValue<'ctx>,
@@ -1970,6 +1980,94 @@ impl<'ctx> CodeGen<'ctx> {
             Some(Linkage::External),
         );
 
+        // __mdh_log_event(level, msg, fields, target, file, line) -> MdhValue (nil)
+        let log_event_type = types.value_type.fn_type(
+            &[
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+            ],
+            false,
+        );
+        let log_event =
+            module.add_function("__mdh_log_event", log_event_type, Some(Linkage::External));
+
+        // __mdh_log_enabled(level, target) -> MdhValue (bool)
+        let log_enabled_type = types
+            .value_type
+            .fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let log_enabled = module.add_function(
+            "__mdh_log_enabled",
+            log_enabled_type,
+            Some(Linkage::External),
+        );
+
+        let log_set_filter_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let log_set_filter = module.add_function(
+            "__mdh_log_set_filter",
+            log_set_filter_type,
+            Some(Linkage::External),
+        );
+
+        let log_get_filter_type = types.value_type.fn_type(&[], false);
+        let log_get_filter = module.add_function(
+            "__mdh_log_get_filter",
+            log_get_filter_type,
+            Some(Linkage::External),
+        );
+
+        let log_span_begin_type = types.value_type.fn_type(
+            &[
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+                types.value_type.into(),
+            ],
+            false,
+        );
+        let log_span_begin = module.add_function(
+            "__mdh_log_span_begin",
+            log_span_begin_type,
+            Some(Linkage::External),
+        );
+
+        let log_span_enter_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let log_span_enter = module.add_function(
+            "__mdh_log_span_enter",
+            log_span_enter_type,
+            Some(Linkage::External),
+        );
+
+        let log_span_exit_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let log_span_exit = module.add_function(
+            "__mdh_log_span_exit",
+            log_span_exit_type,
+            Some(Linkage::External),
+        );
+
+        let log_span_current_type = types.value_type.fn_type(&[], false);
+        let log_span_current = module.add_function(
+            "__mdh_log_span_current",
+            log_span_current_type,
+            Some(Linkage::External),
+        );
+
+        let log_span_in_type = types
+            .value_type
+            .fn_type(&[types.value_type.into(), types.value_type.into()], false);
+        let log_span_in = module.add_function(
+            "__mdh_log_span_in",
+            log_span_in_type,
+            Some(Linkage::External),
+        );
+
+        let log_init_type = types.value_type.fn_type(&[types.value_type.into()], false);
+        let log_init =
+            module.add_function("__mdh_log_init", log_init_type, Some(Linkage::External));
+
         // Scots builtin functions
         // __mdh_slainte() -> MdhValue (nil)
         let slainte_type = types.value_type.fn_type(&[], false);
@@ -2722,6 +2820,16 @@ impl<'ctx> CodeGen<'ctx> {
             bampot_mode,
             get_log_level,
             set_log_level,
+            log_event,
+            log_enabled,
+            log_set_filter,
+            log_get_filter,
+            log_span_begin,
+            log_span_enter,
+            log_span_exit,
+            log_span_current,
+            log_span_in,
+            log_init,
             slainte,
             och,
             wee,
@@ -10378,11 +10486,49 @@ impl<'ctx> CodeGen<'ctx> {
             }
 
             Stmt::Log {
-                level: _, message, ..
+                level,
+                message,
+                extras,
+                span,
             } => {
-                // For now, just print the message like blether does
-                let val = self.compile_expr(message)?;
-                self.inline_blether(val)?;
+                if matches!(level, LogLevel::Wheesht) {
+                    return Ok(());
+                }
+                let level_val =
+                    self.make_int(self.types.i64_type.const_int(*level as u64, false))?;
+                let msg_val = self.compile_expr(message)?;
+                let fields_val = if let Some(extra) = extras.first() {
+                    self.compile_expr(extra)?
+                } else {
+                    self.make_nil()
+                };
+                let target_val = if let Some(extra) = extras.get(1) {
+                    self.compile_expr(extra)?
+                } else {
+                    self.make_nil()
+                };
+                let file_str = if let Some(path) = &self.source_path {
+                    path.to_string_lossy().to_string()
+                } else {
+                    String::new()
+                };
+                let file_val = self.compile_string_literal(&file_str)?;
+                let line_val =
+                    self.make_int(self.types.i64_type.const_int(span.line as u64, false))?;
+                self.builder
+                    .build_call(
+                        self.libc.log_event,
+                        &[
+                            level_val.into(),
+                            msg_val.into(),
+                            fields_val.into(),
+                            target_val.into(),
+                            file_val.into(),
+                            line_val.into(),
+                        ],
+                        "",
+                    )
+                    .map_err(Self::llvm_compile_error)?;
                 Ok(())
             }
         }
@@ -15669,6 +15815,237 @@ impl<'ctx> CodeGen<'ctx> {
                         .try_as_basic_value()
                         .left()
                         .compile_ok_or("set_log_level returned void")?;
+                    return Ok(result);
+                }
+                "log_enabled" => {
+                    if args.is_empty() || args.len() > 2 {
+                        return Err(HaversError::CompileError(
+                            "log_enabled expects 1 or 2 arguments".to_string(),
+                        ));
+                    }
+                    let level = self.compile_expr(&args[0])?;
+                    let target = if args.len() == 2 {
+                        self.compile_expr(&args[1])?
+                    } else {
+                        self.compile_string_literal("")?
+                    };
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.log_enabled,
+                            &[level.into(), target.into()],
+                            "log_enabled_result",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("log_enabled returned void")?;
+                    return Ok(result);
+                }
+                "log_set_filter" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "log_set_filter expects 1 argument".to_string(),
+                        ));
+                    }
+                    let spec = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.log_set_filter,
+                            &[spec.into()],
+                            "log_set_filter_result",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("log_set_filter returned void")?;
+                    return Ok(result);
+                }
+                "log_get_filter" => {
+                    if !args.is_empty() {
+                        return Err(HaversError::CompileError(
+                            "log_get_filter expects 0 arguments".to_string(),
+                        ));
+                    }
+                    let result = self
+                        .builder
+                        .build_call(self.libc.log_get_filter, &[], "log_get_filter_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("log_get_filter returned void")?;
+                    return Ok(result);
+                }
+                "log_event" => {
+                    if args.len() < 2 || args.len() > 4 {
+                        return Err(HaversError::CompileError(
+                            "log_event expects 2-4 arguments".to_string(),
+                        ));
+                    }
+                    let level = self.compile_expr(&args[0])?;
+                    let msg = self.compile_expr(&args[1])?;
+                    let fields = if args.len() >= 3 {
+                        self.compile_expr(&args[2])?
+                    } else {
+                        self.make_nil()
+                    };
+                    let target = if args.len() >= 4 {
+                        self.compile_expr(&args[3])?
+                    } else {
+                        self.make_nil()
+                    };
+                    let file = self.compile_string_literal("")?;
+                    let line = self.make_int(self.types.i64_type.const_int(0, false))?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.log_event,
+                            &[
+                                level.into(),
+                                msg.into(),
+                                fields.into(),
+                                target.into(),
+                                file.into(),
+                                line.into(),
+                            ],
+                            "log_event_result",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("log_event returned void")?;
+                    return Ok(result);
+                }
+                "log_init" => {
+                    if args.len() > 1 {
+                        return Err(HaversError::CompileError(
+                            "log_init expects 0 or 1 arguments".to_string(),
+                        ));
+                    }
+                    let cfg = if args.is_empty() {
+                        self.make_nil()
+                    } else {
+                        self.compile_expr(&args[0])?
+                    };
+                    let result = self
+                        .builder
+                        .build_call(self.libc.log_init, &[cfg.into()], "log_init_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("log_init returned void")?;
+                    return Ok(result);
+                }
+                "log_span" => {
+                    if args.is_empty() || args.len() > 4 {
+                        return Err(HaversError::CompileError(
+                            "log_span expects 1-4 arguments".to_string(),
+                        ));
+                    }
+                    let name = self.compile_expr(&args[0])?;
+                    let level = if args.len() >= 2 {
+                        self.compile_expr(&args[1])?
+                    } else {
+                        self.compile_string_literal("blether")?
+                    };
+                    let fields = if args.len() >= 3 {
+                        self.compile_expr(&args[2])?
+                    } else {
+                        self.make_nil()
+                    };
+                    let target = if args.len() >= 4 {
+                        self.compile_expr(&args[3])?
+                    } else {
+                        self.compile_string_literal("")?
+                    };
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.log_span_begin,
+                            &[name.into(), level.into(), fields.into(), target.into()],
+                            "log_span_result",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("log_span returned void")?;
+                    return Ok(result);
+                }
+                "log_span_enter" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "log_span_enter expects 1 argument".to_string(),
+                        ));
+                    }
+                    let span = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.log_span_enter,
+                            &[span.into()],
+                            "log_span_enter_result",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("log_span_enter returned void")?;
+                    return Ok(result);
+                }
+                "log_span_exit" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "log_span_exit expects 1 argument".to_string(),
+                        ));
+                    }
+                    let span = self.compile_expr(&args[0])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.log_span_exit,
+                            &[span.into()],
+                            "log_span_exit_result",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("log_span_exit returned void")?;
+                    return Ok(result);
+                }
+                "log_span_current" => {
+                    if !args.is_empty() {
+                        return Err(HaversError::CompileError(
+                            "log_span_current expects 0 arguments".to_string(),
+                        ));
+                    }
+                    let result = self
+                        .builder
+                        .build_call(self.libc.log_span_current, &[], "log_span_current_result")
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("log_span_current returned void")?;
+                    return Ok(result);
+                }
+                "log_span_in" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "log_span_in expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let span = self.compile_expr(&args[0])?;
+                    let func = self.compile_expr(&args[1])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.log_span_in,
+                            &[span.into(), func.into()],
+                            "log_span_in_result",
+                        )
+                        .map_err(Self::llvm_compile_error)?
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("log_span_in returned void")?;
                     return Ok(result);
                 }
                 // Scots builtins
@@ -27336,8 +27713,13 @@ impl<'ctx> CodeGen<'ctx> {
                     self.add_destruct_pattern_bindings(pattern, bound);
                 }
             }
-            Stmt::Log { message, .. } => {
+            Stmt::Log {
+                message, extras, ..
+            } => {
                 self.collect_free_vars(message, bound, free);
+                for extra in extras {
+                    self.collect_free_vars(extra, bound, free);
+                }
             }
             Stmt::Hurl { message, .. } => {
                 self.collect_free_vars(message, bound, free);
