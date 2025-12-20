@@ -7,9 +7,8 @@ explicitly (for example, without graphics), build with:
 cargo build --release --no-default-features --features cli,llvm,audio
 ```
 
-Note: graphics uses raylib (X11 deps on Ubuntu/WSL). Native (LLVM) audio uses miniaudio and
-does not require X11. Interpreter audio still uses raylib, so X11 deps are only needed for
-graphics or interpreter audio.
+Note: graphics uses raylib (X11 deps on Ubuntu/WSL). Audio (interpreter + native) uses
+miniaudio and does not require X11. X11 deps are only needed for graphics.
 
 Backend support: interpreter, LLVM/native, JavaScript, and WAT/WASM.
 
@@ -39,7 +38,7 @@ const imports = {
 };
 ```
 
-If you see:
+If you see (raylib builds):
 ```
 Unable to find libclang
 ```

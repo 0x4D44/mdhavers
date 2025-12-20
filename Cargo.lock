@@ -206,7 +206,25 @@ dependencies = [
  "proc-macro2",
  "quote",
  "regex",
- "rustc-hash",
+ "rustc-hash 1.1.0",
+ "shlex",
+ "syn",
+]
+
+[[package]]
+name = "bindgen"
+version = "0.71.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f58bf3d7db68cfbac37cfc485a8d711e87e064c3d0fe0435b92f7a407f9d6b3"
+dependencies = [
+ "bitflags 2.10.0",
+ "cexpr",
+ "clang-sys",
+ "itertools 0.13.0",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "rustc-hash 2.1.1",
  "shlex",
  "syn",
 ]
@@ -1502,6 +1520,7 @@ dependencies = [
  "logos",
  "lsp-server",
  "lsp-types",
+ "om-fork-miniaudio",
  "openssl",
  "pretty_assertions",
  "raylib",
@@ -1650,6 +1669,28 @@ dependencies = [
  "hashbrown 0.14.5",
  "indexmap",
  "memchr",
+]
+
+[[package]]
+name = "om-fork-ep-miniaudio-sys"
+version = "2.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b15275d28e354c1e3665940e8bd668817d6a6bafb6bdcb3860b49acf9358281f"
+dependencies = [
+ "bindgen 0.71.1",
+ "bitflags 2.10.0",
+ "cc",
+ "libc",
+]
+
+[[package]]
+name = "om-fork-miniaudio"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dec79816e1fe9db8c435cb3efac5cf470c4e7bde239ebcac22742412878aaeff"
+dependencies = [
+ "bitflags 2.10.0",
+ "om-fork-ep-miniaudio-sys",
 ]
 
 [[package]]
@@ -1942,7 +1983,7 @@ version = "5.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ce5adc950b042db67f1f78f24f7e76563652ce24db032afe9ca9e534d8b7a13"
 dependencies = [
- "bindgen",
+ "bindgen 0.70.1",
  "cc",
  "cmake",
 ]
@@ -2007,7 +2048,7 @@ checksum = "ad156d539c879b7a24a363a2016d77961786e71f48f2e2fc8302a92abd2429a6"
 dependencies = [
  "hashbrown 0.13.2",
  "log",
- "rustc-hash",
+ "rustc-hash 1.1.0",
  "slice-group-by",
  "smallvec",
 ]
@@ -2072,6 +2113,12 @@ name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
+
+[[package]]
+name = "rustc-hash"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
 
 [[package]]
 name = "rustix"

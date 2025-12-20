@@ -552,6 +552,24 @@ mod tests {
     }
 
     #[test]
+    fn test_log_level_name_and_display() {
+        let cases = [
+            (LogLevel::Wheesht, "WHEESHT"),
+            (LogLevel::Roar, "ROAR"),
+            (LogLevel::Holler, "HOLLER"),
+            (LogLevel::Blether, "BLETHER"),
+            (LogLevel::Mutter, "MUTTER"),
+            (LogLevel::Whisper, "WHISPER"),
+        ];
+        for (level, name) in cases {
+            assert_eq!(level.name(), name);
+            assert_eq!(level.to_string(), name);
+            assert_eq!(LogLevel::parse_level(&name.to_lowercase()), Some(level));
+        }
+        assert_eq!(LogLevel::parse_level("nope"), None);
+    }
+
+    #[test]
     fn test_program_new() {
         let stmts = vec![Stmt::Break {
             span: Span::new(1, 1),
@@ -1061,22 +1079,16 @@ mod tests {
         };
 
         // Just verify they can be created and matched
-        match lit_pattern {
-            Pattern::Literal(Literal::Integer(42)) => {}
-            _ => panic!("Expected integer literal pattern"),
-        }
-        match id_pattern {
-            Pattern::Identifier(ref name) => assert_eq!(name, "x"),
-            _ => panic!("Expected identifier pattern"),
-        }
-        match wildcard {
-            Pattern::Wildcard => {}
-            _ => panic!("Expected wildcard"),
-        }
-        match range_pattern {
-            Pattern::Range { .. } => {}
-            _ => panic!("Expected range pattern"),
-        }
+        assert!(matches!(
+            lit_pattern,
+            Pattern::Literal(Literal::Integer(42))
+        ));
+        assert!(matches!(
+            id_pattern,
+            Pattern::Identifier(ref name) if name == "x"
+        ));
+        assert!(matches!(wildcard, Pattern::Wildcard));
+        assert!(matches!(range_pattern, Pattern::Range { .. }));
     }
 
     #[test]
@@ -1085,18 +1097,15 @@ mod tests {
         let rest = DestructPattern::Rest("remaining".to_string());
         let ignore = DestructPattern::Ignore;
 
-        match var {
-            DestructPattern::Variable(ref name) => assert_eq!(name, "x"),
-            _ => panic!("Expected variable pattern"),
-        }
-        match rest {
-            DestructPattern::Rest(ref name) => assert_eq!(name, "remaining"),
-            _ => panic!("Expected rest pattern"),
-        }
-        match ignore {
-            DestructPattern::Ignore => {}
-            _ => panic!("Expected ignore pattern"),
-        }
+        assert!(matches!(
+            var,
+            DestructPattern::Variable(ref name) if name == "x"
+        ));
+        assert!(matches!(
+            rest,
+            DestructPattern::Rest(ref name) if name == "remaining"
+        ));
+        assert!(matches!(ignore, DestructPattern::Ignore));
     }
 
     #[test]
@@ -1108,14 +1117,31 @@ mod tests {
             span,
         }));
 
-        match text {
-            FStringPart::Text(ref s) => assert_eq!(s, "hello "),
-            _ => panic!("Expected text part"),
-        }
-        match expr {
-            FStringPart::Expr(_) => {}
-            _ => panic!("Expected expr part"),
-        }
+        assert!(matches!(text, FStringPart::Text(ref s) if s == "hello "));
+        assert!(matches!(expr, FStringPart::Expr(_)));
+    }
+
+    #[test]
+    fn test_span_for_block_expr_and_log_hurl() {
+        let span = Span::new(2, 3);
+        let block = Expr::BlockExpr {
+            statements: vec![Stmt::Break { span }],
+            span,
+        };
+        assert_eq!(block.span(), span);
+
+        let msg = Expr::Literal {
+            value: Literal::String("boom".to_string()),
+            span,
+        };
+        let log_stmt = Stmt::Log {
+            level: LogLevel::Mutter,
+            message: msg.clone(),
+            span,
+        };
+        let hurl_stmt = Stmt::Hurl { message: msg, span };
+        assert_eq!(log_stmt.span(), span);
+        assert_eq!(hurl_stmt.span(), span);
     }
 
     #[test]

@@ -456,12 +456,17 @@ pub enum VarType {
     Dict,
 }
 
-#[derive(Debug, Default)]
-struct ImportBindings {
+#[derive(Debug)]
+struct ImportBindings<'ctx> {
     variables: HashSet<String>,
     globals: HashSet<String>,
     functions: HashSet<String>,
     classes: HashSet<String>,
+    function_bindings: HashMap<String, FunctionValue<'ctx>>,
+    function_defaults: HashMap<String, Vec<Option<Expr>>>,
+    function_captures: HashMap<String, Vec<String>>,
+    class_bindings: HashMap<String, inkwell::values::GlobalValue<'ctx>>,
+    class_method_bindings: HashMap<String, Vec<(String, FunctionValue<'ctx>)>>,
 }
 
 /// Character class for string classification functions
@@ -545,6 +550,8 @@ pub struct CodeGen<'ctx> {
 
     /// Counter for generating unique pipe temporaries
     pipe_tmp_counter: u32,
+    /// Counter for generating unique import prefixes
+    import_unique_counter: usize,
 
     /// Class definitions: name -> global variable holding class data pointer
     classes: HashMap<String, inkwell::values::GlobalValue<'ctx>>,
@@ -634,6 +641,7 @@ impl<'ctx> CodeGen<'ctx> {
             in_user_function: false,
             lambda_counter: 0,
             pipe_tmp_counter: 0,
+            import_unique_counter: 0,
             classes: HashMap::new(),
             class_methods: HashMap::new(),
             current_masel: None,
@@ -10326,7 +10334,7 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(());
                 }
                 let before = self.capture_import_bindings();
-                self.compile_import(path)?;
+                self.compile_import(path, alias.is_some())?;
                 if let Some(alias_name) = alias {
                     let exports_all = self.collect_import_exports(path)?;
                     let mut exports_public = exports_all.clone();
@@ -10338,6 +10346,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let module_val = self.build_module_dict(&exports_public)?;
                     self.store_import_alias(alias_name, module_val)?;
                     self.hide_imported_exports(&exports_all, &before);
+                    self.restore_import_bindings(&before);
                 }
                 Ok(())
             }
@@ -24930,6 +24939,12 @@ impl<'ctx> CodeGen<'ctx> {
         index: &Expr,
         value: &Expr,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        if let Expr::Variable { name, .. } = object {
+            if self.import_alias_exports.contains_key(name) {
+                self.import_alias_exports.remove(name);
+                self.import_alias_bindings.remove(name);
+            }
+        }
         // Fast path: if we know the object is a list and index is an int,
         // skip type checking and negative index handling
         let obj_type = self.infer_expr_type(object);
@@ -30601,16 +30616,29 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-    fn capture_import_bindings(&self) -> ImportBindings {
+    fn capture_import_bindings(&self) -> ImportBindings<'ctx> {
         ImportBindings {
             variables: self.variables.keys().cloned().collect(),
             globals: self.globals.keys().cloned().collect(),
             functions: self.functions.keys().cloned().collect(),
             classes: self.classes.keys().cloned().collect(),
+            function_bindings: self.functions.clone(),
+            function_defaults: self.function_defaults.clone(),
+            function_captures: self.function_captures.clone(),
+            class_bindings: self.classes.clone(),
+            class_method_bindings: self.class_methods.clone(),
         }
     }
 
-    fn hide_imported_exports(&mut self, exports: &[String], before: &ImportBindings) {
+    fn restore_import_bindings(&mut self, before: &ImportBindings<'ctx>) {
+        self.functions = before.function_bindings.clone();
+        self.function_defaults = before.function_defaults.clone();
+        self.function_captures = before.function_captures.clone();
+        self.classes = before.class_bindings.clone();
+        self.class_methods = before.class_method_bindings.clone();
+    }
+
+    fn hide_imported_exports(&mut self, exports: &[String], before: &ImportBindings<'ctx>) {
         for name in exports {
             if !before.functions.contains(name) {
                 self.functions.remove(name);
@@ -30630,7 +30658,48 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
-    fn compile_import(&mut self, path: &str) -> Result<(), HaversError> {
+    fn import_prefix(&mut self, import_path: &Path) -> String {
+        let id = self.import_unique_counter;
+        self.import_unique_counter += 1;
+        let stem = import_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("module");
+        let mut sanitized = String::new();
+        for ch in stem.chars() {
+            if ch.is_ascii_alphanumeric() {
+                sanitized.push(ch);
+            } else {
+                sanitized.push('_');
+            }
+        }
+        if sanitized.is_empty() {
+            sanitized.push_str("module");
+        }
+        format!("__import_{}_{}_", sanitized, id)
+    }
+
+    fn declare_import_function(
+        &mut self,
+        name: &str,
+        param_count: usize,
+        import_prefix: Option<&str>,
+    ) -> Result<(), HaversError> {
+        let llvm_name = if let Some(prefix) = import_prefix {
+            format!("{prefix}{name}")
+        } else {
+            name.to_string()
+        };
+        let param_types: Vec<BasicMetadataTypeEnum> = (0..param_count)
+            .map(|_| self.types.value_type.into())
+            .collect();
+        let fn_type = self.types.value_type.fn_type(&param_types, false);
+        let function = self.module.add_function(&llvm_name, fn_type, None);
+        self.functions.insert(name.to_string(), function);
+        Ok(())
+    }
+
+    fn compile_import(&mut self, path: &str, isolate: bool) -> Result<(), HaversError> {
         // Resolve the import path relative to the source file
         let import_path = self.resolve_import_path(path)?;
 
@@ -30639,6 +30708,11 @@ impl<'ctx> CodeGen<'ctx> {
             return Ok(());
         }
         self.imported_modules.insert(import_path.clone());
+        let import_prefix = if isolate {
+            Some(self.import_prefix(&import_path))
+        } else {
+            None
+        };
 
         // Read and parse the imported file
         let source = std::fs::read_to_string(&import_path).map_err(Self::llvm_compile_error)?;
@@ -30652,12 +30726,12 @@ impl<'ctx> CodeGen<'ctx> {
                     // Handle nested imports first
                     let saved_path = self.source_path.clone();
                     self.source_path = Some(import_path.clone());
-                    self.compile_import(sub_path)?;
+                    self.compile_import(sub_path, isolate)?;
                     self.source_path = saved_path;
                 }
                 Stmt::Function { name, params, .. } => {
                     // Declare the function (forward declaration)
-                    self.declare_function(name, params.len())?;
+                    self.declare_import_function(name, params.len(), import_prefix.as_deref())?;
                 }
                 Stmt::Class { name, methods, .. } => {
                     // Pre-register class and its methods (allows cross-class method calls)
@@ -31846,6 +31920,12 @@ impl<'ctx> CodeGen<'ctx> {
         property: &str,
         value: &Expr,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        if let Expr::Variable { name, .. } = object {
+            if self.import_alias_exports.contains_key(name) {
+                self.import_alias_exports.remove(name);
+                self.import_alias_bindings.remove(name);
+            }
+        }
         let function = self.current_function.unwrap();
         let obj_val = self.compile_expr(object)?;
         let val = self.compile_expr(value)?;
