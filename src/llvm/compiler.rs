@@ -453,6 +453,7 @@ impl Default for LLVMCompiler {
 mod tests {
     use super::*;
     use crate::parse;
+    use tempfile::tempdir;
 
     #[test]
     fn test_compile_simple() {
@@ -588,5 +589,95 @@ mod tests {
         assert!(ir.contains("@__mdh_soond_stairt"));
         assert!(ir.contains("@__mdh_muisic_lade"));
         assert!(ir.contains("@__mdh_midi_lade"));
+    }
+
+    #[test]
+    fn test_with_optimization_levels() {
+        let none = LLVMCompiler::new().with_optimization(0);
+        assert!(matches!(none.opt_level, OptimizationLevel::None));
+
+        let less = LLVMCompiler::new().with_optimization(1);
+        assert!(matches!(less.opt_level, OptimizationLevel::Less));
+
+        let default = LLVMCompiler::new().with_optimization(2);
+        assert!(matches!(default.opt_level, OptimizationLevel::Default));
+
+        let aggressive = LLVMCompiler::new().with_optimization(3);
+        assert!(matches!(
+            aggressive.opt_level,
+            OptimizationLevel::Aggressive
+        ));
+    }
+
+    #[test]
+    fn test_build_status_updates_and_painting() {
+        let mut status = BuildStatus::new("Test");
+        status.enabled = true;
+        status.use_color = true;
+
+        status.update("Warmup", StatusColor::Yellow);
+        status.update("Dimmed", StatusColor::Dim);
+        status.finish("Done", StatusColor::Green);
+        status.fail("Failed");
+
+        let mut plain = BuildStatus::new("Plain");
+        plain.use_color = false;
+        assert_eq!(plain.paint("text", StatusColor::Red, false), "text");
+    }
+
+    #[test]
+    fn test_build_status_guard_drop_emits_newline() {
+        let mut status = BuildStatus::new("Guard");
+        status.enabled = true;
+        status.use_color = false;
+        {
+            let _guard = status.guard();
+            status.update("Stage", StatusColor::Yellow);
+        }
+    }
+
+    #[test]
+    fn test_compile_to_object_and_write_error_paths() {
+        let program = parse("ken x = 1").unwrap();
+        let compiler = LLVMCompiler::new();
+
+        let dir = tempdir().unwrap();
+        let obj_path = dir.path().join("out.o");
+        compiler.compile_to_object(&program, &obj_path).unwrap();
+        assert!(obj_path.exists());
+
+        let err = compiler
+            .compile_to_object(&program, dir.path())
+            .unwrap_err();
+        assert!(matches!(err, HaversError::CompileError(_)));
+    }
+
+    #[test]
+    fn test_compile_to_object_status_and_skip_optimizations() {
+        let program = parse("ken x = 1").unwrap();
+        let mut status = BuildStatus::new("Test");
+        status.enabled = true;
+        status.use_color = false;
+
+        let compiler = LLVMCompiler::new().with_optimization(0);
+        let dir = tempdir().unwrap();
+        let obj_path = dir.path().join("out2.o");
+        compiler
+            .compile_to_object_with_source_status(&program, &obj_path, None, Some(&mut status))
+            .unwrap();
+        assert!(obj_path.exists());
+    }
+
+    #[test]
+    fn test_run_optimization_passes_invalid_module_errors() {
+        let context = Context::create();
+        let module = context.create_module("bad");
+        let fn_ty = context.void_type().fn_type(&[], false);
+        let func = module.add_function("bad", fn_ty, None);
+        context.append_basic_block(func, "entry");
+
+        let compiler = LLVMCompiler::new();
+        let err = compiler.run_optimization_passes(&module).unwrap_err();
+        assert!(err.to_string().contains("Module verification failed"));
     }
 }

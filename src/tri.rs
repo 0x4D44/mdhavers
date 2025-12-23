@@ -361,3 +361,252 @@ fn make_constructor(kind: &'static str) -> Value {
     });
     Value::NativeFunction(Rc::new(func))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_is_tri_module() {
+        assert!(is_tri_module("tri"));
+        assert!(is_tri_module("tri.braw"));
+        assert!(!is_tri_module("tri.txt"));
+        assert!(!is_tri_module("math"));
+    }
+
+    #[test]
+    fn test_tri_module_constants_and_constructors() {
+        let module = TriModule::new();
+        let deg = module.get("DEG_TO_RAD").unwrap();
+        let Value::Float(v) = deg else {
+            panic!("expected float constant");
+        };
+        assert!((v - std::f64::consts::PI / 180.0).abs() < 1e-6);
+
+        let ctor = module.get("Mesch").unwrap();
+        let Value::NativeFunction(func) = ctor else {
+            panic!("expected constructor function");
+        };
+        let result = (func.func)(vec![]).unwrap();
+        let Value::NativeObject(obj) = result else {
+            panic!("expected native object");
+        };
+        assert_eq!(obj.type_name(), "Mesch");
+    }
+
+    #[test]
+    fn test_tri_module_get_set_and_call_errors() {
+        let module = TriModule::new();
+        let err = module.get("Nope").unwrap_err();
+        assert!(matches!(err, HaversError::UndefinedVariable { .. }));
+
+        let err = module.set("x", Value::Nil).unwrap_err();
+        assert!(matches!(err, HaversError::TypeError { .. }));
+
+        let err = module.call("Nope", vec![]).unwrap_err();
+        assert!(matches!(err, HaversError::UndefinedVariable { .. }));
+    }
+
+    #[test]
+    fn test_tri_module_call_constructor() {
+        let module = TriModule::new();
+        let value = module.call("BoxGeometrie", vec![]).unwrap();
+        let Value::NativeObject(obj) = value else {
+            panic!("expected native object");
+        };
+        assert_eq!(obj.type_name(), "BoxGeometrie");
+    }
+
+    #[test]
+    fn test_tri_object_transform_fields() {
+        let obj = TriObject::new("Thing3D");
+        assert!(matches!(obj.get("position"), Ok(Value::NativeObject(_))));
+        assert!(matches!(obj.get("rotation"), Ok(Value::NativeObject(_))));
+        assert!(matches!(obj.get("scale"), Ok(Value::NativeObject(_))));
+        assert!(matches!(obj.get("children"), Ok(Value::List(_))));
+        assert!(matches!(obj.get("parent"), Ok(Value::Nil)));
+    }
+
+    #[test]
+    fn test_tri_object_non_transform_fields() {
+        let obj = TriObject::new("Geometrie");
+        assert!(obj.get("position").is_err());
+        assert!(obj.get("children").is_err());
+    }
+
+    #[test]
+    fn test_apply_constructor_args_defaults() {
+        let obj = TriObject::with_args("BoxGeometrie", &[]);
+        assert_eq!(obj.get("width").unwrap(), Value::Integer(1));
+        assert_eq!(obj.get("height").unwrap(), Value::Integer(1));
+        assert_eq!(obj.get("depth").unwrap(), Value::Integer(1));
+
+        let obj = TriObject::with_args(
+            "PerspectivKamera",
+            &[
+                Value::Integer(75),
+                Value::Float(1.6),
+                Value::Float(0.2),
+                Value::Integer(100),
+            ],
+        );
+        assert_eq!(obj.get("fov").unwrap(), Value::Integer(75));
+        assert_eq!(obj.get("aspect").unwrap(), Value::Float(1.6));
+        assert_eq!(obj.get("near").unwrap(), Value::Float(0.2));
+        assert_eq!(obj.get("far").unwrap(), Value::Integer(100));
+
+        let obj = TriObject::with_args("Colour", &[]);
+        assert_eq!(obj.get("value").unwrap(), Value::Nil);
+    }
+
+    #[test]
+    fn test_tri_object_methods_and_children() {
+        let obj = TriObject::new("Thing3D");
+        obj.call("adde", vec![Value::Integer(1), Value::Integer(2)])
+            .unwrap();
+        let children = obj.get("children").unwrap();
+        let Value::List(list) = children else {
+            panic!("expected children list");
+        };
+        assert_eq!(list.borrow().len(), 2);
+
+        obj.call("remuiv", vec![Value::Integer(1)]).unwrap();
+        let Value::List(list) = obj.get("children").unwrap() else {
+            panic!("expected children list");
+        };
+        assert_eq!(list.borrow().len(), 1);
+
+        obj.call("luik_at", vec![Value::String("target".to_string())])
+            .unwrap();
+        assert_eq!(
+            obj.get("lookAtTarget").unwrap(),
+            Value::String("target".to_string())
+        );
+
+        obj.call("set_sise", vec![Value::Integer(640), Value::Integer(480)])
+            .unwrap();
+        assert_eq!(obj.get("width").unwrap(), Value::Integer(640));
+        assert_eq!(obj.get("height").unwrap(), Value::Integer(480));
+
+        obj.call("set_pixel_ratio", vec![Value::Float(2.0)])
+            .unwrap();
+        assert_eq!(obj.get("pixelRatio").unwrap(), Value::Float(2.0));
+
+        obj.call(
+            "render",
+            vec![
+                Value::String("scene".to_string()),
+                Value::String("camera".to_string()),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            obj.get("scene").unwrap(),
+            Value::String("scene".to_string())
+        );
+        assert_eq!(
+            obj.get("camera").unwrap(),
+            Value::String("camera".to_string())
+        );
+
+        obj.call("loop", vec![Value::String("cb".to_string())])
+            .unwrap();
+        assert_eq!(obj.get("loopFn").unwrap(), Value::String("cb".to_string()));
+
+        let cloned = obj.call("cloan", vec![]).unwrap();
+        let Value::NativeObject(clone_obj) = cloned else {
+            panic!("expected clone");
+        };
+        assert_eq!(clone_obj.type_name(), "Thing3D");
+    }
+
+    #[test]
+    fn test_tri_module_type_name_and_as_any() {
+        let module = TriModule::new();
+        assert_eq!(module.type_name(), "tri.module");
+        assert!(module.as_any().is::<TriModule>());
+    }
+
+    #[test]
+    fn test_tri_object_set_unknown_call_and_as_any() {
+        let obj = TriObject::new("Thing3D");
+        obj.set("custom", Value::Integer(5)).unwrap();
+        assert_eq!(obj.get("custom").unwrap(), Value::Integer(5));
+        assert_eq!(obj.call("nope", vec![]).unwrap(), Value::Nil);
+        assert!(obj.as_any().is::<TriObject>());
+    }
+
+    #[test]
+    fn test_tri_object_remove_children_without_list() {
+        let obj = TriObject::new("Geometrie");
+        obj.call("remuiv", vec![Value::Integer(1)]).unwrap();
+        assert!(obj.get("children").is_err());
+    }
+
+    #[test]
+    fn test_apply_constructor_args_more_kinds() {
+        let obj = TriObject::with_args("OrthograffikKamera", &[]);
+        assert_eq!(obj.get("left").unwrap(), Value::Integer(-1));
+        assert_eq!(obj.get("right").unwrap(), Value::Integer(1));
+        assert_eq!(obj.get("top").unwrap(), Value::Integer(1));
+        assert_eq!(obj.get("bottom").unwrap(), Value::Integer(-1));
+        assert_eq!(obj.get("near").unwrap(), Value::Float(0.1));
+        assert_eq!(obj.get("far").unwrap(), Value::Integer(2000));
+
+        let obj = TriObject::with_args("SpherGeometrie", &[]);
+        assert_eq!(obj.get("radius").unwrap(), Value::Integer(1));
+        assert_eq!(obj.get("widthSegments").unwrap(), Value::Integer(8));
+        assert_eq!(obj.get("heightSegments").unwrap(), Value::Integer(6));
+
+        let obj = TriObject::with_args("Maiterial", &[]);
+        assert_eq!(obj.get("opts").unwrap(), Value::Nil);
+        let obj = TriObject::with_args("MeshBasicMaiterial", &[]);
+        assert_eq!(obj.get("opts").unwrap(), Value::Nil);
+        let obj = TriObject::with_args("Renderar", &[]);
+        assert_eq!(obj.get("opts").unwrap(), Value::Nil);
+
+        let obj = TriObject::with_args("Licht", &[]);
+        assert_eq!(obj.get("color").unwrap(), Value::Nil);
+        assert_eq!(obj.get("intensity").unwrap(), Value::Integer(1));
+
+        let obj = TriObject::with_args("PyntLicht", &[]);
+        assert_eq!(obj.get("color").unwrap(), Value::Nil);
+        assert_eq!(obj.get("intensity").unwrap(), Value::Integer(1));
+        assert_eq!(obj.get("distance").unwrap(), Value::Integer(0));
+        assert_eq!(obj.get("decay").unwrap(), Value::Integer(2));
+    }
+
+    #[test]
+    fn test_tri_object_children_on_non_transform() {
+        let obj = TriObject::new("Geometrie");
+        obj.call("adde", vec![Value::Integer(1)]).unwrap();
+        let Value::List(list) = obj.get("children").unwrap() else {
+            panic!("expected children list");
+        };
+        assert_eq!(list.borrow().len(), 1);
+        obj.call("remuiv", vec![Value::Integer(2)]).unwrap();
+    }
+
+    #[test]
+    fn test_make_vec3_and_transform_check() {
+        let vec = make_vec3("Vec3", 1.0, 2.0, 3.0);
+        let Value::NativeObject(obj) = vec else {
+            panic!("expected vec3 object");
+        };
+        assert_eq!(obj.get("x").unwrap(), Value::Float(1.0));
+        assert_eq!(obj.get("y").unwrap(), Value::Float(2.0));
+        assert_eq!(obj.get("z").unwrap(), Value::Float(3.0));
+
+        assert!(tri_has_transform("Sicht"));
+        assert!(!tri_has_transform("Geometrie"));
+    }
+
+    #[test]
+    fn test_add_children_creates_list() {
+        let obj = TriObject::new("Maiterial");
+        obj.add_children(&[Value::Integer(1)]);
+        let Value::List(children) = obj.get("children").unwrap() else {
+            panic!("expected children list");
+        };
+        assert_eq!(children.borrow().len(), 1);
+    }
+}

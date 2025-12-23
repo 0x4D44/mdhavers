@@ -231,6 +231,71 @@ blether x + 1
 }
 
 #[test]
+fn cli_argument_errors_and_missing_inputs() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let (code, _out, _err) = run_mdhavers(&["run"], None, home);
+    assert_ne!(code, 0);
+
+    let (code, _out, _err) = run_mdhavers(&["compile"], None, home);
+    assert_ne!(code, 0);
+
+    let (code, _out, _err) = run_mdhavers(&["not-a-command"], None, home);
+    assert_ne!(code, 0);
+
+    let missing = dir.path().join("missing.braw");
+    let (code, _out, err) = run_mdhavers(&["run", missing.to_str().unwrap()], None, home);
+    assert_ne!(code, 0);
+    assert!(err.contains("Cannae read"));
+}
+
+#[test]
+fn cli_write_failures_surface_errors() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let ok_braw = dir.path().join("ok.braw");
+    write_file(&ok_braw, "ken x = 1\n");
+
+    let out_dir = dir.path().join("out_dir");
+    fs::create_dir(&out_dir).unwrap();
+    let out_dir = out_dir.to_str().unwrap();
+
+    let (code, _out, err) = run_mdhavers(
+        &["compile", ok_braw.to_str().unwrap(), "--output", out_dir],
+        None,
+        home,
+    );
+    assert_ne!(code, 0);
+    assert!(err.contains("Cannae write"));
+
+    let (code, _out, err) = run_mdhavers(
+        &["wasm", ok_braw.to_str().unwrap(), "--output", out_dir],
+        None,
+        home,
+    );
+    assert_ne!(code, 0);
+    assert!(err.contains("Cannae write"));
+
+    let (code, _out, err) = run_mdhavers(
+        &[
+            "build",
+            ok_braw.to_str().unwrap(),
+            "--emit-llvm",
+            "-O",
+            "0",
+            "--output",
+            out_dir,
+        ],
+        None,
+        home,
+    );
+    assert_ne!(code, 0);
+    assert!(err.contains("Cannae write"));
+}
+
+#[test]
 fn cli_repl_scripted_session_exits_cleanly() {
     let dir = tempdir().unwrap();
     let home = dir.path();

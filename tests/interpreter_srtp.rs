@@ -60,3 +60,36 @@ blether result
     let out = interp.get_output().join("\n");
     assert_eq!(out.trim(), "srtp_ok");
 }
+
+#[test]
+fn interpreter_srtp_client_server_keys() {
+    let code = r#"
+dae make_bytes_seq(n, start) {
+    ken b = bytes(n)
+    ken i = 0
+    whiles i < n {
+        bytes_set(b, i, start + i)
+        i = i + 1
+    }
+    gie b
+}
+
+ken ck = make_bytes_seq(16, 1)
+ken cs = make_bytes_seq(14, 50)
+ken sk = make_bytes_seq(16, 2)
+ken ss = make_bytes_seq(14, 60)
+
+ken cfg_client = {"profile": "SRTP_AES128_CM_SHA1_80", "client_key": ck, "client_salt": cs, "server_key": sk, "server_salt": ss, "role": "client"}
+ken cfg_server = {"profile": "SRTP_AES128_CM_SHA1_80", "client_key": ck, "client_salt": cs, "server_key": sk, "server_salt": ss, "role": "server"}
+
+ken a = srtp_create(cfg_client)
+ken b = srtp_create(cfg_server)
+gin a["ok"] an b["ok"] { blether "keys_ok" } ither { blether "keys_fail" }
+"#;
+
+    let program = parse(code).unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert_eq!(out.trim(), "keys_ok");
+}

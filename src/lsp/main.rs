@@ -355,14 +355,17 @@ where
 mod tests {
     use super::*;
     use lsp_server::{Connection, Message, Notification as LspNotification, Request as LspRequest};
-    use lsp_types::notification::{DidOpenTextDocument, Notification as LspNotificationTrait};
+    use lsp_types::notification::{
+        DidCloseTextDocument, DidOpenTextDocument, Notification as LspNotificationTrait,
+    };
     use lsp_types::request::{
         Completion, GotoDefinition, HoverRequest, Request as LspRequestTrait,
     };
     use lsp_types::{
-        CompletionParams, DidChangeTextDocumentParams, DidOpenTextDocumentParams, Position,
-        TextDocumentContentChangeEvent, TextDocumentIdentifier, TextDocumentItem,
-        TextDocumentPositionParams, Uri, VersionedTextDocumentIdentifier,
+        CompletionParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
+        DidOpenTextDocumentParams, Position, TextDocumentContentChangeEvent,
+        TextDocumentIdentifier, TextDocumentItem, TextDocumentPositionParams, Uri,
+        VersionedTextDocumentIdentifier,
     };
     use serde_json::Value as JsonValue;
     use std::str::FromStr;
@@ -518,5 +521,32 @@ mod tests {
         if let Err(err) = result {
             panic!("main_loop error: {err}");
         }
+    }
+
+    #[test]
+    fn handle_hover_returns_none_for_unknown_word() {
+        let mut docs = DocumentStore::new();
+        let uri = Uri::from_str("file:///tmp/coverage_lsp_unknown.braw").unwrap();
+        docs.open(uri.clone(), "foobarbaz".to_string());
+
+        let params = hover_params(&uri, 0, 2);
+        assert!(handle_hover(&docs, params).is_none());
+    }
+
+    #[test]
+    fn handle_notification_closes_document() {
+        let (server, _client) = Connection::memory();
+        let mut docs = DocumentStore::new();
+        let uri = Uri::from_str("file:///tmp/coverage_lsp_close.braw").unwrap();
+        docs.open(uri.clone(), "ken x = 1\n".to_string());
+
+        let close_params = DidCloseTextDocumentParams {
+            text_document: TextDocumentIdentifier { uri: uri.clone() },
+        };
+        let notification =
+            LspNotification::new(DidCloseTextDocument::METHOD.to_string(), close_params);
+        handle_notification(&server, &mut docs, notification).unwrap();
+
+        assert!(docs.get(&uri).is_none());
     }
 }

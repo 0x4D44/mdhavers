@@ -103,6 +103,7 @@ mod miniaudio {
     }
 
     pub struct Decoder {
+        frames_left: u64,
         _marker: PhantomData<()>,
     }
 
@@ -115,12 +116,21 @@ mod miniaudio {
                 return Err(());
             }
             Ok(Self {
+                frames_left: 1,
                 _marker: PhantomData,
             })
         }
 
-        pub fn read_pcm_frames(&mut self, _frames: &mut FramesMut) -> u64 {
-            0
+        pub fn read_pcm_frames(&mut self, frames: &mut FramesMut) -> u64 {
+            if self.frames_left == 0 {
+                return 0;
+            }
+            let count = self.frames_left.min(frames.frame_count() as u64);
+            self.frames_left -= count;
+            for sample in frames.as_samples_mut::<f32>().iter_mut() {
+                *sample = 0.1;
+            }
+            count
         }
     }
 
@@ -1527,7 +1537,9 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::value::{Environment, NativeFunction};
     use std::fs;
+    use std::io::Cursor;
     use std::path::Path;
     use std::sync::Mutex;
     use tempfile::tempdir;
@@ -1552,6 +1564,14 @@ mod tests {
         SampleBuffer {
             samples: Arc::new(samples),
             frames,
+        }
+    }
+
+    fn get_native(env: &Rc<RefCell<Environment>>, name: &str) -> Rc<NativeFunction> {
+        let value = env.borrow().get(name).unwrap();
+        match value {
+            Value::NativeFunction(func) => func,
+            _ => panic!("expected native function {}", name),
         }
     }
 
@@ -1807,5 +1827,390 @@ mod tests {
 
         seek_midi(&mut entry, 5.0).unwrap();
         assert!((entry.sequencer.get_position() - entry.midi.get_length()).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_frames_mut_helpers() {
+        let mut data = vec![0.0_f32; 4];
+        let frames = FramesMut::wrap(&mut data, Format::F32, 2);
+        assert_eq!(frames.frame_count(), 2);
+
+        let frames_zero = FramesMut::wrap(&mut data, Format::F32, 0);
+        assert_eq!(frames_zero.frame_count(), 0);
+
+        let mut frames = FramesMut::wrap(&mut data, Format::F32, 2);
+        let samples = frames.as_samples_mut::<f32>();
+        samples[0] = 0.25;
+        assert!((data[0] - 0.25).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_decode_audio_success_reads_frames() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("ok.wav");
+        fs::write(&path, b"wav").unwrap();
+        let buffer = decode_audio(path.to_str().unwrap(), "nope").unwrap();
+        assert_eq!(buffer.frames, 1);
+        assert_eq!(buffer.samples.len(), OUTPUT_CHANNELS as usize);
+    }
+
+    #[test]
+    fn test_mix_output_try_lock_failure() {
+        let state = Arc::new(Mutex::new(MixerState::new()));
+        let mut data = vec![0.0_f32; 4];
+        let mut frames = FramesMut::wrap(&mut data, Format::F32, OUTPUT_CHANNELS);
+        let _guard = state.lock().unwrap();
+        mix_output(&state, &mut frames);
+    }
+
+    #[test]
+    fn test_midi_sequencer_render_branches() {
+        let sf = SoundFont::new(&mut Cursor::new(Vec::new())).unwrap();
+        let settings = SynthesizerSettings::new(10);
+        let synth = Synthesizer::new(&sf, &settings).unwrap();
+        let mut seq = MidiFileSequencer::new(synth);
+        let mut left = [1.0_f32; 2];
+        let mut right = [1.0_f32; 2];
+
+        seq.render(&mut left, &mut right);
+        assert_eq!(left, [0.0, 0.0]);
+        assert_eq!(right, [0.0, 0.0]);
+
+        let midi = Arc::new(MidiFile::new(&mut Cursor::new(Vec::new())).unwrap());
+        seq.play(&midi, true);
+        seq.render(&mut left, &mut right);
+        assert!(seq.get_position() < 1e-6);
+
+        seq.play(&midi, false);
+        seq.render(&mut left, &mut right);
+        assert!(seq.end_of_sequence());
+    }
+
+    #[test]
+    fn test_audio_state_mixer_poisoned() {
+        let mut state = AudioState::new();
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = state.shared.lock().unwrap();
+            panic!("poison");
+        }));
+        let guard = state.mixer().unwrap();
+        drop(guard);
+        state.shutdown();
+    }
+
+    #[test]
+    fn test_mix_output_success_path() {
+        let mut state = MixerState::new();
+        state.master_volume = 0.5;
+        state.sounds.push(Some(SoundEntry {
+            buffer: sample_buffer(1, 1.0, 0.0),
+            position: 0.0,
+            state: PlayState::Playing,
+            looped: false,
+            volume: 1.0,
+            pan: -1.0,
+            pitch: 1.0,
+        }));
+        state.music.push(Some(MusicEntry {
+            buffer: sample_buffer(1, 0.25, 0.25),
+            position: 0.0,
+            state: PlayState::Playing,
+            looped: false,
+            volume: 1.0,
+            pan: 0.0,
+            pitch: 1.0,
+        }));
+
+        let sf = SoundFont::new(&mut Cursor::new(Vec::new())).unwrap();
+        let settings = SynthesizerSettings::new(10);
+        let synth = Synthesizer::new(&sf, &settings).unwrap();
+        let midi = Arc::new(MidiFile::new(&mut Cursor::new(Vec::new())).unwrap());
+        let mut sequencer = MidiFileSequencer::new(synth);
+        sequencer.play(&midi, false);
+        state.midi.push(Some(MidiEntry {
+            midi,
+            sequencer,
+            state: PlayState::Playing,
+            looped: false,
+            volume: 1.0,
+            pan: 0.0,
+            sample_rate: 10,
+            scratch_left: Vec::new(),
+            scratch_right: Vec::new(),
+        }));
+
+        let shared = Arc::new(Mutex::new(state));
+        let mut data = vec![0.0_f32; OUTPUT_CHANNELS as usize];
+        let mut frames = FramesMut::wrap(&mut data, Format::F32, OUTPUT_CHANNELS);
+        mix_output(&shared, &mut frames);
+        assert!(data.iter().any(|v| v.abs() > 0.0));
+    }
+
+    #[test]
+    fn test_mix_buffer_entry_early_returns() {
+        let buffer = sample_buffer(1, 1.0, 0.5);
+        let mut entry = BufferEntry {
+            buffer,
+            position: 0.0,
+            state: PlayState::Paused,
+            looped: false,
+            volume: 1.0,
+            pan: 0.0,
+            pitch: 1.0,
+        };
+        let mut output = vec![0.0_f32; 2];
+        mix_buffer_entry(&mut entry, &mut output, 1, 2);
+        assert_eq!(entry.state, PlayState::Paused);
+
+        let buffer = SampleBuffer {
+            samples: Arc::new(vec![]),
+            frames: 0,
+        };
+        let mut entry = BufferEntry {
+            buffer,
+            position: 0.0,
+            state: PlayState::Playing,
+            looped: false,
+            volume: 1.0,
+            pan: 0.0,
+            pitch: 1.0,
+        };
+        mix_buffer_entry(&mut entry, &mut output, 1, 2);
+        assert_eq!(entry.state, PlayState::Stopped);
+
+        let buffer = sample_buffer(1, 1.0, 0.0);
+        let mut entry = BufferEntry {
+            buffer,
+            position: 10.0,
+            state: PlayState::Playing,
+            looped: false,
+            volume: 1.0,
+            pan: 0.0,
+            pitch: 1.0,
+        };
+        mix_buffer_entry(&mut entry, &mut output, 1, 2);
+        assert_eq!(entry.state, PlayState::Stopped);
+    }
+
+    #[test]
+    fn test_music_builtins_roundtrip() {
+        let dir = tempdir().unwrap();
+        let music_path = dir.path().join("song.wav");
+        fs::write(&music_path, b"wav").unwrap();
+
+        let env = Rc::new(RefCell::new(Environment::new()));
+        register_audio_functions(&env);
+
+        let muisic_lade = get_native(&env, "muisic_lade");
+        let err = (muisic_lade.func)(vec![Value::Integer(1)]).unwrap_err();
+        assert_eq!(err, "muisic_lade needs a string path");
+
+        let handle = match (muisic_lade.func)(vec![Value::String(
+            music_path.to_string_lossy().to_string(),
+        )])
+        .unwrap()
+        {
+            Value::Integer(h) => h,
+            _ => panic!("expected handle"),
+        };
+
+        let muisic_spiel = get_native(&env, "muisic_spiel");
+        let muisic_haud = get_native(&env, "muisic_haud");
+        let muisic_gae_on = get_native(&env, "muisic_gae_on");
+        let muisic_stap = get_native(&env, "muisic_stap");
+        let muisic_is_spielin = get_native(&env, "muisic_is_spielin");
+        let muisic_loup = get_native(&env, "muisic_loup");
+        let muisic_hou_lang = get_native(&env, "muisic_hou_lang");
+        let muisic_whaur = get_native(&env, "muisic_whaur");
+        let muisic_pit_luid = get_native(&env, "muisic_pit_luid");
+        let muisic_pit_pan = get_native(&env, "muisic_pit_pan");
+        let muisic_pit_tune = get_native(&env, "muisic_pit_tune");
+        let muisic_pit_rin_roond = get_native(&env, "muisic_pit_rin_roond");
+        let muisic_unlade = get_native(&env, "muisic_unlade");
+
+        (muisic_spiel.func)(vec![Value::Integer(handle)]).unwrap();
+        assert_eq!(
+            (muisic_is_spielin.func)(vec![Value::Integer(handle)]).unwrap(),
+            Value::Bool(true)
+        );
+
+        (muisic_haud.func)(vec![Value::Integer(handle)]).unwrap();
+        assert_eq!(
+            (muisic_is_spielin.func)(vec![Value::Integer(handle)]).unwrap(),
+            Value::Bool(false)
+        );
+
+        (muisic_gae_on.func)(vec![Value::Integer(handle)]).unwrap();
+        (muisic_pit_luid.func)(vec![Value::Integer(handle), Value::Float(2.0)]).unwrap();
+        (muisic_pit_pan.func)(vec![Value::Integer(handle), Value::Float(0.25)]).unwrap();
+        (muisic_pit_tune.func)(vec![Value::Integer(handle), Value::Float(1.5)]).unwrap();
+        (muisic_pit_rin_roond.func)(vec![Value::Integer(handle), Value::Bool(true)]).unwrap();
+
+        (muisic_loup.func)(vec![Value::Integer(handle), Value::Float(0.05)]).unwrap();
+        assert!(matches!(
+            (muisic_hou_lang.func)(vec![Value::Integer(handle)]).unwrap(),
+            Value::Float(_)
+        ));
+        assert!(matches!(
+            (muisic_whaur.func)(vec![Value::Integer(handle)]).unwrap(),
+            Value::Float(_)
+        ));
+
+        (muisic_stap.func)(vec![Value::Integer(handle)]).unwrap();
+        let err = (muisic_unlade.func)(vec![Value::Integer(999)]).unwrap_err();
+        assert_eq!(err, ERR_BAD_HANDLE);
+        (muisic_unlade.func)(vec![Value::Integer(handle)]).unwrap();
+    }
+
+    #[test]
+    fn test_midi_builtins_default_soundfont() {
+        let dir = tempdir().unwrap();
+        let sf_dir = dir.path().join("assets/soundfonts");
+        fs::create_dir_all(&sf_dir).unwrap();
+        let sf_path = sf_dir.join("MuseScore_General.sf2");
+        fs::write(&sf_path, b"sf").unwrap();
+        let midi_path = dir.path().join("song.mid");
+        fs::write(&midi_path, b"midi").unwrap();
+
+        let env = Rc::new(RefCell::new(Environment::new()));
+        register_audio_functions(&env);
+
+        let midi_lade = get_native(&env, "midi_lade");
+        let err = (midi_lade.func)(vec![Value::Integer(1), Value::Nil]).unwrap_err();
+        assert_eq!(err, "midi_lade needs a midi filepath");
+
+        let (handle1, handle2) = with_cwd(dir.path(), || {
+            let handle1 = match (midi_lade.func)(vec![
+                Value::String(midi_path.to_string_lossy().to_string()),
+                Value::Nil,
+            ])
+            .unwrap()
+            {
+                Value::Integer(h) => h,
+                _ => panic!("expected handle"),
+            };
+            let handle2 = match (midi_lade.func)(vec![
+                Value::String(midi_path.to_string_lossy().to_string()),
+                Value::Nil,
+            ])
+            .unwrap()
+            {
+                Value::Integer(h) => h,
+                _ => panic!("expected handle"),
+            };
+            (handle1, handle2)
+        });
+
+        let midi_spiel = get_native(&env, "midi_spiel");
+        let midi_haud = get_native(&env, "midi_haud");
+        let midi_gae_on = get_native(&env, "midi_gae_on");
+        let midi_stap = get_native(&env, "midi_stap");
+        let midi_is_spielin = get_native(&env, "midi_is_spielin");
+        let midi_loup = get_native(&env, "midi_loup");
+        let midi_hou_lang = get_native(&env, "midi_hou_lang");
+        let midi_whaur = get_native(&env, "midi_whaur");
+        let midi_pit_luid = get_native(&env, "midi_pit_luid");
+        let midi_pit_pan = get_native(&env, "midi_pit_pan");
+        let midi_pit_rin_roond = get_native(&env, "midi_pit_rin_roond");
+        let midi_unlade = get_native(&env, "midi_unlade");
+
+        (midi_spiel.func)(vec![Value::Integer(handle1)]).unwrap();
+        assert_eq!(
+            (midi_is_spielin.func)(vec![Value::Integer(handle1)]).unwrap(),
+            Value::Bool(true)
+        );
+        (midi_haud.func)(vec![Value::Integer(handle1)]).unwrap();
+        assert_eq!(
+            (midi_is_spielin.func)(vec![Value::Integer(handle1)]).unwrap(),
+            Value::Bool(false)
+        );
+        (midi_gae_on.func)(vec![Value::Integer(handle1)]).unwrap();
+        (midi_pit_luid.func)(vec![Value::Integer(handle1), Value::Float(0.8)]).unwrap();
+        (midi_pit_pan.func)(vec![Value::Integer(handle1), Value::Float(-0.5)]).unwrap();
+        (midi_pit_rin_roond.func)(vec![Value::Integer(handle1), Value::Bool(true)]).unwrap();
+        (midi_loup.func)(vec![Value::Integer(handle1), Value::Float(0.05)]).unwrap();
+        assert!(matches!(
+            (midi_hou_lang.func)(vec![Value::Integer(handle1)]).unwrap(),
+            Value::Float(_)
+        ));
+        assert!(matches!(
+            (midi_whaur.func)(vec![Value::Integer(handle1)]).unwrap(),
+            Value::Float(_)
+        ));
+        (midi_stap.func)(vec![Value::Integer(handle1)]).unwrap();
+
+        let err = (midi_unlade.func)(vec![Value::Integer(999)]).unwrap_err();
+        assert_eq!(err, ERR_BAD_HANDLE);
+        (midi_unlade.func)(vec![Value::Integer(handle1)]).unwrap();
+        (midi_unlade.func)(vec![Value::Integer(handle2)]).unwrap();
+    }
+
+    #[test]
+    fn test_mix_midi_entry_branches() {
+        let mut sf_data = std::io::Cursor::new(Vec::new());
+        let soundfont = SoundFont::new(&mut sf_data).unwrap();
+        let mut midi_data = std::io::Cursor::new(Vec::new());
+        let midi = MidiFile::new(&mut midi_data).unwrap();
+        let midi = Arc::new(midi);
+        let sequencer = MidiFileSequencer::new(
+            Synthesizer::new(&soundfont, &SynthesizerSettings::new(1)).unwrap(),
+        );
+        let mut entry = MidiEntry {
+            midi,
+            sequencer,
+            state: PlayState::Stopped,
+            looped: false,
+            volume: 1.0,
+            pan: 0.0,
+            sample_rate: 1,
+            scratch_left: Vec::new(),
+            scratch_right: Vec::new(),
+        };
+
+        let mut output = vec![0.0_f32; 2];
+        mix_midi_entry(&mut entry, &mut output, 1, 2);
+        assert_eq!(entry.state, PlayState::Stopped);
+
+        entry.state = PlayState::Playing;
+        entry.sequencer.play(&entry.midi, false);
+        mix_midi_entry(&mut entry, &mut output, 1, 2);
+        assert_eq!(entry.state, PlayState::Stopped);
+    }
+
+    #[test]
+    fn test_seek_midi_clamps_negative_and_overflow() {
+        let mut sf_data = std::io::Cursor::new(Vec::new());
+        let soundfont = SoundFont::new(&mut sf_data).unwrap();
+        let settings = SynthesizerSettings::new(1);
+        let synth = Synthesizer::new(&soundfont, &settings).unwrap();
+        let sequencer = MidiFileSequencer::new(synth);
+        let mut midi_data = std::io::Cursor::new(Vec::new());
+        let midi = MidiFile::new(&mut midi_data).unwrap();
+        let midi = Arc::new(midi);
+        let mut entry = MidiEntry {
+            midi,
+            sequencer,
+            state: PlayState::Stopped,
+            looped: false,
+            volume: 1.0,
+            pan: 0.0,
+            sample_rate: 1,
+            scratch_left: Vec::new(),
+            scratch_right: Vec::new(),
+        };
+        seek_midi(&mut entry, -1.0).unwrap();
+        seek_midi(&mut entry, 10.0).unwrap();
+    }
+
+    #[test]
+    fn test_soond_unlade_invalid_handle_returns_error() {
+        let env = Rc::new(RefCell::new(crate::value::Environment::new()));
+        register_audio_functions(&env);
+        let func = env.borrow().get("soond_unlade").unwrap();
+        let Value::NativeFunction(native) = func else {
+            panic!("expected native function");
+        };
+        let err = (native.func)(vec![Value::Integer(999)]).unwrap_err();
+        assert_eq!(err, ERR_BAD_HANDLE);
     }
 }

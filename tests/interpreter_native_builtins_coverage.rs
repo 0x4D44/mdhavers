@@ -139,6 +139,8 @@ fn interpreter_calls_all_native_builtins_for_coverage() {
             ],
             // Unusual arities are uncommon; call with nils to at least execute the arity checks/type
             // errors inside the native function.
+            (_, n) if n == usize::MAX => vec![vec![]],
+            (_, n) if n > 8 => vec![vec![Value::Nil; 8]],
             (_, n) => vec![vec![Value::Nil; n]],
         };
 

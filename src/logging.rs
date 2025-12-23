@@ -533,3 +533,307 @@ pub fn record_to_value(record: &LogRecord, timestamp: Option<String>) -> Value {
 pub fn timestamp_string() -> String {
     format!("{}", Local::now().format("%Y-%m-%d %H:%M:%S%.3f"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::value::{DictValue, RangeValue, SetValue, Value};
+    use serde_json::Value as JsonValue;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    use std::sync::Mutex;
+    use tempfile::tempdir;
+
+    static LOG_LOCK: Mutex<()> = Mutex::new(());
+
+    fn sample_record(fields: Vec<(String, Value)>) -> LogRecord {
+        LogRecord {
+            level: LogLevel::Blether,
+            message: "hullo".to_string(),
+            target: "tests".to_string(),
+            file: "file.braw".to_string(),
+            line: 42,
+            fields,
+            span_path: vec!["outer".to_string(), "inner".to_string()],
+        }
+    }
+
+    #[test]
+    fn test_log_filter_empty_rule_ignored() {
+        let filter = parse_filter("=holler").unwrap();
+        assert_eq!(filter.level_for_target("any"), LogLevel::Blether);
+    }
+
+    #[test]
+    fn test_filter_parse_set_and_log_enabled() {
+        let _lock = LOG_LOCK.lock().unwrap();
+
+        let filter = parse_filter("mutter,net=holler,net.http=whisper").unwrap();
+        assert_eq!(filter.default, LogLevel::Mutter);
+        assert_eq!(filter.rules.len(), 2);
+
+        set_filter("mutter,net=holler,net.http=whisper").unwrap();
+        assert_eq!(get_filter(), "mutter,net=holler,net.http=whisper");
+
+        assert!(log_enabled(LogLevel::Whisper, "net.http.server"));
+        assert!(!log_enabled(LogLevel::Mutter, "net.udp"));
+        assert!(log_enabled(LogLevel::Roar, "net.udp"));
+
+        assert!(parse_filter("wat").is_err());
+    }
+
+    #[test]
+    fn test_global_log_level_round_trip() {
+        let _lock = LOG_LOCK.lock().unwrap();
+        set_global_log_level(LogLevel::Roar);
+        assert_eq!(get_global_log_level(), LogLevel::Roar);
+        set_global_log_level(LogLevel::Blether);
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn test_global_log_level_raw_fallback() {
+        let _lock = LOG_LOCK.lock().unwrap();
+        set_global_log_level_raw(99);
+        assert_eq!(get_global_log_level(), LogLevel::Blether);
+    }
+
+    #[test]
+    fn test_logger_formats_and_sinks() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("log.txt");
+
+        let record = sample_record(vec![("n".to_string(), Value::Integer(1))]);
+
+        let mut logger = LoggerCore {
+            format: LogFormat::Text,
+            color: false,
+            timestamps: false,
+            sinks: vec![LogSink::Memory {
+                entries: Vec::new(),
+                max: 2,
+            }],
+        };
+        logger.log(&record);
+        logger.log(&record);
+        logger.log(&record);
+
+        match &logger.sinks[0] {
+            LogSink::Memory { entries, max } => {
+                assert_eq!(*max, 2);
+                assert_eq!(entries.len(), 2);
+            }
+            _ => panic!("expected memory sink"),
+        }
+
+        let mut file_logger = LoggerCore {
+            format: LogFormat::Compact,
+            color: false,
+            timestamps: false,
+            sinks: vec![LogSink::File {
+                path: file_path.to_string_lossy().to_string(),
+                append: false,
+                file: None,
+            }],
+        };
+        file_logger.log(&record);
+        let contents = std::fs::read_to_string(&file_path).unwrap();
+        assert!(contents.contains("hullo"));
+
+        let mut bad_file_logger = LoggerCore {
+            format: LogFormat::Text,
+            color: false,
+            timestamps: false,
+            sinks: vec![LogSink::File {
+                path: dir.path().to_string_lossy().to_string(),
+                append: false,
+                file: None,
+            }],
+        };
+        bad_file_logger.log(&record);
+        match &bad_file_logger.sinks[0] {
+            LogSink::File { file, .. } => assert!(file.is_none()),
+            _ => panic!("expected file sink"),
+        }
+    }
+
+    #[test]
+    fn test_logger_default_stdout_and_append_file() {
+        let record = sample_record(vec![]);
+        let mut logger = LoggerCore {
+            timestamps: false,
+            sinks: vec![LogSink::Stdout],
+            ..LoggerCore::default()
+        };
+        logger.log(&record);
+
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("append.txt");
+        let mut file_logger = LoggerCore {
+            format: LogFormat::Text,
+            color: false,
+            timestamps: false,
+            sinks: vec![LogSink::File {
+                path: file_path.to_string_lossy().to_string(),
+                append: true,
+                file: None,
+            }],
+        };
+        file_logger.log(&record);
+        assert!(file_path.exists());
+    }
+
+    #[test]
+    fn test_format_json_and_value_to_json_branches() {
+        let list = Value::List(Rc::new(RefCell::new(vec![Value::Integer(1)])));
+        let mut dict = DictValue::new();
+        dict.set(
+            Value::String("k".to_string()),
+            Value::String("v".to_string()),
+        );
+        let dict = Value::Dict(Rc::new(RefCell::new(dict)));
+        let mut set = SetValue::new();
+        set.insert(Value::String("a".to_string()));
+        let set = Value::Set(Rc::new(RefCell::new(set)));
+        let bytes = Value::Bytes(Rc::new(RefCell::new(vec![1, 2, 3])));
+        let range = Value::Range(RangeValue::new(1, 3, false));
+
+        let fields = vec![
+            ("nil".to_string(), Value::Nil),
+            ("bool".to_string(), Value::Bool(true)),
+            ("int".to_string(), Value::Integer(7)),
+            ("float".to_string(), Value::Float(1.5)),
+            ("string".to_string(), Value::String("hi".to_string())),
+            ("list".to_string(), list),
+            ("dict".to_string(), dict),
+            ("set".to_string(), set),
+            ("bytes".to_string(), bytes),
+            ("other".to_string(), range),
+        ];
+        let record = sample_record(fields);
+        let logger = LoggerCore {
+            format: LogFormat::Json,
+            color: false,
+            timestamps: true,
+            sinks: vec![LogSink::Stderr],
+        };
+        let json = logger.format_record(&record);
+        let parsed: JsonValue = serde_json::from_str(&json).unwrap();
+        assert!(parsed.get("fields").is_some());
+        assert!(parsed.get("span").is_some());
+    }
+
+    #[test]
+    fn test_value_to_json_non_string_key() {
+        let mut dict = DictValue::new();
+        dict.set(Value::Integer(5), Value::String("v".to_string()));
+        let value = Value::Dict(Rc::new(RefCell::new(dict)));
+        let json = value_to_json(&value);
+        let obj = json.as_object().unwrap();
+        assert!(obj.contains_key("5"));
+    }
+
+    #[test]
+    fn test_spans_fields_and_record_value() {
+        let span = new_span(
+            "outer".to_string(),
+            LogLevel::Blether,
+            "tests".to_string(),
+            vec![("x".to_string(), Value::Integer(1))],
+        );
+        span_enter(span.clone());
+        assert!(span_current().is_some());
+        assert_eq!(span_path(), vec!["outer".to_string()]);
+        assert!(span_exit(span.id).is_ok());
+        assert!(span_exit(span.id).is_err());
+
+        let span2 = new_span(
+            "inner".to_string(),
+            LogLevel::Mutter,
+            "".to_string(),
+            Vec::new(),
+        );
+        span_enter(span2.clone());
+        assert!(span_exit(span.id).is_err());
+        assert!(span_exit(span2.id).is_ok());
+
+        let mut dict = DictValue::new();
+        dict.set(Value::String("k".to_string()), Value::Integer(2));
+        let fields = fields_from_dict(&Value::Dict(Rc::new(RefCell::new(dict)))).unwrap();
+        assert_eq!(fields.len(), 1);
+
+        let mut bad_dict = DictValue::new();
+        bad_dict.set(Value::Integer(1), Value::Integer(2));
+        assert!(fields_from_dict(&Value::Dict(Rc::new(RefCell::new(bad_dict)))).is_err());
+
+        let record = sample_record(vec![("a".to_string(), Value::Integer(1))]);
+        let val = record_to_value(&record, Some("now".to_string()));
+        if let Value::Dict(map) = val {
+            let map = map.borrow();
+            assert!(map.contains_key(&Value::String("timestamp".to_string())));
+        } else {
+            panic!("expected dict");
+        }
+    }
+
+    #[test]
+    fn test_fields_from_dict_non_dict_error() {
+        assert!(fields_from_dict(&Value::Integer(1)).is_err());
+    }
+
+    #[test]
+    fn test_span_handle_properties() {
+        let span = new_span(
+            "test".to_string(),
+            LogLevel::Holler,
+            "target".to_string(),
+            vec![("k".to_string(), Value::Integer(1))],
+        );
+        let handle = LogSpanHandle::new(span);
+        assert_eq!(
+            handle.get("name").unwrap(),
+            Value::String("test".to_string())
+        );
+        assert_eq!(
+            handle.get("target").unwrap(),
+            Value::String("target".to_string())
+        );
+        assert_eq!(
+            handle.get("level").unwrap(),
+            Value::String("holler".to_string())
+        );
+        let fields = handle.get("fields").unwrap();
+        if let Value::Dict(dict) = fields {
+            let dict = dict.borrow();
+            assert_eq!(
+                dict.get(&Value::String("k".to_string())),
+                Some(&Value::Integer(1))
+            );
+        } else {
+            panic!("expected dict");
+        }
+    }
+
+    #[test]
+    fn test_span_handle_misc_accessors() {
+        let span = new_span(
+            "misc".to_string(),
+            LogLevel::Blether,
+            "target".to_string(),
+            vec![],
+        );
+        let handle = LogSpanHandle::new(span);
+        assert_eq!(handle.type_name(), "log_span");
+        assert_eq!(handle.get("nope").unwrap(), Value::Nil);
+        handle.set("anything", Value::Nil).unwrap();
+        handle.call("noop", vec![]).unwrap();
+        assert!(handle.as_any().is::<LogSpanHandle>());
+    }
+
+    #[test]
+    fn test_timestamp_string_format() {
+        let ts = timestamp_string();
+        assert!(ts.contains('-'));
+        assert!(ts.contains(':'));
+    }
+}

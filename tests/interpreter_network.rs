@@ -120,3 +120,35 @@ gin tcp_port < 0 {
     let out = interp.get_output().join("\n");
     assert_eq!(out.trim(), "dns_ok\nudp_ok\ntcp_ok");
 }
+
+#[test]
+fn interpreter_socket_option_setters() {
+    let code = r#"
+ken udp = socket_udp()
+gin udp["ok"] {
+    ken sock = udp["value"]
+    socket_set_nonblocking(sock, aye)
+    socket_set_ttl(sock, 64)
+    socket_set_rcvbuf(sock, 4096)
+    socket_set_sndbuf(sock, 4096)
+    socket_close(sock)
+}
+
+ken tcp = socket_tcp()
+gin tcp["ok"] {
+    ken sock = tcp["value"]
+    socket_set_reuseaddr(sock, aye)
+    socket_set_reuseport(sock, aye)
+    socket_set_nodelay(sock, aye)
+    socket_close(sock)
+}
+
+blether "opts_ok"
+"#;
+
+    let program = parse(code).unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert_eq!(out.trim(), "opts_ok");
+}

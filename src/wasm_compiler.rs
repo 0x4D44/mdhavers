@@ -1309,6 +1309,48 @@ mod tests {
     }
 
     #[test]
+    fn test_property_call_arity_variants_wasm() {
+        for argc in 0..=8 {
+            let args = (0..argc)
+                .map(|i| (i + 1).to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let source = format!("ken obj = {{}}\nobj.call({})", args);
+            let wat = compile_to_wat(&source).unwrap();
+            assert!(wat.contains(&format!("$mdh_method_call{}", argc)));
+        }
+    }
+
+    #[test]
+    fn test_value_call_arity_variants_wasm() {
+        for argc in 0..=8 {
+            let args = (0..argc)
+                .map(|i| (i + 1).to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let source = format!("ken f = aye\nf({})", args);
+            let wat = compile_to_wat(&source).unwrap();
+            assert!(wat.contains(&format!("$mdh_method_call{}", argc)));
+        }
+    }
+
+    #[test]
+    fn test_list_dict_and_property_set_wasm() {
+        let source = r#"
+            ken obj = {}
+            obj.prop = 42
+            ken xs = [1, 2, 3]
+            ken d = {"a": 1, "b": 2}
+        "#;
+        let wat = compile_to_wat(source).unwrap();
+        assert!(wat.contains("$mdh_prop_set"));
+        assert!(wat.contains("$mdh_make_list"));
+        assert!(wat.contains("$mdh_list_push"));
+        assert!(wat.contains("$mdh_make_dict"));
+        assert!(wat.contains("$mdh_dict_set"));
+    }
+
+    #[test]
     fn test_import_tri_requires_alias_wasm() {
         let source = r#"fetch "tri""#;
         let err = compile_to_wat(source).unwrap_err();
@@ -1327,6 +1369,43 @@ mod tests {
         assert!(err
             .to_string()
             .contains("Only direct, property, or local-value calls"));
+    }
+
+    #[test]
+    fn test_import_non_tri_wasm_returns_error() {
+        let source = r#"fetch "math" tae m"#;
+        let err = compile_to_wat(source).unwrap_err();
+        assert!(err.to_string().contains("Only the tri module is supported"));
+    }
+
+    #[test]
+    fn test_unsupported_statement_wasm_returns_error() {
+        let source = r#"kin Foo { }"#;
+        let err = compile_to_wat(source).unwrap_err();
+        assert!(err.to_string().contains("statement type isnae supported"));
+    }
+
+    #[test]
+    fn test_property_call_arity_too_large_wasm_errors() {
+        let source = r#"
+            ken obj = 1
+            obj.foo(1, 2, 3, 4, 5, 6, 7, 8, 9)
+        "#;
+        let err = compile_to_wat(source).unwrap_err();
+        assert!(err.to_string().contains("Method call arity too large"));
+    }
+
+    #[test]
+    fn test_value_call_arity_too_large_wasm_errors() {
+        let source = r#"
+            dae add(a, b) {
+                gie a + b
+            }
+            ken f = add
+            f(1, 2, 3, 4, 5, 6, 7, 8, 9)
+        "#;
+        let err = compile_to_wat(source).unwrap_err();
+        assert!(err.to_string().contains("Method call arity too large"));
     }
 
     #[test]

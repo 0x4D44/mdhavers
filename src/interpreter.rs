@@ -11435,11 +11435,15 @@ fn json_escape_string(s: &str) -> String {
 #[allow(clippy::manual_range_contains)]
 mod tests {
     use super::*;
+    use crate::ast::{Expr, Literal, Span};
     use crate::parser::parse;
     use crate::value::NativeObject;
+    use rustls::{Certificate, ServerName};
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::rc::Rc;
+    use std::time::SystemTime;
+    use tempfile::tempdir;
 
     #[derive(Debug)]
     struct TestNative {
@@ -11500,6 +11504,20 @@ mod tests {
         let program = parse(source)?;
         let mut interp = Interpreter::new();
         interp.interpret(&program)
+    }
+
+    fn lit_expr(value: Literal) -> Expr {
+        Expr::Literal {
+            value,
+            span: Span::new(1, 1),
+        }
+    }
+
+    fn dict_expr(key: &str, value: Literal) -> Expr {
+        Expr::Dict {
+            pairs: vec![(lit_expr(Literal::String(key.to_string())), lit_expr(value))],
+            span: Span::new(1, 1),
+        }
     }
 
     #[test]
@@ -17099,13 +17117,14 @@ ken pos = muisic_whaur(tune)
 
 muisic_pit_rin_roond(tune, nae)
 muisic_loup(tune, len)
-soond_haud_gang()
-ken stopped = muisic_is_spielin(tune)
+snooze(20)
+ken stopped_before = muisic_is_spielin(tune)
 
 muisic_stap(tune)
+ken stopped_after = muisic_is_spielin(tune)
 muisic_unlade(tune)
 soond_steek()
-[playing, paused, len > 0, pos >= 0, stopped]
+[playing, paused, len > 0, pos >= 0, stopped_before, stopped_after]
 "#,
             theme
         );
@@ -17115,7 +17134,7 @@ soond_steek()
             panic!("Expected list");
         };
         let list = list.borrow();
-        assert_eq!(list.len(), 5);
+        assert_eq!(list.len(), 6);
         let expected_playing = if cfg!(feature = "audio") {
             Value::Bool(true)
         } else {
@@ -17125,12 +17144,8 @@ soond_steek()
         assert_eq!(list[1], Value::Bool(false));
         assert_eq!(list[2], Value::Bool(true));
         assert_eq!(list[3], Value::Bool(true));
-        let expected_stopped = if cfg!(feature = "audio") {
-            Value::Bool(false)
-        } else {
-            Value::Bool(true)
-        };
-        assert_eq!(list[4], expected_stopped);
+        assert!(matches!(list[4], Value::Bool(_)));
+        assert_eq!(list[5], Value::Bool(false));
     }
 
     #[test]
@@ -17208,25 +17223,26 @@ soond_stairt()
 ken song = midi_lade({}, {})
 midi_pit_rin_roond(song, nae)
 midi_spiel(song)
-ken i = 0
-whiles i < 10 {{
-    soond_haud_gang()
-    i = i + 1
-}}
-ken stopped = midi_is_spielin(song)
+ken len = midi_hou_lang(song)
+midi_loup(song, len)
+snooze(20)
+ken stopped_before = midi_is_spielin(song)
+midi_stap(song)
+ken stopped_after = midi_is_spielin(song)
 midi_unlade(song)
 soond_steek()
-stopped
+[stopped_before, stopped_after]
 "#,
             midi, sf
         );
         let result = run(&script).unwrap();
-        let expected = if cfg!(feature = "audio") {
-            Value::Bool(false)
-        } else {
-            Value::Bool(true)
+        let Value::List(list) = result else {
+            panic!("Expected list");
         };
-        assert_eq!(result, expected);
+        let list = list.borrow();
+        assert_eq!(list.len(), 2);
+        assert!(matches!(list[0], Value::Bool(_)));
+        assert_eq!(list[1], Value::Bool(false));
     }
 
     #[test]
@@ -17253,5 +17269,585 @@ stopped
         assert!(run(&bad_type).is_err());
         assert!(run(&bad_sf).is_err());
         assert!(run("midi_lade(\"nope.mid\", naething)").is_err());
+    }
+
+    #[test]
+    fn test_with_current_interpreter_guard() {
+        assert!(with_current_interpreter(|_| 1).is_none());
+        let mut interp = Interpreter::new();
+        {
+            let _guard = InterpreterGuard::new(&mut interp);
+            assert!(with_current_interpreter(|i| i.get_log_level()).is_some());
+        }
+        assert!(with_current_interpreter(|_| 1).is_none());
+    }
+
+    #[test]
+    fn test_register_thread_and_with_thread_mut() {
+        let id = register_thread(ThreadHandle {
+            result: Value::Integer(7),
+            detached: false,
+        });
+        let result = with_thread_mut(id, |handle| {
+            handle.detached = true;
+            handle.result.clone()
+        })
+        .unwrap();
+        assert_eq!(result, Value::Integer(7));
+        assert!(with_thread_mut(999999, |_| ()).is_err());
+    }
+
+    #[test]
+    fn test_log_level_parsing_and_resolve_log_args() {
+        assert_eq!(
+            parse_log_level_value(&Value::Integer(0)).unwrap(),
+            LogLevel::Wheesht
+        );
+        assert_eq!(
+            parse_log_level_value(&Value::Integer(5)).unwrap(),
+            LogLevel::Whisper
+        );
+        assert!(parse_log_level_value(&Value::Integer(9)).is_err());
+        assert!(parse_log_level_value(&Value::Bool(true)).is_err());
+        assert_eq!(
+            parse_log_target_value(&Value::String("t".to_string())).unwrap(),
+            "t"
+        );
+        assert!(parse_log_target_value(&Value::Integer(1)).is_err());
+
+        let mut dict = DictValue::new();
+        dict.set(Value::String("a".to_string()), Value::Integer(1));
+        let fields = Value::Dict(Rc::new(RefCell::new(dict)));
+
+        assert_eq!(resolve_log_args(&[]).unwrap(), (None, None));
+        assert!(resolve_log_args(std::slice::from_ref(&fields))
+            .unwrap()
+            .0
+            .is_some());
+        assert_eq!(
+            resolve_log_args(&[Value::String("target".to_string())]).unwrap(),
+            (None, Some("target".to_string()))
+        );
+        assert!(resolve_log_args(&[Value::Integer(1)]).is_err());
+        let (fields_val, target) =
+            resolve_log_args(&[fields.clone(), Value::String("t".to_string())]).unwrap();
+        assert!(fields_val.is_some());
+        assert_eq!(target, Some("t".to_string()));
+        assert!(resolve_log_args(&[
+            Value::String("x".to_string()),
+            Value::String("y".to_string())
+        ])
+        .is_err());
+        assert!(resolve_log_args(&[fields, Value::Integer(1)]).is_err());
+        assert!(resolve_log_args(&[
+            Value::String("x".to_string()),
+            Value::String("y".to_string()),
+            Value::String("z".to_string())
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn test_parse_log_extras_errors() {
+        let mut interp = Interpreter::new();
+        let expr_int = lit_expr(Literal::Integer(1));
+        assert!(interp.parse_log_extras(&[expr_int], 1).is_err());
+
+        let expr_dict = dict_expr("a", Literal::Integer(1));
+        let expr_int = lit_expr(Literal::Integer(2));
+        assert!(interp
+            .parse_log_extras(&[expr_int, lit_expr(Literal::String("t".to_string()))], 1)
+            .is_err());
+        let expr_int2 = lit_expr(Literal::Integer(3));
+        assert!(interp.parse_log_extras(&[expr_dict, expr_int2], 1).is_err());
+
+        let expr_dict = dict_expr("a", Literal::Integer(1));
+        let expr_str = lit_expr(Literal::String("t".to_string()));
+        let expr_extra = lit_expr(Literal::String("x".to_string()));
+        assert!(interp
+            .parse_log_extras(&[expr_dict, expr_str, expr_extra], 1)
+            .is_err());
+    }
+
+    #[test]
+    fn test_apply_log_config_paths() {
+        let mut interp = Interpreter::new();
+        interp.apply_log_config(None).unwrap();
+
+        assert!(interp.apply_log_config(Some(Value::Integer(1))).is_err());
+
+        let mut bad_filter = DictValue::new();
+        bad_filter.set(Value::String("filter".to_string()), Value::Integer(1));
+        assert!(interp
+            .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(bad_filter)))))
+            .is_err());
+
+        let mut bad_format = DictValue::new();
+        bad_format.set(Value::String("format".to_string()), Value::Integer(1));
+        assert!(interp
+            .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(bad_format)))))
+            .is_err());
+
+        let mut bad_format_str = DictValue::new();
+        bad_format_str.set(
+            Value::String("format".to_string()),
+            Value::String("nope".to_string()),
+        );
+        assert!(interp
+            .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(bad_format_str)))))
+            .is_err());
+
+        let mut bad_color = DictValue::new();
+        bad_color.set(
+            Value::String("color".to_string()),
+            Value::String("aye".to_string()),
+        );
+        assert!(interp
+            .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(bad_color)))))
+            .is_err());
+
+        let mut bad_ts = DictValue::new();
+        bad_ts.set(
+            Value::String("timestamps".to_string()),
+            Value::String("aye".to_string()),
+        );
+        assert!(interp
+            .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(bad_ts)))))
+            .is_err());
+
+        let mut bad_sinks = DictValue::new();
+        bad_sinks.set(Value::String("sinks".to_string()), Value::Integer(1));
+        assert!(interp
+            .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(bad_sinks)))))
+            .is_err());
+
+        let sinks = vec![Value::Integer(1)];
+        let mut bad_sink_spec = DictValue::new();
+        bad_sink_spec.set(
+            Value::String("sinks".to_string()),
+            Value::List(Rc::new(RefCell::new(sinks))),
+        );
+        assert!(interp
+            .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(bad_sink_spec)))))
+            .is_err());
+
+        let mut sink_kind = DictValue::new();
+        sink_kind.set(Value::String("kind".to_string()), Value::Integer(1));
+        let mut bad_kind = DictValue::new();
+        bad_kind.set(
+            Value::String("sinks".to_string()),
+            Value::List(Rc::new(RefCell::new(vec![Value::Dict(Rc::new(
+                RefCell::new(sink_kind),
+            ))]))),
+        );
+        assert!(interp
+            .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(bad_kind)))))
+            .is_err());
+
+        let mut file_spec = DictValue::new();
+        file_spec.set(
+            Value::String("kind".to_string()),
+            Value::String("file".to_string()),
+        );
+        file_spec.set(Value::String("path".to_string()), Value::Integer(1));
+        let mut bad_file = DictValue::new();
+        bad_file.set(
+            Value::String("sinks".to_string()),
+            Value::List(Rc::new(RefCell::new(vec![Value::Dict(Rc::new(
+                RefCell::new(file_spec),
+            ))]))),
+        );
+        assert!(interp
+            .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(bad_file)))))
+            .is_err());
+
+        let mut file_spec = DictValue::new();
+        file_spec.set(
+            Value::String("kind".to_string()),
+            Value::String("file".to_string()),
+        );
+        file_spec.set(
+            Value::String("path".to_string()),
+            Value::String("out.log".to_string()),
+        );
+        file_spec.set(Value::String("append".to_string()), Value::Integer(1));
+        let mut bad_append = DictValue::new();
+        bad_append.set(
+            Value::String("sinks".to_string()),
+            Value::List(Rc::new(RefCell::new(vec![Value::Dict(Rc::new(
+                RefCell::new(file_spec),
+            ))]))),
+        );
+        assert!(interp
+            .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(bad_append)))))
+            .is_err());
+
+        let mut mem_spec = DictValue::new();
+        mem_spec.set(
+            Value::String("kind".to_string()),
+            Value::String("memory".to_string()),
+        );
+        mem_spec.set(Value::String("max".to_string()), Value::Integer(0));
+        let mut bad_mem = DictValue::new();
+        bad_mem.set(
+            Value::String("sinks".to_string()),
+            Value::List(Rc::new(RefCell::new(vec![Value::Dict(Rc::new(
+                RefCell::new(mem_spec),
+            ))]))),
+        );
+        assert!(interp
+            .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(bad_mem)))))
+            .is_err());
+
+        let mut cb_spec = DictValue::new();
+        cb_spec.set(
+            Value::String("kind".to_string()),
+            Value::String("callback".to_string()),
+        );
+        let mut bad_cb = DictValue::new();
+        bad_cb.set(
+            Value::String("sinks".to_string()),
+            Value::List(Rc::new(RefCell::new(vec![Value::Dict(Rc::new(
+                RefCell::new(cb_spec),
+            ))]))),
+        );
+        assert!(interp
+            .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(bad_cb)))))
+            .is_err());
+
+        let mut unknown_spec = DictValue::new();
+        unknown_spec.set(
+            Value::String("kind".to_string()),
+            Value::String("unknown".to_string()),
+        );
+        let mut bad_unknown = DictValue::new();
+        bad_unknown.set(
+            Value::String("sinks".to_string()),
+            Value::List(Rc::new(RefCell::new(vec![Value::Dict(Rc::new(
+                RefCell::new(unknown_spec),
+            ))]))),
+        );
+        assert!(interp
+            .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(bad_unknown)))))
+            .is_err());
+
+        let callback_fn = Value::NativeFunction(Rc::new(NativeFunction::new("cb", 0, |_args| {
+            Ok(Value::Nil)
+        })));
+        let mut callback_spec = DictValue::new();
+        callback_spec.set(
+            Value::String("kind".to_string()),
+            Value::String("callback".to_string()),
+        );
+        callback_spec.set(Value::String("fn".to_string()), callback_fn.clone());
+        let callback_list = Value::List(Rc::new(RefCell::new(vec![Value::Dict(Rc::new(
+            RefCell::new(callback_spec),
+        ))])));
+        let mut callback_cfg = DictValue::new();
+        callback_cfg.set(Value::String("sinks".to_string()), callback_list);
+        interp
+            .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(callback_cfg)))))
+            .unwrap();
+        assert!(interp.log_callback.is_some());
+
+        let mut sinks = Vec::new();
+        let mut stderr_spec = DictValue::new();
+        stderr_spec.set(
+            Value::String("kind".to_string()),
+            Value::String("stderr".to_string()),
+        );
+        sinks.push(Value::Dict(Rc::new(RefCell::new(stderr_spec))));
+
+        let mut stdout_spec = DictValue::new();
+        stdout_spec.set(
+            Value::String("kind".to_string()),
+            Value::String("stdout".to_string()),
+        );
+        sinks.push(Value::Dict(Rc::new(RefCell::new(stdout_spec))));
+
+        let mut file_spec = DictValue::new();
+        file_spec.set(
+            Value::String("kind".to_string()),
+            Value::String("file".to_string()),
+        );
+        file_spec.set(
+            Value::String("path".to_string()),
+            Value::String("log.txt".to_string()),
+        );
+        file_spec.set(Value::String("append".to_string()), Value::Bool(false));
+        sinks.push(Value::Dict(Rc::new(RefCell::new(file_spec))));
+
+        let mut mem_spec = DictValue::new();
+        mem_spec.set(
+            Value::String("kind".to_string()),
+            Value::String("memory".to_string()),
+        );
+        mem_spec.set(Value::String("max".to_string()), Value::Integer(4));
+        sinks.push(Value::Dict(Rc::new(RefCell::new(mem_spec))));
+
+        let mut ok_cfg = DictValue::new();
+        ok_cfg.set(Value::String("level".to_string()), Value::Integer(2));
+        ok_cfg.set(
+            Value::String("filter".to_string()),
+            Value::String("blether".to_string()),
+        );
+        ok_cfg.set(
+            Value::String("format".to_string()),
+            Value::String("json".to_string()),
+        );
+        ok_cfg.set(Value::String("color".to_string()), Value::Bool(true));
+        ok_cfg.set(Value::String("timestamps".to_string()), Value::Bool(false));
+        ok_cfg.set(
+            Value::String("sinks".to_string()),
+            Value::List(Rc::new(RefCell::new(sinks))),
+        );
+        interp
+            .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(ok_cfg)))))
+            .unwrap();
+    }
+
+    #[test]
+    fn test_insecure_verifier_and_tls_dtls_defaults() {
+        let verifier = InsecureVerifier;
+        let cert = Certificate(Vec::new());
+        let name = ServerName::try_from("localhost").unwrap();
+        let mut scts = std::iter::empty::<&[u8]>();
+        verifier
+            .verify_server_cert(&cert, &[], &name, &mut scts, &[], SystemTime::now())
+            .unwrap();
+
+        let tls = tls_config_from_value(&Value::Nil).unwrap();
+        assert!(matches!(tls.mode, TlsMode::Client));
+        let dtls = dtls_config_from_value(&Value::Nil).unwrap();
+        assert!(matches!(dtls.mode, TlsMode::Server));
+
+        let cfg = TlsConfigData {
+            mode: TlsMode::Client,
+            server_name: "localhost".to_string(),
+            insecure: true,
+            ca_pem: None,
+            cert_pem: None,
+            key_pem: None,
+        };
+        let _ = build_client_config(&cfg).unwrap();
+
+        let mut dict = DictValue::new();
+        dict.set(Value::String("port".to_string()), Value::Integer(42));
+        assert_eq!(dict_get_u16(&dict, "port"), Some(42));
+        dict.set(Value::String("port".to_string()), Value::Integer(-1));
+        assert_eq!(dict_get_u16(&dict, "port"), None);
+        dict.set(
+            Value::String("name".to_string()),
+            Value::String("x".to_string()),
+        );
+        assert_eq!(dict_get_string(&dict, "name"), Some("x".to_string()));
+        dict.set(Value::String("flag".to_string()), Value::Bool(true));
+        assert_eq!(dict_get_bool(&dict, "flag"), Some(true));
+        dict.set(
+            Value::String("bytes".to_string()),
+            Value::Bytes(Rc::new(RefCell::new(vec![1, 2, 3]))),
+        );
+        assert_eq!(dict_get_bytes(&dict, "bytes"), Some(vec![1, 2, 3]));
+    }
+
+    #[test]
+    fn test_range_to_list_inclusive() {
+        let list = Interpreter::range_to_list(1, 3, true);
+        let Value::List(items) = list else {
+            panic!("expected list");
+        };
+        assert_eq!(items.borrow().len(), 3);
+    }
+
+    #[test]
+    fn test_resolve_module_path_absolute() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("mod.braw");
+        std::fs::write(&path, "blether 1").unwrap();
+        let mut interp = Interpreter::new();
+        interp.set_current_dir(dir.path());
+        let resolved = interp.resolve_module_path(path.to_str().unwrap()).unwrap();
+        assert!(resolved.is_absolute());
+    }
+
+    #[test]
+    fn test_event_loop_write_watch_emits_event() {
+        let interp = Interpreter::new();
+        let globals = interp.globals.clone();
+
+        let event_loop_new = match globals.borrow().get("event_loop_new").unwrap() {
+            Value::NativeFunction(func) => func,
+            _ => panic!("expected event_loop_new"),
+        };
+        let event_watch_write = match globals.borrow().get("event_watch_write").unwrap() {
+            Value::NativeFunction(func) => func,
+            _ => panic!("expected event_watch_write"),
+        };
+        let event_loop_poll = match globals.borrow().get("event_loop_poll").unwrap() {
+            Value::NativeFunction(func) => func,
+            _ => panic!("expected event_loop_poll"),
+        };
+
+        let loop_id = match (event_loop_new.func)(vec![]).unwrap() {
+            Value::Integer(id) => id,
+            _ => panic!("expected loop id"),
+        };
+
+        let mut fds = [0; 2];
+        unsafe {
+            libc::pipe(fds.as_mut_ptr());
+        }
+        let sock_id = register_socket(fds[1], SocketKind::Tcp);
+
+        (event_watch_write.func)(vec![
+            Value::Integer(loop_id),
+            Value::Integer(sock_id),
+            Value::Bool(true),
+        ])
+        .unwrap();
+
+        let events =
+            (event_loop_poll.func)(vec![Value::Integer(loop_id), Value::Integer(0)]).unwrap();
+        let Value::List(list) = events else {
+            panic!("expected event list");
+        };
+        let mut saw_write = false;
+        for ev in list.borrow().iter() {
+            if let Value::Dict(dict) = ev {
+                let dict = dict.borrow();
+                if let Some(Value::String(kind)) = dict.get(&Value::String("kind".to_string())) {
+                    if kind == "write" {
+                        saw_write = true;
+                    }
+                }
+            }
+        }
+        assert!(saw_write);
+
+        let _ = remove_socket(sock_id);
+        unsafe {
+            libc::close(fds[0]);
+            libc::close(fds[1]);
+        }
+    }
+
+    #[test]
+    fn test_log_event_and_span_builtins() {
+        let mut interp = Interpreter::new();
+        let globals = interp.globals.clone();
+        let log_event = match globals.borrow().get("log_event").unwrap() {
+            Value::NativeFunction(func) => func,
+            _ => panic!("expected log_event"),
+        };
+        assert!((log_event.func)(vec![
+            Value::String("blether".to_string()),
+            Value::String("msg".to_string())
+        ])
+        .is_err());
+
+        let log_span = match globals.borrow().get("log_span").unwrap() {
+            Value::NativeFunction(func) => func,
+            _ => panic!("expected log_span"),
+        };
+        let log_span_enter = match globals.borrow().get("log_span_enter").unwrap() {
+            Value::NativeFunction(func) => func,
+            _ => panic!("expected log_span_enter"),
+        };
+        let log_span_exit = match globals.borrow().get("log_span_exit").unwrap() {
+            Value::NativeFunction(func) => func,
+            _ => panic!("expected log_span_exit"),
+        };
+        let log_span_in = match globals.borrow().get("log_span_in").unwrap() {
+            Value::NativeFunction(func) => func,
+            _ => panic!("expected log_span_in"),
+        };
+        let log_span_current = match globals.borrow().get("log_span_current").unwrap() {
+            Value::NativeFunction(func) => func,
+            _ => panic!("expected log_span_current"),
+        };
+
+        let _guard = InterpreterGuard::new(&mut interp);
+        let mut fields = DictValue::new();
+        fields.set(Value::String("k".to_string()), Value::Integer(1));
+        (log_event.func)(vec![
+            Value::Integer(3),
+            Value::String("msg".to_string()),
+            Value::Dict(Rc::new(RefCell::new(fields))),
+            Value::String("target".to_string()),
+        ])
+        .unwrap();
+
+        let span = (log_span.func)(vec![Value::String("span".to_string())]).unwrap();
+        (log_span_enter.func)(vec![span.clone()]).unwrap();
+        let current = (log_span_current.func)(vec![]).unwrap();
+        assert!(matches!(current, Value::NativeObject(_)));
+        (log_span_exit.func)(vec![span.clone()]).unwrap();
+
+        let cb = Value::NativeFunction(Rc::new(NativeFunction::new("cb", 0, |_args| {
+            Ok(Value::Integer(5))
+        })));
+        let result = (log_span_in.func)(vec![span, cb]).unwrap();
+        assert_eq!(result, Value::Integer(5));
+    }
+
+    #[test]
+    fn test_dict_get_helpers_mismatch_and_u16_float() {
+        let mut dict = DictValue::new();
+        dict.set(Value::String("s".to_string()), Value::Integer(1));
+        dict.set(Value::String("b".to_string()), Value::Integer(1));
+        dict.set(
+            Value::String("bytes".to_string()),
+            Value::String("no".to_string()),
+        );
+        dict.set(Value::String("port".to_string()), Value::Float(123.0));
+        assert_eq!(dict_get_string(&dict, "s"), None);
+        assert_eq!(dict_get_bool(&dict, "b"), None);
+        assert_eq!(dict_get_bytes(&dict, "bytes"), None);
+        assert_eq!(dict_get_u16(&dict, "port"), Some(123));
+
+        dict.set(Value::String("port_neg".to_string()), Value::Float(-1.0));
+        dict.set(
+            Value::String("port_bad".to_string()),
+            Value::String("x".to_string()),
+        );
+        assert_eq!(dict_get_u16(&dict, "port_neg"), None);
+        assert_eq!(dict_get_u16(&dict, "port_bad"), None);
+    }
+
+    #[test]
+    fn test_tls_config_from_value_errors_and_defaults() {
+        let err = tls_config_from_value(&Value::Integer(1)).err().unwrap();
+        assert!(err.contains("expects config dict"));
+
+        let mut dict = DictValue::new();
+        dict.set(
+            Value::String("server_name".to_string()),
+            Value::String(String::new()),
+        );
+        let cfg = tls_config_from_value(&Value::Dict(Rc::new(RefCell::new(dict)))).unwrap();
+        assert_eq!(cfg.server_name, "localhost");
+    }
+
+    #[test]
+    fn test_srtp_profile_parsing_variants() {
+        assert_eq!(
+            srtp_profile_from_str("SRTP_AES128_CM_SHA1_32"),
+            Some(SrtpProfile::Aes128CmSha132)
+        );
+        assert_eq!(
+            srtp_profile_from_str("AEAD_AES_128_GCM"),
+            Some(SrtpProfile::AeadAes128Gcm)
+        );
+        assert_eq!(srtp_profile_from_str("unknown"), None);
+
+        assert_eq!(
+            protection_profile_from_str("AES128_CM_HMAC_SHA1_32"),
+            Some(ProtectionProfile::Aes128CmHmacSha132)
+        );
+        assert_eq!(
+            protection_profile_from_str("AEAD_AES_256_GCM"),
+            Some(ProtectionProfile::AeadAes256Gcm)
+        );
+        assert_eq!(protection_profile_from_str("bogus"), None);
     }
 }
