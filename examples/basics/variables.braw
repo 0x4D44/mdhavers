@@ -1,0 +1,16 @@
+# variables.braw - variables and basic types
+
+ken name = "Hamish"
+ken age = 42
+ken pi = 3.14159
+ken active = aye
+ken nothing = naething
+
+ken nums = [1, 2, 3]
+ken info = {"name": name, "age": age, "active": active}
+
+blether "Name: " + name
+blether f"Age next year: {age + 1}"
+blether f"Pi * 2 = {pi * 2}"
+blether f"Nums len: {len(nums)}"
+blether f"Info name: {info.name}"

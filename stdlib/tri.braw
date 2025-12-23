@@ -1,0 +1,174 @@
+# tri.braw - tri 3D module stub (non-native backends)
+# This file provides a minimal Scots-named API mirroring three.js semantics.
+# Native backends should override with a real implementation.
+
+ken DEG_TO_RAD = 3.141592653589793 / 180
+ken RAD_TO_DEG = 180 / 3.141592653589793
+
+# Internal helper for vector-like dicts
+
+dae _tri_vec3(x = 0, y = 0, z = 0) {
+    gie {"x": x, "y": y, "z": z}
+}
+
+dae _tri_clone(obj) {
+    ken copy = {}
+    fer key in keys(obj) {
+        copy[key] = obj[key]
+    }
+    gie copy
+}
+
+dae _tri_attach_common(obj) {
+    obj.adde = |thing| { shove(obj.children, thing) }
+    obj.add = obj.adde
+
+    obj.remuiv = |thing| {
+        ken new_children = []
+        fer child in obj.children {
+            gin child != thing { shove(new_children, child) }
+        }
+        obj.children = new_children
+    }
+    obj.remove = obj.remuiv
+
+    obj.cloan = || { _tri_clone(obj) }
+    obj.clone = obj.cloan
+
+    obj.dyspos = || { naething }
+    obj.dispose = obj.dyspos
+
+    obj.luik_at = |target| { obj.lookAtTarget = target }
+    obj.lookAt = obj.luik_at
+    gie obj
+}
+
+dae _tri_attach_renderer(obj) {
+    obj.set_sise = |w, h| { obj.width = w; obj.height = h }
+    obj.setSize = obj.set_sise
+
+    obj.set_pixel_ratio = |r| { obj.pixelRatio = r }
+    obj.setPixelRatio = obj.set_pixel_ratio
+
+    obj.render = |scene, camera| { obj.scene = scene; obj.camera = camera }
+    obj.loop = |fn| { obj.loopFn = fn }
+    gie obj
+}
+
+# Internal helper for transform-bearing objects
+
+dae _tri_with_transform(type_name) {
+    ken obj = {"type": type_name}
+    obj.position = _tri_vec3(0, 0, 0)
+    obj.rotation = _tri_vec3(0, 0, 0)
+    obj.scale = _tri_vec3(1, 1, 1)
+    obj.children = []
+    obj.parent = naething
+    _tri_attach_common(obj)
+    gie obj
+}
+
+# Core constructors
+
+dae Sicht() { gie _tri_with_transform("Sicht") }
+
+dae Thing3D() { gie _tri_with_transform("Thing3D") }
+
+dae Clump() { gie _tri_with_transform("Clump") }
+
+dae Mesch(geometrie = naething, maiterial = naething) {
+    ken obj = _tri_with_transform("Mesch")
+    obj.geometry = geometrie
+    obj.material = maiterial
+    gie obj
+}
+
+# Cameras
+
+dae Kamera() { gie _tri_with_transform("Kamera") }
+
+dae PerspectivKamera(fov = 50, aspect = 1, near = 0.1, far = 2000) {
+    ken obj = _tri_with_transform("PerspectivKamera")
+    obj.fov = fov
+    obj.aspect = aspect
+    obj.near = near
+    obj.far = far
+    gie obj
+}
+
+dae OrthograffikKamera(left = -1, right = 1, top = 1, bottom = -1, near = 0.1, far = 2000) {
+    ken obj = _tri_with_transform("OrthograffikKamera")
+    obj.left = left
+    obj.right = right
+    obj.top = top
+    obj.bottom = bottom
+    obj.near = near
+    obj.far = far
+    gie obj
+}
+
+# Geometry
+
+dae Geometrie() { gie {"type": "Geometrie"} }
+
+dae BoxGeometrie(w = 1, h = 1, d = 1) { gie {"type": "BoxGeometrie", "width": w, "height": h, "depth": d} }
+
+dae SpherGeometrie(r = 1, wseg = 8, hseg = 6) {
+    gie {"type": "SpherGeometrie", "radius": r, "widthSegments": wseg, "heightSegments": hseg}
+}
+
+# Materials
+
+dae Maiterial(opts = naething) { gie {"type": "Maiterial", "opts": opts} }
+
+dae MeshBasicMaiterial(opts = naething) { gie {"type": "MeshBasicMaiterial", "opts": opts} }
+
+dae MeshStandardMaiterial(opts = naething) { gie {"type": "MeshStandardMaiterial", "opts": opts} }
+
+# Lights
+
+dae Licht(colour = naething, intensity = 1) {
+    ken obj = _tri_with_transform("Licht")
+    obj.color = colour
+    obj.intensity = intensity
+    gie obj
+}
+
+dae AmbiantLicht(colour = naething, intensity = 1) {
+    ken obj = _tri_with_transform("AmbiantLicht")
+    obj.color = colour
+    obj.intensity = intensity
+    gie obj
+}
+
+dae DireksionalLicht(colour = naething, intensity = 1) {
+    ken obj = _tri_with_transform("DireksionalLicht")
+    obj.color = colour
+    obj.intensity = intensity
+    gie obj
+}
+
+dae PyntLicht(colour = naething, intensity = 1, distance = 0, decay = 2) {
+    ken obj = _tri_with_transform("PyntLicht")
+    obj.color = colour
+    obj.intensity = intensity
+    obj.distance = distance
+    obj.decay = decay
+    gie obj
+}
+
+# Texture
+
+dae Textur() { gie {"type": "Textur"} }
+
+# Renderer
+
+dae Renderar(opts = naething) {
+    ken obj = {"type": "Renderar", "opts": opts}
+    _tri_attach_renderer(obj)
+    gie obj
+}
+
+# Colour
+
+dae Colour(value = naething) { gie {"type": "Colour", "value": value} }

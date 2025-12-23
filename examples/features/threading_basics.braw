@@ -1,0 +1,62 @@
+# threading_basics.braw - thread_spawn + atomics + channels
+# Note: interpreter only spawns native functions; LLVM/native builds run real threads.
+# Run: ./target/release/mdhavers examples/features/threading_basics.braw
+
+dae sum_list(list) {
+    gie sumaw(list)
+}
+
+dae add_to_counter(counter, delta) {
+    atomic_add(counter, delta)
+    gie atomic_load(counter)
+}
+
+dae send_word(ch, word) {
+    chan_send(ch, word)
+    gie word
+}
+
+# Spawn native work (sumaw) in "threads"
+ken tasks = [
+    [1, 2, 3, 4, 5],
+    [10, 20, 30],
+    [7, 8, 9, 10]
+]
+
+ken handles = []
+fer t in tasks {
+    ken h = thread_spawn(sum_list, [t])
+    shove(handles, h)
+}
+
+ken total = 0
+fer h in handles {
+    total = total + thread_join(h)
+}
+
+blether f"Total sum: {total}"
+
+# Atomic counter demo
+ken counter = atomic_new(0)
+ken h1 = thread_spawn(add_to_counter, [counter, 3])
+ken h2 = thread_spawn(add_to_counter, [counter, 7])
+thread_join(h1)
+thread_join(h2)
+blether f"Atomic counter: {atomic_load(counter)}"
+
+# Channel demo
+ken ch = chan_new(0)
+ken senders = []
+fer word in ["aye", "nae", "mibbe"] {
+    shove(senders, thread_spawn(send_word, [ch, word]))
+}
+fer h in senders { thread_join(h) }
+
+ken received = []
+whiles aye {
+    ken val = chan_try_recv(ch)
+    gin val == naething { brak }
+    shove(received, val)
+}
+
+blether f"Channel received: {received}"

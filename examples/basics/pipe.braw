@@ -1,0 +1,15 @@
+# pipe.braw - pipe operator chaining
+
+dae double(x) {
+    gie x * 2
+}
+
+dae inc(x) {
+    gie x + 1
+}
+
+ken result = 3 |> double |> inc
+blether f"Result: {result}"
+
+ken shout = |s| upper(s)
+blether "wee" |> shout

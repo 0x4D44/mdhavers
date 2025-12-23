@@ -1,0 +1,63 @@
+# tri_showcase_loop.braw - renderar.loop variant
+# Build: cargo build --release --features graphics3d
+# Run:   ./target/release/mdhavers build examples/showcases/tri_showcase/tri_showcase_loop.braw -o tri_showcase_loop
+
+fetch "tri" tae tri
+
+ken sicht = tri.Sicht()
+ken kamera = tri.PerspectivKamera(75, 16/9, 0.1, 1000)
+ken renderar = tri.Renderar({"width": 800, "height": 600, "wireframe": nae})
+
+ken geom = tri.BoxGeometrie(1, 1, 1)
+ken mat = tri.MeshStandardMaiterial({"color": "#44aaff", "metalness": 0.1, "roughness": 0.6})
+ken mesch = tri.Mesch(geom, mat)
+
+ken amb = tri.AmbiantLicht("#404040", 0.8)
+ken sun = tri.DireksionalLicht("#ffffff", 0.9)
+sun.position.x = 2
+sun.position.y = 4
+sun.position.z = 3
+ken spot = tri.PyntLicht("#ffcc88", 1.0, 6, 2)
+spot.position.x = -2
+spot.position.y = 2
+spot.position.z = 2
+
+sicht.adde(mesch)
+sicht.adde(amb)
+sicht.adde(sun)
+sicht.adde(spot)
+kamera.position.z = 4
+kamera.luik_at(0, 0, 0)
+
+ken yaw = 0.0
+ken pitch = 0.0
+ken radius = 4.0
+ken acc = 0.0
+ken frames = 0
+
+renderar.loop(|dt| {
+    yaw = yaw + (0.6 * dt)
+    pitch = 0.4 * sin(yaw * 0.6)
+
+    ken cx = radius * cos(yaw) * cos(pitch)
+    ken cy = radius * sin(pitch)
+    ken cz = radius * sin(yaw) * cos(pitch)
+    kamera.position.x = cx
+    kamera.position.y = cy
+    kamera.position.z = cz
+
+    mesch.rotation.y = mesch.rotation.y + (0.8 * dt)
+    mesch.rotation.x = mesch.rotation.x + (0.4 * dt)
+    spot.position.x = 2 * cos(yaw)
+    spot.position.z = 2 * sin(yaw)
+
+    renderar.render(sicht, kamera)
+
+    frames = frames + 1
+    acc = acc + dt
+    gin acc >= 1 {
+        blether f"FPS: {frames}"
+        frames = 0
+        acc = 0
+    }
+})

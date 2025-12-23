@@ -1,0 +1,25 @@
+# graphics_basics.braw - simple 2D draw loop
+# Requires: cargo build --release --features graphics
+# Run: ./target/release/mdhavers examples/features/graphics_basics.braw
+
+screen_open(800, 450, "Braw Graphics")
+screen_fps(60)
+
+ken t = 0.0
+
+whiles nae screen_should_close() {
+    screen_clear("black")
+
+    ken cx = 120 + tae_int(60 * cos(t))
+    ken cy = 120 + tae_int(60 * sin(t))
+
+    draw_circle(cx, cy, 30, "skyblae")
+    draw_rect(260, 90, 180, 100, rgb(255, 180, 60))
+    draw_line(0, 0, screen_width(), screen_height(), "green")
+    draw_text("Press ESC tae exit", 20, 20, 20, "whit")
+    draw_pixel(400, 225, "red")
+
+    t = t + 0.05
+}
+
+screen_close()

@@ -1,0 +1,27 @@
+# inheritance.braw - class inheritance with fae
+
+kin Animal {
+    dae init(name) {
+        masel.name = name
+    }
+
+    dae speak() {
+        blether masel.name + " makes a noise."
+    }
+}
+
+kin Cat fae Animal {
+    dae init(name) {
+        masel.name = name
+    }
+
+    dae speak() {
+        blether masel.name + " says: meow!"
+    }
+}
+
+ken a = Animal("Beastie")
+a.speak()
+
+ken c = Cat("Mog")
+c.speak()

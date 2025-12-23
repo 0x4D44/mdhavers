@@ -1,0 +1,117 @@
+# rtcp.braw - RTCP helpers for mdhavers
+# "Reports fer yer packets."
+
+# Build a Receiver Report (RR) packet.
+# reports: list of dicts with keys:
+#   ssrc, fraction_lost, cumulative_lost, highest_seq, jitter, lsr, dlsr
+
+dae rtcp_rr(sender_ssrc, reports = []) {
+    ken rc = len(reports)
+    gin rc > 31 { rc = 31 }
+
+    ken total_len = 8 + (24 * rc)
+    ken length_words = floor(total_len / 4) - 1
+
+    ken b = bytes(total_len)
+    ken b0 = 128 + rc
+    bytes_set(b, 0, b0)
+    bytes_set(b, 1, 201)
+    bytes_write_u16be(b, 2, length_words)
+    bytes_write_u32be(b, 4, sender_ssrc)
+
+    ken i = 0
+    whiles i < rc {
+        ken rep = reports[i]
+        ken off = 8 + (i * 24)
+
+        ken r_ssrc = dict_get(rep, "ssrc", 0)
+        ken fraction = dict_get(rep, "fraction_lost", 0)
+        ken cumulative = dict_get(rep, "cumulative_lost", 0)
+        ken highest_seq = dict_get(rep, "highest_seq", 0)
+        ken jitter = dict_get(rep, "jitter", 0)
+        ken lsr = dict_get(rep, "lsr", 0)
+        ken dlsr = dict_get(rep, "dlsr", 0)
+
+        ken loss_field = (fraction * 16777216) + (cumulative % 16777216)
+
+        bytes_write_u32be(b, off, r_ssrc)
+        bytes_write_u32be(b, off + 4, loss_field)
+        bytes_write_u32be(b, off + 8, highest_seq)
+        bytes_write_u32be(b, off + 12, jitter)
+        bytes_write_u32be(b, off + 16, lsr)
+        bytes_write_u32be(b, off + 20, dlsr)
+
+        i = i + 1
+    }
+
+    gie b
+}
+
+# Parse a Receiver Report packet.
+
+dae rtcp_parse_rr(packet) {
+    ken b = packet
+    gin whit_kind(b) != "bytes" {
+        b = bytes_from_string(tae_string(packet))
+    }
+    ken n = bytes_len(b)
+    gin n < 8 {
+        gie {"ok": nae, "error": "rtcp packet too short", "len": n}
+    }
+
+    ken b0 = bytes_get(b, 0)
+    ken pt = bytes_get(b, 1)
+    gin pt != 201 {
+        gie {"ok": nae, "error": "not RTCP RR", "packet_type": pt}
+    }
+
+    ken version = floor(b0 / 64)
+    ken padding = floor((b0 % 64) / 32)
+    ken rc = b0 % 32
+
+    ken length_words = bytes_read_u16be(b, 2)
+    ken packet_len = (length_words + 1) * 4
+    gin n < packet_len {
+        gie {"ok": nae, "error": "rtcp length mismatch", "len": n, "expected": packet_len}
+    }
+
+    ken sender_ssrc = bytes_read_u32be(b, 4)
+    ken reports = []
+    ken i = 0
+    whiles i < rc {
+        ken off = 8 + (i * 24)
+        gin off + 24 > packet_len { haud }
+
+        ken r_ssrc = bytes_read_u32be(b, off)
+        ken loss_field = bytes_read_u32be(b, off + 4)
+        ken fraction = floor(loss_field / 16777216)
+        ken cumulative = loss_field % 16777216
+        ken highest_seq = bytes_read_u32be(b, off + 8)
+        ken jitter = bytes_read_u32be(b, off + 12)
+        ken lsr = bytes_read_u32be(b, off + 16)
+        ken dlsr = bytes_read_u32be(b, off + 20)
+
+        shove(reports, {
+            "ssrc": r_ssrc,
+            "fraction_lost": fraction,
+            "cumulative_lost": cumulative,
+            "highest_seq": highest_seq,
+            "jitter": jitter,
+            "lsr": lsr,
+            "dlsr": dlsr
+        })
+
+        i = i + 1
+    }
+
+    gie {
+        "ok": aye,
+        "version": version,
+        "padding": padding == 1,
+        "count": rc,
+        "packet_type": pt,
+        "length": packet_len,
+        "ssrc": sender_ssrc,
+        "reports": reports
+    }
+}

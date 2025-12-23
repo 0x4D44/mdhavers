@@ -20,6 +20,9 @@ pub mod tri;
 pub mod value;
 pub mod wasm_compiler;
 
+#[cfg(feature = "wasm_runner")]
+pub mod wasm_runner;
+
 // LLVM backend (optional, requires llvm feature)
 #[cfg(feature = "llvm")]
 pub mod llvm;

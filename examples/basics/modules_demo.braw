@@ -1,0 +1,14 @@
+# modules_demo.braw - importing modules
+
+fetch "lib/strings" tae str
+fetch "collections" tae cols
+
+blether str.capitalize("scotland")
+
+ken set = cols.HaversSet()
+set.add("apple")
+set.add("apple")
+set.add("pear")
+
+blether f"Has apple? {set.contains(\"apple\") }"
+blether f"Set size: {len(set.items)}"

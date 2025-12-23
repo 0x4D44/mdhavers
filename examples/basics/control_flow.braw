@@ -1,0 +1,21 @@
+# control_flow.braw - if/else, loops, break, continue
+
+ken total = 0
+fer i in 1..11 {
+    total = total + i
+}
+blether f"Sum 1..10 = {total}"
+
+ken odds = []
+fer i in 1..20 {
+    gin i % 2 == 0 { haud }
+    gin i > 15 { brak }
+    shove(odds, i)
+}
+blether f"Odds under 16: {odds}"
+
+ken n = 3
+whiles n > 0 {
+    blether f"Countdown: {n}"
+    n = n - 1
+}

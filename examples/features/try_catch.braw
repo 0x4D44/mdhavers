@@ -1,0 +1,11 @@
+# try_catch.braw - try/catch with hurl
+# Run: ./target/release/mdhavers examples/features/try_catch.braw
+
+hae_a_bash {
+    blether "Tryin' a risky thing..."
+    hurl "Something went wrang!"
+} gin_it_gangs_wrang err {
+    blether "Caught error: " + err
+}
+
+blether "Carryin' on."

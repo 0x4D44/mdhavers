@@ -1,0 +1,32 @@
+# graphics3d_basics.braw - minimal tri scene
+# Requires: cargo build --release --features graphics3d
+# Run: ./target/release/mdhavers build examples/features/graphics3d_basics.braw -o graphics3d_basics
+
+fetch "tri" tae tri
+
+ken sicht = tri.Sicht()
+ken kamera = tri.PerspectivKamera(60, 16/9, 0.1, 100)
+ken renderar = tri.Renderar({"width": 800, "height": 600, "wireframe": nae})
+
+ken geom = tri.BoxGeometrie(1, 1, 1)
+ken mat = tri.MeshStandardMaiterial({"color": "#ff8844", "metalness": 0.1, "roughness": 0.5})
+ken cube = tri.Mesch(geom, mat)
+
+sicht.adde(cube)
+sicht.adde(tri.AmbiantLicht("#404040", 0.7))
+ken sun = tri.DireksionalLicht("#ffffff", 0.9)
+sun.position.x = 2
+sun.position.y = 3
+sun.position.z = 4
+sicht.adde(sun)
+
+kamera.position.z = 4
+
+ken angle = 0.0
+
+renderar.loop(|dt| {
+    angle = angle + (0.8 * dt)
+    cube.rotation.y = angle
+    cube.rotation.x = angle * 0.6
+    renderar.render(sicht, kamera)
+})

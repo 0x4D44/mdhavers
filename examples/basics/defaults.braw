@@ -1,0 +1,8 @@
+# defaults.braw - default parameters
+
+dae greet(name, greeting = "Hullo") {
+    blether f"{greeting}, {name}!"
+}
+
+greet("Hamish")
+greet("Morag", "Och aye")

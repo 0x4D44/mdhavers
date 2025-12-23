@@ -1,0 +1,44 @@
+# tls.braw - TLS wrappers fer mdhavers
+# "Keep yer SIP traffic snug."
+
+# Create a TLS client config (dict) and session
+
+dae tls_client(config = {}) {
+    ken cfg = config
+    cfg["mode"] = "client"
+    gie tls_client_new(cfg)
+}
+
+# Create a TLS server session
+
+dae tls_server(config = {}) {
+    ken cfg = config
+    cfg["mode"] = "server"
+    gie tls_client_new(cfg)
+}
+
+# Connect/handshake
+
+dae tls_connect_o(tls, sock) {
+    gie tls_connect(tls, sock)
+}
+
+# Send/recv
+
+dae tls_send_o(tls, buf) {
+    gie tls_send(tls, buf)
+}
+
+dae tls_send_string(tls, text) {
+    gie tls_send(tls, bytes_from_string(text))
+}
+
+dae tls_recv_o(tls, max_len) {
+    gie tls_recv(tls, max_len)
+}
+
+# Close
+
+dae tls_close_o(tls) {
+    gie tls_close(tls)
+}

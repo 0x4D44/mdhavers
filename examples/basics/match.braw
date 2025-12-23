@@ -1,0 +1,15 @@
+# match.braw - keek/whan patterns
+
+ken score = 72
+keek score {
+    whan 0..50 -> blether "fail"
+    whan 51..74 -> blether "pass"
+    whan 75 -> blether "distinction"
+    whan _ -> blether "ace"
+}
+
+ken word = "aye"
+keek word {
+    whan "aye" -> blether "yes"
+    whan _ -> blether "no"
+}

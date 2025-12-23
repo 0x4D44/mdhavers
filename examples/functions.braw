@@ -1,0 +1,32 @@
+# functions.braw - functions, defaults, recursion, lambdas
+
+dae greet(name = "pal") {
+    blether "Hullo, " + name + "!"
+}
+
+dae add(a, b) {
+    gie a + b
+}
+
+dae factorial(n) {
+    gin n <= 1 {
+        gie 1
+    }
+    gie n * factorial(n - 1)
+}
+
+dae apply(fn, value) {
+    gie fn(value)
+}
+
+greet("mdhavers")
+greet()
+
+ken sum = add(3, 4)
+blether f"3 + 4 = {sum}"
+
+blether f"5! = {factorial(5)}"
+
+ken double = |x| x * 2
+ken result = apply(double, 21)
+blether f"Double 21 = {result}"

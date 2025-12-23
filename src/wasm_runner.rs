@@ -277,7 +277,7 @@ fn tri_object_method(store: &mut HostStore, obj: Handle, method: &str, args: &[H
         }
         "dyspos" | "dispose" => 0,
         "luik_at" | "lookAt" => {
-            if let Some(target) = args.get(0) {
+            if let Some(target) = args.first() {
                 if let Some(HostValue::NativeObject(native)) = store.get_mut(obj) {
                     native.fields.insert("lookAtTarget".to_string(), *target);
                 }
@@ -286,7 +286,7 @@ fn tri_object_method(store: &mut HostStore, obj: Handle, method: &str, args: &[H
         }
         "set_sise" | "setSize" => {
             if let Some(HostValue::NativeObject(native)) = store.get_mut(obj) {
-                if let Some(width) = args.get(0) {
+                if let Some(width) = args.first() {
                     native.fields.insert("width".to_string(), *width);
                 }
                 if let Some(height) = args.get(1) {
@@ -297,7 +297,7 @@ fn tri_object_method(store: &mut HostStore, obj: Handle, method: &str, args: &[H
         }
         "set_pixel_ratio" | "setPixelRatio" => {
             if let Some(HostValue::NativeObject(native)) = store.get_mut(obj) {
-                if let Some(ratio) = args.get(0) {
+                if let Some(ratio) = args.first() {
                     native.fields.insert("pixelRatio".to_string(), *ratio);
                 }
             }
@@ -305,7 +305,7 @@ fn tri_object_method(store: &mut HostStore, obj: Handle, method: &str, args: &[H
         }
         "render" => {
             if let Some(HostValue::NativeObject(native)) = store.get_mut(obj) {
-                if let Some(scene) = args.get(0) {
+                if let Some(scene) = args.first() {
                     native.fields.insert("scene".to_string(), *scene);
                 }
                 if let Some(camera) = args.get(1) {
@@ -316,7 +316,7 @@ fn tri_object_method(store: &mut HostStore, obj: Handle, method: &str, args: &[H
         }
         "loop" => {
             if let Some(HostValue::NativeObject(native)) = store.get_mut(obj) {
-                if let Some(callback) = args.get(0) {
+                if let Some(callback) = args.first() {
                     native.fields.insert("loopFn".to_string(), *callback);
                 }
             }
@@ -520,6 +520,7 @@ fn add_binop(
             },
         )
         .map_err(|e| e.to_string())
+        .map(|_| ())
 }
 
 fn add_cmp(
@@ -537,12 +538,14 @@ fn add_cmp(
             },
         )
         .map_err(|e| e.to_string())
+        .map(|_| ())
 }
 
 fn add_audio_stub0(linker: &mut Linker<HostState>, name: &str) -> Result<(), String> {
     linker
         .func_wrap("env", name, |_caller: Caller<'_, HostState>| -> i64 { 0 })
         .map_err(|e| e.to_string())
+        .map(|_| ())
 }
 
 fn add_audio_stub1(linker: &mut Linker<HostState>, name: &str) -> Result<(), String> {
@@ -553,6 +556,7 @@ fn add_audio_stub1(linker: &mut Linker<HostState>, name: &str) -> Result<(), Str
             |_caller: Caller<'_, HostState>, _a0: i64| -> i64 { 0 },
         )
         .map_err(|e| e.to_string())
+        .map(|_| ())
 }
 
 fn add_audio_stub2(linker: &mut Linker<HostState>, name: &str) -> Result<(), String> {
@@ -563,6 +567,7 @@ fn add_audio_stub2(linker: &mut Linker<HostState>, name: &str) -> Result<(), Str
             |_caller: Caller<'_, HostState>, _a0: i64, _a1: i64| -> i64 { 0 },
         )
         .map_err(|e| e.to_string())
+        .map(|_| ())
 }
 
 fn numeric_binop(store: &mut HostStore, a: Handle, b: Handle, op: fn(f64, f64) -> f64) -> Handle {
@@ -617,7 +622,7 @@ pub fn run_wasm_file(path: &Path) -> Result<(), String> {
 
     let mut linker = Linker::new(&engine);
     linker
-        .define("env", "memory", memory.clone())
+        .define(&mut store, "env", "memory", memory)
         .map_err(|e| e.to_string())?;
 
     // Value constructors
@@ -665,14 +670,14 @@ pub fn run_wasm_file(path: &Path) -> Result<(), String> {
         )
         .map_err(|e| e.to_string())?;
 
-    let mem_for_string = memory.clone();
+    let mem_for_string = memory;
     linker
         .func_wrap(
             "env",
             "__mdh_make_string",
             move |mut caller: Caller<'_, HostState>, ptr: i32, len: i32| -> i64 {
-                let store = &mut caller.data_mut().store;
                 let s = read_memory_string(&caller, &mem_for_string, ptr, len);
+                let store = &mut caller.data_mut().store;
                 alloc_string(store, s)
             },
         )
@@ -851,9 +856,9 @@ pub fn run_wasm_file(path: &Path) -> Result<(), String> {
             |mut caller: Caller<'_, HostState>| -> i64 {
                 let state = caller.data_mut();
                 let module_handle = state.store.alloc(HostValue::Dict(HashMap::new()));
+                let deg = alloc_float(&mut state.store, std::f64::consts::PI / 180.0);
+                let rad = alloc_float(&mut state.store, 180.0 / std::f64::consts::PI);
                 if let Some(HostValue::Dict(map)) = state.store.get_mut(module_handle) {
-                    let deg = alloc_float(&mut state.store, std::f64::consts::PI / 180.0);
-                    let rad = alloc_float(&mut state.store, 180.0 / std::f64::consts::PI);
                     map.insert(ValueKey::String("DEG_TO_RAD".to_string()), deg);
                     map.insert(ValueKey::String("RAD_TO_DEG".to_string()), rad);
                 }

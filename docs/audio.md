@@ -17,6 +17,8 @@ host these assets alongside your compiled output (or set overrides):
 - `assets/wasm/mdh_rustysynth.wasm`
 - `assets/soundfonts/MuseScore_General.sf2`
 
+See `assets/wasm/README.md` (rebuild the WASM helper) and `assets/soundfonts/README.md` (download the default SoundFont).
+
 Optional overrides (set before running audio code):
 ```js
 globalThis.__havers_audio_base = "/static/";

@@ -1,0 +1,88 @@
+# network_real.braw - Real socket wrappers fer mdhavers
+# "Bring the real wire tae the Highlands!"
+
+# Socket constructors
+
+dae udp_socket() {
+    gie socket_udp()
+}
+
+dae tcp_socket() {
+    gie socket_tcp()
+}
+
+# Core socket ops
+
+dae bind_socket(sock, host = naething, port = 0) {
+    gie socket_bind(sock, host, port)
+}
+
+dae connect_socket(sock, host, port) {
+    gie socket_connect(sock, host, port)
+}
+
+dae listen_socket(sock, backlog = 128) {
+    gie socket_listen(sock, backlog)
+}
+
+dae accept_socket(sock) {
+    gie socket_accept(sock)
+}
+
+dae set_nonblocking(sock, on = aye) {
+    gie socket_set_nonblocking(sock, on)
+}
+
+dae set_reuseaddr(sock, on = aye) {
+    gie socket_set_reuseaddr(sock, on)
+}
+
+dae set_reuseport(sock, on = aye) {
+    gie socket_set_reuseport(sock, on)
+}
+
+dae set_ttl(sock, ttl) {
+    gie socket_set_ttl(sock, ttl)
+}
+
+dae set_nodelay(sock, on = aye) {
+    gie socket_set_nodelay(sock, on)
+}
+
+dae set_rcvbuf(sock, bytes) {
+    gie socket_set_rcvbuf(sock, bytes)
+}
+
+dae set_sndbuf(sock, bytes) {
+    gie socket_set_sndbuf(sock, bytes)
+}
+
+dae close_socket(sock) {
+    gie socket_close(sock)
+}
+
+# UDP helpers
+
+dae udp_send(sock, buf, host, port) {
+    gie udp_send_to(sock, buf, host, port)
+}
+
+dae udp_recv(sock, max_len) {
+    gie udp_recv_from(sock, max_len)
+}
+
+# TCP helpers
+
+dae tcp_send_bytes(sock, buf) {
+    gie tcp_send(sock, buf)
+}
+
+dae tcp_recv_bytes(sock, max_len) {
+    gie tcp_recv(sock, max_len)
+}
+
+# DNS
+
+dae dns_lookup_real(host) {
+    gie dns_lookup(host)
+}

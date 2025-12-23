@@ -1,0 +1,65 @@
+# event_loop.braw - Event loop wrappers fer mdhavers
+# "Keep yer sockets aw in line."
+
+# Constructors
+
+dae make_event_loop() {
+    gie event_loop_new()
+}
+
+# Watchers
+
+dae watch_read(loop, sock, callback) {
+    gie event_watch_read(loop, sock, callback)
+}
+
+dae watch_write(loop, sock, callback) {
+    gie event_watch_write(loop, sock, callback)
+}
+
+dae unwatch(loop, sock) {
+    gie event_unwatch(loop, sock)
+}
+
+# Timers
+
+dae timer_after_ms(loop, ms, callback) {
+    gie timer_after(loop, ms, callback)
+}
+
+dae timer_every_ms(loop, ms, callback) {
+    gie timer_every(loop, ms, callback)
+}
+
+dae timer_cancel_o(loop, timer_id) {
+    gie timer_cancel(loop, timer_id)
+}
+
+# Poll once
+
+dae poll_loop(loop, timeout_ms = -1) {
+    gie event_loop_poll(loop, timeout_ms)
+}
+
+# Stop loop
+
+dae stop_event_loop(loop) {
+    gie event_loop_stop(loop)
+}
+
+# Run loop and dispatch callbacks
+
+dae event_loop_run(loop, timeout_ms = -1) {
+    ken running = aye
+    whiles running {
+        ken events = event_loop_poll(loop, timeout_ms)
+        fer ev in events {
+            gin ev["kind"] == "stop" {
+                running = nae
+            } ither gin contains(ev, "callback") {
+                ev["callback"](ev)
+            }
+        }
+    }
+    gie naething
+}

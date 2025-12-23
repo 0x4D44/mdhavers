@@ -1,7 +1,7 @@
 #!/bin/sh
 # mdhavers installer script
-# Usage: curl -sSf https://raw.githubusercontent.com/.../install.sh | sh
-#    or: ./install.sh [--local] [--yes]
+# Usage: ./installer/install.sh --local [--yes]
+# Note: Remote (release) installation is not yet implemented.
 
 set -e
 
