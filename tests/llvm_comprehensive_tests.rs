@@ -3,7 +3,9 @@
 //! Tests for all major features of the LLVM code generator to ensure
 //! correctness and catch regressions.
 
-#![cfg(feature = "llvm")]
+// This suite is intentionally large (thousands of compile-and-run tests) and is opt-in.
+// Enable with `--features llvm_comprehensive_tests`.
+#![cfg(all(feature = "llvm", feature = "llvm_comprehensive_tests"))]
 #![allow(clippy::all)]
 
 use std::process::Command;

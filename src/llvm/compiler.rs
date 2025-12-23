@@ -7,14 +7,14 @@ use std::io::{self, IsTerminal, Write};
 use std::path::Path;
 use std::process::Command;
 
-/// Embedded runtime object file - compiled into the binary at build time
-static EMBEDDED_RUNTIME: &[u8] = include_bytes!("../../runtime/mdh_runtime.o");
+/// Embedded runtime object file - compiled into the binary at build time.
+static EMBEDDED_RUNTIME: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/mdh_runtime.o"));
 
-/// Embedded Rust runtime staticlib (JSON/regex helpers)
-static EMBEDDED_RUNTIME_RS: &[u8] = include_bytes!("../../runtime/mdh_runtime_rs.a");
+/// Embedded Rust runtime staticlib (JSON/regex helpers).
+static EMBEDDED_RUNTIME_RS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/mdh_runtime_rs.a"));
 
-/// Embedded GC stub - minimal malloc wrappers for standalone builds
-static EMBEDDED_GC_STUB: &[u8] = include_bytes!("../../runtime/gc_stub.o");
+/// Embedded GC stub - minimal malloc wrappers for standalone builds.
+static EMBEDDED_GC_STUB: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/gc_stub.o"));
 
 use inkwell::context::Context;
 use inkwell::module::Module;

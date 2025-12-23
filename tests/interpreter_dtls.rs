@@ -1,3 +1,5 @@
+#![cfg(all(feature = "native", unix))]
+
 use mdhavers::{parse, Interpreter};
 use rcgen::generate_simple_self_signed;
 use std::net::UdpSocket;

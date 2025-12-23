@@ -1,5 +1,6 @@
 // mdhavers VS Code Extension - Gie yer editor some Scots smarts!
 
+import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import {
@@ -11,6 +12,15 @@ import {
 
 let client: LanguageClient | undefined;
 
+function firstExistingPath(paths: string[]): string | undefined {
+    for (const candidate of paths) {
+        if (fs.existsSync(candidate)) {
+            return candidate;
+        }
+    }
+    return undefined;
+}
+
 export function activate(context: vscode.ExtensionContext) {
     const config = vscode.workspace.getConfiguration('mdhavers');
 
@@ -21,19 +31,35 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     // Get the path to the LSP server
-    let serverPath = config.get<string>('lsp.path', 'mdhavers-lsp');
+    const lspBinaryName = process.platform === 'win32' ? 'mdhavers-lsp.exe' : 'mdhavers-lsp';
+    let serverPath = config.get<string>('lsp.path', lspBinaryName);
 
     // If it's a relative path, try to find it relative to the extension
     if (!path.isAbsolute(serverPath)) {
-        // Try common locations
-        const possiblePaths = [
-            serverPath,  // PATH lookup
-            path.join(context.extensionPath, '..', '..', '..', 'target', 'release', 'mdhavers-lsp'),
-            path.join(context.extensionPath, '..', '..', '..', 'target', 'debug', 'mdhavers-lsp'),
-        ];
+        const workspaceRoots = (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath);
+        const devRepoRootGuess = path.resolve(context.extensionPath, '..', '..', '..');
+        const searchRoots = Array.from(new Set([...workspaceRoots, devRepoRootGuess]));
 
-        // Use the first one that exists, or default to PATH lookup
-        serverPath = possiblePaths[0];
+        const possiblePaths: string[] = [];
+
+        // User-provided path (if it looks like a path, not a bare command)
+        const looksLikePath = serverPath.includes('/') || serverPath.includes('\\') || serverPath.startsWith('.');
+        if (looksLikePath) {
+            for (const root of searchRoots) {
+                possiblePaths.push(path.resolve(root, serverPath));
+            }
+        }
+
+        // Common local-dev build outputs (prefer these over PATH)
+        for (const root of searchRoots) {
+            possiblePaths.push(path.join(root, 'target', 'release', lspBinaryName));
+            possiblePaths.push(path.join(root, 'target', 'debug', lspBinaryName));
+        }
+
+        const foundPath = firstExistingPath(possiblePaths);
+        if (foundPath) {
+            serverPath = foundPath;
+        }
     }
 
     // Server options - run the mdhavers-lsp binary

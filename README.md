@@ -1181,6 +1181,10 @@ git clone <repo-url>
 cd mdhavers
 
 # Build minimal (interpreter only, no LLVM/graphics/audio)
+# Default build: CLI + native runtime (no LLVM/graphics/audio)
+cargo build --release
+
+# Minimal build (CLI only; disables native networking/TLS/DNS/etc too)
 cargo build --release --no-default-features --features cli
 
 # Run tests
@@ -1205,8 +1209,6 @@ echo 'export LLVM_SYS_150_PREFIX=/usr/lib/llvm-15' >> ~/.bashrc
 
 **Then build with LLVM:**
 ```bash
-cargo build --release
-# or explicitly:
 cargo build --release --features llvm
 ```
 
@@ -1215,24 +1217,18 @@ cargo build --release --features llvm
 make status
 ```
 
-**Note:** Default features now enable `cli`, `llvm`, `graphics`, `graphics3d`, and `audio`.
-If you want LLVM without graphics/audio:
+**Note:** Default features enable `cli` and `native`.
+To build with LLVM but without any other optional features (graphics/audio):
 ```bash
-cargo build --release --no-default-features --features cli,llvm
-```
-
-To build without LLVM (and without graphics/audio):
-```bash
-cargo build --release --no-default-features --features cli
+cargo build --release --features llvm
 ```
 
 ### Audio (Soond)
 
-Audio is enabled by default and independent of graphics. If you want to enable
-audio explicitly (for example, without graphics), build with:
+Audio is optional and independent of graphics. To enable audio, build with:
 
 ```bash
-cargo build --release --no-default-features --features cli,llvm,audio
+cargo build --release --features audio
 ```
 
 **Note:** Graphics uses raylib. On Ubuntu/WSL you’ll need:

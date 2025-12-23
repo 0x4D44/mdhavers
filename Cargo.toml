@@ -23,15 +23,26 @@ path = "src/lsp/main.rs"
 required-features = ["cli"]
 
 [features]
-default = ["cli", "llvm", "graphics", "graphics3d", "audio"]
+default = ["cli", "native"]
 cli = ["clap", "rustyline", "crossterm", "dirs", "colored", "lsp-types", "lsp-server"]
 llvm = ["inkwell"]
+llvm_comprehensive_tests = []
 audio = ["miniaudio", "rustysynth"]
 graphics = ["raylib"]
 graphics3d = []
 wasm_runner = ["wasmtime", "wat"]
-# LLVM native compilation (enabled by default):
-#   To disable: cargo build --no-default-features --features cli
+native = [
+    "libc",
+    "trust-dns-resolver",
+    "rustls",
+    "rustls-pemfile",
+    "webpki-roots",
+    "libsrtp",
+    "udp-dtls",
+    "openssl",
+]
+# LLVM native compilation (optional):
+#   To enable: cargo build --features llvm
 #   Requires: sudo apt install llvm-15 libpolly-15-dev lld-15 libzstd-dev
 # Graphics (raylib) - optional feature:
 #   To enable: cargo build --features graphics
@@ -47,14 +58,14 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = "0.4"
 regex = "1.10"
-libc = "0.2"
-trust-dns-resolver = "0.23"
-rustls = { version = "0.21", features = ["dangerous_configuration"] }
-rustls-pemfile = "1.0"
-webpki-roots = "0.25"
-libsrtp = "0.1"
-udp-dtls = { version = "0.1", features = ["vendored"] }
-openssl = { version = "0.10", features = ["vendored"] }
+libc = { version = "0.2", optional = true }
+trust-dns-resolver = { version = "0.23", optional = true }
+rustls = { version = "0.21", features = ["dangerous_configuration"], optional = true }
+rustls-pemfile = { version = "1.0", optional = true }
+webpki-roots = { version = "0.25", optional = true }
+libsrtp = { version = "0.1", optional = true }
+udp-dtls = { version = "0.1", features = ["vendored"], optional = true }
+openssl = { version = "0.10", features = ["vendored"], optional = true }
 
 # CLI-only dependencies (not needed for WASM)
 clap = { version = "4.4", features = ["derive"], optional = true }

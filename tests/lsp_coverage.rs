@@ -13,6 +13,10 @@ fn mdhavers_lsp_bin() -> PathBuf {
         }
     }
 
+    if let Some(p) = std::env::var_os("CARGO_BIN_EXE_mdhavers-lsp") {
+        return PathBuf::from(p);
+    }
+
     PathBuf::from("target/debug/mdhavers-lsp")
 }
 

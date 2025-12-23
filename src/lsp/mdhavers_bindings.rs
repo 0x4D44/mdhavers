@@ -3,298 +3,44 @@
 //! This module provides the interface between the LSP server
 //! and the mdhavers language implementation.
 
-use logos::Logos;
+use mdhavers::lexer;
+use mdhavers::HaversError;
 
 /// Get diagnostics fer a piece o' mdhavers code
 /// Returns a list of (line, column, message, severity)
 pub fn get_diagnostics(source: &str) -> Vec<(usize, usize, String, String)> {
     let mut diagnostics = Vec::new();
 
-    // Try tae lex the source first
-    let mut lexer = TokenKind::lexer(source);
-    let mut line: usize = 1;
-    let mut col: usize = 1;
-
-    while let Some(token) = lexer.next() {
-        let slice = lexer.slice();
-
-        // Update line/column tracking
-        for c in slice.chars() {
-            if c == '\n' {
-                line += 1;
-                col = 1;
-            } else {
-                col += 1;
-            }
-        }
-
-        if token.is_err() {
-            diagnostics.push((
-                line,
-                col.saturating_sub(slice.len()),
-                format!("Och! Ah dinnae ken whit '{}' is", slice),
-                "error".to_string(),
-            ));
-        }
+    // Lex using the real mdhavers lexer first (best source of line/column info).
+    if let Err(err) = lexer::lex(source) {
+        diagnostics.push(error_to_diagnostic(err));
+        return diagnostics;
     }
 
-    // Now try to parse and collect more errors
-    if let Err(parse_error) = parse_for_errors(source) {
-        diagnostics.push(parse_error);
+    // Parse using the real mdhavers parser.
+    if let Err(err) = mdhavers::parse(source) {
+        diagnostics.push(error_to_diagnostic(err));
     }
 
     diagnostics
 }
 
-/// A simplified token enum fer lexing (mirrors the main lexer)
-#[derive(Logos, Debug, Clone, PartialEq)]
-#[logos(skip r"[ \t\r]+")]
-enum TokenKind {
-    // Keywords
-    #[token("ken")]
-    Ken,
-    #[token("gin")]
-    Gin,
-    #[token("ither")]
-    Ither,
-    #[token("than")]
-    Than,
-    #[token("whiles")]
-    Whiles,
-    #[token("fer")]
-    Fer,
-    #[token("gie")]
-    Gie,
-    #[token("blether")]
-    Blether,
-    #[token("speir")]
-    Speir,
-    #[token("fae")]
-    Fae,
-    #[token("tae")]
-    Tae,
-    #[token("an")]
-    An,
-    #[token("or")]
-    Or,
-    #[token("nae")]
-    Nae,
-    #[token("aye")]
-    Aye,
-    #[token("naething")]
-    Naething,
-    #[token("dae")]
-    Dae,
-    #[token("thing")]
-    Thing,
-    #[token("fetch")]
-    Fetch,
-    #[token("kin")]
-    Kin,
-    #[token("brak")]
-    Brak,
-    #[token("haud")]
-    Haud,
-    #[token("in")]
-    In,
-    #[token("is")]
-    Is,
-    #[token("masel")]
-    Masel,
-    #[token("hae_a_bash")]
-    HaeABash,
-    #[token("gin_it_gangs_wrang")]
-    GinItGangsWrang,
-    #[token("keek")]
-    Keek,
-    #[token("whan")]
-    Whan,
-    #[token("mak_siccar")]
-    MakSiccar,
-
-    // Literals
-    #[regex(r"[0-9]+")]
-    Integer,
-    #[regex(r"[0-9]+\.[0-9]+")]
-    Float,
-    #[regex(r#""([^"\\]|\\.)*""#)]
-    String,
-    #[regex(r#"'([^'\\]|\\.)*'"#)]
-    SingleQuoteString,
-    #[regex(r#"f"([^"\\]|\\.)*""#)]
-    FString,
-    #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*")]
-    Identifier,
-
-    // Operators
-    #[token("+")]
-    Plus,
-    #[token("-")]
-    Minus,
-    #[token("*")]
-    Star,
-    #[token("/")]
-    Slash,
-    #[token("%")]
-    Percent,
-    #[token("=")]
-    Equals,
-    #[token("==")]
-    EqualsEquals,
-    #[token("!=")]
-    BangEquals,
-    #[token("<")]
-    Less,
-    #[token("<=")]
-    LessEquals,
-    #[token(">")]
-    Greater,
-    #[token(">=")]
-    GreaterEquals,
-    #[token("!")]
-    Bang,
-    #[token("+=")]
-    PlusEquals,
-    #[token("-=")]
-    MinusEquals,
-    #[token("*=")]
-    StarEquals,
-    #[token("/=")]
-    SlashEquals,
-    #[token("...")]
-    DotDotDot,
-    #[token("..")]
-    DotDot,
-    #[token(".")]
-    Dot,
-    #[token("_", priority = 3)]
-    Underscore,
-
-    // Delimiters
-    #[token("(")]
-    LeftParen,
-    #[token(")")]
-    RightParen,
-    #[token("{")]
-    LeftBrace,
-    #[token("}")]
-    RightBrace,
-    #[token("[")]
-    LeftBracket,
-    #[token("]")]
-    RightBracket,
-    #[token(",")]
-    Comma,
-    #[token(":")]
-    Colon,
-    #[token(";")]
-    Semicolon,
-    #[token("->")]
-    Arrow,
-    #[token("|>")]
-    PipeForward,
-    #[token("|")]
-    Pipe,
-    #[token("\n")]
-    Newline,
-    #[regex(r"#[^\n]*", logos::skip)]
-    Comment,
-}
-
-/// Simple parser fer error detection
-fn parse_for_errors(source: &str) -> Result<(), (usize, usize, String, String)> {
-    let mut brace_stack: Vec<(char, usize, usize)> = Vec::new();
-    let mut line = 1;
-    let mut col = 1;
-
-    for ch in source.chars() {
-        match ch {
-            '{' | '(' | '[' => {
-                brace_stack.push((ch, line, col));
-            }
-            '}' => {
-                if let Some((open, _, _)) = brace_stack.pop() {
-                    if open != '{' {
-                        return Err((
-                            line,
-                            col,
-                            format!("Unexpected '}}' - was expectin' a match fer '{}'", open),
-                            "error".to_string(),
-                        ));
-                    }
-                } else {
-                    return Err((
-                        line,
-                        col,
-                        "Unexpected '}}' - nae matchin' '{{' found".to_string(),
-                        "error".to_string(),
-                    ));
-                }
-            }
-            ')' => {
-                if let Some((open, _, _)) = brace_stack.pop() {
-                    if open != '(' {
-                        return Err((
-                            line,
-                            col,
-                            format!("Unexpected ')' - was expectin' a match fer '{}'", open),
-                            "error".to_string(),
-                        ));
-                    }
-                } else {
-                    return Err((
-                        line,
-                        col,
-                        "Unexpected ')' - nae matchin' '(' found".to_string(),
-                        "error".to_string(),
-                    ));
-                }
-            }
-            ']' => {
-                if let Some((open, _, _)) = brace_stack.pop() {
-                    if open != '[' {
-                        return Err((
-                            line,
-                            col,
-                            format!("Unexpected ']' - was expectin' a match fer '{}'", open),
-                            "error".to_string(),
-                        ));
-                    }
-                } else {
-                    return Err((
-                        line,
-                        col,
-                        "Unexpected ']' - nae matchin' '[' found".to_string(),
-                        "error".to_string(),
-                    ));
-                }
-            }
-            '\n' => {
-                line += 1;
-                col = 0;
-            }
-            _ => {}
+fn error_to_diagnostic(err: HaversError) -> (usize, usize, String, String) {
+    match &err {
+        HaversError::UnkentToken { line, column, .. } => {
+            (*line, *column, format!("{err}"), "error".to_string())
         }
-        col += 1;
-    }
-
-    // Check for unclosed brackets
-    if let Some((ch, l, c)) = brace_stack.pop() {
-        let close = match ch {
-            '{' => '}',
-            '(' => ')',
-            '[' => ']',
-            _ => '?',
-        };
-        return Err((
-            l,
-            c,
-            format!("Unclosed '{}' - missin' '{}'", ch, close),
+        HaversError::UnexpectedToken { line, .. } => {
+            (*line, 1, format!("{err}"), "error".to_string())
+        }
+        HaversError::ParseError { line, .. } => (*line, 1, format!("{err}"), "error".to_string()),
+        _ => (
+            err.line().unwrap_or(1),
+            1,
+            format!("{err}"),
             "error".to_string(),
-        ));
+        ),
     }
-
-    Ok(())
 }
 
 /// Get documentation fer a keyword or builtin
@@ -1049,7 +795,7 @@ mod tests {
             !diagnostics.is_empty(),
             "Expected diagnostics for unclosed brace"
         );
-        assert!(diagnostics.iter().any(|d| d.2.contains("Unclosed")));
+        assert!(diagnostics.iter().any(|d| d.3 == "error"));
     }
 
     #[test]

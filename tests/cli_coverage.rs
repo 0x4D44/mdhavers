@@ -16,6 +16,10 @@ fn mdhavers_bin() -> PathBuf {
         }
     }
 
+    if let Some(p) = std::env::var_os("CARGO_BIN_EXE_mdhavers") {
+        return PathBuf::from(p);
+    }
+
     // Normal `cargo test` path.
     PathBuf::from("target/debug/mdhavers")
 }
@@ -166,8 +170,14 @@ blether x + 1
         None,
         home,
     );
-    assert_eq!(code, 0, "stderr: {err}");
-    assert!(ll_out.exists());
+    if cfg!(feature = "llvm") {
+        assert_eq!(code, 0, "stderr: {err}");
+        assert!(ll_out.exists());
+    } else {
+        assert_ne!(code, 0);
+        assert!(!ll_out.exists());
+        assert!(err.contains("LLVM"), "stderr: {err}");
+    }
 
     // build --emit-llvm (default output path)
     let default_ll = dir.path().join("ok.ll");
@@ -176,15 +186,27 @@ blether x + 1
         None,
         home,
     );
-    assert_eq!(code, 0, "stderr: {err}");
-    assert!(default_ll.exists());
+    if cfg!(feature = "llvm") {
+        assert_eq!(code, 0, "stderr: {err}");
+        assert!(default_ll.exists());
+    } else {
+        assert_ne!(code, 0);
+        assert!(!default_ll.exists());
+        assert!(err.contains("LLVM"), "stderr: {err}");
+    }
 
     // build native executable (default output path)
     let native_out = dir.path().join("ok");
     let (code, _out, err) =
         run_mdhavers(&["build", ok_braw.to_str().unwrap(), "-O", "0"], None, home);
-    assert_eq!(code, 0, "stderr: {err}");
-    assert!(native_out.exists());
+    if cfg!(feature = "llvm") {
+        assert_eq!(code, 0, "stderr: {err}");
+        assert!(native_out.exists());
+    } else {
+        assert_ne!(code, 0);
+        assert!(!native_out.exists());
+        assert!(err.contains("LLVM"), "stderr: {err}");
+    }
 
     // compile to JS (default output path)
     let default_js = dir.path().join("ok.js");
@@ -292,7 +314,11 @@ fn cli_write_failures_surface_errors() {
         home,
     );
     assert_ne!(code, 0);
-    assert!(err.contains("Cannae write"));
+    if cfg!(feature = "llvm") {
+        assert!(err.contains("Cannae write"), "stderr: {err}");
+    } else {
+        assert!(err.contains("LLVM"), "stderr: {err}");
+    }
 }
 
 #[test]
