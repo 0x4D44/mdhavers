@@ -1728,6 +1728,16 @@ mod tests {
     }
 
     #[test]
+    fn test_dict_literal_trailing_comma() {
+        let program = parse("ken d = {\"a\": 1,}").unwrap();
+        assert!(matches!(
+            &program.statements[0],
+            Stmt::VarDecl { initializer: Some(expr), .. }
+                if matches!(expr, Expr::Dict { pairs, .. } if pairs.len() == 1)
+        ));
+    }
+
+    #[test]
     fn test_multiline_list() {
         let program = parse("ken arr = [\n  1,\n  2,\n  3\n]").unwrap();
         assert_eq!(program.statements.len(), 1);
@@ -1764,14 +1774,81 @@ mod tests {
     }
 
     #[test]
-    fn test_match_statement() {
-        let program = parse(
-            "keek x {\n  whan 1 -> { blether \"one\" }\n  whan _ -> { blether \"other\" }\n}",
-        )
-        .unwrap();
-        assert_eq!(program.statements.len(), 1);
-        assert!(matches!(program.statements[0], Stmt::Match { .. }));
+	    fn test_match_statement() {
+	        let program = parse(
+	            "keek x {\n  whan 1 -> { blether \"one\" }\n  whan _ -> { blether \"other\" }\n}",
+	        )
+	        .unwrap();
+	        assert_eq!(program.statements.len(), 1);
+	        assert!(matches!(program.statements[0], Stmt::Match { .. }));
+	    }
+
+	    fn first_match_arms(program: &Program) -> Option<&[MatchArm]> {
+	        match program.statements.first()? {
+	            Stmt::Match { arms, .. } => Some(arms),
+	            _ => None,
+	        }
+	    }
+
+		    #[test]
+		    fn test_match_statement_parses_return_break_and_continue_arms() {
+		        let program = parse(
+		            r#"keek x {
+			  whan 1 -> gie 1
+		  whan 2 -> brak
+		  whan 3 -> haud
+		}"#,
+		        )
+		        .unwrap();
+
+		        let arms = first_match_arms(&program).expect("expected match statement");
+		        assert!(matches!(arms[0].body, Stmt::Return { .. }));
+		        assert!(matches!(arms[1].body, Stmt::Break { .. }));
+		        assert!(matches!(arms[2].body, Stmt::Continue { .. }));
+		    }
+
+	    #[test]
+	    fn test_match_pattern_negative_int_and_float() {
+	        let program = parse(
+            r#"keek x {
+	  whan -5 -> 1
+	  whan -3.14 -> 2
+			}"#,
+		        )
+		        .unwrap();
+
+		        let arms = first_match_arms(&program).expect("expected match statement");
+		        assert!(matches!(
+		            arms[0].pattern,
+		            Pattern::Literal(Literal::Integer(-5))
+	        ));
+	        assert!(matches!(
+            arms[1].pattern,
+            Pattern::Literal(Literal::Float(f)) if (f + 3.14).abs() < 1e-6
+        ));
     }
+
+    #[test]
+    fn test_match_pattern_bool_false() {
+        let program = parse(
+            r#"keek x {
+	  whan nae -> 1
+			}"#,
+		        )
+		        .unwrap();
+
+		        let arms = first_match_arms(&program).expect("expected match statement");
+		        assert!(matches!(
+		            arms[0].pattern,
+		            Pattern::Literal(Literal::Bool(false))
+	        ));
+		    }
+
+		    #[test]
+		    fn test_first_match_arms_helper_returns_none_for_non_match_stmt() {
+		        let program = parse("ken x = 1").unwrap();
+		        assert!(first_match_arms(&program).is_none());
+		    }
 
     #[test]
     fn test_class_declaration() {
@@ -2010,6 +2087,22 @@ mod tests {
     fn test_lenient_statement_end_allows_next_statement_keyword() {
         let program = parse("ken x = 1 ken y = 2").unwrap();
         assert_eq!(program.statements.len(), 2);
+    }
+
+    #[test]
+    fn test_statement_end_semicolon_consumes_following_newlines() {
+        let program = parse("ken x = 1;\n\nken y = 2;").unwrap();
+        assert_eq!(program.statements.len(), 2);
+    }
+
+    #[test]
+    fn test_bang_unary_not_operator() {
+        let program = parse("ken x = !aye").unwrap();
+        assert!(matches!(
+            &program.statements[0],
+            Stmt::VarDecl { initializer: Some(expr), .. }
+                if matches!(expr, Expr::Unary { operator: UnaryOp::Not, .. })
+        ));
     }
 
     #[test]

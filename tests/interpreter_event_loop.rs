@@ -154,3 +154,24 @@ gin port < 0 {
     let allowed = ["loop_ok", "loop_fail"];
     assert!(allowed.contains(&trimmed), "unexpected output: {trimmed}");
 }
+
+#[test]
+fn interpreter_event_loop_timer_cancel_covers_cancel_path() {
+    let code = r#"
+ken loop = event_loop_new()
+
+dae on_timer(ev) {
+    # no-op
+}
+
+ken id = timer_every(loop, 1000, on_timer)
+blether timer_cancel(loop, id)
+blether timer_cancel(loop, id)
+"#;
+
+    let program = parse(code).unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert_eq!(out.trim(), "aye\nnae");
+}

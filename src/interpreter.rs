@@ -1693,6 +1693,12 @@ impl Interpreter {
             if matches!(value, Value::NativeFunction(_)) {
                 continue;
             }
+            // Skip internal builtin placeholders used by the JS compiler.
+            if let Value::String(s) = value {
+                if s.starts_with("__builtin_") && s.ends_with("__") {
+                    continue;
+                }
+            }
             // Skip prelude functions (they have specific patterns)
             if matches!(value, Value::Function(_)) {
                 // Include user-defined functions but mark them
@@ -11885,15 +11891,63 @@ mod tests {
         }
     }
 
-    fn run(source: &str) -> HaversResult<Value> {
-        let program = parse(source)?;
-        let mut interp = Interpreter::new();
-        interp.interpret(&program)
-    }
+	    fn run(source: &str) -> HaversResult<Value> {
+	        let program = parse(source)?;
+	        let mut interp = Interpreter::new();
+	        interp.interpret(&program)
+	    }
 
-    fn lit_expr(value: Literal) -> Expr {
-        Expr::Literal {
-            value,
+	    #[test]
+	    fn test_native_object_branches_for_coverage() {
+	        let native: Rc<dyn NativeObject> = Rc::new(TestNative::new());
+	        assert_eq!(native.type_name(), "test_native");
+	        assert!(native.as_any().is::<TestNative>());
+
+	        assert!(matches!(
+	            native.get("missing"),
+	            Err(HaversError::UndefinedVariable { .. })
+	        ));
+	        native
+	            .set("x", Value::Integer(1))
+	            .expect("set should succeed");
+	        assert_eq!(native.get("x").unwrap(), Value::Integer(1));
+
+	        assert_eq!(
+	            native
+	                .call("add", vec![Value::Integer(1), Value::Integer(2)])
+	                .unwrap(),
+	            Value::Integer(3)
+	        );
+	        assert!(matches!(
+	            native.call("nope", vec![]),
+	            Err(HaversError::UndefinedVariable { .. })
+	        ));
+
+	        let mut interp = Interpreter::new();
+	        interp
+	            .globals
+	            .borrow_mut()
+	            .define("obj".to_string(), Value::NativeObject(native));
+	        let program = parse("obj()").unwrap();
+	        let err = interp.interpret(&program).unwrap_err();
+	        assert!(
+	            matches!(err, HaversError::TypeError { .. }),
+	            "expected type error, got {err:?}"
+	        );
+	    }
+
+	    #[test]
+	    fn test_string_repeat_rejects_negative_counts() {
+	        let err = run(r#""a" * -1"#).unwrap_err();
+	        assert!(
+	            matches!(err, HaversError::TypeError { .. }),
+	            "expected type error, got {err:?}"
+	        );
+	    }
+
+	    fn lit_expr(value: Literal) -> Expr {
+	        Expr::Literal {
+	            value,
             span: Span::new(1, 1),
         }
     }

@@ -135,9 +135,11 @@ impl Compiler {
             .push_str(include_str!("../runtime/js/audio_runtime.js"));
         self.output
             .push_str(include_str!("../runtime/js/logging_runtime.js"));
-        if !self.output.ends_with('\n') {
-            self.output.push('\n');
+        // Normalize to exactly one trailing newline before we start emitting runtime bindings.
+        while self.output.ends_with('\n') {
+            self.output.pop();
         }
+        self.output.push('\n');
         self.emit_line("const __havers = {");
         self.indent += 1;
 

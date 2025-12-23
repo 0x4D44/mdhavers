@@ -618,13 +618,10 @@ mod tests {
         logger.log(&record);
         logger.log(&record);
 
-        match &logger.sinks[0] {
-            LogSink::Memory { entries, max } => {
-                assert_eq!(*max, 2);
-                assert_eq!(entries.len(), 2);
-            }
-            _ => panic!("expected memory sink"),
-        }
+        assert!(matches!(
+            &logger.sinks[0],
+            LogSink::Memory { entries, max } if *max == 2 && entries.len() == 2
+        ));
 
         let mut file_logger = LoggerCore {
             format: LogFormat::Compact,
@@ -636,6 +633,7 @@ mod tests {
                 file: None,
             }],
         };
+        file_logger.log(&record);
         file_logger.log(&record);
         let contents = std::fs::read_to_string(&file_path).unwrap();
         assert!(contents.contains("hullo"));
@@ -651,10 +649,10 @@ mod tests {
             }],
         };
         bad_file_logger.log(&record);
-        match &bad_file_logger.sinks[0] {
-            LogSink::File { file, .. } => assert!(file.is_none()),
-            _ => panic!("expected file sink"),
-        }
+        assert!(matches!(
+            &bad_file_logger.sinks[0],
+            LogSink::File { file, .. } if file.is_none()
+        ));
     }
 
     #[test]
@@ -768,12 +766,11 @@ mod tests {
 
         let record = sample_record(vec![("a".to_string(), Value::Integer(1))]);
         let val = record_to_value(&record, Some("now".to_string()));
-        if let Value::Dict(map) = val {
-            let map = map.borrow();
-            assert!(map.contains_key(&Value::String("timestamp".to_string())));
-        } else {
-            panic!("expected dict");
-        }
+        assert!(matches!(
+            val,
+            Value::Dict(ref map)
+                if map.borrow().contains_key(&Value::String("timestamp".to_string()))
+        ));
     }
 
     #[test]
@@ -803,15 +800,11 @@ mod tests {
             Value::String("holler".to_string())
         );
         let fields = handle.get("fields").unwrap();
-        if let Value::Dict(dict) = fields {
-            let dict = dict.borrow();
-            assert_eq!(
-                dict.get(&Value::String("k".to_string())),
-                Some(&Value::Integer(1))
-            );
-        } else {
-            panic!("expected dict");
-        }
+        assert!(matches!(
+            fields,
+            Value::Dict(ref dict)
+                if dict.borrow().get(&Value::String("k".to_string())) == Some(&Value::Integer(1))
+        ));
     }
 
     #[test]

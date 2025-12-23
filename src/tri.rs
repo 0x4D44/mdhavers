@@ -377,20 +377,16 @@ mod tests {
     fn test_tri_module_constants_and_constructors() {
         let module = TriModule::new();
         let deg = module.get("DEG_TO_RAD").unwrap();
-        let Value::Float(v) = deg else {
-            panic!("expected float constant");
-        };
-        assert!((v - std::f64::consts::PI / 180.0).abs() < 1e-6);
+        assert!(matches!(
+            deg,
+            Value::Float(v) if (v - std::f64::consts::PI / 180.0).abs() < 1e-6
+        ));
 
-        let ctor = module.get("Mesch").unwrap();
-        let Value::NativeFunction(func) = ctor else {
-            panic!("expected constructor function");
-        };
-        let result = (func.func)(vec![]).unwrap();
-        let Value::NativeObject(obj) = result else {
-            panic!("expected native object");
-        };
-        assert_eq!(obj.type_name(), "Mesch");
+        let result = module.call("Mesch", vec![]).unwrap();
+        assert!(matches!(
+            result,
+            Value::NativeObject(obj) if obj.type_name() == "Mesch"
+        ));
     }
 
     #[test]
@@ -410,10 +406,10 @@ mod tests {
     fn test_tri_module_call_constructor() {
         let module = TriModule::new();
         let value = module.call("BoxGeometrie", vec![]).unwrap();
-        let Value::NativeObject(obj) = value else {
-            panic!("expected native object");
-        };
-        assert_eq!(obj.type_name(), "BoxGeometrie");
+        assert!(matches!(
+            value,
+            Value::NativeObject(obj) if obj.type_name() == "BoxGeometrie"
+        ));
     }
 
     #[test]
@@ -463,17 +459,16 @@ mod tests {
         let obj = TriObject::new("Thing3D");
         obj.call("adde", vec![Value::Integer(1), Value::Integer(2)])
             .unwrap();
-        let children = obj.get("children").unwrap();
-        let Value::List(list) = children else {
-            panic!("expected children list");
-        };
-        assert_eq!(list.borrow().len(), 2);
+        assert!(matches!(
+            obj.get("children").unwrap(),
+            Value::List(list) if list.borrow().len() == 2
+        ));
 
         obj.call("remuiv", vec![Value::Integer(1)]).unwrap();
-        let Value::List(list) = obj.get("children").unwrap() else {
-            panic!("expected children list");
-        };
-        assert_eq!(list.borrow().len(), 1);
+        assert!(matches!(
+            obj.get("children").unwrap(),
+            Value::List(list) if list.borrow().len() == 1
+        ));
 
         obj.call("luik_at", vec![Value::String("target".to_string())])
             .unwrap();
@@ -513,10 +508,10 @@ mod tests {
         assert_eq!(obj.get("loopFn").unwrap(), Value::String("cb".to_string()));
 
         let cloned = obj.call("cloan", vec![]).unwrap();
-        let Value::NativeObject(clone_obj) = cloned else {
-            panic!("expected clone");
-        };
-        assert_eq!(clone_obj.type_name(), "Thing3D");
+        assert!(matches!(
+            cloned,
+            Value::NativeObject(obj) if obj.type_name() == "Thing3D"
+        ));
     }
 
     #[test]
@@ -579,22 +574,23 @@ mod tests {
     fn test_tri_object_children_on_non_transform() {
         let obj = TriObject::new("Geometrie");
         obj.call("adde", vec![Value::Integer(1)]).unwrap();
-        let Value::List(list) = obj.get("children").unwrap() else {
-            panic!("expected children list");
-        };
-        assert_eq!(list.borrow().len(), 1);
+        assert!(matches!(
+            obj.get("children").unwrap(),
+            Value::List(list) if list.borrow().len() == 1
+        ));
         obj.call("remuiv", vec![Value::Integer(2)]).unwrap();
     }
 
     #[test]
     fn test_make_vec3_and_transform_check() {
         let vec = make_vec3("Vec3", 1.0, 2.0, 3.0);
-        let Value::NativeObject(obj) = vec else {
-            panic!("expected vec3 object");
-        };
-        assert_eq!(obj.get("x").unwrap(), Value::Float(1.0));
-        assert_eq!(obj.get("y").unwrap(), Value::Float(2.0));
-        assert_eq!(obj.get("z").unwrap(), Value::Float(3.0));
+        assert!(matches!(
+            vec,
+            Value::NativeObject(ref obj)
+                if obj.get("x").unwrap() == Value::Float(1.0)
+                    && obj.get("y").unwrap() == Value::Float(2.0)
+                    && obj.get("z").unwrap() == Value::Float(3.0)
+        ));
 
         assert!(tri_has_transform("Sicht"));
         assert!(!tri_has_transform("Geometrie"));
@@ -604,9 +600,9 @@ mod tests {
     fn test_add_children_creates_list() {
         let obj = TriObject::new("Maiterial");
         obj.add_children(&[Value::Integer(1)]);
-        let Value::List(children) = obj.get("children").unwrap() else {
-            panic!("expected children list");
-        };
-        assert_eq!(children.borrow().len(), 1);
+        assert!(matches!(
+            obj.get("children").unwrap(),
+            Value::List(children) if children.borrow().len() == 1
+        ));
     }
 }

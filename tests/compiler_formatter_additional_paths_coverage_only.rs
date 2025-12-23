@@ -34,6 +34,10 @@ log_blether "blether"
 log_mutter "mutter"
 log_whisper "whisper"
 
+log_blether "structured fields", {"user": "md", "ok": aye}
+log_blether "targeted log", {"targeted": aye}, "examples.logging"
+log_blether "target only", "examples.logging"
+
 hurl "boom"
 
 ken a = 1.5
@@ -66,6 +70,8 @@ ken o = { ken x = 1
     assert!(output.contains("__havers.slice(arr, 1, 3, 2)"));
     assert!(output.contains("`hi\\`there`"));
     assert!(output.contains("log_event(\"roar\""));
+    assert!(output.contains("log_event(\"blether\", \"structured fields\", {"));
+    assert!(output.contains("log_event(\"blether\", \"target only\", \"examples.logging\""));
     assert!(output.contains("throw new Error(\"boom\")"));
 }
 
@@ -154,7 +160,7 @@ fn formatter_exercises_uncovered_branches_for_coverage() {
         Stmt::Log {
             level: LogLevel::Blether,
             message: lit_str("b"),
-            extras: Vec::new(),
+            extras: vec![lit_str("extra1"), lit_str("extra2")],
             span: Span::new(1, 1),
         },
         Stmt::Log {
