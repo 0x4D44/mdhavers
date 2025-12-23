@@ -789,6 +789,12 @@ mod tests {
         let empty_dict = Value::Dict(Rc::new(RefCell::new(DictValue::new())));
         assert!(empty_dict.is_truthy());
 
+        // Bytes are falsy when empty
+        let empty_bytes = Value::Bytes(Rc::new(RefCell::new(Vec::new())));
+        let non_empty_bytes = Value::Bytes(Rc::new(RefCell::new(vec![1, 2, 3])));
+        assert!(!empty_bytes.is_truthy());
+        assert!(non_empty_bytes.is_truthy());
+
         // Functions are truthy
         let func = HaversFunction::new("test".to_string(), vec![], vec![], None);
         assert!(Value::Function(Rc::new(func)).is_truthy());
@@ -1116,6 +1122,8 @@ mod tests {
         });
         assert_eq!(native.name, "len");
         assert_eq!(native.arity, 1);
+        let result = (native.func)(vec![Value::String("abcd".to_string())]).unwrap();
+        assert_eq!(result, Value::Integer(4));
     }
 
     #[test]
@@ -1253,11 +1261,9 @@ mod tests {
 
         // Should find method through class
         let found = instance.get("calculate");
-        assert!(found.is_some());
+        assert!(matches!(found, Some(Value::Function(_))));
         if let Some(Value::Function(f)) = found {
             assert_eq!(f.name, "calculate");
-        } else {
-            panic!("Expected function");
         }
     }
 
@@ -1467,5 +1473,123 @@ mod tests {
         assert_eq!(exports.len(), 1);
         assert!(exports.contains_key("inner"));
         assert!(!exports.contains_key("outer"));
+    }
+
+    #[test]
+    fn test_value_as_key_variants() {
+        assert!(matches!(Value::Nil.as_key(), ValueKey::Nil));
+        assert!(matches!(Value::Bool(true).as_key(), ValueKey::Bool(true)));
+        assert!(matches!(Value::Integer(3).as_key(), ValueKey::Int(3)));
+        assert!(matches!(Value::Float(1.5).as_key(), ValueKey::Float(_)));
+        assert!(matches!(
+            Value::String("x".to_string()).as_key(),
+            ValueKey::String(_)
+        ));
+
+        let list = Value::List(Rc::new(RefCell::new(vec![])));
+        assert!(matches!(list.as_key(), ValueKey::List(_)));
+        let dict = Value::Dict(Rc::new(RefCell::new(DictValue::new())));
+        assert!(matches!(dict.as_key(), ValueKey::Dict(_)));
+        let set = Value::Set(Rc::new(RefCell::new(SetValue::new())));
+        assert!(matches!(set.as_key(), ValueKey::Set(_)));
+        let bytes = Value::Bytes(Rc::new(RefCell::new(vec![1, 2])));
+        assert!(matches!(bytes.as_key(), ValueKey::Bytes(_)));
+
+        let func = HaversFunction::new("f".to_string(), vec![], vec![], None);
+        assert!(matches!(
+            Value::Function(Rc::new(func)).as_key(),
+            ValueKey::Function(_)
+        ));
+        let native = NativeFunction::new("nf", 0, |_| Ok(Value::Nil));
+        assert!(matches!(
+            Value::NativeFunction(Rc::new(native)).as_key(),
+            ValueKey::NativeFunction(_)
+        ));
+        let class = HaversClass::new("C".to_string(), None);
+        assert!(matches!(
+            Value::Class(Rc::new(class)).as_key(),
+            ValueKey::Class(_)
+        ));
+        let struct_def = HaversStruct::new("S".to_string(), vec![]);
+        assert!(matches!(
+            Value::Struct(Rc::new(struct_def)).as_key(),
+            ValueKey::Struct(_)
+        ));
+        let class = Rc::new(HaversClass::new("I".to_string(), None));
+        let instance = HaversInstance::new(class);
+        assert!(matches!(
+            Value::Instance(Rc::new(RefCell::new(instance))).as_key(),
+            ValueKey::Instance(_)
+        ));
+        let native_obj = Value::NativeObject(Rc::new(TestNative));
+        assert!(matches!(native_obj.as_key(), ValueKey::NativeObject(_)));
+        let range = Value::Range(RangeValue::new(1, 3, true));
+        assert!(matches!(range.as_key(), ValueKey::Range { .. }));
+    }
+
+    #[test]
+    fn test_value_equality_pointer_types() {
+        let dict_rc = Rc::new(RefCell::new(DictValue::new()));
+        let dict_val = Value::Dict(dict_rc.clone());
+        assert_eq!(dict_val, Value::Dict(dict_rc.clone()));
+        assert_ne!(
+            dict_val,
+            Value::Dict(Rc::new(RefCell::new(DictValue::new())))
+        );
+
+        let set_rc = Rc::new(RefCell::new(SetValue::new()));
+        let set_val = Value::Set(set_rc.clone());
+        assert_eq!(set_val, Value::Set(set_rc.clone()));
+        assert_ne!(set_val, Value::Set(Rc::new(RefCell::new(SetValue::new()))));
+
+        let bytes_a = Value::Bytes(Rc::new(RefCell::new(vec![1, 2])));
+        let bytes_b = Value::Bytes(Rc::new(RefCell::new(vec![1, 2])));
+        let bytes_c = Value::Bytes(Rc::new(RefCell::new(vec![2, 3])));
+        assert_eq!(bytes_a, bytes_b);
+        assert_ne!(bytes_a, bytes_c);
+
+        let func = Rc::new(HaversFunction::new("f".to_string(), vec![], vec![], None));
+        assert_eq!(Value::Function(func.clone()), Value::Function(func.clone()));
+        assert_ne!(
+            Value::Function(func.clone()),
+            Value::Function(Rc::new(HaversFunction::new(
+                "g".to_string(),
+                vec![],
+                vec![],
+                None
+            )))
+        );
+
+        let class = Rc::new(HaversClass::new("C".to_string(), None));
+        assert_eq!(Value::Class(class.clone()), Value::Class(class.clone()));
+
+        let instance = Rc::new(RefCell::new(HaversInstance::new(class)));
+        assert_eq!(
+            Value::Instance(instance.clone()),
+            Value::Instance(instance.clone())
+        );
+
+        let st = Rc::new(HaversStruct::new("S".to_string(), vec![]));
+        assert_eq!(Value::Struct(st.clone()), Value::Struct(st.clone()));
+
+        let native = Rc::new(TestNative);
+        assert_eq!(
+            Value::NativeObject(native.clone()),
+            Value::NativeObject(native.clone())
+        );
+    }
+
+    #[test]
+    fn test_dict_set_default_and_native_methods() {
+        let dict: DictValue = Default::default();
+        assert!(dict.is_empty());
+        let set: SetValue = Default::default();
+        assert!(set.is_empty());
+
+        let native = TestNative;
+        assert_eq!(native.type_name(), "test_native");
+        assert_eq!(native.get("x").unwrap(), Value::Nil);
+        assert_eq!(native.set("x", Value::Integer(2)).unwrap(), Value::Nil);
+        assert_eq!(native.call("unknown", vec![]).unwrap(), Value::Nil);
     }
 }

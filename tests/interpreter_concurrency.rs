@@ -18,3 +18,20 @@ blether chan_recv(ch)
     let out = interp.get_output().join("\n");
     assert_eq!(out.trim(), "3\n42");
 }
+
+#[test]
+fn interpreter_thread_spawn_and_join() {
+    let code = r#"
+ken h = thread_spawn(len, [[1, 2, 3]])
+ken v = thread_join(h)
+ken h2 = thread_spawn(len, [[1]])
+thread_detach(h2)
+blether v
+"#;
+
+    let program = parse(code).unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert_eq!(out.trim(), "3");
+}

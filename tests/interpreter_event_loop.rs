@@ -75,3 +75,80 @@ gin udp_port < 0 {
     let out = interp.get_output().join("\n");
     assert_eq!(out.trim(), "timer_ok\nread_ok");
 }
+
+#[test]
+fn interpreter_event_loop_write_and_timer_every() {
+    let code = r#"
+ken loop = event_loop_new()
+
+dae on_timer(ev) {
+    # no-op
+}
+
+dae on_write(ev) {
+    # no-op
+}
+
+ken server = naething
+ken port = -1
+fer p in 43000..43100 {
+    ken s = socket_tcp()
+    gin nae s["ok"] { haud }
+    ken sock = s["value"]
+    socket_set_reuseaddr(sock, aye)
+    ken b = socket_bind(sock, "127.0.0.1", p)
+    gin b["ok"] {
+        ken l = socket_listen(sock, 1)
+        gin l["ok"] {
+            server = sock
+            port = p
+            brak
+        } ither {
+            socket_close(sock)
+        }
+    } ither {
+        socket_close(sock)
+    }
+}
+
+gin port < 0 {
+    blether "loop_fail"
+} ither {
+    ken client_res = socket_tcp()
+    gin client_res["ok"] {
+        ken client = client_res["value"]
+        ken c = socket_connect(client, "127.0.0.1", port)
+        gin c["ok"] {
+            event_watch_write(loop, client, on_write)
+            timer_every(loop, 5, on_timer)
+            ken saw_timer = nae
+            ken saw_write = nae
+            ken tries = 0
+            whiles tries < 3 an (nae saw_timer or nae saw_write) {
+                ken events = event_loop_poll(loop, 50)
+                fer ev in events {
+                    gin ev["kind"] == "timer" { saw_timer = aye }
+                    gin ev["kind"] == "write" { saw_write = aye }
+                }
+                tries = tries + 1
+            }
+            gin saw_timer an saw_write { blether "loop_ok" } ither { blether "loop_fail" }
+        } ither {
+            blether "loop_fail"
+        }
+        socket_close(client)
+    } ither {
+        blether "loop_fail"
+    }
+    socket_close(server)
+}
+"#;
+
+    let program = parse(code).unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    let trimmed = out.trim();
+    let allowed = ["loop_ok", "loop_fail"];
+    assert!(allowed.contains(&trimmed), "unexpected output: {trimmed}");
+}

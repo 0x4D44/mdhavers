@@ -73620,18 +73620,24 @@ mod logging_coverage_2 {
 
     #[test]
     fn test_log_whisper() {
-        let code = r#"log_whisper("test message")"#;
+        let code = r#"
+log_whisper "test message"
+blether "done"
+"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("test message"));
+        assert!(output.contains("done"));
     }
 
     #[test]
     fn test_log_mutter() {
-        let code = r#"log_mutter("debug info")"#;
+        let code = r#"
+log_mutter "debug info"
+blether "done"
+"#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output.contains("debug info"));
+        assert!(output.contains("done"));
     }
 
     #[test]

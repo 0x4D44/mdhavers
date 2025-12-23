@@ -65,7 +65,7 @@ ken o = { ken x = 1
     assert!(output.contains("arr.slice(0, 3)"));
     assert!(output.contains("__havers.slice(arr, 1, 3, 2)"));
     assert!(output.contains("`hi\\`there`"));
-    assert!(output.contains("console.error(`[ROAR]"));
+    assert!(output.contains("log_event(\"roar\""));
     assert!(output.contains("throw new Error(\"boom\")"));
 }
 

@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::env;
+use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -52,6 +53,22 @@ fn tri_debug_enabled() -> bool {
     env::var_os("MDH_TRI_DEBUG").is_some()
 }
 
+fn is_wsl() -> bool {
+    if env::var_os("WSL_INTEROP").is_some()
+        || env::var_os("WSL_DISTRO_NAME").is_some()
+        || env::var_os("WSLENV").is_some()
+    {
+        return true;
+    }
+    if let Ok(osrelease) = fs::read_to_string("/proc/sys/kernel/osrelease") {
+        let osrelease = osrelease.to_ascii_lowercase();
+        if osrelease.contains("microsoft") {
+            return true;
+        }
+    }
+    false
+}
+
 fn build_event_loop(backend: Option<&str>) -> Result<EventLoop<()>, String> {
     let mut builder = EventLoopBuilder::new();
     #[cfg(all(
@@ -75,11 +92,19 @@ fn build_event_loop(backend: Option<&str>) -> Result<EventLoop<()>, String> {
 }
 
 fn create_event_loop() -> Result<EventLoop<()>, String> {
-    let backend = env::var("MDH_TRI_BACKEND")
-        .or_else(|_| env::var("WINIT_UNIX_BACKEND"))
+    let explicit_backend = env::var("MDH_TRI_BACKEND")
         .ok()
         .map(|val| val.to_ascii_lowercase());
-    let backend_hint = backend.as_deref();
+    let winit_backend = env::var("WINIT_UNIX_BACKEND")
+        .ok()
+        .map(|val| val.to_ascii_lowercase());
+    let backend_hint = if explicit_backend.is_some() {
+        explicit_backend.as_deref()
+    } else if is_wsl() {
+        Some("x11")
+    } else {
+        winit_backend.as_deref()
+    };
     match build_event_loop(backend_hint) {
         Ok(loop_handle) => Ok(loop_handle),
         Err(err) => {

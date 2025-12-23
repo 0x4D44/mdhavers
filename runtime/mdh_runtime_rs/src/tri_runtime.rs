@@ -65,6 +65,8 @@ static TRI_MODULE: OnceLock<MdhValue> = OnceLock::new();
 static TRI_DEBUG_EMPTY_MESH_LOGGED: AtomicBool = AtomicBool::new(false);
 static TRI_DEBUG_RENDER_CALLED: AtomicBool = AtomicBool::new(false);
 static TRI_DEBUG_RENDERER_CREATED: AtomicBool = AtomicBool::new(false);
+static TRI_DEBUG_RENDERAR_CALL_LOGGED: AtomicBool = AtomicBool::new(false);
+static TRI_DEBUG_CALL_LOGGED: AtomicBool = AtomicBool::new(false);
 
 fn tri_debug_enabled() -> bool {
     env::var_os("MDH_TRI_DEBUG").is_some()
@@ -1341,6 +1343,12 @@ unsafe fn tri_dispose(ptr: *mut MdhNativeObject) -> MdhValue {
 }
 
 unsafe fn tri_object_call(obj: &mut TriObject, method: &str, args: &[MdhValue]) -> MdhValue {
+    if tri_debug_enabled()
+        && obj.kind == "Renderar"
+        && !TRI_DEBUG_RENDERAR_CALL_LOGGED.swap(true, Ordering::Relaxed)
+    {
+        eprintln!("tri: renderar method='{method}' argc={}", args.len());
+    }
     match method {
         "cloan" | "clone" => tri_method_clone(obj),
         "adde" | "add" => {
@@ -1353,6 +1361,17 @@ unsafe fn tri_object_call(obj: &mut TriObject, method: &str, args: &[MdhValue]) 
         }
         "dyspos" | "dispose" => __mdh_make_nil(),
         "luik_at" | "lookAt" => {
+            if args.len() >= 3 {
+                if let (Some(x), Some(y), Some(z)) = (
+                    mdh_number(args[0]),
+                    mdh_number(args[1]),
+                    mdh_number(args[2]),
+                ) {
+                    let target = tri_make_vec3("Vec3", x, y, z);
+                    tri_method_set_field(obj, "lookAtTarget", target);
+                    return __mdh_make_nil();
+                }
+            }
             if let Some(target) = args.first() {
                 tri_method_set_field(obj, "lookAtTarget", *target);
             }
@@ -1550,6 +1569,14 @@ pub unsafe extern "C" fn __mdh_tri_rs_call(
         return __mdh_make_nil();
     }
     let name = mdh_value_to_string(method);
+    if tri_debug_enabled() && !TRI_DEBUG_CALL_LOGGED.swap(true, Ordering::Relaxed) {
+        eprintln!(
+            "tri: native call kind={} method='{}' argc={}",
+            (*obj).kind,
+            name,
+            argc.max(0)
+        );
+    }
     let args = if argc <= 0 || argv.is_null() {
         Vec::new()
     } else {
@@ -1574,6 +1601,13 @@ pub unsafe extern "C" fn __mdh_tri_rs_call(
             let _ = with_object(obj, |_key, tri| {
                 result = Some(tri_object_call(tri, &name, &args));
             });
+            if result.is_none() && tri_debug_enabled() {
+                eprintln!(
+                    "tri: native call missing object kind={} method='{}'",
+                    (*obj).kind,
+                    name
+                );
+            }
             result.unwrap_or_else(|| __mdh_make_nil())
         }
         _ => __mdh_make_nil(),

@@ -1442,6 +1442,12 @@ kin Animal {
         assert!(result.contains("catch (e)"));
     }
 
+    #[test]
+    fn test_return_with_value_compile() {
+        let result = compile("dae add() { gie 1 }").unwrap();
+        assert!(result.contains("return 1"));
+    }
+
     // ==================== Match Tests ====================
 
     #[test]
