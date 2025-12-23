@@ -1,3 +1,5 @@
+#![cfg(all(feature = "native", unix))]
+
 use mdhavers::{parse, Interpreter};
 
 #[test]

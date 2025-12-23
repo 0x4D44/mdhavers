@@ -68,6 +68,7 @@ pub(crate) const MDH_TAG_FUNCTION: u8 = 7;
 pub(crate) const MDH_TAG_SET: u8 = 11;
 pub(crate) const MDH_TAG_CLOSURE: u8 = 12;
 pub(crate) const MDH_TAG_BYTES: u8 = 13;
+#[cfg(feature = "graphics3d")]
 pub(crate) const MDH_TAG_NATIVE: u8 = 14;
 
 extern "C" {

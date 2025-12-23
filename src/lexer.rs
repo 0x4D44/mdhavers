@@ -9,7 +9,7 @@ pub struct Lexer<'source> {
     logos: logos::Lexer<'source, TokenKind>,
     line: usize,
     column: usize,
-    last_newline_pos: usize,
+    cursor: usize,
 }
 
 impl<'source> Lexer<'source> {
@@ -19,8 +19,21 @@ impl<'source> Lexer<'source> {
             logos: TokenKind::lexer(source),
             line: 1,
             column: 1,
-            last_newline_pos: 0,
+            cursor: 0,
         }
+    }
+
+    fn advance_to(&mut self, pos: usize) {
+        let slice = &self.source[self.cursor..pos];
+        for ch in slice.chars() {
+            if ch == '\n' {
+                self.line += 1;
+                self.column = 1;
+            } else {
+                self.column += 1;
+            }
+        }
+        self.cursor = pos;
     }
 
     /// Tokenize the whole source intae a vector
@@ -29,42 +42,25 @@ impl<'source> Lexer<'source> {
 
         while let Some(result) = self.logos.next() {
             let span = self.logos.span();
-
-            // Update line and column tracking
-            let slice_before = &self.source[self.last_newline_pos..span.start];
-            for ch in slice_before.chars() {
-                if ch == '\n' {
-                    self.line += 1;
-                    self.column = 1;
-                    self.last_newline_pos = span.start;
-                } else {
-                    self.column += 1;
-                }
-            }
-
+            self.advance_to(span.start);
+            let token_line = self.line;
+            let token_column = self.column;
             let lexeme = self.logos.slice().to_string();
-            let column = span.start - self.last_newline_pos + 1;
 
             match result {
                 Ok(kind) => {
-                    // Track newlines for line counting
-                    if kind == TokenKind::Newline {
-                        tokens.push(Token::new(kind, lexeme, self.line, column));
-                        self.line += 1;
-                        self.column = 1;
-                        self.last_newline_pos = span.end;
-                    } else {
-                        tokens.push(Token::new(kind, lexeme, self.line, column));
-                    }
+                    tokens.push(Token::new(kind, lexeme, token_line, token_column));
                 }
                 Err(_) => {
                     return Err(HaversError::UnkentToken {
                         lexeme,
-                        line: self.line,
-                        column,
+                        line: token_line,
+                        column: token_column,
                     });
                 }
             }
+
+            self.advance_to(span.end);
         }
 
         // Add EOF token
@@ -192,6 +188,30 @@ greet(message)
                 lexeme,
                 line: 1,
                 column: 1
+            } if lexeme == "@"
+        ));
+    }
+
+    #[test]
+    fn test_multiline_string_updates_line_tracking() {
+        let source = "\"Hello\nWorld\" ken x = 1";
+        let tokens = lex(source).unwrap();
+
+        // "World\" ken ..." so `ken` begins on line 2 at column 8.
+        assert_eq!(tokens[1].kind, TokenKind::Ken);
+        assert_eq!(tokens[1].line, 2);
+        assert_eq!(tokens[1].column, 8);
+    }
+
+    #[test]
+    fn test_unicode_columns_count_chars_not_bytes() {
+        let err = lex("\"é\" @").unwrap_err();
+        assert!(matches!(
+            err,
+            HaversError::UnkentToken {
+                lexeme,
+                line: 1,
+                column: 5
             } if lexeme == "@"
         ));
     }

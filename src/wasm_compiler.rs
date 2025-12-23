@@ -11,6 +11,425 @@
 
 use crate::ast::*;
 use crate::error::{HaversError, HaversResult};
+use std::collections::{BTreeSet, HashSet};
+
+const AUDIO_IMPORTS: &[(&str, &str)] = &[
+    (
+        "soond_stairt",
+        "(import \"env\" \"soond_stairt\" (func $soond_stairt (result i64)))",
+    ),
+    (
+        "soond_steek",
+        "(import \"env\" \"soond_steek\" (func $soond_steek (result i64)))",
+    ),
+    (
+        "soond_wheesht",
+        "(import \"env\" \"soond_wheesht\" (func $soond_wheesht (param i64) (result i64)))",
+    ),
+    (
+        "soond_luid",
+        "(import \"env\" \"soond_luid\" (func $soond_luid (param i64) (result i64)))",
+    ),
+    (
+        "soond_hou_luid",
+        "(import \"env\" \"soond_hou_luid\" (func $soond_hou_luid (result i64)))",
+    ),
+    (
+        "soond_haud_gang",
+        "(import \"env\" \"soond_haud_gang\" (func $soond_haud_gang (result i64)))",
+    ),
+    (
+        "soond_lade",
+        "(import \"env\" \"soond_lade\" (func $soond_lade (param i64) (result i64)))",
+    ),
+    (
+        "soond_spiel",
+        "(import \"env\" \"soond_spiel\" (func $soond_spiel (param i64) (result i64)))",
+    ),
+    (
+        "soond_haud",
+        "(import \"env\" \"soond_haud\" (func $soond_haud (param i64) (result i64)))",
+    ),
+    (
+        "soond_gae_on",
+        "(import \"env\" \"soond_gae_on\" (func $soond_gae_on (param i64) (result i64)))",
+    ),
+    (
+        "soond_stap",
+        "(import \"env\" \"soond_stap\" (func $soond_stap (param i64) (result i64)))",
+    ),
+    (
+        "soond_unlade",
+        "(import \"env\" \"soond_unlade\" (func $soond_unlade (param i64) (result i64)))",
+    ),
+    (
+        "soond_is_spielin",
+        "(import \"env\" \"soond_is_spielin\" (func $soond_is_spielin (param i64) (result i64)))",
+    ),
+    (
+        "soond_pit_luid",
+        "(import \"env\" \"soond_pit_luid\" (func $soond_pit_luid (param i64 i64) (result i64)))",
+    ),
+    (
+        "soond_pit_pan",
+        "(import \"env\" \"soond_pit_pan\" (func $soond_pit_pan (param i64 i64) (result i64)))",
+    ),
+    (
+        "soond_pit_tune",
+        "(import \"env\" \"soond_pit_tune\" (func $soond_pit_tune (param i64 i64) (result i64)))",
+    ),
+    (
+        "soond_pit_rin_roond",
+        "(import \"env\" \"soond_pit_rin_roond\" (func $soond_pit_rin_roond (param i64 i64) (result i64)))",
+    ),
+    (
+        "soond_ready",
+        "(import \"env\" \"soond_ready\" (func $soond_ready (param i64) (result i64)))",
+    ),
+    (
+        "muisic_lade",
+        "(import \"env\" \"muisic_lade\" (func $muisic_lade (param i64) (result i64)))",
+    ),
+    (
+        "muisic_spiel",
+        "(import \"env\" \"muisic_spiel\" (func $muisic_spiel (param i64) (result i64)))",
+    ),
+    (
+        "muisic_haud",
+        "(import \"env\" \"muisic_haud\" (func $muisic_haud (param i64) (result i64)))",
+    ),
+    (
+        "muisic_gae_on",
+        "(import \"env\" \"muisic_gae_on\" (func $muisic_gae_on (param i64) (result i64)))",
+    ),
+    (
+        "muisic_stap",
+        "(import \"env\" \"muisic_stap\" (func $muisic_stap (param i64) (result i64)))",
+    ),
+    (
+        "muisic_unlade",
+        "(import \"env\" \"muisic_unlade\" (func $muisic_unlade (param i64) (result i64)))",
+    ),
+    (
+        "muisic_is_spielin",
+        "(import \"env\" \"muisic_is_spielin\" (func $muisic_is_spielin (param i64) (result i64)))",
+    ),
+    (
+        "muisic_loup",
+        "(import \"env\" \"muisic_loup\" (func $muisic_loup (param i64 i64) (result i64)))",
+    ),
+    (
+        "muisic_hou_lang",
+        "(import \"env\" \"muisic_hou_lang\" (func $muisic_hou_lang (param i64) (result i64)))",
+    ),
+    (
+        "muisic_whaur",
+        "(import \"env\" \"muisic_whaur\" (func $muisic_whaur (param i64) (result i64)))",
+    ),
+    (
+        "muisic_pit_luid",
+        "(import \"env\" \"muisic_pit_luid\" (func $muisic_pit_luid (param i64 i64) (result i64)))",
+    ),
+    (
+        "muisic_pit_pan",
+        "(import \"env\" \"muisic_pit_pan\" (func $muisic_pit_pan (param i64 i64) (result i64)))",
+    ),
+    (
+        "muisic_pit_tune",
+        "(import \"env\" \"muisic_pit_tune\" (func $muisic_pit_tune (param i64 i64) (result i64)))",
+    ),
+    (
+        "muisic_pit_rin_roond",
+        "(import \"env\" \"muisic_pit_rin_roond\" (func $muisic_pit_rin_roond (param i64 i64) (result i64)))",
+    ),
+    (
+        "midi_lade",
+        "(import \"env\" \"midi_lade\" (func $midi_lade (param i64 i64) (result i64)))",
+    ),
+    (
+        "midi_spiel",
+        "(import \"env\" \"midi_spiel\" (func $midi_spiel (param i64) (result i64)))",
+    ),
+    (
+        "midi_haud",
+        "(import \"env\" \"midi_haud\" (func $midi_haud (param i64) (result i64)))",
+    ),
+    (
+        "midi_gae_on",
+        "(import \"env\" \"midi_gae_on\" (func $midi_gae_on (param i64) (result i64)))",
+    ),
+    (
+        "midi_stap",
+        "(import \"env\" \"midi_stap\" (func $midi_stap (param i64) (result i64)))",
+    ),
+    (
+        "midi_unlade",
+        "(import \"env\" \"midi_unlade\" (func $midi_unlade (param i64) (result i64)))",
+    ),
+    (
+        "midi_is_spielin",
+        "(import \"env\" \"midi_is_spielin\" (func $midi_is_spielin (param i64) (result i64)))",
+    ),
+    (
+        "midi_loup",
+        "(import \"env\" \"midi_loup\" (func $midi_loup (param i64 i64) (result i64)))",
+    ),
+    (
+        "midi_hou_lang",
+        "(import \"env\" \"midi_hou_lang\" (func $midi_hou_lang (param i64) (result i64)))",
+    ),
+    (
+        "midi_whaur",
+        "(import \"env\" \"midi_whaur\" (func $midi_whaur (param i64) (result i64)))",
+    ),
+    (
+        "midi_pit_luid",
+        "(import \"env\" \"midi_pit_luid\" (func $midi_pit_luid (param i64 i64) (result i64)))",
+    ),
+    (
+        "midi_pit_pan",
+        "(import \"env\" \"midi_pit_pan\" (func $midi_pit_pan (param i64 i64) (result i64)))",
+    ),
+    (
+        "midi_pit_rin_roond",
+        "(import \"env\" \"midi_pit_rin_roond\" (func $midi_pit_rin_roond (param i64 i64) (result i64)))",
+    ),
+];
+
+#[derive(Debug, Default)]
+struct WasmImportRequirements {
+    needs_tri_module: bool,
+    audio_imports: BTreeSet<String>,
+}
+
+impl WasmImportRequirements {
+    fn from_program(program: &Program) -> Self {
+        let mut defined_functions = HashSet::new();
+        for stmt in &program.statements {
+            if let Stmt::Function { name, .. } = stmt {
+                defined_functions.insert(name.clone());
+            }
+        }
+
+        let mut req = Self::default();
+        for stmt in &program.statements {
+            req.scan_stmt(stmt, &defined_functions);
+        }
+        req
+    }
+
+    fn add_audio_import(&mut self, name: &str, defined_functions: &HashSet<String>) {
+        if defined_functions.contains(name) {
+            return;
+        }
+        if AUDIO_IMPORTS
+            .iter()
+            .any(|(import_name, _)| *import_name == name)
+        {
+            self.audio_imports.insert(name.to_string());
+        }
+    }
+
+    fn scan_stmt(&mut self, stmt: &Stmt, defined_functions: &HashSet<String>) {
+        match stmt {
+            Stmt::VarDecl { initializer, .. } => {
+                if let Some(expr) = initializer {
+                    self.scan_expr(expr, defined_functions);
+                }
+            }
+            Stmt::Expression { expr, .. } => self.scan_expr(expr, defined_functions),
+            Stmt::Block { statements, .. } => {
+                for stmt in statements {
+                    self.scan_stmt(stmt, defined_functions);
+                }
+            }
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                self.scan_expr(condition, defined_functions);
+                self.scan_stmt(then_branch, defined_functions);
+                if let Some(else_branch) = else_branch {
+                    self.scan_stmt(else_branch, defined_functions);
+                }
+            }
+            Stmt::While {
+                condition, body, ..
+            } => {
+                self.scan_expr(condition, defined_functions);
+                self.scan_stmt(body, defined_functions);
+            }
+            Stmt::For { iterable, body, .. } => {
+                self.scan_expr(iterable, defined_functions);
+                self.scan_stmt(body, defined_functions);
+            }
+            Stmt::Function { params, body, .. } => {
+                for param in params {
+                    if let Some(default) = &param.default {
+                        self.scan_expr(default, defined_functions);
+                    }
+                }
+                for stmt in body {
+                    self.scan_stmt(stmt, defined_functions);
+                }
+            }
+            Stmt::Return { value, .. } => {
+                if let Some(expr) = value {
+                    self.scan_expr(expr, defined_functions);
+                }
+            }
+            Stmt::Print { value, .. } => self.scan_expr(value, defined_functions),
+            Stmt::Import { path, .. } => {
+                if path == "tri" || path == "tri.braw" {
+                    self.needs_tri_module = true;
+                }
+            }
+            Stmt::TryCatch {
+                try_block,
+                catch_block,
+                ..
+            } => {
+                self.scan_stmt(try_block, defined_functions);
+                self.scan_stmt(catch_block, defined_functions);
+            }
+            Stmt::Match { value, arms, .. } => {
+                self.scan_expr(value, defined_functions);
+                for arm in arms {
+                    self.scan_stmt(&arm.body, defined_functions);
+                }
+            }
+            Stmt::Assert {
+                condition, message, ..
+            } => {
+                self.scan_expr(condition, defined_functions);
+                if let Some(expr) = message {
+                    self.scan_expr(expr, defined_functions);
+                }
+            }
+            Stmt::Destructure { value, .. } => self.scan_expr(value, defined_functions),
+            Stmt::Log {
+                message, extras, ..
+            } => {
+                self.scan_expr(message, defined_functions);
+                for expr in extras {
+                    self.scan_expr(expr, defined_functions);
+                }
+            }
+            Stmt::Hurl { message, .. } => self.scan_expr(message, defined_functions),
+            Stmt::Break { .. }
+            | Stmt::Continue { .. }
+            | Stmt::Class { .. }
+            | Stmt::Struct { .. } => {}
+        }
+    }
+
+    fn scan_expr(&mut self, expr: &Expr, defined_functions: &HashSet<String>) {
+        match expr {
+            Expr::Literal { .. } | Expr::Variable { .. } | Expr::Masel { .. } => {}
+            Expr::Assign { value, .. } => self.scan_expr(value, defined_functions),
+            Expr::Binary { left, right, .. } | Expr::Logical { left, right, .. } => {
+                self.scan_expr(left, defined_functions);
+                self.scan_expr(right, defined_functions);
+            }
+            Expr::Unary { operand, .. } => self.scan_expr(operand, defined_functions),
+            Expr::Call {
+                callee, arguments, ..
+            } => {
+                if let Expr::Variable { name, .. } = callee.as_ref() {
+                    self.add_audio_import(name, defined_functions);
+                }
+                self.scan_expr(callee, defined_functions);
+                for arg in arguments {
+                    self.scan_expr(arg, defined_functions);
+                }
+            }
+            Expr::Get { object, .. } => self.scan_expr(object, defined_functions),
+            Expr::Set { object, value, .. } => {
+                self.scan_expr(object, defined_functions);
+                self.scan_expr(value, defined_functions);
+            }
+            Expr::Index { object, index, .. } => {
+                self.scan_expr(object, defined_functions);
+                self.scan_expr(index, defined_functions);
+            }
+            Expr::IndexSet {
+                object,
+                index,
+                value,
+                ..
+            } => {
+                self.scan_expr(object, defined_functions);
+                self.scan_expr(index, defined_functions);
+                self.scan_expr(value, defined_functions);
+            }
+            Expr::Slice {
+                object,
+                start,
+                end,
+                step,
+                ..
+            } => {
+                self.scan_expr(object, defined_functions);
+                if let Some(expr) = start {
+                    self.scan_expr(expr, defined_functions);
+                }
+                if let Some(expr) = end {
+                    self.scan_expr(expr, defined_functions);
+                }
+                if let Some(expr) = step {
+                    self.scan_expr(expr, defined_functions);
+                }
+            }
+            Expr::List { elements, .. } => {
+                for expr in elements {
+                    self.scan_expr(expr, defined_functions);
+                }
+            }
+            Expr::Dict { pairs, .. } => {
+                for (k, v) in pairs {
+                    self.scan_expr(k, defined_functions);
+                    self.scan_expr(v, defined_functions);
+                }
+            }
+            Expr::Range { start, end, .. } => {
+                self.scan_expr(start, defined_functions);
+                self.scan_expr(end, defined_functions);
+            }
+            Expr::Grouping { expr, .. } => self.scan_expr(expr, defined_functions),
+            Expr::Lambda { body, .. } => self.scan_expr(body, defined_functions),
+            Expr::BlockExpr { statements, .. } => {
+                for stmt in statements {
+                    self.scan_stmt(stmt, defined_functions);
+                }
+            }
+            Expr::Input { prompt, .. } => self.scan_expr(prompt, defined_functions),
+            Expr::FString { parts, .. } => {
+                for part in parts {
+                    if let FStringPart::Expr(expr) = part {
+                        self.scan_expr(expr, defined_functions);
+                    }
+                }
+            }
+            Expr::Spread { expr, .. } => self.scan_expr(expr, defined_functions),
+            Expr::Pipe { left, right, .. } => {
+                self.scan_expr(left, defined_functions);
+                self.scan_expr(right, defined_functions);
+            }
+            Expr::Ternary {
+                condition,
+                then_expr,
+                else_expr,
+                ..
+            } => {
+                self.scan_expr(condition, defined_functions);
+                self.scan_expr(then_expr, defined_functions);
+                self.scan_expr(else_expr, defined_functions);
+            }
+        }
+    }
+}
 
 /// The WASM compiler
 pub struct WasmCompiler {
@@ -45,6 +464,7 @@ impl WasmCompiler {
     pub fn compile(&mut self, program: &Program) -> HaversResult<String> {
         self.output.clear();
         self.string_data.clear();
+        let import_requirements = WasmImportRequirements::from_program(program);
 
         // Start the module
         self.emit("(module");
@@ -111,112 +531,21 @@ impl WasmCompiler {
         self.emit_line("(import \"env\" \"__mdh_method_call6\" (func $mdh_method_call6 (param i64 i64 i64 i64 i64 i64 i64 i64) (result i64)))");
         self.emit_line("(import \"env\" \"__mdh_method_call7\" (func $mdh_method_call7 (param i64 i64 i64 i64 i64 i64 i64 i64 i64) (result i64)))");
         self.emit_line("(import \"env\" \"__mdh_method_call8\" (func $mdh_method_call8 (param i64 i64 i64 i64 i64 i64 i64 i64 i64 i64) (result i64)))");
-        self.emit_line("(import \"env\" \"__mdh_tri_module\" (func $mdh_tri_module (result i64)))");
-        self.emit_line("");
-        self.emit_line(";; Audio imports (i64 value ABI)");
-        self.emit_line("(import \"env\" \"soond_stairt\" (func $soond_stairt (result i64)))");
-        self.emit_line("(import \"env\" \"soond_steek\" (func $soond_steek (result i64)))");
-        self.emit_line(
-            "(import \"env\" \"soond_wheesht\" (func $soond_wheesht (param i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"soond_luid\" (func $soond_luid (param i64) (result i64)))",
-        );
-        self.emit_line("(import \"env\" \"soond_hou_luid\" (func $soond_hou_luid (result i64)))");
-        self.emit_line("(import \"env\" \"soond_haud_gang\" (func $soond_haud_gang (result i64)))");
-        self.emit_line(
-            "(import \"env\" \"soond_lade\" (func $soond_lade (param i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"soond_spiel\" (func $soond_spiel (param i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"soond_haud\" (func $soond_haud (param i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"soond_gae_on\" (func $soond_gae_on (param i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"soond_stap\" (func $soond_stap (param i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"soond_unlade\" (func $soond_unlade (param i64) (result i64)))",
-        );
-        self.emit_line("(import \"env\" \"soond_is_spielin\" (func $soond_is_spielin (param i64) (result i64)))");
-        self.emit_line("(import \"env\" \"soond_pit_luid\" (func $soond_pit_luid (param i64 i64) (result i64)))");
-        self.emit_line(
-            "(import \"env\" \"soond_pit_pan\" (func $soond_pit_pan (param i64 i64) (result i64)))",
-        );
-        self.emit_line("(import \"env\" \"soond_pit_tune\" (func $soond_pit_tune (param i64 i64) (result i64)))");
-        self.emit_line("(import \"env\" \"soond_pit_rin_roond\" (func $soond_pit_rin_roond (param i64 i64) (result i64)))");
-        self.emit_line(
-            "(import \"env\" \"soond_ready\" (func $soond_ready (param i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"muisic_lade\" (func $muisic_lade (param i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"muisic_spiel\" (func $muisic_spiel (param i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"muisic_haud\" (func $muisic_haud (param i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"muisic_gae_on\" (func $muisic_gae_on (param i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"muisic_stap\" (func $muisic_stap (param i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"muisic_unlade\" (func $muisic_unlade (param i64) (result i64)))",
-        );
-        self.emit_line("(import \"env\" \"muisic_is_spielin\" (func $muisic_is_spielin (param i64) (result i64)))");
-        self.emit_line(
-            "(import \"env\" \"muisic_loup\" (func $muisic_loup (param i64 i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"muisic_hou_lang\" (func $muisic_hou_lang (param i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"muisic_whaur\" (func $muisic_whaur (param i64) (result i64)))",
-        );
-        self.emit_line("(import \"env\" \"muisic_pit_luid\" (func $muisic_pit_luid (param i64 i64) (result i64)))");
-        self.emit_line("(import \"env\" \"muisic_pit_pan\" (func $muisic_pit_pan (param i64 i64) (result i64)))");
-        self.emit_line("(import \"env\" \"muisic_pit_tune\" (func $muisic_pit_tune (param i64 i64) (result i64)))");
-        self.emit_line("(import \"env\" \"muisic_pit_rin_roond\" (func $muisic_pit_rin_roond (param i64 i64) (result i64)))");
-        self.emit_line(
-            "(import \"env\" \"midi_lade\" (func $midi_lade (param i64 i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"midi_spiel\" (func $midi_spiel (param i64) (result i64)))",
-        );
-        self.emit_line("(import \"env\" \"midi_haud\" (func $midi_haud (param i64) (result i64)))");
-        self.emit_line(
-            "(import \"env\" \"midi_gae_on\" (func $midi_gae_on (param i64) (result i64)))",
-        );
-        self.emit_line("(import \"env\" \"midi_stap\" (func $midi_stap (param i64) (result i64)))");
-        self.emit_line(
-            "(import \"env\" \"midi_unlade\" (func $midi_unlade (param i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"midi_is_spielin\" (func $midi_is_spielin (param i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"midi_loup\" (func $midi_loup (param i64 i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"midi_hou_lang\" (func $midi_hou_lang (param i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"midi_whaur\" (func $midi_whaur (param i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"midi_pit_luid\" (func $midi_pit_luid (param i64 i64) (result i64)))",
-        );
-        self.emit_line(
-            "(import \"env\" \"midi_pit_pan\" (func $midi_pit_pan (param i64 i64) (result i64)))",
-        );
-        self.emit_line("(import \"env\" \"midi_pit_rin_roond\" (func $midi_pit_rin_roond (param i64 i64) (result i64)))");
+        if import_requirements.needs_tri_module {
+            self.emit_line(
+                "(import \"env\" \"__mdh_tri_module\" (func $mdh_tri_module (result i64)))",
+            );
+        }
+
+        if !import_requirements.audio_imports.is_empty() {
+            self.emit_line("");
+            self.emit_line(";; Audio imports (i64 value ABI)");
+            for (name, import_line) in AUDIO_IMPORTS {
+                if import_requirements.audio_imports.contains(*name) {
+                    self.emit_line(import_line);
+                }
+            }
+        }
         self.emit_line("");
 
         // Collect all function declarations first
@@ -1284,6 +1613,7 @@ mod tests {
     fn test_import_tri_wasm() {
         let source = r#"fetch "tri" tae tri"#;
         let wat = compile_to_wat(source).unwrap();
+        assert!(wat.contains("(import \"env\" \"__mdh_tri_module\""));
         assert!(wat.contains("call $mdh_tri_module"));
     }
 
@@ -1426,7 +1756,15 @@ mod tests {
     fn test_audio_imports_wasm() {
         let wat = compile_to_wat("soond_stairt()").unwrap();
         assert!(wat.contains("(import \"env\" \"soond_stairt\""));
-        assert!(wat.contains("(import \"env\" \"midi_lade\""));
+        assert!(!wat.contains("(import \"env\" \"midi_lade\""));
         assert!(wat.contains("(call $soond_stairt)"));
+    }
+
+    #[test]
+    fn test_unused_imports_not_emitted() {
+        let wat = compile_to_wat("blether 1").unwrap();
+        assert!(!wat.contains("(import \"env\" \"__mdh_tri_module\""));
+        assert!(!wat.contains(";; Audio imports"));
+        assert!(!wat.contains("(import \"env\" \"soond_stairt\""));
     }
 }
