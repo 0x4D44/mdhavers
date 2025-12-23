@@ -193,3 +193,21 @@ fn lsp_binary_handles_initialize_requests_and_shutdown() {
         "expected diagnostics publication in stdout, got: {stdout}"
     );
 }
+
+#[test]
+fn lsp_binary_handles_client_disconnect_during_initialize() {
+    let mut child = Command::new(mdhavers_lsp_bin())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn mdhavers-lsp");
+
+    drop(child.stdin.take());
+
+    let output = child.wait_with_output().expect("wait");
+    assert!(
+        !output.status.success(),
+        "expected mdhavers-lsp to fail initialization on disconnect"
+    );
+}

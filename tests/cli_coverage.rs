@@ -7,10 +7,12 @@ use std::process::{Command, Stdio};
 use tempfile::tempdir;
 
 fn mdhavers_bin() -> PathBuf {
+    let manifest_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
     // `cargo llvm-cov` builds into `target/llvm-cov-target` and sets LLVM_PROFILE_FILE.
     // Use the instrumented binary in that mode so spawned subprocesses contribute to coverage.
     if std::env::var_os("LLVM_PROFILE_FILE").is_some() {
-        let p = PathBuf::from("target/llvm-cov-target/debug/mdhavers");
+        let p = manifest_root.join("target/llvm-cov-target/debug/mdhavers");
         if p.exists() {
             return p;
         }
@@ -21,10 +23,15 @@ fn mdhavers_bin() -> PathBuf {
     }
 
     // Normal `cargo test` path.
-    PathBuf::from("target/debug/mdhavers")
+    manifest_root.join("target/debug/mdhavers")
 }
 
-fn run_mdhavers(args: &[&str], stdin: Option<&str>, home: &Path) -> (i32, String, String) {
+fn run_mdhavers_impl(
+    args: &[&str],
+    stdin: Option<&str>,
+    home: &Path,
+    cwd: Option<&Path>,
+) -> (i32, String, String) {
     let mut cmd = Command::new(mdhavers_bin());
     cmd.args(args)
         .env("HOME", home)
@@ -32,6 +39,10 @@ fn run_mdhavers(args: &[&str], stdin: Option<&str>, home: &Path) -> (i32, String
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+
+    if let Some(cwd) = cwd {
+        cmd.current_dir(cwd);
+    }
 
     let mut child = cmd.spawn().expect("spawn mdhavers");
     if let Some(input) = stdin {
@@ -52,6 +63,19 @@ fn run_mdhavers(args: &[&str], stdin: Option<&str>, home: &Path) -> (i32, String
         String::from_utf8_lossy(&output.stdout).to_string(),
         String::from_utf8_lossy(&output.stderr).to_string(),
     )
+}
+
+fn run_mdhavers(args: &[&str], stdin: Option<&str>, home: &Path) -> (i32, String, String) {
+    run_mdhavers_impl(args, stdin, home, None)
+}
+
+fn run_mdhavers_in_dir(
+    args: &[&str],
+    stdin: Option<&str>,
+    home: &Path,
+    cwd: &Path,
+) -> (i32, String, String) {
+    run_mdhavers_impl(args, stdin, home, Some(cwd))
 }
 
 fn write_file(path: &Path, contents: &str) {
@@ -322,6 +346,96 @@ fn cli_write_failures_surface_errors() {
 }
 
 #[test]
+fn cli_parse_errors_for_each_subcommand_trigger_their_specific_formatting_paths() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let bad = dir.path().join("bad.braw");
+    write_file(&bad, "ken =\n");
+
+    for args in [
+        vec!["run", bad.to_str().unwrap()],
+        vec!["compile", bad.to_str().unwrap()],
+        vec!["wasm", bad.to_str().unwrap()],
+        vec!["trace", bad.to_str().unwrap()],
+        vec!["build", bad.to_str().unwrap(), "-O", "0"],
+    ] {
+        let (code, _out, _err) = run_mdhavers(&args, None, home);
+        assert_ne!(code, 0, "expected parse error for args={args:?}");
+    }
+}
+
+#[test]
+fn cli_can_surface_prelude_parse_errors_as_a_user_facing_error() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let stdlib_dir = dir.path().join("stdlib");
+    fs::create_dir_all(&stdlib_dir).unwrap();
+    write_file(&stdlib_dir.join("prelude.braw"), "ken =\n");
+
+    let ok = dir.path().join("ok.braw");
+    write_file(&ok, "blether 1\n");
+
+    for args in [
+        vec!["run", "ok.braw"],
+        vec!["trace", "ok.braw"],
+        vec!["trace", "--verbose", "ok.braw"],
+    ] {
+        let (code, _out, err) = run_mdhavers_in_dir(&args, None, home, dir.path());
+        assert_ne!(code, 0, "expected prelude load failure for args={args:?}");
+        assert!(
+            err.contains("Error loading prelude"),
+            "stderr should mention prelude error, got: {err}"
+        );
+    }
+}
+
+#[test]
+fn cli_trace_runtime_error_path_is_covered() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let runtime_error_braw = dir.path().join("runtime_error.braw");
+    write_file(&runtime_error_braw, "blether 1 / 0\n");
+
+    let (code, _out, _err) = run_mdhavers(&["trace", runtime_error_braw.to_str().unwrap()], None, home);
+    assert_ne!(code, 0);
+}
+
+#[test]
+fn cli_build_native_reports_errors_when_output_is_a_directory() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let ok_braw = dir.path().join("ok.braw");
+    write_file(&ok_braw, "ken x = 1\nblether x\n");
+
+    let out_dir = dir.path().join("out_dir");
+    fs::create_dir(&out_dir).unwrap();
+    let out_dir = out_dir.to_str().unwrap();
+
+    let (code, _out, err) = run_mdhavers(
+        &[
+            "build",
+            ok_braw.to_str().unwrap(),
+            "-O",
+            "0",
+            "--output",
+            out_dir,
+        ],
+        None,
+        home,
+    );
+    assert_ne!(code, 0);
+    if cfg!(feature = "llvm") {
+        assert!(!err.trim().is_empty());
+    } else {
+        assert!(err.contains("LLVM"), "stderr: {err}");
+    }
+}
+
+#[test]
 fn cli_repl_scripted_session_exits_cleanly() {
     let dir = tempdir().unwrap();
     let home = dir.path();
@@ -386,6 +500,147 @@ fn cli_repl_history_save_error_path_is_non_fatal() {
     let home_as_file = dir.path().join("home_is_a_file");
     write_file(&home_as_file, "not a directory");
     let (code, out, err) = run_mdhavers(&["repl"], Some("quit\n"), &home_as_file);
+    assert_eq!(code, 0, "stderr: {err}");
+    assert!(out.contains("mdhavers REPL"));
+}
+
+#[test]
+fn cli_run_and_trace_with_relative_paths_cover_empty_parent_branches() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    write_file(&dir.path().join("ok.braw"), "ken x = 41\nblether x + 1\n");
+
+    let (code, out, err) = run_mdhavers_in_dir(&["run", "ok.braw"], None, home, dir.path());
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(out.trim(), "42");
+
+    let (code, _out, err) = run_mdhavers_in_dir(&["trace", "ok.braw"], None, home, dir.path());
+    assert_eq!(code, 0, "stderr: {err}");
+}
+
+#[test]
+fn cli_check_and_tokens_surface_lexer_errors_and_parse_suggestions() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let bad_lex = dir.path().join("bad_lex.braw");
+    write_file(&bad_lex, "@\n");
+
+    let (code, _out, err) = run_mdhavers(&["check", bad_lex.to_str().unwrap()], None, home);
+    assert_ne!(code, 0);
+    assert!(err.contains("Ah dinnae ken"), "stderr: {err}");
+
+    let (code, _out, err) = run_mdhavers(&["tokens", bad_lex.to_str().unwrap()], None, home);
+    assert_ne!(code, 0);
+    assert!(err.contains("Ah dinnae ken"), "stderr: {err}");
+
+    // Trigger a parse error that has a helpful suggestion.
+    let bad_parse = dir.path().join("bad_parse.braw");
+    write_file(&bad_parse, "fetch )\n");
+
+    let (code, _out, err) = run_mdhavers(&["check", bad_parse.to_str().unwrap()], None, home);
+    assert_ne!(code, 0);
+    assert!(err.contains("Check yer brackets"), "stderr: {err}");
+}
+
+#[test]
+fn cli_ast_and_fmt_parse_error_paths_are_covered() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let bad_syntax = dir.path().join("bad_syntax.braw");
+    write_file(&bad_syntax, "ken =\n");
+
+    let (code, _out, _err) = run_mdhavers(&["ast", bad_syntax.to_str().unwrap()], None, home);
+    assert_ne!(code, 0);
+
+    let (code, _out, _err) = run_mdhavers(&["fmt", "--check", bad_syntax.to_str().unwrap()], None, home);
+    assert_ne!(code, 0);
+}
+
+#[cfg(unix)]
+#[test]
+fn cli_fmt_write_error_path_is_covered() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let read_only = dir.path().join("read_only.braw");
+    write_file(&read_only, "ken x=1\n");
+
+    fs::set_permissions(&read_only, fs::Permissions::from_mode(0o444)).unwrap();
+
+    let (code, _out, err) = run_mdhavers(&["fmt", read_only.to_str().unwrap()], None, home);
+    assert_ne!(code, 0);
+    assert!(err.contains("Cannae write"), "stderr: {err}");
+}
+
+#[test]
+fn cli_build_emit_llvm_error_path_is_covered() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let bad_llvm = dir.path().join("bad_llvm.braw");
+    write_file(
+        &bad_llvm,
+        r#"
+ken x = 1
+x.foo(1,2,3,4,5,6,7,8,9)
+"#,
+    );
+
+    let (code, _out, err) = run_mdhavers(
+        &[
+            "build",
+            bad_llvm.to_str().unwrap(),
+            "--emit-llvm",
+            "-O",
+            "0",
+        ],
+        None,
+        home,
+    );
+    if cfg!(feature = "llvm") {
+        assert_ne!(code, 0);
+        assert!(
+            err.contains("up to 8 arguments"),
+            "stderr should mention arg limit, got: {err}"
+        );
+    } else {
+        assert_ne!(code, 0);
+        assert!(err.contains("LLVM"), "stderr: {err}");
+    }
+}
+
+#[test]
+fn cli_repl_multiline_cancel_and_prelude_warning_paths_are_covered() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let stdlib_dir = dir.path().join("stdlib");
+    fs::create_dir_all(&stdlib_dir).unwrap();
+    write_file(&stdlib_dir.join("prelude.braw"), "ken =\n");
+
+    let script = [
+        ":vars",
+        "gin aye {",
+        "help",
+        ":trace",
+        ":trace verbose",
+        ":cancel",
+        "# comment",
+        "blether \"a\\\\b\"",
+        "}",
+        "ken x = [1, (2)]",
+        ":reset",
+        "quit",
+    ]
+    .join("\n")
+        + "\n";
+
+    let (code, out, err) = run_mdhavers_in_dir(&["repl"], Some(&script), home, dir.path());
     assert_eq!(code, 0, "stderr: {err}");
     assert!(out.contains("mdhavers REPL"));
 }

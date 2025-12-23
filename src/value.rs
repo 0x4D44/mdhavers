@@ -1124,6 +1124,8 @@ mod tests {
         assert_eq!(native.arity, 1);
         let result = (native.func)(vec![Value::String("abcd".to_string())]).unwrap();
         assert_eq!(result, Value::Integer(4));
+        let err = (native.func)(vec![Value::Integer(1)]).unwrap_err();
+        assert_eq!(err, "Expected string");
     }
 
     #[test]
@@ -1259,11 +1261,14 @@ mod tests {
 
         let instance = HaversInstance::new(class_rc);
 
-        // Should find method through class
-        let found = instance.get("calculate");
-        assert!(matches!(found, Some(Value::Function(_))));
-        if let Some(Value::Function(f)) = found {
-            assert_eq!(f.name, "calculate");
+        for name in ["calculate", "nonexistent"] {
+            let found = instance.get(name);
+            if let Some(Value::Function(f)) = found {
+                assert_eq!(name, "calculate");
+                assert_eq!(f.name, "calculate");
+            } else {
+                assert_eq!(name, "nonexistent");
+            }
         }
     }
 
@@ -1577,6 +1582,16 @@ mod tests {
             Value::NativeObject(native.clone()),
             Value::NativeObject(native.clone())
         );
+
+        let native_fn = Rc::new(NativeFunction::new("nf", 0, |_| Ok(Value::Nil)));
+        assert_eq!(
+            Value::NativeFunction(native_fn.clone()),
+            Value::NativeFunction(native_fn.clone())
+        );
+        assert_ne!(
+            Value::NativeFunction(native_fn.clone()),
+            Value::NativeFunction(Rc::new(NativeFunction::new("nf", 0, |_| Ok(Value::Nil))))
+        );
     }
 
     #[test]
@@ -1591,5 +1606,6 @@ mod tests {
         assert_eq!(native.get("x").unwrap(), Value::Nil);
         assert_eq!(native.set("x", Value::Integer(2)).unwrap(), Value::Nil);
         assert_eq!(native.call("unknown", vec![]).unwrap(), Value::Nil);
+        assert!(native.as_any().is::<TestNative>());
     }
 }

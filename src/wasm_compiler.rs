@@ -1206,6 +1206,15 @@ mod tests {
     }
 
     #[test]
+    fn test_compile_function_non_function_stmt_is_a_noop_for_coverage() {
+        let program = crate::parser::parse("ken x = 1").unwrap();
+        let mut compiler = WasmCompiler::new();
+        compiler
+            .compile_function(&program.statements[0])
+            .expect("compile_function should be a no-op for non-function statements");
+    }
+
+    #[test]
     fn test_if_wasm() {
         let source = r#"
             ken x = 5

@@ -780,10 +780,7 @@ mod tests {
         // Valid code should produce no diagnostics
         let source = "ken x = 42\nblether x";
         let diagnostics = get_diagnostics(source);
-        assert!(
-            diagnostics.is_empty(),
-            "Expected no diagnostics for valid code"
-        );
+        assert!(diagnostics.is_empty());
     }
 
     #[test]
@@ -791,11 +788,20 @@ mod tests {
         // Unclosed brace should produce an error
         let source = "gin x > 0 {\n    blether x\n";
         let diagnostics = get_diagnostics(source);
-        assert!(
-            !diagnostics.is_empty(),
-            "Expected diagnostics for unclosed brace"
-        );
+        assert!(!diagnostics.is_empty());
         assert!(diagnostics.iter().any(|d| d.3 == "error"));
+    }
+
+    #[test]
+    fn test_error_to_diagnostic_fallback_branch() {
+        let err = HaversError::TypeError {
+            message: "nope".to_string(),
+            line: 3,
+        };
+        let (line, col, _message, severity) = error_to_diagnostic(err);
+        assert_eq!(line, 3);
+        assert_eq!(col, 1);
+        assert_eq!(severity, "error");
     }
 
     #[test]

@@ -1,5 +1,7 @@
 #![cfg(all(feature = "llvm", coverage))]
 
+use std::path::Path;
+
 use mdhavers::{llvm::LLVMCompiler, parse};
 
 #[test]
@@ -22,6 +24,16 @@ fn llvm_compiler_object_and_native_paths_are_covered() {
         let obj = dir.path().join("wrapper.o");
         LLVMCompiler::new()
             .compile_to_object(&program, &obj)
+            .unwrap();
+        assert!(obj.exists());
+    }
+
+    // Exercise source-path handling via a relative source path.
+    {
+        let obj = dir.path().join("relative_source.o");
+        LLVMCompiler::new()
+            .with_optimization(0)
+            .compile_to_object_with_source(&program, &obj, Some(Path::new("relative_source.braw")))
             .unwrap();
         assert!(obj.exists());
     }

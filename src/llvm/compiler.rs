@@ -653,6 +653,19 @@ mod tests {
     }
 
     #[test]
+    fn test_compile_to_native_with_source_propagates_object_build_failure() {
+        let program = parse("ken x = 1").unwrap();
+        let compiler = LLVMCompiler::new();
+
+        let dir = tempdir().unwrap();
+        let output_path = dir.path().join("missing_dir").join("out");
+        let err = compiler
+            .compile_to_native_with_source(&program, &output_path, 0, None)
+            .unwrap_err();
+        assert!(matches!(err, HaversError::CompileError(_)));
+    }
+
+    #[test]
     fn test_compile_to_object_status_and_skip_optimizations() {
         let program = parse("ken x = 1").unwrap();
         let mut status = BuildStatus::new("Test");

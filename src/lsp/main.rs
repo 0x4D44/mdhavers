@@ -80,9 +80,6 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     let initialization_params = match connection.initialize(server_capabilities) {
         Ok(it) => it,
         Err(e) => {
-            if e.channel_is_disconnected() {
-                io_threads.join()?;
-            }
             return Err(e.into());
         }
     };
@@ -222,12 +219,7 @@ fn handle_completion(
         .into_iter()
         .map(|(name, kind, doc)| CompletionItem {
             label: name.clone(),
-            kind: Some(match kind.as_str() {
-                "keyword" => CompletionItemKind::KEYWORD,
-                "function" => CompletionItemKind::FUNCTION,
-                "constant" => CompletionItemKind::CONSTANT,
-                _ => CompletionItemKind::TEXT,
-            }),
+            kind: Some(completion_item_kind(kind.as_str())),
             detail: Some(doc.clone()),
             documentation: Some(lsp_types::Documentation::MarkupContent(MarkupContent {
                 kind: MarkupKind::Markdown,
@@ -269,11 +261,7 @@ fn publish_diagnostics(
                     character: (col + 10) as u32, // Approximate end
                 },
             },
-            severity: Some(match severity.as_str() {
-                "error" => DiagnosticSeverity::ERROR,
-                "warning" => DiagnosticSeverity::WARNING,
-                _ => DiagnosticSeverity::INFORMATION,
-            }),
+            severity: Some(diagnostic_severity(severity.as_str())),
             source: Some("mdhavers".to_string()),
             message,
             ..Default::default()
@@ -351,12 +339,30 @@ where
     not.extract(N::METHOD)
 }
 
+fn completion_item_kind(kind: &str) -> CompletionItemKind {
+    match kind {
+        "keyword" => CompletionItemKind::KEYWORD,
+        "function" => CompletionItemKind::FUNCTION,
+        "constant" => CompletionItemKind::CONSTANT,
+        _ => CompletionItemKind::TEXT,
+    }
+}
+
+fn diagnostic_severity(severity: &str) -> DiagnosticSeverity {
+    match severity {
+        "error" => DiagnosticSeverity::ERROR,
+        "warning" => DiagnosticSeverity::WARNING,
+        _ => DiagnosticSeverity::INFORMATION,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use lsp_server::{Connection, Message, Notification as LspNotification, Request as LspRequest};
     use lsp_types::notification::{
-        DidCloseTextDocument, DidOpenTextDocument, Notification as LspNotificationTrait,
+        DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument,
+        Notification as LspNotificationTrait,
     };
     use lsp_types::request::{
         Completion, GotoDefinition, HoverRequest, Request as LspRequestTrait,
@@ -393,6 +399,9 @@ mod tests {
         let whitespace = hover_params(&uri, 0, 3);
         let word = get_word_at_position(&whitespace, &docs);
         assert_eq!(word.as_deref(), Some("ken"));
+
+        let non_word = hover_params(&uri, 0, 6);
+        assert!(get_word_at_position(&non_word, &docs).is_none());
 
         let oob = hover_params(&uri, 99, 99);
         assert!(get_word_at_position(&oob, &docs).is_none());
@@ -517,10 +526,16 @@ mod tests {
             .unwrap();
         drop(client.sender);
 
-        let result = handle.join().expect("join main_loop");
-        if let Err(err) = result {
-            panic!("main_loop error: {err}");
-        }
+        handle.join().expect("join main_loop").unwrap();
+    }
+
+    #[test]
+    fn main_loop_exits_cleanly_when_client_disconnects() {
+        let (server, client) = Connection::memory();
+        let params = serde_json::to_value(InitializeParams::default()).unwrap();
+        let handle = std::thread::spawn(move || main_loop(server, params));
+        drop(client.sender);
+        handle.join().expect("join main_loop").unwrap();
     }
 
     #[test]
@@ -548,5 +563,35 @@ mod tests {
         handle_notification(&server, &mut docs, notification).unwrap();
 
         assert!(docs.get(&uri).is_none());
+    }
+
+    #[test]
+    fn handle_notification_ignores_empty_did_change_text_document() {
+        let (server, _client) = Connection::memory();
+        let mut docs = DocumentStore::new();
+        let uri = Uri::from_str("file:///tmp/coverage_lsp_change.braw").unwrap();
+        docs.open(uri.clone(), "ken x = 1\n".to_string());
+
+        let params = DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier { uri: uri.clone(), version: 2 },
+            content_changes: Vec::new(),
+        };
+        let notification =
+            LspNotification::new(DidChangeTextDocument::METHOD.to_string(), params);
+        handle_notification(&server, &mut docs, notification).unwrap();
+        assert_eq!(docs.get(&uri).unwrap(), "ken x = 1\n");
+    }
+
+    #[test]
+    fn completion_item_kind_and_diagnostic_severity_cover_fallbacks() {
+        assert_eq!(completion_item_kind("keyword"), CompletionItemKind::KEYWORD);
+        assert_eq!(completion_item_kind("unknown"), CompletionItemKind::TEXT);
+
+        assert_eq!(diagnostic_severity("error"), DiagnosticSeverity::ERROR);
+        assert_eq!(diagnostic_severity("warning"), DiagnosticSeverity::WARNING);
+        assert_eq!(
+            diagnostic_severity("info"),
+            DiagnosticSeverity::INFORMATION
+        );
     }
 }
