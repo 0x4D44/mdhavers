@@ -1,0 +1,328 @@
+# sip.braw - SIP helpers fer mdhavers
+# "Resolve and parse SIP like a pro."
+
+# ============================================================
+# Constants
+# ============================================================
+
+ken SIP_VERSION = "SIP/2.0"
+ken SIP_PORT = 5060
+ken SIPS_PORT = 5061
+
+ken SIP_TRANSPORT_UDP = "udp"
+ken SIP_TRANSPORT_TCP = "tcp"
+ken SIP_TRANSPORT_TLS = "tls"
+
+# ============================================================
+# Transport defaults
+# ============================================================
+
+dae sip_transport_defaults(transport) {
+    ken t = lower(tae_string(transport))
+    gin t == "udp" {
+        gie {"transport": "udp", "service": "_sip._udp", "naptr": "sip+d2u", "port": SIP_PORT}
+    }
+    gin t == "tcp" {
+        gie {"transport": "tcp", "service": "_sip._tcp", "naptr": "sip+d2t", "port": SIP_PORT}
+    }
+    gin t == "tls" or t == "sips" {
+        gie {"transport": "tls", "service": "_sips._tcp", "naptr": "sips+d2t", "port": SIPS_PORT}
+    }
+    # fallback to UDP defaults
+    gie {"transport": t, "service": "_sip._udp", "naptr": "sip+d2u", "port": SIP_PORT}
+}
+
+# ============================================================
+# DNS helpers
+# ============================================================
+
+dae sip_trim_dot(name) {
+    ken s = tae_string(name)
+    gin len(s) > 0 an ends_with(s, ".") {
+        gie scran(s, 0, len(s) - 1)
+    }
+    gie s
+}
+
+dae sip_sort_naptr(records) {
+    ken out = records
+    ken n = len(out)
+    fer i in 0..n {
+        fer j in 0..(n - i - 1) {
+            ken a = out[j]
+            ken b = out[j + 1]
+            ken key_a = a["order"] * 10000 + a["preference"]
+            ken key_b = b["order"] * 10000 + b["preference"]
+            gin key_a > key_b {
+                ken temp = out[j]
+                out[j] = out[j + 1]
+                out[j + 1] = temp
+            }
+        }
+    }
+    gie out
+}
+
+dae sip_sort_srv(records) {
+    ken out = records
+    ken n = len(out)
+    fer i in 0..n {
+        fer j in 0..(n - i - 1) {
+            ken a = out[j]
+            ken b = out[j + 1]
+            ken key_a = a["priority"] * 10000 + a["weight"]
+            ken key_b = b["priority"] * 10000 + b["weight"]
+            gin key_a > key_b {
+                ken temp = out[j]
+                out[j] = out[j + 1]
+                out[j + 1] = temp
+            }
+        }
+    }
+    gie out
+}
+
+dae sip_srv_entry(srv, transport) {
+    ken target = sip_trim_dot(srv["target"])
+    gie {
+        "target": target,
+        "port": srv["port"],
+        "priority": srv["priority"],
+        "weight": srv["weight"],
+        "transport": transport
+    }
+}
+
+# ============================================================
+# SIP resolution
+# ============================================================
+
+dae sip_resolve(domain, transport = "udp") {
+    ken def = sip_transport_defaults(transport)
+    ken out = []
+
+    # NAPTR -> SRV
+    ken naptr = dns_naptr(domain)
+    gin naptr["ok"] {
+        ken want_service = def["naptr"]
+        ken filtered = []
+        fer rec in naptr["value"] {
+            ken svc = lower(rec["service"])
+            ken flags = lower(rec["flags"])
+            gin contains(svc, want_service) an (flags == "" or contains(flags, "s")) {
+                shove(filtered, rec)
+            }
+        }
+        filtered = sip_sort_naptr(filtered)
+        fer rec in filtered {
+            ken replacement = sip_trim_dot(rec["replacement"])
+            gin replacement == "" or replacement == "." { haud }
+            ken srv = dns_srv("", replacement)
+            gin srv["ok"] an len(srv["value"]) > 0 {
+                ken entries = sip_sort_srv(srv["value"])
+                fer s in entries {
+                    shove(out, sip_srv_entry(s, def["transport"]))
+                }
+            }
+        }
+    }
+
+    # SRV fallback
+    gin len(out) == 0 {
+        ken srv = dns_srv(def["service"], domain)
+        gin srv["ok"] {
+            ken entries = sip_sort_srv(srv["value"])
+            fer s in entries {
+                shove(out, sip_srv_entry(s, def["transport"]))
+            }
+        }
+    }
+
+    # A/AAAA fallback
+    gin len(out) == 0 {
+        ken res = dns_lookup(domain)
+        gin res["ok"] {
+            fer ip in res["value"] {
+                shove(out, {
+                    "target": ip,
+                    "port": def["port"],
+                    "priority": 0,
+                    "weight": 0,
+                    "transport": def["transport"]
+                })
+            }
+        }
+    }
+
+    gie out
+}
+
+# ============================================================
+# SIP message parsing
+# ============================================================
+
+dae sip_bytes_to_string(msg) {
+    gin whit_kind(msg) != "bytes" {
+        gie tae_string(msg)
+    }
+    ken n = bytes_len(msg)
+    ken out = ""
+    ken i = 0
+    whiles i < n {
+        out = out + chr(bytes_get(msg, i))
+        i = i + 1
+    }
+    gie out
+}
+
+dae sip_parse_headers(lines) {
+    ken headers = {}
+    fer i in 0..len(lines) {
+        ken line = lines[i]
+        gin line == "" { haud }
+        ken colon = index_of(line, ":")
+        gin colon >= 0 {
+            ken name = lower(trim(scran(line, 0, colon)))
+            ken value = trim(scran(line, colon + 1, len(line)))
+            headers[name] = value
+        }
+    }
+    gie headers
+}
+
+dae sip_parse_message(msg) {
+    ken input = sip_bytes_to_string(msg)
+    ken sep = "\r\n"
+    gin nae contains(input, "\r\n") {
+        sep = "\n"
+    }
+    ken parts = split(input, sep + sep)
+    ken head = parts[0]
+    ken body = ""
+    gin len(parts) > 1 {
+        body = join(scran(parts, 1, len(parts)), sep + sep)
+    }
+
+    ken lines = split(head, sep)
+    gin len(lines) == 0 {
+        gie {"type": "invalid", "raw": input}
+    }
+
+    ken start_line = lines[0]
+    ken tokens = split(start_line, " ")
+    gin len(tokens) < 2 {
+        gie {"type": "invalid", "raw": input}
+    }
+
+    ken headers = sip_parse_headers(scran(lines, 1, len(lines)))
+    gin tokens[0] == "SIP/2.0" {
+        ken status = tae_int(tokens[1])
+        ken reason = ""
+        gin len(tokens) > 2 {
+            reason = join(scran(tokens, 2, len(tokens)), " ")
+        }
+        gie {
+            "type": "response",
+            "version": tokens[0],
+            "status": status,
+            "reason": reason,
+            "headers": headers,
+            "body": body
+        }
+    }
+
+    ken method = tokens[0]
+    ken uri = tokens[1]
+    ken version = SIP_VERSION
+    gin len(tokens) > 2 {
+        version = tokens[2]
+    }
+    gie {
+        "type": "request",
+        "method": method,
+        "uri": uri,
+        "version": version,
+        "headers": headers,
+        "body": body
+    }
+}
+
+# ============================================================
+# SIP message building
+# ============================================================
+
+dae sip_header_get(headers, name, default = naething) {
+    ken key = lower(tae_string(name))
+    gin contains(headers, key) {
+        gie headers[key]
+    }
+    gie default
+}
+
+dae sip_build_message(start_line, headers = {}, body = "") {
+    ken lines = []
+    shove(lines, start_line)
+    ken hdrs = headers
+    gin body != "" {
+        gin nae contains(hdrs, "content-length") an nae contains(hdrs, "Content-Length") {
+            hdrs["Content-Length"] = tae_string(len(body))
+        }
+    }
+    fer key in keys(hdrs) {
+        shove(lines, f"{key}: {hdrs[key]}")
+    }
+    ken msg = join(lines, "\r\n") + "\r\n\r\n" + body
+    gie msg
+}
+
+dae sip_build_request(method, uri, headers = {}, body = "") {
+    ken start_line = f"{method} {uri} {SIP_VERSION}"
+    gie sip_build_message(start_line, headers, body)
+}
+
+dae sip_build_response(status, reason, headers = {}, body = "") {
+    ken start_line = f"{SIP_VERSION} {status} {reason}"
+    gie sip_build_message(start_line, headers, body)
+}
+
+dae sip_build_request_bytes(method, uri, headers = {}, body = "") {
+    gie bytes_from_string(sip_build_request(method, uri, headers, body))
+}
+
+dae sip_build_response_bytes(status, reason, headers = {}, body = "") {
+    gie bytes_from_string(sip_build_response(status, reason, headers, body))
+}
+
+# ============================================================
+# SIP transaction helpers (basic UDP retransmit schedule)
+# ============================================================
+
+dae sip_retransmit_delay(attempt, t1 = 500, t2 = 4000) {
+    ken backoff = t1 * pooer(2, attempt)
+    gin backoff > t2 { backoff = t2 }
+    gie backoff
+}
+
+dae sip_txn_new(request, addr, t1 = 500, t2 = 4000) {
+    gie {
+        "request": request,
+        "addr": addr,
+        "state": "calling",
+        "attempt": 0,
+        "t1": t1,
+        "t2": t2,
+        "next_delay": t1
+    }
+}
+
+dae sip_txn_next(txn) {
+    ken attempt = txn["attempt"] + 1
+    txn["attempt"] = attempt
+    txn["next_delay"] = sip_retransmit_delay(attempt, txn["t1"], txn["t2"])
+    gie txn
+}
+
+dae sip_txn_complete(txn) {
+    txn["state"] = "completed"
+    gie txn
+}

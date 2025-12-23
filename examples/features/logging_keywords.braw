@@ -1,0 +1,16 @@
+# logging_keywords.braw - log_* statements and spans
+# Run: ./target/release/mdhavers examples/features/logging_keywords.braw
+
+log_whisper "whisper (trace)"
+log_mutter "mutter (debug)"
+log_blether "blether (info)"
+log_holler "holler (warn)"
+log_roar "roar (error)"
+
+log_blether "structured fields", {"user": "md", "ok": aye}
+log_blether "targeted log", {"targeted": aye}, "examples.logging"
+
+ken span = log_span("demo_span", "blether", {"task": "work"}, "examples.logging")
+log_span_enter(span)
+log_blether "inside span"
+log_span_exit(span)

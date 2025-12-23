@@ -1,0 +1,6 @@
+# assert_demo.braw - mak_siccar
+
+ken total = 2 + 2
+mak_siccar total == 4, "math still works"
+
+blether "All good!"

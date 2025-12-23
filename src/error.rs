@@ -215,6 +215,127 @@ impl HaversError {
             _ => None,
         }
     }
+
+    pub fn with_line_if_zero(self, line: usize) -> Self {
+        match self {
+            HaversError::UnkentToken {
+                lexeme,
+                line: 0,
+                column,
+            } => HaversError::UnkentToken {
+                lexeme,
+                line,
+                column,
+            },
+            HaversError::UnexpectedToken {
+                expected,
+                found,
+                line: 0,
+            } => HaversError::UnexpectedToken {
+                expected,
+                found,
+                line,
+            },
+            HaversError::UndefinedVariable { name, line: 0 } => {
+                HaversError::UndefinedVariable { name, line }
+            }
+            HaversError::DivisionByZero { line: 0 } => HaversError::DivisionByZero { line },
+            HaversError::TypeError { message, line: 0 } => HaversError::TypeError { message, line },
+            HaversError::NotCallable { name, line: 0 } => HaversError::NotCallable { name, line },
+            HaversError::WrongArity {
+                name,
+                expected,
+                got,
+                line: 0,
+            } => HaversError::WrongArity {
+                name,
+                expected,
+                got,
+                line,
+            },
+            HaversError::IndexOutOfBounds {
+                index,
+                size,
+                line: 0,
+            } => HaversError::IndexOutOfBounds { index, size, line },
+            HaversError::ParseError { message, line: 0 } => {
+                HaversError::ParseError { message, line }
+            }
+            HaversError::BreakOutsideLoop { line: 0 } => HaversError::BreakOutsideLoop { line },
+            HaversError::ContinueOutsideLoop { line: 0 } => {
+                HaversError::ContinueOutsideLoop { line }
+            }
+            HaversError::StackOverflow { line: 0 } => HaversError::StackOverflow { line },
+            HaversError::UnterminatedString { line: 0 } => HaversError::UnterminatedString { line },
+            HaversError::InvalidNumber { value, line: 0 } => {
+                HaversError::InvalidNumber { value, line }
+            }
+            HaversError::AlreadyDefined { name, line: 0 } => {
+                HaversError::AlreadyDefined { name, line }
+            }
+            HaversError::NotAnObject { name, line: 0 } => HaversError::NotAnObject { name, line },
+            HaversError::UndefinedProperty { property, line: 0 } => {
+                HaversError::UndefinedProperty { property, line }
+            }
+            HaversError::InfiniteLoop { line: 0 } => HaversError::InfiniteLoop { line },
+            HaversError::NotAList { line: 0 } => HaversError::NotAList { line },
+            HaversError::NotADict { line: 0 } => HaversError::NotADict { line },
+            HaversError::KeyNotFound { key, line: 0 } => HaversError::KeyNotFound { key, line },
+            HaversError::InvalidOperation { operation, line: 0 } => {
+                HaversError::InvalidOperation { operation, line }
+            }
+            HaversError::AssertionFailed { message, line: 0 } => {
+                HaversError::AssertionFailed { message, line }
+            }
+            HaversError::ReturnOutsideFunction { line: 0 } => {
+                HaversError::ReturnOutsideFunction { line }
+            }
+            HaversError::NotIterable { type_name, line: 0 } => {
+                HaversError::NotIterable { type_name, line }
+            }
+            HaversError::PatternError { message, line: 0 } => {
+                HaversError::PatternError { message, line }
+            }
+            HaversError::IntegerOverflow { line: 0 } => HaversError::IntegerOverflow { line },
+            HaversError::NegativeIndexOutOfBounds { index, line: 0 } => {
+                HaversError::NegativeIndexOutOfBounds { index, line }
+            }
+            HaversError::EmptyCollection { operation, line: 0 } => {
+                HaversError::EmptyCollection { operation, line }
+            }
+            HaversError::InvalidRegex { message, line: 0 } => {
+                HaversError::InvalidRegex { message, line }
+            }
+            HaversError::FormatError { message, line: 0 } => {
+                HaversError::FormatError { message, line }
+            }
+            HaversError::JsonError { message, line: 0 } => HaversError::JsonError { message, line },
+            HaversError::IncomparableTypes {
+                left_type,
+                right_type,
+                line: 0,
+            } => HaversError::IncomparableTypes {
+                left_type,
+                right_type,
+                line,
+            },
+            HaversError::InvalidNumberOperation { message, line: 0 } => {
+                HaversError::InvalidNumberOperation { message, line }
+            }
+            HaversError::NonExhaustiveMatch { line: 0 } => HaversError::NonExhaustiveMatch { line },
+            HaversError::DuplicateKey { key, line: 0 } => HaversError::DuplicateKey { key, line },
+            HaversError::ExecutionTimeout { line: 0 } => HaversError::ExecutionTimeout { line },
+            HaversError::OutOfMemory { line: 0 } => HaversError::OutOfMemory { line },
+            HaversError::PrivateMemberAccess { member, line: 0 } => {
+                HaversError::PrivateMemberAccess { member, line }
+            }
+            HaversError::ImmutableVariable { name, line: 0 } => {
+                HaversError::ImmutableVariable { name, line }
+            }
+            HaversError::UserError { message, line: 0 } => HaversError::UserError { message, line },
+            other => other,
+        }
+    }
 }
 
 /// Scots phrases fer random error decoration

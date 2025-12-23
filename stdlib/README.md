@@ -13,6 +13,30 @@ fetch "lib/colors"
 fetch "lib/functional"
 ```
 
+## Stdlib Contract (Stability & Portability)
+
+The stdlib is written in pure mdhavers, but some modules depend on native builtins (file I/O, sockets, DNS/TLS/DTLS/SRTP, audio, etc). This section defines what you can rely on.
+
+### Stability
+
+- **Core modules are treated as “stable-ish”**: `prelude`, `strings`, `maths`, `collections`, `structures`, `functional`, `json`, `testing`, `benchmark`, and `colors`.
+- **Everything else is “experimental”** unless explicitly documented otherwise. APIs may change as the language evolves (especially networking/media/game modules).
+- **Backwards compatibility**: the project does not currently guarantee strict semver stability for stdlib APIs. Pin a repo revision if you need reproducible behavior.
+
+### Portability (Backend support)
+
+- **Interpreter (native)**: full stdlib surface (including native-backed modules).
+- **LLVM/native**: intended to support the same “native” surface as the interpreter, but may lag in edge cases.
+- **JavaScript / WAT/WASM**: only a subset is expected to work. Modules that require OS/network access (or native threads) are not portable.
+
+As a rule of thumb:
+- **Portable modules** should avoid native side effects and stick to pure data transforms (strings, maths, collections, functional helpers).
+- **Native-only modules** include: `network_real`, `sip`, `rtp`, `rtcp`, `tls`, `srtp`, `concurrency`, `event_loop`, and `soond`-related helpers.
+
+### Security / Sandboxing
+
+If you are running untrusted mdhavers code, treat native-backed stdlib modules as privileged capabilities. Prefer running with reduced features (e.g. `--no-default-features --features cli`) and avoid exposing filesystem/network/audio/graphics unless you trust the program.
+
 ## Module Index
 
 ### Core Utilities

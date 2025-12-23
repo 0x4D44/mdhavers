@@ -1,0 +1,76 @@
+# bytes.braw - Byte buffer helpers for mdhavers
+# "Handle raw bytes like a pro!"
+
+# Create a zeroed byte buffer
+
+dae make_bytes(size) {
+    gie bytes(size)
+}
+
+# Create bytes from a string
+
+dae bytes_from_str(s) {
+    gie bytes_from_string(s)
+}
+
+# Length of bytes
+
+dae bytes_len_o(b) {
+    gie bytes_len(b)
+}
+
+# Slice bytes [start, end)
+
+dae bytes_slice_o(b, start, end) {
+    gie bytes_slice(b, start, end)
+}
+
+# Get/set bytes
+
+dae bytes_get_o(b, idx) {
+    gie bytes_get(b, idx)
+}
+
+dae bytes_set_o(b, idx, val) {
+    gie bytes_set(b, idx, val)
+}
+
+# Append bytes
+
+dae bytes_append_o(b, other) {
+    gie bytes_append(b, other)
+}
+
+# Endian helpers
+
+dae read_u16be(b, off) {
+    gie bytes_read_u16be(b, off)
+}
+
+dae read_u32be(b, off) {
+    gie bytes_read_u32be(b, off)
+}
+
+dae write_u16be(b, off, val) {
+    gie bytes_write_u16be(b, off, val)
+}
+
+dae write_u32be(b, off, val) {
+    gie bytes_write_u32be(b, off, val)
+}
+
+# Convert bytes to string (assumes UTF-8 / ASCII data).
+
+dae bytes_to_string(b) {
+    gin whit_kind(b) != "bytes" {
+        gie tae_string(b)
+    }
+    ken n = bytes_len(b)
+    ken out = ""
+    ken i = 0
+    whiles i < n {
+        out = out + chr(bytes_get(b, i))
+        i = i + 1
+    }
+    gie out
+}

@@ -1,0 +1,35 @@
+# audio_basics.braw - basic audio playback
+# Requires: cargo build --release --features audio
+# Run: ./target/release/mdhavers examples/features/audio_basics.braw
+
+# Try a few relative paths tae find assets when run frae different dirs
+
+dae asset_path(rel) {
+    ken candidates = [
+        rel,
+        "../" + rel,
+        "../../" + rel,
+        "../../../" + rel,
+    ]
+
+    fer cand in candidates {
+        gin file_exists(cand) {
+            gie cand
+        }
+    }
+
+    gie rel
+}
+
+soond_stairt()
+
+ken ding_path = asset_path("assets/audio/ding.wav")
+ken ding = soond_lade(ding_path)
+soond_pit_luid(ding, 0.7)
+soond_spiel(ding)
+
+# Let the sound finish playin'
+bide(700)
+
+soond_unlade(ding)
+soond_steek()

@@ -1,0 +1,13 @@
+# fizzbuzz.braw - classic fizzbuzz
+
+fer i in 1..101 {
+    gin i % 15 == 0 {
+        blether "FizzBuzz"
+    } ither gin i % 3 == 0 {
+        blether "Fizz"
+    } ither gin i % 5 == 0 {
+        blether "Buzz"
+    } ither {
+        blether f"{i}"
+    }
+}

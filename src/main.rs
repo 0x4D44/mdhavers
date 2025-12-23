@@ -7,34 +7,18 @@ use colored::*;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
-mod ast;
-mod audio;
-mod compiler;
-mod error;
-mod formatter;
-mod graphics;
-mod interpreter;
-mod lexer;
-mod logging;
-mod parser;
-mod token;
-mod tri;
-mod value;
-mod wasm_compiler;
-#[cfg(feature = "wasm_runner")]
-mod wasm_runner;
-
-#[cfg(feature = "llvm")]
-mod llvm;
-
-use crate::compiler::compile;
-use crate::error::{format_error_context, random_scots_exclamation};
-use crate::interpreter::Interpreter;
-use crate::parser::parse;
+use mdhavers::compiler::compile;
+use mdhavers::error::{format_error_context, random_scots_exclamation};
+use mdhavers::formatter;
+use mdhavers::lexer;
+use mdhavers::parser::parse;
+use mdhavers::wasm_compiler;
+use mdhavers::Interpreter;
+use mdhavers::Value;
 
 // Crash handler helpers are excluded from source-based coverage runs.
 #[cfg(not(coverage))]
-use crate::interpreter::{is_crash_handling_enabled, print_stack_trace};
+use mdhavers::interpreter::{is_crash_handling_enabled, print_stack_trace};
 
 /// Initialize crash handlers for graceful error reporting
 #[cfg(not(coverage))]
@@ -198,7 +182,7 @@ fn main() {
         Some(Commands::Trace { file, verbose }) => trace_file(&file, verbose),
         Some(Commands::Wasm { file, output }) => compile_wasm(&file, output),
         #[cfg(feature = "wasm_runner")]
-        Some(Commands::WasmRun { file }) => wasm_runner::run_wasm_file(&file),
+        Some(Commands::WasmRun { file }) => mdhavers::wasm_runner::run_wasm_file(&file),
         Some(Commands::Build {
             file,
             output,
@@ -257,7 +241,7 @@ fn run_file(path: &PathBuf) -> Result<(), String> {
 }
 
 fn trace_file(path: &PathBuf, verbose: bool) -> Result<(), String> {
-    use interpreter::TraceMode;
+    use mdhavers::interpreter::TraceMode;
 
     let source = read_file(path)?;
     let program = match parse(&source) {
@@ -443,7 +427,7 @@ fn build_native(
 
     if emit_llvm {
         // Emit LLVM IR
-        let compiler = llvm::LLVMCompiler::new().with_optimization(opt_level);
+        let compiler = mdhavers::LLVMCompiler::new().with_optimization(opt_level);
         let ir = match compiler.compile_to_ir(&program) {
             Ok(ir) => ir,
             Err(e) => return Err(format!("{}", e)),
@@ -473,7 +457,7 @@ fn build_native(
             p
         });
 
-        let compiler = llvm::LLVMCompiler::new();
+        let compiler = mdhavers::LLVMCompiler::new();
         if let Err(e) =
             compiler.compile_to_native_with_source(&program, &output_path, opt_level, Some(path))
         {
@@ -494,8 +478,60 @@ fn build_native(
     Ok(())
 }
 
+fn repl_needs_more_input(buffer: &str) -> bool {
+    let mut in_string = false;
+    let mut escape = false;
+    let mut in_comment = false;
+    let mut braces: i32 = 0;
+    let mut brackets: i32 = 0;
+    let mut parens: i32 = 0;
+
+    for ch in buffer.chars() {
+        if in_comment {
+            if ch == '\n' {
+                in_comment = false;
+            }
+            continue;
+        }
+
+        if in_string {
+            if escape {
+                escape = false;
+                continue;
+            }
+            if ch == '\\' {
+                escape = true;
+                continue;
+            }
+            if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match ch {
+            '#' => in_comment = true,
+            '"' => in_string = true,
+            '{' => braces += 1,
+            '}' => braces -= 1,
+            '[' => brackets += 1,
+            ']' => brackets -= 1,
+            '(' => parens += 1,
+            ')' => parens -= 1,
+            _ => {}
+        }
+
+        // If nesting goes negative, treat as "not incomplete" so we surface a parse error.
+        if braces < 0 || brackets < 0 || parens < 0 {
+            return false;
+        }
+    }
+
+    in_string || braces > 0 || brackets > 0 || parens > 0
+}
+
 fn run_repl() -> Result<(), String> {
-    use interpreter::TraceMode;
+    use mdhavers::interpreter::TraceMode;
 
     println!("{}", "═".repeat(50).cyan());
     println!(
@@ -510,6 +546,11 @@ fn run_repl() -> Result<(), String> {
     println!(
         "{}",
         "Type 'help' fer help, 'quit' or 'haud yer wheesht' tae exit.".dimmed()
+    );
+    println!(
+        "{}",
+        "Multiline input works for blocks/strings; use ':cancel' tae abandon an unfinished entry."
+            .dimmed()
     );
     println!();
 
@@ -530,6 +571,7 @@ fn run_repl() -> Result<(), String> {
     let mut interpreter = Interpreter::new();
     let mut trace_enabled = false;
     let mut verbose_trace = false;
+    let mut buffer = String::new();
 
     // Load the prelude fer REPL users
     if let Err(e) = interpreter.load_prelude() {
@@ -538,7 +580,17 @@ fn run_repl() -> Result<(), String> {
 
     loop {
         // Update prompt to show trace mode
-        let prompt = if trace_enabled {
+        let prompt = if !buffer.is_empty() {
+            if trace_enabled {
+                if verbose_trace {
+                    format!("{} ", "mdhavers[trace:v]...>".yellow().bold())
+                } else {
+                    format!("{} ", "mdhavers[trace]...>".yellow().bold())
+                }
+            } else {
+                format!("{} ", "mdhavers...>".green().bold())
+            }
+        } else if trace_enabled {
             if verbose_trace {
                 format!("{} ", "mdhavers[trace:v]>".yellow().bold())
             } else {
@@ -551,94 +603,119 @@ fn run_repl() -> Result<(), String> {
 
         match readline {
             Ok(line) => {
-                let line = line.trim();
+                let trimmed = line.trim();
 
-                if line.is_empty() {
+                if trimmed.is_empty() && buffer.is_empty() {
                     continue;
                 }
 
-                let _ = rl.add_history_entry(line);
+                if !trimmed.is_empty() {
+                    let _ = rl.add_history_entry(line.as_str());
+                }
 
-                // Handle special commands
-                match line.to_lowercase().as_str() {
-                    "quit" | "exit" | "haud yer wheesht" | "bye" | "cheers" => {
-                        println!("{}", "Haste ye back! Slàinte!".cyan());
-                        break;
-                    }
-                    "help" | "halp" => {
-                        print_repl_help();
-                        continue;
-                    }
-                    "clear" | "cls" => {
-                        print!("\x1B[2J\x1B[1;1H");
-                        continue;
-                    }
-                    ":reset" | "reset" => {
-                        interpreter = Interpreter::new();
-                        if let Err(e) = interpreter.load_prelude() {
-                            eprintln!("{}: Couldnae load prelude: {}", "Warning".yellow(), e);
+                // Handle special commands.
+                // While collecting multiline input, only `:`-prefixed commands are recognized so
+                // that plain text like "help" can be used inside multiline strings.
+                let lower = trimmed.to_lowercase();
+                let allow_plain_commands = buffer.is_empty();
+                if allow_plain_commands || lower.starts_with(':') {
+                    match lower.as_str() {
+                        "quit" | "exit" | "haud yer wheesht" | "bye" | "cheers" | ":quit"
+                        | ":exit" => {
+                            println!("{}", "Haste ye back! Slàinte!".cyan());
+                            break;
                         }
-                        trace_enabled = false;
-                        verbose_trace = false;
-                        interpreter.set_trace_mode(TraceMode::Off);
-                        println!("{}", "Interpreter reset - fresh as a daisy!".green());
-                        continue;
-                    }
-                    ":wisdom" | "wisdom" => {
-                        // Print a wee bit of Scots wisdom
-                        print_scots_wisdom();
-                        continue;
-                    }
-                    ":codewisdom" | "codewisdom" => {
-                        // Print programming-specific Scottish wisdom
-                        print_programming_wisdom();
-                        continue;
-                    }
-                    ":examples" | "examples" => {
-                        print_repl_examples();
-                        continue;
-                    }
-                    ":trace" | "trace" => {
-                        trace_enabled = !trace_enabled;
-                        verbose_trace = false;
-                        interpreter.set_trace_mode(if trace_enabled {
-                            TraceMode::Statements
-                        } else {
-                            TraceMode::Off
-                        });
-                        if trace_enabled {
+                        "help" | "halp" | ":help" => {
+                            print_repl_help();
+                            continue;
+                        }
+                        "clear" | "cls" | ":clear" => {
+                            print!("\x1B[2J\x1B[1;1H");
+                            continue;
+                        }
+                        ":cancel" | "cancel" => {
+                            if !buffer.is_empty() {
+                                buffer.clear();
+                                println!("{}", "Cancelled multiline input.".dimmed());
+                            }
+                            continue;
+                        }
+                        ":reset" | "reset" => {
+                            interpreter = Interpreter::new();
+                            if let Err(e) = interpreter.load_prelude() {
+                                eprintln!("{}: Couldnae load prelude: {}", "Warning".yellow(), e);
+                            }
+                            buffer.clear();
+                            trace_enabled = false;
+                            verbose_trace = false;
+                            interpreter.set_trace_mode(TraceMode::Off);
+                            println!("{}", "Interpreter reset - fresh as a daisy!".green());
+                            continue;
+                        }
+                        ":wisdom" | "wisdom" => {
+                            // Print a wee bit of Scots wisdom
+                            print_scots_wisdom();
+                            continue;
+                        }
+                        ":codewisdom" | "codewisdom" => {
+                            // Print programming-specific Scottish wisdom
+                            print_programming_wisdom();
+                            continue;
+                        }
+                        ":examples" | "examples" => {
+                            print_repl_examples();
+                            continue;
+                        }
+                        ":trace" | "trace" => {
+                            trace_enabled = !trace_enabled;
+                            verbose_trace = false;
+                            interpreter.set_trace_mode(if trace_enabled {
+                                TraceMode::Statements
+                            } else {
+                                TraceMode::Off
+                            });
+                            if trace_enabled {
+                                println!(
+                                    "{}",
+                                    "🏴󠁧󠁢󠁳󠁣󠁴󠁿 Trace mode ON - watchin' yer code like a hawk!".yellow()
+                                );
+                            } else {
+                                println!("{}", "Trace mode OFF - back tae normal.".dimmed());
+                            }
+                            continue;
+                        }
+                        ":trace v" | "trace v" | ":trace verbose" | "trace verbose" => {
+                            trace_enabled = true;
+                            verbose_trace = true;
+                            interpreter.set_trace_mode(TraceMode::Verbose);
                             println!(
                                 "{}",
-                                "🏴󠁧󠁢󠁳󠁣󠁴󠁿 Trace mode ON - watchin' yer code like a hawk!".yellow()
+                                "🏴󠁧󠁢󠁳󠁣󠁴󠁿 Verbose trace mode ON - showin' ye EVERYTHING!".yellow()
                             );
-                        } else {
-                            println!("{}", "Trace mode OFF - back tae normal.".dimmed());
+                            continue;
                         }
-                        continue;
+                        ":vars" | "vars" | ":env" | "env" => {
+                            print_environment(&interpreter);
+                            continue;
+                        }
+                        _ => {}
                     }
-                    ":trace v" | "trace v" | ":trace verbose" | "trace verbose" => {
-                        trace_enabled = true;
-                        verbose_trace = true;
-                        interpreter.set_trace_mode(TraceMode::Verbose);
-                        println!(
-                            "{}",
-                            "🏴󠁧󠁢󠁳󠁣󠁴󠁿 Verbose trace mode ON - showin' ye EVERYTHING!".yellow()
-                        );
-                        continue;
-                    }
-                    ":vars" | "vars" | ":env" | "env" => {
-                        print_environment(&interpreter);
-                        continue;
-                    }
-                    _ => {}
+                }
+
+                // Accumulate input until it looks complete.
+                buffer.push_str(&line);
+                buffer.push('\n');
+
+                if repl_needs_more_input(&buffer) {
+                    continue;
                 }
 
                 // Try to parse and execute
-                match parse(line) {
+                match parse(&buffer) {
                     Ok(program) => match interpreter.interpret(&program) {
                         Ok(value) => {
                             // Only print non-nil values
-                            if !matches!(value, value::Value::Nil) {
+                            if !matches!(value, Value::Nil) {
                                 println!("{} {}", "=>".dimmed(), format!("{}", value).yellow());
                             }
                         }
@@ -650,6 +727,8 @@ fn run_repl() -> Result<(), String> {
                         eprintln!("{}: {}", "Parse error".red().bold(), e);
                     }
                 }
+
+                buffer.clear();
             }
             Err(ReadlineError::Interrupted) => {
                 println!("{}", "Interrupted! Use 'quit' tae leave.".yellow());
@@ -727,10 +806,17 @@ fn print_repl_help() {
     println!();
 
     println!("{}", "REPL Commands:".yellow().bold());
-    println!("  {}           - show this help", "help".green());
-    println!("  {} - exit the REPL", "quit / haud yer wheesht".green());
-    println!("  {}          - clear the screen", "clear".green());
-    println!("  {}          - reset the interpreter", "reset".green());
+    println!("  {}           - show this help", "help / :help".green());
+    println!(
+        "  {} - exit the REPL",
+        "quit / haud yer wheesht / :quit".green()
+    );
+    println!("  {}          - clear the screen", "clear / :clear".green());
+    println!(
+        "  {}          - reset the interpreter",
+        "reset / :reset".green()
+    );
+    println!("  {}        - cancel multiline input", ":cancel".green());
     println!("  {}         - get some Scots wisdom", "wisdom".green());
     println!("  {}     - get programming wisdom", "codewisdom".green());
     println!("  {}       - see example code", "examples".green());
@@ -840,7 +926,7 @@ fn print_scots_wisdom() {
 }
 
 fn print_programming_wisdom() {
-    let wisdom = crate::error::scots_programming_wisdom();
+    let wisdom = mdhavers::error::scots_programming_wisdom();
     println!();
     println!(
         "{}",
@@ -1110,7 +1196,7 @@ fn read_file(path: &PathBuf) -> Result<String, String> {
     }
 }
 
-fn format_parse_error(source: &str, error: error::HaversError) -> String {
+fn format_parse_error(source: &str, error: mdhavers::HaversError) -> String {
     let mut msg = format!("{}", error);
 
     if let Some(line) = error.line() {
@@ -1119,7 +1205,7 @@ fn format_parse_error(source: &str, error: error::HaversError) -> String {
     }
 
     // Add helpful suggestion if available
-    if let Some(suggestion) = error::get_error_suggestion(&error) {
+    if let Some(suggestion) = mdhavers::error::get_error_suggestion(&error) {
         msg.push('\n');
         msg.push_str(suggestion);
     }
@@ -1127,7 +1213,7 @@ fn format_parse_error(source: &str, error: error::HaversError) -> String {
     msg
 }
 
-fn format_runtime_error(source: &str, error: error::HaversError) -> String {
+fn format_runtime_error(source: &str, error: mdhavers::HaversError) -> String {
     let mut msg = format!("{}", error);
 
     if let Some(line) = error.line() {
@@ -1136,7 +1222,7 @@ fn format_runtime_error(source: &str, error: error::HaversError) -> String {
     }
 
     // Add helpful suggestion if available
-    if let Some(suggestion) = error::get_error_suggestion(&error) {
+    if let Some(suggestion) = mdhavers::error::get_error_suggestion(&error) {
         msg.push('\n');
         msg.push_str(suggestion);
     }

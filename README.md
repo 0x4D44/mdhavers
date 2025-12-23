@@ -21,7 +21,7 @@ cargo build --release
 node fizzbuzz.js
 
 # Compile to WebAssembly Text format
-./target/release/mdhavers compile examples/functions.braw --target wat
+./target/release/mdhavers wasm examples/functions.braw -o functions.wat
 
 # Try the web playground
 cd playground && ./build.sh && cd web && python3 -m http.server 8080
@@ -742,8 +742,8 @@ mdhavers compile program.braw
 mdhavers compile program.braw -o output.js
 
 # Compile to WebAssembly Text format (WAT)
-mdhavers compile program.braw --target wat
-mdhavers compile program.braw --target wat -o output.wat
+mdhavers wasm program.braw
+mdhavers wasm program.braw -o output.wat
 
 # Check for errors
 mdhavers check program.braw
@@ -817,7 +817,7 @@ Compile tae WAT fer high-performance execution:
 
 ```bash
 # Compile to WAT
-mdhavers compile maths.braw --target wat -o maths.wat
+mdhavers wasm maths.braw -o maths.wat
 
 # Convert WAT to WASM using wat2wasm (from wabt toolkit)
 wat2wasm maths.wat -o maths.wasm
@@ -1168,7 +1168,7 @@ mdhavers compile examples/fizzbuzz.braw -o fizzbuzz.js
 node fizzbuzz.js
 
 # Compile to WAT
-mdhavers compile examples/functions.braw --target wat -o functions.wat
+mdhavers wasm examples/functions.braw -o functions.wat
 ```
 
 Try it in the playground at `playground/web/` tae see live compilation!
@@ -1244,6 +1244,8 @@ For JavaScript/WASM, audio uses WebAudio and a small rustysynth WASM helper.
 You must host the following assets alongside your compiled output (or set overrides):
 - `assets/wasm/mdh_rustysynth.wasm`
 - `assets/soundfonts/MuseScore_General.sf2`
+
+See `assets/wasm/README.md` (rebuild the WASM helper) and `assets/soundfonts/README.md` (download the SoundFont).
 
 Optional overrides (set before running audio code):
 ```js

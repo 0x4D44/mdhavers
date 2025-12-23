@@ -1,0 +1,32 @@
+# srtp.braw - SRTP wrappers fer mdhavers
+# "Protect yer RTP packets."
+
+# Create SRTP context
+
+dae srtp_new(keys) {
+    gie srtp_create(keys)
+}
+
+# Create SRTP context from DTLS handshake keys
+
+dae srtp_from_dtls(keys, role = "client") {
+    ken cfg = {
+        "profile": keys["profile"],
+        "role": role,
+        "client_key": keys["client_key"],
+        "client_salt": keys["client_salt"],
+        "server_key": keys["server_key"],
+        "server_salt": keys["server_salt"]
+    }
+    gie srtp_create(cfg)
+}
+
+# Protect/unprotect RTP packets
+
+dae srtp_protect_o(ctx, packet) {
+    gie srtp_protect(ctx, packet)
+}
+
+dae srtp_unprotect_o(ctx, packet) {
+    gie srtp_unprotect(ctx, packet)
+}

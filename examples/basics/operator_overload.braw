@@ -1,0 +1,27 @@
+# operator_overload.braw - overload + and ==
+
+kin Vec2 {
+    dae init(x, y) {
+        masel.x = x
+        masel.y = y
+    }
+
+    dae __pit_thegither__(other) {
+        gie Vec2(masel.x + other.x, masel.y + other.y)
+    }
+
+    dae __same_as__(other) {
+        gie masel.x == other.x an masel.y == other.y
+    }
+
+    dae to_string() {
+        gie f"({masel.x}, {masel.y})"
+    }
+}
+
+ken a = Vec2(1, 2)
+ken b = Vec2(3, 4)
+ken c = a + b
+
+blether c.to_string()
+blether f"Equal to (4,6)? {c == Vec2(4, 6)}"

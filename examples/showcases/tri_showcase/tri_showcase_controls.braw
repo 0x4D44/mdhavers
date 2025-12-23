@@ -1,0 +1,76 @@
+# tri_showcase_controls.braw - interactive camera controls (get_key)
+# Build: cargo build --release --features graphics3d
+# Run:   ./target/release/mdhavers build examples/showcases/tri_showcase/tri_showcase_controls.braw -o tri_showcase_controls
+
+fetch "tri" tae tri
+
+ken sicht = tri.Sicht()
+ken kamera = tri.PerspectivKamera(75, 16/9, 0.1, 1000)
+ken renderar = tri.Renderar({"width": 800, "height": 600, "wireframe": nae})
+
+ken geom = tri.BoxGeometrie(1, 1, 1)
+ken mat = tri.MeshStandardMaiterial({"color": "#44aaff", "metalness": 0.1, "roughness": 0.6})
+ken mesch = tri.Mesch(geom, mat)
+
+ken amb = tri.AmbiantLicht("#404040", 0.8)
+ken sun = tri.DireksionalLicht("#ffffff", 0.9)
+sun.position.x = 2
+sun.position.y = 4
+sun.position.z = 3
+ken spot = tri.PyntLicht("#ffcc88", 1.0, 6, 2)
+spot.position.x = -2
+spot.position.y = 2
+spot.position.z = 2
+
+sicht.adde(mesch)
+sicht.adde(amb)
+sicht.adde(sun)
+sicht.adde(spot)
+kamera.position.z = 4
+kamera.luik_at(0, 0, 0)
+
+ken yaw = 0.0
+ken pitch = 0.0
+ken radius = 4.0
+ken frames = 0
+ken fps_last = noo()
+ken wire = nae
+
+whiles aye {
+    ken key = get_key()
+    gin key == "Left" { yaw = yaw - 0.08 }
+    gin key == "Right" { yaw = yaw + 0.08 }
+    gin key == "Up" { pitch = pitch + 0.06 }
+    gin key == "Down" { pitch = pitch - 0.06 }
+    gin key == "w" { radius = radius - 0.1 }
+    gin key == "s" { radius = radius + 0.1 }
+    gin key == "f" {
+        wire = nae wire
+        renderar.wireframe = wire
+    }
+
+    gin pitch > 1.3 { pitch = 1.3 }
+    gin pitch < -1.3 { pitch = -1.3 }
+    gin radius < 1.5 { radius = 1.5 }
+    gin radius > 10 { radius = 10 }
+
+    ken cx = radius * cos(yaw) * cos(pitch)
+    ken cy = radius * sin(pitch)
+    ken cz = radius * sin(yaw) * cos(pitch)
+    kamera.position.x = cx
+    kamera.position.y = cy
+    kamera.position.z = cz
+
+    mesch.rotation.y = mesch.rotation.y + 0.02
+    mesch.rotation.x = mesch.rotation.x + 0.01
+    spot.position.x = 2 * cos(yaw)
+    spot.position.z = 2 * sin(yaw)
+    renderar.render(sicht, kamera)
+    frames = frames + 1
+    gin noo() - fps_last >= 1000 {
+        blether f"FPS: {frames}"
+        frames = 0
+        fps_last = noo()
+    }
+    snooze(16)
+}

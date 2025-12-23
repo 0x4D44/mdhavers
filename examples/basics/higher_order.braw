@@ -1,0 +1,10 @@
+# higher_order.braw - lambdas and HOF builtins
+
+ken nums = [1, 2, 3, 4]
+ken doubled = gaun(nums, |x| x * 2)
+ken evens = sieve(doubled, |x| x % 4 == 0)
+ken sum = tumble(evens, 0, |a, b| a + b)
+
+blether f"doubled: {doubled}"
+blether f"evens: {evens}"
+blether f"sum: {sum}"

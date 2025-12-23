@@ -1,0 +1,27 @@
+# logging_basics.braw - logging with levels, handlers, and structured logs
+# Run: ./target/release/mdhavers examples/features/logging_basics.braw
+
+fetch "logging"
+
+ken logger = Logger("demo")
+logger.set_level(LOG_DEBUG)
+logger.timestamps(nae)
+logger.colors(aye)
+logger.scots_mode(aye)
+
+ken buffer = LogBuffer(5)
+logger.add_handler(|level, message, formatted| {
+    buffer.add(level, message, formatted)
+})
+
+logger.debug("Bootin' up")
+logger.info("Server startin' on port 8080")
+logger.warn("Cache miss rate is high")
+logger.error("Failed tae load wee_config.toml")
+
+blether f"Buffered entries: {buffer.count()}"
+blether buffer.recent(3)
+
+ken slog = StructuredLogger("demo")
+slog.with_context("app", "mdhavers")
+slog.info("request_received", {"path": "/status", "ms": 12})

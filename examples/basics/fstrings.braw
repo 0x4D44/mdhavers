@@ -1,0 +1,6 @@
+# fstrings.braw - formatted strings
+
+ken who = "Morag"
+ken count = 3
+blether f"Hullo {who}! Count = {count}"
+blether f"{who} has {count * 2} biscuits"

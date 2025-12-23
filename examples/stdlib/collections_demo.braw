@@ -1,0 +1,35 @@
+# collections_demo.braw - stdlib collections in action
+# Run: ./target/release/mdhavers examples/stdlib/collections_demo.braw
+
+fetch "collections"
+
+ken stack = Stack()
+stack.push("first")
+stack.push("second")
+blether f"stack pop = {stack.pop()}"
+blether f"stack size = {stack.size()}"
+
+ken queue = Queue()
+queue.enqueue("a")
+queue.enqueue("b")
+blether f"queue front = {queue.front()}"
+blether f"queue dequeue = {queue.dequeue()}"
+
+ken deque = Deque()
+deque.push_front(1)
+deque.push_back(2)
+blether f"deque front/back = {deque.front()}/{deque.back()}"
+
+ken set = HaversSet()
+set.add("apple")
+set.add("apple")
+set.add("pear")
+blether f"set contains apple? {set.contains(\"apple\")}"
+blether f"set size = {len(set.items)}"
+
+dae add_three(a, b, c) {
+    gie a + b + c
+}
+
+ken nums = [3, 4, 5]
+blether f"spread sum = {add_three(...nums)}"

@@ -14,10 +14,12 @@ make install-local
 ./installer/install.sh --local
 ```
 
-### From Release (Future)
+### From Release
+
+Remote (release) installation is not yet implemented in this repo. For now, install from a local build:
 
 ```bash
-curl -sSf https://raw.githubusercontent.com/.../install.sh | sh
+make install-local
 ```
 
 ## Installation Details

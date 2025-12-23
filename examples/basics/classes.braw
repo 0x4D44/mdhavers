@@ -1,0 +1,14 @@
+# classes.braw - simple class
+
+kin Dug {
+    dae init(name) {
+        masel.name = name
+    }
+
+    dae speak() {
+        blether masel.name + " says: woof!"
+    }
+}
+
+ken dug = Dug("Rex")
+dug.speak()

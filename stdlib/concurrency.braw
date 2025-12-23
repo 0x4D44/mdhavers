@@ -1,0 +1,104 @@
+# concurrency.braw - Threading + sync wrappers fer mdhavers
+# "Keep yer threads braw an' tidy."
+
+# Threads
+
+dae spawn_thread(fn, args = []) {
+    gie thread_spawn(fn, args)
+}
+
+dae join_thread(handle) {
+    gie thread_join(handle)
+}
+
+dae detach_thread(handle) {
+    gie thread_detach(handle)
+}
+
+# Mutex
+
+dae make_mutex() {
+    gie mutex_new()
+}
+
+dae lock_mutex(mutex) {
+    gie mutex_lock(mutex)
+}
+
+dae unlock_mutex(mutex) {
+    gie mutex_unlock(mutex)
+}
+
+dae try_lock_mutex(mutex) {
+    gie mutex_try_lock(mutex)
+}
+
+# Condvar
+
+dae make_condvar() {
+    gie condvar_new()
+}
+
+dae cond_wait(condvar, mutex) {
+    gie condvar_wait(condvar, mutex)
+}
+
+dae cond_timed_wait(condvar, mutex, timeout_ms) {
+    gie condvar_timed_wait(condvar, mutex, timeout_ms)
+}
+
+dae cond_signal(condvar) {
+    gie condvar_signal(condvar)
+}
+
+dae cond_broadcast(condvar) {
+    gie condvar_broadcast(condvar)
+}
+
+# Atomics
+
+dae make_atomic(val) {
+    gie atomic_new(val)
+}
+
+dae atomic_get(a) {
+    gie atomic_load(a)
+}
+
+dae atomic_set(a, val) {
+    gie atomic_store(a, val)
+}
+
+dae atomic_add_o(a, delta) {
+    gie atomic_add(a, delta)
+}
+
+dae atomic_cas_o(a, expected, desired) {
+    gie atomic_cas(a, expected, desired)
+}
+
+# Channels
+
+dae make_chan(capacity = 0) {
+    gie chan_new(capacity)
+}
+
+dae chan_send_o(ch, val) {
+    gie chan_send(ch, val)
+}
+
+dae chan_recv_o(ch) {
+    gie chan_recv(ch)
+}
+
+dae chan_try_recv_o(ch) {
+    gie chan_try_recv(ch)
+}
+
+dae chan_close_o(ch) {
+    gie chan_close(ch)
+}
+
+dae chan_closed(ch) {
+    gie chan_is_closed(ch)
+}

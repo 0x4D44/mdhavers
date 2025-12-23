@@ -1,0 +1,75 @@
+# sip_rtp_echo.braw - Minimal SIP + RTP loopback demo
+# "A wee SIP responder and RTP echo."
+
+fetch "stdlib/network_real"
+fetch "stdlib/event_loop"
+fetch "stdlib/sip"
+fetch "stdlib/rtp"
+fetch "stdlib/bytes"
+
+ken SIP_PORT = 5062
+ken RTP_PORT = 4000
+
+ken sip_sock = udp_socket()
+ken rtp_sock = udp_socket()
+
+gin sip_sock["ok"] an rtp_sock["ok"] {
+    ken sip_fd = sip_sock["value"]
+    ken rtp_fd = rtp_sock["value"]
+
+    set_reuseaddr(sip_fd, aye)
+    set_reuseaddr(rtp_fd, aye)
+
+    ken sb = bind_socket(sip_fd, "0.0.0.0", SIP_PORT)
+    ken rb = bind_socket(rtp_fd, "0.0.0.0", RTP_PORT)
+
+    gin sb["ok"] an rb["ok"] {
+        blether f"SIP listening on {SIP_PORT}"
+        blether f"RTP listening on {RTP_PORT}"
+
+        ken loop = make_event_loop()
+
+        dae handle_sip(ev) {
+            ken res = udp_recv(sip_fd, 4096)
+            gin res["ok"] {
+                ken buf = res["value"]["buf"]
+                ken addr = res["value"]["addr"]
+                ken msg = bytes_to_string(buf)
+                ken parsed = sip_parse_message(msg)
+                gin parsed["type"] == "request" {
+                    blether f"SIP request: {parsed[\"method\"]} {parsed[\"uri\"]}"
+                    ken hdrs = parsed["headers"]
+                    ken resp_headers = {
+                        "Via": dict_get(hdrs, "via", ""),
+                        "From": dict_get(hdrs, "from", ""),
+                        "To": dict_get(hdrs, "to", ""),
+                        "Call-ID": dict_get(hdrs, "call-id", ""),
+                        "CSeq": dict_get(hdrs, "cseq", ""),
+                        "Content-Length": "0"
+                    }
+                    ken resp = sip_build_response_bytes(200, "OK", resp_headers, "")
+                    udp_send(sip_fd, resp, addr["host"], addr["port"])
+                }
+            }
+        }
+
+        dae handle_rtp(ev) {
+            ken res = udp_recv(rtp_fd, 2048)
+            gin res["ok"] {
+                ken buf = res["value"]["buf"]
+                ken addr = res["value"]["addr"]
+                ken info = rtp_parse(buf)
+                gin info["ok"] {
+                    blether f"RTP seq={info[\"seq\"]} ts={info[\"timestamp\"]} ssrc={info[\"ssrc\"]}"
+                }
+                # Echo packet back
+                udp_send(rtp_fd, buf, addr["host"], addr["port"])
+            }
+        }
+
+        watch_read(loop, sip_fd, handle_sip)
+        watch_read(loop, rtp_fd, handle_rtp)
+
+        event_loop_run(loop, 1000)
+    }
+}

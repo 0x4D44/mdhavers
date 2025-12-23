@@ -1,0 +1,19 @@
+# spread.braw - spread operator and destructuring
+# Run: ./target/release/mdhavers examples/basics/spread.braw
+
+dae add_three(a, b, c) {
+    gie a + b + c
+}
+
+ken nums = [10, 20, 30]
+ken total = add_three(...nums)
+blether f"add_three(...nums) = {total}"
+
+ken more = [1, 2, ...nums, 99]
+blether f"spread list = {more}"
+
+ken [first, second, ...rest] = more
+blether f"first={first}, second={second}, rest={rest}"
+
+ken [_, last, ...tail] = [100, 200, 300, 400]
+blether f"last={last}, tail={tail}"

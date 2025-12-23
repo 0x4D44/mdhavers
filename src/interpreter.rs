@@ -10162,7 +10162,9 @@ impl Interpreter {
                     let obj = self.evaluate(object)?;
                     if let Value::NativeObject(native) = &obj {
                         let args = self.evaluate_call_args(arguments, span.line)?;
-                        return native.call(property, args);
+                        return native
+                            .call(property, args)
+                            .map_err(|err| err.with_line_if_zero(span.line));
                     }
                     if let Value::Instance(inst) = &obj {
                         // It's a method call - get the method and bind 'masel'
@@ -10208,7 +10210,9 @@ impl Interpreter {
             } => {
                 let obj = self.evaluate(object)?;
                 match obj {
-                    Value::NativeObject(native) => native.get(property),
+                    Value::NativeObject(native) => native
+                        .get(property)
+                        .map_err(|err| err.with_line_if_zero(span.line)),
                     Value::Instance(inst) => inst
                         .borrow()
                         .get(property)
@@ -10244,7 +10248,9 @@ impl Interpreter {
                 let obj = self.evaluate(object)?;
                 let val = self.evaluate(value)?;
                 match obj {
-                    Value::NativeObject(native) => native.set(property, val),
+                    Value::NativeObject(native) => native
+                        .set(property, val)
+                        .map_err(|err| err.with_line_if_zero(span.line)),
                     Value::Instance(inst) => {
                         inst.borrow_mut().set(property.clone(), val.clone());
                         Ok(val)

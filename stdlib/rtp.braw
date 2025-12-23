@@ -1,0 +1,107 @@
+# rtp.braw - RTP helpers for mdhavers
+# "Packet up yer audio."
+
+# Build a basic RTP header (no extensions, no padding).
+
+dae rtp_header(seq, timestamp, ssrc, payload_type = 0, marker = 0, csrcs = []) {
+    ken cc = len(csrcs)
+    gin cc > 15 { cc = 15 }
+    ken header_len = 12 + (cc * 4)
+    ken b = bytes(header_len)
+
+    ken b0 = 128 + cc
+    ken m = marker % 2
+    ken pt = payload_type % 128
+    ken b1 = (m * 128) + pt
+
+    bytes_set(b, 0, b0)
+    bytes_set(b, 1, b1)
+    bytes_write_u16be(b, 2, seq)
+    bytes_write_u32be(b, 4, timestamp)
+    bytes_write_u32be(b, 8, ssrc)
+
+    ken i = 0
+    whiles i < cc {
+        bytes_write_u32be(b, 12 + (i * 4), csrcs[i])
+        i = i + 1
+    }
+
+    gie b
+}
+
+# Build a full RTP packet (header + payload).
+
+dae rtp_packet(payload, seq, timestamp, ssrc, payload_type = 0, marker = 0, csrcs = []) {
+    ken header = rtp_header(seq, timestamp, ssrc, payload_type, marker, csrcs)
+    ken body = payload
+    gin whit_kind(body) != "bytes" {
+        body = bytes_from_string(tae_string(payload))
+    }
+    gie bytes_append(header, body)
+}
+
+# Parse an RTP packet into a dict.
+
+dae rtp_parse(packet) {
+    ken b = packet
+    gin whit_kind(b) != "bytes" {
+        b = bytes_from_string(tae_string(packet))
+    }
+    ken n = bytes_len(b)
+    gin n < 12 {
+        gie {"ok": nae, "error": "rtp packet too short", "len": n}
+    }
+
+    ken b0 = bytes_get(b, 0)
+    ken b1 = bytes_get(b, 1)
+
+    ken version = floor(b0 / 64)
+    ken padding = floor((b0 % 64) / 32)
+    ken extension = floor((b0 % 32) / 16)
+    ken csrc_count = b0 % 16
+
+    ken marker = floor(b1 / 128)
+    ken payload_type = b1 % 128
+
+    ken seq = bytes_read_u16be(b, 2)
+    ken timestamp = bytes_read_u32be(b, 4)
+    ken ssrc = bytes_read_u32be(b, 8)
+
+    ken header_len = 12 + (csrc_count * 4)
+    gin n < header_len {
+        gie {"ok": nae, "error": "rtp header too short", "len": n}
+    }
+
+    ken csrcs = []
+    ken i = 0
+    whiles i < csrc_count {
+        shove(csrcs, bytes_read_u32be(b, 12 + (i * 4)))
+        i = i + 1
+    }
+
+    ken payload = bytes_slice(b, header_len, n)
+
+    gie {
+        "ok": aye,
+        "version": version,
+        "padding": padding == 1,
+        "extension": extension == 1,
+        "csrc_count": csrc_count,
+        "marker": marker == 1,
+        "payload_type": payload_type,
+        "seq": seq,
+        "timestamp": timestamp,
+        "ssrc": ssrc,
+        "header_len": header_len,
+        "csrcs": csrcs,
+        "payload": payload
+    }
+}
+
+# Sequence helper (wrap at 65535).
+
+dae rtp_seq_next(seq) {
+    ken n = seq + 1
+    gin n > 65535 { n = 0 }
+    gie n
+}

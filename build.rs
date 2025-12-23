@@ -19,6 +19,7 @@ fn main() {
     println!("cargo:rerun-if-changed=runtime/mdh_runtime.h");
     println!("cargo:rerun-if-changed=runtime/gc_stub.c");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/Cargo.toml");
+    println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/Cargo.lock");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/lib.rs");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/audio.rs");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/tri_runtime.rs");
@@ -73,6 +74,9 @@ fn main() {
         "--target".to_string(),
         target.clone(),
     ];
+    let runtime_target_dir = out_dir.join("mdh_runtime_rs_target");
+    cargo_args.push("--target-dir".to_string());
+    cargo_args.push(runtime_target_dir.to_string_lossy().to_string());
     let mut features = Vec::new();
     if env::var("CARGO_FEATURE_AUDIO").is_ok() {
         features.push("audio");
@@ -84,11 +88,19 @@ fn main() {
         cargo_args.push("--features".to_string());
         cargo_args.push(features.join(","));
     }
-    if profile == "release" {
-        cargo_args.push("--release".to_string());
+    match profile.as_str() {
+        "debug" => {}
+        "release" => {
+            cargo_args.push("--release".to_string());
+        }
+        other => {
+            cargo_args.push("--profile".to_string());
+            cargo_args.push(other.to_string());
+        }
     }
 
-    let status = Command::new("cargo")
+    let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let status = Command::new(cargo)
         .args(&cargo_args)
         .status()
         .expect("Failed to run cargo for mdh_runtime_rs");
@@ -98,11 +110,8 @@ fn main() {
     }
 
     let lib_name = "libmdh_runtime_rs.a";
-    let built_lib = format!(
-        "runtime/mdh_runtime_rs/target/{}/{}/{}",
-        target, profile, lib_name
-    );
+    let built_lib = runtime_target_dir.join(target).join(profile).join(lib_name);
     let out_path = out_dir.join("mdh_runtime_rs.a");
     fs::copy(&built_lib, out_path)
-        .unwrap_or_else(|e| panic!("Failed to copy {}: {}", built_lib, e));
+        .unwrap_or_else(|e| panic!("Failed to copy {}: {}", built_lib.display(), e));
 }

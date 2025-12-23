@@ -1,0 +1,17 @@
+# file_io.braw - basic file operations
+
+ken dir = "/tmp/mdhavers_demo"
+make_dir(dir)
+
+ken path = dir + "/notes.txt"
+
+scrieve(path, "First line\n")
+append_file(path, "Second line\n")
+
+blether f"Exists? {file_exists(path)}"
+blether f"Size: {file_size(path)} bytes"
+blether read_file(path)
+blether read_lines(path)
+
+blether f"Is dir? {is_dir(dir)}"
+blether list_dir(dir)
