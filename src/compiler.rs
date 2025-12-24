@@ -1814,6 +1814,106 @@ kin Animal {
         assert!(result.contains("true ? 1 : 0"));
     }
 
+    #[test]
+    fn test_more_stmt_and_expr_variants_for_coverage() {
+        let result = compile(
+            r#"
+log_blether 1.5
+log_holler naething
+log_roar "err", 1 <= 2, 10 - 3
+log_mutter "debug"
+log_whisper "trace"
+hurl "boom"
+
+ken y = 10 / 2
+ken z = 10 % 3
+ken eq = 1 == 1
+ken neq = 1 != 2
+ken ge = 2 >= 1
+
+Point(1, 2)
+
+ken xs = [1, 2, 3, 4, 5, 6]
+xs[1:5:2]
+xs[:2]
+
+ken s = f"a`b$c"
+
+ken bx = {
+    ken t = 1
+    gie t
+}
+
+keek 1 {
+    whan 1 -> { blether "one" }
+    whan _ -> blether "other"
+}
+"#,
+        )
+        .unwrap();
+
+        assert!(result.contains("log_event(\"blether\""));
+        assert!(result.contains("log_event(\"roar\""));
+        assert!(result.contains("throw new Error("));
+        assert!(result.contains("new Point"));
+        assert!(result.contains("__havers.slice("));
+        assert!(result.contains(".slice(0, 2)"));
+        assert!(result.contains("`a\\`b\\$c`"));
+        assert!(result.contains("(() => {"));
+    }
+
+    #[test]
+    fn test_compile_log_wheesht_from_ast_for_coverage() {
+        use crate::ast::{Expr, Literal, LogLevel, Program, Span, Stmt};
+
+        let span = Span::new(1, 1);
+        let stmt = Stmt::Log {
+            level: LogLevel::Wheesht,
+            message: Expr::Literal {
+                value: Literal::String("silent".to_string()),
+                span,
+            },
+            extras: vec![],
+            span,
+        };
+
+        let program = Program::new(vec![stmt]);
+        let mut compiler = Compiler::new();
+        let js = compiler.compile(&program).unwrap();
+
+        assert!(!js.contains("log_event(\"wheesht\""));
+    }
+
+    #[test]
+    fn test_compile_stmt_inline_non_block_body_for_coverage() {
+        use crate::ast::{Expr, Literal, Program, Span, Stmt};
+
+        let span = Span::new(1, 1);
+        let then_branch = Stmt::Print {
+            value: Expr::Literal {
+                value: Literal::String("hi".to_string()),
+                span,
+            },
+            span,
+        };
+        let stmt = Stmt::If {
+            condition: Expr::Literal {
+                value: Literal::Bool(true),
+                span,
+            },
+            then_branch: Box::new(then_branch),
+            else_branch: None,
+            span,
+        };
+
+        let program = Program::new(vec![stmt]);
+        let mut compiler = Compiler::new();
+        let js = compiler.compile(&program).unwrap();
+
+        assert!(js.contains("if (true)"));
+        assert!(js.contains("blether(\"hi\")"));
+    }
+
     // ==================== String Escaping Tests ====================
 
     #[test]

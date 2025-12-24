@@ -20,6 +20,28 @@ blether chan_recv(ch)
 }
 
 #[test]
+fn interpreter_atomic_store_float_cas_and_channel_capacity_for_coverage() {
+    let code = r#"
+ken a = atomic_new(0)
+atomic_store(a, 1.5)
+blether atomic_load(a)
+blether atomic_cas(a, 1.0, 2.0)
+blether atomic_load(a)
+blether atomic_cas(a, 1.0, 3.0)
+
+ken ch = chan_new(1)
+blether chan_send(ch, 1)
+blether chan_send(ch, 2)
+"#;
+
+    let program = parse(code).unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert_eq!(out.trim(), "1\naye\n2\nnae\naye\nnae");
+}
+
+#[test]
 fn interpreter_thread_spawn_and_join() {
     let code = r#"
 ken h = thread_spawn(len, [[1, 2, 3]])

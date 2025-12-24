@@ -231,9 +231,7 @@ impl LLVMCompiler {
                 RelocMode::PIC, // Use PIC for PIE executables
                 CodeModel::Default,
             )
-            .ok_or_else(|| {
-                HaversError::CompileError("Failed to create target machine".to_string())
-            })?;
+            .ok_or_else(|| HaversError::CompileError("Failed to create target machine".to_string()))?;
 
         if let Some(status) = status.as_mut() {
             if matches!(self.opt_level, OptimizationLevel::None) {
@@ -374,8 +372,10 @@ impl LLVMCompiler {
             )));
         }
 
+        let opt_level = self.opt_level;
+
         // Skip optimization if level is None
-        if matches!(self.opt_level, OptimizationLevel::None) {
+        if matches!(opt_level, OptimizationLevel::None) {
             return Ok(());
         }
 
@@ -383,36 +383,33 @@ impl LLVMCompiler {
         let fpm: PassManager<inkwell::values::FunctionValue> = PassManager::create(module);
 
         // Add passes based on optimization level
-        match self.opt_level {
-            OptimizationLevel::Less => {
-                // -O1: Basic optimizations
-                fpm.add_instruction_combining_pass();
-                fpm.add_reassociate_pass();
-                fpm.add_gvn_pass();
-                fpm.add_cfg_simplification_pass();
-                fpm.add_basic_alias_analysis_pass();
-                fpm.add_promote_memory_to_register_pass();
-            }
-            OptimizationLevel::Default => {
-                // -O2: Standard optimizations
-                fpm.add_instruction_combining_pass();
-                fpm.add_reassociate_pass();
-                fpm.add_gvn_pass();
-                fpm.add_cfg_simplification_pass();
-                fpm.add_basic_alias_analysis_pass();
-                fpm.add_promote_memory_to_register_pass();
-                fpm.add_instruction_combining_pass();
-                fpm.add_tail_call_elimination_pass();
-                fpm.add_dead_store_elimination_pass();
-                fpm.add_loop_unroll_pass();
-                fpm.add_licm_pass();
-            }
-            OptimizationLevel::Aggressive => {
-                // -O3: Aggressive optimizations
-                fpm.add_instruction_combining_pass();
-                fpm.add_reassociate_pass();
-                fpm.add_gvn_pass();
-                fpm.add_cfg_simplification_pass();
+        if matches!(opt_level, OptimizationLevel::Less) {
+            // -O1: Basic optimizations
+            fpm.add_instruction_combining_pass();
+            fpm.add_reassociate_pass();
+            fpm.add_gvn_pass();
+            fpm.add_cfg_simplification_pass();
+            fpm.add_basic_alias_analysis_pass();
+            fpm.add_promote_memory_to_register_pass();
+        } else if matches!(opt_level, OptimizationLevel::Default) {
+            // -O2: Standard optimizations
+            fpm.add_instruction_combining_pass();
+            fpm.add_reassociate_pass();
+            fpm.add_gvn_pass();
+            fpm.add_cfg_simplification_pass();
+            fpm.add_basic_alias_analysis_pass();
+            fpm.add_promote_memory_to_register_pass();
+            fpm.add_instruction_combining_pass();
+            fpm.add_tail_call_elimination_pass();
+            fpm.add_dead_store_elimination_pass();
+            fpm.add_loop_unroll_pass();
+            fpm.add_licm_pass();
+        } else if matches!(opt_level, OptimizationLevel::Aggressive) {
+            // -O3: Aggressive optimizations
+            fpm.add_instruction_combining_pass();
+            fpm.add_reassociate_pass();
+            fpm.add_gvn_pass();
+            fpm.add_cfg_simplification_pass();
                 fpm.add_basic_alias_analysis_pass();
                 fpm.add_promote_memory_to_register_pass();
                 fpm.add_instruction_combining_pass();
@@ -423,11 +420,9 @@ impl LLVMCompiler {
                 fpm.add_aggressive_dce_pass();
                 fpm.add_scalarizer_pass();
                 fpm.add_merged_load_store_motion_pass();
-                fpm.add_ind_var_simplify_pass();
-                fpm.add_loop_vectorize_pass();
-                fpm.add_slp_vectorize_pass();
-            }
-            OptimizationLevel::None => {}
+            fpm.add_ind_var_simplify_pass();
+            fpm.add_loop_vectorize_pass();
+            fpm.add_slp_vectorize_pass();
         }
 
         fpm.initialize();

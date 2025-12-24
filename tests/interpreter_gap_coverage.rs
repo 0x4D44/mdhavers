@@ -208,6 +208,37 @@ fn interpreter_builtin_edges_and_errors_smoke() {
         ("set_log_level(4)", true),
         ("set_log_level(5)", true),
         ("set_log_level(99)", false),
+        // structured logging natives
+        ("log_enabled(\"blether\")", true),
+        ("log_enabled(\"blether\", \"\")", true),
+        ("log_enabled()", false),
+        ("log_enabled(\"blether\", \"\", \"extra\")", false),
+        ("log_enabled(\"blether\", 1)", false),
+        ("log_event(\"blether\")", false),
+        ("log_event(\"blether\", \"hi\")", true),
+        ("log_event(\"blether\", \"hi\", 1)", false),
+        ("log_event(\"blether\", \"hi\", {\"a\": 1}, 1)", false),
+        ("log_event(\"blether\", \"hi\", {1: 2})", false),
+        ("log_set_filter(1)", false),
+        ("log_set_filter(\"mutter\")", true),
+        ("log_init(1)", false),
+        ("log_init({\"level\": 1})", true),
+        ("log_init({\"level\": 4})", true),
+        ("log_init({\"filter\": 1})", false),
+        ("log_init({\"filter\": \"mutter\"})", true),
+        ("log_init({\"format\": 1})", false),
+        ("log_init({\"format\": \"nae\"})", false),
+        ("log_init({\"color\": 1})", false),
+        ("log_init({\"timestamps\": 1})", false),
+        ("log_init({\"sinks\": 1})", false),
+        ("log_init({\"sinks\": [1]})", false),
+        ("log_init({\"sinks\": [{\"kind\": 1}]})", false),
+        ("log_init({\"sinks\": [{\"kind\": \"callback\"}]})", false),
+        // defaults: file.append and memory.max
+        ("log_init({\"sinks\": [{\"kind\": \"file\", \"path\": \"mdh_test.log\"}]})", true),
+        ("log_init({\"sinks\": [{\"kind\": \"memory\"}]})", true),
+        // reset logger back to defaults (config omitted)
+        ("log_init()", true),
         // stacktrace builtin: empty + non-empty path
         ("stacktrace()", true),
         (
@@ -247,6 +278,20 @@ f()
         ("json_pretty({\"a\": 1})", true),
         ("json_stringify_pretty({\"a\": 1})", true),
         ("json_parse(123)", false),
+        // atomics/channels: type errors and edge cases
+        ("atomic_store(atomic_new(1), \"x\")", false),
+        ("atomic_add(atomic_new(1), \"x\")", false),
+        ("atomic_cas(atomic_new(1), \"x\", 2)", false),
+        ("atomic_cas(atomic_new(1), 1, \"x\")", false),
+        ("chan_new(-1)", false),
+        (
+            r#"
+ken ch = chan_new(0)
+chan_close(ch)
+chan_send(ch, 1)
+"#,
+            true,
+        ),
         // sets/creels
         ("creel([1, 1, 2, 3])", true),
         ("toss_in(empty_creel(), 1)", true),
@@ -351,8 +396,10 @@ d["1"]
         ("clype(aye)", true),
         ("clype(naething)", true),
         ("clype(1..3)", true),
+        ("clype(bytes_from_string(\"hi\"))", true),
         ("stooshie(\"abcd\")", true),
         ("stooshie(123)", false),
+        ("blether_format(\"hi {1}\", {1: \"x\"})", true),
         // randomness (non-deterministic values; just cover branches)
         ("random()", true),
         ("random_int(0, 0)", true),
@@ -365,9 +412,19 @@ d["1"]
         ("braw_date(0)", true),
         ("braw_date(86400)", true),
         ("braw_date(172800)", true),
+        ("braw_date(259200)", true),
         ("braw_date(63072000)", true),
         ("braw_date(naething)", true),
         ("braw_date(\"no\")", false),
+        // interpreter module resolution: lib/ prefix and absolute path error branch
+        (
+            r#"
+fetch "lib/colors" tae c
+c["FG_RED"]
+"#,
+            true,
+        ),
+        (r#"fetch "/definitely/not/a/real/module/path""#, false),
         // date/time helpers (stdlib expansion)
         ("date_now()", true),
         ("date_format(0, \"%Y-%m-%d\")", true),

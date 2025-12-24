@@ -642,6 +642,14 @@ mod tests {
         assert_eq!(formatter.config.indent_size, 2);
     }
 
+    #[test]
+    fn test_formatter_default_formats_empty_program_for_coverage() {
+        let program = parse("").unwrap();
+        let mut formatter = Formatter::default();
+        let result = formatter.format(&program);
+        assert_eq!(result, "\n");
+    }
+
     // ==================== Variable Declaration Tests ====================
 
     #[test]
@@ -864,6 +872,50 @@ kin B { dae bar() { gie 2 } }"#;
         assert!(result.contains("gin_it_gangs_wrang e {"));
     }
 
+    #[test]
+    fn test_format_log_and_hurl_statements_for_coverage() {
+        let source = r#"
+log_roar "err", 1, 2
+log_holler "warn"
+log_blether "info"
+log_mutter "debug"
+log_whisper "trace"
+hurl "boom"
+"#;
+        let program = parse(source).unwrap();
+        let mut formatter = Formatter::new();
+        let result = formatter.format(&program);
+
+        assert!(result.contains("log_roar \"err\", 1, 2"));
+        assert!(result.contains("log_holler \"warn\""));
+        assert!(result.contains("log_blether \"info\""));
+        assert!(result.contains("log_mutter \"debug\""));
+        assert!(result.contains("log_whisper \"trace\""));
+        assert!(result.contains("hurl \"boom\""));
+    }
+
+    #[test]
+    fn test_format_log_wheesht_from_ast_for_coverage() {
+        use crate::ast::{Expr, Literal, LogLevel, Program, Span, Stmt};
+
+        let span = Span::new(1, 1);
+        let stmt = Stmt::Log {
+            level: LogLevel::Wheesht,
+            message: Expr::Literal {
+                value: Literal::String("silent".to_string()),
+                span,
+            },
+            extras: vec![],
+            span,
+        };
+
+        let program = Program::new(vec![stmt]);
+        let mut formatter = Formatter::new();
+        let result = formatter.format(&program);
+
+        assert!(result.contains("log_wheesht \"silent\""));
+    }
+
     // ==================== Match Statement Tests ====================
 
     #[test]
@@ -892,6 +944,18 @@ kin B { dae bar() { gie 2 } }"#;
         let mut formatter = Formatter::new();
         let result = formatter.format(&program);
         assert!(result.contains("whan 1..10 ->"));
+    }
+
+    #[test]
+    fn test_format_match_identifier_pattern_for_coverage() {
+        let source = r#"keek x {
+            whan y -> blether y
+        }"#;
+        let program = parse(source).unwrap();
+        let mut formatter = Formatter::new();
+        let result = formatter.format(&program);
+        assert!(result.contains("whan y ->"));
+        assert!(result.contains("blether y"));
     }
 
     // ==================== Assert Tests ====================
@@ -1167,6 +1231,33 @@ kin B { dae bar() { gie 2 } }"#;
         let mut formatter = Formatter::new();
         let result = formatter.format(&program);
         assert!(result.contains("gin x > 0 than \"positive\" ither \"non-positive\""));
+    }
+
+    #[test]
+    fn test_format_block_expr_for_coverage() {
+        let source = r#"
+ken x = {
+    ken a = 1
+    ken b
+    brak
+    haud
+    gie 5
+    gin aye { blether "x" }
+    a
+}
+"#;
+        let program = parse(source).unwrap();
+        let mut formatter = Formatter::new();
+        let result = formatter.format(&program);
+
+        assert!(result.contains("ken x = {"));
+        assert!(result.contains("ken a = 1"));
+        assert!(result.contains("ken b"));
+        assert!(result.contains("brak"));
+        assert!(result.contains("haud"));
+        assert!(result.contains("gie 5"));
+        assert!(result.contains("..."));
+        assert!(result.contains("\n    a\n"));
     }
 
     // ==================== Block Statement Tests ====================

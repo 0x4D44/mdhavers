@@ -30,6 +30,95 @@ fn allocate_port() -> u16 {
 }
 
 #[test]
+fn interpreter_dtls_unknown_srtp_profile_string_falls_back_to_default_for_coverage() {
+    let program = parse(
+        r#"
+ken d = dtls_server_new({"srtp_profiles": ["NOPE"]})
+blether d["ok"]
+"#,
+    )
+    .unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert_eq!(out.trim(), "aye");
+}
+
+#[test]
+fn interpreter_dtls_ignores_non_string_srtp_profiles_items_for_coverage() {
+    let program = parse(
+        r#"
+ken d = dtls_server_new({"srtp_profiles": [1, "SRTP_AES128_CM_SHA1_80"]})
+blether d["ok"]
+"#,
+    )
+    .unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert_eq!(out.trim(), "aye");
+}
+
+#[test]
+fn interpreter_dtls_requires_remote_host_or_connected_socket() {
+    let (cert_pem, key_pem) = generate_cert();
+    let cert_escaped = escape_for_braw(&cert_pem);
+    let key_escaped = escape_for_braw(&key_pem);
+
+    let code = format!(
+        r#"
+ken result = "nope"
+ken s = socket_udp()
+
+gin s["ok"] {{
+    ken sock = s["value"]
+    socket_set_reuseaddr(sock, aye)
+    ken b = socket_bind(sock, "127.0.0.1", 0)
+    gin b["ok"] {{
+        ken cfg = {{
+            "mode": "server",
+            "server_name": "",
+            "cert_pem": "{cert_escaped}",
+            "key_pem": "{key_escaped}",
+            "insecure": aye
+        }}
+        ken d = dtls_server_new(cfg)
+        gin d["ok"] {{
+            ken hs = dtls_handshake(d["value"], sock)
+            gin nae hs["ok"] {{
+                result = hs["error"]
+            }}
+        }}
+    }}
+    socket_close(sock)
+}}
+
+blether result
+"#
+    );
+
+    let program = parse(&code).unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert!(
+        out.contains("dtls_handshake requires remote_host/remote_port"),
+        "unexpected output: {out}"
+    );
+}
+
+#[test]
+fn interpreter_dtls_server_new_rejects_non_dict_config() {
+    let program = parse("dtls_server_new(1)").unwrap();
+    let mut interp = Interpreter::new();
+    let err = interp
+        .interpret(&program)
+        .expect_err("expected dtls_server_new type error");
+    let s = format!("{err:?}");
+    assert!(s.contains("dtls_server_new"), "unexpected error: {s}");
+}
+
+#[test]
 fn interpreter_dtls_handshake_keys() {
     let (cert_pem, key_pem) = generate_cert();
     let cert_escaped = escape_for_braw(&cert_pem);

@@ -37,6 +37,15 @@ blether u
 "#,
         // Empty f-string should compile (exercises empty-parts fast path).
         "blether f\"\"",
+        // String comparisons should bypass string-concat fast path (string-typed non-Add branch).
+        r#"
+blether "a" == "b"
+blether "a" != "b"
+"#,
+        // Integer fast path should fall back to boxed loads for unary operands.
+        r#"
+blether -1 + -2
+"#,
         // Boxed capture: nested function mutates captured local.
         r#"
 dae outer() {
@@ -230,6 +239,34 @@ dae f() {
 }
 f()
 "#,
+        // Int division should use compile_int_expr i64 fast path.
+        r#"
+dae f() {
+    ken q = 10 / 2
+    blether q
+}
+f()
+"#,
+        // compile_int_expr should fall back when used on a non-int binary op inside an int-shadow assignment.
+        r#"
+dae f() {
+    ken x = 0
+    whiles x < 1 {
+        x = 1 < 2
+        brak
+    }
+}
+f()
+"#,
+        // String concat fast path should handle a non-literal/non-variable right side (strlen branch).
+        r#"
+dae f() {
+    ken a = "hi"
+    ken b = "!"
+    blether a + ("a" + b)
+}
+f()
+"#,
         // Return without value should compile to nil.
         r#"
 dae f() {
@@ -270,8 +307,120 @@ dae inner() {
 }
 inner()
 
-blether t["blank"]()
-blether bytes_mod["make_bytes"](1)
+	blether t["blank"]()
+	blether bytes_mod["make_bytes"](1)
+	"#,
+        // Import alias module-function call sugar should compile (covers direct alias.method() call path).
+        r#"
+fetch "tui" tae t
+blether t.blank()
+"#,
+        // Destructure ignore + match identifier pattern inside a function (covers predeclare-local paths).
+        r#"
+dae f(v) {
+    ken [_, second, _] = ["skip", "take", "skip"]
+    keek v {
+        whan x -> { blether x }
+    }
+    blether second
+}
+f(1)
+"#,
+        // Log statement extras in a nested function (covers free-var analysis over log extras).
+        r#"
+dae outer() {
+    ken x = 1
+    dae inner() {
+        log_blether "hi", x, x + 1
+        gie x
+    }
+    inner()
+}
+outer()
+"#,
+        // Boxed string length init should use runtime strlen (non-literal initializer).
+        r#"
+dae f() {
+    ken a = "hi"
+    ken b = "there"
+    ken c = a + b
+    blether c
+}
+f()
+"#,
+        // Standalone block expression should compile (covers compile_block_expr).
+        r#"
+blether {
+    ken x = 1
+}
+"#,
+        // Dict index assignment on a variable should compile (covers dict_set store-back).
+        r#"
+ken d = {"a": 1}
+d["a"] = 2
+blether d["a"]
+"#,
+        // Property assignment on an import alias should drop alias-tracking metadata.
+        r#"
+fetch "bytes" tae b
+b.x = 2
+blether b["x"]
+"#,
+        // Index assignment on an import alias should drop alias-tracking metadata.
+        r#"
+fetch "bytes" tae b
+b["x"] = 1
+blether b["x"]
+"#,
+        // Global update branches: predefined globals live only in `globals`, not `variables`.
+        r#"
+toss_in(__current_suite, 1)
+heave_oot(__current_suite, 1)
+__current_suite.x = 1
+"#,
+        // Calling a lambda stored in a variable should compile (covers variable-as-function call).
+        r#"
+ken f = |x| x + 1
+blether f(1)
+"#,
+        // Builtin/exclamation compilation paths.
+        r#"
+blether scots_farewell()
+blether blether_format("hi {1}", {1: "x"})
+"#,
+        // Infer/type paths for comparisons.
+        r#"
+ken b = 1 != 2
+blether b
+"#,
+        // Native-call arg-count dispatch (compiler emits native_call{5..8}).
+        r#"
+kin N {
+    dae foo(a, b, c, d, e, f, g, h) { gie 1 }
+}
+blether 1.foo(1, 2, 3, 4, 5)
+blether 1.foo(1, 2, 3, 4, 5, 6)
+blether 1.foo(1, 2, 3, 4, 5, 6, 7)
+blether 1.foo(1, 2, 3, 4, 5, 6, 7, 8)
+"#,
+        // Class init should nil-fill missing args when no defaults are defined.
+        r#"
+kin A {
+    dae init(a, b) { }
+}
+ken a = A(1)
+blether "ok"
+"#,
+        // Nested class (not pre-registered) with method defaults should store defaults.
+        r#"
+dae make_inner() {
+    kin Inner {
+        dae m(x = 1) { gie x }
+    }
+    ken i = Inner()
+    gie i.m()
+}
+blether make_inner()
 "#,
     ];
 
@@ -308,9 +457,13 @@ outer()
         // builtin assert arity errors
         r#"assert()"#,
         r#"assert(1, 2, 3)"#,
-        // assignment to undefined variable
-        r#"x = 1"#,
-    ];
+	        // assignment to undefined variable
+	        r#"x = 1"#,
+	        // Native method call supports up to 8 args.
+	        r#"1.foo(1, 2, 3, 4, 5, 6, 7, 8, 9)"#,
+        // Calling an undefined name as a function should compile-error (exercise compile_call fall-through).
+        r#"__definitely_undefined_fn__()"#,
+	    ];
 
     for src in ok_cases {
         compile_to_ir_ok(src);
@@ -338,4 +491,92 @@ fn llvm_codegen_rejects_spread_outside_list_literals_for_coverage() {
         .expect_err("expected compile error");
     let s = format!("{err:?}");
     assert!(!s.is_empty());
+}
+
+#[test]
+fn llvm_codegen_inclusive_range_for_loop_ast_path_for_coverage() {
+    let span = Span::new(1, 1);
+    let range = Expr::Range {
+        start: Box::new(Expr::Literal {
+            value: Literal::Integer(1),
+            span,
+        }),
+        end: Box::new(Expr::Literal {
+            value: Literal::Integer(3),
+            span,
+        }),
+        inclusive: true,
+        span,
+    };
+    let program = Program::new(vec![Stmt::For {
+        variable: "i".to_string(),
+        iterable: range,
+        body: Box::new(Stmt::Block {
+            statements: vec![Stmt::Print {
+                value: Expr::Variable {
+                    name: "i".to_string(),
+                    span,
+                },
+                span,
+            }],
+            span,
+        }),
+        span,
+    }]);
+    let ir = LLVMCompiler::new().compile_to_ir(&program).expect("compile");
+    assert!(!ir.is_empty());
+}
+
+#[test]
+fn llvm_codegen_covers_haud_yer_wheesht_builtin_via_ast_for_coverage() {
+    let span = Span::new(1, 1);
+    let call = Expr::Call {
+        callee: Box::new(Expr::Variable {
+            name: "haud_yer_wheesht".to_string(),
+            span,
+        }),
+        arguments: vec![],
+        span,
+    };
+    let program = Program::new(vec![Stmt::Print { value: call, span }]);
+    let ir = LLVMCompiler::new().compile_to_ir(&program).expect("compile");
+    assert!(!ir.is_empty());
+}
+
+#[test]
+fn llvm_codegen_rejects_haud_yer_wheesht_with_args_via_ast_for_coverage() {
+    let span = Span::new(1, 1);
+    let call = Expr::Call {
+        callee: Box::new(Expr::Variable {
+            name: "haud_yer_wheesht".to_string(),
+            span,
+        }),
+        arguments: vec![Expr::Literal {
+            value: Literal::Integer(1),
+            span,
+        }],
+        span,
+    };
+    let program = Program::new(vec![Stmt::Expression { expr: call, span }]);
+    let err = LLVMCompiler::new()
+        .compile_to_ir(&program)
+        .expect_err("expected compile error");
+    let s = format!("{err:?}");
+    assert!(!s.is_empty());
+}
+
+#[test]
+fn llvm_codegen_log_wheesht_ast_is_noop_for_coverage() {
+    let span = Span::new(1, 1);
+    let program = Program::new(vec![Stmt::Log {
+        level: LogLevel::Wheesht,
+        message: Expr::Literal {
+            value: Literal::String("hi".to_string()),
+            span,
+        },
+        extras: vec![],
+        span,
+    }]);
+    let ir = LLVMCompiler::new().compile_to_ir(&program).expect("compile");
+    assert!(!ir.is_empty());
 }
