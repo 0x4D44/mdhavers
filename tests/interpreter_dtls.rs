@@ -230,3 +230,151 @@ blether result
     assert_eq!(server_out.trim(), "dtls_ok");
     assert_eq!(client_out.trim(), "dtls_ok");
 }
+
+#[test]
+fn interpreter_dtls_handshake_unknown_handle_returns_result_err_for_coverage() {
+    let program = parse(
+        r#"
+ken result = "nope"
+ken s = socket_udp()
+
+gin s["ok"] {
+    ken sock = s["value"]
+    ken hs = dtls_handshake(999999, sock)
+    gin nae hs["ok"] {
+        result = hs["error"]
+    }
+    socket_close(sock)
+}
+
+blether result
+"#,
+    )
+    .unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert!(out.contains("Unknown DTLS handle"), "unexpected output: {out}");
+}
+
+#[test]
+fn interpreter_dtls_handshake_reports_remote_address_errors_for_coverage() {
+    let program = parse(
+        r#"
+ken s = socket_udp()
+
+gin s["ok"] {
+    ken sock = s["value"]
+
+    ken d1 = dtls_server_new({"mode": "server", "remote_host": "localhost", "remote_port": 9})
+    ken h1 = dtls_handshake(d1["value"], sock)
+    blether h1["error"]
+
+    ken d2 = dtls_server_new({"mode": "server", "remote_host": "[::1]", "remote_port": 9})
+    ken h2 = dtls_handshake(d2["value"], sock)
+    blether h2["error"]
+
+    socket_close(sock)
+}
+"#,
+    )
+    .unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert!(out.contains("Invalid remote address"), "unexpected output: {out}");
+    assert!(out.contains("DTLS connect failed:"), "unexpected output: {out}");
+}
+
+#[test]
+fn interpreter_dtls_handshake_reports_missing_pem_and_invalid_pem_for_coverage() {
+    let program = parse(
+        r#"
+ken s = socket_udp()
+
+gin s["ok"] {
+    ken sock = s["value"]
+    socket_connect(sock, "127.0.0.1", 9)
+
+    ken d1 = dtls_server_new({"mode": "server"})
+    ken h1 = dtls_handshake(d1["value"], sock)
+    blether h1["error"]
+
+    ken d2 = dtls_server_new({"mode": "server", "cert_pem": "x"})
+    ken h2 = dtls_handshake(d2["value"], sock)
+    blether h2["error"]
+
+    ken d3 = dtls_server_new({"mode": "server", "cert_pem": "x", "key_pem": "y"})
+    ken h3 = dtls_handshake(d3["value"], sock)
+    blether h3["error"]
+
+    socket_close(sock)
+}
+"#,
+    )
+    .unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert!(out.contains("Server cert_pem required"), "unexpected output: {out}");
+    assert!(out.contains("Server key_pem required"), "unexpected output: {out}");
+    assert!(out.contains("Invalid cert PEM"), "unexpected output: {out}");
+}
+
+#[test]
+fn interpreter_dtls_client_invalid_ca_pem_returns_result_err_for_coverage() {
+    let program = parse(
+        r#"
+ken result = "nope"
+ken s = socket_udp()
+
+gin s["ok"] {
+    ken sock = s["value"]
+    ken d = dtls_server_new({"mode": "client", "remote_host": "127.0.0.1", "remote_port": 9, "ca_pem": "nope"})
+    ken hs = dtls_handshake(d["value"], sock)
+    gin nae hs["ok"] {
+        result = hs["error"]
+    }
+    socket_close(sock)
+}
+
+blether result
+"#,
+    )
+    .unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert!(out.contains("Invalid CA cert"), "unexpected output: {out}");
+}
+
+#[test]
+fn interpreter_dtls_client_ca_pem_hits_identity_from_pem_error_for_coverage() {
+    let (cert_pem, _key_pem) = generate_cert();
+    let cert_escaped = escape_for_braw(&cert_pem);
+
+    let code = format!(
+        r#"
+ken result = "nope"
+ken s = socket_udp()
+
+gin s["ok"] {{
+    ken sock = s["value"]
+    ken d = dtls_server_new({{"mode": "client", "remote_host": "127.0.0.1", "remote_port": 9, "ca_pem": "{cert_escaped}", "cert_pem": "x", "key_pem": "y"}})
+    ken hs = dtls_handshake(d["value"], sock)
+    gin nae hs["ok"] {{
+        result = hs["error"]
+    }}
+    socket_close(sock)
+}}
+
+blether result
+"#
+    );
+
+    let program = parse(&code).unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert!(out.contains("Invalid cert PEM"), "unexpected output: {out}");
+}

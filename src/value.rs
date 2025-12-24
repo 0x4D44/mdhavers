@@ -718,6 +718,7 @@ mod tests {
         assert_eq!(Value::Function(Rc::new(func)).type_name(), "function");
 
         let native = NativeFunction::new("native", 0, |_| Ok(Value::Nil));
+        assert_eq!((native.func)(vec![]).unwrap(), Value::Nil);
         assert_eq!(
             Value::NativeFunction(Rc::new(native)).type_name(),
             "native function"
@@ -915,6 +916,7 @@ mod tests {
     #[test]
     fn test_value_display_native_function() {
         let native = NativeFunction::new("len", 1, |_| Ok(Value::Nil));
+        assert_eq!((native.func)(vec![Value::Nil]).unwrap(), Value::Nil);
         let val = Value::NativeFunction(Rc::new(native));
         assert_eq!(format!("{}", val), "<native dae len>");
     }
@@ -1148,6 +1150,7 @@ mod tests {
     #[test]
     fn test_native_function_debug() {
         let native = NativeFunction::new("test", 0, |_| Ok(Value::Nil));
+        assert_eq!((native.func)(vec![]).unwrap(), Value::Nil);
         let debug_str = format!("{:?}", native);
         assert_eq!(debug_str, "NativeFunction(test)");
     }
@@ -1506,6 +1509,7 @@ mod tests {
             ValueKey::Function(_)
         ));
         let native = NativeFunction::new("nf", 0, |_| Ok(Value::Nil));
+        assert_eq!((native.func)(vec![]).unwrap(), Value::Nil);
         assert!(matches!(
             Value::NativeFunction(Rc::new(native)).as_key(),
             ValueKey::NativeFunction(_)
@@ -1584,13 +1588,16 @@ mod tests {
         );
 
         let native_fn = Rc::new(NativeFunction::new("nf", 0, |_| Ok(Value::Nil)));
+        assert_eq!((native_fn.func)(vec![]).unwrap(), Value::Nil);
         assert_eq!(
             Value::NativeFunction(native_fn.clone()),
             Value::NativeFunction(native_fn.clone())
         );
+        let other_native_fn = Rc::new(NativeFunction::new("nf", 0, |_| Ok(Value::Nil)));
+        assert_eq!((other_native_fn.func)(vec![]).unwrap(), Value::Nil);
         assert_ne!(
             Value::NativeFunction(native_fn.clone()),
-            Value::NativeFunction(Rc::new(NativeFunction::new("nf", 0, |_| Ok(Value::Nil))))
+            Value::NativeFunction(other_native_fn)
         );
     }
 

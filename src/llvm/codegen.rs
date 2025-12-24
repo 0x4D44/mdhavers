@@ -680,7 +680,7 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             std::env::current_dir()
                 .map(|cwd| cwd.join(path))
-                .unwrap_or_else(|_| path.to_path_buf())
+                .unwrap_or(path.to_path_buf())
         };
         resolved = resolved.canonicalize().unwrap_or(resolved);
         self.source_path = Some(resolved);
@@ -9862,9 +9862,9 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(());
                 }
 
-                // For int variables, try to use optimized path
-                // Note: we skip the optimization for top-level vars since they need LLVM globals
-                if var_type == VarType::Int && !is_top_level {
+	                // For int variables, try to use optimized path
+	                // Note: we skip the optimization for top-level vars since they need LLVM globals
+	                if var_type == VarType::Int && !is_top_level {
                     // Check if shadow already exists (re-declaration in loop)
                     let shadow = if let Some(&existing) = self.int_shadows.get(name) {
                         existing
@@ -9872,42 +9872,42 @@ impl<'ctx> CodeGen<'ctx> {
                         let s = self.create_entry_block_alloca_i64(&format!("{}_shadow", name));
                         self.int_shadows.insert(name.clone(), s);
                         s
-                    };
+	                    };
 
-                    // Try to get the int value directly
-                    if let Some(init) = initializer {
-                        if let Some(int_val) = self.compile_int_expr(init)? {
-                            // Store to shadow
-                            self.builder
-                                .build_store(shadow, int_val)
-                                .map_err(Self::llvm_compile_error)?;
+	                    // Try to get the int value directly
+	                    // Note: `var_type == Int` implies `initializer.is_some()` (inferred from the initializer).
+	                    let init = initializer.as_ref().unwrap();
+	                    if let Some(int_val) = self.compile_int_expr(init)? {
+	                        // Store to shadow
+	                        self.builder
+	                            .build_store(shadow, int_val)
+	                            .map_err(Self::llvm_compile_error)?;
 
-                            // Skip MdhValue store in hot loop bodies (outer-loop sync will fix).
-                            // Inside try blocks we keep boxed values updated for catch handlers.
-                            if !self.in_loop_body || self.try_depth > 0 {
-                                // Ensure MdhValue alloca exists
-                                let alloca = if let Some(&existing) = self.variables.get(name) {
-                                    existing
-                                } else {
-                                    let a = self.create_entry_block_alloca(name);
-                                    self.variables.insert(name.clone(), a);
-                                    a
-                                };
-                                let boxed = self.make_int(int_val)?;
-                                self.builder
-                                    .build_store(alloca, boxed)
-                                    .map_err(Self::llvm_compile_error)?;
-                            } else {
-                                // In loop: just ensure alloca exists
-                                if !self.variables.contains_key(name) {
-                                    let a = self.create_entry_block_alloca(name);
-                                    self.variables.insert(name.clone(), a);
-                                }
-                            }
-                            return Ok(());
-                        }
-                    }
-                }
+	                        // Skip MdhValue store in hot loop bodies (outer-loop sync will fix).
+	                        // Inside try blocks we keep boxed values updated for catch handlers.
+	                        if !self.in_loop_body || self.try_depth > 0 {
+	                            // Ensure MdhValue alloca exists
+	                            let alloca = if let Some(&existing) = self.variables.get(name) {
+	                                existing
+	                            } else {
+	                                let a = self.create_entry_block_alloca(name);
+	                                self.variables.insert(name.clone(), a);
+	                                a
+	                            };
+	                            let boxed = self.make_int(int_val)?;
+	                            self.builder
+	                                .build_store(alloca, boxed)
+	                                .map_err(Self::llvm_compile_error)?;
+	                        } else {
+	                            // In loop: just ensure alloca exists
+	                            if !self.variables.contains_key(name) {
+	                                let a = self.create_entry_block_alloca(name);
+	                                self.variables.insert(name.clone(), a);
+	                            }
+	                        }
+	                        return Ok(());
+	                    }
+	                }
 
                 // Fall back to standard path
                 let value = if let Some(init) = initializer {
@@ -9957,8 +9957,8 @@ impl<'ctx> CodeGen<'ctx> {
                     self.int_shadows.insert(name.clone(), shadow);
                 }
 
-                // Create string length and capacity shadows if needed
-                if var_type == VarType::String && !self.string_len_shadows.contains_key(name) {
+	                // Create string length and capacity shadows if needed
+	                if var_type == VarType::String && !self.string_len_shadows.contains_key(name) {
                     let len_shadow =
                         self.create_entry_block_alloca_i64(&format!("{}_strlen", name));
                     let cap_shadow =
@@ -9972,46 +9972,46 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_store(cap_shadow, zero)
                         .map_err(Self::llvm_compile_error)?;
 
-                    // Calculate initial string length and set initial capacity.
-                    if let Some(init) = initializer {
-                        if let Expr::Literal {
-                            value: Literal::String(s),
-                            ..
-                        } = init
-                        {
-                            // Literal string - use compile-time length.
-                            let len = s.len() as u64;
-                            let len_val = self.types.i64_type.const_int(len, false);
-                            self.builder
-                                .build_store(len_shadow, len_val)
-                                .map_err(Self::llvm_compile_error)?;
-                            // Capacity stays 0 to indicate it's a literal (not owned); we'll reallocate on first append.
-                        } else {
-                            // Runtime string - compute with strlen.
-                            let data = self.extract_data(value)?;
-                            let i8_ptr_type =
-                                self.context.i8_type().ptr_type(AddressSpace::default());
-                            let str_ptr = self
-                                .builder
-                                .build_int_to_ptr(data, i8_ptr_type, "str_for_len")
-                                .unwrap();
-                            let len = self
-                                .builder
-                                .build_call(self.libc.strlen, &[str_ptr.into()], "init_strlen")
-                                .unwrap()
-                                .try_as_basic_value()
-                                .left()
-                                .unwrap()
-                                .into_int_value();
-                            self.builder
-                                .build_store(len_shadow, len)
-                                .map_err(Self::llvm_compile_error)?;
-                            // Capacity stays 0 for externally-owned strings.
-                        }
-                    }
-                    self.string_len_shadows.insert(name.clone(), len_shadow);
-                    self.string_cap_shadows.insert(name.clone(), cap_shadow);
-                }
+	                    // Calculate initial string length and set initial capacity.
+	                    // Note: `var_type == String` implies `initializer.is_some()` (inferred from the initializer).
+	                    let init = initializer.as_ref().unwrap();
+	                    if let Expr::Literal {
+	                        value: Literal::String(s),
+	                        ..
+	                    } = init
+	                    {
+	                        // Literal string - use compile-time length.
+	                        let len = s.len() as u64;
+	                        let len_val = self.types.i64_type.const_int(len, false);
+	                        self.builder
+	                            .build_store(len_shadow, len_val)
+	                            .map_err(Self::llvm_compile_error)?;
+	                        // Capacity stays 0 to indicate it's a literal (not owned); we'll reallocate on first append.
+	                    } else {
+	                        // Runtime string - compute with strlen.
+	                        let data = self.extract_data(value)?;
+	                        let i8_ptr_type =
+	                            self.context.i8_type().ptr_type(AddressSpace::default());
+	                        let str_ptr = self
+	                            .builder
+	                            .build_int_to_ptr(data, i8_ptr_type, "str_for_len")
+	                            .unwrap();
+	                        let len = self
+	                            .builder
+	                            .build_call(self.libc.strlen, &[str_ptr.into()], "init_strlen")
+	                            .unwrap()
+	                            .try_as_basic_value()
+	                            .left()
+	                            .unwrap()
+	                            .into_int_value();
+	                        self.builder
+	                            .build_store(len_shadow, len)
+	                            .map_err(Self::llvm_compile_error)?;
+	                        // Capacity stays 0 for externally-owned strings.
+	                    }
+	                    self.string_len_shadows.insert(name.clone(), len_shadow);
+	                    self.string_cap_shadows.insert(name.clone(), cap_shadow);
+	                }
                 Ok(())
             }
 
@@ -10114,28 +10114,26 @@ impl<'ctx> CodeGen<'ctx> {
 
             Stmt::Struct { name, fields, .. } => self.compile_struct_decl(name, fields),
 
-            Stmt::Import { path, alias, .. } => {
-                let is_tri = path == "tri" || path == "tri.braw";
-                if is_tri && alias.is_none() {
-                    return Err(HaversError::CompileError(
-                        "tri import requires an alias (fetch \"tri\" tae name)".to_string(),
-                    ));
-                }
-                if is_tri {
-                    let tri_val = self
-                        .builder
-                        .build_call(self.libc.tri_module, &[], "tri_module")
-                        .map_err(Self::llvm_compile_error)?
-                        .try_as_basic_value()
-                        .left()
-                        .compile_ok_or("tri_module returned void")?;
-                    if let Some(alias_name) = alias {
-                        self.store_import_alias(alias_name, tri_val)?;
-                    }
-                    return Ok(());
-                }
-                let before = self.capture_import_bindings();
-                self.compile_import(path, alias.is_some())?;
+	            Stmt::Import { path, alias, .. } => {
+	                let is_tri = path == "tri" || path == "tri.braw";
+	                if is_tri {
+	                    let alias_name = alias.as_deref().ok_or_else(|| {
+	                        HaversError::CompileError(
+	                            "tri import requires an alias (fetch \"tri\" tae name)".to_string(),
+	                        )
+	                    })?;
+	                    let tri_val = self
+	                        .builder
+	                        .build_call(self.libc.tri_module, &[], "tri_module")
+	                        .map_err(Self::llvm_compile_error)?
+	                        .try_as_basic_value()
+	                        .left()
+	                        .compile_ok_or("tri_module returned void")?;
+	                    self.store_import_alias(alias_name, tri_val)?;
+	                    return Ok(());
+	                }
+	                let before = self.capture_import_bindings();
+	                self.compile_import(path, alias.is_some())?;
                 if let Some(alias_name) = alias {
                     let exports_all = self.collect_import_exports(path)?;
                     let exports_public = exports_all.clone();
@@ -10968,7 +10966,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_int_mul(left_data, right_data, "mul_fast")
                 .unwrap(),
-            BinaryOp::Divide | BinaryOp::Modulo => {
+	            BinaryOp::Divide | BinaryOp::Modulo => {
                 // Prevent SIGFPE traps and allow try/catch to handle the error.
                 let function = self.current_function.unwrap();
                 let ok_block = self.context.append_basic_block(function, "int_op_ok");
@@ -11014,13 +11012,14 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_phi(self.types.i64_type, "int_op_result")
                     .unwrap();
                 phi.add_incoming(&[(&zero_result, zero_end), (&ok_result, ok_end)]);
-                phi.as_basic_value().into_int_value()
-            }
-            _ => {
-                debug_assert!(false, "compile_binary_int_fast called with non-int op");
-                self.types.i64_type.const_int(0, false)
-            }
-        };
+	                phi.as_basic_value().into_int_value()
+	            }
+	            _ => {
+	                return Err(HaversError::CompileError(
+	                    "compile_binary_int_fast called with non-int op".to_string(),
+	                ));
+	            }
+	        };
 
         // Box the result back to MdhValue
         self.make_int(result)
@@ -11455,16 +11454,18 @@ impl<'ctx> CodeGen<'ctx> {
                         .variables
                         .get(name)
                         .copied()
-                        .or_else(|| self.globals.get(name).copied());
+                        .or(self.globals.get(name).copied());
                     let bound_ptr = self.import_alias_bindings.get(name).copied();
                     if current_ptr.is_some()
                         && current_ptr == bound_ptr
                         && exports.contains(property)
                     {
-                        if let Some(funcs) = self.import_alias_functions.get(name) {
-                            if let Some(&func) = funcs.get(property) {
-                                return self.compile_user_function_call(property, func, args);
-                            }
+                        if let Some(&func) = self
+                            .import_alias_functions
+                            .get(name)
+                            .and_then(|funcs| funcs.get(property))
+                        {
+                            return self.compile_user_function_call(property, func, args);
                         }
                     }
                 }
@@ -15360,6 +15361,14 @@ impl<'ctx> CodeGen<'ctx> {
                             "stopwatch expects 1 argument".to_string(),
                         ));
                     }
+                    // Snapshot current named functions before compiling the argument.
+                    // This prevents anonymous lambdas compiled as part of `args[0]` from being
+                    // "named" via their generated symbol (e.g. `__lambda_0`) in the message path.
+                    let functions_snapshot: Vec<(String, FunctionValue)> = self
+                        .functions
+                        .iter()
+                        .map(|(name, func)| (name.clone(), *func))
+                        .collect();
                     let arg = self.compile_expr(&args[0])?;
                     let tag = self.extract_tag(arg)?;
                     let fn_tag = self
@@ -15401,17 +15410,12 @@ impl<'ctx> CodeGen<'ctx> {
                     // OK: map function pointer to name when possible
                     self.builder.position_at_end(ok_block);
                     let func_data = self.extract_data(arg)?;
-                    let functions: Vec<(String, FunctionValue)> = self
-                        .functions
-                        .iter()
-                        .map(|(name, func)| (name.clone(), *func))
-                        .collect();
 
                     let mut incoming: Vec<(BasicValueEnum, inkwell::basic_block::BasicBlock)> =
                         Vec::new();
                     let mut current_block = ok_block;
 
-                    for (idx, (name, func)) in functions.iter().enumerate() {
+                    for (idx, (name, func)) in functions_snapshot.iter().enumerate() {
                         let match_block = self
                             .context
                             .append_basic_block(function, &format!("stopwatch_match_{}", idx));
@@ -15457,9 +15461,8 @@ impl<'ctx> CodeGen<'ctx> {
                     }
 
                     self.builder.position_at_end(current_block);
-                    let default_msg = self.compile_string_literal(
-                        "Use 'noo()' before and after callin' it tae time it!",
-                    )?;
+                    let default_msg = self
+                        .compile_string_literal("Use 'noo()' before and after callin' it tae time it!")?;
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .map_err(Self::llvm_compile_error)?;
@@ -23391,15 +23394,7 @@ impl<'ctx> CodeGen<'ctx> {
         params: &[crate::ast::Param],
         body: &[Stmt],
     ) -> Result<(), HaversError> {
-        let function = match self.functions.get(name).copied() {
-            Some(f) => f,
-            None => {
-                return Err(HaversError::CompileError(format!(
-                    "Function not declared: {}",
-                    name
-                )));
-            }
-        };
+        let function = match self.functions.get(name).copied() { Some(f) => f, None => return Err(HaversError::CompileError(format!("Function not declared: {name}"))), };
 
         let entry = self.context.append_basic_block(function, "entry");
 
@@ -23432,15 +23427,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Captured variables are boxed cells passed in.
         for (i, capture_name) in captures_for_this_fn.iter().enumerate() {
-            let param_val = match function.get_nth_param(i as u32) {
-                Some(v) => v,
-                None => {
-                    return Err(HaversError::CompileError(format!(
-                        "Missing captured param: {}",
-                        capture_name
-                    )));
-                }
-            };
+            let param_val = match function.get_nth_param(i as u32) { Some(v) => v, None => return Err(HaversError::CompileError(format!("Missing captured param: {capture_name}"))), };
             let alloca = self.create_entry_block_alloca(capture_name);
             self.builder.build_store(alloca, param_val).unwrap();
             self.variables.insert(capture_name.clone(), alloca);
@@ -23491,12 +23478,7 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     captured_in_body
                         .extend(captures.iter().filter(|c| c.as_str() != "masel").cloned());
-                    self.declare_function_with_captures(
-                        nested_name,
-                        nested_params.len(),
-                        &captures,
-                    )?;
-                }
+                    self.declare_function_with_captures(nested_name, nested_params.len(), &captures)?; }
             }
         }
 
@@ -23514,9 +23496,7 @@ impl<'ctx> CodeGen<'ctx> {
             if self.boxed_vars.contains(&param.name) {
                 continue;
             }
-            if self.int_shadows.contains_key(&param.name) {
-                continue;
-            }
+            if self.int_shadows.contains_key(&param.name) { continue; }
             let shadow = self.create_entry_block_alloca_i64(&format!("{}_shadow", param.name));
             let alloca = self.variables.get(&param.name).copied().unwrap();
             let val = self
@@ -25079,18 +25059,17 @@ impl<'ctx> CodeGen<'ctx> {
             .compile_ok_or("dict_set returned void")?;
 
         // Update the variable/field with the new dict (dict_set returns a new dict since it may reallocate)
-        match object {
-            Expr::Variable { name, .. } => {
-                if let Some(ptr) = self.variables.get(name) {
-                    let ptr = *ptr;
-                    self.builder
-                        .build_store(ptr, dict_result)
-                        .map_err(Self::llvm_compile_error)?;
+            match object {
+                Expr::Variable { name, .. } => {
+                    if let Some(&ptr) = self.variables.get(name) {
+                        self.builder
+                            .build_store(ptr, dict_result)
+                            .map_err(Self::llvm_compile_error)?;
+                    }
                 }
-            }
-            Expr::Get {
-                object: inner_obj,
-                property,
+                Expr::Get {
+                    object: inner_obj,
+                    property,
                 ..
             } => {
                 // Field access like masel.data - need to store updated dict back to the field
@@ -25262,29 +25241,13 @@ impl<'ctx> CodeGen<'ctx> {
             .left()
             .compile_ok_or("dict_set returned void")?;
 
-        // Update the variable/field with the new dict (dict_set returns a new dict since it may reallocate)
-        match object {
-            Expr::Variable { name, .. } => {
-                if let Some(ptr) = self.variables.get(name) {
-                    let ptr = *ptr;
-                    self.builder
-                        .build_store(ptr, dict_result)
-                        .map_err(Self::llvm_compile_error)?;
-                }
-            }
-            Expr::Get {
-                object: inner_obj,
-                property,
-                ..
-            } => {
-                // Field access like masel.data - need to store updated dict back to the field
-                let instance_val = self.compile_expr(inner_obj)?;
-                self.compile_instance_set_field(instance_val, property, dict_result)?;
-            }
-            _ => {
-                // For other expressions we can't store back - the update is lost
-                // This is a limitation but covers the common cases
-            }
+        // Update local variable binding when possible (dict_set returns a new dict since it may reallocate).
+        // For other expressions we can't store back - the update is lost.
+        if let Expr::Variable { name, .. } = object {
+            if let Some(&ptr) = self.variables.get(name) {
+                self.builder
+                    .build_store(ptr, dict_result)
+                    .map_err(Self::llvm_compile_error)?; }
         }
 
         Ok(new_val)
@@ -30749,6 +30712,7 @@ impl<'ctx> CodeGen<'ctx> {
         let stem = import_path
             .file_stem()
             .and_then(|s| s.to_str())
+            .filter(|s| !s.is_empty())
             .unwrap_or("module");
         let mut sanitized = String::new();
         for ch in stem.chars() {
@@ -30757,9 +30721,6 @@ impl<'ctx> CodeGen<'ctx> {
             } else {
                 sanitized.push('_');
             }
-        }
-        if sanitized.is_empty() {
-            sanitized.push_str("module");
         }
         format!("__import_{}_{}_", sanitized, id)
     }
@@ -30978,9 +30939,7 @@ impl<'ctx> CodeGen<'ctx> {
                     if exe_stripped.exists() {
                         return Ok(exe_stripped.canonicalize().unwrap_or(exe_stripped));
                     }
-                }
-            }
-        }
+                } } }
 
         Err(HaversError::CompileError(format!(
             "Cannot find module to import: {}",
@@ -31002,7 +30961,10 @@ impl<'ctx> CodeGen<'ctx> {
         if has_spread {
             // Handle spread arguments - need to unpack list elements at runtime
             let expected_params = func.count_params() as usize;
-            let capture_count = self.function_captures.get(func_name).map_or(0, |c| c.len());
+            let capture_count = self
+                .function_captures
+                .get(func_name)
+                .map_or(0, std::vec::Vec::len);
             let user_param_count = expected_params.saturating_sub(capture_count);
 
             // Count non-spread args to know how many elements to extract from spread
@@ -31766,22 +31728,12 @@ impl<'ctx> CodeGen<'ctx> {
     fn compile_struct_decl(&mut self, name: &str, fields: &[String]) -> Result<(), HaversError> {
         // Skip if already compiled
         if let Some(&existing) = self.functions.get(name) {
-            if existing.get_first_basic_block().is_some() {
-                return Ok(());
-            }
+            if existing.get_first_basic_block().is_some() { return Ok(()); }
         } else {
             self.declare_function(name, fields.len())?;
         }
 
-        let function = match self.functions.get(name) {
-            Some(f) => *f,
-            None => {
-                return Err(HaversError::CompileError(format!(
-                    "Struct ctor not declared: {}",
-                    name
-                )));
-            }
-        };
+        let function = match self.functions.get(name) { Some(f) => *f, None => return Err(HaversError::CompileError(format!("Struct ctor not declared: {name}"))), };
 
         let entry = self.context.append_basic_block(function, "entry");
 
@@ -32813,38 +32765,34 @@ impl<'ctx> CodeGen<'ctx> {
         // Check if class was already pre-registered
         let already_registered = self.classes.contains_key(name);
 
-        // First pass: declare all methods (create function signatures)
-        // This allows methods to call each other regardless of definition order
-        // Skip if already pre-registered
+        // First pass: declare all methods (create function signatures).
+        // This allows methods to call each other regardless of definition order.
         if !already_registered {
             let mut method_list: Vec<(String, FunctionValue<'ctx>)> = Vec::new();
             for method in methods {
-                if let Stmt::Function {
+                let Stmt::Function {
                     name: method_name,
                     params,
                     ..
-                } = method
-                {
-                    let func_name = format!("{}_{}", name, method_name);
-                    let param_types: Vec<BasicMetadataTypeEnum> =
-                        std::iter::once(self.types.value_type.into())
-                            .chain(params.iter().map(|_| self.types.value_type.into()))
-                            .collect();
-                    let fn_type = self.types.value_type.fn_type(&param_types, false);
-                    let function = self.module.add_function(&func_name, fn_type, None);
-                    self.functions.insert(func_name.clone(), function);
-                    method_list.push((method_name.clone(), function));
+                } = method else { continue; };
 
-                    // Store default parameter values for methods
-                    let defaults: Vec<Option<Expr>> =
-                        params.iter().map(|p| p.default.clone()).collect();
-                    if defaults.iter().any(|d| d.is_some()) {
-                        self.function_defaults.insert(func_name, defaults);
-                    }
-                }
+                let func_name = format!("{}_{}", name, method_name);
+                let param_types: Vec<BasicMetadataTypeEnum> = std::iter::once(
+                    self.types.value_type.into(),
+                )
+                .chain(params.iter().map(|_| self.types.value_type.into()))
+                .collect();
+                let fn_type = self.types.value_type.fn_type(&param_types, false);
+                let function = self.module.add_function(&func_name, fn_type, None);
+                self.functions.insert(func_name.clone(), function);
+                method_list.push((method_name.clone(), function));
+
+                // Store default parameter values for methods.
+                let defaults: Vec<Option<Expr>> = params.iter().map(|p| p.default.clone()).collect();
+                if defaults.iter().any(|d| d.is_some()) { self.function_defaults.insert(func_name, defaults); }
             }
 
-            // Store method table and class name early so methods can be looked up
+            // Store method table and class name early so methods can be looked up.
             self.class_methods
                 .insert(name.to_string(), method_list.clone());
             let class_name_global = self
@@ -32854,17 +32802,15 @@ impl<'ctx> CodeGen<'ctx> {
             self.classes.insert(name.to_string(), class_name_global);
         }
 
-        // Second pass: define all methods (compile function bodies)
+        // Second pass: define all methods (compile function bodies).
         for method in methods {
-            if let Stmt::Function {
+            let Stmt::Function {
                 name: method_name,
                 params,
                 body,
                 ..
-            } = method
-            {
-                self.compile_method_body(name, method_name, params, body)?;
-            }
+            } = method else { continue; };
+            self.compile_method_body(name, method_name, params, body)?;
         }
 
         self.current_class = None;
@@ -32889,15 +32835,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<(), HaversError> {
         // Get the already-declared function
         let func_name = format!("{}_{}", class_name, method_name);
-        let function = match self.functions.get(&func_name) {
-            Some(f) => *f,
-            None => {
-                return Err(HaversError::CompileError(format!(
-                    "Method {} not declared",
-                    func_name
-                )));
-            }
-        };
+        let function = match self.functions.get(&func_name) { Some(f) => *f, None => return Err(HaversError::CompileError(format!("Method {func_name} not declared"))), };
 
         // Save current state - IMPORTANT: save ALL shadow maps to prevent cross-method leakage
         let old_function = self.current_function;
@@ -32970,12 +32908,7 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     captured_in_body
                         .extend(captures.iter().filter(|c| c.as_str() != "masel").cloned());
-                    self.declare_function_with_captures(
-                        nested_name,
-                        nested_params.len(),
-                        &captures,
-                    )?;
-                }
+                    self.declare_function_with_captures(nested_name, nested_params.len(), &captures)?; }
             }
         }
 
@@ -33049,15 +32982,7 @@ impl<'ctx> CodeGen<'ctx> {
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
 
         // Store class name pointer
-        let class_name_global = match self.classes.get(class_name) {
-            Some(g) => g,
-            None => {
-                return Err(HaversError::CompileError(format!(
-                    "Unknown class: {}",
-                    class_name
-                )));
-            }
-        };
+        let class_name_global = match self.classes.get(class_name) { Some(g) => g, None => return Err(HaversError::CompileError(format!("Unknown class: {class_name}"))), };
         let class_name_ptr_slot = self
             .builder
             .build_pointer_cast(instance_ptr, i64_ptr_type, "class_name_slot")
@@ -33333,15 +33258,7 @@ impl<'ctx> CodeGen<'ctx> {
             return self.call_callable_value(field_val, &field_call_args);
         }
 
-        let (method_func, func_name) = match found_method {
-            Some(v) => v,
-            None => {
-                return Err(HaversError::CompileError(format!(
-                    "Method '{}' not found",
-                    method_name
-                )));
-            }
-        };
+        let (method_func, func_name) = match found_method { Some(v) => v, None => return Err(HaversError::CompileError(format!("Method '{method_name}' not found"))), };
 
         // Build call arguments: instance first, then regular args
         let mut call_args: Vec<BasicMetadataValueEnum> = vec![instance.into()];
@@ -33380,7 +33297,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .unwrap_or_else(|| self.make_nil());
+            .unwrap_or(self.make_nil());
 
         Ok(result)
     }
@@ -33413,7 +33330,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Self::llvm_compile_error)?
             .try_as_basic_value()
             .left()
-            .unwrap_or_else(|| self.make_nil());
+            .unwrap_or(self.make_nil());
 
         Ok(result)
     }
@@ -36657,6 +36574,7 @@ impl<'ctx> CodeGen<'ctx> {
 mod tests {
     use super::*;
     use crate::ast::Param;
+    use tempfile::tempdir;
 
     #[test]
     fn compile_skips_predefined_globals_when_already_present_for_coverage() {
@@ -36698,6 +36616,102 @@ mod tests {
         codegen
             .preregister_class("C", &methods)
             .expect("preregister class");
+        assert!(!codegen.function_defaults.contains_key("C_ping"));
+    }
+
+    #[test]
+    fn preregister_class_ignores_non_function_method_nodes_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "preregister_class_ignores_non_function");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let methods = vec![Stmt::VarDecl {
+            name: "not_a_method".to_string(),
+            initializer: Some(Expr::Literal {
+                value: Literal::Integer(1),
+                span: Span::new(1, 1),
+            }),
+            span: Span::new(1, 1),
+        }];
+
+        codegen
+            .preregister_class("C2", &methods)
+            .expect("preregister class");
+        assert!(codegen
+            .class_methods
+            .get("C2")
+            .is_some_and(|m| m.is_empty()));
+    }
+
+    #[test]
+    fn resolve_import_path_walks_ancestors_to_completion_for_missing_module_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "resolve_import_path_walks_ancestors");
+
+        let dir = tempdir().unwrap();
+        let nested = dir.path().join("a").join("b");
+        std::fs::create_dir_all(&nested).unwrap();
+        let source_path = nested.join("source.braw");
+        std::fs::write(&source_path, "ken x = 1").unwrap();
+
+        codegen.set_source_path(&source_path);
+
+        let err = codegen
+            .resolve_import_path("definitely_missing_import_for_coverage_9c8f0f38")
+            .expect_err("expected missing import error");
+        assert!(matches!(err, HaversError::CompileError(_)));
+    }
+
+    #[test]
+    fn resolve_import_path_walks_ancestors_with_lib_stripped_missing_module_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "resolve_import_path_lib_stripped_missing");
+
+        let dir = tempdir().unwrap();
+        let nested = dir.path().join("a").join("b");
+        std::fs::create_dir_all(&nested).unwrap();
+        let source_path = nested.join("source.braw");
+        std::fs::write(&source_path, "ken x = 1").unwrap();
+
+        codegen.set_source_path(&source_path);
+
+        let err = codegen
+            .resolve_import_path("lib/definitely_missing_import_for_coverage_6a220d8c")
+            .expect_err("expected missing import error");
+        assert!(matches!(err, HaversError::CompileError(_)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_import_path_covers_grandparent_none_branch_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "resolve_import_path_grandparent_none");
+
+        codegen.set_source_path(std::path::Path::new("/source.braw"));
+
+        let err = codegen
+            .resolve_import_path("definitely_missing_import_for_coverage_864a2d10")
+            .expect_err("expected missing import error");
+        assert!(matches!(err, HaversError::CompileError(_)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_import_path_covers_parent_none_branch_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "resolve_import_path_parent_none");
+
+        codegen.set_source_path(std::path::Path::new("/"));
+
+        let err = codegen
+            .resolve_import_path("definitely_missing_import_for_coverage_d17c08d4")
+            .expect_err("expected missing import error");
+        assert!(matches!(err, HaversError::CompileError(_)));
     }
 
     #[test]
@@ -36815,6 +36829,42 @@ mod tests {
     }
 
     #[test]
+    fn compile_try_catch_compiles_non_block_bodies_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "compile_try_catch_non_block");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let span = Span::new(1, 1);
+        let try_stmt = Stmt::Expression {
+            expr: Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            },
+            span,
+        };
+        let catch_stmt = Stmt::Expression {
+            expr: Expr::Literal {
+                value: Literal::Integer(2),
+                span,
+            },
+            span,
+        };
+        let stmt = Stmt::TryCatch {
+            try_block: Box::new(try_stmt),
+            error_name: "e".to_string(),
+            catch_block: Box::new(catch_stmt),
+            span,
+        };
+
+        codegen.compile_stmt(&stmt).expect("compile");
+    }
+
+    #[test]
     fn compile_stmt_string_decl_sets_len_shadow_for_coverage() {
         let context = Context::create();
         let mut codegen = CodeGen::new(&context, "compile_stmt_string_decl_len_shadow");
@@ -36881,6 +36931,30 @@ mod tests {
             .builder
             .build_store(shadow, codegen.types.i64_type.const_int(7, false))
             .unwrap();
+
+        let expr = Expr::Variable {
+            name: "x".to_string(),
+            span: Span::new(1, 1),
+        };
+        let _ = codegen.compile_expr(&expr).expect("compile expr");
+    }
+
+    #[test]
+    fn compile_expr_variable_in_loop_ignores_missing_int_shadow_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "compile_expr_int_shadow_missing_in_loop");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let alloca = codegen.create_entry_block_alloca("x");
+        codegen.variables.insert("x".to_string(), alloca);
+        codegen.var_types.insert("x".to_string(), VarType::Int);
+        codegen.in_loop_body = true;
+        codegen.try_depth = 0;
 
         let expr = Expr::Variable {
             name: "x".to_string(),
@@ -37068,8 +37142,70 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "compile_binary_int_fast called with non-int op")]
-    fn compile_binary_int_fast_panics_on_non_int_op_for_coverage() {
+    fn compile_expr_stopwatch_inline_lambda_hits_default_message_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "stopwatch_inline_lambda_default");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let span = Span::new(1, 1);
+        let expr = Expr::Call {
+            callee: Box::new(Expr::Variable {
+                name: "stopwatch".to_string(),
+                span,
+            }),
+            arguments: vec![Expr::Lambda {
+                params: vec!["x".to_string()],
+                body: Box::new(Expr::Variable {
+                    name: "x".to_string(),
+                    span,
+                }),
+                span,
+            }],
+            span,
+        };
+
+        let _ = codegen.compile_expr(&expr).expect("compile expr");
+    }
+
+    #[test]
+    fn compile_expr_stopwatch_named_function_hits_named_message_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "stopwatch_named_function_message");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        // Provide a named function so the stopwatch mapping loop has something to match.
+        let named_type = codegen.types.value_type.fn_type(&[], false);
+        let named = codegen.module.add_function("named", named_type, None);
+        codegen.functions.insert("named".to_string(), named);
+
+        let span = Span::new(1, 1);
+        let expr = Expr::Call {
+            callee: Box::new(Expr::Variable {
+                name: "stopwatch".to_string(),
+                span,
+            }),
+            arguments: vec![Expr::Variable {
+                name: "named".to_string(),
+                span,
+            }],
+            span,
+        };
+
+        let _ = codegen.compile_expr(&expr).expect("compile expr");
+    }
+
+    #[test]
+    fn compile_binary_int_fast_reports_non_int_op_for_coverage() {
         let context = Context::create();
         let mut codegen = CodeGen::new(&context, "binary_int_fast_non_int_op");
         let span = Span::new(1, 1);
@@ -37081,9 +37217,10 @@ mod tests {
             value: Literal::Integer(2),
             span,
         };
-        let _ = codegen
+        let err = codegen
             .compile_binary_int_fast(&left, BinaryOp::Equal, &right)
-            .unwrap();
+            .expect_err("expected compile error for non-int op");
+        assert!(matches!(err, HaversError::CompileError(_)));
     }
 
     #[test]
@@ -37201,6 +37338,67 @@ mod tests {
         codegen
             .import_alias_functions
             .insert("m".to_string(), HashMap::from([("foo".to_string(), foo)]));
+
+        let current_ptr = codegen
+            .variables
+            .get("m")
+            .copied()
+            .or(codegen.globals.get("m").copied());
+        let bound_ptr = codegen.import_alias_bindings.get("m").copied();
+        assert!(current_ptr.is_some() && current_ptr == bound_ptr);
+        assert!(codegen
+            .import_alias_exports
+            .get("m")
+            .is_some_and(|e| e.contains("foo")));
+        assert!(codegen
+            .import_alias_functions
+            .get("m")
+            .is_some_and(|f| f.contains_key("foo")));
+
+        let span = Span::new(1, 1);
+        let expr = Expr::Call {
+            callee: Box::new(Expr::Get {
+                object: Box::new(Expr::Variable {
+                    name: "m".to_string(),
+                    span,
+                }),
+                property: "foo".to_string(),
+                span,
+            }),
+            arguments: Vec::new(),
+            span,
+        };
+
+        let _ = codegen.compile_expr(&expr).expect("compile expr");
+        let ir = codegen.module.print_to_string().to_string();
+        assert!(ir.lines().any(|line| line.contains("call") && line.contains("@foo")));
+    }
+
+    #[test]
+    fn compile_call_import_alias_missing_function_falls_back_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "import_alias_missing_func_fallback");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let alias_ptr = codegen.create_entry_block_alloca("m");
+        codegen.variables.insert("m".to_string(), alias_ptr);
+        codegen.import_alias_bindings.insert("m".to_string(), alias_ptr);
+
+        let mut exports = HashSet::new();
+        exports.insert("foo".to_string());
+        codegen.import_alias_exports.insert("m".to_string(), exports);
+
+        // Provide an import-alias function map that does NOT contain the requested property.
+        let foo_type = codegen.types.value_type.fn_type(&[], false);
+        let bar = codegen.module.add_function("bar", foo_type, None);
+        codegen
+            .import_alias_functions
+            .insert("m".to_string(), HashMap::from([("bar".to_string(), bar)]));
 
         let span = Span::new(1, 1);
         let expr = Expr::Call {

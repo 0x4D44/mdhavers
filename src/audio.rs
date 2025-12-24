@@ -6,11 +6,25 @@
 // audio device or external libraries.
 #[cfg(test)]
 mod miniaudio {
+    use std::cell::Cell;
     use std::marker::PhantomData;
     use std::path::Path;
     use std::sync::{Arc, Mutex};
 
     type DataCallback = dyn FnMut(&Device, &mut FramesMut, &mut FramesMut) + Send;
+
+    thread_local! {
+        static FAIL_NEXT_DEVICE_NEW: Cell<bool> = Cell::new(false);
+        static FAIL_NEXT_DEVICE_START: Cell<bool> = Cell::new(false);
+    }
+
+    pub(super) fn fail_next_device_new() {
+        FAIL_NEXT_DEVICE_NEW.with(|flag| flag.set(true));
+    }
+
+    pub(super) fn fail_next_device_start() {
+        FAIL_NEXT_DEVICE_START.with(|flag| flag.set(true));
+    }
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum Format {
@@ -76,18 +90,34 @@ mod miniaudio {
         channels: u32,
     }
 
-	    impl Device {
-	        pub fn new(_ctx: Option<()>, config: &DeviceConfig) -> Result<Self, ()> {
-	            Ok(Device {
-	                callback: config.callback.clone(),
-	                channels: config.playback.channels,
-	            })
-	        }
+		    impl Device {
+		        pub fn new(_ctx: Option<()>, config: &DeviceConfig) -> Result<Self, ()> {
+                    let fail = FAIL_NEXT_DEVICE_NEW.with(|flag| {
+                        let value = flag.get();
+                        flag.set(false);
+                        value
+                    });
+                    if fail {
+                        return Err(());
+                    }
+		            Ok(Device {
+		                callback: config.callback.clone(),
+		                channels: config.playback.channels,
+		            })
+		        }
 
-	        pub fn start(&self) -> Result<(), ()> {
-	            let Some(callback) = &self.callback else {
-	                return Ok(());
-	            };
+		        pub fn start(&self) -> Result<(), ()> {
+                    let fail = FAIL_NEXT_DEVICE_START.with(|flag| {
+                        let value = flag.get();
+                        flag.set(false);
+                        value
+                    });
+                    if fail {
+                        return Err(());
+                    }
+		            let Some(callback) = &self.callback else {
+		                return Ok(());
+		            };
 
 	            let mut output_samples = vec![0.0f32; self.channels as usize * 2];
 	            let mut output = FramesMut::wrap(&mut output_samples, Format::F32, self.channels);
@@ -179,38 +209,67 @@ mod miniaudio {
     }
 
     #[cfg(test)]
-    mod tests {
-        use super::*;
+	    mod tests {
+	        use super::*;
 
-        #[test]
-        fn device_start_skips_poisoned_callback_lock_for_coverage() {
-            let mut config = DeviceConfig::new(DeviceType::Playback);
-            config.playback_mut().set_channels(2);
-            config.set_data_callback(|_device, _output, _input| {});
+	        #[test]
+	        fn device_start_skips_poisoned_callback_lock_for_coverage() {
+	            let mut config = DeviceConfig::new(DeviceType::Playback);
+	            config.playback_mut().set_channels(2);
+	            config.set_data_callback(|_device, _output, _input| {});
 
-            let callback = config.callback.clone().expect("callback");
-            let callback_clone = Arc::clone(&callback);
-            let _ = std::thread::spawn(move || {
-                let _guard = callback_clone.lock().expect("lock callback");
-                panic!("poison callback");
-            })
-            .join();
+	            let device = Device::new(None, &config).expect("device");
+	            device.start().expect("start");
 
-            let device = Device::new(None, &config).expect("device");
-            device.start().expect("start");
-        }
-    }
+	            let callback = config.callback.clone().expect("callback");
+	            let callback_clone = Arc::clone(&callback);
+	            let _ = std::thread::spawn(move || {
+	                let _guard = callback_clone.lock().expect("lock callback");
+	                panic!("poison callback");
+	            })
+	            .join();
+
+	            device.start().expect("start");
+	        }
+	    }
 }
 
 #[cfg(test)]
 mod rustysynth {
+    use std::cell::Cell;
     use std::io::Read;
     use std::sync::Arc;
+
+    thread_local! {
+        static FAIL_NEXT_SOUNDFONT_NEW: Cell<bool> = Cell::new(false);
+        static FAIL_NEXT_MIDI_FILE_NEW: Cell<bool> = Cell::new(false);
+        static FAIL_NEXT_SYNTH_NEW: Cell<bool> = Cell::new(false);
+    }
+
+    pub(super) fn fail_next_soundfont_new() {
+        FAIL_NEXT_SOUNDFONT_NEW.with(|flag| flag.set(true));
+    }
+
+    pub(super) fn fail_next_midi_file_new() {
+        FAIL_NEXT_MIDI_FILE_NEW.with(|flag| flag.set(true));
+    }
+
+    pub(super) fn fail_next_synth_new() {
+        FAIL_NEXT_SYNTH_NEW.with(|flag| flag.set(true));
+    }
 
     pub struct SoundFont;
 
     impl SoundFont {
         pub fn new<R: Read>(_reader: &mut R) -> Result<Self, ()> {
+            let fail = FAIL_NEXT_SOUNDFONT_NEW.with(|flag| {
+                let value = flag.get();
+                flag.set(false);
+                value
+            });
+            if fail {
+                return Err(());
+            }
             Ok(SoundFont)
         }
     }
@@ -222,6 +281,14 @@ mod rustysynth {
 
     impl MidiFile {
         pub fn new<R: Read>(_reader: &mut R) -> Result<Self, ()> {
+            let fail = FAIL_NEXT_MIDI_FILE_NEW.with(|flag| {
+                let value = flag.get();
+                flag.set(false);
+                value
+            });
+            if fail {
+                return Err(());
+            }
             Ok(MidiFile { length: 0.1 })
         }
 
@@ -246,6 +313,14 @@ mod rustysynth {
 
     impl Synthesizer {
         pub fn new(_soundfont: &SoundFont, settings: &SynthesizerSettings) -> Result<Self, ()> {
+            let fail = FAIL_NEXT_SYNTH_NEW.with(|flag| {
+                let value = flag.get();
+                flag.set(false);
+                value
+            });
+            if fail {
+                return Err(());
+            }
             Ok(Self {
                 sample_rate: settings.sample_rate,
             })
@@ -596,7 +671,7 @@ fn resolve_default_soundfont() -> Result<PathBuf, String> {
     );
 
     if let Ok(exe) = current_exe_for_soundfont_candidates() {
-        let dir = exe.parent().unwrap_or_else(|| Path::new(""));
+        let dir = exe.parent().unwrap_or(Path::new(""));
         candidates.push(dir.join(DEFAULT_SOUNDFONT_PATH));
         candidates.push(dir.join("../assets/soundfonts/MuseScore_General.sf2"));
         candidates.push(dir.join("../../assets/soundfonts/MuseScore_General.sf2"));
@@ -1624,25 +1699,25 @@ mod tests {
         }
     }
 
-	    fn get_native(env: &Rc<RefCell<Environment>>, name: &str) -> Rc<NativeFunction> {
-	        let value = env.borrow().get(name).unwrap();
-	        match value {
-	            Value::NativeFunction(func) => func,
-	            _ => panic!("expected native function {}", name),
-	        }
-	    }
+    fn get_native(env: &Rc<RefCell<Environment>>, name: &str) -> Rc<NativeFunction> {
+        let value = env.borrow().get(name).unwrap();
+        match value {
+            Value::NativeFunction(func) => func,
+            _ => panic!("expected native function {}", name),
+        }
+    }
 
-	    fn restore_env_var(key: &str, value: Option<std::ffi::OsString>) {
-	        match value {
-	            Some(v) => std::env::set_var(key, v),
-	            None => std::env::remove_var(key),
-	        }
-	    }
+    fn restore_env_var(key: &str, value: Option<std::ffi::OsString>) {
+        match value {
+            Some(v) => std::env::set_var(key, v),
+            None => std::env::remove_var(key),
+        }
+    }
 
-	    #[test]
-	    fn test_miniaudio_device_start_invokes_callback() {
-	        let mut config = miniaudio::DeviceConfig::new(miniaudio::DeviceType::Playback);
-	        config.playback_mut().set_channels(2);
+    #[test]
+    fn test_miniaudio_device_start_invokes_callback() {
+        let mut config = miniaudio::DeviceConfig::new(miniaudio::DeviceType::Playback);
+        config.playback_mut().set_channels(2);
 
         let called = Arc::new(AtomicUsize::new(0));
         let called_for_cb = called.clone();
@@ -1654,23 +1729,23 @@ mod tests {
         });
 
         let device = miniaudio::Device::new(None, &config).unwrap();
-	        assert!(device.start().is_ok());
-	        assert_eq!(called.load(Ordering::Relaxed), 1);
-	    }
+        assert!(device.start().is_ok());
+        assert_eq!(called.load(Ordering::Relaxed), 1);
+    }
 
-	    #[test]
-	    fn test_miniaudio_device_start_without_callback_is_ok() {
-	        let mut config = miniaudio::DeviceConfig::new(miniaudio::DeviceType::Playback);
-	        config.playback_mut().set_channels(2);
+    #[test]
+    fn test_miniaudio_device_start_without_callback_is_ok() {
+        let mut config = miniaudio::DeviceConfig::new(miniaudio::DeviceType::Playback);
+        config.playback_mut().set_channels(2);
 
-	        let device = miniaudio::Device::new(None, &config).unwrap();
-	        assert!(device.start().is_ok());
-	    }
+        let device = miniaudio::Device::new(None, &config).unwrap();
+        assert!(device.start().is_ok());
+    }
 
-	    #[test]
-	    #[should_panic(expected = "expected native function")]
-	    fn test_get_native_panics_on_non_native_value() {
-	        let env = Rc::new(RefCell::new(Environment::new()));
+    #[test]
+    #[should_panic(expected = "expected native function")]
+    fn test_get_native_panics_on_non_native_value() {
+        let env = Rc::new(RefCell::new(Environment::new()));
         env.borrow_mut().define("x".to_string(), Value::Integer(1));
         let _ = get_native(&env, "x");
     }
@@ -1717,6 +1792,53 @@ mod tests {
         let h2 = AudioState::alloc_handle(&mut slots, 77);
         assert_eq!(h2, 3);
         assert_eq!(slots[3], Some(77));
+    }
+
+    #[test]
+    fn test_alloc_handle_reuse_buffer_entry_instantiation() {
+        let entry = BufferEntry {
+            buffer: sample_buffer(1, 0.0, 0.0),
+            position: 0.0,
+            state: PlayState::Stopped,
+            looped: false,
+            volume: 1.0,
+            pan: 0.0,
+            pitch: 1.0,
+        };
+
+        let mut slots: Vec<Option<BufferEntry>> = vec![None];
+        let handle = AudioState::alloc_handle(&mut slots, entry);
+        assert_eq!(handle, 0);
+        assert!(slots[0].is_some());
+    }
+
+    #[test]
+    fn test_alloc_handle_reuse_midi_entry_instantiation() {
+        let mut sf_data = Cursor::new(Vec::new());
+        let soundfont = SoundFont::new(&mut sf_data).unwrap();
+        let settings = SynthesizerSettings::new(OUTPUT_SAMPLE_RATE as i32);
+        let synth = Synthesizer::new(&soundfont, &settings).unwrap();
+        let sequencer = MidiFileSequencer::new(synth);
+
+        let mut midi_data = Cursor::new(Vec::new());
+        let midi = Arc::new(MidiFile::new(&mut midi_data).unwrap());
+
+        let entry = MidiEntry {
+            midi,
+            sequencer,
+            state: PlayState::Stopped,
+            looped: false,
+            volume: 1.0,
+            pan: 0.0,
+            sample_rate: OUTPUT_SAMPLE_RATE,
+            scratch_left: Vec::new(),
+            scratch_right: Vec::new(),
+        };
+
+        let mut slots: Vec<Option<MidiEntry>> = vec![None];
+        let handle = AudioState::alloc_handle(&mut slots, entry);
+        assert_eq!(handle, 0);
+        assert!(slots[0].is_some());
     }
 
     #[test]
@@ -1806,6 +1928,17 @@ mod tests {
     }
 
     #[test]
+    fn test_load_soundfont_maps_soundfont_new_error() {
+        let dir = tempdir().unwrap();
+        let sf_path = dir.path().join("test.sf2");
+        fs::write(&sf_path, b"sf").unwrap();
+
+        rustysynth::fail_next_soundfont_new();
+        let err = load_soundfont(sf_path.as_path()).err().unwrap();
+        assert_eq!(err, "Cannae read the soondfont");
+    }
+
+    #[test]
     fn test_decode_audio_missing_file() {
         let err = decode_audio("nope.wav", "Cannae lade the soond").unwrap_err();
         assert_eq!(err, "Cannae lade the soond");
@@ -1835,6 +1968,22 @@ mod tests {
         assert!(mixer.music.is_empty());
         assert!(mixer.midi.is_empty());
         assert_eq!(mixer.master_volume, 1.0);
+    }
+
+    #[test]
+    fn test_audio_state_ensure_audio_maps_device_new_error() {
+        miniaudio::fail_next_device_new();
+        let mut state = AudioState::new();
+        let err = state.ensure_audio().unwrap_err();
+        assert_eq!(err, "Cannae stairt the soond device");
+    }
+
+    #[test]
+    fn test_audio_state_ensure_audio_maps_device_start_error() {
+        miniaudio::fail_next_device_start();
+        let mut state = AudioState::new();
+        let err = state.ensure_audio().unwrap_err();
+        assert_eq!(err, "Cannae stairt the soond device");
     }
 
     #[test]
@@ -2332,6 +2481,48 @@ mod tests {
     }
 
     #[test]
+    fn test_midi_lade_maps_midifile_new_error() {
+        let dir = tempdir().unwrap();
+        let midi_path = dir.path().join("song.mid");
+        fs::write(&midi_path, b"midi").unwrap();
+        let sf_path = dir.path().join("MuseScore_General.sf2");
+        fs::write(&sf_path, b"sf").unwrap();
+
+        let env = Rc::new(RefCell::new(Environment::new()));
+        register_audio_functions(&env);
+        let midi_lade = get_native(&env, "midi_lade");
+
+        rustysynth::fail_next_midi_file_new();
+        let err = (midi_lade.func)(vec![
+            Value::String(midi_path.to_string_lossy().to_string()),
+            Value::String(sf_path.to_string_lossy().to_string()),
+        ])
+        .unwrap_err();
+        assert_eq!(err, "Cannae read the midi");
+    }
+
+    #[test]
+    fn test_midi_lade_maps_synth_new_error() {
+        let dir = tempdir().unwrap();
+        let midi_path = dir.path().join("song.mid");
+        fs::write(&midi_path, b"midi").unwrap();
+        let sf_path = dir.path().join("MuseScore_General.sf2");
+        fs::write(&sf_path, b"sf").unwrap();
+
+        let env = Rc::new(RefCell::new(Environment::new()));
+        register_audio_functions(&env);
+        let midi_lade = get_native(&env, "midi_lade");
+
+        rustysynth::fail_next_synth_new();
+        let err = (midi_lade.func)(vec![
+            Value::String(midi_path.to_string_lossy().to_string()),
+            Value::String(sf_path.to_string_lossy().to_string()),
+        ])
+        .unwrap_err();
+        assert_eq!(err, "Cannae set up the synth");
+    }
+
+    #[test]
     fn test_mix_midi_entry_branches() {
         let mut sf_data = std::io::Cursor::new(Vec::new());
         let soundfont = SoundFont::new(&mut sf_data).unwrap();
@@ -2405,5 +2596,61 @@ mod tests {
         let native = get_native(&env, "soond_unlade");
         let err = (native.func)(vec![Value::Integer(999)]).unwrap_err();
         assert_eq!(err, ERR_BAD_HANDLE);
+    }
+
+    #[test]
+    fn test_audio_natives_return_bad_handle_for_invalid_handles() {
+        let env = Rc::new(RefCell::new(crate::value::Environment::new()));
+        register_audio_functions(&env);
+
+        let cases: &[(&str, Vec<Value>)] = &[
+            ("soond_ready", vec![Value::Integer(999)]),
+            ("soond_spiel", vec![Value::Integer(999)]),
+            ("soond_haud", vec![Value::Integer(999)]),
+            ("soond_gae_on", vec![Value::Integer(999)]),
+            ("soond_stap", vec![Value::Integer(999)]),
+            ("soond_is_spielin", vec![Value::Integer(999)]),
+            ("soond_pit_luid", vec![Value::Integer(999), Value::Float(0.5)]),
+            ("soond_pit_pan", vec![Value::Integer(999), Value::Float(0.0)]),
+            ("soond_pit_tune", vec![Value::Integer(999), Value::Float(1.0)]),
+            (
+                "soond_pit_rin_roond",
+                vec![Value::Integer(999), Value::Bool(true)],
+            ),
+            ("muisic_spiel", vec![Value::Integer(999)]),
+            ("muisic_haud", vec![Value::Integer(999)]),
+            ("muisic_gae_on", vec![Value::Integer(999)]),
+            ("muisic_stap", vec![Value::Integer(999)]),
+            ("muisic_is_spielin", vec![Value::Integer(999)]),
+            ("muisic_loup", vec![Value::Integer(999), Value::Float(0.0)]),
+            ("muisic_hou_lang", vec![Value::Integer(999)]),
+            ("muisic_whaur", vec![Value::Integer(999)]),
+            ("muisic_pit_luid", vec![Value::Integer(999), Value::Float(0.5)]),
+            ("muisic_pit_pan", vec![Value::Integer(999), Value::Float(0.0)]),
+            ("muisic_pit_tune", vec![Value::Integer(999), Value::Float(1.0)]),
+            (
+                "muisic_pit_rin_roond",
+                vec![Value::Integer(999), Value::Bool(false)],
+            ),
+            ("midi_haud", vec![Value::Integer(999)]),
+            ("midi_gae_on", vec![Value::Integer(999)]),
+            ("midi_stap", vec![Value::Integer(999)]),
+            ("midi_is_spielin", vec![Value::Integer(999)]),
+            ("midi_loup", vec![Value::Integer(999), Value::Float(0.0)]),
+            ("midi_hou_lang", vec![Value::Integer(999)]),
+            ("midi_whaur", vec![Value::Integer(999)]),
+            ("midi_pit_luid", vec![Value::Integer(999), Value::Float(0.5)]),
+            ("midi_pit_pan", vec![Value::Integer(999), Value::Float(0.0)]),
+            (
+                "midi_pit_rin_roond",
+                vec![Value::Integer(999), Value::Bool(true)],
+            ),
+        ];
+
+        for (name, args) in cases {
+            let native = get_native(&env, name);
+            let err = (native.func)(args.clone()).unwrap_err();
+            assert_eq!(err, ERR_BAD_HANDLE, "native {name} returned unexpected error");
+        }
     }
 }

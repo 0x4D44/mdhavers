@@ -91,3 +91,20 @@ blether atomic_cas(a, 1, 3)
     let out = interp.get_output().join("\n");
     assert_eq!(out.trim(), "aye\n2\nnae");
 }
+
+#[test]
+fn interpreter_channel_try_recv_and_is_closed_branches_for_coverage() {
+    let code = r#"
+ken ch = chan_new(0)
+blether chan_is_closed(ch)
+blether chan_try_recv(ch)
+chan_close(ch)
+blether chan_is_closed(ch)
+"#;
+
+    let program = parse(code).unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert_eq!(out.trim(), "nae\nnaething\naye");
+}

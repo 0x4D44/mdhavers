@@ -207,3 +207,79 @@ blether result
     let out = rx.recv().unwrap();
     assert_eq!(out.trim(), "server_ok");
 }
+
+#[test]
+fn interpreter_tls_connect_twice_returns_result_err_for_coverage() {
+    let (cert_pem, key_pem) = generate_cert();
+    let server_config = build_server_config(&cert_pem, &key_pem);
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    let server_thread = thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        let mut stream = StreamOwned::new(ServerConnection::new(server_config).unwrap(), stream);
+        let mut buf = [0u8; 4];
+        stream.read_exact(&mut buf).unwrap();
+        assert_eq!(&buf, b"ping");
+        stream.write_all(b"pong").unwrap();
+        let _ = stream.flush();
+    });
+
+    let cert_escaped = escape_for_braw(&cert_pem);
+    let code = format!(
+        r#"
+ken s = socket_tcp()
+ken result = "tls_fail"
+
+gin s["ok"] {{
+    ken sock = s["value"]
+    ken c = socket_connect(sock, "127.0.0.1", {port})
+    gin c["ok"] {{
+        ken cfg = {{"mode": "client", "server_name": "localhost", "ca_pem": "{cert_escaped}"}}
+        ken t = tls_client_new(cfg)
+        gin t["ok"] {{
+            ken tls = t["value"]
+            ken h1 = tls_connect(tls, sock)
+            gin h1["ok"] {{
+                ken sent = tls_send(tls, bytes_from_string("ping"))
+                ken recv = tls_recv(tls, 4)
+                gin sent["ok"] an recv["ok"] an recv["value"] == bytes_from_string("pong") {{
+                    ken h2 = tls_connect(tls, sock)
+                    gin nae h2["ok"] {{
+                        result = h2["error"]
+                    }}
+                }}
+            }}
+            tls_close(tls)
+        }}
+    }}
+    socket_close(sock)
+}}
+
+blether result
+"#
+    );
+
+    let program = parse(&code).unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert!(
+        out.contains("TLS session already connected"),
+        "unexpected output: {out}"
+    );
+
+    server_thread.join().unwrap();
+}
+
+#[test]
+fn interpreter_tls_send_rejects_non_bytes_argument_for_coverage() {
+    let program = parse("tls_send(1, 2)").unwrap();
+    let mut interp = Interpreter::new();
+    let err = interp
+        .interpret(&program)
+        .expect_err("expected tls_send() type error");
+    let s = format!("{err:?}");
+    assert!(s.contains("tls_send() expects bytes"), "unexpected error: {s}");
+}
