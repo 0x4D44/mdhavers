@@ -231,7 +231,9 @@ impl LLVMCompiler {
                 RelocMode::PIC, // Use PIC for PIE executables
                 CodeModel::Default,
             )
-            .ok_or_else(|| HaversError::CompileError("Failed to create target machine".to_string()))?;
+            .ok_or(HaversError::CompileError(
+                "Failed to create target machine".to_string(),
+            ))?;
 
         if let Some(status) = status.as_mut() {
             if matches!(self.opt_level, OptimizationLevel::None) {

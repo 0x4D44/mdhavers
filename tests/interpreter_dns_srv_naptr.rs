@@ -43,3 +43,90 @@ gin naptr_ok { blether "naptr_ok" } ither { blether "naptr_err" }
     ];
     assert!(allowed.contains(&out), "unexpected output: {out}");
 }
+
+#[test]
+fn interpreter_dns_lookup_rejects_non_string_arg_for_coverage() {
+    let program = parse("dns_lookup(1)").unwrap();
+    let mut interp = Interpreter::new();
+    let err = interp
+        .interpret(&program)
+        .expect_err("expected dns_lookup() type error");
+    let s = format!("{err:?}");
+    assert!(
+        s.contains("dns_lookup() expects host string"),
+        "unexpected error: {s}"
+    );
+}
+
+#[test]
+fn interpreter_dns_srv_rejects_non_string_args_for_coverage() {
+    let program = parse("dns_srv(1, 2)").unwrap();
+    let mut interp = Interpreter::new();
+    let err = interp
+        .interpret(&program)
+        .expect_err("expected dns_srv() type error");
+    let s = format!("{err:?}");
+    assert!(
+        s.contains("dns_srv() expects service string"),
+        "unexpected error: {s}"
+    );
+}
+
+#[test]
+fn interpreter_dns_srv_rejects_non_string_domain_for_coverage() {
+    let program = parse("dns_srv(\"_sip._udp\", 1)").unwrap();
+    let mut interp = Interpreter::new();
+    let err = interp
+        .interpret(&program)
+        .expect_err("expected dns_srv() domain type error");
+    let s = format!("{err:?}");
+    assert!(
+        s.contains("dns_srv() expects domain string"),
+        "unexpected error: {s}"
+    );
+}
+
+#[test]
+fn interpreter_dns_naptr_rejects_non_string_arg_for_coverage() {
+    let program = parse("dns_naptr(1)").unwrap();
+    let mut interp = Interpreter::new();
+    let err = interp
+        .interpret(&program)
+        .expect_err("expected dns_naptr() type error");
+    let s = format!("{err:?}");
+    assert!(
+        s.contains("dns_naptr() expects domain string"),
+        "unexpected error: {s}"
+    );
+}
+
+#[test]
+fn interpreter_dns_lookup_invalid_host_returns_result_err_for_coverage() {
+    let code = r#"
+ken result = "ok"
+ken r = dns_lookup("bad host")
+gin nae r["ok"] {
+    result = r["error"]
+}
+blether result
+"#;
+    let program = parse(code).unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert!(out.contains("dns_lookup()"), "unexpected output: {out}");
+}
+
+#[test]
+fn interpreter_dns_srv_empty_service_branch_for_coverage() {
+    let code = r#"
+ken r = dns_srv("", "example.com")
+gin r["ok"] { blether "aye" } ither { blether "nae" }
+"#;
+    let program = parse(code).unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    let out = out.trim();
+    assert!(out == "aye" || out == "nae", "unexpected output: {out}");
+}

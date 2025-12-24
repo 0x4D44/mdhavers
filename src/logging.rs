@@ -87,26 +87,25 @@ pub fn set_filter(spec: &str) -> Result<(), String> {
     let filter = parse_filter(spec)?;
     let mut guard = filter_state()
         .lock()
-        .map_err(|_| "log filter lock poisoned".to_string())?;
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     *guard = filter;
     GLOBAL_LOG_LEVEL.store(guard.default as u8, Ordering::Relaxed);
     let mut spec_guard = filter_spec()
         .lock()
-        .map_err(|_| "log filter lock poisoned".to_string())?;
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     *spec_guard = spec.to_string();
     Ok(())
 }
 
 pub fn get_filter() -> String {
-    filter_spec()
-        .lock()
-        .map(|s| s.clone())
-        .unwrap_or_else(|_| String::new())
+    filter_spec().lock().map(|s| s.clone()).unwrap_or_default()
 }
 
 pub fn log_enabled(level: LogLevel, target: &str) -> bool {
-    let filter = filter_state().lock().unwrap_or_else(|e| e.into_inner());
-    let effective = filter.level_for_target(target);
+    let guard = filter_state()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let effective = guard.level_for_target(target);
     (level as u8) <= (effective as u8)
 }
 
@@ -580,6 +579,14 @@ mod tests {
         assert!(log_enabled(LogLevel::Roar, "net.udp"));
 
         assert!(parse_filter("wat").is_err());
+    }
+
+    #[test]
+    fn test_parse_filter_invalid_target_level_for_coverage() {
+        let _lock = LOG_LOCK.lock().unwrap();
+
+        let err = parse_filter("net=nae-a-level").unwrap_err();
+        assert!(err.contains("Invalid log level"));
     }
 
     #[test]

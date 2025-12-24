@@ -1215,6 +1215,17 @@ mod tests {
     }
 
     #[test]
+    fn test_is_local_or_param_checks_params_and_locals_for_coverage() {
+        let mut compiler = WasmCompiler::new();
+        compiler.func_params = vec!["p".to_string()];
+        compiler.local_vars = vec!["l".to_string()];
+
+        assert!(compiler.is_local_or_param("p"));
+        assert!(compiler.is_local_or_param("l"));
+        assert!(!compiler.is_local_or_param("x"));
+    }
+
+    #[test]
     fn test_if_wasm() {
         let source = r#"
             ken x = 5

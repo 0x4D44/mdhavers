@@ -552,7 +552,7 @@ fn run_repl() -> Result<(), String> {
     );
     println!();
 
-    let mut rl = DefaultEditor::new().map_err(|e| e.to_string())?;
+    let mut rl = match DefaultEditor::new() { Ok(rl) => rl, Err(e) => return Err(e.to_string()) };
 
     // Try to load history from file
     let history_path = dirs::home_dir()
