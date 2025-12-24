@@ -80,6 +80,12 @@ fn interpreter_bytes_builtins_cover_edge_branches_for_coverage() {
     let _ = (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Integer(0), Value::Float(7.0)])
         .unwrap();
     assert!(
+        (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Nil, Value::Integer(7)]).is_err()
+    );
+    assert!(
+        (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Integer(0), Value::Nil]).is_err()
+    );
+    assert!(
         (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Integer(0), Value::Integer(-1)])
             .is_err()
     );
@@ -93,6 +99,18 @@ fn interpreter_bytes_builtins_cover_edge_branches_for_coverage() {
             Value::Float(7.0),
         ])
         .unwrap();
+    assert!((bytes_write_u32be.func)(vec![
+        bytes(&[0, 0, 0, 0]),
+        Value::Nil,
+        Value::Integer(7)
+    ])
+    .is_err());
+    assert!((bytes_write_u32be.func)(vec![
+        bytes(&[0, 0, 0, 0]),
+        Value::Integer(0),
+        Value::Nil
+    ])
+    .is_err());
     assert!(
         (bytes_write_u32be.func)(vec![
             bytes(&[0, 0, 0, 0]),

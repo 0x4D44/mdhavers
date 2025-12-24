@@ -177,6 +177,29 @@ mod miniaudio {
             }
         }
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn device_start_skips_poisoned_callback_lock_for_coverage() {
+            let mut config = DeviceConfig::new(DeviceType::Playback);
+            config.playback_mut().set_channels(2);
+            config.set_data_callback(|_device, _output, _input| {});
+
+            let callback = config.callback.clone().expect("callback");
+            let callback_clone = Arc::clone(&callback);
+            let _ = std::thread::spawn(move || {
+                let _guard = callback_clone.lock().expect("lock callback");
+                panic!("poison callback");
+            })
+            .join();
+
+            let device = Device::new(None, &config).expect("device");
+            device.start().expect("start");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -566,16 +589,17 @@ fn current_exe_for_soundfont_candidates() -> std::io::Result<PathBuf> {
 fn resolve_default_soundfont() -> Result<PathBuf, String> {
     let mut candidates: Vec<PathBuf> = Vec::new();
 
-    if let Ok(cwd) = std::env::current_dir() {
-        candidates.push(cwd.join(DEFAULT_SOUNDFONT_PATH));
-    }
+    candidates.extend(
+        std::env::current_dir()
+            .ok()
+            .map(|cwd| cwd.join(DEFAULT_SOUNDFONT_PATH)),
+    );
 
     if let Ok(exe) = current_exe_for_soundfont_candidates() {
-        if let Some(dir) = exe.parent() {
-            candidates.push(dir.join(DEFAULT_SOUNDFONT_PATH));
-            candidates.push(dir.join("../assets/soundfonts/MuseScore_General.sf2"));
-            candidates.push(dir.join("../../assets/soundfonts/MuseScore_General.sf2"));
-        }
+        let dir = exe.parent().unwrap_or_else(|| Path::new(""));
+        candidates.push(dir.join(DEFAULT_SOUNDFONT_PATH));
+        candidates.push(dir.join("../assets/soundfonts/MuseScore_General.sf2"));
+        candidates.push(dir.join("../../assets/soundfonts/MuseScore_General.sf2"));
     }
 
     for path in candidates {
@@ -1276,9 +1300,9 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
                         let path = resolve_default_soundfont()?;
                         let sf = load_soundfont(path.as_path())?;
                         let mut mixer = state.mixer()?;
-                        if mixer.default_soundfont.is_none() {
-                            mixer.default_soundfont = Some(Arc::clone(&sf));
-                        }
+                        mixer
+                            .default_soundfont
+                            .get_or_insert_with(|| Arc::clone(&sf));
                         sf
                     }
                 }
@@ -1914,6 +1938,18 @@ mod tests {
     }
 
     #[test]
+    fn test_mix_state_skips_none_slots_for_coverage() {
+        let mut state = MixerState::new();
+        state.sounds = vec![None];
+        state.music = vec![None];
+        state.midi = vec![None];
+
+        let mut output = vec![0.0_f32; 2];
+        mix_state(&mut state, &mut output, 1);
+        assert_eq!(output, vec![0.0, 0.0]);
+    }
+
+    #[test]
     fn test_mix_midi_entry_advances_and_stops() {
         let dir = tempdir().unwrap();
         let midi_path = dir.path().join("test.mid");
@@ -2325,6 +2361,16 @@ mod tests {
         entry.sequencer.play(&entry.midi, false);
         mix_midi_entry(&mut entry, &mut output, 1, 2);
         assert_eq!(entry.state, PlayState::Stopped);
+
+        // Cover the no-resize path and the "looped" case that doesn't stop playback.
+        entry.state = PlayState::Playing;
+        entry.looped = true;
+        entry.sequencer.play(&entry.midi, false);
+        let mut output = vec![0.0_f32; 4];
+        mix_midi_entry(&mut entry, &mut output, 2, 2);
+        assert_eq!(entry.state, PlayState::Playing);
+        mix_midi_entry(&mut entry, &mut output, 1, 2);
+        assert_eq!(entry.state, PlayState::Playing);
     }
 
     #[test]

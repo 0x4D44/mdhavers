@@ -392,6 +392,37 @@ fn cli_can_surface_prelude_parse_errors_as_a_user_facing_error() {
 }
 
 #[test]
+fn cli_repl_vars_empty_message_is_reachable_when_prelude_fails_to_load() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let stdlib_dir = dir.path().join("stdlib");
+    fs::create_dir_all(&stdlib_dir).unwrap();
+    write_file(&stdlib_dir.join("prelude.braw"), "ken =\n");
+
+    let script = ":vars\nquit\n";
+    let (code, out, err) = run_mdhavers_in_dir(&["repl"], Some(script), home, dir.path());
+    assert_eq!(code, 0, "stderr: {err}");
+    assert!(out.contains("Yer Variables"));
+    assert!(out.contains("Nae variables defined yet"));
+}
+
+#[test]
+fn cli_repl_vars_shows_user_float_values_for_coverage() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let script = "ken f = 1.5\n:vars\nquit\n";
+    let (code, out, err) = run_mdhavers(&["repl"], Some(script), home);
+    assert_eq!(code, 0, "stderr: {err}");
+    assert!(
+        out.contains("f : float"),
+        "expected float variable in env, got stdout:\n{out}\nstderr:\n{err}"
+    );
+    assert!(out.contains("1.5"), "expected float value, got stdout:\n{out}");
+}
+
+#[test]
 fn cli_trace_runtime_error_path_is_covered() {
     let dir = tempdir().unwrap();
     let home = dir.path();
@@ -626,9 +657,11 @@ fn cli_repl_multiline_cancel_and_prelude_warning_paths_are_covered() {
     let script = [
         ":vars",
         "gin aye {",
+        "",
         "help",
         ":trace",
         ":trace verbose",
+        ":cancel",
         ":cancel",
         "# comment",
         "blether \"a\\\\b\"",
@@ -643,4 +676,147 @@ fn cli_repl_multiline_cancel_and_prelude_warning_paths_are_covered() {
     let (code, out, err) = run_mdhavers_in_dir(&["repl"], Some(&script), home, dir.path());
     assert_eq!(code, 0, "stderr: {err}");
     assert!(out.contains("mdhavers REPL"));
+}
+
+#[cfg(unix)]
+#[test]
+fn cli_repl_readline_interrupt_error_path_is_covered() {
+    use std::io::{Read, Write};
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    // Run the REPL under a pseudo-tty so sending ^C triggers ReadlineError::Interrupted rather than
+    // being interpreted as a literal input character.
+    let repl_cmd = format!("{} repl", mdhavers_bin().display());
+    let mut cmd = Command::new("script");
+    cmd.args(["-q", "-c", &repl_cmd, "/dev/null"])
+        .env("HOME", home)
+        .env("NO_COLOR", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = cmd.spawn().expect("spawn script");
+    let mut child_stdin = child.stdin.take().expect("stdin");
+    let child_stdout = child.stdout.take().expect("stdout");
+    let child_stderr = child.stderr.take().expect("stderr");
+
+    let (stdout_tx, stdout_rx) = mpsc::channel::<Vec<u8>>();
+    let stdout_handle = thread::spawn(move || {
+        let mut r = child_stdout;
+        let mut buf = [0u8; 4096];
+        loop {
+            match r.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let _ = stdout_tx.send(buf[..n].to_vec());
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    let (stderr_tx, stderr_rx) = mpsc::channel::<Vec<u8>>();
+    let stderr_handle = thread::spawn(move || {
+        let mut r = child_stderr;
+        let mut buf = [0u8; 4096];
+        loop {
+            match r.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let _ = stderr_tx.send(buf[..n].to_vec());
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+
+    let start = Instant::now();
+    loop {
+        if String::from_utf8_lossy(&stdout).contains("mdhavers>") {
+            break;
+        }
+        if start.elapsed() > Duration::from_secs(5) {
+            while let Ok(chunk) = stderr_rx.try_recv() {
+                stderr.extend_from_slice(&chunk);
+            }
+            panic!(
+                "timed out waiting for REPL prompt; stdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&stdout),
+                String::from_utf8_lossy(&stderr)
+            );
+        }
+        match stdout_rx.recv_timeout(Duration::from_millis(200)) {
+            Ok(chunk) => stdout.extend_from_slice(&chunk),
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+
+    // Send Ctrl-C to trigger ReadlineError::Interrupted and continue the loop.
+    child_stdin.write_all(&[0x03]).expect("write ^C");
+    child_stdin.flush().expect("flush ^C");
+
+    let start = Instant::now();
+    loop {
+        if String::from_utf8_lossy(&stdout).contains("Interrupted! Use 'quit' tae leave.") {
+            break;
+        }
+        if start.elapsed() > Duration::from_secs(5) {
+            while let Ok(chunk) = stderr_rx.try_recv() {
+                stderr.extend_from_slice(&chunk);
+            }
+            panic!(
+                "timed out waiting for interrupt message; stdout:\n{}\nstderr:\n{}",
+                String::from_utf8_lossy(&stdout),
+                String::from_utf8_lossy(&stderr)
+            );
+        }
+        match stdout_rx.recv_timeout(Duration::from_millis(200)) {
+            Ok(chunk) => stdout.extend_from_slice(&chunk),
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+
+    child_stdin.write_all(b"quit\n").expect("write quit");
+    child_stdin.flush().expect("flush quit");
+    drop(child_stdin);
+
+    let start = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("try_wait") {
+            break status;
+        }
+        if start.elapsed() > Duration::from_secs(5) {
+            let _ = child.kill();
+            panic!("timed out waiting for repl to exit");
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+
+    assert_eq!(status.code().unwrap_or(-1), 0);
+
+    let _ = stdout_handle.join();
+    let _ = stderr_handle.join();
+
+    while let Ok(chunk) = stdout_rx.try_recv() {
+        stdout.extend_from_slice(&chunk);
+    }
+    while let Ok(chunk) = stderr_rx.try_recv() {
+        stderr.extend_from_slice(&chunk);
+    }
+
+    let stdout = String::from_utf8_lossy(&stdout);
+    assert!(
+        stdout.contains("Interrupted! Use 'quit' tae leave."),
+        "stdout missing interrupted message:\n{stdout}"
+    );
 }

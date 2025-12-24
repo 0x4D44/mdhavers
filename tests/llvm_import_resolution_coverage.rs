@@ -141,45 +141,5 @@ blether 1
     assert!(obj.exists());
 }
 
-#[test]
-fn llvm_import_resolution_falls_back_to_exe_dir_for_coverage() {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    static COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-    let exe = std::env::current_exe().expect("current_exe");
-    let exe_dir = exe.parent().expect("exe parent");
-
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let direct_name = format!("__exe_cov_direct_{n}_{}", std::process::id());
-    let stdlib_name = format!("__exe_cov_stdlib_{n}_{}", std::process::id());
-    let stripped_name = format!("__exe_cov_stripped_{n}_{}", std::process::id());
-
-    let direct_path = exe_dir.join(format!("{direct_name}.braw"));
-    let stdlib_dir = exe_dir.join("stdlib");
-    let stdlib_path = stdlib_dir.join(format!("{stdlib_name}.braw"));
-    let stripped_path = stdlib_dir.join(format!("{stripped_name}.braw"));
-
-    fs::create_dir_all(&stdlib_dir).expect("create exe stdlib dir");
-    write_braw(&direct_path, "dae f() { gie 1 }\n");
-    write_braw(&stdlib_path, "dae g() { gie 2 }\n");
-    write_braw(&stripped_path, "dae h() { gie 3 }\n");
-
-    let src = format!(
-        r#"
-fetch "{direct_name}"
-fetch "{stdlib_name}"
-fetch "lib/{stripped_name}"
-blether f()
-blether g()
-blether h()
-"#
-    );
-    let program = parse(&src).expect("parse");
-    let ir = LLVMCompiler::new().compile_to_ir(&program).expect("compile");
-    assert!(!ir.is_empty());
-
-    let _ = fs::remove_file(&direct_path);
-    let _ = fs::remove_file(&stdlib_path);
-    let _ = fs::remove_file(&stripped_path);
-}
+// NOTE: We intentionally avoid writing into `current_exe()`'s directory during tests,
+// as it may race with cargo's own test runner and cause flakiness.

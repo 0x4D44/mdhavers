@@ -175,3 +175,38 @@ blether timer_cancel(loop, id)
     let out = interp.get_output().join("\n");
     assert_eq!(out.trim(), "aye\nnae");
 }
+
+#[test]
+fn interpreter_event_loop_stop_and_unwatch_cover_branches_for_coverage() {
+    let code = r#"
+ken loop = event_loop_new()
+
+dae on_read(ev) {
+    # no-op
+}
+
+ken r = socket_udp()
+gin r["ok"] {
+    ken sock = r["value"]
+    event_watch_read(loop, sock, on_read)
+    blether event_unwatch(loop, sock)
+    blether event_unwatch(loop, sock)
+    event_loop_stop(loop)
+    ken evs = event_loop_poll(loop, 0)
+    blether evs[0]["kind"]
+    socket_close(sock)
+} ither {
+    blether "skip"
+}
+"#;
+
+    let program = parse(code).unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    let out = out.trim();
+    assert!(
+        out == "aye\nnae\nstop" || out == "skip",
+        "unexpected output: {out}"
+    );
+}

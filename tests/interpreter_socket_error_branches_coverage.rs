@@ -68,6 +68,8 @@ fn interpreter_socket_and_io_builtins_cover_error_paths_for_coverage() {
     let socket_listen = native(&interp, "socket_listen");
     let socket_accept = native(&interp, "socket_accept");
     let socket_set_nonblocking = native(&interp, "socket_set_nonblocking");
+    let socket_set_ttl = native(&interp, "socket_set_ttl");
+    let socket_set_nodelay = native(&interp, "socket_set_nodelay");
     let socket_set_rcvbuf = native(&interp, "socket_set_rcvbuf");
     let socket_set_sndbuf = native(&interp, "socket_set_sndbuf");
     let socket_close = native(&interp, "socket_close");
@@ -136,8 +138,27 @@ fn interpreter_socket_and_io_builtins_cover_error_paths_for_coverage() {
         (socket_set_rcvbuf.func)(vec![Value::Integer(tcp_id), Value::Integer(-1)]).is_err()
     );
     assert!(
+        (socket_set_rcvbuf.func)(vec![Value::Integer(tcp_id), Value::Integer(i64::from(i32::MAX) + 1)])
+            .is_err()
+    );
+    assert!(
         (socket_set_sndbuf.func)(vec![Value::Integer(tcp_id), Value::Integer(-1)]).is_err()
     );
+    assert!(
+        (socket_set_sndbuf.func)(vec![Value::Integer(tcp_id), Value::Integer(i64::from(i32::MAX) + 1)])
+            .is_err()
+    );
+
+    // socket_set_ttl: range validation error.
+    assert!(
+        (socket_set_ttl.func)(vec![Value::Integer(udp_id), Value::Integer(256)]).is_err(),
+        "expected ttl range check to fail"
+    );
+
+    // socket_set_nodelay: syscall error on UDP sockets.
+    let nodelay_err =
+        (socket_set_nodelay.func)(vec![Value::Integer(udp_id), Value::Bool(true)]).unwrap();
+    assert_result_err(nodelay_err);
 
     // udp_send_to: argument validation errors (avoid actual send)
     assert!((udp_send_to.func)(vec![

@@ -221,11 +221,10 @@ fn run_file(path: &PathBuf) -> Result<(), String> {
         .unwrap_or(path.display().to_string());
     interpreter.set_current_file(&filename);
 
-    // Set the current directory tae the file's directory fer module resolution
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            interpreter.set_current_dir(parent);
-        }
+    // Set the current directory tae the file's directory fer module resolution.
+    // `Path::parent()` can be `None` for paths like `/`; treat that the same as an empty parent.
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        interpreter.set_current_dir(parent);
     }
 
     // Load the prelude (standard utility functions)
@@ -257,11 +256,10 @@ fn trace_file(path: &PathBuf, verbose: bool) -> Result<(), String> {
         TraceMode::Statements
     });
 
-    // Set the current directory fer module resolution
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            interpreter.set_current_dir(parent);
-        }
+    // Set the current directory fer module resolution.
+    // `Path::parent()` can be `None` for paths like `/`; treat that the same as an empty parent.
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
+        interpreter.set_current_dir(parent);
     }
 
     println!("{}", "═".repeat(60).yellow());
@@ -554,10 +552,7 @@ fn run_repl() -> Result<(), String> {
     );
     println!();
 
-    let mut rl = match DefaultEditor::new() {
-        Ok(rl) => rl,
-        Err(e) => return Err(e.to_string()),
-    };
+    let mut rl = DefaultEditor::new().map_err(|e| e.to_string())?;
 
     // Try to load history from file
     let history_path = dirs::home_dir()
@@ -730,16 +725,10 @@ fn run_repl() -> Result<(), String> {
 
                 buffer.clear();
             }
-            Err(ReadlineError::Interrupted) => {
-                println!("{}", "Interrupted! Use 'quit' tae leave.".yellow());
-            }
-            Err(ReadlineError::Eof) => {
-                println!("{}", "Haste ye back! Slàinte!".cyan());
-                break;
-            }
             Err(err) => {
-                eprintln!("{}: {:?}", "Error".red(), err);
-                break;
+                if !handle_repl_readline_error(err) {
+                    break;
+                }
             }
         }
     }
@@ -750,6 +739,23 @@ fn run_repl() -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn handle_repl_readline_error(err: ReadlineError) -> bool {
+    match err {
+        ReadlineError::Interrupted => {
+            println!("{}", "Interrupted! Use 'quit' tae leave.".yellow());
+            true
+        }
+        ReadlineError::Eof => {
+            println!("{}", "Haste ye back! Slàinte!".cyan());
+            false
+        }
+        err => {
+            eprintln!("{}: {:?}", "Error".red(), err);
+            false
+        }
+    }
 }
 
 fn print_repl_help() {
@@ -1228,4 +1234,95 @@ fn format_runtime_error(source: &str, error: mdhavers::HaversError) -> String {
     }
 
     msg
+}
+
+#[cfg(test)]
+    mod tests {
+        use super::*;
+        use std::io;
+        use tempfile::tempdir;
+
+    #[test]
+    fn repl_readline_error_helper_covers_all_branches_for_coverage() {
+        assert!(handle_repl_readline_error(ReadlineError::Interrupted));
+        assert!(!handle_repl_readline_error(ReadlineError::Eof));
+        assert!(!handle_repl_readline_error(ReadlineError::Io(io::Error::new(
+            io::ErrorKind::Other,
+            "boom"
+        ))));
+    }
+
+    #[test]
+    fn run_file_sets_current_dir_when_parent_present_for_coverage() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("hello.braw");
+        std::fs::write(&path, "blether 1\n").expect("write file");
+        run_file(&path).expect("run file");
+    }
+
+    #[test]
+    fn trace_file_sets_current_dir_when_parent_present_for_coverage() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("hello.braw");
+        std::fs::write(&path, "blether 1\n").expect("write file");
+        trace_file(&path, false).expect("trace file");
+    }
+
+    #[test]
+        fn print_environment_covers_function_listing_branch_for_coverage() {
+            let mut interpreter = Interpreter::new();
+            let mut src = String::new();
+            for i in 0..11 {
+                src.push_str(&format!("dae f{}() {{ gie {} }}\n", i, i));
+            }
+            src.push_str("ken x = 1\n");
+            let program = parse(&src).expect("parse");
+            interpreter.interpret(&program).expect("interpret");
+            print_environment(&interpreter);
+        }
+
+        #[test]
+        fn print_environment_covers_function_listing_without_hidden_for_coverage() {
+            let mut interpreter = Interpreter::new();
+            let src = "dae f0() { gie 0 }\nken x = 1\n";
+            let program = parse(src).expect("parse");
+            interpreter.interpret(&program).expect("interpret");
+            print_environment(&interpreter);
+        }
+
+        #[test]
+        fn print_environment_covers_values_only_without_functions_for_coverage() {
+            let mut interpreter = Interpreter::new();
+            let program = parse("ken x = 1\n").expect("parse");
+            interpreter.interpret(&program).expect("interpret");
+            print_environment(&interpreter);
+        }
+
+        #[test]
+        fn run_file_and_trace_cover_empty_parent_paths_for_coverage() {
+            let unique = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("time")
+                .as_nanos();
+        let filename = format!(".tmp_mdhavers_main_{}.braw", unique);
+        std::fs::write(&filename, "blether 1\n").expect("write file");
+
+        let path = PathBuf::from(&filename);
+        run_file(&path).expect("run file");
+        trace_file(&path, false).expect("trace file");
+
+        std::fs::remove_file(&filename).expect("cleanup file");
+    }
+
+    #[test]
+    fn format_error_helpers_cover_no_line_and_no_suggestion_paths_for_coverage() {
+        let err = mdhavers::HaversError::ModuleNotFound {
+            name: "missing".to_string(),
+        };
+        let msg = format_parse_error("", err.clone());
+        assert!(msg.contains("Cannae find module"));
+
+        let msg = format_runtime_error("", err);
+        assert!(msg.contains("Cannae find module"));
+    }
 }

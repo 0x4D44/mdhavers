@@ -117,12 +117,10 @@ fn get_socket(id: i64) -> Option<SocketEntry> {
 #[cfg(all(feature = "native", unix))]
 fn update_socket_kind(id: i64, kind: SocketKind) -> bool {
     let mut reg = socket_registry().lock().unwrap();
-    if let Some(entry) = reg.sockets.get_mut(&id) {
-        entry.kind = kind;
-        true
-    } else {
-        false
-    }
+    reg.sockets
+        .get_mut(&id)
+        .map(|entry| entry.kind = kind)
+        .is_some()
 }
 
 #[cfg(all(feature = "native", unix))]
@@ -359,15 +357,14 @@ impl Drop for ModuleInProgressGuard {
     fn drop(&mut self) {
         // SAFETY: guard is scoped to a live Interpreter borrow.
         unsafe {
-            let Some(interp) = self.interp.as_mut() else {
-                return;
-            };
-            if let Some(pos) = interp
-                .module_in_progress
-                .iter()
-                .rposition(|p| *p == self.path)
-            {
-                interp.module_in_progress.remove(pos);
+            if let Some(interp) = self.interp.as_mut() {
+                if let Some(pos) = interp
+                    .module_in_progress
+                    .iter()
+                    .rposition(|p| *p == self.path)
+                {
+                    interp.module_in_progress.remove(pos);
+                }
             }
         }
     }
@@ -747,6 +744,58 @@ fn make_resolver() -> Result<Resolver, String> {
     Resolver::from_system_conf()
         .or_else(|_| Resolver::new(ResolverConfig::default(), ResolverOpts::default()))
         .map_err(|e| format!("DNS resolver init failed: {}", e))
+}
+
+#[cfg(feature = "native")]
+fn dns_srv_to_value(srv: &trust_dns_resolver::proto::rr::rdata::SRV) -> Value {
+    let mut dict = DictValue::new();
+    dict.set(
+        Value::String("priority".to_string()),
+        Value::Integer(srv.priority() as i64),
+    );
+    dict.set(
+        Value::String("weight".to_string()),
+        Value::Integer(srv.weight() as i64),
+    );
+    dict.set(
+        Value::String("port".to_string()),
+        Value::Integer(srv.port() as i64),
+    );
+    dict.set(
+        Value::String("target".to_string()),
+        Value::String(srv.target().to_string()),
+    );
+    Value::Dict(Rc::new(RefCell::new(dict)))
+}
+
+#[cfg(feature = "native")]
+fn dns_naptr_to_value(naptr: &trust_dns_resolver::proto::rr::rdata::NAPTR) -> Value {
+    let mut dict = DictValue::new();
+    dict.set(
+        Value::String("order".to_string()),
+        Value::Integer(naptr.order() as i64),
+    );
+    dict.set(
+        Value::String("preference".to_string()),
+        Value::Integer(naptr.preference() as i64),
+    );
+    dict.set(
+        Value::String("flags".to_string()),
+        Value::String(String::from_utf8_lossy(naptr.flags()).to_string()),
+    );
+    dict.set(
+        Value::String("service".to_string()),
+        Value::String(String::from_utf8_lossy(naptr.services()).to_string()),
+    );
+    dict.set(
+        Value::String("regexp".to_string()),
+        Value::String(String::from_utf8_lossy(naptr.regexp()).to_string()),
+    );
+    dict.set(
+        Value::String("replacement".to_string()),
+        Value::String(naptr.replacement().to_string()),
+    );
+    Value::Dict(Rc::new(RefCell::new(dict)))
 }
 
 #[cfg(feature = "native")]
@@ -1517,16 +1566,14 @@ impl Interpreter {
     }
 
     fn apply_log_config(&mut self, config: Option<Value>) -> Result<(), String> {
-        if config.is_none() {
-            self.logger = logging::LoggerCore::new();
-            self.log_callback = None;
-            return Ok(());
-        }
-
         let dict = match config {
+            None => {
+                self.logger = logging::LoggerCore::new();
+                self.log_callback = None;
+                return Ok(());
+            }
             Some(Value::Dict(d)) => d,
             Some(_) => return Err("log_init() expects a dict".to_string()),
-            None => return Ok(()),
         };
 
         let dict_ref = dict.borrow();
@@ -1692,6 +1739,15 @@ impl Interpreter {
             // Skip native functions
             if matches!(value, Value::NativeFunction(_)) {
                 continue;
+            }
+            // Skip built-in math constants unless they've been overridden.
+            if let Value::Float(f) = value {
+                if (name == "PI" && *f == std::f64::consts::PI)
+                    || (name == "E" && *f == std::f64::consts::E)
+                    || (name == "TAU" && *f == std::f64::consts::TAU)
+                {
+                    continue;
+                }
             }
             // Skip internal builtin placeholders used by the JS compiler.
             if let Value::String(s) = value {
@@ -2717,24 +2773,7 @@ impl Interpreter {
                     let mut out = Vec::new();
                     for rdata in lookup.iter() {
                         if let RData::SRV(srv) = rdata {
-                            let mut dict = DictValue::new();
-                            dict.set(
-                                Value::String("priority".to_string()),
-                                Value::Integer(srv.priority() as i64),
-                            );
-                            dict.set(
-                                Value::String("weight".to_string()),
-                                Value::Integer(srv.weight() as i64),
-                            );
-                            dict.set(
-                                Value::String("port".to_string()),
-                                Value::Integer(srv.port() as i64),
-                            );
-                            dict.set(
-                                Value::String("target".to_string()),
-                                Value::String(srv.target().to_string()),
-                            );
-                            out.push(Value::Dict(Rc::new(RefCell::new(dict))));
+                            out.push(dns_srv_to_value(srv));
                         }
                     }
                     Ok(result_ok(Value::List(Rc::new(RefCell::new(out)))))
@@ -2765,34 +2804,7 @@ impl Interpreter {
                     let mut out = Vec::new();
                     for rdata in lookup.iter() {
                         if let RData::NAPTR(naptr) = rdata {
-                            let mut dict = DictValue::new();
-                            dict.set(
-                                Value::String("order".to_string()),
-                                Value::Integer(naptr.order() as i64),
-                            );
-                            dict.set(
-                                Value::String("preference".to_string()),
-                                Value::Integer(naptr.preference() as i64),
-                            );
-                            dict.set(
-                                Value::String("flags".to_string()),
-                                Value::String(String::from_utf8_lossy(naptr.flags()).to_string()),
-                            );
-                            dict.set(
-                                Value::String("service".to_string()),
-                                Value::String(
-                                    String::from_utf8_lossy(naptr.services()).to_string(),
-                                ),
-                            );
-                            dict.set(
-                                Value::String("regexp".to_string()),
-                                Value::String(String::from_utf8_lossy(naptr.regexp()).to_string()),
-                            );
-                            dict.set(
-                                Value::String("replacement".to_string()),
-                                Value::String(naptr.replacement().to_string()),
-                            );
-                            out.push(Value::Dict(Rc::new(RefCell::new(dict))));
+                            out.push(dns_naptr_to_value(naptr));
                         }
                     }
                     Ok(result_ok(Value::List(Rc::new(RefCell::new(out)))))
@@ -2831,35 +2843,35 @@ impl Interpreter {
                 }))),
             );
 
-            // tls_connect(tls, sock)
-            globals.borrow_mut().define(
-                "tls_connect".to_string(),
-                Value::NativeFunction(Rc::new(NativeFunction::new("tls_connect", 2, |args| {
-                    let tls_id = args[0]
-                        .as_integer()
-                        .ok_or("tls_connect() expects TLS handle")?;
-                    let sock_id = args[1]
-                        .as_integer()
-                        .ok_or("tls_connect() expects socket id")?;
-                    let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
-                    let dup_fd = unsafe { libc::dup(entry.fd) };
-                    if dup_fd < 0 {
-                        let err = std::io::Error::last_os_error();
-                        let code = err.raw_os_error().unwrap_or(-1) as i64;
-                        return Ok(result_err(err.to_string(), code));
-                    }
+	            // tls_connect(tls, sock)
+	            globals.borrow_mut().define(
+	                "tls_connect".to_string(),
+	                Value::NativeFunction(Rc::new(NativeFunction::new("tls_connect", 2, |args| {
+	                    let tls_id = args[0]
+	                        .as_integer()
+	                        .ok_or("tls_connect() expects TLS handle")?;
+	                    let sock_id = args[1]
+	                        .as_integer()
+	                        .ok_or("tls_connect() expects socket id")?;
+	                    let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
+	                    let dup_fd = unsafe { libc::dup(entry.fd) };
+	                    if dup_fd < 0 {
+	                        let err = std::io::Error::last_os_error();
+	                        let code = err.raw_os_error().unwrap_or(-1) as i64;
+	                        return Ok(result_err(err.to_string(), code));
+	                    }
+	                    let mut stream = unsafe { std::net::TcpStream::from_raw_fd(dup_fd) };
+	                    let _ = stream.set_nonblocking(false);
 
-                    let res = with_tls_mut(tls_id, |session| {
-                        if session.stream.is_some() {
-                            return Err("TLS session already connected".to_string());
-                        }
-                        let mut stream = unsafe { std::net::TcpStream::from_raw_fd(dup_fd) };
-                        let _ = stream.set_nonblocking(false);
+	                    let res = with_tls_mut(tls_id, move |session| {
+	                        if session.stream.is_some() {
+	                            return Err("TLS session already connected".to_string());
+	                        }
 
-                        match session.mode {
-                            TlsMode::Client => {
-                                let config = session
-                                    .client_config
+	                        match session.mode {
+	                            TlsMode::Client => {
+	                                let config = session
+	                                    .client_config
                                     .as_ref()
                                     .ok_or("Missing client config")?
                                     .clone();
@@ -2868,31 +2880,31 @@ impl Interpreter {
                                         .map_err(|_| "Invalid server_name".to_string())?;
                                 let mut conn = ClientConnection::new(config, server_name)
                                     .map_err(|e| e.to_string())?;
-                                while conn.is_handshaking() {
-                                    conn.complete_io(&mut stream)
-                                        .map_err(|e| format!("TLS handshake failed: {}", e))?;
-                                }
-                                session.stream =
-                                    Some(TlsStream::Client(StreamOwned::new(conn, stream)));
-                            }
-                            TlsMode::Server => {
-                                let config = session
-                                    .server_config
-                                    .as_ref()
-                                    .ok_or("Missing server config")?
-                                    .clone();
-                                let mut conn =
-                                    ServerConnection::new(config).map_err(|e| e.to_string())?;
-                                while conn.is_handshaking() {
-                                    conn.complete_io(&mut stream)
-                                        .map_err(|e| format!("TLS handshake failed: {}", e))?;
-                                }
-                                session.stream =
-                                    Some(TlsStream::Server(StreamOwned::new(conn, stream)));
-                            }
-                        }
-                        Ok(())
-                    });
+	                                while conn.is_handshaking() {
+	                                    conn.complete_io(&mut stream)
+	                                        .map_err(|e| format!("TLS handshake failed: {}", e))?;
+	                                }
+	                                session.stream =
+	                                    Some(TlsStream::Client(StreamOwned::new(conn, stream)));
+	                            }
+	                            TlsMode::Server => {
+	                                let config = session
+	                                    .server_config
+	                                    .as_ref()
+	                                    .ok_or("Missing server config")?
+	                                    .clone();
+	                                let mut conn =
+	                                    ServerConnection::new(config).map_err(|e| e.to_string())?;
+	                                while conn.is_handshaking() {
+	                                    conn.complete_io(&mut stream)
+	                                        .map_err(|e| format!("TLS handshake failed: {}", e))?;
+	                                }
+	                                session.stream =
+	                                    Some(TlsStream::Server(StreamOwned::new(conn, stream)));
+	                            }
+	                        }
+	                        Ok(())
+	                    });
 
                     match res {
                         Ok(_) => Ok(result_ok(Value::Nil)),
@@ -9319,14 +9331,9 @@ impl Interpreter {
 
         let _in_progress_guard = ModuleInProgressGuard::new(self, module_path.clone());
 
-        if let Some(parent) = module_path.parent() {
-            let _dir_guard = CurrentDirGuard::new(self, parent.to_path_buf());
-            let exports = self.execute_module_program(&program)?;
-            self.module_cache.insert(module_path, exports.clone());
-            self.inject_module_exports(exports, alias);
-            return Ok(Ok(Value::Nil));
-        }
-
+        let _dir_guard = module_path
+            .parent()
+            .map(|parent| CurrentDirGuard::new(self, parent.to_path_buf()));
         let exports = self.execute_module_program(&program)?;
         self.module_cache.insert(module_path, exports.clone());
         self.inject_module_exports(exports, alias);
@@ -11835,6 +11842,115 @@ mod tests {
     use rustls::{Certificate, ServerName};
     #[cfg(feature = "native")]
     use std::time::SystemTime;
+
+    #[cfg(feature = "native")]
+    #[test]
+    fn srtp_key_salt_len_covers_all_profile_variants_for_coverage() {
+        assert_eq!(srtp_key_salt_len(SrtpProfile::AeadAes128Gcm), (16, 12));
+        assert_eq!(srtp_key_salt_len(SrtpProfile::AeadAes256Gcm), (32, 12));
+        assert_eq!(srtp_key_salt_len(SrtpProfile::__Nonexhaustive), (16, 14));
+    }
+
+    #[cfg(all(feature = "native", unix))]
+    #[test]
+    fn resolve_ipv4_addr_finds_ipv4_address_for_coverage() {
+        let _ = resolve_ipv4_addr(Some("127.0.0.1"), 80).expect("resolve ipv4");
+    }
+
+    #[cfg(feature = "native")]
+    #[test]
+    fn dns_srv_to_value_builds_expected_dict_for_coverage() {
+        use trust_dns_resolver::proto::rr::rdata::SRV;
+        use trust_dns_resolver::proto::rr::Name;
+
+        let target = Name::from_ascii("example.com.").expect("name");
+        let srv = SRV::new(10, 5, 443, target);
+        let value = dns_srv_to_value(&srv);
+
+        let dict =
+            match value { Value::Dict(dict) => dict, other => panic!("expected dict value, got {other:?}") };
+        let dict = dict.borrow();
+
+        assert_eq!(
+            dict.get(&Value::String("priority".to_string()))
+                .and_then(|v| v.as_integer()),
+            Some(10)
+        );
+        assert_eq!(
+            dict.get(&Value::String("weight".to_string()))
+                .and_then(|v| v.as_integer()),
+            Some(5)
+        );
+        assert_eq!(
+            dict.get(&Value::String("port".to_string()))
+                .and_then(|v| v.as_integer()),
+            Some(443)
+        );
+        assert_eq!(
+            dict.get(&Value::String("target".to_string()))
+                .and_then(|v| v.as_string()),
+            Some("example.com.")
+        );
+    }
+
+    #[cfg(feature = "native")]
+    #[test]
+    fn dns_naptr_to_value_builds_expected_dict_for_coverage() {
+        use trust_dns_resolver::proto::rr::rdata::NAPTR;
+        use trust_dns_resolver::proto::rr::Name;
+
+        let replacement = Name::from_ascii("example.com.").expect("replacement name");
+        let naptr = NAPTR::new(
+            100,
+            10,
+            b"U".to_vec().into_boxed_slice(),
+            b"SIP+D2U".to_vec().into_boxed_slice(),
+            b"!^.*$!sip:info@example.com!".to_vec().into_boxed_slice(),
+            replacement,
+        );
+        let value = dns_naptr_to_value(&naptr);
+
+        let dict =
+            match value { Value::Dict(dict) => dict, other => panic!("expected dict value, got {other:?}") };
+        let dict = dict.borrow();
+
+        assert_eq!(
+            dict.get(&Value::String("order".to_string()))
+                .and_then(|v| v.as_integer()),
+            Some(100)
+        );
+        assert_eq!(
+            dict.get(&Value::String("preference".to_string()))
+                .and_then(|v| v.as_integer()),
+            Some(10)
+        );
+        assert_eq!(
+            dict.get(&Value::String("flags".to_string()))
+                .and_then(|v| v.as_string()),
+            Some("U")
+        );
+        assert_eq!(
+            dict.get(&Value::String("service".to_string()))
+                .and_then(|v| v.as_string()),
+            Some("SIP+D2U")
+        );
+        assert_eq!(
+            dict.get(&Value::String("regexp".to_string()))
+                .and_then(|v| v.as_string()),
+            Some("!^.*$!sip:info@example.com!")
+        );
+        assert_eq!(
+            dict.get(&Value::String("replacement".to_string()))
+                .and_then(|v| v.as_string()),
+            Some("example.com.")
+        );
+    }
+
+    #[test]
+    fn shadow_stack_helpers_cover_lock_success_path_for_coverage() {
+        push_stack_frame("test_frame", 1);
+        pop_stack_frame();
+    }
 
     #[derive(Debug)]
     struct TestNative {
@@ -17970,9 +18086,9 @@ soond_steek()
             .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(bad_unknown)))))
             .is_err());
 
-        let callback_fn = Value::NativeFunction(Rc::new(NativeFunction::new("cb", 0, |_args| {
-            Ok(Value::Nil)
-        })));
+        let callback_native = Rc::new(NativeFunction::new("cb", 0, |_args| Ok(Value::Nil)));
+        (callback_native.func)(vec![]).unwrap();
+        let callback_fn = Value::NativeFunction(callback_native);
         let mut callback_spec = DictValue::new();
         callback_spec.set(
             Value::String("kind".to_string()),
@@ -18092,11 +18208,12 @@ soond_steek()
 
     #[test]
     fn test_range_to_list_inclusive() {
-        let list = Interpreter::range_to_list(1, 3, true);
-        let Value::List(items) = list else {
-            panic!("expected list");
-        };
+        let items = match Interpreter::range_to_list(1, 3, true) { Value::List(items) => items, other => panic!("expected list, got {other:?}") };
         assert_eq!(items.borrow().len(), 3);
+    }
+
+    fn native_from_globals(globals: &Rc<RefCell<Environment>>, name: &str) -> Rc<NativeFunction> {
+        match globals.borrow().get(name).unwrap() { Value::NativeFunction(func) => func, other => panic!("expected native function {name}, got {other:?}") }
     }
 
     #[test]
@@ -18116,23 +18233,12 @@ soond_steek()
         let interp = Interpreter::new();
         let globals = interp.globals.clone();
 
-        let event_loop_new = match globals.borrow().get("event_loop_new").unwrap() {
-            Value::NativeFunction(func) => func,
-            _ => panic!("expected event_loop_new"),
-        };
-        let event_watch_write = match globals.borrow().get("event_watch_write").unwrap() {
-            Value::NativeFunction(func) => func,
-            _ => panic!("expected event_watch_write"),
-        };
-        let event_loop_poll = match globals.borrow().get("event_loop_poll").unwrap() {
-            Value::NativeFunction(func) => func,
-            _ => panic!("expected event_loop_poll"),
-        };
+        let event_loop_new = native_from_globals(&globals, "event_loop_new");
+        let event_watch_write = native_from_globals(&globals, "event_watch_write");
+        let event_loop_poll = native_from_globals(&globals, "event_loop_poll");
 
-        let loop_id = match (event_loop_new.func)(vec![]).unwrap() {
-            Value::Integer(id) => id,
-            _ => panic!("expected loop id"),
-        };
+        let loop_id =
+            match (event_loop_new.func)(vec![]).unwrap() { Value::Integer(id) => id, other => panic!("expected loop id, got {other:?}") };
 
         let mut fds = [0; 2];
         unsafe {
@@ -18149,9 +18255,15 @@ soond_steek()
 
         let events =
             (event_loop_poll.func)(vec![Value::Integer(loop_id), Value::Integer(0)]).unwrap();
-        let Value::List(list) = events else {
-            panic!("expected event list");
-        };
+        let list =
+            match events { Value::List(list) => list, other => panic!("expected event list, got {other:?}") };
+
+        // Include a few non-write entries to cover the non-match branches in the loop below.
+        list.borrow_mut().push(Value::Nil);
+        list.borrow_mut()
+            .push(Value::Dict(Rc::new(RefCell::new(DictValue::new()))));
+        list.borrow_mut().push(event_dict("read", None, None, None));
+
         let mut saw_write = false;
         for ev in list.borrow().iter() {
             if let Value::Dict(dict) = ev {
@@ -18176,36 +18288,18 @@ soond_steek()
     fn test_log_event_and_span_builtins() {
         let mut interp = Interpreter::new();
         let globals = interp.globals.clone();
-        let log_event = match globals.borrow().get("log_event").unwrap() {
-            Value::NativeFunction(func) => func,
-            _ => panic!("expected log_event"),
-        };
+        let log_event = native_from_globals(&globals, "log_event");
         assert!((log_event.func)(vec![
             Value::String("blether".to_string()),
             Value::String("msg".to_string())
         ])
         .is_err());
 
-        let log_span = match globals.borrow().get("log_span").unwrap() {
-            Value::NativeFunction(func) => func,
-            _ => panic!("expected log_span"),
-        };
-        let log_span_enter = match globals.borrow().get("log_span_enter").unwrap() {
-            Value::NativeFunction(func) => func,
-            _ => panic!("expected log_span_enter"),
-        };
-        let log_span_exit = match globals.borrow().get("log_span_exit").unwrap() {
-            Value::NativeFunction(func) => func,
-            _ => panic!("expected log_span_exit"),
-        };
-        let log_span_in = match globals.borrow().get("log_span_in").unwrap() {
-            Value::NativeFunction(func) => func,
-            _ => panic!("expected log_span_in"),
-        };
-        let log_span_current = match globals.borrow().get("log_span_current").unwrap() {
-            Value::NativeFunction(func) => func,
-            _ => panic!("expected log_span_current"),
-        };
+        let log_span = native_from_globals(&globals, "log_span");
+        let log_span_enter = native_from_globals(&globals, "log_span_enter");
+        let log_span_exit = native_from_globals(&globals, "log_span_exit");
+        let log_span_in = native_from_globals(&globals, "log_span_in");
+        let log_span_current = native_from_globals(&globals, "log_span_current");
 
         let _guard = InterpreterGuard::new(&mut interp);
         let mut fields = DictValue::new();

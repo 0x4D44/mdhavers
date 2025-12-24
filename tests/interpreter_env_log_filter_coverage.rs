@@ -22,6 +22,11 @@ fn interpreter_new_reads_mdh_log_env_var_paths() {
     set_env("MDH_LOG", Some("definitely_not_a_level"));
     let _ = Interpreter::new();
 
+    // Cover the fallback MDH_LOG_LEVEL branch when MDH_LOG is not set.
+    set_env("MDH_LOG", None);
+    set_env("MDH_LOG_LEVEL", Some("mutter"));
+    let _ = Interpreter::new();
+
     set_env("MDH_LOG", prev_log.as_deref());
     set_env("MDH_LOG_LEVEL", prev_level.as_deref());
 }
