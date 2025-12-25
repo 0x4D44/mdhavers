@@ -192,6 +192,7 @@ fn interpreter_builtin_edges_and_errors_smoke() {
         ("1.0 < 2.0", true),
         ("1 < 2.0", true),
         ("1.0 < 2", true),
+        ("\"b\" > \"a\"", true),
         // len: all supported types + error path
         ("len(\"abcd\")", true),
         ("len([1, 2, 3])", true),
@@ -200,6 +201,7 @@ fn interpreter_builtin_edges_and_errors_smoke() {
         ("len(naething)", false),
         // log level helpers
         ("set_log_level(\"blether\")", true),
+        ("set_log_level(\"nope\")", false),
         ("get_log_level()", true),
         ("set_log_level(0)", true),
         ("set_log_level(1)", true),
@@ -224,6 +226,7 @@ fn interpreter_builtin_edges_and_errors_smoke() {
         ("log_init(1)", false),
         ("log_init({\"level\": 1})", true),
         ("log_init({\"level\": 4})", true),
+        ("log_init({\"level\": \"nope\"})", false),
         ("log_init({\"filter\": 1})", false),
         ("log_init({\"filter\": \"mutter\"})", true),
         ("log_init({\"format\": 1})", false),
@@ -239,6 +242,8 @@ fn interpreter_builtin_edges_and_errors_smoke() {
         ("log_init({\"sinks\": [{\"kind\": \"memory\"}]})", true),
         // reset logger back to defaults (config omitted)
         ("log_init()", true),
+        // span helpers: cover log_span_exit() error mapping
+        ("log_span_exit(log_span(\"x\"))", false),
         // stacktrace builtin: empty + non-empty path
         ("stacktrace()", true),
         (
@@ -278,6 +283,8 @@ f()
         ("json_pretty({\"a\": 1})", true),
         ("json_stringify_pretty({\"a\": 1})", true),
         ("json_parse(123)", false),
+        ("json_parse(\"-\")", false),
+        ("json_parse(\"1e\")", false),
         // atomics/channels: type errors and edge cases
         ("atomic_store(atomic_new(1), \"x\")", false),
         ("atomic_add(atomic_new(1), \"x\")", false),
@@ -318,6 +325,7 @@ chan_send(ch, 1)
         ("upper(123)", false),
         ("capitalize(\"\")", true),
         ("title(\"hello world\")", true),
+        ("chr(55296)", false),
         ("substring(\"abc\", 0, 99)", true),
         ("substring(\"abc\", 99, 99)", true),
         ("is_empty(\"\")", true),
@@ -464,13 +472,18 @@ c["FG_RED"]
         ("regex_test(\"hello\", 1)", false),
         ("regex_match(\"abc123\", \"[0-9]+\")", true),
         ("regex_match(\"abc\", \"[0-9]+\")", true),
+        ("regex_match(\"abc\", \"*\")", false),
         ("regex_match(\"abc\", 1)", false),
         ("regex_match_all(\"abc123def456\", \"[0-9]+\")", true),
+        ("regex_match_all(\"abc\", \"*\")", false),
         ("regex_match_all(\"abc\", 1)", false),
         ("regex_replace(\"a1b2\", \"[0-9]\", \"\")", true),
+        ("regex_replace(\"a1b2\", \"*\", \"\")", false),
         ("regex_replace(\"a1b2\", \"[0-9]\", 1)", false),
         ("regex_replace_first(\"a1b2\", \"[0-9]\", \"\")", true),
+        ("regex_replace_first(\"a1b2\", \"*\", \"\")", false),
         ("regex_replace_first(\"a1b2\", \"[0-9]\", 1)", false),
+        ("regex_split(\"a1b2\", \"*\")", false),
         ("regex_split(\"a1b2\", 1)", false),
         // timing helpers
         ("noo()", true),
@@ -721,6 +734,73 @@ blether file_exists("{p}")
     assert!(out.contains("world"));
     assert!(out.contains("!"));
     assert!(out.contains('\n'));
+}
+
+#[test]
+fn interpreter_file_io_error_branches_cover_map_err_for_coverage() {
+    fn assert_interpret_err_contains(src: &str, needle: &str) {
+        let program = parse(src).unwrap();
+        let mut interp = Interpreter::new();
+        let err = interp.interpret(&program).expect_err("expected interpreter error");
+        let err_str = format!("{err:?}");
+        assert!(
+            err_str.contains(needle),
+            "expected error to contain '{needle}', got: {err_str}"
+        );
+    }
+
+    let dir = tempfile::tempdir().unwrap();
+
+    let missing_parent = dir.path().join("no_such_dir").join("file.txt");
+    let missing_parent = missing_parent.to_string_lossy();
+    assert_interpret_err_contains(
+        &format!("scrieve(\"{}\", \"hi\")", missing_parent),
+        "Couldnae open",
+    );
+    assert_interpret_err_contains(
+        &format!("append_file(\"{}\", \"hi\")", missing_parent),
+        "Couldnae open",
+    );
+
+    let missing_dir = dir.path().join("missing_dir");
+    assert_interpret_err_contains(
+        &format!("list_dir(\"{}\")", missing_dir.display()),
+        "Couldnae read directory",
+    );
+    assert_interpret_err_contains(
+        &format!("chdir(\"{}\")", missing_dir.display()),
+        "Couldnae change tae directory",
+    );
+
+    // create_dir_all should fail when an intermediate path component is a file.
+    let file_path = dir.path().join("a_file");
+    fs::write(&file_path, "hi").unwrap();
+    let bad_dir = file_path.join("child");
+    assert_interpret_err_contains(
+        &format!("make_dir(\"{}\")", bad_dir.display()),
+        "Couldnae create directory",
+    );
+
+    let missing_file = dir.path().join("missing_file");
+    assert_interpret_err_contains(
+        &format!("file_size(\"{}\")", missing_file.display()),
+        "Couldnae get file info",
+    );
+
+    #[cfg(unix)]
+    {
+        if std::path::Path::new("/dev/full").exists() {
+            assert_interpret_err_contains("scrieve(\"/dev/full\", \"hi\")", "Couldnae write tae");
+            assert_interpret_err_contains(
+                "append_file(\"/dev/full\", \"hi\")",
+                "Couldnae append tae",
+            );
+            assert_interpret_err_contains(
+                "scrieve_append(\"/dev/full\", \"hi\")",
+                "Couldnae append tae",
+            );
+        }
+    }
 }
 
 #[test]

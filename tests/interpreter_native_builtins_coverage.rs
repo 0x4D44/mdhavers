@@ -97,6 +97,22 @@ fn interpreter_calls_all_native_builtins_for_coverage() {
             ("shell", 1) => vec![vec![Value::String("echo hello".to_string())]],
             ("shell_status", 1) => vec![vec![Value::String("exit 0".to_string())]],
             ("env_get", 1) => vec![vec![Value::String("PATH".to_string())]],
+            ("grup_runs", 1) => vec![
+                vec![Value::List(Rc::new(RefCell::new(Vec::new())))],
+                vec![Value::List(Rc::new(RefCell::new(vec![Value::Integer(1)])))],
+            ],
+            ("fae_pairs", 1) => vec![vec![Value::List(Rc::new(RefCell::new(vec![
+                Value::List(Rc::new(RefCell::new(vec![Value::Integer(1), Value::Integer(2)]))),
+                Value::List(Rc::new(RefCell::new(vec![Value::Integer(3)]))),
+                Value::Integer(4),
+            ])))], vec![Value::Integer(1)]],
+            ("range_o", 1) => vec![
+                vec![Value::List(Rc::new(RefCell::new(vec![
+                    Value::Float(2.0),
+                    Value::Float(1.0),
+                ])))],
+                vec![Value::Integer(1)],
+            ],
             ("scrieve", 2) => vec![vec![
                 Value::String(temp_path.clone()),
                 Value::String("hello\nworld\n".to_string()),
@@ -108,6 +124,34 @@ fn interpreter_calls_all_native_builtins_for_coverage() {
             ("read_file", 1) => vec![vec![Value::String(temp_path.clone())]],
             ("read_lines", 1) => vec![vec![Value::String(temp_path.clone())]],
             ("file_exists", 1) => vec![vec![Value::String(temp_path.clone())]],
+            ("interleave", 2) => vec![
+                vec![
+                    Value::List(Rc::new(RefCell::new(vec![Value::Integer(1)]))),
+                    Value::List(Rc::new(RefCell::new(vec![Value::Integer(2), Value::Integer(3)]))),
+                ],
+                vec![
+                    Value::List(Rc::new(RefCell::new(vec![Value::Integer(1), Value::Integer(2)]))),
+                    Value::List(Rc::new(RefCell::new(vec![Value::Integer(3)]))),
+                ],
+            ],
+            ("ceilidh", 2) => vec![
+                vec![
+                    Value::List(Rc::new(RefCell::new(vec![Value::Integer(1)]))),
+                    Value::List(Rc::new(RefCell::new(vec![Value::Integer(2), Value::Integer(3)]))),
+                ],
+                vec![
+                    Value::List(Rc::new(RefCell::new(vec![Value::Integer(1), Value::Integer(2)]))),
+                    Value::List(Rc::new(RefCell::new(vec![Value::Integer(3)]))),
+                ],
+                vec![
+                    Value::Integer(1),
+                    Value::List(Rc::new(RefCell::new(vec![Value::Integer(2)]))),
+                ],
+                vec![
+                    Value::List(Rc::new(RefCell::new(vec![Value::Integer(1)]))),
+                    Value::Integer(2),
+                ],
+            ],
             (_, 0) => vec![vec![]],
             (_, 1) => arity1_args.iter().cloned().map(|v| vec![v]).collect(),
             (_, 2) => vec![

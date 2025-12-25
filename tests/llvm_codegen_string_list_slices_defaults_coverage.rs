@@ -64,6 +64,15 @@ heave_oot(creel, "a")
 blether creel_tae_list(creel)
 blether empty_creel()
 
+// Global creel update branches: mutate a top-level creel from inside a user function.
+ken global_creel = make_creel(["x", "y"])
+dae mutate_global_creel() {
+    toss_in(global_creel, "z")
+    heave_oot(global_creel, "x")
+    gie creel_tae_list(global_creel)
+}
+blether mutate_global_creel()
+
 // Log level plumbing
 blether get_log_level()
 blether set_log_level(3)
