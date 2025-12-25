@@ -283,3 +283,87 @@ fn interpreter_tls_send_rejects_non_bytes_argument_for_coverage() {
     let s = format!("{err:?}");
     assert!(s.contains("tls_send() expects bytes"), "unexpected error: {s}");
 }
+
+#[test]
+fn interpreter_tls_client_new_rejects_invalid_ca_pem_for_coverage() {
+    let bad_ca = escape_for_braw("-----BEGIN CERTIFICATE-----\nNOT_BASE64\n-----END CERTIFICATE-----\n");
+    let code = format!(
+        r#"
+ken cfg = {{"mode": "client", "server_name": "localhost", "ca_pem": "{bad_ca}"}}
+tls_client_new(cfg)
+"#
+    );
+
+    let program = parse(&code).unwrap();
+    let mut interp = Interpreter::new();
+    let err = interp
+        .interpret(&program)
+        .expect_err("expected invalid CA certs to fail");
+    let s = format!("{err:?}");
+    assert!(s.contains("Invalid CA certs"), "unexpected error: {s}");
+}
+
+#[test]
+fn interpreter_tls_server_new_rejects_invalid_server_cert_for_coverage() {
+    let bad_cert = escape_for_braw("-----BEGIN CERTIFICATE-----\nNOT_BASE64\n-----END CERTIFICATE-----\n");
+    let bad_key = escape_for_braw("-----BEGIN PRIVATE KEY-----\nNOT_BASE64\n-----END PRIVATE KEY-----\n");
+    let code = format!(
+        r#"
+ken cfg = {{"mode": "server", "cert_pem": "{bad_cert}", "key_pem": "{bad_key}"}}
+tls_client_new(cfg)
+"#
+    );
+
+    let program = parse(&code).unwrap();
+    let mut interp = Interpreter::new();
+    let err = interp
+        .interpret(&program)
+        .expect_err("expected invalid server cert to fail");
+    let s = format!("{err:?}");
+    assert!(s.contains("Invalid server cert"), "unexpected error: {s}");
+}
+
+#[test]
+fn interpreter_tls_server_new_rejects_invalid_pkcs8_key_for_coverage() {
+    let (cert_pem, _key_pem) = generate_cert();
+    let cert_escaped = escape_for_braw(&cert_pem);
+    let bad_key = escape_for_braw("-----BEGIN PRIVATE KEY-----\nNOT_BASE64\n-----END PRIVATE KEY-----\n");
+
+    let code = format!(
+        r#"
+ken cfg = {{"mode": "server", "cert_pem": "{cert_escaped}", "key_pem": "{bad_key}"}}
+tls_client_new(cfg)
+"#
+    );
+
+    let program = parse(&code).unwrap();
+    let mut interp = Interpreter::new();
+    let err = interp
+        .interpret(&program)
+        .expect_err("expected invalid server key to fail");
+    let s = format!("{err:?}");
+    assert!(s.contains("Invalid server key"), "unexpected error: {s}");
+}
+
+#[test]
+fn interpreter_tls_server_new_rejects_invalid_rsa_key_for_coverage() {
+    let (cert_pem, _key_pem) = generate_cert();
+    let cert_escaped = escape_for_braw(&cert_pem);
+    let bad_key =
+        escape_for_braw("-----BEGIN RSA PRIVATE KEY-----\nNOT_BASE64\n-----END RSA PRIVATE KEY-----\n");
+
+    let code = format!(
+        r#"
+ken cfg = {{"mode": "server", "cert_pem": "{cert_escaped}", "key_pem": "{bad_key}"}}
+tls_client_new(cfg)
+"#
+    );
+
+    let program = parse(&code).unwrap();
+    let mut interp = Interpreter::new();
+    let err = interp
+        .interpret(&program)
+        .expect_err("expected invalid server key to fail");
+    let s = format!("{err:?}");
+    assert!(s.contains("Invalid server key"), "unexpected error: {s}");
+}

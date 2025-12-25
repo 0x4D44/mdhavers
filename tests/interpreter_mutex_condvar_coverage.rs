@@ -68,6 +68,10 @@ fn interpreter_mutex_and_condvar_builtins_cover_registry_and_branches_for_covera
         (mutex_unlock.func)(vec![Value::Integer(999_999)]).is_err(),
         "expected unknown mutex handle error"
     );
+    assert!(
+        (mutex_lock.func)(vec![Value::Integer(999_999)]).is_err(),
+        "expected unknown mutex handle error"
+    );
 
     let Value::Integer(condvar_id) = (condvar_new.func)(vec![]).unwrap() else {
         panic!("expected condvar_new to return integer id");
@@ -119,6 +123,14 @@ fn interpreter_mutex_and_condvar_builtins_cover_registry_and_branches_for_covera
     // Unknown condvar handle error path.
     assert!(
         (condvar_wait.func)(vec![Value::Integer(999_999), Value::Integer(mutex_id)]).is_err(),
+        "expected unknown condvar handle error"
+    );
+    assert!(
+        (condvar_signal.func)(vec![Value::Integer(999_999)]).is_err(),
+        "expected unknown condvar handle error"
+    );
+    assert!(
+        (condvar_broadcast.func)(vec![Value::Integer(999_999)]).is_err(),
         "expected unknown condvar handle error"
     );
 }

@@ -147,6 +147,16 @@ blether send_err["error"]
 ken recv_err = srtp_create({"profile": "SRTP_AES128_CM_SHA1_80", "send_key": k16a, "send_salt": s14a, "recv_key": kbad, "recv_salt": s14a})
 blether recv_err["error"]
 
+ken default_profile = srtp_create({"master_key": k16a, "master_salt": s14a})
+blether default_profile["ok"]
+gin default_profile["ok"] {
+    ken tiny = bytes(1)
+    ken prot_bad = srtp_protect(default_profile["value"], tiny)
+    blether prot_bad["error"]
+    ken unp_bad = srtp_unprotect(default_profile["value"], tiny)
+    blether unp_bad["error"]
+}
+
 ken pkt = bytes(16)
 ken prot = srtp_protect(999999, pkt)
 blether prot["error"]
@@ -187,6 +197,14 @@ blether unp["error"]
     assert!(
         out.contains("SRTP recv session error"),
         "missing recv session error: {out}"
+    );
+    assert!(
+        out.contains("SRTP protect failed"),
+        "missing protect failed error: {out}"
+    );
+    assert!(
+        out.contains("SRTP unprotect failed"),
+        "missing unprotect failed error: {out}"
     );
     assert!(
         out.contains("Unknown SRTP handle"),

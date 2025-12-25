@@ -72,6 +72,22 @@ fn interpreter_json_string_escapes_quote_and_backslash_are_covered() {
 }
 
 #[test]
+fn interpreter_json_unicode_escape_paths_are_covered() {
+    assert_eq!(
+        run(r#"json_parse("\"\\u0041\"")"#).unwrap(),
+        Value::String("A".to_string())
+    );
+    assert_eq!(
+        run(r#"json_parse("\"\\uD800\"")"#).unwrap(),
+        Value::String("".to_string())
+    );
+    assert_eq!(
+        run(r#"json_parse("\"\\uZZZZ\"")"#).unwrap(),
+        Value::String("".to_string())
+    );
+}
+
+#[test]
 fn interpreter_json_stringify_handles_non_string_dict_keys() {
     let value = run(r#"json_stringify({1: 2})"#).unwrap();
     let Value::String(s) = value else {
@@ -96,6 +112,47 @@ fn interpreter_compare_float_and_string_paths_are_covered() {
     assert_eq!(run(r#""a" <= "b""#).unwrap(), Value::Bool(true));
     assert_eq!(run("2.0 >= 1.0").unwrap(), Value::Bool(true));
     assert_eq!(run(r#""b" >= "a""#).unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn interpreter_destructure_ignore_before_rest_is_covered() {
+    let value = run(
+        r#"
+ken [_, a, ...rest] = [1, 2, 3, 4]
+a + len(rest)
+"#,
+    )
+    .unwrap();
+    assert_eq!(value, Value::Integer(4));
+}
+
+#[test]
+fn interpreter_destructure_ignore_after_rest_is_covered() {
+    let value = run(
+        r#"
+ken [a, ...rest, _] = [1, 2, 3, 4]
+a + len(rest)
+"#,
+    )
+    .unwrap();
+    assert_eq!(value, Value::Integer(3));
+}
+
+#[test]
+fn interpreter_slice_step_branches_for_list_and_string_are_covered() {
+    let value = run(
+        r#"
+ken l = [1, 2, 3, 4, 5]
+ken a = l[0:5:2]
+ken b = l[5::-1]
+ken s = "hello"
+ken c = s[0:5:2]
+ken d = s[5::-1]
+len(a) + len(b) + len(c) + len(d)
+"#,
+    )
+    .unwrap();
+    assert_eq!(value, Value::Integer(16));
 }
 
 #[test]

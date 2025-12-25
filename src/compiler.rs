@@ -769,7 +769,7 @@ impl Compiler {
 
             Stmt::Import { path, alias, .. } => {
                 if path == "tri" || path == "tri.js" || path == "tri.braw" {
-                    let module_name = alias.clone().unwrap_or_else(|| "tri".to_string());
+                    let module_name = alias.as_deref().unwrap_or("tri").to_string();
                     self.emit_line(&format!("const {} = __havers_tri;", module_name));
                 } else {
                     let module_name = alias.clone().unwrap_or_else(|| {

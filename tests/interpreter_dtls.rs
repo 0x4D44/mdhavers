@@ -378,3 +378,34 @@ blether result
     let out = interp.get_output().join("\n");
     assert!(out.contains("Invalid cert PEM"), "unexpected output: {out}");
 }
+
+#[test]
+fn interpreter_dtls_client_invalid_key_pem_returns_result_err_for_coverage() {
+    let (cert_pem, _key_pem) = generate_cert();
+    let cert_escaped = escape_for_braw(&cert_pem);
+
+    let code = format!(
+        r#"
+ken result = "nope"
+ken s = socket_udp()
+
+gin s["ok"] {{
+    ken sock = s["value"]
+    ken d = dtls_server_new({{"mode": "client", "remote_host": "127.0.0.1", "remote_port": 9, "cert_pem": "{cert_escaped}", "key_pem": "y"}})
+    ken hs = dtls_handshake(d["value"], sock)
+    gin nae hs["ok"] {{
+        result = hs["error"]
+    }}
+    socket_close(sock)
+}}
+
+blether result
+"#
+    );
+
+    let program = parse(&code).unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert!(out.contains("Invalid key PEM"), "unexpected output: {out}");
+}

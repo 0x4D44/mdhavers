@@ -1,6 +1,6 @@
 # Makefile for mdhavers - auto-detects LLVM and builds appropriately
 
-.PHONY: build release test clean install install-local uninstall check fmt clippy package
+.PHONY: build release test clean install install-local uninstall check fmt clippy package coverage coverage-gate
 
 # Auto-detect LLVM - check for llvm-config variants
 LLVM_CONFIG := $(shell which llvm-config-15 2>/dev/null || which llvm-config-14 2>/dev/null || which llvm-config-16 2>/dev/null || which llvm-config-17 2>/dev/null || which llvm-config-18 2>/dev/null || which llvm-config 2>/dev/null)
@@ -35,6 +35,18 @@ release:
 test:
 	@echo "Testing mdhavers (LLVM: $(LLVM_STATUS))"
 	cargo test $(FEATURES)
+
+coverage:
+	@echo "Coverage (canonical features: cli,llvm,native)"
+	cargo llvm-cov --no-default-features --features cli,llvm,native \
+		--summary-only --json --output-path target/llvm-cov-summary.json
+	@jq '.data[0].totals' target/llvm-cov-summary.json
+
+coverage-gate:
+	@echo "Coverage gate (lines >= 98%)"
+	cargo llvm-cov --no-default-features --features cli,llvm,native \
+		--summary-only --json --output-path target/llvm-cov-summary.json \
+		--fail-under-lines 98
 
 check:
 	@echo "Checking mdhavers (LLVM: $(LLVM_STATUS))"
@@ -109,6 +121,8 @@ help:
 	@echo "  make build           - Build with auto-detected features"
 	@echo "  make release         - Build release with auto-detected features"
 	@echo "  make test            - Run tests"
+	@echo "  make coverage        - Run canonical LLVM coverage scoreboard"
+	@echo "  make coverage-gate   - Fail if total lines < 98%"
 	@echo "  make check           - Check compilation"
 	@echo "  make fmt             - Format code"
 	@echo "  make clippy          - Run clippy lints"
