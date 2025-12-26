@@ -834,6 +834,25 @@ fn interpreter_prelude_load_paths_for_coverage() {
         "expected prelude error, got: {err_str}"
     );
 
+    // 3b) Prelude parses but a statement errors -> runtime error path
+    let runtime_dir = tempfile::tempdir().unwrap();
+    let stdlib = runtime_dir.path().join("stdlib");
+    std::fs::create_dir_all(&stdlib).unwrap();
+    std::fs::write(stdlib.join("prelude.braw"), "blether does_not_exist\n").unwrap();
+
+    std::env::set_current_dir(runtime_dir.path()).unwrap();
+    let mut interp = Interpreter::new();
+    let err = interp
+        .load_prelude()
+        .expect_err("expected prelude runtime error");
+    std::env::set_current_dir(&old_cwd).unwrap();
+
+    let err_str = format!("{err:?}");
+    assert!(
+        err_str.contains("UndefinedVariable"),
+        "expected undefined variable error, got: {err_str}"
+    );
+
     // 4) No prelude file found -> Ok path (fallback)
     let empty_dir = tempfile::tempdir().unwrap();
     std::env::set_current_dir(empty_dir.path()).unwrap();

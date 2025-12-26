@@ -1149,15 +1149,11 @@ hurl "boom"
 
     #[test]
     fn test_format_range_inclusive() {
-        // Parser currently doesn't support ..= syntax (always creates exclusive ranges)
-        // This test verifies the formatter can output inclusive range syntax
-        // by constructing the AST manually - but since we need parse() for this,
-        // we'll test the output branch indirectly through for loop formatting
-        let source = "fer i in 0..10 { blether i }";
+        let source = "0..=10";
         let program = parse(source).unwrap();
         let mut formatter = Formatter::new();
         let result = formatter.format(&program);
-        assert!(result.contains("0..10"));
+        assert!(result.contains("0..=10"));
     }
 
     #[test]

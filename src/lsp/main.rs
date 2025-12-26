@@ -405,6 +405,10 @@ mod tests {
 
         let oob = hover_params(&uri, 99, 99);
         assert!(get_word_at_position(&oob, &docs).is_none());
+
+        let missing_uri = Uri::from_str("file:///tmp/coverage_lsp_missing.braw").unwrap();
+        let missing = hover_params(&missing_uri, 0, 0);
+        assert!(get_word_at_position(&missing, &docs).is_none());
     }
 
     #[test]
@@ -585,6 +589,8 @@ mod tests {
     #[test]
     fn completion_item_kind_and_diagnostic_severity_cover_fallbacks() {
         assert_eq!(completion_item_kind("keyword"), CompletionItemKind::KEYWORD);
+        assert_eq!(completion_item_kind("function"), CompletionItemKind::FUNCTION);
+        assert_eq!(completion_item_kind("constant"), CompletionItemKind::CONSTANT);
         assert_eq!(completion_item_kind("unknown"), CompletionItemKind::TEXT);
 
         assert_eq!(diagnostic_severity("error"), DiagnosticSeverity::ERROR);
@@ -593,5 +599,127 @@ mod tests {
             diagnostic_severity("info"),
             DiagnosticSeverity::INFORMATION
         );
+    }
+
+    #[test]
+    fn main_loop_propagates_notification_send_errors_for_coverage() {
+        let (server, client) = Connection::memory();
+        let params = serde_json::to_value(InitializeParams::default()).unwrap();
+        let handle = std::thread::spawn(move || main_loop(server, params));
+
+        // Force publish_diagnostics() send failure by dropping the receiver side.
+        drop(client.receiver);
+
+        let uri = Uri::from_str("file:///tmp/coverage_lsp_send_fail.braw").unwrap();
+        let open_params = DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "mdhavers".to_string(),
+                version: 1,
+                text: "ken =\n".to_string(),
+            },
+        };
+
+        client
+            .sender
+            .send(Message::Notification(LspNotification::new(
+                DidOpenTextDocument::METHOD.to_string(),
+                open_params,
+            )))
+            .unwrap();
+        drop(client.sender);
+
+        let result = handle.join().expect("join main_loop");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn handle_notification_propagates_did_change_send_errors_for_coverage() {
+        let (server, client) = Connection::memory();
+        let mut docs = DocumentStore::new();
+
+        drop(client.receiver);
+
+        let uri = Uri::from_str("file:///tmp/coverage_lsp_send_fail_change.braw").unwrap();
+        let params = DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier {
+                uri: uri.clone(),
+                version: 1,
+            },
+            content_changes: vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "ken =\n".to_string(),
+            }],
+        };
+
+        let notification = LspNotification::new(DidChangeTextDocument::METHOD.to_string(), params);
+        let err = handle_notification(&server, &mut docs, notification).unwrap_err();
+        assert!(!err.to_string().is_empty());
+    }
+
+    #[test]
+    fn main_loop_propagates_shutdown_send_error_for_coverage() {
+        let (server, client) = Connection::memory();
+        let params = serde_json::to_value(InitializeParams::default()).unwrap();
+        let handle = std::thread::spawn(move || main_loop(server, params));
+
+        drop(client.receiver);
+
+        client
+            .sender
+            .send(Message::Request(LspRequest::new(
+                lsp_server::RequestId::from(1),
+                "shutdown".to_string(),
+                JsonValue::Null,
+            )))
+            .unwrap();
+        drop(client.sender);
+
+        let result = handle.join().expect("join main_loop");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn main_loop_propagates_response_send_error_for_coverage() {
+        let (server, client) = Connection::memory();
+        let params = serde_json::to_value(InitializeParams::default()).unwrap();
+        let handle = std::thread::spawn(move || main_loop(server, params));
+
+        let uri = Uri::from_str("file:///tmp/coverage_lsp_send_fail_response.braw").unwrap();
+        let open_params = DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: uri.clone(),
+                language_id: "mdhavers".to_string(),
+                version: 1,
+                text: "ken x = 1\n".to_string(),
+            },
+        };
+
+        client
+            .sender
+            .send(Message::Notification(LspNotification::new(
+                DidOpenTextDocument::METHOD.to_string(),
+                open_params,
+            )))
+            .unwrap();
+
+        // Wait for diagnostics, then drop the receiver to force response send failure.
+        let _ = client.receiver.recv().expect("receive diagnostics");
+        drop(client.receiver);
+
+        let hover = hover_params(&uri, 0, 1);
+        client
+            .sender
+            .send(Message::Request(LspRequest::new(
+                lsp_server::RequestId::from(2),
+                HoverRequest::METHOD.to_string(),
+                hover,
+            )))
+            .unwrap();
+        drop(client.sender);
+
+        let result = handle.join().expect("join main_loop");
+        assert!(result.is_err());
     }
 }

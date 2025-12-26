@@ -805,6 +805,15 @@ mod tests {
     }
 
     #[test]
+    fn test_error_to_diagnostic_uses_line_default_when_unknown_for_coverage() {
+        let err = HaversError::InternalError("boom".to_string());
+        let (line, col, _message, severity) = error_to_diagnostic(err);
+        assert_eq!(line, 1);
+        assert_eq!(col, 1);
+        assert_eq!(severity, "error");
+    }
+
+    #[test]
     fn test_get_keyword_info() {
         // Test that we get info for keywords
         let info = get_keyword_info("ken");
@@ -818,6 +827,13 @@ mod tests {
         // Unknown word should return None
         let info = get_keyword_info("foobar");
         assert!(info.is_none());
+    }
+
+    #[test]
+    fn test_get_keyword_info_includes_all_completion_items_for_coverage() {
+        for (name, _kind, _doc) in get_keywords_and_builtins() {
+            assert!(get_keyword_info(&name).is_some());
+        }
     }
 
     #[test]
