@@ -983,12 +983,29 @@ Pair(1)
 "#,
             false,
         ),
+        // Struct constructor success path (covers field assignment loop + dict return)
+        (
+            r#"
+thing Pair { a, b }
+ken p = Pair(1, 2)
+p["a"]
+"#,
+            true,
+        ),
         // range_o float path
         ("range_o([1.0, 2.0])", true),
         // IndexSet out-of-bounds path
         ("ken xs = [1]\nxs[99] = 2\n", false),
         // Import error paths (module not found)
         ("fetch \"definitely_no_such_module\"", false),
+        // tri module import + calling native object (covers load_tri_module + call_value(native object))
+        (
+            r#"
+fetch "tri" tae t
+t()
+"#,
+            false,
+        ),
         // Return at top-level (value + no-value)
         ("gie 123", true),
         ("gie\n", true),

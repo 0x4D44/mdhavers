@@ -29,6 +29,10 @@ fn sample_set() -> Value {
 fn interpreter_calls_all_native_builtins_for_coverage() {
     let interp = Interpreter::new();
     let exports = interp.globals.borrow().get_exports();
+    let any_native = match exports.get("len") {
+        Some(Value::NativeFunction(native)) => native.clone(),
+        _ => panic!("expected builtin `len` to be a native function"),
+    };
 
     let temp = tempfile::tempdir().unwrap();
     let temp_file = temp.path().join("mdh_native_cov.txt");
@@ -37,6 +41,7 @@ fn interpreter_calls_all_native_builtins_for_coverage() {
 
     let arity1_args: &[Value] = &[
         Value::Nil,
+        Value::Bool(false),
         Value::Bool(true),
         Value::Integer(1),
         Value::Float(1.5),
@@ -101,6 +106,51 @@ fn interpreter_calls_all_native_builtins_for_coverage() {
                 vec![Value::List(Rc::new(RefCell::new(Vec::new())))],
                 vec![Value::List(Rc::new(RefCell::new(vec![Value::Integer(1)])))],
             ],
+            ("is_a", 2) => {
+                vec![
+                    vec![Value::Integer(1), Value::String("integer".to_string())],
+                    vec![Value::Integer(1), Value::String("int".to_string())],
+                    vec![Value::Float(1.0), Value::String("int".to_string())],
+                    vec![Value::Float(1.0), Value::String("float".to_string())],
+                    vec![Value::Integer(1), Value::String("float".to_string())],
+                    vec![Value::String("x".to_string()), Value::String("string".to_string())],
+                    vec![Value::String("x".to_string()), Value::String("str".to_string())],
+                    vec![Value::Integer(1), Value::String("str".to_string())],
+                    vec![Value::Bool(true), Value::String("bool".to_string())],
+                    vec![Value::Nil, Value::String("bool".to_string())],
+                    vec![sample_list(), Value::String("list".to_string())],
+                    vec![sample_dict(), Value::String("list".to_string())],
+                    vec![
+                        Value::Bytes(Rc::new(RefCell::new(vec![1, 2, 3]))),
+                        Value::String("bytes".to_string()),
+                    ],
+                    vec![
+                        Value::Bytes(Rc::new(RefCell::new(vec![1, 2, 3]))),
+                        Value::String("byte".to_string()),
+                    ],
+                    vec![Value::Integer(1), Value::String("byte".to_string())],
+                    vec![sample_dict(), Value::String("dict".to_string())],
+                    vec![sample_list(), Value::String("dict".to_string())],
+                    vec![
+                        Value::Range(mdhavers::value::RangeValue::new(1, 2, false)),
+                        Value::String("range".to_string()),
+                    ],
+                    vec![Value::Integer(1), Value::String("range".to_string())],
+                    vec![Value::Nil, Value::String("naething".to_string())],
+                    vec![Value::Nil, Value::String("nil".to_string())],
+                    vec![Value::Integer(1), Value::String("nil".to_string())],
+                    vec![
+                        Value::NativeFunction(any_native.clone()),
+                        Value::String("function".to_string()),
+                    ],
+                    vec![
+                        Value::NativeFunction(any_native.clone()),
+                        Value::String("dae".to_string()),
+                    ],
+                    vec![Value::Integer(1), Value::String("dae".to_string())],
+                    vec![Value::Integer(1), Value::String("unknown".to_string())],
+                ]
+            }
             ("fae_pairs", 1) => vec![vec![Value::List(Rc::new(RefCell::new(vec![
                 Value::List(Rc::new(RefCell::new(vec![Value::Integer(1), Value::Integer(2)]))),
                 Value::List(Rc::new(RefCell::new(vec![Value::Integer(3)]))),
