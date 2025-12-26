@@ -12333,8 +12333,8 @@ mod tests {
     }
 
     #[test]
-    fn class_definition_ignores_non_function_method_nodes_for_coverage() {
-        let mut interp = Interpreter::new();
+	    fn class_definition_ignores_non_function_method_nodes_for_coverage() {
+	        let mut interp = Interpreter::new();
 
         let stmt = Stmt::Class {
             name: "C".to_string(),
@@ -12348,15 +12348,45 @@ mod tests {
         };
 
         interp.execute_stmt(&stmt).expect("execute class stmt");
-        assert!(matches!(
-            interp.environment.borrow().get("C"),
-            Some(Value::Class(_))
-        ));
-    }
+	        assert!(matches!(
+	            interp.environment.borrow().get("C"),
+	            Some(Value::Class(_))
+	        ));
+	    }
 
-    #[cfg(all(feature = "native", unix))]
-    #[test]
-    fn socket_native_os_error_paths_are_covered_with_invalid_fds_for_coverage() {
+	    #[test]
+	    fn pattern_matches_range_propagates_start_and_end_eval_errors_for_coverage() {
+	        let mut interp = Interpreter::new();
+	        let span = Span::new(1, 1);
+
+	        let start_err = Pattern::Range {
+	            start: Box::new(Expr::Variable {
+	                name: "nope".to_string(),
+	                span,
+	            }),
+	            end: Box::new(Expr::Literal {
+	                value: Literal::Integer(10),
+	                span,
+	            }),
+	        };
+	        assert!(interp.pattern_matches(&start_err, &Value::Integer(5)).is_err());
+
+	        let end_err = Pattern::Range {
+	            start: Box::new(Expr::Literal {
+	                value: Literal::Integer(1),
+	                span,
+	            }),
+	            end: Box::new(Expr::Variable {
+	                name: "nope".to_string(),
+	                span,
+	            }),
+	        };
+	        assert!(interp.pattern_matches(&end_err, &Value::Integer(5)).is_err());
+	    }
+
+	    #[cfg(all(feature = "native", unix))]
+	    #[test]
+	    fn socket_native_os_error_paths_are_covered_with_invalid_fds_for_coverage() {
         let interp = Interpreter::new();
         let globals = interp.globals.clone();
 
@@ -12452,14 +12482,72 @@ mod tests {
         });
         assert_result_err((dtls_handshake.func)(vec![Value::Integer(dtls_id), Value::Integer(bad_udp)]).unwrap());
 
-        // Remove registered sockets (close(-1) is expected to fail and report ok=false).
-        assert_result_err((socket_close.func)(vec![Value::Integer(bad_tcp)]).unwrap());
-        assert_result_err((socket_close.func)(vec![Value::Integer(bad_udp)]).unwrap());
-    }
+	        // Remove registered sockets (close(-1) is expected to fail and report ok=false).
+	        assert_result_err((socket_close.func)(vec![Value::Integer(bad_tcp)]).unwrap());
+	        assert_result_err((socket_close.func)(vec![Value::Integer(bad_udp)]).unwrap());
+	    }
 
-    #[cfg(all(feature = "native", unix))]
-    #[test]
-    fn dtls_handshake_maps_connector_connect_error_for_coverage() {
+	    #[cfg(all(feature = "native", unix))]
+	    #[test]
+	    fn tls_connect_missing_client_and_server_configs_are_covered_for_coverage() {
+	        let interp = Interpreter::new();
+	        let globals = interp.globals.clone();
+
+	        let socket_tcp = native_from_globals(&globals, "socket_tcp");
+	        let socket_close = native_from_globals(&globals, "socket_close");
+	        let tls_connect = native_from_globals(&globals, "tls_connect");
+
+	        fn unwrap_result_ok_int(value: Value) -> i64 {
+	            let Value::Dict(dict) = value else { panic!("expected dict result"); };
+	            let dict = dict.borrow();
+	            assert_eq!(dict_get_bool(&dict, "ok"), Some(true));
+	            dict.get(&Value::String("value".to_string()))
+	                .and_then(|v| v.as_integer())
+	                .expect("expected integer value")
+	        }
+
+	        fn unwrap_result_err_str(value: Value) -> String {
+	            let Value::Dict(dict) = value else { panic!("expected dict result"); };
+	            let dict = dict.borrow();
+	            assert_eq!(dict_get_bool(&dict, "ok"), Some(false));
+	            dict.get(&Value::String("error".to_string()))
+	                .and_then(|v| v.as_string().map(|s| s.to_string()))
+	                .expect("expected error string")
+	        }
+
+	        let sock_id = unwrap_result_ok_int((socket_tcp.func)(vec![]).unwrap());
+	        let tls_client = register_tls(TlsSession {
+	            mode: TlsMode::Client,
+	            server_name: "localhost".to_string(),
+	            client_config: None,
+	            server_config: None,
+	            stream: None,
+	        });
+	        let err = unwrap_result_err_str(
+	            (tls_connect.func)(vec![Value::Integer(tls_client), Value::Integer(sock_id)]).unwrap(),
+	        );
+	        assert!(err.contains("Missing client config"), "unexpected error: {err}");
+	        remove_tls(tls_client);
+
+	        let tls_server = register_tls(TlsSession {
+	            mode: TlsMode::Server,
+	            server_name: "localhost".to_string(),
+	            client_config: None,
+	            server_config: None,
+	            stream: None,
+	        });
+	        let err = unwrap_result_err_str(
+	            (tls_connect.func)(vec![Value::Integer(tls_server), Value::Integer(sock_id)]).unwrap(),
+	        );
+	        assert!(err.contains("Missing server config"), "unexpected error: {err}");
+	        remove_tls(tls_server);
+
+	        (socket_close.func)(vec![Value::Integer(sock_id)]).unwrap();
+	    }
+
+	    #[cfg(all(feature = "native", unix))]
+	    #[test]
+	    fn dtls_handshake_maps_connector_connect_error_for_coverage() {
         dtls_fail_next_connect();
 
         let program = parse(
@@ -12749,7 +12837,7 @@ blether result
     fn dns_srv_native_returns_stubbed_records_for_coverage() {
         use trust_dns_resolver::lookup::Lookup;
         use trust_dns_resolver::proto::op::Query;
-        use trust_dns_resolver::proto::rr::rdata::SRV;
+        use trust_dns_resolver::proto::rr::rdata::{A, SRV};
         use trust_dns_resolver::proto::rr::{Name, RData, RecordType};
 
         let target = Name::from_ascii("example.com.").expect("target");
@@ -12771,6 +12859,21 @@ blether r["value"][0]["port"]
         let out = interp.get_output().join("\n");
         assert!(out.contains("443"), "unexpected output: {out}");
 
+        // Cover the non-SRV filter path without touching the network.
+        let name = Name::from_ascii("_sip._udp.example.com.").expect("query name");
+        let lookup = Lookup::from_rdata(Query::query(name, RecordType::SRV), RData::A(A::new(127, 0, 0, 1)));
+        dns_set_next_srv_lookup(Ok(lookup));
+        let program = parse(
+            r#"
+ken r = dns_srv("_sip._udp", "example.com")
+r["value"]
+"#,
+        )
+        .unwrap();
+        let value = interp.interpret(&program).unwrap();
+        let items = match value { Value::List(items) => items, other => panic!("expected list, got {other:?}") };
+        assert!(items.borrow().is_empty());
+
         // Cover the override-miss fallback branch in resolver_lookup without touching the network.
         let program = parse(
             r#"
@@ -12788,7 +12891,7 @@ r["ok"]
     fn dns_naptr_native_returns_stubbed_records_for_coverage() {
         use trust_dns_resolver::lookup::Lookup;
         use trust_dns_resolver::proto::op::Query;
-        use trust_dns_resolver::proto::rr::rdata::NAPTR;
+        use trust_dns_resolver::proto::rr::rdata::{A, NAPTR};
         use trust_dns_resolver::proto::rr::{Name, RData, RecordType};
 
         let replacement = Name::from_ascii("example.com.").expect("replacement");
@@ -12819,6 +12922,21 @@ blether r["value"][0]["service"]
         interp.interpret(&program).unwrap();
         let out = interp.get_output().join("\n");
         assert!(out.contains("SIP+D2U"), "unexpected output: {out}");
+
+        // Cover the non-NAPTR filter path without touching the network.
+        let name = Name::from_ascii("example.com.").expect("query name");
+        let lookup = Lookup::from_rdata(Query::query(name, RecordType::NAPTR), RData::A(A::new(127, 0, 0, 1)));
+        dns_set_next_naptr_lookup(Ok(lookup));
+        let program = parse(
+            r#"
+ken r = dns_naptr("example.com")
+r["value"]
+"#,
+        )
+        .unwrap();
+        let value = interp.interpret(&program).unwrap();
+        let items = match value { Value::List(items) => items, other => panic!("expected list, got {other:?}") };
+        assert!(items.borrow().is_empty());
 
         // Cover the override-miss fallback branch in resolver_lookup without touching the network.
         let program = parse(
@@ -19749,6 +19867,57 @@ soond_steek()
 	    }
 
 	    #[test]
+	    fn test_resolve_module_path_finds_relative_ancestor_and_lib_stripped_paths_for_coverage() {
+	        let root = tempdir().unwrap();
+	        let nested = root.path().join("a").join("b");
+	        std::fs::create_dir_all(&nested).unwrap();
+	        std::fs::create_dir_all(root.path().join("stdlib")).unwrap();
+
+	        std::fs::write(nested.join("__cov_direct.braw"), "blether 1").unwrap();
+	        std::fs::write(root.path().join("stdlib").join("__cov_ancestor.braw"), "blether 2").unwrap();
+	        std::fs::write(root.path().join("stdlib").join("__cov_stripped.braw"), "blether 3").unwrap();
+
+	        let mut interp = Interpreter::new();
+	        interp.set_current_dir(&nested);
+
+	        let resolved = interp.resolve_module_path("__cov_direct").unwrap();
+	        assert!(resolved.ends_with("__cov_direct.braw"));
+
+	        let resolved = interp.resolve_module_path("__cov_ancestor").unwrap();
+	        assert!(resolved.ends_with("__cov_ancestor.braw"));
+
+	        let resolved = interp.resolve_module_path("lib/__cov_stripped").unwrap();
+	        assert!(resolved.ends_with("__cov_stripped.braw"));
+	    }
+
+	    #[test]
+	    fn test_resolve_module_path_finds_exe_stdlib_candidate_for_coverage() {
+	        struct Cleanup(PathBuf);
+	        impl Drop for Cleanup {
+	            fn drop(&mut self) {
+	                let _ = std::fs::remove_file(&self.0);
+	            }
+	        }
+
+	        let mut interp = Interpreter::new();
+	        let dir = tempdir().unwrap();
+	        interp.set_current_dir(dir.path());
+
+	        let exe = std::env::current_exe().expect("current_exe");
+	        let parent = exe.parent().expect("exe parent");
+	        let stdlib = parent.join("stdlib");
+	        std::fs::create_dir_all(&stdlib).unwrap();
+
+	        let module_name = "__cov_exe_stdlib";
+	        let module_path = stdlib.join(format!("{module_name}.braw"));
+	        std::fs::write(&module_path, "blether 1").unwrap();
+	        let _cleanup = Cleanup(module_path.clone());
+
+	        let resolved = interp.resolve_module_path(module_name).unwrap();
+	        assert!(resolved.ends_with(format!("{module_name}.braw")));
+	    }
+
+	    #[test]
 	    fn test_for_loop_iterates_over_range_value_for_coverage() {
 	        let program = parse(
 	            r#"
@@ -19874,15 +20043,25 @@ c + 1
 	    }
 
     #[test]
-    fn test_resolve_module_path_absolute() {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("mod.braw");
-        std::fs::write(&path, "blether 1").unwrap();
-        let mut interp = Interpreter::new();
-        interp.set_current_dir(dir.path());
-        let resolved = interp.resolve_module_path(path.to_str().unwrap()).unwrap();
-        assert!(resolved.is_absolute());
-    }
+	    fn test_resolve_module_path_absolute() {
+	        let dir = tempdir().unwrap();
+	        let path = dir.path().join("mod.braw");
+	        std::fs::write(&path, "blether 1").unwrap();
+	        let mut interp = Interpreter::new();
+	        interp.set_current_dir(dir.path());
+	        let resolved = interp.resolve_module_path(path.to_str().unwrap()).unwrap();
+	        assert!(resolved.is_absolute());
+	    }
+
+	    #[test]
+	    fn test_resolve_module_path_absolute_missing_returns_module_not_found_for_coverage() {
+	        let dir = tempdir().unwrap();
+	        let missing = dir.path().join("missing_mod.braw");
+	        let mut interp = Interpreter::new();
+	        interp.set_current_dir(dir.path());
+	        let err = interp.resolve_module_path(missing.to_str().unwrap()).unwrap_err();
+	        assert!(matches!(err, HaversError::ModuleNotFound { .. }));
+	    }
 
     #[test]
     #[cfg(all(feature = "native", unix))]
