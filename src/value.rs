@@ -142,6 +142,46 @@ impl Value {
         }
     }
 
+    #[allow(dead_code)]
+    pub fn as_list(&self) -> Option<&Rc<RefCell<Vec<Value>>>> {
+        match self {
+            Value::List(list) => Some(list),
+            _ => None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn as_dict(&self) -> Option<&Rc<RefCell<DictValue>>> {
+        match self {
+            Value::Dict(dict) => Some(dict),
+            _ => None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn as_set(&self) -> Option<&Rc<RefCell<SetValue>>> {
+        match self {
+            Value::Set(set) => Some(set),
+            _ => None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn as_bytes(&self) -> Option<&Rc<RefCell<Vec<u8>>>> {
+        match self {
+            Value::Bytes(bytes) => Some(bytes),
+            _ => None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn as_native_function(&self) -> Option<Rc<NativeFunction>> {
+        match self {
+            Value::NativeFunction(func) => Some(Rc::clone(func)),
+            _ => None,
+        }
+    }
+
     pub fn as_key(&self) -> ValueKey {
         match self {
             Value::Nil => ValueKey::Nil,
@@ -714,6 +754,9 @@ mod tests {
         let set = Value::Set(Rc::new(RefCell::new(SetValue::new())));
         assert_eq!(set.type_name(), "creel");
 
+        let bytes = Value::Bytes(Rc::new(RefCell::new(vec![1u8, 2u8, 3u8])));
+        assert_eq!(bytes.type_name(), "bytes");
+
         let func = HaversFunction::new("test".to_string(), vec![], vec![], None);
         assert_eq!(Value::Function(Rc::new(func)).type_name(), "function");
 
@@ -742,6 +785,40 @@ mod tests {
 
         let native = Value::NativeObject(Rc::new(TestNative));
         assert_eq!(native.type_name(), "native object");
+    }
+
+    #[test]
+    fn test_value_as_helpers_cover_some_and_none_branches() {
+        let list_rc = Rc::new(RefCell::new(vec![Value::Integer(1)]));
+        let list = Value::List(Rc::clone(&list_rc));
+        assert!(list.as_list().is_some());
+        assert!(Rc::ptr_eq(list.as_list().unwrap(), &list_rc));
+        assert!(Value::Nil.as_list().is_none());
+
+        let dict_rc = Rc::new(RefCell::new(DictValue::new()));
+        let dict = Value::Dict(Rc::clone(&dict_rc));
+        assert!(dict.as_dict().is_some());
+        assert!(Rc::ptr_eq(dict.as_dict().unwrap(), &dict_rc));
+        assert!(Value::Nil.as_dict().is_none());
+
+        let set_rc = Rc::new(RefCell::new(SetValue::new()));
+        let set = Value::Set(Rc::clone(&set_rc));
+        assert!(set.as_set().is_some());
+        assert!(Rc::ptr_eq(set.as_set().unwrap(), &set_rc));
+        assert!(Value::Nil.as_set().is_none());
+
+        let bytes_rc = Rc::new(RefCell::new(vec![1u8, 2u8, 3u8]));
+        let bytes = Value::Bytes(Rc::clone(&bytes_rc));
+        assert!(bytes.as_bytes().is_some());
+        assert!(Rc::ptr_eq(bytes.as_bytes().unwrap(), &bytes_rc));
+        assert!(Value::Nil.as_bytes().is_none());
+
+        let native_rc = Rc::new(NativeFunction::new("native", 0, |_| Ok(Value::Nil)));
+        assert_eq!((&native_rc.func)(vec![]).unwrap(), Value::Nil);
+        let native = Value::NativeFunction(Rc::clone(&native_rc));
+        assert!(native.as_native_function().is_some());
+        assert!(Rc::ptr_eq(&native.as_native_function().unwrap(), &native_rc));
+        assert!(Value::Nil.as_native_function().is_none());
     }
 
     // ==================== Value::is_truthy() Tests ====================
@@ -1614,5 +1691,24 @@ mod tests {
         assert_eq!(native.set("x", Value::Integer(2)).unwrap(), Value::Nil);
         assert_eq!(native.call("unknown", vec![]).unwrap(), Value::Nil);
         assert!(native.as_any().is::<TestNative>());
+    }
+
+    #[test]
+    fn test_dict_value_set_overwrites_existing_key() {
+        let mut dict = DictValue::new();
+        dict.set(Value::String("a".to_string()), Value::Integer(1));
+        assert_eq!(
+            dict.get(&Value::String("a".to_string()))
+                .and_then(Value::as_integer),
+            Some(1)
+        );
+
+        dict.set(Value::String("a".to_string()), Value::Integer(2));
+        assert_eq!(
+            dict.get(&Value::String("a".to_string()))
+                .and_then(Value::as_integer),
+            Some(2)
+        );
+        assert_eq!(dict.len(), 1);
     }
 }

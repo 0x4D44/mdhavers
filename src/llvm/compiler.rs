@@ -453,6 +453,63 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
+    fn build_status_paint_returns_plain_text_when_color_disabled_for_coverage() {
+        let status = BuildStatus {
+            label: "mdh",
+            enabled: true,
+            use_color: false,
+            wrote_any: false,
+        };
+        assert_eq!(
+            status.paint("hello", StatusColor::Green, true),
+            "hello".to_string()
+        );
+    }
+
+    #[test]
+    fn build_status_paint_emits_ansi_when_color_enabled_for_coverage() {
+        let status = BuildStatus {
+            label: "mdh",
+            enabled: true,
+            use_color: true,
+            wrote_any: false,
+        };
+        let bold = status.paint("ok", StatusColor::Green, true);
+        assert!(bold.contains("\u{1b}[1;32m"));
+        assert!(bold.ends_with("\u{1b}[0m"));
+
+        let plain = status.paint("ok", StatusColor::Yellow, false);
+        assert!(plain.contains("\u{1b}[33m"));
+        assert!(plain.ends_with("\u{1b}[0m"));
+    }
+
+    #[test]
+    fn build_status_update_is_noop_when_disabled_for_coverage() {
+        let mut status = BuildStatus {
+            label: "mdh",
+            enabled: false,
+            use_color: false,
+            wrote_any: false,
+        };
+        status.update("stage", StatusColor::Dim);
+        assert!(!status.wrote_any);
+    }
+
+    #[test]
+    fn build_status_guard_ensures_newline_for_coverage() {
+        let mut status = BuildStatus {
+            label: "mdh",
+            enabled: true,
+            use_color: false,
+            wrote_any: true,
+        };
+        {
+            let _guard = status.guard();
+        }
+        assert!(!status.wrote_any);
+    }
+
+    #[test]
     fn test_compile_simple() {
         let source = r#"
             ken x = 42

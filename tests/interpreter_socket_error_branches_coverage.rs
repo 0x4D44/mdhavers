@@ -1,9 +1,14 @@
 #![cfg(all(feature = "native", unix))]
 
 use std::rc::Rc;
+#[cfg(coverage)]
+use std::sync::{Mutex, OnceLock};
 
 use mdhavers::value::NativeFunction;
 use mdhavers::{Interpreter, Value};
+
+#[cfg(coverage)]
+static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn native(interp: &Interpreter, name: &str) -> Rc<NativeFunction> {
     let exports = interp.globals.borrow().get_exports();
@@ -265,6 +270,21 @@ fn interpreter_socket_and_io_builtins_cover_error_paths_for_coverage() {
     let nonblock_ok =
         (socket_set_nonblocking.func)(vec![Value::Integer(udp_id), Value::Bool(true)]).unwrap();
     assert!(result_ok_value(nonblock_ok).is_some());
+
+    // socket_set_nonblocking: fcntl(F_SETFL) forced failure for uncovered error mapping lines.
+    #[cfg(coverage)]
+    {
+        let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
+        let prev = std::env::var_os("MDH_COVERAGE_FORCE_FCNTL_SETFL_FAIL");
+        std::env::set_var("MDH_COVERAGE_FORCE_FCNTL_SETFL_FAIL", "1");
+        let forced = (socket_set_nonblocking.func)(vec![Value::Integer(udp_id), Value::Bool(true)])
+            .unwrap();
+        match prev {
+            Some(value) => std::env::set_var("MDH_COVERAGE_FORCE_FCNTL_SETFL_FAIL", value),
+            None => std::env::remove_var("MDH_COVERAGE_FORCE_FCNTL_SETFL_FAIL"),
+        }
+        assert_result_err(forced);
+    }
 
     // udp_recv_from: argument validation + clamp negative sizes for coverage.
     assert!(

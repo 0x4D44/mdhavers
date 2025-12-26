@@ -1219,11 +1219,22 @@ impl Compiler {
                 self.output.push('}');
             }
 
-            Expr::Range { start, end, .. } => {
+            Expr::Range {
+                start,
+                end,
+                inclusive,
+                ..
+            } => {
                 self.output.push_str("__havers.range(");
                 self.compile_expr(start);
                 self.output.push_str(", ");
-                self.compile_expr(end);
+                if *inclusive {
+                    self.output.push('(');
+                    self.compile_expr(end);
+                    self.output.push_str(" + 1)");
+                } else {
+                    self.compile_expr(end);
+                }
                 self.output.push(')');
             }
 
@@ -1758,6 +1769,12 @@ kin Animal {
     fn test_range_compile() {
         let result = compile("0..10").unwrap();
         assert!(result.contains("__havers.range(0, 10)"));
+    }
+
+    #[test]
+    fn test_range_compile_inclusive() {
+        let result = compile("0..=10").unwrap();
+        assert!(result.contains("__havers.range(0, (10 + 1))"));
     }
 
     #[test]

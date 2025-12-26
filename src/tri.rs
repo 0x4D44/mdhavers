@@ -374,6 +374,13 @@ mod tests {
     }
 
     #[test]
+    fn test_tri_module_to_string_uses_native_object_default_impl() {
+        let module = TriModule::new();
+        let module_obj: &dyn NativeObject = &module;
+        assert_eq!(module_obj.to_string(), "<native tri.module>");
+    }
+
+    #[test]
     fn test_tri_module_constants_and_constructors() {
         let module = TriModule::new();
         let deg = module.get("DEG_TO_RAD").unwrap();

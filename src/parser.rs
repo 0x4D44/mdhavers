@@ -1362,7 +1362,16 @@ impl Parser {
     }
 
     fn maybe_range(&mut self, start_expr: Expr) -> HaversResult<Expr> {
-        if self.match_token(&TokenKind::DotDot) {
+        if self.match_token(&TokenKind::DotDotEquals) {
+            let span = start_expr.span();
+            let end = self.term()?;
+            Ok(Expr::Range {
+                start: Box::new(start_expr),
+                end: Box::new(end),
+                inclusive: true,
+                span,
+            })
+        } else if self.match_token(&TokenKind::DotDot) {
             let span = start_expr.span();
             let end = self.term()?;
             Ok(Expr::Range {
@@ -2216,8 +2225,15 @@ mod tests {
 
     #[test]
     fn test_range_inclusive() {
-        let program = parse("ken r = 1..10").unwrap();
+        let program = parse("ken r = 1..=10").unwrap();
         assert_eq!(program.statements.len(), 1);
+        assert!(matches!(
+            program.statements[0],
+            Stmt::VarDecl {
+                initializer: Some(Expr::Range { inclusive: true, .. }),
+                ..
+            }
+        ));
     }
 
     #[test]

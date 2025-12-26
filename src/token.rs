@@ -243,6 +243,9 @@ pub enum TokenKind {
     #[token("...")]
     DotDotDot, // Spread operator (skail = scatter in Scots)
 
+    #[token("..=")]
+    DotDotEquals,
+
     #[token("..")]
     DotDot,
 
@@ -365,6 +368,7 @@ impl fmt::Display for TokenKind {
             TokenKind::StarEquals => write!(f, "*="),
             TokenKind::SlashEquals => write!(f, "/="),
             TokenKind::DotDotDot => write!(f, "..."),
+            TokenKind::DotDotEquals => write!(f, "..="),
             TokenKind::DotDot => write!(f, ".."),
             TokenKind::Dot => write!(f, "."),
             TokenKind::Underscore => write!(f, "_"),
@@ -513,6 +517,7 @@ mod tests {
         assert_eq!(format!("{}", TokenKind::StarEquals), "*=");
         assert_eq!(format!("{}", TokenKind::SlashEquals), "/=");
         assert_eq!(format!("{}", TokenKind::DotDotDot), "...");
+        assert_eq!(format!("{}", TokenKind::DotDotEquals), "..=");
         assert_eq!(format!("{}", TokenKind::DotDot), "..");
         assert_eq!(format!("{}", TokenKind::Dot), ".");
         assert_eq!(format!("{}", TokenKind::Underscore), "_");

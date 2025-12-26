@@ -211,3 +211,194 @@ fn lsp_binary_handles_client_disconnect_during_initialize() {
         "expected mdhavers-lsp to fail initialization on disconnect"
     );
 }
+
+#[test]
+fn lsp_binary_propagates_stdout_disconnect_after_initialize_for_coverage() {
+    use std::io::{Read, Write};
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    let mut child = Command::new(mdhavers_lsp_bin())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn mdhavers-lsp");
+
+    let mut stdin = child.stdin.take().expect("stdin");
+    let child_stdout = child.stdout.take().expect("stdout");
+
+    // 1) initialize
+    let init = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":null,"capabilities":{}}}"#;
+    stdin.write_all(lsp_frame(init).as_bytes()).unwrap();
+
+    // lsp-server expects an "initialized" notification after initialize.
+    let initialized = r#"{"jsonrpc":"2.0","method":"initialized","params":{}}"#;
+    stdin.write_all(lsp_frame(initialized).as_bytes()).unwrap();
+    stdin.flush().unwrap();
+
+    // Read until we see the initialize response, then drop stdout to force broken-pipe behavior.
+    let (stdout_tx, stdout_rx) = mpsc::channel::<Vec<u8>>();
+    let stdout_handle = thread::spawn(move || {
+        let mut r = child_stdout;
+        let mut stdout = Vec::new();
+        let mut buf = [0u8; 4096];
+        let needle = br#""id":1"#;
+        loop {
+            match r.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    stdout.extend_from_slice(&buf[..n]);
+                    if stdout
+                        .windows(needle.len())
+                        .any(|window| window == needle)
+                    {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        let _ = stdout_tx.send(stdout);
+    });
+
+    let stdout = stdout_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("timed out waiting for initialize response");
+    let _ = stdout_handle.join();
+    assert!(
+        String::from_utf8_lossy(&stdout).contains(r#""id":1"#),
+        "missing initialize response in stdout:\n{}",
+        String::from_utf8_lossy(&stdout)
+    );
+
+    // Trigger a couple of server writes after stdout is disconnected:
+    //  - didOpen sends diagnostics
+    //  - completion sends a response
+    let uri = "file:///tmp/lsp_stdout_disconnect_coverage.braw";
+    let did_open = format!(
+        r#"{{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{{"textDocument":{{"uri":"{uri}","languageId":"mdhavers","version":1,"text":"ken x = 1\n"}}}}}}"#
+    );
+    stdin.write_all(lsp_frame(&did_open).as_bytes()).unwrap();
+    stdin.flush().unwrap();
+
+    thread::sleep(Duration::from_millis(50));
+
+    let completion = format!(
+        r#"{{"jsonrpc":"2.0","id":2,"method":"textDocument/completion","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":0,"character":1}}}}}}"#
+    );
+    stdin.write_all(lsp_frame(&completion).as_bytes()).unwrap();
+    stdin.flush().unwrap();
+
+    drop(stdin);
+
+    let start = Instant::now();
+    loop {
+        if let Some(_status) = child.try_wait().expect("try_wait") {
+            break;
+        }
+        if start.elapsed() > Duration::from_secs(5) {
+            let _ = child.kill();
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    let output = child.wait_with_output().expect("wait");
+    assert!(
+        !output.status.success(),
+        "expected mdhavers-lsp to fail after stdout disconnect; status={:?}\nstderr:\n{}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn lsp_binary_reports_io_thread_join_error_after_stdout_disconnect_for_coverage() {
+    use std::io::{Read, Write};
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    let mut child = Command::new(mdhavers_lsp_bin())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn mdhavers-lsp");
+
+    let mut stdin = child.stdin.take().expect("stdin");
+    let child_stdout = child.stdout.take().expect("stdout");
+
+    // 1) initialize
+    let init = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":null,"capabilities":{}}}"#;
+    stdin.write_all(lsp_frame(init).as_bytes()).unwrap();
+
+    // lsp-server expects an "initialized" notification after initialize.
+    let initialized = r#"{"jsonrpc":"2.0","method":"initialized","params":{}}"#;
+    stdin.write_all(lsp_frame(initialized).as_bytes()).unwrap();
+    stdin.flush().unwrap();
+
+    // Read until we see the initialize response, then drop stdout to force writer errors.
+    let (stdout_tx, stdout_rx) = mpsc::channel::<Vec<u8>>();
+    let stdout_handle = thread::spawn(move || {
+        let mut r = child_stdout;
+        let mut stdout = Vec::new();
+        let mut buf = [0u8; 4096];
+        let needle = br#""id":1"#;
+        loop {
+            match r.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    stdout.extend_from_slice(&buf[..n]);
+                    if stdout
+                        .windows(needle.len())
+                        .any(|window| window == needle)
+                    {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        let _ = stdout_tx.send(stdout);
+    });
+
+    let stdout = stdout_rx
+        .recv_timeout(Duration::from_secs(5))
+        .expect("timed out waiting for initialize response");
+    let _ = stdout_handle.join();
+    assert!(
+        String::from_utf8_lossy(&stdout).contains(r#""id":1"#),
+        "missing initialize response in stdout:\n{}",
+        String::from_utf8_lossy(&stdout)
+    );
+
+    // Send shutdown (server should return Ok from main_loop, then fail when joining IO threads).
+    let shutdown = r#"{"jsonrpc":"2.0","id":2,"method":"shutdown","params":null}"#;
+    stdin.write_all(lsp_frame(shutdown).as_bytes()).unwrap();
+    stdin.flush().unwrap();
+
+    drop(stdin);
+
+    let start = Instant::now();
+    loop {
+        if let Some(_status) = child.try_wait().expect("try_wait") {
+            break;
+        }
+        if start.elapsed() > Duration::from_secs(5) {
+            let _ = child.kill();
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    let output = child.wait_with_output().expect("wait");
+    assert!(
+        !output.status.success(),
+        "expected mdhavers-lsp to fail joining IO threads after stdout disconnect; status={:?}\nstderr:\n{}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

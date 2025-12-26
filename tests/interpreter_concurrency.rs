@@ -108,3 +108,27 @@ blether chan_is_closed(ch)
     let out = interp.get_output().join("\n");
     assert_eq!(out.trim(), "nae\nnaething\naye");
 }
+
+#[test]
+fn interpreter_mutex_and_condvar_builtins_cover_basic_paths_for_coverage() {
+    let code = r#"
+ken m = mutex_new()
+blether mutex_try_lock(m)
+blether mutex_try_lock(m)
+mutex_unlock(m)
+blether mutex_try_lock(m)
+mutex_unlock(m)
+
+ken cv = condvar_new()
+blether condvar_wait(cv, m)
+blether condvar_timed_wait(cv, m, 0.0)
+condvar_signal(cv)
+condvar_broadcast(cv)
+"#;
+
+    let program = parse(code).unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert_eq!(out.trim(), "aye\nnae\naye\naye\naye");
+}

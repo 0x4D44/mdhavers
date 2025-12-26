@@ -15,6 +15,7 @@ fn extract_builtin_names_from_codegen_source() -> Vec<String> {
 
     let mut in_match = false;
     let mut depth: i32 = 0;
+    let mut pending_pattern_lines: Vec<&str> = Vec::new();
 
     for line in source.lines() {
         if !in_match {
@@ -30,17 +31,53 @@ fn extract_builtin_names_from_codegen_source() -> Vec<String> {
             break;
         }
 
-        if let Some((before, _after)) = line.split_once("=>") {
-            if before.contains('"') {
-                let mut rest = before;
-                while let Some(start) = rest.find('"') {
-                    let tail = &rest[start + 1..];
-                    if let Some(end) = tail.find('"') {
-                        names_in_order.push(tail[..end].to_string());
-                        rest = &tail[end + 1..];
-                    } else {
-                        break;
+        let depth_before = depth;
+
+        // Only scan patterns at the top-level of the builtin match.
+        // This avoids accidentally extracting strings from nested matches inside arm bodies.
+        if depth_before == 1 {
+            let trimmed = line.trim_start();
+            let is_comment = trimmed.starts_with("//");
+
+            if !pending_pattern_lines.is_empty() {
+                pending_pattern_lines.push(line);
+
+                if line.contains("=>") {
+                    let pending = pending_pattern_lines.join("\n");
+                    if let Some((before, _after)) = pending.split_once("=>") {
+                        let mut rest = before;
+                        while let Some(start) = rest.find('"') {
+                            let tail = &rest[start + 1..];
+                            if let Some(end) = tail.find('"') {
+                                names_in_order.push(tail[..end].to_string());
+                                rest = &tail[end + 1..];
+                            } else {
+                                break;
+                            }
+                        }
                     }
+                    pending_pattern_lines.clear();
+                }
+            } else if !is_comment && line.contains('"') {
+                // Start collecting a (possibly multi-line) arm pattern list.
+                pending_pattern_lines.push(line);
+
+                // Handle one-line patterns immediately.
+                if line.contains("=>") {
+                    let pending = pending_pattern_lines.join("\n");
+                    if let Some((before, _after)) = pending.split_once("=>") {
+                        let mut rest = before;
+                        while let Some(start) = rest.find('"') {
+                            let tail = &rest[start + 1..];
+                            if let Some(end) = tail.find('"') {
+                                names_in_order.push(tail[..end].to_string());
+                                rest = &tail[end + 1..];
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    pending_pattern_lines.clear();
                 }
             }
         }
@@ -90,30 +127,30 @@ fn llvm_codegen_builtin_dispatch_is_exercised_broadly() {
     .into_iter()
     .collect();
 
-    let arg_sets: Vec<Vec<&str>> = vec![
-        vec![],
-        vec!["1"],
+    const INT_ARGS: [&str; 12] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"];
+
+    // Prefer arity coverage first: a lot of the big builtin match arms are gated by args.len().
+    // For most builtins, the argument *types* don't matter for compilation, because type checks
+    // are emitted as runtime tag checks in LLVM IR.
+    let mut arg_sets: Vec<Vec<&str>> = (0..=INT_ARGS.len())
+        .map(|n| INT_ARGS[..n].to_vec())
+        .collect();
+
+    // Add a handful of higher-signal patterns to exercise additional compile-time branches.
+    arg_sets.extend([
         vec!["1.0"],
-        vec![r#""hello""#],
         vec!["aye"],
         vec!["naething"],
+        vec![r#""hello""#],
         vec!["[1, 2, 3]"],
         vec![r#"{"a": 1, "b": 2}"#],
         vec!["|x| x"],
-        vec!["1", "2"],
-        vec!["1.0", "2.0"],
         vec![r#""hello""#, r#""he""#],
-        vec!["[1, 2, 3]", "1"],
-        vec![r#"{"a": 1}"#, r#""a""#],
-        vec!["1", "2", "3"],
-        vec![r#""hello""#, "5", r#"" ""#],
-        vec!["1", "2", "3", "4"],
-        vec!["1", "2", "3", "4", "5"],
-        vec!["1", "2", "3", "4", "5", "6"],
         vec!["[1, 2, 3]", "|x| x + 1"],
         vec!["[1, 2, 3]", "0", "|a, b| a + b"],
         vec!["[1, 2, 3, 4]", "2", "|x| x % 2"],
-    ];
+        vec![r#""hello""#, "5", r#"" ""#],
+    ]);
 
     for name in builtins {
         if skip.contains(name.as_str()) {
@@ -124,9 +161,6 @@ fn llvm_codegen_builtin_dispatch_is_exercised_broadly() {
         // The goal is to execute as much of each dispatch arm as possible.
         let mut attempted_any = false;
         for args in &arg_sets {
-            if args.len() > 8 {
-                continue;
-            }
             let res = compile_call_snippet(&name, args);
             attempted_any = true;
             if let Ok(ir) = res {
