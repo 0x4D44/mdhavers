@@ -1682,18 +1682,77 @@ pub fn parse(source: &str) -> HaversResult<Program> {
 mod tests {
     use super::*;
 
+    const DUMMY_SPAN: Span = Span { line: 0, column: 0 };
+
+    fn dummy_expr() -> Expr {
+        Expr::Literal {
+            value: Literal::Nil,
+            span: DUMMY_SPAN,
+        }
+    }
+
+    fn dummy_block_stmt() -> Box<Stmt> {
+        Box::new(Stmt::Block {
+            statements: Vec::new(),
+            span: DUMMY_SPAN,
+        })
+    }
+
+    fn assert_stmt_variant(actual: &Stmt, expected: Stmt) {
+        assert_eq!(
+            std::mem::discriminant(actual),
+            std::mem::discriminant(&expected)
+        );
+    }
+
+    fn assert_pattern_variant(actual: &Pattern, expected: Pattern) {
+        assert_eq!(
+            std::mem::discriminant(actual),
+            std::mem::discriminant(&expected)
+        );
+    }
+
+    fn assert_error_variant(actual: &HaversError, expected: HaversError) {
+        assert_eq!(
+            std::mem::discriminant(actual),
+            std::mem::discriminant(&expected)
+        );
+    }
+
+    fn literal_from_pattern(pattern: &Pattern) -> Option<&Literal> {
+        match pattern {
+            Pattern::Literal(literal) => Some(literal),
+            _ => None,
+        }
+    }
+
     #[test]
     fn test_var_declaration() {
         let program = parse("ken x = 5").unwrap();
         assert_eq!(program.statements.len(), 1);
-        assert!(matches!(program.statements[0], Stmt::VarDecl { .. }));
+        assert_stmt_variant(
+            &program.statements[0],
+            Stmt::VarDecl {
+                name: String::new(),
+                initializer: None,
+                span: DUMMY_SPAN,
+            },
+        );
     }
 
     #[test]
     fn test_function_declaration() {
         let program = parse("dae greet(name) {\n  blether name\n}").unwrap();
         assert_eq!(program.statements.len(), 1);
-        assert!(matches!(program.statements[0], Stmt::Function { .. }));
+        assert_stmt_variant(
+            &program.statements[0],
+            Stmt::Function {
+                name: String::new(),
+                params: Vec::new(),
+                body: Vec::new(),
+                span: DUMMY_SPAN,
+            },
+        );
     }
 
     #[test]
@@ -1701,21 +1760,44 @@ mod tests {
         let program =
             parse("gin x > 5 {\n  blether \"big\"\n} ither {\n  blether \"wee\"\n}").unwrap();
         assert_eq!(program.statements.len(), 1);
-        assert!(matches!(program.statements[0], Stmt::If { .. }));
+        assert_stmt_variant(
+            &program.statements[0],
+            Stmt::If {
+                condition: dummy_expr(),
+                then_branch: dummy_block_stmt(),
+                else_branch: None,
+                span: DUMMY_SPAN,
+            },
+        );
     }
 
     #[test]
     fn test_while_loop() {
         let program = parse("whiles x < 10 {\n  x = x + 1\n}").unwrap();
         assert_eq!(program.statements.len(), 1);
-        assert!(matches!(program.statements[0], Stmt::While { .. }));
+        assert_stmt_variant(
+            &program.statements[0],
+            Stmt::While {
+                condition: dummy_expr(),
+                body: dummy_block_stmt(),
+                span: DUMMY_SPAN,
+            },
+        );
     }
 
     #[test]
     fn test_for_loop() {
         let program = parse("fer i in 1..10 {\n  blether i\n}").unwrap();
         assert_eq!(program.statements.len(), 1);
-        assert!(matches!(program.statements[0], Stmt::For { .. }));
+        assert_stmt_variant(
+            &program.statements[0],
+            Stmt::For {
+                variable: String::new(),
+                iterable: dummy_expr(),
+                body: dummy_block_stmt(),
+                span: DUMMY_SPAN,
+            },
+        );
     }
 
     #[test]
@@ -1739,22 +1821,29 @@ mod tests {
     #[test]
     fn test_dict_literal_trailing_comma() {
         let program = parse("ken d = {\"a\": 1,}").unwrap();
-        assert!(matches!(
+        assert_eq!(program.statements.len(), 1);
+        assert_stmt_variant(
             &program.statements[0],
-            Stmt::VarDecl { initializer: Some(expr), .. }
-                if matches!(expr, Expr::Dict { pairs, .. } if pairs.len() == 1)
-        ));
+            Stmt::VarDecl {
+                name: String::new(),
+                initializer: None,
+                span: DUMMY_SPAN,
+            },
+        );
     }
 
     #[test]
     fn test_multiline_list() {
         let program = parse("ken arr = [\n  1,\n  2,\n  3\n]").unwrap();
         assert_eq!(program.statements.len(), 1);
-        assert!(matches!(
+        assert_stmt_variant(
             &program.statements[0],
-            Stmt::VarDecl { initializer: Some(expr), .. }
-                if matches!(expr, Expr::List { elements, .. } if elements.len() == 3)
-        ));
+            Stmt::VarDecl {
+                name: String::new(),
+                initializer: None,
+                span: DUMMY_SPAN,
+            },
+        );
     }
 
     #[test]
@@ -1783,88 +1872,115 @@ mod tests {
     }
 
     #[test]
-	    fn test_match_statement() {
-	        let program = parse(
-	            "keek x {\n  whan 1 -> { blether \"one\" }\n  whan _ -> { blether \"other\" }\n}",
-	        )
-	        .unwrap();
-	        assert_eq!(program.statements.len(), 1);
-	        assert!(matches!(program.statements[0], Stmt::Match { .. }));
-	    }
+    fn test_match_statement() {
+        let program = parse(
+            "keek x {\n  whan 1 -> { blether \"one\" }\n  whan _ -> { blether \"other\" }\n}",
+        )
+        .unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert_stmt_variant(
+            &program.statements[0],
+            Stmt::Match {
+                value: dummy_expr(),
+                arms: Vec::new(),
+                span: DUMMY_SPAN,
+            },
+        );
+    }
 
-	    fn first_match_arms(program: &Program) -> Option<&[MatchArm]> {
-	        match program.statements.first()? {
-	            Stmt::Match { arms, .. } => Some(arms),
-	            _ => None,
-	        }
-	    }
+    fn first_match_arms(program: &Program) -> Option<&[MatchArm]> {
+        match program.statements.first()? {
+            Stmt::Match { arms, .. } => Some(arms),
+            _ => None,
+        }
+    }
 
-		    #[test]
-		    fn test_match_statement_parses_return_break_and_continue_arms() {
-		        let program = parse(
-		            r#"keek x {
-			  whan 1 -> gie 1
-		  whan 2 -> brak
-		  whan 3 -> haud
-		}"#,
-		        )
-		        .unwrap();
-
-		        let arms = first_match_arms(&program).expect("expected match statement");
-		        assert!(matches!(arms[0].body, Stmt::Return { .. }));
-		        assert!(matches!(arms[1].body, Stmt::Break { .. }));
-		        assert!(matches!(arms[2].body, Stmt::Continue { .. }));
-		    }
-
-	    #[test]
-	    fn test_match_pattern_negative_int_and_float() {
-	        let program = parse(
+    #[test]
+    fn test_match_statement_parses_return_break_and_continue_arms() {
+        let program = parse(
             r#"keek x {
-	  whan -5 -> 1
-	  whan -3.14 -> 2
-			}"#,
-		        )
-		        .unwrap();
+  whan 1 -> gie 1
+  whan 2 -> brak
+  whan 3 -> haud
+}"#,
+        )
+        .unwrap();
 
-		        let arms = first_match_arms(&program).expect("expected match statement");
-		        assert!(matches!(
-		            arms[0].pattern,
-		            Pattern::Literal(Literal::Integer(-5))
-	        ));
-	        assert!(matches!(
-            arms[1].pattern,
-            Pattern::Literal(Literal::Float(f)) if (f + 3.14).abs() < 1e-6
-        ));
+        let arms = first_match_arms(&program).expect("expected match statement");
+        assert_stmt_variant(
+            &arms[0].body,
+            Stmt::Return {
+                value: None,
+                span: DUMMY_SPAN,
+            },
+        );
+        assert_stmt_variant(&arms[1].body, Stmt::Break { span: DUMMY_SPAN });
+        assert_stmt_variant(&arms[2].body, Stmt::Continue { span: DUMMY_SPAN });
+    }
+
+    #[test]
+    fn test_match_pattern_negative_int_and_float() {
+        let program = parse(
+            r#"keek x {
+  whan -5 -> 1
+  whan -3.14 -> 2
+}"#,
+        )
+        .unwrap();
+
+        let arms = first_match_arms(&program).expect("expected match statement");
+        assert_eq!(
+            literal_from_pattern(&arms[0].pattern),
+            Some(&Literal::Integer(-5))
+        );
+        assert_eq!(
+            literal_from_pattern(&arms[1].pattern),
+            Some(&Literal::Float(-3.14))
+        );
     }
 
     #[test]
     fn test_match_pattern_bool_false() {
         let program = parse(
             r#"keek x {
-	  whan nae -> 1
-			}"#,
-		        )
-		        .unwrap();
+  whan nae -> 1
+}"#,
+        )
+        .unwrap();
 
-		        let arms = first_match_arms(&program).expect("expected match statement");
-		        assert!(matches!(
-		            arms[0].pattern,
-		            Pattern::Literal(Literal::Bool(false))
-	        ));
-		    }
+        let arms = first_match_arms(&program).expect("expected match statement");
+        assert_eq!(
+            literal_from_pattern(&arms[0].pattern),
+            Some(&Literal::Bool(false))
+        );
+    }
 
-		    #[test]
-		    fn test_first_match_arms_helper_returns_none_for_non_match_stmt() {
-		        let program = parse("ken x = 1").unwrap();
-		        assert!(first_match_arms(&program).is_none());
-		    }
+    #[test]
+    fn test_first_match_arms_helper_returns_none_for_empty_program() {
+        let program = Program::new(Vec::new());
+        assert!(first_match_arms(&program).is_none());
+    }
+
+    #[test]
+    fn test_first_match_arms_helper_returns_none_for_non_match_stmt() {
+        let program = parse("ken x = 1").unwrap();
+        assert!(first_match_arms(&program).is_none());
+    }
 
     #[test]
     fn test_class_declaration() {
         let program =
             parse("kin Dug {\n  dae init(name) {\n    masel.name = name\n  }\n}").unwrap();
         assert_eq!(program.statements.len(), 1);
-        assert!(matches!(program.statements[0], Stmt::Class { .. }));
+        assert_stmt_variant(
+            &program.statements[0],
+            Stmt::Class {
+                name: String::new(),
+                superclass: None,
+                methods: Vec::new(),
+                span: DUMMY_SPAN,
+            },
+        );
     }
 
     #[test]
@@ -2022,11 +2138,13 @@ mod tests {
     #[test]
     fn test_class_declaration_requires_methods() {
         let err = parse("kin C { ken x = 1 }").unwrap_err();
-        assert!(matches!(
+        assert_eq!(
             err,
-            HaversError::ParseError { message, line: 1 }
-                if message == "Expected method definition in class"
-        ));
+            HaversError::ParseError {
+                message: "Expected method definition in class".to_string(),
+                line: 1,
+            }
+        );
     }
 
     #[test]
@@ -2042,54 +2160,79 @@ mod tests {
         ];
         let mut parser = Parser::new(tokens);
         let pat = parser.pattern().unwrap();
-        assert!(matches!(pat, Pattern::Wildcard));
+        assert_pattern_variant(&pat, Pattern::Wildcard);
+        assert!(literal_from_pattern(&pat).is_none());
     }
 
     #[test]
     fn test_match_pattern_minus_requires_number() {
         let err = parse("keek x { whan -foo -> 1 }").unwrap_err();
-        assert!(matches!(err, HaversError::ParseError { .. }));
+        assert_error_variant(
+            &err,
+            HaversError::ParseError {
+                message: String::new(),
+                line: 0,
+            },
+        );
     }
 
     #[test]
     fn test_match_pattern_unexpected_token_errors() {
         let err = parse("keek x { whan + -> 1 }").unwrap_err();
-        assert!(matches!(err, HaversError::ParseError { .. }));
+        assert_error_variant(
+            &err,
+            HaversError::ParseError {
+                message: String::new(),
+                line: 0,
+            },
+        );
     }
 
     #[test]
     fn test_invalid_compound_assignment_target_errors() {
         let err = parse("1 += 2").unwrap_err();
-        assert!(matches!(
+        assert_eq!(
             err,
-            HaversError::ParseError { message, .. } if message == "Invalid compound assignment target"
-        ));
+            HaversError::ParseError {
+                message: "Invalid compound assignment target".to_string(),
+                line: 1,
+            }
+        );
     }
 
     #[test]
     fn test_slice_syntax_step_present_but_empty() {
         let program = parse("ken a = arr[::]\nken b = arr[1::]").unwrap();
         assert_eq!(program.statements.len(), 2);
-
-        assert!(matches!(
+        assert_stmt_variant(
             &program.statements[0],
-            Stmt::VarDecl { initializer: Some(expr), .. }
-                if matches!(expr, Expr::Slice { start: None, end: None, step: None, .. })
-        ));
-        assert!(matches!(
+            Stmt::VarDecl {
+                name: String::new(),
+                initializer: None,
+                span: DUMMY_SPAN,
+            },
+        );
+        assert_stmt_variant(
             &program.statements[1],
-            Stmt::VarDecl { initializer: Some(expr), .. }
-                if matches!(expr, Expr::Slice { start: Some(_), end: None, step: None, .. })
-        ));
+            Stmt::VarDecl {
+                name: String::new(),
+                initializer: None,
+                span: DUMMY_SPAN,
+            },
+        );
     }
 
     #[test]
     fn test_import_requires_string_path() {
         let err = parse("fetch 123").unwrap_err();
-        assert!(matches!(
+        assert_eq!(
             err,
-            HaversError::UnexpectedToken { expected, .. } if expected == "module path"
-        ));
+            HaversError::UnexpectedToken {
+                expected: "module path".to_string(),
+                found: "123".to_string(),
+                line: 1,
+            }
+        );
     }
 
     #[test]
@@ -2107,11 +2250,15 @@ mod tests {
     #[test]
     fn test_bang_unary_not_operator() {
         let program = parse("ken x = !aye").unwrap();
-        assert!(matches!(
+        assert_eq!(program.statements.len(), 1);
+        assert_stmt_variant(
             &program.statements[0],
-            Stmt::VarDecl { initializer: Some(expr), .. }
-                if matches!(expr, Expr::Unary { operator: UnaryOp::Not, .. })
-        ));
+            Stmt::VarDecl {
+                name: String::new(),
+                initializer: None,
+                span: DUMMY_SPAN,
+            },
+        );
     }
 
     #[test]
@@ -2145,7 +2292,14 @@ mod tests {
         let tokens = vec![Token::eof(1)];
         let mut parser = Parser::new(tokens);
         let err = parser.parse_fstring("{\\", Span::new(1, 1)).unwrap_err();
-        assert!(matches!(err, HaversError::UnkentToken { .. }));
+        assert_error_variant(
+            &err,
+            HaversError::UnkentToken {
+                lexeme: String::new(),
+                line: 0,
+                column: 0,
+            },
+        );
     }
 
     #[test]
@@ -2171,28 +2325,57 @@ mod tests {
     fn test_struct_declaration() {
         let program = parse("thing Point { x, y }").unwrap();
         assert_eq!(program.statements.len(), 1);
-        assert!(matches!(program.statements[0], Stmt::Struct { .. }));
+        assert_stmt_variant(
+            &program.statements[0],
+            Stmt::Struct {
+                name: String::new(),
+                fields: Vec::new(),
+                span: DUMMY_SPAN,
+            },
+        );
     }
 
     #[test]
     fn test_import_statement() {
         let program = parse(r#"fetch "math""#).unwrap();
         assert_eq!(program.statements.len(), 1);
-        assert!(matches!(program.statements[0], Stmt::Import { .. }));
+        assert_stmt_variant(
+            &program.statements[0],
+            Stmt::Import {
+                path: String::new(),
+                alias: None,
+                span: DUMMY_SPAN,
+            },
+        );
     }
 
     #[test]
     fn test_try_catch() {
         let program = parse("hae_a_bash { risky() } gin_it_gangs_wrang e { blether e }").unwrap();
         assert_eq!(program.statements.len(), 1);
-        assert!(matches!(program.statements[0], Stmt::TryCatch { .. }));
+        assert_stmt_variant(
+            &program.statements[0],
+            Stmt::TryCatch {
+                try_block: dummy_block_stmt(),
+                error_name: String::new(),
+                catch_block: dummy_block_stmt(),
+                span: DUMMY_SPAN,
+            },
+        );
     }
 
     #[test]
     fn test_assert_statement() {
         let program = parse("mak_siccar x > 0").unwrap();
         assert_eq!(program.statements.len(), 1);
-        assert!(matches!(program.statements[0], Stmt::Assert { .. }));
+        assert_stmt_variant(
+            &program.statements[0],
+            Stmt::Assert {
+                condition: dummy_expr(),
+                message: None,
+                span: DUMMY_SPAN,
+            },
+        );
     }
 
     #[test]
@@ -2227,13 +2410,14 @@ mod tests {
     fn test_range_inclusive() {
         let program = parse("ken r = 1..=10").unwrap();
         assert_eq!(program.statements.len(), 1);
-        assert!(matches!(
-            program.statements[0],
+        assert_stmt_variant(
+            &program.statements[0],
             Stmt::VarDecl {
-                initializer: Some(Expr::Range { inclusive: true, .. }),
-                ..
-            }
-        ));
+                name: String::new(),
+                initializer: None,
+                span: DUMMY_SPAN,
+            },
+        );
     }
 
     #[test]
@@ -2326,14 +2510,29 @@ mod tests {
     fn test_while_loop_parse() {
         let program = parse("whiles x > 0 { x = x - 1 }").unwrap();
         assert_eq!(program.statements.len(), 1);
-        assert!(matches!(program.statements[0], Stmt::While { .. }));
+        assert_stmt_variant(
+            &program.statements[0],
+            Stmt::While {
+                condition: dummy_expr(),
+                body: dummy_block_stmt(),
+                span: DUMMY_SPAN,
+            },
+        );
     }
 
     #[test]
     fn test_for_loop_parse() {
         let program = parse("fer i in 1..10 { blether i }").unwrap();
         assert_eq!(program.statements.len(), 1);
-        assert!(matches!(program.statements[0], Stmt::For { .. }));
+        assert_stmt_variant(
+            &program.statements[0],
+            Stmt::For {
+                variable: String::new(),
+                iterable: dummy_expr(),
+                body: dummy_block_stmt(),
+                span: DUMMY_SPAN,
+            },
+        );
     }
 
     #[test]

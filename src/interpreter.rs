@@ -12359,35 +12359,49 @@ fn json_escape_string(s: &str) -> String {
     result
 }
 
-#[cfg(test)]
-#[allow(clippy::approx_constant)]
-#[allow(clippy::manual_range_contains)]
-mod tests {
-    use super::*;
-    use crate::ast::{Expr, Literal, Span};
-    use crate::parser::parse;
-    use crate::value::NativeObject;
-    use std::cell::RefCell;
-    use std::collections::HashMap;
-    #[cfg(all(feature = "native", unix))]
-    use std::io::Write;
-    #[cfg(all(feature = "native", unix))]
-    use std::os::unix::io::IntoRawFd;
-    use std::rc::Rc;
-    #[cfg(all(feature = "native", unix))]
-    use std::thread;
-    use tempfile::tempdir;
-
-    #[cfg(feature = "native")]
-    use rcgen::generate_simple_self_signed;
-    #[cfg(feature = "native")]
-    use rustls::{Certificate, ServerName};
-    #[cfg(feature = "native")]
-    use std::time::SystemTime;
+	#[cfg(test)]
+	#[allow(clippy::approx_constant)]
+	#[allow(clippy::manual_range_contains)]
+	mod tests {
+	    use super::*;
+	    use crate::ast::{Expr, Literal, Span};
+	    use crate::parser::parse;
+	    use crate::value::NativeObject;
+	    use std::cell::RefCell;
+	    use std::collections::HashMap;
+	    #[cfg(all(feature = "native", unix))]
+	    use std::io::Write;
+	    #[cfg(all(feature = "native", unix))]
+	    use std::os::unix::io::IntoRawFd;
+	    use std::rc::Rc;
+	    #[cfg(all(feature = "native", unix))]
+	    use std::thread;
+	    use tempfile::tempdir;
 
 	    #[cfg(feature = "native")]
-	    #[test]
-	    fn srtp_key_salt_len_covers_all_profile_variants_for_coverage() {
+	    use rcgen::generate_simple_self_signed;
+	    #[cfg(feature = "native")]
+	    use rustls::{Certificate, ServerName};
+	    #[cfg(feature = "native")]
+	    use std::time::SystemTime;
+
+	    fn assert_error_variant(actual: &HaversError, expected: HaversError) {
+	        assert_eq!(
+	            std::mem::discriminant(actual),
+	            std::mem::discriminant(&expected)
+	        );
+	    }
+
+	    fn assert_value_variant(actual: &Value, expected: Value) {
+	        assert_eq!(
+	            std::mem::discriminant(actual),
+	            std::mem::discriminant(&expected)
+	        );
+	    }
+
+		    #[cfg(feature = "native")]
+		    #[test]
+		    fn srtp_key_salt_len_covers_all_profile_variants_for_coverage() {
 	        assert_eq!(srtp_key_salt_len(SrtpProfile::AeadAes128Gcm), (16, 12));
 	        assert_eq!(srtp_key_salt_len(SrtpProfile::AeadAes256Gcm), (32, 12));
 	        assert_eq!(srtp_key_salt_len(SrtpProfile::__Nonexhaustive), (16, 14));
@@ -12460,11 +12474,11 @@ ok
 	        let mut interp = Interpreter::new();
 	        interp.set_current_dir(root.path());
 
-	        let err = interp.interpret(&program).unwrap_err();
-	        assert!(matches!(err, HaversError::CircularImport { .. }));
-	        assert!(interp.module_in_progress.is_empty());
-	        assert_eq!(interp.current_dir, root.path().to_path_buf());
-	    }
+		        let err = interp.interpret(&program).unwrap_err();
+		        assert_error_variant(&err, HaversError::CircularImport { path: String::new() });
+		        assert!(interp.module_in_progress.is_empty());
+		        assert_eq!(interp.current_dir, root.path().to_path_buf());
+		    }
 
 	    #[test]
 	    fn module_loading_cache_and_error_paths_for_unit_coverage() {
@@ -12517,14 +12531,19 @@ blether m2["a"]
                 span: Span::new(1, 1),
             }],
             span: Span::new(1, 1),
-        };
+	        };
 
-        interp.execute_stmt(&stmt).expect("execute class stmt");
-	        assert!(matches!(
-	            interp.environment.borrow().get("C"),
-	            Some(Value::Class(_))
-	        ));
-	    }
+	        interp.execute_stmt(&stmt).expect("execute class stmt");
+	        let class = interp
+	            .environment
+	            .borrow()
+	            .get("C")
+	            .expect("expected class binding");
+	        assert_value_variant(
+	            &class,
+	            Value::Class(Rc::new(HaversClass::new(String::new(), None))),
+	        );
+		    }
 
 	    #[test]
 	    fn pattern_matches_range_propagates_start_and_end_eval_errors_for_coverage() {
@@ -13776,30 +13795,38 @@ blether r["error"]
 	    }
 
 	    #[test]
-	    fn test_native_object_branches_for_coverage() {
-	        let native: Rc<dyn NativeObject> = Rc::new(TestNative::new());
-	        assert_eq!(native.type_name(), "test_native");
-	        assert!(native.as_any().is::<TestNative>());
+		    fn test_native_object_branches_for_coverage() {
+		        let native: Rc<dyn NativeObject> = Rc::new(TestNative::new());
+		        assert_eq!(native.type_name(), "test_native");
+		        assert!(native.as_any().is::<TestNative>());
 
-	        assert!(matches!(
-	            native.get("missing"),
-	            Err(HaversError::UndefinedVariable { .. })
-	        ));
-	        native
-	            .set("x", Value::Integer(1))
-	            .expect("set should succeed");
-	        assert_eq!(native.get("x").unwrap(), Value::Integer(1));
+		        let err = native.get("missing").unwrap_err();
+		        assert_error_variant(
+		            &err,
+		            HaversError::UndefinedVariable {
+		                name: String::new(),
+		                line: 0,
+		            },
+		        );
+		        native
+		            .set("x", Value::Integer(1))
+		            .expect("set should succeed");
+		        assert_eq!(native.get("x").unwrap(), Value::Integer(1));
 
 	        assert_eq!(
 	            native
 	                .call("add", vec![Value::Integer(1), Value::Integer(2)])
-	                .unwrap(),
-	            Value::Integer(3)
-	        );
-	        assert!(matches!(
-	            native.call("nope", vec![]),
-	            Err(HaversError::UndefinedVariable { .. })
-	        ));
+		                .unwrap(),
+		            Value::Integer(3)
+		        );
+		        let err = native.call("nope", vec![]).unwrap_err();
+		        assert_error_variant(
+		            &err,
+		            HaversError::UndefinedVariable {
+		                name: String::new(),
+		                line: 0,
+		            },
+		        );
 
 		        let mut interp = Interpreter::new();
 		        interp
@@ -13890,12 +13917,18 @@ blether r["error"]
     }
 
     #[test]
-    fn test_tri_import_requires_alias() {
-        let program = parse(r#"fetch "tri""#).unwrap();
-        let mut interp = Interpreter::new();
-        let err = interp.interpret(&program).unwrap_err();
-        assert!(matches!(err, HaversError::TypeError { .. }));
-    }
+	    fn test_tri_import_requires_alias() {
+	        let program = parse(r#"fetch "tri""#).unwrap();
+	        let mut interp = Interpreter::new();
+	        let err = interp.interpret(&program).unwrap_err();
+	        assert_error_variant(
+	            &err,
+	            HaversError::TypeError {
+	                message: String::new(),
+	                line: 0,
+	            },
+	        );
+	    }
 
     #[test]
     fn test_tri_import_and_constructor() {
@@ -19803,19 +19836,19 @@ soond_steek()
 
     #[test]
     #[cfg(feature = "native")]
-    fn test_insecure_verifier_and_tls_dtls_defaults() {
+	    fn test_insecure_verifier_and_tls_dtls_defaults() {
         let verifier = InsecureVerifier;
         let cert = Certificate(Vec::new());
         let name = ServerName::try_from("localhost").unwrap();
         let mut scts = std::iter::empty::<&[u8]>();
-        verifier
-            .verify_server_cert(&cert, &[], &name, &mut scts, &[], SystemTime::now())
-            .unwrap();
+	        verifier
+	            .verify_server_cert(&cert, &[], &name, &mut scts, &[], SystemTime::now())
+	            .unwrap();
 
-        let tls = tls_config_from_value(&Value::Nil).unwrap();
-        assert!(matches!(tls.mode, TlsMode::Client));
-        let dtls = dtls_config_from_value(&Value::Nil).unwrap();
-        assert!(matches!(dtls.mode, TlsMode::Server));
+	        let tls = tls_config_from_value(&Value::Nil).unwrap();
+	        assert!(tls.mode == TlsMode::Client);
+	        let dtls = dtls_config_from_value(&Value::Nil).unwrap();
+	        assert!(dtls.mode == TlsMode::Server);
 
         let cfg = TlsConfigData {
             mode: TlsMode::Client,
@@ -20140,13 +20173,18 @@ soond_steek()
 	    }
 
 	    #[test]
-	    fn test_resolve_module_path_runs_exe_search_for_coverage() {
-	        let mut interp = Interpreter::new();
-	        let dir = tempdir().unwrap();
-	        interp.set_current_dir(dir.path());
-	        let err = interp.resolve_module_path("lib/does_not_exist").unwrap_err();
-	        assert!(matches!(err, HaversError::ModuleNotFound { .. }));
-	    }
+		    fn test_resolve_module_path_runs_exe_search_for_coverage() {
+		        let mut interp = Interpreter::new();
+		        let dir = tempdir().unwrap();
+		        interp.set_current_dir(dir.path());
+		        let err = interp.resolve_module_path("lib/does_not_exist").unwrap_err();
+		        assert_error_variant(
+		            &err,
+		            HaversError::ModuleNotFound {
+		                name: String::new(),
+		            },
+		        );
+		    }
 
 	    #[test]
 	    fn test_resolve_module_path_finds_relative_ancestor_and_lib_stripped_paths_for_coverage() {
@@ -20255,17 +20293,26 @@ c + 1
 	    }
 
 	    #[test]
-	    fn test_operator_overload_falls_back_when_method_missing_for_coverage() {
+		    fn test_operator_overload_falls_back_when_method_missing_for_coverage() {
 	        let err = run(
 	            r#"
 kin C { }
 ken c = C()
 c + 1
 "#,
-	        )
-	        .unwrap_err();
-	        assert!(matches!(err, HaversError::TypeError { .. } | HaversError::NotCallable { .. }));
-	    }
+		        )
+		        .unwrap_err();
+		        let disc = std::mem::discriminant(&err);
+		        let type_error = std::mem::discriminant(&HaversError::TypeError {
+		            message: String::new(),
+		            line: 0,
+		        });
+		        let not_callable = std::mem::discriminant(&HaversError::NotCallable {
+		            name: String::new(),
+		            line: 0,
+		        });
+		        assert!(disc == type_error || disc == not_callable);
+		    }
 
 	    #[test]
 	    #[should_panic]
@@ -20336,14 +20383,19 @@ c + 1
 	    }
 
 	    #[test]
-	    fn test_resolve_module_path_absolute_missing_returns_module_not_found_for_coverage() {
+		    fn test_resolve_module_path_absolute_missing_returns_module_not_found_for_coverage() {
 	        let dir = tempdir().unwrap();
 	        let missing = dir.path().join("missing_mod.braw");
-	        let mut interp = Interpreter::new();
-	        interp.set_current_dir(dir.path());
-	        let err = interp.resolve_module_path(missing.to_str().unwrap()).unwrap_err();
-	        assert!(matches!(err, HaversError::ModuleNotFound { .. }));
-	    }
+		        let mut interp = Interpreter::new();
+		        interp.set_current_dir(dir.path());
+		        let err = interp.resolve_module_path(missing.to_str().unwrap()).unwrap_err();
+		        assert_error_variant(
+		            &err,
+		            HaversError::ModuleNotFound {
+		                name: String::new(),
+		            },
+		        );
+		    }
 
     #[test]
     #[cfg(all(feature = "native", unix))]
@@ -20432,10 +20484,11 @@ c + 1
         .unwrap();
 
         let span = (log_span.func)(vec![Value::String("span".to_string())]).unwrap();
-        (log_span_enter.func)(vec![span.clone()]).unwrap();
-        let current = (log_span_current.func)(vec![]).unwrap();
-        assert!(matches!(current, Value::NativeObject(_)));
-        (log_span_exit.func)(vec![span.clone()]).unwrap();
+	        (log_span_enter.func)(vec![span.clone()]).unwrap();
+	        let current = (log_span_current.func)(vec![]).unwrap();
+	        let dummy: Rc<dyn NativeObject> = Rc::new(TestNative::new());
+	        assert_value_variant(&current, Value::NativeObject(dummy));
+	        (log_span_exit.func)(vec![span.clone()]).unwrap();
 
         let cb = Value::NativeFunction(Rc::new(NativeFunction::new("cb", 0, |_args| {
             Ok(Value::Integer(5))
