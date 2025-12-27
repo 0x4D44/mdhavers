@@ -3802,7 +3802,7 @@ impl<'ctx> CodeGen<'ctx> {
                         // Both are known non-string types, safe to compare data directly
                         let get_int_data =
                             |s: &mut Self, expr: &Expr| -> Result<IntValue<'ctx>, HaversError> {
-                                if let Some(int_val) = s.compile_int_expr(expr)? {
+                                if let Some(int_val) = s.compile_int_expr(expr) {
                                     return Ok(int_val);
                                 }
                                 let val = s.compile_expr(expr)?;
@@ -3836,7 +3836,7 @@ impl<'ctx> CodeGen<'ctx> {
                         let get_int_data =
                             |s: &mut Self, expr: &Expr| -> Result<IntValue<'ctx>, HaversError> {
                                 // First try int shadow path
-                                if let Some(int_val) = s.compile_int_expr(expr)? {
+                                if let Some(int_val) = s.compile_int_expr(expr) {
                                     return Ok(int_val);
                                 }
                                 // Fall back to MdhValue extraction
@@ -3915,7 +3915,7 @@ impl<'ctx> CodeGen<'ctx> {
                         self.extract_data(obj_val).unwrap()
                     };
 
-                    let idx_i64 = if let Some(i) = self.compile_int_expr(index)? {
+                    let idx_i64 = if let Some(i) = self.compile_int_expr(index) {
                         i
                     } else {
                         let idx_val = self.compile_expr(index)?;
@@ -4125,13 +4125,13 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Compile an integer expression directly to i64, bypassing MdhValue boxing.
     /// Returns None if the expression can't be compiled as pure integer.
-    fn compile_int_expr(&mut self, expr: &Expr) -> Result<Option<IntValue<'ctx>>, HaversError> {
+    fn compile_int_expr(&mut self, expr: &Expr) -> Option<IntValue<'ctx>> {
         match expr {
             // Integer literal
             Expr::Literal {
                 value: Literal::Integer(n),
                 ..
-            } => Ok(Some(self.types.i64_type.const_int(*n as u64, true))),
+            } => Some(self.types.i64_type.const_int(*n as u64, true)),
 
             // Variable with int shadow
             Expr::Variable { name, .. } => {
@@ -4141,7 +4141,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_load(self.types.i64_type, shadow, &format!("{}_i64", name))
                             .unwrap();
-                        return Ok(Some(val.into_int_value()));
+                        return Some(val.into_int_value());
                     }
                 }
 
@@ -4153,12 +4153,12 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_load(self.types.value_type, alloca, name)
                             .unwrap();
                         let data = self.extract_data(val).unwrap();
-                        Ok(Some(data))
+                        Some(data)
                     } else {
-                        Ok(None)
+                        None
                     }
                 } else {
-                    Ok(None)
+                    None
                 }
             }
 
@@ -4173,8 +4173,8 @@ impl<'ctx> CodeGen<'ctx> {
                 let rt = self.infer_expr_type(right);
 
                 if lt == VarType::Int && rt == VarType::Int {
-                    let left_i64 = self.compile_int_expr(left)?;
-                    let right_i64 = self.compile_int_expr(right)?;
+                    let left_i64 = self.compile_int_expr(left);
+                    let right_i64 = self.compile_int_expr(right);
 
                     if let (Some(l), Some(r)) = (left_i64, right_i64) {
                         let result = match operator {
@@ -4193,15 +4193,15 @@ impl<'ctx> CodeGen<'ctx> {
                                 .builder
                                 .build_int_signed_rem(l, r, "mod_i64")
                                 .unwrap(),
-                            _ => return Ok(None),
+                            _ => return None,
                         };
-                        return Ok(Some(result));
+                        return Some(result);
                     }
                 }
-                Ok(None)
+                None
             }
 
-            _ => Ok(None),
+            _ => None,
         }
     }
 
@@ -9966,7 +9966,7 @@ impl<'ctx> CodeGen<'ctx> {
 	                    // Try to get the int value directly
 	                    // Note: `var_type == Int` implies `initializer.is_some()` (inferred from the initializer).
 	                    let init = initializer.as_ref().unwrap();
-	                    if let Some(int_val) = self.compile_int_expr(init)? {
+		                    if let Some(int_val) = self.compile_int_expr(init) {
 	                        // Store to shadow
 	                        self.builder
 	                            .build_store(shadow, int_val)
@@ -10592,7 +10592,7 @@ impl<'ctx> CodeGen<'ctx> {
                 // Try to use optimized int path if we have an int shadow
                 if let Some(&shadow) = self.int_shadows.get(name) {
                     // Try to compile the value directly as i64
-                    if let Some(int_val) = self.compile_int_expr(value)? {
+                    if let Some(int_val) = self.compile_int_expr(value) {
                         // Update the shadow with the new i64 value
                         self.builder
                             .build_store(shadow, int_val)
@@ -11027,14 +11027,14 @@ impl<'ctx> CodeGen<'ctx> {
         right: &Expr,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         // Try to use int shadows directly (avoids MdhValue load)
-        let left_data = if let Some(l) = self.compile_int_expr(left)? {
+        let left_data = if let Some(l) = self.compile_int_expr(left) {
             l
         } else {
             let left_val = self.compile_expr(left)?;
             self.extract_data(left_val).unwrap()
         };
 
-        let right_data = if let Some(r) = self.compile_int_expr(right)? {
+        let right_data = if let Some(r) = self.compile_int_expr(right) {
             r
         } else {
             let right_val = self.compile_expr(right)?;
@@ -14329,7 +14329,7 @@ impl<'ctx> CodeGen<'ctx> {
                         "pair_up returned void",
                     );
                 }
-                "tae_binary" => {
+                "tae_binary" | "to_binary" => {
                     return self.compile_runtime_call_value_with_arity_call_name(
                         self.libc.tae_binary,
                         args,
@@ -14471,7 +14471,7 @@ impl<'ctx> CodeGen<'ctx> {
                         "slurp returned void",
                     );
                 }
-                "muckle" | "max" => {
+                "muckle" => {
                     if args.len() == 1 {
                         // muckle([list]) - maximum of list elements
                         return self.compile_metadata_args(args).and_then(|call_args| {
@@ -14494,7 +14494,7 @@ impl<'ctx> CodeGen<'ctx> {
                         });
                     }
                     return Err(HaversError::CompileError(
-                        "muckle/max expects 1 or 2 arguments".to_string(),
+                        "muckle expects 1 or 2 arguments".to_string(),
                     ));
                 }
                 "median" => {
@@ -14697,8 +14697,7 @@ impl<'ctx> CodeGen<'ctx> {
                     );
                 }
                 // Misc Scots aliases
-                "jings" | "scots_farewell" | "stooshie" | "scots_exclaim" | "crivvens"
-                | "geggie" => {
+                "scots_farewell" | "scots_exclaim" => {
                     // These just return nil - they're exclamations or placeholders
                     return Ok(self.make_nil());
                 }
@@ -16112,15 +16111,6 @@ impl<'ctx> CodeGen<'ctx> {
                     let arg = self.compile_expr(&args[0])?;
                     return self.inline_math_func(arg, "tan");
                 }
-                "sqrt" => {
-                    if args.len() != 1 {
-                        return Err(HaversError::CompileError(
-                            "sqrt expects 1 argument".to_string(),
-                        ));
-                    }
-                    let arg = self.compile_expr(&args[0])?;
-                    return self.inline_math_func(arg, "sqrt");
-                }
                 "trunc" => {
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
@@ -16784,7 +16774,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return self.make_bool(result_i64);
                 }
-                "hauld_atween" | "clamp" => {
+                "hauld_atween" => {
                     // hauld_atween(val, min, max) - clamp val to [min, max]
                     if args.len() != 3 {
                         return Err(HaversError::CompileError(
@@ -17403,7 +17393,7 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(self.make_nil());
                 }
                 "log_whisper" | "log_mutter" | "log_blether" | "log_holler" | "log_roar"
-                | "mutter" | "whisper" | "holler" => {
+                | "whisper" | "holler" => {
                     // Logging functions - just print the message
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(format!(
@@ -17425,8 +17415,8 @@ impl<'ctx> CodeGen<'ctx> {
                     let arg = self.compile_expr(&args[0])?;
                     return self.inline_wheesht(arg);
                 }
-                "skip" | "pass" => {
-                    // skip() - no-op placeholder for tests
+                "pass" => {
+                    // pass() - no-op placeholder for tests
                     return Ok(self.make_nil());
                 }
                 "bit_coont" | "bit_count" | "popcount" => {
@@ -18572,8 +18562,8 @@ impl<'ctx> CodeGen<'ctx> {
                     let func_arg = self.compile_expr(&args[1])?;
                     return self.inline_each(list_arg, func_arg);
                 }
-                "skip" | "matrix_skip" => {
-                    // skip - test skip marker (placeholder)
+                "matrix_skip" => {
+                    // matrix_skip - test skip marker (placeholder)
                     return Ok(self.make_nil());
                 }
                 "creels_baith" | "set_intersection" => {
@@ -19244,8 +19234,8 @@ impl<'ctx> CodeGen<'ctx> {
                     // Pick random element from list (placeholder: return nil)
                     return Ok(self.make_nil());
                 }
-                "gen_shuffle" | "shuffle" => {
-                    // Shuffle list (placeholder: return as-is)
+                "gen_shuffle" => {
+                    // gen_shuffle(list) - shuffle list (placeholder: return as-is)
                     if !args.is_empty() {
                         return self.compile_expr(&args[0]);
                     }
@@ -19399,8 +19389,8 @@ impl<'ctx> CodeGen<'ctx> {
                     let one = self.types.i64_type.const_int(1, false);
                     return self.make_bool(one);
                 }
-                "gen_list" | "gen_string" | "gen_dict" => {
-                    // Generators for property testing (placeholder: return nil)
+                "gen_dict" => {
+                    // gen_dict() - generator placeholder for property testing
                     return Ok(self.make_nil());
                 }
                 "zip_up" | "zip" => {
@@ -19761,8 +19751,8 @@ impl<'ctx> CodeGen<'ctx> {
                         .compile_ok_or("split_by returned void").unwrap();
                     return Ok(result);
                 }
-                "group_by" | "groupby" => {
-                    // group_by(list, key_fn) - group by key (placeholder: return nil)
+                "groupby" => {
+                    // groupby(list, key_fn) - group by key (placeholder: return nil)
                     return Ok(self.make_nil());
                 }
                 "freq" | "frequencies" => {
@@ -19812,12 +19802,12 @@ impl<'ctx> CodeGen<'ctx> {
                         .compile_ok_or("window returned void").unwrap();
                     return Ok(result);
                 }
-                "interleave" | "weave" => {
-                    // interleave(list1, list2) - alternate elements (placeholder: return nil)
+                "weave" => {
+                    // weave(list1, list2) - alternate elements (placeholder: return nil)
                     return Ok(self.make_nil());
                 }
-                "chunk" | "chunks" | "batch" => {
-                    // chunk(list, size) - split list into chunks
+                "chunk" | "batch" => {
+                    // chunk/batch(list, size) - split list into chunks
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
                             "chunk expects 2 arguments (list, size)".to_string(),
@@ -20063,7 +20053,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .compile_ok_or("is_blank returned void").unwrap();
                     return Ok(result);
                 }
-                "ascii" | "char_code" | "ord" => {
+                "ascii" | "char_code" => {
                     // ascii(str) - get ASCII code of first character
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
@@ -20090,7 +20080,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return self.make_int(char_code);
                 }
-                "from_ascii" | "chr" => {
+                "from_ascii" => {
                     // from_ascii(code) - get char from ASCII code
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
@@ -20127,7 +20117,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return self.make_string(buf);
                 }
-                "split_lines" | "lines" => {
+                "split_lines" => {
                     // split_lines(str) - split string into lines
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
@@ -20138,7 +20128,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let delim = self.compile_string_literal("\n").unwrap();
                     return self.inline_split(str_arg, delim);
                 }
-                "split_words" | "words" => {
+                "split_words" => {
                     // split_words(str) - split string into words
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
@@ -20415,13 +20405,8 @@ impl<'ctx> CodeGen<'ctx> {
                         .compile_ok_or("swapcase returned void").unwrap();
                     return Ok(result);
                 }
-                "count_str" | "str_count" | "count_char" => {
-                    // count_str(str, substr) - count occurrences of substring
-                    let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_int(zero);
-                }
-                "index_of" | "find_str" | "str_find" => {
-                    // index_of(str, substr) - find first occurrence (-1 if not found)
+                "find_str" | "str_find" => {
+                    // find_str(str, substr) - find first occurrence (-1 if not found)
                     let neg_one = self.types.i64_type.const_int((-1i64) as u64, true);
                     return self.make_int(neg_one);
                 }
@@ -20449,13 +20434,6 @@ impl<'ctx> CodeGen<'ctx> {
                 }
                 "insert_at" | "list_insert" => {
                     // insert_at(list, index, value) - insert at index (placeholder: return as-is)
-                    if !args.is_empty() {
-                        return self.compile_expr(&args[0]);
-                    }
-                    return Ok(self.make_nil());
-                }
-                "remove_at" => {
-                    // remove_at(list, index) - remove at index (placeholder: return as-is)
                     if !args.is_empty() {
                         return self.compile_expr(&args[0]);
                     }
@@ -20546,7 +20524,7 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     return Ok(self.make_nil());
                 }
-                "update" | "dict_update" | "merge" => {
+                "update" | "dict_update" => {
                     // update(dict1, dict2) - merge dicts (placeholder: return first)
                     if !args.is_empty() {
                         return self.compile_expr(&args[0]);
@@ -20637,7 +20615,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .compile_ok_or("strip_right returned void").unwrap();
                     return Ok(result);
                 }
-                "substr_between" | "between" => {
+                "substr_between" => {
                     // substr_between(str, start, end) - get substring between markers
                     if args.len() != 3 {
                         return Err(HaversError::CompileError(
@@ -20702,17 +20680,17 @@ impl<'ctx> CodeGen<'ctx> {
                         .compile_ok_or("replace_first returned void").unwrap();
                     return Ok(result);
                 }
-                "chr" | "from_char_code" => {
-                    // chr(code) - character from code (placeholder)
+                "from_char_code" => {
+                    // from_char_code(code) - character from code (placeholder)
                     return self.compile_string_literal("");
                 }
-                "ord" | "char_code_at" => {
-                    // ord(char) - code from character (placeholder)
+                "char_code_at" => {
+                    // char_code_at(char) - code from character (placeholder)
                     let zero = self.types.i64_type.const_int(0, false);
                     return self.make_int(zero);
                 }
-                "char_at" | "get_char" => {
-                    // char_at(str, index) - get character at index (placeholder)
+                "get_char" => {
+                    // get_char(str, index) - get character at index (placeholder)
                     return self.compile_string_literal("");
                 }
                 "lerp" | "linear_interpolate" => {
@@ -20804,8 +20782,8 @@ impl<'ctx> CodeGen<'ctx> {
                     ]);
                     return Ok(phi.as_basic_value());
                 }
-                "clamp" | "clamp_value" => {
-                    // clamp(val, min, max) - clamp value between min and max
+                "clamp_value" => {
+                    // clamp_value(val, min, max) - clamp value between min and max
                     if args.len() != 3 {
                         return Err(HaversError::CompileError(
                             "clamp expects 3 arguments (val, min, max)".to_string(),
@@ -20839,13 +20817,13 @@ impl<'ctx> CodeGen<'ctx> {
                         .into_int_value();
                     return self.make_int(clamped);
                 }
-                "median" | "middle_value" => {
-                    // median(list) - get median value (placeholder: return 0)
+                "middle_value" => {
+                    // middle_value(list) - get median value (placeholder: return 0)
                     let zero = self.types.i64_type.const_int(0, false);
                     return self.make_int(zero);
                 }
-                "average" | "avg" | "mean" => {
-                    // average(list) - get average (sum / length)
+                "avg" | "mean" => {
+                    // avg/mean(list) - get average (sum / length)
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "average expects 1 argument".to_string(),
@@ -20978,20 +20956,12 @@ impl<'ctx> CodeGen<'ctx> {
                         .into_int_value();
                     return self.make_int(final_result);
                 }
-                "tae_binary" | "to_binary" => {
-                    // tae_binary(n) - convert to binary string (placeholder)
-                    return self.compile_string_literal("0b0");
-                }
                 "xor_cipher" | "xor_encrypt" => {
                     // xor_cipher(str, key) - XOR encryption (placeholder: return as-is)
                     if !args.is_empty() {
                         return self.compile_expr(&args[0]);
                     }
                     return self.compile_string_literal("");
-                }
-                "assert" | "assert_true" => {
-                    // assert(condition) - assert condition is true (placeholder: do nothing)
-                    return Ok(self.make_nil());
                 }
                 "assert_nae_equal" | "assert_not_equal" => {
                     // Interpreter: assert_nae_equal(a, b) -> aye (or aborts).
@@ -21065,15 +21035,15 @@ impl<'ctx> CodeGen<'ctx> {
                     // swatch(val, cases) - switch/case (placeholder: return nil)
                     return Ok(self.make_nil());
                 }
-                "wee" | "small" | "mini" => {
-                    // wee(n) - make smaller (placeholder: return as-is)
+                "small" | "mini" => {
+                    // small/mini(n) - make smaller (placeholder: return as-is)
                     if !args.is_empty() {
                         return self.compile_expr(&args[0]);
                     }
                     return Ok(self.make_nil());
                 }
-                "muckle" | "big" | "large" => {
-                    // muckle(n) - make bigger (placeholder: return as-is)
+                "big" | "large" => {
+                    // big/large(n) - make bigger (placeholder: return as-is)
                     if !args.is_empty() {
                         return self.compile_expr(&args[0]);
                     }
@@ -21103,11 +21073,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let arg = self.compile_expr(&args[0])?;
                     return self.inline_product(arg);
                 }
-                "bit_an" | "bit_and" | "bitand" => {
-                    // bit_an(a, b) - bitwise AND
+                "bitand" => {
+                    // bitand(a, b) - bitwise AND
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
-                            "bit_an expects 2 arguments".to_string(),
+                            "bitand expects 2 arguments".to_string(),
                         ));
                     }
                     let a = self.compile_expr(&args[0])?;
@@ -21117,11 +21087,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self.builder.build_and(a_int, b_int, "bit_and").unwrap();
                     return self.make_int(result);
                 }
-                "bit_or" | "bitor" => {
-                    // bit_or(a, b) - bitwise OR
+                "bitor" => {
+                    // bitor(a, b) - bitwise OR
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
-                            "bit_or expects 2 arguments".to_string(),
+                            "bitor expects 2 arguments".to_string(),
                         ));
                     }
                     let a = self.compile_expr(&args[0])?;
@@ -21131,11 +21101,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self.builder.build_or(a_int, b_int, "bit_or").unwrap();
                     return self.make_int(result);
                 }
-                "bit_xor" | "bitxor" => {
-                    // bit_xor(a, b) - bitwise XOR
+                "bitxor" => {
+                    // bitxor(a, b) - bitwise XOR
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
-                            "bit_xor expects 2 arguments".to_string(),
+                            "bitxor expects 2 arguments".to_string(),
                         ));
                     }
                     let a = self.compile_expr(&args[0])?;
@@ -21145,8 +21115,8 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self.builder.build_xor(a_int, b_int, "bit_xor").unwrap();
                     return self.make_int(result);
                 }
-                "bit_nae" | "bit_not" | "bitnot" => {
-                    // bit_nae(n) - bitwise NOT
+                "bitnot" => {
+                    // bitnot(n) - bitwise NOT
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "bit_not expects 1 argument".to_string(),
@@ -21157,8 +21127,8 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self.builder.build_not(n_int, "bit_not").unwrap();
                     return self.make_int(result);
                 }
-                "bit_shove_left" | "bit_shl" | "shl" | "left_shift" => {
-                    // bit_shove_left(n, amount) - left shift
+                "bit_shl" | "shl" | "left_shift" => {
+                    // bit_shl(n, amount) - left shift
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
                             "bit_shl expects 2 arguments".to_string(),
@@ -21174,8 +21144,8 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     return self.make_int(result);
                 }
-                "bit_shove_right" | "bit_shr" | "shr" | "right_shift" => {
-                    // bit_shove_right(n, amount) - right shift
+                "bit_shr" | "shr" | "right_shift" => {
+                    // bit_shr(n, amount) - right shift
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
                             "bit_shr expects 2 arguments".to_string(),
@@ -22984,7 +22954,7 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         // Get index as i64 directly (use shadow if available)
-        let idx_i64 = if let Some(i) = self.compile_int_expr(index)? {
+        let idx_i64 = if let Some(i) = self.compile_int_expr(index) {
             i
         } else {
             let idx_val = self.compile_expr(index)?;
@@ -23657,7 +23627,7 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         // Get index as i64 directly (use shadow if available)
-        let idx_i64 = if let Some(i) = self.compile_int_expr(index)? {
+        let idx_i64 = if let Some(i) = self.compile_int_expr(index) {
             i
         } else {
             let idx_val = self.compile_expr(index)?;
@@ -35037,9 +35007,10 @@ impl<'ctx> CodeGen<'ctx> {
         let err = codegen
             .resolve_import_path("definitely_missing_import_for_coverage_9c8f0f38")
             .expect_err("expected missing import error");
-        matches!(err, HaversError::CompileError(_))
-            .then_some(())
-            .expect("expected compile error");
+        assert_eq!(
+            std::mem::discriminant(&err),
+            std::mem::discriminant(&HaversError::CompileError(String::new()))
+        );
     }
 
     #[test]
@@ -35058,9 +35029,10 @@ impl<'ctx> CodeGen<'ctx> {
         let err = codegen
             .resolve_import_path("lib/definitely_missing_import_for_coverage_6a220d8c")
             .expect_err("expected missing import error");
-        matches!(err, HaversError::CompileError(_))
-            .then_some(())
-            .expect("expected compile error");
+        assert_eq!(
+            std::mem::discriminant(&err),
+            std::mem::discriminant(&HaversError::CompileError(String::new()))
+        );
     }
 
     #[cfg(unix)]
@@ -35074,9 +35046,10 @@ impl<'ctx> CodeGen<'ctx> {
         let err = codegen
             .resolve_import_path("definitely_missing_import_for_coverage_864a2d10")
             .expect_err("expected missing import error");
-        matches!(err, HaversError::CompileError(_))
-            .then_some(())
-            .expect("expected compile error");
+        assert_eq!(
+            std::mem::discriminant(&err),
+            std::mem::discriminant(&HaversError::CompileError(String::new()))
+        );
     }
 
     #[cfg(unix)]
@@ -35090,9 +35063,10 @@ impl<'ctx> CodeGen<'ctx> {
         let err = codegen
             .resolve_import_path("definitely_missing_import_for_coverage_d17c08d4")
             .expect_err("expected missing import error");
-        matches!(err, HaversError::CompileError(_))
-            .then_some(())
-            .expect("expected compile error");
+        assert_eq!(
+            std::mem::discriminant(&err),
+            std::mem::discriminant(&HaversError::CompileError(String::new()))
+        );
     }
 
     #[test]
@@ -35102,9 +35076,10 @@ impl<'ctx> CodeGen<'ctx> {
         let err = codegen
             .ensure_boxed_variable("missing_var")
             .expect_err("should error when variable is not in scope");
-        matches!(err, HaversError::CompileError(_))
-            .then_some(())
-            .expect("expected compile error");
+        assert_eq!(
+            std::mem::discriminant(&err),
+            std::mem::discriminant(&HaversError::CompileError(String::new()))
+        );
     }
 
     #[test]
@@ -35146,7 +35121,7 @@ impl<'ctx> CodeGen<'ctx> {
             name: "x".to_string(),
             span: Span::new(1, 1),
         };
-        let result = codegen.compile_int_expr(&expr).expect("compile");
+        let result = codegen.compile_int_expr(&expr);
         assert!(result.is_none());
     }
 
@@ -35207,7 +35182,7 @@ impl<'ctx> CodeGen<'ctx> {
             }),
             span,
         };
-        let result = codegen.compile_int_expr(&expr).expect("compile");
+        let result = codegen.compile_int_expr(&expr);
         assert!(result.is_none());
     }
 
@@ -35397,9 +35372,10 @@ impl<'ctx> CodeGen<'ctx> {
         let err = codegen
             .compile_expr(&expr)
             .expect_err("expected missing capture binding error");
-        matches!(err, HaversError::CompileError(_))
-            .then_some(())
-            .expect("expected compile error");
+        assert_eq!(
+            std::mem::discriminant(&err),
+            std::mem::discriminant(&HaversError::CompileError(String::new()))
+        );
     }
 
     #[test]
@@ -35427,9 +35403,10 @@ impl<'ctx> CodeGen<'ctx> {
         let err = codegen
             .compile_expr(&expr)
             .expect_err("expected undefined boxed variable error");
-        matches!(err, HaversError::CompileError(_))
-            .then_some(())
-            .expect("expected compile error");
+        assert_eq!(
+            std::mem::discriminant(&err),
+            std::mem::discriminant(&HaversError::CompileError(String::new()))
+        );
     }
 
     #[test]
@@ -35607,9 +35584,10 @@ impl<'ctx> CodeGen<'ctx> {
         let err = codegen
             .compile_binary_int_fast(&left, BinaryOp::Equal, &right)
             .expect_err("expected compile error for non-int op");
-        matches!(err, HaversError::CompileError(_))
-            .then_some(())
-            .expect("expected compile error");
+        assert_eq!(
+            std::mem::discriminant(&err),
+            std::mem::discriminant(&HaversError::CompileError(String::new()))
+        );
     }
 
     #[test]
@@ -35700,9 +35678,10 @@ impl<'ctx> CodeGen<'ctx> {
                 1,
             )
             .expect_err("expected missing var error");
-        matches!(err, HaversError::CompileError(_))
-            .then_some(())
-            .expect("expected compile error");
+        assert_eq!(
+            std::mem::discriminant(&err),
+            std::mem::discriminant(&HaversError::CompileError(String::new()))
+        );
     }
 
     #[test]
@@ -35935,9 +35914,10 @@ impl<'ctx> CodeGen<'ctx> {
                 let err = none
                     .compile_ok_or("missing function value")
                     .expect_err("expected compile_ok_or(None) to error");
-                matches!(err, HaversError::CompileError(_))
-                    .then_some(())
-                    .expect("expected compile error");
+                assert_eq!(
+                    std::mem::discriminant(&err),
+                    std::mem::discriminant(&HaversError::CompileError(String::new()))
+                );
             }
 
             run();
@@ -35951,9 +35931,10 @@ impl<'ctx> CodeGen<'ctx> {
                 let err = none
                     .compile_ok_or("missing basic value")
                     .expect_err("expected compile_ok_or(None) to error");
-                matches!(err, HaversError::CompileError(_))
-                    .then_some(())
-                    .expect("expected compile error");
+                assert_eq!(
+                    std::mem::discriminant(&err),
+                    std::mem::discriminant(&HaversError::CompileError(String::new()))
+                );
             }
 
             run();
@@ -35977,8 +35958,9 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(CodeGen::llvm_compile_error)
                 .expect_err("expected BuilderError due to unset insertion point");
 
-            matches!(err, HaversError::CompileError(_))
-                .then_some(())
-                .expect("expected compile error");
+            assert_eq!(
+                std::mem::discriminant(&err),
+                std::mem::discriminant(&HaversError::CompileError(String::new()))
+            );
         }
     }

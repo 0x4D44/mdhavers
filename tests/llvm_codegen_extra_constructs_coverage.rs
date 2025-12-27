@@ -209,6 +209,7 @@ dae f() {
     gin -1 < 0 { blether 1 }
     gin -1 <= 0 { blether 1 }
     gin -1 > -2 { blether 1 }
+    gin -1 >= -2 { blether 1 }
     gin 1 + 2 { blether 1 }
 }
 f()
@@ -388,6 +389,61 @@ blether f(1)
 blether scots_farewell()
 blether blether_format("hi {1}", {1: "x"})
 "#,
+        // stopwatch(name) should compile, including named-function message mapping.
+        r#"
+dae foo() { gie 1 }
+blether stopwatch(foo)
+"#,
+        // For-each over non-range should compile (drives compile_for_iterable + string/list impls).
+        r#"
+dae f() {
+    fer x in [1, 2, 3] { blether x }
+}
+f()
+"#,
+        // Additional cold builtins/branches for coverage (shove bool fast-path + placeholder helpers).
+        r#"
+dae list_shove_bool() {
+    ken xs = [1]
+    shove(xs, aye)
+    blether xs
+}
+list_shove_bool()
+
+blether sqrt(4)
+blether count_str("abc", "a")
+blether insert_at()
+blether insert_at([1], 0, 2)
+blether remove_at([1], 0)
+blether assert_true()
+"#,
+        // Builtin alias sweep (post-dedupe): cover additional compile_call match arms.
+        r#"
+blether to_binary(5)
+blether avg([1, 2, 3])
+blether mean([1, 2, 3])
+blether find_str("hello", "ll")
+blether str_find("hello", "ll")
+blether clamp_value(5, 1, 10)
+blether batch([1, 2, 3], 2)
+blether gen_dict()
+blether gen_shuffle([1, 2, 3])
+blether bitand(1, 3)
+blether bitor(1, 2)
+blether bitxor(1, 2)
+blether bitnot(1)
+blether shl(1, 3)
+blether shr(8, 1)
+blether small(1)
+blether mini(1)
+blether big(1)
+blether large(1)
+blether pass()
+blether matrix_skip()
+blether from_char_code(65)
+blether char_code_at("A")
+blether get_char("hi", 0)
+"#,
         // Infer/type paths for comparisons.
         r#"
 ken b = 1 != 2
@@ -457,6 +513,26 @@ outer()
         // builtin assert arity errors
         r#"assert()"#,
         r#"assert(1, 2, 3)"#,
+        // stopwatch arity error
+        r#"stopwatch()"#,
+        // sqrt arity error
+        r#"sqrt()"#,
+        // to_binary/tae_binary arity error
+        r#"to_binary()"#,
+        // avg/mean arity errors
+        r#"avg()"#,
+        r#"mean()"#,
+        // clamp_value arity error
+        r#"clamp_value()"#,
+        // batch/chunk arity error
+        r#"batch()"#,
+        // bit* alias arity errors
+        r#"bitand()"#,
+        r#"bitor()"#,
+        r#"bitxor()"#,
+        r#"bitnot()"#,
+        r#"shl()"#,
+        r#"shr()"#,
 	        // assignment to undefined variable
 	        r#"x = 1"#,
 	        // Native method call supports up to 8 args.

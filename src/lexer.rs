@@ -86,13 +86,13 @@ mod tests {
         let source = "ken gin ither whiles fer gie blether";
         let tokens = lex(source).unwrap();
 
-        assert!(matches!(tokens[0].kind, TokenKind::Ken));
-        assert!(matches!(tokens[1].kind, TokenKind::Gin));
-        assert!(matches!(tokens[2].kind, TokenKind::Ither));
-        assert!(matches!(tokens[3].kind, TokenKind::Whiles));
-        assert!(matches!(tokens[4].kind, TokenKind::Fer));
-        assert!(matches!(tokens[5].kind, TokenKind::Gie));
-        assert!(matches!(tokens[6].kind, TokenKind::Blether));
+        assert_eq!(tokens[0].kind, TokenKind::Ken);
+        assert_eq!(tokens[1].kind, TokenKind::Gin);
+        assert_eq!(tokens[2].kind, TokenKind::Ither);
+        assert_eq!(tokens[3].kind, TokenKind::Whiles);
+        assert_eq!(tokens[4].kind, TokenKind::Fer);
+        assert_eq!(tokens[5].kind, TokenKind::Gie);
+        assert_eq!(tokens[6].kind, TokenKind::Blether);
     }
 
     #[test]
@@ -120,16 +120,16 @@ mod tests {
         let source = "+ - * / == != < > <= >=";
         let tokens = lex(source).unwrap();
 
-        assert!(matches!(tokens[0].kind, TokenKind::Plus));
-        assert!(matches!(tokens[1].kind, TokenKind::Minus));
-        assert!(matches!(tokens[2].kind, TokenKind::Star));
-        assert!(matches!(tokens[3].kind, TokenKind::Slash));
-        assert!(matches!(tokens[4].kind, TokenKind::EqualsEquals));
-        assert!(matches!(tokens[5].kind, TokenKind::BangEquals));
-        assert!(matches!(tokens[6].kind, TokenKind::Less));
-        assert!(matches!(tokens[7].kind, TokenKind::Greater));
-        assert!(matches!(tokens[8].kind, TokenKind::LessEquals));
-        assert!(matches!(tokens[9].kind, TokenKind::GreaterEquals));
+        assert_eq!(tokens[0].kind, TokenKind::Plus);
+        assert_eq!(tokens[1].kind, TokenKind::Minus);
+        assert_eq!(tokens[2].kind, TokenKind::Star);
+        assert_eq!(tokens[3].kind, TokenKind::Slash);
+        assert_eq!(tokens[4].kind, TokenKind::EqualsEquals);
+        assert_eq!(tokens[5].kind, TokenKind::BangEquals);
+        assert_eq!(tokens[6].kind, TokenKind::Less);
+        assert_eq!(tokens[7].kind, TokenKind::Greater);
+        assert_eq!(tokens[8].kind, TokenKind::LessEquals);
+        assert_eq!(tokens[9].kind, TokenKind::GreaterEquals);
     }
 
     #[test]
