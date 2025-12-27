@@ -15,6 +15,9 @@ pub mod runtime;
 #[allow(dead_code)]
 pub mod types;
 
+#[cfg(all(test, coverage))]
+mod coverage_tests;
+
 // Re-export main types
 pub use compiler::LLVMCompiler;
 #[allow(unused_imports)]

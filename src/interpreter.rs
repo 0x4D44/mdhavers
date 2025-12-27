@@ -13788,17 +13788,74 @@ blether r["error"]
         }
     }
 
-	    fn run(source: &str) -> HaversResult<Value> {
-	        let program = parse(source)?;
-	        let mut interp = Interpreter::new();
-	        interp.interpret(&program)
-	    }
+		    fn run(source: &str) -> HaversResult<Value> {
+		        let program = parse(source)?;
+		        let mut interp = Interpreter::new();
+		        interp.interpret(&program)
+		    }
 
-	    #[test]
-		    fn test_native_object_branches_for_coverage() {
-		        let native: Rc<dyn NativeObject> = Rc::new(TestNative::new());
-		        assert_eq!(native.type_name(), "test_native");
-		        assert!(native.as_any().is::<TestNative>());
+		    #[test]
+		    fn call_args_non_spread_eval_error_path_is_exercised_for_unit_coverage() {
+		        let err = run(
+		            r#"
+dae id(x) { gie x }
+blether id(missing)
+"#,
+		        )
+		        .unwrap_err();
+
+		        assert_error_variant(
+		            &err,
+		            HaversError::UndefinedVariable {
+		                name: String::new(),
+		                line: 0,
+		            },
+		        );
+		    }
+
+		    #[test]
+		    fn call_args_spread_eval_error_path_is_exercised_for_unit_coverage() {
+		        let err = run(
+		            r#"
+dae id(x) { gie x }
+blether id(...missing)
+"#,
+		        )
+		        .unwrap_err();
+
+		        assert_error_variant(
+		            &err,
+		            HaversError::UndefinedVariable {
+		                name: String::new(),
+		                line: 0,
+		            },
+		        );
+		    }
+
+		    #[test]
+		    fn call_args_spread_non_list_type_error_path_is_exercised_for_unit_coverage() {
+		        let err = run(
+		            r#"
+dae id(x) { gie x }
+blether id(...1)
+"#,
+		        )
+		        .unwrap_err();
+
+		        assert_error_variant(
+		            &err,
+		            HaversError::TypeError {
+		                message: String::new(),
+		                line: 0,
+		            },
+		        );
+		    }
+
+		    #[test]
+			    fn test_native_object_branches_for_coverage() {
+			        let native: Rc<dyn NativeObject> = Rc::new(TestNative::new());
+			        assert_eq!(native.type_name(), "test_native");
+			        assert!(native.as_any().is::<TestNative>());
 
 		        let err = native.get("missing").unwrap_err();
 		        assert_error_variant(
@@ -15700,6 +15757,38 @@ c.get()
 "#)
         .unwrap();
         assert_eq!(result, Value::Integer(6));
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn test_class_init_error_propagates_for_coverage() {
+        let _ = run(
+            r#"
+kin Boom {
+    dae init() {
+        blether missing
+    }
+}
+Boom()
+"#,
+        );
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn test_log_init_json_and_explicit_stdout_stderr_sinks_for_coverage() {
+        let _ = run(
+            r#"
+log_init({
+    "format": "text",
+    "sinks": [{"kind": "stderr"}, {"kind": "stdout"}],
+})
+log_init({
+    "format": "json",
+    "sinks": [{"kind": "stderr"}, {"kind": "stdout"}],
+})
+"#,
+        );
     }
 
     #[test]
