@@ -488,6 +488,12 @@ pub type HaversResult<T> = Result<T, HaversError>;
 pub fn get_error_suggestion(error: &HaversError) -> Option<&'static str> {
     match error {
         HaversError::UndefinedVariable { name, .. } => {
+            // Keep a couple of helpful case-sensitive hints, even though we generally lowercase
+            // for suggestion matching.
+            if name == "String" {
+                return Some("💡 Strings are created wi' quotes: \"hello\" or 'hello'!");
+            }
+
             // Check for common misspellings of keywords
             let name_lower = name.to_lowercase();
             match name_lower.as_str() {
@@ -558,7 +564,6 @@ pub fn get_error_suggestion(error: &HaversError) -> Option<&'static str> {
                 "final" | "readonly" => Some("💡 Use 'ken' fer all variables - they're mutable by default!"),
                 "void" => Some("💡 Functions wi' nae return value automatically return 'naething'!"),
                 "boolean" | "bool" => Some("💡 Booleans are 'aye' (true) an' 'nae' (false) in mdhavers!"),
-                "String" => Some("💡 Strings are created wi' quotes: \"hello\" or 'hello'!"),
                 "char" | "character" => Some("💡 Use 'char_at(str, index)' tae get a character fae a string!"),
                 "float" | "double" | "decimal" => Some("💡 Just use numbers wi' decimal points: '3.14'!"),
                 "byte" | "bytes" => Some("💡 Strings handle text - fer binary, use lists o' integers!"),
@@ -719,6 +724,13 @@ mod tests {
     }
 
     #[test]
+    fn test_with_line_if_zero_executes_for_instantiation_coverage() {
+        let err = HaversError::DivisionByZero { line: 0 };
+        let updated = err.clone().with_line_if_zero(7);
+        assert_eq!(updated.line(), Some(7));
+    }
+
+    #[test]
     fn test_error_suggestions_more_keywords() {
         // Test more keyword misspellings
         let keywords = vec![
@@ -769,9 +781,127 @@ mod tests {
                 line: 1,
             };
             let suggestion = get_error_suggestion(&err);
-            assert!(suggestion.is_some(), "Expected suggestion for {}", keyword);
+            assert!(suggestion.is_some());
             assert!(suggestion.unwrap().to_lowercase().contains(expected));
         }
+    }
+
+    #[test]
+    fn test_error_suggestions_alias_patterns_are_covered_for_regions() {
+        // Cover remaining string-pattern aliases in `get_error_suggestion` to keep region coverage
+        // high without relying on interpreter/parser behavior.
+        let aliases = [
+            // logical ops / symbols
+            "not",
+            "!",
+            "||",
+            // string/list helpers
+            "slice",
+            "substring",
+            "substr",
+            "find",
+            "indexof",
+            "lambda",
+            "arrow",
+            "in",
+            "array",
+            "list",
+            "vec",
+            "dict",
+            "hash",
+            "hashmap",
+            "object",
+            "rest",
+            "tail",
+            "sort",
+            "reverse",
+            "join",
+            "split",
+            "format",
+            "range",
+            "foreach",
+            // language features / OO
+            "async",
+            "await",
+            "match",
+            "enum",
+            "interface",
+            "trait",
+            "protocol",
+            "static",
+            "public",
+            "private",
+            "protected",
+            "new",
+            "final",
+            "readonly",
+            "void",
+            // types / builtins
+            "boolean",
+            "bool",
+            "char",
+            "character",
+            "float",
+            "double",
+            "decimal",
+            "byte",
+            "bytes",
+            "set",
+            "tuple",
+            "global",
+            "do",
+            "end",
+            "endif",
+            "endfor",
+            "endwhile",
+            "then",
+            "begin",
+            "puts",
+            "write",
+            "output",
+            "gets",
+            "sprintf",
+            "printf",
+            "abs",
+            "absolute",
+            "max",
+            "maximum",
+            "min",
+            "minimum",
+            "floor",
+            "ceil",
+            "round",
+            "sqrt",
+            "squareroot",
+            "sin",
+            "cos",
+            "tan",
+            "log",
+            "exp",
+            "open",
+            "fopen",
+            "close",
+            "fclose",
+            "module",
+            "package",
+            "namespace",
+            "from",
+        ];
+
+        for keyword in aliases {
+            let err = HaversError::UndefinedVariable {
+                name: keyword.to_string(),
+                line: 1,
+            };
+            assert!(get_error_suggestion(&err).is_some());
+        }
+
+        let err = HaversError::UndefinedVariable {
+            name: "String".to_string(),
+            line: 1,
+        };
+        let suggestion = get_error_suggestion(&err).expect("expected String suggestion");
+        assert!(suggestion.to_lowercase().contains("quotes"));
     }
 
     #[test]

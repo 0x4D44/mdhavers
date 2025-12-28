@@ -196,3 +196,16 @@ fn interpreter_log_span_in_rejects_wrong_native_object_type_for_coverage() {
         "unexpected error: {s}"
     );
 }
+
+#[test]
+fn native_object_default_to_string_is_exercised_for_coverage() {
+    let test_native = TestNative::new();
+    let test_native: &dyn NativeObject = &test_native;
+    assert_eq!(test_native.to_string(), "<native test_native>");
+
+    let set_fail: &dyn NativeObject = &SetFailNative;
+    assert_eq!(set_fail.to_string(), "<native set_fail_native>");
+
+    let call_ok: &dyn NativeObject = &CallOkNative;
+    assert_eq!(call_ok.to_string(), "<native call_ok_native>");
+}

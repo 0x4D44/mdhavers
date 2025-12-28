@@ -3108,7 +3108,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Predefine some globals expected by the comprehensive test suite.
         // These are used by a few ignored tests and should be safe defaults.
-        let zero = self.make_int(self.types.i64_type.const_int(0, false)).unwrap();
+        let zero = self.make_int(self.types.i64_type.const_int(0, false));
         let nil = self.make_nil();
         for (name, init) in [
             ("__current_suite", nil),
@@ -3131,7 +3131,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_global_string_ptr("", "__current_suite_empty")
                         .unwrap();
-                    let empty = self.make_string(empty_ptr.as_pointer_value()).unwrap();
+                    let empty = self.make_string(empty_ptr.as_pointer_value());
                     self.builder
                         .build_store(global_ptr, empty)
                         .unwrap();
@@ -3253,7 +3253,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Create a bool value: {tag=1, data=0|1}
-    fn make_bool(&self, val: IntValue<'ctx>) -> Result<BasicValueEnum<'ctx>, HaversError> {
+    fn make_bool(&self, val: IntValue<'ctx>) -> BasicValueEnum<'ctx> {
         let tag = self
             .types
             .i8_type
@@ -3263,11 +3263,11 @@ impl<'ctx> CodeGen<'ctx> {
         if val.is_const() {
             let bool_val = val.get_zero_extended_constant().unwrap_or(0);
             let data = self.types.i64_type.const_int(bool_val, false);
-            return Ok(self
+            return self
                 .types
                 .value_type
                 .const_named_struct(&[tag.into(), data.into()])
-                .into());
+                .into();
         }
 
         // Non-constant path
@@ -3286,11 +3286,11 @@ impl<'ctx> CodeGen<'ctx> {
             .build_insert_value(v1, data, 1, "v2")
             .unwrap();
 
-        Ok(v2.into_struct_value().into())
+        v2.into_struct_value().into()
     }
 
     /// Create an int value: {tag=2, data=i64}
-    fn make_int(&self, val: IntValue<'ctx>) -> Result<BasicValueEnum<'ctx>, HaversError> {
+    fn make_int(&self, val: IntValue<'ctx>) -> BasicValueEnum<'ctx> {
         let tag = self
             .types
             .i8_type
@@ -3298,11 +3298,11 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Fast path: if val is a constant, build a constant struct directly
         if val.is_const() {
-            return Ok(self
+            return self
                 .types
                 .value_type
                 .const_named_struct(&[tag.into(), val.into()])
-                .into());
+                .into();
         }
 
         // Non-constant path
@@ -3316,14 +3316,14 @@ impl<'ctx> CodeGen<'ctx> {
             .build_insert_value(v1, val, 1, "v2")
             .unwrap();
 
-        Ok(v2.into_struct_value().into())
+        v2.into_struct_value().into()
     }
 
     /// Create a float value: {tag=3, data=bitcast(f64)}
     fn make_float(
         &self,
         val: inkwell::values::FloatValue<'ctx>,
-    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+    ) -> BasicValueEnum<'ctx> {
         let tag = self
             .types
             .i8_type
@@ -3343,11 +3343,11 @@ impl<'ctx> CodeGen<'ctx> {
             .build_insert_value(v1, data, 1, "v2")
             .unwrap();
 
-        Ok(v2.into_struct_value().into())
+        v2.into_struct_value().into()
     }
 
     /// Create a string value: {tag=4, data=ptr as i64}
-    fn make_string(&self, ptr: PointerValue<'ctx>) -> Result<BasicValueEnum<'ctx>, HaversError> {
+    fn make_string(&self, ptr: PointerValue<'ctx>) -> BasicValueEnum<'ctx> {
         let tag = self
             .types
             .i8_type
@@ -3367,12 +3367,12 @@ impl<'ctx> CodeGen<'ctx> {
             .build_insert_value(v1, data, 1, "v2")
             .unwrap();
 
-        Ok(v2.into_struct_value().into())
+        v2.into_struct_value().into()
     }
 
     /// Create a list value: {tag=5, data=ptr as i64}
     /// List memory layout: [i64 length, {i8,i64} element0, {i8,i64} element1, ...]
-    fn make_list(&self, ptr: PointerValue<'ctx>) -> Result<BasicValueEnum<'ctx>, HaversError> {
+    fn make_list(&self, ptr: PointerValue<'ctx>) -> BasicValueEnum<'ctx> {
         let tag = self
             .types
             .i8_type
@@ -3392,12 +3392,12 @@ impl<'ctx> CodeGen<'ctx> {
             .build_insert_value(v1, data, 1, "v2")
             .unwrap();
 
-        Ok(v2.into_struct_value().into())
+        v2.into_struct_value().into()
     }
 
     /// Create a dict value: {tag=6, data=ptr as i64}
     /// Dict memory layout: [i64 count][entry0][entry1]... where entry = [{i8,i64} key][{i8,i64} val]
-    fn make_dict(&self, ptr: PointerValue<'ctx>) -> Result<BasicValueEnum<'ctx>, HaversError> {
+    fn make_dict(&self, ptr: PointerValue<'ctx>) -> BasicValueEnum<'ctx> {
         let tag = self
             .types
             .i8_type
@@ -3417,13 +3417,13 @@ impl<'ctx> CodeGen<'ctx> {
             .build_insert_value(v1, data, 1, "v2")
             .unwrap();
 
-        Ok(v2.into_struct_value().into())
+        v2.into_struct_value().into()
     }
 
     /// Create an instance value: {tag=9, data=ptr as i64}
     /// Instance memory layout: [i64 class_name_ptr][i64 field_count][field_entry0][field_entry1]...
     /// where field_entry = [{i8,i64} key (string)][{i8,i64} value]
-    fn make_instance(&self, ptr: PointerValue<'ctx>) -> Result<BasicValueEnum<'ctx>, HaversError> {
+    fn make_instance(&self, ptr: PointerValue<'ctx>) -> BasicValueEnum<'ctx> {
         let tag = self
             .types
             .i8_type
@@ -3443,7 +3443,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_insert_value(v1, data, 1, "v2")
             .unwrap();
 
-        Ok(v2.into_struct_value().into())
+        v2.into_struct_value().into()
     }
 
     /// Extract tag from value
@@ -3467,11 +3467,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Extract i64 from int/float values (float truncated), otherwise type_error.
-    fn coerce_i64(
-        &mut self,
-        val: BasicValueEnum<'ctx>,
-        op_name: &str,
-    ) -> Result<IntValue<'ctx>, HaversError> {
+    fn coerce_i64(&mut self, val: BasicValueEnum<'ctx>, op_name: &str) -> IntValue<'ctx> {
         let tag = self.extract_tag(val).unwrap();
         let data = self.extract_data(val).unwrap();
 
@@ -3561,7 +3557,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         phi.add_incoming(&[(&data, int_end), (&float_i64, float_end), (&zero, err_end)]);
 
-        Ok(phi.as_basic_value().into_int_value())
+        phi.as_basic_value().into_int_value()
     }
 
     /// Check if value is truthy
@@ -4254,7 +4250,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .unwrap()
                     .into_int_value();
                 // Box to MdhValue
-                let boxed = self.make_int(int_val).unwrap();
+                let boxed = self.make_int(int_val);
                 // Store to MdhValue
                 self.builder
                     .build_store(alloca, boxed)
@@ -4408,7 +4404,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_add(left_data, right_data, "sum")
             .unwrap();
-        let int_result = self.make_int(int_sum).unwrap();
+        let int_result = self.make_int(int_sum);
         self.builder.build_unconditional_branch(merge).unwrap();
         let int_block = self.builder.get_insert_block().unwrap();
 
@@ -4457,7 +4453,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_float_add(left_f, right_f, "fsum")
             .unwrap();
-        let float_result = self.make_float(float_sum).unwrap();
+        let float_result = self.make_float(float_sum);
         self.builder.build_unconditional_branch(merge).unwrap();
         let float_block = self.builder.get_insert_block().unwrap();
 
@@ -4548,7 +4544,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap();
 
-        let string_result = self.make_string(new_str).unwrap();
+        let string_result = self.make_string(new_str);
         self.builder.build_unconditional_branch(merge).unwrap();
         let string_block = self.builder.get_insert_block().unwrap();
 
@@ -4649,7 +4645,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_sub(left_data, right_data, "diff")
             .unwrap();
-        let int_result = self.make_int(int_diff).unwrap();
+        let int_result = self.make_int(int_diff);
         self.builder.build_unconditional_branch(merge).unwrap();
         let int_block = self.builder.get_insert_block().unwrap();
 
@@ -4705,7 +4701,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_float_sub(left_f, right_f, "fdiff")
             .unwrap();
-        let float_result = self.make_float(float_diff).unwrap();
+        let float_result = self.make_float(float_diff);
         self.builder.build_unconditional_branch(merge).unwrap();
         let float_block = self.builder.get_insert_block().unwrap();
 
@@ -4871,7 +4867,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_global_string_ptr("", "empty_repeat")
             .unwrap();
-        let empty_result = self.make_string(empty_ptr.as_pointer_value()).unwrap();
+        let empty_result = self.make_string(empty_ptr.as_pointer_value());
         self.builder.build_unconditional_branch(merge).unwrap();
         let empty_block = self.builder.get_insert_block().unwrap();
 
@@ -4897,7 +4893,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_mul(left_data, right_data, "prod")
             .unwrap();
-        let int_result = self.make_int(int_prod).unwrap();
+        let int_result = self.make_int(int_prod);
         self.builder.build_unconditional_branch(merge).unwrap();
         let int_block = self.builder.get_insert_block().unwrap();
 
@@ -4945,7 +4941,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_float_mul(left_f, right_f, "fprod")
             .unwrap();
-        let float_result = self.make_float(float_prod).unwrap();
+        let float_result = self.make_float(float_prod);
         self.builder.build_unconditional_branch(merge).unwrap();
         let float_block = self.builder.get_insert_block().unwrap();
 
@@ -5040,7 +5036,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_signed_div(left_data, right_data, "quot")
             .unwrap();
-        let int_result = self.make_int(int_quot).unwrap();
+        let int_result = self.make_int(int_quot);
         self.builder.build_unconditional_branch(merge).unwrap();
         let int_block = self.builder.get_insert_block().unwrap();
 
@@ -5096,7 +5092,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_float_div(left_f, right_f, "fquot")
             .unwrap();
-        let float_result = self.make_float(float_quot).unwrap();
+        let float_result = self.make_float(float_quot);
         self.builder.build_unconditional_branch(merge).unwrap();
         let float_block = self.builder.get_insert_block().unwrap();
 
@@ -5123,7 +5119,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_signed_rem(left_data, right_data, "rem")
             .unwrap();
-        self.make_int(rem)
+        Ok(self.make_int(rem))
     }
 
     /// Compare two values for equality
@@ -5141,7 +5137,7 @@ impl<'ctx> CodeGen<'ctx> {
             .compile_ok_or("__mdh_eq returned void").unwrap()
             .into_int_value();
 
-        self.make_bool(eq_val)
+        Ok(self.make_bool(eq_val))
     }
 
     /// Compare two values for inequality
@@ -5159,7 +5155,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_truncate(eq_data, self.types.bool_type, "eq_as_bool")
             .unwrap();
         let result = self.builder.build_not(eq_bool, "ne").unwrap();
-        self.make_bool(result)
+        Ok(self.make_bool(result))
     }
 
     /// Compare two values: less than
@@ -5387,7 +5383,7 @@ impl<'ctx> CodeGen<'ctx> {
             (&other_result, other_end),
         ]);
 
-        self.make_bool(phi.as_basic_value().into_int_value())
+        Ok(self.make_bool(phi.as_basic_value().into_int_value()))
     }
 
     /// Compare two values: less than or equal
@@ -5614,7 +5610,7 @@ impl<'ctx> CodeGen<'ctx> {
             (&other_result, other_end),
         ]);
 
-        self.make_bool(phi.as_basic_value().into_int_value())
+        Ok(self.make_bool(phi.as_basic_value().into_int_value()))
     }
 
     /// Compare two values: greater than
@@ -5841,7 +5837,7 @@ impl<'ctx> CodeGen<'ctx> {
             (&other_result, other_end),
         ]);
 
-        self.make_bool(phi.as_basic_value().into_int_value())
+        Ok(self.make_bool(phi.as_basic_value().into_int_value()))
     }
 
     /// Compare two values: greater than or equal
@@ -6068,7 +6064,7 @@ impl<'ctx> CodeGen<'ctx> {
             (&other_result, other_end),
         ]);
 
-        self.make_bool(phi.as_basic_value().into_int_value())
+        Ok(self.make_bool(phi.as_basic_value().into_int_value()))
     }
 
     /// Check if a value is truthy (returns raw i1 bool for conditionals)
@@ -6101,13 +6097,12 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         left: BasicValueEnum<'ctx>,
         right: BasicValueEnum<'ctx>,
-    ) -> Result<IntValue<'ctx>, HaversError> {
+    ) -> IntValue<'ctx> {
         let left_data = self.extract_data(left).unwrap();
         let right_data = self.extract_data(right).unwrap();
-        Ok(self
-            .builder
+        self.builder
             .build_int_compare(IntPredicate::SGE, left_data, right_data, "ge_raw")
-            .unwrap())
+            .unwrap()
     }
 
     /// Compare two values: less than (returns raw i1 bool)
@@ -6115,13 +6110,12 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         left: BasicValueEnum<'ctx>,
         right: BasicValueEnum<'ctx>,
-    ) -> Result<IntValue<'ctx>, HaversError> {
+    ) -> IntValue<'ctx> {
         let left_data = self.extract_data(left).unwrap();
         let right_data = self.extract_data(right).unwrap();
-        Ok(self
-            .builder
+        self.builder
             .build_int_compare(IntPredicate::SLT, left_data, right_data, "lt_raw")
-            .unwrap())
+            .unwrap()
     }
 
     /// Negate a value
@@ -6158,7 +6152,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Negate int
         self.builder.position_at_end(neg_int);
         let neg_data = self.builder.build_int_neg(data, "neg").unwrap();
-        let int_result = self.make_int(neg_data).unwrap();
+        let int_result = self.make_int(neg_data);
         self.builder.build_unconditional_branch(merge).unwrap();
         let int_block = self.builder.get_insert_block().unwrap();
 
@@ -6181,7 +6175,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_select(is_float, neg_float_val, zero_float, "sel_float")
             .unwrap()
             .into_float_value();
-        let float_result = self.make_float(selected_float).unwrap();
+        let float_result = self.make_float(selected_float);
         self.builder.build_unconditional_branch(merge).unwrap();
         let float_block = self.builder.get_insert_block().unwrap();
 
@@ -6203,7 +6197,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let truthy = self.is_truthy(val).unwrap();
         let result = self.builder.build_not(truthy, "not").unwrap();
-        self.make_bool(result)
+        Ok(self.make_bool(result))
     }
 
     // ========== Inline Print (blether) ==========
@@ -6406,7 +6400,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_global_string_ptr("naething", "nil_str")
             .unwrap();
-        let nil_result = self.make_string(nil_str.as_pointer_value()).unwrap();
+        let nil_result = self.make_string(nil_str.as_pointer_value());
         self.builder.build_unconditional_branch(str_merge).unwrap();
         let nil_block = self.builder.get_insert_block().unwrap();
 
@@ -6434,7 +6428,7 @@ impl<'ctx> CodeGen<'ctx> {
                 "bool_ptr",
             )
             .unwrap();
-        let bool_result = self.make_string(bool_ptr.into_pointer_value()).unwrap();
+        let bool_result = self.make_string(bool_ptr.into_pointer_value());
         self.builder.build_unconditional_branch(str_merge).unwrap();
         let bool_block = self.builder.get_insert_block().unwrap();
 
@@ -6466,7 +6460,7 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .unwrap();
-        let int_result = self.make_string(int_buf).unwrap();
+        let int_result = self.make_string(int_buf);
         self.builder.build_unconditional_branch(str_merge).unwrap();
         let int_block = self.builder.get_insert_block().unwrap();
 
@@ -6500,7 +6494,7 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .unwrap();
-        let float_result = self.make_string(float_buf).unwrap();
+        let float_result = self.make_string(float_buf);
         self.builder.build_unconditional_branch(str_merge).unwrap();
         let float_block = self.builder.get_insert_block().unwrap();
 
@@ -6622,7 +6616,7 @@ impl<'ctx> CodeGen<'ctx> {
             .left()
             .unwrap()
             .into_int_value();
-        let string_result = self.make_int(len).unwrap();
+        let string_result = self.make_int(len);
         self.builder.build_unconditional_branch(len_merge).unwrap();
         let string_block = self.builder.get_insert_block().unwrap();
 
@@ -6663,7 +6657,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(self.types.i64_type, len_ptr, "list_len")
             .unwrap()
             .into_int_value();
-        let list_result = self.make_int(list_len).unwrap();
+        let list_result = self.make_int(list_len);
         self.builder.build_unconditional_branch(len_merge).unwrap();
         let list_block = self.builder.get_insert_block().unwrap();
 
@@ -6691,7 +6685,7 @@ impl<'ctx> CodeGen<'ctx> {
             .left()
             .unwrap()
             .into_int_value();
-        let bytes_result = self.make_int(bytes_len).unwrap();
+        let bytes_result = self.make_int(bytes_len);
         self.builder.build_unconditional_branch(len_merge).unwrap();
         let bytes_block = self.builder.get_insert_block().unwrap();
 
@@ -6734,7 +6728,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(self.types.i64_type, dict_ptr, "dict_len")
             .unwrap()
             .into_int_value();
-        let dict_result = self.make_int(dict_len).unwrap();
+        let dict_result = self.make_int(dict_len);
         self.builder.build_unconditional_branch(len_merge).unwrap();
         let dict_block = self.builder.get_insert_block().unwrap();
 
@@ -6753,7 +6747,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap();
         let zero = self.types.i64_type.const_int(0, false);
-        let default_result = self.make_int(zero).unwrap();
+        let default_result = self.make_int(zero);
         self.builder.build_unconditional_branch(len_merge).unwrap();
         let default_block = self.builder.get_insert_block().unwrap();
 
@@ -6881,7 +6875,11 @@ impl<'ctx> CodeGen<'ctx> {
             return Ok(());
         }
 
-        let Some(&alloca) = self.variables.get(name).or_else(|| self.globals.get(name)) else {
+        let alloca = if let Some(&alloca) = self.variables.get(name) {
+            alloca
+        } else if let Some(&alloca) = self.globals.get(name) {
+            alloca
+        } else {
             return Err(HaversError::CompileError(format!(
                 "Cannot box variable '{}': not found in scope",
                 name
@@ -7012,7 +7010,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_select(is_negative, negated, data, "int_abs_val")
             .unwrap()
             .into_int_value();
-        let int_result = self.make_int(int_abs_val).unwrap();
+        let int_result = self.make_int(int_abs_val);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -7045,7 +7043,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_select(is_negative_f, abs_float, float_val, "abs_float_val")
             .unwrap()
             .into_float_value();
-        let float_result = self.make_float(abs_float_val).unwrap();
+        let float_result = self.make_float(abs_float_val);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -7137,7 +7135,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_select(is_less, a_data, b_data, "min_i")
             .unwrap()
             .into_int_value();
-        let int_result = self.make_int(min_i).unwrap();
+        let int_result = self.make_int(min_i);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -7164,7 +7162,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_select(is_less_f, a_f, b_f, "min_f")
             .unwrap()
             .into_float_value();
-        let float_result = self.make_float(min_f).unwrap();
+        let float_result = self.make_float(min_f);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -7275,7 +7273,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_select(is_greater, a_data, b_data, "max_i")
             .unwrap()
             .into_int_value();
-        let int_result = self.make_int(max_i).unwrap();
+        let int_result = self.make_int(max_i);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -7302,7 +7300,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_select(is_greater_f, a_f, b_f, "max_f")
             .unwrap()
             .into_float_value();
-        let float_result = self.make_float(max_f).unwrap();
+        let float_result = self.make_float(max_f);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -7372,7 +7370,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_float_to_signed_int(floored, self.types.i64_type, "floor_int")
             .unwrap();
 
-        self.make_int(int_val)
+        Ok(self.make_int(int_val))
     }
 
     /// ceil(x) - ceiling of float, returns int
@@ -7406,7 +7404,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_float_to_signed_int(ceiled, self.types.i64_type, "ceil_int")
             .unwrap();
 
-        self.make_int(int_val)
+        Ok(self.make_int(int_val))
     }
 
     /// round(x) - round float to nearest int
@@ -7440,7 +7438,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_float_to_signed_int(rounded, self.types.i64_type, "round_int")
             .unwrap();
 
-        self.make_int(int_val)
+        Ok(self.make_int(int_val))
     }
 
     /// sqrt(x) - square root, returns float
@@ -7496,7 +7494,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_float_value();
 
-        self.make_float(sqrt_result)
+        Ok(self.make_float(sqrt_result))
     }
 
     // ========== Phase 2: List Operations ==========
@@ -7776,7 +7774,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(done_block);
 
-        self.make_list(new_list_ptr)
+        Ok(self.make_list(new_list_ptr))
     }
 
     /// scran(list, start, end) - slice list[start:end]
@@ -7854,7 +7852,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(done_block);
 
-        self.make_list(new_list_ptr)
+        Ok(self.make_list(new_list_ptr))
     }
 
     /// slap(a, b) - concatenate two lists or two strings
@@ -8021,7 +8019,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(loop2).unwrap();
 
         self.builder.position_at_end(done2);
-        let list_result = self.make_list(new_list_ptr).unwrap();
+        let list_result = self.make_list(new_list_ptr);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -8114,7 +8112,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap();
 
-        let string_result = self.make_string(new_str).unwrap();
+        let string_result = self.make_string(new_str);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -8390,7 +8388,7 @@ impl<'ctx> CodeGen<'ctx> {
         let null_byte = self.context.i8_type().const_int(0, false);
         self.builder.build_store(term_ptr, null_byte).unwrap();
 
-        let str_result = self.make_string(new_str).unwrap();
+        let str_result = self.make_string(new_str);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -8457,7 +8455,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(list_loop).unwrap();
 
         self.builder.position_at_end(list_done);
-        let list_result = self.make_list(new_list_ptr).unwrap();
+        let list_result = self.make_list(new_list_ptr);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -8769,7 +8767,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(self.types.f64_type, sum_f_ptr, "final_sum_f")
             .unwrap()
             .into_float_value();
-        let float_val = self.make_float(final_sum_f).unwrap();
+        let float_val = self.make_float(final_sum_f);
         self.builder.build_unconditional_branch(merge_ret).unwrap();
         let float_end = self.builder.get_insert_block().unwrap();
 
@@ -8779,7 +8777,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(self.types.i64_type, sum_i_ptr, "final_sum_i")
             .unwrap()
             .into_int_value();
-        let int_val = self.make_int(final_sum_i).unwrap();
+        let int_val = self.make_int(final_sum_i);
         self.builder.build_unconditional_branch(merge_ret).unwrap();
         let int_end = self.builder.get_insert_block().unwrap();
 
@@ -8958,7 +8956,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_int_value();
 
-        self.make_int(final_product)
+        Ok(self.make_int(final_product))
     }
 
     // ========== Phase 3: String Operations ==========
@@ -9103,7 +9101,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(null_ptr, self.context.i8_type().const_int(0, false))
             .unwrap();
 
-        self.make_string(result_buf)
+        Ok(self.make_string(result_buf))
     }
 
     /// lower(str) -> string - convert to lowercase
@@ -9221,7 +9219,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(null_ptr, self.context.i8_type().const_int(0, false))
             .unwrap();
 
-        self.make_string(result_buf)
+        Ok(self.make_string(result_buf))
     }
 
     /// is_upper/is_lower/is_alpha/is_digit/is_alnum - check if all chars match class
@@ -9271,7 +9269,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Empty string returns false
         self.builder.position_at_end(empty_block);
-        let empty_false = self.make_bool(zero).unwrap();
+        let empty_false = self.make_bool(zero);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -9514,7 +9512,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Character didn't match - return false
         self.builder.position_at_end(fail_block);
-        let fail_false = self.make_bool(zero).unwrap();
+        let fail_false = self.make_bool(zero);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -9522,7 +9520,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // All characters passed - return true
         self.builder.position_at_end(pass_block);
-        let pass_true = self.make_bool(one).unwrap();
+        let pass_true = self.make_bool(one);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -9768,7 +9766,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(null_ptr, self.context.i8_type().const_int(0, false))
             .unwrap();
 
-        self.make_string(result_buf)
+        Ok(self.make_string(result_buf))
     }
 
     /// coont(str, substr) -> int - count occurrences
@@ -9862,7 +9860,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(self.types.i64_type, count_ptr, "final_count")
             .unwrap()
             .into_int_value();
-        self.make_int(final_count)
+        Ok(self.make_int(final_count))
     }
 
     // ========== Phase 4: Type & Utility Functions ==========
@@ -9879,16 +9877,15 @@ impl<'ctx> CodeGen<'ctx> {
                 if self.boxed_vars.contains(name) {
                     self.var_types.insert(name.clone(), VarType::Unknown);
 
-                    let alloca = self
-                        .variables
-                        .get(name)
-                        .copied()
-                        .or_else(|| self.globals.get(name).copied())
-                        .unwrap_or_else(|| {
-                            let a = self.create_entry_block_alloca(name);
-                            self.variables.insert(name.clone(), a);
-                            a
-                        });
+                    let alloca = if let Some(&alloca) = self.variables.get(name) {
+                        alloca
+                    } else if let Some(&alloca) = self.globals.get(name) {
+                        alloca
+                    } else {
+                        let a = self.create_entry_block_alloca(name);
+                        self.variables.insert(name.clone(), a);
+                        a
+                    };
 
                     let init_val = if let Some(init) = initializer {
                         self.compile_expr(init)?
@@ -10015,7 +10012,7 @@ impl<'ctx> CodeGen<'ctx> {
 	                                self.variables.insert(name.clone(), a);
 	                                a
 	                            };
-	                            let boxed = self.make_int(int_val).unwrap();
+	                            let boxed = self.make_int(int_val);
 	                            self.builder
 	                                .build_store(alloca, boxed)
 	                                .unwrap();
@@ -10312,7 +10309,7 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(());
                 }
                 let level_val =
-                    self.make_int(self.types.i64_type.const_int(*level as u64, false)).unwrap();
+                    self.make_int(self.types.i64_type.const_int(*level as u64, false));
                 let msg_val = self.compile_expr(message)?;
                 let fields_val = if let Some(extra) = extras.first() {
                     self.compile_expr(extra)?
@@ -10331,7 +10328,7 @@ impl<'ctx> CodeGen<'ctx> {
                 };
                 let file_val = self.compile_string_literal(&file_str).unwrap();
                 let line_val =
-                    self.make_int(self.types.i64_type.const_int(span.line as u64, false)).unwrap();
+                    self.make_int(self.types.i64_type.const_int(span.line as u64, false));
                 self.builder
                     .build_call(
                         self.libc.log_event,
@@ -10386,9 +10383,9 @@ impl<'ctx> CodeGen<'ctx> {
                                 )
                                 .unwrap()
                                 .into_int_value();
-                            return self.make_int(int_val);
-                        }
-                    }
+	                            return Ok(self.make_int(int_val));
+	                        }
+	                    }
                     let val = self
                         .builder
                         .build_load(self.types.value_type, alloca, name)
@@ -10573,15 +10570,15 @@ impl<'ctx> CodeGen<'ctx> {
                 } else if name == "PI" {
                     // Built-in constant: PI
                     let pi_val = self.context.f64_type().const_float(std::f64::consts::PI);
-                    self.make_float(pi_val)
+                    Ok(self.make_float(pi_val))
                 } else if name == "E" {
                     // Built-in constant: E (Euler's number)
                     let e_val = self.context.f64_type().const_float(std::f64::consts::E);
-                    self.make_float(e_val)
+                    Ok(self.make_float(e_val))
                 } else if name == "TAU" {
                     // Built-in constant: TAU (2*PI)
                     let tau_val = self.context.f64_type().const_float(std::f64::consts::TAU);
-                    self.make_float(tau_val)
+                    Ok(self.make_float(tau_val))
                 } else {
                     Err(HaversError::CompileError(format!(
                         "Undefined variable: {}",
@@ -10634,18 +10631,16 @@ impl<'ctx> CodeGen<'ctx> {
                         // Note: inside try blocks we must keep the boxed value updated so the
                         // catch handler can observe it after longjmp.
                         if self.in_loop_body && self.try_depth == 0 {
-                            let boxed = self.make_int(int_val).unwrap();
-                            return Ok(boxed);
-                        }
+	                            let boxed = self.make_int(int_val);
+	                            return Ok(boxed);
+	                        }
 
                         // Update the boxed MdhValue.
-                        let boxed = self.make_int(int_val).unwrap();
-                        if let Some(&alloca) =
-                            self.variables.get(name).or_else(|| self.globals.get(name))
-                        {
-                            self.builder
-                                .build_store(alloca, boxed)
-                                .unwrap();
+	                        let boxed = self.make_int(int_val);
+	                        if let Some(&alloca) = self.variables.get(name) {
+	                            self.builder.build_store(alloca, boxed).unwrap();
+                        } else if let Some(&alloca) = self.globals.get(name) {
+                            self.builder.build_store(alloca, boxed).unwrap();
                         }
                         return Ok(boxed);
                     }
@@ -10876,8 +10871,8 @@ impl<'ctx> CodeGen<'ctx> {
                 // For-loop ranges are still handled specially (see compile_for_range).
                 let start_val = self.compile_expr(start)?;
                 let end_val = self.compile_expr(end)?;
-                let start_i64 = self.coerce_i64(start_val, "range")?;
-                let end_i64 = self.coerce_i64(end_val, "range")?;
+                let start_i64 = self.coerce_i64(start_val, "range");
+                let end_i64 = self.coerce_i64(end_val, "range");
 
                 // Default step is 1
                 let step = self.types.i64_type.const_int(1, false);
@@ -10979,17 +10974,17 @@ impl<'ctx> CodeGen<'ctx> {
 
             Literal::Bool(b) => {
                 let bool_val = self.types.bool_type.const_int(*b as u64, false);
-                self.make_bool(bool_val)
+                Ok(self.make_bool(bool_val))
             }
 
             Literal::Integer(n) => {
                 let int_val = self.types.i64_type.const_int(*n as u64, true);
-                self.make_int(int_val)
+                Ok(self.make_int(int_val))
             }
 
             Literal::Float(f) => {
                 let float_val = self.types.f64_type.const_float(*f);
-                self.make_float(float_val)
+                Ok(self.make_float(float_val))
             }
 
             Literal::String(s) => {
@@ -10997,7 +10992,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_global_string_ptr(s, "str")
                     .unwrap();
-                self.make_string(str_ptr.as_pointer_value())
+                Ok(self.make_string(str_ptr.as_pointer_value()))
             }
         }
     }
@@ -11143,7 +11138,7 @@ impl<'ctx> CodeGen<'ctx> {
 	        };
 
         // Box the result back to MdhValue
-        self.make_int(result)
+        Ok(self.make_int(result))
     }
 
     /// Fast path for string concatenation - skips runtime type checks
@@ -11285,7 +11280,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap();
 
-        self.make_string(new_str)
+        Ok(self.make_string(new_str))
     }
 
     /// Optimized string self-append: s = s + "literal"
@@ -11499,7 +11494,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(len_shadow, new_len).unwrap();
 
         // Create new MdhValue with the buffer pointer and store it back
-        let result = self.make_string(final_buf).unwrap();
+        let result = self.make_string(final_buf);
         self.builder.build_store(var_alloca, result).unwrap();
 
         Ok(result)
@@ -12055,8 +12050,7 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     return self.compile_expr(&args[0]).and_then(|arg| {
-                        self.is_truthy(arg)
-                            .and_then(|truthy| self.make_bool(truthy))
+                        self.is_truthy(arg).map(|truthy| self.make_bool(truthy))
                     });
                 }
                 "len" => {
@@ -12098,7 +12092,7 @@ impl<'ctx> CodeGen<'ctx> {
                             "bytes_len",
                             "bytes_len returned void",
                         )
-                        .and_then(|val| self.make_int(val.into_int_value()));
+                        .map(|val| self.make_int(val.into_int_value()));
                 }
                 "bytes_slice" => {
                     return self.compile_runtime_call_value_with_arity(
@@ -12848,7 +12842,7 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let pi_val = self.context.f64_type().const_float(std::f64::consts::PI);
-                    return self.make_float(pi_val);
+                    return Ok(self.make_float(pi_val));
                 }
                 "e" => {
                     if !args.is_empty() {
@@ -12857,7 +12851,7 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let e_val = self.context.f64_type().const_float(std::f64::consts::E);
-                    return self.make_float(e_val);
+                    return Ok(self.make_float(e_val));
                 }
                 "tau" => {
                     if !args.is_empty() {
@@ -12866,7 +12860,7 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let tau_val = self.context.f64_type().const_float(std::f64::consts::TAU);
-                    return self.make_float(tau_val);
+                    return Ok(self.make_float(tau_val));
                 }
                 "hypot" => {
                     if args.len() != 2 {
@@ -12986,7 +12980,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap()
                         .into_float_value();
 
-                    let ok_val = self.make_float(sqrt_result).unwrap();
+                    let ok_val = self.make_float(sqrt_result);
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
@@ -13199,7 +13193,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_int_sub(str_len, one, "scran_last_idx")
                             .unwrap();
-                        let last_idx_val = self.make_int(last_idx).unwrap();
+                        let last_idx_val = self.make_int(last_idx);
                         let last_char = self.inline_char_at(obj_arg, last_idx_val)?;
                         self.builder.build_unconditional_branch(done_block).unwrap();
                         let nonempty_end = self.builder.get_insert_block().unwrap();
@@ -13235,7 +13229,7 @@ impl<'ctx> CodeGen<'ctx> {
                         return Ok(phi.as_basic_value());
                     }
                     let (start_arg, end_arg) = if args.len() == 2 {
-                        let start_arg = self.make_int(self.types.i64_type.const_int(0, false)).unwrap();
+                        let start_arg = self.make_int(self.types.i64_type.const_int(0, false));
                         let end_arg = self.compile_expr(&args[1])?;
                         (start_arg, end_arg)
                     } else {
@@ -14182,7 +14176,7 @@ impl<'ctx> CodeGen<'ctx> {
                         self.make_nil()
                     };
                     let file = self.compile_string_literal("").unwrap();
-                    let line = self.make_int(self.types.i64_type.const_int(0, false)).unwrap();
+                    let line = self.make_int(self.types.i64_type.const_int(0, false));
                     return self.build_call_basic_value(
                         self.libc.log_event,
                         &[
@@ -14415,7 +14409,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let msg = self.compile_expr(&args[1])?;
 
                     let truthy = self.is_truthy(cond).unwrap();
-                    let cond_bool = self.make_bool(truthy).unwrap();
+                    let cond_bool = self.make_bool(truthy);
                     let msg_str = self.inline_tae_string(msg)?;
 
                     let _ = self
@@ -14430,7 +14424,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .left()
                         .compile_ok_or("assert returned void").unwrap();
                     let one = self.types.i64_type.const_int(1, false);
-                    return self.make_bool(one);
+                    return Ok(self.make_bool(one));
                 }
                 "skip" => {
                     if args.len() != 1 {
@@ -14468,7 +14462,7 @@ impl<'ctx> CodeGen<'ctx> {
                         "scots_err_msg",
                     );
                     let str_ptr = self.get_string_ptr(global);
-                    return self.make_string(str_ptr);
+                    return Ok(self.make_string(str_ptr));
                 }
                 "poetry_seed" => {
                     // Random seed
@@ -14675,8 +14669,8 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap()
                         .into_int_value();
 
-                    let start_val = self.make_int(zero).unwrap();
-                    let end_val = self.make_int(end).unwrap();
+                    let start_val = self.make_int(zero);
+                    let end_val = self.make_int(end);
                     return self.inline_scran(list_val, start_val, end_val);
                 }
                 "bit_an" | "bit_and" => {
@@ -14808,7 +14802,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_int_z_extend(is_even, self.types.i64_type, "is_even_i64")
                         .unwrap();
-                    return self.make_bool(is_even_i64);
+                    return Ok(self.make_bool(is_even_i64));
                 }
                 "bit_nae" | "bit_not" => {
                     // Bitwise NOT
@@ -14820,7 +14814,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let n = self.compile_expr(&args[0])?;
                     let data = self.extract_data(n).unwrap();
                     let not_val = self.builder.build_not(data, "bit_not").unwrap();
-                    return self.make_int(not_val);
+                    return Ok(self.make_int(not_val));
                 }
                 // Global test variables - return reasonable defaults
                 "__current_suite" => {
@@ -14831,11 +14825,11 @@ impl<'ctx> CodeGen<'ctx> {
                         "current_suite_default",
                     );
                     let str_ptr = self.get_string_ptr(global);
-                    return self.make_string(str_ptr);
+                    return Ok(self.make_string(str_ptr));
                 }
                 "_tick_counter" | "_msg_counter" | "_verbose" | "__prop_passed" => {
                     let zero = self.types.i64_type.const_int(0, false);
-                    return self.make_int(zero);
+                    return Ok(self.make_int(zero));
                 }
                 "_global_bus" | "_global_logger" => {
                     // Return nil for global objects
@@ -14882,7 +14876,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_int_z_extend(is_odd, self.types.i64_type, "is_odd_i64")
                         .unwrap();
-                    return self.make_bool(is_odd_i64);
+                    return Ok(self.make_bool(is_odd_i64));
                 }
                 "is_muckle" => {
                     if args.len() != 1 {
@@ -14931,7 +14925,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_left_shift(data_a, data_b, "bit_shl")
                         .unwrap();
-                    return self.make_int(shifted);
+                    return Ok(self.make_int(shifted));
                 }
                 "help_ma_boab" => {
                     if args.len() != 1 {
@@ -15141,7 +15135,7 @@ impl<'ctx> CodeGen<'ctx> {
 
                     // Other: return 0
                     self.builder.position_at_end(other_block);
-                    let zero = self.make_int(self.types.i64_type.const_int(0, false)).unwrap();
+                    let zero = self.make_int(self.types.i64_type.const_int(0, false));
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
@@ -15186,8 +15180,8 @@ impl<'ctx> CodeGen<'ctx> {
                     let end = self.compile_expr(&args[1])?;
                     let step = self.types.i64_type.const_int(1, false);
                     // Use runtime function
-                    let start_i64 = self.coerce_i64(start, "range")?;
-                    let end_i64 = self.coerce_i64(end, "range")?;
+                    let start_i64 = self.coerce_i64(start, "range");
+                    let end_i64 = self.coerce_i64(end, "range");
                     let result = self
                         .builder
                         .build_call(
@@ -15278,7 +15272,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_int_signed_div(ms_data, thousand, "timestamp_secs")
                         .unwrap();
-                    return self.make_int(secs);
+                    return Ok(self.make_int(secs));
                 }
                 "bide" => {
                     if args.len() != 1 {
@@ -15360,7 +15354,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_float_to_signed_int(clamped, self.types.i64_type, "bide_float_int")
                         .unwrap();
-                    let int_val = self.make_int(int_ms).unwrap();
+                    let int_val = self.make_int(int_ms);
                     let float_value = self.inline_bide(int_val)?;
                     self.builder
                         .build_unconditional_branch(merge_block)
@@ -15888,9 +15882,9 @@ impl<'ctx> CodeGen<'ctx> {
                     // rand() - random integer between 0 and 1_000_000
                     // rand(min, max) - random integer in [min, max]
                     if args.is_empty() {
-                        let zero = self.make_int(self.types.i64_type.const_int(0, false)).unwrap();
+                        let zero = self.make_int(self.types.i64_type.const_int(0, false));
                         let million =
-                            self.make_int(self.types.i64_type.const_int(1_000_000, false)).unwrap();
+                            self.make_int(self.types.i64_type.const_int(1_000_000, false));
                         let result = self
                             .builder
                             .build_call(
@@ -15961,17 +15955,17 @@ impl<'ctx> CodeGen<'ctx> {
                 "PI" => {
                     // PI as a float constant
                     let pi_val = self.context.f64_type().const_float(std::f64::consts::PI);
-                    return self.make_float(pi_val);
+                    return Ok(self.make_float(pi_val));
                 }
                 "E" => {
                     // E as a float constant
                     let e_val = self.context.f64_type().const_float(std::f64::consts::E);
-                    return self.make_float(e_val);
+                    return Ok(self.make_float(e_val));
                 }
                 "TAU" => {
                     // TAU (2*PI) as a float constant
                     let tau_val = self.context.f64_type().const_float(std::f64::consts::TAU);
-                    return self.make_float(tau_val);
+                    return Ok(self.make_float(tau_val));
                 }
                 "ord" => {
                     if args.len() != 1 {
@@ -16160,7 +16154,7 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     // Minimal implementation: return a positive value.
                     let one = self.types.i64_type.const_int(1, false);
-                    return self.make_int(one);
+                    return Ok(self.make_int(one));
                 }
                 "atan2" => {
                     if args.len() != 2 {
@@ -16804,7 +16798,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_int_z_extend(result, self.types.i64_type, "atween_i64")
                         .unwrap();
-                    return self.make_bool(result_i64);
+                    return Ok(self.make_bool(result_i64));
                 }
                 "hauld_atween" => {
                     // hauld_atween(val, min, max) - clamp val to [min, max]
@@ -16843,7 +16837,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_select(le_max, clamped_low, max_data, "clamped")
                         .unwrap()
                         .into_int_value();
-                    return self.make_int(result);
+                    return Ok(self.make_int(result));
                 }
                 "range_o" => {
                     // range_o(list) - return max - min of list
@@ -17192,7 +17186,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     self.builder.build_store(len_ptr, final_len).unwrap();
 
-                    return self.make_list(new_struct);
+                    return Ok(self.make_list(new_struct));
                 }
                 "inspect" | "debug" => {
                     // inspect(val) - print debug info about value
@@ -17305,7 +17299,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_right_shift(a_data, b_data, false, "bit_shr")
                         .unwrap();
-                    return self.make_int(result);
+                    return Ok(self.make_int(result));
                 }
                 "roar" | "shout" => {
                     // roar(str) - return uppercase string with extra exclamation
@@ -17399,7 +17393,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_int_signed_div(ms_data, thousand, "secs")
                         .unwrap();
-                    return self.make_int(secs);
+                    return Ok(self.make_int(secs));
                 }
                 "gen_int" | "gen_a" | "gen_b" | "gen_bool" | "gen_string" | "gen_list" => {
                     // Property testing generators - return simple placeholder values
@@ -17511,7 +17505,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_load(self.types.i64_type, count_ptr, "final_count")
                         .unwrap()
                         .into_int_value();
-                    return self.make_int(final_count);
+                    return Ok(self.make_int(final_count));
                 }
                 "is_int" => {
                     if args.len() != 1 {
@@ -17533,7 +17527,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_int_z_extend(is_int, self.types.i64_type, "is_int_i64")
                         .unwrap();
-                    return self.make_bool(is_int_i64);
+                    return Ok(self.make_bool(is_int_i64));
                 }
                 "is_float" => {
                     if args.len() != 1 {
@@ -17555,7 +17549,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_int_z_extend(is_float, self.types.i64_type, "is_float_i64")
                         .unwrap();
-                    return self.make_bool(is_float_i64);
+                    return Ok(self.make_bool(is_float_i64));
                 }
                 "is_nummer" | "is_number" => {
                     // is_nummer(val) - check if value is numeric (int/float) or a numeric string
@@ -17613,7 +17607,7 @@ impl<'ctx> CodeGen<'ctx> {
                     // Numeric tags => true
                     self.builder.position_at_end(num_block);
                     let one_i64 = self.types.i64_type.const_int(1, false);
-                    let num_res = self.make_bool(one_i64).unwrap();
+                    let num_res = self.make_bool(one_i64);
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
@@ -17639,7 +17633,9 @@ impl<'ctx> CodeGen<'ctx> {
                     let endptr_ptr = self.builder.build_alloca(i8_ptr_type, "endptr").unwrap();
 
                     // Declare strtod if needed
-                    let strtod_fn = self.module.get_function("strtod").unwrap_or_else(|| {
+                    let strtod_fn = if let Some(strtod_fn) = self.module.get_function("strtod") {
+                        strtod_fn
+                    } else {
                         let fn_type = self.types.f64_type.fn_type(
                             &[
                                 i8_ptr_type.into(),
@@ -17649,7 +17645,7 @@ impl<'ctx> CodeGen<'ctx> {
                         );
                         self.module
                             .add_function("strtod", fn_type, Some(Linkage::External))
-                    });
+                    };
                     let _ = self
                         .builder
                         .build_call(strtod_fn, &[str_ptr.into(), endptr_ptr.into()], "parsed")
@@ -17697,7 +17693,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_int_z_extend(ok, self.types.i64_type, "ok_i64")
                         .unwrap();
-                    let str_res = self.make_bool(ok_i64).unwrap();
+                    let str_res = self.make_bool(ok_i64);
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
@@ -17706,7 +17702,7 @@ impl<'ctx> CodeGen<'ctx> {
                     // Other => false
                     self.builder.position_at_end(other_block);
                     let zero_i64 = self.types.i64_type.const_int(0, false);
-                    let other_res = self.make_bool(zero_i64).unwrap();
+                    let other_res = self.make_bool(zero_i64);
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
@@ -17742,7 +17738,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_int_z_extend(is_list, self.types.i64_type, "is_list_i64")
                         .unwrap();
-                    return self.make_bool(result_i64);
+                    return Ok(self.make_bool(result_i64));
                 }
                 "is_string" | "is_text" | "is_wird" => {
                     // is_string(val) - check if value is a string
@@ -17762,7 +17758,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_int_z_extend(is_string, self.types.i64_type, "is_string_i64")
                         .unwrap();
-                    return self.make_bool(result_i64);
+                    return Ok(self.make_bool(result_i64));
                 }
                 "is_dict" | "is_buik" => {
                     // is_dict(val) - check if value is a dict
@@ -17782,7 +17778,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_int_z_extend(is_dict, self.types.i64_type, "is_dict_i64")
                         .unwrap();
-                    return self.make_bool(result_i64);
+                    return Ok(self.make_bool(result_i64));
                 }
                 "is_bool" | "is_boolean" => {
                     // is_bool(val) - check if value is a boolean
@@ -17802,7 +17798,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_int_z_extend(is_bool, self.types.i64_type, "is_bool_i64")
                         .unwrap();
-                    return self.make_bool(result_i64);
+                    return Ok(self.make_bool(result_i64));
                 }
                 "is_toom" | "is_empty" => {
                     // is_toom(val) - check if value is empty (list len 0, string len 0, etc)
@@ -17861,7 +17857,7 @@ impl<'ctx> CodeGen<'ctx> {
                     // nil => empty
                     self.builder.position_at_end(nil_block);
                     let one_i64 = self.types.i64_type.const_int(1, false);
-                    let nil_res = self.make_bool(one_i64).unwrap();
+                    let nil_res = self.make_bool(one_i64);
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
@@ -17891,7 +17887,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_int_z_extend(is_empty, self.types.i64_type, "is_empty_str_i64")
                         .unwrap();
-                    let str_res = self.make_bool(is_empty_i64).unwrap();
+                    let str_res = self.make_bool(is_empty_i64);
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
@@ -17909,7 +17905,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_int_z_extend(is_empty_list, self.types.i64_type, "is_empty_list_i64")
                         .unwrap();
-                    let list_res = self.make_bool(is_empty_list_i64).unwrap();
+                    let list_res = self.make_bool(is_empty_list_i64);
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
@@ -17936,7 +17932,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_int_z_extend(is_empty_dict, self.types.i64_type, "is_empty_dict_i64")
                         .unwrap();
-                    let dict_res = self.make_bool(is_empty_dict_i64).unwrap();
+                    let dict_res = self.make_bool(is_empty_dict_i64);
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
@@ -17945,7 +17941,7 @@ impl<'ctx> CodeGen<'ctx> {
                     // other => false
                     self.builder.position_at_end(other_block);
                     let zero_i64 = self.types.i64_type.const_int(0, false);
-                    let other_res = self.make_bool(zero_i64).unwrap();
+                    let other_res = self.make_bool(zero_i64);
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
@@ -18062,13 +18058,13 @@ impl<'ctx> CodeGen<'ctx> {
 
                     // Not prime block
                     self.builder.position_at_end(not_prime);
-                    let false_val = self.make_bool(zero).unwrap();
+                    let false_val = self.make_bool(zero);
                     self.builder.build_unconditional_branch(done_block).unwrap();
                     let not_prime_end = self.builder.get_insert_block().unwrap();
 
                     // Is prime block
                     self.builder.position_at_end(is_prime_block);
-                    let true_val = self.make_bool(one).unwrap();
+                    let true_val = self.make_bool(one);
                     self.builder.build_unconditional_branch(done_block).unwrap();
                     let is_prime_end = self.builder.get_insert_block().unwrap();
 
@@ -18111,7 +18107,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_select(is_neg, neg_one, tmp, "sign_result")
                         .unwrap()
                         .into_int_value();
-                    return self.make_int(result);
+                    return Ok(self.make_int(result));
                 }
                 "glaikit" | "silly" => {
                     if args.len() != 1 {
@@ -18164,7 +18160,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_int_z_extend(is_int, self.types.i64_type, "is_hale_i64")
                         .unwrap();
-                    return self.make_bool(result_i64);
+                    return Ok(self.make_bool(result_i64));
                 }
                 "drap" | "drop" => {
                     // drap(list, n) - drop first n elements
@@ -18178,7 +18174,7 @@ impl<'ctx> CodeGen<'ctx> {
                     // Get list length
                     let list_data = self.extract_data(list_val).unwrap();
                     let list_len = self.get_list_length(list_data).unwrap();
-                    let end_val = self.make_int(list_len).unwrap();
+                    let end_val = self.make_int(list_len);
                     return self.inline_scran(list_val, n_val, end_val);
                 }
                 "screen_width" | "screen_height" | "get_screen_width" | "get_screen_height" => {
@@ -18873,7 +18869,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .try_as_basic_value()
                         .left()
                         .unwrap();
-                    let idx_val = self.make_int(i).unwrap();
+                    let idx_val = self.make_int(i);
                     self.builder
                         .build_call(self.libc.list_push, &[pair_list.into(), idx_val.into()], "")
                         .unwrap();
@@ -18931,7 +18927,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .left()
                         .compile_ok_or("__mdh_eq returned void").unwrap()
                         .into_int_value();
-                    let cond = self.make_bool(eq).unwrap();
+                    let cond = self.make_bool(eq);
                     let msg = self.compile_string_literal("expected values to be equal").unwrap();
                     let _ = self
                         .builder
@@ -19363,7 +19359,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
 
                     self.builder.position_at_end(has_val);
-                    let s = self.make_string(env_ptr).unwrap();
+                    let s = self.make_string(env_ptr);
                     self.builder.build_unconditional_branch(merge).unwrap();
                     let has_end = self.builder.get_insert_block().unwrap();
 
@@ -19725,7 +19721,7 @@ impl<'ctx> CodeGen<'ctx> {
                     self.builder.build_store(pair_elem1_ptr, elem2).unwrap();
 
                     // Create MdhValue for pair list
-                    let pair_list = self.make_list(pair_struct).unwrap();
+                    let pair_list = self.make_list(pair_struct);
 
                     // Store pair in result list
                     let dst_ptr = unsafe {
@@ -20781,7 +20777,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_float_add(a_f, scaled_f, "result_f")
                         .unwrap();
-                    let float_result = self.make_float(result_f).unwrap();
+                    let float_result = self.make_float(result_f);
                     self.builder.build_unconditional_branch(done_block).unwrap();
                     let float_block_end = self.builder.get_insert_block().unwrap();
 
@@ -20799,7 +20795,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_int_add(a_data, scaled_i, "result_i")
                         .unwrap();
-                    let int_result = self.make_int(result_i).unwrap();
+                    let int_result = self.make_int(result_i);
                     self.builder.build_unconditional_branch(done_block).unwrap();
                     let int_block_end = self.builder.get_insert_block().unwrap();
 
@@ -21016,7 +21012,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_not(eq, "assert_nae_equal_ne")
                         .unwrap();
-                    let cond = self.make_bool(ne).unwrap();
+                    let cond = self.make_bool(ne);
                     let msg = self.compile_string_literal("expected values to be different").unwrap();
                     let _ = self
                         .builder
@@ -21503,7 +21499,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Create MdhValue for the char string
-        let char_str_val = self.make_string(char_str_ptr).unwrap();
+        let char_str_val = self.make_string(char_str_ptr);
         self.builder.build_store(var_alloca, char_str_val).unwrap();
 
         // Compile body
@@ -21677,12 +21673,12 @@ impl<'ctx> CodeGen<'ctx> {
         let start_val = self.compile_expr(start)?;
         let end_val = self.compile_expr(end)?;
 
-        let start_data = self.coerce_i64(start_val, "range")?;
-        let end_data = self.coerce_i64(end_val, "range")?;
+        let start_data = self.coerce_i64(start_val, "range");
+        let end_data = self.coerce_i64(end_val, "range");
 
         // Create loop variable
         let var_alloca = self.create_entry_block_alloca(variable);
-        let start_mdh = self.make_int(start_data).unwrap();
+        let start_mdh = self.make_int(start_data);
         self.builder.build_store(var_alloca, start_mdh).unwrap();
         self.variables.insert(variable.to_string(), var_alloca);
 
@@ -21754,7 +21750,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         self.builder.build_store(counter_alloca, next).unwrap();
 
-        let next_mdh = self.make_int(next).unwrap();
+        let next_mdh = self.make_int(next);
         self.builder.build_store(var_alloca, next_mdh).unwrap();
 
         self.builder.build_unconditional_branch(loop_block).unwrap();
@@ -22220,7 +22216,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         // Return the list as a tagged value
-        self.make_list(list_ptr)
+        Ok(self.make_list(list_ptr))
     }
 
     /// Compile a list literal that contains spread expressions
@@ -22544,7 +22540,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
 
                     // Make string MdhValue
-                    let char_str_val = self.make_string(char_str_ptr).unwrap();
+                    let char_str_val = self.make_string(char_str_ptr);
 
                     // Store in dest list
                     let dest_idx = self
@@ -22610,7 +22606,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         self.builder.build_store(len_ptr, final_len).unwrap();
 
-        self.make_list(list_ptr)
+        Ok(self.make_list(list_ptr))
     }
 
     /// Compile a dict literal expression: {key1: value1, key2: value2, ...}
@@ -22736,7 +22732,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         // Return the dict as a tagged value
-        self.make_dict(raw_ptr)
+        Ok(self.make_dict(raw_ptr))
     }
 
     /// Compile an index expression: list[index], string[index], or dict[key]
@@ -23831,7 +23827,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Return as string value
-        self.make_string(new_str)
+        Ok(self.make_string(new_str))
     }
 
     // ===== Phase 5: Timing functions =====
@@ -23910,7 +23906,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_add(sec_ms, nsec_ms, "total_ms")
             .unwrap();
 
-        self.make_int(total_ms)
+        Ok(self.make_int(total_ms))
     }
 
     /// tick() - Returns time in nanoseconds since epoch (CLOCK_REALTIME)
@@ -23981,7 +23977,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_add(sec_ns, tv_nsec, "total_ns")
             .unwrap();
 
-        self.make_int(total_ns)
+        Ok(self.make_int(total_ns))
     }
 
     /// bide(ms) - Sleep for specified milliseconds
@@ -24420,7 +24416,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Create string value
-        let sc_token_value = self.make_string(sc_token_ptr).unwrap();
+        let sc_token_value = self.make_string(sc_token_ptr);
 
         // Store in list using items pointer
         let sc_elem_idx = self
@@ -24524,7 +24520,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Create final string value
-        let sc_final_value = self.make_string(sc_final_ptr).unwrap();
+        let sc_final_value = self.make_string(sc_final_ptr);
 
         // Store final in list using items pointer
         let sc_final_idx = self
@@ -24547,7 +24543,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Create result and branch to merge
-        let sc_result = self.make_list(sc_list_ptr).unwrap();
+        let sc_result = self.make_list(sc_list_ptr);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -24585,7 +24581,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap();
         self.builder.build_store(value_ptr_empty, str_val).unwrap();
-        let empty_result = self.make_list(one_elem_list).unwrap();
+        let empty_result = self.make_list(one_elem_list);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -24760,7 +24756,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Create string value and add to list
-        let token_value = self.make_string(token_ptr).unwrap();
+        let token_value = self.make_string(token_ptr);
 
         // Get current count and list pointer
         let count = self
@@ -24843,7 +24839,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_pointer_value();
 
-        let rest_value = self.make_string(rest_copy).unwrap();
+        let rest_value = self.make_string(rest_copy);
 
         // Get current count and list pointer for final add
         let final_count = self
@@ -24924,7 +24920,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(done_len_ptr, done_count).unwrap();
 
         // Create list value for normal case
-        let normal_result = self.make_list(done_list_ptr).unwrap();
+        let normal_result = self.make_list(done_list_ptr);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -25042,7 +25038,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_global_string_ptr("", "empty_str")
             .unwrap();
-        let empty_result = self.make_string(empty_str.as_pointer_value()).unwrap();
+        let empty_result = self.make_string(empty_str.as_pointer_value());
         self.builder.build_unconditional_branch(done_block).unwrap();
         let empty_block_end = self.builder.get_insert_block().unwrap();
 
@@ -25351,7 +25347,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(null_ptr, self.context.i8_type().const_int(0, false))
             .unwrap();
 
-        let concat_result = self.make_string(result_buf).unwrap();
+        let concat_result = self.make_string(result_buf);
         self.builder.build_unconditional_branch(done_block).unwrap();
         let concat_block_end = self.builder.get_insert_block().unwrap();
 
@@ -26736,7 +26732,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(done_block);
 
         // Return new list as MdhValue
-        self.make_list(new_list_ptr)
+        Ok(self.make_list(new_list_ptr))
     }
 
     /// each(list, fn) - call fn for each element (side effects), return nil
@@ -27653,12 +27649,12 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
         self.builder.position_at_end(false_block);
-        let false_result = self.make_bool(self.types.bool_type.const_int(0, false)).unwrap();
+        let false_result = self.make_bool(self.types.bool_type.const_int(0, false));
         self.builder.build_unconditional_branch(done_block).unwrap();
         let false_end = self.builder.get_insert_block().unwrap();
 
         self.builder.position_at_end(true_block);
-        let true_result = self.make_bool(self.types.bool_type.const_int(1, false)).unwrap();
+        let true_result = self.make_bool(self.types.bool_type.const_int(1, false));
         self.builder.build_unconditional_branch(done_block).unwrap();
         let true_end = self.builder.get_insert_block().unwrap();
 
@@ -27778,12 +27774,12 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
         self.builder.position_at_end(true_block);
-        let true_result = self.make_bool(self.types.bool_type.const_int(1, false)).unwrap();
+        let true_result = self.make_bool(self.types.bool_type.const_int(1, false));
         self.builder.build_unconditional_branch(done_block).unwrap();
         let true_end = self.builder.get_insert_block().unwrap();
 
         self.builder.position_at_end(false_block);
-        let false_result = self.make_bool(self.types.bool_type.const_int(0, false)).unwrap();
+        let false_result = self.make_bool(self.types.bool_type.const_int(0, false));
         self.builder.build_unconditional_branch(done_block).unwrap();
         let false_end = self.builder.get_insert_block().unwrap();
 
@@ -27918,12 +27914,12 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
         self.builder.position_at_end(false_block);
-        let false_result = self.make_bool(self.types.bool_type.const_int(0, false)).unwrap();
+        let false_result = self.make_bool(self.types.bool_type.const_int(0, false));
         self.builder.build_unconditional_branch(done_block).unwrap();
         let false_block_end = self.builder.get_insert_block().unwrap();
 
         self.builder.position_at_end(true_block);
-        let true_result = self.make_bool(self.types.bool_type.const_int(1, false)).unwrap();
+        let true_result = self.make_bool(self.types.bool_type.const_int(1, false));
         self.builder.build_unconditional_branch(done_block).unwrap();
         let true_block_end = self.builder.get_insert_block().unwrap();
 
@@ -28061,12 +28057,12 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
         self.builder.position_at_end(true_block);
-        let true_result = self.make_bool(self.types.bool_type.const_int(1, false)).unwrap();
+        let true_result = self.make_bool(self.types.bool_type.const_int(1, false));
         self.builder.build_unconditional_branch(done_block).unwrap();
         let true_block_end = self.builder.get_insert_block().unwrap();
 
         self.builder.position_at_end(false_block);
-        let false_result = self.make_bool(self.types.bool_type.const_int(0, false)).unwrap();
+        let false_result = self.make_bool(self.types.bool_type.const_int(0, false));
         self.builder.build_unconditional_branch(done_block).unwrap();
         let false_block_end = self.builder.get_insert_block().unwrap();
 
@@ -28372,14 +28368,14 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(self.types.i64_type, found_idx_alloca, "found_idx")
             .unwrap()
             .into_int_value();
-        let found_result = self.make_int(found_idx).unwrap();
+        let found_result = self.make_int(found_idx);
         self.builder.build_unconditional_branch(done_block).unwrap();
         let found_block_end = self.builder.get_insert_block().unwrap();
 
         // Not found block: return -1 as Int MdhValue
         self.builder.position_at_end(notfound_block);
         let neg_one = self.types.i64_type.const_int((-1i64) as u64, true);
-        let notfound_result = self.make_int(neg_one).unwrap();
+        let notfound_result = self.make_int(neg_one);
         self.builder.build_unconditional_branch(done_block).unwrap();
         let notfound_block_end = self.builder.get_insert_block().unwrap();
 
@@ -28649,7 +28645,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_load(self.types.value_type, elem_ptr, "elem_val")
             .unwrap();
-        let idx_val = self.make_int(idx).unwrap();
+        let idx_val = self.make_int(idx);
 
         let func = self
             .builder
@@ -28800,7 +28796,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_global_string_ptr("", "empty_fstr")
                 .unwrap();
-            return self.make_string(empty.as_pointer_value());
+            return Ok(self.make_string(empty.as_pointer_value()));
         }
 
         // Start with the first part
@@ -28810,7 +28806,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_global_string_ptr(s, "fstr_text")
                     .unwrap();
-                self.make_string(text.as_pointer_value()).unwrap()
+                self.make_string(text.as_pointer_value())
             }
             FStringPart::Expr(expr) => {
                 let val = self.compile_expr(expr)?;
@@ -28827,7 +28823,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_global_string_ptr(s, "fstr_text")
                         .unwrap();
-                    self.make_string(text.as_pointer_value()).unwrap()
+                    self.make_string(text.as_pointer_value())
                 }
                 FStringPart::Expr(expr) => {
                     let val = self.compile_expr(expr)?;
@@ -29777,8 +29773,8 @@ impl<'ctx> CodeGen<'ctx> {
                 let start_val = self.compile_expr(start)?;
                 let end_val = self.compile_expr(end)?;
 
-                let ge_start = self.inline_ge_raw(value, start_val)?;
-                let lt_end = self.inline_lt_raw(value, end_val)?;
+                let ge_start = self.inline_ge_raw(value, start_val);
+                let lt_end = self.inline_lt_raw(value, end_val);
 
                 Ok(self
                     .builder
@@ -31087,7 +31083,7 @@ impl<'ctx> CodeGen<'ctx> {
             .left()
             .unwrap()
             .into_pointer_value();
-        let key_val = self.make_string(key_str).unwrap();
+        let key_val = self.make_string(key_str);
         self.builder
             .build_store(new_key_typed_ptr, key_val)
             .unwrap();
@@ -31122,7 +31118,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Update the instance pointer in the masel variable if this is masel
         // (This handles the case where realloc moved the memory)
         if let Some(masel_ptr) = self.current_masel {
-            let new_instance = self.make_instance(new_ptr).unwrap();
+            let new_instance = self.make_instance(new_ptr);
             self.builder.build_store(masel_ptr, new_instance).unwrap();
         }
 
@@ -31398,7 +31394,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(field_count_i64_ptr, zero).unwrap();
 
         // Create instance value
-        let instance = self.make_instance(instance_ptr).unwrap();
+        let instance = self.make_instance(instance_ptr);
 
         // Call init method if it exists
         let init_func_name = format!("{}_init", class_name);
@@ -31739,8 +31735,8 @@ impl<'ctx> CodeGen<'ctx> {
     /// randfloat() - random float in [0, 1)
     fn inline_randfloat(&mut self) -> Result<BasicValueEnum<'ctx>, HaversError> {
         // Use __mdh_random to get an integer in [0, 1_000_000) and scale.
-        let zero = self.make_int(self.types.i64_type.const_int(0, false)).unwrap();
-        let million = self.make_int(self.types.i64_type.const_int(1_000_000, false)).unwrap();
+        let zero = self.make_int(self.types.i64_type.const_int(0, false));
+        let million = self.make_int(self.types.i64_type.const_int(1_000_000, false));
         let n_val = self.inline_jammy(zero, million)?;
         let n = self.extract_data(n_val).unwrap();
 
@@ -31753,7 +31749,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_float_div(n_f, denom, "randfloat")
             .unwrap();
-        self.make_float(frac)
+        Ok(self.make_float(frac))
     }
 
     /// get_key() - read a single key press from terminal
@@ -31834,7 +31830,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_z_extend(first_byte, self.types.i64_type, "byte_i64")
             .unwrap();
-        self.make_int(byte_val)
+        Ok(self.make_int(byte_val))
     }
 
     /// chr(n) - Convert integer codepoint to single-character string
@@ -31873,7 +31869,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(null_ptr, self.context.i8_type().const_int(0, false))
             .unwrap();
 
-        self.make_string(new_str)
+        Ok(self.make_string(new_str))
     }
 
     /// char_at(str, idx) - Get character at index as single-char string
@@ -31923,7 +31919,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(null_ptr, self.context.i8_type().const_int(0, false))
             .unwrap();
 
-        self.make_string(new_str)
+        Ok(self.make_string(new_str))
     }
 
     /// substr/scance(str, start, end) - substring by byte indices [start, end)
@@ -32046,7 +32042,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(null_ptr, self.context.i8_type().const_int(0, false))
             .unwrap();
 
-        self.make_string(buf)
+        Ok(self.make_string(buf))
     }
 
     /// chars(str) - Split string into list of single-character strings
@@ -32148,7 +32144,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Push into result list
-        let mdh_val = self.make_string(new_str).unwrap();
+        let mdh_val = self.make_string(new_str);
         self.builder
             .build_call(
                 self.libc.list_push,
@@ -32262,7 +32258,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
         self.builder.position_at_end(end_block);
-        self.make_string(result_ptr)
+        Ok(self.make_string(result_ptr))
     }
 
     /// index_of(str, substr) - Find first index of substring, or -1 if not found
@@ -32383,7 +32379,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_phi(self.types.i64_type, "str_index_result")
             .unwrap();
         str_phi.add_incoming(&[(&index, found_block_end), (&neg_one, not_found_block_end)]);
-        let string_result = self.make_int(str_phi.as_basic_value().into_int_value()).unwrap();
+        let string_result = self.make_int(str_phi.as_basic_value().into_int_value());
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -32686,7 +32682,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(null_pos, self.context.i8_type().const_int(0, false))
             .unwrap();
 
-        let str_res = self.make_string(buf).unwrap();
+        let str_res = self.make_string(buf);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -32769,7 +32765,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap();
 
-        self.make_bool(is_equal)
+        Ok(self.make_bool(is_equal))
     }
 
     /// ends_wi(str, suffix) - Check if string ends with suffix
@@ -32881,7 +32877,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         phi.add_incoming(&[(&is_equal, check_block_end), (&false_val, false_block_end)]);
 
-        self.make_bool(phi.as_basic_value().into_int_value())
+        Ok(self.make_bool(phi.as_basic_value().into_int_value()))
     }
 
     /// Math function wrapper (sin, cos, tan, sqrt)
@@ -32983,7 +32979,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_float_value();
 
-        let numeric_result = self.make_float(result).unwrap();
+        let numeric_result = self.make_float(result);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -33089,7 +33085,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_float_value();
 
-        self.make_float(result)
+        Ok(self.make_float(result))
     }
 
     /// atan2(y, x) - two-argument arctangent
@@ -33174,7 +33170,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_float_value();
 
-        self.make_float(result)
+        Ok(self.make_float(result))
     }
 
     /// snooze(ms) - sleep for given milliseconds
@@ -33334,7 +33330,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .left()
                 .unwrap()
                 .into_int_value();
-            self.make_int(str_len).unwrap()
+            self.make_int(str_len)
         };
 
         let string_sliced = self.inline_substring_range(list_val, start_val, end_mdh)?;
@@ -33633,7 +33629,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(null_pos, self.context.i8_type().const_int(0, false))
             .unwrap();
-        let str_result = self.make_string(new_str).unwrap();
+        let str_result = self.make_string(new_str);
         self.builder
             .build_unconditional_branch(memcpy_merge)
             .unwrap();
@@ -33800,7 +33796,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(null_pos2, self.context.i8_type().const_int(0, false))
             .unwrap();
-        let str_loop_result = self.make_string(new_str2).unwrap();
+        let str_loop_result = self.make_string(new_str2);
         self.builder.build_unconditional_branch(loop_merge).unwrap();
         let str_loop_bb = self.builder.get_insert_block().unwrap();
 
@@ -33992,7 +33988,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         self.builder.position_at_end(list_loop_end);
-        let list_loop_result = self.make_list(new_list_struct).unwrap();
+        let list_loop_result = self.make_list(new_list_struct);
         self.builder.build_unconditional_branch(loop_merge).unwrap();
         let list_loop_bb = self.builder.get_insert_block().unwrap();
 
@@ -34724,7 +34720,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(null_pos, self.context.i8_type().const_int(0, false))
             .unwrap();
 
-        self.make_string(new_ptr)
+        Ok(self.make_string(new_ptr))
     }
 
     /// radians(degrees) - convert degrees to radians
@@ -34807,7 +34803,7 @@ impl<'ctx> CodeGen<'ctx> {
         let temp = self.builder.build_float_mul(deg, pi, "temp").unwrap();
         let result = self.builder.build_float_div(temp, c180, "radians").unwrap();
 
-        let numeric_result = self.make_float(result).unwrap();
+        let numeric_result = self.make_float(result);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -34911,7 +34907,7 @@ impl<'ctx> CodeGen<'ctx> {
         let temp = self.builder.build_float_mul(rad, c180, "temp").unwrap();
         let result = self.builder.build_float_div(temp, pi, "degrees").unwrap();
 
-        let numeric_result = self.make_float(result).unwrap();
+        let numeric_result = self.make_float(result);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -34945,7 +34941,7 @@ impl<'ctx> CodeGen<'ctx> {
         );
         self.lambda_counter += 1;
         let str_ptr = global.as_pointer_value();
-        self.make_string(str_ptr)
+        Ok(self.make_string(str_ptr))
     }
 }
 
@@ -34954,6 +34950,363 @@ impl<'ctx> CodeGen<'ctx> {
         use super::*;
         use crate::ast::Param;
         use tempfile::tempdir;
+
+    #[cfg(coverage)]
+    #[test]
+    fn masel_walkers_and_free_var_helpers_are_exercised_for_instantiation_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_masel_walkers");
+
+        // Seed `variables` with names so free-var discovery treats them as capturable.
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+        for name in ["free", "free2", "free3", "v"] {
+            codegen.predeclare_local_name(name);
+        }
+
+        let span = Span::new(1, 1);
+
+        // expr_uses_masel: list iteration closure
+        let list_expr = Expr::List {
+            elements: vec![
+                Expr::Literal {
+                    value: Literal::Integer(1),
+                    span,
+                },
+                Expr::Masel { span },
+            ],
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&list_expr));
+
+        // expr_uses_masel: dict iteration closure
+        let dict_expr = Expr::Dict {
+            pairs: vec![(
+                Expr::Literal {
+                    value: Literal::String("k".to_string()),
+                    span,
+                },
+                Expr::Masel { span },
+            )],
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&dict_expr));
+
+        // expr_uses_masel: slice option map_or closures (start/end/step)
+        let slice_start = Expr::Slice {
+            object: Box::new(Expr::Variable {
+                name: "xs".to_string(),
+                span,
+            }),
+            start: Some(Box::new(Expr::Masel { span })),
+            end: Some(Box::new(Expr::Literal {
+                value: Literal::Integer(2),
+                span,
+            })),
+            step: Some(Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            })),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&slice_start));
+
+        let slice_end = Expr::Slice {
+            object: Box::new(Expr::Variable {
+                name: "xs".to_string(),
+                span,
+            }),
+            start: Some(Box::new(Expr::Literal {
+                value: Literal::Integer(0),
+                span,
+            })),
+            end: Some(Box::new(Expr::Masel { span })),
+            step: Some(Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            })),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&slice_end));
+
+        let slice_step = Expr::Slice {
+            object: Box::new(Expr::Variable {
+                name: "xs".to_string(),
+                span,
+            }),
+            start: Some(Box::new(Expr::Literal {
+                value: Literal::Integer(0),
+                span,
+            })),
+            end: Some(Box::new(Expr::Literal {
+                value: Literal::Integer(2),
+                span,
+            })),
+            step: Some(Box::new(Expr::Masel { span })),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&slice_step));
+
+        // expr_uses_masel: f-string parts iterator closure
+        let fstring_expr = Expr::FString {
+            parts: vec![
+                FStringPart::Text("hi ".to_string()),
+                FStringPart::Expr(Box::new(Expr::Masel { span })),
+            ],
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&fstring_expr));
+
+        // stmt_uses_masel: initializer map_or closure
+        let decl_stmt = Stmt::VarDecl {
+            name: "x".to_string(),
+            initializer: Some(Expr::Masel { span }),
+            span,
+        };
+        assert!(codegen.stmt_uses_masel(&decl_stmt));
+
+        // stmt_uses_masel: else_branch map_or closure
+        let if_stmt = Stmt::If {
+            condition: Expr::Literal {
+                value: Literal::Bool(false),
+                span,
+            },
+            then_branch: Box::new(Stmt::Expression {
+                span,
+                expr: Expr::Literal {
+                    value: Literal::Integer(0),
+                    span,
+                },
+            }),
+            else_branch: Some(Box::new(Stmt::Expression {
+                span,
+                expr: Expr::Masel { span },
+            })),
+            span,
+        };
+        assert!(codegen.stmt_uses_masel(&if_stmt));
+
+        // stmt_uses_masel: block iterator closure
+        let block_stmt = Stmt::Block {
+            statements: vec![Stmt::Expression {
+                span,
+                expr: Expr::Masel { span },
+            }],
+            span,
+        };
+        assert!(codegen.stmt_uses_masel(&block_stmt));
+
+        // find_free_variables_in_body: param map closure + match/destructure binding helpers.
+        let body = vec![
+            Stmt::Destructure {
+                patterns: vec![
+                    DestructPattern::Variable("a".to_string()),
+                    DestructPattern::Rest("rest".to_string()),
+                    DestructPattern::Variable("z".to_string()),
+                ],
+                value: Expr::Variable {
+                    name: "free".to_string(),
+                    span,
+                },
+                span,
+            },
+            Stmt::Match {
+                value: Expr::Variable {
+                    name: "v".to_string(),
+                    span,
+                },
+                arms: vec![
+                    MatchArm {
+                        pattern: Pattern::Identifier("bound_in_pattern".to_string()),
+                        body: Stmt::Expression {
+                            span,
+                            expr: Expr::Variable {
+                                name: "free2".to_string(),
+                                span,
+                            },
+                        },
+                        span,
+                    },
+                    MatchArm {
+                        pattern: Pattern::Wildcard,
+                        body: Stmt::Expression {
+                            span,
+                            expr: Expr::Variable {
+                                name: "free3".to_string(),
+                                span,
+                            },
+                        },
+                        span,
+                    },
+                ],
+                span,
+            },
+        ];
+        let params = vec![Param {
+            name: "p".to_string(),
+            default: None,
+        }];
+        let free = codegen.find_free_variables_in_body(&body, &params);
+        assert_eq!(free, vec!["free".to_string(), "free2".to_string(), "free3".to_string(), "v".to_string()]);
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn compile_class_first_pass_and_defaults_closures_are_exercised_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_compile_class_first_pass");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let span = Span::new(1, 1);
+        let methods = vec![
+            Stmt::Function {
+                name: "init".to_string(),
+                params: vec![Param {
+                    name: "x".to_string(),
+                    default: Some(Expr::Literal {
+                        value: Literal::Integer(1),
+                        span,
+                    }),
+                }],
+                body: vec![Stmt::Return {
+                    value: Some(Expr::Literal {
+                        value: Literal::Nil,
+                        span,
+                    }),
+                    span,
+                }],
+                span,
+            },
+            Stmt::Function {
+                name: "ping".to_string(),
+                params: Vec::new(),
+                body: Vec::new(),
+                span,
+            },
+        ];
+
+        codegen
+            .compile_class("C3", &methods)
+            .expect("compile_class");
+        assert!(codegen.classes.contains_key("C3"));
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn compile_stmt_boxed_decl_and_tri_import_alias_error_are_exercised_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_compile_stmt_boxed_decl");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let span = Span::new(1, 1);
+        codegen.boxed_vars.insert("boxed".to_string());
+        codegen
+            .compile_stmt(&Stmt::VarDecl {
+                name: "boxed".to_string(),
+                initializer: Some(Expr::Literal {
+                    value: Literal::Integer(1),
+                    span,
+                }),
+                span,
+            })
+            .expect("boxed decl");
+
+        let err = codegen
+            .compile_stmt(&Stmt::Import {
+                path: "tri".to_string(),
+                alias: None,
+                span,
+            })
+            .expect_err("tri import without alias should error");
+        assert_eq!(
+            std::mem::discriminant(&err),
+            std::mem::discriminant(&HaversError::CompileError(String::new()))
+        );
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn compile_expr_global_or_else_paths_are_exercised_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_compile_expr_global_or_else");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let span = Span::new(1, 1);
+
+        // Drive the int-shadow assignment path with a globals fallback (variables miss => globals hit).
+        let g_alloca = codegen.create_entry_block_alloca("g");
+        let g_shadow = codegen.create_entry_block_alloca_i64("g_shadow");
+        codegen.globals.insert("g".to_string(), g_alloca);
+        codegen.int_shadows.insert("g".to_string(), g_shadow);
+        codegen
+            .compile_expr(&Expr::Assign {
+                name: "g".to_string(),
+                value: Box::new(Expr::Literal {
+                    value: Literal::Integer(3),
+                    span,
+                }),
+                span,
+            })
+            .expect("assign g");
+
+        // Drive the generic assignment path's globals fallback (variables miss => globals hit).
+        let h_alloca = codegen.create_entry_block_alloca("h");
+        codegen.globals.insert("h".to_string(), h_alloca);
+        codegen
+            .compile_expr(&Expr::Assign {
+                name: "h".to_string(),
+                value: Box::new(Expr::Literal {
+                    value: Literal::String("x".to_string()),
+                    span,
+                }),
+                span,
+            })
+            .expect("assign h");
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn ensure_boxed_variable_globals_or_else_closure_runs_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_ensure_boxed_variable_or_else");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let global = codegen
+            .module
+            .add_global(codegen.types.value_type, None, "coverage_boxed_global");
+        global.set_initializer(&codegen.types.value_type.const_zero());
+        codegen
+            .globals
+            .insert("coverage_boxed_global".to_string(), global.as_pointer_value());
+
+        assert!(codegen.variables.get("coverage_boxed_global").is_none());
+        codegen
+            .ensure_boxed_variable("coverage_boxed_global")
+            .expect("box global");
+    }
 
     #[test]
     fn compile_skips_predefined_globals_when_already_present_for_coverage() {
@@ -35159,6 +35512,54 @@ impl<'ctx> CodeGen<'ctx> {
             codegen.types.value_type.into(),
             &[],
         );
+    }
+
+    #[test]
+    fn compile_struct_decl_reuses_existing_function_without_basic_block_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "compile_struct_decl_reuse_decl");
+
+        // Seed a function declaration without a body to exercise the
+        // `existing.get_first_basic_block().is_some()` false branch.
+        codegen.declare_function("S", 1);
+
+        codegen
+            .compile_struct_decl("S", &["a".to_string()])
+            .expect("compile struct decl");
+    }
+
+    #[test]
+    fn compile_method_body_errors_when_method_not_declared_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "compile_method_body_missing_decl");
+
+        let _ = codegen
+            .compile_method_body(
+                "MissingClass",
+                "missing_method",
+                &[Param {
+                    name: "x".to_string(),
+                    default: None,
+                }],
+                &[],
+            )
+            .expect_err("expected missing method decl error");
+    }
+
+    #[test]
+    fn compile_class_instantiation_errors_on_unknown_class_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "compile_class_instantiation_unknown");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let _ = codegen
+            .compile_class_instantiation("MissingClass", &[])
+            .expect_err("expected unknown class error");
     }
 
     #[test]

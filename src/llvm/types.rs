@@ -76,6 +76,7 @@ impl<'ctx> MdhTypes<'ctx> {
     }
 
     /// Get the MdhValue type as a basic type
+    #[cfg_attr(coverage, inline(never))]
     pub fn value_basic_type(&self) -> BasicTypeEnum<'ctx> {
         self.value_type.into()
     }
@@ -108,11 +109,13 @@ pub enum InferredType {
 
 impl InferredType {
     /// Check if this type is known at compile time
+    #[cfg_attr(coverage, inline(never))]
     pub fn is_known(&self) -> bool {
         !matches!(self, InferredType::Unknown)
     }
 
     /// Get the value tag for this type, if known
+    #[cfg_attr(coverage, inline(never))]
     pub fn tag(&self) -> Option<ValueTag> {
         match self {
             InferredType::Nil => Some(ValueTag::Nil),
@@ -125,5 +128,24 @@ impl InferredType {
             InferredType::Function => Some(ValueTag::Function),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::hint::black_box;
+
+    #[test]
+    fn llvm_types_helpers_are_covered_for_instantiation_coverage() {
+        let context = Context::create();
+        let types = MdhTypes::new(&context);
+        black_box(types.value_basic_type());
+
+        let inferred = black_box(InferredType::Int);
+        assert!(black_box(inferred.is_known()));
+
+        let inferred = black_box(InferredType::Nil);
+        assert_eq!(black_box(inferred.tag()), Some(ValueTag::Nil));
     }
 }

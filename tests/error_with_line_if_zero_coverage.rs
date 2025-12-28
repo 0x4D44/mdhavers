@@ -165,3 +165,8 @@ fn havers_error_with_line_if_zero_is_noop_for_non_line_variants() {
     assert_eq!(updated.line(), None);
 }
 
+#[test]
+fn scots_encouragement_is_available_in_dependency_crate_instance_for_coverage() {
+    let msg = mdhavers::error::scots_encouragement();
+    assert!(!msg.is_empty());
+}

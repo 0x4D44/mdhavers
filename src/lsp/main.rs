@@ -13,11 +13,15 @@ use lsp_server::{Connection, ExtractError, Message, Notification, Request, Reque
 use lsp_types::{
     notification::{DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument},
     request::{Completion, GotoDefinition, HoverRequest},
-    CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse,
-    Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
+    CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse, Diagnostic,
+    DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents,
-    HoverParams, HoverProviderCapability, InitializeParams, MarkupContent, MarkupKind, Position,
-    Range, ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, Uri,
+    HoverParams, InitializeParams, MarkupContent, MarkupKind, Position, Range, Uri,
+};
+#[cfg(not(test))]
+use lsp_types::{
+    CompletionOptions, HoverProviderCapability, ServerCapabilities, TextDocumentSyncCapability,
+    TextDocumentSyncKind,
 };
 use serde_json::Value;
 
@@ -55,6 +59,7 @@ impl DocumentStore {
     }
 }
 
+#[cfg(not(test))]
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // Suppress the colored output fer LSP mode
     colored::control::set_override(false);

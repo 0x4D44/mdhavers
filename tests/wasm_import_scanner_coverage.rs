@@ -37,6 +37,7 @@ fer i in 0..3 { haud }
 
 log_mutter "hi", a, b
 mak_siccar a == 1, "a should be 1"
+mak_siccar a == 1
 
 a = a + 1
 add(3)
@@ -51,6 +52,10 @@ hae_a_bash {
 }
 
 ken slice = xs[0:4:2]
+ken slice_start_none = xs[:4]
+ken slice_end_none = xs[0:]
+ken slice_step_none = xs[0:4]
+ken slice_all_none = xs[:]
 blether add(3)
 blether len(rest)
 "#;

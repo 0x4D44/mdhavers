@@ -625,3 +625,19 @@ impl<'ctx> RuntimeFunctions<'ctx> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use inkwell::context::Context;
+    use std::hint::black_box;
+
+    #[test]
+    fn runtime_functions_declare_is_exercised_for_instantiation_coverage() {
+        let context = Context::create();
+        let module = context.create_module("mdh_runtime_declare_unit");
+        let types = MdhTypes::new(&context);
+        let runtime = RuntimeFunctions::declare(&module, &types);
+        black_box(runtime.make_nil);
+    }
+}

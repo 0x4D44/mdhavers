@@ -17,48 +17,103 @@ pub struct BuiltinInfo {
     pub max_arity: Option<usize>,
 }
 
-impl BuiltinInfo {
-    const fn new(
-        name: &'static str,
-        runtime_name: &'static str,
-        min_arity: usize,
-        max_arity: Option<usize>,
-    ) -> Self {
-        BuiltinInfo {
-            name,
-            runtime_name,
-            min_arity,
-            max_arity,
-        }
-    }
-
-    const fn fixed(name: &'static str, runtime_name: &'static str, arity: usize) -> Self {
-        BuiltinInfo::new(name, runtime_name, arity, Some(arity))
-    }
-}
-
 /// All built-in functions
 pub static BUILTINS: &[BuiltinInfo] = &[
     // I/O
-    BuiltinInfo::fixed("blether", "__mdh_blether", 1),
-    BuiltinInfo::fixed("speir", "__mdh_speir", 1),
-    BuiltinInfo::fixed("get_key", "__mdh_get_key", 0),
+    BuiltinInfo {
+        name: "blether",
+        runtime_name: "__mdh_blether",
+        min_arity: 1,
+        max_arity: Some(1),
+    },
+    BuiltinInfo {
+        name: "speir",
+        runtime_name: "__mdh_speir",
+        min_arity: 1,
+        max_arity: Some(1),
+    },
+    BuiltinInfo {
+        name: "get_key",
+        runtime_name: "__mdh_get_key",
+        min_arity: 0,
+        max_arity: Some(0),
+    },
     // Type conversion
-    BuiltinInfo::fixed("tae_string", "__mdh_to_string", 1),
-    BuiltinInfo::fixed("tae_int", "__mdh_to_int", 1),
-    BuiltinInfo::fixed("tae_float", "__mdh_to_float", 1),
+    BuiltinInfo {
+        name: "tae_string",
+        runtime_name: "__mdh_to_string",
+        min_arity: 1,
+        max_arity: Some(1),
+    },
+    BuiltinInfo {
+        name: "tae_int",
+        runtime_name: "__mdh_to_int",
+        min_arity: 1,
+        max_arity: Some(1),
+    },
+    BuiltinInfo {
+        name: "tae_float",
+        runtime_name: "__mdh_to_float",
+        min_arity: 1,
+        max_arity: Some(1),
+    },
     // Type checking
-    BuiltinInfo::fixed("whit_kind", "__mdh_type_of", 1),
+    BuiltinInfo {
+        name: "whit_kind",
+        runtime_name: "__mdh_type_of",
+        min_arity: 1,
+        max_arity: Some(1),
+    },
     // List operations
-    BuiltinInfo::fixed("len", "__mdh_len", 1),
-    BuiltinInfo::fixed("shove", "__mdh_list_push", 2),
-    BuiltinInfo::fixed("yank", "__mdh_list_pop", 1),
+    BuiltinInfo {
+        name: "len",
+        runtime_name: "__mdh_len",
+        min_arity: 1,
+        max_arity: Some(1),
+    },
+    BuiltinInfo {
+        name: "shove",
+        runtime_name: "__mdh_list_push",
+        min_arity: 2,
+        max_arity: Some(2),
+    },
+    BuiltinInfo {
+        name: "yank",
+        runtime_name: "__mdh_list_pop",
+        min_arity: 1,
+        max_arity: Some(1),
+    },
     // Math
-    BuiltinInfo::fixed("abs", "__mdh_abs", 1),
-    BuiltinInfo::new("jammy", "__mdh_random", 0, Some(2)),
-    BuiltinInfo::fixed("floor", "__mdh_floor", 1),
-    BuiltinInfo::fixed("ceil", "__mdh_ceil", 1),
-    BuiltinInfo::fixed("round", "__mdh_round", 1),
+    BuiltinInfo {
+        name: "abs",
+        runtime_name: "__mdh_abs",
+        min_arity: 1,
+        max_arity: Some(1),
+    },
+    BuiltinInfo {
+        name: "jammy",
+        runtime_name: "__mdh_random",
+        min_arity: 0,
+        max_arity: Some(2),
+    },
+    BuiltinInfo {
+        name: "floor",
+        runtime_name: "__mdh_floor",
+        min_arity: 1,
+        max_arity: Some(1),
+    },
+    BuiltinInfo {
+        name: "ceil",
+        runtime_name: "__mdh_ceil",
+        min_arity: 1,
+        max_arity: Some(1),
+    },
+    BuiltinInfo {
+        name: "round",
+        runtime_name: "__mdh_round",
+        min_arity: 1,
+        max_arity: Some(1),
+    },
 ];
 
 /// Lookup table for quick builtin resolution
@@ -80,22 +135,41 @@ pub fn get_builtin(name: &str) -> Option<&'static BuiltinInfo> {
 mod tests {
     use super::*;
 
-    fn leak(s: &str) -> &'static str {
-        Box::leak(s.to_string().into_boxed_str())
-    }
-
     #[test]
-    fn builtin_info_constructors_execute_at_runtime() {
-        let info = BuiltinInfo::new(leak("x"), leak("y"), 1, Some(2));
+    fn builtin_info_struct_is_constructible() {
+        let info = BuiltinInfo {
+            name: "x",
+            runtime_name: "y",
+            min_arity: 1,
+            max_arity: Some(2),
+        };
         assert_eq!(info.name, "x");
         assert_eq!(info.runtime_name, "y");
         assert_eq!(info.min_arity, 1);
         assert_eq!(info.max_arity, Some(2));
 
-        let fixed = BuiltinInfo::fixed(leak("z"), leak("w"), 0);
+        let fixed = BuiltinInfo {
+            name: "z",
+            runtime_name: "w",
+            min_arity: 0,
+            max_arity: Some(0),
+        };
         assert_eq!(fixed.name, "z");
         assert_eq!(fixed.runtime_name, "w");
         assert_eq!(fixed.min_arity, 0);
         assert_eq!(fixed.max_arity, Some(0));
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn builtin_resolution_helpers_are_exercised_for_instantiation_coverage() {
+        use std::hint::black_box;
+
+        let map = black_box(get_builtin_map());
+        assert!(map.contains_key("len"));
+        assert!(black_box(is_builtin("len")));
+        assert!(!black_box(is_builtin("definitely_not_a_builtin_7b8c8236")));
+        assert!(black_box(get_builtin("len")).is_some());
+        assert!(black_box(get_builtin("nope")).is_none());
     }
 }

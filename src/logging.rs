@@ -836,4 +836,61 @@ mod tests {
         assert!(ts.contains('-'));
         assert!(ts.contains(':'));
     }
+
+    #[cfg(coverage)]
+    #[test]
+    fn logging_instantiation_hotspots_are_exercised_for_coverage() {
+        use std::hint::black_box;
+
+        // LogFilter::level_for_target closure (best.map(...))
+        let filter = LogFilter {
+            default: LogLevel::Blether,
+            rules: vec![
+                ("net".to_string(), LogLevel::Roar),
+                ("net.http".to_string(), LogLevel::Whisper),
+            ],
+        };
+        assert_eq!(filter.level_for_target("net.http.server"), LogLevel::Whisper);
+
+        // parse_filter closure in split/map/filter path with an empty segment.
+        assert!(parse_filter("blether,,net=roar").is_ok());
+
+        // Call LoggerCore::default via fn pointer to avoid it being optimized away.
+        let default_fn: fn() -> LoggerCore = LoggerCore::default;
+        let mut logger = black_box(default_fn)();
+        logger.timestamps = false;
+        logger.color = false;
+
+        let record = sample_record(vec![("k".to_string(), Value::String("v".to_string()))]);
+
+        let format_json: fn(&LoggerCore, &LogRecord) -> String = LoggerCore::format_json;
+        let json_line = black_box(format_json)(&logger, &record);
+        assert!(json_line.contains("\"msg\""));
+
+        let format_compact: fn(&LoggerCore, &LogRecord) -> String = LoggerCore::format_compact;
+        let compact_line = black_box(format_compact)(&logger, &record);
+        assert!(!compact_line.is_empty());
+
+        // value_to_json instantiation
+        let _ = value_to_json(&Value::Integer(1));
+
+        // span_path iterator closure
+        let span = new_span(
+            "inst".to_string(),
+            LogLevel::Blether,
+            "target".to_string(),
+            vec![],
+        );
+        span_enter(span.clone());
+        let path = span_path();
+        assert!(path.contains(&"inst".to_string()));
+        span_exit(span.id).unwrap();
+
+        // Exercise NativeObject vtable methods.
+        let handle = LogSpanHandle::new(span);
+        let obj: &dyn NativeObject = &handle;
+        let _ = obj.get("name").unwrap();
+        let _ = obj.set("anything", Value::Nil).unwrap();
+        let _ = obj.call("noop", vec![]).unwrap();
+    }
 }

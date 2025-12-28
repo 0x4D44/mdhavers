@@ -389,6 +389,18 @@ blether f(1)
 blether scots_farewell()
 blether blether_format("hi {1}", {1: "x"})
 "#,
+        // is_nummer declares/uses strtod; call twice to exercise both the add_function and get_function paths.
+        r#"
+blether is_nummer("123")
+blether is_nummer("456")
+"#,
+        // Logical conditions: cover AND/OR compilation and both direct+fallback subexpression paths.
+        r#"
+gin (1 == 1) an ({"a": 1}["a"]) { blether 1 } ither { blether 2 }
+gin ({"a": 1}["a"]) an aye { blether 3 } ither { blether 4 }
+gin aye or ({"a": 1}["a"]) { blether 5 } ither { blether 6 }
+gin ({"a": 1}["a"]) or aye { blether 7 } ither { blether 8 }
+"#,
         // stopwatch(name) should compile, including named-function message mapping.
         r#"
 dae foo() { gie 1 }

@@ -734,6 +734,13 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_native_object_default_to_string_is_covered() {
+        let native = TestNative;
+        let obj: &dyn NativeObject = &native;
+        assert_eq!(obj.to_string(), "<native test_native>");
+    }
+
     // ==================== Value::type_name() Tests ====================
 
     #[test]

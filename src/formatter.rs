@@ -1346,4 +1346,61 @@ ken x = {
         let result = format_source("ken =");
         assert!(result.is_err());
     }
+
+    #[cfg(coverage)]
+    #[test]
+    fn formatter_helper_instantiations_are_exercised_for_coverage() {
+        use std::hint::black_box;
+
+        let span = Span::new(1, 1);
+        let formatter = Formatter::new();
+
+        // Call helper methods via fn pointers to discourage inlining under coverage.
+        let format_params: fn(&Formatter, &[Param]) -> String = Formatter::format_params;
+        let params = vec![
+            Param {
+                name: "a".to_string(),
+                default: None,
+            },
+            Param {
+                name: "b".to_string(),
+                default: Some(Expr::Literal {
+                    value: Literal::Integer(1),
+                    span,
+                }),
+            },
+        ];
+        let params_str = black_box(format_params)(black_box(&formatter), black_box(&params));
+        assert_eq!(params_str, "a, b = 1");
+
+        let format_patterns: fn(&Formatter, &[DestructPattern]) -> String =
+            Formatter::format_destruct_patterns;
+        let patterns = vec![
+            DestructPattern::Variable("x".to_string()),
+            DestructPattern::Rest("rest".to_string()),
+            DestructPattern::Ignore,
+        ];
+        let patterns_str = black_box(format_patterns)(black_box(&formatter), black_box(&patterns));
+        assert_eq!(patterns_str, "x, ...rest, _");
+
+        // Drive format_expr iterator closures (call args, slice start/end/step, list, dict)
+        // and format_destruct_patterns via formatting a full program.
+        let program = parse(
+            r#"
+ken [a, ...rest, _] = [1, 2, 3]
+dae f(a, b = 1) { gie a }
+blether f(1, 2)
+blether [1, 2, 3][0:2:1]
+blether {"a": 1, "b": 2}
+"#,
+        )
+        .unwrap();
+
+        let mut formatter = Formatter::new();
+        let out = formatter.format(&program);
+        assert!(out.contains("ken [a, ...rest, _] = [1, 2, 3]"));
+        assert!(out.contains("blether f(1, 2)"));
+        assert!(out.contains("blether [1, 2, 3][0:2:1]"));
+        assert!(out.contains("blether {\"a\": 1, \"b\": 2}"));
+    }
 }

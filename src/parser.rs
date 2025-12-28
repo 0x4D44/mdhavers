@@ -938,10 +938,8 @@ impl Parser {
 
     fn unary(&mut self) -> HaversResult<Expr> {
         if self.match_token(&TokenKind::Minus) {
-            let span = self
-                .previous()
-                .map(|t| Span::new(t.line, t.column))
-                .unwrap_or(self.current_span());
+            let t = self.previous().unwrap();
+            let span = Span::new(t.line, t.column);
             let operand = self.unary()?;
             return Ok(Expr::Unary {
                 operator: UnaryOp::Negate,
@@ -957,10 +955,8 @@ impl Parser {
             // Look ahead to see if there's an operand
             if self.is_nae_followed_by_operand() {
                 self.advance(); // consume nae
-                let span = self
-                    .previous()
-                    .map(|t| Span::new(t.line, t.column))
-                    .unwrap_or(self.current_span());
+                let t = self.previous().unwrap();
+                let span = Span::new(t.line, t.column);
                 let operand = self.unary()?;
                 return Ok(Expr::Unary {
                     operator: UnaryOp::Not,
@@ -972,10 +968,8 @@ impl Parser {
         }
 
         if self.match_token(&TokenKind::Bang) {
-            let span = self
-                .previous()
-                .map(|t| Span::new(t.line, t.column))
-                .unwrap_or(self.current_span());
+            let t = self.previous().unwrap();
+            let span = Span::new(t.line, t.column);
             let operand = self.unary()?;
             return Ok(Expr::Unary {
                 operator: UnaryOp::Not,

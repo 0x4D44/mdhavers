@@ -162,10 +162,78 @@ a + 1
 "#,
         // lerp second-argument type error path
         r#"lerp(1, "x", 0.5)"#,
+        // Match statement: pattern eval error propagation (range start).
+        r#"
+keek 1 {
+    whan 1..missing -> blether 1
+}
+"#,
+        // Destructure: RHS eval error propagation.
+        r#"
+ken [a] = missing
+"#,
+        // Get expression: object eval error propagation.
+        r#"blether missing.foo"#,
+        // BlockExpr: statement error propagation through execute_stmt_with_control(...)?.
+        r#"blether { missing }"#,
+        // HOF builtins: callback error propagation through call_value(...)?.
+        r#"blether gaun([1], |x| missing)"#,
+        r#"blether sieve([1], |x| missing)"#,
+        r#"blether tumble([1], 0, |a, b| missing)"#,
+        r#"ilk([1], |x| missing)"#,
+        r#"blether hunt([1], |x| missing)"#,
+        r#"blether ony([1], |x| missing)"#,
+        r#"blether aw([1], |x| missing)"#,
+        r#"blether grup_up([1], |x| missing)"#,
+        r#"blether pairt_by([1], |x| missing)"#,
+        // Function default value eval error propagation.
+        r#"
+dae f(x = missing) { gie x }
+f()
+"#,
+        // JSON: object key string escape error (parse_json_string called via parse_json_object).
+        r#"json_parse("{\"\\u")"#,
+        // Log statement: emit_log fields_from_dict error propagation (non-string dict key).
+        r#"log_blether "hi", {1: 2}"#,
+        // Native logging helpers: argument parsing error propagation.
+        r#"log_enabled("nae_a_level")"#,
+        r#"log_event("nae_a_level", "hi")"#,
+        r#"log_span("span", "nae_a_level")"#,
+        r#"log_span("span", "blether", 1)"#,
+        r#"log_span("span", "blether", {"a": 1}, 1)"#,
+        // thread_spawn propagates errors from native calls.
+        r#"thread_spawn(log_set_filter, ["net=nae-a-level"])"#,
     ] {
         let err = interpret_err(src);
         assert!(!err.is_empty(), "expected error string for:\n{src}");
     }
+}
+
+#[cfg(all(feature = "native", unix))]
+#[test]
+fn interpreter_event_watch_reports_unknown_loop_handle_errors_for_coverage() {
+    let err = interpret_err(
+        r#"
+ken s = socket_udp()
+gin s["ok"] {
+    ken sock = s["value"]
+    # invalid loop id exercises the with_loop_mut(...)? error propagation path
+    event_watch_read(999999, sock, nae)
+}
+"#,
+    );
+    assert!(err.contains("Unknown event loop handle"), "unexpected error: {err}");
+
+    let err = interpret_err(
+        r#"
+ken s = socket_udp()
+gin s["ok"] {
+    ken sock = s["value"]
+    event_watch_write(999999, sock, nae)
+}
+"#,
+    );
+    assert!(err.contains("Unknown event loop handle"), "unexpected error: {err}");
 }
 
 #[test]

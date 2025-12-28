@@ -150,6 +150,19 @@ fn llvm_codegen_builtin_dispatch_is_exercised_broadly() {
         vec!["[1, 2, 3]", "0", "|a, b| a + b"],
         vec!["[1, 2, 3, 4]", "2", "|x| x % 2"],
         vec![r#""hello""#, "5", r#"" ""#],
+        // Error-path probes: use an undefined identifier to force argument compilation to fail
+        // inside each builtin arm, exercising `?` propagation branches without depending on
+        // runtime type tags.
+        vec!["cov_missing_arg"],
+        vec!["cov_missing_arg", "0"],
+        vec!["cov_missing_arg", "0", "0"],
+        vec!["cov_missing_arg", "0", "0", "0"],
+        vec!["0", "cov_missing_arg"],
+        vec!["0", "cov_missing_arg", "0"],
+        vec!["0", "cov_missing_arg", "0", "0"],
+        vec!["0", "0", "cov_missing_arg"],
+        vec!["0", "0", "cov_missing_arg", "0"],
+        vec!["0", "0", "0", "cov_missing_arg"],
     ]);
 
     for name in builtins {

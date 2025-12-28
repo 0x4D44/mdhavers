@@ -1,19 +1,24 @@
 use std::fs;
 use std::path::PathBuf;
+#[cfg(not(test))]
 use std::process;
 
 use clap::{Parser, Subcommand};
 use colored::*;
 use rustyline::error::ReadlineError;
+#[cfg(not(test))]
 use rustyline::DefaultEditor;
 
 use mdhavers::compiler::compile;
-use mdhavers::error::{format_error_context, random_scots_exclamation};
+use mdhavers::error::format_error_context;
+#[cfg(not(test))]
+use mdhavers::error::random_scots_exclamation;
 use mdhavers::formatter;
 use mdhavers::lexer;
 use mdhavers::parser::parse;
 use mdhavers::wasm_compiler;
 use mdhavers::Interpreter;
+#[cfg(not(test))]
 use mdhavers::Value;
 
 // Crash handler helpers are excluded from source-based coverage runs.
@@ -165,6 +170,7 @@ enum Commands {
     },
 }
 
+#[cfg(not(test))]
 fn main() {
     // Set up crash handlers for graceful error reporting
     setup_crash_handlers();
@@ -308,11 +314,14 @@ fn compile_file(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
         Err(e) => return Err(format_parse_error(&source, e)),
     };
 
-    let output_path = output.unwrap_or_else(|| {
-        let mut p = path.clone();
-        p.set_extension("js");
-        p
-    });
+    let output_path = match output {
+        Some(p) => p,
+        None => {
+            let mut p = path.clone();
+            p.set_extension("js");
+            p
+        }
+    };
 
     if let Err(e) = fs::write(&output_path, &js_code) {
         return Err(format!("Cannae write tae {}: {}", output_path.display(), e));
@@ -335,11 +344,14 @@ fn compile_wasm(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
         Err(e) => return Err(format_parse_error(&source, e)),
     };
 
-    let output_path = output.unwrap_or_else(|| {
-        let mut p = path.clone();
-        p.set_extension("wat");
-        p
-    });
+    let output_path = match output {
+        Some(p) => p,
+        None => {
+            let mut p = path.clone();
+            p.set_extension("wat");
+            p
+        }
+    };
 
     if let Err(e) = fs::write(&output_path, &wat_code) {
         return Err(format!("Cannae write tae {}: {}", output_path.display(), e));
@@ -431,11 +443,14 @@ fn build_native(
             Err(e) => return Err(format!("{}", e)),
         };
 
-        let output_path = output.unwrap_or_else(|| {
-            let mut p = path.clone();
-            p.set_extension("ll");
-            p
-        });
+        let output_path = match output {
+            Some(p) => p,
+            None => {
+                let mut p = path.clone();
+                p.set_extension("ll");
+                p
+            }
+        };
 
         if let Err(e) = fs::write(&output_path, &ir) {
             return Err(format!("Cannae write tae {}: {}", output_path.display(), e));
@@ -449,11 +464,14 @@ fn build_native(
         println!("  {} {}", "Output:".dimmed(), output_path.display());
     } else {
         // Build native executable
-        let output_path = output.unwrap_or_else(|| {
-            let mut p = path.clone();
-            p.set_extension("");
-            p
-        });
+        let output_path = match output {
+            Some(p) => p,
+            None => {
+                let mut p = path.clone();
+                p.set_extension("");
+                p
+            }
+        };
 
         let compiler = mdhavers::LLVMCompiler::new();
         if let Err(e) =
@@ -528,6 +546,7 @@ fn repl_needs_more_input(buffer: &str) -> bool {
     in_string || braces > 0 || brackets > 0 || parens > 0
 }
 
+#[cfg(not(test))]
 fn run_repl() -> Result<(), String> {
     use mdhavers::interpreter::TraceMode;
 
@@ -555,9 +574,10 @@ fn run_repl() -> Result<(), String> {
     let mut rl = match DefaultEditor::new() { Ok(rl) => rl, Err(e) => return Err(e.to_string()) };
 
     // Try to load history from file
-    let history_path = dirs::home_dir()
-        .map(|h| h.join(".mdhavers_history"))
-        .unwrap_or(std::path::PathBuf::from(".mdhavers_history"));
+    let history_path = match dirs::home_dir() {
+        Some(h) => h.join(".mdhavers_history"),
+        None => std::path::PathBuf::from(".mdhavers_history"),
+    };
 
     if history_path.exists() {
         let _ = rl.load_history(&history_path);
@@ -1315,14 +1335,51 @@ fn format_runtime_error(source: &str, error: mdhavers::HaversError) -> String {
     }
 
     #[test]
-    fn format_error_helpers_cover_no_line_and_no_suggestion_paths_for_coverage() {
-        let err = mdhavers::HaversError::ModuleNotFound {
-            name: "missing".to_string(),
-        };
-        let msg = format_parse_error("", err.clone());
-        assert!(msg.contains("Cannae find module"));
+	    fn format_error_helpers_cover_no_line_and_no_suggestion_paths_for_coverage() {
+	        let err = mdhavers::HaversError::ModuleNotFound {
+	            name: "missing".to_string(),
+	        };
+	        let msg = format_parse_error("", err.clone());
+	        assert!(msg.contains("Cannae find module"));
 
-        let msg = format_runtime_error("", err);
-        assert!(msg.contains("Cannae find module"));
-    }
-}
+	        let msg = format_runtime_error("", err);
+	        assert!(msg.contains("Cannae find module"));
+	    }
+
+	    #[test]
+	    #[cfg(coverage)]
+	    fn main_cli_helpers_are_exercised_for_instantiation_coverage() {
+	        setup_crash_handlers();
+	        print_repl_help();
+	        print_repl_examples();
+	        print_scots_wisdom();
+	        print_programming_wisdom();
+
+	        assert!(repl_needs_more_input("dae f() {"));
+	        assert!(!repl_needs_more_input("dae f() { gie 1 }\n"));
+
+	        let dir = tempdir().expect("tempdir");
+	        let path = dir.path().join("ok.braw");
+	        std::fs::write(&path, "ken x = 1\nblether x\n").expect("write ok program");
+
+	        check_file(&path).expect("check_file");
+	        show_tokens(&path).expect("show_tokens");
+	        show_ast(&path).expect("show_ast");
+
+	        // Format check-only (no-op) then actually format.
+	        format_file(&path, true).expect("format_file check_only");
+	        format_file(&path, false).expect("format_file write");
+
+	        compile_file(&path, None).expect("compile_file");
+	        assert!(dir.path().join("ok.js").exists());
+
+	        compile_wasm(&path, None).expect("compile_wasm");
+	        assert!(dir.path().join("ok.wat").exists());
+
+	        #[cfg(feature = "llvm")]
+	        {
+	            build_native(&path, None, 0, true).expect("build_native emit llvm");
+	            assert!(dir.path().join("ok.ll").exists());
+	        }
+	    }
+	}

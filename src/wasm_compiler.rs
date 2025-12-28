@@ -1766,6 +1766,18 @@ mod tests {
     }
 
     #[test]
+    fn test_unsupported_expr_inside_function_wasm_returns_error() {
+        let source = r#"
+dae f() {
+    ken xs = [1, 2]
+    xs[0]
+}
+"#;
+        let err = compile_to_wat(source).unwrap_err();
+        assert!(err.to_string().contains("expression type isnae supported"));
+    }
+
+    #[test]
     fn test_escape_wat_string_covers_special_chars() {
         let input = "\"\\\r\t\n\u{0001}";
         let escaped = escape_wat_string(input);
@@ -1786,5 +1798,432 @@ mod tests {
         assert!(!wat.contains("(import \"env\" \"__mdh_tri_module\""));
         assert!(!wat.contains(";; Audio imports"));
         assert!(!wat.contains("(import \"env\" \"soond_stairt\""));
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn wasm_compiler_helper_instantiations_are_exercised_for_coverage() {
+        use std::hint::black_box;
+
+        let mut compiler = WasmCompiler::default();
+
+        // Drive intern_string's iterator/sum closure by interning more than one string.
+        let intern: fn(&mut WasmCompiler, &str) -> usize = WasmCompiler::intern_string;
+        let _ = intern(&mut compiler, black_box("a"));
+        let _ = intern(&mut compiler, black_box("b"));
+
+        let emit_string_handle: fn(&mut WasmCompiler, &str) = WasmCompiler::emit_string_handle;
+        emit_string_handle(&mut compiler, "hi");
+
+        // Drive both any(...) closures (func_params + local_vars).
+        compiler.func_params = vec!["p".to_string()];
+        compiler.local_vars = vec!["l".to_string()];
+        let is_local: fn(&WasmCompiler, &str) -> bool = WasmCompiler::is_local_or_param;
+        assert!(is_local(&compiler, "p"));
+        assert!(is_local(&compiler, "l"));
+        assert!(!is_local(&compiler, "x"));
+
+        // emit_value_call
+        let span = Span::new(1, 1);
+        let callee = Expr::Variable {
+            name: "obj".to_string(),
+            span,
+        };
+        let args = vec![
+            Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            },
+            Expr::Literal {
+                value: Literal::Integer(2),
+                span,
+            },
+        ];
+        let emit_value_call: fn(&mut WasmCompiler, &Expr, &[Expr]) -> HaversResult<()> =
+            WasmCompiler::emit_value_call;
+        emit_value_call(&mut compiler, &callee, &args).expect("emit_value_call");
+
+        // Create an expression type that is known to be unsupported by the WASM backend.
+        // This lets us exercise a bunch of `?` error-propagation regions deterministically.
+        let bad_expr = Expr::Index {
+            object: Box::new(Expr::List {
+                elements: vec![Expr::Literal {
+                    value: Literal::Integer(1),
+                    span,
+                }],
+                span,
+            }),
+            index: Box::new(Expr::Literal {
+                value: Literal::Integer(0),
+                span,
+            }),
+            span,
+        };
+
+        // emit_value_call: error branches (callee + arg compilation).
+        assert!(emit_value_call(&mut compiler, &bad_expr, &[]).is_err());
+        assert!(emit_value_call(&mut compiler, &callee, &[bad_expr.clone()]).is_err());
+
+        // collect_locals_stmt: cover the "already present" branches (no push).
+        compiler.func_params = vec!["p".to_string()];
+        compiler.local_vars = vec!["l".to_string()];
+        compiler.collect_locals_stmt(&Stmt::VarDecl {
+            name: "p".to_string(),
+            initializer: None,
+            span,
+        });
+        compiler.collect_locals_stmt(&Stmt::For {
+            variable: "p".to_string(),
+            iterable: Expr::Literal {
+                value: Literal::Integer(0),
+                span,
+            },
+            body: Box::new(Stmt::Block {
+                statements: Vec::new(),
+                span,
+            }),
+            span,
+        });
+        compiler.collect_locals_stmt(&Stmt::Import {
+            path: "tri".to_string(),
+            alias: Some("p".to_string()),
+            span,
+        });
+        compiler.ensure_temp_local("p");
+
+        // compile_stmt: exercise error propagation in a few statement shapes.
+        assert!(compiler
+            .compile_stmt(&Stmt::Block {
+                statements: vec![Stmt::Expression {
+                    expr: bad_expr.clone(),
+                    span,
+                }],
+                span,
+            })
+            .is_err());
+
+        assert!(compiler
+            .compile_stmt(&Stmt::If {
+                condition: bad_expr.clone(),
+                then_branch: Box::new(Stmt::Expression {
+                    expr: Expr::Literal {
+                        value: Literal::Integer(1),
+                        span,
+                    },
+                    span,
+                }),
+                else_branch: None,
+                span,
+            })
+            .is_err());
+
+        assert!(compiler
+            .compile_stmt(&Stmt::If {
+                condition: Expr::Literal {
+                    value: Literal::Bool(true),
+                    span,
+                },
+                then_branch: Box::new(Stmt::Expression {
+                    expr: bad_expr.clone(),
+                    span,
+                }),
+                else_branch: None,
+                span,
+            })
+            .is_err());
+
+        assert!(compiler
+            .compile_stmt(&Stmt::If {
+                condition: Expr::Literal {
+                    value: Literal::Bool(true),
+                    span,
+                },
+                then_branch: Box::new(Stmt::Expression {
+                    expr: Expr::Literal {
+                        value: Literal::Integer(1),
+                        span,
+                    },
+                    span,
+                }),
+                else_branch: Some(Box::new(Stmt::Expression {
+                    expr: bad_expr.clone(),
+                    span,
+                })),
+                span,
+            })
+            .is_err());
+
+        assert!(compiler
+            .compile_stmt(&Stmt::While {
+                condition: bad_expr.clone(),
+                body: Box::new(Stmt::Expression {
+                    expr: Expr::Literal {
+                        value: Literal::Integer(1),
+                        span,
+                    },
+                    span,
+                }),
+                span,
+            })
+            .is_err());
+
+        assert!(compiler
+            .compile_stmt(&Stmt::While {
+                condition: Expr::Literal {
+                    value: Literal::Bool(true),
+                    span,
+                },
+                body: Box::new(Stmt::Expression {
+                    expr: bad_expr.clone(),
+                    span,
+                }),
+                span,
+            })
+            .is_err());
+
+        assert!(compiler
+            .compile_stmt(&Stmt::Return {
+                value: Some(bad_expr.clone()),
+                span,
+            })
+            .is_err());
+
+        // compile_expr: cover error propagation for various expression shapes.
+        let compile_expr: fn(&mut WasmCompiler, &Expr) -> HaversResult<()> = WasmCompiler::compile_expr;
+        assert!(compile_expr(
+            &mut compiler,
+            &Expr::Assign {
+                name: "x".to_string(),
+                value: Box::new(bad_expr.clone()),
+                span,
+            }
+        )
+        .is_err());
+        assert!(compile_expr(
+            &mut compiler,
+            &Expr::Binary {
+                left: Box::new(bad_expr.clone()),
+                operator: BinaryOp::Add,
+                right: Box::new(Expr::Literal {
+                    value: Literal::Integer(1),
+                    span,
+                }),
+                span,
+            }
+        )
+        .is_err());
+        assert!(compile_expr(
+            &mut compiler,
+            &Expr::Binary {
+                left: Box::new(Expr::Literal {
+                    value: Literal::Integer(1),
+                    span,
+                }),
+                operator: BinaryOp::Add,
+                right: Box::new(bad_expr.clone()),
+                span,
+            }
+        )
+        .is_err());
+        assert!(compile_expr(
+            &mut compiler,
+            &Expr::Unary {
+                operator: UnaryOp::Negate,
+                operand: Box::new(bad_expr.clone()),
+                span,
+            }
+        )
+        .is_err());
+        assert!(compile_expr(
+            &mut compiler,
+            &Expr::Unary {
+                operator: UnaryOp::Not,
+                operand: Box::new(bad_expr.clone()),
+                span,
+            }
+        )
+        .is_err());
+        assert!(compile_expr(
+            &mut compiler,
+            &Expr::Logical {
+                left: Box::new(bad_expr.clone()),
+                operator: LogicalOp::And,
+                right: Box::new(Expr::Literal {
+                    value: Literal::Bool(true),
+                    span,
+                }),
+                span,
+            }
+        )
+        .is_err());
+        assert!(compile_expr(
+            &mut compiler,
+            &Expr::Logical {
+                left: Box::new(Expr::Literal {
+                    value: Literal::Bool(true),
+                    span,
+                }),
+                operator: LogicalOp::And,
+                right: Box::new(bad_expr.clone()),
+                span,
+            }
+        )
+        .is_err());
+        assert!(compile_expr(
+            &mut compiler,
+            &Expr::Logical {
+                left: Box::new(bad_expr.clone()),
+                operator: LogicalOp::Or,
+                right: Box::new(Expr::Literal {
+                    value: Literal::Bool(true),
+                    span,
+                }),
+                span,
+            }
+        )
+        .is_err());
+        assert!(compile_expr(
+            &mut compiler,
+            &Expr::Logical {
+                left: Box::new(Expr::Literal {
+                    value: Literal::Bool(true),
+                    span,
+                }),
+                operator: LogicalOp::Or,
+                right: Box::new(bad_expr.clone()),
+                span,
+            }
+        )
+        .is_err());
+        assert!(compile_expr(
+            &mut compiler,
+            &Expr::Call {
+                callee: Box::new(Expr::Get {
+                    object: Box::new(bad_expr.clone()),
+                    property: "m".to_string(),
+                    span,
+                }),
+                arguments: Vec::new(),
+                span,
+            }
+        )
+        .is_err());
+        assert!(compile_expr(
+            &mut compiler,
+            &Expr::Call {
+                callee: Box::new(Expr::Get {
+                    object: Box::new(Expr::Literal {
+                        value: Literal::Integer(1),
+                        span,
+                    }),
+                    property: "m".to_string(),
+                    span,
+                }),
+                arguments: vec![bad_expr.clone()],
+                span,
+            }
+        )
+        .is_err());
+        assert!(compile_expr(
+            &mut compiler,
+            &Expr::Call {
+                callee: Box::new(Expr::Variable {
+                    name: "f".to_string(),
+                    span,
+                }),
+                arguments: vec![bad_expr.clone()],
+                span,
+            }
+        )
+        .is_err());
+        assert!(compile_expr(
+            &mut compiler,
+            &Expr::Get {
+                object: Box::new(bad_expr.clone()),
+                property: "p".to_string(),
+                span,
+            }
+        )
+        .is_err());
+        assert!(compile_expr(
+            &mut compiler,
+            &Expr::Set {
+                object: Box::new(bad_expr.clone()),
+                property: "p".to_string(),
+                value: Box::new(Expr::Literal {
+                    value: Literal::Integer(1),
+                    span,
+                }),
+                span,
+            }
+        )
+        .is_err());
+        assert!(compile_expr(
+            &mut compiler,
+            &Expr::Set {
+                object: Box::new(Expr::Literal {
+                    value: Literal::Integer(1),
+                    span,
+                }),
+                property: "p".to_string(),
+                value: Box::new(bad_expr.clone()),
+                span,
+            }
+        )
+        .is_err());
+        assert!(compile_expr(
+            &mut compiler,
+            &Expr::List {
+                elements: vec![bad_expr.clone()],
+                span,
+            }
+        )
+        .is_err());
+        assert!(compile_expr(
+            &mut compiler,
+            &Expr::Dict {
+                pairs: vec![(
+                    bad_expr.clone(),
+                    Expr::Literal {
+                        value: Literal::Integer(1),
+                        span,
+                    },
+                )],
+                span,
+            }
+        )
+        .is_err());
+        assert!(compile_expr(
+            &mut compiler,
+            &Expr::Dict {
+                pairs: vec![(
+                    Expr::Literal {
+                        value: Literal::Integer(1),
+                        span,
+                    },
+                    bad_expr.clone(),
+                )],
+                span,
+            }
+        )
+        .is_err());
+        assert!(compile_expr(
+            &mut compiler,
+            &Expr::Grouping {
+                expr: Box::new(bad_expr.clone()),
+                span,
+            }
+        )
+        .is_err());
+
+        // Ensure the string-data emission closure in compile() runs.
+        let program = crate::parser::parse("ken s = \"hi\"").unwrap();
+        let mut compiler = WasmCompiler::new();
+        let wat = compiler.compile(&program).unwrap();
+        assert!(wat.contains(";; String data"));
+
+        // Avoid inlining eliminating escape_wat_string execution under coverage.
+        let esc: fn(&str) -> String = escape_wat_string;
+        let _ = esc(black_box("\""));
     }
 }

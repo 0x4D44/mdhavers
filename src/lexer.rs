@@ -215,4 +215,45 @@ greet(message)
             } if lexeme == "@"
         ));
     }
+
+    #[test]
+    fn test_more_keywords_operators_and_strings_are_lexed() {
+        let source = r#"
+speir fae tae an or nae aye naething nil nowt
+ken gin ither than whiles fer gie blether
+dae thing fetch kin brak haud haud_yer_wheesht gang_on in is masel hae_a_bash gin_it_gangs_wrang keek whan mak_siccar
+log_whisper log_mutter log_blether log_holler log_roar hurl
+
+42 3.14 1e3 1.0e-3
+"double" 'single' f"Hello {name}!"
+
++ - * / % = == != < <= > >= ! += -= *= /= ... ..= .. . _ ( ) { } [ ] , : ; -> |> |
+# comment
+// comment
+"#;
+
+        let tokens = lex(source).unwrap();
+
+        assert!(tokens.iter().any(|t| t.kind == TokenKind::Speir));
+        assert!(tokens.iter().any(|t| t.kind == TokenKind::Ken));
+        assert!(tokens.iter().any(|t| t.kind == TokenKind::Gin));
+        assert!(tokens.iter().any(|t| t.kind == TokenKind::Ither));
+        assert!(tokens.iter().any(|t| t.kind == TokenKind::Than));
+        assert!(tokens.iter().any(|t| t.kind == TokenKind::Whiles));
+        assert!(tokens.iter().any(|t| t.kind == TokenKind::Fer));
+        assert!(tokens.iter().any(|t| t.kind == TokenKind::Gie));
+        assert!(tokens.iter().any(|t| t.kind == TokenKind::Blether));
+        assert!(tokens.iter().any(|t| t.kind == TokenKind::MakSiccar));
+        assert!(tokens.iter().any(|t| t.kind == TokenKind::PipeForward));
+        assert!(tokens.iter().any(|t| t.kind == TokenKind::Arrow));
+        assert!(tokens.iter().any(|t| t.kind == TokenKind::Underscore));
+        assert!(tokens.iter().any(|t| t.kind == TokenKind::Newline));
+        assert!(tokens
+            .iter()
+            .any(|t| matches!(t.kind, TokenKind::SingleQuoteString(ref s) if s == "single")));
+        assert!(tokens.iter().any(|t| matches!(
+            t.kind,
+            TokenKind::FString(ref s) if s == "Hello {name}!"
+        )));
+    }
 }

@@ -397,6 +397,98 @@ mod tests {
     }
 
     #[test]
+    fn test_tri_module_constructors_cover_all_kinds_for_unit_coverage() {
+        let module = TriModule::new();
+
+        let kinds = [
+            "Sicht",
+            "Thing3D",
+            "Clump",
+            "Mesch",
+            "Kamera",
+            "PerspectivKamera",
+            "OrthograffikKamera",
+            "Geometrie",
+            "BoxGeometrie",
+            "SpherGeometrie",
+            "Maiterial",
+            "MeshBasicMaiterial",
+            "MeshStandardMaiterial",
+            "Licht",
+            "AmbiantLicht",
+            "DireksionalLicht",
+            "PyntLicht",
+            "Textur",
+            "Renderar",
+            "Colour",
+        ];
+
+        fn args_for_kind(kind: &str) -> Vec<Value> {
+            match kind {
+                "Mesch" => vec![Value::Integer(1), Value::Integer(2)],
+                "PerspectivKamera" => vec![
+                    Value::Integer(75),
+                    Value::Float(1.6),
+                    Value::Float(0.2),
+                    Value::Integer(100),
+                ],
+                "OrthograffikKamera" => vec![
+                    Value::Integer(-2),
+                    Value::Integer(2),
+                    Value::Integer(2),
+                    Value::Integer(-2),
+                    Value::Float(0.01),
+                    Value::Integer(999),
+                ],
+                "BoxGeometrie" => vec![Value::Integer(2), Value::Integer(3), Value::Integer(4)],
+                "SpherGeometrie" => vec![Value::Integer(2), Value::Integer(9), Value::Integer(7)],
+                "Maiterial" | "MeshBasicMaiterial" | "MeshStandardMaiterial" | "Renderar" => {
+                    vec![Value::String("opts".to_string())]
+                }
+                "Licht" | "AmbiantLicht" | "DireksionalLicht" => {
+                    vec![Value::Integer(1), Value::Float(0.5)]
+                }
+                "PyntLicht" => vec![
+                    Value::Integer(1),
+                    Value::Integer(2),
+                    Value::Integer(3),
+                    Value::Integer(4),
+                ],
+                "Colour" => vec![Value::String("red".to_string())],
+                _ => Vec::new(),
+            }
+        }
+
+        for kind in kinds {
+            let ctor_val = module.get(kind).unwrap();
+            let ctor = ctor_val
+                .as_native_function()
+                .expect("expected native constructor");
+
+            // Empty args covers default-path constructor arg plumbing.
+            let empty = (ctor.func)(Vec::new()).unwrap();
+            assert!(matches!(
+                empty,
+                Value::NativeObject(obj) if obj.type_name() == kind
+            ));
+
+            // Non-empty args covers explicit-arg path for kinds that accept options.
+            let with_args = (ctor.func)(args_for_kind(kind)).unwrap();
+            assert!(matches!(
+                with_args,
+                Value::NativeObject(obj) if obj.type_name() == kind
+            ));
+
+            // Also cover the module.call(...) constructor path.
+            let called = module.call(kind, Vec::new()).unwrap();
+            assert!(matches!(
+                called,
+                Value::NativeObject(obj) if obj.type_name() == kind
+            ));
+        }
+    }
+
+    #[test]
     fn test_tri_module_get_set_and_call_errors() {
         let module = TriModule::new();
         let err = module.get("Nope").unwrap_err();

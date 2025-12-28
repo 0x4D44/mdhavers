@@ -97,6 +97,20 @@ fn cli_help_and_version_work() {
 }
 
 #[test]
+fn cli_repl_quits_cleanly_with_piped_input() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    // Exercise a few REPL command branches, then exit.
+    let (code, _out, err) = run_mdhavers(
+        &["repl"],
+        Some("help\n:trace\n:trace v\n:vars\nquit\n"),
+        home,
+    );
+    assert_eq!(code, 0, "stderr: {err}");
+}
+
+#[test]
 fn cli_subcommands_cover_success_and_error_paths() {
     let dir = tempdir().unwrap();
     let home = dir.path();
