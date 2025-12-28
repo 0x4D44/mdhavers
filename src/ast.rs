@@ -1064,39 +1064,53 @@ mod tests {
 
     #[test]
     fn test_pattern_variants() {
-        let lit_pattern = Pattern::Literal(Literal::Integer(42));
         let id_pattern = Pattern::Identifier("x".to_string());
-        let wildcard = Pattern::Wildcard;
         let span = Span::new(1, 1);
-        let range_pattern = Pattern::Range {
-            start: Box::new(Expr::Literal {
-                value: Literal::Integer(0),
-                span,
-            }),
-            end: Box::new(Expr::Literal {
-                value: Literal::Integer(10),
-                span,
-            }),
-        };
 
         // Just verify they can be created and matched
-        assert!(matches!(
-            lit_pattern,
-            Pattern::Literal(Literal::Integer(42))
-        ));
+        for (pattern, expected) in [
+            (Pattern::Literal(Literal::Integer(42)), true),
+            (Pattern::Literal(Literal::Integer(0)), false),
+        ] {
+            assert_eq!(
+                matches!(pattern, Pattern::Literal(Literal::Integer(42))),
+                expected
+            );
+        }
         assert!(matches!(
             id_pattern,
             Pattern::Identifier(ref name) if name == "x"
         ));
-        assert!(matches!(wildcard, Pattern::Wildcard));
-        assert!(matches!(range_pattern, Pattern::Range { .. }));
+        for (pattern, expected) in [
+            (Pattern::Wildcard, true),
+            (Pattern::Identifier("x".to_string()), false),
+        ] {
+            assert_eq!(matches!(pattern, Pattern::Wildcard), expected);
+        }
+        for (pattern, expected) in [
+            (
+                Pattern::Range {
+                    start: Box::new(Expr::Literal {
+                        value: Literal::Integer(0),
+                        span,
+                    }),
+                    end: Box::new(Expr::Literal {
+                        value: Literal::Integer(10),
+                        span,
+                    }),
+                },
+                true,
+            ),
+            (Pattern::Wildcard, false),
+        ] {
+            assert_eq!(matches!(pattern, Pattern::Range { .. }), expected);
+        }
     }
 
     #[test]
     fn test_destruct_pattern_variants() {
         let var = DestructPattern::Variable("x".to_string());
         let rest = DestructPattern::Rest("remaining".to_string());
-        let ignore = DestructPattern::Ignore;
 
         assert!(matches!(
             var,
@@ -1106,20 +1120,32 @@ mod tests {
             rest,
             DestructPattern::Rest(ref name) if name == "remaining"
         ));
-        assert!(matches!(ignore, DestructPattern::Ignore));
+        for (pattern, expected) in [
+            (DestructPattern::Ignore, true),
+            (DestructPattern::Variable("x".to_string()), false),
+        ] {
+            assert_eq!(matches!(pattern, DestructPattern::Ignore), expected);
+        }
     }
 
     #[test]
     fn test_fstring_part_variants() {
         let text = FStringPart::Text("hello ".to_string());
         let span = Span::new(1, 1);
-        let expr = FStringPart::Expr(Box::new(Expr::Variable {
-            name: "name".to_string(),
-            span,
-        }));
 
         assert!(matches!(text, FStringPart::Text(ref s) if s == "hello "));
-        assert!(matches!(expr, FStringPart::Expr(_)));
+        for (part, expected) in [
+            (
+                FStringPart::Expr(Box::new(Expr::Variable {
+                    name: "name".to_string(),
+                    span,
+                })),
+                true,
+            ),
+            (FStringPart::Text("nope".to_string()), false),
+        ] {
+            assert_eq!(matches!(part, FStringPart::Expr(_)), expected);
+        }
     }
 
     #[test]

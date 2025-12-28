@@ -148,6 +148,29 @@ fn cli_repl_history_falls_back_when_home_dir_is_unavailable_for_coverage() {
 }
 
 #[test]
+#[cfg(coverage)]
+fn cli_repl_reports_editor_init_failure_for_coverage() {
+    let dir = tempdir().unwrap();
+    let home = dir.path().join("home");
+    fs::create_dir_all(&home).expect("create home");
+
+    let mut cmd = Command::new(mdhavers_bin());
+    cmd.args(["repl"])
+        .env("HOME", &home)
+        .env("NO_COLOR", "1")
+        .env("MDHAVERS_COVERAGE_EDITOR_NEW_ERR", "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let output = cmd.output().expect("run mdhavers");
+    let code = output.status.code().unwrap_or(-1);
+    assert_eq!(code, 1);
+    let err = String::from_utf8_lossy(&output.stderr).to_string();
+    assert!(err.contains("coverage DefaultEditor::new error"));
+}
+
+#[test]
 fn cli_subcommands_cover_success_and_error_paths() {
     let dir = tempdir().unwrap();
     let home = dir.path();

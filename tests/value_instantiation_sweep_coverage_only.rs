@@ -9,6 +9,10 @@ use std::rc::Rc;
 fn value_helpers_are_exercised_for_instantiation_coverage() {
     let bytes = Value::Bytes(Rc::new(RefCell::new(vec![1u8, 2u8])));
     assert!(bytes.as_bytes().is_some());
+    assert!(bytes.is_truthy());
+
+    let empty_bytes = Value::Bytes(Rc::new(RefCell::new(Vec::new())));
+    assert!(!empty_bytes.is_truthy());
 
     let list = Value::List(Rc::new(RefCell::new(vec![Value::Nil])));
     assert!(list.as_list().is_some());
@@ -53,4 +57,3 @@ fn value_helpers_are_exercised_for_instantiation_coverage() {
     c.insert(Value::Integer(3));
     assert!(a.is_disjoint(&c));
 }
-

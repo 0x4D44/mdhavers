@@ -1778,6 +1778,14 @@ mod tests {
     }
 
     #[test]
+    fn peek_returns_last_token_when_out_of_bounds_for_coverage() {
+        let tokens = vec![Token::eof(1)];
+        let mut parser = Parser::new(tokens);
+        parser.current = parser.tokens.len();
+        assert_eq!(&parser.peek().kind, &TokenKind::Eof);
+    }
+
+    #[test]
     #[cfg(coverage)]
     fn parser_public_helpers_are_exercised_in_unit_instance_for_coverage() {
         assert!(previous_is_none_at_start_for_coverage());
@@ -2386,6 +2394,11 @@ mod tests {
     #[test]
     fn test_process_escapes_trailing_backslash_is_preserved() {
         assert_eq!(process_escapes("hello\\"), "hello\\");
+    }
+
+    #[test]
+    fn test_process_escapes_accepts_uppercase_hex_marker_for_coverage() {
+        assert_eq!(process_escapes("\\X41"), "A");
     }
 
     // ==================== More Statement Tests ====================

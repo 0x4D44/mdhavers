@@ -556,6 +556,19 @@ fn home_dir_for_history() -> Option<std::path::PathBuf> {
 }
 
 #[cfg(not(test))]
+fn repl_editor() -> Result<DefaultEditor, String> {
+    #[cfg(coverage)]
+    if std::env::var_os("MDHAVERS_COVERAGE_EDITOR_NEW_ERR").is_some() {
+        return Err("coverage DefaultEditor::new error".to_string());
+    }
+
+    match DefaultEditor::new() {
+        Ok(editor) => Ok(editor),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[cfg(not(test))]
 fn run_repl() -> Result<(), String> {
     use mdhavers::interpreter::TraceMode;
 
@@ -580,7 +593,7 @@ fn run_repl() -> Result<(), String> {
     );
     println!();
 
-    let mut rl = match DefaultEditor::new() { Ok(rl) => rl, Err(e) => return Err(e.to_string()) };
+    let mut rl = repl_editor()?;
 
     // Try to load history from file
     let history_path = match home_dir_for_history() {

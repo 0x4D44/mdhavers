@@ -838,6 +838,41 @@ mod tests {
         assert!(ts.contains(':'));
     }
 
+    #[test]
+    fn logging_remaining_region_branches_are_covered() {
+        let record = LogRecord {
+            level: LogLevel::Blether,
+            message: "hullo".to_string(),
+            target: String::new(),
+            file: "file.braw".to_string(),
+            line: 42,
+            fields: Vec::new(),
+            span_path: Vec::new(),
+        };
+
+        let logger = LoggerCore {
+            format: LogFormat::Text,
+            color: false,
+            timestamps: false,
+            sinks: vec![LogSink::Stderr],
+        };
+
+        // Cover the `record.target.is_empty()` false-path (skip pushing target).
+        let line = logger.format_text(&record);
+        assert!(line.contains("hullo"));
+
+        // Cover the `record.fields.is_empty()` and `record.span_path.is_empty()` false-paths.
+        let compact = logger.format_compact(&record);
+        assert!(compact.contains("hullo"));
+
+        // Cover the `timestamp: None` branch.
+        let dict = record_to_value(&record, None);
+        let map = dict.as_dict().unwrap();
+        assert!(!map
+            .borrow()
+            .contains_key(&Value::String("timestamp".to_string())));
+    }
+
     #[cfg(coverage)]
     #[test]
     fn logging_instantiation_hotspots_are_exercised_for_coverage() {

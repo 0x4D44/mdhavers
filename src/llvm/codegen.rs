@@ -36658,6 +36658,110 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     #[test]
+    fn compile_string_self_append_propagates_rhs_compile_error_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "string_self_append_rhs_error");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let len_shadow = codegen.create_entry_block_alloca_i64("len");
+        let cap_shadow = codegen.create_entry_block_alloca_i64("cap");
+        let err = codegen
+            .compile_string_self_append(
+                "s",
+                len_shadow,
+                cap_shadow,
+                &Expr::Variable {
+                    name: "__undef".to_string(),
+                    span: Span::new(1, 1),
+                },
+                1,
+            )
+            .expect_err("expected rhs compile error");
+        assert_eq!(
+            std::mem::discriminant(&err),
+            std::mem::discriminant(&HaversError::CompileError(String::new()))
+        );
+    }
+
+    #[test]
+    fn compile_call_dict_property_propagates_compile_get_error_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "dict_property_call_get_err");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        codegen.var_types.insert("d".to_string(), VarType::Dict);
+
+        let span = Span::new(1, 1);
+        let expr = Expr::Call {
+            callee: Box::new(Expr::Get {
+                object: Box::new(Expr::Variable {
+                    name: "d".to_string(),
+                    span,
+                }),
+                property: "f".to_string(),
+                span,
+            }),
+            arguments: Vec::new(),
+            span,
+        };
+
+        let err = codegen
+            .compile_expr(&expr)
+            .expect_err("expected dict-property call compile error");
+        assert_eq!(
+            std::mem::discriminant(&err),
+            std::mem::discriminant(&HaversError::CompileError(String::new()))
+        );
+    }
+
+    #[test]
+    fn compile_call_dict_property_propagates_arg_compile_error_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "dict_property_call_arg_err");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let span = Span::new(1, 1);
+        let expr = Expr::Call {
+            callee: Box::new(Expr::Get {
+                object: Box::new(Expr::Dict {
+                    pairs: Vec::new(),
+                    span,
+                }),
+                property: "f".to_string(),
+                span,
+            }),
+            arguments: vec![Expr::Variable {
+                name: "__undef".to_string(),
+                span,
+            }],
+            span,
+        };
+
+        let err = codegen
+            .compile_expr(&expr)
+            .expect_err("expected argument compile error");
+        assert_eq!(
+            std::mem::discriminant(&err),
+            std::mem::discriminant(&HaversError::CompileError(String::new()))
+        );
+    }
+
+    #[test]
     fn compile_call_import_alias_direct_dispatch_for_coverage() {
         let context = Context::create();
         let mut codegen = CodeGen::new(&context, "import_alias_direct_dispatch");
