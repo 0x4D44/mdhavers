@@ -1561,6 +1561,94 @@ kin Animal {
         assert!(err.to_string().contains("requires an alias"));
     }
 
+    #[test]
+    fn test_scan_tri_import_requires_alias_errors_propagate_through_nested_stmts_for_coverage() {
+        let err = compile(
+            r#"
+dae f() {
+    gin aye {
+        whiles aye {
+            fetch "tri"
+        }
+    }
+}
+"#,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("requires an alias"));
+    }
+
+    #[test]
+    fn test_scan_tri_import_requires_alias_errors_propagate_through_else_branch_for_coverage() {
+        let err = compile(
+            r#"
+gin aye {
+    blether 1
+} ither {
+    fetch "tri"
+}
+"#,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("requires an alias"));
+    }
+
+    #[test]
+    fn test_scan_tri_import_requires_alias_errors_propagate_through_for_loop_for_coverage() {
+        let err = compile(
+            r#"
+fer i in 0..1 {
+    fetch "tri"
+}
+"#,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("requires an alias"));
+    }
+
+    #[test]
+    fn test_scan_tri_import_requires_alias_errors_propagate_through_try_block_for_coverage() {
+        let err = compile(
+            r#"
+hae_a_bash {
+    fetch "tri"
+} gin_it_gangs_wrang e {
+    blether e
+}
+"#,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("requires an alias"));
+    }
+
+    #[test]
+    fn test_scan_tri_import_requires_alias_errors_propagate_through_class_try_catch_and_match_for_coverage(
+    ) {
+        let err = compile(
+            r#"
+kin C {
+    dae m() {
+        hae_a_bash {
+            keek x {
+                whan 1 -> blether "ok"
+            }
+        } gin_it_gangs_wrang e {
+            keek x {
+                whan 1 -> { fetch "tri" }
+            }
+        }
+    }
+}
+"#,
+        )
+        .unwrap_err();
+        let msg = err.to_string();
+        #[cfg(not(coverage))]
+        assert!(msg.contains("requires an alias"), "unexpected error: {msg}");
+        #[cfg(coverage)]
+        assert!(msg.contains("requires an alias"));
+    }
+
     // ==================== Try-Catch Tests ====================
 
     #[test]
@@ -1601,6 +1689,7 @@ kin Animal {
     whan "hello" -> blether "hi"
     whan 3.14 -> blether "pi"
     whan aye -> blether "true"
+    whan nae -> blether "false"
     whan naething -> blether "nil"
 }"#,
         )
@@ -1608,6 +1697,7 @@ kin Animal {
         assert!(result.contains("=== \"hello\""));
         assert!(result.contains("=== 3.14"));
         assert!(result.contains("=== true"));
+        assert!(result.contains("=== false"));
         assert!(result.contains("=== null"));
     }
 

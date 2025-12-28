@@ -15,11 +15,16 @@ thing Point { x, y }
 kin Foo { dae bar() { gie 1 } }
 
 ken xs = [1, 2, 3, 4]
+ken uninit
 ken ys = [...xs, 5]
 ken [a, b, ...rest] = xs
 ken add1 = |x| x + 1
+ken add1_call_grouped = (add1)(3)
 ken p = a |> add1
+ken logic = aye an nae
 ken d = {"a": 1, "b": 2}
+ken prop_get = d.a
+d.a = 3
 ken grp = (a + b)
 ken r = 1..10
 ken neg = -a
@@ -56,8 +61,13 @@ ken slice_start_none = xs[:4]
 ken slice_end_none = xs[0:]
 ken slice_step_none = xs[0:4]
 ken slice_all_none = xs[:]
+ken idx_get = xs[0]
 blether add(3)
 blether len(rest)
+
+gin aye { blether 3 }
+
+log_mutter "hi"
 "#;
 
     mdhavers::parser::parse(src).expect("expected source to parse successfully");

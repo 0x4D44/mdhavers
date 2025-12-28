@@ -321,9 +321,7 @@ impl DictValue {
     pub fn set(&mut self, key: Value, value: Value) {
         let key_id = key.as_key();
         if let Some(&idx) = self.index.get(&key_id) {
-            if let Some((_, v)) = self.entries.get_mut(idx) {
-                *v = value;
-            }
+            self.entries[idx].1 = value;
             return;
         }
 
@@ -1375,7 +1373,9 @@ mod tests {
 
         // Before setting field, get returns method
         let before = instance.get("value");
-        assert!(matches!(before, Some(Value::Function(_))));
+        let is_function = |value: &Option<Value>| matches!(value, Some(Value::Function(_)));
+        assert!(is_function(&before));
+        assert!(!is_function(&Some(Value::Nil)));
 
         // After setting field, field takes precedence
         instance.set("value".to_string(), Value::Integer(42));
@@ -1569,55 +1569,101 @@ mod tests {
 
     #[test]
     fn test_value_as_key_variants() {
-        assert!(matches!(Value::Nil.as_key(), ValueKey::Nil));
-        assert!(matches!(Value::Bool(true).as_key(), ValueKey::Bool(true)));
-        assert!(matches!(Value::Integer(3).as_key(), ValueKey::Int(3)));
-        assert!(matches!(Value::Float(1.5).as_key(), ValueKey::Float(_)));
-        assert!(matches!(
-            Value::String("x".to_string()).as_key(),
-            ValueKey::String(_)
-        ));
+        let key_nil = Value::Nil.as_key();
+        let key_bool_true = Value::Bool(true).as_key();
+        let key_bool_false = Value::Bool(false).as_key();
+        let key_int_3 = Value::Integer(3).as_key();
+        let key_int_4 = Value::Integer(4).as_key();
+        let key_float = Value::Float(1.5).as_key();
+        let key_string = Value::String("x".to_string()).as_key();
+
+        let is_nil = |key: &ValueKey| matches!(key, ValueKey::Nil);
+        assert!(is_nil(&key_nil));
+        assert!(!is_nil(&key_int_3));
+
+        let is_bool_true = |key: &ValueKey| matches!(key, ValueKey::Bool(true));
+        assert!(is_bool_true(&key_bool_true));
+        assert!(!is_bool_true(&key_bool_false));
+
+        let is_int_3 = |key: &ValueKey| matches!(key, ValueKey::Int(3));
+        assert!(is_int_3(&key_int_3));
+        assert!(!is_int_3(&key_int_4));
+
+        let is_float = |key: &ValueKey| matches!(key, ValueKey::Float(_));
+        assert!(is_float(&key_float));
+        assert!(!is_float(&key_nil));
+
+        let is_string = |key: &ValueKey| matches!(key, ValueKey::String(_));
+        assert!(is_string(&key_string));
+        assert!(!is_string(&key_nil));
 
         let list = Value::List(Rc::new(RefCell::new(vec![])));
-        assert!(matches!(list.as_key(), ValueKey::List(_)));
+        let list_key = list.as_key();
+        let is_list = |key: &ValueKey| matches!(key, ValueKey::List(_));
+        assert!(is_list(&list_key));
+        assert!(!is_list(&key_nil));
+
         let dict = Value::Dict(Rc::new(RefCell::new(DictValue::new())));
-        assert!(matches!(dict.as_key(), ValueKey::Dict(_)));
+        let dict_key = dict.as_key();
+        let is_dict = |key: &ValueKey| matches!(key, ValueKey::Dict(_));
+        assert!(is_dict(&dict_key));
+        assert!(!is_dict(&key_nil));
+
         let set = Value::Set(Rc::new(RefCell::new(SetValue::new())));
-        assert!(matches!(set.as_key(), ValueKey::Set(_)));
+        let set_key = set.as_key();
+        let is_set = |key: &ValueKey| matches!(key, ValueKey::Set(_));
+        assert!(is_set(&set_key));
+        assert!(!is_set(&key_nil));
+
         let bytes = Value::Bytes(Rc::new(RefCell::new(vec![1, 2])));
-        assert!(matches!(bytes.as_key(), ValueKey::Bytes(_)));
+        let bytes_key = bytes.as_key();
+        let is_bytes = |key: &ValueKey| matches!(key, ValueKey::Bytes(_));
+        assert!(is_bytes(&bytes_key));
+        assert!(!is_bytes(&key_nil));
 
         let func = HaversFunction::new("f".to_string(), vec![], vec![], None);
-        assert!(matches!(
-            Value::Function(Rc::new(func)).as_key(),
-            ValueKey::Function(_)
-        ));
+        let func_key = Value::Function(Rc::new(func)).as_key();
+        let is_function = |key: &ValueKey| matches!(key, ValueKey::Function(_));
+        assert!(is_function(&func_key));
+        assert!(!is_function(&key_nil));
+
         let native = NativeFunction::new("nf", 0, |_| Ok(Value::Nil));
         assert_eq!((native.func)(vec![]).unwrap(), Value::Nil);
-        assert!(matches!(
-            Value::NativeFunction(Rc::new(native)).as_key(),
-            ValueKey::NativeFunction(_)
-        ));
+        let native_key = Value::NativeFunction(Rc::new(native)).as_key();
+        let is_native_function = |key: &ValueKey| matches!(key, ValueKey::NativeFunction(_));
+        assert!(is_native_function(&native_key));
+        assert!(!is_native_function(&key_nil));
+
         let class = HaversClass::new("C".to_string(), None);
-        assert!(matches!(
-            Value::Class(Rc::new(class)).as_key(),
-            ValueKey::Class(_)
-        ));
+        let class_key = Value::Class(Rc::new(class)).as_key();
+        let is_class = |key: &ValueKey| matches!(key, ValueKey::Class(_));
+        assert!(is_class(&class_key));
+        assert!(!is_class(&key_nil));
+
         let struct_def = HaversStruct::new("S".to_string(), vec![]);
-        assert!(matches!(
-            Value::Struct(Rc::new(struct_def)).as_key(),
-            ValueKey::Struct(_)
-        ));
+        let struct_key = Value::Struct(Rc::new(struct_def)).as_key();
+        let is_struct = |key: &ValueKey| matches!(key, ValueKey::Struct(_));
+        assert!(is_struct(&struct_key));
+        assert!(!is_struct(&key_nil));
+
         let class = Rc::new(HaversClass::new("I".to_string(), None));
         let instance = HaversInstance::new(class);
-        assert!(matches!(
-            Value::Instance(Rc::new(RefCell::new(instance))).as_key(),
-            ValueKey::Instance(_)
-        ));
+        let instance_key = Value::Instance(Rc::new(RefCell::new(instance))).as_key();
+        let is_instance = |key: &ValueKey| matches!(key, ValueKey::Instance(_));
+        assert!(is_instance(&instance_key));
+        assert!(!is_instance(&key_nil));
+
         let native_obj = Value::NativeObject(Rc::new(TestNative));
-        assert!(matches!(native_obj.as_key(), ValueKey::NativeObject(_)));
+        let native_obj_key = native_obj.as_key();
+        let is_native_obj = |key: &ValueKey| matches!(key, ValueKey::NativeObject(_));
+        assert!(is_native_obj(&native_obj_key));
+        assert!(!is_native_obj(&key_nil));
+
         let range = Value::Range(RangeValue::new(1, 3, true));
-        assert!(matches!(range.as_key(), ValueKey::Range { .. }));
+        let range_key = range.as_key();
+        let is_range = |key: &ValueKey| matches!(key, ValueKey::Range { .. });
+        assert!(is_range(&range_key));
+        assert!(!is_range(&key_nil));
     }
 
     #[test]

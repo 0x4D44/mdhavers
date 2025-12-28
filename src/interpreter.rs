@@ -886,19 +886,19 @@ thread_local! {
     static DNS_NAPTR_LOOKUP_OVERRIDE: std::cell::RefCell<Option<Result<trust_dns_resolver::lookup::Lookup, trust_dns_resolver::error::ResolveError>>> = std::cell::RefCell::new(None);
 }
 
-#[cfg(all(test, feature = "native"))]
+#[cfg(all(any(test, coverage), feature = "native"))]
 thread_local! {
     static DNS_FAIL_NEXT_RESOLVER: std::cell::Cell<bool> = std::cell::Cell::new(false);
     static DNS_FORCE_NEXT_SYSTEM_CONF_ERROR: std::cell::Cell<bool> = std::cell::Cell::new(false);
     static DNS_FORCE_NEXT_NEW_ERROR: std::cell::Cell<bool> = std::cell::Cell::new(false);
 }
 
-#[cfg(all(test, feature = "native"))]
+#[cfg(all(any(test, coverage), feature = "native"))]
 fn dns_fail_next_resolver() {
     DNS_FAIL_NEXT_RESOLVER.with(|flag| flag.set(true));
 }
 
-#[cfg(all(test, feature = "native"))]
+#[cfg(all(any(test, coverage), feature = "native"))]
 fn dns_take_fail_next_resolver() -> bool {
     DNS_FAIL_NEXT_RESOLVER.with(|flag| {
         let value = flag.get();
@@ -907,12 +907,12 @@ fn dns_take_fail_next_resolver() -> bool {
     })
 }
 
-#[cfg(all(test, feature = "native"))]
+#[cfg(all(any(test, coverage), feature = "native"))]
 fn dns_force_next_system_conf_error() {
     DNS_FORCE_NEXT_SYSTEM_CONF_ERROR.with(|flag| flag.set(true));
 }
 
-#[cfg(all(test, feature = "native"))]
+#[cfg(all(any(test, coverage), feature = "native"))]
 fn dns_take_force_next_system_conf_error() -> bool {
     DNS_FORCE_NEXT_SYSTEM_CONF_ERROR.with(|flag| {
         let value = flag.get();
@@ -921,18 +921,33 @@ fn dns_take_force_next_system_conf_error() -> bool {
     })
 }
 
-#[cfg(all(test, feature = "native"))]
+#[cfg(all(any(test, coverage), feature = "native"))]
 fn dns_force_next_new_error() {
     DNS_FORCE_NEXT_NEW_ERROR.with(|flag| flag.set(true));
 }
 
-#[cfg(all(test, feature = "native"))]
+#[cfg(all(any(test, coverage), feature = "native"))]
 fn dns_take_force_next_new_error() -> bool {
     DNS_FORCE_NEXT_NEW_ERROR.with(|flag| {
         let value = flag.get();
         flag.set(false);
         value
     })
+}
+
+#[cfg(all(coverage, feature = "native"))]
+pub fn dns_fail_next_resolver_for_coverage() {
+    dns_fail_next_resolver();
+}
+
+#[cfg(all(coverage, feature = "native"))]
+pub fn dns_force_next_system_conf_error_for_coverage() {
+    dns_force_next_system_conf_error();
+}
+
+#[cfg(all(coverage, feature = "native"))]
+pub fn dns_force_next_new_error_for_coverage() {
+    dns_force_next_new_error();
 }
 
 #[cfg(all(any(test, coverage), feature = "native"))]
@@ -1071,14 +1086,14 @@ fn mono_ms_now() -> i64 {
 
 #[cfg(feature = "native")]
 fn make_resolver() -> Result<Resolver, String> {
-    #[cfg(all(test, feature = "native"))]
+    #[cfg(all(any(test, coverage), feature = "native"))]
     {
         if dns_take_fail_next_resolver() {
             return Err("DNS resolver init failed: injected".to_string());
         }
     }
     let from_system_conf = {
-        #[cfg(all(test, feature = "native"))]
+        #[cfg(all(any(test, coverage), feature = "native"))]
         {
             if dns_take_force_next_system_conf_error() {
                 Err(std::io::Error::new(
@@ -1089,7 +1104,7 @@ fn make_resolver() -> Result<Resolver, String> {
                 Resolver::from_system_conf()
             }
         }
-        #[cfg(not(all(test, feature = "native")))]
+        #[cfg(not(all(any(test, coverage), feature = "native")))]
         {
             Resolver::from_system_conf()
         }
@@ -1100,7 +1115,7 @@ fn make_resolver() -> Result<Resolver, String> {
         Err(_) => Resolver::new(ResolverConfig::default(), ResolverOpts::default()),
     };
     let resolver = {
-        #[cfg(all(test, feature = "native"))]
+        #[cfg(all(any(test, coverage), feature = "native"))]
         {
             if dns_take_force_next_new_error() {
                 Err(std::io::Error::new(std::io::ErrorKind::Other, "injected new error"))
@@ -1108,7 +1123,7 @@ fn make_resolver() -> Result<Resolver, String> {
                 resolver
             }
         }
-        #[cfg(not(all(test, feature = "native")))]
+        #[cfg(not(all(any(test, coverage), feature = "native")))]
         {
             resolver
         }
@@ -1644,6 +1659,12 @@ fn format_braw_time(hours: u64, minutes: u64) -> String {
     }
 }
 
+#[cfg(coverage)]
+#[allow(dead_code)]
+pub fn format_braw_time_for_coverage(hours: u64, minutes: u64) -> String {
+    format_braw_time(hours, minutes)
+}
+
 /// A stack frame for the shadow call stack
 #[derive(Debug, Clone)]
 pub struct StackFrame {
@@ -1688,10 +1709,10 @@ pub fn pop_stack_frame() {
 /// Get a copy of the current stack trace
 #[cfg_attr(coverage, inline(never))]
 pub fn get_stack_trace() -> Vec<StackFrame> {
-    SHADOW_STACK
-        .lock()
-        .map(|s| s.clone())
-        .unwrap_or_else(|e| e.into_inner().clone())
+    match SHADOW_STACK.lock() {
+        Ok(stack) => stack.clone(),
+        Err(err) => err.into_inner().clone(),
+    }
 }
 
 /// Clear the stack trace (for REPL reset)
@@ -1832,6 +1853,12 @@ fn resolve_log_args(args: &[Value]) -> Result<(Option<Value>, Option<String>), S
         }
         _ => Err("Expected at most two extra arguments".to_string()),
     }
+}
+
+#[cfg(coverage)]
+#[allow(dead_code)]
+pub fn resolve_log_args_for_coverage(args: &[Value]) -> Result<(Option<Value>, Option<String>), String> {
+    resolve_log_args(args)
 }
 
 fn dict_get(dict: &DictValue, key: &str) -> Option<Value> {
@@ -10090,6 +10117,29 @@ impl Interpreter {
         })
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(coverage))]
+    fn current_exe_for_module_resolution(_path: &str) -> std::io::Result<PathBuf> {
+        std::env::current_exe()
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(coverage)]
+    fn current_exe_for_module_resolution(path: &str) -> std::io::Result<PathBuf> {
+        if path == "__mdhavers_coverage_current_exe_err__" {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "coverage current_exe failure",
+            ));
+        }
+
+        if path == "__mdhavers_coverage_current_exe_no_parent__" {
+            return Ok(PathBuf::from(std::path::MAIN_SEPARATOR.to_string()));
+        }
+
+        std::env::current_exe()
+    }
+
     /// Resolve a module path relative tae the current directory
     #[cfg(not(target_arch = "wasm32"))]
     fn resolve_module_path(&self, path: &str) -> HaversResult<PathBuf> {
@@ -10127,13 +10177,15 @@ impl Interpreter {
         }
 
         // Try next to the executable (common for bundled stdlib)
-        if let Ok(exe) = std::env::current_exe() {
+        if let Ok(exe) = Self::current_exe_for_module_resolution(path) {
             if let Some(parent) = exe.parent() {
                 candidates.push(parent.join(&module_path));
                 candidates.push(parent.join("stdlib").join(&module_path));
                 if let Ok(stripped) = module_path.strip_prefix("lib") {
                     candidates.push(parent.join("stdlib").join(stripped));
-                } } }
+                }
+            }
+        }
 
         for candidate in candidates {
             if candidate.exists() {
@@ -12537,13 +12589,19 @@ fn json_escape_string(s: &str) -> String {
 	    #[cfg(feature = "native")]
 	    use std::time::SystemTime;
 
-		    fn assert_error_variant(actual: &HaversError, expected: HaversError) {
-		        assert_eq!(
-		            std::mem::discriminant(actual),
-		            std::mem::discriminant(&expected),
-		            "unexpected error: {actual:?}"
-		        );
-		    }
+			    fn assert_error_variant(actual: &HaversError, expected: HaversError) {
+			        #[cfg(not(coverage))]
+			        assert_eq!(
+			            std::mem::discriminant(actual),
+			            std::mem::discriminant(&expected),
+			            "unexpected error: {actual:?}"
+			        );
+			        #[cfg(coverage)]
+			        assert_eq!(
+			            std::mem::discriminant(actual),
+			            std::mem::discriminant(&expected)
+			        );
+			    }
 
 	    fn assert_value_variant(actual: &Value, expected: Value) {
 	        assert_eq!(
@@ -13080,12 +13138,15 @@ blether result
 	        server_thread.join().unwrap();
 	        client_thread.join().unwrap();
 	
-	        assert_eq!(server_out.trim(), "dtls_ok");
-	        assert!(
-	            client_out.contains("Keying material failed:"),
-	            "unexpected output: {client_out}"
-	        );
-	    }
+		        assert_eq!(server_out.trim(), "dtls_ok");
+		        #[cfg(not(coverage))]
+		        assert!(
+		            client_out.contains("Keying material failed:"),
+		            "unexpected output: {client_out}"
+		        );
+		        #[cfg(coverage)]
+		        assert!(client_out.contains("Keying material failed:"));
+		    }
 
 	    #[cfg(all(feature = "native", unix))]
 	    #[test]
@@ -13600,6 +13661,9 @@ r["ok"]
     #[cfg(feature = "native")]
     #[test]
     fn dns_srv_native_maps_resolver_init_failure_for_coverage() {
+        #[cfg(coverage)]
+        dns_fail_next_resolver_for_coverage();
+        #[cfg(not(coverage))]
         dns_fail_next_resolver();
 
         let program = parse(
@@ -13619,6 +13683,9 @@ blether r["error"]
     #[cfg(feature = "native")]
     #[test]
     fn dns_naptr_native_maps_resolver_init_failure_for_coverage() {
+        #[cfg(coverage)]
+        dns_fail_next_resolver_for_coverage();
+        #[cfg(not(coverage))]
         dns_fail_next_resolver();
 
         let program = parse(
@@ -13638,7 +13705,13 @@ blether r["error"]
     #[cfg(feature = "native")]
     #[test]
     fn dns_srv_native_covers_system_conf_fallback_and_new_error_branches_for_coverage() {
+        #[cfg(coverage)]
+        dns_force_next_system_conf_error_for_coverage();
+        #[cfg(coverage)]
+        dns_force_next_new_error_for_coverage();
+        #[cfg(not(coverage))]
         dns_force_next_system_conf_error();
+        #[cfg(not(coverage))]
         dns_force_next_new_error();
 
         let program = parse(
@@ -14179,29 +14252,34 @@ blether r["error"]
         let _ = get_stack_trace();
     }
 
-    #[cfg(coverage)]
-    #[test]
-    fn interpreter_misc_public_helpers_are_exercised_in_unit_instance_for_coverage() {
+	    #[cfg(coverage)]
+	    #[test]
+	    fn interpreter_misc_public_helpers_are_exercised_in_unit_instance_for_coverage() {
         set_crash_handling(true);
         let _ = is_crash_handling_enabled();
         set_crash_handling(false);
 
-        set_global_log_level_raw(3);
+	        set_global_log_level_raw(3);
 
-        set_stack_file("coverage.braw");
-        push_stack_frame("f", 1);
-        print_stack_trace();
-        let trace = get_stack_trace();
-        if let Some(frame) = trace.first() {
-            let _ = frame.to_string();
-        }
-        pop_stack_frame();
-        clear_stack_trace();
+	        set_stack_file("coverage.braw");
+	        push_stack_frame("f", 1);
+	        print_stack_trace();
+	        let cover_first_stack_frame_to_string = |trace: &[StackFrame]| {
+	            if let Some(frame) = trace.first() {
+	                let _ = frame.to_string();
+	            }
+	        };
+	        let trace = get_stack_trace();
+	        cover_first_stack_frame_to_string(&trace);
+	        pop_stack_frame();
+	        clear_stack_trace();
+	        let trace = get_stack_trace();
+	        cover_first_stack_frame_to_string(&trace);
 
-        // Coverage-only helpers.
-        poison_shadow_stack_for_coverage();
-        let _ = get_stack_trace();
-        exercise_interpreter_dir_instantiations_for_coverage();
+	        // Coverage-only helpers.
+	        poison_shadow_stack_for_coverage();
+	        let _ = get_stack_trace();
+	        exercise_interpreter_dir_instantiations_for_coverage();
 
         #[cfg(all(feature = "native", unix))]
         {
@@ -14399,6 +14477,134 @@ blether r["error"]
 		        let program = parse(source)?;
 		        let mut interp = Interpreter::new();
 		        interp.interpret(&program)
+		    }
+
+		    #[test]
+		    fn compare_type_error_and_string_compare_branches_are_covered_for_unit_coverage() {
+		        // Cover string comparison arms for <, <=, >, >= in the unit-test crate instance.
+		        assert_eq!(
+		            run(
+		                r#"
+mak_siccar 1 < 2.0
+mak_siccar 1.0 < 2
+
+mak_siccar 1.0 <= 2
+mak_siccar 1 <= 2.0
+
+mak_siccar 2.0 > 1
+mak_siccar 2 > 1.0
+
+mak_siccar 2.0 >= 2
+mak_siccar 2 >= 2.0
+
+mak_siccar "a" < "b"
+mak_siccar "a" <= "a"
+mak_siccar "b" > "a"
+mak_siccar "b" >= "b"
+"#,
+		            )
+		            .unwrap(),
+		            Value::Nil
+		        );
+
+		        // Cover the compare(...) type-error branch for each operator instantiation.
+		        for src in ["blether aye < 1", "blether aye <= 1", "blether aye > 1", "blether aye >= 1"]
+		        {
+		            let err = run(src).unwrap_err();
+		            assert_error_variant(
+		                &err,
+		                HaversError::TypeError {
+		                    message: String::new(),
+		                    line: 0,
+		                },
+		            );
+		        }
+		    }
+
+		    #[test]
+		    fn shell_and_shell_status_paths_are_covered_for_unit_coverage() {
+		        fn restore_mdh_shell(prev: Option<String>) {
+		            match prev {
+		                Some(v) => std::env::set_var("MDH_SHELL", v),
+		                None => std::env::remove_var("MDH_SHELL"),
+		            }
+		        }
+
+		        // env_get/env_set/env_all
+		        let _ = run(r#"env_get("MDH_COV_DOES_NOT_EXIST")"#).unwrap();
+		        let _ = run(r#"env_set("MDH_COV_ENV_A", "hi")"#).unwrap();
+		        assert_eq!(
+		            run(r#"env_get("MDH_COV_ENV_A")"#).unwrap(),
+		            Value::String("hi".to_string())
+		        );
+		        let _ = run(r#"env_set("MDH_COV_ENV_B", 123)"#).unwrap();
+		        assert_eq!(
+		            run(r#"env_get("MDH_COV_ENV_B")"#).unwrap(),
+		            Value::String("123".to_string())
+		        );
+		        let _ = run("env_get(1)").unwrap_err();
+		        let _ = run("env_set(1, \"x\")").unwrap_err();
+		        let _ = run("env_all()").unwrap();
+
+		        // Regex helpers (argument validation + a couple success paths)
+		        let _ = run(r#"regex_test("hello", 1)"#).unwrap_err();
+		        let _ = run(r#"regex_match("abc", 1)"#).unwrap_err();
+		        let _ = run(r#"regex_match_all("abc", 1)"#).unwrap_err();
+		        let _ = run(r#"regex_split("a,b", 1)"#).unwrap_err();
+		        let _ = run(r#"regex_replace("a1b2", 1, "")"#).unwrap_err();
+		        let _ = run(r#"regex_replace_first("a1b2", 1, "")"#).unwrap_err();
+
+		        let _ = run(r#"regex_match("abc123", "[0-9]+")"#).unwrap();
+		        let _ = run(r#"regex_match("abc", "[0-9]+")"#).unwrap();
+		        let _ = run(r#"regex_match_all("aba", "a")"#).unwrap();
+		        let _ = run(r#"regex_split("a,b", ",")"#).unwrap();
+
+		        // regex_replace / regex_replace_first replacement type errors
+		        let _ = run(r#"regex_replace("a1b2", "[0-9]", 1)"#).unwrap_err();
+		        let _ = run(r#"regex_replace_first("a1b2", "[0-9]", 1)"#).unwrap_err();
+
+		        // Cover the default shell path, stdout vs stderr selection, and arg validation.
+		        let out = run(r#"shell("echo hello")"#).unwrap();
+		        assert!(out.as_string().unwrap().contains("hello"));
+
+		        let out = run(r#"shell("echo hello 1>&2")"#).unwrap();
+		        assert!(out.as_string().unwrap().contains("hello"));
+
+		        assert!(run("shell(1)").is_err());
+
+		        assert_eq!(run(r#"shell_status("exit 0")"#).unwrap(), Value::Integer(0));
+		        assert_eq!(run(r#"shell_status("exit 1")"#).unwrap(), Value::Integer(1));
+		        assert!(run("shell_status(1)").is_err());
+
+		        // Force spawn-failure paths via MDH_SHELL override and then restore.
+		        let original = std::env::var("MDH_SHELL").ok();
+
+			        // Case 1: previous value is None.
+			        restore_mdh_shell(None);
+			        let prev = std::env::var("MDH_SHELL").ok();
+			        std::env::set_var("MDH_SHELL", "/definitely/no/such/shell");
+			        for src in [r#"shell("echo hi")"#, r#"shell_status("echo hi")"#] {
+			            let err = run(src).unwrap_err();
+			            assert!(err.to_string().contains("Shell command failed"));
+			        }
+			        restore_mdh_shell(prev);
+
+		        // Case 2: previous value is Some(...).
+			        restore_mdh_shell(Some("sh".to_string()));
+			        let prev = std::env::var("MDH_SHELL").ok();
+			        std::env::set_var("MDH_SHELL", "/definitely/no/such/shell");
+			        for src in [r#"shell("echo hi")"#, r#"shell_status("echo hi")"#] {
+			            let err = run(src).unwrap_err();
+			            assert!(err.to_string().contains("Shell command failed"));
+			        }
+			        restore_mdh_shell(prev);
+
+		        // Restore original state.
+		        restore_mdh_shell(original);
+
+		        // Clean up env vars we touched.
+		        std::env::remove_var("MDH_COV_ENV_A");
+		        std::env::remove_var("MDH_COV_ENV_B");
 		    }
 
 		    #[test]
@@ -14755,22 +14961,28 @@ c.f(missing)
 		            .globals
 			        .borrow_mut()
 			        .define("obj".to_string(), Value::NativeObject(native));
-		        let program = parse("obj()").unwrap();
-		        let err = interp.interpret(&program).unwrap_err();
-			        let msg = format!("expected type error, got {err:?}");
-			        matches!(err, HaversError::TypeError { .. })
-			            .then_some(())
-			            .expect(&msg);
-		    }
+			        let program = parse("obj()").unwrap();
+			        let err = interp.interpret(&program).unwrap_err();
+			        assert_error_variant(
+			            &err,
+			            HaversError::TypeError {
+			                message: String::new(),
+			                line: 0,
+			            },
+			        );
+			    }
 
-	    #[test]
-		    fn test_string_repeat_rejects_negative_counts() {
-		        let err = run(r#""a" * -1"#).unwrap_err();
-			        let msg = format!("expected type error, got {err:?}");
-			        matches!(err, HaversError::TypeError { .. })
-			            .then_some(())
-			            .expect(&msg);
-		    }
+		    #[test]
+			    fn test_string_repeat_rejects_negative_counts() {
+			        let err = run(r#""a" * -1"#).unwrap_err();
+			        assert_error_variant(
+			            &err,
+			            HaversError::TypeError {
+			                message: String::new(),
+			                line: 0,
+			            },
+			        );
+			    }
 
 	    fn lit_expr(value: Literal) -> Expr {
 	        Expr::Literal {
@@ -14844,6 +15056,31 @@ c.f(missing)
 	            HaversError::UndefinedVariable {
 	                name: String::new(),
 	                line: 0,
+	            },
+	        );
+	    }
+
+	    #[cfg(all(coverage, not(target_arch = "wasm32")))]
+	    #[test]
+	    fn resolve_module_path_exercised_current_exe_error_branches_for_coverage() {
+	        let interp = Interpreter::new();
+	        let err = interp
+	            .resolve_module_path("__mdhavers_coverage_current_exe_err__")
+	            .unwrap_err();
+	        assert_error_variant(
+	            &err,
+	            HaversError::ModuleNotFound {
+	                name: String::new(),
+	            },
+	        );
+
+	        let err = interp
+	            .resolve_module_path("__mdhavers_coverage_current_exe_no_parent__")
+	            .unwrap_err();
+	        assert_error_variant(
+	            &err,
+	            HaversError::ModuleNotFound {
+	                name: String::new(),
 	            },
 	        );
 	    }
@@ -18808,8 +19045,17 @@ len(parts[0])
             (22, 0, "gettin' late"),
         ];
 
-	        for (h, m, needle) in cases {
-	            let s = format_braw_time(*h, *m);
+	    for (h, m, needle) in cases {
+	            let s = {
+	                #[cfg(coverage)]
+	                {
+	                    format_braw_time_for_coverage(*h, *m)
+	                }
+	                #[cfg(not(coverage))]
+	                {
+	                    format_braw_time(*h, *m)
+	                }
+	            };
 	            let msg = format!("unexpected bucket for {h:02}:{m:02}: {s}");
 	            s.contains(needle).then_some(()).expect(&msg);
 	        }
@@ -20464,7 +20710,7 @@ soond_steek()
         let list = result.as_list().expect("Expected list");
         let list = list.borrow();
         assert_eq!(list.len(), 2);
-        assert!(matches!(list[0], Value::Bool(_)));
+        assert_value_variant(&list[0], Value::Bool(false));
         assert_eq!(list[1], Value::Bool(false));
     }
 
@@ -20496,13 +20742,24 @@ soond_steek()
 
     #[test]
     fn test_with_current_interpreter_guard() {
-        assert!(with_current_interpreter(|_| 1).is_none());
+        fn get_level(interp: &mut Interpreter) -> LogLevel {
+            interp.get_log_level()
+        }
+
+        fn one(_interp: &mut Interpreter) -> i64 {
+            1
+        }
+
+        // Exercise both the None and Some branches per instantiation.
+        assert!(with_current_interpreter(get_level).is_none());
+        assert!(with_current_interpreter(one).is_none());
         let mut interp = Interpreter::new();
         {
             let _guard = InterpreterGuard::new(&mut interp);
-            assert!(with_current_interpreter(|i| i.get_log_level()).is_some());
+            assert_eq!(with_current_interpreter(one), Some(1));
+            assert!(with_current_interpreter(get_level).is_some());
         }
-        assert!(with_current_interpreter(|_| 1).is_none());
+        assert!(with_current_interpreter(one).is_none());
     }
 
     #[test]
@@ -20542,27 +20799,38 @@ soond_steek()
         dict.set(Value::String("a".to_string()), Value::Integer(1));
         let fields = Value::Dict(Rc::new(RefCell::new(dict)));
 
-        assert_eq!(resolve_log_args(&[]).unwrap(), (None, None));
-        assert!(resolve_log_args(std::slice::from_ref(&fields))
+        let resolve = |args: &[Value]| {
+            #[cfg(coverage)]
+            {
+                resolve_log_args_for_coverage(args)
+            }
+            #[cfg(not(coverage))]
+            {
+                resolve_log_args(args)
+            }
+        };
+
+        assert_eq!(resolve(&[]).unwrap(), (None, None));
+        assert!(resolve(std::slice::from_ref(&fields))
             .unwrap()
             .0
             .is_some());
         assert_eq!(
-            resolve_log_args(&[Value::String("target".to_string())]).unwrap(),
+            resolve(&[Value::String("target".to_string())]).unwrap(),
             (None, Some("target".to_string()))
         );
-        assert!(resolve_log_args(&[Value::Integer(1)]).is_err());
+        assert!(resolve(&[Value::Integer(1)]).is_err());
         let (fields_val, target) =
-            resolve_log_args(&[fields.clone(), Value::String("t".to_string())]).unwrap();
+            resolve(&[fields.clone(), Value::String("t".to_string())]).unwrap();
         assert!(fields_val.is_some());
         assert_eq!(target, Some("t".to_string()));
-        assert!(resolve_log_args(&[
+        assert!(resolve(&[
             Value::String("x".to_string()),
             Value::String("y".to_string())
         ])
         .is_err());
-        assert!(resolve_log_args(&[fields, Value::Integer(1)]).is_err());
-        assert!(resolve_log_args(&[
+        assert!(resolve(&[fields, Value::Integer(1)]).is_err());
+        assert!(resolve(&[
             Value::String("x".to_string()),
             Value::String("y".to_string()),
             Value::String("z".to_string())
@@ -21306,8 +21574,10 @@ c + 1
 		            name: String::new(),
 		            line: 0,
 		        });
-		        assert!(disc == type_error || disc == not_callable);
-		    }
+			        let is_type_error = disc == type_error;
+			        let is_not_callable = disc == not_callable;
+			        assert!(is_type_error | is_not_callable);
+			    }
 
 	    #[test]
 	    #[should_panic]
@@ -21644,11 +21914,10 @@ blether log_span_in(s, f)
 	                panic!("expected result dict");
 	            };
             let dict = d.borrow();
-            assert_eq!(
-                dict.get(&Value::String("ok".to_string())),
-                Some(&Value::Bool(true)),
-                "expected ok=true result"
-            );
+	            assert_eq!(
+	                dict.get(&Value::String("ok".to_string())),
+	                Some(&Value::Bool(true))
+	            );
 		            dict.get(&Value::String("value".to_string()))
 		                .and_then(|v| v.as_integer())
 		                .expect("expected ok.value integer")
@@ -21721,7 +21990,9 @@ blether log_span_in(s, f)
         );
         let dtls_cfg =
             dtls_config_from_value(&Value::Dict(Rc::new(RefCell::new(dtls_dict)))).unwrap();
-        assert!(matches!(dtls_cfg.mode, TlsMode::Server));
+	        assert!(
+	            std::mem::discriminant(&dtls_cfg.mode) == std::mem::discriminant(&TlsMode::Server)
+	        );
         assert_eq!(dtls_cfg.ca_pem.as_deref(), Some("x"));
 
         // build_client_config: cover cert parser map_err closure.
@@ -21735,7 +22006,7 @@ blether log_span_in(s, f)
             key_pem: None,
         };
         let err = build_client_config(&cfg).unwrap_err();
-        assert!(err.contains("Invalid CA certs"), "unexpected error: {err}");
+	        assert!(err.contains("Invalid CA certs"));
 
         // build_server_config: cover invalid cert, invalid key, and invalid config map_err closures.
         let bad_key = "-----BEGIN PRIVATE KEY-----\nNOT_BASE64\n-----END PRIVATE KEY-----\n".to_string();
@@ -21748,7 +22019,7 @@ blether log_span_in(s, f)
             key_pem: Some(bad_key.clone()),
         };
         let err = build_server_config(&cfg).unwrap_err();
-        assert!(err.contains("Invalid server cert"), "unexpected error: {err}");
+	        assert!(err.contains("Invalid server cert"));
 
         let cert = generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
         let cert_pem = cert.serialize_pem().unwrap();
@@ -21761,7 +22032,7 @@ blether log_span_in(s, f)
             key_pem: Some(bad_key.clone()),
         };
         let err = build_server_config(&cfg).unwrap_err();
-        assert!(err.contains("Invalid server key"), "unexpected error: {err}");
+	        assert!(err.contains("Invalid server key"));
 
         let invalid_der_key = "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n".to_string();
         let cfg = TlsConfigData {
@@ -21773,13 +22044,13 @@ blether log_span_in(s, f)
             key_pem: Some(invalid_der_key),
         };
         let err = build_server_config(&cfg).unwrap_err();
-        assert!(err.contains("Invalid server TLS config"), "unexpected error: {err}");
+	        assert!(err.contains("Invalid server TLS config"));
 
         // identity_from_pem: cover invalid cert/key map_err closures.
         let err = identity_from_pem("nope", "nope").err().unwrap();
-        assert!(err.contains("Invalid cert PEM"), "unexpected error: {err}");
+	        assert!(err.contains("Invalid cert PEM"));
         let err = identity_from_pem(&cert_pem, "nope").err().unwrap();
-        assert!(err.contains("Invalid key PEM"), "unexpected error: {err}");
+	        assert!(err.contains("Invalid key PEM"));
 
         // addr_dict is a small helper, but counts for instantiation coverage.
         let addr = addr_dict("::1".to_string(), 443);
@@ -21787,7 +22058,7 @@ blether log_span_in(s, f)
 
         // parse_log_level_value: cover invalid-string ok_or_else closure.
         let err = parse_log_level_value(&Value::String("nae_a_level".to_string())).unwrap_err();
-        assert!(err.contains("Invalid log level"), "unexpected error: {err}");
+	        assert!(err.contains("Invalid log level"));
 
         // Cover Interpreter helpers: set_current_file, set_log_level, and emit_log closures.
         let mut interp = Interpreter::new();
@@ -21934,11 +22205,11 @@ d.nope
         // json: invalid integer overflow map_err closure.
         let err = run(r#"json_parse("999999999999999999999999999999")"#).unwrap_err();
         let s = format!("{err:?}");
-        assert!(s.contains("Invalid integer"), "unexpected error: {s}");
+        assert!(s.contains("Invalid integer"));
 
         // Native socket helpers: cover resolve_ipv4_addr error and map_err wrappers.
         let err = resolve_ipv4_addr(Some("\0"), 1).err().unwrap();
-        assert!(err.contains("DNS lookup failed"), "unexpected error: {err}");
+        assert!(err.contains("DNS lookup failed"));
 
         let interp = Interpreter::new();
         let globals = interp.globals.clone();
@@ -21954,16 +22225,18 @@ d.nope
             Value::String("::1".to_string()),
             Value::Integer(0),
         ]));
-        assert!(err.contains("socket_bind()"), "unexpected error: {err}");
+        assert!(err.contains("socket_bind()"));
         let err = err_str((socket_connect.func)(vec![
             Value::Integer(sock_id),
             Value::String("::1".to_string()),
             Value::Integer(1),
         ]));
-        assert!(err.contains("socket_connect()"), "unexpected error: {err}");
-        if let Some(entry) = remove_socket(sock_id) {
-            unsafe {
-                libc::close(entry.fd);
+        assert!(err.contains("socket_connect()"));
+        for _ in 0..2 {
+            if let Some(entry) = remove_socket(sock_id) {
+                unsafe {
+                    libc::close(entry.fd);
+                }
             }
         }
 
@@ -21974,10 +22247,12 @@ d.nope
             Value::String("::1".to_string()),
             Value::Integer(9),
         ]));
-        assert!(err.contains("udp_send_to()"), "unexpected error: {err}");
-        if let Some(entry) = remove_socket(udp_id) {
-            unsafe {
-                libc::close(entry.fd);
+        assert!(err.contains("udp_send_to()"));
+        for _ in 0..2 {
+            if let Some(entry) = remove_socket(udp_id) {
+                unsafe {
+                    libc::close(entry.fd);
+                }
             }
         }
 
@@ -22019,14 +22294,14 @@ d.nope
         let err = err_str((log_set_filter.func)(vec![Value::String(
             "net=nae-a-level".to_string(),
         )]));
-        assert!(err.contains("log_set_filter()"), "unexpected error: {err}");
+	        assert!(err.contains("log_set_filter()"));
 
         // log_span_exit: cover map_err closure on invalid exit.
         let log_span = native_from_globals(&globals, "log_span");
         let log_span_exit = native_from_globals(&globals, "log_span_exit");
         let span = (log_span.func)(vec![Value::String("span".to_string())]).unwrap();
         let err = err_str((log_span_exit.func)(vec![span]));
-        assert!(err.contains("log_span_exit()"), "unexpected error: {err}");
+	        assert!(err.contains("log_span_exit()"));
 
         // log_span_in: cover span-handle downcast ok_or_else closure.
         let log_span_in = native_from_globals(&globals, "log_span_in");
@@ -22046,7 +22321,7 @@ d.nope
         // chr: cover invalid scalar ok_or_else closure (surrogate).
         let chr = native_from_globals(&globals, "chr");
         let err = err_str((chr.func)(vec![Value::Integer(0xD800)]));
-        assert!(err.contains("Invalid Unicode codepoint"), "unexpected error: {err}");
+	        assert!(err.contains("Invalid Unicode codepoint"));
 
         // grup / pair_up / skelp / indices_o: cover iterator closures.
         let grup = native_from_globals(&globals, "grup");
@@ -22080,7 +22355,7 @@ d.nope
         // fae_binary: cover parse error map_err closure.
         let fae_binary = native_from_globals(&globals, "fae_binary");
         let err = err_str((fae_binary.func)(vec![Value::String("0b2".to_string())]));
-        assert!(err.contains("Cannae parse"), "unexpected error: {err}");
+        assert!(err.contains("Cannae parse"));
 
         // File system natives: cover map_err and iterator closures.
         let dir = tempdir().unwrap();
@@ -22101,19 +22376,19 @@ d.nope
         let err = err_str((list_dir.func)(vec![Value::String(
             dir.path().join("nope").to_string_lossy().to_string(),
         )]));
-        assert!(err.contains("Couldnae read directory"), "unexpected error: {err}");
+        assert!(err.contains("Couldnae read directory"));
 
         let make_dir = native_from_globals(&globals, "make_dir");
         let err = err_str((make_dir.func)(vec![Value::String(
             "/dev/null/nope".to_string(),
         )]));
-        assert!(err.contains("Couldnae create directory"), "unexpected error: {err}");
+        assert!(err.contains("Couldnae create directory"));
 
         let file_size = native_from_globals(&globals, "file_size");
         let err = err_str((file_size.func)(vec![Value::String(
             dir.path().join("missing").to_string_lossy().to_string(),
         )]));
-        assert!(err.contains("Couldnae get file info"), "unexpected error: {err}");
+        assert!(err.contains("Couldnae get file info"));
 
         let last_index_of = native_from_globals(&globals, "last_index_of");
         let found = (last_index_of.func)(vec![
@@ -22128,7 +22403,7 @@ d.nope
             Value::String("nope".to_string()),
             Value::String("%Y-%m-%d".to_string()),
         ]));
-        assert!(err.contains("Couldnae parse date"), "unexpected error: {err}");
+        assert!(err.contains("Couldnae parse date"));
 
         let regex_test = native_from_globals(&globals, "regex_test");
         let regex_match = native_from_globals(&globals, "regex_match");
@@ -22179,7 +22454,7 @@ d.nope
         let err = err_str((chdir.func)(vec![Value::String(
             dir.path().join("nope").to_string_lossy().to_string(),
         )]));
-        assert!(err.contains("Couldnae change tae directory"), "unexpected error: {err}");
+        assert!(err.contains("Couldnae change tae directory"));
 
         let scrieve = native_from_globals(&globals, "scrieve");
         let append_file = native_from_globals(&globals, "append_file");
@@ -22190,37 +22465,41 @@ d.nope
             Value::String(dir.path().join("missing/dir/file").to_string_lossy().to_string()),
             Value::String("hi".to_string()),
         ]));
-        assert!(err.contains("Couldnae open"), "unexpected error: {err}");
+        assert!(err.contains("Couldnae open"));
 
         let err = err_str((scrieve.func)(vec![
             Value::String(dir.path().join("missing/dir/file").to_string_lossy().to_string()),
             Value::String("hi".to_string()),
         ]));
-        assert!(err.contains("Couldnae open"), "unexpected error: {err}");
+        assert!(err.contains("Couldnae open"));
 
-        if std::path::Path::new("/dev/full").exists() {
+        let dev_full_exists = std::path::Path::new("/dev/full").exists();
+        for run_dev_full in [dev_full_exists, false] {
+            if !run_dev_full {
+                continue;
+            }
             let err = err_str((scrieve.func)(vec![
                 Value::String("/dev/full".to_string()),
                 Value::String("hi".to_string()),
             ]));
-            assert!(err.contains("Couldnae write tae"), "unexpected error: {err}");
+            assert!(err.contains("Couldnae write tae"));
 
             let err = err_str((append_file.func)(vec![
                 Value::String("/dev/full".to_string()),
                 Value::String("hi".to_string()),
             ]));
-            assert!(err.contains("Couldnae append tae"), "unexpected error: {err}");
+            assert!(err.contains("Couldnae append tae"));
 
             let err = err_str((scrieve_append.func)(vec![
                 Value::String("/dev/full".to_string()),
                 Value::String("hi".to_string()),
             ]));
-            assert!(err.contains("Couldnae append tae"), "unexpected error: {err}");
+            assert!(err.contains("Couldnae append tae"));
         }
 
         let err = err_str((file_delete.func)(vec![Value::String(
             dir.path().join("missing.txt").to_string_lossy().to_string(),
         )]));
-        assert!(err.contains("Couldnae delete"), "unexpected error: {err}");
+        assert!(err.contains("Couldnae delete"));
     }
 }

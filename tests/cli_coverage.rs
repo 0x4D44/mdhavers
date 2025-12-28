@@ -111,6 +111,43 @@ fn cli_repl_quits_cleanly_with_piped_input() {
 }
 
 #[test]
+#[cfg(coverage)]
+fn cli_repl_history_falls_back_when_home_dir_is_unavailable_for_coverage() {
+    let dir = tempdir().unwrap();
+    let home = dir.path().join("home");
+    fs::create_dir_all(&home).expect("create home");
+    let cwd = dir.path().join("cwd");
+    fs::create_dir_all(&cwd).expect("create cwd");
+
+    let mut cmd = Command::new(mdhavers_bin());
+    cmd.args(["repl"])
+        .env("HOME", &home)
+        .env("NO_COLOR", "1")
+        .env("MDHAVERS_COVERAGE_HOME_DIR_NONE", "1")
+        .current_dir(&cwd)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = cmd.spawn().expect("spawn mdhavers");
+    {
+        use std::io::Write;
+        child
+            .stdin
+            .as_mut()
+            .expect("stdin")
+            .write_all(b"quit\n")
+            .expect("write stdin");
+    }
+    drop(child.stdin.take());
+
+    let output = child.wait_with_output().expect("wait");
+    let code = output.status.code().unwrap_or(-1);
+    let err = String::from_utf8_lossy(&output.stderr).to_string();
+    assert_eq!(code, 0, "stderr: {err}");
+}
+
+#[test]
 fn cli_subcommands_cover_success_and_error_paths() {
     let dir = tempdir().unwrap();
     let home = dir.path();
@@ -305,9 +342,25 @@ fn cli_argument_errors_and_missing_inputs() {
     assert_ne!(code, 0);
 
     let missing = dir.path().join("missing.braw");
-    let (code, _out, err) = run_mdhavers(&["run", missing.to_str().unwrap()], None, home);
-    assert_ne!(code, 0);
-    assert!(err.contains("Cannae read"));
+    let missing = missing.to_str().unwrap();
+
+    // Ensure each subcommand surfaces the read_file() error path.
+    for args in [
+        vec!["run", missing],
+        vec![missing],
+        vec!["check", missing],
+        vec!["compile", missing],
+        vec!["wasm", missing],
+        vec!["trace", missing],
+        vec!["tokens", missing],
+        vec!["ast", missing],
+        vec!["fmt", missing],
+        vec!["build", missing, "-O", "0"],
+    ] {
+        let (code, _out, err) = run_mdhavers(&args, None, home);
+        assert_ne!(code, 0, "expected failure for args={args:?}");
+        assert!(err.contains("Cannae read"), "unexpected stderr: {err}");
+    }
 }
 
 #[test]

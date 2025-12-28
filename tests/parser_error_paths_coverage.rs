@@ -12,11 +12,19 @@ fn parser_exercises_common_error_paths_for_coverage() {
         ("destructure_value_expr_error", "ken [a] = )"),
         ("destructure_missing_stmt_end", "ken [a] = [1] 2"),
         ("destructure_rest_missing_name", "ken [... ] = [1]"),
+        (
+            "destructure_multiple_rest_patterns",
+            "ken [a, ...rest, ...more] = [1, 2, 3]",
+        ),
         ("function_missing_right_paren", "dae foo(a, b { gie a }"),
         ("function_missing_name", "dae () { gie 1 }"),
         ("function_missing_left_paren", "dae foo a) { gie a }"),
         ("function_param_name_must_be_identifier", "dae foo(1) { gie 1 }"),
         ("function_default_param_expr_error", "dae foo(a = ) { gie a }"),
+        (
+            "function_params_without_defaults_cannot_follow_defaults",
+            "dae foo(a = 1, b) { gie a }",
+        ),
         ("function_missing_left_brace", "dae foo() gie 1"),
         ("return_value_expr_error", "gie )"),
         ("return_requires_stmt_end", "gie 1 2"),
@@ -63,6 +71,7 @@ fn parser_exercises_common_error_paths_for_coverage() {
         ("compound_assign_value_expr_error", "ken x = 1\nx += )"),
         ("match_missing_arrow", "keek x { whan 1 { blether 1 } }"),
         ("match_missing_open_brace", "keek 1 whan 1 -> 1 }"),
+        ("match_missing_right_brace", "keek 1 { whan 1 -> blether 1"),
         ("match_missing_whan", "keek 1 { 1 -> 1 }"),
         ("match_value_expr_error", "keek ) { whan 1 -> 1 }"),
         ("match_arm_block_body_parse_error", "keek 1 { whan 1 -> { blether 1"),
@@ -113,7 +122,19 @@ fn parser_exercises_common_error_paths_for_coverage() {
         ("lambda_expr_body_parse_error", "ken f = |x| )"),
         ("range_inclusive_end_expr_error", "1..= )"),
         ("range_exclusive_end_expr_error", "1.. )"),
+        (
+            "match_pattern_negative_number_requires_number_after_minus",
+            r#"
+keek 1 {
+    whan -aye -> 1
+}
+"#,
+        ),
         ("lexer_unterminated_string", "ken s = \"unterminated"),
+        ("compound_assign_subtract_value_expr_error", "ken x = 1\nx -= )"),
+        ("compound_assign_multiply_value_expr_error", "ken x = 1\nx *= )"),
+        ("compound_assign_divide_value_expr_error", "ken x = 1\nx /= )"),
+        ("compound_assign_mod_value_expr_error", "ken x = 1\nx %= )"),
     ];
 
     for (name, source) in cases {
@@ -149,4 +170,40 @@ keek "a" {
     )
     .expect("string patterns should parse");
     assert!(!match_prog.statements.is_empty());
+}
+
+#[test]
+fn parser_accepts_bool_and_negative_number_match_patterns_for_coverage() {
+    let match_prog = parse(
+        r#"
+keek aye {
+    whan aye -> 1
+    whan nae -> 2
+    whan _ -> 0
+}
+
+keek 1 {
+    whan -1 -> 1
+    whan -1.5 -> 2
+    whan _ -> 0
+}
+"#,
+    )
+    .expect("bool and negative number patterns should parse");
+    assert!(!match_prog.statements.is_empty());
+}
+
+#[test]
+fn parser_accepts_compound_assignment_ops_for_coverage() {
+    let program = parse(
+        r#"
+ken x = 10
+x += 1
+x -= 2
+x *= 3
+x /= 4
+"#,
+    )
+    .expect("compound assignment ops should parse");
+    assert!(!program.statements.is_empty());
 }

@@ -73,12 +73,18 @@ fetch "foo/bar.braw"
     {
         use std::hint::black_box;
         use inkwell::context::Context;
+        use mdhavers::llvm::codegen::CodeGen;
         use mdhavers::llvm::{InferredType, MdhTypes, ValueTag};
         use mdhavers::llvm::runtime::RuntimeFunctions;
 
         let context = Context::create();
         let types = MdhTypes::new(&context);
         black_box(types.value_basic_type());
+
+        // Cover CodeGen's coverage-only helpers in the dependency-crate instance to keep
+        // instantiation coverage at 100% under cargo-llvm-cov.
+        let mut codegen = CodeGen::new(&context, "coverage_codegen_dep_instance");
+        codegen.coverage_compile_condition_direct_error_branches();
 
         let module = context.create_module("mdhavers_runtime_declare");
         let runtime = RuntimeFunctions::declare(&module, &types);

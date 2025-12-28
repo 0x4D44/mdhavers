@@ -543,12 +543,11 @@ impl AudioState {
         Ok(())
     }
 
-    fn mixer(&self) -> Result<std::sync::MutexGuard<'_, MixerState>, String> {
-        let guard = match self.shared.lock() {
+    fn mixer(&self) -> std::sync::MutexGuard<'_, MixerState> {
+        match self.shared.lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
-        };
-        Ok(guard)
+        }
     }
 
     fn shutdown(&mut self) {
@@ -906,7 +905,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let wheesht = as_bool(&args[0], "soond_wheesht")?;
             state.ensure_audio()?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             mixer.muted = wheesht;
             Ok(Value::Nil)
         })
@@ -918,7 +917,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
             let mut value = as_number(&args[0], "soond_luid")? as f32;
             value = clamp01(value);
             state.ensure_audio()?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             mixer.master_volume = value;
             Ok(Value::Nil)
         })
@@ -927,7 +926,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     // soond_hou_luid
     define_native(globals, "soond_hou_luid", 0, |_args| {
         with_state(|state| {
-            let mixer = state.mixer()?;
+            let mixer = state.mixer();
             Ok(Value::Float(mixer.master_volume as f64))
         })
     });
@@ -941,7 +940,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "soond_ready", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "soond_ready")?;
-            let mixer = state.mixer()?;
+            let mixer = state.mixer();
             let entry = mixer
                 .sounds
                 .get(handle)
@@ -970,7 +969,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
                 pan: 0.0,
                 pitch: 1.0,
             };
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let handle = AudioState::alloc_handle(&mut mixer.sounds, entry);
             Ok(Value::Integer(handle))
         })
@@ -980,7 +979,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "soond_spiel", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "soond_spiel")?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .sounds
                 .get_mut(handle)
@@ -995,7 +994,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "soond_haud", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "soond_haud")?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .sounds
                 .get_mut(handle)
@@ -1010,7 +1009,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "soond_gae_on", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "soond_gae_on")?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .sounds
                 .get_mut(handle)
@@ -1025,7 +1024,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "soond_stap", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "soond_stap")?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .sounds
                 .get_mut(handle)
@@ -1041,7 +1040,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "soond_unlade", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "soond_unlade")?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             if handle >= mixer.sounds.len() || mixer.sounds[handle].is_none() {
                 return Err(ERR_BAD_HANDLE.to_string());
             }
@@ -1054,7 +1053,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "soond_is_spielin", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "soond_is_spielin")?;
-            let mixer = state.mixer()?;
+            let mixer = state.mixer();
             let entry = mixer
                 .sounds
                 .get(handle)
@@ -1070,7 +1069,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
             let handle = as_handle(&args[0], "soond_pit_luid")?;
             let mut value = as_number(&args[1], "soond_pit_luid")? as f32;
             value = clamp01(value);
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .sounds
                 .get_mut(handle)
@@ -1086,7 +1085,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let handle = as_handle(&args[0], "soond_pit_pan")?;
             let pan = as_number(&args[1], "soond_pit_pan")? as f32;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .sounds
                 .get_mut(handle)
@@ -1102,7 +1101,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let handle = as_handle(&args[0], "soond_pit_tune")?;
             let pitch = as_number(&args[1], "soond_pit_tune")? as f32;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .sounds
                 .get_mut(handle)
@@ -1118,7 +1117,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let handle = as_handle(&args[0], "soond_pit_rin_roond")?;
             let looped = as_bool(&args[1], "soond_pit_rin_roond")?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .sounds
                 .get_mut(handle)
@@ -1147,7 +1146,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
                 pan: 0.0,
                 pitch: 1.0,
             };
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let handle = AudioState::alloc_handle(&mut mixer.music, entry);
             Ok(Value::Integer(handle))
         })
@@ -1157,7 +1156,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "muisic_spiel", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_spiel")?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .music
                 .get_mut(handle)
@@ -1172,7 +1171,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "muisic_haud", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_haud")?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .music
                 .get_mut(handle)
@@ -1187,7 +1186,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "muisic_gae_on", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_gae_on")?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .music
                 .get_mut(handle)
@@ -1202,7 +1201,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "muisic_stap", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_stap")?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .music
                 .get_mut(handle)
@@ -1218,7 +1217,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "muisic_unlade", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_unlade")?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             if handle >= mixer.music.len() || mixer.music[handle].is_none() {
                 return Err(ERR_BAD_HANDLE.to_string());
             }
@@ -1231,7 +1230,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "muisic_is_spielin", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_is_spielin")?;
-            let mixer = state.mixer()?;
+            let mixer = state.mixer();
             let entry = mixer
                 .music
                 .get(handle)
@@ -1246,7 +1245,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_loup")?;
             let pos = as_number(&args[1], "muisic_loup")? as f64;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .music
                 .get_mut(handle)
@@ -1262,7 +1261,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "muisic_hou_lang", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_hou_lang")?;
-            let mixer = state.mixer()?;
+            let mixer = state.mixer();
             let entry = mixer
                 .music
                 .get(handle)
@@ -1277,7 +1276,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "muisic_whaur", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_whaur")?;
-            let mixer = state.mixer()?;
+            let mixer = state.mixer();
             let entry = mixer
                 .music
                 .get(handle)
@@ -1294,7 +1293,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
             let handle = as_handle(&args[0], "muisic_pit_luid")?;
             let mut value = as_number(&args[1], "muisic_pit_luid")? as f32;
             value = clamp01(value);
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .music
                 .get_mut(handle)
@@ -1310,7 +1309,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_pit_pan")?;
             let pan = as_number(&args[1], "muisic_pit_pan")? as f32;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .music
                 .get_mut(handle)
@@ -1326,7 +1325,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_pit_tune")?;
             let pitch = as_number(&args[1], "muisic_pit_tune")? as f32;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .music
                 .get_mut(handle)
@@ -1342,7 +1341,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let handle = as_handle(&args[0], "muisic_pit_rin_roond")?;
             let looped = as_bool(&args[1], "muisic_pit_rin_roond")?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .music
                 .get_mut(handle)
@@ -1366,7 +1365,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
             let sf = match &args[1] {
                 Value::Nil => {
                     let existing = {
-                        let mixer = state.mixer()?;
+                        let mixer = state.mixer();
                         mixer.default_soundfont.clone()
                     };
                     if let Some(sf) = existing {
@@ -1374,7 +1373,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
                     } else {
                         let path = resolve_default_soundfont()?;
                         let sf = load_soundfont(path.as_path())?;
-                        let mut mixer = state.mixer()?;
+                        let mut mixer = state.mixer();
                         mixer
                             .default_soundfont
                             .get_or_insert_with(|| Arc::clone(&sf));
@@ -1408,7 +1407,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
                 scratch_right: Vec::new(),
             };
 
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let handle = AudioState::alloc_handle(&mut mixer.midi, entry);
             Ok(Value::Integer(handle))
         })
@@ -1418,7 +1417,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "midi_spiel", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_spiel")?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .midi
                 .get_mut(handle)
@@ -1436,7 +1435,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "midi_haud", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_haud")?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .midi
                 .get_mut(handle)
@@ -1451,7 +1450,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "midi_gae_on", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_gae_on")?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .midi
                 .get_mut(handle)
@@ -1466,7 +1465,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "midi_stap", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_stap")?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .midi
                 .get_mut(handle)
@@ -1482,7 +1481,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "midi_unlade", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_unlade")?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             if handle >= mixer.midi.len() || mixer.midi[handle].is_none() {
                 return Err(ERR_BAD_HANDLE.to_string());
             }
@@ -1495,7 +1494,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "midi_is_spielin", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_is_spielin")?;
-            let mixer = state.mixer()?;
+            let mixer = state.mixer();
             let entry = mixer
                 .midi
                 .get(handle)
@@ -1510,7 +1509,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_loup")?;
             let pos = as_number(&args[1], "midi_loup")?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .midi
                 .get_mut(handle)
@@ -1525,7 +1524,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "midi_hou_lang", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_hou_lang")?;
-            let mixer = state.mixer()?;
+            let mixer = state.mixer();
             let entry = mixer
                 .midi
                 .get(handle)
@@ -1539,7 +1538,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
     define_native(globals, "midi_whaur", 1, |args| {
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_whaur")?;
-            let mixer = state.mixer()?;
+            let mixer = state.mixer();
             let entry = mixer
                 .midi
                 .get(handle)
@@ -1555,7 +1554,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
             let handle = as_handle(&args[0], "midi_pit_luid")?;
             let mut value = as_number(&args[1], "midi_pit_luid")? as f32;
             value = clamp01(value);
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .midi
                 .get_mut(handle)
@@ -1571,7 +1570,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_pit_pan")?;
             let pan = as_number(&args[1], "midi_pit_pan")? as f32;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .midi
                 .get_mut(handle)
@@ -1587,7 +1586,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
         with_state(|state| {
             let handle = as_handle(&args[0], "midi_pit_rin_roond")?;
             let looped = as_bool(&args[1], "midi_pit_rin_roond")?;
-            let mut mixer = state.mixer()?;
+            let mut mixer = state.mixer();
             let entry = mixer
                 .midi
                 .get_mut(handle)
@@ -1949,7 +1948,7 @@ mod tests {
         let mut state = AudioState::new();
         state.ensure_audio().unwrap();
         {
-            let mut mixer = state.mixer().unwrap();
+            let mut mixer = state.mixer();
             mixer.master_volume = 0.2;
             mixer.sounds.push(Some(SoundEntry {
                 buffer: sample_buffer(1, 0.5, 0.5),
@@ -1963,7 +1962,7 @@ mod tests {
         }
         state.shutdown();
         assert!(state.device.is_none());
-        let mixer = state.mixer().unwrap();
+        let mixer = state.mixer();
         assert!(mixer.sounds.is_empty());
         assert!(mixer.music.is_empty());
         assert!(mixer.midi.is_empty());
@@ -2230,7 +2229,7 @@ mod tests {
             let _guard = state.shared.lock().unwrap();
             panic!("poison");
         }));
-        let guard = state.mixer().unwrap();
+        let guard = state.mixer();
         drop(guard);
         state.shutdown();
     }

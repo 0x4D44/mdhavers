@@ -1,7 +1,8 @@
+use std::cell::RefCell;
 use std::rc::Rc;
 
-use mdhavers::value::NativeFunction;
 use mdhavers::interpreter::{get_stack_trace, pop_stack_frame, push_stack_frame};
+use mdhavers::value::{DictValue, NativeFunction};
 use mdhavers::{parse, Interpreter, Value};
 
 fn run(source: &str) -> Result<Value, mdhavers::HaversError> {
@@ -153,6 +154,137 @@ len(a) + len(b) + len(c) + len(d)
     )
     .unwrap();
     assert_eq!(value, Value::Integer(16));
+}
+
+#[test]
+fn interpreter_slice_negative_start_index_normalization_is_covered() {
+    // Exercise the `start < 0` normalization branch in list/string slicing.
+    let value = run(
+        r#"
+ken l = [1, 2, 3, 4, 5]
+ken a = l[-1::-1]
+ken s = "hello"
+ken b = s[-1::-1]
+len(a) + len(b)
+"#,
+    )
+    .unwrap();
+    assert_eq!(value, Value::Integer(10));
+}
+
+#[test]
+fn interpreter_list_literal_spread_for_list_and_string_is_covered() {
+    let value = run(
+        r#"
+ken xs = [0, ...[1, 2], 3]
+ken ys = [..."ab"]
+xs[1] + xs[2] + len(ys)
+"#,
+    )
+    .unwrap();
+    assert_eq!(value, Value::Integer(5));
+}
+
+#[test]
+fn interpreter_sclaff_recursive_flatten_list_branch_is_covered() {
+    let value = run(
+        r#"
+ken flat = sclaff([[1, [2]], 3])
+flat[0] + flat[1] + flat[2]
+"#,
+    )
+    .unwrap();
+    assert_eq!(value, Value::Integer(6));
+}
+
+#[test]
+fn interpreter_log_level_integer_branches_are_covered() {
+    for src in ["log_enabled(0)", "log_enabled(2)", "log_enabled(5)"] {
+        let v = run(src).unwrap();
+        assert!(matches!(v, Value::Bool(_)), "expected bool for {src}, got {v:?}");
+    }
+
+    assert!(run("log_enabled(6)").is_err());
+    assert!(run("log_enabled([])").is_err());
+}
+
+#[cfg(all(coverage, not(target_arch = "wasm32")))]
+#[test]
+fn interpreter_import_covers_current_exe_error_branches_for_coverage() {
+    for src in [
+        r#"fetch "__mdhavers_coverage_current_exe_err__" tae m"#,
+        r#"fetch "__mdhavers_coverage_current_exe_no_parent__" tae m"#,
+    ] {
+        let err = run(src).unwrap_err();
+        assert!(
+            matches!(err, mdhavers::HaversError::ModuleNotFound { .. }),
+            "unexpected error for {src}: {err:?}"
+        );
+    }
+}
+
+#[cfg(coverage)]
+#[test]
+fn interpreter_format_braw_time_for_coverage_exercises_all_time_buckets_in_dependency() {
+    let cases: &[(u64, u64, &str)] = &[
+        (0, 0, "wee small hours"),
+        (6, 0, "mornin'"),
+        (12, 0, "high noon"),
+        (13, 0, "efternoon"),
+        (18, 0, "evenin'"),
+        (22, 0, "gettin' late"),
+    ];
+
+    for (h, m, needle) in cases {
+        let s = mdhavers::interpreter::format_braw_time_for_coverage(*h, *m);
+        assert!(
+            s.contains(needle),
+            "unexpected bucket for {h:02}:{m:02}: {s}"
+        );
+    }
+}
+
+#[cfg(coverage)]
+#[test]
+fn interpreter_resolve_log_args_for_coverage_exercises_all_arms_in_dependency() {
+    let mut dict = DictValue::new();
+    dict.set(Value::String("a".to_string()), Value::Integer(1));
+    let fields = Value::Dict(Rc::new(RefCell::new(dict)));
+
+    assert_eq!(
+        mdhavers::interpreter::resolve_log_args_for_coverage(&[]).unwrap(),
+        (None, None)
+    );
+    assert!(mdhavers::interpreter::resolve_log_args_for_coverage(std::slice::from_ref(&fields))
+        .unwrap()
+        .0
+        .is_some());
+    assert_eq!(
+        mdhavers::interpreter::resolve_log_args_for_coverage(&[Value::String("target".to_string())])
+            .unwrap(),
+        (None, Some("target".to_string()))
+    );
+    assert!(mdhavers::interpreter::resolve_log_args_for_coverage(&[Value::Integer(1)]).is_err());
+    let (fields_val, target) = mdhavers::interpreter::resolve_log_args_for_coverage(&[
+        fields.clone(),
+        Value::String("t".to_string()),
+    ])
+    .unwrap();
+    assert!(fields_val.is_some());
+    assert_eq!(target, Some("t".to_string()));
+    assert!(mdhavers::interpreter::resolve_log_args_for_coverage(&[
+        Value::String("x".to_string()),
+        Value::String("y".to_string())
+    ])
+    .is_err());
+    assert!(mdhavers::interpreter::resolve_log_args_for_coverage(&[fields, Value::Integer(1)])
+        .is_err());
+    assert!(mdhavers::interpreter::resolve_log_args_for_coverage(&[
+        Value::String("x".to_string()),
+        Value::String("y".to_string()),
+        Value::String("z".to_string())
+    ])
+    .is_err());
 }
 
 #[test]

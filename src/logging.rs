@@ -123,9 +123,10 @@ pub fn get_global_log_level() -> LogLevel {
 
 pub fn set_global_log_level(level: LogLevel) {
     GLOBAL_LOG_LEVEL.store(level as u8, Ordering::Relaxed);
-    if let Ok(mut guard) = filter_state().lock() {
-        guard.default = level;
-    }
+    let mut guard = filter_state()
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    guard.default = level;
 }
 
 #[cfg(coverage)]
@@ -843,14 +844,25 @@ mod tests {
         use std::hint::black_box;
 
         // LogFilter::level_for_target closure (best.map(...))
-        let filter = LogFilter {
-            default: LogLevel::Blether,
-            rules: vec![
-                ("net".to_string(), LogLevel::Roar),
-                ("net.http".to_string(), LogLevel::Whisper),
-            ],
-        };
-        assert_eq!(filter.level_for_target("net.http.server"), LogLevel::Whisper);
+	        let filter = LogFilter {
+	            default: LogLevel::Blether,
+	            rules: vec![
+	                ("net".to_string(), LogLevel::Roar),
+	                ("net.http".to_string(), LogLevel::Whisper),
+	            ],
+	        };
+	        assert_eq!(filter.level_for_target("net.http.server"), LogLevel::Whisper);
+	        let filter_reversed = LogFilter {
+	            default: LogLevel::Blether,
+	            rules: vec![
+	                ("net.http".to_string(), LogLevel::Whisper),
+	                ("net".to_string(), LogLevel::Roar),
+	            ],
+	        };
+	        assert_eq!(
+	            filter_reversed.level_for_target("net.http.server"),
+	            LogLevel::Whisper
+	        );
 
         // parse_filter closure in split/map/filter path with an empty segment.
         assert!(parse_filter("blether,,net=roar").is_ok());

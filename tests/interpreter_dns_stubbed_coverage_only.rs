@@ -90,3 +90,39 @@ len(r["value"])
     assert_eq!(value, Value::Integer(0));
 }
 
+#[test]
+fn dns_srv_covers_make_resolver_init_failure_branches_for_coverage() {
+    mdhavers::interpreter::dns_fail_next_resolver_for_coverage();
+    let value = interpret_ok(
+        r#"
+ken r = dns_srv("_sip._udp", "example.com")
+r["error"]
+"#,
+    );
+    let Value::String(msg) = value else {
+        panic!("expected error string, got {value:?}");
+    };
+    assert!(
+        msg.contains("dns_srv() DNS resolver init failed: injected"),
+        "unexpected error: {msg}"
+    );
+}
+
+#[test]
+fn dns_srv_covers_system_conf_fallback_and_new_error_branches_for_coverage() {
+    mdhavers::interpreter::dns_force_next_system_conf_error_for_coverage();
+    mdhavers::interpreter::dns_force_next_new_error_for_coverage();
+    let value = interpret_ok(
+        r#"
+ken r = dns_srv("_sip._udp", "example.com")
+r["error"]
+"#,
+    );
+    let Value::String(msg) = value else {
+        panic!("expected error string, got {value:?}");
+    };
+    assert!(
+        msg.contains("dns_srv() DNS resolver init failed: injected new error"),
+        "unexpected error: {msg}"
+    );
+}

@@ -4,11 +4,20 @@ use super::LLVMCompiler;
 use crate::llvm::codegen::CodeGen;
 use crate::parser::parse;
 use inkwell::context::Context;
+use std::path::Path;
 use tempfile::tempdir;
 
 fn compile_to_ir_for_unit_coverage(source: &str) {
     let program = parse(source).unwrap();
     let _ = LLVMCompiler::new().compile_to_ir(&program).unwrap();
+}
+
+fn compile_with_source_path_for_unit_coverage(source: &str, source_path: &Path) -> crate::error::HaversResult<()> {
+    let program = parse(source).unwrap();
+    let context = Context::create();
+    let mut codegen = CodeGen::new(&context, "coverage_codegen_source_path");
+    codegen.set_source_path(source_path);
+    codegen.compile(&program)
 }
 
 #[test]
@@ -20,6 +29,24 @@ dae outer() {
     ken x = 0
     dae inc() { x = x + 1 }
     inc()
+    gie x
+}
+outer()
+"#,
+    );
+}
+
+#[test]
+fn llvm_codegen_closure_value_boxes_and_captures_outer_locals_for_unit_coverage() {
+    // Forces a nested function with captures to be referenced as a first-class value, exercising
+    // closure construction and capture boxing logic.
+    compile_to_ir_for_unit_coverage(
+        r#"
+dae outer() {
+    ken x = 0
+    dae inc() { x = x + 1; gie x }
+    ken f = inc
+    f()
     gie x
 }
 outer()
@@ -44,6 +71,13 @@ fn llvm_codegen_llvm_compile_error_builder_error_is_exercised_for_unit_coverage(
     let context = Context::create();
     let codegen = crate::llvm::codegen::CodeGen::new(&context, "coverage_builder_error");
     let _ = codegen.coverage_llvm_compile_error_builder_error();
+}
+
+#[test]
+fn llvm_codegen_condition_direct_error_branches_are_exercised_for_unit_coverage() {
+    let context = Context::create();
+    let mut codegen = CodeGen::new(&context, "coverage_condition_direct_error_branches");
+    codegen.coverage_compile_condition_direct_error_branches();
 }
 
 #[test]
@@ -249,6 +283,129 @@ blether bide(1.0)
 }
 
 #[test]
+fn llvm_codegen_import_var_initializer_error_branch_is_exercised_for_unit_coverage() {
+    let dir = tempdir().unwrap();
+    let main_path = dir.path().join("main.braw");
+    std::fs::write(
+        &main_path,
+        r#"
+fetch "bad_var_init"
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("bad_var_init.braw"),
+        r#"
+ken x = __missing__
+"#,
+    )
+    .unwrap();
+
+    let err = compile_with_source_path_for_unit_coverage(
+        r#"
+fetch "bad_var_init"
+"#,
+        &main_path,
+    )
+    .unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("Undefined variable"));
+}
+
+#[test]
+fn llvm_codegen_import_function_body_error_branch_is_exercised_for_unit_coverage() {
+    let dir = tempdir().unwrap();
+    let main_path = dir.path().join("main.braw");
+    std::fs::write(
+        &main_path,
+        r#"
+fetch "bad_fn"
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("bad_fn.braw"),
+        r#"
+dae bad() { gie __missing__ }
+"#,
+    )
+    .unwrap();
+
+    let err = compile_with_source_path_for_unit_coverage(
+        r#"
+fetch "bad_fn"
+"#,
+        &main_path,
+    )
+    .unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("Undefined variable"));
+}
+
+#[test]
+fn llvm_codegen_import_class_body_error_branch_is_exercised_for_unit_coverage() {
+    let dir = tempdir().unwrap();
+    let main_path = dir.path().join("main.braw");
+    std::fs::write(
+        &main_path,
+        r#"
+fetch "bad_class"
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("bad_class.braw"),
+        r#"
+kin Bad {
+    dae init() { gie __missing__ }
+}
+"#,
+    )
+    .unwrap();
+
+    let err = compile_with_source_path_for_unit_coverage(
+        r#"
+fetch "bad_class"
+"#,
+        &main_path,
+    )
+    .unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("Undefined variable"));
+}
+
+#[test]
+fn llvm_codegen_misc_error_propagation_branches_are_exercised_for_unit_coverage() {
+    // Targets additional `?` error-propagation branches inside `compile_expr` without relying on
+    // any runtime behavior.
+    let cases = [
+        // Range expression: start/end compile failures.
+        r#"ken r = __missing__..3"#,
+        r#"ken r = 1..__missing__"#,
+        // Input expression: prompt compile failure.
+        r#"ken s = speir __missing__"#,
+        // Boxed assignment path: boxed var assignment RHS compile failure.
+        r#"
+dae outer() {
+    ken x = 0
+    dae inc() { x = __missing__ }
+    inc()
+}
+outer()
+"#,
+        // Import resolution: exercise the `lib/*` stripped-path fallthrough.
+        r#"fetch "lib/__coverage_missing_module""#,
+    ];
+
+    for src in cases {
+        let program = parse(src).unwrap();
+        let err = LLVMCompiler::new().compile_to_ir(&program).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("Undefined variable") || msg.contains("Cannot find module to import"));
+    }
+}
+
+#[test]
 fn llvm_codegen_more_higher_order_builtins_are_exercised_for_unit_coverage() {
     // Exercise higher-order builtins and overload resolution in `compile_call` (aw/ony/hunt/tumble,
     // plus map/filter/reduce style helpers) to improve codegen instantiation depth.
@@ -388,6 +545,120 @@ blether len(rest)
 ken name = "Bob"
 blether f"Hello {name}!"
 "#,
+    );
+}
+
+#[test]
+fn llvm_codegen_import_tri_requires_alias_error_is_exercised_for_unit_coverage() {
+    let program = parse(r#"fetch "tri""#).expect("parse program");
+    let err = LLVMCompiler::new()
+        .compile_to_ir(&program)
+        .expect_err("expected tri import to require an alias");
+    assert!(err
+        .to_string()
+        .contains("tri import requires an alias"));
+}
+
+#[test]
+fn llvm_codegen_import_tri_success_path_is_exercised_for_unit_coverage() {
+    compile_to_ir_for_unit_coverage(
+        r#"
+fetch "tri" tae t
+"#,
+    );
+}
+
+#[test]
+fn llvm_codegen_boxed_var_decl_initializer_error_is_exercised_for_unit_coverage() {
+    let program = parse(
+        r#"
+dae outer() {
+    ken x = missing
+    dae inc() { x = x + 1 }
+    inc()
+}
+outer()
+"#,
+    )
+    .expect("parse program");
+    let err = LLVMCompiler::new()
+        .compile_to_ir(&program)
+        .expect_err("expected compile error from boxed var initializer");
+    assert_eq!(
+        std::mem::discriminant(&err),
+        std::mem::discriminant(&crate::error::HaversError::CompileError(String::new()))
+    );
+}
+
+#[test]
+fn llvm_codegen_list_shadow_initializer_error_is_exercised_for_unit_coverage() {
+    let program = parse(
+        r#"
+dae f() {
+    ken xs = [missing]
+}
+f()
+"#,
+    )
+    .expect("parse program");
+    let err = LLVMCompiler::new()
+        .compile_to_ir(&program)
+        .expect_err("expected compile error from list initializer element");
+    assert_eq!(
+        std::mem::discriminant(&err),
+        std::mem::discriminant(&crate::error::HaversError::CompileError(String::new()))
+    );
+}
+
+#[test]
+fn llvm_codegen_block_stmt_error_propagates_for_unit_coverage() {
+    let program = parse(
+        r#"
+dae f() {
+    {
+        blether missing
+    }
+}
+f()
+"#,
+    )
+    .expect("parse program");
+    let err = LLVMCompiler::new()
+        .compile_to_ir(&program)
+        .expect_err("expected compile error from invalid stmt in nested block");
+    assert_eq!(
+        std::mem::discriminant(&err),
+        std::mem::discriminant(&crate::error::HaversError::CompileError(String::new()))
+    );
+}
+
+#[test]
+fn llvm_codegen_log_stmt_error_paths_are_exercised_for_unit_coverage() {
+    for source in [
+        r#"log_blether "msg", missing"#,
+        r#"log_blether "msg", 1, missing"#,
+        r#"log_blether missing"#,
+    ] {
+        let program = parse(source).expect("parse program");
+        let err = LLVMCompiler::new()
+            .compile_to_ir(&program)
+            .expect_err("expected compile error from log stmt");
+        assert_eq!(
+            std::mem::discriminant(&err),
+            std::mem::discriminant(&crate::error::HaversError::CompileError(String::new()))
+        );
+    }
+}
+
+#[test]
+fn llvm_codegen_hurl_stmt_error_path_is_exercised_for_unit_coverage() {
+    let program = parse(r#"hurl missing"#).expect("parse program");
+    let err = LLVMCompiler::new()
+        .compile_to_ir(&program)
+        .expect_err("expected compile error from hurl stmt");
+    assert_eq!(
+        std::mem::discriminant(&err),
+        std::mem::discriminant(&crate::error::HaversError::CompileError(String::new()))
     );
 }
 

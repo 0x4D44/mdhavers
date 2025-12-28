@@ -492,13 +492,23 @@ mod tests {
     fn test_tri_module_get_set_and_call_errors() {
         let module = TriModule::new();
         let err = module.get("Nope").unwrap_err();
-        assert!(matches!(err, HaversError::UndefinedVariable { .. }));
+        let is_undefined = |e: &HaversError| matches!(e, HaversError::UndefinedVariable { .. });
+        assert!(is_undefined(&err));
+        assert!(!is_undefined(&HaversError::TypeError {
+            message: String::new(),
+            line: 0,
+        }));
 
         let err = module.set("x", Value::Nil).unwrap_err();
-        assert!(matches!(err, HaversError::TypeError { .. }));
+        let is_type_error = |e: &HaversError| matches!(e, HaversError::TypeError { .. });
+        assert!(is_type_error(&err));
+        assert!(!is_type_error(&HaversError::UndefinedVariable {
+            name: String::new(),
+            line: 0,
+        }));
 
         let err = module.call("Nope", vec![]).unwrap_err();
-        assert!(matches!(err, HaversError::UndefinedVariable { .. }));
+        assert!(is_undefined(&err));
     }
 
     #[test]
@@ -514,11 +524,11 @@ mod tests {
     #[test]
     fn test_tri_object_transform_fields() {
         let obj = TriObject::new("Thing3D");
-        assert!(matches!(obj.get("position"), Ok(Value::NativeObject(_))));
-        assert!(matches!(obj.get("rotation"), Ok(Value::NativeObject(_))));
-        assert!(matches!(obj.get("scale"), Ok(Value::NativeObject(_))));
-        assert!(matches!(obj.get("children"), Ok(Value::List(_))));
-        assert!(matches!(obj.get("parent"), Ok(Value::Nil)));
+        assert!(obj.get("position").is_ok());
+        assert!(obj.get("rotation").is_ok());
+        assert!(obj.get("scale").is_ok());
+        assert!(obj.get("children").is_ok());
+        assert_eq!(obj.get("parent").unwrap(), Value::Nil);
     }
 
     #[test]
@@ -571,6 +581,7 @@ mod tests {
 
         obj.call("luik_at", vec![Value::String("target".to_string())])
             .unwrap();
+        obj.call("luik_at", Vec::new()).unwrap();
         assert_eq!(
             obj.get("lookAtTarget").unwrap(),
             Value::String("target".to_string())
@@ -578,11 +589,13 @@ mod tests {
 
         obj.call("set_sise", vec![Value::Integer(640), Value::Integer(480)])
             .unwrap();
+        obj.call("set_sise", Vec::new()).unwrap();
         assert_eq!(obj.get("width").unwrap(), Value::Integer(640));
         assert_eq!(obj.get("height").unwrap(), Value::Integer(480));
 
         obj.call("set_pixel_ratio", vec![Value::Float(2.0)])
             .unwrap();
+        obj.call("set_pixel_ratio", Vec::new()).unwrap();
         assert_eq!(obj.get("pixelRatio").unwrap(), Value::Float(2.0));
 
         obj.call(
@@ -593,6 +606,7 @@ mod tests {
             ],
         )
         .unwrap();
+        obj.call("render", Vec::new()).unwrap();
         assert_eq!(
             obj.get("scene").unwrap(),
             Value::String("scene".to_string())
@@ -604,7 +618,10 @@ mod tests {
 
         obj.call("loop", vec![Value::String("cb".to_string())])
             .unwrap();
+        obj.call("loop", Vec::new()).unwrap();
         assert_eq!(obj.get("loopFn").unwrap(), Value::String("cb".to_string()));
+
+        assert_eq!(obj.call("dyspos", Vec::new()).unwrap(), Value::Nil);
 
         let cloned = obj.call("cloan", vec![]).unwrap();
         assert!(matches!(

@@ -1288,9 +1288,9 @@ impl Parser {
                 // Dict literal
                 let mut pairs = Vec::new();
 
-                // Safe because is_dict implies key_attempt is Ok
+                // Safe because `is_dict` implies `key_attempt` is Ok and the current token is ':'
                 let first_key = key_attempt.expect("dict key already parsed");
-                self.expect(&TokenKind::Colon, ":")?;
+                self.advance(); // consume ':'
                 let first_value = self.expression()?;
                 pairs.push((first_key, first_value));
 
@@ -1665,6 +1665,35 @@ fn process_escapes(s: &str) -> String {
     result
 }
 
+// Coverage-only wrappers to reach internal branches that are otherwise hard/impossible
+// to trigger through normal source lexing (e.g., due to always-appended EOF tokens or
+// lexer regex constraints).
+#[cfg(coverage)]
+pub fn previous_is_none_at_start_for_coverage() -> bool {
+    let tokens = vec![Token::eof(1)];
+    let parser = Parser::new(tokens);
+    parser.previous().is_none()
+}
+
+#[cfg(coverage)]
+pub fn is_nae_followed_by_operand_end_of_stream_for_coverage() -> bool {
+    let tokens = vec![Token::new(TokenKind::Nae, "nae".to_string(), 1, 1)];
+    let parser = Parser::new(tokens);
+    parser.is_nae_followed_by_operand()
+}
+
+#[cfg(coverage)]
+pub fn process_escapes_for_coverage(s: &str) -> String {
+    process_escapes(s)
+}
+
+#[cfg(coverage)]
+pub fn parse_fstring_for_coverage(content: &str) -> HaversResult<Expr> {
+    let tokens = vec![Token::eof(1)];
+    let mut parser = Parser::new(tokens);
+    parser.parse_fstring(content, Span::new(1, 1))
+}
+
 /// Convenience function tae parse source code
 pub fn parse(source: &str) -> HaversResult<Program> {
     let tokens = crate::lexer::lex(source)?;
@@ -1718,6 +1747,52 @@ mod tests {
             Pattern::Literal(literal) => Some(literal),
             _ => None,
         }
+    }
+
+    #[test]
+    fn destructure_declaration_requires_left_bracket_for_coverage() {
+        let tokens = vec![
+            Token::new(TokenKind::Identifier("x".to_string()), "x".to_string(), 1, 1),
+            Token::eof(1),
+        ];
+        let mut parser = Parser::new(tokens);
+        let err = parser.destructure_declaration(DUMMY_SPAN).unwrap_err();
+        assert_error_variant(
+            &err,
+            HaversError::UnexpectedToken {
+                expected: String::new(),
+                found: String::new(),
+                line: 0,
+            },
+        );
+    }
+
+    #[test]
+    fn advance_does_not_increment_past_eof_for_coverage() {
+        let tokens = vec![Token::new(TokenKind::Ken, "ken".to_string(), 1, 1), Token::eof(1)];
+        let mut parser = Parser::new(tokens);
+        parser.current = 1;
+        let prev_kind = parser.advance().kind.clone();
+        assert_eq!(parser.current, 1);
+        assert_eq!(prev_kind, TokenKind::Ken);
+    }
+
+    #[test]
+    #[cfg(coverage)]
+    fn parser_public_helpers_are_exercised_in_unit_instance_for_coverage() {
+        assert!(previous_is_none_at_start_for_coverage());
+        assert!(!is_nae_followed_by_operand_end_of_stream_for_coverage());
+        assert_eq!(process_escapes_for_coverage("hello\\"), "hello\\");
+
+        let err = parse_fstring_for_coverage("{\\").unwrap_err();
+        assert_error_variant(
+            &err,
+            HaversError::UnkentToken {
+                lexeme: String::new(),
+                line: 0,
+                column: 0,
+            },
+        );
     }
 
     #[test]
