@@ -1062,6 +1062,31 @@ fn tls_take_force_next_rsa_private_keys_fail() -> bool {
     })
 }
 
+#[cfg(all(test, feature = "native", unix))]
+thread_local! {
+    // 0 = no injection, 1 = force failure with a synthetic error, 2 = force failure and use last_os_error()
+    static SOCKET_FORCE_NEXT_CREATE_FAIL_MODE: std::cell::Cell<u8> = std::cell::Cell::new(0);
+}
+
+#[cfg(all(test, feature = "native", unix))]
+fn socket_force_next_create_fail() {
+    SOCKET_FORCE_NEXT_CREATE_FAIL_MODE.with(|flag| flag.set(1));
+}
+
+#[cfg(all(test, feature = "native", unix))]
+fn socket_force_next_create_fail_last_os_error() {
+    SOCKET_FORCE_NEXT_CREATE_FAIL_MODE.with(|flag| flag.set(2));
+}
+
+#[cfg(all(test, feature = "native", unix))]
+fn socket_take_force_next_create_fail_mode() -> u8 {
+    SOCKET_FORCE_NEXT_CREATE_FAIL_MODE.with(|flag| {
+        let value = flag.get();
+        flag.set(0);
+        value
+    })
+}
+
 #[cfg(feature = "native")]
 fn result_ok(value: Value) -> Value {
     let mut dict = DictValue::new();
@@ -2679,32 +2704,84 @@ impl Interpreter {
         );
 
         #[cfg(all(feature = "native", unix))]
-        {
-            // socket_udp - create UDP socket
-            globals.borrow_mut().define(
-                "socket_udp".to_string(),
-		                Value::NativeFunction(Rc::new(NativeFunction::new("socket_udp", 0, |_args| {
-		                    let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
-		                    if fd < 0 { let err = std::io::Error::last_os_error(); return Ok(result_err(err.to_string(), err.raw_os_error().unwrap_or(-1) as i64)); }
-		                    let id = register_socket(fd, SocketKind::Udp);
-		                    Ok(result_ok(Value::Integer(id)))
-		                }))),
-		            );
+	        {
+	            // socket_udp - create UDP socket
+	            globals.borrow_mut().define(
+	                "socket_udp".to_string(),
+	                Value::NativeFunction(Rc::new(NativeFunction::new("socket_udp", 0, |_args| {
+	                    #[cfg(all(test, feature = "native", unix))]
+	                    let forced_mode = socket_take_force_next_create_fail_mode();
+	                    #[cfg(all(test, feature = "native", unix))]
+	                    let fd = if forced_mode != 0 {
+	                        -1
+	                    } else {
+	                        unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) }
+	                    };
+	                    #[cfg(not(all(test, feature = "native", unix)))]
+	                    let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
 
-            // socket_tcp - create TCP socket
-            globals.borrow_mut().define(
-                "socket_tcp".to_string(),
-		                Value::NativeFunction(Rc::new(NativeFunction::new("socket_tcp", 0, |_args| {
-		                    let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) };
-		                    if fd < 0 { let err = std::io::Error::last_os_error(); return Ok(result_err(err.to_string(), err.raw_os_error().unwrap_or(-1) as i64)); }
-		                    let id = register_socket(fd, SocketKind::Tcp);
-		                    Ok(result_ok(Value::Integer(id)))
-		                }))),
-		            );
+	                    if fd < 0 {
+	                        #[cfg(all(test, feature = "native", unix))]
+	                        let err = if forced_mode == 1 {
+	                            std::io::Error::new(
+	                                std::io::ErrorKind::Other,
+	                                "coverage forced socket create failure",
+	                            )
+	                        } else {
+	                            std::io::Error::last_os_error()
+	                        };
+	                        #[cfg(not(all(test, feature = "native", unix)))]
+	                        let err = std::io::Error::last_os_error();
 
-            // socket_bind(sock, host, port)
-            globals.borrow_mut().define(
-                "socket_bind".to_string(),
+	                        let code = err.raw_os_error().unwrap_or(-1) as i64;
+	                        return Ok(result_err(err.to_string(), code));
+	                    }
+
+	                    let id = register_socket(fd, SocketKind::Udp);
+	                    Ok(result_ok(Value::Integer(id)))
+	                }))),
+			            );
+
+	            // socket_tcp - create TCP socket
+	            globals.borrow_mut().define(
+	                "socket_tcp".to_string(),
+	                Value::NativeFunction(Rc::new(NativeFunction::new("socket_tcp", 0, |_args| {
+	                    #[cfg(all(test, feature = "native", unix))]
+	                    let forced_mode = socket_take_force_next_create_fail_mode();
+	                    #[cfg(all(test, feature = "native", unix))]
+	                    let fd = if forced_mode != 0 {
+	                        -1
+	                    } else {
+	                        unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) }
+	                    };
+	                    #[cfg(not(all(test, feature = "native", unix)))]
+	                    let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) };
+
+	                    if fd < 0 {
+	                        #[cfg(all(test, feature = "native", unix))]
+	                        let err = if forced_mode == 1 {
+	                            std::io::Error::new(
+	                                std::io::ErrorKind::Other,
+	                                "coverage forced socket create failure",
+	                            )
+	                        } else {
+	                            std::io::Error::last_os_error()
+	                        };
+	                        #[cfg(not(all(test, feature = "native", unix)))]
+	                        let err = std::io::Error::last_os_error();
+
+	                        let code = err.raw_os_error().unwrap_or(-1) as i64;
+	                        return Ok(result_err(err.to_string(), code));
+	                    }
+
+	                    let id = register_socket(fd, SocketKind::Tcp);
+	                    Ok(result_ok(Value::Integer(id)))
+	                }))),
+			            );
+
+	            // socket_bind(sock, host, port)
+	            globals.borrow_mut().define(
+	                "socket_bind".to_string(),
                 Value::NativeFunction(Rc::new(NativeFunction::new("socket_bind", 3, |args| {
                     let sock_id = args[0]
                         .as_integer()
@@ -12612,10 +12689,52 @@ fn json_escape_string(s: &str) -> String {
 
 		    #[cfg(feature = "native")]
 		    #[test]
-		    fn srtp_key_salt_len_covers_all_profile_variants_for_coverage() {
+	    fn srtp_key_salt_len_covers_all_profile_variants_for_coverage() {
 	        assert_eq!(srtp_key_salt_len(SrtpProfile::AeadAes128Gcm), (16, 12));
 	        assert_eq!(srtp_key_salt_len(SrtpProfile::AeadAes256Gcm), (32, 12));
 	        assert_eq!(srtp_key_salt_len(SrtpProfile::__Nonexhaustive), (16, 14));
+	    }
+
+	    #[test]
+	    fn bytes_slice_unit_instance_covers_start_and_end_type_errors_for_coverage() {
+	        let program = parse(
+	            r#"
+ken b = bytes(1)
+bytes_slice(b, "nope", 1)
+"#,
+	        )
+	        .unwrap();
+	        let mut interp = Interpreter::new();
+	        let _ = interp.interpret(&program);
+
+	        let program = parse(
+	            r#"
+ken b = bytes(1)
+bytes_slice(b, 0, "nope")
+"#,
+	        )
+	        .unwrap();
+	        let mut interp = Interpreter::new();
+	        let _ = interp.interpret(&program);
+
+	        let program = parse(
+	            r#"
+ken b = bytes(3)
+bytes_set(b, 0, 1)
+bytes_set(b, 1, 2)
+bytes_set(b, 2, 3)
+
+bytes_slice(b, 1, 3)
+bytes_slice(b, -1, 3)
+bytes_slice(b, -10, 3)
+bytes_slice(b, 0, -1)
+bytes_slice(b, 0, 10)
+bytes_slice(b, 2, 1)
+"#,
+	        )
+	        .unwrap();
+	        let mut interp = Interpreter::new();
+	        let _ = interp.interpret(&program);
 	    }
 
 	    #[test]
@@ -12633,12 +12752,49 @@ dae make_bytes_seq(n, start) {
     gie b
 }
 
+dae make_rtp_packet() {
+    ken b = bytes(16)
+    bytes_set(b, 0, 128)
+    bytes_set(b, 1, 0)
+    bytes_set(b, 2, 0)
+    bytes_set(b, 3, 1)
+    bytes_set(b, 4, 0)
+    bytes_set(b, 5, 0)
+    bytes_set(b, 6, 0)
+    bytes_set(b, 7, 1)
+    bytes_set(b, 8, 0)
+    bytes_set(b, 9, 0)
+    bytes_set(b, 10, 0)
+    bytes_set(b, 11, 1)
+    bytes_set(b, 12, 16)
+    bytes_set(b, 13, 17)
+    bytes_set(b, 14, 18)
+    bytes_set(b, 15, 19)
+    gie b
+}
+
 ken key = make_bytes_seq(16, 1)
 ken salt = make_bytes_seq(14, 50)
 ken cfg = {"profile": "SRTP_AES128_CM_SHA1_80", "master_key": key, "master_salt": salt}
 ken ctx = srtp_create(cfg)
 ken ok = ctx["ok"]
 gin ok {
+    ken pkt = make_rtp_packet()
+    ken badp = srtp_protect(999999, pkt)
+    ken badu = srtp_unprotect(999999, pkt)
+    ken prot = srtp_protect(ctx["value"], pkt)
+    gin prot["ok"] {
+        ken unp = srtp_unprotect(ctx["value"], prot["value"])
+        gin unp["ok"] an unp["value"] == pkt an nae badp["ok"] an nae badu["ok"] {
+            ok = aye
+        } ither {
+            ok = nae
+        }
+    } ither {
+        ok = nae
+    }
+
+    // Force SRTP protect/unprotect errors to cover map_err closures.
     ken tiny = bytes(1)
     srtp_protect(ctx["value"], tiny)
     srtp_unprotect(ctx["value"], tiny)
@@ -12811,11 +12967,12 @@ blether m2["a"]
         let tls_connect = native_from_globals(&globals, "tls_connect");
         let dtls_handshake = native_from_globals(&globals, "dtls_handshake");
 
-        let bad_tcp = register_socket(-1, SocketKind::Tcp);
-        let bad_udp = register_socket(-1, SocketKind::Udp);
+	        let bad_tcp = register_socket(-1, SocketKind::Tcp);
+	        let bad_udp = register_socket(-1, SocketKind::Udp);
 
-        let bytes = Value::Bytes(Rc::new(RefCell::new(vec![1_u8, 2, 3])));
-        let host = Value::String("127.0.0.1".to_string());
+	        let bytes = Value::Bytes(Rc::new(RefCell::new(vec![1_u8, 2, 3])));
+	        let empty_host = Value::String(String::new());
+	        let host = Value::String("127.0.0.1".to_string());
 
         fn assert_result_err(value: Value) {
             let dict = value.as_dict().expect("expected dict result");
@@ -12823,10 +12980,14 @@ blether m2["a"]
             assert_eq!(dict_get_bool(&dict, "ok"), Some(false));
         }
 
-        assert_result_err(
-            (socket_bind.func)(vec![Value::Integer(bad_udp), host.clone(), Value::Integer(0)])
-                .unwrap(),
-        );
+	        assert_result_err(
+	            (socket_bind.func)(vec![Value::Integer(bad_udp), empty_host, Value::Integer(0)])
+	                .unwrap(),
+	        );
+	        assert_result_err(
+	            (socket_bind.func)(vec![Value::Integer(bad_udp), host.clone(), Value::Integer(0)])
+	                .unwrap(),
+	        );
         assert_result_err(
             (socket_connect.func)(vec![Value::Integer(bad_tcp), host.clone(), Value::Integer(80)])
                 .unwrap(),
@@ -12885,19 +13046,66 @@ blether m2["a"]
         assert_result_err((dtls_handshake.func)(vec![Value::Integer(dtls_id), Value::Integer(bad_udp)]).unwrap());
 
 	        // Remove registered sockets (close(-1) is expected to fail and report ok=false).
-	        assert_result_err((socket_close.func)(vec![Value::Integer(bad_tcp)]).unwrap());
-	        assert_result_err((socket_close.func)(vec![Value::Integer(bad_udp)]).unwrap());
-	    }
+		        assert_result_err((socket_close.func)(vec![Value::Integer(bad_tcp)]).unwrap());
+		        assert_result_err((socket_close.func)(vec![Value::Integer(bad_udp)]).unwrap());
+		    }
 
-	    #[cfg(all(feature = "native", unix))]
-	    #[test]
-	    fn tls_connect_missing_client_and_server_configs_are_covered_for_coverage() {
-	        let interp = Interpreter::new();
-	        let globals = interp.globals.clone();
+		    #[cfg(all(feature = "native", unix))]
+		    #[test]
+		    fn socket_udp_tcp_creation_error_paths_are_coverable_in_unit_instance_for_coverage() {
+		        let interp = Interpreter::new();
+		        let globals = interp.globals.clone();
+		        let socket_udp = native_from_globals(&globals, "socket_udp");
+		        let socket_tcp = native_from_globals(&globals, "socket_tcp");
+
+		        fn assert_result_err(value: Value) {
+		            let dict = value.as_dict().expect("expected dict result");
+		            let dict = dict.borrow();
+		            assert_eq!(dict_get_bool(&dict, "ok"), Some(false));
+		        }
+
+		        socket_force_next_create_fail();
+		        let udp = (socket_udp.func)(vec![]).unwrap();
+		        assert_result_err(udp.clone());
+		        assert_eq!(
+		            udp.as_dict()
+		                .expect("expected dict result")
+		                .borrow()
+		                .get(&Value::String("code".to_string()))
+		                .and_then(|v| v.as_integer()),
+		            Some(-1)
+		        );
+
+		        socket_force_next_create_fail_last_os_error();
+		        assert_result_err((socket_udp.func)(vec![]).unwrap());
+
+		        socket_force_next_create_fail();
+		        let tcp = (socket_tcp.func)(vec![]).unwrap();
+		        assert_result_err(tcp.clone());
+		        assert_eq!(
+		            tcp.as_dict()
+		                .expect("expected dict result")
+		                .borrow()
+		                .get(&Value::String("code".to_string()))
+		                .and_then(|v| v.as_integer()),
+		            Some(-1)
+		        );
+
+		        socket_force_next_create_fail_last_os_error();
+		        assert_result_err((socket_tcp.func)(vec![]).unwrap());
+		    }
+
+		    #[cfg(all(feature = "native", unix))]
+		    #[test]
+			    fn tls_connect_missing_client_and_server_configs_are_covered_for_coverage() {
+			        let interp = Interpreter::new();
+		        let globals = interp.globals.clone();
 
 	        let socket_tcp = native_from_globals(&globals, "socket_tcp");
 	        let socket_close = native_from_globals(&globals, "socket_close");
 	        let tls_connect = native_from_globals(&globals, "tls_connect");
+	        let tls_send = native_from_globals(&globals, "tls_send");
+	        let tls_recv = native_from_globals(&globals, "tls_recv");
 
 	        fn unwrap_result_ok_int(value: Value) -> i64 {
 	            let dict = value.as_dict().expect("expected dict result");
@@ -12918,6 +13126,25 @@ blether m2["a"]
 	        }
 
 	        let sock_id = unwrap_result_ok_int((socket_tcp.func)(vec![]).unwrap());
+
+	        // Cover the with_tls_mut() Unknown TLS handle error path.
+	        let err = unwrap_result_err_str(
+	            (tls_connect
+	                .func)(vec![Value::Integer(9_999_999), Value::Integer(sock_id)])
+	            .unwrap(),
+	        );
+	        assert!(err.contains("Unknown TLS handle"));
+
+	        let bytes = Value::Bytes(Rc::new(RefCell::new(vec![1_u8, 2, 3])));
+	        let err = unwrap_result_err_str(
+	            (tls_send.func)(vec![Value::Integer(9_999_999), bytes]).unwrap(),
+	        );
+	        assert!(err.contains("Unknown TLS handle"));
+	        let err = unwrap_result_err_str(
+	            (tls_recv.func)(vec![Value::Integer(9_999_999), Value::Integer(0)]).unwrap(),
+	        );
+	        assert!(err.contains("Unknown TLS handle"));
+
 	        let tls_client = register_tls(TlsSession {
 	            mode: TlsMode::Client,
 	            server_name: "localhost".to_string(),
@@ -12950,13 +13177,221 @@ blether m2["a"]
 		            .expect(&msg);
 		        remove_tls(tls_server);
 
-	        (socket_close.func)(vec![Value::Integer(sock_id)]).unwrap();
-	    }
+		        (socket_close.func)(vec![Value::Integer(sock_id)]).unwrap();
+		    }
 
-	    #[cfg(all(feature = "native", unix))]
-	    #[test]
-	    fn dtls_handshake_maps_connector_connect_error_for_coverage() {
-        dtls_fail_next_connect();
+		    #[cfg(all(feature = "native", unix))]
+		    #[test]
+		    fn tls_connect_client_handshake_failure_maps_complete_io_error_for_coverage() {
+		        use std::io::Write;
+
+		        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+		        let port = listener.local_addr().unwrap().port();
+
+		        let server_thread = std::thread::spawn(move || {
+		            let (mut stream, _) = listener.accept().unwrap();
+		            let _ = stream.write_all(b"not tls");
+		            let _ = stream.flush();
+		        });
+
+		        let interp = Interpreter::new();
+		        let globals = interp.globals.clone();
+
+		        let socket_tcp = native_from_globals(&globals, "socket_tcp");
+		        let socket_connect = native_from_globals(&globals, "socket_connect");
+		        let socket_close = native_from_globals(&globals, "socket_close");
+
+		        let tls_client_new = native_from_globals(&globals, "tls_client_new");
+		        let tls_connect = native_from_globals(&globals, "tls_connect");
+		        let tls_close = native_from_globals(&globals, "tls_close");
+
+		        fn unwrap_result_ok_int(value: Value) -> i64 {
+		            let dict = value.as_dict().expect("expected dict result");
+		            let dict = dict.borrow();
+		            assert_eq!(dict_get_bool(&dict, "ok"), Some(true));
+		            dict.get(&Value::String("value".to_string()))
+		                .and_then(|v| v.as_integer())
+		                .expect("expected integer value")
+		        }
+
+		        fn unwrap_result_err_str(value: Value) -> String {
+		            let dict = value.as_dict().expect("expected dict result");
+		            let dict = dict.borrow();
+		            assert_eq!(dict_get_bool(&dict, "ok"), Some(false));
+		            dict.get(&Value::String("error".to_string()))
+		                .and_then(|v| v.as_string().map(|s| s.to_string()))
+		                .expect("expected error string")
+		        }
+
+		        let sock_id = unwrap_result_ok_int((socket_tcp.func)(vec![]).unwrap());
+		        let connect_res = (socket_connect.func)(vec![
+		            Value::Integer(sock_id),
+		            Value::String("127.0.0.1".to_string()),
+		            Value::Integer(port as i64),
+		        ])
+		        .unwrap();
+		        assert_eq!(
+		            dict_get_bool(
+		                &connect_res.as_dict().expect("expected dict result").borrow(),
+		                "ok"
+		            ),
+		            Some(true)
+		        );
+
+		        let mut cfg = DictValue::new();
+		        cfg.set(
+		            Value::String("mode".to_string()),
+		            Value::String("client".to_string()),
+		        );
+		        cfg.set(
+		            Value::String("server_name".to_string()),
+		            Value::String("localhost".to_string()),
+		        );
+		        cfg.set(Value::String("insecure".to_string()), Value::Bool(true));
+
+		        let tls_id = unwrap_result_ok_int(
+		            (tls_client_new.func)(vec![Value::Dict(Rc::new(RefCell::new(cfg)))])
+		                .unwrap(),
+		        );
+
+		        let err = unwrap_result_err_str(
+		            (tls_connect.func)(vec![Value::Integer(tls_id), Value::Integer(sock_id)]).unwrap(),
+		        );
+		        assert!(err.contains("TLS handshake failed"));
+
+		        (tls_close.func)(vec![Value::Integer(tls_id)]).unwrap();
+		        (socket_close.func)(vec![Value::Integer(sock_id)]).unwrap();
+		        server_thread.join().unwrap();
+		    }
+
+		    #[cfg(all(feature = "native", unix))]
+		    #[test]
+		    fn tls_connect_server_handshake_failure_maps_complete_io_error_for_coverage() {
+		        use std::io::Write;
+
+		        let port = std::net::TcpListener::bind("127.0.0.1:0")
+		            .unwrap()
+		            .local_addr()
+		            .unwrap()
+		            .port();
+
+		        let client_thread = std::thread::spawn(move || {
+		            std::thread::sleep(std::time::Duration::from_millis(25));
+		            let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+		            let _ = stream.write_all(b"not tls");
+		            let _ = stream.flush();
+		        });
+
+		        let interp = Interpreter::new();
+		        let globals = interp.globals.clone();
+
+		        let socket_tcp = native_from_globals(&globals, "socket_tcp");
+		        let socket_set_reuseaddr = native_from_globals(&globals, "socket_set_reuseaddr");
+		        let socket_bind = native_from_globals(&globals, "socket_bind");
+		        let socket_listen = native_from_globals(&globals, "socket_listen");
+		        let socket_accept = native_from_globals(&globals, "socket_accept");
+		        let socket_close = native_from_globals(&globals, "socket_close");
+
+		        let tls_client_new = native_from_globals(&globals, "tls_client_new");
+		        let tls_connect = native_from_globals(&globals, "tls_connect");
+		        let tls_close = native_from_globals(&globals, "tls_close");
+
+		        fn unwrap_result_ok_int(value: Value) -> i64 {
+		            let dict = value.as_dict().expect("expected dict result");
+		            let dict = dict.borrow();
+		            assert_eq!(dict_get_bool(&dict, "ok"), Some(true));
+		            dict.get(&Value::String("value".to_string()))
+		                .and_then(|v| v.as_integer())
+		                .expect("expected integer value")
+		        }
+
+		        fn unwrap_result_ok_dict(value: Value) -> Rc<RefCell<DictValue>> {
+		            let dict = value.as_dict().expect("expected dict result");
+		            let dict = dict.borrow();
+		            assert_eq!(dict_get_bool(&dict, "ok"), Some(true));
+		            dict.get(&Value::String("value".to_string()))
+		                .cloned()
+		                .and_then(|v| v.as_dict().cloned())
+		                .expect("expected dict value")
+		        }
+
+		        fn unwrap_result_err_str(value: Value) -> String {
+		            let dict = value.as_dict().expect("expected dict result");
+		            let dict = dict.borrow();
+		            assert_eq!(dict_get_bool(&dict, "ok"), Some(false));
+		            dict.get(&Value::String("error".to_string()))
+		                .and_then(|v| v.as_string().map(|s| s.to_string()))
+		                .expect("expected error string")
+		        }
+
+		        let server_sock_id = unwrap_result_ok_int((socket_tcp.func)(vec![]).unwrap());
+		        (socket_set_reuseaddr.func)(vec![Value::Integer(server_sock_id), Value::Bool(true)])
+		            .unwrap();
+		        let bind_res = (socket_bind.func)(vec![
+		            Value::Integer(server_sock_id),
+		            Value::String("127.0.0.1".to_string()),
+		            Value::Integer(port as i64),
+		        ])
+		        .unwrap();
+		        assert_eq!(
+		            dict_get_bool(&bind_res.as_dict().expect("expected dict result").borrow(), "ok"),
+		            Some(true)
+		        );
+		        let listen_res = (socket_listen.func)(vec![Value::Integer(server_sock_id), Value::Integer(1)]).unwrap();
+		        assert_eq!(
+		            dict_get_bool(
+		                &listen_res.as_dict().expect("expected dict result").borrow(),
+		                "ok"
+		            ),
+		            Some(true)
+		        );
+
+		        let accept_dict = unwrap_result_ok_dict(
+		            (socket_accept.func)(vec![Value::Integer(server_sock_id)]).unwrap(),
+		        );
+		        let client_sock_id = {
+		            let d = accept_dict.borrow();
+		            d.get(&Value::String("sock".to_string()))
+		                .and_then(|v| v.as_integer())
+		                .expect("expected sock integer") as i64
+		        };
+
+		        let cert = generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+		        let cert_pem = cert.serialize_pem().unwrap();
+		        let key_pem = cert.serialize_private_key_pem();
+
+		        let mut cfg = DictValue::new();
+		        cfg.set(
+		            Value::String("mode".to_string()),
+		            Value::String("server".to_string()),
+		        );
+		        cfg.set(
+		            Value::String("cert_pem".to_string()),
+		            Value::String(cert_pem),
+		        );
+		        cfg.set(Value::String("key_pem".to_string()), Value::String(key_pem));
+
+		        let tls_id = unwrap_result_ok_int(
+		            (tls_client_new.func)(vec![Value::Dict(Rc::new(RefCell::new(cfg)))])
+		                .unwrap(),
+		        );
+
+		        let err = unwrap_result_err_str(
+		            (tls_connect.func)(vec![Value::Integer(tls_id), Value::Integer(client_sock_id)])
+		                .unwrap(),
+		        );
+		        assert!(err.contains("TLS handshake failed"));
+
+		        (tls_close.func)(vec![Value::Integer(tls_id)]).unwrap();
+		        (socket_close.func)(vec![Value::Integer(client_sock_id)]).unwrap();
+		        (socket_close.func)(vec![Value::Integer(server_sock_id)]).unwrap();
+		        client_thread.join().unwrap();
+		    }
+
+		    #[cfg(all(feature = "native", unix))]
+		    #[test]
+		    fn dtls_handshake_maps_connector_connect_error_for_coverage() {
+	        dtls_fail_next_connect();
 
         let program = parse(
             r#"
@@ -18650,21 +19085,40 @@ len(parts[0])
         assert_eq!(result, Value::Integer(2)); // 2, 4 are even
     }
 
-    #[test]
-    fn test_split_by_positive() {
-        let result = run(r#"
-ken parts = split_by([-1, 0, 1, 2], "positive")
-len(parts[0])
-"#)
-        .unwrap();
-        assert_eq!(result, Value::Integer(2)); // 1, 2 are positive
-    }
+	    #[test]
+	    fn test_split_by_positive() {
+	        let result = run(r#"
+	ken parts = split_by([-1, 0, 1, 2], "positive")
+	len(parts[0])
+	"#)
+	        .unwrap();
+	        assert_eq!(result, Value::Integer(2)); // 1, 2 are positive
+	    }
 
-    #[test]
-    fn test_split_by_unknown_predicate() {
-        let result = run(r#"split_by([1, 2], "unknown")"#);
-        assert!(result.is_err());
-    }
+	    #[test]
+	    fn test_split_by_all_predicates_in_unit_instance_for_coverage() {
+	        let result = run(r#"
+ken a = split_by([1, 2, 3, 4], "even")
+ken b = split_by([-2, -1, 0, 1, 2, 3], "odd")
+ken c = split_by([-1, 0, 1, 2], "positive")
+ken d = split_by([-2, -1, 0, 1], "negative")
+ken e = split_by([-1.0, 0.0, 1.0], "positive")
+ken f = split_by([-1.0, 0.0, 1.0], "negative")
+ken g = split_by([0, 1, naething, "x"], "truthy")
+ken h = split_by([naething, 1], "nil")
+ken i = split_by(["a", 1], "string")
+ken j = split_by(["a", 1, 2.0], "number")
+len(a[0]) + len(b[0]) + len(c[0]) + len(d[0]) + len(e[0]) + len(f[0]) + len(g[0]) + len(h[0]) + len(i[0]) + len(j[0])
+"#)
+	        .unwrap();
+	        assert_eq!(result, Value::Integer(17));
+	    }
+
+	    #[test]
+	    fn test_split_by_unknown_predicate() {
+	        let result = run(r#"split_by([1, 2], "unknown")"#);
+	        assert!(result.is_err());
+	    }
 
     #[test]
     fn test_grup_runs() {
@@ -20764,17 +21218,25 @@ soond_steek()
 
     #[test]
     fn test_register_thread_and_with_thread_mut() {
+        fn detach_and_get(handle: &mut ThreadHandle) -> Value {
+            handle.detached = true;
+            handle.result.clone()
+        }
+
+        fn detach_only(handle: &mut ThreadHandle) {
+            handle.detached = true;
+        }
+
         let id = register_thread(ThreadHandle {
             result: Value::Integer(7),
             detached: false,
         });
-        let result = with_thread_mut(id, |handle| {
-            handle.detached = true;
-            handle.result.clone()
-        })
-        .unwrap();
+        let result = with_thread_mut(id, detach_and_get).unwrap();
         assert_eq!(result, Value::Integer(7));
-        assert!(with_thread_mut(999999, |_| ()).is_err());
+        assert!(with_thread_mut(999999, detach_and_get).is_err());
+
+        with_thread_mut(id, detach_only).unwrap();
+        assert!(with_thread_mut(999999, detach_only).is_err());
     }
 
     #[test]
@@ -20784,8 +21246,16 @@ soond_steek()
             LogLevel::Wheesht
         );
         assert_eq!(
+            parse_log_level_value(&Value::Integer(1)).unwrap(),
+            LogLevel::Roar
+        );
+        assert_eq!(
             parse_log_level_value(&Value::Integer(5)).unwrap(),
             LogLevel::Whisper
+        );
+        assert_eq!(
+            parse_log_level_value(&Value::Integer(4)).unwrap(),
+            LogLevel::Mutter
         );
         assert!(parse_log_level_value(&Value::Integer(9)).is_err());
         assert!(parse_log_level_value(&Value::Bool(true)).is_err());
@@ -21369,11 +21839,52 @@ soond_steek()
 
 		        let event_loop_new = native_from_globals(&globals, "event_loop_new");
 		        let event_loop_stop = native_from_globals(&globals, "event_loop_stop");
+		        let event_loop_poll = native_from_globals(&globals, "event_loop_poll");
+		        let event_watch_read = native_from_globals(&globals, "event_watch_read");
+		        let event_watch_write = native_from_globals(&globals, "event_watch_write");
+		        let event_unwatch = native_from_globals(&globals, "event_unwatch");
+		        let timer_after = native_from_globals(&globals, "timer_after");
+		        let timer_every = native_from_globals(&globals, "timer_every");
+		        let timer_cancel = native_from_globals(&globals, "timer_cancel");
 
 		        let loop_id = (event_loop_new.func)(vec![]).unwrap().as_integer().unwrap();
+		        let bad_loop_id = 9_999_999;
 
 		        (event_loop_stop.func)(vec![Value::Integer(loop_id)]).unwrap();
-		        assert!((event_loop_stop.func)(vec![Value::Integer(loop_id + 9999)]).is_err());
+		        assert!((event_loop_stop.func)(vec![Value::Integer(bad_loop_id)]).is_err());
+
+		        // Cover the "Unknown event loop handle" error propagation branches for other loop/timer natives.
+		        for res in [
+		            (event_unwatch.func)(vec![Value::Integer(bad_loop_id), Value::Integer(1)]),
+		            (event_loop_poll.func)(vec![Value::Integer(bad_loop_id), Value::Nil]),
+		            (timer_after.func)(vec![Value::Integer(bad_loop_id), Value::Integer(1), Value::Nil]),
+		            (timer_every.func)(vec![Value::Integer(bad_loop_id), Value::Integer(1), Value::Nil]),
+		            (timer_cancel.func)(vec![Value::Integer(bad_loop_id), Value::Integer(1)]),
+		        ] {
+		            let err = res.unwrap_err();
+		            assert!(err.contains("Unknown event loop handle"));
+		        }
+
+		        #[cfg(all(feature = "native", unix))]
+		        {
+		            let sock_id = register_socket(-1, SocketKind::Tcp);
+		            for res in [
+		                (event_watch_read.func)(vec![
+		                    Value::Integer(bad_loop_id),
+		                    Value::Integer(sock_id),
+		                    Value::Nil,
+		                ]),
+		                (event_watch_write.func)(vec![
+		                    Value::Integer(bad_loop_id),
+		                    Value::Integer(sock_id),
+		                    Value::Nil,
+		                ]),
+		            ] {
+		                let err = res.unwrap_err();
+		                assert!(err.contains("Unknown event loop handle"));
+		            }
+		            let _ = remove_socket(sock_id);
+		        }
 		    }
 
 		    #[test]
@@ -21802,6 +22313,18 @@ c + 1
     }
 
     #[test]
+    #[cfg(all(feature = "native", unix))]
+    fn test_dtls_config_from_value_defaults_empty_server_name_for_coverage() {
+        let mut dict = DictValue::new();
+        dict.set(
+            Value::String("server_name".to_string()),
+            Value::String(String::new()),
+        );
+        let cfg = dtls_config_from_value(&Value::Dict(Rc::new(RefCell::new(dict)))).unwrap();
+        assert_eq!(cfg.server_name, "localhost");
+    }
+
+    #[test]
 	    fn test_interpreter_sync_primitives_and_log_span_in_for_coverage() {
 	        let code = r#"
 	ken m = mutex_new()
@@ -22007,6 +22530,19 @@ blether log_span_in(s, f)
         };
         let err = build_client_config(&cfg).unwrap_err();
 	        assert!(err.contains("Invalid CA certs"));
+
+        // build_client_config: cover add_parsable_certificates + added==0 branch.
+        let invalid_der_cert = "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n".to_string();
+        let cfg = TlsConfigData {
+            mode: TlsMode::Client,
+            server_name: "localhost".to_string(),
+            insecure: false,
+            ca_pem: Some(invalid_der_cert),
+            cert_pem: None,
+            key_pem: None,
+        };
+        let err = build_client_config(&cfg).unwrap_err();
+	        assert!(err.contains("No valid CA certificates found"));
 
         // build_server_config: cover invalid cert, invalid key, and invalid config map_err closures.
         let bad_key = "-----BEGIN PRIVATE KEY-----\nNOT_BASE64\n-----END PRIVATE KEY-----\n".to_string();

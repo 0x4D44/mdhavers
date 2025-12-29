@@ -47,22 +47,25 @@ is_a(foo, "dae")
 fn interpreter_split_by_covers_all_predicate_branches_for_coverage() {
     let value = run(
         r#"
+ken z = split_by([1, 2, 3, 4], "even")
 ken a = split_by([-2, -1, 0, 1, 2, 3], "odd")
 ken b = split_by([-2, -1, 0, 1, 2, 3], "negative")
+ken p = split_by([-1, 0, 1, 2], "positive")
 ken c = split_by([-1.0, 0.0, 1.0], "positive")
 ken d = split_by([-1.0, 0.0, 1.0], "negative")
 ken e = split_by([0, 1, naething, "x"], "truthy")
 ken f = split_by([naething, 1], "nil")
 ken g = split_by(["a", 1], "string")
 ken h = split_by(["a", 1, 2.0], "number")
-len(a[0]) + len(b[0]) + len(c[0]) + len(d[0]) + len(e[0]) + len(f[0]) + len(g[0]) + len(h[0])
+len(z[0]) + len(a[0]) + len(b[0]) + len(p[0]) + len(c[0]) + len(d[0]) + len(e[0]) + len(f[0]) + len(g[0]) + len(h[0])
 "#,
     )
     .unwrap();
 
-    assert_eq!(value, Value::Integer(13));
+    assert_eq!(value, Value::Integer(17));
     assert!(run(r#"split_by(1, "even")"#).is_err());
     assert!(run(r#"split_by([1], 1)"#).is_err());
+    assert!(run(r#"split_by([1, 2], "unknown")"#).is_err());
 }
 
 #[test]

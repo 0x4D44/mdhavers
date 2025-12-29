@@ -171,6 +171,29 @@ fn cli_repl_reports_editor_init_failure_for_coverage() {
 }
 
 #[test]
+#[cfg(coverage)]
+fn cli_repl_reports_defaulteditor_new_io_err_arm_for_coverage() {
+    let dir = tempdir().unwrap();
+    let home = dir.path().join("home");
+    fs::create_dir_all(&home).expect("create home");
+
+    let mut cmd = Command::new(mdhavers_bin());
+    cmd.args(["repl"])
+        .env("HOME", &home)
+        .env("NO_COLOR", "1")
+        .env("MDHAVERS_COVERAGE_DEFAULTEDITOR_NEW_IO_ERR", "1")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let output = cmd.output().expect("run mdhavers");
+    let code = output.status.code().unwrap_or(-1);
+    assert_eq!(code, 1);
+    let err = String::from_utf8_lossy(&output.stderr).to_string();
+    assert!(err.contains("coverage forced DefaultEditor::new IO error"));
+}
+
+#[test]
 fn cli_subcommands_cover_success_and_error_paths() {
     let dir = tempdir().unwrap();
     let home = dir.path();

@@ -29,6 +29,119 @@ fn allocate_port() -> u16 {
         .port()
 }
 
+fn run_dtls_handshake(profile: &str) -> (String, String) {
+    let (cert_pem, key_pem) = generate_cert();
+    let cert_escaped = escape_for_braw(&cert_pem);
+    let key_escaped = escape_for_braw(&key_pem);
+
+    let server_port = allocate_port();
+    let client_port = allocate_port();
+
+    let (server_tx, server_rx) = mpsc::channel();
+    let cert_server = cert_escaped.clone();
+    let key_server = key_escaped.clone();
+    let profile_server = profile.to_string();
+    let server_thread = thread::spawn(move || {
+        let code = format!(
+            r#"
+ken result = "dtls_fail"
+ken s = socket_udp()
+
+gin s["ok"] {{
+    ken sock = s["value"]
+    socket_set_reuseaddr(sock, aye)
+    ken b = socket_bind(sock, "127.0.0.1", {server_port})
+    gin b["ok"] {{
+        ken cfg = {{
+            "mode": "server",
+            "cert_pem": "{cert_server}",
+            "key_pem": "{key_server}",
+            "remote_host": "127.0.0.1",
+            "remote_port": {client_port},
+            "srtp_profiles": ["{profile_server}"]
+        }}
+        ken d = dtls_server_new(cfg)
+        gin d["ok"] {{
+            ken hs = dtls_handshake(d["value"], sock)
+            gin hs["ok"] an hs["value"]["key_len"] > 0 an hs["value"]["profile"] == "{profile_server}" {{
+                result = "dtls_ok"
+            }}
+        }}
+    }}
+    socket_close(sock)
+}}
+
+blether result
+"#,
+        );
+        let program = parse(&code).unwrap();
+        let mut interp = Interpreter::new();
+        interp.interpret(&program).unwrap();
+        let out = interp.get_output().join("\n");
+        server_tx.send(out).unwrap();
+    });
+
+    thread::sleep(Duration::from_millis(50));
+
+    let (client_tx, client_rx) = mpsc::channel();
+    let cert_client = cert_escaped.clone();
+    let key_client = key_escaped.clone();
+    let profile_client = profile.to_string();
+    let client_thread = thread::spawn(move || {
+        let code = format!(
+            r#"
+ken result = "dtls_fail"
+ken s = socket_udp()
+
+gin s["ok"] {{
+    ken sock = s["value"]
+    socket_set_reuseaddr(sock, aye)
+    ken b = socket_bind(sock, "127.0.0.1", {client_port})
+    gin b["ok"] {{
+        ken cfg = {{
+            "mode": "client",
+            "server_name": "localhost",
+            "insecure": aye,
+            "cert_pem": "{cert_client}",
+            "key_pem": "{key_client}",
+            "remote_host": "127.0.0.1",
+            "remote_port": {server_port},
+            "srtp_profiles": ["{profile_client}"]
+        }}
+        ken d = dtls_server_new(cfg)
+        gin d["ok"] {{
+            ken hs = dtls_handshake(d["value"], sock)
+            gin hs["ok"] an hs["value"]["key_len"] > 0 an hs["value"]["profile"] == "{profile_client}" {{
+                result = "dtls_ok"
+            }}
+        }}
+    }}
+    socket_close(sock)
+}}
+
+blether result
+"#,
+        );
+        let program = parse(&code).unwrap();
+        let mut interp = Interpreter::new();
+        interp.interpret(&program).unwrap();
+        let out = interp.get_output().join("\n");
+        client_tx.send(out).unwrap();
+    });
+
+    let server_out = server_rx
+        .recv_timeout(Duration::from_secs(10))
+        .expect("server timed out");
+    let client_out = client_rx
+        .recv_timeout(Duration::from_secs(10))
+        .expect("client timed out");
+
+    server_thread.join().unwrap();
+    client_thread.join().unwrap();
+
+    (server_out, client_out)
+}
+
 #[test]
 fn interpreter_dtls_unknown_srtp_profile_string_falls_back_to_default_for_coverage() {
     let program = parse(
@@ -42,6 +155,42 @@ blether d["ok"]
     interp.interpret(&program).unwrap();
     let out = interp.get_output().join("\n");
     assert_eq!(out.trim(), "aye");
+}
+
+#[test]
+fn interpreter_dtls_accepts_aead_srtp_profile_strings_for_coverage() {
+    let program = parse(
+        r#"
+ken d = dtls_server_new({"srtp_profiles": ["SRTP_AES128_CM_SHA1_32", "SRTP_AEAD_AES_128_GCM", "SRTP_AEAD_AES_256_GCM"]})
+blether d["ok"]
+"#,
+    )
+    .unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert_eq!(out.trim(), "aye");
+}
+
+#[test]
+fn interpreter_dtls_accepts_float_remote_port_for_coverage() {
+    let program = parse(
+        r#"
+ken a = dtls_server_new({"remote_host": "127.0.0.1", "remote_port": 9.0})
+ken b = dtls_server_new({"remote_host": "127.0.0.1", "remote_port": 70000.0})
+ken c = dtls_server_new({"remote_host": "127.0.0.1", "remote_port": 70000})
+ken d = dtls_server_new({"remote_host": "127.0.0.1", "remote_port": "9"})
+blether a["ok"]
+blether b["ok"]
+blether c["ok"]
+blether d["ok"]
+"#,
+    )
+    .unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert_eq!(out.trim(), "aye\naye\naye\naye");
 }
 
 #[test]
@@ -229,6 +378,15 @@ blether result
 
     assert_eq!(server_out.trim(), "dtls_ok");
     assert_eq!(client_out.trim(), "dtls_ok");
+}
+
+#[test]
+fn interpreter_dtls_handshake_supports_aead_srtp_profiles_for_coverage() {
+    for profile in ["SRTP_AEAD_AES_128_GCM", "SRTP_AEAD_AES_256_GCM"] {
+        let (server_out, client_out) = run_dtls_handshake(profile);
+        assert_eq!(server_out.trim(), "dtls_ok");
+        assert_eq!(client_out.trim(), "dtls_ok");
+    }
 }
 
 #[test]

@@ -199,7 +199,13 @@ flat[0] + flat[1] + flat[2]
 
 #[test]
 fn interpreter_log_level_integer_branches_are_covered() {
-    for src in ["log_enabled(0)", "log_enabled(2)", "log_enabled(5)"] {
+    for src in [
+        "log_enabled(0)",
+        "log_enabled(1)",
+        "log_enabled(2)",
+        "log_enabled(4)",
+        "log_enabled(5)",
+    ] {
         let v = run(src).unwrap();
         assert!(matches!(v, Value::Bool(_)), "expected bool for {src}, got {v:?}");
     }

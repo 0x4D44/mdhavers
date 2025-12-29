@@ -562,7 +562,20 @@ fn repl_editor() -> Result<DefaultEditor, String> {
         return Err("coverage DefaultEditor::new error".to_string());
     }
 
-    match DefaultEditor::new() {
+    #[cfg(coverage)]
+    let editor = if std::env::var_os("MDHAVERS_COVERAGE_DEFAULTEDITOR_NEW_IO_ERR").is_some() {
+        Err(ReadlineError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "coverage forced DefaultEditor::new IO error",
+        )))
+    } else {
+        DefaultEditor::new()
+    };
+
+    #[cfg(not(coverage))]
+    let editor = DefaultEditor::new();
+
+    match editor {
         Ok(editor) => Ok(editor),
         Err(e) => Err(e.to_string()),
     }

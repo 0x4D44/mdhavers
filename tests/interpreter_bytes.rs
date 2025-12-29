@@ -24,3 +24,43 @@ blether bytes_get(s, 0)
     let out = interp.get_output().join("\n");
     assert_eq!(out.trim(), "4\n3\n515\n2\n2");
 }
+
+#[test]
+fn interpreter_bytes_slice_rejects_non_integer_start_for_coverage() {
+    let program = parse(
+        r#"
+ken b = bytes(1)
+bytes_slice(b, "nope", 1)
+"#,
+    )
+    .unwrap();
+    let mut interp = Interpreter::new();
+    let err = interp
+        .interpret(&program)
+        .expect_err("expected bytes_slice start type error");
+    let s = format!("{err:?}");
+    assert!(
+        s.contains("bytes_slice() expects integer start"),
+        "unexpected error: {s}"
+    );
+}
+
+#[test]
+fn interpreter_bytes_slice_rejects_non_integer_end_for_coverage() {
+    let program = parse(
+        r#"
+ken b = bytes(1)
+bytes_slice(b, 0, "nope")
+"#,
+    )
+    .unwrap();
+    let mut interp = Interpreter::new();
+    let err = interp
+        .interpret(&program)
+        .expect_err("expected bytes_slice end type error");
+    let s = format!("{err:?}");
+    assert!(
+        s.contains("bytes_slice() expects integer end"),
+        "unexpected error: {s}"
+    );
+}

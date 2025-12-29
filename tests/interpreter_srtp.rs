@@ -64,6 +64,48 @@ blether result
 }
 
 #[test]
+fn interpreter_srtp_accepts_additional_profiles_for_coverage() {
+    let code = r#"
+dae make_bytes_seq(n, start) {
+    ken b = bytes(n)
+    ken i = 0
+    whiles i < n {
+        bytes_set(b, i, start + i)
+        i = i + 1
+    }
+    gie b
+}
+
+ken key16 = make_bytes_seq(16, 1)
+ken key32 = make_bytes_seq(32, 1)
+ken salt14 = make_bytes_seq(14, 50)
+ken salt12 = make_bytes_seq(12, 50)
+
+ken p32 = srtp_create({"profile": "SRTP_AES128_CM_SHA1_32", "master_key": key16, "master_salt": salt14})
+ken p128 = srtp_create({"profile": "SRTP_AEAD_AES_128_GCM", "master_key": key16, "master_salt": salt12})
+ken p256 = srtp_create({"profile": "SRTP_AEAD_AES_256_GCM", "master_key": key32, "master_salt": salt12})
+
+blether p32["ok"]
+gin nae p32["ok"] { blether p32["error"] }
+
+blether p128["ok"]
+gin nae p128["ok"] { blether p128["error"] }
+
+blether p256["ok"]
+gin nae p256["ok"] { blether p256["error"] }
+"#;
+
+    let program = parse(code).unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert!(
+        !out.contains("Unsupported SRTP profile"),
+        "unexpected unsupported profile error: {out}"
+    );
+}
+
+#[test]
 fn interpreter_srtp_client_server_keys() {
     let code = r#"
 dae make_bytes_seq(n, start) {
@@ -105,6 +147,23 @@ fn interpreter_srtp_create_rejects_non_dict_config_for_coverage() {
         .expect_err("expected srtp_create() type error");
     let s = format!("{err:?}");
     assert!(s.contains("srtp_create"), "unexpected error: {s}");
+}
+
+#[test]
+fn interpreter_srtp_create_reports_non_bytes_master_key_for_coverage() {
+    let program = parse(
+        r#"
+ken bad = srtp_create({"profile": "SRTP_AES128_CM_SHA1_80", "master_key": 1, "master_salt": 2})
+blether bad["ok"]
+blether bad["error"]
+"#,
+    )
+    .unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+    let out = interp.get_output().join("\n");
+    assert!(out.starts_with("nae\n"));
+    assert!(out.contains("Missing SRTP send_key"));
 }
 
 #[test]
