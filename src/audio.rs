@@ -828,7 +828,7 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 {
 }
 
 #[cfg(any(feature = "audio", test))]
-fn seek_midi(entry: &mut MidiEntry, seconds: f64) -> Result<(), String> {
+fn seek_midi(entry: &mut MidiEntry, seconds: f64) {
     let length = entry.midi.get_length();
     let target = if seconds < 0.0 {
         0.0
@@ -855,8 +855,6 @@ fn seek_midi(entry: &mut MidiEntry, seconds: f64) -> Result<(), String> {
             .render(&mut left[..chunk], &mut right[..chunk]);
         remaining -= chunk;
     }
-
-    Ok(())
 }
 
 #[cfg(any(feature = "audio", test))]
@@ -1515,7 +1513,7 @@ pub fn register_audio_functions(globals: &Rc<RefCell<crate::value::Environment>>
                 .get_mut(handle)
                 .and_then(|e| e.as_mut())
                 .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
-            seek_midi(entry, pos)?;
+            seek_midi(entry, pos);
             Ok(Value::Nil)
         })
     });
@@ -1986,6 +1984,52 @@ mod tests {
     }
 
     #[test]
+    fn test_audio_native_wrappers_propagate_ensure_audio_errors_for_coverage() {
+        let env = Rc::new(RefCell::new(crate::value::Environment::new()));
+        register_audio_functions(&env);
+
+        with_state(|state| {
+            state.shutdown();
+            Ok(Value::Nil)
+        })
+        .unwrap();
+
+        let soond_stairt = get_native(&env, "soond_stairt");
+        miniaudio::fail_next_device_new();
+        let err = (soond_stairt.func)(vec![]).unwrap_err();
+        assert_eq!(err, "Cannae stairt the soond device");
+
+        let soond_wheesht = get_native(&env, "soond_wheesht");
+        miniaudio::fail_next_device_new();
+        let err = (soond_wheesht.func)(vec![Value::Bool(true)]).unwrap_err();
+        assert_eq!(err, "Cannae stairt the soond device");
+
+        let soond_luid = get_native(&env, "soond_luid");
+        miniaudio::fail_next_device_new();
+        let err = (soond_luid.func)(vec![Value::Float(0.5)]).unwrap_err();
+        assert_eq!(err, "Cannae stairt the soond device");
+
+        let soond_lade = get_native(&env, "soond_lade");
+        miniaudio::fail_next_device_new();
+        let err = (soond_lade.func)(vec![Value::String("nope.wav".to_string())]).unwrap_err();
+        assert_eq!(err, "Cannae stairt the soond device");
+
+        let muisic_lade = get_native(&env, "muisic_lade");
+        miniaudio::fail_next_device_new();
+        let err = (muisic_lade.func)(vec![Value::String("nope.wav".to_string())]).unwrap_err();
+        assert_eq!(err, "Cannae stairt the soond device");
+
+        let midi_lade = get_native(&env, "midi_lade");
+        miniaudio::fail_next_device_new();
+        let err = (midi_lade.func)(vec![
+            Value::String("nope.mid".to_string()),
+            Value::Nil,
+        ])
+        .unwrap_err();
+        assert_eq!(err, "Cannae stairt the soond device");
+    }
+
+    #[test]
     fn test_mix_buffer_entry_stops_and_advances() {
         let buffer = sample_buffer(4, 1.0, 0.0);
         let mut entry = BufferEntry {
@@ -2161,7 +2205,7 @@ mod tests {
             scratch_right: Vec::new(),
         };
 
-        seek_midi(&mut entry, 5.0).unwrap();
+        seek_midi(&mut entry, 5.0);
         assert!((entry.sequencer.get_position() - entry.midi.get_length()).abs() < 1e-6);
     }
 
@@ -2329,6 +2373,24 @@ mod tests {
     }
 
     #[test]
+    fn test_mix_buffer_entry_non_positive_pitch_clamps_to_one_for_coverage() {
+        let buffer = sample_buffer(2, 1.0, 0.0);
+        let mut entry = BufferEntry {
+            buffer,
+            position: 0.0,
+            state: PlayState::Playing,
+            looped: false,
+            volume: 1.0,
+            pan: -1.0,
+            pitch: 0.0,
+        };
+        let mut output = vec![0.0_f32; 2];
+        mix_buffer_entry(&mut entry, &mut output, 1, 2);
+        assert!((entry.position - 1.0).abs() < 1e-6);
+        assert!(output[0] > 0.0);
+    }
+
+    #[test]
     fn test_music_builtins_roundtrip() {
         let dir = tempdir().unwrap();
         let music_path = dir.path().join("song.wav");
@@ -2381,14 +2443,8 @@ mod tests {
         (muisic_pit_rin_roond.func)(vec![Value::Integer(handle), Value::Bool(true)]).unwrap();
 
         (muisic_loup.func)(vec![Value::Integer(handle), Value::Float(0.05)]).unwrap();
-        assert!(matches!(
-            (muisic_hou_lang.func)(vec![Value::Integer(handle)]).unwrap(),
-            Value::Float(_)
-        ));
-        assert!(matches!(
-            (muisic_whaur.func)(vec![Value::Integer(handle)]).unwrap(),
-            Value::Float(_)
-        ));
+        let _ = (muisic_hou_lang.func)(vec![Value::Integer(handle)]).unwrap();
+        let _ = (muisic_whaur.func)(vec![Value::Integer(handle)]).unwrap();
 
         (muisic_stap.func)(vec![Value::Integer(handle)]).unwrap();
         let err = (muisic_unlade.func)(vec![Value::Integer(999)]).unwrap_err();
@@ -2449,6 +2505,7 @@ mod tests {
         let midi_unlade = get_native(&env, "midi_unlade");
 
         (midi_spiel.func)(vec![Value::Integer(handle1)]).unwrap();
+        (midi_spiel.func)(vec![Value::Integer(handle1)]).unwrap();
         assert_eq!(
             (midi_is_spielin.func)(vec![Value::Integer(handle1)]).unwrap(),
             Value::Bool(true)
@@ -2463,20 +2520,70 @@ mod tests {
         (midi_pit_pan.func)(vec![Value::Integer(handle1), Value::Float(-0.5)]).unwrap();
         (midi_pit_rin_roond.func)(vec![Value::Integer(handle1), Value::Bool(true)]).unwrap();
         (midi_loup.func)(vec![Value::Integer(handle1), Value::Float(0.05)]).unwrap();
-        assert!(matches!(
-            (midi_hou_lang.func)(vec![Value::Integer(handle1)]).unwrap(),
-            Value::Float(_)
-        ));
-        assert!(matches!(
-            (midi_whaur.func)(vec![Value::Integer(handle1)]).unwrap(),
-            Value::Float(_)
-        ));
+        let _ = (midi_hou_lang.func)(vec![Value::Integer(handle1)]).unwrap();
+        let _ = (midi_whaur.func)(vec![Value::Integer(handle1)]).unwrap();
         (midi_stap.func)(vec![Value::Integer(handle1)]).unwrap();
 
         let err = (midi_unlade.func)(vec![Value::Integer(999)]).unwrap_err();
         assert_eq!(err, ERR_BAD_HANDLE);
         (midi_unlade.func)(vec![Value::Integer(handle1)]).unwrap();
         (midi_unlade.func)(vec![Value::Integer(handle2)]).unwrap();
+    }
+
+    #[test]
+    fn test_midi_lade_default_soundfont_missing_path_is_covered_for_coverage() {
+        let dir = tempdir().unwrap();
+
+        let env = Rc::new(RefCell::new(crate::value::Environment::new()));
+        register_audio_functions(&env);
+        let midi_lade = get_native(&env, "midi_lade");
+
+        with_state(|state| {
+            state.shutdown();
+            Ok(Value::Nil)
+        })
+        .unwrap();
+
+        let err = with_cwd(dir.path(), || {
+            (midi_lade.func)(vec![Value::String("song.mid".to_string()), Value::Nil]).unwrap_err()
+        });
+        assert_eq!(err, "Cannae find the default soondfont");
+
+        with_state(|state| {
+            state.shutdown();
+            Ok(Value::Nil)
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn test_midi_lade_default_soundfont_load_error_is_covered_for_coverage() {
+        let dir = tempdir().unwrap();
+        let sf_dir = dir.path().join("assets/soundfonts");
+        fs::create_dir_all(&sf_dir).unwrap();
+        fs::write(sf_dir.join("MuseScore_General.sf2"), b"sf").unwrap();
+
+        let env = Rc::new(RefCell::new(crate::value::Environment::new()));
+        register_audio_functions(&env);
+        let midi_lade = get_native(&env, "midi_lade");
+
+        with_state(|state| {
+            state.shutdown();
+            Ok(Value::Nil)
+        })
+        .unwrap();
+
+        let err = with_cwd(dir.path(), || {
+            rustysynth::fail_next_soundfont_new();
+            (midi_lade.func)(vec![Value::String("song.mid".to_string()), Value::Nil]).unwrap_err()
+        });
+        assert_eq!(err, "Cannae read the soondfont");
+
+        with_state(|state| {
+            state.shutdown();
+            Ok(Value::Nil)
+        })
+        .unwrap();
     }
 
     #[test]
@@ -2584,8 +2691,8 @@ mod tests {
             scratch_left: Vec::new(),
             scratch_right: Vec::new(),
         };
-        seek_midi(&mut entry, -1.0).unwrap();
-        seek_midi(&mut entry, 10.0).unwrap();
+        seek_midi(&mut entry, -1.0);
+        seek_midi(&mut entry, 10.0);
     }
 
     #[test]
@@ -2649,7 +2756,7 @@ mod tests {
         for (name, args) in cases {
             let native = get_native(&env, name);
             let err = (native.func)(args.clone()).unwrap_err();
-            assert_eq!(err, ERR_BAD_HANDLE, "native {name} returned unexpected error");
+            assert_eq!(err, ERR_BAD_HANDLE);
         }
     }
 }

@@ -151,6 +151,18 @@ mod tests {
     }
 
     #[test]
+    fn test_run_with_output_parse_error_propagates_for_coverage() {
+        let result = run_with_output("ken =");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_run_with_output_interpreter_error_propagates_for_coverage() {
+        let result = run_with_output("undefined_var");
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_compile_to_js_simple() {
         let js = compile_to_js("ken x = 42").unwrap();
         assert!(js.contains("let x"));
@@ -194,6 +206,13 @@ mod tests {
         )
         .unwrap();
         assert!(wat.contains("(func"));
+    }
+
+    #[test]
+    #[cfg(feature = "llvm")]
+    fn test_compile_to_llvm_ir_parse_error_propagates_for_coverage() {
+        let result = compile_to_llvm_ir("ken =");
+        assert!(result.is_err());
     }
 
     #[test]

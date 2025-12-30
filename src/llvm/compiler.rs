@@ -38,12 +38,12 @@ enum StatusColor {
     Dim,
 }
 
-#[cfg(all(test, coverage))]
+#[cfg(coverage)]
 mod coverage_inject {
     use std::cell::Cell;
 
     #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-    pub(super) enum FailPoint {
+    pub enum FailPoint {
         None,
         InitializeNativeTarget,
         TargetFromTriple,
@@ -63,20 +63,70 @@ mod coverage_inject {
         static FAIL_POINT: Cell<FailPoint> = Cell::new(FailPoint::None);
     }
 
-    pub(super) fn should_fail(point: FailPoint) -> bool {
+    pub struct FailPointGuard {
+        previous: FailPoint,
+    }
+
+    impl Drop for FailPointGuard {
+        fn drop(&mut self) {
+            FAIL_POINT.with(|cell| cell.set(self.previous));
+        }
+    }
+
+    pub fn should_fail(point: FailPoint) -> bool {
         FAIL_POINT.with(|cell| cell.get() == point)
     }
 
-    #[cfg_attr(coverage, inline(never))]
-    pub(super) fn with_failpoint<T>(point: FailPoint, f: impl FnOnce() -> T) -> T {
-        FAIL_POINT.with(|cell| {
+    pub fn set_failpoint(point: FailPoint) -> FailPointGuard {
+        let previous = FAIL_POINT.with(|cell| {
             let previous = cell.get();
             cell.set(point);
-            let out = f();
-            cell.set(previous);
-            out
-        })
+            previous
+        });
+        FailPointGuard { previous }
     }
+}
+
+#[cfg(coverage)]
+pub use coverage_inject::{
+    FailPoint as LLVMCompilerFailPoint, FailPointGuard as LLVMCompilerFailPointGuard,
+    set_failpoint as set_llvm_compiler_failpoint_for_coverage,
+};
+
+#[cfg(all(coverage, not(test)))]
+pub fn exercise_build_status_dependency_paths_for_coverage() {
+    let mut status = BuildStatus {
+        label: "mdh",
+        enabled: false,
+        use_color: false,
+        wrote_any: false,
+    };
+    status.ensure_newline();
+
+    status.enabled = true;
+    status.ensure_newline();
+
+    status.wrote_any = true;
+    status.ensure_newline();
+
+    let guard = BuildStatusGuard {
+        status: std::ptr::null_mut(),
+    };
+    drop(guard);
+}
+
+#[cfg(all(coverage, not(test)))]
+pub fn link_native_executable_from_object_for_coverage(
+    obj_path: &Path,
+    output_path: &Path,
+) -> Result<(), HaversError> {
+    let mut status = BuildStatus {
+        label: "Native build",
+        enabled: false,
+        use_color: false,
+        wrote_any: false,
+    };
+    link_native_executable_from_object(obj_path, output_path, &mut status)
 }
 
 struct BuildStatus {
@@ -205,7 +255,7 @@ impl Drop for TempFileCleanup {
 
 #[cfg_attr(coverage, inline(never))]
 fn initialize_native_target() -> Result<(), String> {
-    #[cfg(all(test, coverage))]
+    #[cfg(coverage)]
     if coverage_inject::should_fail(coverage_inject::FailPoint::InitializeNativeTarget) {
         return Err("coverage injected: initialize_native_target".to_string());
     }
@@ -214,7 +264,7 @@ fn initialize_native_target() -> Result<(), String> {
 
 #[cfg_attr(coverage, inline(never))]
 fn target_from_triple(triple: &inkwell::targets::TargetTriple) -> Result<Target, String> {
-    #[cfg(all(test, coverage))]
+    #[cfg(coverage)]
     if coverage_inject::should_fail(coverage_inject::FailPoint::TargetFromTriple) {
         return Err("coverage injected: target_from_triple".to_string());
     }
@@ -230,7 +280,7 @@ fn create_target_machine(
     triple: &inkwell::targets::TargetTriple,
     opt_level: OptimizationLevel,
 ) -> Option<TargetMachine> {
-    #[cfg(all(test, coverage))]
+    #[cfg(coverage)]
     if coverage_inject::should_fail(coverage_inject::FailPoint::CreateTargetMachine) {
         return None;
     }
@@ -250,7 +300,7 @@ fn write_object_file(
     module: &Module,
     output_path: &Path,
 ) -> Result<(), String> {
-    #[cfg(all(test, coverage))]
+    #[cfg(coverage)]
     if coverage_inject::should_fail(coverage_inject::FailPoint::WriteObjectFile) {
         return Err("coverage injected: write_object_file".to_string());
     }
@@ -262,7 +312,7 @@ fn write_object_file(
 
 #[cfg_attr(coverage, inline(never))]
 fn create_runtime_file(path: &Path) -> io::Result<std::fs::File> {
-    #[cfg(all(test, coverage))]
+    #[cfg(coverage)]
     if coverage_inject::should_fail(coverage_inject::FailPoint::CreateRuntimeFile) {
         return Err(io::Error::new(
             io::ErrorKind::Other,
@@ -274,7 +324,7 @@ fn create_runtime_file(path: &Path) -> io::Result<std::fs::File> {
 
 #[cfg_attr(coverage, inline(never))]
 fn write_runtime_file(handle: &mut std::fs::File) -> io::Result<()> {
-    #[cfg(all(test, coverage))]
+    #[cfg(coverage)]
     if coverage_inject::should_fail(coverage_inject::FailPoint::WriteRuntimeFile) {
         return Err(io::Error::new(
             io::ErrorKind::Other,
@@ -286,7 +336,7 @@ fn write_runtime_file(handle: &mut std::fs::File) -> io::Result<()> {
 
 #[cfg_attr(coverage, inline(never))]
 fn create_runtime_rs_file(path: &Path) -> io::Result<std::fs::File> {
-    #[cfg(all(test, coverage))]
+    #[cfg(coverage)]
     if coverage_inject::should_fail(coverage_inject::FailPoint::CreateRuntimeRsFile) {
         return Err(io::Error::new(
             io::ErrorKind::Other,
@@ -298,7 +348,7 @@ fn create_runtime_rs_file(path: &Path) -> io::Result<std::fs::File> {
 
 #[cfg_attr(coverage, inline(never))]
 fn write_runtime_rs_file(handle: &mut std::fs::File) -> io::Result<()> {
-    #[cfg(all(test, coverage))]
+    #[cfg(coverage)]
     if coverage_inject::should_fail(coverage_inject::FailPoint::WriteRuntimeRsFile) {
         return Err(io::Error::new(
             io::ErrorKind::Other,
@@ -310,7 +360,7 @@ fn write_runtime_rs_file(handle: &mut std::fs::File) -> io::Result<()> {
 
 #[cfg_attr(coverage, inline(never))]
 fn create_gc_stub_file(path: &Path) -> io::Result<std::fs::File> {
-    #[cfg(all(test, coverage))]
+    #[cfg(coverage)]
     if coverage_inject::should_fail(coverage_inject::FailPoint::CreateGcStubFile) {
         return Err(io::Error::new(
             io::ErrorKind::Other,
@@ -322,7 +372,7 @@ fn create_gc_stub_file(path: &Path) -> io::Result<std::fs::File> {
 
 #[cfg_attr(coverage, inline(never))]
 fn write_gc_stub_file(handle: &mut std::fs::File) -> io::Result<()> {
-    #[cfg(all(test, coverage))]
+    #[cfg(coverage)]
     if coverage_inject::should_fail(coverage_inject::FailPoint::WriteGcStubFile) {
         return Err(io::Error::new(
             io::ErrorKind::Other,
@@ -334,7 +384,7 @@ fn write_gc_stub_file(handle: &mut std::fs::File) -> io::Result<()> {
 
 #[cfg_attr(coverage, inline(never))]
 fn link_command_status(link_args: &[&str]) -> io::Result<std::process::ExitStatus> {
-    #[cfg(all(test, coverage))]
+    #[cfg(coverage)]
     if coverage_inject::should_fail(coverage_inject::FailPoint::LinkCommandStatus) {
         return Err(io::Error::new(
             io::ErrorKind::NotFound,
@@ -342,6 +392,101 @@ fn link_command_status(link_args: &[&str]) -> io::Result<std::process::ExitStatu
         ));
     }
     Command::new("cc").args(link_args).status()
+}
+
+#[cfg_attr(coverage, inline(never))]
+fn link_native_executable_from_object(
+    obj_path: &Path,
+    output_path: &Path,
+    status: &mut BuildStatus,
+) -> Result<(), HaversError> {
+    // Generate unique temp file names using process ID and a counter
+    // This avoids race conditions when tests run in parallel
+    let unique_id = format!("{}_{:?}", std::process::id(), std::thread::current().id());
+    let runtime_path = std::env::temp_dir().join(format!("mdh_runtime_{}.o", unique_id));
+    let runtime_rs_path = std::env::temp_dir().join(format!("mdh_runtime_rs_{}.a", unique_id));
+    let gc_stub_path = std::env::temp_dir().join(format!("mdh_gc_stub_{}.o", unique_id));
+    let _cleanup = TempFileCleanup::new(vec![
+        obj_path.to_path_buf(),
+        runtime_path.clone(),
+        runtime_rs_path.clone(),
+        gc_stub_path.clone(),
+    ]);
+
+    status.update("Preparing runtime", StatusColor::Yellow);
+
+    // Write embedded runtime to temp file for linking
+    {
+        let mut handle = match create_runtime_file(&runtime_path) {
+            Ok(handle) => handle,
+            Err(err) => return Err(HaversError::CompileError(err.to_string())),
+        };
+        if let Err(err) = write_runtime_file(&mut handle) {
+            return Err(HaversError::CompileError(err.to_string()));
+        }
+    }
+
+    // Write embedded Rust runtime to temp file for linking
+    {
+        let mut handle = match create_runtime_rs_file(&runtime_rs_path) {
+            Ok(handle) => handle,
+            Err(err) => return Err(HaversError::CompileError(err.to_string())),
+        };
+        if let Err(err) = write_runtime_rs_file(&mut handle) {
+            return Err(HaversError::CompileError(err.to_string()));
+        }
+    }
+
+    // Write embedded GC stub to temp file for linking
+    {
+        let mut handle = match create_gc_stub_file(&gc_stub_path) {
+            Ok(handle) => handle,
+            Err(err) => return Err(HaversError::CompileError(err.to_string())),
+        };
+        if let Err(err) = write_gc_stub_file(&mut handle) {
+            return Err(HaversError::CompileError(err.to_string()));
+        }
+    }
+
+    status.update("Linking native executable", StatusColor::Yellow);
+
+    // Link with system linker
+    let mut link_args = vec![
+        obj_path.to_str().unwrap(),
+        runtime_path.to_str().unwrap(),
+        runtime_rs_path.to_str().unwrap(),
+        gc_stub_path.to_str().unwrap(),
+        "-lm", // Math library (for floor, ceil, etc.)
+        "-pthread",
+        "-static-libgcc",
+    ];
+
+    #[cfg(feature = "audio")]
+    {
+        // miniaudio uses dlopen on Linux for backend loading
+        if cfg!(target_os = "linux") {
+            link_args.push("-ldl");
+        }
+    }
+
+    link_args.push("-o");
+    link_args.push(output_path.to_str().unwrap());
+
+    let link_status = match link_command_status(&link_args) {
+        Ok(status) => status,
+        Err(err) => return Err(HaversError::CompileError(err.to_string())),
+    };
+
+    if link_status.success() {
+        status.finish("Native build complete", StatusColor::Green);
+        Ok(())
+    } else {
+        status.fail("Link failed");
+        Err(HaversError::CompileError(format!(
+            "Linker failed with exit code: {:?}",
+            link_status.code()
+        )))
+    }
 }
 
 /// LLVM Compiler for mdhavers
@@ -513,98 +658,12 @@ impl LLVMCompiler {
             return Err(err);
         }
 
-        // Generate unique temp file names using process ID and a counter
-        // This avoids race conditions when tests run in parallel
-        let unique_id = format!("{}_{:?}", std::process::id(), std::thread::current().id());
-        let runtime_path = std::env::temp_dir().join(format!("mdh_runtime_{}.o", unique_id));
-        let runtime_rs_path = std::env::temp_dir().join(format!("mdh_runtime_rs_{}.a", unique_id));
-        let gc_stub_path = std::env::temp_dir().join(format!("mdh_gc_stub_{}.o", unique_id));
-        let _cleanup = TempFileCleanup::new(vec![
-            obj_path.clone(),
-            runtime_path.clone(),
-            runtime_rs_path.clone(),
-            gc_stub_path.clone(),
-        ]);
-
-        status.update("Preparing runtime", StatusColor::Yellow);
-
-        // Write embedded runtime to temp file for linking
-        {
-            let mut handle = match create_runtime_file(&runtime_path) {
-                Ok(handle) => handle,
-                Err(err) => return Err(HaversError::CompileError(err.to_string())),
-            };
-            if let Err(err) = write_runtime_file(&mut handle) {
-                return Err(HaversError::CompileError(err.to_string()));
-            }
-        }
-
-        // Write embedded Rust runtime to temp file for linking
-        {
-            let mut handle = match create_runtime_rs_file(&runtime_rs_path) {
-                Ok(handle) => handle,
-                Err(err) => return Err(HaversError::CompileError(err.to_string())),
-            };
-            if let Err(err) = write_runtime_rs_file(&mut handle) {
-                return Err(HaversError::CompileError(err.to_string()));
-            }
-        }
-
-        // Write embedded GC stub to temp file for linking
-        {
-            let mut handle = match create_gc_stub_file(&gc_stub_path) {
-                Ok(handle) => handle,
-                Err(err) => return Err(HaversError::CompileError(err.to_string())),
-            };
-            if let Err(err) = write_gc_stub_file(&mut handle) {
-                return Err(HaversError::CompileError(err.to_string()));
-            }
-        }
-
-        status.update("Linking native executable", StatusColor::Yellow);
-
-        // Link with system linker
-        let mut link_args = vec![
-            obj_path.to_str().unwrap(),
-            runtime_path.to_str().unwrap(),
-            runtime_rs_path.to_str().unwrap(),
-            gc_stub_path.to_str().unwrap(),
-            "-lm", // Math library (for floor, ceil, etc.)
-            "-pthread",
-            "-static-libgcc",
-        ];
-
-        #[cfg(feature = "audio")]
-        {
-            // miniaudio uses dlopen on Linux for backend loading
-            if cfg!(target_os = "linux") {
-                link_args.push("-ldl");
-            }
-        }
-
-        link_args.push("-o");
-        link_args.push(output_path.to_str().unwrap());
-
-        let link_status = match link_command_status(&link_args) {
-            Ok(status) => status,
-            Err(err) => return Err(HaversError::CompileError(err.to_string())),
-        };
-
-        if link_status.success() {
-            status.finish("Native build complete", StatusColor::Green);
-            Ok(())
-        } else {
-            status.fail("Link failed");
-            Err(HaversError::CompileError(format!(
-                "Linker failed with exit code: {:?}",
-                link_status.code()
-            )))
-        }
+        link_native_executable_from_object(&obj_path, output_path, &mut status)
     }
 
     /// Run LLVM optimization passes
     fn run_optimization_passes(&self, module: &Module) -> Result<(), HaversError> {
-        #[cfg(all(test, coverage))]
+        #[cfg(coverage)]
         if coverage_inject::should_fail(coverage_inject::FailPoint::RunOptimizationPasses) {
             return Err(HaversError::CompileError(
                 "coverage injected: run_optimization_passes".to_string(),
@@ -1075,38 +1134,41 @@ mod tests {
         let dir = tempdir().unwrap();
         let obj_path = dir.path().join("injected.o");
 
-        let err = super::coverage_inject::with_failpoint(
-            super::coverage_inject::FailPoint::InitializeNativeTarget,
-            || LLVMCompiler::new().compile_to_object(&program, &obj_path).unwrap_err(),
-        );
+        let err = {
+            let _guard =
+                super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::InitializeNativeTarget);
+            LLVMCompiler::new().compile_to_object(&program, &obj_path).unwrap_err()
+        };
         assert!(err
             .to_string()
             .contains("coverage injected: initialize_native_target"));
 
-        let err = super::coverage_inject::with_failpoint(
-            super::coverage_inject::FailPoint::TargetFromTriple,
-            || LLVMCompiler::new().compile_to_object(&program, &obj_path).unwrap_err(),
-        );
+        let err = {
+            let _guard = super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::TargetFromTriple);
+            LLVMCompiler::new().compile_to_object(&program, &obj_path).unwrap_err()
+        };
         assert!(err.to_string().contains("coverage injected: target_from_triple"));
 
-        let err = super::coverage_inject::with_failpoint(
-            super::coverage_inject::FailPoint::CreateTargetMachine,
-            || LLVMCompiler::new().compile_to_object(&program, &obj_path).unwrap_err(),
-        );
+        let err = {
+            let _guard =
+                super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::CreateTargetMachine);
+            LLVMCompiler::new().compile_to_object(&program, &obj_path).unwrap_err()
+        };
         assert!(err.to_string().contains("Failed to create target machine"));
 
-        let err = super::coverage_inject::with_failpoint(
-            super::coverage_inject::FailPoint::RunOptimizationPasses,
-            || LLVMCompiler::new().compile_to_object(&program, &obj_path).unwrap_err(),
-        );
+        let err = {
+            let _guard =
+                super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::RunOptimizationPasses);
+            LLVMCompiler::new().compile_to_object(&program, &obj_path).unwrap_err()
+        };
         assert!(err
             .to_string()
             .contains("coverage injected: run_optimization_passes"));
 
-        let err = super::coverage_inject::with_failpoint(
-            super::coverage_inject::FailPoint::WriteObjectFile,
-            || LLVMCompiler::new().compile_to_object(&program, &obj_path).unwrap_err(),
-        );
+        let err = {
+            let _guard = super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::WriteObjectFile);
+            LLVMCompiler::new().compile_to_object(&program, &obj_path).unwrap_err()
+        };
         assert!(err.to_string().contains("coverage injected: write_object_file"));
     }
 
@@ -1117,50 +1179,65 @@ mod tests {
         let dir = tempdir().unwrap();
         let output_path = dir.path().join("out_exe");
 
-        let err = super::coverage_inject::with_failpoint(
-            super::coverage_inject::FailPoint::CreateRuntimeFile,
-            || LLVMCompiler::new().compile_to_native(&program, &output_path, 0).unwrap_err(),
-        );
+        let err = {
+            let _guard = super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::CreateRuntimeFile);
+            LLVMCompiler::new()
+                .compile_to_native(&program, &output_path, 0)
+                .unwrap_err()
+        };
         assert!(err.to_string().contains("coverage injected: create_runtime_file"));
 
-        let err = super::coverage_inject::with_failpoint(
-            super::coverage_inject::FailPoint::WriteRuntimeFile,
-            || LLVMCompiler::new().compile_to_native(&program, &output_path, 0).unwrap_err(),
-        );
+        let err = {
+            let _guard = super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::WriteRuntimeFile);
+            LLVMCompiler::new()
+                .compile_to_native(&program, &output_path, 0)
+                .unwrap_err()
+        };
         assert!(err.to_string().contains("coverage injected: write_runtime_file"));
 
-        let err = super::coverage_inject::with_failpoint(
-            super::coverage_inject::FailPoint::CreateRuntimeRsFile,
-            || LLVMCompiler::new().compile_to_native(&program, &output_path, 0).unwrap_err(),
-        );
+        let err = {
+            let _guard =
+                super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::CreateRuntimeRsFile);
+            LLVMCompiler::new()
+                .compile_to_native(&program, &output_path, 0)
+                .unwrap_err()
+        };
         assert!(err
             .to_string()
             .contains("coverage injected: create_runtime_rs_file"));
 
-        let err = super::coverage_inject::with_failpoint(
-            super::coverage_inject::FailPoint::WriteRuntimeRsFile,
-            || LLVMCompiler::new().compile_to_native(&program, &output_path, 0).unwrap_err(),
-        );
+        let err = {
+            let _guard = super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::WriteRuntimeRsFile);
+            LLVMCompiler::new()
+                .compile_to_native(&program, &output_path, 0)
+                .unwrap_err()
+        };
         assert!(err
             .to_string()
             .contains("coverage injected: write_runtime_rs_file"));
 
-        let err = super::coverage_inject::with_failpoint(
-            super::coverage_inject::FailPoint::CreateGcStubFile,
-            || LLVMCompiler::new().compile_to_native(&program, &output_path, 0).unwrap_err(),
-        );
+        let err = {
+            let _guard = super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::CreateGcStubFile);
+            LLVMCompiler::new()
+                .compile_to_native(&program, &output_path, 0)
+                .unwrap_err()
+        };
         assert!(err.to_string().contains("coverage injected: create_gc_stub_file"));
 
-        let err = super::coverage_inject::with_failpoint(
-            super::coverage_inject::FailPoint::WriteGcStubFile,
-            || LLVMCompiler::new().compile_to_native(&program, &output_path, 0).unwrap_err(),
-        );
+        let err = {
+            let _guard = super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::WriteGcStubFile);
+            LLVMCompiler::new()
+                .compile_to_native(&program, &output_path, 0)
+                .unwrap_err()
+        };
         assert!(err.to_string().contains("coverage injected: write_gc_stub_file"));
 
-        let err = super::coverage_inject::with_failpoint(
-            super::coverage_inject::FailPoint::LinkCommandStatus,
-            || LLVMCompiler::new().compile_to_native(&program, &output_path, 0).unwrap_err(),
-        );
+        let err = {
+            let _guard = super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::LinkCommandStatus);
+            LLVMCompiler::new()
+                .compile_to_native(&program, &output_path, 0)
+                .unwrap_err()
+        };
         assert!(err.to_string().contains("coverage injected: link_command_status"));
     }
 }

@@ -862,6 +862,7 @@ mod tests {
             "gets",
             "sprintf",
             "printf",
+            "len",
             "abs",
             "absolute",
             "max",

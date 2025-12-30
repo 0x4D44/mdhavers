@@ -375,9 +375,13 @@ fn lsp_binary_reports_io_thread_join_error_after_stdout_disconnect_for_coverage(
         String::from_utf8_lossy(&stdout)
     );
 
-    // Send shutdown (server should return Ok from main_loop, then fail when joining IO threads).
+    // Send shutdown + exit (server should return Ok from main_loop, then fail when joining IO threads).
     let shutdown = r#"{"jsonrpc":"2.0","id":2,"method":"shutdown","params":null}"#;
     stdin.write_all(lsp_frame(shutdown).as_bytes()).unwrap();
+    stdin.flush().unwrap();
+
+    let exit = r#"{"jsonrpc":"2.0","method":"exit","params":null}"#;
+    stdin.write_all(lsp_frame(exit).as_bytes()).unwrap();
     stdin.flush().unwrap();
 
     drop(stdin);

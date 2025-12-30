@@ -793,6 +793,14 @@ mod tests {
     }
 
     #[test]
+    fn test_get_diagnostics_lex_error_for_coverage() {
+        let source = "@";
+        let diagnostics = get_diagnostics(source);
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].3, "error");
+    }
+
+    #[test]
     fn test_error_to_diagnostic_fallback_branch() {
         let err = HaversError::TypeError {
             message: "nope".to_string(),
@@ -800,6 +808,44 @@ mod tests {
         };
         let (line, col, _message, severity) = error_to_diagnostic(err);
         assert_eq!(line, 3);
+        assert_eq!(col, 1);
+        assert_eq!(severity, "error");
+    }
+
+    #[test]
+    fn test_error_to_diagnostic_unkent_token_branch_for_coverage() {
+        let err = HaversError::UnkentToken {
+            lexeme: "@".to_string(),
+            line: 2,
+            column: 7,
+        };
+        let (line, col, _message, severity) = error_to_diagnostic(err);
+        assert_eq!(line, 2);
+        assert_eq!(col, 7);
+        assert_eq!(severity, "error");
+    }
+
+    #[test]
+    fn test_error_to_diagnostic_unexpected_token_branch_for_coverage() {
+        let err = HaversError::UnexpectedToken {
+            expected: "token".to_string(),
+            found: "other".to_string(),
+            line: 5,
+        };
+        let (line, col, _message, severity) = error_to_diagnostic(err);
+        assert_eq!(line, 5);
+        assert_eq!(col, 1);
+        assert_eq!(severity, "error");
+    }
+
+    #[test]
+    fn test_error_to_diagnostic_parse_error_branch_for_coverage() {
+        let err = HaversError::ParseError {
+            message: "nope".to_string(),
+            line: 9,
+        };
+        let (line, col, _message, severity) = error_to_diagnostic(err);
+        assert_eq!(line, 9);
         assert_eq!(col, 1);
         assert_eq!(severity, "error");
     }

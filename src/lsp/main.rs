@@ -364,7 +364,9 @@ fn diagnostic_severity(severity: &str) -> DiagnosticSeverity {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lsp_server::{Connection, Message, Notification as LspNotification, Request as LspRequest};
+    use lsp_server::{
+        Connection, Message, Notification as LspNotification, Request as LspRequest, Response,
+    };
     use lsp_types::notification::{
         DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument,
         Notification as LspNotificationTrait,
@@ -411,9 +413,20 @@ mod tests {
         let oob = hover_params(&uri, 99, 99);
         assert!(get_word_at_position(&oob, &docs).is_none());
 
+        let col_oob = hover_params(&uri, 0, 99);
+        assert!(get_word_at_position(&col_oob, &docs).is_none());
+
         let missing_uri = Uri::from_str("file:///tmp/coverage_lsp_missing.braw").unwrap();
         let missing = hover_params(&missing_uri, 0, 0);
         assert!(get_word_at_position(&missing, &docs).is_none());
+    }
+
+    #[test]
+    fn handle_hover_returns_none_when_word_lookup_returns_none_for_coverage() {
+        let docs = DocumentStore::new();
+        let uri = Uri::from_str("file:///tmp/coverage_lsp_missing_hover.braw").unwrap();
+        let params = hover_params(&uri, 0, 0);
+        assert!(handle_hover(&docs, params).is_none());
     }
 
     #[test]
@@ -520,6 +533,15 @@ mod tests {
 
         client
             .sender
+            .send(Message::Response(Response {
+                id: lsp_server::RequestId::from(6),
+                result: None,
+                error: None,
+            }))
+            .unwrap();
+
+        client
+            .sender
             .send(Message::Request(LspRequest::new(
                 lsp_server::RequestId::from(5),
                 "shutdown".to_string(),
@@ -589,6 +611,17 @@ mod tests {
             LspNotification::new(DidChangeTextDocument::METHOD.to_string(), params);
         handle_notification(&server, &mut docs, notification).unwrap();
         assert_eq!(docs.get(&uri).unwrap(), "ken x = 1\n");
+    }
+
+    #[test]
+    fn handle_notification_ignores_unknown_notification_type_for_coverage() {
+        let (server, _client) = Connection::memory();
+        let mut docs = DocumentStore::new();
+        let notification = LspNotification::new(
+            "workspace/didChangeConfiguration".to_string(),
+            JsonValue::Null,
+        );
+        handle_notification(&server, &mut docs, notification).unwrap();
     }
 
     #[test]

@@ -18,6 +18,8 @@ use rustls::{
 #[cfg(feature = "native")]
 use rustls_pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use std::cell::RefCell;
+#[cfg(any(test, coverage))]
+use std::cell::Cell;
 use std::collections::{HashMap, VecDeque};
 #[cfg(not(coverage))]
 use std::io;
@@ -60,6 +62,80 @@ static CRASH_HANDLING_ENABLED: AtomicBool = AtomicBool::new(true);
 
 /// Monotonic clock anchor for mono_ms/mono_ns
 static MONO_START: OnceLock<std::time::Instant> = OnceLock::new();
+
+// ==================== Coverage/Test Overrides ====================
+
+#[cfg(any(test, coverage))]
+thread_local! {
+    static MDH_SHELL_OVERRIDE_FOR_COVERAGE: RefCell<Option<String>> = const { RefCell::new(None) };
+    static FORCE_CURRENT_DIR_ERROR_FOR_COVERAGE: Cell<bool> = const { Cell::new(false) };
+}
+
+#[cfg(any(test, coverage))]
+pub struct CoverageMdhShellOverrideGuard {
+    prev: Option<String>,
+}
+
+#[cfg(any(test, coverage))]
+pub fn set_mdh_shell_override_for_coverage(shell: Option<String>) -> CoverageMdhShellOverrideGuard {
+    let prev =
+        MDH_SHELL_OVERRIDE_FOR_COVERAGE.with(|value| std::mem::replace(&mut *value.borrow_mut(), shell));
+    CoverageMdhShellOverrideGuard { prev }
+}
+
+#[cfg(any(test, coverage))]
+impl Drop for CoverageMdhShellOverrideGuard {
+    fn drop(&mut self) {
+        MDH_SHELL_OVERRIDE_FOR_COVERAGE.with(|value| {
+            *value.borrow_mut() = self.prev.clone();
+        });
+    }
+}
+
+#[cfg(any(test, coverage))]
+pub struct CoverageForceCurrentDirErrorGuard {
+    prev: bool,
+}
+
+#[cfg(any(test, coverage))]
+pub fn set_force_current_dir_error_for_coverage(
+    force: bool,
+) -> CoverageForceCurrentDirErrorGuard {
+    let prev = FORCE_CURRENT_DIR_ERROR_FOR_COVERAGE.with(|flag| {
+        let prev = flag.get();
+        flag.set(force);
+        prev
+    });
+    CoverageForceCurrentDirErrorGuard { prev }
+}
+
+#[cfg(any(test, coverage))]
+impl Drop for CoverageForceCurrentDirErrorGuard {
+    fn drop(&mut self) {
+        FORCE_CURRENT_DIR_ERROR_FOR_COVERAGE.with(|flag| {
+            flag.set(self.prev);
+        });
+    }
+}
+
+fn mdh_shell_var() -> Result<String, std::env::VarError> {
+    #[cfg(any(test, coverage))]
+    if let Some(shell) = MDH_SHELL_OVERRIDE_FOR_COVERAGE.with(|value| value.borrow().clone()) {
+        return Ok(shell);
+    }
+    std::env::var("MDH_SHELL")
+}
+
+fn runtime_current_dir() -> std::io::Result<PathBuf> {
+    #[cfg(any(test, coverage))]
+    if FORCE_CURRENT_DIR_ERROR_FOR_COVERAGE.with(|flag| flag.get()) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "forced current_dir error (coverage)",
+        ));
+    }
+    std::env::current_dir()
+}
 
 #[derive(Debug, Clone, Copy)]
 #[cfg(all(feature = "native", unix))]
@@ -227,6 +303,32 @@ thread_local! {
 thread_local! {
     static CURRENT_INTERPRETER: RefCell<*mut Interpreter> =
         const { RefCell::new(std::ptr::null_mut()) };
+}
+
+#[cfg(coverage)]
+thread_local! {
+    static MDH_LOG_OVERRIDE: RefCell<Option<String>> = const { RefCell::new(None) };
+    static MDH_LOG_LEVEL_OVERRIDE: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+#[cfg(all(test, coverage))]
+fn coverage_set_mdh_log_override(value: Option<&str>) {
+    MDH_LOG_OVERRIDE.with(|cell| *cell.borrow_mut() = value.map(str::to_string));
+}
+
+#[cfg(coverage)]
+fn coverage_get_mdh_log_override() -> Option<String> {
+    MDH_LOG_OVERRIDE.with(|cell| cell.borrow().clone())
+}
+
+#[cfg(all(test, coverage))]
+fn coverage_set_mdh_log_level_override(value: Option<&str>) {
+    MDH_LOG_LEVEL_OVERRIDE.with(|cell| *cell.borrow_mut() = value.map(str::to_string));
+}
+
+#[cfg(coverage)]
+fn coverage_get_mdh_log_level_override() -> Option<String> {
+    MDH_LOG_LEVEL_OVERRIDE.with(|cell| cell.borrow().clone())
 }
 
 struct InterpreterGuard {
@@ -1707,6 +1809,20 @@ impl std::fmt::Display for StackFrame {
     }
 }
 
+fn format_stack_trace(stack: &[StackFrame]) -> String {
+    let trace = stack
+        .iter()
+        .rev()
+        .map(|frame| frame.to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
+    if trace.is_empty() {
+        "(no stack trace)".to_string()
+    } else {
+        trace
+    }
+}
+
 /// Global shadow call stack for crash reporting
 static SHADOW_STACK: Mutex<Vec<StackFrame>> = Mutex::new(Vec::new());
 static CURRENT_STACK_FILE: Mutex<String> = Mutex::new(String::new());
@@ -1951,16 +2067,40 @@ impl Interpreter {
         // Check fer MDH_LOG or MDH_LOG_LEVEL environment variables
         #[cfg(not(target_arch = "wasm32"))]
         {
-            if let Ok(spec) = std::env::var("MDH_LOG") {
-                if let Ok(filter) = logging::parse_filter(&spec) {
-                    let _ = logging::set_filter(&spec);
-                    set_global_log_level(filter.default);
+            #[cfg(coverage)]
+            {
+                let spec = coverage_get_mdh_log_override().or_else(|| std::env::var("MDH_LOG").ok());
+                if let Some(spec) = spec {
+                    if let Ok(filter) = logging::parse_filter(&spec) {
+                        let _ = logging::set_filter(&spec);
+                        set_global_log_level(filter.default);
+                    } else {
+                        eprintln!("Warning: Invalid MDH_LOG filter '{}'", spec);
+                    }
                 } else {
-                    eprintln!("Warning: Invalid MDH_LOG filter '{}'", spec);
+                    let level_str = coverage_get_mdh_log_level_override()
+                        .or_else(|| std::env::var("MDH_LOG_LEVEL").ok());
+                    if let Some(level_str) = level_str {
+                        if let Some(level) = LogLevel::parse_level(&level_str) {
+                            set_global_log_level(level);
+                        }
+                    }
                 }
-            } else if let Ok(level_str) = std::env::var("MDH_LOG_LEVEL") {
-                if let Some(level) = LogLevel::parse_level(&level_str) {
-                    set_global_log_level(level);
+            }
+
+            #[cfg(not(coverage))]
+            {
+                if let Ok(spec) = std::env::var("MDH_LOG") {
+                    if let Ok(filter) = logging::parse_filter(&spec) {
+                        let _ = logging::set_filter(&spec);
+                        set_global_log_level(filter.default);
+                    } else {
+                        eprintln!("Warning: Invalid MDH_LOG filter '{}'", spec);
+                    }
+                } else if let Ok(level_str) = std::env::var("MDH_LOG_LEVEL") {
+                    if let Some(level) = LogLevel::parse_level(&level_str) {
+                        set_global_log_level(level);
+                    }
                 }
             }
         }
@@ -5390,17 +5530,7 @@ impl Interpreter {
             "stacktrace".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("stacktrace", 0, |_args| {
                 let stack = get_stack_trace();
-                let trace = stack
-                    .iter()
-                    .rev()
-                    .map(|f| format!("  at {} ({}:{})", f.name, f.file, f.line))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                Ok(Value::String(if trace.is_empty() {
-                    "(no stack trace)".to_string()
-                } else {
-                    trace
-                }))
+                Ok(Value::String(format_stack_trace(&stack)))
             }))),
         );
 
@@ -9922,16 +10052,12 @@ impl Interpreter {
                 let output = {
                     #[cfg(target_os = "windows")]
                     {
-                        let shell =
-                            std::env::var("MDH_SHELL").unwrap_or_else(|_| "cmd".to_string());
+                        let shell = mdh_shell_var().unwrap_or_else(|_| "cmd".to_string());
                         Command::new(shell).args(["/C", &cmd]).output()
                     }
                     #[cfg(not(target_os = "windows"))]
                     {
-                        let shell = match std::env::var("MDH_SHELL") {
-                            Ok(shell) => shell,
-                            Err(_) => "sh".to_string(),
-                        };
+                        let shell = mdh_shell_var().unwrap_or_else(|_| "sh".to_string());
                         Command::new(shell).args(["-c", &cmd]).output()
                     }
                 };
@@ -9962,16 +10088,12 @@ impl Interpreter {
                 let status = {
                     #[cfg(target_os = "windows")]
                     {
-                        let shell =
-                            std::env::var("MDH_SHELL").unwrap_or_else(|_| "cmd".to_string());
+                        let shell = mdh_shell_var().unwrap_or_else(|_| "cmd".to_string());
                         Command::new(shell).args(["/C", &cmd]).status()
                     }
                     #[cfg(not(target_os = "windows"))]
                     {
-                        let shell = match std::env::var("MDH_SHELL") {
-                            Ok(shell) => shell,
-                            Err(_) => "sh".to_string(),
-                        };
+                        let shell = mdh_shell_var().unwrap_or_else(|_| "sh".to_string());
                         Command::new(shell).args(["-c", &cmd]).status()
                     }
                 };
@@ -10006,7 +10128,7 @@ impl Interpreter {
         globals.borrow_mut().define(
             "cwd".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("cwd", 0, |_args| {
-                match std::env::current_dir() {
+                match runtime_current_dir() {
                     Ok(path) => Ok(Value::String(path.to_string_lossy().to_string())),
                     Err(e) => Err(format!("Couldnae get current directory: {}", e)),
                 }
@@ -12696,7 +12818,7 @@ fn json_escape_string(s: &str) -> String {
 	    }
 
 	    #[test]
-	    fn bytes_slice_unit_instance_covers_start_and_end_type_errors_for_coverage() {
+	fn bytes_slice_unit_instance_covers_start_and_end_type_errors_for_coverage() {
 	        let program = parse(
 	            r#"
 ken b = bytes(1)
@@ -12735,6 +12857,118 @@ bytes_slice(b, 2, 1)
 	        .unwrap();
 	        let mut interp = Interpreter::new();
 	        let _ = interp.interpret(&program);
+	    }
+
+	    #[cfg(all(coverage, not(target_arch = "wasm32")))]
+	    #[test]
+	    fn interpreter_new_exercises_mdh_log_env_branches_for_unit_coverage() {
+	        // Avoid mutating process-wide env vars (tests run in parallel): use coverage-only overrides.
+	        let prev_filter = logging::get_filter();
+	        let prev_level = get_global_log_level();
+
+	        coverage_set_mdh_log_override(Some("mutter"));
+	        let _ = Interpreter::new();
+
+	        coverage_set_mdh_log_override(Some("definitely_not_a_level"));
+	        let _ = Interpreter::new();
+
+	        coverage_set_mdh_log_override(None);
+	        coverage_set_mdh_log_level_override(Some("mutter"));
+	        let _ = Interpreter::new();
+
+	        coverage_set_mdh_log_level_override(Some("definitely_not_a_level"));
+	        let _ = Interpreter::new();
+
+	        // Clear overrides and restore global logging state.
+	        coverage_set_mdh_log_override(None);
+	        coverage_set_mdh_log_level_override(None);
+
+	        let _ = logging::set_filter(&prev_filter);
+	        set_global_log_level(prev_level);
+	    }
+
+	    #[test]
+		    fn bytes_builtins_cover_success_paths_for_unit_coverage() {
+		        fn bytes(data: &[u8]) -> Value {
+		            Value::Bytes(Rc::new(RefCell::new(data.to_vec())))
+		        }
+
+	        fn native(interp: &Interpreter, name: &str) -> Rc<NativeFunction> {
+	            let exports = interp.globals.borrow().get_exports();
+	            let value = exports.get(name).expect("native function not found").clone();
+	            value
+	                .as_native_function()
+	                .expect("expected exported value to be a native function")
+	        }
+
+		        let interp = Interpreter::new();
+		        let len = native(&interp, "len");
+		        let bytes_new = native(&interp, "bytes");
+		        let bytes_from_string = native(&interp, "bytes_from_string");
+		        let bytes_len = native(&interp, "bytes_len");
+	        let bytes_slice = native(&interp, "bytes_slice");
+	        let bytes_get = native(&interp, "bytes_get");
+	        let bytes_set = native(&interp, "bytes_set");
+	        let bytes_append = native(&interp, "bytes_append");
+	        let bytes_read_u16be = native(&interp, "bytes_read_u16be");
+	        let bytes_read_u32be = native(&interp, "bytes_read_u32be");
+		        let bytes_write_u16be = native(&interp, "bytes_write_u16be");
+		        let bytes_write_u32be = native(&interp, "bytes_write_u32be");
+
+		        let buf = (bytes_new.func)(vec![Value::Integer(4)]).unwrap();
+		        let _ = (bytes_new.func)(vec![Value::Integer(-1)]).unwrap();
+			        let _ = (bytes_new.func)(vec![Value::Float(2.0)]).unwrap();
+			        let _ = (bytes_from_string.func)(vec![Value::String("hi".to_string())]).unwrap();
+			        let _ = (bytes_len.func)(vec![buf.clone()]).unwrap();
+			        let _ = (len.func)(vec![bytes(&[1, 2, 3])]);
+
+		        let _ = (bytes_set.func)(vec![buf.clone(), Value::Integer(0), Value::Float(42.0)]).unwrap();
+		        let _ = (bytes_get.func)(vec![buf.clone(), Value::Integer(-1)]).unwrap();
+	        let _ = (bytes_get.func)(vec![buf.clone(), Value::Nil]);
+	        let _ = (bytes_get.func)(vec![buf.clone(), Value::Integer(99)]);
+	        let _ = (bytes_slice.func)(vec![buf.clone(), Value::Integer(-2), Value::Integer(99)]).unwrap();
+	        let _ = (bytes_append.func)(vec![buf.clone(), bytes(&[1, 2, 3])]).unwrap();
+	        let _ = (bytes_append.func)(vec![buf.clone(), Value::Integer(1)]);
+
+	        let _ = (bytes_set.func)(vec![buf.clone(), Value::Nil, Value::Integer(1)]);
+	        let _ = (bytes_set.func)(vec![buf.clone(), Value::Integer(0), Value::Nil]);
+	        let _ = (bytes_set.func)(vec![buf.clone(), Value::Integer(0), Value::Integer(256)]);
+	        let _ = (bytes_set.func)(vec![buf.clone(), Value::Integer(-1), Value::Integer(7)]);
+	        let _ = (bytes_set.func)(vec![buf.clone(), Value::Integer(99), Value::Integer(7)]);
+
+	        let _ = (bytes_read_u16be.func)(vec![bytes(&[1, 2, 3]), Value::Integer(0)]).unwrap();
+	        let _ = (bytes_read_u32be.func)(vec![bytes(&[1, 2, 3, 4]), Value::Integer(0)]).unwrap();
+	        let _ = (bytes_read_u16be.func)(vec![bytes(&[1, 2]), Value::Nil]);
+	        let _ = (bytes_read_u16be.func)(vec![bytes(&[1]), Value::Integer(0)]);
+	        let _ = (bytes_read_u32be.func)(vec![bytes(&[1, 2, 3, 4]), Value::Nil]);
+	        let _ = (bytes_read_u32be.func)(vec![bytes(&[1, 2, 3]), Value::Integer(0)]);
+
+	        let _ =
+	            (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Integer(0), Value::Float(7.0)])
+	                .unwrap();
+	        let _ = (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Nil, Value::Integer(7)]);
+	        let _ = (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Integer(0), Value::Nil]);
+	        let _ = (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Integer(0), Value::Integer(-1)]);
+	        let _ = (bytes_write_u16be.func)(vec![bytes(&[0]), Value::Integer(0), Value::Integer(1)]);
+
+	        let _ = (bytes_write_u32be.func)(vec![
+	            bytes(&[0, 0, 0, 0]),
+	            Value::Integer(0),
+	            Value::Float(7.0),
+	        ])
+	        .unwrap();
+	        let _ = (bytes_write_u32be.func)(vec![bytes(&[0, 0, 0, 0]), Value::Nil, Value::Integer(7)]);
+	        let _ = (bytes_write_u32be.func)(vec![bytes(&[0, 0, 0, 0]), Value::Integer(0), Value::Nil]);
+	        let _ = (bytes_write_u32be.func)(vec![
+	            bytes(&[0, 0, 0, 0]),
+	            Value::Integer(0),
+	            Value::Integer(-1),
+	        ]);
+	        let _ = (bytes_write_u32be.func)(vec![
+	            bytes(&[0, 0, 0]),
+	            Value::Integer(0),
+	            Value::Integer(1),
+	        ]);
 	    }
 
 	    #[test]
@@ -12808,23 +13042,108 @@ ok
 	        assert_eq!(out, Value::Bool(true));
 	    }
 
+		    #[cfg(all(feature = "native", unix))]
+		    #[test]
+		    fn resolve_ipv4_addr_finds_ipv4_address_for_coverage() {
+		        let _ = resolve_ipv4_addr(Some("127.0.0.1"), 80).expect("resolve ipv4");
+		    }
+
 	    #[cfg(all(feature = "native", unix))]
 	    #[test]
-	    fn resolve_ipv4_addr_finds_ipv4_address_for_coverage() {
-	        let _ = resolve_ipv4_addr(Some("127.0.0.1"), 80).expect("resolve ipv4");
+	    fn resolve_ipv4_addr_returns_error_when_no_ipv4_found_for_coverage() {
+	        let err = resolve_ipv4_addr(Some("::1"), 80).unwrap_err();
+	        assert!(err.contains("No IPv4 address found"));
 	    }
 
-    #[cfg(all(feature = "native", unix))]
-    #[test]
-    fn resolve_ipv4_addr_returns_error_when_no_ipv4_found_for_coverage() {
-        let err = resolve_ipv4_addr(Some("::1"), 80).unwrap_err();
-        assert!(err.contains("No IPv4 address found"));
-    }
-
+	    #[cfg(all(feature = "native", unix))]
 	    #[test]
-	    fn module_in_progress_guard_drop_handles_null_interpreter_ptr_for_coverage() {
-	        drop(ModuleInProgressGuard {
-	            interp: std::ptr::null_mut(),
+	    fn socket_helpers_cover_missing_error_and_flag_paths_for_coverage() {
+	        fn ok_int_result(value: Value) -> Option<i64> {
+	            let Value::Dict(dict) = value else {
+	                return None;
+	            };
+	            let dict = dict.borrow();
+	            if dict_get_bool(&dict, "ok") != Some(true) {
+	                return None;
+	            }
+	            match dict.get(&Value::String("value".to_string())) {
+	                Some(v) => v.as_integer(),
+	                None => None,
+	            }
+	        }
+
+	        fn take_err_string(result: Result<Value, String>) -> String {
+	            match result {
+	                Ok(v) => format!("ok: {v:?}"),
+	                Err(e) => e,
+	            }
+	        }
+
+	        fn take_socket_fd(id: i64) -> Option<RawFd> {
+	            match remove_socket(id) {
+	                Some(entry) => Some(entry.fd),
+	                None => None,
+	            }
+	        }
+
+	        let interp = Interpreter::new();
+	        let globals = interp.globals.clone();
+
+	        let socket_tcp = native_from_globals(&globals, "socket_tcp");
+	        let socket_bind = native_from_globals(&globals, "socket_bind");
+	        let socket_connect = native_from_globals(&globals, "socket_connect");
+	        let socket_set_reuseaddr = native_from_globals(&globals, "socket_set_reuseaddr");
+
+	        let _ = take_err_string(Ok(Value::Nil));
+
+	        let err = take_err_string((socket_bind.func)(vec![
+	            Value::Integer(12345),
+	            Value::Nil,
+	            Value::Integer(0),
+	        ]));
+	        assert!(err.contains("Unknown socket handle"));
+
+	        let err = take_err_string((socket_connect.func)(vec![
+	            Value::Integer(0),
+	            Value::String("127.0.0.1".to_string()),
+	            Value::Nil,
+	        ]));
+	        assert!(err.contains("socket_connect() expects port integer"));
+
+	        let err = take_err_string((socket_connect.func)(vec![
+	            Value::Integer(12345),
+	            Value::String("127.0.0.1".to_string()),
+	            Value::Integer(1),
+	        ]));
+	        assert!(err.contains("Unknown socket handle"));
+
+	        let sock_res = (socket_tcp.func)(vec![]).unwrap();
+	        assert!(ok_int_result(Value::Nil).is_none());
+	        assert!(ok_int_result(result_err("x".to_string(), -1)).is_none());
+	        let missing_value = {
+	            let mut dict = DictValue::new();
+	            dict.set(Value::String("ok".to_string()), Value::Bool(true));
+	            Value::Dict(Rc::new(RefCell::new(dict)))
+	        };
+	        assert!(ok_int_result(missing_value).is_none());
+	        let sock_id = ok_int_result(sock_res).expect("socket_tcp id");
+	        let _ = (socket_set_reuseaddr.func)(vec![Value::Integer(sock_id), Value::Bool(false)])
+	            .unwrap();
+
+	        for id in [sock_id, sock_id] {
+	            if let Some(fd) = take_socket_fd(id) {
+	                unsafe {
+	                    libc::close(fd);
+	                }
+	            }
+	        }
+	        assert!(take_socket_fd(-1).is_none());
+	    }
+
+		    #[test]
+		    fn module_in_progress_guard_drop_handles_null_interpreter_ptr_for_coverage() {
+		        drop(ModuleInProgressGuard {
+		            interp: std::ptr::null_mut(),
 	            path: PathBuf::from("<null>"),
 	        });
 	    }
@@ -12942,11 +13261,11 @@ blether m2["a"]
 	        assert!(interp.pattern_matches(&end_err, &Value::Integer(5)).is_err());
 	    }
 
-	    #[cfg(all(feature = "native", unix))]
-	    #[test]
-	    fn socket_native_os_error_paths_are_covered_with_invalid_fds_for_coverage() {
-        let interp = Interpreter::new();
-        let globals = interp.globals.clone();
+		    #[cfg(all(feature = "native", unix))]
+		    #[test]
+		    fn socket_native_os_error_paths_are_covered_with_invalid_fds_for_coverage() {
+	        let interp = Interpreter::new();
+	        let globals = interp.globals.clone();
 
         let socket_bind = native_from_globals(&globals, "socket_bind");
         let socket_connect = native_from_globals(&globals, "socket_connect");
@@ -13001,23 +13320,27 @@ blether m2["a"]
         assert_result_err(
             (socket_set_reuseaddr.func)(vec![Value::Integer(bad_tcp), Value::Bool(true)]).unwrap(),
         );
-        assert_result_err(
-            (socket_set_reuseport.func)(vec![Value::Integer(bad_tcp), Value::Bool(true)]).unwrap(),
-        );
-        assert_result_err((socket_set_ttl.func)(vec![Value::Integer(bad_udp), Value::Integer(64)]).unwrap());
-        assert_result_err(
-            (socket_set_nodelay.func)(vec![Value::Integer(bad_tcp), Value::Bool(true)]).unwrap(),
-        );
-        assert_result_err(
-            (socket_set_rcvbuf.func)(vec![Value::Integer(bad_udp), Value::Integer(1024)]).unwrap(),
-        );
-        assert_result_err(
-            (socket_set_sndbuf.func)(vec![Value::Integer(bad_udp), Value::Integer(1024)]).unwrap(),
-        );
+	        assert_result_err(
+	            (socket_set_reuseport.func)(vec![Value::Integer(bad_tcp), Value::Bool(true)]).unwrap(),
+	        );
+	        assert_result_err((socket_set_ttl.func)(vec![Value::Integer(bad_udp), Value::Integer(64)]).unwrap());
+	        let _ = (socket_set_ttl.func)(vec![Value::Integer(0), Value::Integer(-1)]);
+	        let _ = (socket_set_ttl.func)(vec![Value::Integer(0), Value::Integer(256)]);
+	        assert_result_err(
+	            (socket_set_nodelay.func)(vec![Value::Integer(bad_tcp), Value::Bool(true)]).unwrap(),
+	        );
+	        assert_result_err(
+	            (socket_set_rcvbuf.func)(vec![Value::Integer(bad_udp), Value::Integer(1024)]).unwrap(),
+	        );
+	        let _ = (socket_set_rcvbuf.func)(vec![Value::Integer(0), Value::Integer(-1)]);
+	        assert_result_err(
+	            (socket_set_sndbuf.func)(vec![Value::Integer(bad_udp), Value::Integer(1024)]).unwrap(),
+	        );
+	        let _ = (socket_set_sndbuf.func)(vec![Value::Integer(0), Value::Integer(-1)]);
 
-        assert_result_err(
-            (udp_send_to.func)(vec![
-                Value::Integer(bad_udp),
+	        assert_result_err(
+	            (udp_send_to.func)(vec![
+	                Value::Integer(bad_udp),
                 bytes.clone(),
                 host.clone(),
                 Value::Integer(9999),
@@ -13046,14 +13369,57 @@ blether m2["a"]
         assert_result_err((dtls_handshake.func)(vec![Value::Integer(dtls_id), Value::Integer(bad_udp)]).unwrap());
 
 	        // Remove registered sockets (close(-1) is expected to fail and report ok=false).
-		        assert_result_err((socket_close.func)(vec![Value::Integer(bad_tcp)]).unwrap());
-		        assert_result_err((socket_close.func)(vec![Value::Integer(bad_udp)]).unwrap());
-		    }
+			        assert_result_err((socket_close.func)(vec![Value::Integer(bad_tcp)]).unwrap());
+			        assert_result_err((socket_close.func)(vec![Value::Integer(bad_udp)]).unwrap());
+			    }
 
-		    #[cfg(all(feature = "native", unix))]
-		    #[test]
-		    fn socket_udp_tcp_creation_error_paths_are_coverable_in_unit_instance_for_coverage() {
-		        let interp = Interpreter::new();
+			    #[cfg(all(feature = "native", unix))]
+			    #[test]
+			    fn socket_port_range_validation_errors_are_covered_for_coverage() {
+			        let interp = Interpreter::new();
+			        let globals = interp.globals.clone();
+
+			        let socket_bind = native_from_globals(&globals, "socket_bind");
+			        let socket_connect = native_from_globals(&globals, "socket_connect");
+
+			        // Execute the same match statement with both outcomes so regions are fully covered.
+			        let bad_udp = register_socket(-1, SocketKind::Udp);
+			        for args in [
+			            vec![Value::Integer(0), Value::Nil, Value::Integer(-1)],
+			            vec![Value::Integer(bad_udp), Value::Nil, Value::Integer(0)],
+			        ] {
+			            match (socket_bind.func)(args) {
+			                Ok(_) => {}
+			                Err(_) => {}
+			            }
+			        }
+			        let _ = remove_socket(bad_udp);
+
+			        let bad_tcp = register_socket(-1, SocketKind::Tcp);
+			        for args in [
+			            vec![
+			                Value::Integer(0),
+			                Value::String("127.0.0.1".to_string()),
+			                Value::Integer(65_536),
+			            ],
+			            vec![
+			                Value::Integer(bad_tcp),
+			                Value::String("127.0.0.1".to_string()),
+			                Value::Integer(80),
+			            ],
+			        ] {
+			            match (socket_connect.func)(args) {
+			                Ok(_) => {}
+			                Err(_) => {}
+			            }
+			        }
+			        let _ = remove_socket(bad_tcp);
+			    }
+	
+			    #[cfg(all(feature = "native", unix))]
+			    #[test]
+			    fn socket_udp_tcp_creation_error_paths_are_coverable_in_unit_instance_for_coverage() {
+			        let interp = Interpreter::new();
 		        let globals = interp.globals.clone();
 		        let socket_udp = native_from_globals(&globals, "socket_udp");
 		        let socket_tcp = native_from_globals(&globals, "socket_tcp");
@@ -14704,12 +15070,13 @@ blether r["error"]
 	                let _ = frame.to_string();
 	            }
 	        };
-	        let trace = get_stack_trace();
-	        cover_first_stack_frame_to_string(&trace);
-	        pop_stack_frame();
-	        clear_stack_trace();
-	        let trace = get_stack_trace();
-	        cover_first_stack_frame_to_string(&trace);
+		        let trace = get_stack_trace();
+		        cover_first_stack_frame_to_string(&trace);
+		        pop_stack_frame();
+		        clear_stack_trace();
+		        print_stack_trace();
+		        let trace = get_stack_trace();
+		        cover_first_stack_frame_to_string(&trace);
 
 	        // Coverage-only helpers.
 	        poison_shadow_stack_for_coverage();
@@ -14958,13 +15325,6 @@ mak_siccar "b" >= "b"
 
 		    #[test]
 		    fn shell_and_shell_status_paths_are_covered_for_unit_coverage() {
-		        fn restore_mdh_shell(prev: Option<String>) {
-		            match prev {
-		                Some(v) => std::env::set_var("MDH_SHELL", v),
-		                None => std::env::remove_var("MDH_SHELL"),
-		            }
-		        }
-
 		        // env_get/env_set/env_all
 		        let _ = run(r#"env_get("MDH_COV_DOES_NOT_EXIST")"#).unwrap();
 		        let _ = run(r#"env_set("MDH_COV_ENV_A", "hi")"#).unwrap();
@@ -15011,35 +15371,25 @@ mak_siccar "b" >= "b"
 		        assert_eq!(run(r#"shell_status("exit 1")"#).unwrap(), Value::Integer(1));
 		        assert!(run("shell_status(1)").is_err());
 
-		        // Force spawn-failure paths via MDH_SHELL override and then restore.
-		        let original = std::env::var("MDH_SHELL").ok();
-
-			        // Case 1: previous value is None.
-			        restore_mdh_shell(None);
-			        let prev = std::env::var("MDH_SHELL").ok();
-			        std::env::set_var("MDH_SHELL", "/definitely/no/such/shell");
-			        for src in [r#"shell("echo hi")"#, r#"shell_status("echo hi")"#] {
-			            let err = run(src).unwrap_err();
-			            assert!(err.to_string().contains("Shell command failed"));
-			        }
-			        restore_mdh_shell(prev);
-
-		        // Case 2: previous value is Some(...).
-			        restore_mdh_shell(Some("sh".to_string()));
-			        let prev = std::env::var("MDH_SHELL").ok();
-			        std::env::set_var("MDH_SHELL", "/definitely/no/such/shell");
-			        for src in [r#"shell("echo hi")"#, r#"shell_status("echo hi")"#] {
-			            let err = run(src).unwrap_err();
-			            assert!(err.to_string().contains("Shell command failed"));
-			        }
-			        restore_mdh_shell(prev);
-
-		        // Restore original state.
-		        restore_mdh_shell(original);
+		        // Force spawn-failure paths via MDH_SHELL override.
+		        let _guard = set_mdh_shell_override_for_coverage(Some(
+		            "/definitely/no/such/shell".to_string(),
+		        ));
+		        for src in [r#"shell("echo hi")"#, r#"shell_status("echo hi")"#] {
+		            let err = run(src).unwrap_err();
+		            assert!(err.to_string().contains("Shell command failed"));
+		        }
 
 		        // Clean up env vars we touched.
 		        std::env::remove_var("MDH_COV_ENV_A");
 		        std::env::remove_var("MDH_COV_ENV_B");
+		    }
+
+		    #[test]
+		    fn cwd_error_path_is_coverable_without_mutating_process_cwd_for_unit_coverage() {
+		        let _guard = set_force_current_dir_error_for_coverage(true);
+		        let err = run("cwd()").unwrap_err();
+		        assert!(format!("{err:?}").contains("Couldnae get current directory"));
 		    }
 
 		    #[test]
@@ -21306,13 +21656,36 @@ soond_steek()
             Value::String("z".to_string())
         ])
         .is_err());
-    }
+	    }
 
-    #[test]
-    fn test_parse_log_extras_errors() {
-        let mut interp = Interpreter::new();
-        let expr_int = lit_expr(Literal::Integer(1));
-        assert!(interp.parse_log_extras(&[expr_int], 1).is_err());
+	    #[test]
+	    fn test_parse_log_extras_success_paths_for_coverage() {
+	        let mut interp = Interpreter::new();
+
+	        let _ = interp.parse_log_extras(&[], 1);
+
+	        let expr_dict = dict_expr("a", Literal::Integer(1));
+	        let _ = interp.parse_log_extras(&[expr_dict], 1);
+
+	        let expr_str = lit_expr(Literal::String("t".to_string()));
+	        let _ = interp.parse_log_extras(&[expr_str], 1);
+
+	        let expr_dict = dict_expr("a", Literal::Integer(1));
+	        let expr_str = lit_expr(Literal::String("t".to_string()));
+	        let _ = interp.parse_log_extras(&[expr_dict, expr_str], 1);
+	    }
+
+	    #[test]
+	    fn test_parse_log_extras_errors() {
+	        let mut interp = Interpreter::new();
+	        let expr_missing = Expr::Variable {
+	            name: "nope".to_string(),
+	            span: Span::new(1, 1),
+	        };
+	        let _ = interp.parse_log_extras(&[expr_missing], 1);
+
+	        let expr_int = lit_expr(Literal::Integer(1));
+	        assert!(interp.parse_log_extras(&[expr_int], 1).is_err());
 
         let expr_dict = dict_expr("a", Literal::Integer(1));
         let expr_int = lit_expr(Literal::Integer(2));
@@ -21325,15 +21698,60 @@ soond_steek()
         let expr_dict = dict_expr("a", Literal::Integer(1));
         let expr_str = lit_expr(Literal::String("t".to_string()));
         let expr_extra = lit_expr(Literal::String("x".to_string()));
-        assert!(interp
-            .parse_log_extras(&[expr_dict, expr_str, expr_extra], 1)
-            .is_err());
-    }
+	        assert!(interp
+	            .parse_log_extras(&[expr_dict, expr_str, expr_extra], 1)
+	            .is_err());
+	    }
 
-    #[test]
-    fn test_apply_log_config_paths() {
-        let mut interp = Interpreter::new();
-        interp.apply_log_config(None).unwrap();
+	    #[test]
+	    fn test_emit_log_early_return_fields_and_callback_paths_for_coverage() {
+	        let prev_level = get_global_log_level();
+
+	        let mut interp = Interpreter::new();
+
+	        set_global_log_level(LogLevel::Wheesht);
+	        let _ = interp.emit_log(
+	            LogLevel::Whisper,
+	            Value::String("skip".to_string()),
+	            None,
+	            Some("cov_emit_log".to_string()),
+	            1,
+	        );
+	        set_global_log_level(prev_level);
+
+	        let mut fields = DictValue::new();
+	        fields.set(Value::String("a".to_string()), Value::Integer(1));
+	        let fields = Value::Dict(Rc::new(RefCell::new(fields)));
+
+	        let _ = interp.emit_log(
+	            LogLevel::Wheesht,
+	            Value::String("fields".to_string()),
+	            Some(fields.clone()),
+	            Some("cov_emit_log".to_string()),
+	            1,
+	        );
+
+	        let callback = Rc::new(NativeFunction::new("cb", 1, |_args| Ok(Value::Nil)));
+	        interp.log_callback = Some(Value::NativeFunction(callback));
+	        let _ = interp.emit_log(
+	            LogLevel::Wheesht,
+	            Value::String("cb".to_string()),
+	            Some(fields),
+	            Some("cov_emit_log".to_string()),
+	            1,
+	        );
+	    }
+
+	    #[test]
+	    fn log_init_defaults_are_covered_in_unit_instance_for_coverage() {
+	        let _ = run(r#"log_init({"sinks": [{"kind": "file", "path": "mdh_test.log"}]})"#);
+	        let _ = run(r#"log_init({"sinks": [{"kind": "memory"}]})"#);
+	    }
+
+	    #[test]
+		    fn test_apply_log_config_paths() {
+		        let mut interp = Interpreter::new();
+		        interp.apply_log_config(None).unwrap();
 
         assert!(interp.apply_log_config(Some(Value::Integer(1))).is_err());
 
@@ -21562,15 +21980,50 @@ soond_steek()
             Value::String("sinks".to_string()),
             Value::List(Rc::new(RefCell::new(sinks))),
         );
-        interp
-            .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(ok_cfg)))))
-            .unwrap();
-    }
+		        interp
+		            .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(ok_cfg)))))
+		            .unwrap();
+		    }
 
-    #[test]
-    #[cfg(feature = "native")]
-	    fn test_insecure_verifier_and_tls_dtls_defaults() {
-        let verifier = InsecureVerifier;
+		    #[test]
+		    fn test_apply_log_config_level_and_filter_errors_and_compact_format_for_coverage() {
+		        let prev_filter = logging::get_filter();
+		        let prev_level = get_global_log_level();
+
+		        let mut interp = Interpreter::new();
+
+		        let mut bad_level = DictValue::new();
+		        bad_level.set(Value::String("level".to_string()), Value::Integer(6));
+		        assert!(interp
+		            .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(bad_level)))))
+		            .is_err());
+
+		        let mut bad_filter = DictValue::new();
+		        bad_filter.set(
+		            Value::String("filter".to_string()),
+		            Value::String("nae-a-level".to_string()),
+		        );
+		        assert!(interp
+		            .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(bad_filter)))))
+		            .is_err());
+
+		        let mut compact_cfg = DictValue::new();
+		        compact_cfg.set(
+		            Value::String("format".to_string()),
+		            Value::String("compact".to_string()),
+		        );
+		        interp
+		            .apply_log_config(Some(Value::Dict(Rc::new(RefCell::new(compact_cfg)))))
+		            .unwrap();
+
+		        let _ = logging::set_filter(&prev_filter);
+		        set_global_log_level(prev_level);
+		    }
+
+	    #[test]
+	    #[cfg(feature = "native")]
+		    fn test_insecure_verifier_and_tls_dtls_defaults() {
+	        let verifier = InsecureVerifier;
         let cert = Certificate(Vec::new());
         let name = ServerName::try_from("localhost").unwrap();
         let mut scts = std::iter::empty::<&[u8]>();
@@ -22325,9 +22778,28 @@ c + 1
     }
 
     #[test]
+    #[cfg(all(feature = "native", unix))]
+    fn test_dtls_config_from_value_ignores_invalid_srtp_profiles_for_coverage() {
+        let mut dict = DictValue::new();
+        dict.set(
+            Value::String("srtp_profiles".to_string()),
+            Value::List(Rc::new(RefCell::new(vec![
+                Value::String("definitely_not_a_profile".to_string()),
+                Value::Integer(1),
+            ]))),
+        );
+        let cfg = dtls_config_from_value(&Value::Dict(Rc::new(RefCell::new(dict)))).unwrap();
+        assert_eq!(cfg.srtp_profiles.len(), 1);
+        assert_eq!(
+            std::mem::discriminant(&cfg.srtp_profiles[0]),
+            std::mem::discriminant(&SrtpProfile::Aes128CmSha180)
+        );
+    }
+
+    #[test]
 	    fn test_interpreter_sync_primitives_and_log_span_in_for_coverage() {
 	        let code = r#"
-	ken m = mutex_new()
+		ken m = mutex_new()
 	mutex_lock(m)
 	mutex_unlock(m)
 	blether mutex_try_lock(m)
@@ -22847,12 +23319,15 @@ d.nope
         ]));
         assert!(err.contains("log_span_in() expects a log span handle"));
 
-	        // stacktrace: cover stack frame formatting closure.
-	        push_stack_frame("f", 1);
-	        let stacktrace = native_from_globals(&globals, "stacktrace");
-	        let trace = expect_string((stacktrace.func)(vec![]).unwrap());
-	        assert!(trace.contains("at f"));
-	        clear_stack_trace();
+		        // stacktrace: cover formatting with a local frame to avoid flakiness from the global stack.
+		        let stacktrace = native_from_globals(&globals, "stacktrace");
+		        let _ = expect_string((stacktrace.func)(vec![]).unwrap());
+		        let trace = format_stack_trace(&[StackFrame {
+		            name: "f".to_string(),
+		            file: "<test>".to_string(),
+		            line: 1,
+		        }]);
+		        assert!(trace.contains("at f"));
 
         // chr: cover invalid scalar ok_or_else closure (surrogate).
         let chr = native_from_globals(&globals, "chr");

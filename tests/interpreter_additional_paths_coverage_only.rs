@@ -238,9 +238,11 @@ gin s["ok"] {
 
 #[test]
 fn interpreter_shell_and_shell_status_spawn_failure_paths_are_testable_via_mdh_shell_override() {
-    // Use the MDH_SHELL override to force the spawn failure branches in `shell`/`shell_status`.
-    let prev = std::env::var("MDH_SHELL").ok();
-    std::env::set_var("MDH_SHELL", "/definitely/no/such/shell");
+    // Use the coverage-only MDH_SHELL override to force the spawn failure branches in
+    // `shell`/`shell_status` without mutating process-wide environment.
+    let _guard = mdhavers::interpreter::set_mdh_shell_override_for_coverage(Some(
+        "/definitely/no/such/shell".to_string(),
+    ));
 
     for src in [r#"shell("echo hi")"#, r#"shell_status("echo hi")"#] {
         let err = interpret_err(src);
@@ -249,33 +251,16 @@ fn interpreter_shell_and_shell_status_spawn_failure_paths_are_testable_via_mdh_s
             "expected spawn failure error, got: {err}"
         );
     }
-
-    match prev {
-        Some(v) => std::env::set_var("MDH_SHELL", v),
-        None => std::env::remove_var("MDH_SHELL"),
-    }
 }
 
 #[test]
-fn interpreter_cwd_error_path_can_be_triggered_by_deleted_working_directory() {
-    use std::path::PathBuf;
-
-    let old_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let dir = tempfile::tempdir().unwrap();
-    std::env::set_current_dir(dir.path()).unwrap();
-    let doomed = dir.path().to_path_buf();
-    drop(dir); // deletes the directory
-
+fn interpreter_cwd_error_path_can_be_triggered_without_process_cwd_mutation() {
+    let _guard = mdhavers::interpreter::set_force_current_dir_error_for_coverage(true);
     let err = interpret_err("cwd()");
     assert!(
         err.contains("Couldnae get current directory"),
         "expected cwd() failure, got: {err}"
     );
-
-    // Restore to avoid impacting other tests.
-    let _ = std::env::set_current_dir(old_dir);
-    // Best-effort cleanup; directory is already gone.
-    let _ = std::fs::remove_dir_all(doomed);
 }
 
 #[test]

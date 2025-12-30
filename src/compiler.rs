@@ -1683,6 +1683,13 @@ kin C {
     }
 
     #[test]
+    fn test_match_compile_empty_arms_does_not_emit_else_for_coverage() {
+        let result = compile("keek x { }").unwrap();
+        assert!(result.contains("__match_val_"));
+        assert!(!result.contains("Nae match found"));
+    }
+
+    #[test]
     fn test_match_literal_patterns() {
         let result = compile(
             r#"keek x {
