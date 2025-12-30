@@ -361,7 +361,7 @@ impl Parser {
         let span = self.current_span();
         self.advance(); // consume 'gie'
 
-        let value = if self.check(&TokenKind::Newline) || self.check(&TokenKind::Eof) {
+        let value = if self.check(&TokenKind::Newline) || self.is_at_end() {
             None
         } else {
             Some(self.expression()?)
@@ -2638,6 +2638,12 @@ mod tests {
     #[test]
     fn test_return_without_value() {
         let program = parse("dae foo() { gie naething }").unwrap();
+        assert_eq!(program.statements.len(), 1);
+    }
+
+    #[test]
+    fn test_return_without_value_at_end_of_file_for_coverage() {
+        let program = parse("gie").unwrap();
         assert_eq!(program.statements.len(), 1);
     }
 

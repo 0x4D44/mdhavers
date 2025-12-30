@@ -41,6 +41,12 @@ blether parts[0]
 blether join(parts, "-")
 blether jyne(parts, ":")
 
+// For-loop over string (exercise compile_for_string paths)
+ken s2 = "ab"
+fer ch in s2 {
+    blether ch
+}
+
 // Slice expressions (start/end/step variants)
 blether nums[1:3]
 blether nums[:2]

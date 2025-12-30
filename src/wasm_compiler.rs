@@ -1778,10 +1778,33 @@ dae f() {
     }
 
     #[test]
+    fn compile_to_wat_propagates_parse_errors_for_coverage() {
+        let err = compile_to_wat("ken = 1").unwrap_err();
+        assert!(matches!(
+            err,
+            HaversError::ParseError { .. }
+                | HaversError::UnexpectedToken { .. }
+                | HaversError::UnkentToken { .. }
+        ));
+    }
+
+    #[test]
     fn test_escape_wat_string_covers_special_chars() {
         let input = "\"\\\r\t\n\u{0001}";
         let escaped = escape_wat_string(input);
         assert_eq!(escaped, r#"\"\\\r\t\n\01"#);
+    }
+
+    #[test]
+    fn test_escape_wat_string_keeps_spaces_for_coverage() {
+        assert_eq!(escape_wat_string("a b"), "a b");
+    }
+
+    #[test]
+    fn wasm_import_scanner_non_tri_import_does_not_enable_tri_module_for_coverage() {
+        let program = crate::parser::parse("fetch \"something_else\"").unwrap();
+        let req = WasmImportRequirements::from_program(&program);
+        assert!(!req.needs_tri_module);
     }
 
     #[test]

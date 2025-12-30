@@ -1046,6 +1046,14 @@ mod tests {
         };
         let suggestion = get_error_suggestion(&err);
         assert!(suggestion.is_some());
+
+        // Test unexpected token - default (no suggestion)
+        let err = HaversError::UnexpectedToken {
+            expected: "expression".to_string(),
+            found: "?".to_string(),
+            line: 1,
+        };
+        std::hint::black_box(get_error_suggestion(&err));
     }
 
     #[test]

@@ -212,6 +212,39 @@ fn main() {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    static FORCE_PRELUDE_LOAD_ERROR_FOR_COVERAGE: std::cell::Cell<bool> = std::cell::Cell::new(false);
+}
+
+#[cfg(test)]
+struct PreludeLoadErrorGuard {
+    prev: bool,
+}
+
+#[cfg(test)]
+impl Drop for PreludeLoadErrorGuard {
+    fn drop(&mut self) {
+        FORCE_PRELUDE_LOAD_ERROR_FOR_COVERAGE.with(|flag| flag.set(self.prev));
+    }
+}
+
+#[cfg(test)]
+fn force_prelude_load_error_for_coverage() -> bool {
+    FORCE_PRELUDE_LOAD_ERROR_FOR_COVERAGE.with(|flag| flag.get())
+}
+
+#[cfg(test)]
+fn set_force_prelude_load_error_for_coverage(enabled: bool) -> PreludeLoadErrorGuard {
+    let prev = FORCE_PRELUDE_LOAD_ERROR_FOR_COVERAGE.with(|flag| {
+        let prev = flag.get();
+        flag.set(enabled);
+        prev
+    });
+
+    PreludeLoadErrorGuard { prev }
+}
+
 fn run_file(path: &PathBuf) -> Result<(), String> {
     let source = read_file(path)?;
     let program = match parse(&source) {
@@ -234,7 +267,17 @@ fn run_file(path: &PathBuf) -> Result<(), String> {
     }
 
     // Load the prelude (standard utility functions)
-    if let Err(e) = interpreter.load_prelude() {
+    let prelude_result = interpreter.load_prelude();
+    #[cfg(test)]
+    let prelude_result = if force_prelude_load_error_for_coverage() {
+        Err(mdhavers::HaversError::InternalError(
+            "coverage forced prelude load error".to_string(),
+        ))
+    } else {
+        prelude_result
+    };
+
+    if let Err(e) = prelude_result {
         return Err(format!("Error loading prelude: {}", e));
     }
 
@@ -286,7 +329,17 @@ fn trace_file(path: &PathBuf, verbose: bool) -> Result<(), String> {
     // Load the prelude (but without tracing it - too noisy)
     let saved_mode = interpreter.trace_mode();
     interpreter.set_trace_mode(TraceMode::Off);
-    if let Err(e) = interpreter.load_prelude() {
+    let prelude_result = interpreter.load_prelude();
+    #[cfg(test)]
+    let prelude_result = if force_prelude_load_error_for_coverage() {
+        Err(mdhavers::HaversError::InternalError(
+            "coverage forced prelude load error".to_string(),
+        ))
+    } else {
+        prelude_result
+    };
+
+    if let Err(e) = prelude_result {
         return Err(format!("Error loading prelude: {}", e));
     }
     interpreter.set_trace_mode(saved_mode);
@@ -1321,6 +1374,100 @@ fn format_runtime_error(source: &str, error: mdhavers::HaversError) -> String {
         let path = dir.path().join("hello.braw");
         std::fs::write(&path, "blether 1\n").expect("write file");
         trace_file(&path, false).expect("trace file");
+    }
+
+    #[test]
+    fn run_file_parse_error_path_is_covered_for_unit_coverage() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("bad.braw");
+        std::fs::write(&path, "ken =\n").expect("write file");
+
+        let _err = run_file(&path).expect_err("expected parse error");
+    }
+
+    #[test]
+    fn run_file_missing_file_error_path_is_covered_for_unit_coverage() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("missing.braw");
+
+        let err = run_file(&path).expect_err("expected missing file error");
+        assert!(err.contains("Cannae read"));
+    }
+
+    #[test]
+    fn run_file_runtime_error_path_is_covered_for_unit_coverage() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("runtime_error.braw");
+        std::fs::write(&path, "blether 1 / 0\n").expect("write file");
+
+        let err = run_file(&path).expect_err("expected runtime error");
+        assert!(!err.trim().is_empty());
+    }
+
+    #[test]
+    fn run_file_prelude_load_error_path_is_covered_for_unit_coverage() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("ok.braw");
+        std::fs::write(&path, "blether 1\n").expect("write file");
+
+        let _guard = set_force_prelude_load_error_for_coverage(true);
+        let _err = run_file(&path).expect_err("expected prelude error");
+    }
+
+    #[test]
+    fn trace_file_verbose_mode_is_covered_for_unit_coverage() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("hello.braw");
+        std::fs::write(&path, "blether 1\n").expect("write file");
+        trace_file(&path, true).expect("trace file");
+    }
+
+    #[test]
+    fn trace_file_missing_file_error_path_is_covered_for_unit_coverage() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("missing.braw");
+
+        let err = trace_file(&path, false).expect_err("expected missing file error");
+        assert!(err.contains("Cannae read"));
+    }
+
+    #[test]
+    fn trace_file_parse_error_path_is_covered_for_unit_coverage() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("bad_trace.braw");
+        std::fs::write(&path, "ken =\n").expect("write file");
+
+        let _err = trace_file(&path, false).expect_err("expected trace parse error");
+    }
+
+    #[test]
+    fn trace_file_runtime_error_path_is_covered_for_unit_coverage() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("trace_runtime_error.braw");
+        std::fs::write(&path, "blether 1 / 0\n").expect("write file");
+
+        let err = trace_file(&path, false).expect_err("expected trace runtime error");
+        assert!(!err.trim().is_empty());
+    }
+
+    #[test]
+    fn trace_file_prelude_load_error_path_is_covered_for_unit_coverage() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("ok.braw");
+        std::fs::write(&path, "blether 1\n").expect("write file");
+
+        let _guard = set_force_prelude_load_error_for_coverage(true);
+        let _err = trace_file(&path, false).expect_err("expected prelude error");
+    }
+
+    #[test]
+    fn read_file_warns_on_non_braw_extension_for_unit_coverage() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("warn.txt");
+        std::fs::write(&path, "blether 1\n").expect("write file");
+
+        let src = read_file(&path).expect("read file");
+        assert!(!src.trim().is_empty());
     }
 
     #[test]

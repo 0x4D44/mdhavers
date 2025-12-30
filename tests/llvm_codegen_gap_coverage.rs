@@ -130,6 +130,23 @@ fn llvm_codegen_exercises_some_arity_errors() {
         r#"gaun([1, 2])"#,
         r#"shove([1], 2, 3)"#,
         r#"read_file()"#,
+        // Force the list-shadow shove fast path, but make the element expression fail compilation,
+        // so the `?` error-propagation branch inside `shove` codegen is executed.
+        r#"
+dae f() {
+    ken xs = [1]
+    shove(xs, no_such_var)
+}
+blether f()
+"#,
+        // Cover the `?` propagation branch for `compile_expr(&args[0])` in `shove`'s standard path
+        // when the list expression is inferred as List, but compilation fails.
+        r#"shove([1, no_such_var], 2)"#,
+        // `gin`/`ither` compilation: cover error-propagation branches in `compile_if` when
+        // condition/body compilation fails.
+        r#"gin missing { blether 1 }"#,
+        r#"gin aye { blether missing }"#,
+        r#"gin aye { blether 1 } ither { blether missing }"#,
     ];
 
     for src in bad_cases {

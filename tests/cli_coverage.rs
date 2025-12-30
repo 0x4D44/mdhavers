@@ -374,6 +374,120 @@ blether x + 1
 }
 
 #[test]
+fn cli_run_exercises_core_language_features_for_interpreter_coverage() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let braw = dir.path().join("core_features.braw");
+    write_file(
+        &braw,
+        r#"
+ken sum = 0
+fer i in [1, 2, 3, 4] {
+    sum = sum + i
+}
+blether sum
+
+dae add(a, b = 2) {
+    gie a + b
+}
+blether add(3)
+blether add(3, 4)
+
+kin Animal {
+    dae init(name, sound) {
+        masel.name = name
+        masel.sound = sound
+    }
+
+    dae speak() {
+        gie masel.name + " says: " + masel.sound
+    }
+}
+
+ken dug = Animal("Dug", "Woof!")
+blether dug.speak()
+
+hae_a_bash {
+    mak_siccar nae, "forced failure"
+} gin_it_gangs_wrang e {
+    blether "caught"
+}
+
+ken x = 2
+keek x {
+    whan 1 -> { blether "one" }
+    whan 2 -> { blether "two" }
+    whan _ -> { blether "other" }
+}
+
+ken [a, b, ...rest] = [1, 2, 3, 4]
+blether a
+blether b
+blether len(rest)
+"#,
+    );
+
+    let (code, out, err) = run_mdhavers(&["run", braw.to_str().unwrap()], None, home);
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(
+        out.trim(),
+        "10\n5\n7\nDug says: Woof!\ncaught\ntwo\n1\n2\n2"
+    );
+}
+
+#[test]
+fn cli_run_exercises_builtin_type_errors_for_interpreter_binary_coverage() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let braw = dir.path().join("builtin_type_errors.braw");
+    write_file(
+        &braw,
+        r#"
+hae_a_bash {
+    env_get(1)
+} gin_it_gangs_wrang e {
+    blether "caught env_get"
+}
+
+hae_a_bash {
+    env_set(1, "x")
+} gin_it_gangs_wrang e {
+    blether "caught env_set"
+}
+
+hae_a_bash {
+    shell(1)
+} gin_it_gangs_wrang e {
+    blether "caught shell"
+}
+
+hae_a_bash {
+    shell_status(1)
+} gin_it_gangs_wrang e {
+    blether "caught shell_status"
+}
+
+hae_a_bash {
+    chdir(1)
+} gin_it_gangs_wrang e {
+    blether "caught chdir"
+}
+
+blether "done"
+"#,
+    );
+
+    let (code, out, err) = run_mdhavers(&["run", braw.to_str().unwrap()], None, home);
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(
+        out.trim(),
+        "caught env_get\ncaught env_set\ncaught shell\ncaught shell_status\ncaught chdir\ndone"
+    );
+}
+
+#[test]
 fn cli_argument_errors_and_missing_inputs() {
     let dir = tempdir().unwrap();
     let home = dir.path();
@@ -536,6 +650,48 @@ fn cli_repl_vars_shows_user_float_values_for_coverage() {
 }
 
 #[test]
+fn cli_repl_vars_function_list_can_have_no_hidden_suffix_when_prelude_fails_to_load() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let stdlib_dir = dir.path().join("stdlib");
+    fs::create_dir_all(&stdlib_dir).unwrap();
+    write_file(&stdlib_dir.join("prelude.braw"), "ken =\n");
+
+    // Ensure we cover the "no hidden functions" branch by keeping the number of
+    // functions small (no prelude + one user-defined function).
+    let script = "dae f0() { gie 0 }\n:vars\nquit\n";
+    let (code, out, err) = run_mdhavers_in_dir(&["repl"], Some(script), home, dir.path());
+    assert_eq!(code, 0, "stderr: {err}");
+    assert!(out.contains("Functions:"), "stdout:\n{out}\nstderr:\n{err}");
+    assert!(out.contains("f0"), "stdout:\n{out}\nstderr:\n{err}");
+    assert!(
+        !out.contains("... and"),
+        "expected no hidden suffix in stdout:\n{out}\nstderr:\n{err}"
+    );
+}
+
+#[test]
+fn cli_repl_vars_values_only_path_is_reachable_when_prelude_fails_and_no_functions_defined() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let stdlib_dir = dir.path().join("stdlib");
+    fs::create_dir_all(&stdlib_dir).unwrap();
+    write_file(&stdlib_dir.join("prelude.braw"), "ken =\n");
+
+    let script = "ken x = 1\n:vars\nquit\n";
+    let (code, out, err) = run_mdhavers_in_dir(&["repl"], Some(script), home, dir.path());
+    assert_eq!(code, 0, "stderr: {err}");
+    assert!(out.contains("Values:"), "stdout:\n{out}\nstderr:\n{err}");
+    assert!(out.contains("x : int"), "stdout:\n{out}\nstderr:\n{err}");
+    assert!(
+        !out.contains("Functions:"),
+        "expected functions section to be absent in stdout:\n{out}\nstderr:\n{err}"
+    );
+}
+
+#[test]
 fn cli_trace_runtime_error_path_is_covered() {
     let dir = tempdir().unwrap();
     let home = dir.path();
@@ -545,6 +701,44 @@ fn cli_trace_runtime_error_path_is_covered() {
 
     let (code, _out, _err) = run_mdhavers(&["trace", runtime_error_braw.to_str().unwrap()], None, home);
     assert_ne!(code, 0);
+}
+
+#[test]
+fn cli_run_can_surface_module_not_found_error_without_line_context() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let braw = dir.path().join("missing_module.braw");
+    write_file(
+        &braw,
+        "fetch \"definitely_missing_mdhavers_module_for_coverage\" tae missing\n",
+    );
+
+    let (code, _out, err) = run_mdhavers(&["run", braw.to_str().unwrap()], None, home);
+    assert_ne!(code, 0);
+    assert!(err.contains("Cannae find module"), "stderr: {err}");
+}
+
+#[test]
+fn cli_wasm_reports_internal_errors_without_line_context_for_coverage() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    // Trigger the WASM backend's "max 8" method call arity internal error, which does not carry a
+    // line number. This should exercise the `format_parse_error` no-line/no-suggestion branches in
+    // the CLI binary instantiation.
+    let braw = dir.path().join("too_many_wasm_args.braw");
+    write_file(
+        &braw,
+        "ken xs = [1]\nxs.push(1, 2, 3, 4, 5, 6, 7, 8, 9)\n",
+    );
+
+    let (code, _out, err) = run_mdhavers(&["wasm", braw.to_str().unwrap()], None, home);
+    assert_ne!(code, 0);
+    assert!(
+        err.contains("Method call arity too large for WASM backend"),
+        "stderr: {err}"
+    );
 }
 
 #[test]
@@ -626,6 +820,41 @@ fn cli_repl_handles_eof() {
     let (code, out, err) = run_mdhavers(&["repl"], None, home);
     assert_eq!(code, 0, "stderr: {err}");
     assert!(out.contains("mdhavers REPL"));
+}
+
+#[test]
+fn cli_repl_readline_utf8_error_path_is_covered() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let mut cmd = Command::new(mdhavers_bin());
+    cmd.args(["repl"])
+        .env("HOME", home)
+        .env("NO_COLOR", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = cmd.spawn().expect("spawn mdhavers repl");
+    {
+        use std::io::Write;
+        child
+            .stdin
+            .as_mut()
+            .expect("stdin")
+            .write_all(&[0xff, 0xfe, b'\n'])
+            .expect("write invalid UTF-8");
+    }
+    drop(child.stdin.take());
+
+    let output = child.wait_with_output().expect("wait");
+    let code = output.status.code().unwrap_or(-1);
+    let err = String::from_utf8_lossy(&output.stderr).to_string();
+    assert_eq!(code, 0, "stderr: {err}");
+    assert!(
+        err.contains("Error:"),
+        "expected non-EOF readline error in stderr, got: {err}"
+    );
 }
 
 #[test]

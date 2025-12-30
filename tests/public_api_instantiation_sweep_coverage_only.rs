@@ -31,6 +31,7 @@ dae add(a, b) {
 dae run(dummy) {
     ken f = add
     blether f(1, 2)
+    blether "a b"
     blether "he\\\"llo\\n"
 }
 

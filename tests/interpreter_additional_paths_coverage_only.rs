@@ -45,6 +45,11 @@ blether clype(C())
         // BlockExpr catching break/continue (shouldn't happen, but it is handled)
         r#"blether { brak }"#,
         r#"blether { haud }"#,
+        // String repetition supports both `"s" * n` and `n * "s"`; cover both match-arm variants.
+        r#"
+blether 2 * "ab"
+blether "ab" * 2
+"#,
         // Operator overloading via instance binary-op dispatch (call_method_on_instance)
         r#"
 kin AddBreak {
@@ -81,6 +86,16 @@ blether f()
 "#,
         // Float-path in maxaw
         r#"blether maxaw([1.0, 2.5, 0.1])"#,
+        // sort float NaN compare fallback (partial_cmp returns None)
+        r#"blether sort([sqrt(-1), 1.0])"#,
+        // call_function_with_env nil-binding branch (class init is called without arity checks).
+        r#"
+kin C {
+    dae init(a, b) { masel.a = a }
+}
+ken c = C(1)
+blether c.a
+"#,
         // JSON empty container fast-paths
         r#"blether len(json_parse("{}"))"#,
         r#"blether len(json_parse("[]"))"#,
@@ -162,7 +177,7 @@ a + 1
 "#,
         // lerp second-argument type error path
         r#"lerp(1, "x", 0.5)"#,
-        // Match statement: pattern eval error propagation (range start).
+        // Match statement: pattern eval error propagation (range end).
         r#"
 keek 1 {
     whan 1..missing -> blether 1
@@ -207,6 +222,47 @@ f()
         let err = interpret_err(src);
         assert!(!err.is_empty(), "expected error string for:\n{src}");
     }
+}
+
+#[test]
+fn interpreter_match_range_start_eval_error_branch_is_covered_via_ast_for_coverage() {
+    use mdhavers::ast::{Expr, Literal, MatchArm, Pattern, Program, Span, Stmt};
+
+    let span = Span::new(1, 1);
+    let program = Program::new(vec![Stmt::Match {
+        value: Expr::Literal {
+            value: Literal::Integer(1),
+            span,
+        },
+        arms: vec![MatchArm {
+            pattern: Pattern::Range {
+                start: Box::new(Expr::Variable {
+                    name: "missing".to_string(),
+                    span,
+                }),
+                end: Box::new(Expr::Literal {
+                    value: Literal::Integer(2),
+                    span,
+                }),
+            },
+            body: Stmt::Expression {
+                expr: Expr::Literal {
+                    value: Literal::Integer(0),
+                    span,
+                },
+                span,
+            },
+            span,
+        }],
+        span,
+    }]);
+
+    let mut interp = Interpreter::new();
+    let err = interp
+        .interpret(&program)
+        .expect_err("expected error from range-start eval");
+    let msg = format!("{err:?}");
+    assert!(!msg.is_empty(), "expected non-empty error debug");
 }
 
 #[cfg(all(feature = "native", unix))]
@@ -276,4 +332,65 @@ fn interpreter_global_log_level_fallback_branch_is_covered() {
 
     // Restore a sane value for the rest of the suite.
     set_global_log_level(LogLevel::Blether);
+}
+
+#[test]
+fn interpreter_import_path_with_extension_exercises_resolve_module_path_noop_branch_for_coverage() {
+    use std::fs;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    fs::write(
+        dir.path().join("mymod.braw"),
+        r#"
+ken x = 1
+"#,
+    )
+    .expect("write module");
+
+    let program = parse(r#"fetch "mymod.braw" tae m"#).expect("parse import");
+    let mut interp = Interpreter::new();
+    interp.set_current_dir(dir.path());
+    interp
+        .interpret(&program)
+        .expect("expected import to succeed");
+}
+
+#[test]
+fn interpreter_method_call_env_falls_back_to_globals_when_closure_missing_for_coverage() {
+    use std::rc::Rc;
+
+    use mdhavers::ast::{Expr, Literal, Span, Stmt};
+    use mdhavers::value::{FunctionParam, HaversClass, HaversFunction};
+
+    let span = Span::new(1, 1);
+    let method = Rc::new(HaversFunction::new(
+        "m".to_string(),
+        Vec::<FunctionParam>::new(),
+        vec![Stmt::Return {
+            value: Some(Expr::Literal {
+                value: Literal::Integer(123),
+                span,
+            }),
+            span,
+        }],
+        None,
+    ));
+
+    let mut class = HaversClass::new("C".to_string(), None);
+    class.methods.insert("m".to_string(), method);
+
+    let program = parse(
+        r#"
+ken c = C()
+c.m()
+"#,
+    )
+    .expect("parse");
+    let mut interp = Interpreter::new();
+    interp
+        .globals
+        .borrow_mut()
+        .define("C".to_string(), mdhavers::Value::Class(Rc::new(class)));
+    let value = interp.interpret(&program).expect("interpret");
+    assert_eq!(value, mdhavers::Value::Integer(123));
 }

@@ -1808,6 +1808,11 @@ kin C {
     }
 
     #[test]
+    fn test_call_compile_get_callee_exercises_constructor_heuristic_skip_for_coverage() {
+        let _ = std::hint::black_box(compile("foo.bar(1)\n"));
+    }
+
+    #[test]
     fn test_get_property() {
         let result = compile("obj.prop").unwrap();
         assert!(result.contains("obj.prop"));
@@ -2026,6 +2031,26 @@ keek 1 {
 
         assert!(js.contains("if (true)"));
         assert!(js.contains("blether(\"hi\")"));
+    }
+
+    #[test]
+    fn test_class_non_function_method_is_skipped_for_coverage() {
+        use crate::ast::{Program, Span, Stmt};
+
+        let span = Span::new(1, 1);
+        let program = Program::new(vec![Stmt::Class {
+            name: "Foo".to_string(),
+            superclass: None,
+            methods: vec![Stmt::VarDecl {
+                name: "x".to_string(),
+                initializer: None,
+                span,
+            }],
+            span,
+        }]);
+
+        let mut compiler = Compiler::new();
+        let _ = std::hint::black_box(compiler.compile(&program));
     }
 
     // ==================== String Escaping Tests ====================

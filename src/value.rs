@@ -989,6 +989,25 @@ mod tests {
     }
 
     #[test]
+    fn set_value_intersection_and_difference_cover_both_branches_for_coverage() {
+        let mut a = SetValue::new();
+        a.insert(Value::String("a".to_string()));
+        a.insert(Value::String("b".to_string()));
+
+        let mut b = SetValue::new();
+        b.insert(Value::String("b".to_string()));
+        b.insert(Value::String("c".to_string()));
+
+        let inter = a.intersection(&b);
+        assert_eq!(inter.len(), 1);
+        assert!(inter.contains(&Value::String("b".to_string())));
+
+        let diff = a.difference(&b);
+        assert_eq!(diff.len(), 1);
+        assert!(diff.contains(&Value::String("a".to_string())));
+    }
+
+    #[test]
     fn test_value_display_function() {
         let func = HaversFunction::new("add".to_string(), vec![], vec![], None);
         let val = Value::Function(Rc::new(func));

@@ -68,6 +68,18 @@ xs[1:3:]
 }
 
 #[test]
+fn parser_accepts_unary_minus_grouping_and_nae_unary_for_coverage() {
+    let program = parse(
+        r#"
+ken a = -(1)
+ken b = nae aye
+"#,
+    )
+    .expect("program should parse");
+    assert_eq!(program.statements.len(), 2);
+}
+
+#[test]
 fn parser_accepts_trailing_commas_and_statement_separators_for_coverage() {
     let program = parse(
         r#"

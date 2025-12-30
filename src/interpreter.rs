@@ -2105,14 +2105,14 @@ impl Interpreter {
             }
         }
 
-        let current_dir = {
-            #[cfg(not(target_arch = "wasm32"))]
-            {
-                match std::env::current_dir() {
-                    Ok(dir) => dir,
-                    Err(_) => PathBuf::from("."),
-                }
-            }
+	        let current_dir = {
+	            #[cfg(not(target_arch = "wasm32"))]
+	            {
+	                match runtime_current_dir() {
+	                    Ok(dir) => dir,
+	                    Err(_) => PathBuf::from("."),
+	                }
+	            }
 
             #[cfg(target_arch = "wasm32")]
             {
@@ -13281,10 +13281,11 @@ blether m2["a"]
         let socket_close = native_from_globals(&globals, "socket_close");
         let udp_send_to = native_from_globals(&globals, "udp_send_to");
         let udp_recv_from = native_from_globals(&globals, "udp_recv_from");
-        let tcp_send = native_from_globals(&globals, "tcp_send");
-        let tcp_recv = native_from_globals(&globals, "tcp_recv");
-        let tls_connect = native_from_globals(&globals, "tls_connect");
-        let dtls_handshake = native_from_globals(&globals, "dtls_handshake");
+	        let tcp_send = native_from_globals(&globals, "tcp_send");
+	        let tcp_recv = native_from_globals(&globals, "tcp_recv");
+	        let dns_lookup = native_from_globals(&globals, "dns_lookup");
+	        let tls_connect = native_from_globals(&globals, "tls_connect");
+	        let dtls_handshake = native_from_globals(&globals, "dtls_handshake");
 
 	        let bad_tcp = register_socket(-1, SocketKind::Tcp);
 	        let bad_udp = register_socket(-1, SocketKind::Udp);
@@ -13292,10 +13293,12 @@ blether m2["a"]
 	        let bytes = Value::Bytes(Rc::new(RefCell::new(vec![1_u8, 2, 3])));
 	        let empty_host = Value::String(String::new());
 	        let host = Value::String("127.0.0.1".to_string());
-
-        fn assert_result_err(value: Value) {
-            let dict = value.as_dict().expect("expected dict result");
-            let dict = dict.borrow();
+	        let _ = (dns_lookup.func)(vec![Value::String("bad host".to_string())]);
+	        let _ = (dns_lookup.func)(vec![host.clone()]);
+	
+	        fn assert_result_err(value: Value) {
+	            let dict = value.as_dict().expect("expected dict result");
+	            let dict = dict.borrow();
             assert_eq!(dict_get_bool(&dict, "ok"), Some(false));
         }
 
@@ -13317,43 +13320,75 @@ blether m2["a"]
         assert_result_err(
             (socket_set_nonblocking.func)(vec![Value::Integer(bad_tcp), Value::Bool(true)]).unwrap(),
         );
-        assert_result_err(
-            (socket_set_reuseaddr.func)(vec![Value::Integer(bad_tcp), Value::Bool(true)]).unwrap(),
-        );
 	        assert_result_err(
-	            (socket_set_reuseport.func)(vec![Value::Integer(bad_tcp), Value::Bool(true)]).unwrap(),
+	            (socket_set_reuseaddr.func)(vec![Value::Integer(bad_tcp), Value::Bool(true)]).unwrap(),
 	        );
-	        assert_result_err((socket_set_ttl.func)(vec![Value::Integer(bad_udp), Value::Integer(64)]).unwrap());
-	        let _ = (socket_set_ttl.func)(vec![Value::Integer(0), Value::Integer(-1)]);
-	        let _ = (socket_set_ttl.func)(vec![Value::Integer(0), Value::Integer(256)]);
-	        assert_result_err(
-	            (socket_set_nodelay.func)(vec![Value::Integer(bad_tcp), Value::Bool(true)]).unwrap(),
-	        );
-	        assert_result_err(
-	            (socket_set_rcvbuf.func)(vec![Value::Integer(bad_udp), Value::Integer(1024)]).unwrap(),
-	        );
-	        let _ = (socket_set_rcvbuf.func)(vec![Value::Integer(0), Value::Integer(-1)]);
-	        assert_result_err(
+		        assert_result_err(
+		            (socket_set_reuseport.func)(vec![Value::Integer(bad_tcp), Value::Bool(true)]).unwrap(),
+		        );
+		        assert_result_err(
+		            (socket_set_reuseport.func)(vec![Value::Integer(bad_tcp), Value::Bool(false)]).unwrap(),
+		        );
+		        assert_result_err((socket_set_ttl.func)(vec![Value::Integer(bad_udp), Value::Integer(64)]).unwrap());
+		        let _ = (socket_set_ttl.func)(vec![Value::Integer(0), Value::Integer(-1)]);
+		        let _ = (socket_set_ttl.func)(vec![Value::Integer(0), Value::Integer(256)]);
+		        assert_result_err(
+		            (socket_set_nodelay.func)(vec![Value::Integer(bad_tcp), Value::Bool(true)]).unwrap(),
+		        );
+		        assert_result_err(
+		            (socket_set_nodelay.func)(vec![Value::Integer(bad_tcp), Value::Bool(false)]).unwrap(),
+		        );
+		        assert_result_err(
+		            (socket_set_rcvbuf.func)(vec![Value::Integer(bad_udp), Value::Integer(1024)]).unwrap(),
+		        );
+		        let _ = (socket_set_rcvbuf.func)(vec![Value::Integer(0), Value::Integer(-1)]);
+		        assert_result_err(
 	            (socket_set_sndbuf.func)(vec![Value::Integer(bad_udp), Value::Integer(1024)]).unwrap(),
 	        );
 	        let _ = (socket_set_sndbuf.func)(vec![Value::Integer(0), Value::Integer(-1)]);
 
+		        assert_result_err(
+		            (udp_send_to.func)(vec![
+		                Value::Integer(bad_udp),
+	                bytes.clone(),
+	                host.clone(),
+	                Value::Integer(9999),
+	            ])
+	            .unwrap(),
+	        );
+	        let _ = (udp_send_to.func)(vec![
+	            Value::Integer(bad_udp),
+	            bytes.clone(),
+	            host.clone(),
+	            Value::Nil,
+	        ]);
+	        let _ = (udp_send_to.func)(vec![
+	            Value::Integer(bad_udp),
+	            bytes.clone(),
+	            host.clone(),
+	            Value::Integer(70000),
+	        ]);
+	        let _ = (udp_send_to.func)(vec![
+	            Value::Integer(999_999),
+	            bytes.clone(),
+	            host.clone(),
+	            Value::Integer(9999),
+	        ]);
+	        assert_result_err((udp_recv_from.func)(vec![Value::Integer(bad_udp), Value::Integer(16)]).unwrap());
 	        assert_result_err(
-	            (udp_send_to.func)(vec![
-	                Value::Integer(bad_udp),
-                bytes.clone(),
-                host.clone(),
-                Value::Integer(9999),
-            ])
-            .unwrap(),
-        );
-        assert_result_err((udp_recv_from.func)(vec![Value::Integer(bad_udp), Value::Integer(16)]).unwrap());
-        assert_result_err((tcp_send.func)(vec![Value::Integer(bad_tcp), bytes.clone()]).unwrap());
-        assert_result_err((tcp_recv.func)(vec![Value::Integer(bad_tcp), Value::Integer(16)]).unwrap());
-
-        // tls_connect short-circuits on dup() failure before validating the TLS handle.
-        assert_result_err((tls_connect.func)(vec![Value::Integer(123), Value::Integer(bad_tcp)]).unwrap());
-
+	            (udp_recv_from.func)(vec![Value::Integer(bad_udp), Value::Integer(-1)]).unwrap(),
+	        );
+	        assert_result_err((tcp_send.func)(vec![Value::Integer(bad_tcp), bytes.clone()]).unwrap());
+	        let _ = (tcp_send.func)(vec![Value::Integer(999_999), bytes.clone()]);
+	        assert_result_err((tcp_recv.func)(vec![Value::Integer(bad_tcp), Value::Integer(16)]).unwrap());
+	        assert_result_err(
+	            (tcp_recv.func)(vec![Value::Integer(bad_tcp), Value::Integer(-1)]).unwrap(),
+	        );
+	        let _ = (tcp_recv.func)(vec![Value::Integer(999_999), Value::Integer(-1)]);
+	
+	        // tls_connect short-circuits on dup() failure before validating the TLS handle.
+	        assert_result_err((tls_connect.func)(vec![Value::Integer(123), Value::Integer(bad_tcp)]).unwrap());
+	
         // dtls_handshake needs a valid DTLS handle so dtls_get succeeds.
         let dtls_id = register_dtls(DtlsConfigData {
             mode: TlsMode::Client,
@@ -15390,6 +15425,13 @@ mak_siccar "b" >= "b"
 		        let _guard = set_force_current_dir_error_for_coverage(true);
 		        let err = run("cwd()").unwrap_err();
 		        assert!(format!("{err:?}").contains("Couldnae get current directory"));
+		    }
+
+		    #[test]
+		    fn interpreter_new_falls_back_to_dot_when_current_dir_unavailable_for_coverage() {
+		        let _guard = set_force_current_dir_error_for_coverage(true);
+		        let interp = Interpreter::new();
+		        assert_eq!(interp.current_dir, PathBuf::from("."));
 		    }
 
 		    #[test]

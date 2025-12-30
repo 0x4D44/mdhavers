@@ -1,6 +1,6 @@
 # Makefile for mdhavers - auto-detects LLVM and builds appropriately
 
-.PHONY: build release test clean install install-local uninstall check fmt clippy package coverage coverage-gate
+.PHONY: build release test clean install install-local uninstall check fmt clippy package coverage coverage-gate coverage-guardrails
 
 # Auto-detect LLVM - check for llvm-config variants
 LLVM_CONFIG := $(shell which llvm-config-15 2>/dev/null || which llvm-config-14 2>/dev/null || which llvm-config-16 2>/dev/null || which llvm-config-17 2>/dev/null || which llvm-config-18 2>/dev/null || which llvm-config 2>/dev/null)
@@ -47,6 +47,10 @@ coverage-gate:
 	cargo llvm-cov --no-default-features --features cli,llvm,native \
 		--summary-only --json --output-path target/llvm-cov-summary.json \
 		--fail-under-lines 98
+
+coverage-guardrails:
+	@echo "Coverage guardrails (floors + hotspot ordering)"
+	@bash scripts/coverage_guardrails.sh
 
 check:
 	@echo "Checking mdhavers (LLVM: $(LLVM_STATUS))"
@@ -123,6 +127,7 @@ help:
 	@echo "  make test            - Run tests"
 	@echo "  make coverage        - Run canonical LLVM coverage scoreboard"
 	@echo "  make coverage-gate   - Fail if total lines < 98%"
+	@echo "  make coverage-guardrails - Run canonical coverage + invariants"
 	@echo "  make check           - Check compilation"
 	@echo "  make fmt             - Format code"
 	@echo "  make clippy          - Run clippy lints"
