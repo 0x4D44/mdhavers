@@ -1,6 +1,9 @@
 #![cfg(coverage)]
 
-use mdhavers::value::{DictValue, Environment, NativeFunction, RangeValue, SetValue};
+use mdhavers::value::{
+    DictValue, Environment, HaversClass, HaversFunction, HaversInstance, NativeFunction, RangeValue,
+    SetValue,
+};
 use mdhavers::Value;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -56,4 +59,17 @@ fn value_helpers_are_exercised_for_instantiation_coverage() {
     let mut c = SetValue::new();
     c.insert(Value::Integer(3));
     assert!(a.is_disjoint(&c));
+
+    let mut class = HaversClass::new("Test".to_string(), None);
+    class.methods.insert(
+        "method".to_string(),
+        Rc::new(HaversFunction::new("method".to_string(), vec![], vec![], None)),
+    );
+    let class = Rc::new(class);
+
+    let mut instance = HaversInstance::new(class);
+    instance.set("field".to_string(), Value::Integer(123));
+    assert_eq!(instance.get("field"), Some(Value::Integer(123)));
+    assert!(matches!(instance.get("method"), Some(Value::Function(_))));
+    assert_eq!(instance.get("missing"), None);
 }

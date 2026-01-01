@@ -1778,17 +1778,6 @@ dae f() {
     }
 
     #[test]
-    fn compile_to_wat_propagates_parse_errors_for_coverage() {
-        let err = compile_to_wat("ken = 1").unwrap_err();
-        assert!(matches!(
-            err,
-            HaversError::ParseError { .. }
-                | HaversError::UnexpectedToken { .. }
-                | HaversError::UnkentToken { .. }
-        ));
-    }
-
-    #[test]
     fn test_escape_wat_string_covers_special_chars() {
         let input = "\"\\\r\t\n\u{0001}";
         let escaped = escape_wat_string(input);

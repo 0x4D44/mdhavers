@@ -1487,6 +1487,21 @@ static void __mdh_value_to_string_sb(MdhStrBuf *out, MdhValue v) {
             __mdh_sb_append_char(out, '}');
             return;
         }
+        case MDH_TAG_INSTANCE: {
+            /* Instance values store a stable handle pointer that points to the instance data. */
+            intptr_t *handle_ptr = (intptr_t *)(intptr_t)v.data;
+            intptr_t data_ptr = handle_ptr ? *handle_ptr : 0;
+            int64_t *inst_ptr = (int64_t *)(intptr_t)data_ptr;
+            const char *class_name = "instance";
+            if (inst_ptr) {
+                const char *p = (const char *)(intptr_t)inst_ptr[0];
+                if (p) class_name = p;
+            }
+            __mdh_sb_append_char(out, '<');
+            __mdh_sb_append(out, class_name);
+            __mdh_sb_append(out, " instance>");
+            return;
+        }
         case MDH_TAG_NATIVE: {
             MdhNativeObject *native = __mdh_get_native(v);
             if (!native) {

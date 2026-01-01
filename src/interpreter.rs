@@ -11163,13 +11163,36 @@ impl Interpreter {
                     Value::NativeObject(native) => native
                         .get(property)
                         .map_err(|err| err.with_line_if_zero(span.line)),
-                    Value::Instance(inst) => inst
-                        .borrow()
-                        .get(property)
-                        .ok_or_else(|| HaversError::UndefinedVariable {
+                    Value::Instance(inst) => {
+                        // Prefer instance fields over methods (fields can shadow method names).
+                        if let Some(field_val) = inst.borrow().fields.get(property).cloned() {
+                            return Ok(field_val);
+                        }
+
+                        // If it's a method, return a bound callable (captures `masel`).
+                        let method_opt = { inst.borrow().class.find_method(property) };
+                        if let Some(method) = method_opt {
+                            let base_env = method.closure.clone().unwrap_or(self.globals.clone());
+                            let env =
+                                Rc::new(RefCell::new(Environment::with_enclosing(base_env)));
+                            env.borrow_mut().define(
+                                "masel".to_string(),
+                                Value::Instance(inst.clone()),
+                            );
+                            let bound = HaversFunction::new(
+                                method.name.clone(),
+                                method.params.clone(),
+                                method.body.clone(),
+                                Some(env),
+                            );
+                            return Ok(Value::Function(Rc::new(bound)));
+                        }
+
+                        Err(HaversError::UndefinedVariable {
                             name: property.clone(),
                             line: span.line,
-                        }),
+                        })
+                    }
                     Value::Dict(dict) => dict
                         .borrow()
                         .get(&Value::String(property.clone()))

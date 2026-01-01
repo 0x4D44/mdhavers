@@ -49363,12 +49363,16 @@ mod error_path_cov {
 
     #[test]
     fn test_div_by_zero_int() {
-        // Division by zero should produce some output
         let code = r#"
-ken x = 10 / 0
-blether x
+ken result = 0
+hae_a_bash {
+    result = 10 / 0
+} gin_it_gangs_wrang e {
+    result = -1
+}
+blether result
         "#;
-        let _output = run(code); // Should not panic
+        assert_eq!(run(code).trim(), "-1");
     }
 
     #[test]
@@ -52062,7 +52066,7 @@ blether result
         "#;
         let binding = run(code);
         let output = binding.trim();
-        assert!(output == "-1" || output.len() > 0, "Got: {}", output);
+        assert_eq!(output, "-1");
     }
 }
 
@@ -62352,9 +62356,14 @@ mod edge_case_cov {
 
     #[test]
     fn test_zero_division_int() {
-        let code = r#"blether 5 / 0"#;
-        // This should either error or return some value
-        let _ = run(code);
+        let code = r#"
+hae_a_bash {
+    blether 5 / 0
+} gin_it_gangs_wrang e {
+    blether "caught"
+}
+"#;
+        assert_eq!(run(code).trim(), "caught");
     }
 
     #[test]
@@ -74688,10 +74697,14 @@ mod error_path_coverage {
 
     #[test]
     fn test_divide_by_zero_int() {
-        let code = r#"blether 10 / 0"#;
-        let result = std::panic::catch_unwind(|| run(code));
-        // May crash or return inf
-        assert!(result.is_ok() || result.is_err());
+        let code = r#"
+hae_a_bash {
+    blether 10 / 0
+} gin_it_gangs_wrang e {
+    blether "caught"
+}
+"#;
+        assert_eq!(run(code).trim(), "caught");
     }
 }
 

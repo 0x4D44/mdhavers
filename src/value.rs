@@ -1038,6 +1038,23 @@ mod tests {
     }
 
     #[test]
+    fn test_havers_instance_get_covers_field_and_method_branches() {
+        let mut class = HaversClass::new("Test".to_string(), None);
+        class.methods.insert(
+            "method".to_string(),
+            Rc::new(HaversFunction::new("method".to_string(), vec![], vec![], None)),
+        );
+        let class = Rc::new(class);
+
+        let mut instance = HaversInstance::new(class);
+        instance.set("field".to_string(), Value::Integer(123));
+
+        assert_eq!(instance.get("field"), Some(Value::Integer(123)));
+        assert!(matches!(instance.get("method"), Some(Value::Function(_))));
+        assert_eq!(instance.get("missing"), None);
+    }
+
+    #[test]
     fn test_value_display_struct() {
         let strct = HaversStruct::new("Point".to_string(), vec!["x".to_string(), "y".to_string()]);
         let val = Value::Struct(Rc::new(strct));
