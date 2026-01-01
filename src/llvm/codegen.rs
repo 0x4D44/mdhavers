@@ -16169,7 +16169,58 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let arg = self.compile_expr(&args[0])?;
-                    return self.inline_upper(arg);
+                    let arg_tag = self.extract_tag(arg).unwrap();
+                    let string_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::String.as_u8() as u64, false);
+                    let is_string = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, arg_tag, string_tag, "upper_is_string")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "upper_ok");
+                    let err_block = self.context.append_basic_block(function, "upper_type_error");
+                    let merge_block = self.context.append_basic_block(function, "upper_merge");
+
+                    self.builder
+                        .build_conditional_branch(is_string, ok_block, err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(ok_block);
+                    let ok_val = self.inline_upper(arg)?;
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(err_block);
+                    let op = self
+                        .builder
+                        .build_global_string_ptr("upper", "upper_op")
+                        .unwrap();
+                    let zero_tag = self.types.i8_type.const_int(0, false);
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), arg_tag.into(), zero_tag.into()],
+                            "",
+                        )
+                        .unwrap();
+                    let err_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "upper_result")
+                        .unwrap();
+                    phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 "lower" | "laich" => {
                     if args.len() != 1 {
@@ -16178,7 +16229,58 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let arg = self.compile_expr(&args[0])?;
-                    return self.inline_lower(arg);
+                    let arg_tag = self.extract_tag(arg).unwrap();
+                    let string_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::String.as_u8() as u64, false);
+                    let is_string = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, arg_tag, string_tag, "lower_is_string")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "lower_ok");
+                    let err_block = self.context.append_basic_block(function, "lower_type_error");
+                    let merge_block = self.context.append_basic_block(function, "lower_merge");
+
+                    self.builder
+                        .build_conditional_branch(is_string, ok_block, err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(ok_block);
+                    let ok_val = self.inline_lower(arg)?;
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(err_block);
+                    let op = self
+                        .builder
+                        .build_global_string_ptr("lower", "lower_op")
+                        .unwrap();
+                    let zero_tag = self.types.i8_type.const_int(0, false);
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), arg_tag.into(), zero_tag.into()],
+                            "",
+                        )
+                        .unwrap();
+                    let err_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "lower_result")
+                        .unwrap();
+                    phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 "wheesht" | "trim" | "sneck" => {
                     if args.len() != 1 {
@@ -16186,12 +16288,88 @@ impl<'ctx> CodeGen<'ctx> {
                             "wheesht/trim expects 1 argument".to_string(),
                         ));
                     }
-                    let arg_ty = self.infer_expr_type(&args[0]);
                     let arg = self.compile_expr(&args[0])?;
-                    if arg_ty == VarType::List {
-                        return self.inline_wheesht_list(arg);
-                    }
-                    return self.inline_wheesht(arg);
+
+                    let tag = self.extract_tag(arg).unwrap();
+                    let list_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::List.as_u8() as u64, false);
+                    let string_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::String.as_u8() as u64, false);
+
+                    let is_list = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, tag, list_tag, "wheesht_is_list")
+                        .unwrap();
+                    let is_string = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, tag, string_tag, "wheesht_is_string")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let list_block = self.context.append_basic_block(function, "wheesht_list");
+                    let check_string_block =
+                        self.context.append_basic_block(function, "wheesht_check_string");
+                    let string_block = self.context.append_basic_block(function, "wheesht_string");
+                    let err_block = self.context.append_basic_block(function, "wheesht_type_error");
+                    let merge_block = self.context.append_basic_block(function, "wheesht_merge");
+
+                    self.builder
+                        .build_conditional_branch(is_list, list_block, check_string_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(check_string_block);
+                    self.builder
+                        .build_conditional_branch(is_string, string_block, err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(list_block);
+                    let list_val = self.inline_wheesht_list(arg)?;
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let list_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(string_block);
+                    let str_val = self.inline_wheesht(arg)?;
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let str_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(err_block);
+                    let op = self
+                        .builder
+                        .build_global_string_ptr("wheesht", "wheesht_op")
+                        .unwrap();
+                    let zero_tag = self.types.i8_type.const_int(0, false);
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), tag.into(), zero_tag.into()],
+                            "",
+                        )
+                        .unwrap();
+                    let err_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "wheesht_result")
+                        .unwrap();
+                    phi.add_incoming(&[
+                        (&list_val, list_end),
+                        (&str_val, str_end),
+                        (&err_val, err_end),
+                    ]);
+                    return Ok(phi.as_basic_value());
                 }
                 "ltrim" | "trim_left" | "trim_start" | "lstrip" => {
                     // ltrim(str) - trim leading whitespace
@@ -16254,6 +16432,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let container_val = self.compile_expr(&args[0])?;
                     let needle_val = self.compile_expr(&args[1])?;
                     let tag = self.extract_tag(container_val).unwrap();
+                    let needle_tag = self.extract_tag(needle_val).unwrap();
 
                     let function = self.current_function.unwrap();
                     let list_block = self.context.append_basic_block(function, "coont_list");
@@ -16307,17 +16486,58 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     let list_end = self.builder.get_insert_block().unwrap();
 
-                    // String: coont(str, substr)
+                    // String: coont(str, substr) - ensure needle is also a string
                     self.builder.position_at_end(str_block);
+                    let is_needle_str = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, needle_tag, str_tag, "needle_is_str")
+                        .unwrap();
+                    let str_ok_block = self.context.append_basic_block(function, "coont_str_ok");
+                    let str_err_block =
+                        self.context.append_basic_block(function, "coont_str_type_error");
+                    self.builder
+                        .build_conditional_branch(is_needle_str, str_ok_block, str_err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(str_err_block);
+                    let op = self
+                        .builder
+                        .build_global_string_ptr("coont", "coont_op")
+                        .unwrap();
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), tag.into(), needle_tag.into()],
+                            "",
+                        )
+                        .unwrap();
+                    let str_err_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let str_err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(str_ok_block);
                     let str_res = self.inline_coont(container_val, needle_val)?;
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
                     let str_end = self.builder.get_insert_block().unwrap();
 
-                    // Other: return 0
+                    // Other: type error (interpreter parity) rather than returning 0.
                     self.builder.position_at_end(other_block);
-                    let zero = self.make_int(self.types.i64_type.const_int(0, false));
+                    let op = self
+                        .builder
+                        .build_global_string_ptr("coont", "coont_op_other")
+                        .unwrap();
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), tag.into(), needle_tag.into()],
+                            "",
+                        )
+                        .unwrap();
+                    let other_val = self.make_nil();
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
@@ -16331,7 +16551,8 @@ impl<'ctx> CodeGen<'ctx> {
                     phi.add_incoming(&[
                         (&list_res, list_end),
                         (&str_res, str_end),
-                        (&zero, other_end),
+                        (&str_err_val, str_err_end),
+                        (&other_val, other_end),
                     ]);
                     return Ok(phi.as_basic_value());
                 }
@@ -17156,7 +17377,89 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let arg = self.compile_expr(&args[0])?;
-                    return self.inline_ord(arg);
+                    let tag = self.extract_tag(arg).unwrap();
+                    let string_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::String.as_u8() as u64, false);
+                    let is_string = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, tag, string_tag, "ord_is_string")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "ord_ok");
+                    let err_block = self.context.append_basic_block(function, "ord_type_error");
+                    let merge_block = self.context.append_basic_block(function, "ord_merge");
+
+                    self.builder
+                        .build_conditional_branch(is_string, ok_block, err_block)
+                        .unwrap();
+
+                    // OK: string -> ord, but reject empty string (match interpreter)
+                    self.builder.position_at_end(ok_block);
+                    let data = self.extract_data(arg).unwrap();
+                    let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+                    let str_ptr = self
+                        .builder
+                        .build_int_to_ptr(data, i8_ptr, "ord_str_ptr")
+                        .unwrap();
+                    let len = self
+                        .builder
+                        .build_call(self.libc.strlen, &[str_ptr.into()], "ord_len")
+                        .unwrap()
+                        .try_as_basic_value()
+                        .left()
+                        .unwrap()
+                        .into_int_value();
+                    let zero = self.types.i64_type.const_int(0, false);
+                    let is_empty = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, len, zero, "ord_is_empty")
+                        .unwrap();
+                    let empty_block = self.context.append_basic_block(function, "ord_empty");
+                    let nonempty_block = self.context.append_basic_block(function, "ord_nonempty");
+                    self.builder
+                        .build_conditional_branch(is_empty, empty_block, nonempty_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(empty_block);
+                    let msg = self.compile_string_literal("Cannae get ord o' empty string!");
+                    let _ = self
+                        .builder
+                        .build_call(self.libc.hurl, &[msg.into()], "ord_empty_hurl")
+                        .unwrap();
+                    self.builder.build_unreachable().unwrap();
+
+                    self.builder.position_at_end(nonempty_block);
+                    let ok_val = self.inline_ord(arg)?;
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    // Type error
+                    self.builder.position_at_end(err_block);
+                    let op = self.builder.build_global_string_ptr("ord", "ord_op").unwrap();
+                    let zero_tag = self.types.i8_type.const_int(0, false);
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), tag.into(), zero_tag.into()],
+                            "",
+                        )
+                        .unwrap();
+                    let err_val = self.make_int(self.types.i64_type.const_int(0, false));
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    // Merge
+                    self.builder.position_at_end(merge_block);
+                    let phi = self.builder.build_phi(self.types.value_type, "ord_result").unwrap();
+                    phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 "chr" => {
                     // chr(n) - convert codepoint to single-character string
@@ -17166,7 +17469,85 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let arg = self.compile_expr(&args[0])?;
-                    return self.inline_chr(arg);
+                    let tag = self.extract_tag(arg).unwrap();
+                    let data = self.extract_data(arg).unwrap();
+                    let int_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::Int.as_u8() as u64, false);
+                    let is_int = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, tag, int_tag, "chr_is_int")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "chr_ok");
+                    let err_block = self.context.append_basic_block(function, "chr_type_error");
+                    let merge_block = self.context.append_basic_block(function, "chr_merge");
+
+                    self.builder
+                        .build_conditional_branch(is_int, ok_block, err_block)
+                        .unwrap();
+
+                    // OK: integer -> chr, but validate range to avoid odd truncation behaviour.
+                    self.builder.position_at_end(ok_block);
+                    let zero = self.types.i64_type.const_int(0, false);
+                    let max = self.types.i64_type.const_int(0x10FFFF, false);
+                    let is_negative = self
+                        .builder
+                        .build_int_compare(IntPredicate::SLT, data, zero, "chr_is_negative")
+                        .unwrap();
+                    let is_too_large = self
+                        .builder
+                        .build_int_compare(IntPredicate::SGT, data, max, "chr_is_too_large")
+                        .unwrap();
+                    let is_invalid = self
+                        .builder
+                        .build_or(is_negative, is_too_large, "chr_is_invalid")
+                        .unwrap();
+                    let invalid_block = self.context.append_basic_block(function, "chr_invalid");
+                    let valid_block = self.context.append_basic_block(function, "chr_valid");
+                    self.builder
+                        .build_conditional_branch(is_invalid, invalid_block, valid_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(invalid_block);
+                    let msg = self.compile_string_literal("chr() needs a valid Unicode codepoint");
+                    let _ = self
+                        .builder
+                        .build_call(self.libc.hurl, &[msg.into()], "chr_invalid_hurl")
+                        .unwrap();
+                    self.builder.build_unreachable().unwrap();
+
+                    self.builder.position_at_end(valid_block);
+                    let ok_val = self.inline_chr(arg)?;
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    // Type error
+                    self.builder.position_at_end(err_block);
+                    let op = self.builder.build_global_string_ptr("chr", "chr_op").unwrap();
+                    let zero_tag = self.types.i8_type.const_int(0, false);
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), tag.into(), zero_tag.into()],
+                            "",
+                        )
+                        .unwrap();
+                    let err_val = self.compile_string_literal("");
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    // Merge
+                    self.builder.position_at_end(merge_block);
+                    let phi = self.builder.build_phi(self.types.value_type, "chr_result").unwrap();
+                    phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 "char_at" => {
                     if args.len() != 2 {
@@ -17174,10 +17555,65 @@ impl<'ctx> CodeGen<'ctx> {
                             "char_at expects 2 arguments".to_string(),
                         ));
                     }
-	                    let str_arg = self.compile_expr(&args[0])?;
-	                    let idx_arg = self.compile_expr(&args[1])?;
-	                    return Ok(self.inline_char_at(str_arg, idx_arg));
-	                }
+                    let str_arg = self.compile_expr(&args[0])?;
+                    let idx_arg = self.compile_expr(&args[1])?;
+
+                    // Type check string input; index is coerced (int/float) to match interpreter behaviour.
+                    let str_tag = self.extract_tag(str_arg).unwrap();
+                    let idx_tag = self.extract_tag(idx_arg).unwrap();
+                    let string_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::String.as_u8() as u64, false);
+                    let is_string = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, str_tag, string_tag, "char_at_is_str")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "char_at_ok");
+                    let err_block = self.context.append_basic_block(function, "char_at_type_error");
+                    let merge_block = self.context.append_basic_block(function, "char_at_merge");
+
+                    self.builder
+                        .build_conditional_branch(is_string, ok_block, err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(ok_block);
+                    let str_data = self.extract_data(str_arg).unwrap();
+                    let idx_i64 = self.coerce_i64(idx_arg, "char_at");
+                    let ok_val = self.compile_string_index(str_data, idx_i64)?;
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(err_block);
+                    let op = self
+                        .builder
+                        .build_global_string_ptr("char_at", "char_at_op")
+                        .unwrap();
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), str_tag.into(), idx_tag.into()],
+                            "",
+                        )
+                        .unwrap();
+                    let err_val = self.compile_string_literal("");
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "char_at_result")
+                        .unwrap();
+                    phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+                    return Ok(phi.as_basic_value());
+                }
                 "substr" | "scance" | "substring" => {
                     if args.len() != 3 {
                         return Err(HaversError::CompileError(
@@ -17187,7 +17623,64 @@ impl<'ctx> CodeGen<'ctx> {
                     let str_arg = self.compile_expr(&args[0])?;
                     let start_arg = self.compile_expr(&args[1])?;
                     let end_arg = self.compile_expr(&args[2])?;
-                    return self.inline_substring_range(str_arg, start_arg, end_arg);
+
+                    // Type check string input; indices are coerced (int/float) to match interpreter behaviour.
+                    let str_tag = self.extract_tag(str_arg).unwrap();
+                    let string_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::String.as_u8() as u64, false);
+                    let is_string = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, str_tag, string_tag, "substr_is_str")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "substr_ok");
+                    let err_block = self.context.append_basic_block(function, "substr_type_error");
+                    let merge_block = self.context.append_basic_block(function, "substr_merge");
+
+                    self.builder
+                        .build_conditional_branch(is_string, ok_block, err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(ok_block);
+                    let start_i64 = self.coerce_i64(start_arg, "substring");
+                    let end_i64 = self.coerce_i64(end_arg, "substring");
+                    let start_val = self.make_int(start_i64);
+                    let end_val = self.make_int(end_i64);
+                    let ok_val = self.inline_substring_range(str_arg, start_val, end_val)?;
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(err_block);
+                    let op = self
+                        .builder
+                        .build_global_string_ptr("substring", "substr_op")
+                        .unwrap();
+                    let start_tag = self.extract_tag(start_arg).unwrap();
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), str_tag.into(), start_tag.into()],
+                            "",
+                        )
+                        .unwrap();
+                    let err_val = self.compile_string_literal("");
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "substr_result")
+                        .unwrap();
+                    phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 "chars" => {
                     if args.len() != 1 {
@@ -17196,7 +17689,55 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let arg = self.compile_expr(&args[0])?;
-                    return self.inline_chars(arg);
+
+                    // Type check: avoid treating non-string data as char*.
+                    let tag = self.extract_tag(arg).unwrap();
+                    let string_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::String.as_u8() as u64, false);
+                    let is_string = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, tag, string_tag, "chars_is_string")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "chars_ok");
+                    let err_block = self.context.append_basic_block(function, "chars_type_error");
+                    let merge_block = self.context.append_basic_block(function, "chars_merge");
+
+                    self.builder
+                        .build_conditional_branch(is_string, ok_block, err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(ok_block);
+                    let ok_val = self.inline_chars(arg)?;
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(err_block);
+                    let op = self.builder.build_global_string_ptr("chars", "chars_op").unwrap();
+                    let zero_tag = self.types.i8_type.const_int(0, false);
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), tag.into(), zero_tag.into()],
+                            "",
+                        )
+                        .unwrap();
+                    let err_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi =
+                        self.builder.build_phi(self.types.value_type, "chars_result").unwrap();
+                    phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 "repeat" => {
                     if args.len() != 2 {
@@ -17206,7 +17747,118 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let str_arg = self.compile_expr(&args[0])?;
                     let count_arg = self.compile_expr(&args[1])?;
-                    return Ok(self.inline_repeat(str_arg, count_arg));
+
+                    // Type check + negative guard to match interpreter semantics and avoid hangs.
+                    let str_tag = self.extract_tag(str_arg).unwrap();
+                    let count_tag = self.extract_tag(count_arg).unwrap();
+
+                    let string_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::String.as_u8() as u64, false);
+                    let int_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::Int.as_u8() as u64, false);
+
+                    let str_is_string = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, str_tag, string_tag, "repeat_str")
+                        .unwrap();
+                    let count_is_int = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, count_tag, int_tag, "repeat_count_int")
+                        .unwrap();
+                    let types_ok = self
+                        .builder
+                        .build_and(str_is_string, count_is_int, "repeat_types_ok")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "repeat_ok");
+                    let err_block = self.context.append_basic_block(function, "repeat_type_error");
+                    let merge_block = self.context.append_basic_block(function, "repeat_merge");
+
+                    self.builder
+                        .build_conditional_branch(types_ok, ok_block, err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(err_block);
+                    let op = self
+                        .builder
+                        .build_global_string_ptr("repeat", "repeat_op")
+                        .unwrap();
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), str_tag.into(), count_tag.into()],
+                            "",
+                        )
+                        .unwrap();
+                    let type_err_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let type_err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(ok_block);
+                    let count_i64 = self.extract_data(count_arg).unwrap();
+                    let is_negative = self
+                        .builder
+                        .build_int_compare(
+                            IntPredicate::SLT,
+                            count_i64,
+                            self.types.i64_type.const_int(0, false),
+                            "repeat_negative",
+                        )
+                        .unwrap();
+                    let neg_block = self.context.append_basic_block(function, "repeat_neg");
+                    let call_block = self.context.append_basic_block(function, "repeat_call");
+
+                    self.builder
+                        .build_conditional_branch(is_negative, neg_block, call_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(neg_block);
+                    let msg = self.compile_string_literal("Cannae repeat a negative number o' times!");
+                    let _ = self
+                        .builder
+                        .build_call(self.libc.hurl, &[msg.into()], "repeat_neg_hurl")
+                        .unwrap();
+                    let neg_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let neg_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(call_block);
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.repeat_say,
+                            &[str_arg.into(), count_arg.into()],
+                            "repeat_say_result",
+                        )
+                        .unwrap()
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("repeat_say returned void")?;
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let call_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "repeat_result")
+                        .unwrap();
+                    phi.add_incoming(&[
+                        (&type_err_val, type_err_end),
+                        (&neg_val, neg_end),
+                        (&result, call_end),
+                    ]);
+                    return Ok(phi.as_basic_value());
                 }
                 "index_of" | "index_o" => {
                     if args.len() != 2 {
@@ -17279,7 +17931,68 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let str_arg = self.compile_expr(&args[0])?;
                     let prefix_arg = self.compile_expr(&args[1])?;
-                    return self.inline_starts_wi(str_arg, prefix_arg);
+
+                    // Type check: both args must be strings (avoid treating non-string data as char*)
+                    let str_tag = self.extract_tag(str_arg).unwrap();
+                    let prefix_tag = self.extract_tag(prefix_arg).unwrap();
+                    let string_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::String.as_u8() as u64, false);
+                    let str_is_string = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, str_tag, string_tag, "starts_str")
+                        .unwrap();
+                    let prefix_is_string = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, prefix_tag, string_tag, "starts_prefix")
+                        .unwrap();
+                    let both_strings = self
+                        .builder
+                        .build_and(str_is_string, prefix_is_string, "starts_both_str")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "starts_ok");
+                    let err_block = self.context.append_basic_block(function, "starts_type_error");
+                    let merge_block = self.context.append_basic_block(function, "starts_merge");
+
+                    self.builder
+                        .build_conditional_branch(both_strings, ok_block, err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(ok_block);
+                    let ok_val = self.inline_starts_wi(str_arg, prefix_arg)?;
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(err_block);
+                    let op = self
+                        .builder
+                        .build_global_string_ptr("starts_wi", "starts_wi_op")
+                        .unwrap();
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), str_tag.into(), prefix_tag.into()],
+                            "",
+                        )
+                        .unwrap();
+                    let err_val = self.make_bool(self.context.bool_type().const_int(0, false));
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "starts_result")
+                        .unwrap();
+                    phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 "ends_wi" => {
                     if args.len() != 2 {
@@ -17289,7 +18002,65 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let str_arg = self.compile_expr(&args[0])?;
                     let suffix_arg = self.compile_expr(&args[1])?;
-                    return self.inline_ends_wi(str_arg, suffix_arg);
+
+                    // Type check: both args must be strings (avoid treating non-string data as char*)
+                    let str_tag = self.extract_tag(str_arg).unwrap();
+                    let suffix_tag = self.extract_tag(suffix_arg).unwrap();
+                    let string_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::String.as_u8() as u64, false);
+                    let str_is_string = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, str_tag, string_tag, "ends_str")
+                        .unwrap();
+                    let suffix_is_string = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, suffix_tag, string_tag, "ends_suffix")
+                        .unwrap();
+                    let both_strings = self
+                        .builder
+                        .build_and(str_is_string, suffix_is_string, "ends_both_str")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "ends_ok");
+                    let err_block = self.context.append_basic_block(function, "ends_type_error");
+                    let merge_block = self.context.append_basic_block(function, "ends_merge");
+
+                    self.builder
+                        .build_conditional_branch(both_strings, ok_block, err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(ok_block);
+                    let ok_val = self.inline_ends_wi(str_arg, suffix_arg)?;
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(err_block);
+                    let op = self
+                        .builder
+                        .build_global_string_ptr("ends_wi", "ends_wi_op")
+                        .unwrap();
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), str_tag.into(), suffix_tag.into()],
+                            "",
+                        )
+                        .unwrap();
+                    let err_val = self.make_bool(self.context.bool_type().const_int(0, false));
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self.builder.build_phi(self.types.value_type, "ends_result").unwrap();
+                    phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 // Math functions
                 "sin" => {
@@ -17883,7 +18654,82 @@ impl<'ctx> CodeGen<'ctx> {
                     } else {
                         None
                     };
-                    return self.inline_pad(str_arg, width_arg, pad_char, name == "pad_left");
+
+                    // Type check: avoid treating non-string data as char* and avoid using non-int width.
+                    let str_tag = self.extract_tag(str_arg).unwrap();
+                    let width_tag = self.extract_tag(width_arg).unwrap();
+                    let string_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::String.as_u8() as u64, false);
+                    let int_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::Int.as_u8() as u64, false);
+
+                    let str_is_string = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, str_tag, string_tag, "pad_str")
+                        .unwrap();
+                    let width_is_int = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, width_tag, int_tag, "pad_width_int")
+                        .unwrap();
+                    let mut types_ok = self
+                        .builder
+                        .build_and(str_is_string, width_is_int, "pad_types_ok")
+                        .unwrap();
+
+                    let err_tag2 = if let Some(pc) = pad_char {
+                        let pc_tag = self.extract_tag(pc).unwrap();
+                        let pc_is_string = self
+                            .builder
+                            .build_int_compare(IntPredicate::EQ, pc_tag, string_tag, "pad_char_str")
+                            .unwrap();
+                        types_ok = self
+                            .builder
+                            .build_and(types_ok, pc_is_string, "pad_types_ok2")
+                            .unwrap();
+                        pc_tag
+                    } else {
+                        width_tag
+                    };
+
+                    let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "pad_ok");
+                    let err_block = self.context.append_basic_block(function, "pad_type_error");
+                    let merge_block = self.context.append_basic_block(function, "pad_merge");
+
+                    self.builder
+                        .build_conditional_branch(types_ok, ok_block, err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(ok_block);
+                    let ok_val = self.inline_pad(str_arg, width_arg, pad_char, name == "pad_left")?;
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(err_block);
+                    let op = self.builder.build_global_string_ptr(name, "pad_op").unwrap();
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), str_tag.into(), err_tag2.into()],
+                            "",
+                        )
+                        .unwrap();
+                    let err_val = self.compile_string_literal("");
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self.builder.build_phi(self.types.value_type, "pad_result").unwrap();
+                    phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 "radians" => {
                     // radians(degrees) - convert degrees to radians
@@ -34157,22 +35003,38 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         // Check container type and use appropriate method
         let container_tag = self.extract_tag(container_val).unwrap();
+        let elem_tag = self.extract_tag(elem_val).unwrap();
         let list_tag = self
             .types
             .i8_type
             .const_int(ValueTag::List.as_u8() as u64, false);
+        let string_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::String.as_u8() as u64, false);
         let is_list = self
             .builder
             .build_int_compare(IntPredicate::EQ, container_tag, list_tag, "is_list")
+            .unwrap();
+        let is_string = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, container_tag, string_tag, "is_string")
             .unwrap();
 
         let function = self.current_function.unwrap();
         let list_case = self.context.append_basic_block(function, "index_of_list");
         let string_case = self.context.append_basic_block(function, "index_of_string");
+        let err_case = self.context.append_basic_block(function, "index_of_type_error");
         let merge_block = self.context.append_basic_block(function, "index_of_merge");
 
+        let check_string = self.context.append_basic_block(function, "index_of_check_string");
         self.builder
-            .build_conditional_branch(is_list, list_case, string_case)
+            .build_conditional_branch(is_list, list_case, check_string)
+            .unwrap();
+
+        self.builder.position_at_end(check_string);
+        self.builder
+            .build_conditional_branch(is_string, string_case, err_case)
             .unwrap();
 
         // List case: use runtime function
@@ -34195,6 +35057,35 @@ impl<'ctx> CodeGen<'ctx> {
 
         // String case: use strstr
         self.builder.position_at_end(string_case);
+        let is_elem_string = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, elem_tag, string_tag, "index_of_elem_is_string")
+            .unwrap();
+        let string_ok = self.context.append_basic_block(function, "index_of_string_ok");
+        let string_err = self.context.append_basic_block(function, "index_of_string_type_error");
+        self.builder
+            .build_conditional_branch(is_elem_string, string_ok, string_err)
+            .unwrap();
+
+        self.builder.position_at_end(string_err);
+        let op = self
+            .builder
+            .build_global_string_ptr("index_of", "index_of_op")
+            .unwrap();
+        self.builder
+            .build_call(
+                self.libc.type_error,
+                &[op.as_pointer_value().into(), container_tag.into(), elem_tag.into()],
+                "",
+            )
+            .unwrap();
+        let string_err_val = self.make_nil();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let string_err_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(string_ok);
         let str_data = self.extract_data(container_val).unwrap();
         let substr_data = self.extract_data(elem_val).unwrap();
 
@@ -34273,6 +35164,25 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let string_case_end = self.builder.get_insert_block().unwrap();
 
+        // Type error (not a list or string)
+        self.builder.position_at_end(err_case);
+        let op = self
+            .builder
+            .build_global_string_ptr("index_of", "index_of_op_other")
+            .unwrap();
+        self.builder
+            .build_call(
+                self.libc.type_error,
+                &[op.as_pointer_value().into(), container_tag.into(), elem_tag.into()],
+                "",
+            )
+            .unwrap();
+        let err_val = self.make_nil();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let err_end = self.builder.get_insert_block().unwrap();
+
         // Final merge
         self.builder.position_at_end(merge_block);
         let phi = self
@@ -34282,6 +35192,8 @@ impl<'ctx> CodeGen<'ctx> {
         phi.add_incoming(&[
             (&list_result, list_case_end),
             (&string_result, string_case_end),
+            (&string_err_val, string_err_end),
+            (&err_val, err_end),
         ]);
 
         Ok(phi.as_basic_value())
@@ -36723,7 +37635,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // Get pad character (default to space)
-        let pad_byte = if let Some(pc) = pad_char {
+        let pad_byte_raw = if let Some(pc) = pad_char {
             let pc_data = self.extract_data(pc).unwrap();
             let pc_ptr = self
                 .builder
@@ -36736,6 +37648,18 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             self.context.i8_type().const_int(32, false) // space
         };
+        // Treat empty fill string as space (loading its first byte yields NUL).
+        let nul = self.context.i8_type().const_int(0, false);
+        let space = self.context.i8_type().const_int(32, false);
+        let is_nul = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, pad_byte_raw, nul, "pad_is_nul")
+            .unwrap();
+        let pad_byte = self
+            .builder
+            .build_select(is_nul, space, pad_byte_raw, "pad_byte")
+            .unwrap()
+            .into_int_value();
 
         // Calculate pad length = max(0, width - str_len)
         let pad_len_raw = self

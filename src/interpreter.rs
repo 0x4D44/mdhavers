@@ -5792,10 +5792,18 @@ impl Interpreter {
         globals.borrow_mut().define(
             "wheesht".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("wheesht", 1, |args| {
-                if let Value::String(s) = &args[0] {
-                    Ok(Value::String(s.trim().to_string()))
-                } else {
-                    Err("wheesht() expects a string".to_string())
+                match &args[0] {
+                    Value::String(s) => Ok(Value::String(s.trim().to_string())),
+                    Value::List(list) => {
+                        let filtered = list
+                            .borrow()
+                            .iter()
+                            .cloned()
+                            .filter(|v| v.is_truthy())
+                            .collect::<Vec<_>>();
+                        Ok(Value::List(Rc::new(RefCell::new(filtered))))
+                    }
+                    _ => Err("wheesht() expects a string or list".to_string()),
                 }
             }))),
         );
@@ -6825,10 +6833,10 @@ impl Interpreter {
                 match (&args[0], &args[1], &args[2]) {
                     (Value::String(s), Value::Integer(width), Value::String(pad)) => {
                         let pad_char = pad.chars().next().unwrap_or(' ');
-                        let w = *width as usize;
-                        if s.len() >= w {
+                        if *width <= s.len() as i64 {
                             Ok(Value::String(s.clone()))
                         } else {
+                            let w = *width as usize;
                             Ok(Value::String(format!(
                                 "{}{}",
                                 pad_char.to_string().repeat(w - s.len()),
@@ -6849,10 +6857,10 @@ impl Interpreter {
             ) {
                 (Value::String(s), Value::Integer(width), Value::String(pad)) => {
                     let pad_char = pad.chars().next().unwrap_or(' ');
-                    let w = *width as usize;
-                    if s.len() >= w {
+                    if *width <= s.len() as i64 {
                         Ok(Value::String(s.clone()))
                     } else {
+                        let w = *width as usize;
                         Ok(Value::String(format!(
                             "{}{}",
                             s,
@@ -16936,6 +16944,13 @@ f"The answer is {x * 2}"
     }
 
     #[test]
+    fn test_wheesht_filters_falsy_list_values() {
+        let result =
+            run(r#"wheesht([0, 1, "", "x", [], [2], naething, aye, nae])"#).unwrap();
+        assert_eq!(format!("{result}"), "[1, x, [2], aye]");
+    }
+
+    #[test]
     fn test_shuffle() {
         let result = run("len(shuffle([1, 2, 3]))").unwrap();
         assert_eq!(result, Value::Integer(3));
@@ -19290,6 +19305,18 @@ is_a(foo, "function")
     fn test_pad_left_already_wide() {
         let result = run(r#"pad_left("hello", 3, " ")"#).unwrap();
         assert_eq!(result, Value::String("hello".to_string()));
+    }
+
+    #[test]
+    fn test_pad_left_negative_width_no_pad() {
+        let result = run(r#"pad_left("x", -1, "0")"#).unwrap();
+        assert_eq!(result, Value::String("x".to_string()));
+    }
+
+    #[test]
+    fn test_pad_right_negative_width_no_pad() {
+        let result = run(r#"pad_right("x", -1, "0")"#).unwrap();
+        assert_eq!(result, Value::String("x".to_string()));
     }
 
     #[test]
