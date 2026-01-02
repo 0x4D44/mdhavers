@@ -5813,7 +5813,7 @@ impl Interpreter {
             "upper".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("upper", 1, |args| {
                 if let Value::String(s) = &args[0] {
-                    Ok(Value::String(s.to_uppercase()))
+                    Ok(Value::String(s.to_ascii_uppercase()))
                 } else {
                     Err("upper() expects a string".to_string())
                 }
@@ -5825,7 +5825,7 @@ impl Interpreter {
             "lower".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("lower", 1, |args| {
                 if let Value::String(s) = &args[0] {
-                    Ok(Value::String(s.to_lowercase()))
+                    Ok(Value::String(s.to_ascii_lowercase()))
                 } else {
                     Err("lower() expects a string".to_string())
                 }
@@ -5978,17 +5978,21 @@ impl Interpreter {
                 let idx = args[1]
                     .as_integer()
                     .ok_or("char_at() needs an integer index")?;
-                let idx = if idx < 0 { s.len() as i64 + idx } else { idx } as usize;
-                s.chars()
-                    .nth(idx)
-                    .map(|c| Value::String(c.to_string()))
-                    .ok_or_else(|| {
-                        format!(
-                            "Index {} oot o' bounds fer string o' length {}",
-                            idx,
-                            s.len()
-                        )
-                    })
+                let char_len = s.chars().count() as i64;
+                let idx = if idx < 0 { char_len + idx } else { idx };
+                if idx < 0 || idx >= char_len {
+                    return Err(format!(
+                        "Index {} oot o' bounds fer string o' length {}",
+                        idx,
+                        char_len
+                    ));
+                }
+                Ok(Value::String(
+                    s.chars()
+                        .nth(idx as usize)
+                        .expect("checked bounds above")
+                        .to_string(),
+                ))
             }))),
         );
 
@@ -6054,7 +6058,9 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("index_of", 2, |args| {
                 match (&args[0], &args[1]) {
                     (Value::String(s), Value::String(needle)) => Ok(Value::Integer(
-                        s.find(needle.as_str()).map(|i| i as i64).unwrap_or(-1),
+                        s.find(needle.as_str())
+                            .map(|byte_idx| s[..byte_idx].chars().count() as i64)
+                            .unwrap_or(-1),
                     )),
                     (Value::List(list), val) => {
                         let list = list.borrow();
@@ -6122,7 +6128,8 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("is_alpha", 1, |args| {
                 if let Value::String(s) = &args[0] {
                     Ok(Value::Bool(
-                        !s.is_empty() && s.chars().all(|c| c.is_alphabetic()),
+                        !s.is_empty()
+                            && s.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_lowercase()),
                     ))
                 } else {
                     Err("is_alpha() needs a string".to_string())
@@ -6136,7 +6143,8 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("is_space", 1, |args| {
                 if let Value::String(s) = &args[0] {
                     Ok(Value::Bool(
-                        !s.is_empty() && s.chars().all(|c| c.is_whitespace()),
+                        !s.is_empty()
+                            && s.bytes().all(|b| matches!(b, b' ' | b'\t' | b'\n' | b'\r')),
                     ))
                 } else {
                     Err("is_space() needs a string".to_string())
@@ -6149,14 +6157,12 @@ impl Interpreter {
             "capitalize".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("capitalize", 1, |args| {
                 if let Value::String(s) = &args[0] {
-                    let mut chars = s.chars();
-                    let result = match chars.next() {
-                        Some(first) => {
-                            format!("{}{}", first.to_uppercase(), chars.collect::<String>())
-                        }
-                        None => String::new(),
-                    };
-                    Ok(Value::String(result))
+                    if s.is_empty() {
+                        return Ok(Value::String(String::new()));
+                    }
+                    let mut bytes = s.as_bytes().to_vec();
+                    bytes[0] = bytes[0].to_ascii_uppercase();
+                    Ok(Value::String(String::from_utf8(bytes).unwrap()))
                 } else {
                     Err("capitalize() needs a string".to_string())
                 }
@@ -6168,20 +6174,25 @@ impl Interpreter {
             "title".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("title", 1, |args| {
                 if let Value::String(s) = &args[0] {
-                    let result = s
-                        .split_whitespace()
-                        .map(|word| {
-                            let mut chars = word.chars();
-                            let first = chars.next().unwrap();
-                            format!(
-                                "{}{}",
-                                first.to_uppercase(),
-                                chars.collect::<String>().to_lowercase()
-                            )
-                        })
-                        .collect::<Vec<String>>()
-                        .join(" ");
-                    Ok(Value::String(result))
+                    if s.is_empty() {
+                        return Ok(Value::String(String::new()));
+                    }
+                    let mut out: Vec<u8> = Vec::with_capacity(s.len());
+                    let mut new_word = true;
+                    for b in s.as_bytes().iter().copied() {
+                        if matches!(b, b' ' | b'\t' | b'\n' | b'\r') {
+                            new_word = true;
+                            out.push(b);
+                            continue;
+                        }
+                        if new_word {
+                            out.push(b.to_ascii_uppercase());
+                            new_word = false;
+                        } else {
+                            out.push(b.to_ascii_lowercase());
+                        }
+                    }
+                    Ok(Value::String(String::from_utf8(out).unwrap()))
                 } else {
                     Err("title() needs a string".to_string())
                 }
@@ -6782,7 +6793,7 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("roar", 1, |args| {
                 if let Value::String(s) = &args[0] {
                     // Add exclamation for extra emphasis!
-                    Ok(Value::String(format!("{}!", s.to_uppercase())))
+                    Ok(Value::String(format!("{}!", s.to_ascii_uppercase())))
                 } else {
                     Err("roar() expects a string".to_string())
                 }
@@ -6794,7 +6805,7 @@ impl Interpreter {
             "mutter".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("mutter", 1, |args| {
                 if let Value::String(s) = &args[0] {
-                    Ok(Value::String(format!("...{}...", s.to_lowercase())))
+                    Ok(Value::String(format!("...{}...", s.to_ascii_lowercase())))
                 } else {
                     Err("mutter() expects a string".to_string())
                 }
@@ -7864,9 +7875,13 @@ impl Interpreter {
                     _ => return Err("tattie_scone needs a string".to_string()),
                 };
                 let n = match &args[1] {
-                    Value::Integer(n) => *n as usize,
+                    Value::Integer(n) => *n,
                     _ => return Err("tattie_scone needs a number".to_string()),
                 };
+                if n <= 0 {
+                    return Ok(Value::String("".to_string()));
+                }
+                let n = n as usize;
                 let result = vec![s; n].join(" | ");
                 Ok(Value::String(result))
             }))),
@@ -7884,9 +7899,12 @@ impl Interpreter {
                     Value::String(s) => s.clone(),
                     _ => return Err("haggis_hunt needs a string tae find".to_string()),
                 };
+                if needle.is_empty() {
+                    return Ok(Value::List(Rc::new(RefCell::new(Vec::new()))));
+                }
                 let positions: Vec<Value> = haystack
                     .match_indices(&needle)
-                    .map(|(i, _)| Value::Integer(i as i64))
+                    .map(|(byte_idx, _)| Value::Integer(haystack[..byte_idx].chars().count() as i64))
                     .collect();
                 Ok(Value::List(Rc::new(RefCell::new(positions))))
             }))),
@@ -7901,16 +7919,17 @@ impl Interpreter {
                     _ => return Err("sporran_fill needs a string".to_string()),
                 };
                 let width = match &args[1] {
-                    Value::Integer(n) => *n as usize,
+                    Value::Integer(n) => *n,
                     _ => return Err("sporran_fill needs a width".to_string()),
                 };
                 let fill = match &args[2] {
                     Value::String(c) => c.chars().next().unwrap_or(' '),
                     _ => return Err("sporran_fill needs a fill character".to_string()),
                 };
-                if s.len() >= width {
+                if width <= s.len() as i64 {
                     return Ok(Value::String(s));
                 }
+                let width = width as usize;
                 let padding = width - s.len();
                 let left_pad = padding / 2;
                 let right_pad = padding - left_pad;
@@ -8677,16 +8696,17 @@ impl Interpreter {
                     _ => return Err("center() needs a string".to_string()),
                 };
                 let width = match &args[1] {
-                    Value::Integer(n) => *n as usize,
+                    Value::Integer(n) => *n,
                     _ => return Err("center() needs a width".to_string()),
                 };
                 let fill = match &args[2] {
                     Value::String(c) => c.chars().next().unwrap_or(' '),
                     _ => return Err("center() needs a fill character".to_string()),
                 };
-                if s.len() >= width {
+                if width <= s.len() as i64 {
                     return Ok(Value::String(s));
                 }
+                let width = width as usize;
                 let padding = width - s.len();
                 let left_pad = padding / 2;
                 let right_pad = padding - left_pad;
@@ -8707,11 +8727,17 @@ impl Interpreter {
                 1,
                 |args| match &args[0] {
                     Value::String(s) => {
-                        let has_letters = s.chars().any(|c| c.is_alphabetic());
-                        Ok(Value::Bool(
-                            has_letters
-                                && s.chars().all(|c| !c.is_alphabetic() || c.is_uppercase()),
-                        ))
+                        let mut has_letters = false;
+                        for b in s.as_bytes().iter().copied() {
+                            if b.is_ascii_uppercase() {
+                                has_letters = true;
+                                continue;
+                            }
+                            if b.is_ascii_lowercase() {
+                                return Ok(Value::Bool(false));
+                            }
+                        }
+                        Ok(Value::Bool(has_letters))
                     }
                     _ => Err("is_upper() needs a string".to_string()),
                 },
@@ -8726,11 +8752,17 @@ impl Interpreter {
                 1,
                 |args| match &args[0] {
                     Value::String(s) => {
-                        let has_letters = s.chars().any(|c| c.is_alphabetic());
-                        Ok(Value::Bool(
-                            has_letters
-                                && s.chars().all(|c| !c.is_alphabetic() || c.is_lowercase()),
-                        ))
+                        let mut has_letters = false;
+                        for b in s.as_bytes().iter().copied() {
+                            if b.is_ascii_lowercase() {
+                                has_letters = true;
+                                continue;
+                            }
+                            if b.is_ascii_uppercase() {
+                                return Ok(Value::Bool(false));
+                            }
+                        }
+                        Ok(Value::Bool(has_letters))
                     }
                     _ => Err("is_lower() needs a string".to_string()),
                 },
@@ -8745,19 +8777,19 @@ impl Interpreter {
                 1,
                 |args| match &args[0] {
                     Value::String(s) => {
-                        let swapped: String = s
-                            .chars()
-                            .map(|c| {
-                                if c.is_uppercase() {
-                                    c.to_lowercase().next().unwrap_or(c)
-                                } else if c.is_lowercase() {
-                                    c.to_uppercase().next().unwrap_or(c)
+                        let out: Vec<u8> = s
+                            .bytes()
+                            .map(|b| {
+                                if b.is_ascii_uppercase() {
+                                    b.to_ascii_lowercase()
+                                } else if b.is_ascii_lowercase() {
+                                    b.to_ascii_uppercase()
                                 } else {
-                                    c
+                                    b
                                 }
                             })
                             .collect();
-                        Ok(Value::String(swapped))
+                        Ok(Value::String(String::from_utf8(out).unwrap()))
                     }
                     _ => Err("swapcase() needs a string".to_string()),
                 },
@@ -9484,7 +9516,9 @@ impl Interpreter {
                 2,
                 |args| match (&args[0], &args[1]) {
                     (Value::String(s), Value::String(needle)) => Ok(Value::Integer(
-                        s.rfind(needle.as_str()).map(|i| i as i64).unwrap_or(-1),
+                        s.rfind(needle.as_str())
+                            .map(|byte_idx| s[..byte_idx].chars().count() as i64)
+                            .unwrap_or(-1),
                     )),
                     _ => Err("last_index_of() needs two strings".to_string()),
                 },
@@ -9501,15 +9535,25 @@ impl Interpreter {
                 };
                 let start = args[1]
                     .as_integer()
-                    .ok_or("substring() needs integer indices")?
-                    as usize;
+                    .ok_or("substring() needs integer indices")?;
                 let end = args[2]
                     .as_integer()
-                    .ok_or("substring() needs integer indices")? as usize;
+                    .ok_or("substring() needs integer indices")?;
                 let chars: Vec<char> = s.chars().collect();
-                let start = start.min(chars.len());
-                let end = end.min(chars.len());
-                Ok(Value::String(chars[start..end].iter().collect()))
+                let len = chars.len() as i64;
+
+                let mut start = if start < 0 { len + start } else { start };
+                let mut end = if end < 0 { len + end } else { end };
+
+                start = start.clamp(0, len);
+                end = end.clamp(0, len);
+                if end < start {
+                    end = start;
+                }
+
+                Ok(Value::String(
+                    chars[start as usize..end as usize].iter().collect(),
+                ))
             }))),
         );
 
@@ -19246,9 +19290,33 @@ is_a(foo, "function")
     }
 
     #[test]
+    fn test_char_at_unicode_negative() {
+        let result = run(r#"char_at(chr(128512) + "a" + chr(128512), -1)"#).unwrap();
+        assert_eq!(result, Value::String("😀".to_string()));
+    }
+
+    #[test]
     fn test_char_at_out_of_bounds() {
         let result = run(r#"char_at("hi", 10)"#);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_substring_unicode_by_char_index() {
+        let result = run(r#"substring("a" + chr(128512) + "b", 1, 2)"#).unwrap();
+        assert_eq!(result, Value::String("😀".to_string()));
+    }
+
+    #[test]
+    fn test_substring_negative_indices() {
+        let result = run(r#"substring("abc", -2, -1)"#).unwrap();
+        assert_eq!(result, Value::String("b".to_string()));
+    }
+
+    #[test]
+    fn test_substring_start_after_end_is_empty() {
+        let result = run(r#"substring("abc", 2, 1)"#).unwrap();
+        assert_eq!(result, Value::String("".to_string()));
     }
 
     #[test]
@@ -20065,6 +20133,12 @@ d["a"]
     }
 
     #[test]
+    fn test_center_negative_width_no_pad() {
+        let result = run(r#"center("x", -1, "0")"#).unwrap();
+        assert_eq!(result, Value::String("x".to_string()));
+    }
+
+    #[test]
     fn test_is_upper() {
         let result = run(r#"is_upper("HELLO")"#).unwrap();
         assert_eq!(result, Value::Bool(true));
@@ -20290,6 +20364,12 @@ l[0]
     }
 
     #[test]
+    fn test_tattie_scone_negative_returns_empty() {
+        let result = run(r#"tattie_scone("yum", -1)"#).unwrap();
+        assert_eq!(result, Value::String("".to_string()));
+    }
+
+    #[test]
     fn test_haggis_hunt() {
         let result = run(r#"len(haggis_hunt("aba aba", "aba"))"#).unwrap();
         assert_eq!(result, Value::Integer(2));
@@ -20299,6 +20379,12 @@ l[0]
     fn test_sporran_fill() {
         let result = run(r#"sporran_fill("hi", 6, "*")"#).unwrap();
         assert_eq!(result, Value::String("**hi**".to_string()));
+    }
+
+    #[test]
+    fn test_sporran_fill_negative_width_no_pad() {
+        let result = run(r#"sporran_fill("x", -1, "0")"#).unwrap();
+        assert_eq!(result, Value::String("x".to_string()));
     }
 
     // ==================== Hex Conversion ====================

@@ -4873,29 +4873,28 @@ MdhValue __mdh_rtrim(MdhValue str) {
     return __mdh_make_string(buf);
 }
 
+/* Forward decl (implementation later in file). */
+MdhValue __mdh_slice_string(MdhValue str, MdhValue start_opt, MdhValue end_opt, MdhValue step_opt);
+
 MdhValue __mdh_reverse_str(MdhValue str) {
     /* Reverse a string: "hello" -> "olleh" */
     if (str.tag != MDH_TAG_STRING) {
-        return str;
+        __mdh_type_error("reverse_str", str.tag, 0);
+        return __mdh_make_string("");
     }
 
+    /* Use UTF-8-aware slicing so reversal is codepoint-safe. */
     const char *s = __mdh_get_string(str);
-    if (!s || *s == '\0') return str;
+    if (!s || s[0] == '\0') return __mdh_make_string("");
 
-    int64_t len = strlen(s);
-    char *buf = (char *)GC_malloc(len + 1);
-
-    for (int64_t i = 0; i < len; i++) {
-        buf[i] = s[len - 1 - i];
-    }
-    buf[len] = '\0';
-    return __mdh_make_string(buf);
+    return __mdh_slice_string(str, __mdh_make_nil(), __mdh_make_nil(), __mdh_make_int(-1));
 }
 
 MdhValue __mdh_title_case(MdhValue str) {
     /* Title case a string: "hello world" -> "Hello World" */
     if (str.tag != MDH_TAG_STRING) {
-        return str;
+        __mdh_type_error("title", str.tag, 0);
+        return __mdh_make_string("");
     }
 
     const char *s = __mdh_get_string(str);
@@ -4911,14 +4910,22 @@ MdhValue __mdh_title_case(MdhValue str) {
             new_word = true;
             buf[i] = c;
         } else if (new_word) {
-            buf[i] = toupper((unsigned char)c);
+            if (c >= 'a' && c <= 'z') {
+                buf[i] = (char)(c - ('a' - 'A'));
+            } else {
+                buf[i] = c;
+            }
             new_word = false;
         } else {
-            buf[i] = tolower((unsigned char)c);
+            if (c >= 'A' && c <= 'Z') {
+                buf[i] = (char)(c + ('a' - 'A'));
+            } else {
+                buf[i] = c;
+            }
         }
     }
     buf[len] = '\0';
-    return __mdh_make_string(buf);
+    return __mdh_string_from_buf(buf);
 }
 
 MdhValue __mdh_tae_hex(MdhValue num) {
@@ -4972,6 +4979,423 @@ MdhValue __mdh_center(MdhValue str, MdhValue width_val) {
     memcpy(buf + left_pad, s, len);
     buf[width] = '\0';
     return __mdh_make_string(buf);
+}
+
+static bool __mdh_utf8_decode_one(const unsigned char *s, uint32_t *code_out, size_t *consumed_out) {
+    if (!s || s[0] == '\0') return false;
+
+    uint32_t code = 0;
+    unsigned char b0 = s[0];
+    if (b0 < 0x80) {
+        *code_out = (uint32_t)b0;
+        *consumed_out = 1;
+        return true;
+    }
+
+    // Decode UTF-8 codepoint (minimal validation, strings should be valid UTF-8).
+    if ((b0 & 0xE0) == 0xC0) {
+        unsigned char b1 = s[1];
+        if (b1 == '\0' || (b1 & 0xC0) != 0x80) return false;
+        code = ((uint32_t)(b0 & 0x1F) << 6) | (uint32_t)(b1 & 0x3F);
+        if (code < 0x80) return false; // overlong
+        *code_out = code;
+        *consumed_out = 2;
+        return true;
+    }
+    if ((b0 & 0xF0) == 0xE0) {
+        unsigned char b1 = s[1];
+        unsigned char b2 = s[2];
+        if (b1 == '\0' || b2 == '\0') return false;
+        if ((b1 & 0xC0) != 0x80 || (b2 & 0xC0) != 0x80) return false;
+        code = ((uint32_t)(b0 & 0x0F) << 12) | ((uint32_t)(b1 & 0x3F) << 6) | (uint32_t)(b2 & 0x3F);
+        if (code < 0x800) return false; // overlong
+        if (code >= 0xD800 && code <= 0xDFFF) return false; // surrogate
+        *code_out = code;
+        *consumed_out = 3;
+        return true;
+    }
+    if ((b0 & 0xF8) == 0xF0) {
+        unsigned char b1 = s[1];
+        unsigned char b2 = s[2];
+        unsigned char b3 = s[3];
+        if (b1 == '\0' || b2 == '\0' || b3 == '\0') return false;
+        if ((b1 & 0xC0) != 0x80 || (b2 & 0xC0) != 0x80 || (b3 & 0xC0) != 0x80) return false;
+        code = ((uint32_t)(b0 & 0x07) << 18) | ((uint32_t)(b1 & 0x3F) << 12) | ((uint32_t)(b2 & 0x3F) << 6) | (uint32_t)(b3 & 0x3F);
+        if (code < 0x10000 || code > 0x10FFFF) return false; // overlong/out of range
+        *code_out = code;
+        *consumed_out = 4;
+        return true;
+    }
+
+    return false;
+}
+
+static int64_t __mdh_utf8_count_codepoints(const unsigned char *s) {
+    int64_t count = 0;
+    const unsigned char *p = s;
+    while (*p) {
+        uint32_t code = 0;
+        size_t consumed = 0;
+        if (!__mdh_utf8_decode_one(p, &code, &consumed)) {
+            __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+            return 0;
+        }
+        (void)code;
+        p += consumed;
+        count++;
+    }
+    return count;
+}
+
+static int64_t __mdh_utf8_count_prefix(const unsigned char *s, int64_t byte_len) {
+    if (byte_len <= 0) return 0;
+    int64_t count = 0;
+    const unsigned char *p = s;
+    int64_t seen = 0;
+    while (*p && seen < byte_len) {
+        uint32_t code = 0;
+        size_t consumed = 0;
+        if (!__mdh_utf8_decode_one(p, &code, &consumed)) {
+            __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+            return 0;
+        }
+        (void)code;
+        if (seen + (int64_t)consumed > byte_len) {
+            break;
+        }
+        p += consumed;
+        seen += (int64_t)consumed;
+        count++;
+    }
+    return count;
+}
+
+static MdhValue __mdh_utf8_string_from_codepoint(uint32_t code) {
+    if (code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF)) {
+        __mdh_hurl(__mdh_make_string("Invalid Unicode codepoint"));
+        return __mdh_make_string("");
+    }
+
+    unsigned char tmp[4];
+    size_t len = 0;
+
+    if (code <= 0x7F) {
+        tmp[0] = (unsigned char)code;
+        len = 1;
+    } else if (code <= 0x7FF) {
+        tmp[0] = (unsigned char)(0xC0 | (code >> 6));
+        tmp[1] = (unsigned char)(0x80 | (code & 0x3F));
+        len = 2;
+    } else if (code <= 0xFFFF) {
+        tmp[0] = (unsigned char)(0xE0 | (code >> 12));
+        tmp[1] = (unsigned char)(0x80 | ((code >> 6) & 0x3F));
+        tmp[2] = (unsigned char)(0x80 | (code & 0x3F));
+        len = 3;
+    } else {
+        tmp[0] = (unsigned char)(0xF0 | (code >> 18));
+        tmp[1] = (unsigned char)(0x80 | ((code >> 12) & 0x3F));
+        tmp[2] = (unsigned char)(0x80 | ((code >> 6) & 0x3F));
+        tmp[3] = (unsigned char)(0x80 | (code & 0x3F));
+        len = 4;
+    }
+
+    char *out = (char *)GC_malloc(len + 1);
+    memcpy(out, tmp, len);
+    out[len] = '\0';
+    return __mdh_string_from_buf(out);
+}
+
+MdhValue __mdh_ord(MdhValue str) {
+    if (str.tag != MDH_TAG_STRING) {
+        __mdh_type_error("ord", str.tag, 0);
+        return __mdh_make_int(0);
+    }
+
+    const unsigned char *s = (const unsigned char *)__mdh_get_string(str);
+    if (!s || s[0] == '\0') {
+        __mdh_hurl(__mdh_make_string("Cannae get ord o' empty string!"));
+        return __mdh_make_int(0);
+    }
+
+    uint32_t code = 0;
+    size_t consumed = 0;
+    if (__mdh_utf8_decode_one(s, &code, &consumed)) {
+        (void)consumed;
+        return __mdh_make_int((int64_t)code);
+    }
+
+invalid_utf8:
+    __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+    return __mdh_make_int(0);
+}
+
+MdhValue __mdh_chr(MdhValue num) {
+    if (num.tag != MDH_TAG_INT) {
+        __mdh_type_error("chr", num.tag, 0);
+        return __mdh_make_string("");
+    }
+
+    int64_t n = num.data;
+    if (n < 0 || n > 0x10FFFF) {
+        char buf[128];
+        snprintf(
+            buf,
+            sizeof(buf),
+            "chr() needs a valid Unicode codepoint (0 to 1114111), got %lld",
+            (long long)n
+        );
+        __mdh_hurl(__mdh_make_string(buf));
+        return __mdh_make_string("");
+    }
+    if (n >= 0xD800 && n <= 0xDFFF) {
+        char buf[128];
+        snprintf(buf, sizeof(buf), "Invalid Unicode codepoint: %lld", (long long)n);
+        __mdh_hurl(__mdh_make_string(buf));
+        return __mdh_make_string("");
+    }
+
+    return __mdh_utf8_string_from_codepoint((uint32_t)n);
+}
+
+MdhValue __mdh_char_at(MdhValue str, MdhValue idx_val) {
+    if (str.tag != MDH_TAG_STRING || idx_val.tag != MDH_TAG_INT) {
+        __mdh_type_error("char_at", str.tag, idx_val.tag);
+        return __mdh_make_string("");
+    }
+
+    const unsigned char *s = (const unsigned char *)__mdh_get_string(str);
+    if (!s) return __mdh_make_string("");
+
+    int64_t idx = idx_val.data;
+    if (idx < 0) {
+        int64_t char_len = 0;
+        const unsigned char *p = s;
+        while (*p) {
+            uint32_t code = 0;
+            size_t consumed = 0;
+            if (!__mdh_utf8_decode_one(p, &code, &consumed)) goto invalid_utf8;
+            char_len++;
+            p += consumed;
+        }
+        idx = char_len + idx;
+    }
+
+    if (idx < 0) goto oob;
+
+    int64_t pos = 0;
+    const unsigned char *p = s;
+    while (*p) {
+        uint32_t code = 0;
+        size_t consumed = 0;
+        if (!__mdh_utf8_decode_one(p, &code, &consumed)) goto invalid_utf8;
+        if (pos == idx) return __mdh_utf8_string_from_codepoint(code);
+        pos++;
+        p += consumed;
+    }
+
+oob:
+    __mdh_hurl(__mdh_make_string("Hoachin'! Index is oot o' bounds"));
+    return __mdh_make_string("");
+
+invalid_utf8:
+    __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+    return __mdh_make_string("");
+}
+
+MdhValue __mdh_chars(MdhValue str) {
+    if (str.tag != MDH_TAG_STRING) {
+        __mdh_type_error("chars", str.tag, 0);
+        return __mdh_make_list(0);
+    }
+
+    const unsigned char *s = (const unsigned char *)__mdh_get_string(str);
+    if (!s || s[0] == '\0') return __mdh_make_list(0);
+
+    MdhValue out = __mdh_make_list(0);
+    const unsigned char *p = s;
+    while (*p) {
+        uint32_t code = 0;
+        size_t consumed = 0;
+        if (!__mdh_utf8_decode_one(p, &code, &consumed)) goto invalid_utf8;
+        __mdh_list_push(out, __mdh_utf8_string_from_codepoint(code));
+        p += consumed;
+    }
+    return out;
+
+invalid_utf8:
+    __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+    return __mdh_make_list(0);
+}
+
+MdhValue __mdh_substring(MdhValue str, MdhValue start_val, MdhValue end_val) {
+    if (str.tag != MDH_TAG_STRING || start_val.tag != MDH_TAG_INT || end_val.tag != MDH_TAG_INT) {
+        __mdh_type_error("substring", str.tag, start_val.tag);
+        return __mdh_make_string("");
+    }
+
+    const unsigned char *s = (const unsigned char *)__mdh_get_string(str);
+    if (!s || s[0] == '\0') return __mdh_make_string("");
+
+    // First pass: validate UTF-8 and count codepoints.
+    int64_t char_len = 0;
+    const unsigned char *p = s;
+    while (*p) {
+        uint32_t code = 0;
+        size_t consumed = 0;
+        if (!__mdh_utf8_decode_one(p, &code, &consumed)) goto invalid_utf8;
+        (void)code;
+        char_len++;
+        p += consumed;
+    }
+
+    int64_t start = start_val.data;
+    int64_t end = end_val.data;
+    if (start < 0) start += char_len;
+    if (end < 0) end += char_len;
+
+    if (start < 0) start = 0;
+    if (end < 0) end = 0;
+    if (start > char_len) start = char_len;
+    if (end > char_len) end = char_len;
+    if (end < start) end = start;
+
+    // Find byte range for [start, end) by walking codepoints.
+    const unsigned char *start_ptr = s;
+    const unsigned char *end_ptr = s;
+    p = s;
+    int64_t pos = 0;
+    while (*p && pos < start) {
+        uint32_t code = 0;
+        size_t consumed = 0;
+        if (!__mdh_utf8_decode_one(p, &code, &consumed)) goto invalid_utf8;
+        (void)code;
+        p += consumed;
+        pos++;
+    }
+    start_ptr = p;
+    while (*p && pos < end) {
+        uint32_t code = 0;
+        size_t consumed = 0;
+        if (!__mdh_utf8_decode_one(p, &code, &consumed)) goto invalid_utf8;
+        (void)code;
+        p += consumed;
+        pos++;
+    }
+    end_ptr = p;
+
+    size_t out_len = (size_t)(end_ptr - start_ptr);
+    char *out = (char *)GC_malloc(out_len + 1);
+    memcpy(out, start_ptr, out_len);
+    out[out_len] = '\0';
+    return __mdh_string_from_buf(out);
+
+invalid_utf8:
+    __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+    return __mdh_make_string("");
+}
+
+MdhValue __mdh_slice_string(MdhValue str, MdhValue start_opt, MdhValue end_opt, MdhValue step_opt) {
+    if (str.tag != MDH_TAG_STRING) {
+        __mdh_type_error("slice", str.tag, 0);
+        return __mdh_make_string("");
+    }
+
+    int64_t step = 1;
+    if (step_opt.tag == MDH_TAG_NIL) {
+        step = 1;
+    } else if (step_opt.tag == MDH_TAG_INT) {
+        step = step_opt.data;
+    } else {
+        __mdh_hurl(__mdh_make_string("Slice step must be an integer"));
+        return __mdh_make_string("");
+    }
+
+    if (step == 0) {
+        __mdh_hurl(__mdh_make_string("Slice step cannae be zero, ya dafty!"));
+        return __mdh_make_string("");
+    }
+
+    const unsigned char *s = (const unsigned char *)__mdh_get_string(str);
+    if (!s || s[0] == '\0') return __mdh_make_string("");
+
+    // First pass: validate UTF-8 and count codepoints.
+    int64_t char_len = 0;
+    const unsigned char *p = s;
+    while (*p) {
+        uint32_t code = 0;
+        size_t consumed = 0;
+        if (!__mdh_utf8_decode_one(p, &code, &consumed)) goto invalid_utf8;
+        (void)code;
+        char_len++;
+        p += consumed;
+    }
+
+    // Materialize per-codepoint byte slices (ptr + byte length).
+    const unsigned char **ptrs = (const unsigned char **)GC_malloc(sizeof(unsigned char *) * (size_t)char_len);
+    size_t *lens = (size_t *)GC_malloc(sizeof(size_t) * (size_t)char_len);
+    p = s;
+    for (int64_t i = 0; i < char_len; i++) {
+        uint32_t code = 0;
+        size_t consumed = 0;
+        if (!__mdh_utf8_decode_one(p, &code, &consumed)) goto invalid_utf8;
+        (void)code;
+        ptrs[i] = p;
+        lens[i] = consumed;
+        p += consumed;
+    }
+
+    // Match interpreter slice defaults + normalization.
+    int64_t len = char_len;
+    int64_t start_raw;
+    int64_t end_raw;
+    if (step > 0) {
+        start_raw = (start_opt.tag == MDH_TAG_INT) ? start_opt.data : 0;
+        end_raw = (end_opt.tag == MDH_TAG_INT) ? end_opt.data : len;
+    } else {
+        start_raw = (start_opt.tag == MDH_TAG_INT) ? start_opt.data : -1;
+        end_raw = (end_opt.tag == MDH_TAG_INT) ? end_opt.data : -(len + 1);
+    }
+
+    size_t start_idx;
+    if (start_raw < 0) {
+        int64_t v = len + start_raw;
+        start_idx = (size_t)((v < 0) ? 0 : v);
+    } else {
+        start_idx = (size_t)((start_raw > len) ? len : start_raw);
+    }
+
+    int64_t end_idx;
+    if (end_raw < 0) {
+        int64_t v = len + end_raw;
+        end_idx = (v < -1) ? -1 : v;
+    } else {
+        end_idx = (end_raw > len) ? len : end_raw;
+    }
+
+    MdhStrBuf sb;
+    __mdh_sb_init(&sb);
+
+    if (step > 0) {
+        int64_t i = (int64_t)start_idx;
+        while (i < end_idx && i < len) {
+            __mdh_sb_append_n(&sb, (const char *)ptrs[i], lens[i]);
+            i += step;
+        }
+    } else {
+        int64_t i = (int64_t)start_idx;
+        while (i > end_idx && i >= 0) {
+            if (i < len) {
+                __mdh_sb_append_n(&sb, (const char *)ptrs[i], lens[i]);
+            }
+            i += step;
+        }
+    }
+
+    return __mdh_string_from_buf(sb.buf);
+
+invalid_utf8:
+    __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+    return __mdh_make_string("");
 }
 
 MdhValue __mdh_repeat_say(MdhValue str, MdhValue count_val) {
@@ -5110,9 +5534,32 @@ MdhValue __mdh_list_clear(MdhValue list) {
     return list;
 }
 
+MdhValue __mdh_str_index_of(MdhValue str, MdhValue substr) {
+    /* Find first occurrence of substring in string (codepoint index, -1 if not found). */
+    if (str.tag != MDH_TAG_STRING || substr.tag != MDH_TAG_STRING) {
+        __mdh_type_error("index_of", str.tag, substr.tag);
+        return __mdh_make_int(-1);
+    }
+    const char *s = __mdh_get_string(str);
+    const char *sub = __mdh_get_string(substr);
+    if (!s || !sub) return __mdh_make_int(-1);
+
+    if (sub[0] == '\0') {
+        return __mdh_make_int(0);
+    }
+
+    const char *pos = strstr(s, sub);
+    if (!pos) return __mdh_make_int(-1);
+
+    int64_t byte_idx = (int64_t)(pos - s);
+    int64_t char_idx = __mdh_utf8_count_prefix((const unsigned char *)s, byte_idx);
+    return __mdh_make_int(char_idx);
+}
+
 MdhValue __mdh_last_index_of(MdhValue str, MdhValue substr) {
     /* Find last occurrence of substring in string */
     if (str.tag != MDH_TAG_STRING || substr.tag != MDH_TAG_STRING) {
+        __mdh_type_error("last_index_of", str.tag, substr.tag);
         return __mdh_make_int(-1);
     }
     const char *s = __mdh_get_string(str);
@@ -5121,7 +5568,11 @@ MdhValue __mdh_last_index_of(MdhValue str, MdhValue substr) {
 
     int64_t s_len = strlen(s);
     int64_t sub_len = strlen(sub);
-    if (sub_len > s_len || sub_len == 0) return __mdh_make_int(-1);
+    if (sub_len == 0) {
+        int64_t char_len = __mdh_utf8_count_codepoints((const unsigned char *)s);
+        return __mdh_make_int(char_len);
+    }
+    if (sub_len > s_len) return __mdh_make_int(-1);
 
     int64_t last_idx = -1;
     for (int64_t i = 0; i <= s_len - sub_len; i++) {
@@ -5129,7 +5580,9 @@ MdhValue __mdh_last_index_of(MdhValue str, MdhValue substr) {
             last_idx = i;
         }
     }
-    return __mdh_make_int(last_idx);
+    if (last_idx < 0) return __mdh_make_int(-1);
+    int64_t char_idx = __mdh_utf8_count_prefix((const unsigned char *)s, last_idx);
+    return __mdh_make_int(char_idx);
 }
 
 MdhValue __mdh_replace_first(MdhValue str, MdhValue old_sub, MdhValue new_sub) {
@@ -5707,10 +6160,18 @@ MdhValue __mdh_list_slice(MdhValue list, int64_t start, int64_t end) {
 }
 
 MdhValue __mdh_is_space(MdhValue str) {
-    if (str.tag != MDH_TAG_STRING) return __mdh_make_bool(false);
-    const char *s = (const char *)(intptr_t)str.data;
-    if (s[0] == '\0' || s[1] != '\0') return __mdh_make_bool(false);
-    return __mdh_make_bool(s[0] == ' ' || s[0] == '\t' || s[0] == '\n' || s[0] == '\r');
+    if (str.tag != MDH_TAG_STRING) {
+        __mdh_type_error("is_space", str.tag, 0);
+        return __mdh_make_bool(false);
+    }
+    const char *s = __mdh_get_string(str);
+    if (!s || s[0] == '\0') return __mdh_make_bool(false);
+    for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
+        if (!(*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')) {
+            return __mdh_make_bool(false);
+        }
+    }
+    return __mdh_make_bool(true);
 }
 
 MdhValue __mdh_is_digit(MdhValue str) {
@@ -7652,10 +8113,10 @@ MdhValue __mdh_swapcase(MdhValue str) {
     char *out = (char *)GC_malloc(len + 1);
     for (size_t i = 0; i < len; i++) {
         unsigned char c = (unsigned char)s[i];
-        if (isupper(c)) {
-            out[i] = (char)tolower(c);
-        } else if (islower(c)) {
-            out[i] = (char)toupper(c);
+        if (c >= 'A' && c <= 'Z') {
+            out[i] = (char)(c + ('a' - 'A'));
+        } else if (c >= 'a' && c <= 'z') {
+            out[i] = (char)(c - ('a' - 'A'));
         } else {
             out[i] = (char)c;
         }
@@ -7672,7 +8133,11 @@ MdhValue __mdh_sporran_fill(MdhValue str, MdhValue width, MdhValue fill_char) {
 
     const char *s = __mdh_get_string(str);
     size_t len = strlen(s);
-    size_t w = (size_t)width.data;
+    int64_t w_i = width.data;
+    if (w_i <= 0) {
+        return str;
+    }
+    size_t w = (size_t)w_i;
     const char *fill_s = __mdh_get_string(fill_char);
     char fc = (fill_s && fill_s[0] != '\0') ? fill_s[0] : ' ';
 
@@ -7752,7 +8217,12 @@ MdhValue __mdh_mutter(MdhValue str) {
     char *out = (char *)GC_malloc(len + 7);
     memcpy(out, "...", 3);
     for (size_t i = 0; i < len; i++) {
-        out[3 + i] = (char)tolower((unsigned char)s[i]);
+        unsigned char c = (unsigned char)s[i];
+        if (c >= 'A' && c <= 'Z') {
+            out[3 + i] = (char)(c + ('a' - 'A'));
+        } else {
+            out[3 + i] = (char)c;
+        }
     }
     memcpy(out + 3 + len, "...", 3);
     out[6 + len] = '\0';
@@ -8096,7 +8566,10 @@ MdhValue __mdh_capitalize(MdhValue str) {
     }
     char *out = (char *)GC_malloc(len + 1);
     memcpy(out, s, len + 1);
-    out[0] = (char)toupper((unsigned char)out[0]);
+    unsigned char c = (unsigned char)out[0];
+    if (c >= 'a' && c <= 'z') {
+        out[0] = (char)(c - ('a' - 'A'));
+    }
     return __mdh_string_from_buf(out);
 }
 
@@ -8512,12 +8985,18 @@ MdhValue __mdh_haggis_hunt(MdhValue haystack, MdhValue needle) {
         return result;
     }
 
+    int64_t needle_chars = __mdh_utf8_count_codepoints((const unsigned char *)n);
+
     const char *p = h;
+    int64_t char_pos = 0;
     while (1) {
         const char *found = strstr(p, n);
         if (!found) break;
-        __mdh_list_push(result, __mdh_make_int((int64_t)(found - h)));
+        int64_t delta_bytes = (int64_t)(found - p);
+        char_pos += __mdh_utf8_count_prefix((const unsigned char *)p, delta_bytes);
+        __mdh_list_push(result, __mdh_make_int(char_pos));
         p = found + nlen;
+        char_pos += needle_chars;
     }
     return result;
 }
