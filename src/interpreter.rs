@@ -2552,7 +2552,7 @@ impl Interpreter {
             "len".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("len", 1, |args| {
                 match &args[0] {
-                    Value::String(s) => Ok(Value::Integer(s.len() as i64)),
+                    Value::String(s) => Ok(Value::Integer(s.chars().count() as i64)),
                     Value::List(l) => Ok(Value::Integer(l.borrow().len() as i64)),
                     Value::Dict(d) => Ok(Value::Integer(d.borrow().len() as i64)),
                     Value::Set(s) => Ok(Value::Integer(s.borrow().len() as i64)),
@@ -5556,6 +5556,11 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("split", 2, |args| {
                 match (&args[0], &args[1]) {
                     (Value::String(s), Value::String(delim)) => {
+                        if delim.is_empty() {
+                            return Ok(Value::List(Rc::new(RefCell::new(vec![Value::String(
+                                s.clone(),
+                            )]))));
+                        }
                         let parts: Vec<Value> = s
                             .split(delim.as_str())
                             .map(|p| Value::String(p.to_string()))
@@ -5718,17 +5723,41 @@ impl Interpreter {
                 match &args[0] {
                     Value::List(list) => {
                         let list = list.borrow();
-                        let start = start.max(0) as usize;
-                        let end = end.min(list.len() as i64) as usize;
+                        let len = list.len() as i64;
+
+                        let mut start = if start < 0 { len + start } else { start };
+                        let mut end = if end < 0 { len + end } else { end };
+
+                        start = start.clamp(0, len);
+                        end = end.clamp(0, len);
+                        if end < start {
+                            end = start;
+                        }
+                        let start = start as usize;
+                        let end = end as usize;
+
+                        if start >= end {
+                            return Ok(Value::List(Rc::new(RefCell::new(Vec::new()))));
+                        }
                         Ok(Value::List(Rc::new(RefCell::new(
                             list[start..end].to_vec(),
                         ))))
                     }
                     Value::String(s) => {
-                        let start = start.max(0) as usize;
-                        let end = end.min(s.len() as i64) as usize;
+                        let chars: Vec<char> = s.chars().collect();
+                        let len = chars.len() as i64;
+
+                        let mut start = if start < 0 { len + start } else { start };
+                        let mut end = if end < 0 { len + end } else { end };
+
+                        start = start.clamp(0, len);
+                        end = end.clamp(0, len);
+                        if end < start {
+                            end = start;
+                        }
+
                         Ok(Value::String(
-                            s.chars().skip(start).take(end - start).collect(),
+                            chars[start as usize..end as usize].iter().collect(),
                         ))
                     }
                     _ => Err("scran() expects a list or string".to_string()),
@@ -5793,7 +5822,10 @@ impl Interpreter {
             "wheesht".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("wheesht", 1, |args| {
                 match &args[0] {
-                    Value::String(s) => Ok(Value::String(s.trim().to_string())),
+                    Value::String(s) => Ok(Value::String(
+                        s.trim_matches(|c: char| matches!(c, ' ' | '\t' | '\n' | '\r'))
+                            .to_string(),
+                    )),
                     Value::List(list) => {
                         let filtered = list
                             .borrow()
@@ -6098,7 +6130,8 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("words", 1, |args| {
                 if let Value::String(s) = &args[0] {
                     let word_list: Vec<Value> = s
-                        .split_whitespace()
+                        .split(|c: char| matches!(c, ' ' | '\t' | '\n' | '\r'))
+                        .filter(|w| !w.is_empty())
                         .map(|word| Value::String(word.to_string()))
                         .collect();
                     Ok(Value::List(Rc::new(RefCell::new(word_list))))
@@ -6840,47 +6873,93 @@ impl Interpreter {
         // pad_left - pad string on left
         globals.borrow_mut().define(
             "pad_left".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("pad_left", 3, |args| {
-                match (&args[0], &args[1], &args[2]) {
-                    (Value::String(s), Value::Integer(width), Value::String(pad)) => {
-                        let pad_char = pad.chars().next().unwrap_or(' ');
-                        if *width <= s.len() as i64 {
-                            Ok(Value::String(s.clone()))
-                        } else {
-                            let w = *width as usize;
-                            Ok(Value::String(format!(
-                                "{}{}",
-                                pad_char.to_string().repeat(w - s.len()),
-                                s
-                            )))
-                        }
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "pad_left",
+                usize::MAX,
+                |args| {
+                    if args.len() < 2 || args.len() > 3 {
+                        return Err("pad_left() expects 2-3 arguments".to_string());
                     }
-                    _ => Err("pad_left() needs (string, width, pad_char)".to_string()),
-                }
-            }))),
+                    let s = match &args[0] {
+                        Value::String(s) => s.clone(),
+                        _ => return Err("pad_left() needs (string, width, pad_char)".to_string()),
+                    };
+                    let width = match &args[1] {
+                        Value::Integer(width) => *width,
+                        _ => return Err("pad_left() needs (string, width, pad_char)".to_string()),
+                    };
+                    let pad_char = if args.len() == 3 {
+                        match &args[2] {
+                            Value::String(pad) => pad.chars().next().unwrap_or(' '),
+                            _ => {
+                                return Err(
+                                    "pad_left() needs (string, width, pad_char)".to_string()
+                                )
+                            }
+                        }
+                    } else {
+                        ' '
+                    };
+
+                    let len = s.chars().count() as i64;
+                    if width <= len {
+                        Ok(Value::String(s))
+                    } else {
+                        let w = width as usize;
+                        Ok(Value::String(format!(
+                            "{}{}",
+                            pad_char.to_string().repeat(w - len as usize),
+                            s
+                        )))
+                    }
+                },
+            ))),
         );
 
         // pad_right - pad string on right
         globals.borrow_mut().define(
             "pad_right".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("pad_right", 3, |args| match (
-                &args[0], &args[1], &args[2],
-            ) {
-                (Value::String(s), Value::Integer(width), Value::String(pad)) => {
-                    let pad_char = pad.chars().next().unwrap_or(' ');
-                    if *width <= s.len() as i64 {
-                        Ok(Value::String(s.clone()))
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "pad_right",
+                usize::MAX,
+                |args| {
+                    if args.len() < 2 || args.len() > 3 {
+                        return Err("pad_right() expects 2-3 arguments".to_string());
+                    }
+                    let s = match &args[0] {
+                        Value::String(s) => s.clone(),
+                        _ => return Err("pad_right() needs (string, width, pad_char)".to_string()),
+                    };
+                    let width = match &args[1] {
+                        Value::Integer(width) => *width,
+                        _ => return Err("pad_right() needs (string, width, pad_char)".to_string()),
+                    };
+                    let pad_char = if args.len() == 3 {
+                        match &args[2] {
+                            Value::String(pad) => pad.chars().next().unwrap_or(' '),
+                            _ => {
+                                return Err(
+                                    "pad_right() needs (string, width, pad_char)".to_string()
+                                )
+                            }
+                        }
                     } else {
-                        let w = *width as usize;
+                        ' '
+                    };
+
+                    let len = s.chars().count() as i64;
+                    if width <= len {
+                        Ok(Value::String(s))
+                    } else {
+                        let w = width as usize;
                         Ok(Value::String(format!(
                             "{}{}",
                             s,
-                            pad_char.to_string().repeat(w - s.len())
+                            pad_char.to_string().repeat(w - len as usize),
                         )))
                     }
-                }
-                _ => Err("pad_right() needs (string, width, pad_char)".to_string()),
-            }))),
+                },
+            ))),
         );
 
         // === List Functions ===
@@ -6889,14 +6968,16 @@ impl Interpreter {
         globals.borrow_mut().define(
             "drap".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("drap", 2, |args| {
-                match (&args[0], &args[1]) {
-                    (Value::List(list), Value::Integer(n)) => {
-                        let n = *n as usize;
-                        let items = list.borrow();
-                        let result: Vec<Value> = items.iter().skip(n).cloned().collect();
-                        Ok(Value::List(Rc::new(RefCell::new(result))))
-                    }
-                    _ => Err("drap() needs a list and an integer".to_string()),
+                if let Value::List(list) = &args[0] {
+                    let n = args[1]
+                        .as_integer()
+                        .ok_or("drap() needs a list and an integer".to_string())?;
+                    let n = n.max(0) as usize;
+                    let items = list.borrow();
+                    let result: Vec<Value> = items.iter().skip(n).cloned().collect();
+                    Ok(Value::List(Rc::new(RefCell::new(result))))
+                } else {
+                    Err("drap() needs a list and an integer".to_string())
                 }
             }))),
         );
@@ -6905,14 +6986,16 @@ impl Interpreter {
         globals.borrow_mut().define(
             "tak".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("tak", 2, |args| {
-                match (&args[0], &args[1]) {
-                    (Value::List(list), Value::Integer(n)) => {
-                        let n = *n as usize;
-                        let items = list.borrow();
-                        let result: Vec<Value> = items.iter().take(n).cloned().collect();
-                        Ok(Value::List(Rc::new(RefCell::new(result))))
-                    }
-                    _ => Err("tak() needs a list and an integer".to_string()),
+                if let Value::List(list) = &args[0] {
+                    let n = args[1]
+                        .as_integer()
+                        .ok_or("tak() needs a list and an integer".to_string())?;
+                    let n = n.max(0) as usize;
+                    let items = list.borrow();
+                    let result: Vec<Value> = items.iter().take(n).cloned().collect();
+                    Ok(Value::List(Rc::new(RefCell::new(result))))
+                } else {
+                    Err("tak() needs a list and an integer".to_string())
                 }
             }))),
         );
@@ -7378,7 +7461,11 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("wheesht_aw", 1, |args| {
                 if let Value::String(s) = &args[0] {
                     // Collapse multiple spaces and trim
-                    let cleaned: String = s.split_whitespace().collect::<Vec<_>>().join(" ");
+                    let cleaned: String = s
+                        .split(|c: char| matches!(c, ' ' | '\t' | '\n' | '\r'))
+                        .filter(|p| !p.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" ");
                     Ok(Value::String(cleaned))
                 } else {
                     Err("wheesht_aw() needs a string".to_string())
@@ -7492,7 +7579,7 @@ impl Interpreter {
                     Value::Nil => true,
                     Value::Integer(0) => true,
                     Value::Float(f) if *f == 0.0 => true,
-                    Value::String(s) if s.is_empty() || s.trim().is_empty() => true,
+                    Value::String(s) if s.bytes().all(|b| b.is_ascii_whitespace()) => true,
                     Value::List(l) if l.borrow().is_empty() => true,
                     Value::Dict(d) if d.borrow().is_empty() => true,
                     _ => false,
@@ -7602,7 +7689,9 @@ impl Interpreter {
                         }
                         let indices: Vec<Value> = s
                             .match_indices(needle.as_str())
-                            .map(|(i, _)| Value::Integer(i as i64))
+                            .map(|(byte_idx, _)| {
+                                Value::Integer(s[..byte_idx].chars().count() as i64)
+                            })
                             .collect();
                         Ok(Value::List(Rc::new(RefCell::new(indices))))
                     }
@@ -7766,8 +7855,8 @@ impl Interpreter {
                 1,
                 |args| match &args[0] {
                     Value::String(s) => {
-                        let trimmed = s.trim();
-                        Ok(Value::Bool(trimmed.is_empty() || trimmed.len() < 2))
+                        let non_ws = s.bytes().filter(|b| !b.is_ascii_whitespace()).count();
+                        Ok(Value::Bool(non_ws == 0 || non_ws < 2))
                     }
                     Value::Nil => Ok(Value::Bool(true)),
                     Value::List(l) => Ok(Value::Bool(l.borrow().is_empty())),
@@ -7926,11 +8015,12 @@ impl Interpreter {
                     Value::String(c) => c.chars().next().unwrap_or(' '),
                     _ => return Err("sporran_fill needs a fill character".to_string()),
                 };
-                if width <= s.len() as i64 {
+                let len = s.chars().count() as i64;
+                if width <= len {
                     return Ok(Value::String(s));
                 }
                 let width = width as usize;
-                let padding = width - s.len();
+                let padding = width - len as usize;
                 let left_pad = padding / 2;
                 let right_pad = padding - left_pad;
                 let result = format!(
@@ -8079,7 +8169,7 @@ impl Interpreter {
                     Value::List(l) => format!("list wi' {} items", l.borrow().len()),
                     Value::Dict(d) => format!("dict wi' {} entries", d.borrow().len()),
                     Value::Set(s) => format!("creel wi' {} items", s.borrow().len()),
-                    Value::String(s) => format!("string o' {} characters", s.len()),
+                    Value::String(s) => format!("string o' {} characters", s.chars().count()),
                     Value::Integer(n) => format!("integer: {}", n),
                     Value::Float(f) => format!("float: {}", f),
                     Value::Bool(b) => format!("boolean: {}", if *b { "aye" } else { "nae" }),
@@ -8690,33 +8780,46 @@ impl Interpreter {
         // center - center a string in a field of given width
         globals.borrow_mut().define(
             "center".to_string(),
-            Value::NativeFunction(Rc::new(NativeFunction::new("center", 3, |args| {
-                let s = match &args[0] {
-                    Value::String(s) => s.clone(),
-                    _ => return Err("center() needs a string".to_string()),
-                };
-                let width = match &args[1] {
-                    Value::Integer(n) => *n,
-                    _ => return Err("center() needs a width".to_string()),
-                };
-                let fill = match &args[2] {
-                    Value::String(c) => c.chars().next().unwrap_or(' '),
-                    _ => return Err("center() needs a fill character".to_string()),
-                };
-                if width <= s.len() as i64 {
-                    return Ok(Value::String(s));
-                }
-                let width = width as usize;
-                let padding = width - s.len();
-                let left_pad = padding / 2;
-                let right_pad = padding - left_pad;
-                Ok(Value::String(format!(
-                    "{}{}{}",
-                    fill.to_string().repeat(left_pad),
-                    s,
-                    fill.to_string().repeat(right_pad)
-                )))
-            }))),
+            Value::NativeFunction(Rc::new(NativeFunction::new(
+                "center",
+                usize::MAX,
+                |args| {
+                    if args.len() < 2 || args.len() > 3 {
+                        return Err("center() expects 2-3 arguments".to_string());
+                    }
+                    let s = match &args[0] {
+                        Value::String(s) => s.clone(),
+                        _ => return Err("center() needs a string".to_string()),
+                    };
+                    let width = match &args[1] {
+                        Value::Integer(n) => *n,
+                        _ => return Err("center() needs a width".to_string()),
+                    };
+                    let fill = if args.len() == 3 {
+                        match &args[2] {
+                            Value::String(c) => c.chars().next().unwrap_or(' '),
+                            _ => return Err("center() needs a fill character".to_string()),
+                        }
+                    } else {
+                        ' '
+                    };
+
+                    let len = s.chars().count() as i64;
+                    if width <= len {
+                        return Ok(Value::String(s));
+                    }
+                    let width = width as usize;
+                    let padding = width - len as usize;
+                    let left_pad = padding / 2;
+                    let right_pad = padding - left_pad;
+                    Ok(Value::String(format!(
+                        "{}{}{}",
+                        fill.to_string().repeat(left_pad),
+                        s,
+                        fill.to_string().repeat(right_pad)
+                    )))
+                },
+            ))),
         );
 
         // is_upper - check if string is all uppercase
@@ -9449,7 +9552,10 @@ impl Interpreter {
             "trim".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("trim", 1, |args| {
                 if let Value::String(s) = &args[0] {
-                    Ok(Value::String(s.trim().to_string()))
+                    Ok(Value::String(
+                        s.trim_matches(|c: char| matches!(c, ' ' | '\t' | '\n' | '\r'))
+                            .to_string(),
+                    ))
                 } else {
                     Err("trim() needs a string".to_string())
                 }
@@ -9461,7 +9567,10 @@ impl Interpreter {
             "trim_start".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("trim_start", 1, |args| {
                 if let Value::String(s) = &args[0] {
-                    Ok(Value::String(s.trim_start().to_string()))
+                    Ok(Value::String(
+                        s.trim_start_matches(|c: char| matches!(c, ' ' | '\t' | '\n' | '\r'))
+                            .to_string(),
+                    ))
                 } else {
                     Err("trim_start() needs a string".to_string())
                 }
@@ -9473,7 +9582,10 @@ impl Interpreter {
             "trim_end".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("trim_end", 1, |args| {
                 if let Value::String(s) = &args[0] {
-                    Ok(Value::String(s.trim_end().to_string()))
+                    Ok(Value::String(
+                        s.trim_end_matches(|c: char| matches!(c, ' ' | '\t' | '\n' | '\r'))
+                            .to_string(),
+                    ))
                 } else {
                     Err("trim_end() needs a string".to_string())
                 }
@@ -9577,7 +9689,7 @@ impl Interpreter {
             "is_blank".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("is_blank", 1, |args| {
                 if let Value::String(s) = &args[0] {
-                    Ok(Value::Bool(s.trim().is_empty()))
+                    Ok(Value::Bool(s.bytes().all(|b| b.is_ascii_whitespace())))
                 } else {
                     Err("is_blank() needs a string".to_string())
                 }
@@ -17526,6 +17638,24 @@ keek x {
     }
 
     #[test]
+    fn test_trim_trims_ascii_whitespace_for_coverage() {
+        let result = run(r#"trim("  hello  ")"#).unwrap();
+        assert_eq!(result, Value::String("hello".to_string()));
+    }
+
+    #[test]
+    fn test_trim_start_trims_ascii_whitespace_for_coverage() {
+        let result = run(r#"trim_start("  hello  ")"#).unwrap();
+        assert_eq!(result, Value::String("hello  ".to_string()));
+    }
+
+    #[test]
+    fn test_trim_end_trims_ascii_whitespace_for_coverage() {
+        let result = run(r#"trim_end("  hello  ")"#).unwrap();
+        assert_eq!(result, Value::String("  hello".to_string()));
+    }
+
+    #[test]
     fn test_unique_list() {
         let result = run("unique([1, 2, 1, 3, 2])").unwrap();
         let list = result.as_list().expect("Expected list");
@@ -19948,6 +20078,18 @@ len(a[0]) + len(b[0]) + len(c[0]) + len(d[0]) + len(e[0]) + len(f[0]) + len(g[0]
     fn test_glaikit_valid() {
         let result = run("glaikit(42)").unwrap();
         assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
+    fn test_is_blank_haverin_glaikit_ascii_whitespace_semantics() {
+        assert_eq!(run(r#"is_blank(" \t\n")"#).unwrap(), Value::Bool(true));
+        assert_eq!(run(r#"is_blank(chr(160))"#).unwrap(), Value::Bool(false));
+
+        assert_eq!(run(r#"haverin(" a ")"#).unwrap(), Value::Bool(true));
+        assert_eq!(run(r#"haverin(chr(160))"#).unwrap(), Value::Bool(false));
+
+        assert_eq!(run(r#"glaikit(" \n\t")"#).unwrap(), Value::Bool(true));
+        assert_eq!(run(r#"glaikit(chr(160))"#).unwrap(), Value::Bool(false));
     }
 
     #[test]

@@ -106,6 +106,7 @@ struct LibcFunctions<'ctx> {
     chr: FunctionValue<'ctx>,
     char_at: FunctionValue<'ctx>,
     chars: FunctionValue<'ctx>,
+    mdh_str_len: FunctionValue<'ctx>,
     substring: FunctionValue<'ctx>,
     slice_string: FunctionValue<'ctx>,
     native_get: FunctionValue<'ctx>,
@@ -1456,6 +1457,11 @@ impl<'ctx> CodeGen<'ctx> {
 
         // __mdh_chars(MdhValue) -> MdhValue (list) - unicode-aware chars() for native backend parity
         let chars = module.add_function("__mdh_chars", type_of_type, Some(Linkage::External));
+
+        // __mdh_str_len(MdhValue) -> i64 - unicode-aware len(string) for native backend parity
+        let mdh_str_len_type = i64_type.fn_type(&[types.value_type.into()], false);
+        let mdh_str_len =
+            module.add_function("__mdh_str_len", mdh_str_len_type, Some(Linkage::External));
 
         // __mdh_substring(MdhValue, MdhValue, MdhValue) -> MdhValue (string) - unicode-aware substring() for native parity
         let substring_type = types.value_type.fn_type(
@@ -3268,6 +3274,7 @@ impl<'ctx> CodeGen<'ctx> {
             chr,
             char_at,
             chars,
+            mdh_str_len,
             substring,
             slice_string,
             native_get,
@@ -3948,7 +3955,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Create a list value: {tag=5, data=ptr as i64}
-    /// List memory layout: [i64 length, {i8,i64} element0, {i8,i64} element1, ...]
+    /// List pointer refers to the runtime `MdhList` struct (see `runtime/mdh_runtime.h`).
     fn make_list(&self, ptr: PointerValue<'ctx>) -> BasicValueEnum<'ctx> {
         let tag = self
             .types
@@ -7526,17 +7533,9 @@ impl<'ctx> CodeGen<'ctx> {
 
         // String -> strlen
         self.builder.position_at_end(len_string);
-        let str_ptr = self
-            .builder
-            .build_int_to_ptr(
-                data,
-                self.context.i8_type().ptr_type(AddressSpace::default()),
-                "str",
-            )
-            .unwrap();
         let len = self
             .builder
-            .build_call(self.libc.strlen, &[str_ptr.into()], "len")
+            .build_call(self.libc.mdh_str_len, &[val.into()], "len")
             .unwrap()
             .try_as_basic_value()
             .left()
@@ -7560,8 +7559,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_conditional_branch(is_list, len_list, len_check_bytes)
             .unwrap();
 
-        // List -> read length from offset 1 (after capacity)
-        // Layout: [capacity: i64][length: i64][elements...]
+        // List -> read length from `MdhList.length` (i64 index 1 after items pointer).
         self.builder.position_at_end(len_list);
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
         let header_ptr = self
@@ -8546,22 +8544,67 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let tag = self.extract_tag(val).unwrap();
+        let list_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::List.as_u8() as u64, false);
+
+        let function = self.current_function.unwrap();
+        let list_block = self.context.append_basic_block(function, "yank_list");
+        let type_err_block = self.context.append_basic_block(function, "yank_type_error");
+        let merge_block = self.context.append_basic_block(function, "yank_merge");
+
+        let is_list = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, list_tag, "yank_is_list")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_list, list_block, type_err_block)
+            .unwrap();
+
+        // ===== list yank =====
+        self.builder.position_at_end(list_block);
         let list_data = self.extract_data(val).unwrap();
         let length = self.get_list_length(list_data).unwrap();
+        let zero = self.types.i64_type.const_int(0, false);
+        let is_empty = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, length, zero, "yank_list_is_empty")
+            .unwrap();
 
-        // Get last element
+        let empty_block = self.context.append_basic_block(function, "yank_list_empty");
+        let nonempty_block = self.context.append_basic_block(function, "yank_list_nonempty");
+        self.builder
+            .build_conditional_branch(is_empty, empty_block, nonempty_block)
+            .unwrap();
+
+        // Empty list: throw catchable error.
+        self.builder.position_at_end(empty_block);
+        let msg = self.compile_string_literal("Cannae yank fae an empty list!");
+        self.builder
+            .build_call(self.libc.hurl, &[msg.into()], "yank_empty_list_hurl")
+            .unwrap();
+        let empty_val = self.make_nil();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let empty_end = self.builder.get_insert_block().unwrap();
+
+        // Non-empty: pop last element and decrement length.
+        self.builder.position_at_end(nonempty_block);
         let one = self.types.i64_type.const_int(1, false);
         let last_idx = self
             .builder
             .build_int_sub(length, one, "last_idx")
             .unwrap();
         let elem_ptr = self.get_list_element_ptr(list_data, last_idx).unwrap();
-        let result = self
+        let popped = self
             .builder
             .build_load(self.types.value_type, elem_ptr, "yanked")
             .unwrap();
 
-        // Decrement length in place - length is at offset 1 in MdhList struct
+        // Decrement length in place - length is at offset 1 in MdhList struct.
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
         let list_ptr = self
             .builder
@@ -8585,7 +8628,44 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(len_ptr, new_len)
             .unwrap();
 
-        Ok(result)
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let nonempty_end = self.builder.get_insert_block().unwrap();
+
+        // ===== type error =====
+        self.builder.position_at_end(type_err_block);
+        let op = self
+            .builder
+            .build_global_string_ptr("yank", "yank_op")
+            .unwrap();
+        let zero_tag = self.types.i8_type.const_int(0, false);
+        self.builder
+            .build_call(
+                self.libc.type_error,
+                &[op.as_pointer_value().into(), tag.into(), zero_tag.into()],
+                "",
+            )
+            .unwrap();
+        let err_val = self.make_nil();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let err_end = self.builder.get_insert_block().unwrap();
+
+        // ===== merge =====
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "yank_result")
+            .unwrap();
+        phi.add_incoming(&[
+            (&empty_val, empty_end),
+            (&popped, nonempty_end),
+            (&err_val, err_end),
+        ]);
+
+        Ok(phi.as_basic_value())
     }
 
     /// heid(list) - get first element (head)
@@ -10577,23 +10657,29 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_z_extend(char_val, self.types.i32_type, "char_i32")
             .unwrap();
-        let is_space = self
+        let ws_space = self.types.i32_type.const_int((' ' as u8) as u64, false);
+        let ws_tab = self.types.i32_type.const_int(('\t' as u8) as u64, false);
+        let ws_nl = self.types.i32_type.const_int(('\n' as u8) as u64, false);
+        let ws_cr = self.types.i32_type.const_int(('\r' as u8) as u64, false);
+        let is_ws_space = self
             .builder
-            .build_call(self.libc.isspace, &[char_i32.into()], "is_space")
-            .unwrap()
-            .try_as_basic_value()
-            .left()
-            .unwrap()
-            .into_int_value();
-        let is_ws = self
-            .builder
-            .build_int_compare(
-                inkwell::IntPredicate::NE,
-                is_space,
-                self.types.i32_type.const_int(0, false),
-                "is_ws",
-            )
+            .build_int_compare(inkwell::IntPredicate::EQ, char_i32, ws_space, "is_ws_space")
             .unwrap();
+        let is_ws_tab = self
+            .builder
+            .build_int_compare(inkwell::IntPredicate::EQ, char_i32, ws_tab, "is_ws_tab")
+            .unwrap();
+        let is_ws_nl = self
+            .builder
+            .build_int_compare(inkwell::IntPredicate::EQ, char_i32, ws_nl, "is_ws_nl")
+            .unwrap();
+        let is_ws_cr = self
+            .builder
+            .build_int_compare(inkwell::IntPredicate::EQ, char_i32, ws_cr, "is_ws_cr")
+            .unwrap();
+        let is_ws_1 = self.builder.build_or(is_ws_space, is_ws_tab, "is_ws_1").unwrap();
+        let is_ws_2 = self.builder.build_or(is_ws_1, is_ws_nl, "is_ws_2").unwrap();
+        let is_ws = self.builder.build_or(is_ws_2, is_ws_cr, "is_ws").unwrap();
 
         // Create a continue block for when we find whitespace
         let start_continue = self.context.append_basic_block(function, "start_continue");
@@ -10648,23 +10734,25 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_z_extend(char_val2, self.types.i32_type, "char_i32_2")
             .unwrap();
-        let is_space2 = self
+        let is_ws_space2 = self
             .builder
-            .build_call(self.libc.isspace, &[char_i32_2.into()], "is_space2")
-            .unwrap()
-            .try_as_basic_value()
-            .left()
-            .unwrap()
-            .into_int_value();
-        let is_ws2 = self
-            .builder
-            .build_int_compare(
-                inkwell::IntPredicate::NE,
-                is_space2,
-                self.types.i32_type.const_int(0, false),
-                "is_ws2",
-            )
+            .build_int_compare(inkwell::IntPredicate::EQ, char_i32_2, ws_space, "is_ws_space2")
             .unwrap();
+        let is_ws_tab2 = self
+            .builder
+            .build_int_compare(inkwell::IntPredicate::EQ, char_i32_2, ws_tab, "is_ws_tab2")
+            .unwrap();
+        let is_ws_nl2 = self
+            .builder
+            .build_int_compare(inkwell::IntPredicate::EQ, char_i32_2, ws_nl, "is_ws_nl2")
+            .unwrap();
+        let is_ws_cr2 = self
+            .builder
+            .build_int_compare(inkwell::IntPredicate::EQ, char_i32_2, ws_cr, "is_ws_cr2")
+            .unwrap();
+        let is_ws2_1 = self.builder.build_or(is_ws_space2, is_ws_tab2, "is_ws2_1").unwrap();
+        let is_ws2_2 = self.builder.build_or(is_ws2_1, is_ws_nl2, "is_ws2_2").unwrap();
+        let is_ws2 = self.builder.build_or(is_ws2_2, is_ws_cr2, "is_ws2").unwrap();
 
         // If whitespace at prev_end, store the new end and loop; otherwise go to copy
         let end_continue = self.context.append_basic_block(function, "end_continue");
@@ -14378,30 +14466,387 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     return self.compile_expr(&args[0]).and_then(|list| self.inline_yank(list));
                 }
-	                "heid" | "heider" => {
-	                    if args.len() != 1 {
-	                        return Err(HaversError::CompileError(
-	                            "heid expects 1 argument".to_string(),
-	                        ));
-	                    }
-	                    return self.compile_expr(&args[0]).map(|arg| self.inline_heid(arg));
-	                }
+                "heid" | "heider" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "heid expects 1 argument".to_string(),
+                        ));
+                    }
+
+                    // heid(list|string)
+                    let obj_arg = self.compile_expr(&args[0])?;
+                    let tag = self.extract_tag(obj_arg).unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let str_block = self.context.append_basic_block(function, "heid_str");
+                    let check_list_block =
+                        self.context.append_basic_block(function, "heid_check_list");
+                    let list_block = self.context.append_basic_block(function, "heid_list");
+                    let type_err_block =
+                        self.context.append_basic_block(function, "heid_type_error");
+                    let merge_block = self.context.append_basic_block(function, "heid_merge");
+
+                    let string_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::String.as_u8() as u64, false);
+                    let is_string = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, tag, string_tag, "heid_is_string")
+                        .unwrap();
+                    self.builder
+                        .build_conditional_branch(is_string, str_block, check_list_block)
+                        .unwrap();
+
+                    // String: first character (codepoint)
+                    self.builder.position_at_end(str_block);
+                    let str_data = self.extract_data(obj_arg).unwrap();
+                    let zero = self.types.i64_type.const_int(0, false);
+                    let str_result = self.compile_string_index(str_data, zero)?;
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let str_end = self.builder.get_insert_block().unwrap();
+
+                    // List?
+                    self.builder.position_at_end(check_list_block);
+                    let list_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::List.as_u8() as u64, false);
+                    let is_list = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, tag, list_tag, "heid_is_list")
+                        .unwrap();
+                    self.builder
+                        .build_conditional_branch(is_list, list_block, type_err_block)
+                        .unwrap();
+
+                    // List: error if empty, else first element.
+                    self.builder.position_at_end(list_block);
+                    let list_data = self.extract_data(obj_arg).unwrap();
+                    let length = self.get_list_length(list_data)?;
+                    let zero = self.types.i64_type.const_int(0, false);
+                    let is_empty = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, length, zero, "heid_list_is_empty")
+                        .unwrap();
+                    let empty_block =
+                        self.context.append_basic_block(function, "heid_list_empty");
+                    let nonempty_block =
+                        self.context.append_basic_block(function, "heid_list_nonempty");
+                    self.builder
+                        .build_conditional_branch(is_empty, empty_block, nonempty_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(empty_block);
+                    let msg = self.compile_string_literal("Cannae get heid o' empty list!");
+                    self.builder
+                        .build_call(self.libc.hurl, &[msg.into()], "heid_empty_list_hurl")
+                        .unwrap();
+                    let empty_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let empty_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(nonempty_block);
+                    let list_result = self.inline_heid(obj_arg);
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let list_end = self.builder.get_insert_block().unwrap();
+
+                    // Type error.
+                    self.builder.position_at_end(type_err_block);
+                    let op = self
+                        .builder
+                        .build_global_string_ptr("heid", "heid_op")
+                        .unwrap();
+                    let zero_tag = self.types.i8_type.const_int(0, false);
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), tag.into(), zero_tag.into()],
+                            "",
+                        )
+                        .unwrap();
+                    let err_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    // Merge.
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "heid_result")
+                        .unwrap();
+                    phi.add_incoming(&[
+                        (&str_result, str_end),
+                        (&empty_val, empty_end),
+                        (&list_result, list_end),
+                        (&err_val, err_end),
+                    ]);
+                    return Ok(phi.as_basic_value());
+                }
                 "tail" => {
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
                             "tail expects 1 argument".to_string(),
                         ));
                     }
-                    return self.compile_expr(&args[0]).and_then(|arg| self.inline_tail(arg));
+
+                    // tail(list|string)
+                    let obj_arg = self.compile_expr(&args[0])?;
+                    let tag = self.extract_tag(obj_arg).unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let check_list_block =
+                        self.context.append_basic_block(function, "tail_check_list");
+                    let list_block = self.context.append_basic_block(function, "tail_list");
+                    let string_block = self.context.append_basic_block(function, "tail_str");
+                    let type_err_block =
+                        self.context.append_basic_block(function, "tail_type_error");
+                    let merge_block = self.context.append_basic_block(function, "tail_merge");
+
+                    let string_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::String.as_u8() as u64, false);
+                    let is_string = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, tag, string_tag, "tail_is_string")
+                        .unwrap();
+                    self.builder
+                        .build_conditional_branch(is_string, string_block, check_list_block)
+                        .unwrap();
+
+                    // String: substring from index 1 to end (codepoint indices).
+                    self.builder.position_at_end(string_block);
+                    let str_len = self
+                        .builder
+                        .build_call(self.libc.mdh_str_len, &[obj_arg.into()], "tail_str_len")
+                        .unwrap()
+                        .try_as_basic_value()
+                        .left()
+                        .unwrap()
+                        .into_int_value();
+                    let one = self.types.i64_type.const_int(1, false);
+                    let start_val = self.make_int(one);
+                    let end_val = self.make_int(str_len);
+                    let string_result =
+                        self.inline_substring_range(obj_arg, start_val, end_val)?;
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let str_end = self.builder.get_insert_block().unwrap();
+
+                    // List?
+                    self.builder.position_at_end(check_list_block);
+                    let list_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::List.as_u8() as u64, false);
+                    let is_list = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, tag, list_tag, "tail_is_list")
+                        .unwrap();
+                    self.builder
+                        .build_conditional_branch(is_list, list_block, type_err_block)
+                        .unwrap();
+
+                    // List: empty => empty list, else drop first element.
+                    self.builder.position_at_end(list_block);
+                    let list_data = self.extract_data(obj_arg).unwrap();
+                    let length = self.get_list_length(list_data)?;
+                    let zero = self.types.i64_type.const_int(0, false);
+                    let is_empty = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, length, zero, "tail_list_is_empty")
+                        .unwrap();
+                    let empty_block =
+                        self.context.append_basic_block(function, "tail_list_empty");
+                    let nonempty_block =
+                        self.context.append_basic_block(function, "tail_list_nonempty");
+                    self.builder
+                        .build_conditional_branch(is_empty, empty_block, nonempty_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(empty_block);
+                    let empty_ptr = self.allocate_list(zero)?;
+                    let empty_result = self.make_list(empty_ptr);
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let empty_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(nonempty_block);
+                    let list_result = self.inline_tail(obj_arg)?;
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let list_end = self.builder.get_insert_block().unwrap();
+
+                    // Type error.
+                    self.builder.position_at_end(type_err_block);
+                    let op = self
+                        .builder
+                        .build_global_string_ptr("tail", "tail_op")
+                        .unwrap();
+                    let zero_tag = self.types.i8_type.const_int(0, false);
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), tag.into(), zero_tag.into()],
+                            "",
+                        )
+                        .unwrap();
+                    let err_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    // Merge.
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "tail_result")
+                        .unwrap();
+                    phi.add_incoming(&[
+                        (&string_result, str_end),
+                        (&empty_result, empty_end),
+                        (&list_result, list_end),
+                        (&err_val, err_end),
+                    ]);
+                    return Ok(phi.as_basic_value());
                 }
-	                "bum" | "erse" => {
-	                    if args.len() != 1 {
-	                        return Err(HaversError::CompileError(
-	                            "bum expects 1 argument".to_string(),
-	                        ));
-	                    }
-	                    return self.compile_expr(&args[0]).map(|arg| self.inline_bum(arg));
-	                }
+                "bum" | "erse" => {
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "bum expects 1 argument".to_string(),
+                        ));
+                    }
+
+                    // bum(list|string)
+                    let obj_arg = self.compile_expr(&args[0])?;
+                    let tag = self.extract_tag(obj_arg).unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let str_block = self.context.append_basic_block(function, "bum_str");
+                    let check_list_block =
+                        self.context.append_basic_block(function, "bum_check_list");
+                    let list_block = self.context.append_basic_block(function, "bum_list");
+                    let type_err_block =
+                        self.context.append_basic_block(function, "bum_type_error");
+                    let merge_block = self.context.append_basic_block(function, "bum_merge");
+
+                    let string_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::String.as_u8() as u64, false);
+                    let is_string = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, tag, string_tag, "bum_is_string")
+                        .unwrap();
+                    self.builder
+                        .build_conditional_branch(is_string, str_block, check_list_block)
+                        .unwrap();
+
+                    // String: last character (codepoint) via char_at(str, -1).
+                    self.builder.position_at_end(str_block);
+                    let str_data = self.extract_data(obj_arg).unwrap();
+                    let minus_one = self.types.i64_type.const_int((-1i64) as u64, true);
+                    let str_result = self.compile_string_index(str_data, minus_one)?;
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let str_end = self.builder.get_insert_block().unwrap();
+
+                    // List?
+                    self.builder.position_at_end(check_list_block);
+                    let list_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::List.as_u8() as u64, false);
+                    let is_list = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, tag, list_tag, "bum_is_list")
+                        .unwrap();
+                    self.builder
+                        .build_conditional_branch(is_list, list_block, type_err_block)
+                        .unwrap();
+
+                    // List: error if empty, else last element.
+                    self.builder.position_at_end(list_block);
+                    let list_data = self.extract_data(obj_arg).unwrap();
+                    let length = self.get_list_length(list_data)?;
+                    let zero = self.types.i64_type.const_int(0, false);
+                    let is_empty = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, length, zero, "bum_list_is_empty")
+                        .unwrap();
+                    let empty_block = self.context.append_basic_block(function, "bum_list_empty");
+                    let nonempty_block =
+                        self.context.append_basic_block(function, "bum_list_nonempty");
+                    self.builder
+                        .build_conditional_branch(is_empty, empty_block, nonempty_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(empty_block);
+                    let msg = self.compile_string_literal("Cannae get bum o' empty list!");
+                    self.builder
+                        .build_call(self.libc.hurl, &[msg.into()], "bum_empty_list_hurl")
+                        .unwrap();
+                    let empty_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let empty_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(nonempty_block);
+                    let list_result = self.inline_bum(obj_arg);
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let list_end = self.builder.get_insert_block().unwrap();
+
+                    // Type error.
+                    self.builder.position_at_end(type_err_block);
+                    let op = self
+                        .builder
+                        .build_global_string_ptr("bum", "bum_op")
+                        .unwrap();
+                    let zero_tag = self.types.i8_type.const_int(0, false);
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), tag.into(), zero_tag.into()],
+                            "",
+                        )
+                        .unwrap();
+                    let err_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    // Merge.
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "bum_result")
+                        .unwrap();
+                    phi.add_incoming(&[
+                        (&str_result, str_end),
+                        (&empty_val, empty_end),
+                        (&list_result, list_end),
+                        (&err_val, err_end),
+                    ]);
+                    return Ok(phi.as_basic_value());
+                }
                 "scran" => {
                     // scran(list) - get last element
                     // scran(list, end) or scran(list, start, end) - slice list
@@ -14413,27 +14858,44 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let obj_arg = self.compile_expr(&args[0])?;
                     if args.len() == 1 {
-                        // Support scran(string) -> last character (or empty string)
+                        // Support scran(string|list) -> last item/char.
                         let tag = self.extract_tag(obj_arg).unwrap();
                         let string_tag = self
                             .types
                             .i8_type
                             .const_int(ValueTag::String.as_u8() as u64, false);
+                        let list_tag = self
+                            .types
+                            .i8_type
+                            .const_int(ValueTag::List.as_u8() as u64, false);
+
+                        let function = self.current_function.unwrap();
+                        let str_block = self.context.append_basic_block(function, "scran_str");
+                        let check_list_block =
+                            self.context.append_basic_block(function, "scran_check_list");
+                        let list_block = self.context.append_basic_block(function, "scran_list");
+                        let type_err_block =
+                            self.context.append_basic_block(function, "scran_type_error");
+                        let merge_block = self.context.append_basic_block(function, "scran_merge");
+
                         let is_string = self
                             .builder
                             .build_int_compare(IntPredicate::EQ, tag, string_tag, "scran_is_string")
                             .unwrap();
-
-                        let function = self.current_function.unwrap();
-                        let str_block = self.context.append_basic_block(function, "scran_str");
-                        let list_block = self.context.append_basic_block(function, "scran_list");
-                        let merge_block = self.context.append_basic_block(function, "scran_merge");
-
                         self.builder
-                            .build_conditional_branch(is_string, str_block, list_block)
+                            .build_conditional_branch(is_string, str_block, check_list_block)
                             .unwrap();
 
-                        // String: return last character (or empty string)
+                        self.builder.position_at_end(check_list_block);
+                        let is_list = self
+                            .builder
+                            .build_int_compare(IntPredicate::EQ, tag, list_tag, "scran_is_list")
+                            .unwrap();
+                        self.builder
+                            .build_conditional_branch(is_list, list_block, type_err_block)
+                            .unwrap();
+
+                        // ===== String: return last character (or empty string) =====
                         self.builder.position_at_end(str_block);
                         let str_data = self.extract_data(obj_arg).unwrap();
                         let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
@@ -14441,7 +14903,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_int_to_ptr(str_data, i8_ptr_type, "scran_str_ptr")
                             .unwrap();
-                        let str_len = self
+                        let str_len_bytes = self
                             .builder
                             .build_call(self.libc.strlen, &[str_ptr.into()], "scran_str_len")
                             .unwrap()
@@ -14453,73 +14915,123 @@ impl<'ctx> CodeGen<'ctx> {
                         let zero = self.types.i64_type.const_int(0, false);
                         let is_empty = self
                             .builder
-                            .build_int_compare(IntPredicate::EQ, str_len, zero, "scran_str_empty")
+                            .build_int_compare(
+                                IntPredicate::EQ,
+                                str_len_bytes,
+                                zero,
+                                "scran_str_empty",
+                            )
                             .unwrap();
                         let empty_block =
                             self.context.append_basic_block(function, "scran_str_empty");
                         let nonempty_block = self
                             .context
                             .append_basic_block(function, "scran_str_nonempty");
-                        let done_block =
-                            self.context.append_basic_block(function, "scran_str_done");
                         self.builder
                             .build_conditional_branch(is_empty, empty_block, nonempty_block)
                             .unwrap();
 
                         self.builder.position_at_end(empty_block);
                         let empty_str = self.compile_string_literal("");
-                        self.builder.build_unconditional_branch(done_block).unwrap();
-                        let empty_end = self.builder.get_insert_block().unwrap();
-
-                        self.builder.position_at_end(nonempty_block);
-                        let one = self.types.i64_type.const_int(1, false);
-                        let last_idx = self
-                            .builder
-                            .build_int_sub(str_len, one, "scran_last_idx")
-                            .unwrap();
-                        let last_idx_val = self.make_int(last_idx);
-	                        let last_char = self.inline_char_at(obj_arg, last_idx_val);
-                        self.builder.build_unconditional_branch(done_block).unwrap();
-                        let nonempty_end = self.builder.get_insert_block().unwrap();
-
-                        self.builder.position_at_end(done_block);
-                        let str_phi = self
-                            .builder
-                            .build_phi(self.types.value_type, "scran_str_phi")
-                            .unwrap();
-                        str_phi
-                            .add_incoming(&[(&empty_str, empty_end), (&last_char, nonempty_end)]);
-                        let str_result = str_phi.as_basic_value();
                         self.builder
                             .build_unconditional_branch(merge_block)
                             .unwrap();
-                        let str_end = self.builder.get_insert_block().unwrap();
+                        let empty_end = self.builder.get_insert_block().unwrap();
 
-                        // List: last element
+                        self.builder.position_at_end(nonempty_block);
+                        let minus_one = self.types.i64_type.const_int((-1i64) as u64, true);
+                        let last_char = self.compile_string_index(str_data, minus_one)?;
+                        self.builder
+                            .build_unconditional_branch(merge_block)
+                            .unwrap();
+                        let nonempty_end = self.builder.get_insert_block().unwrap();
+
+                        // ===== List: return last element (error on empty) =====
                         self.builder.position_at_end(list_block);
-	                        let list_result = self.inline_bum(obj_arg);
+                        let list_data = self.extract_data(obj_arg).unwrap();
+                        let length = self.get_list_length(list_data)?;
+                        let is_empty = self
+                            .builder
+                            .build_int_compare(
+                                IntPredicate::EQ,
+                                length,
+                                zero,
+                                "scran_list_is_empty",
+                            )
+                            .unwrap();
+                        let empty_list_block =
+                            self.context.append_basic_block(function, "scran_list_empty");
+                        let nonempty_list_block =
+                            self.context.append_basic_block(function, "scran_list_nonempty");
+                        self.builder
+                            .build_conditional_branch(is_empty, empty_list_block, nonempty_list_block)
+                            .unwrap();
+
+                        self.builder.position_at_end(empty_list_block);
+                        let msg = self.compile_string_literal("Cannae scran fae an empty list!");
+                        self.builder
+                            .build_call(self.libc.hurl, &[msg.into()], "scran_empty_list_hurl")
+                            .unwrap();
+                        let empty_list_val = self.make_nil();
+                        self.builder
+                            .build_unconditional_branch(merge_block)
+                            .unwrap();
+                        let list_empty_end = self.builder.get_insert_block().unwrap();
+
+                        self.builder.position_at_end(nonempty_list_block);
+                        let list_result = self.inline_bum(obj_arg);
                         self.builder
                             .build_unconditional_branch(merge_block)
                             .unwrap();
                         let list_end = self.builder.get_insert_block().unwrap();
 
-                        // Merge
+                        // ===== Type error =====
+                        self.builder.position_at_end(type_err_block);
+                        let op = self
+                            .builder
+                            .build_global_string_ptr("scran", "scran_op")
+                            .unwrap();
+                        let zero_tag = self.types.i8_type.const_int(0, false);
+                        self.builder
+                            .build_call(
+                                self.libc.type_error,
+                                &[op.as_pointer_value().into(), tag.into(), zero_tag.into()],
+                                "",
+                            )
+                            .unwrap();
+                        let err_val = self.make_nil();
+                        self.builder
+                            .build_unconditional_branch(merge_block)
+                            .unwrap();
+                        let err_end = self.builder.get_insert_block().unwrap();
+
+                        // ===== Merge =====
                         self.builder.position_at_end(merge_block);
                         let phi = self
                             .builder
                             .build_phi(self.types.value_type, "scran_result")
                             .unwrap();
-                        phi.add_incoming(&[(&str_result, str_end), (&list_result, list_end)]);
+                        phi.add_incoming(&[
+                            (&empty_str, empty_end),
+                            (&last_char, nonempty_end),
+                            (&empty_list_val, list_empty_end),
+                            (&list_result, list_end),
+                            (&err_val, err_end),
+                        ]);
                         return Ok(phi.as_basic_value());
                     }
                     let (start_arg, end_arg) = if args.len() == 2 {
                         let start_arg = self.make_int(self.types.i64_type.const_int(0, false));
-                        let end_arg = self.compile_expr(&args[1])?;
+                        let end_raw = self.compile_expr(&args[1])?;
+                        let end_i64 = self.coerce_i64(end_raw, "scran");
+                        let end_arg = self.make_int(end_i64);
                         (start_arg, end_arg)
                     } else {
-                        let start_arg = self.compile_expr(&args[1])?;
-                        let end_arg = self.compile_expr(&args[2])?;
-                        (start_arg, end_arg)
+                        let start_raw = self.compile_expr(&args[1])?;
+                        let end_raw = self.compile_expr(&args[2])?;
+                        let start_i64 = self.coerce_i64(start_raw, "scran");
+                        let end_i64 = self.coerce_i64(end_raw, "scran");
+                        (self.make_int(start_i64), self.make_int(end_i64))
                     };
                     // Use the generic slice implementation (supports strings and lists)
                     return self.inline_slice(obj_arg, start_arg, Some(end_arg));
@@ -15618,16 +16130,69 @@ impl<'ctx> CodeGen<'ctx> {
                             "tak expects 2 arguments (list, n)".to_string(),
                         ));
                     }
-                    let list = self.compile_expr(&args[0])?;
-                    let n = self.compile_expr(&args[1])?;
-                    let result = self
+                    let list_val = self.compile_expr(&args[0])?;
+                    let n_raw = self.compile_expr(&args[1])?;
+
+                    let tag = self.extract_tag(list_val).unwrap();
+                    let list_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::List.as_u8() as u64, false);
+                    let is_list = self
                         .builder
-                        .build_call(self.libc.tak, &[list.into(), n.into()], "tak_result")
+                        .build_int_compare(IntPredicate::EQ, tag, list_tag, "tak_is_list")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "tak_ok");
+                    let err_block = self.context.append_basic_block(function, "tak_type_error");
+                    let merge_block = self.context.append_basic_block(function, "tak_merge");
+
+                    self.builder
+                        .build_conditional_branch(is_list, ok_block, err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(ok_block);
+                    let n_i64 = self.coerce_i64(n_raw, "tak");
+                    let n_val = self.make_int(n_i64);
+                    let ok_val = self
+                        .builder
+                        .build_call(self.libc.tak, &[list_val.into(), n_val.into()], "tak_result")
                         .unwrap()
                         .try_as_basic_value()
                         .left()
                         .compile_ok_or("tak returned void").unwrap();
-                    return Ok(result);
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(err_block);
+                    let op = self
+                        .builder
+                        .build_global_string_ptr("tak", "tak_op")
+                        .unwrap();
+                    let zero_tag = self.types.i8_type.const_int(0, false);
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), tag.into(), zero_tag.into()],
+                            "",
+                        )
+                        .unwrap();
+                    let err_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "tak_result")
+                        .unwrap();
+                    phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 "pair_up" => {
                     return self.compile_runtime_call_value_with_arity_call_name(
@@ -16021,15 +16586,26 @@ impl<'ctx> CodeGen<'ctx> {
                     );
                 }
                 "read_lines" => {
-                    // Alias for lines
-                    return self.compile_runtime_call_value_with_arity_call_name(
+                    // read_lines(path) - read file, split into lines (match interpreter semantics).
+                    if args.len() != 1 {
+                        return Err(HaversError::CompileError(
+                            "read_lines expects 1 argument".to_string(),
+                        ));
+                    }
+                    let path_arg = self.compile_expr(&args[0])?;
+                    let content = self.build_call_basic_value(
+                        self.libc.slurp,
+                        &[path_arg.into()],
+                        "read_lines_slurp_result",
+                        "slurp returned void",
+                    )?;
+                    let result = self.build_call_basic_value(
                         self.libc.lines,
-                        args,
-                        1,
-                        "read_lines",
+                        &[content.into()],
                         "read_lines_result",
                         "lines returned void",
-                    );
+                    )?;
+                    return Ok(result);
                 }
                 "append_file" => {
                     return self.compile_runtime_call_value_with_arity_call_name(
@@ -18646,7 +19222,27 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
 
                     self.builder.position_at_end(ok_block);
-                    let ok_val = self.inline_pad(str_arg, width_arg, pad_char, name == "pad_left")?;
+                    let fill_arg = if let Some(pc) = pad_char {
+                        pc
+                    } else {
+                        self.compile_string_literal(" ")
+                    };
+                    let pad_fn = if name == "pad_left" {
+                        self.libc.leftpad
+                    } else {
+                        self.libc.rightpad
+                    };
+                    let ok_val = self
+                        .builder
+                        .build_call(
+                            pad_fn,
+                            &[str_arg.into(), width_arg.into(), fill_arg.into()],
+                            "pad_result",
+                        )
+                        .unwrap()
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("pad returned void").unwrap();
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
@@ -20140,11 +20736,86 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let list_val = self.compile_expr(&args[0])?;
                     let n_val = self.compile_expr(&args[1])?;
-                    // Get list length
+
+                    let tag = self.extract_tag(list_val).unwrap();
+                    let list_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::List.as_u8() as u64, false);
+                    let is_list = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, tag, list_tag, "drap_is_list")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "drap_ok");
+                    let err_block = self.context.append_basic_block(function, "drap_type_error");
+                    let merge_block = self.context.append_basic_block(function, "drap_merge");
+
+                    self.builder
+                        .build_conditional_branch(is_list, ok_block, err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(ok_block);
+                    // Get list length (end index for slice).
                     let list_data = self.extract_data(list_val).unwrap();
                     let list_len = self.get_list_length(list_data).unwrap();
-                    let end_val = self.make_int(list_len);
-                    return self.inline_scran(list_val, n_val, end_val);
+
+                    // Coerce n (int/float) and clamp negatives to zero (drap means "drop first n").
+                    let n_raw = self.coerce_i64(n_val, "drap");
+                    let zero = self.types.i64_type.const_int(0, false);
+                    let n_lt0 = self
+                        .builder
+                        .build_int_compare(IntPredicate::SLT, n_raw, zero, "drap_n_lt0")
+                        .unwrap();
+                    let start = self
+                        .builder
+                        .build_select(n_lt0, zero, n_raw, "drap_start")
+                        .unwrap()
+                        .into_int_value();
+
+                    let ok_val = self
+                        .builder
+                        .build_call(
+                            self.libc.list_slice,
+                            &[list_val.into(), start.into(), list_len.into()],
+                            "drap_slice",
+                        )
+                        .unwrap()
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("list_slice returned void").unwrap();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(err_block);
+                    let op = self
+                        .builder
+                        .build_global_string_ptr("drap", "drap_op")
+                        .unwrap();
+                    let zero_tag = self.types.i8_type.const_int(0, false);
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), tag.into(), zero_tag.into()],
+                            "",
+                        )
+                        .unwrap();
+                    let err_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "drap_result")
+                        .unwrap();
+                    phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 "screen_width" | "screen_height" | "get_screen_width" | "get_screen_height" => {
                     // Graphics screen dimensions (placeholder: return 800/600)
@@ -26841,106 +27512,44 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Empty delimiter case: return list containing the original string
         self.builder.position_at_end(empty_delim_block);
-        let one_elem_list = self.allocate_list(self.types.i64_type.const_int(1, false)).unwrap();
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let one_len_ptr = self
+        let one_i32 = self.types.i32_type.const_int(1, false);
+        let empty_list = self
             .builder
-            .build_pointer_cast(one_elem_list, i64_ptr_type, "one_len_ptr")
-            .unwrap();
+            .build_call(self.libc.make_list, &[one_i32.into()], "empty_delim_list")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .compile_ok_or("make_list returned void").unwrap();
+        // Push the original string as the only element.
         self.builder
-            .build_store(one_len_ptr, self.types.i64_type.const_int(1, false))
+            .build_call(self.libc.list_push, &[empty_list.into(), str_val.into()], "")
             .unwrap();
-        // Store original string as element 0
-        let header_size_const = self.types.i64_type.const_int(16, false);
-        let elem_ptr_empty = unsafe {
-            self.builder
-                .build_gep(
-                    self.context.i8_type(),
-                    one_elem_list,
-                    &[header_size_const],
-                    "elem_ptr_empty",
-                )
-                .unwrap()
-        };
-        let value_ptr_empty = self
-            .builder
-            .build_pointer_cast(
-                elem_ptr_empty,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "value_ptr_empty",
-            )
-            .unwrap();
-        self.builder.build_store(value_ptr_empty, str_val).unwrap();
-        let empty_result = self.make_list(one_elem_list);
+        let empty_result = empty_list;
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
         let empty_delim_end = self.builder.get_insert_block().unwrap();
 
-        // Normal split case
+        // Normal split case (delimiter length > 1): use runtime list allocation + list_push.
         self.builder.position_at_end(normal_split_block);
 
-        // Allocate list with space for up to 100 elements initially
-        // List format: [i64 length][value elem0][value elem1]...
-        let header_size = self.types.i64_type.const_int(16, false);
-        let elem_size = self.types.i64_type.const_int(16, false);
-        let max_elems = self.types.i64_type.const_int(100, false);
-        let initial_size = self
+        let cap_i32 = self.types.i32_type.const_int(16, false);
+        let normal_list = self
             .builder
-            .build_int_add(
-                header_size,
-                self.builder
-                    .build_int_mul(max_elems, elem_size, "elems_size")
-                    .unwrap(),
-                "initial_size",
-            )
-            .unwrap();
-
-        let list_ptr = self
-            .builder
-            .build_call(self.libc.malloc, &[initial_size.into()], "list_ptr")
+            .build_call(self.libc.make_list, &[cap_i32.into()], "split_list")
             .unwrap()
             .try_as_basic_value()
             .left()
-            .unwrap()
-            .into_pointer_value();
+            .compile_ok_or("make_list returned void").unwrap();
 
-        // Initialize length to 0
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let len_ptr = self
-            .builder
-            .build_pointer_cast(list_ptr, i64_ptr_type, "len_ptr")
-            .unwrap();
-        self.builder
-            .build_store(len_ptr, self.types.i64_type.const_int(0, false))
-            .unwrap();
-
-        // Allocate counters on stack
         let pos_ptr = self
             .builder
             .build_alloca(self.types.i64_type, "pos")
             .unwrap();
-        let count_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "count")
-            .unwrap();
-        self.builder
-            .build_store(pos_ptr, self.types.i64_type.const_int(0, false))
-            .unwrap();
-        self.builder
-            .build_store(count_ptr, self.types.i64_type.const_int(0, false))
-            .unwrap();
-
-        // Store list_ptr in an alloca so we can read it in the loop
-        let list_ptr_alloca = self
-            .builder
-            .build_alloca(i8_ptr_type, "list_ptr_alloca")
-            .unwrap();
-        self.builder.build_store(list_ptr_alloca, list_ptr).unwrap();
+        self.builder.build_store(pos_ptr, zero).unwrap();
 
         // Loop to find delimiters and split
         let loop_block = self.context.append_basic_block(function, "split_loop");
-        let found_block = self.context.append_basic_block(function, "split_found");
         let not_found_block = self.context.append_basic_block(function, "split_not_found");
         let add_token_block = self.context.append_basic_block(function, "add_token");
         let done_block = self.context.append_basic_block(function, "split_done");
@@ -26955,17 +27564,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_int_value();
 
-        // Check if we've reached end of string
-        let at_end = self
-            .builder
-            .build_int_compare(IntPredicate::UGE, pos, str_len, "at_end")
-            .unwrap();
-        self.builder
-            .build_conditional_branch(at_end, done_block, found_block)
-            .unwrap();
-
         // Search for delimiter starting at current position
-        self.builder.position_at_end(found_block);
         let search_ptr = unsafe {
             self.builder
                 .build_gep(self.context.i8_type(), str_ptr, &[pos], "search_ptr")
@@ -27045,58 +27644,11 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(token_end, self.context.i8_type().const_int(0, false))
             .unwrap();
 
-        // Create string value and add to list
+        // Create string value and push to list
         let token_value = self.make_string(token_ptr);
-
-        // Get current count and list pointer
-        let count = self
-            .builder
-            .build_load(self.types.i64_type, count_ptr, "count_val")
-            .unwrap()
-            .into_int_value();
-        let current_list_ptr = self
-            .builder
-            .build_load(i8_ptr_type, list_ptr_alloca, "current_list")
-            .unwrap()
-            .into_pointer_value();
-
-        // Calculate element offset: 8 + count * 16
-        let elem_offset = self
-            .builder
-            .build_int_add(
-                header_size,
-                self.builder
-                    .build_int_mul(count, elem_size, "elem_mul")
-                    .unwrap(),
-                "elem_offset",
-            )
+        self.builder
+            .build_call(self.libc.list_push, &[normal_list.into(), token_value.into()], "")
             .unwrap();
-        let elem_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.context.i8_type(),
-                    current_list_ptr,
-                    &[elem_offset],
-                    "elem_ptr",
-                )
-                .unwrap()
-        };
-        let value_ptr = self
-            .builder
-            .build_pointer_cast(
-                elem_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "value_ptr",
-            )
-            .unwrap();
-        self.builder.build_store(value_ptr, token_value).unwrap();
-
-        // Increment count
-        let new_count = self
-            .builder
-            .build_int_add(count, self.types.i64_type.const_int(1, false), "new_count")
-            .unwrap();
-        self.builder.build_store(count_ptr, new_count).unwrap();
 
         // Update position to after delimiter
         let new_pos = self
@@ -27130,87 +27682,15 @@ impl<'ctx> CodeGen<'ctx> {
             .into_pointer_value();
 
         let rest_value = self.make_string(rest_copy);
-
-        // Get current count and list pointer for final add
-        let final_count = self
-            .builder
-            .build_load(self.types.i64_type, count_ptr, "final_count")
-            .unwrap()
-            .into_int_value();
-        let final_list_ptr = self
-            .builder
-            .build_load(i8_ptr_type, list_ptr_alloca, "final_list")
-            .unwrap()
-            .into_pointer_value();
-
-        // Add rest to list
-        let final_offset = self
-            .builder
-            .build_int_add(
-                header_size,
-                self.builder
-                    .build_int_mul(final_count, elem_size, "final_mul")
-                    .unwrap(),
-                "final_offset",
-            )
-            .unwrap();
-        let final_elem_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.context.i8_type(),
-                    final_list_ptr,
-                    &[final_offset],
-                    "final_elem_ptr",
-                )
-                .unwrap()
-        };
-        let final_value_ptr = self
-            .builder
-            .build_pointer_cast(
-                final_elem_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "final_value_ptr",
-            )
-            .unwrap();
         self.builder
-            .build_store(final_value_ptr, rest_value)
+            .build_call(self.libc.list_push, &[normal_list.into(), rest_value.into()], "")
             .unwrap();
-
-        // Update count
-        let total_count = self
-            .builder
-            .build_int_add(
-                final_count,
-                self.types.i64_type.const_int(1, false),
-                "total_count",
-            )
-            .unwrap();
-        self.builder.build_store(count_ptr, total_count).unwrap();
 
         self.builder.build_unconditional_branch(done_block).unwrap();
 
-        // Done - set length and return list
+        // Done - return list
         self.builder.position_at_end(done_block);
-        let done_list_ptr = self
-            .builder
-            .build_load(i8_ptr_type, list_ptr_alloca, "done_list")
-            .unwrap()
-            .into_pointer_value();
-        let done_count = self
-            .builder
-            .build_load(self.types.i64_type, count_ptr, "done_count")
-            .unwrap()
-            .into_int_value();
-
-        // Store final length
-        let done_len_ptr = self
-            .builder
-            .build_pointer_cast(done_list_ptr, i64_ptr_type, "done_len_ptr")
-            .unwrap();
-        self.builder.build_store(done_len_ptr, done_count).unwrap();
-
-        // Create list value for normal case
-        let normal_result = self.make_list(done_list_ptr);
+        let normal_result = normal_list;
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -34709,56 +35189,6 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(result)
     }
 
-    /// char_at(str, idx) - Get character at index as single-char string
-    fn inline_char_at(
-        &mut self,
-        str_val: BasicValueEnum<'ctx>,
-        idx_val: BasicValueEnum<'ctx>,
-    ) -> BasicValueEnum<'ctx> {
-        let str_data = self.extract_data(str_val).unwrap();
-        let idx_data = self.extract_data(idx_val).unwrap();
-
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
-        let str_ptr = self
-            .builder
-            .build_int_to_ptr(str_data, i8_ptr, "str_ptr")
-            .unwrap();
-        let char_ptr = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), str_ptr, &[idx_data], "char_ptr")
-                .unwrap()
-        };
-
-        // Allocate 2 bytes for single char + null terminator
-        let two = self.types.i64_type.const_int(2, false);
-        let new_str = self
-            .builder
-            .build_call(self.libc.malloc, &[two.into()], "char_str")
-            .unwrap()
-            .try_as_basic_value()
-            .left()
-            .unwrap()
-            .into_pointer_value();
-
-        let char_val = self
-            .builder
-            .build_load(self.context.i8_type(), char_ptr, "char_val")
-            .unwrap();
-        self.builder.build_store(new_str, char_val).unwrap();
-
-        let one = self.types.i64_type.const_int(1, false);
-        let null_ptr = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), new_str, &[one], "null_ptr")
-                .unwrap()
-        };
-        self.builder
-            .build_store(null_ptr, self.context.i8_type().const_int(0, false))
-            .unwrap();
-
-        self.make_string(new_str)
-    }
-
     /// substr/scance(str, start, end) - substring by character indices [start, end)
     fn inline_substring_range(
         &mut self,
@@ -37533,188 +37963,6 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(self.types.value_type, merged_alloca, "merged_final")
             .unwrap();
         Ok(merged_final)
-    }
-
-    /// pad_left/pad_right - pad string to given width
-    fn inline_pad(
-        &mut self,
-        str_val: BasicValueEnum<'ctx>,
-        width_val: BasicValueEnum<'ctx>,
-        pad_char: Option<BasicValueEnum<'ctx>>,
-        pad_left: bool,
-    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        let str_data = self.extract_data(str_val).unwrap();
-        let width_data = self.extract_data(width_val).unwrap();
-
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
-        let str_ptr = self
-            .builder
-            .build_int_to_ptr(str_data, i8_ptr, "str_ptr")
-            .unwrap();
-
-        // Get string length
-        let str_len = self
-            .builder
-            .build_call(self.libc.strlen, &[str_ptr.into()], "str_len")
-            .unwrap()
-            .try_as_basic_value()
-            .left()
-            .unwrap()
-            .into_int_value();
-
-        // Get pad character (default to space)
-        let pad_byte_raw = if let Some(pc) = pad_char {
-            let pc_data = self.extract_data(pc).unwrap();
-            let pc_ptr = self
-                .builder
-                .build_int_to_ptr(pc_data, i8_ptr, "pc_ptr")
-                .unwrap();
-            self.builder
-                .build_load(self.context.i8_type(), pc_ptr, "pad_byte")
-                .unwrap()
-                .into_int_value()
-        } else {
-            self.context.i8_type().const_int(32, false) // space
-        };
-        // Treat empty fill string as space (loading its first byte yields NUL).
-        let nul = self.context.i8_type().const_int(0, false);
-        let space = self.context.i8_type().const_int(32, false);
-        let is_nul = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, pad_byte_raw, nul, "pad_is_nul")
-            .unwrap();
-        let pad_byte = self
-            .builder
-            .build_select(is_nul, space, pad_byte_raw, "pad_byte")
-            .unwrap()
-            .into_int_value();
-
-        // Calculate pad length = max(0, width - str_len)
-        let pad_len_raw = self
-            .builder
-            .build_int_sub(width_data, str_len, "pad_len_raw")
-            .unwrap();
-        let zero = self.types.i64_type.const_int(0, false);
-        let need_pad = self
-            .builder
-            .build_int_compare(inkwell::IntPredicate::SGT, pad_len_raw, zero, "need_pad")
-            .unwrap();
-        // pad_len = max(0, width - str_len)
-        let pad_len = self
-            .builder
-            .build_select(need_pad, pad_len_raw, zero, "pad_len")
-            .unwrap()
-            .into_int_value();
-
-        // Calculate total length: str_len + pad_len
-        let total_len = self
-            .builder
-            .build_int_add(str_len, pad_len, "total_len")
-            .unwrap();
-
-        // Allocate new string: total_len + 1 (for null terminator)
-        let one = self.types.i64_type.const_int(1, false);
-        let alloc_size = self
-            .builder
-            .build_int_add(total_len, one, "alloc_size")
-            .unwrap();
-        let new_ptr = self
-            .builder
-            .build_call(self.libc.malloc, &[alloc_size.into()], "padded_str")
-            .unwrap()
-            .try_as_basic_value()
-            .left()
-            .unwrap()
-            .into_pointer_value();
-
-        // Copy the original string to the correct position
-        let str_offset = if pad_left { pad_len } else { zero };
-        let str_dest = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), new_ptr, &[str_offset], "str_dest")
-                .unwrap()
-        };
-        self.builder
-            .build_call(
-                self.libc.memcpy,
-                &[str_dest.into(), str_ptr.into(), str_len.into()],
-                "",
-            )
-            .unwrap();
-
-        // Fill padding positions with pad character using a loop
-        let current_func = self
-            .builder
-            .get_insert_block()
-            .unwrap()
-            .get_parent()
-            .unwrap();
-        let pre_loop_bb = self.builder.get_insert_block().unwrap();
-        let pad_loop_bb = self.context.append_basic_block(current_func, "pad_loop");
-        let pad_body_bb = self.context.append_basic_block(current_func, "pad_body");
-        let pad_done_bb = self.context.append_basic_block(current_func, "pad_done");
-
-        // Start padding loop
-        self.builder
-            .build_unconditional_branch(pad_loop_bb)
-            .unwrap();
-        self.builder.position_at_end(pad_loop_bb);
-
-        // Loop counter phi
-        let i_phi = self
-            .builder
-            .build_phi(self.types.i64_type, "pad_i")
-            .unwrap();
-        i_phi.add_incoming(&[(&zero, pre_loop_bb)]);
-
-        let i_val = i_phi.as_basic_value().into_int_value();
-        let cond = self
-            .builder
-            .build_int_compare(inkwell::IntPredicate::SLT, i_val, pad_len, "pad_cond")
-            .unwrap();
-        self.builder
-            .build_conditional_branch(cond, pad_body_bb, pad_done_bb)
-            .unwrap();
-
-        // Loop body: write pad char
-        self.builder.position_at_end(pad_body_bb);
-        let pad_offset = if pad_left {
-            // Padding at start
-            i_val
-        } else {
-            // Padding after string
-            self.builder
-                .build_int_add(str_len, i_val, "pad_off")
-                .unwrap()
-        };
-        let pad_pos = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), new_ptr, &[pad_offset], "pad_pos")
-                .unwrap()
-        };
-        self.builder.build_store(pad_pos, pad_byte).unwrap();
-
-        // Increment and loop
-        let next_i = self.builder.build_int_add(i_val, one, "next_i").unwrap();
-        i_phi.add_incoming(&[(&next_i, pad_body_bb)]);
-        self.builder
-            .build_unconditional_branch(pad_loop_bb)
-            .unwrap();
-
-        // Done with padding
-        self.builder.position_at_end(pad_done_bb);
-
-        // Add null terminator
-        let null_pos = unsafe {
-            self.builder
-                .build_gep(self.context.i8_type(), new_ptr, &[total_len], "null_pos")
-                .unwrap()
-        };
-        self.builder
-            .build_store(null_pos, self.context.i8_type().const_int(0, false))
-            .unwrap();
-
-        Ok(self.make_string(new_ptr))
     }
 
     /// radians(degrees) - convert degrees to radians

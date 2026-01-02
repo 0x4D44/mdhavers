@@ -345,7 +345,7 @@ MdhValue __mdh_is_dir(MdhValue path);
 MdhValue __mdh_slurp(MdhValue path);
 MdhValue __mdh_scrieve(MdhValue path, MdhValue content);
 MdhValue __mdh_scrieve_append(MdhValue path, MdhValue content);
-MdhValue __mdh_lines(MdhValue path);
+MdhValue __mdh_lines(MdhValue str);
 MdhValue __mdh_words(MdhValue str);
 
 /* ========== Logging/Debug ========== */
