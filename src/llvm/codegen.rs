@@ -396,6 +396,7 @@ struct LibcFunctions<'ctx> {
     str_index_of: FunctionValue<'ctx>,
     last_index_of: FunctionValue<'ctx>,
     replace_first: FunctionValue<'ctx>,
+    replace: FunctionValue<'ctx>,
     unique: FunctionValue<'ctx>,
     average: FunctionValue<'ctx>,
     chynge: FunctionValue<'ctx>,
@@ -592,12 +593,20 @@ pub struct CodeGen<'ctx> {
 
     /// Imported modules mapped to their exported symbols (and used to avoid duplicate imports).
     imported_modules: HashMap<PathBuf, Vec<String>>,
+    /// Stable import prefix per imported module (used to re-bind cached imports).
+    import_prefixes: HashMap<PathBuf, String>,
+    /// Default parameter values for imported module functions (module_path -> {func_name -> defaults}).
+    imported_module_function_defaults: HashMap<PathBuf, HashMap<String, Vec<Option<Expr>>>>,
+    /// Stack of modules currently being imported (for circular import detection).
+    import_in_progress: Vec<PathBuf>,
     /// Import alias names mapped to exported symbol names
     import_alias_exports: HashMap<String, HashSet<String>>,
     /// Import alias bindings mapped to their backing storage
     import_alias_bindings: HashMap<String, PointerValue<'ctx>>,
     /// Import alias names mapped to exported functions (for direct alias.method() calls)
     import_alias_functions: HashMap<String, HashMap<String, FunctionValue<'ctx>>>,
+    /// Import alias names mapped to default parameter values for exported functions.
+    import_alias_function_defaults: HashMap<String, HashMap<String, Vec<Option<Expr>>>>,
 
     /// Format strings for printf
     fmt_int: inkwell::values::GlobalValue<'ctx>,
@@ -673,9 +682,13 @@ impl<'ctx> CodeGen<'ctx> {
             current_class: None,
             source_path: None,
             imported_modules: HashMap::new(),
+            import_prefixes: HashMap::new(),
+            imported_module_function_defaults: HashMap::new(),
+            import_in_progress: Vec::new(),
             import_alias_exports: HashMap::new(),
             import_alias_bindings: HashMap::new(),
             import_alias_functions: HashMap::new(),
+            import_alias_function_defaults: HashMap::new(),
             fmt_int,
             fmt_float,
             fmt_string,
@@ -2902,7 +2915,7 @@ impl<'ctx> CodeGen<'ctx> {
         let average_type = types.value_type.fn_type(&[types.value_type.into()], false);
         let average = module.add_function("__mdh_average", average_type, Some(Linkage::External));
 
-        // __mdh_chynge(str, old, new) -> MdhValue (string)
+        // __mdh_chynge(list, index, value) -> MdhValue (list)
         let chynge_type = types.value_type.fn_type(
             &[
                 types.value_type.into(),
@@ -2912,6 +2925,9 @@ impl<'ctx> CodeGen<'ctx> {
             false,
         );
         let chynge = module.add_function("__mdh_chynge", chynge_type, Some(Linkage::External));
+
+        // __mdh_replace(str, old, new) -> MdhValue (string)
+        let replace = module.add_function("__mdh_replace", chynge_type, Some(Linkage::External));
 
         // Testing functions
         // __mdh_assert(condition, msg) -> MdhValue (nil)
@@ -3554,6 +3570,7 @@ impl<'ctx> CodeGen<'ctx> {
             str_index_of,
             last_index_of,
             replace_first,
+            replace,
             unique,
             average,
             chynge,
@@ -4052,6 +4069,20 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(data.into_int_value())
     }
 
+    /// Dict/Set values store a stable handle pointer to their payload pointer.
+    /// Load and return the payload pointer as an i64.
+    fn load_kv_payload_ptr(&self, handle_data: IntValue<'ctx>, name: &str) -> IntValue<'ctx> {
+        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let handle_ptr = self
+            .builder
+            .build_int_to_ptr(handle_data, i64_ptr_type, &format!("{name}_handle_ptr"))
+            .unwrap();
+        self.builder
+            .build_load(self.types.i64_type, handle_ptr, &format!("{name}_payload"))
+            .unwrap()
+            .into_int_value()
+    }
+
     /// Extract i64 from int/float values (float truncated), otherwise type_error.
     fn coerce_i64(&mut self, val: BasicValueEnum<'ctx>, op_name: &str) -> IntValue<'ctx> {
         let tag = self.extract_tag(val).unwrap();
@@ -4337,9 +4368,10 @@ impl<'ctx> CodeGen<'ctx> {
         // set -> truthy if non-empty
         self.builder.position_at_end(set_block);
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let payload_data = self.load_kv_payload_ptr(data, "truthy_set");
         let set_ptr = self
             .builder
-            .build_int_to_ptr(data, i64_ptr_type, "truthy_set_ptr")
+            .build_int_to_ptr(payload_data, i64_ptr_type, "truthy_set_ptr")
             .unwrap();
         let set_count = self
             .builder
@@ -7643,9 +7675,10 @@ impl<'ctx> CodeGen<'ctx> {
         // Layout: [count: i64][entry0][entry1]...
         self.builder.position_at_end(len_dict);
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let payload_data = self.load_kv_payload_ptr(data, "len_dict_or_set");
         let dict_ptr = self
             .builder
-            .build_int_to_ptr(data, i64_ptr_type, "dict_ptr")
+            .build_int_to_ptr(payload_data, i64_ptr_type, "dict_ptr")
             .unwrap();
         let dict_len = self
             .builder
@@ -7898,79 +7931,97 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        let function = self.current_function.unwrap();
+        let function = self.current_function.expect("No current function");
         let tag = self.extract_tag(val).unwrap();
         let data = self.extract_data(val).unwrap();
 
-        // Check if it's a float (tag == 2)
-        let float_tag = self.types.i8_type.const_int(ValueTag::Float as u64, false);
-        let is_float = self
-            .builder
-            .build_int_compare(inkwell::IntPredicate::EQ, tag, float_tag, "is_float")
-            .unwrap();
-
-        let int_block = self.context.append_basic_block(function, "abs_int");
         let float_block = self.context.append_basic_block(function, "abs_float");
+        let check_int_block = self.context.append_basic_block(function, "abs_check_int");
+        let int_block = self.context.append_basic_block(function, "abs_int");
+        let err_block = self.context.append_basic_block(function, "abs_err");
         let merge_block = self.context.append_basic_block(function, "abs_merge");
 
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
+        let is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, float_tag, "abs_is_float")
+            .unwrap();
         self.builder
-            .build_conditional_branch(is_float, float_block, int_block)
+            .build_conditional_branch(is_float, float_block, check_int_block)
+            .unwrap();
+
+        // Float abs
+        self.builder.position_at_end(float_block);
+        let float_val = self
+            .builder
+            .build_bitcast(data, self.context.f64_type(), "abs_float_val")
+            .unwrap()
+            .into_float_value();
+        let neg = self.builder.build_float_neg(float_val, "abs_neg").unwrap();
+        let zero_f64 = self.context.f64_type().const_float(0.0);
+        let is_negative = self
+            .builder
+            .build_float_compare(inkwell::FloatPredicate::OLT, float_val, zero_f64, "abs_is_neg")
+            .unwrap();
+        let abs_float = self
+            .builder
+            .build_select(is_negative, neg, float_val, "abs_float")
+            .unwrap()
+            .into_float_value();
+        let float_result = self.make_float(abs_float);
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let float_end = self.builder.get_insert_block().unwrap();
+
+        // Int?
+        self.builder.position_at_end(check_int_block);
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
+        let is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, int_tag, "abs_is_int")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_int, int_block, err_block)
             .unwrap();
 
         // Integer abs: (x < 0) ? -x : x
         self.builder.position_at_end(int_block);
         let zero = self.types.i64_type.const_int(0, false);
-        let is_negative = self
+        let is_negative_i = self
             .builder
-            .build_int_compare(inkwell::IntPredicate::SLT, data, zero, "is_negative")
+            .build_int_compare(inkwell::IntPredicate::SLT, data, zero, "abs_is_negative")
             .unwrap();
-        let negated = self
-            .builder
-            .build_int_neg(data, "negated")
-            .unwrap();
+        let negated = self.builder.build_int_neg(data, "abs_negated").unwrap();
         let int_abs_val = self
             .builder
-            .build_select(is_negative, negated, data, "int_abs_val")
+            .build_select(is_negative_i, negated, data, "abs_int_val")
             .unwrap()
             .into_int_value();
         let int_result = self.make_int(int_abs_val);
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
-        let int_block_end = self.builder.get_insert_block().unwrap();
+        let int_end = self.builder.get_insert_block().unwrap();
 
-        // Float abs: use fabs intrinsic
-        self.builder.position_at_end(float_block);
-        let float_val = self
+        // Error: match interpreter by throwing a catchable error.
+        self.builder.position_at_end(err_block);
+        let msg = self.compile_string_literal("abs() expects a number");
+        let _ = self
             .builder
-            .build_bitcast(data, self.context.f64_type(), "float_val")
-            .unwrap()
-            .into_float_value();
-        // Manual float abs: clear sign bit by ANDing with 0x7FFFFFFFFFFFFFFF
-        let abs_float = self
-            .builder
-            .build_float_neg(float_val, "neg_float")
+            .build_call(self.libc.hurl, &[msg.into()], "abs_hurl")
             .unwrap();
-        let zero_f64 = self.context.f64_type().const_float(0.0);
-        let is_negative_f = self
-            .builder
-            .build_float_compare(
-                inkwell::FloatPredicate::OLT,
-                float_val,
-                zero_f64,
-                "is_neg_f",
-            )
-            .unwrap();
-        let abs_float_val = self
-            .builder
-            .build_select(is_negative_f, abs_float, float_val, "abs_float_val")
-            .unwrap()
-            .into_float_value();
-        let float_result = self.make_float(abs_float_val);
+        let err_result = self.make_nil();
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
-        let float_block_end = self.builder.get_insert_block().unwrap();
+        let err_end = self.builder.get_insert_block().unwrap();
 
         // Merge
         self.builder.position_at_end(merge_block);
@@ -7979,8 +8030,9 @@ impl<'ctx> CodeGen<'ctx> {
             .build_phi(self.types.value_type, "abs_result")
             .unwrap();
         phi.add_incoming(&[
-            (&int_result, int_block_end),
-            (&float_result, float_block_end),
+            (&float_result, float_end),
+            (&int_result, int_end),
+            (&err_result, err_end),
         ]);
 
         Ok(phi.as_basic_value())
@@ -8267,13 +8319,35 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let tag = self.extract_tag(val).unwrap();
         let data = self.extract_data(val).unwrap();
+
+        let function = self.current_function.expect("No current function");
+        let float_block = self.context.append_basic_block(function, "floor_float");
+        let check_int_block = self.context.append_basic_block(function, "floor_check_int");
+        let int_block = self.context.append_basic_block(function, "floor_int");
+        let err_block = self.context.append_basic_block(function, "floor_err");
+        let merge_block = self.context.append_basic_block(function, "floor_merge");
+
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
+        let is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, float_tag, "floor_is_float")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_float, float_block, check_int_block)
+            .unwrap();
+
+        // Float input: floor(f64) -> int
+        self.builder.position_at_end(float_block);
         let float_val = self
             .builder
-            .build_bitcast(data, self.types.f64_type, "as_float")
+            .build_bitcast(data, self.types.f64_type, "floor_as_float")
             .unwrap()
             .into_float_value();
-
         let floor_fn = self.get_or_create_intrinsic(
             "llvm.floor.f64",
             self.types.f64_type.into(),
@@ -8287,13 +8361,61 @@ impl<'ctx> CodeGen<'ctx> {
             .left()
             .unwrap()
             .into_float_value();
-
         let int_val = self
             .builder
             .build_float_to_signed_int(floored, self.types.i64_type, "floor_int")
             .unwrap();
+        let float_result = self.make_int(int_val);
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let float_end = self.builder.get_insert_block().unwrap();
 
-        Ok(self.make_int(int_val))
+        // Int input: identity
+        self.builder.position_at_end(check_int_block);
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
+        let is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, int_tag, "floor_is_int")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_int, int_block, err_block)
+            .unwrap();
+
+        self.builder.position_at_end(int_block);
+        let int_result = val;
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let int_end = self.builder.get_insert_block().unwrap();
+
+        // Error: match interpreter by throwing a catchable error.
+        self.builder.position_at_end(err_block);
+        let msg = self.compile_string_literal("floor() expects a number");
+        let _ = self
+            .builder
+            .build_call(self.libc.hurl, &[msg.into()], "floor_hurl")
+            .unwrap();
+        let err_result = self.make_nil();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let err_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "floor_result")
+            .unwrap();
+        phi.add_incoming(&[
+            (&float_result, float_end),
+            (&int_result, int_end),
+            (&err_result, err_end),
+        ]);
+        Ok(phi.as_basic_value())
     }
 
     /// ceil(x) - ceiling of float, returns int
@@ -8301,13 +8423,35 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let tag = self.extract_tag(val).unwrap();
         let data = self.extract_data(val).unwrap();
+
+        let function = self.current_function.expect("No current function");
+        let float_block = self.context.append_basic_block(function, "ceil_float");
+        let check_int_block = self.context.append_basic_block(function, "ceil_check_int");
+        let int_block = self.context.append_basic_block(function, "ceil_int");
+        let err_block = self.context.append_basic_block(function, "ceil_err");
+        let merge_block = self.context.append_basic_block(function, "ceil_merge");
+
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
+        let is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, float_tag, "ceil_is_float")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_float, float_block, check_int_block)
+            .unwrap();
+
+        // Float input: ceil(f64) -> int
+        self.builder.position_at_end(float_block);
         let float_val = self
             .builder
-            .build_bitcast(data, self.types.f64_type, "as_float")
+            .build_bitcast(data, self.types.f64_type, "ceil_as_float")
             .unwrap()
             .into_float_value();
-
         let ceil_fn = self.get_or_create_intrinsic(
             "llvm.ceil.f64",
             self.types.f64_type.into(),
@@ -8321,13 +8465,61 @@ impl<'ctx> CodeGen<'ctx> {
             .left()
             .unwrap()
             .into_float_value();
-
         let int_val = self
             .builder
             .build_float_to_signed_int(ceiled, self.types.i64_type, "ceil_int")
             .unwrap();
+        let float_result = self.make_int(int_val);
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let float_end = self.builder.get_insert_block().unwrap();
 
-        Ok(self.make_int(int_val))
+        // Int input: identity
+        self.builder.position_at_end(check_int_block);
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
+        let is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, int_tag, "ceil_is_int")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_int, int_block, err_block)
+            .unwrap();
+
+        self.builder.position_at_end(int_block);
+        let int_result = val;
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let int_end = self.builder.get_insert_block().unwrap();
+
+        // Error: match interpreter by throwing a catchable error.
+        self.builder.position_at_end(err_block);
+        let msg = self.compile_string_literal("ceil() expects a number");
+        let _ = self
+            .builder
+            .build_call(self.libc.hurl, &[msg.into()], "ceil_hurl")
+            .unwrap();
+        let err_result = self.make_nil();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let err_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "ceil_result")
+            .unwrap();
+        phi.add_incoming(&[
+            (&float_result, float_end),
+            (&int_result, int_end),
+            (&err_result, err_end),
+        ]);
+        Ok(phi.as_basic_value())
     }
 
     /// round(x) - round float to nearest int
@@ -8335,13 +8527,35 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let tag = self.extract_tag(val).unwrap();
         let data = self.extract_data(val).unwrap();
+
+        let function = self.current_function.expect("No current function");
+        let float_block = self.context.append_basic_block(function, "round_float");
+        let check_int_block = self.context.append_basic_block(function, "round_check_int");
+        let int_block = self.context.append_basic_block(function, "round_int");
+        let err_block = self.context.append_basic_block(function, "round_err");
+        let merge_block = self.context.append_basic_block(function, "round_merge");
+
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
+        let is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, float_tag, "round_is_float")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_float, float_block, check_int_block)
+            .unwrap();
+
+        // Float input: round(f64) -> int
+        self.builder.position_at_end(float_block);
         let float_val = self
             .builder
-            .build_bitcast(data, self.types.f64_type, "as_float")
+            .build_bitcast(data, self.types.f64_type, "round_as_float")
             .unwrap()
             .into_float_value();
-
         let round_fn = self.get_or_create_intrinsic(
             "llvm.round.f64",
             self.types.f64_type.into(),
@@ -8355,13 +8569,61 @@ impl<'ctx> CodeGen<'ctx> {
             .left()
             .unwrap()
             .into_float_value();
-
         let int_val = self
             .builder
             .build_float_to_signed_int(rounded, self.types.i64_type, "round_int")
             .unwrap();
+        let float_result = self.make_int(int_val);
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let float_end = self.builder.get_insert_block().unwrap();
 
-        Ok(self.make_int(int_val))
+        // Int input: identity
+        self.builder.position_at_end(check_int_block);
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
+        let is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, int_tag, "round_is_int")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_int, int_block, err_block)
+            .unwrap();
+
+        self.builder.position_at_end(int_block);
+        let int_result = val;
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let int_end = self.builder.get_insert_block().unwrap();
+
+        // Error: match interpreter by throwing a catchable error.
+        self.builder.position_at_end(err_block);
+        let msg = self.compile_string_literal("round() expects a number");
+        let _ = self
+            .builder
+            .build_call(self.libc.hurl, &[msg.into()], "round_hurl")
+            .unwrap();
+        let err_result = self.make_nil();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let err_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "round_result")
+            .unwrap();
+        phi.add_incoming(&[
+            (&float_result, float_end),
+            (&int_result, int_end),
+            (&err_result, err_end),
+        ]);
+        Ok(phi.as_basic_value())
     }
 
     /// sqrt(x) - square root, returns float
@@ -8372,6 +8634,13 @@ impl<'ctx> CodeGen<'ctx> {
         let tag = self.extract_tag(val).unwrap();
         let data = self.extract_data(val).unwrap();
 
+        let function = self.current_function.expect("No current function");
+        let float_block = self.context.append_basic_block(function, "sqrt_float");
+        let check_int_block = self.context.append_basic_block(function, "sqrt_check_int");
+        let int_block = self.context.append_basic_block(function, "sqrt_int");
+        let err_block = self.context.append_basic_block(function, "sqrt_err");
+        let merge_block = self.context.append_basic_block(function, "sqrt_merge");
+
         // Check if value is float (tag == ValueTag::Float)
         let float_tag = self
             .types
@@ -8379,45 +8648,95 @@ impl<'ctx> CodeGen<'ctx> {
             .const_int(ValueTag::Float.as_u8() as u64, false);
         let is_float = self
             .builder
-            .build_int_compare(IntPredicate::EQ, tag, float_tag, "is_float")
+            .build_int_compare(IntPredicate::EQ, tag, float_tag, "sqrt_is_float")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_float, float_block, check_int_block)
             .unwrap();
 
-        // Convert to float: if Float, bitcast; if Int, sitofp
+        // Float input: sqrt(f64) -> float
+        self.builder.position_at_end(float_block);
         let float_val = self
             .builder
-            .build_select(
-                is_float,
-                BasicValueEnum::FloatValue(
-                    self.builder
-                        .build_bitcast(data, self.types.f64_type, "as_float")
-                        .unwrap()
-                        .into_float_value(),
-                ),
-                BasicValueEnum::FloatValue(
-                    self.builder
-                        .build_signed_int_to_float(data, self.types.f64_type, "int_to_float")
-                        .unwrap(),
-                ),
-                "float_val",
-            )
+            .build_bitcast(data, self.types.f64_type, "sqrt_as_float")
             .unwrap()
             .into_float_value();
-
         let sqrt_fn = self.get_or_create_intrinsic(
             "llvm.sqrt.f64",
             self.types.f64_type.into(),
             &[self.types.f64_type.into()],
         );
-        let sqrt_result = self
+        let sqrt_float = self
             .builder
-            .build_call(sqrt_fn, &[float_val.into()], "sqrt_result")
+            .build_call(sqrt_fn, &[float_val.into()], "sqrt_float_result")
             .unwrap()
             .try_as_basic_value()
             .left()
             .unwrap()
             .into_float_value();
+        let float_result = self.make_float(sqrt_float);
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let float_end = self.builder.get_insert_block().unwrap();
 
-        Ok(self.make_float(sqrt_result))
+        // Int input: convert to f64 first, then sqrt
+        self.builder.position_at_end(check_int_block);
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
+        let is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, int_tag, "sqrt_is_int")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_int, int_block, err_block)
+            .unwrap();
+
+        self.builder.position_at_end(int_block);
+        let int_as_float = self
+            .builder
+            .build_signed_int_to_float(data, self.types.f64_type, "sqrt_int_to_float")
+            .unwrap();
+        let sqrt_int = self
+            .builder
+            .build_call(sqrt_fn, &[int_as_float.into()], "sqrt_int_result")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_float_value();
+        let int_result = self.make_float(sqrt_int);
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let int_end = self.builder.get_insert_block().unwrap();
+
+        // Error: match interpreter by throwing a catchable error.
+        self.builder.position_at_end(err_block);
+        let msg = self.compile_string_literal("sqrt() expects a number");
+        let _ = self
+            .builder
+            .build_call(self.libc.hurl, &[msg.into()], "sqrt_hurl")
+            .unwrap();
+        let err_result = self.make_nil();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let err_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "sqrt_result")
+            .unwrap();
+        phi.add_incoming(&[
+            (&float_result, float_end),
+            (&int_result, int_end),
+            (&err_result, err_end),
+        ]);
+        Ok(phi.as_basic_value())
     }
 
     // ========== Phase 2: List Operations ==========
@@ -9499,10 +9818,6 @@ impl<'ctx> CodeGen<'ctx> {
         let elem_tag = self.extract_tag(elem).unwrap();
         let elem_data = self.extract_data(elem).unwrap();
 
-        let bool_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::Bool.as_u8() as u64, false);
         let int_tag = self
             .types
             .i8_type
@@ -9512,10 +9827,6 @@ impl<'ctx> CodeGen<'ctx> {
             .i8_type
             .const_int(ValueTag::Float.as_u8() as u64, false);
 
-        let is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, elem_tag, bool_tag, "is_bool")
-            .unwrap();
         let is_int = self
             .builder
             .build_int_compare(IntPredicate::EQ, elem_tag, int_tag, "is_int")
@@ -9524,13 +9835,9 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::EQ, elem_tag, float_tag, "is_float")
             .unwrap();
-        let is_intlike = self
-            .builder
-            .build_or(is_int, is_bool, "is_intlike")
-            .unwrap();
         let is_numeric = self
             .builder
-            .build_or(is_float, is_intlike, "is_numeric")
+            .build_or(is_float, is_int, "is_numeric")
             .unwrap();
 
         let numeric_case = self
@@ -9655,8 +9962,13 @@ impl<'ctx> CodeGen<'ctx> {
             .build_unconditional_branch(continue_block)
             .unwrap();
 
-        // Invalid element: bail out with nil
+        // Invalid element: match interpreter by throwing a catchable error.
         self.builder.position_at_end(invalid_block);
+        let msg = self.compile_string_literal("sumaw() expects a list of numbers");
+        let _ = self
+            .builder
+            .build_call(self.libc.hurl, &[msg.into()], "sumaw_invalid_hurl")
+            .unwrap();
         self.builder.build_store(invalid_ptr, true_i1).unwrap();
         self.builder.build_unconditional_branch(done_block).unwrap();
 
@@ -9829,28 +10141,87 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        // Interpreter parity: product([]) == 1, product(list of ints) returns int,
+        // product(list with any float) returns float, and non-numeric elements throw.
+        let function = self.current_function.expect("No current function");
+
+        let tag = self.extract_tag(val).unwrap();
+        let list_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::List.as_u8() as u64, false);
+        let is_list = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, list_tag, "product_is_list")
+            .unwrap();
+
+        let ok_block = self.context.append_basic_block(function, "product_ok");
+        let err_block = self.context.append_basic_block(function, "product_type_err");
+        let merge_block = self.context.append_basic_block(function, "product_merge");
+
+        self.builder
+            .build_conditional_branch(is_list, ok_block, err_block)
+            .unwrap();
+
+        // ===== Type error =====
+        self.builder.position_at_end(err_block);
+        let msg = self.compile_string_literal("product() needs a list");
+        let _ = self
+            .builder
+            .build_call(self.libc.hurl, &[msg.into()], "product_hurl_type")
+            .unwrap();
+        let err_val = self.make_nil();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let err_end = self.builder.get_insert_block().unwrap();
+
+        // ===== List case =====
+        self.builder.position_at_end(ok_block);
         let list_data = self.extract_data(val).unwrap();
         let length = self.get_list_length(list_data).unwrap();
 
-        let function = self.current_function.expect("No current function");
         let loop_block = self.context.append_basic_block(function, "product_loop");
         let body_block = self.context.append_basic_block(function, "product_body");
         let done_block = self.context.append_basic_block(function, "product_done");
+
+        let float_block = self.context.append_basic_block(function, "product_elem_float");
+        let int_block = self.context.append_basic_block(function, "product_elem_int");
+        let invalid_block = self
+            .context
+            .append_basic_block(function, "product_elem_invalid");
+        let continue_block = self.context.append_basic_block(function, "product_continue");
 
         let i_ptr = self
             .builder
             .build_alloca(self.types.i64_type, "i")
             .unwrap();
-        let product_ptr = self
+        let prod_f_ptr = self
             .builder
-            .build_alloca(self.types.i64_type, "product")
+            .build_alloca(self.types.f64_type, "prod_f")
             .unwrap();
-        let zero = self.types.i64_type.const_int(0, false);
-        let one = self.types.i64_type.const_int(1, false);
-        self.builder.build_store(i_ptr, zero).unwrap();
-        self.builder.build_store(product_ptr, one).unwrap(); // Start with 1 for multiplication
+        let has_float_ptr = self
+            .builder
+            .build_alloca(self.context.bool_type(), "has_float")
+            .unwrap();
+        let invalid_ptr = self
+            .builder
+            .build_alloca(self.context.bool_type(), "invalid")
+            .unwrap();
+
+        let zero_i64 = self.types.i64_type.const_int(0, false);
+        let one_i64 = self.types.i64_type.const_int(1, false);
+        let one_f64 = self.types.f64_type.const_float(1.0);
+        let false_i1 = self.context.bool_type().const_int(0, false);
+        let true_i1 = self.context.bool_type().const_int(1, false);
+
+        self.builder.build_store(i_ptr, zero_i64).unwrap();
+        self.builder.build_store(prod_f_ptr, one_f64).unwrap();
+        self.builder.build_store(has_float_ptr, false_i1).unwrap();
+        self.builder.build_store(invalid_ptr, false_i1).unwrap();
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
+        // Loop header
         self.builder.position_at_end(loop_block);
         let i = self
             .builder
@@ -9859,46 +10230,286 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
         let cond = self
             .builder
-            .build_int_compare(inkwell::IntPredicate::SLT, i, length, "cond")
+            .build_int_compare(IntPredicate::ULT, i, length, "cond")
             .unwrap();
         self.builder
             .build_conditional_branch(cond, body_block, done_block)
             .unwrap();
 
+        // Body: load element, dispatch by type
         self.builder.position_at_end(body_block);
         let elem_ptr = self.get_list_element_ptr(list_data, i).unwrap();
         let elem = self
             .builder
             .build_load(self.types.value_type, elem_ptr, "elem")
             .unwrap();
+        let elem_tag = self.extract_tag(elem).unwrap();
         let elem_data = self.extract_data(elem).unwrap();
 
-        let product = self
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
+        let is_float = self
             .builder
-            .build_load(self.types.i64_type, product_ptr, "product")
-            .unwrap()
-            .into_int_value();
-        let new_product = self
-            .builder
-            .build_int_mul(product, elem_data, "new_product")
+            .build_int_compare(IntPredicate::EQ, elem_tag, float_tag, "product_elem_is_float")
             .unwrap();
-        self.builder.build_store(product_ptr, new_product).unwrap();
 
+        let check_int = self
+            .context
+            .append_basic_block(function, "product_check_int");
+        self.builder
+            .build_conditional_branch(is_float, float_block, check_int)
+            .unwrap();
+
+        self.builder.position_at_end(check_int);
+        let is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, elem_tag, int_tag, "product_elem_is_int")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_int, int_block, invalid_block)
+            .unwrap();
+
+        // Float element: multiply float accumulator; mark has_float.
+        self.builder.position_at_end(float_block);
+        self.builder.build_store(has_float_ptr, true_i1).unwrap();
+        let elem_f = self
+            .builder
+            .build_bitcast(elem_data, self.types.f64_type, "product_elem_f")
+            .unwrap()
+            .into_float_value();
+        let prod_f = self
+            .builder
+            .build_load(self.types.f64_type, prod_f_ptr, "prod_f")
+            .unwrap()
+            .into_float_value();
+        let new_prod_f = self
+            .builder
+            .build_float_mul(prod_f, elem_f, "new_prod_f")
+            .unwrap();
+        self.builder.build_store(prod_f_ptr, new_prod_f).unwrap();
+        self.builder
+            .build_unconditional_branch(continue_block)
+            .unwrap();
+
+        // Int element: multiply float accumulator by int-as-float.
+        self.builder.position_at_end(int_block);
+        let elem_as_float = self
+            .builder
+            .build_signed_int_to_float(elem_data, self.types.f64_type, "elem_as_float")
+            .unwrap();
+        let prod_f = self
+            .builder
+            .build_load(self.types.f64_type, prod_f_ptr, "prod_f_int")
+            .unwrap()
+            .into_float_value();
+        let new_prod_f = self
+            .builder
+            .build_float_mul(prod_f, elem_as_float, "new_prod_f_int")
+            .unwrap();
+        self.builder.build_store(prod_f_ptr, new_prod_f).unwrap();
+        self.builder
+            .build_unconditional_branch(continue_block)
+            .unwrap();
+
+        // Invalid element: match interpreter by throwing a catchable error.
+        self.builder.position_at_end(invalid_block);
+        let msg = self.compile_string_literal("product() needs a list o' numbers");
+        let _ = self
+            .builder
+            .build_call(self.libc.hurl, &[msg.into()], "product_invalid_hurl")
+            .unwrap();
+        self.builder.build_store(invalid_ptr, true_i1).unwrap();
+        self.builder.build_unconditional_branch(done_block).unwrap();
+
+        // Continue loop
+        self.builder.position_at_end(continue_block);
         let next_i = self
             .builder
-            .build_int_add(i, one, "next_i")
+            .build_int_add(i, one_i64, "next_i")
             .unwrap();
         self.builder.build_store(i_ptr, next_i).unwrap();
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
+        // Done: return nil if invalid, else float/int product
         self.builder.position_at_end(done_block);
-        let final_product = self
+        let invalid = self
             .builder
-            .build_load(self.types.i64_type, product_ptr, "final_product")
+            .build_load(self.context.bool_type(), invalid_ptr, "invalid")
             .unwrap()
             .into_int_value();
+        let invalid_ret = self.context.append_basic_block(function, "product_invalid_ret");
+        let check_float_ret = self
+            .context
+            .append_basic_block(function, "product_check_float_ret");
+        let float_ret = self.context.append_basic_block(function, "product_float_ret");
+        let int_ret = self.context.append_basic_block(function, "product_int_ret");
+        let merge_ret = self.context.append_basic_block(function, "product_merge_ret");
 
-        Ok(self.make_int(final_product))
+        self.builder
+            .build_conditional_branch(invalid, invalid_ret, check_float_ret)
+            .unwrap();
+
+        self.builder.position_at_end(invalid_ret);
+        let invalid_val = self.make_nil();
+        self.builder.build_unconditional_branch(merge_ret).unwrap();
+        let invalid_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(check_float_ret);
+        let has_float = self
+            .builder
+            .build_load(self.context.bool_type(), has_float_ptr, "has_float")
+            .unwrap()
+            .into_int_value();
+        self.builder
+            .build_conditional_branch(has_float, float_ret, int_ret)
+            .unwrap();
+
+        self.builder.position_at_end(float_ret);
+        let final_prod_f = self
+            .builder
+            .build_load(self.types.f64_type, prod_f_ptr, "final_prod_f")
+            .unwrap()
+            .into_float_value();
+        let float_val = self.make_float(final_prod_f);
+        self.builder.build_unconditional_branch(merge_ret).unwrap();
+        let float_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(int_ret);
+        let final_prod_f = self
+            .builder
+            .build_load(self.types.f64_type, prod_f_ptr, "final_prod_f_int")
+            .unwrap()
+            .into_float_value();
+
+        // Saturating float->int cast (matches Rust `as i64` semantics and avoids LLVM UB).
+        let is_nan = self
+            .builder
+            .build_float_compare(
+                inkwell::FloatPredicate::UNO,
+                final_prod_f,
+                final_prod_f,
+                "product_is_nan",
+            )
+            .unwrap();
+        let nan_block = self.context.append_basic_block(function, "product_int_nan");
+        let check_max_block = self.context.append_basic_block(function, "product_int_check_max");
+        let max_block = self.context.append_basic_block(function, "product_int_max");
+        let check_min_block = self.context.append_basic_block(function, "product_int_check_min");
+        let min_block = self.context.append_basic_block(function, "product_int_min");
+        let in_range_block = self.context.append_basic_block(function, "product_int_in_range");
+        let sat_merge_block = self.context.append_basic_block(function, "product_int_merge");
+
+        self.builder
+            .build_conditional_branch(is_nan, nan_block, check_max_block)
+            .unwrap();
+
+        self.builder.position_at_end(nan_block);
+        let nan_i64 = self.types.i64_type.const_int(0, false);
+        self.builder
+            .build_unconditional_branch(sat_merge_block)
+            .unwrap();
+        let nan_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(check_max_block);
+        let max_f = self.types.f64_type.const_float(i64::MAX as f64);
+        let too_big = self
+            .builder
+            .build_float_compare(
+                inkwell::FloatPredicate::OGT,
+                final_prod_f,
+                max_f,
+                "product_too_big",
+            )
+            .unwrap();
+        self.builder
+            .build_conditional_branch(too_big, max_block, check_min_block)
+            .unwrap();
+
+        self.builder.position_at_end(max_block);
+        let max_i64 = self.types.i64_type.const_int(i64::MAX as u64, false);
+        self.builder
+            .build_unconditional_branch(sat_merge_block)
+            .unwrap();
+        let max_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(check_min_block);
+        let min_f = self.types.f64_type.const_float(i64::MIN as f64);
+        let too_small = self
+            .builder
+            .build_float_compare(
+                inkwell::FloatPredicate::OLT,
+                final_prod_f,
+                min_f,
+                "product_too_small",
+            )
+            .unwrap();
+        self.builder
+            .build_conditional_branch(too_small, min_block, in_range_block)
+            .unwrap();
+
+        self.builder.position_at_end(min_block);
+        let min_i64 = self.types.i64_type.const_int(i64::MIN as u64, true);
+        self.builder
+            .build_unconditional_branch(sat_merge_block)
+            .unwrap();
+        let min_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(in_range_block);
+        let in_range_i64 = self
+            .builder
+            .build_float_to_signed_int(final_prod_f, self.types.i64_type, "product_float_to_int")
+            .unwrap();
+        self.builder
+            .build_unconditional_branch(sat_merge_block)
+            .unwrap();
+        let in_range_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(sat_merge_block);
+        let sat_phi = self
+            .builder
+            .build_phi(self.types.i64_type, "product_sat_i64")
+            .unwrap();
+        sat_phi.add_incoming(&[
+            (&nan_i64, nan_end),
+            (&max_i64, max_end),
+            (&min_i64, min_end),
+            (&in_range_i64, in_range_end),
+        ]);
+        let int_val = self.make_int(sat_phi.as_basic_value().into_int_value());
+        self.builder.build_unconditional_branch(merge_ret).unwrap();
+        let int_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(merge_ret);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "product_result")
+            .unwrap();
+        phi.add_incoming(&[
+            (&invalid_val, invalid_end),
+            (&float_val, float_end),
+            (&int_val, int_end),
+        ]);
+        let ok_val = phi.as_basic_value();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let ok_end = self.builder.get_insert_block().unwrap();
+
+        // ===== Merge type-checked results =====
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "product_checked_result")
+            .unwrap();
+        phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+
+        Ok(phi.as_basic_value())
     }
 
     // ========== Phase 3: String Operations ==========
@@ -11300,9 +11911,11 @@ impl<'ctx> CodeGen<'ctx> {
 	                    self.store_import_alias(alias_name, tri_val);
 	                    return Ok(());
 	                }
+	                let resolved_import_path = self.resolve_import_path(path)?;
 	                let before = self.capture_import_bindings();
 	                let exports_all = self.compile_import(path, alias.is_some())?;
 	                if let Some(alias_name) = alias {
+	                    self.import_alias_function_defaults.remove(alias_name);
 	                    let exports_public = exports_all.clone();
 	                    self.import_alias_exports
 	                        .insert(alias_name.clone(), exports_public.iter().cloned().collect());
@@ -11314,6 +11927,22 @@ impl<'ctx> CodeGen<'ctx> {
 	                    }
 	                    self.import_alias_functions
 	                        .insert(alias_name.clone(), exported_funcs);
+	                    if let Some(module_defaults) = self
+	                        .imported_module_function_defaults
+	                        .get(&resolved_import_path)
+	                    {
+	                        let mut defaults_for_alias: HashMap<String, Vec<Option<Expr>>> =
+	                            HashMap::new();
+	                        for export in &exports_public {
+	                            if let Some(defaults) = module_defaults.get(export) {
+	                                defaults_for_alias.insert(export.clone(), defaults.clone());
+	                            }
+	                        }
+	                        if !defaults_for_alias.is_empty() {
+	                            self.import_alias_function_defaults
+	                                .insert(alias_name.clone(), defaults_for_alias);
+	                        }
+	                    }
 	                    let module_val = self.build_module_dict(&exports_public);
 	                    self.store_import_alias(alias_name, module_val);
 	                    self.hide_imported_exports(&exports_all, &before);
@@ -12953,6 +13582,15 @@ impl<'ctx> CodeGen<'ctx> {
                             .get(name)
                             .and_then(|funcs| funcs.get(property))
                         {
+                            if let Some(defaults) = self
+                                .import_alias_function_defaults
+                                .get(name)
+                                .and_then(|m| m.get(property))
+                            {
+                                let key = format!("__import_alias_{}_{}", name, property);
+                                self.function_defaults.insert(key.clone(), defaults.clone());
+                                return self.compile_user_function_call(&key, func, args);
+                            }
                             return self.compile_user_function_call(property, func, args);
                         }
                     }
@@ -15063,7 +15701,51 @@ impl<'ctx> CodeGen<'ctx> {
                             "sumaw expects 1 argument".to_string(),
                         ));
                     }
-                    return self.compile_expr(&args[0]).and_then(|arg| self.inline_sumaw(arg));
+                    let list_arg = self.compile_expr(&args[0])?;
+                    let tag = self.extract_tag(list_arg).unwrap();
+                    let list_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::List.as_u8() as u64, false);
+                    let is_list = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, tag, list_tag, "sumaw_is_list")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "sumaw_ok");
+                    let err_block = self.context.append_basic_block(function, "sumaw_err");
+                    let merge_block = self.context.append_basic_block(function, "sumaw_merge");
+                    self.builder
+                        .build_conditional_branch(is_list, ok_block, err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(ok_block);
+                    let ok_val = self.inline_sumaw(list_arg)?;
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(err_block);
+                    let msg = self.compile_string_literal("sumaw() expects a list");
+                    let _ = self
+                        .builder
+                        .build_call(self.libc.hurl, &[msg.into()], "sumaw_hurl_list")
+                        .unwrap();
+                    let err_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "sumaw_result")
+                        .unwrap();
+                    phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 // Phase 3: String/Set operations
                 "contains" => {
@@ -15660,7 +16342,7 @@ impl<'ctx> CodeGen<'ctx> {
                         "chunks returned void",
                     );
                 }
-                "interleave" => {
+                "interleave" | "fankle" => {
                     return self.compile_runtime_call_value_with_arity_call_name(
                         self.libc.interleave,
                         args,
@@ -16224,10 +16906,32 @@ impl<'ctx> CodeGen<'ctx> {
                         "average returned void",
                     );
                 }
-                "chynge" | "replace" => {
+                "chynge" => {
                     if args.len() != 3 {
                         return Err(HaversError::CompileError(
-                            "chynge/replace expects 3 arguments (str, old, new)".to_string(),
+                            "chynge expects 3 arguments (list, index, value)".to_string(),
+                        ));
+                    }
+                    let list_val = self.compile_expr(&args[0])?;
+                    let index_val = self.compile_expr(&args[1])?;
+                    let value_val = self.compile_expr(&args[2])?;
+                    let result = self
+                        .builder
+                        .build_call(
+                            self.libc.chynge,
+                            &[list_val.into(), index_val.into(), value_val.into()],
+                            "chynge_result",
+                        )
+                        .unwrap()
+                        .try_as_basic_value()
+                        .left()
+                        .compile_ok_or("chynge returned void").unwrap();
+                    return Ok(result);
+                }
+                "replace" => {
+                    if args.len() != 3 {
+                        return Err(HaversError::CompileError(
+                            "replace expects 3 arguments (str, old, new)".to_string(),
                         ));
                     }
                     let str_val = self.compile_expr(&args[0])?;
@@ -16236,14 +16940,14 @@ impl<'ctx> CodeGen<'ctx> {
                     let result = self
                         .builder
                         .build_call(
-                            self.libc.chynge,
+                            self.libc.replace,
                             &[str_val.into(), old_val.into(), new_val.into()],
-                            "chynge_result",
+                            "replace_result",
                         )
                         .unwrap()
                         .try_as_basic_value()
                         .left()
-                        .compile_ok_or("chynge returned void").unwrap();
+                        .compile_ok_or("replace returned void").unwrap();
                     return Ok(result);
                 }
                 // Testing builtins
@@ -16529,14 +17233,65 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let a = self.compile_expr(&args[0])?;
                     let b = self.compile_expr(&args[1])?;
-                    let result = self
+
+                    let a_tag = self.extract_tag(a).unwrap();
+                    let b_tag = self.extract_tag(b).unwrap();
+
+                    let int_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::Int.as_u8() as u64, false);
+                    let a_is_int = self
                         .builder
-                        .build_call(self.libc.bit_and, &[a.into(), b.into()], "bit_and_result")
-                        .unwrap()
-                        .try_as_basic_value()
-                        .left()
-                        .compile_ok_or("bit_and returned void").unwrap();
-                    return Ok(result);
+                        .build_int_compare(IntPredicate::EQ, a_tag, int_tag, "bit_and_a_is_int")
+                        .unwrap();
+                    let b_is_int = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, b_tag, int_tag, "bit_and_b_is_int")
+                        .unwrap();
+                    let both_int = self
+                        .builder
+                        .build_and(a_is_int, b_is_int, "bit_and_both_int")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "bit_and_ok");
+                    let err_block = self.context.append_basic_block(function, "bit_and_err");
+                    let merge_block = self.context.append_basic_block(function, "bit_and_merge");
+
+                    self.builder
+                        .build_conditional_branch(both_int, ok_block, err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(ok_block);
+                    let a_data = self.extract_data(a).unwrap();
+                    let b_data = self.extract_data(b).unwrap();
+                    let anded = self.builder.build_and(a_data, b_data, "bit_and").unwrap();
+                    let ok_val = self.make_int(anded);
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(err_block);
+                    let msg = self.compile_string_literal("bit_an() needs two integers");
+                    let _ = self
+                        .builder
+                        .build_call(self.libc.hurl, &[msg.into()], "bit_an_hurl")
+                        .unwrap();
+                    let err_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "bit_and_value")
+                        .unwrap();
+                    phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 "bit_or" => {
                     if args.len() != 2 {
@@ -16546,14 +17301,65 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let a = self.compile_expr(&args[0])?;
                     let b = self.compile_expr(&args[1])?;
-                    let result = self
+
+                    let a_tag = self.extract_tag(a).unwrap();
+                    let b_tag = self.extract_tag(b).unwrap();
+
+                    let int_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::Int.as_u8() as u64, false);
+                    let a_is_int = self
                         .builder
-                        .build_call(self.libc.bit_or, &[a.into(), b.into()], "bit_or_result")
-                        .unwrap()
-                        .try_as_basic_value()
-                        .left()
-                        .compile_ok_or("bit_or returned void").unwrap();
-                    return Ok(result);
+                        .build_int_compare(IntPredicate::EQ, a_tag, int_tag, "bit_or_a_is_int")
+                        .unwrap();
+                    let b_is_int = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, b_tag, int_tag, "bit_or_b_is_int")
+                        .unwrap();
+                    let both_int = self
+                        .builder
+                        .build_and(a_is_int, b_is_int, "bit_or_both_int")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "bit_or_ok");
+                    let err_block = self.context.append_basic_block(function, "bit_or_err");
+                    let merge_block = self.context.append_basic_block(function, "bit_or_merge");
+
+                    self.builder
+                        .build_conditional_branch(both_int, ok_block, err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(ok_block);
+                    let a_data = self.extract_data(a).unwrap();
+                    let b_data = self.extract_data(b).unwrap();
+                    let ored = self.builder.build_or(a_data, b_data, "bit_or").unwrap();
+                    let ok_val = self.make_int(ored);
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(err_block);
+                    let msg = self.compile_string_literal("bit_or() needs two integers");
+                    let _ = self
+                        .builder
+                        .build_call(self.libc.hurl, &[msg.into()], "bit_or_hurl")
+                        .unwrap();
+                    let err_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "bit_or_value")
+                        .unwrap();
+                    phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 "bit_xor" => {
                     if args.len() != 2 {
@@ -16561,14 +17367,67 @@ impl<'ctx> CodeGen<'ctx> {
                             "bit_xor expects 2 arguments".to_string(),
                         ));
                     }
-                    return self.compile_runtime_call_value_with_arity_call_name(
-                        self.libc.bit_xor,
-                        args,
-                        2,
-                        "bit_xor",
-                        "bit_xor_result",
-                        "bit_xor returned void",
-                    );
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
+
+                    let a_tag = self.extract_tag(a).unwrap();
+                    let b_tag = self.extract_tag(b).unwrap();
+
+                    let int_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::Int.as_u8() as u64, false);
+                    let a_is_int = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, a_tag, int_tag, "bit_xor_a_is_int")
+                        .unwrap();
+                    let b_is_int = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, b_tag, int_tag, "bit_xor_b_is_int")
+                        .unwrap();
+                    let both_int = self
+                        .builder
+                        .build_and(a_is_int, b_is_int, "bit_xor_both_int")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "bit_xor_ok");
+                    let err_block = self.context.append_basic_block(function, "bit_xor_err");
+                    let merge_block = self.context.append_basic_block(function, "bit_xor_merge");
+
+                    self.builder
+                        .build_conditional_branch(both_int, ok_block, err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(ok_block);
+                    let a_data = self.extract_data(a).unwrap();
+                    let b_data = self.extract_data(b).unwrap();
+                    let xored = self.builder.build_xor(a_data, b_data, "bit_xor").unwrap();
+                    let ok_val = self.make_int(xored);
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(err_block);
+                    let msg = self.compile_string_literal("bit_xor() needs two integers");
+                    let _ = self
+                        .builder
+                        .build_call(self.libc.hurl, &[msg.into()], "bit_xor_hurl")
+                        .unwrap();
+                    let err_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "bit_xor_value")
+                        .unwrap();
+                    phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 // Misc Scots aliases
                 "scots_farewell" | "scots_exclaim" => {
@@ -16671,9 +17530,53 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let n = self.compile_expr(&args[0])?;
+                    let tag = self.extract_tag(n).unwrap();
+                    let int_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::Int.as_u8() as u64, false);
+                    let is_int = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, tag, int_tag, "bit_not_is_int")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "bit_not_ok");
+                    let err_block = self.context.append_basic_block(function, "bit_not_err");
+                    let merge_block = self.context.append_basic_block(function, "bit_not_merge");
+
+                    self.builder
+                        .build_conditional_branch(is_int, ok_block, err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(ok_block);
                     let data = self.extract_data(n).unwrap();
                     let not_val = self.builder.build_not(data, "bit_not").unwrap();
-                    return Ok(self.make_int(not_val));
+                    let ok_val = self.make_int(not_val);
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(err_block);
+                    let msg = self.compile_string_literal("bit_nae() needs an integer");
+                    let _ = self
+                        .builder
+                        .build_call(self.libc.hurl, &[msg.into()], "bit_nae_hurl")
+                        .unwrap();
+                    let err_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "bit_not_value")
+                        .unwrap();
+                    phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 // Global test variables - return reasonable defaults
                 "__current_suite" => {
@@ -16778,13 +17681,109 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let a = self.compile_expr(&args[0])?;
                     let b = self.compile_expr(&args[1])?;
+
+                    let a_tag = self.extract_tag(a).unwrap();
+                    let b_tag = self.extract_tag(b).unwrap();
+
+                    let int_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::Int.as_u8() as u64, false);
+                    let a_is_int = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, a_tag, int_tag, "bit_shl_a_is_int")
+                        .unwrap();
+                    let b_is_int = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, b_tag, int_tag, "bit_shl_b_is_int")
+                        .unwrap();
+                    let both_int = self
+                        .builder
+                        .build_and(a_is_int, b_is_int, "bit_shl_both_int")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let int_block = self.context.append_basic_block(function, "bit_shl_int");
+                    let type_err_block =
+                        self.context.append_basic_block(function, "bit_shl_type_err");
+                    let ok_block = self.context.append_basic_block(function, "bit_shl_ok");
+                    let range_err_block =
+                        self.context.append_basic_block(function, "bit_shl_range_err");
+                    let merge_block = self.context.append_basic_block(function, "bit_shl_merge");
+
+                    self.builder
+                        .build_conditional_branch(both_int, int_block, type_err_block)
+                        .unwrap();
+
+                    let err_val = self.make_nil();
+
+                    self.builder.position_at_end(type_err_block);
+                    let type_msg =
+                        self.compile_string_literal("bit_shove_left() needs two integers");
+                    let _ = self
+                        .builder
+                        .build_call(self.libc.hurl, &[type_msg.into()], "bit_shl_hurl_type")
+                        .unwrap();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let type_err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(int_block);
                     let data_a = self.extract_data(a).unwrap();
                     let data_b = self.extract_data(b).unwrap();
+                    let zero = self.types.i64_type.const_int(0, false);
+                    let sixty_three = self.types.i64_type.const_int(63, false);
+                    let b_lt0 = self
+                        .builder
+                        .build_int_compare(IntPredicate::SLT, data_b, zero, "bit_shl_b_lt0")
+                        .unwrap();
+                    let b_gt63 = self
+                        .builder
+                        .build_int_compare(IntPredicate::SGT, data_b, sixty_three, "bit_shl_b_gt63")
+                        .unwrap();
+                    let b_oob = self
+                        .builder
+                        .build_or(b_lt0, b_gt63, "bit_shl_b_oob")
+                        .unwrap();
+                    self.builder
+                        .build_conditional_branch(b_oob, range_err_block, ok_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(range_err_block);
+                    let range_msg =
+                        self.compile_string_literal("Shift amount must be 0-63, ya numpty!");
+                    let _ = self
+                        .builder
+                        .build_call(self.libc.hurl, &[range_msg.into()], "bit_shl_hurl_range")
+                        .unwrap();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let range_err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(ok_block);
                     let shifted = self
                         .builder
                         .build_left_shift(data_a, data_b, "bit_shl")
                         .unwrap();
-                    return Ok(self.make_int(shifted));
+                    let ok_val = self.make_int(shifted);
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "bit_shl_value")
+                        .unwrap();
+                    phi.add_incoming(&[
+                        (&ok_val, ok_end),
+                        (&err_val, type_err_end),
+                        (&err_val, range_err_end),
+                    ]);
+                    return Ok(phi.as_basic_value());
                 }
                 "help_ma_boab" => {
                     if args.len() != 1 {
@@ -18736,7 +19735,17 @@ impl<'ctx> CodeGen<'ctx> {
                     let arg = self.compile_expr(&args[0])?;
                     return self.inline_math_func(arg, "exp");
                 }
-                "pooer" | "pow" => {
+                "pow" => {
+                    if args.len() != 2 {
+                        return Err(HaversError::CompileError(
+                            "pow expects 2 arguments".to_string(),
+                        ));
+                    }
+                    let base_arg = self.compile_expr(&args[0])?;
+                    let exp_arg = self.compile_expr(&args[1])?;
+                    return self.inline_pow(base_arg, exp_arg);
+                }
+                "pooer" => {
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
                             "pooer expects 2 arguments".to_string(),
@@ -18744,7 +19753,7 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let base_arg = self.compile_expr(&args[0])?;
                     let exp_arg = self.compile_expr(&args[1])?;
-                    return self.inline_pow(base_arg, exp_arg);
+                    return self.inline_pooer(base_arg, exp_arg);
                 }
                 "snooze" => {
                     if args.len() != 1 {
@@ -19093,11 +20102,98 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let list_arg = self.compile_expr(&args[0])?;
                     let n_arg = self.compile_expr(&args[1])?;
-                    return self.inline_birl(list_arg, n_arg);
+
+                    let list_tag = self.extract_tag(list_arg).unwrap();
+                    let n_tag = self.extract_tag(n_arg).unwrap();
+                    let expected_list_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::List.as_u8() as u64, false);
+                    let expected_int_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::Int.as_u8() as u64, false);
+                    let is_list = self
+                        .builder
+                        .build_int_compare(
+                            IntPredicate::EQ,
+                            list_tag,
+                            expected_list_tag,
+                            "birl_is_list",
+                        )
+                        .unwrap();
+                    let is_int = self
+                        .builder
+                        .build_int_compare(
+                            IntPredicate::EQ,
+                            n_tag,
+                            expected_int_tag,
+                            "birl_is_int",
+                        )
+                        .unwrap();
+                    let types_ok = self.builder.build_and(is_list, is_int, "birl_types_ok").unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "birl_ok");
+                    let err_block = self.context.append_basic_block(function, "birl_err");
+                    let merge_block = self.context.append_basic_block(function, "birl_merge");
+                    self.builder
+                        .build_conditional_branch(types_ok, ok_block, err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(ok_block);
+                    let ok_val = self.inline_birl(list_arg, n_arg)?;
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(err_block);
+                    let list_err_block = self.context.append_basic_block(function, "birl_list_err");
+                    let count_err_block =
+                        self.context.append_basic_block(function, "birl_count_err");
+                    self.builder
+                        .build_conditional_branch(is_list, count_err_block, list_err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(list_err_block);
+                    let msg = self.compile_string_literal("birl needs a list");
+                    let _ = self
+                        .builder
+                        .build_call(self.libc.hurl, &[msg.into()], "birl_hurl_list")
+                        .unwrap();
+                    let list_err_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let list_err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(count_err_block);
+                    let msg = self.compile_string_literal("birl needs a rotation count");
+                    let _ = self
+                        .builder
+                        .build_call(self.libc.hurl, &[msg.into()], "birl_hurl_count")
+                        .unwrap();
+                    let count_err_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let count_err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "birl_result")
+                        .unwrap();
+                    phi.add_incoming(&[
+                        (&ok_val, ok_end),
+                        (&list_err_val, list_err_end),
+                        (&count_err_val, count_err_end),
+                    ]);
+                    return Ok(phi.as_basic_value());
                 }
                 "ceilidh" => {
                     // ceilidh(list1, list2) - interleave two lists
-                    // ceilidh(dict1, dict2) - merge dictionaries
                     if args.len() != 2 {
                         return Err(HaversError::CompileError(
                             "ceilidh expects 2 arguments".to_string(),
@@ -19108,52 +20204,54 @@ impl<'ctx> CodeGen<'ctx> {
 
                     let a_tag = self.extract_tag(a).unwrap();
                     let b_tag = self.extract_tag(b).unwrap();
-                    let dict_tag = self
+                    let list_tag = self
                         .types
                         .i8_type
-                        .const_int(ValueTag::Dict.as_u8() as u64, false);
-                    let a_is_dict = self
+                        .const_int(ValueTag::List.as_u8() as u64, false);
+                    let a_is_list = self
                         .builder
-                        .build_int_compare(IntPredicate::EQ, a_tag, dict_tag, "ceilidh_a_dict")
+                        .build_int_compare(IntPredicate::EQ, a_tag, list_tag, "ceilidh_a_list")
                         .unwrap();
-                    let b_is_dict = self
+                    let b_is_list = self
                         .builder
-                        .build_int_compare(IntPredicate::EQ, b_tag, dict_tag, "ceilidh_b_dict")
+                        .build_int_compare(IntPredicate::EQ, b_tag, list_tag, "ceilidh_b_list")
                         .unwrap();
-                    let both_dict = self
+                    let both_list = self
                         .builder
-                        .build_and(a_is_dict, b_is_dict, "ceilidh_both_dict")
+                        .build_and(a_is_list, b_is_list, "ceilidh_both_list")
                         .unwrap();
 
                     let function = self.current_function.unwrap();
-                    let dict_block = self.context.append_basic_block(function, "ceilidh_dict");
-                    let list_block = self.context.append_basic_block(function, "ceilidh_list");
+                    let ok_block = self.context.append_basic_block(function, "ceilidh_ok");
+                    let err_block = self.context.append_basic_block(function, "ceilidh_err");
                     let merge_block = self.context.append_basic_block(function, "ceilidh_merge");
 
                     self.builder
-                        .build_conditional_branch(both_dict, dict_block, list_block)
+                        .build_conditional_branch(both_list, ok_block, err_block)
                         .unwrap();
 
-                    self.builder.position_at_end(dict_block);
-                    let dict_res = self.inline_dict_merge(a, b)?;
+                    self.builder.position_at_end(ok_block);
+                    let ok_res = self.inline_ceilidh(a, b)?;
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
-                    let dict_end = self.builder.get_insert_block().unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
 
-                    self.builder.position_at_end(list_block);
-                    let list_res = self.inline_ceilidh(a, b)?;
+                    self.builder.position_at_end(err_block);
+                    let msg = self.compile_string_literal("ceilidh needs two lists");
+                    let _ = self
+                        .builder
+                        .build_call(self.libc.hurl, &[msg.into()], "ceilidh_hurl")
+                        .unwrap();
+                    let err_val = self.make_nil();
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
-                    let list_end = self.builder.get_insert_block().unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
 
                     self.builder.position_at_end(merge_block);
-                    let phi = self
-                        .builder
-                        .build_phi(self.types.value_type, "ceilidh_res")
-                        .unwrap();
-                    phi.add_incoming(&[(&dict_res, dict_end), (&list_res, list_end)]);
+                    let phi = self.builder.build_phi(self.types.value_type, "ceilidh_res").unwrap();
+                    phi.add_incoming(&[(&ok_res, ok_end), (&err_val, err_end)]);
                     return Ok(phi.as_basic_value());
                 }
                 "pad_left" | "pad_right" | "pad" => {
@@ -19421,7 +20519,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .compile_ok_or("range_o returned void").unwrap();
                     return Ok(result);
                 }
-                "sclaff" | "flatten" | "fankle" => {
+                "sclaff" | "flatten" => {
                     // sclaff(list) - flatten nested list (one level deep)
                     if args.len() != 1 {
                         return Err(HaversError::CompileError(
@@ -19429,6 +20527,39 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let outer_list = self.compile_expr(&args[0])?;
+                    let outer_tag = self.extract_tag(outer_list).unwrap();
+                    let list_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::List.as_u8() as u64, false);
+                    let is_list = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, outer_tag, list_tag, "flatten_is_list")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "flatten_ok");
+                    let err_block = self.context.append_basic_block(function, "flatten_type_error");
+                    self.builder
+                        .build_conditional_branch(is_list, ok_block, err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(err_block);
+                    let op = self
+                        .builder
+                        .build_global_string_ptr("flatten", "flatten_op")
+                        .unwrap();
+                    let zero_tag = self.types.i8_type.const_int(0, false);
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), outer_tag.into(), zero_tag.into()],
+                            "",
+                        )
+                        .unwrap();
+                    self.builder.build_unreachable().unwrap();
+
+                    self.builder.position_at_end(ok_block);
                     let outer_data = self.extract_data(outer_list).unwrap();
 
                     let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
@@ -19858,13 +20989,109 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let a = self.compile_expr(&args[0])?;
                     let b = self.compile_expr(&args[1])?;
+
+                    let a_tag = self.extract_tag(a).unwrap();
+                    let b_tag = self.extract_tag(b).unwrap();
+
+                    let int_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::Int.as_u8() as u64, false);
+                    let a_is_int = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, a_tag, int_tag, "bit_shr_a_is_int")
+                        .unwrap();
+                    let b_is_int = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, b_tag, int_tag, "bit_shr_b_is_int")
+                        .unwrap();
+                    let both_int = self
+                        .builder
+                        .build_and(a_is_int, b_is_int, "bit_shr_both_int")
+                        .unwrap();
+
+                    let function = self.current_function.unwrap();
+                    let int_block = self.context.append_basic_block(function, "bit_shr_int");
+                    let type_err_block =
+                        self.context.append_basic_block(function, "bit_shr_type_err");
+                    let ok_block = self.context.append_basic_block(function, "bit_shr_ok");
+                    let range_err_block =
+                        self.context.append_basic_block(function, "bit_shr_range_err");
+                    let merge_block = self.context.append_basic_block(function, "bit_shr_merge");
+
+                    self.builder
+                        .build_conditional_branch(both_int, int_block, type_err_block)
+                        .unwrap();
+
+                    let err_val = self.make_nil();
+
+                    self.builder.position_at_end(type_err_block);
+                    let type_msg =
+                        self.compile_string_literal("bit_shove_right() needs two integers");
+                    let _ = self
+                        .builder
+                        .build_call(self.libc.hurl, &[type_msg.into()], "bit_shr_hurl_type")
+                        .unwrap();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let type_err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(int_block);
                     let a_data = self.extract_data(a).unwrap();
                     let b_data = self.extract_data(b).unwrap();
+                    let zero = self.types.i64_type.const_int(0, false);
+                    let sixty_three = self.types.i64_type.const_int(63, false);
+                    let b_lt0 = self
+                        .builder
+                        .build_int_compare(IntPredicate::SLT, b_data, zero, "bit_shr_b_lt0")
+                        .unwrap();
+                    let b_gt63 = self
+                        .builder
+                        .build_int_compare(IntPredicate::SGT, b_data, sixty_three, "bit_shr_b_gt63")
+                        .unwrap();
+                    let b_oob = self
+                        .builder
+                        .build_or(b_lt0, b_gt63, "bit_shr_b_oob")
+                        .unwrap();
+                    self.builder
+                        .build_conditional_branch(b_oob, range_err_block, ok_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(range_err_block);
+                    let range_msg =
+                        self.compile_string_literal("Shift amount must be 0-63, ya numpty!");
+                    let _ = self
+                        .builder
+                        .build_call(self.libc.hurl, &[range_msg.into()], "bit_shr_hurl_range")
+                        .unwrap();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let range_err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(ok_block);
                     let result = self
                         .builder
-                        .build_right_shift(a_data, b_data, false, "bit_shr")
+                        .build_right_shift(a_data, b_data, true, "bit_shr")
                         .unwrap();
-                    return Ok(self.make_int(result));
+                    let ok_val = self.make_int(result);
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "bit_shr_value")
+                        .unwrap();
+                    phi.add_incoming(&[
+                        (&ok_val, ok_end),
+                        (&err_val, type_err_end),
+                        (&err_val, range_err_end),
+                    ]);
+                    return Ok(phi.as_basic_value());
                 }
                 "roar" | "shout" => {
                     // roar(str) - return uppercase string with extra exclamation
@@ -20018,9 +21245,41 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let arg = self.compile_expr(&args[0])?;
-                    let n = self.extract_data(arg).unwrap();
+
+                    let tag = self.extract_tag(arg).unwrap();
+                    let int_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::Int.as_u8() as u64, false);
+                    let is_int = self
+                        .builder
+                        .build_int_compare(IntPredicate::EQ, tag, int_tag, "popcount_is_int")
+                        .unwrap();
 
                     let function = self.current_function.unwrap();
+                    let ok_block = self.context.append_basic_block(function, "popcount_ok");
+                    let err_block = self.context.append_basic_block(function, "popcount_err");
+                    let merge_block = self.context.append_basic_block(function, "popcount_merge");
+
+                    self.builder
+                        .build_conditional_branch(is_int, ok_block, err_block)
+                        .unwrap();
+
+                    self.builder.position_at_end(err_block);
+                    let msg = self.compile_string_literal("bit_coont() needs an integer");
+                    let _ = self
+                        .builder
+                        .build_call(self.libc.hurl, &[msg.into()], "popcount_hurl_type")
+                        .unwrap();
+                    let err_val = self.make_nil();
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let err_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(ok_block);
+                    let n = self.extract_data(arg).unwrap();
+
                     let loop_block = self.context.append_basic_block(function, "popcount_loop");
                     let body_block = self.context.append_basic_block(function, "popcount_body");
                     let done_block = self.context.append_basic_block(function, "popcount_done");
@@ -20070,7 +21329,19 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_load(self.types.i64_type, count_ptr, "final_count")
                         .unwrap()
                         .into_int_value();
-                    return Ok(self.make_int(final_count));
+                    let ok_val = self.make_int(final_count);
+                    self.builder
+                        .build_unconditional_branch(merge_block)
+                        .unwrap();
+                    let ok_end = self.builder.get_insert_block().unwrap();
+
+                    self.builder.position_at_end(merge_block);
+                    let phi = self
+                        .builder
+                        .build_phi(self.types.value_type, "popcount_value")
+                        .unwrap();
+                    phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+                    return Ok(phi.as_basic_value());
                 }
                 "is_int" => {
                     if args.len() != 1 {
@@ -20479,9 +21750,10 @@ impl<'ctx> CodeGen<'ctx> {
                     // dict => count == 0
                     self.builder.position_at_end(dict_block);
                     let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+                    let payload_data = self.load_kv_payload_ptr(data, "is_toom_dict");
                     let dict_ptr = self
                         .builder
-                        .build_int_to_ptr(data, i64_ptr_type, "is_toom_dict_ptr")
+                        .build_int_to_ptr(payload_data, i64_ptr_type, "is_toom_dict_ptr")
                         .unwrap();
                     let count = self
                         .builder
@@ -22070,167 +23342,79 @@ impl<'ctx> CodeGen<'ctx> {
                             "zip expects 2 arguments".to_string(),
                         ));
                     }
-                    let list1 = self.compile_expr(&args[0])?;
-                    let list2 = self.compile_expr(&args[1])?;
-                    let data1 = self.extract_data(list1).unwrap();
-                    let data2 = self.extract_data(list2).unwrap();
+                    let a = self.compile_expr(&args[0])?;
+                    let b = self.compile_expr(&args[1])?;
 
-                    let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-                    let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-                    let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
-                    let ptr_ptr_type = i8_ptr_type.ptr_type(AddressSpace::default());
+                    let function = self.current_function.unwrap();
+                    let list_tag = self
+                        .types
+                        .i8_type
+                        .const_int(ValueTag::List.as_u8() as u64, false);
 
-                    // Get list1 struct
-                    let struct1 = self
+                    // Both args must be lists.
+                    let a_tag = self.extract_tag(a).unwrap();
+                    let b_tag = self.extract_tag(b).unwrap();
+                    let a_is_list = self
                         .builder
-                        .build_int_to_ptr(data1, i64_ptr_type, "struct1")
+                        .build_int_compare(IntPredicate::EQ, a_tag, list_tag, "zip_a_is_list")
                         .unwrap();
-                    let items1_i64 = self
+                    let b_is_list = self
                         .builder
-                        .build_load(self.types.i64_type, struct1, "items1_i64")
-                        .unwrap()
-                        .into_int_value();
-                    let len1_ptr = unsafe {
-                        self.builder
-                            .build_gep(
-                                self.types.i64_type,
-                                struct1,
-                                &[self.types.i64_type.const_int(1, false)],
-                                "len1_ptr",
-                            )
-                            .unwrap()
-                    };
-                    let len1 = self
+                        .build_int_compare(IntPredicate::EQ, b_tag, list_tag, "zip_b_is_list")
+                        .unwrap();
+                    let both_lists = self
                         .builder
-                        .build_load(self.types.i64_type, len1_ptr, "len1")
-                        .unwrap()
-                        .into_int_value();
-                    let items1 = self
-                        .builder
-                        .build_int_to_ptr(items1_i64, value_ptr_type, "items1")
+                        .build_and(a_is_list, b_is_list, "zip_both_lists")
                         .unwrap();
 
-                    // Get list2 struct
-                    let struct2 = self
-                        .builder
-                        .build_int_to_ptr(data2, i64_ptr_type, "struct2")
-                        .unwrap();
-                    let items2_i64 = self
-                        .builder
-                        .build_load(self.types.i64_type, struct2, "items2_i64")
-                        .unwrap()
-                        .into_int_value();
-                    let len2_ptr = unsafe {
-                        self.builder
-                            .build_gep(
-                                self.types.i64_type,
-                                struct2,
-                                &[self.types.i64_type.const_int(1, false)],
-                                "len2_ptr",
-                            )
-                            .unwrap()
-                    };
-                    let len2 = self
-                        .builder
-                        .build_load(self.types.i64_type, len2_ptr, "len2")
-                        .unwrap()
-                        .into_int_value();
-                    let items2 = self
-                        .builder
-                        .build_int_to_ptr(items2_i64, value_ptr_type, "items2")
+                    let ok_block = self.context.append_basic_block(function, "zip_ok");
+                    let err_block = self.context.append_basic_block(function, "zip_type_error");
+                    self.builder
+                        .build_conditional_branch(both_lists, ok_block, err_block)
                         .unwrap();
 
-                    // Find minimum length
+                    self.builder.position_at_end(err_block);
+                    let op = self
+                        .builder
+                        .build_global_string_ptr("zip_up", "zip_up_op")
+                        .unwrap();
+                    self.builder
+                        .build_call(
+                            self.libc.type_error,
+                            &[op.as_pointer_value().into(), a_tag.into(), b_tag.into()],
+                            "",
+                        )
+                        .unwrap();
+                    self.builder.build_unreachable().unwrap();
+
+                    self.builder.position_at_end(ok_block);
+
+                    let a_data = self.extract_data(a).unwrap();
+                    let b_data = self.extract_data(b).unwrap();
+                    let len1 = self.get_list_length(a_data)?;
+                    let len2 = self.get_list_length(b_data)?;
                     let cmp = self
                         .builder
-                        .build_int_compare(IntPredicate::ULT, len1, len2, "cmp")
+                        .build_int_compare(IntPredicate::ULT, len1, len2, "zip_len_cmp")
                         .unwrap();
                     let min_len = self
                         .builder
-                        .build_select(cmp, len1, len2, "min_len")
+                        .build_select(cmp, len1, len2, "zip_min_len")
                         .unwrap()
                         .into_int_value();
 
-                    // Allocate result list
-                    let list_struct_size = self.types.i64_type.const_int(24, false);
-                    let new_struct = self
-                        .builder
-                        .build_call(self.libc.malloc, &[list_struct_size.into()], "zip_struct")
-                        .unwrap()
-                        .try_as_basic_value()
-                        .left()
-                        .unwrap()
-                        .into_pointer_value();
-                    let items_size = self
-                        .builder
-                        .build_int_mul(
-                            min_len,
-                            self.types.i64_type.const_int(16, false),
-                            "items_size",
-                        )
-                        .unwrap();
-                    let new_items = self
-                        .builder
-                        .build_call(self.libc.malloc, &[items_size.into()], "zip_items")
-                        .unwrap()
-                        .try_as_basic_value()
-                        .left()
-                        .unwrap()
-                        .into_pointer_value();
-
-                    // Store items ptr at offset 0
-                    let items_field = self
-                        .builder
-                        .build_pointer_cast(new_struct, ptr_ptr_type, "items_field")
-                        .unwrap();
-                    self.builder.build_store(items_field, new_items).unwrap();
-                    // Length at offset 8
-                    let len_field = unsafe {
-                        self.builder
-                            .build_gep(
-                                self.context.i8_type(),
-                                new_struct,
-                                &[self.types.i64_type.const_int(8, false)],
-                                "len_field",
-                            )
-                            .unwrap()
-                    };
-                    let len_ptr = self
-                        .builder
-                        .build_pointer_cast(len_field, i64_ptr_type, "len_ptr")
-                        .unwrap();
-                    self.builder.build_store(len_ptr, min_len).unwrap();
-                    // Capacity at offset 16
-                    let cap_field = unsafe {
-                        self.builder
-                            .build_gep(
-                                self.context.i8_type(),
-                                new_struct,
-                                &[self.types.i64_type.const_int(16, false)],
-                                "cap_field",
-                            )
-                            .unwrap()
-                    };
-                    let cap_ptr = self
-                        .builder
-                        .build_pointer_cast(cap_field, i64_ptr_type, "cap_ptr")
-                        .unwrap();
-                    self.builder.build_store(cap_ptr, min_len).unwrap();
-
-                    let new_items_val = self
-                        .builder
-                        .build_pointer_cast(new_items, value_ptr_type, "new_items_val")
-                        .unwrap();
-                    let function = self.current_function.unwrap();
+                    let result_ptr = self.allocate_list(min_len)?;
+                    let result_val = self.make_list(result_ptr);
+                    let result_data = self.extract_data(result_val).unwrap();
 
                     // Loop to create pairs
                     let idx = self
                         .builder
-                        .build_alloca(self.types.i64_type, "idx")
+                        .build_alloca(self.types.i64_type, "zip_idx")
                         .unwrap();
-                    self.builder
-                        .build_store(idx, self.types.i64_type.const_int(0, false))
-                        .unwrap();
+                    let zero = self.types.i64_type.const_int(0, false);
+                    let one = self.types.i64_type.const_int(1, false);
+                    self.builder.build_store(idx, zero).unwrap();
 
                     let loop_cond = self.context.append_basic_block(function, "zip_loop");
                     let loop_body = self.context.append_basic_block(function, "zip_body");
@@ -22252,137 +23436,37 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
 
                     self.builder.position_at_end(loop_body);
-                    // Get elements from both lists
-                    let elem1_ptr = unsafe {
-                        self.builder
-                            .build_gep(self.types.value_type, items1, &[i], "elem1_ptr")
-                            .unwrap()
-                    };
+
+                    let elem1_ptr = self.get_list_element_ptr(a_data, i)?;
                     let elem1 = self
                         .builder
-                        .build_load(self.types.value_type, elem1_ptr, "elem1")
+                        .build_load(self.types.value_type, elem1_ptr, "zip_elem1")
                         .unwrap();
-                    let elem2_ptr = unsafe {
-                        self.builder
-                            .build_gep(self.types.value_type, items2, &[i], "elem2_ptr")
-                            .unwrap()
-                    };
+                    let elem2_ptr = self.get_list_element_ptr(b_data, i)?;
                     let elem2 = self
                         .builder
-                        .build_load(self.types.value_type, elem2_ptr, "elem2")
+                        .build_load(self.types.value_type, elem2_ptr, "zip_elem2")
                         .unwrap();
 
-                    // Create pair (2-element list)
-                    let pair_struct_size = self.types.i64_type.const_int(24, false);
-                    let pair_struct = self
-                        .builder
-                        .build_call(self.libc.malloc, &[pair_struct_size.into()], "pair_struct")
-                        .unwrap()
-                        .try_as_basic_value()
-                        .left()
-                        .unwrap()
-                        .into_pointer_value();
-                    let pair_items_size = self.types.i64_type.const_int(32, false); // 2 * 16 bytes
-                    let pair_items = self
-                        .builder
-                        .build_call(self.libc.malloc, &[pair_items_size.into()], "pair_items")
-                        .unwrap()
-                        .try_as_basic_value()
-                        .left()
-                        .unwrap()
-                        .into_pointer_value();
-
-                    // Store pair items ptr
-                    let pair_items_field = self
-                        .builder
-                        .build_pointer_cast(pair_struct, ptr_ptr_type, "pair_items_field")
-                        .unwrap();
-                    self.builder
-                        .build_store(pair_items_field, pair_items)
-                        .unwrap();
-                    // Pair length = 2
                     let two = self.types.i64_type.const_int(2, false);
-                    let pair_len_field = unsafe {
-                        self.builder
-                            .build_gep(
-                                self.context.i8_type(),
-                                pair_struct,
-                                &[self.types.i64_type.const_int(8, false)],
-                                "pair_len_field",
-                            )
-                            .unwrap()
-                    };
-                    let pair_len_ptr = self
-                        .builder
-                        .build_pointer_cast(pair_len_field, i64_ptr_type, "pair_len_ptr")
-                        .unwrap();
-                    self.builder.build_store(pair_len_ptr, two).unwrap();
-                    // Pair capacity = 2
-                    let pair_cap_field = unsafe {
-                        self.builder
-                            .build_gep(
-                                self.context.i8_type(),
-                                pair_struct,
-                                &[self.types.i64_type.const_int(16, false)],
-                                "pair_cap_field",
-                            )
-                            .unwrap()
-                    };
-                    let pair_cap_ptr = self
-                        .builder
-                        .build_pointer_cast(pair_cap_field, i64_ptr_type, "pair_cap_ptr")
-                        .unwrap();
-                    self.builder.build_store(pair_cap_ptr, two).unwrap();
+                    let pair_ptr = self.allocate_list(two)?;
+                    let pair_val = self.make_list(pair_ptr);
+                    let pair_data = self.extract_data(pair_val).unwrap();
 
-                    // Store elements in pair
-                    let pair_items_val = self
-                        .builder
-                        .build_pointer_cast(pair_items, value_ptr_type, "pair_items_val")
-                        .unwrap();
-                    let pair_elem0_ptr = unsafe {
-                        self.builder
-                            .build_gep(
-                                self.types.value_type,
-                                pair_items_val,
-                                &[self.types.i64_type.const_int(0, false)],
-                                "pair_elem0_ptr",
-                            )
-                            .unwrap()
-                    };
+                    let pair_elem0_ptr = self.get_list_element_ptr(pair_data, zero)?;
                     self.builder.build_store(pair_elem0_ptr, elem1).unwrap();
-                    let pair_elem1_ptr = unsafe {
-                        self.builder
-                            .build_gep(
-                                self.types.value_type,
-                                pair_items_val,
-                                &[self.types.i64_type.const_int(1, false)],
-                                "pair_elem1_ptr",
-                            )
-                            .unwrap()
-                    };
+                    let pair_elem1_ptr = self.get_list_element_ptr(pair_data, one)?;
                     self.builder.build_store(pair_elem1_ptr, elem2).unwrap();
 
-                    // Create MdhValue for pair list
-                    let pair_list = self.make_list(pair_struct);
+                    let dst_ptr = self.get_list_element_ptr(result_data, i)?;
+                    self.builder.build_store(dst_ptr, pair_val).unwrap();
 
-                    // Store pair in result list
-                    let dst_ptr = unsafe {
-                        self.builder
-                            .build_gep(self.types.value_type, new_items_val, &[i], "dst_ptr")
-                            .unwrap()
-                    };
-                    self.builder.build_store(dst_ptr, pair_list).unwrap();
-
-                    // Increment and continue loop
-                    let next_i = self
-                        .builder
-                        .build_int_add(i, self.types.i64_type.const_int(1, false), "next_i")
-                        .unwrap();
+                    let next_i = self.builder.build_int_add(i, one, "next_i").unwrap();
                     self.builder.build_store(idx, next_i).unwrap();
                     self.builder.build_unconditional_branch(loop_cond).unwrap();
 
                     self.builder.position_at_end(loop_end);
-                    return Ok(self.make_list(new_struct));
+                    return Ok(result_val);
                 }
                 "zipwith" => {
                     // zipwith(fn, a, b) - apply fn elementwise to two lists
@@ -23180,71 +24264,14 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(phi.as_basic_value());
                 }
                 "is_digit" | "is_numeric" => {
-                    // is_digit(str) - check if string is all digits
-                    if args.len() != 1 {
-                        return Err(HaversError::CompileError(
-                            "is_digit expects 1 argument".to_string(),
-                        ));
-                    }
-                    let arg = self.compile_expr(&args[0])?;
-                    let arg_tag = self.extract_tag(arg).unwrap();
-                    let string_tag = self
-                        .types
-                        .i8_type
-                        .const_int(ValueTag::String.as_u8() as u64, false);
-                    let is_string = self
-                        .builder
-                        .build_int_compare(
-                            IntPredicate::EQ,
-                            arg_tag,
-                            string_tag,
-                            "is_digit_is_string",
-                        )
-                        .unwrap();
-
-                    let function = self.current_function.unwrap();
-                    let ok_block = self.context.append_basic_block(function, "is_digit_ok");
-                    let err_block =
-                        self.context.append_basic_block(function, "is_digit_type_error");
-                    let merge_block = self.context.append_basic_block(function, "is_digit_merge");
-
-                    self.builder
-                        .build_conditional_branch(is_string, ok_block, err_block)
-                        .unwrap();
-
-                    self.builder.position_at_end(ok_block);
-                    let ok_val = self.inline_is_char_class(arg, CharClass::Digit)?;
-                    self.builder
-                        .build_unconditional_branch(merge_block)
-                        .unwrap();
-                    let ok_end = self.builder.get_insert_block().unwrap();
-
-                    self.builder.position_at_end(err_block);
-                    let op = self
-                        .builder
-                        .build_global_string_ptr("is_digit", "is_digit_op")
-                        .unwrap();
-                    let zero_tag = self.types.i8_type.const_int(0, false);
-                    self.builder
-                        .build_call(
-                            self.libc.type_error,
-                            &[op.as_pointer_value().into(), arg_tag.into(), zero_tag.into()],
-                            "",
-                        )
-                        .unwrap();
-                    let err_val = self.make_nil();
-                    self.builder
-                        .build_unconditional_branch(merge_block)
-                        .unwrap();
-                    let err_end = self.builder.get_insert_block().unwrap();
-
-                    self.builder.position_at_end(merge_block);
-                    let phi = self
-                        .builder
-                        .build_phi(self.types.value_type, "is_digit_result")
-                        .unwrap();
-                    phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
-                    return Ok(phi.as_basic_value());
+                    return self.compile_runtime_call_value_with_arity_call_name(
+                        self.libc.is_digit,
+                        args,
+                        1,
+                        "is_digit",
+                        "is_digit_result",
+                        "is_digit returned void",
+                    );
                 }
                 "is_alnum" | "is_alphanumeric" => {
                     // is_alnum(str) - check if string is alphanumeric
@@ -25540,7 +26567,8 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Compile a dict literal expression: {key1: value1, key2: value2, ...}
-    /// Dict memory layout: [i64 count][entry0][entry1]... where entry = [{i8,i64} key][{i8,i64} val]
+    /// Dict payload layout: [i64 count][entry0][entry1]... where entry = [{i8,i64} key][{i8,i64} val]
+    /// Dict values store a stable handle pointer to the payload pointer.
     fn compile_dict(
         &mut self,
         pairs: &[(Expr, Expr)],
@@ -25661,8 +26689,30 @@ impl<'ctx> CodeGen<'ctx> {
                 .unwrap();
         }
 
-        // Return the dict as a tagged value
-        Ok(self.make_dict(raw_ptr))
+        // Dict values store a stable handle pointer to the payload pointer.
+        // Allocate the handle and store the payload pointer into it.
+        let handle_size = self.types.i64_type.const_int(8, false);
+        let handle_ptr = self
+            .builder
+            .build_call(self.libc.malloc, &[handle_size.into()], "dict_handle_alloc")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .compile_ok_or("malloc returned void")
+            .unwrap()
+            .into_pointer_value();
+        let handle_i64_ptr = self
+            .builder
+            .build_pointer_cast(handle_ptr, i64_ptr_type, "dict_handle_i64_ptr")
+            .unwrap();
+        let payload_int = self
+            .builder
+            .build_ptr_to_int(raw_ptr, self.types.i64_type, "dict_payload_int")
+            .unwrap();
+        self.builder.build_store(handle_i64_ptr, payload_int).unwrap();
+
+        // Return the dict as a tagged value (data = handle pointer)
+        Ok(self.make_dict(handle_ptr))
     }
 
     /// Compile an index expression: list[index], string[index], or dict[key]
@@ -26101,12 +27151,14 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let function = self.current_function.unwrap();
 
-        // Convert dict data to pointer
+        // Dict values store a stable handle pointer to the payload pointer.
+        // Load payload pointer then proceed with payload layout decoding.
         let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let payload_data = self.load_kv_payload_ptr(dict_data, "dict_index");
         let dict_ptr = self
             .builder
-            .build_int_to_ptr(dict_data, i8_ptr_type, "dict_ptr")
+            .build_int_to_ptr(payload_data, i8_ptr_type, "dict_ptr")
             .unwrap();
 
         // Get dict count
@@ -26507,10 +27559,26 @@ impl<'ctx> CodeGen<'ctx> {
         // List branch: continue with original list handling
         self.builder.position_at_end(list_block);
 
+        // Ensure index is an int for list assignment
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
+        let idx_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, idx_tag, int_tag, "idx_is_int_set")
+            .unwrap();
+        let list_ok_block = self.context.append_basic_block(function, "set_list_ok");
+        self.builder
+            .build_conditional_branch(idx_is_int, list_ok_block, type_error_block)
+            .unwrap();
+
+        self.builder.position_at_end(list_ok_block);
+
         // Extract the object's data (pointer to MdhList struct)
         let obj_data = self.extract_data(obj_val).unwrap();
 
-        // Extract the index (assume it's an integer)
+        // Extract the index (we checked it's an integer)
         let idx_data = self.extract_data(idx_val).unwrap();
 
         // Convert list data to pointer to MdhList struct
@@ -26563,6 +27631,36 @@ impl<'ctx> CodeGen<'ctx> {
             .build_select(is_negative, adjusted_index, idx_data, "final_index")
             .unwrap()
             .into_int_value();
+
+        // Bounds check: final_index must be in [0, length).
+        let idx_ge0 = self
+            .builder
+            .build_int_compare(IntPredicate::SGE, final_index, zero, "idx_ge0_set")
+            .unwrap();
+        let idx_lt_len = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, final_index, length, "idx_lt_len_set")
+            .unwrap();
+        let in_bounds = self
+            .builder
+            .build_and(idx_ge0, idx_lt_len, "idx_in_bounds_set")
+            .unwrap();
+
+        let ok_block = self.context.append_basic_block(function, "list_set_ok");
+        let err_block = self.context.append_basic_block(function, "list_set_oob");
+        self.builder
+            .build_conditional_branch(in_bounds, ok_block, err_block)
+            .unwrap();
+
+        self.builder.position_at_end(err_block);
+        let msg = self.compile_string_literal("Hoachin'! Index is oot o' bounds");
+        let _ = self
+            .builder
+            .build_call(self.libc.hurl, &[msg.into()], "list_set_oob_hurl")
+            .unwrap();
+        self.builder.build_unreachable().unwrap();
+
+        self.builder.position_at_end(ok_block);
 
         // Convert items pointer to MdhValue pointer
         let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
@@ -26729,6 +27827,37 @@ impl<'ctx> CodeGen<'ctx> {
             .build_select(is_negative, adjusted_index, idx_i64, "idx_final")
             .unwrap()
             .into_int_value();
+
+        // Bounds check: final_index must be in [0, length).
+        let idx_ge0 = self
+            .builder
+            .build_int_compare(IntPredicate::SGE, final_index, zero_i64, "idx_ge0_set_fast")
+            .unwrap();
+        let idx_lt_len = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, final_index, length, "idx_lt_len_set_fast")
+            .unwrap();
+        let in_bounds = self
+            .builder
+            .build_and(idx_ge0, idx_lt_len, "idx_in_bounds_set_fast")
+            .unwrap();
+
+        let function = self.current_function.expect("No current function");
+        let ok_block = self.context.append_basic_block(function, "list_set_ok_fast");
+        let err_block = self.context.append_basic_block(function, "list_set_oob_fast");
+        self.builder
+            .build_conditional_branch(in_bounds, ok_block, err_block)
+            .unwrap();
+
+        self.builder.position_at_end(err_block);
+        let msg = self.compile_string_literal("Hoachin'! Index is oot o' bounds");
+        let _ = self
+            .builder
+            .build_call(self.libc.hurl, &[msg.into()], "list_set_oob_hurl_fast")
+            .unwrap();
+        self.builder.build_unreachable().unwrap();
+
+        self.builder.position_at_end(ok_block);
 
         // Load items pointer from offset 0
         let items_ptr_as_i64 = self
@@ -31720,7 +32849,9 @@ impl<'ctx> CodeGen<'ctx> {
         let mut exports = Vec::new();
         for stmt in &program.statements {
             match stmt {
-                Stmt::Function { name, .. } | Stmt::VarDecl { name, .. } => {
+                Stmt::Function { name, .. }
+                | Stmt::VarDecl { name, .. }
+                | Stmt::Struct { name, .. } => {
                     exports.push(name.clone());
                 }
                 _ => {}
@@ -31884,99 +33015,196 @@ impl<'ctx> CodeGen<'ctx> {
         // Resolve the import path relative to the source file
         let import_path = self.resolve_import_path(path)?;
 
-        // Check if already imported
-        if let Some(exports) = self.imported_modules.get(&import_path) {
-            return Ok(exports.clone());
+        // Circular import detection (match interpreter semantics).
+        if self.import_in_progress.contains(&import_path) {
+            let mut chain: Vec<String> = Vec::with_capacity(self.import_in_progress.len() + 1);
+            for p in &self.import_in_progress {
+                chain.push(p.display().to_string());
+            }
+            chain.push(import_path.display().to_string());
+            return Err(HaversError::CircularImport {
+                path: chain.join(" -> "),
+            });
         }
-        let import_prefix = if isolate {
-            Some(self.import_prefix(&import_path))
-        } else {
-            None
-        };
 
-        // Read and parse the imported file
-        let source = std::fs::read_to_string(&import_path).map_err(Self::llvm_compile_error)?;
+        // Check if already imported
+        if let Some(exports) = self.imported_modules.get(&import_path).cloned() {
+            self.rebind_cached_import_bindings(&import_path, &exports)?;
+            return Ok(exports);
+        }
 
-        let program = crate::parser::parse(&source)?;
-        let exports = Self::collect_module_exports(&program);
-        self.imported_modules
-            .insert(import_path.clone(), exports.clone());
+        self.import_in_progress.push(import_path.clone());
+        let result: Result<Vec<String>, HaversError> = 'import: {
+            let import_prefix = if isolate { Some(self.import_prefix(&import_path)) } else { None };
+            if let Some(prefix) = import_prefix.clone() {
+                self.import_prefixes.entry(import_path.clone()).or_insert(prefix);
+            }
+            let mut module_function_defaults: HashMap<String, Vec<Option<Expr>>> = HashMap::new();
 
-        // First pass: Handle nested imports, declare functions, pre-register classes
-        for stmt in &program.statements {
-            match stmt {
-                Stmt::Import { path: sub_path, .. } => {
-                    // Handle nested imports first
-                    let saved_path = self.source_path.clone();
-                    self.source_path = Some(import_path.clone());
-                    self.compile_import(sub_path, isolate)?;
-                    self.source_path = saved_path;
-                }
-                Stmt::Function { name, params, .. } => {
-                    // Declare the function (forward declaration)
-                    self.declare_import_function(name, params.len(), import_prefix.as_deref());
-                }
-                Stmt::Class {
-                    name,
-                    superclass,
-                    methods,
-                    ..
-                } => {
-                    // Pre-register class and its methods (allows cross-class method calls)
-                    self.preregister_class(name, superclass.as_deref(), methods);
-                }
-                Stmt::VarDecl {
-                    name, initializer, ..
-                } => {
-                    // Create global variable
-                    if !self.globals.contains_key(name) && !self.variables.contains_key(name) {
-                        // Create an LLVM global variable for imported module-level vars
-                        let global = self.module.add_global(
-                            self.types.value_type,
-                            None,
-                            &format!("imported_{}", name),
-                        );
-                        global.set_initializer(&self.types.value_type.const_zero());
-                        let global_ptr = global.as_pointer_value();
-                        self.globals.insert(name.clone(), global_ptr);
-                        // Also add to variables so current scope can find it
-                        self.variables.insert(name.clone(), global_ptr);
+            // Read and parse the imported file
+            let source =
+                match std::fs::read_to_string(&import_path).map_err(Self::llvm_compile_error) {
+                Ok(source) => source,
+                Err(err) => break 'import Err(err),
+            };
 
-                        // Compile the initializer and store value
-                        if let Some(init) = initializer {
-                            let value = self.compile_expr(init)?;
-                            self.builder.build_store(global_ptr, value).unwrap();
+            let program = match crate::parser::parse(&source) {
+                Ok(program) => program,
+                Err(err) => break 'import Err(err),
+            };
+            let exports = Self::collect_module_exports(&program);
+            self.imported_modules
+                .insert(import_path.clone(), exports.clone());
+
+            // First pass: Handle nested imports, declare functions, pre-register classes
+            for stmt in &program.statements {
+                match stmt {
+                    Stmt::Import { path: sub_path, .. } => {
+                        // Handle nested imports first
+                        let saved_path = self.source_path.clone();
+                        self.source_path = Some(import_path.clone());
+                        if let Err(err) = self.compile_import(sub_path, isolate) {
+                            self.source_path = saved_path;
+                            break 'import Err(err);
+                        }
+                        self.source_path = saved_path;
+                    }
+                    Stmt::Function { name, params, .. } => {
+                        // Declare the function (forward declaration)
+                        self.declare_import_function(name, params.len(), import_prefix.as_deref());
+                        let defaults: Vec<Option<Expr>> =
+                            params.iter().map(|p| p.default.clone()).collect();
+                        if defaults.iter().any(|d| d.is_some()) {
+                            self.function_defaults.insert(name.clone(), defaults.clone());
+                            module_function_defaults.insert(name.clone(), defaults);
+                        } else {
+                            self.function_defaults.remove(name);
                         }
                     }
+                    Stmt::Struct { name, fields, .. } => {
+                        // Declare the struct constructor (forward declaration)
+                        self.declare_import_function(name, fields.len(), import_prefix.as_deref());
+                    }
+                    Stmt::Class {
+                        name,
+                        superclass,
+                        methods,
+                        ..
+                    } => {
+                        // Pre-register class and its methods (allows cross-class method calls)
+                        self.preregister_class(name, superclass.as_deref(), methods);
+                    }
+                    Stmt::VarDecl {
+                        name, initializer, ..
+                    } => {
+                        // Create global variable
+                        if !self.globals.contains_key(name) && !self.variables.contains_key(name) {
+                            // Create an LLVM global variable for imported module-level vars
+                            let global = self.module.add_global(
+                                self.types.value_type,
+                                None,
+                                &format!("imported_{}", name),
+                            );
+                            global.set_initializer(&self.types.value_type.const_zero());
+                            let global_ptr = global.as_pointer_value();
+                            self.globals.insert(name.clone(), global_ptr);
+                            // Also add to variables so current scope can find it
+                            self.variables.insert(name.clone(), global_ptr);
+
+                            // Compile the initializer and store value
+                            if let Some(init) = initializer {
+                                let value = match self.compile_expr(init) {
+                                    Ok(value) => value,
+                                    Err(err) => break 'import Err(err),
+                                };
+                                self.builder.build_store(global_ptr, value).unwrap();
+                            }
+                        }
+                    }
+                    _ => {}
                 }
-                _ => {}
+            }
+
+            // Second pass: Compile function bodies and classes
+            for stmt in &program.statements {
+                match stmt {
+                    Stmt::Function {
+                        name, params, body, ..
+                    } => {
+                        // Compile the function body
+                        if let Err(err) = self.compile_function(name, params, body) {
+                            break 'import Err(err);
+                        }
+                    }
+                    Stmt::Struct { name, fields, .. } => {
+                        if let Err(err) = self.compile_struct_decl(name, fields) {
+                            break 'import Err(err);
+                        }
+                    }
+                    Stmt::Class {
+                        name,
+                        superclass,
+                        methods,
+                        ..
+                    } => {
+                        if let Err(err) = self.compile_class(name, superclass.as_deref(), methods) {
+                            break 'import Err(err);
+                        }
+                    }
+                    _ => {
+                        // Skip - already handled or not needed
+                    }
+                }
+            }
+
+            self.imported_module_function_defaults
+                .insert(import_path.clone(), module_function_defaults);
+
+            break 'import Ok(exports);
+        };
+
+        self.import_in_progress.retain(|p| p != &import_path);
+        result
+    }
+
+    fn rebind_cached_import_bindings(
+        &mut self,
+        import_path: &Path,
+        exports: &[String],
+    ) -> Result<(), HaversError> {
+        let prefix = self.import_prefixes.get(import_path).cloned();
+        let module_defaults = self.imported_module_function_defaults.get(import_path);
+
+        for name in exports {
+            // Re-bind functions by looking them up in the LLVM module.
+            let llvm_name = if let Some(ref prefix) = prefix {
+                format!("{prefix}{name}")
+            } else {
+                name.clone()
+            };
+            if let Some(func) = self.module.get_function(&llvm_name) {
+                self.functions.insert(name.clone(), func);
+                if let Some(module_defaults) = module_defaults {
+                    if let Some(defaults) = module_defaults.get(name) {
+                        self.function_defaults.insert(name.clone(), defaults.clone());
+                    } else {
+                        self.function_defaults.remove(name);
+                    }
+                }
+                continue;
+            }
+
+            // Re-bind imported module-level vars by looking up their backing globals.
+            // Note: globals are named `imported_<name>` during import compilation.
+            let global_name = format!("imported_{}", name);
+            if let Some(global) = self.module.get_global(&global_name) {
+                let ptr = global.as_pointer_value();
+                self.globals.insert(name.clone(), ptr);
+                self.variables.insert(name.clone(), ptr);
             }
         }
 
-        // Second pass: Compile function bodies and classes
-        for stmt in &program.statements {
-            match stmt {
-                Stmt::Function {
-                    name, params, body, ..
-                } => {
-                    // Compile the function body
-                    self.compile_function(name, params, body)?;
-                }
-                Stmt::Class {
-                    name,
-                    superclass,
-                    methods,
-                    ..
-                } => {
-                    self.compile_class(name, superclass.as_deref(), methods)?;
-                }
-                _ => {
-                    // Skip - already handled or not needed
-                }
-            }
-        }
-
-        Ok(exports)
+        Ok(())
     }
 
     /// Resolve import path relative to current source file
@@ -32230,57 +33458,19 @@ impl<'ctx> CodeGen<'ctx> {
             .build_conditional_branch(is_truthy, assert_pass, assert_fail)
             .unwrap();
 
-        // Assert failed - print message and abort
+        // Assert failed - hurl message (catchable via hae_a_bash)
         self.builder.position_at_end(assert_fail);
 
-        // Print error message
-        let default_msg = self
-            .builder
-            .build_global_string_ptr("Assertion failed!\n", "assert_msg")
-            .unwrap();
-
-        if let Some(msg_expr) = message {
+        let msg = if let Some(msg_expr) = message {
             let msg_val = self.compile_expr(msg_expr)?;
-            let msg_str = self.inline_tae_string(msg_val)?;
-            let msg_data = self.extract_data(msg_str).unwrap();
-            let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
-            let msg_ptr = self
-                .builder
-                .build_int_to_ptr(msg_data, i8_ptr, "msg_ptr")
-                .unwrap();
-
-            let prefix = self
-                .builder
-                .build_global_string_ptr("Assertion failed: ", "assert_prefix")
-                .unwrap();
-            let newline = self
-                .builder
-                .build_global_string_ptr("\n", "newline")
-                .unwrap();
-
-            self.builder
-                .build_call(self.libc.printf, &[prefix.as_pointer_value().into()], "")
-                .unwrap();
-            self.builder
-                .build_call(self.libc.printf, &[msg_ptr.into()], "")
-                .unwrap();
-            self.builder
-                .build_call(self.libc.printf, &[newline.as_pointer_value().into()], "")
-                .unwrap();
+            self.inline_tae_string(msg_val)?
         } else {
-            self.builder
-                .build_call(
-                    self.libc.printf,
-                    &[default_msg.as_pointer_value().into()],
-                    "",
-                )
-                .unwrap();
-        }
+            self.compile_string_literal("Assertion failed")
+        };
 
-        // Exit with error code
-        let exit_code = self.context.i32_type().const_int(1, false);
-        self.builder
-            .build_call(self.libc.exit, &[exit_code.into()], "")
+        let _ = self
+            .builder
+            .build_call(self.libc.hurl, &[msg.into()], "assert_hurl")
             .unwrap();
         self.builder.build_unreachable().unwrap();
 
@@ -35952,10 +37142,6 @@ impl<'ctx> CodeGen<'ctx> {
         let error_block = self.context.append_basic_block(function, "math_error");
         let merge_block = self.context.append_basic_block(function, "math_merge");
 
-        let bool_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::Bool.as_u8() as u64, false);
         let int_tag = self
             .types
             .i8_type
@@ -35965,10 +37151,6 @@ impl<'ctx> CodeGen<'ctx> {
             .i8_type
             .const_int(ValueTag::Float.as_u8() as u64, false);
 
-        let is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, tag, bool_tag, "is_bool")
-            .unwrap();
         let is_int = self
             .builder
             .build_int_compare(IntPredicate::EQ, tag, int_tag, "is_int")
@@ -35977,13 +37159,9 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::EQ, tag, float_tag, "is_float")
             .unwrap();
-        let is_intlike = self
-            .builder
-            .build_or(is_int, is_bool, "is_intlike")
-            .unwrap();
         let is_numeric = self
             .builder
-            .build_or(is_float, is_intlike, "is_numeric")
+            .build_or(is_float, is_int, "is_numeric")
             .unwrap();
 
         self.builder
@@ -36040,8 +37218,13 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let numeric_end = self.builder.get_insert_block().unwrap();
 
-        // Error path - return nil
+        // Error path - match interpreter by throwing a catchable error.
         self.builder.position_at_end(error_block);
+        let msg = self.compile_string_literal(&format!("{func_name}() needs a number"));
+        let _ = self
+            .builder
+            .build_call(self.libc.hurl, &[msg.into()], "math_hurl")
+            .unwrap();
         let error_result = self.make_nil();
         self.builder
             .build_unconditional_branch(merge_block)
@@ -36069,21 +37252,53 @@ impl<'ctx> CodeGen<'ctx> {
         let exp_tag = self.extract_tag(exp_val).unwrap();
         let exp_data = self.extract_data(exp_val).unwrap();
 
-        // Check if values are float (tag == ValueTag::Float)
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
         let float_tag = self
             .types
             .i8_type
             .const_int(ValueTag::Float.as_u8() as u64, false);
+        let base_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, base_tag, int_tag, "pow_base_is_int")
+            .unwrap();
         let base_is_float = self
             .builder
-            .build_int_compare(IntPredicate::EQ, base_tag, float_tag, "base_is_float")
+            .build_int_compare(IntPredicate::EQ, base_tag, float_tag, "pow_base_is_float")
+            .unwrap();
+        let exp_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, exp_tag, int_tag, "pow_exp_is_int")
             .unwrap();
         let exp_is_float = self
             .builder
-            .build_int_compare(IntPredicate::EQ, exp_tag, float_tag, "exp_is_float")
+            .build_int_compare(IntPredicate::EQ, exp_tag, float_tag, "pow_exp_is_float")
+            .unwrap();
+        let base_is_num = self
+            .builder
+            .build_or(base_is_int, base_is_float, "pow_base_is_num")
+            .unwrap();
+        let exp_is_num = self
+            .builder
+            .build_or(exp_is_int, exp_is_float, "pow_exp_is_num")
+            .unwrap();
+        let both_num = self
+            .builder
+            .build_and(base_is_num, exp_is_num, "pow_both_num")
             .unwrap();
 
-        // Convert to floats: if Float, bitcast; if Int, sitofp
+        let function = self.current_function.expect("No current function");
+        let ok_block = self.context.append_basic_block(function, "pow_ok");
+        let err_block = self.context.append_basic_block(function, "pow_err");
+        let merge_block = self.context.append_basic_block(function, "pow_merge");
+        self.builder
+            .build_conditional_branch(both_num, ok_block, err_block)
+            .unwrap();
+
+        // OK: convert to floats and call pow(base, exp).
+        self.builder.position_at_end(ok_block);
         let f64_type = self.context.f64_type();
         let base_float = self
             .builder
@@ -36140,7 +37355,32 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_float_value();
 
-        Ok(self.make_float(result))
+        let ok_val = self.make_float(result);
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let ok_end = self.builder.get_insert_block().unwrap();
+
+        // Error: match interpreter by throwing a catchable error.
+        self.builder.position_at_end(err_block);
+        let msg = self.compile_string_literal("pow() needs numbers");
+        let _ = self
+            .builder
+            .build_call(self.libc.hurl, &[msg.into()], "pow_hurl")
+            .unwrap();
+        let err_val = self.make_nil();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let err_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "pow_value")
+            .unwrap();
+        phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+        Ok(phi.as_basic_value())
     }
 
     /// atan2(y, x) - two-argument arctangent
@@ -36154,21 +37394,53 @@ impl<'ctx> CodeGen<'ctx> {
         let x_tag = self.extract_tag(x_val).unwrap();
         let x_data = self.extract_data(x_val).unwrap();
 
-        // Check if values are float (tag == ValueTag::Float)
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
         let float_tag = self
             .types
             .i8_type
             .const_int(ValueTag::Float.as_u8() as u64, false);
+        let y_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, y_tag, int_tag, "atan2_y_is_int")
+            .unwrap();
         let y_is_float = self
             .builder
-            .build_int_compare(IntPredicate::EQ, y_tag, float_tag, "y_is_float")
+            .build_int_compare(IntPredicate::EQ, y_tag, float_tag, "atan2_y_is_float")
+            .unwrap();
+        let x_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, x_tag, int_tag, "atan2_x_is_int")
             .unwrap();
         let x_is_float = self
             .builder
-            .build_int_compare(IntPredicate::EQ, x_tag, float_tag, "x_is_float")
+            .build_int_compare(IntPredicate::EQ, x_tag, float_tag, "atan2_x_is_float")
+            .unwrap();
+        let y_is_num = self
+            .builder
+            .build_or(y_is_int, y_is_float, "atan2_y_is_num")
+            .unwrap();
+        let x_is_num = self
+            .builder
+            .build_or(x_is_int, x_is_float, "atan2_x_is_num")
+            .unwrap();
+        let both_num = self
+            .builder
+            .build_and(y_is_num, x_is_num, "atan2_both_num")
+            .unwrap();
+
+        let function = self.current_function.expect("No current function");
+        let ok_block = self.context.append_basic_block(function, "atan2_ok");
+        let err_block = self.context.append_basic_block(function, "atan2_err");
+        let merge_block = self.context.append_basic_block(function, "atan2_merge");
+        self.builder
+            .build_conditional_branch(both_num, ok_block, err_block)
             .unwrap();
 
         // Convert to floats: if Float, bitcast; if Int, sitofp
+        self.builder.position_at_end(ok_block);
         let f64_type = self.context.f64_type();
         let y_float = self
             .builder
@@ -36225,7 +37497,333 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_float_value();
 
-        Ok(self.make_float(result))
+        let ok_val = self.make_float(result);
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let ok_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(err_block);
+        let msg = self.compile_string_literal("atan2() needs numbers");
+        let _ = self
+            .builder
+            .build_call(self.libc.hurl, &[msg.into()], "atan2_hurl")
+            .unwrap();
+        let err_val = self.make_nil();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let err_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "atan2_value")
+            .unwrap();
+        phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+        Ok(phi.as_basic_value())
+    }
+
+    /// pooer(base, exp) - interpreter-style power:
+    /// - (int, int): returns int if exp >= 0, else float
+    /// - otherwise: returns float
+    fn inline_pooer(
+        &mut self,
+        base_val: BasicValueEnum<'ctx>,
+        exp_val: BasicValueEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let base_tag = self.extract_tag(base_val).unwrap();
+        let exp_tag = self.extract_tag(exp_val).unwrap();
+        let base_data = self.extract_data(base_val).unwrap();
+        let exp_data = self.extract_data(exp_val).unwrap();
+
+        let int_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Int.as_u8() as u64, false);
+        let float_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Float.as_u8() as u64, false);
+
+        let base_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, base_tag, int_tag, "pooer_base_is_int")
+            .unwrap();
+        let base_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, base_tag, float_tag, "pooer_base_is_float")
+            .unwrap();
+        let exp_is_int = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, exp_tag, int_tag, "pooer_exp_is_int")
+            .unwrap();
+        let exp_is_float = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, exp_tag, float_tag, "pooer_exp_is_float")
+            .unwrap();
+
+        let base_is_num = self
+            .builder
+            .build_or(base_is_int, base_is_float, "pooer_base_is_num")
+            .unwrap();
+        let exp_is_num = self
+            .builder
+            .build_or(exp_is_int, exp_is_float, "pooer_exp_is_num")
+            .unwrap();
+        let both_num = self
+            .builder
+            .build_and(base_is_num, exp_is_num, "pooer_both_num")
+            .unwrap();
+
+        let function = self.current_function.expect("No current function");
+        let ok_block = self.context.append_basic_block(function, "pooer_ok");
+        let err_block = self.context.append_basic_block(function, "pooer_err");
+        let merge_block = self.context.append_basic_block(function, "pooer_merge");
+
+        self.builder
+            .build_conditional_branch(both_num, ok_block, err_block)
+            .unwrap();
+
+        // OK path
+        self.builder.position_at_end(ok_block);
+        let is_int_int = self
+            .builder
+            .build_and(base_is_int, exp_is_int, "pooer_is_int_int")
+            .unwrap();
+        let int_int_block = self.context.append_basic_block(function, "pooer_int_int");
+        let float_pow_block = self.context.append_basic_block(function, "pooer_float_pow");
+        let ok_merge = self.context.append_basic_block(function, "pooer_ok_merge");
+        self.builder
+            .build_conditional_branch(is_int_int, int_int_block, float_pow_block)
+            .unwrap();
+
+        // Float pow (any non-(int,int) numeric combo): call pow(base, exp) -> float
+        self.builder.position_at_end(float_pow_block);
+        let f64_type = self.context.f64_type();
+        let base_f = self
+            .builder
+            .build_select(
+                base_is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(base_data, f64_type, "pooer_base_as_float")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(base_data, f64_type, "pooer_base_int_to_float")
+                        .unwrap(),
+                ),
+                "pooer_base_f",
+            )
+            .unwrap()
+            .into_float_value();
+        let exp_f = self
+            .builder
+            .build_select(
+                exp_is_float,
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_bitcast(exp_data, f64_type, "pooer_exp_as_float")
+                        .unwrap()
+                        .into_float_value(),
+                ),
+                BasicValueEnum::FloatValue(
+                    self.builder
+                        .build_signed_int_to_float(exp_data, f64_type, "pooer_exp_int_to_float")
+                        .unwrap(),
+                ),
+                "pooer_exp_f",
+            )
+            .unwrap()
+            .into_float_value();
+
+        let pow_fn = self.module.get_function("pow").unwrap_or_else(|| {
+            let fn_type = f64_type.fn_type(&[f64_type.into(), f64_type.into()], false);
+            self.module
+                .add_function("pow", fn_type, Some(inkwell::module::Linkage::External))
+        });
+        let float_pow = self
+            .builder
+            .build_call(pow_fn, &[base_f.into(), exp_f.into()], "pooer_pow")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_float_value();
+        let float_pow_val = self.make_float(float_pow);
+        self.builder
+            .build_unconditional_branch(ok_merge)
+            .unwrap();
+        let float_pow_end = self.builder.get_insert_block().unwrap();
+
+        // (int, int) special-case: int result for exp >= 0, else float
+        self.builder.position_at_end(int_int_block);
+        let zero = self.types.i64_type.const_int(0, false);
+        let is_neg = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, exp_data, zero, "pooer_exp_neg")
+            .unwrap();
+        let neg_block = self.context.append_basic_block(function, "pooer_int_int_neg");
+        let nonneg_block = self.context.append_basic_block(function, "pooer_int_int_nonneg");
+        let intint_merge = self.context.append_basic_block(function, "pooer_int_int_merge");
+        self.builder
+            .build_conditional_branch(is_neg, neg_block, nonneg_block)
+            .unwrap();
+
+        // Negative exponent: float pow
+        self.builder.position_at_end(neg_block);
+        let base_f = self
+            .builder
+            .build_signed_int_to_float(base_data, f64_type, "pooer_int_base_f")
+            .unwrap();
+        let exp_f = self
+            .builder
+            .build_signed_int_to_float(exp_data, f64_type, "pooer_int_exp_f")
+            .unwrap();
+        let neg_pow = self
+            .builder
+            .build_call(pow_fn, &[base_f.into(), exp_f.into()], "pooer_neg_pow")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_float_value();
+        let neg_val = self.make_float(neg_pow);
+        self.builder
+            .build_unconditional_branch(intint_merge)
+            .unwrap();
+        let neg_end = self.builder.get_insert_block().unwrap();
+
+        // Non-negative exponent: integer pow (exponentiation by squaring), using u32 cast to match interpreter.
+        self.builder.position_at_end(nonneg_block);
+        let exp_u32 = self
+            .builder
+            .build_int_truncate(exp_data, self.types.i32_type, "pooer_exp_u32")
+            .unwrap();
+        let exp = self
+            .builder
+            .build_int_z_extend(exp_u32, self.types.i64_type, "pooer_exp_u64")
+            .unwrap();
+        let base = base_data;
+        let result = self.types.i64_type.const_int(1, false);
+
+        // Loop: while exp != 0 { if (exp&1)==1 {result*=base}; base*=base; exp>>=1 }
+        let loop_cond = self.context.append_basic_block(function, "pooer_loop_cond");
+        let loop_body = self.context.append_basic_block(function, "pooer_loop_body");
+        let loop_done = self.context.append_basic_block(function, "pooer_loop_done");
+        self.builder.build_unconditional_branch(loop_cond).unwrap();
+
+        self.builder.position_at_end(loop_cond);
+        let exp_phi = self
+            .builder
+            .build_phi(self.types.i64_type, "pooer_exp_phi")
+            .unwrap();
+        let base_phi = self
+            .builder
+            .build_phi(self.types.i64_type, "pooer_base_phi")
+            .unwrap();
+        let res_phi = self
+            .builder
+            .build_phi(self.types.i64_type, "pooer_res_phi")
+            .unwrap();
+        exp_phi.add_incoming(&[(&exp, nonneg_block)]);
+        base_phi.add_incoming(&[(&base, nonneg_block)]);
+        res_phi.add_incoming(&[(&result, nonneg_block)]);
+
+        let exp_cur = exp_phi.as_basic_value().into_int_value();
+        let base_cur = base_phi.as_basic_value().into_int_value();
+        let res_cur = res_phi.as_basic_value().into_int_value();
+        let exp_is_zero = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, exp_cur, zero, "pooer_exp_is_zero")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(exp_is_zero, loop_done, loop_body)
+            .unwrap();
+
+        self.builder.position_at_end(loop_body);
+        let one = self.types.i64_type.const_int(1, false);
+        let lsb = self.builder.build_and(exp_cur, one, "pooer_lsb").unwrap();
+        let lsb_is_one = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, lsb, one, "pooer_lsb_one")
+            .unwrap();
+        let res_mul = self.builder.build_int_mul(res_cur, base_cur, "pooer_res_mul").unwrap();
+        let res_next = self
+            .builder
+            .build_select(lsb_is_one, res_mul, res_cur, "pooer_res_next")
+            .unwrap()
+            .into_int_value();
+        let base_next = self
+            .builder
+            .build_int_mul(base_cur, base_cur, "pooer_base_next")
+            .unwrap();
+        let exp_next = self
+            .builder
+            .build_right_shift(exp_cur, one, false, "pooer_exp_next")
+            .unwrap();
+
+        exp_phi.add_incoming(&[(&exp_next, loop_body)]);
+        base_phi.add_incoming(&[(&base_next, loop_body)]);
+        res_phi.add_incoming(&[(&res_next, loop_body)]);
+        self.builder
+            .build_unconditional_branch(loop_cond)
+            .unwrap();
+
+        self.builder.position_at_end(loop_done);
+        let int_pow = self.make_int(res_phi.as_basic_value().into_int_value());
+        self.builder
+            .build_unconditional_branch(intint_merge)
+            .unwrap();
+        let int_pow_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(intint_merge);
+        let intint_phi = self
+            .builder
+            .build_phi(self.types.value_type, "pooer_int_int_value")
+            .unwrap();
+        intint_phi.add_incoming(&[(&neg_val, neg_end), (&int_pow, int_pow_end)]);
+        let intint_val = intint_phi.as_basic_value();
+        self.builder
+            .build_unconditional_branch(ok_merge)
+            .unwrap();
+        let intint_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(ok_merge);
+        let ok_phi = self
+            .builder
+            .build_phi(self.types.value_type, "pooer_ok_value")
+            .unwrap();
+        ok_phi.add_incoming(&[(&float_pow_val, float_pow_end), (&intint_val, intint_end)]);
+        let ok_val = ok_phi.as_basic_value();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let ok_end = self.builder.get_insert_block().unwrap();
+
+        // Error path
+        self.builder.position_at_end(err_block);
+        let msg = self.compile_string_literal("pooer() needs twa numbers");
+        let _ = self
+            .builder
+            .build_call(self.libc.hurl, &[msg.into()], "pooer_hurl")
+            .unwrap();
+        let err_val = self.make_nil();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let err_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "pooer_value")
+            .unwrap();
+        phi.add_incoming(&[(&ok_val, ok_end), (&err_val, err_end)]);
+        Ok(phi.as_basic_value())
     }
 
     /// snooze(ms) - sleep for given milliseconds
@@ -37520,8 +39118,19 @@ impl<'ctx> CodeGen<'ctx> {
             .build_conditional_branch(is_empty, empty_block, nonempty_block)
             .unwrap();
 
-        // Empty -> return original
+        // Empty -> return a new empty list (match interpreter: birl returns a new list, not an alias).
         self.builder.position_at_end(empty_block);
+        let empty_copy = self
+            .builder
+            .build_call(
+                self.libc.list_slice,
+                &[list_val.into(), zero.into(), zero.into()],
+                "birl_empty_copy",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap();
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -37554,8 +39163,19 @@ impl<'ctx> CodeGen<'ctx> {
             .build_conditional_branch(k_is_zero, keep_block, rotate_block)
             .unwrap();
 
-        // k == 0 -> return original
+        // k == 0 -> return a copy (match interpreter: birl returns a new list, not an alias).
         self.builder.position_at_end(keep_block);
+        let keep_copy = self
+            .builder
+            .build_call(
+                self.libc.list_slice,
+                &[list_val.into(), zero.into(), list_len.into()],
+                "birl_keep_copy",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap();
         self.builder
             .build_unconditional_branch(merge_block)
             .unwrap();
@@ -37597,8 +39217,8 @@ impl<'ctx> CodeGen<'ctx> {
             .build_phi(self.types.value_type, "birl_result")
             .unwrap();
         phi.add_incoming(&[
-            (&list_val, empty_end),
-            (&list_val, keep_end),
+            (&empty_copy, empty_end),
+            (&keep_copy, keep_end),
             (&rotated, rotate_end),
         ]);
         Ok(phi.as_basic_value())
@@ -37719,252 +39339,6 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(result_list)
     }
 
-    /// Merge two dictionaries into a new dict (d2 overrides d1 on duplicate keys).
-    /// Dict memory layout: [i64 count][entry0][entry1]... where entry = [MdhValue key][MdhValue val]
-    fn inline_dict_merge(
-        &mut self,
-        d1_val: BasicValueEnum<'ctx>,
-        d2_val: BasicValueEnum<'ctx>,
-    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        let d1_data = self.extract_data(d1_val).unwrap();
-        let d2_data = self.extract_data(d2_val).unwrap();
-
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
-
-        let d1_ptr = self
-            .builder
-            .build_int_to_ptr(d1_data, i64_ptr_type, "d1_ptr")
-            .unwrap();
-        let d2_ptr = self
-            .builder
-            .build_int_to_ptr(d2_data, i64_ptr_type, "d2_ptr")
-            .unwrap();
-
-        let count1 = self
-            .builder
-            .build_load(self.types.i64_type, d1_ptr, "d1_count")
-            .unwrap()
-            .into_int_value();
-        let count2 = self
-            .builder
-            .build_load(self.types.i64_type, d2_ptr, "d2_count")
-            .unwrap()
-            .into_int_value();
-
-        // entries start immediately after count (8 bytes)
-        let one_i64 = self.types.i64_type.const_int(1, false);
-        let d1_entries_i64 = unsafe {
-            self.builder
-                .build_gep(self.types.i64_type, d1_ptr, &[one_i64], "d1_entries_i64")
-                .unwrap()
-        };
-        let d2_entries_i64 = unsafe {
-            self.builder
-                .build_gep(self.types.i64_type, d2_ptr, &[one_i64], "d2_entries_i64")
-                .unwrap()
-        };
-        let d1_entries = self
-            .builder
-            .build_pointer_cast(d1_entries_i64, value_ptr_type, "d1_entries")
-            .unwrap();
-        let d2_entries = self
-            .builder
-            .build_pointer_cast(d2_entries_i64, value_ptr_type, "d2_entries")
-            .unwrap();
-
-        // merged accumulator lives in an alloca because dict_set may return a new pointer.
-        let merged_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "merged_alloca")
-            .unwrap();
-        let merged0 = self
-            .builder
-            .build_call(self.libc.empty_dict, &[], "merged0")
-            .unwrap()
-            .try_as_basic_value()
-            .left()
-            .compile_ok_or("empty_dict returned void").unwrap();
-        self.builder.build_store(merged_alloca, merged0).unwrap();
-
-        let function = self.current_function.unwrap();
-        let zero = self.types.i64_type.const_int(0, false);
-        let one = self.types.i64_type.const_int(1, false);
-        let two = self.types.i64_type.const_int(2, false);
-
-        // ===== Loop over d1 entries =====
-        let i1_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "i1")
-            .unwrap();
-        self.builder.build_store(i1_ptr, zero).unwrap();
-        let loop1 = self
-            .context
-            .append_basic_block(function, "dict_merge_loop1");
-        let body1 = self
-            .context
-            .append_basic_block(function, "dict_merge_body1");
-        let done1 = self
-            .context
-            .append_basic_block(function, "dict_merge_done1");
-        self.builder.build_unconditional_branch(loop1).unwrap();
-
-        self.builder.position_at_end(loop1);
-        let i1 = self
-            .builder
-            .build_load(self.types.i64_type, i1_ptr, "i1_val")
-            .unwrap()
-            .into_int_value();
-        let c1 = self
-            .builder
-            .build_int_compare(IntPredicate::ULT, i1, count1, "i1_lt")
-            .unwrap();
-        self.builder
-            .build_conditional_branch(c1, body1, done1)
-            .unwrap();
-
-        self.builder.position_at_end(body1);
-        let entry_idx = self.builder.build_int_mul(i1, two, "entry_idx").unwrap();
-        let key_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.value_type,
-                    d1_entries,
-                    &[entry_idx],
-                    "d1_key_ptr",
-                )
-                .unwrap()
-        };
-        let key = self
-            .builder
-            .build_load(self.types.value_type, key_ptr, "d1_key")
-            .unwrap();
-        let val_idx = self
-            .builder
-            .build_int_add(entry_idx, one, "val_idx")
-            .unwrap();
-        let val_ptr = unsafe {
-            self.builder
-                .build_gep(self.types.value_type, d1_entries, &[val_idx], "d1_val_ptr")
-                .unwrap()
-        };
-        let value = self
-            .builder
-            .build_load(self.types.value_type, val_ptr, "d1_val")
-            .unwrap();
-
-        let merged_cur = self
-            .builder
-            .build_load(self.types.value_type, merged_alloca, "merged_cur1")
-            .unwrap();
-        let merged_new = self
-            .builder
-            .build_call(
-                self.libc.dict_set,
-                &[merged_cur.into(), key.into(), value.into()],
-                "merged_set1",
-            )
-            .unwrap()
-            .try_as_basic_value()
-            .left()
-            .unwrap();
-        self.builder.build_store(merged_alloca, merged_new).unwrap();
-        let next_i1 = self.builder.build_int_add(i1, one, "next_i1").unwrap();
-        self.builder.build_store(i1_ptr, next_i1).unwrap();
-        self.builder.build_unconditional_branch(loop1).unwrap();
-
-        // ===== Loop over d2 entries =====
-        self.builder.position_at_end(done1);
-        let i2_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "i2")
-            .unwrap();
-        self.builder.build_store(i2_ptr, zero).unwrap();
-        let loop2 = self
-            .context
-            .append_basic_block(function, "dict_merge_loop2");
-        let body2 = self
-            .context
-            .append_basic_block(function, "dict_merge_body2");
-        let done2 = self
-            .context
-            .append_basic_block(function, "dict_merge_done2");
-        self.builder.build_unconditional_branch(loop2).unwrap();
-
-        self.builder.position_at_end(loop2);
-        let i2 = self
-            .builder
-            .build_load(self.types.i64_type, i2_ptr, "i2_val")
-            .unwrap()
-            .into_int_value();
-        let c2 = self
-            .builder
-            .build_int_compare(IntPredicate::ULT, i2, count2, "i2_lt")
-            .unwrap();
-        self.builder
-            .build_conditional_branch(c2, body2, done2)
-            .unwrap();
-
-        self.builder.position_at_end(body2);
-        let entry2_idx = self.builder.build_int_mul(i2, two, "entry2_idx").unwrap();
-        let key2_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.types.value_type,
-                    d2_entries,
-                    &[entry2_idx],
-                    "d2_key_ptr",
-                )
-                .unwrap()
-        };
-        let key2 = self
-            .builder
-            .build_load(self.types.value_type, key2_ptr, "d2_key")
-            .unwrap();
-        let val2_idx = self
-            .builder
-            .build_int_add(entry2_idx, one, "val2_idx")
-            .unwrap();
-        let val2_ptr = unsafe {
-            self.builder
-                .build_gep(self.types.value_type, d2_entries, &[val2_idx], "d2_val_ptr")
-                .unwrap()
-        };
-        let value2 = self
-            .builder
-            .build_load(self.types.value_type, val2_ptr, "d2_val")
-            .unwrap();
-
-        let merged_cur2 = self
-            .builder
-            .build_load(self.types.value_type, merged_alloca, "merged_cur2")
-            .unwrap();
-        let merged_new2 = self
-            .builder
-            .build_call(
-                self.libc.dict_set,
-                &[merged_cur2.into(), key2.into(), value2.into()],
-                "merged_set2",
-            )
-            .unwrap()
-            .try_as_basic_value()
-            .left()
-            .unwrap();
-        self.builder
-            .build_store(merged_alloca, merged_new2)
-            .unwrap();
-        let next_i2 = self.builder.build_int_add(i2, one, "next_i2").unwrap();
-        self.builder.build_store(i2_ptr, next_i2).unwrap();
-        self.builder.build_unconditional_branch(loop2).unwrap();
-
-        self.builder.position_at_end(done2);
-        let merged_final = self
-            .builder
-            .build_load(self.types.value_type, merged_alloca, "merged_final")
-            .unwrap();
-        Ok(merged_final)
-    }
-
     /// radians(degrees) - convert degrees to radians
     fn inline_radians(
         &mut self,
@@ -37978,10 +39352,6 @@ impl<'ctx> CodeGen<'ctx> {
         let error_block = self.context.append_basic_block(function, "radians_error");
         let merge_block = self.context.append_basic_block(function, "radians_merge");
 
-        let bool_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::Bool.as_u8() as u64, false);
         let int_tag = self
             .types
             .i8_type
@@ -37991,10 +39361,6 @@ impl<'ctx> CodeGen<'ctx> {
             .i8_type
             .const_int(ValueTag::Float.as_u8() as u64, false);
 
-        let is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, tag, bool_tag, "is_bool")
-            .unwrap();
         let is_int = self
             .builder
             .build_int_compare(IntPredicate::EQ, tag, int_tag, "is_int")
@@ -38003,13 +39369,9 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::EQ, tag, float_tag, "is_float")
             .unwrap();
-        let is_intlike = self
-            .builder
-            .build_or(is_int, is_bool, "is_intlike")
-            .unwrap();
         let is_numeric = self
             .builder
-            .build_or(is_float, is_intlike, "is_numeric")
+            .build_or(is_float, is_int, "is_numeric")
             .unwrap();
 
         self.builder
@@ -38051,8 +39413,13 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let numeric_end = self.builder.get_insert_block().unwrap();
 
-        // Error: return nil
+        // Error: match interpreter by throwing a catchable error.
         self.builder.position_at_end(error_block);
+        let msg = self.compile_string_literal("radians() needs a number");
+        let _ = self
+            .builder
+            .build_call(self.libc.hurl, &[msg.into()], "radians_hurl")
+            .unwrap();
         let error_result = self.make_nil();
         self.builder
             .build_unconditional_branch(merge_block)
@@ -38082,10 +39449,6 @@ impl<'ctx> CodeGen<'ctx> {
         let error_block = self.context.append_basic_block(function, "degrees_error");
         let merge_block = self.context.append_basic_block(function, "degrees_merge");
 
-        let bool_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::Bool.as_u8() as u64, false);
         let int_tag = self
             .types
             .i8_type
@@ -38095,10 +39458,6 @@ impl<'ctx> CodeGen<'ctx> {
             .i8_type
             .const_int(ValueTag::Float.as_u8() as u64, false);
 
-        let is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, tag, bool_tag, "is_bool")
-            .unwrap();
         let is_int = self
             .builder
             .build_int_compare(IntPredicate::EQ, tag, int_tag, "is_int")
@@ -38107,13 +39466,9 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::EQ, tag, float_tag, "is_float")
             .unwrap();
-        let is_intlike = self
-            .builder
-            .build_or(is_int, is_bool, "is_intlike")
-            .unwrap();
         let is_numeric = self
             .builder
-            .build_or(is_float, is_intlike, "is_numeric")
+            .build_or(is_float, is_int, "is_numeric")
             .unwrap();
 
         self.builder
@@ -38155,8 +39510,13 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let numeric_end = self.builder.get_insert_block().unwrap();
 
-        // Error: return nil
+        // Error: match interpreter by throwing a catchable error.
         self.builder.position_at_end(error_block);
+        let msg = self.compile_string_literal("degrees() needs a number");
+        let _ = self
+            .builder
+            .build_call(self.libc.hurl, &[msg.into()], "degrees_hurl")
+            .unwrap();
         let error_result = self.make_nil();
         self.builder
             .build_unconditional_branch(merge_block)
@@ -38548,6 +39908,31 @@ impl<'ctx> CodeGen<'ctx> {
         codegen
             .ensure_boxed_variable("coverage_boxed_global")
             .expect("box global");
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn rebind_cached_import_bindings_is_exercised_for_instantiation_coverage() {
+        let dir = tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("mymod.braw"),
+            r#"
+ken a = 10
+dae f() { gie 32 }
+"#,
+        )
+        .unwrap();
+
+        let main_path = dir.path().join("main.braw");
+        std::fs::write(&main_path, "fetch \"mymod\" tae m\nfetch \"mymod\" tae m2\n").unwrap();
+
+        let program = crate::parser::parse("fetch \"mymod\" tae m\nfetch \"mymod\" tae m2\n")
+            .expect("parse");
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_rebind_cached_import_bindings");
+        codegen.set_source_path(&main_path);
+        codegen.compile(&program).expect("compile");
     }
 
     #[test]
@@ -39878,5 +41263,13 @@ impl<'ctx> CodeGen<'ctx> {
             codegen
                 .coverage_llvm_compile_error_builder_error()
                 .expect("expected helper to exercise BuilderError -> CompileError mapping");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn inline_pooer_is_exercised_for_instantiation_coverage() {
+            let program = crate::parse("blether pooer(2, 3)\n").expect("parse");
+            let compiler = crate::LLVMCompiler::new();
+            let _ = compiler.compile_to_ir(&program).expect("compile_to_ir");
         }
     }

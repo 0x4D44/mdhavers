@@ -400,9 +400,10 @@ MdhValue __mdh_list_copy(MdhValue list);
 MdhValue __mdh_list_clear(MdhValue list);
 MdhValue __mdh_last_index_of(MdhValue str, MdhValue substr);
 MdhValue __mdh_replace_first(MdhValue str, MdhValue old_sub, MdhValue new_sub);
+MdhValue __mdh_replace(MdhValue str, MdhValue old_sub, MdhValue new_sub);
 MdhValue __mdh_unique(MdhValue list);
 MdhValue __mdh_average(MdhValue list);
-MdhValue __mdh_chynge(MdhValue str, MdhValue old_sub, MdhValue new_sub);
+MdhValue __mdh_chynge(MdhValue list, MdhValue index, MdhValue value);
 
 /* ========== Testing ========== */
 

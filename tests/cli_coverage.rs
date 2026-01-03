@@ -216,6 +216,37 @@ blether x + 1
     let runtime_error_braw = dir.path().join("runtime_error.braw");
     write_file(&runtime_error_braw, "blether 1 / 0\n");
 
+    let llvm_builtins_braw = dir.path().join("llvm_builtins.braw");
+    write_file(
+        &llvm_builtins_braw,
+        r#"
+blether abs(-42)
+blether floor(3.2)
+blether ceil(3.2)
+blether round(3.7)
+blether sqrt(16)
+
+blether radians(180)
+blether degrees(3.14159)
+
+blether sumaw([1, 2, 3])
+blether sumaw([1.0, 2.0, 3.5])
+
+blether sin(0)
+blether cos(0)
+blether tan(0)
+blether log(1)
+blether log10(100)
+blether exp(0)
+
+blether pow(2, 3)
+blether pooer(2, 3)
+blether atan2(0, 1)
+
+blether "done"
+"#,
+    );
+
     // run (explicit subcommand)
     let (code, out, err) = run_mdhavers(&["run", ok_braw.to_str().unwrap()], None, home);
     assert_eq!(code, 0, "stderr: {err}");
@@ -297,6 +328,30 @@ blether x + 1
     } else {
         assert_ne!(code, 0);
         assert!(!ll_out.exists());
+        assert!(err.contains("LLVM"), "stderr: {err}");
+    }
+
+    // build --emit-llvm output for more builtins (to exercise LLVM codegen instantiations in the CLI binary)
+    let ll_builtins_out = dir.path().join("builtins.ll");
+    let (code, _out, err) = run_mdhavers(
+        &[
+            "build",
+            llvm_builtins_braw.to_str().unwrap(),
+            "--emit-llvm",
+            "-O",
+            "0",
+            "--output",
+            ll_builtins_out.to_str().unwrap(),
+        ],
+        None,
+        home,
+    );
+    if cfg!(feature = "llvm") {
+        assert_eq!(code, 0, "stderr: {err}");
+        assert!(ll_builtins_out.exists());
+    } else {
+        assert_ne!(code, 0);
+        assert!(!ll_builtins_out.exists());
         assert!(err.contains("LLVM"), "stderr: {err}");
     }
 

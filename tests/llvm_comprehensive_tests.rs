@@ -13267,11 +13267,13 @@ mod coverage_batch38 {
     }
 
     #[test]
-    fn test_chynge_replace() {
-        assert_eq!(
-            run("blether chynge(\"hello world\", \"world\", \"universe\")").trim(),
-            "hello universe"
-        );
+    fn test_chynge_insert_basic() {
+        let code = r#"
+ken l = [1, 3]
+ken updated = chynge(l, 1, 2)
+blether updated[1]
+        "#;
+        assert_eq!(run(code).trim(), "2");
     }
 
     #[test]
@@ -17979,10 +17981,11 @@ blether biggest
     #[test]
     fn test_chynge() {
         let code = r#"
-ken s = "hello world"
-blether chynge(s, "world", "there")
+ken l = [1, 3]
+ken updated = chynge(l, 1, 2)
+blether updated[1]
         "#;
-        assert_eq!(run(code).trim(), "hello there");
+        assert_eq!(run(code).trim(), "2");
     }
 
     #[test]
@@ -21412,7 +21415,7 @@ mod coverage_batch169 {
 
     #[test]
     fn test_replace_str() {
-        let code = r#"blether chynge("hello world", "world", "there")"#;
+        let code = r#"blether replace("hello world", "world", "there")"#;
         assert_eq!(run(code).trim(), "hello there");
     }
 
@@ -23392,7 +23395,7 @@ blether reversed[0]
 
     #[test]
     fn test_string_replace() {
-        let code = r#"blether chynge("hello world", "world", "there")"#;
+        let code = r#"blether replace("hello world", "world", "there")"#;
         assert_eq!(run(code).trim(), "hello there");
     }
 
@@ -25214,7 +25217,7 @@ blether join(parts, "-")
 
     #[test]
     fn test_string_replace() {
-        let code = r#"blether chynge("foo bar foo", "foo", "baz")"#;
+        let code = r#"blether replace("foo bar foo", "foo", "baz")"#;
         assert_eq!(run(code).trim(), "baz bar baz");
     }
 }
@@ -26097,7 +26100,7 @@ blether lower("HELLO WORLD")
     #[test]
     fn test_string_replace() {
         let code = r#"
-blether chynge("hello world", "world", "there")
+blether replace("hello world", "world", "there")
         "#;
         assert_eq!(run(code).trim(), "hello there");
     }
@@ -26475,7 +26478,7 @@ blether lower(s)
     #[test]
     fn test_replace_multiple() {
         let code = r#"
-ken s = chynge("aaa", "a", "b")
+ken s = replace("aaa", "a", "b")
 blether s
         "#;
         assert_eq!(run(code).trim(), "bbb");
@@ -42903,11 +42906,13 @@ mod builtins_coverage_batch2 {
     use super::run;
 
     #[test]
-    fn test_chynge_replace() {
-        assert_eq!(
-            run(r#"blether chynge("hello world", "world", "there")"#).trim(),
-            "hello there"
-        );
+    fn test_chynge_insert_end() {
+        let code = r#"
+ken l = [1, 2]
+ken updated = chynge(l, len(l), 3)
+blether updated[2]
+        "#;
+        assert_eq!(run(code).trim(), "3");
     }
 
     #[test]
@@ -47635,11 +47640,11 @@ blether avg
     #[test]
     fn test_chynge() {
         let code = r#"
-ken s = "hello world"
-ken result = chynge(s, "world", "braw")
-blether result
+ken l = [1, 2, 3]
+ken updated = chynge(l, -1, 99)
+blether len(updated)
         "#;
-        assert_eq!(run(code).trim(), "hello braw");
+        assert_eq!(run(code).trim(), "4");
     }
 
     #[test]

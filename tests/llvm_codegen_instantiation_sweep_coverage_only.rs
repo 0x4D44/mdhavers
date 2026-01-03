@@ -24,6 +24,28 @@ blether jammy(1, 10)
 blether randfloat()
 blether snooze(0)
 
+blether abs(-42)
+blether floor(3.2)
+blether ceil(3.2)
+blether round(3.7)
+blether sqrt(16)
+
+blether radians(180)
+blether degrees(3.14159)
+
+blether sumaw([1, 2, 3])
+blether sumaw([1.0, 2.0, 3.5])
+
+blether sin(0)
+blether cos(0)
+blether tan(0)
+blether log(1)
+blether log10(100)
+blether exp(0)
+blether pow(2, 3)
+blether pooer(2, 3)
+blether atan2(0, 1)
+
 blether term_width()
 blether term_height()
 blether get_key()
@@ -62,4 +84,3 @@ blether d["f"](1)
     let program = parse(source).unwrap();
     let _ = LLVMCompiler::new().compile_to_ir(&program).unwrap();
 }
-

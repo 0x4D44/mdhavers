@@ -98,6 +98,8 @@ typedef struct {
 } MdhStrBuf;
 
 static const char *__mdh_type_name(MdhValue v);
+static int64_t *__mdh_kv_payload_ptr(MdhValue v);
+static void __mdh_kv_set_payload_ptr(MdhValue v, int64_t *payload);
 
 /* ========== Native Object Support ========== */
 
@@ -169,6 +171,13 @@ static MdhValue __mdh_string_from_buf(char *s) {
     v.tag = MDH_TAG_STRING;
     v.data = (int64_t)(intptr_t)s;
     return v;
+}
+
+static int64_t __mdh_double_to_i64_saturating(double v) {
+    if (isnan(v)) return 0;
+    if (v >= (double)INT64_MAX) return INT64_MAX;
+    if (v <= (double)INT64_MIN) return INT64_MIN;
+    return (int64_t)v;
 }
 
 /* ========== Value Creation ========== */
@@ -300,8 +309,8 @@ MdhValue __mdh_mul(MdhValue a, MdhValue b) {
 MdhValue __mdh_div(MdhValue a, MdhValue b) {
     if (a.tag == MDH_TAG_INT && b.tag == MDH_TAG_INT) {
         if (b.data == 0) {
-            fprintf(stderr, "Och! Division by zero!\n");
-            exit(1);
+            __mdh_hurl(__mdh_make_string("Ye numpty! Tryin' tae divide by zero"));
+            return __mdh_make_nil();
         }
         return __mdh_make_int(a.data / b.data);
     }
@@ -310,8 +319,8 @@ MdhValue __mdh_div(MdhValue a, MdhValue b) {
         double af = (a.tag == MDH_TAG_FLOAT) ? __mdh_get_float(a) : (double)a.data;
         double bf = (b.tag == MDH_TAG_FLOAT) ? __mdh_get_float(b) : (double)b.data;
         if (bf == 0.0) {
-            fprintf(stderr, "Och! Division by zero!\n");
-            exit(1);
+            __mdh_hurl(__mdh_make_string("Ye numpty! Tryin' tae divide by zero"));
+            return __mdh_make_nil();
         }
         return __mdh_make_float(af / bf);
     }
@@ -323,8 +332,8 @@ MdhValue __mdh_div(MdhValue a, MdhValue b) {
 MdhValue __mdh_mod(MdhValue a, MdhValue b) {
     if (a.tag == MDH_TAG_INT && b.tag == MDH_TAG_INT) {
         if (b.data == 0) {
-            fprintf(stderr, "Och! Modulo by zero!\n");
-            exit(1);
+            __mdh_hurl(__mdh_make_string("Ye numpty! Tryin' tae divide by zero"));
+            return __mdh_make_nil();
         }
         return __mdh_make_int(a.data % b.data);
     }
@@ -465,8 +474,8 @@ bool __mdh_truthy(MdhValue a) {
             return bytes && bytes->length > 0;
         }
         case MDH_TAG_SET: {
-            int64_t *set_ptr = (int64_t *)(intptr_t)a.data;
-            int64_t count = set_ptr ? *set_ptr : 0;
+            int64_t *set_ptr = __mdh_kv_payload_ptr(a);
+            int64_t count = set_ptr ? set_ptr[0] : 0;
             return count > 0;
         }
         case MDH_TAG_DICT:
@@ -552,9 +561,9 @@ static MdhValue __mdh_dict_clone(MdhValue dict) {
     if (dict.tag != MDH_TAG_DICT) {
         return __mdh_empty_dict();
     }
-    int64_t *ptr = (int64_t *)(intptr_t)dict.data;
-    int64_t count = *ptr;
-    MdhValue *entries = (MdhValue *)(ptr + 1);
+    int64_t *ptr = __mdh_kv_payload_ptr(dict);
+    int64_t count = ptr ? ptr[0] : 0;
+    MdhValue *entries = ptr ? (MdhValue *)(ptr + 1) : NULL;
     MdhValue out = __mdh_empty_dict();
     for (int64_t i = 0; i < count; i++) {
         MdhValue k = entries[i * 2];
@@ -1219,9 +1228,8 @@ MdhValue __mdh_list_get(MdhValue list, int64_t index) {
     if (index < 0) index += l->length;  /* Negative indexing */
 
     if (index < 0 || index >= l->length) {
-        fprintf(stderr, "Och! Index %lld oot o' bounds (list has %lld items)\n",
-                (long long)index, (long long)l->length);
-        exit(1);
+        __mdh_hurl(__mdh_make_string("Hoachin'! Index is oot o' bounds"));
+        return __mdh_make_nil();
     }
 
     return l->items[index];
@@ -1237,9 +1245,8 @@ void __mdh_list_set(MdhValue list, int64_t index, MdhValue value) {
     if (index < 0) index += l->length;
 
     if (index < 0 || index >= l->length) {
-        fprintf(stderr, "Och! Index %lld oot o' bounds (list has %lld items)\n",
-                (long long)index, (long long)l->length);
-        exit(1);
+        __mdh_hurl(__mdh_make_string("Hoachin'! Index is oot o' bounds"));
+        return;
     }
 
     l->items[index] = value;
@@ -1270,8 +1277,8 @@ MdhValue __mdh_list_pop(MdhValue list) {
 
     MdhList *l = __mdh_get_list(list);
     if (l->length == 0) {
-        fprintf(stderr, "Och! Cannae yank from an empty list!\n");
-        exit(1);
+        __mdh_hurl(__mdh_make_string("Cannae yank fae an empty list!"));
+        return __mdh_make_nil();
     }
 
     return l->items[--l->length];
@@ -1345,11 +1352,11 @@ int64_t __mdh_len(MdhValue a) {
             return bytes ? bytes->length : 0;
         }
         case MDH_TAG_DICT: {
-            int64_t *dict_ptr = (int64_t *)(intptr_t)a.data;
+            int64_t *dict_ptr = __mdh_kv_payload_ptr(a);
             return dict_ptr ? dict_ptr[0] : 0;
         }
         case MDH_TAG_SET: {
-            int64_t *set_ptr = (int64_t *)(intptr_t)a.data;
+            int64_t *set_ptr = __mdh_kv_payload_ptr(a);
             return set_ptr ? set_ptr[0] : 0;
         }
         default:
@@ -1435,8 +1442,8 @@ static void __mdh_value_to_string_sb(MdhStrBuf *out, MdhValue v) {
             return;
         }
         case MDH_TAG_SET: {
-            int64_t *set_ptr = (int64_t *)(intptr_t)v.data;
-            int64_t count = set_ptr ? *set_ptr : 0;
+            int64_t *set_ptr = __mdh_kv_payload_ptr(v);
+            int64_t count = set_ptr ? set_ptr[0] : 0;
             MdhValue *entries = set_ptr ? (MdhValue *)(set_ptr + 1) : NULL;
 
             __mdh_sb_append(out, "creel{");
@@ -1463,8 +1470,8 @@ static void __mdh_value_to_string_sb(MdhStrBuf *out, MdhValue v) {
             return;
         }
         case MDH_TAG_DICT: {
-            int64_t *dict_ptr = (int64_t *)(intptr_t)v.data;
-            int64_t count = dict_ptr ? *dict_ptr : 0;
+            int64_t *dict_ptr = __mdh_kv_payload_ptr(v);
+            int64_t count = dict_ptr ? dict_ptr[0] : 0;
             MdhValue *entries = dict_ptr ? (MdhValue *)(dict_ptr + 1) : NULL;
 
             __mdh_sb_append_char(out, '{');
@@ -1739,9 +1746,8 @@ MdhValue __mdh_bytes_get(MdhValue bytes_val, MdhValue index_val) {
     if (idx < 0) idx += len;
 
     if (idx < 0 || idx >= len) {
-        fprintf(stderr, "Och! Index %lld oot o' bounds (bytes has %lld items)\n",
-                (long long)idx, (long long)len);
-        exit(1);
+        __mdh_hurl(__mdh_make_string("bytes_get() index oot o' bounds"));
+        return __mdh_make_int(0);
     }
 
     uint8_t val = bytes->data[idx];
@@ -1776,9 +1782,8 @@ MdhValue __mdh_bytes_set(MdhValue bytes_val, MdhValue index_val, MdhValue value_
     if (idx < 0) idx += len;
 
     if (idx < 0 || idx >= len) {
-        fprintf(stderr, "Och! Index %lld oot o' bounds (bytes has %lld items)\n",
-                (long long)idx, (long long)len);
-        exit(1);
+        __mdh_hurl(__mdh_make_string("bytes_set() index oot o' bounds"));
+        return bytes_val;
     }
 
     bytes->data[idx] = (uint8_t)v;
@@ -3616,31 +3621,50 @@ MdhValue __mdh_chan_is_closed(MdhValue chan) {
 }
 
 /* ========== Dict/Creel Operations ========== */
-/* Dict memory layout: [i64 count][entry0][entry1]... where entry = [MdhValue key][MdhValue val] = 32 bytes */
+/* Dict/creel values store a stable handle pointer to their payload.
+   Payload memory layout: [i64 count][entry0][entry1]... where entry = [MdhValue key][MdhValue val] = 32 bytes */
 
 static const int64_t MDH_CREEL_SENTINEL = INT64_C(0x4d4448435245454c); /* "MDHCREEL" */
 
+static int64_t *__mdh_kv_payload_ptr(MdhValue v) {
+    intptr_t *handle = (intptr_t *)(intptr_t)v.data;
+    if (!handle) return NULL;
+    return (int64_t *)(intptr_t)handle[0];
+}
+
+static void __mdh_kv_set_payload_ptr(MdhValue v, int64_t *payload) {
+    intptr_t *handle = (intptr_t *)(intptr_t)v.data;
+    if (!handle) return;
+    handle[0] = (intptr_t)payload;
+}
+
 MdhValue __mdh_empty_dict(void) {
     /* Allocate 16 bytes so empty dicts/creels can be disambiguated safely. */
-    int64_t *dict_ptr = (int64_t *)GC_malloc(16);
-    dict_ptr[0] = 0; /* count = 0 */
-    dict_ptr[1] = 0; /* marker */
+    int64_t *payload = (int64_t *)GC_malloc(16);
+    payload[0] = 0; /* count = 0 */
+    payload[1] = 0; /* marker */
+
+    intptr_t *handle = (intptr_t *)GC_malloc(sizeof(intptr_t));
+    handle[0] = (intptr_t)payload;
 
     MdhValue v;
     v.tag = MDH_TAG_DICT;
-    v.data = (int64_t)(intptr_t)dict_ptr;
+    v.data = (int64_t)(intptr_t)handle;
     return v;
 }
 
 MdhValue __mdh_empty_creel(void) {
     /* Allocate 16 bytes so empty dicts/creels can be disambiguated safely. */
-    int64_t *dict_ptr = (int64_t *)GC_malloc(16);
-    dict_ptr[0] = 0; /* count = 0 */
-    dict_ptr[1] = MDH_CREEL_SENTINEL; /* marker */
+    int64_t *payload = (int64_t *)GC_malloc(16);
+    payload[0] = 0; /* count = 0 */
+    payload[1] = MDH_CREEL_SENTINEL; /* marker */
+
+    intptr_t *handle = (intptr_t *)GC_malloc(sizeof(intptr_t));
+    handle[0] = (intptr_t)payload;
 
     MdhValue v;
     v.tag = MDH_TAG_SET;
-    v.data = (int64_t)(intptr_t)dict_ptr;
+    v.data = (int64_t)(intptr_t)handle;
     return v;
 }
 
@@ -3676,9 +3700,9 @@ MdhValue __mdh_dict_contains(MdhValue dict, MdhValue key) {
         return __mdh_make_bool(false);
     }
 
-    int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;
-    int64_t count = *dict_ptr;
-    MdhValue *entries = (MdhValue *)(dict_ptr + 1);
+    int64_t *dict_ptr = __mdh_kv_payload_ptr(dict);
+    int64_t count = dict_ptr ? dict_ptr[0] : 0;
+    MdhValue *entries = dict_ptr ? (MdhValue *)(dict_ptr + 1) : NULL;
 
     for (int64_t i = 0; i < count; i++) {
         MdhValue entry_key = entries[i * 2];
@@ -3695,8 +3719,8 @@ MdhValue __mdh_set_contains(MdhValue set, MdhValue key) {
         return __mdh_make_bool(false);
     }
 
-    int64_t *set_ptr = (int64_t *)(intptr_t)set.data;
-    int64_t count = set_ptr ? *set_ptr : 0;
+    int64_t *set_ptr = __mdh_kv_payload_ptr(set);
+    int64_t count = set_ptr ? set_ptr[0] : 0;
     MdhValue *entries = set_ptr ? (MdhValue *)(set_ptr + 1) : NULL;
 
     for (int64_t i = 0; i < count; i++) {
@@ -3714,9 +3738,9 @@ MdhValue __mdh_dict_keys(MdhValue dict) {
         return __mdh_make_list(0);
     }
 
-    int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;
-    int64_t count = *dict_ptr;
-    MdhValue *entries = (MdhValue *)(dict_ptr + 1);
+    int64_t *dict_ptr = __mdh_kv_payload_ptr(dict);
+    int64_t count = dict_ptr ? dict_ptr[0] : 0;
+    MdhValue *entries = dict_ptr ? (MdhValue *)(dict_ptr + 1) : NULL;
 
     MdhValue result = __mdh_make_list((int32_t)count);
     for (int64_t i = 0; i < count; i++) {
@@ -3731,9 +3755,9 @@ MdhValue __mdh_dict_values(MdhValue dict) {
         return __mdh_make_list(0);
     }
 
-    int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;
-    int64_t count = *dict_ptr;
-    MdhValue *entries = (MdhValue *)(dict_ptr + 1);
+    int64_t *dict_ptr = __mdh_kv_payload_ptr(dict);
+    int64_t count = dict_ptr ? dict_ptr[0] : 0;
+    MdhValue *entries = dict_ptr ? (MdhValue *)(dict_ptr + 1) : NULL;
 
     MdhValue result = __mdh_make_list((int32_t)count);
     for (int64_t i = 0; i < count; i++) {
@@ -3748,9 +3772,9 @@ MdhValue __mdh_dict_set(MdhValue dict, MdhValue key, MdhValue value) {
         return __mdh_empty_dict();
     }
 
-    int64_t *old_ptr = (int64_t *)(intptr_t)dict.data;
-    int64_t count = *old_ptr;
-    MdhValue *entries = (MdhValue *)(old_ptr + 1);
+    int64_t *old_ptr = __mdh_kv_payload_ptr(dict);
+    int64_t count = old_ptr ? old_ptr[0] : 0;
+    MdhValue *entries = old_ptr ? (MdhValue *)(old_ptr + 1) : NULL;
 
     /* Check if key already exists */
     for (int64_t i = 0; i < count; i++) {
@@ -3779,10 +3803,8 @@ MdhValue __mdh_dict_set(MdhValue dict, MdhValue key, MdhValue value) {
     new_entries[count * 2] = key;
     new_entries[count * 2 + 1] = value;
 
-    MdhValue v;
-    v.tag = MDH_TAG_DICT;
-    v.data = (int64_t)(intptr_t)new_ptr;
-    return v;
+    __mdh_kv_set_payload_ptr(dict, new_ptr);
+    return dict;
 }
 
 MdhValue __mdh_dict_get(MdhValue dict, MdhValue key) {
@@ -3791,9 +3813,9 @@ MdhValue __mdh_dict_get(MdhValue dict, MdhValue key) {
         return __mdh_make_nil();
     }
 
-    int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;
-    int64_t count = *dict_ptr;
-    MdhValue *entries = (MdhValue *)(dict_ptr + 1);
+    int64_t *dict_ptr = __mdh_kv_payload_ptr(dict);
+    int64_t count = dict_ptr ? dict_ptr[0] : 0;
+    MdhValue *entries = dict_ptr ? (MdhValue *)(dict_ptr + 1) : NULL;
 
     for (int64_t i = 0; i < count; i++) {
         MdhValue entry_key = entries[i * 2];
@@ -3813,9 +3835,9 @@ MdhValue __mdh_dict_get_default(MdhValue dict, MdhValue key, MdhValue default_va
         return default_val;
     }
 
-    int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;
-    int64_t count = *dict_ptr;
-    MdhValue *entries = (MdhValue *)(dict_ptr + 1);
+    int64_t *dict_ptr = __mdh_kv_payload_ptr(dict);
+    int64_t count = dict_ptr ? dict_ptr[0] : 0;
+    MdhValue *entries = dict_ptr ? (MdhValue *)(dict_ptr + 1) : NULL;
 
     for (int64_t i = 0; i < count; i++) {
         MdhValue entry_key = entries[i * 2];
@@ -3838,16 +3860,16 @@ MdhValue __mdh_dict_merge(MdhValue a, MdhValue b) {
 
     MdhValue result = __mdh_empty_dict();
 
-    int64_t *a_ptr = (int64_t *)(intptr_t)a.data;
-    int64_t a_count = *a_ptr;
-    MdhValue *a_entries = (MdhValue *)(a_ptr + 1);
+    int64_t *a_ptr = __mdh_kv_payload_ptr(a);
+    int64_t a_count = a_ptr ? a_ptr[0] : 0;
+    MdhValue *a_entries = a_ptr ? (MdhValue *)(a_ptr + 1) : NULL;
     for (int64_t i = 0; i < a_count; i++) {
         result = __mdh_dict_set(result, a_entries[i * 2], a_entries[i * 2 + 1]);
     }
 
-    int64_t *b_ptr = (int64_t *)(intptr_t)b.data;
-    int64_t b_count = *b_ptr;
-    MdhValue *b_entries = (MdhValue *)(b_ptr + 1);
+    int64_t *b_ptr = __mdh_kv_payload_ptr(b);
+    int64_t b_count = b_ptr ? b_ptr[0] : 0;
+    MdhValue *b_entries = b_ptr ? (MdhValue *)(b_ptr + 1) : NULL;
     for (int64_t i = 0; i < b_count; i++) {
         result = __mdh_dict_set(result, b_entries[i * 2], b_entries[i * 2 + 1]);
     }
@@ -3862,9 +3884,9 @@ MdhValue __mdh_dict_remove(MdhValue dict, MdhValue key) {
     }
 
     MdhValue result = __mdh_empty_dict();
-    int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;
-    int64_t count = *dict_ptr;
-    MdhValue *entries = (MdhValue *)(dict_ptr + 1);
+    int64_t *dict_ptr = __mdh_kv_payload_ptr(dict);
+    int64_t count = dict_ptr ? dict_ptr[0] : 0;
+    MdhValue *entries = dict_ptr ? (MdhValue *)(dict_ptr + 1) : NULL;
     for (int64_t i = 0; i < count; i++) {
         MdhValue entry_key = entries[i * 2];
         MdhValue entry_val = entries[i * 2 + 1];
@@ -3882,9 +3904,9 @@ MdhValue __mdh_dict_invert(MdhValue dict) {
     }
 
     MdhValue result = __mdh_empty_dict();
-    int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;
-    int64_t count = *dict_ptr;
-    MdhValue *entries = (MdhValue *)(dict_ptr + 1);
+    int64_t *dict_ptr = __mdh_kv_payload_ptr(dict);
+    int64_t count = dict_ptr ? dict_ptr[0] : 0;
+    MdhValue *entries = dict_ptr ? (MdhValue *)(dict_ptr + 1) : NULL;
     for (int64_t i = 0; i < count; i++) {
         MdhValue key = entries[i * 2];
         MdhValue val = entries[i * 2 + 1];
@@ -3924,9 +3946,9 @@ MdhValue __mdh_toss_in(MdhValue dict, MdhValue item) {
         return __mdh_empty_creel();
     }
 
-    int64_t *old_ptr = (int64_t *)(intptr_t)dict.data;
-    int64_t count = *old_ptr;
-    MdhValue *entries = (MdhValue *)(old_ptr + 1);
+    int64_t *old_ptr = __mdh_kv_payload_ptr(dict);
+    int64_t count = old_ptr ? old_ptr[0] : 0;
+    MdhValue *entries = old_ptr ? (MdhValue *)(old_ptr + 1) : NULL;
 
     /* Check if item already exists */
     for (int64_t i = 0; i < count; i++) {
@@ -3954,10 +3976,8 @@ MdhValue __mdh_toss_in(MdhValue dict, MdhValue item) {
     new_entries[count * 2] = item;
     new_entries[count * 2 + 1] = item;
 
-    MdhValue v;
-    v.tag = MDH_TAG_SET;
-    v.data = (int64_t)(intptr_t)new_ptr;
-    return v;
+    __mdh_kv_set_payload_ptr(dict, new_ptr);
+    return dict;
 }
 
 MdhValue __mdh_heave_oot(MdhValue dict, MdhValue item) {
@@ -3966,9 +3986,9 @@ MdhValue __mdh_heave_oot(MdhValue dict, MdhValue item) {
         return __mdh_empty_creel();
     }
 
-    int64_t *old_ptr = (int64_t *)(intptr_t)dict.data;
-    int64_t count = *old_ptr;
-    MdhValue *entries = (MdhValue *)(old_ptr + 1);
+    int64_t *old_ptr = __mdh_kv_payload_ptr(dict);
+    int64_t count = old_ptr ? old_ptr[0] : 0;
+    MdhValue *entries = old_ptr ? (MdhValue *)(old_ptr + 1) : NULL;
 
     /* Find the item */
     int64_t found_idx = -1;
@@ -3987,10 +4007,13 @@ MdhValue __mdh_heave_oot(MdhValue dict, MdhValue item) {
 
     /* Remove entry: reallocate without it */
     int64_t new_count = count - 1;
-    size_t new_size = 8 + new_count * 32;
+    size_t new_size = (new_count == 0) ? 16 : (8 + new_count * 32);
     int64_t *new_ptr = (int64_t *)GC_malloc(new_size);
 
     *new_ptr = new_count;
+    if (new_count == 0) {
+        new_ptr[1] = MDH_CREEL_SENTINEL;
+    }
     MdhValue *new_entries = (MdhValue *)(new_ptr + 1);
     int64_t j = 0;
     for (int64_t i = 0; i < count; i++) {
@@ -4001,10 +4024,8 @@ MdhValue __mdh_heave_oot(MdhValue dict, MdhValue item) {
         }
     }
 
-    MdhValue v;
-    v.tag = MDH_TAG_SET;
-    v.data = (int64_t)(intptr_t)new_ptr;
-    return v;
+    __mdh_kv_set_payload_ptr(dict, new_ptr);
+    return dict;
 }
 
 /* ========== File I/O Operations ========== */
@@ -4760,64 +4781,104 @@ MdhValue __mdh_pair_up(MdhValue list1, MdhValue list2) {
 }
 
 MdhValue __mdh_tae_binary(MdhValue n) {
-    /* Convert integer to binary string */
+    /* Convert integer to binary string (match Rust's `format!("{:b}", i64)` semantics). */
     if (n.tag != MDH_TAG_INT) {
+        __mdh_hurl(__mdh_make_string("tae_binary() needs an integer"));
         return __mdh_make_string("0");
     }
 
-    int64_t val = n.data;
-    if (val == 0) return __mdh_make_string("0");
+    uint64_t u = (uint64_t)n.data;
+    if (u == 0) return __mdh_make_string("0");
 
     char buf[65];  /* 64 bits + null */
-    int idx = 64;
-    buf[idx--] = '\0';
-
-    int64_t abs_val = val < 0 ? -val : val;
-    while (abs_val > 0 && idx >= 0) {
-        buf[idx--] = (abs_val & 1) ? '1' : '0';
-        abs_val >>= 1;
+    int idx = 0;
+    bool started = false;
+    for (int bit = 63; bit >= 0; bit--) {
+        int b = (int)((u >> bit) & 1ULL);
+        if (b) started = true;
+        if (started) {
+            buf[idx++] = b ? '1' : '0';
+        }
     }
-    if (val < 0 && idx >= 0) {
-        buf[idx--] = '-';
-    }
-
-    return __mdh_make_string(&buf[idx + 1]);
+    buf[idx] = '\0';
+    return __mdh_make_string(buf);
 }
 
 MdhValue __mdh_fae_binary(MdhValue str) {
-    /* Parse binary string to integer: "101" -> 5 */
+    /* Parse binary string to integer (match interpreter `i64::from_str_radix(.., 2)`). */
     if (str.tag != MDH_TAG_STRING) {
+        __mdh_hurl(__mdh_make_string("fae_binary() needs a string"));
         return __mdh_make_int(0);
     }
 
-    const char *s = __mdh_get_string(str);
-    if (!s || *s == '\0') return __mdh_make_int(0);
+    const char *orig = __mdh_get_string(str);
+    if (!orig) {
+        __mdh_hurl(__mdh_make_string("fae_binary() needs a string"));
+        return __mdh_make_int(0);
+    }
+
+    const char *s = orig;
+    if (strncmp(s, "0b", 2) == 0) {
+        s += 2;
+    }
+
+    if (*s == '\0') {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Cannae parse '%s' as binary", orig);
+        __mdh_hurl(__mdh_make_string(buf));
+        return __mdh_make_int(0);
+    }
 
     int64_t result = 0;
-    for (int64_t i = 0; s[i] != '\0'; i++) {
-        char c = s[i];
-        if (c == '1') {
-            result = (result << 1) | 1;
-        } else if (c == '0') {
-            result = result << 1;
+    for (const char *p = s; *p; p++) {
+        char c = *p;
+        if (c != '0' && c != '1') {
+            char buf[256];
+            snprintf(buf, sizeof(buf), "Cannae parse '%s' as binary", orig);
+            __mdh_hurl(__mdh_make_string(buf));
+            return __mdh_make_int(0);
         }
-        /* Skip other characters (like spaces or prefix) */
+        int digit = c - '0';
+        if (result > (INT64_MAX - digit) / 2) {
+            char buf[256];
+            snprintf(buf, sizeof(buf), "Cannae parse '%s' as binary", orig);
+            __mdh_hurl(__mdh_make_string(buf));
+            return __mdh_make_int(0);
+        }
+        result = result * 2 + digit;
     }
+
     return __mdh_make_int(result);
 }
 
 MdhValue __mdh_fae_hex(MdhValue str) {
-    /* Parse hex string to integer: "ff" -> 255 */
+    /* Parse hex string to integer (match interpreter `i64::from_str_radix(.., 16)`). */
     if (str.tag != MDH_TAG_STRING) {
+        __mdh_hurl(__mdh_make_string("fae_hex() needs a string"));
         return __mdh_make_int(0);
     }
 
-    const char *s = __mdh_get_string(str);
-    if (!s || *s == '\0') return __mdh_make_int(0);
+    const char *orig = __mdh_get_string(str);
+    if (!orig) {
+        __mdh_hurl(__mdh_make_string("fae_hex() needs a string"));
+        return __mdh_make_int(0);
+    }
+
+    const char *s = orig;
+    if (strncmp(s, "0x", 2) == 0) {
+        s += 2;
+    }
+
+    if (*s == '\0') {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "Cannae parse '%s' as hex", orig);
+        __mdh_hurl(__mdh_make_string(buf));
+        return __mdh_make_int(0);
+    }
 
     int64_t result = 0;
-    for (int64_t i = 0; s[i] != '\0'; i++) {
-        char c = s[i];
+    for (const char *p = s; *p; p++) {
+        char c = *p;
         int digit = -1;
         if (c >= '0' && c <= '9') {
             digit = c - '0';
@@ -4826,11 +4887,21 @@ MdhValue __mdh_fae_hex(MdhValue str) {
         } else if (c >= 'A' && c <= 'F') {
             digit = 10 + (c - 'A');
         }
-        if (digit >= 0) {
-            result = (result << 4) | digit;
+        if (digit < 0) {
+            char buf[256];
+            snprintf(buf, sizeof(buf), "Cannae parse '%s' as hex", orig);
+            __mdh_hurl(__mdh_make_string(buf));
+            return __mdh_make_int(0);
         }
-        /* Skip other characters (like 0x prefix) */
+        if (result > (INT64_MAX - digit) / 16) {
+            char buf[256];
+            snprintf(buf, sizeof(buf), "Cannae parse '%s' as hex", orig);
+            __mdh_hurl(__mdh_make_string(buf));
+            return __mdh_make_int(0);
+        }
+        result = result * 16 + digit;
     }
+
     return __mdh_make_int(result);
 }
 
@@ -4937,32 +5008,26 @@ MdhValue __mdh_title_case(MdhValue str) {
 }
 
 MdhValue __mdh_tae_hex(MdhValue num) {
-    /* Convert integer to hex string */
+    /* Convert integer to hex string (match Rust's `format!("{:x}", i64)` semantics). */
     if (num.tag != MDH_TAG_INT) {
+        __mdh_hurl(__mdh_make_string("tae_hex() needs an integer"));
         return __mdh_make_string("0");
     }
-    int64_t n = num.data;
+    unsigned long long u = (unsigned long long)(uint64_t)num.data;
     char buf[32];
-    if (n < 0) {
-        snprintf(buf, sizeof(buf), "-%llx", (unsigned long long)(-n));
-    } else {
-        snprintf(buf, sizeof(buf), "%llx", (unsigned long long)n);
-    }
+    snprintf(buf, sizeof(buf), "%llx", u);
     return __mdh_make_string(buf);
 }
 
 MdhValue __mdh_tae_octal(MdhValue num) {
-    /* Convert integer to octal string */
+    /* Convert integer to octal string (match Rust's `format!("{:o}", i64)` semantics). */
     if (num.tag != MDH_TAG_INT) {
+        __mdh_hurl(__mdh_make_string("tae_octal() needs an integer"));
         return __mdh_make_string("0");
     }
-    int64_t n = num.data;
+    unsigned long long u = (unsigned long long)(uint64_t)num.data;
     char buf[32];
-    if (n < 0) {
-        snprintf(buf, sizeof(buf), "-%llo", (unsigned long long)(-n));
-    } else {
-        snprintf(buf, sizeof(buf), "%llo", (unsigned long long)n);
-    }
+    snprintf(buf, sizeof(buf), "%llo", u);
     return __mdh_make_string(buf);
 }
 
@@ -5535,8 +5600,8 @@ MdhValue __mdh_list_index(MdhValue list, MdhValue val) {
     MdhList *l = (MdhList *)(intptr_t)list.data;
     for (int64_t i = 0; i < l->length; i++) {
         MdhValue item = l->items[i];
-        /* Compare tags and data */
-        if (item.tag == val.tag && item.data == val.data) {
+        /* Use language equality semantics (matches interpreter Value::eq). */
+        if (__mdh_eq(item, val)) {
             return __mdh_make_int(i);
         }
     }
@@ -5552,7 +5617,8 @@ MdhValue __mdh_count_val(MdhValue list, MdhValue val) {
     int64_t count = 0;
     for (int64_t i = 0; i < l->length; i++) {
         MdhValue item = l->items[i];
-        if (item.tag == val.tag && item.data == val.data) {
+        /* Use language equality semantics (matches interpreter Value::eq). */
+        if (__mdh_eq(item, val)) {
             count++;
         }
     }
@@ -5642,25 +5708,35 @@ MdhValue __mdh_last_index_of(MdhValue str, MdhValue substr) {
 MdhValue __mdh_replace_first(MdhValue str, MdhValue old_sub, MdhValue new_sub) {
     /* Replace first occurrence of old_sub with new_sub */
     if (str.tag != MDH_TAG_STRING || old_sub.tag != MDH_TAG_STRING || new_sub.tag != MDH_TAG_STRING) {
-        return str;
+        __mdh_hurl(__mdh_make_string("replace_first() needs three strings"));
+        return __mdh_make_string("");
     }
     const char *s = __mdh_get_string(str);
     const char *old_s = __mdh_get_string(old_sub);
     const char *new_s = __mdh_get_string(new_sub);
-    if (!s || !old_s || !new_s) return str;
+    if (!s || !old_s || !new_s) return __mdh_make_string("");
 
-    int64_t s_len = strlen(s);
-    int64_t old_len = strlen(old_s);
-    int64_t new_len = strlen(new_s);
+    size_t s_len = strlen(s);
+    size_t old_len = strlen(old_s);
+    size_t new_len = strlen(new_s);
 
-    if (old_len == 0 || old_len > s_len) return str;
+    /* Rust's String::replacen inserts at the start for empty patterns (count=1). */
+    if (old_len == 0) {
+        size_t result_len = s_len + new_len;
+        char *buf = (char *)GC_malloc(result_len + 1);
+        memcpy(buf, new_s, new_len);
+        memcpy(buf + new_len, s, s_len);
+        buf[result_len] = '\0';
+        return __mdh_string_from_buf(buf);
+    }
+    if (old_len > s_len) return str;
 
     /* Find first occurrence */
     const char *pos = strstr(s, old_s);
     if (!pos) return str;
 
-    int64_t idx = pos - s;
-    int64_t result_len = s_len - old_len + new_len;
+    size_t idx = (size_t)(pos - s);
+    size_t result_len = s_len - old_len + new_len;
     char *buf = (char *)GC_malloc(result_len + 1);
 
     memcpy(buf, s, idx);
@@ -5668,16 +5744,95 @@ MdhValue __mdh_replace_first(MdhValue str, MdhValue old_sub, MdhValue new_sub) {
     memcpy(buf + idx + new_len, s + idx + old_len, s_len - idx - old_len);
     buf[result_len] = '\0';
 
-    return __mdh_make_string(buf);
+    return __mdh_string_from_buf(buf);
+}
+
+MdhValue __mdh_replace(MdhValue str, MdhValue old_sub, MdhValue new_sub) {
+    /* Replace all occurrences of old_sub with new_sub */
+    if (str.tag != MDH_TAG_STRING || old_sub.tag != MDH_TAG_STRING || new_sub.tag != MDH_TAG_STRING) {
+        __mdh_hurl(__mdh_make_string("replace() needs three strings"));
+        return __mdh_make_string("");
+    }
+
+    const char *s = __mdh_get_string(str);
+    const char *old_s = __mdh_get_string(old_sub);
+    const char *new_s = __mdh_get_string(new_sub);
+    if (!s || !old_s || !new_s) return __mdh_make_string("");
+
+    size_t s_len = strlen(s);
+    size_t old_len = strlen(old_s);
+    size_t new_len = strlen(new_s);
+
+    /* Rust's String::replace inserts the replacement at every char boundary for empty patterns. */
+    if (old_len == 0) {
+        int64_t chars = __mdh_utf8_count_codepoints((const unsigned char *)s);
+        size_t result_len = s_len + ((size_t)chars + 1) * new_len;
+        char *result = (char *)GC_malloc(result_len + 1);
+        char *r = result;
+
+        memcpy(r, new_s, new_len);
+        r += new_len;
+
+        const unsigned char *p = (const unsigned char *)s;
+        while (*p) {
+            uint32_t code = 0;
+            size_t consumed = 0;
+            if (!__mdh_utf8_decode_one(p, &code, &consumed)) goto invalid_utf8;
+            (void)code;
+
+            memcpy(r, p, consumed);
+            r += consumed;
+
+            memcpy(r, new_s, new_len);
+            r += new_len;
+
+            p += consumed;
+        }
+
+        result[result_len] = '\0';
+        return __mdh_string_from_buf(result);
+
+    invalid_utf8:
+        __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+        return __mdh_make_string("");
+    }
+
+    /* Count occurrences */
+    size_t count = 0;
+    const char *p = s;
+    while ((p = strstr(p, old_s)) != NULL) {
+        count++;
+        p += old_len;
+    }
+    if (count == 0) return str;
+
+    /* Allocate result */
+    size_t result_len = s_len + count * new_len - count * old_len;
+    char *result = (char *)GC_malloc(result_len + 1);
+
+    char *r = result;
+    const char *prev = s;
+    while ((p = strstr(prev, old_s)) != NULL) {
+        size_t chunk = (size_t)(p - prev);
+        memcpy(r, prev, chunk);
+        r += chunk;
+        memcpy(r, new_s, new_len);
+        r += new_len;
+        prev = p + old_len;
+    }
+    strcpy(r, prev);
+
+    return __mdh_string_from_buf(result);
 }
 
 MdhValue __mdh_unique(MdhValue list) {
     /* Remove duplicates from list */
     if (list.tag != MDH_TAG_LIST) {
-        return list;
+        __mdh_hurl(__mdh_make_string("unique() needs a list"));
+        return __mdh_make_list(0);
     }
     MdhList *src = (MdhList *)(intptr_t)list.data;
-    if (src->length == 0) return list;
+    if (src->length == 0) return __mdh_make_list(0);
 
     /* Create result list with same capacity */
     MdhList *dst = (MdhList *)GC_malloc(sizeof(MdhList));
@@ -5690,7 +5845,8 @@ MdhValue __mdh_unique(MdhValue list) {
         MdhValue item = src->items[i];
         int found = 0;
         for (int64_t j = 0; j < dst->length; j++) {
-            if (dst->items[j].tag == item.tag && dst->items[j].data == item.data) {
+            /* Use language equality semantics (matches interpreter Value::eq). */
+            if (__mdh_eq(dst->items[j], item)) {
                 found = 1;
                 break;
             }
@@ -5709,11 +5865,15 @@ MdhValue __mdh_unique(MdhValue list) {
 MdhValue __mdh_average(MdhValue list) {
     /* Compute average of numeric list */
     if (list.tag != MDH_TAG_LIST) {
+        __mdh_hurl(__mdh_make_string("average() needs a list"));
         return __mdh_make_float(0.0);
     }
 
-    MdhList *l = (MdhList *)(intptr_t)list.data;
-    if (l->length == 0) return __mdh_make_float(0.0);
+    MdhList *l = __mdh_get_list(list);
+    if (l->length == 0) {
+        __mdh_hurl(__mdh_make_string("Cannae calculate average o' empty list!"));
+        return __mdh_make_float(0.0);
+    }
 
     double sum = 0.0;
     for (int64_t i = 0; i < l->length; i++) {
@@ -5722,6 +5882,9 @@ MdhValue __mdh_average(MdhValue list) {
             sum += (double)item.data;
         } else if (item.tag == MDH_TAG_FLOAT) {
             sum += __mdh_get_float(item);
+        } else {
+            __mdh_hurl(__mdh_make_string("average() needs a list o' numbers"));
+            return __mdh_make_float(0.0);
         }
     }
     return __mdh_make_float(sum / (double)l->length);
@@ -5747,9 +5910,9 @@ MdhValue __mdh_creel_tae_list(MdhValue dict) {
         return __mdh_make_list(0);
     }
 
-    int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;
-    int64_t count = *dict_ptr;
-    MdhValue *entries = (MdhValue *)(dict_ptr + 1);
+    int64_t *dict_ptr = __mdh_kv_payload_ptr(dict);
+    int64_t count = dict_ptr ? dict_ptr[0] : 0;
+    MdhValue *entries = dict_ptr ? (MdhValue *)(dict_ptr + 1) : NULL;
 
     if (count <= 0) {
         return __mdh_make_list(0);
@@ -5785,16 +5948,16 @@ MdhValue __mdh_creels_thegither(MdhValue a, MdhValue b) {
 
     MdhValue result = __mdh_empty_creel();
 
-    int64_t *a_ptr = (int64_t *)(intptr_t)a.data;
-    int64_t a_count = *a_ptr;
-    MdhValue *a_entries = (MdhValue *)(a_ptr + 1);
+    int64_t *a_ptr = __mdh_kv_payload_ptr(a);
+    int64_t a_count = a_ptr ? a_ptr[0] : 0;
+    MdhValue *a_entries = a_ptr ? (MdhValue *)(a_ptr + 1) : NULL;
     for (int64_t i = 0; i < a_count; i++) {
         result = __mdh_toss_in(result, a_entries[i * 2]);
     }
 
-    int64_t *b_ptr = (int64_t *)(intptr_t)b.data;
-    int64_t b_count = *b_ptr;
-    MdhValue *b_entries = (MdhValue *)(b_ptr + 1);
+    int64_t *b_ptr = __mdh_kv_payload_ptr(b);
+    int64_t b_count = b_ptr ? b_ptr[0] : 0;
+    MdhValue *b_entries = b_ptr ? (MdhValue *)(b_ptr + 1) : NULL;
     for (int64_t i = 0; i < b_count; i++) {
         result = __mdh_toss_in(result, b_entries[i * 2]);
     }
@@ -5814,9 +5977,9 @@ MdhValue __mdh_creels_baith(MdhValue a, MdhValue b) {
     }
 
     MdhValue result = __mdh_empty_creel();
-    int64_t *a_ptr = (int64_t *)(intptr_t)a.data;
-    int64_t a_count = *a_ptr;
-    MdhValue *a_entries = (MdhValue *)(a_ptr + 1);
+    int64_t *a_ptr = __mdh_kv_payload_ptr(a);
+    int64_t a_count = a_ptr ? a_ptr[0] : 0;
+    MdhValue *a_entries = a_ptr ? (MdhValue *)(a_ptr + 1) : NULL;
     for (int64_t i = 0; i < a_count; i++) {
         MdhValue key = a_entries[i * 2];
         MdhValue contains = __mdh_set_contains(b, key);
@@ -5839,9 +6002,9 @@ MdhValue __mdh_creels_differ(MdhValue a, MdhValue b) {
     }
 
     MdhValue result = __mdh_empty_creel();
-    int64_t *a_ptr = (int64_t *)(intptr_t)a.data;
-    int64_t a_count = *a_ptr;
-    MdhValue *a_entries = (MdhValue *)(a_ptr + 1);
+    int64_t *a_ptr = __mdh_kv_payload_ptr(a);
+    int64_t a_count = a_ptr ? a_ptr[0] : 0;
+    MdhValue *a_entries = a_ptr ? (MdhValue *)(a_ptr + 1) : NULL;
     for (int64_t i = 0; i < a_count; i++) {
         MdhValue key = a_entries[i * 2];
         MdhValue contains = __mdh_set_contains(b, key);
@@ -5862,9 +6025,9 @@ MdhValue __mdh_is_subset(MdhValue a, MdhValue b) {
         return __mdh_make_bool(false);
     }
 
-    int64_t *a_ptr = (int64_t *)(intptr_t)a.data;
-    int64_t a_count = *a_ptr;
-    MdhValue *a_entries = (MdhValue *)(a_ptr + 1);
+    int64_t *a_ptr = __mdh_kv_payload_ptr(a);
+    int64_t a_count = a_ptr ? a_ptr[0] : 0;
+    MdhValue *a_entries = a_ptr ? (MdhValue *)(a_ptr + 1) : NULL;
     for (int64_t i = 0; i < a_count; i++) {
         MdhValue key = a_entries[i * 2];
         MdhValue contains = __mdh_set_contains(b, key);
@@ -5890,9 +6053,9 @@ MdhValue __mdh_is_disjoint(MdhValue a, MdhValue b) {
         return __mdh_make_bool(false);
     }
 
-    int64_t *a_ptr = (int64_t *)(intptr_t)a.data;
-    int64_t a_count = *a_ptr;
-    MdhValue *a_entries = (MdhValue *)(a_ptr + 1);
+    int64_t *a_ptr = __mdh_kv_payload_ptr(a);
+    int64_t a_count = a_ptr ? a_ptr[0] : 0;
+    MdhValue *a_entries = a_ptr ? (MdhValue *)(a_ptr + 1) : NULL;
     for (int64_t i = 0; i < a_count; i++) {
         MdhValue key = a_entries[i * 2];
         MdhValue contains = __mdh_set_contains(b, key);
@@ -5913,12 +6076,10 @@ MdhValue __mdh_assert(MdhValue condition, MdhValue msg) {
     }
 
     if (!cond) {
-        printf("Assertion failed");
-        if (msg.tag == MDH_TAG_STRING) {
-            printf(": %s", (const char *)(intptr_t)msg.data);
-        }
-        printf("\n");
-        exit(1);
+        MdhValue err_msg = (msg.tag == MDH_TAG_STRING)
+            ? msg
+            : __mdh_make_string("Assertion failed");
+        __mdh_hurl(err_msg);
     }
     return __mdh_make_nil();
 }
@@ -5937,49 +6098,44 @@ MdhValue __mdh_stacktrace(void) {
     return __mdh_make_string("<stacktrace not available>");
 }
 
-MdhValue __mdh_chynge(MdhValue str, MdhValue old_sub, MdhValue new_sub) {
-    /* String replace (chynge = change in Scots) */
-    if (str.tag != MDH_TAG_STRING || old_sub.tag != MDH_TAG_STRING || new_sub.tag != MDH_TAG_STRING) {
-        return str;
+MdhValue __mdh_chynge(MdhValue list, MdhValue index, MdhValue value) {
+    /* List insert (Scots: change) */
+    if (list.tag != MDH_TAG_LIST) {
+        __mdh_hurl(__mdh_make_string("chynge() needs a list"));
+        return __mdh_make_list(0);
     }
 
-    const char *s = (const char *)(intptr_t)str.data;
-    const char *old_s = (const char *)(intptr_t)old_sub.data;
-    const char *new_s = (const char *)(intptr_t)new_sub.data;
-
-    size_t s_len = strlen(s);
-    size_t old_len = strlen(old_s);
-    size_t new_len = strlen(new_s);
-
-    if (old_len == 0) return str;
-
-    /* Count occurrences */
-    int count = 0;
-    const char *p = s;
-    while ((p = strstr(p, old_s)) != NULL) {
-        count++;
-        p += old_len;
+    int64_t idx;
+    if (index.tag == MDH_TAG_INT) {
+        idx = index.data;
+    } else if (index.tag == MDH_TAG_FLOAT) {
+        idx = __mdh_double_to_i64_saturating(__mdh_get_float(index));
+    } else {
+        __mdh_hurl(__mdh_make_string("chynge() needs an integer index"));
+        return __mdh_make_list(0);
     }
 
-    if (count == 0) return str;
-
-    /* Allocate result */
-    size_t result_len = s_len + count * (new_len - old_len);
-    char *result = (char *)GC_malloc(result_len + 1);
-
-    char *r = result;
-    p = s;
-    const char *prev = s;
-    while ((p = strstr(prev, old_s)) != NULL) {
-        memcpy(r, prev, p - prev);
-        r += p - prev;
-        memcpy(r, new_s, new_len);
-        r += new_len;
-        prev = p + old_len;
+    MdhList *src = __mdh_get_list(list);
+    int64_t len = src ? src->length : 0;
+    if (idx < 0) {
+        idx = len + idx;
     }
-    strcpy(r, prev);
+    if (idx < 0 || idx > len) {
+        char msg[128];
+        snprintf(msg, sizeof(msg), "Index %lld oot o' bounds fer list o' length %lld", (long long)idx, (long long)len);
+        __mdh_hurl(__mdh_make_string(msg));
+        return __mdh_make_list(0);
+    }
 
-    return __mdh_make_string(result);
+    MdhValue out = __mdh_make_list((int32_t)(len + 1));
+    for (int64_t i = 0; i < idx; i++) {
+        __mdh_list_push(out, src->items[i]);
+    }
+    __mdh_list_push(out, value);
+    for (int64_t i = idx; i < len; i++) {
+        __mdh_list_push(out, src->items[i]);
+    }
+    return out;
 }
 
 /* ========== Additional Scots Builtins ========== */
@@ -5997,17 +6153,53 @@ MdhValue __mdh_muckle(MdhValue a, MdhValue b) {
     return a;
 }
 
+static int __mdh_compare_doubles(const void *a, const void *b) {
+    const double da = *(const double *)a;
+    const double db = *(const double *)b;
+    if (da < db) return -1;
+    if (da > db) return 1;
+    return 0;
+}
+
 MdhValue __mdh_median(MdhValue list) {
     /* Compute median of numeric list */
     if (list.tag != MDH_TAG_LIST) {
+        __mdh_hurl(__mdh_make_string("median() needs a list"));
         return __mdh_make_float(0.0);
     }
 
-    MdhList *l = (MdhList *)(intptr_t)list.data;
-    if (l->length == 0) return __mdh_make_float(0.0);
+    MdhList *l = __mdh_get_list(list);
+    if (l->length == 0) {
+        __mdh_hurl(__mdh_make_string("Cannae calculate median o' empty list!"));
+        return __mdh_make_float(0.0);
+    }
 
-    /* For simplicity, just return average - proper median would require sorting */
-    return __mdh_average(list);
+    size_t n = (size_t)l->length;
+    double *nums = (double *)GC_malloc(sizeof(double) * n);
+    for (size_t i = 0; i < n; i++) {
+        MdhValue item = l->items[(int64_t)i];
+        if (item.tag == MDH_TAG_INT) {
+            nums[i] = (double)item.data;
+        } else if (item.tag == MDH_TAG_FLOAT) {
+            double v = __mdh_get_float(item);
+            if (isnan(v)) {
+                __mdh_hurl(__mdh_make_string("median() cannae handle NaN"));
+                return __mdh_make_float(0.0);
+            }
+            nums[i] = v;
+        } else {
+            __mdh_hurl(__mdh_make_string("median() needs a list o' numbers"));
+            return __mdh_make_float(0.0);
+        }
+    }
+
+    qsort(nums, n, sizeof(double), __mdh_compare_doubles);
+
+    size_t mid = n / 2;
+    if ((n % 2) == 0) {
+        return __mdh_make_float((nums[mid - 1] + nums[mid]) / 2.0);
+    }
+    return __mdh_make_float(nums[mid]);
 }
 
 /* list_min - minimum value in a list */
@@ -6088,22 +6280,60 @@ MdhValue __mdh_list_max(MdhValue list) {
     return max_val;
 }
 
-/* Comparison function for qsort */
-static int __mdh_compare_values(const void *a, const void *b) {
-    const MdhValue *va = (const MdhValue *)a;
-    const MdhValue *vb = (const MdhValue *)b;
-    if (__mdh_lt(*va, *vb)) return -1;
-    if (__mdh_gt(*va, *vb)) return 1;
+typedef struct {
+    MdhValue value;
+    int64_t index;
+} MdhSortItem;
+
+/* Stable sort comparator for mdhavers `sort()` semantics (matches interpreter). */
+static int __mdh_sort_items_cmp(const void *a, const void *b) {
+    const MdhSortItem *ia = (const MdhSortItem *)a;
+    const MdhSortItem *ib = (const MdhSortItem *)b;
+    MdhValue va = ia->value;
+    MdhValue vb = ib->value;
+    int cmp = 0;
+
+    if (va.tag == MDH_TAG_INT && vb.tag == MDH_TAG_INT) {
+        if (va.data < vb.data) cmp = -1;
+        else if (va.data > vb.data) cmp = 1;
+    } else if (va.tag == MDH_TAG_FLOAT && vb.tag == MDH_TAG_FLOAT) {
+        double af = __mdh_get_float(va);
+        double bf = __mdh_get_float(vb);
+        if (!isnan(af) && !isnan(bf)) {
+            if (af < bf) cmp = -1;
+            else if (af > bf) cmp = 1;
+        }
+    } else if (va.tag == MDH_TAG_STRING && vb.tag == MDH_TAG_STRING) {
+        const char *sa = __mdh_get_string(va);
+        const char *sb = __mdh_get_string(vb);
+        if (!sa) sa = "";
+        if (!sb) sb = "";
+        int str_cmp = strcmp(sa, sb);
+        if (str_cmp < 0) cmp = -1;
+        else if (str_cmp > 0) cmp = 1;
+    } else {
+        /* Mismatched types compare equal in interpreter; preserve original order via index. */
+        cmp = 0;
+    }
+
+    if (cmp != 0) {
+        return cmp;
+    }
+
+    /* Stable tie-breaker: original index. */
+    if (ia->index < ib->index) return -1;
+    if (ia->index > ib->index) return 1;
     return 0;
 }
 
 /* list_sort - return a sorted copy of the list */
 MdhValue __mdh_list_sort(MdhValue list) {
     if (list.tag != MDH_TAG_LIST) {
-        return list;
+        __mdh_hurl(__mdh_make_string("sort() expects a list"));
+        return __mdh_make_list(0);
     }
     MdhList *l = __mdh_get_list(list);
-    if (l->length == 0) return list;
+    if (l->length == 0) return __mdh_make_list(0);
 
     /* Create a copy of the list */
     MdhList *result = (MdhList *)GC_malloc(sizeof(MdhList));
@@ -6114,8 +6344,39 @@ MdhValue __mdh_list_sort(MdhValue list) {
         result->items[i] = l->items[i];
     }
 
-    /* Sort using qsort */
-    qsort(result->items, result->length, sizeof(MdhValue), __mdh_compare_values);
+    /*
+     * Match interpreter semantics:
+     * - Only values of the same runtime type are comparable for sorting.
+     * - For mismatched types, the comparator returns Equal, and Rust's stable sort preserves order.
+     * Therefore, the *sequence of tags* is preserved; we only need to sort within contiguous runs
+     * of the same tag.
+     */
+    if (result->length > 1) {
+        int64_t start = 0;
+        while (start < result->length) {
+            uint8_t tag = result->items[start].tag;
+            int64_t end = start + 1;
+            while (end < result->length && result->items[end].tag == tag) {
+                end++;
+            }
+
+            int64_t run_len = end - start;
+            if (run_len > 1) {
+                MdhSortItem *items =
+                    (MdhSortItem *)GC_malloc(sizeof(MdhSortItem) * (size_t)run_len);
+                for (int64_t i = 0; i < run_len; i++) {
+                    items[i].value = result->items[start + i];
+                    items[i].index = start + i;
+                }
+                qsort(items, (size_t)run_len, sizeof(MdhSortItem), __mdh_sort_items_cmp);
+                for (int64_t i = 0; i < run_len; i++) {
+                    result->items[start + i] = items[i].value;
+                }
+            }
+
+            start = end;
+        }
+    }
 
     return (MdhValue){ .tag = MDH_TAG_LIST, .data = (int64_t)(intptr_t)result };
 }
@@ -6123,10 +6384,11 @@ MdhValue __mdh_list_sort(MdhValue list) {
 /* list_uniq - return a list with duplicates removed (preserving order) */
 MdhValue __mdh_list_uniq(MdhValue list) {
     if (list.tag != MDH_TAG_LIST) {
-        return list;
+        __mdh_hurl(__mdh_make_string("uniq() needs a list"));
+        return __mdh_make_list(0);
     }
     MdhList *l = __mdh_get_list(list);
-    if (l->length == 0) return list;
+    if (l->length == 0) return __mdh_make_list(0);
 
     /* Create new list */
     MdhList *result = (MdhList *)GC_malloc(sizeof(MdhList));
@@ -6229,16 +6491,28 @@ MdhValue __mdh_is_space(MdhValue str) {
 }
 
 MdhValue __mdh_is_digit(MdhValue str) {
-    if (str.tag != MDH_TAG_STRING) return __mdh_make_bool(false);
-    const char *s = (const char *)(intptr_t)str.data;
-    if (s[0] == '\0' || s[1] != '\0') return __mdh_make_bool(false);
-    return __mdh_make_bool(s[0] >= '0' && s[0] <= '9');
+    if (str.tag != MDH_TAG_STRING) {
+        __mdh_hurl(__mdh_make_string("is_digit() needs a string"));
+        return __mdh_make_bool(false);
+    }
+    const char *s = __mdh_get_string(str);
+    if (!s || s[0] == '\0') return __mdh_make_bool(false);
+
+    for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
+        if (!(*p >= '0' && *p <= '9')) {
+            return __mdh_make_bool(false);
+        }
+    }
+    return __mdh_make_bool(true);
 }
 
 MdhValue __mdh_wheesht_aw(MdhValue str) {
     /* Collapse whitespace, trim leading/trailing. */
-    if (str.tag != MDH_TAG_STRING) return str;
-    const char *s = (const char *)(intptr_t)str.data;
+    if (str.tag != MDH_TAG_STRING) {
+        __mdh_hurl(__mdh_make_string("wheesht_aw() needs a string"));
+        return __mdh_make_string("");
+    }
+    const char *s = __mdh_get_string(str);
     size_t len = strlen(s);
     char *result = (char *)GC_malloc(len + 1);
     size_t out_len = 0;
@@ -6277,7 +6551,10 @@ MdhValue __mdh_bonnie(MdhValue val) {
 
 MdhValue __mdh_shuffle(MdhValue list) {
     /* Shuffle list (deck) - returns shuffled copy */
-    if (list.tag != MDH_TAG_LIST) return __mdh_make_list(0);
+    if (list.tag != MDH_TAG_LIST) {
+        __mdh_hurl(__mdh_make_string("shuffle() expects a list"));
+        return __mdh_make_list(0);
+    }
 
     __mdh_ensure_rng();
     MdhList *src = (MdhList *)(intptr_t)list.data;
@@ -7702,8 +7979,8 @@ static void __mdh_json_stringify_value(MdhStrBuf *sb, MdhValue v, bool pretty, i
             return;
         }
         case MDH_TAG_DICT: {
-            int64_t *dict_ptr = (int64_t *)(intptr_t)v.data;
-            int64_t count = dict_ptr ? *dict_ptr : 0;
+            int64_t *dict_ptr = __mdh_kv_payload_ptr(v);
+            int64_t count = dict_ptr ? dict_ptr[0] : 0;
             MdhValue *entries = dict_ptr ? (MdhValue *)(dict_ptr + 1) : NULL;
 
             if (!pretty) {
@@ -8398,7 +8675,7 @@ MdhValue __mdh_scottify(MdhValue str) {
     };
 
     for (size_t i = 0; i < sizeof(pairs) / sizeof(pairs[0]); i++) {
-        out = __mdh_chynge(out, __mdh_make_string(pairs[i][0]), __mdh_make_string(pairs[i][1]));
+        out = __mdh_replace(out, __mdh_make_string(pairs[i][0]), __mdh_make_string(pairs[i][1]));
     }
     return out;
 }
@@ -8610,8 +8887,8 @@ MdhValue __mdh_braw(MdhValue val) {
             return __mdh_make_bool(l && l->length > 0);
         }
         case MDH_TAG_DICT: {
-            int64_t *dict_ptr = (int64_t *)(intptr_t)val.data;
-            int64_t count = dict_ptr ? *dict_ptr : 0;
+            int64_t *dict_ptr = __mdh_kv_payload_ptr(val);
+            int64_t count = dict_ptr ? dict_ptr[0] : 0;
             return __mdh_make_bool(count > 0);
         }
         default:
@@ -8737,8 +9014,8 @@ MdhValue __mdh_glaikit(MdhValue val) {
             return __mdh_make_bool(!l || l->length == 0);
         }
         case MDH_TAG_DICT: {
-            int64_t *dict_ptr = (int64_t *)(intptr_t)val.data;
-            int64_t count = dict_ptr ? *dict_ptr : 0;
+            int64_t *dict_ptr = __mdh_kv_payload_ptr(val);
+            int64_t count = dict_ptr ? dict_ptr[0] : 0;
             return __mdh_make_bool(count == 0);
         }
         default:
@@ -8897,7 +9174,7 @@ MdhValue __mdh_capitalize(MdhValue str) {
 
 static bool __mdh_dict_is_creel(MdhValue dict) {
     if (dict.tag != MDH_TAG_DICT) return false;
-    int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;
+    int64_t *dict_ptr = __mdh_kv_payload_ptr(dict);
     if (!dict_ptr) return false;
     int64_t count = dict_ptr[0];
     if (count == 0) {
@@ -9016,14 +9293,14 @@ MdhValue __mdh_clype(MdhValue val) {
             break;
         }
         case MDH_TAG_DICT: {
-            int64_t *dict_ptr = (int64_t *)(intptr_t)val.data;
-            int64_t count = dict_ptr ? *dict_ptr : 0;
+            int64_t *dict_ptr = __mdh_kv_payload_ptr(val);
+            int64_t count = dict_ptr ? dict_ptr[0] : 0;
             snprintf(info, sizeof(info), "dict wi' %lld entries", (long long)count);
             break;
         }
         case MDH_TAG_SET: {
-            int64_t *set_ptr = (int64_t *)(intptr_t)val.data;
-            int64_t count = set_ptr ? *set_ptr : 0;
+            int64_t *set_ptr = __mdh_kv_payload_ptr(val);
+            int64_t count = set_ptr ? set_ptr[0] : 0;
             snprintf(info, sizeof(info), "creel wi' %lld items", (long long)count);
             break;
         }
@@ -9330,8 +9607,8 @@ MdhValue __mdh_blether_format(MdhValue template, MdhValue dict) {
     }
 
     MdhValue result = template;
-    int64_t *dict_ptr = (int64_t *)(intptr_t)dict.data;
-    int64_t count = dict_ptr ? *dict_ptr : 0;
+    int64_t *dict_ptr = __mdh_kv_payload_ptr(dict);
+    int64_t count = dict_ptr ? dict_ptr[0] : 0;
     MdhValue *entries = dict_ptr ? (MdhValue *)(dict_ptr + 1) : NULL;
     for (int64_t i = 0; i < count; i++) {
         MdhValue key = entries[i * 2];
@@ -9348,7 +9625,7 @@ MdhValue __mdh_blether_format(MdhValue template, MdhValue dict) {
 
         MdhValue placeholder = __mdh_string_from_buf(ph);
         MdhValue repl = __mdh_to_string(val);
-        result = __mdh_chynge(result, placeholder, repl);
+        result = __mdh_replace(result, placeholder, repl);
     }
     return result;
 }

@@ -2629,12 +2629,8 @@ impl Interpreter {
                 if e < 0 {
                     e += len;
                 }
-                if s < 0 {
-                    s = 0;
-                }
-                if e > len {
-                    e = len;
-                }
+                s = s.clamp(0, len);
+                e = e.clamp(0, len);
                 if e < s {
                     e = s;
                 }
@@ -9327,6 +9323,14 @@ impl Interpreter {
                         return Err("Cannae find minimum o' empty list!".to_string());
                     }
                     let mut min_val = items[0].clone();
+                    match &min_val {
+                        Value::Integer(_) | Value::Float(_) => {}
+                        _ => {
+                            return Err(
+                                "minaw() needs a list o' comparable numbers".to_string(),
+                            )
+                        }
+                    }
                     for item in items.iter().skip(1) {
                         match (&min_val, item) {
                             (Value::Integer(a), Value::Integer(b)) => {
@@ -9361,6 +9365,14 @@ impl Interpreter {
                         return Err("Cannae find maximum o' empty list!".to_string());
                     }
                     let mut max_val = items[0].clone();
+                    match &max_val {
+                        Value::Integer(_) | Value::Float(_) => {}
+                        _ => {
+                            return Err(
+                                "maxaw() needs a list o' comparable numbers".to_string(),
+                            )
+                        }
+                    }
                     for item in items.iter().skip(1) {
                         match (&max_val, item) {
                             (Value::Integer(a), Value::Integer(b)) => {
