@@ -1,5 +1,3 @@
-//! Focused tests for the Rust-FFI runtime helpers (JSON + regex).
-
 #![cfg(feature = "llvm")]
 
 use std::process::Command;
@@ -13,8 +11,7 @@ fn compile_and_run(source: &str) -> Result<String, String> {
     let dir = tempdir().map_err(|e| format!("Failed to create temp dir: {}", e))?;
     let exe_path = dir.path().join("test_exe");
 
-    let compiler = LLVMCompiler::new();
-    compiler
+    LLVMCompiler::new()
         .compile_to_native(&program, &exe_path, 2)
         .map_err(|e| format!("Compile error: {:?}", e))?;
 
@@ -39,47 +36,64 @@ fn run(source: &str) -> String {
 }
 
 #[test]
-fn llvm_json_parse_unknown_escape_matches_interpreter_leniency() {
-    // The interpreter's JSON parser treats unknown escapes like `\\q` as the literal char `q`.
-    let out = run(r#"blether json_parse("\"\\q\"")"#);
-    assert_eq!(out.trim(), "q");
+fn llvm_destructure_string_splits_into_char_strings() {
+    let out = run(
+        r#"
+ken [a, b, c] = "abc"
+blether a
+blether b
+blether c
+"#,
+    );
+    let lines: Vec<&str> = out.trim().lines().collect();
+    assert_eq!(lines, vec!["a", "b", "c"]);
 }
 
 #[test]
-fn llvm_json_stringify_dict_matches_interpreter_and_does_not_crash() {
-    let out = run(r#"blether json_stringify({"a": 1})"#);
-    assert_eq!(out.trim(), r#"{"a": 1}"#);
+fn llvm_destructure_string_supports_rest_pattern() {
+    let out = run(
+        r#"
+ken [first, ...mid, last] = "hełło"
+blether first
+blether len(mid)
+blether mid[0]
+blether last
+"#,
+    );
+    let lines: Vec<&str> = out.trim().lines().collect();
+    assert_eq!(lines[0], "h");
+    assert_eq!(lines[1], "3");
+    assert_eq!(lines[2], "e");
+    assert_eq!(lines[3], "o");
 }
 
 #[test]
-fn llvm_json_parse_error_is_catchable() {
-    let out = run(r#"
+fn llvm_destructure_non_list_non_string_throws_catchable_error() {
+    let out = run(
+        r#"
 hae_a_bash {
-    json_parse("{")
+    ken [a] = 1
     blether "unreachable"
 } gin_it_gangs_wrang e {
     blether "caught"
 }
-"#);
+"#,
+    );
     assert_eq!(out.trim(), "caught");
 }
 
 #[test]
-fn llvm_regex_invalid_pattern_is_catchable() {
-    let out = run(r#"
+fn llvm_destructure_too_few_elements_throws_catchable_error() {
+    let out = run(
+        r#"
 hae_a_bash {
-    regex_test("hello", "*")
+    ken [a, b] = "a"
     blether "unreachable"
 } gin_it_gangs_wrang e {
     blether "caught"
 }
-"#);
+"#,
+    );
     assert_eq!(out.trim(), "caught");
 }
 
-#[test]
-fn llvm_regex_replace_supports_capture_expansion() {
-    // POSIX-ERE based implementations usually treat `$1` literally; interpreter uses the Rust regex crate.
-    let out = run(r#"blether regex_replace("abc123def", "([0-9]+)", "[$1]")"#);
-    assert_eq!(out.trim(), "abc[123]def");
-}

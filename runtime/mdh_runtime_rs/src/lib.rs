@@ -782,15 +782,21 @@ unsafe fn mdh_value_to_json(value: MdhValue, pretty: bool, indent: usize) -> Str
             if value.data == 0 {
                 return "{}".to_string();
             }
-            let dict_ptr = value.data as *const i64;
-            if dict_ptr.is_null() {
+            // Dict values store a stable handle pointer to their payload pointer (see
+            // runtime/mdh_runtime.c: __mdh_kv_payload_ptr).
+            let handle_ptr = value.data as *const i64;
+            if handle_ptr.is_null() {
                 return "{}".to_string();
             }
-            let count = *dict_ptr;
+            let payload_ptr = *handle_ptr as *const i64;
+            if payload_ptr.is_null() {
+                return "{}".to_string();
+            }
+            let count = *payload_ptr;
             if count <= 0 {
                 return "{}".to_string();
             }
-            let entries_ptr = dict_ptr.add(1) as *const MdhValue;
+            let entries_ptr = payload_ptr.add(1) as *const MdhValue;
             let entries = std::slice::from_raw_parts(entries_ptr, (count * 2) as usize);
             let mut parts = Vec::with_capacity(count as usize);
             for i in 0..count {

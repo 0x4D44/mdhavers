@@ -552,6 +552,9 @@ pub struct CodeGen<'ctx> {
     /// Captured variables for closures/nested functions (func_name -> [var_name])
     function_captures: HashMap<String, Vec<String>>,
 
+    /// Definition guards for user-defined functions/constructors (llvm_name -> i1 global flag).
+    function_defined_flags: HashMap<String, inkwell::values::GlobalValue<'ctx>>,
+
     /// Loop context stack for break/continue
     loop_stack: Vec<LoopContext<'ctx>>,
 
@@ -582,6 +585,13 @@ pub struct CodeGen<'ctx> {
     /// Class method tables: class_name -> [(method_name, function)]
     class_methods: HashMap<String, Vec<(String, FunctionValue<'ctx>)>>,
 
+    /// Definition guards for classes (class_name -> i1 global flag).
+    class_defined_flags: HashMap<String, inkwell::values::GlobalValue<'ctx>>,
+
+    /// Classes that exist for dispatch but are hidden from direct instantiation.
+    /// These are typically introduced via aliased imports (`fetch "mod" tae m`).
+    hidden_imported_classes: HashSet<String>,
+
     /// Current 'masel' value (set during method execution)
     current_masel: Option<PointerValue<'ctx>>,
 
@@ -597,6 +607,14 @@ pub struct CodeGen<'ctx> {
     import_prefixes: HashMap<PathBuf, String>,
     /// Default parameter values for imported module functions (module_path -> {func_name -> defaults}).
     imported_module_function_defaults: HashMap<PathBuf, HashMap<String, Vec<Option<Expr>>>>,
+    /// Per-module init functions that execute top-level statements exactly once at runtime.
+    module_init_functions: HashMap<PathBuf, FunctionValue<'ctx>>,
+    /// Per-module init guards (false until init succeeds).
+    module_init_flags: HashMap<PathBuf, inkwell::values::GlobalValue<'ctx>>,
+    /// Stable per-module ids used for unique global symbol names.
+    module_unique_ids: HashMap<PathBuf, String>,
+    /// Per-module global variables for module-level `ken` bindings.
+    imported_module_var_globals: HashMap<PathBuf, HashMap<String, inkwell::values::GlobalValue<'ctx>>>,
     /// Stack of modules currently being imported (for circular import detection).
     import_in_progress: Vec<PathBuf>,
     /// Import alias names mapped to exported symbol names
@@ -668,6 +686,7 @@ impl<'ctx> CodeGen<'ctx> {
             functions: HashMap::new(),
             function_defaults: HashMap::new(),
             function_captures: HashMap::new(),
+            function_defined_flags: HashMap::new(),
             loop_stack: Vec::new(),
             in_loop_body: false,
             try_depth: 0,
@@ -678,12 +697,18 @@ impl<'ctx> CodeGen<'ctx> {
             classes: HashMap::new(),
             class_superclasses: HashMap::new(),
             class_methods: HashMap::new(),
+            class_defined_flags: HashMap::new(),
+            hidden_imported_classes: HashSet::new(),
             current_masel: None,
             current_class: None,
             source_path: None,
             imported_modules: HashMap::new(),
             import_prefixes: HashMap::new(),
             imported_module_function_defaults: HashMap::new(),
+            module_init_functions: HashMap::new(),
+            module_init_flags: HashMap::new(),
+            module_unique_ids: HashMap::new(),
+            imported_module_var_globals: HashMap::new(),
             import_in_progress: Vec::new(),
             import_alias_exports: HashMap::new(),
             import_alias_bindings: HashMap::new(),
@@ -3664,16 +3689,23 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Compile a complete program
     pub fn compile(&mut self, program: &Program) -> Result<(), HaversError> {
-        // First pass: declare all functions and store default parameter values
+        // First pass: declare all functions/struct ctors and store default parameter values
         for stmt in &program.statements {
-            if let Stmt::Function { name, params, .. } = stmt {
-                self.declare_function(name, params.len());
-                // Store default parameter values for call-site substitution
-                let defaults: Vec<Option<Expr>> =
-                    params.iter().map(|p| p.default.clone()).collect();
-                if defaults.iter().any(|d| d.is_some()) {
-                    self.function_defaults.insert(name.clone(), defaults);
+            match stmt {
+                Stmt::Function { name, params, .. } => {
+                    self.declare_function(name, params.len());
+                    // Store default parameter values for call-site substitution
+                    let defaults: Vec<Option<Expr>> =
+                        params.iter().map(|p| p.default.clone()).collect();
+                    if defaults.iter().any(|d| d.is_some()) {
+                        self.function_defaults.insert(name.clone(), defaults);
+                    }
                 }
+                Stmt::Struct { name, fields, .. } => {
+                    // Struct constructors behave like functions for the LLVM backend.
+                    self.declare_function(name, fields.len());
+                }
+                _ => {}
             }
         }
 
@@ -3778,6 +3810,14 @@ impl<'ctx> CodeGen<'ctx> {
         let function = self.module.add_function(name, fn_type, None);
         self.functions.insert(name.to_string(), function);
 
+        let llvm_name = function.get_name().to_string_lossy().into_owned();
+        if !self.function_defined_flags.contains_key(&llvm_name) {
+            let flag_name = format!("__mdh_fn_defined__{}", llvm_name);
+            let flag = self.module.add_global(self.types.bool_type, None, &flag_name);
+            flag.set_initializer(&self.types.bool_type.const_int(0, false));
+            self.function_defined_flags.insert(llvm_name, flag);
+        }
+
         // Track captured variables for this function
         if !captures.is_empty() {
             self.function_captures
@@ -3795,6 +3835,13 @@ impl<'ctx> CodeGen<'ctx> {
         // Skip if already registered
         if self.classes.contains_key(name) {
             return;
+        }
+
+        if !self.class_defined_flags.contains_key(name) {
+            let flag_name = format!("__mdh_class_defined__{}", name);
+            let flag = self.module.add_global(self.types.bool_type, None, &flag_name);
+            flag.set_initializer(&self.types.bool_type.const_int(0, false));
+            self.class_defined_flags.insert(name.to_string(), flag);
         }
 
         // Declare all methods (create function signatures)
@@ -4006,6 +4053,33 @@ impl<'ctx> CodeGen<'ctx> {
         let data = self
             .builder
             .build_ptr_to_int(ptr, self.types.i64_type, "dict_ptr_int")
+            .unwrap();
+
+        let undef = self.types.value_type.get_undef();
+        let v1 = self
+            .builder
+            .build_insert_value(undef, tag, 0, "v1")
+            .unwrap();
+        let v2 = self
+            .builder
+            .build_insert_value(v1, data, 1, "v2")
+            .unwrap();
+
+        v2.into_struct_value().into()
+    }
+
+    /// Create a class value: {tag=8, data=class_name_ptr as i64}
+    ///
+    /// Classes are represented as a stable pointer to their global name string, which is also
+    /// what instances store in their header for method dispatch.
+    fn make_class(&self, ptr: PointerValue<'ctx>) -> BasicValueEnum<'ctx> {
+        let tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::Class.as_u8() as u64, false);
+        let data = self
+            .builder
+            .build_ptr_to_int(ptr, self.types.i64_type, "class_ptr_int")
             .unwrap();
 
         let undef = self.types.value_type.get_undef();
@@ -11590,14 +11664,41 @@ impl<'ctx> CodeGen<'ctx> {
                 // Track class type if this is a class instantiation
                 if let Some(init) = initializer {
                     if let Expr::Call { callee, .. } = init {
-                        if let Expr::Variable {
-                            name: class_name, ..
-                        } = callee.as_ref()
-                        {
-                            if self.classes.contains_key(class_name.as_str()) {
-                                self.variable_class_types
-                                    .insert(name.clone(), class_name.clone());
+                        match callee.as_ref() {
+                            Expr::Variable { name: class_name, .. } => {
+                                if self.classes.contains_key(class_name.as_str()) {
+                                    self.variable_class_types
+                                        .insert(name.clone(), class_name.clone());
+                                }
                             }
+                            Expr::Get {
+                                object, property, ..
+                            } => {
+                                if let Expr::Variable {
+                                    name: alias_name, ..
+                                } = object.as_ref()
+                                {
+                                    if let Some(exports) = self.import_alias_exports.get(alias_name)
+                                    {
+                                        let current_ptr = self
+                                            .variables
+                                            .get(alias_name)
+                                            .copied()
+                                            .or(self.globals.get(alias_name).copied());
+                                        let bound_ptr =
+                                            self.import_alias_bindings.get(alias_name).copied();
+                                        if current_ptr.is_some()
+                                            && current_ptr == bound_ptr
+                                            && exports.contains(property)
+                                            && self.classes.contains_key(property)
+                                        {
+                                            self.variable_class_types
+                                                .insert(name.clone(), property.clone());
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {}
                         }
                     }
                 }
@@ -11845,7 +11946,16 @@ impl<'ctx> CodeGen<'ctx> {
                 if !self.functions.contains_key(name) {
                     self.declare_function(name, params.len());
                 }
-                self.compile_function(name, params, body)
+                self.compile_function(name, params, body)?;
+
+                if let Some(&func) = self.functions.get(name) {
+                    let llvm_name = func.get_name().to_string_lossy().into_owned();
+                    if let Some(&flag) = self.function_defined_flags.get(&llvm_name) {
+                        self.mark_global_defined_flag(flag);
+                    }
+                }
+
+                Ok(())
             }
 
             Stmt::Return { value, .. } => {
@@ -11889,9 +11999,30 @@ impl<'ctx> CodeGen<'ctx> {
                 superclass,
                 methods,
                 ..
-            } => self.compile_class(name, superclass.as_deref(), methods),
+            } => {
+                self.hidden_imported_classes.remove(name);
+                if let Some(super_name) = superclass.as_deref() {
+                    let flag = self.class_defined_flags.get(super_name).copied();
+                    self.guard_global_defined_flag(flag, super_name, "superclass_defined");
+                }
 
-            Stmt::Struct { name, fields, .. } => self.compile_struct_decl(name, fields),
+                self.compile_class(name, superclass.as_deref(), methods)?;
+                if let Some(&flag) = self.class_defined_flags.get(name) {
+                    self.mark_global_defined_flag(flag);
+                }
+                Ok(())
+            },
+
+            Stmt::Struct { name, fields, .. } => {
+                self.compile_struct_decl(name, fields)?;
+                if let Some(&func) = self.functions.get(name) {
+                    let llvm_name = func.get_name().to_string_lossy().into_owned();
+                    if let Some(&flag) = self.function_defined_flags.get(&llvm_name) {
+                        self.mark_global_defined_flag(flag);
+                    }
+                }
+                Ok(())
+            }
 
 	            Stmt::Import { path, alias, .. } => {
 	                let is_tri = path == "tri" || path == "tri.braw";
@@ -11914,19 +12045,63 @@ impl<'ctx> CodeGen<'ctx> {
 	                let resolved_import_path = self.resolve_import_path(path)?;
 	                let before = self.capture_import_bindings();
 	                let exports_all = self.compile_import(path, alias.is_some())?;
+                    self.ensure_module_initialized(&resolved_import_path)?;
 	                if let Some(alias_name) = alias {
 	                    self.import_alias_function_defaults.remove(alias_name);
 	                    let exports_public = exports_all.clone();
+
+	                    // Capture class metadata so aliased imports can construct instances and
+	                    // dispatch methods even after we restore the pre-import bindings.
+	                    let mut class_exports: HashMap<String, inkwell::values::GlobalValue<'ctx>> =
+	                        HashMap::new();
+	                    let mut class_method_tables: HashMap<String, Vec<(String, FunctionValue<'ctx>)>> =
+	                        HashMap::new();
+	                    let mut class_method_functions: HashMap<String, FunctionValue<'ctx>> =
+	                        HashMap::new();
+	                    let mut class_method_defaults: HashMap<String, Vec<Option<Expr>>> =
+	                        HashMap::new();
+	                    let mut classes_to_hide: Vec<String> = Vec::new();
+	                    let mut exports_for_dict: Vec<String> = Vec::new();
+
+	                    for export in &exports_public {
+	                        if let Some(&class_global) = self.classes.get(export) {
+	                            class_exports.insert(export.clone(), class_global);
+	                            if let Some(methods) = self.class_methods.get(export).cloned() {
+	                                class_method_tables.insert(export.clone(), methods.clone());
+	                                for (method_name, func) in methods {
+	                                    let func_name = format!("{}_{}", export, method_name);
+	                                    class_method_functions.insert(func_name.clone(), func);
+	                                    if let Some(defaults) =
+	                                        self.function_defaults.get(&func_name).cloned()
+	                                    {
+	                                        class_method_defaults.insert(func_name, defaults);
+	                                    }
+	                                }
+	                            }
+	                            if !before.classes.contains(export) {
+	                                classes_to_hide.push(export.clone());
+	                            }
+	                        } else {
+	                            exports_for_dict.push(export.clone());
+	                        }
+	                    }
+
+	                    // Track all exported names (including classes) so we can special-case
+	                    // `alias.ClassName(...)` calls.
 	                    self.import_alias_exports
 	                        .insert(alias_name.clone(), exports_public.iter().cloned().collect());
+
+	                    // Record exported module-level functions for direct alias.method() calls.
 	                    let mut exported_funcs: HashMap<String, FunctionValue<'ctx>> = HashMap::new();
 	                    for export in &exports_public {
-                        if let Some(&func) = self.functions.get(export) {
-                            exported_funcs.insert(export.clone(), func);
-                        }
+	                        if let Some(&func) = self.functions.get(export) {
+	                            exported_funcs.insert(export.clone(), func);
+	                        }
 	                    }
 	                    self.import_alias_functions
 	                        .insert(alias_name.clone(), exported_funcs);
+
+	                    // Record exported function defaults for alias.method() calls.
 	                    if let Some(module_defaults) = self
 	                        .imported_module_function_defaults
 	                        .get(&resolved_import_path)
@@ -11943,10 +12118,39 @@ impl<'ctx> CodeGen<'ctx> {
 	                                .insert(alias_name.clone(), defaults_for_alias);
 	                        }
 	                    }
-	                    let module_val = self.build_module_dict(&exports_public);
+
+	                    // Build the alias dict from value-like exports (functions/vars/struct ctors).
+	                    // Classes are handled via a dedicated `alias.ClassName(...)` call path.
+	                    let module_val = self.build_module_dict(&exports_for_dict);
 	                    self.store_import_alias(alias_name, module_val);
 	                    self.hide_imported_exports(&exports_all, &before);
 	                    self.restore_import_bindings(&before);
+
+	                    // Re-insert class metadata/method fns for dispatch, but keep classes hidden
+	                    // from direct `ClassName()` instantiation unless later imported unaliased.
+	                    for (class_name, class_global) in class_exports {
+	                        self.classes.insert(class_name, class_global);
+	                    }
+	                    for (class_name, methods) in class_method_tables {
+	                        self.class_methods.insert(class_name, methods);
+	                    }
+	                    for (func_name, func) in class_method_functions {
+	                        self.functions.insert(func_name, func);
+	                    }
+	                    for (func_name, defaults) in class_method_defaults {
+	                        self.function_defaults.insert(func_name, defaults);
+	                    }
+	                    for class_name in classes_to_hide {
+	                        self.hidden_imported_classes.insert(class_name);
+	                    }
+	                } else {
+	                    // Unaliased import injects exports into the current scope, so any previously
+	                    // hidden classes become directly instantiable.
+	                    for export in &exports_all {
+	                        if self.classes.contains_key(export) {
+	                            self.hidden_imported_classes.remove(export);
+	                        }
+	                    }
 	                }
 	                Ok(())
 	            }
@@ -12084,6 +12288,10 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     Ok(val)
                 } else if let Some(&func) = self.functions.get(name) {
+                    let llvm_name = func.get_name().to_string_lossy().into_owned();
+                    let flag = self.function_defined_flags.get(&llvm_name).copied();
+                    self.guard_global_defined_flag(flag, name, "fn_value_defined");
+
                     // User-defined function referenced as a value.
                     // If the function has captures, create a closure cell so calls later can
                     // supply captures automatically (and allow mutable captures via boxing).
@@ -12245,6 +12453,17 @@ impl<'ctx> CodeGen<'ctx> {
                     } else {
                         Ok(fn_val.into())
                     }
+                } else if self.classes.contains_key(name)
+                    && !self.hidden_imported_classes.contains(name)
+                {
+                    let flag = self.class_defined_flags.get(name).copied();
+                    self.guard_global_defined_flag(flag, name, "class_value_defined");
+
+                    let class_global = *self
+                        .classes
+                        .get(name)
+                        .expect("missing class global");
+                    Ok(self.make_class(class_global.as_pointer_value()))
                 } else if name == "PI" {
                     // Built-in constant: PI
                     let pi_val = self.context.f64_type().const_float(std::f64::consts::PI);
@@ -13577,16 +13796,19 @@ impl<'ctx> CodeGen<'ctx> {
                         && current_ptr == bound_ptr
                         && exports.contains(property)
                     {
+                        if self.classes.contains_key(property) {
+                            return self.compile_class_instantiation(property, args);
+                        }
                         if let Some(&func) = self
                             .import_alias_functions
                             .get(name)
                             .and_then(|funcs| funcs.get(property))
                         {
-                            if let Some(defaults) = self
-                                .import_alias_function_defaults
-                                .get(name)
-                                .and_then(|m| m.get(property))
-                            {
+                            let defaults = match self.import_alias_function_defaults.get(name) {
+                                Some(m) => m.get(property),
+                                None => None,
+                            };
+                            if let Some(defaults) = defaults {
                                 let key = format!("__import_alias_{}_{}", name, property);
                                 self.function_defaults.insert(key.clone(), defaults.clone());
                                 return self.compile_user_function_call(&key, func, args);
@@ -13609,7 +13831,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         if let Expr::Variable { name, .. } = callee {
             // Check for class instantiation: ClassName()
-            if self.classes.contains_key(name) {
+            if self.classes.contains_key(name) && !self.hidden_imported_classes.contains(name) {
                 return self.compile_class_instantiation(name, args);
             }
 
@@ -30016,7 +30238,10 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Helper to call a function value with arguments
     ///
-    /// Handles both simple functions (tag=Function) and closures (tag=Closure, list with fn+captures)
+    /// Handles:
+    /// - simple functions (tag=Function)
+    /// - closures (tag=Closure, list with fn+captures)
+    /// - classes (tag=Class, stores the class name global pointer)
     fn call_function_value(
         &mut self,
         func_val: BasicValueEnum<'ctx>,
@@ -30051,8 +30276,15 @@ impl<'ctx> CodeGen<'ctx> {
         let closure_block = self.context.append_basic_block(function, "closure_call");
         let check_native_block = self.context.append_basic_block(function, "check_native");
         let native_block = self.context.append_basic_block(function, "native_call");
+        let check_class_block = self.context.append_basic_block(function, "check_class");
+        let class_block = self.context.append_basic_block(function, "class_call");
         let error_block = self.context.append_basic_block(function, "call_type_error");
         let merge_block = self.context.append_basic_block(function, "call_merge");
+
+        let mut class_result_opt: Option<(
+            BasicValueEnum<'ctx>,
+            inkwell::basic_block::BasicBlock<'ctx>,
+        )> = None;
 
         self.builder
             .build_conditional_branch(is_function, simple_block, check_closure_block)
@@ -30117,7 +30349,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap();
         self.builder
-            .build_conditional_branch(is_native, native_block, error_block)
+            .build_conditional_branch(is_native, native_block, check_class_block)
             .unwrap();
 
         // Native call path (direct call on native object)
@@ -30128,6 +30360,131 @@ impl<'ctx> CodeGen<'ctx> {
             .build_unconditional_branch(merge_block)
             .unwrap();
         let native_end = self.builder.get_insert_block().unwrap();
+
+        // Check for class tag before erroring.
+        self.builder.position_at_end(check_class_block);
+        let is_class = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                tag,
+                self.types
+                    .i8_type
+                    .const_int(ValueTag::Class.as_u8() as u64, false),
+                "is_class",
+            )
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_class, class_block, error_block)
+            .unwrap();
+
+        // Class call path: dynamic dispatch on the stored class-name pointer.
+        self.builder.position_at_end(class_block);
+        let class_data = self
+            .builder
+            .build_extract_value(func_struct, 1, "class_data")
+            .unwrap()
+            .into_int_value();
+
+        let mut class_names: Vec<String> = self.classes.keys().cloned().collect();
+        class_names.sort();
+
+        if class_names.is_empty() {
+            // Should be unreachable (no class values can exist), but keep behavior deterministic.
+            self.builder.build_unconditional_branch(error_block).unwrap();
+        } else {
+            let dispatch_merge = self
+                .context
+                .append_basic_block(function, "class_dispatch_merge");
+            let unknown_class_block = self
+                .context
+                .append_basic_block(function, "class_unknown");
+
+            let mut incomings: Vec<(BasicValueEnum<'ctx>, inkwell::basic_block::BasicBlock<'ctx>)> =
+                Vec::new();
+
+            // Start dispatch chain in the current block.
+            let mut check_block = class_block;
+            for (idx, class_name) in class_names.iter().enumerate() {
+                self.builder.position_at_end(check_block);
+
+                let match_block = self
+                    .context
+                    .append_basic_block(function, &format!("class_match_{}", idx));
+                let next_block = if idx + 1 == class_names.len() {
+                    unknown_class_block
+                } else {
+                    self.context
+                        .append_basic_block(function, &format!("class_check_{}", idx + 1))
+                };
+
+                let class_global = *self
+                    .classes
+                    .get(class_name)
+                    .expect("missing class global");
+                let class_int = self
+                    .builder
+                    .build_ptr_to_int(
+                        class_global.as_pointer_value(),
+                        self.types.i64_type,
+                        &format!("class_int_{}", idx),
+                    )
+                    .unwrap();
+                let is_match = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        class_data,
+                        class_int,
+                        &format!("class_is_match_{}", idx),
+                    )
+                    .unwrap();
+                self.builder
+                    .build_conditional_branch(is_match, match_block, next_block)
+                    .unwrap();
+
+                self.builder.position_at_end(match_block);
+                let inst = self.compile_class_instantiation_values(class_name, args)?;
+                self.builder
+                    .build_unconditional_branch(dispatch_merge)
+                    .unwrap();
+                let match_end = self.builder.get_insert_block().unwrap();
+                incomings.push((inst, match_end));
+
+                check_block = next_block;
+            }
+
+            // Unknown class payload should be unreachable, but keep behavior deterministic.
+            self.builder.position_at_end(unknown_class_block);
+            let op = self
+                .builder
+                .build_global_string_ptr("call", "call_op")
+                .unwrap();
+            let zero_tag = self.types.i8_type.const_int(0, false);
+            self.builder
+                .build_call(
+                    self.libc.type_error,
+                    &[op.as_pointer_value().into(), tag.into(), zero_tag.into()],
+                    "",
+                )
+                .unwrap();
+            self.builder.build_unreachable().unwrap();
+
+            self.builder.position_at_end(dispatch_merge);
+            let phi = self
+                .builder
+                .build_phi(self.types.value_type, "class_call_result")
+                .unwrap();
+            for (val, blk) in &incomings {
+                phi.add_incoming(&[(val, *blk)]);
+            }
+            let class_result = phi.as_basic_value();
+            self.builder
+                .build_unconditional_branch(merge_block)
+                .unwrap();
+            let class_end = self.builder.get_insert_block().unwrap();
+            class_result_opt = Some((class_result, class_end));
+        }
 
         // Error path for non-callable values
         self.builder.position_at_end(error_block);
@@ -30435,6 +30792,9 @@ impl<'ctx> CodeGen<'ctx> {
             (&result2, case2_end),
             (&native_result, native_end),
         ]);
+        if let Some((class_result, class_end)) = class_result_opt {
+            phi.add_incoming(&[(&class_result, class_end)]);
+        }
 
         Ok(phi.as_basic_value())
     }
@@ -32851,7 +33211,8 @@ impl<'ctx> CodeGen<'ctx> {
             match stmt {
                 Stmt::Function { name, .. }
                 | Stmt::VarDecl { name, .. }
-                | Stmt::Struct { name, .. } => {
+                | Stmt::Struct { name, .. }
+                | Stmt::Class { name, .. } => {
                     exports.push(name.clone());
                 }
                 _ => {}
@@ -32929,6 +33290,306 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(alloca, value)
             .unwrap();
+    }
+
+    fn declare_module_init(
+        &mut self,
+        import_path: &Path,
+    ) -> (FunctionValue<'ctx>, inkwell::values::GlobalValue<'ctx>) {
+        if let (Some(&init_fn), Some(&flag)) = (
+            self.module_init_functions.get(import_path),
+            self.module_init_flags.get(import_path),
+        ) {
+            return (init_fn, flag);
+        }
+
+        let id = self.import_unique_counter;
+        self.import_unique_counter += 1;
+
+        let stem = match import_path.file_stem() {
+            Some(stem) => match stem.to_str() {
+                Some(stem) if !stem.is_empty() => stem,
+                _ => "module",
+            },
+            None => "module",
+        };
+        let mut sanitized = String::new();
+        for ch in stem.chars() {
+            if ch.is_ascii_alphanumeric() {
+                sanitized.push(ch);
+            } else {
+                sanitized.push('_');
+            }
+        }
+
+        let fn_name = format!("__mdh_module_init_{}_{}", sanitized, id);
+        let fn_type = self.types.value_type.fn_type(&[], false);
+        let init_fn = self.module.add_function(&fn_name, fn_type, None);
+
+        let module_id = format!("{}_{}", sanitized, id);
+        self.module_unique_ids
+            .insert(import_path.to_path_buf(), module_id);
+
+        let flag_name = format!("__mdh_module_inited_{}_{}", sanitized, id);
+        let bool_type = self.context.bool_type();
+        let flag = self.module.add_global(bool_type, None, &flag_name);
+        flag.set_initializer(&bool_type.const_int(0, false));
+
+        self.module_init_functions
+            .insert(import_path.to_path_buf(), init_fn);
+        self.module_init_flags
+            .insert(import_path.to_path_buf(), flag);
+
+        (init_fn, flag)
+    }
+
+    fn ensure_module_initialized(&mut self, import_path: &Path) -> Result<(), HaversError> {
+        let init_fn = match self.module_init_functions.get(import_path).copied() {
+            Some(f) => f,
+            None => {
+                return Err(HaversError::CompileError(format!(
+                    "Internal error: missing module init fn for {}",
+                    import_path.display()
+                )));
+            }
+        };
+        let flag = match self.module_init_flags.get(import_path).copied() {
+            Some(f) => f,
+            None => {
+                return Err(HaversError::CompileError(format!(
+                    "Internal error: missing module init flag for {}",
+                    import_path.display()
+                )));
+            }
+        };
+
+        let function = self.current_function.unwrap();
+        let bool_type = self.context.bool_type();
+        let false_val = bool_type.const_int(0, false);
+        let true_val = bool_type.const_int(1, false);
+
+        let flag_ptr = flag.as_pointer_value();
+        let done = self
+            .builder
+            .build_load(bool_type, flag_ptr, "module_init_done")
+            .unwrap()
+            .into_int_value();
+        let is_done = self
+            .builder
+            .build_int_compare(inkwell::IntPredicate::NE, done, false_val, "is_done")
+            .unwrap();
+
+        let do_init_block = self.context.append_basic_block(function, "module_do_init");
+        let cont_block = self.context.append_basic_block(function, "module_init_cont");
+
+        self.builder
+            .build_conditional_branch(is_done, cont_block, do_init_block)
+            .unwrap();
+
+        self.builder.position_at_end(do_init_block);
+        let _ = self.builder.build_call(init_fn, &[], "module_init_call");
+        self.builder.build_store(flag_ptr, true_val).unwrap();
+        self.builder.build_unconditional_branch(cont_block).unwrap();
+
+        self.builder.position_at_end(cont_block);
+        Ok(())
+    }
+
+    fn guard_defined_flag(&mut self, defined: IntValue<'ctx>, name: &str, label: &str) {
+        let function = self.current_function.unwrap();
+
+        let ok_block = self
+            .context
+            .append_basic_block(function, &format!("{label}_ok"));
+        let missing_block = self
+            .context
+            .append_basic_block(function, &format!("{label}_missing"));
+
+        self.builder
+            .build_conditional_branch(defined, ok_block, missing_block)
+            .unwrap();
+
+        self.builder.position_at_end(missing_block);
+        let key_val = self.compile_string_literal(name);
+        self.builder
+            .build_call(self.libc.key_not_found, &[key_val.into()], "")
+            .unwrap();
+        self.builder.build_unreachable().unwrap();
+
+        self.builder.position_at_end(ok_block);
+    }
+
+    fn guard_global_defined_flag(&mut self, flag: Option<GlobalValue<'ctx>>, name: &str, label: &str) {
+        let defined = match flag {
+            Some(flag) => self
+                .builder
+                .build_load(self.types.bool_type, flag.as_pointer_value(), "defined")
+                .unwrap()
+                .into_int_value(),
+            None => self.types.bool_type.const_int(0, false),
+        };
+        self.guard_defined_flag(defined, name, label);
+    }
+
+    fn mark_global_defined_flag(&mut self, flag: GlobalValue<'ctx>) {
+        self.builder
+            .build_store(flag.as_pointer_value(), self.types.bool_type.const_int(1, false))
+            .unwrap();
+    }
+
+    fn compile_module_init_body(
+        &mut self,
+        import_path: &Path,
+        program: &Program,
+    ) -> Result<(), HaversError> {
+        let init_fn = self
+            .module_init_functions
+            .get(import_path)
+            .copied()
+            .compile_ok_or("Internal error: missing module init fn")?;
+
+        let entry = self.context.append_basic_block(init_fn, "entry");
+
+        let saved_function = self.current_function;
+        let saved_block = self.builder.get_insert_block();
+        let saved_variables = std::mem::take(&mut self.variables);
+        let saved_var_types = std::mem::take(&mut self.var_types);
+        let saved_int_shadows = std::mem::take(&mut self.int_shadows);
+        let saved_list_ptr_shadows = std::mem::take(&mut self.list_ptr_shadows);
+        let saved_string_len_shadows = std::mem::take(&mut self.string_len_shadows);
+        let saved_string_cap_shadows = std::mem::take(&mut self.string_cap_shadows);
+        let saved_boxed_vars = std::mem::take(&mut self.boxed_vars);
+        let saved_loop_stack = std::mem::take(&mut self.loop_stack);
+        let saved_in_loop_body = self.in_loop_body;
+        let saved_try_depth = self.try_depth;
+        let saved_masel = self.current_masel;
+        let saved_current_class = self.current_class.clone();
+        let saved_in_user_function = self.in_user_function;
+
+        self.builder.position_at_end(entry);
+        self.current_function = Some(init_fn);
+        self.in_user_function = true;
+        self.current_masel = None;
+        self.current_class = None;
+        self.loop_stack = Vec::new();
+        self.in_loop_body = false;
+        self.try_depth = 0;
+
+        for stmt in &program.statements {
+            match stmt {
+                // Declarations are only "defined" when the runtime reaches them (match interpreter semantics).
+                Stmt::Function { name, .. } | Stmt::Struct { name, .. } => {
+                    if let Some(&func) = self.functions.get(name) {
+                        let llvm_name = func.get_name().to_string_lossy().into_owned();
+                        if let Some(&flag) = self.function_defined_flags.get(&llvm_name) {
+                            self.mark_global_defined_flag(flag);
+                        }
+                    }
+                }
+
+                Stmt::Class {
+                    name,
+                    superclass,
+                    ..
+                } => {
+                    if let Some(super_name) = superclass.as_deref() {
+                        let flag = self.class_defined_flags.get(super_name).copied();
+                        self.guard_global_defined_flag(
+                            flag,
+                            super_name,
+                            "module_superclass_defined",
+                        );
+                    }
+
+                    if let Some(&flag) = self.class_defined_flags.get(name) {
+                        self.mark_global_defined_flag(flag);
+                    }
+                }
+
+                // Module-level vars are backed by per-module LLVM globals.
+                Stmt::VarDecl {
+                    name, initializer, ..
+                } => {
+                    let module_id = match self.module_unique_ids.get(import_path) {
+                        Some(id) => id.clone(),
+                        None => {
+                            let _ = self.declare_module_init(import_path);
+                            match self.module_unique_ids.get(import_path).cloned() {
+                                Some(id) => id,
+                                None => "module".to_string(),
+                            }
+                        }
+                    };
+
+                    let module_vars = self
+                        .imported_module_var_globals
+                        .entry(import_path.to_path_buf())
+                        .or_insert_with(HashMap::new);
+                    let global = match module_vars.get(name).copied() {
+                        Some(existing) => existing,
+                        None => {
+                            let global_name = format!("__mdh_modvar_{}_{}", module_id, name);
+                            let global =
+                                self.module
+                                    .add_global(self.types.value_type, None, &global_name);
+                            global.set_initializer(&self.types.value_type.const_zero());
+                            module_vars.insert(name.clone(), global);
+                            global
+                        }
+                    };
+
+                    let global_ptr = global.as_pointer_value();
+                    self.globals.insert(name.clone(), global_ptr);
+
+                    if let Some(init) = initializer {
+                        let value = self.compile_expr(init)?;
+                        self.builder.build_store(global_ptr, value).unwrap();
+                    }
+                }
+
+                _ => {
+                    self.compile_stmt(stmt)?;
+                }
+            }
+
+            // Stop emitting instructions once we've terminated the current block.
+            let terminated = match self.builder.get_insert_block() {
+                Some(block) => block.get_terminator().is_some(),
+                None => false,
+            };
+            if terminated {
+                break;
+            }
+        }
+
+        let terminated = match self.builder.get_insert_block() {
+            Some(block) => block.get_terminator().is_some(),
+            None => false,
+        };
+        if !terminated {
+            self.builder.build_return(Some(&self.make_nil())).unwrap();
+        }
+
+        self.current_function = saved_function;
+        self.variables = saved_variables;
+        self.var_types = saved_var_types;
+        self.int_shadows = saved_int_shadows;
+        self.list_ptr_shadows = saved_list_ptr_shadows;
+        self.string_len_shadows = saved_string_len_shadows;
+        self.string_cap_shadows = saved_string_cap_shadows;
+        self.boxed_vars = saved_boxed_vars;
+        self.loop_stack = saved_loop_stack;
+        self.in_loop_body = saved_in_loop_body;
+        self.try_depth = saved_try_depth;
+        self.current_masel = saved_masel;
+        self.current_class = saved_current_class;
+        self.in_user_function = saved_in_user_function;
+
+        if let Some(block) = saved_block {
+            self.builder.position_at_end(block);
+        }
+
+        Ok(())
     }
 
     fn capture_import_bindings(&self) -> ImportBindings<'ctx> {
@@ -33009,6 +33670,14 @@ impl<'ctx> CodeGen<'ctx> {
         let fn_type = self.types.value_type.fn_type(&param_types, false);
         let function = self.module.add_function(&llvm_name, fn_type, None);
         self.functions.insert(name.to_string(), function);
+
+        let actual_name = function.get_name().to_string_lossy().into_owned();
+        if !self.function_defined_flags.contains_key(&actual_name) {
+            let flag_name = format!("__mdh_fn_defined__{}", actual_name);
+            let flag = self.module.add_global(self.types.bool_type, None, &flag_name);
+            flag.set_initializer(&self.types.bool_type.const_int(0, false));
+            self.function_defined_flags.insert(actual_name, flag);
+        }
     }
 
     fn compile_import(&mut self, path: &str, isolate: bool) -> Result<Vec<String>, HaversError> {
@@ -33034,12 +33703,17 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         self.import_in_progress.push(import_path.clone());
+        let saved_source_path = self.source_path.clone();
+        self.source_path = Some(import_path.clone());
         let result: Result<Vec<String>, HaversError> = 'import: {
             let import_prefix = if isolate { Some(self.import_prefix(&import_path)) } else { None };
             if let Some(prefix) = import_prefix.clone() {
                 self.import_prefixes.entry(import_path.clone()).or_insert(prefix);
             }
             let mut module_function_defaults: HashMap<String, Vec<Option<Expr>>> = HashMap::new();
+            let mut module_declared_functions: HashMap<String, FunctionValue<'ctx>> =
+                HashMap::new();
+            let mut module_declared_names: HashSet<String> = HashSet::new();
 
             // Read and parse the imported file
             let source =
@@ -33056,25 +33730,25 @@ impl<'ctx> CodeGen<'ctx> {
             self.imported_modules
                 .insert(import_path.clone(), exports.clone());
 
-            // First pass: Handle nested imports, declare functions, pre-register classes
+            // First pass: declare functions/struct constructors and pre-register classes.
             for stmt in &program.statements {
                 match stmt {
-                    Stmt::Import { path: sub_path, .. } => {
-                        // Handle nested imports first
-                        let saved_path = self.source_path.clone();
-                        self.source_path = Some(import_path.clone());
-                        if let Err(err) = self.compile_import(sub_path, isolate) {
-                            self.source_path = saved_path;
-                            break 'import Err(err);
-                        }
-                        self.source_path = saved_path;
-                    }
                     Stmt::Function { name, params, .. } => {
                         // Declare the function (forward declaration)
                         self.declare_import_function(name, params.len(), import_prefix.as_deref());
-                        let defaults: Vec<Option<Expr>> =
-                            params.iter().map(|p| p.default.clone()).collect();
-                        if defaults.iter().any(|d| d.is_some()) {
+                        if let Some(&func) = self.functions.get(name) {
+                            module_declared_functions.insert(name.clone(), func);
+                            module_declared_names.insert(name.clone());
+                        }
+                        let mut defaults: Vec<Option<Expr>> = Vec::with_capacity(params.len());
+                        let mut has_defaults = false;
+                        for p in params {
+                            if p.default.is_some() {
+                                has_defaults = true;
+                            }
+                            defaults.push(p.default.clone());
+                        }
+                        if has_defaults {
                             self.function_defaults.insert(name.clone(), defaults.clone());
                             module_function_defaults.insert(name.clone(), defaults);
                         } else {
@@ -33084,6 +33758,10 @@ impl<'ctx> CodeGen<'ctx> {
                     Stmt::Struct { name, fields, .. } => {
                         // Declare the struct constructor (forward declaration)
                         self.declare_import_function(name, fields.len(), import_prefix.as_deref());
+                        if let Some(&func) = self.functions.get(name) {
+                            module_declared_functions.insert(name.clone(), func);
+                            module_declared_names.insert(name.clone());
+                        }
                     }
                     Stmt::Class {
                         name,
@@ -33094,38 +33772,45 @@ impl<'ctx> CodeGen<'ctx> {
                         // Pre-register class and its methods (allows cross-class method calls)
                         self.preregister_class(name, superclass.as_deref(), methods);
                     }
-                    Stmt::VarDecl {
-                        name, initializer, ..
-                    } => {
-                        // Create global variable
-                        if !self.globals.contains_key(name) && !self.variables.contains_key(name) {
-                            // Create an LLVM global variable for imported module-level vars
-                            let global = self.module.add_global(
-                                self.types.value_type,
-                                None,
-                                &format!("imported_{}", name),
-                            );
-                            global.set_initializer(&self.types.value_type.const_zero());
-                            let global_ptr = global.as_pointer_value();
-                            self.globals.insert(name.clone(), global_ptr);
-                            // Also add to variables so current scope can find it
-                            self.variables.insert(name.clone(), global_ptr);
-
-                            // Compile the initializer and store value
-                            if let Some(init) = initializer {
-                                let value = match self.compile_expr(init) {
-                                    Ok(value) => value,
-                                    Err(err) => break 'import Err(err),
-                                };
-                                self.builder.build_store(global_ptr, value).unwrap();
-                            }
-                        }
-                    }
                     _ => {}
                 }
             }
 
-            // Second pass: Compile function bodies and classes
+            // Create module init function and compile module top-level statements into it.
+            let _ = self.declare_module_init(&import_path);
+            if let Err(err) = self.compile_module_init_body(&import_path, &program) {
+                break 'import Err(err);
+            }
+
+            // Restore module-declared function bindings and defaults after compiling init code.
+            // Imports executed during init compilation can introduce colliding names; the
+            // module's own declarations must win (matches interpreter semantics).
+            for (name, func) in &module_declared_functions {
+                self.functions.insert(name.clone(), *func);
+            }
+            for name in &module_declared_names {
+                if let Some(defaults) = module_function_defaults.get(name) {
+                    self.function_defaults
+                        .insert(name.clone(), defaults.clone());
+                } else {
+                    self.function_defaults.remove(name);
+                }
+            }
+
+            // Ensure imported module-level vars are visible in the current scope (like before).
+            for stmt in &program.statements {
+                if let Stmt::VarDecl { name, .. } = stmt {
+                    if let Some(module_vars) = self.imported_module_var_globals.get(&import_path) {
+                        if let Some(global) = module_vars.get(name) {
+                            let ptr = global.as_pointer_value();
+                            self.globals.insert(name.clone(), ptr);
+                            self.variables.entry(name.clone()).or_insert(ptr);
+                        }
+                    }
+                }
+            }
+
+            // Second pass: compile function bodies, structs, and classes.
             for stmt in &program.statements {
                 match stmt {
                     Stmt::Function {
@@ -33163,6 +33848,7 @@ impl<'ctx> CodeGen<'ctx> {
             break 'import Ok(exports);
         };
 
+        self.source_path = saved_source_path;
         self.import_in_progress.retain(|p| p != &import_path);
         result
     }
@@ -33194,13 +33880,13 @@ impl<'ctx> CodeGen<'ctx> {
                 continue;
             }
 
-            // Re-bind imported module-level vars by looking up their backing globals.
-            // Note: globals are named `imported_<name>` during import compilation.
-            let global_name = format!("imported_{}", name);
-            if let Some(global) = self.module.get_global(&global_name) {
-                let ptr = global.as_pointer_value();
-                self.globals.insert(name.clone(), ptr);
-                self.variables.insert(name.clone(), ptr);
+            // Re-bind imported module-level vars using the per-module global table.
+            if let Some(module_vars) = self.imported_module_var_globals.get(import_path) {
+                if let Some(global) = module_vars.get(name) {
+                    let ptr = global.as_pointer_value();
+                    self.globals.insert(name.clone(), ptr);
+                    self.variables.insert(name.clone(), ptr);
+                }
             }
         }
 
@@ -33328,6 +34014,10 @@ impl<'ctx> CodeGen<'ctx> {
         func: FunctionValue<'ctx>,
         args: &[Expr],
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let llvm_name = func.get_name().to_string_lossy().into_owned();
+        let flag = self.function_defined_flags.get(&llvm_name).copied();
+        self.guard_global_defined_flag(flag, func_name, "fn_defined");
+
         let mut compiled_args: Vec<BasicMetadataValueEnum> = Vec::new();
 
         // Check if any argument is a spread expression
@@ -33751,7 +34441,93 @@ impl<'ctx> CodeGen<'ctx> {
         patterns: &[DestructPattern],
         value: &Expr,
     ) -> Result<(), HaversError> {
-        let list_val = self.compile_expr(value)?;
+        let function = self.current_function.unwrap();
+        let val = self.compile_expr(value)?;
+        let tag = self.extract_tag(val)?;
+
+        let list_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::List.as_u8() as u64, false);
+        let string_tag = self
+            .types
+            .i8_type
+            .const_int(ValueTag::String.as_u8() as u64, false);
+
+        let is_list = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, list_tag, "is_list")
+            .unwrap();
+
+        let list_block = self.context.append_basic_block(function, "destructure_list");
+        let check_string_block =
+            self.context
+                .append_basic_block(function, "destructure_check_string");
+        let string_block = self
+            .context
+            .append_basic_block(function, "destructure_string");
+        let type_error_block = self
+            .context
+            .append_basic_block(function, "destructure_type_error");
+        let merge_block = self
+            .context
+            .append_basic_block(function, "destructure_merge");
+
+        self.builder
+            .build_conditional_branch(is_list, list_block, check_string_block)
+            .unwrap();
+
+        self.builder.position_at_end(list_block);
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let list_bb = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(check_string_block);
+        let is_string = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, tag, string_tag, "is_string")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_string, string_block, type_error_block)
+            .unwrap();
+
+        self.builder.position_at_end(string_block);
+        let one = self.make_int(self.types.i64_type.const_int(1, false));
+        let string_as_list = self
+            .builder
+            .build_call(
+                self.libc.skelp,
+                &[val.into(), one.into()],
+                "destructure_chars",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap();
+        self.builder.build_unconditional_branch(merge_block).unwrap();
+        let string_bb = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(type_error_block);
+        let op = self
+            .builder
+            .build_global_string_ptr("destructure", "destructure_op")
+            .unwrap();
+        let zero_tag = self.types.i8_type.const_int(0, false);
+        self.builder
+            .build_call(
+                self.libc.type_error,
+                &[op.as_pointer_value().into(), tag.into(), zero_tag.into()],
+                "",
+            )
+            .unwrap();
+        self.builder.build_unreachable().unwrap();
+
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "destructure_value")
+            .unwrap();
+        phi.add_incoming(&[(&val, list_bb), (&string_as_list, string_bb)]);
+        let list_val = phi.as_basic_value();
 
         // Get list struct pointer
         // MdhList format: { items_ptr: *MdhValue, length: i64, capacity: i64 }
@@ -33806,6 +34582,42 @@ impl<'ctx> CodeGen<'ctx> {
                 break;
             }
         }
+
+        // Ensure there are enough elements to satisfy the fixed bindings.
+        // This prevents out-of-bounds loads and matches interpreter behavior.
+        let before_rest = rest_index.unwrap_or(patterns.len());
+        let min_required = (before_rest + patterns_after_rest) as u64;
+        let min_required_val = self.types.i64_type.const_int(min_required, false);
+        let too_short = self
+            .builder
+            .build_int_compare(
+                IntPredicate::ULT,
+                list_len,
+                min_required_val,
+                "destructure_too_short",
+            )
+            .unwrap();
+
+        let too_short_block = self
+            .context
+            .append_basic_block(function, "destructure_too_short");
+        let bind_block = self.context.append_basic_block(function, "destructure_bind");
+        self.builder
+            .build_conditional_branch(too_short, too_short_block, bind_block)
+            .unwrap();
+
+        self.builder.position_at_end(too_short_block);
+        let msg_ptr = self
+            .builder
+            .build_global_string_ptr("Cannae destructure: no' enough elements", "destructure_msg")
+            .unwrap();
+        let msg_val = self.make_string(msg_ptr.as_pointer_value());
+        self.builder
+            .build_call(self.libc.hurl, &[msg_val.into()], "")
+            .unwrap();
+        self.builder.build_unreachable().unwrap();
+
+        self.builder.position_at_end(bind_block);
 
         // Process patterns
         let mut index = 0u64;
@@ -35662,6 +36474,21 @@ impl<'ctx> CodeGen<'ctx> {
         class_name: &str,
         args: &[Expr],
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let mut arg_vals: Vec<BasicValueEnum<'ctx>> = Vec::with_capacity(args.len());
+        for arg in args {
+            arg_vals.push(self.compile_expr(arg)?);
+        }
+        self.compile_class_instantiation_values(class_name, &arg_vals)
+    }
+
+    fn compile_class_instantiation_values(
+        &mut self,
+        class_name: &str,
+        arg_vals: &[BasicValueEnum<'ctx>],
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let flag = self.class_defined_flags.get(class_name).copied();
+        self.guard_global_defined_flag(flag, class_name, "class_defined");
+
         // Allocate instance data: [class_name_ptr][field_count=0]
         // Start with just header; fields will be added by init method.
         let header_size = self.types.i64_type.const_int(16, false); // class_name_ptr + field_count
@@ -35748,15 +36575,16 @@ impl<'ctx> CodeGen<'ctx> {
 
             let init_func_name = format!("{}_init", current_class);
             if let Some(&init_func) = self.functions.get(&init_func_name) {
+                let expected_param_count = init_func.count_params() as usize;
+                let expected_user_args = expected_param_count.saturating_sub(1);
+
                 // Compile arguments
                 let mut call_args: Vec<BasicMetadataValueEnum> = vec![instance.into()];
-                for arg in args {
-                    let arg_val = self.compile_expr(arg)?;
-                    call_args.push(arg_val.into());
+                for arg_val in arg_vals.iter().take(expected_user_args) {
+                    call_args.push((*arg_val).into());
                 }
 
                 // Fill in default parameter values if fewer args provided than expected
-                let expected_param_count = init_func.count_params() as usize;
                 if call_args.len() < expected_param_count {
                     if let Some(defaults) = self.function_defaults.get(&init_func_name).cloned() {
                         // defaults[i] corresponds to the i-th init parameter (excluding self)
@@ -40187,6 +41015,22 @@ dae f() { gie 32 }
         let _ = codegen
             .compile_class_instantiation("MissingClass", &[])
             .expect_err("expected unknown class error");
+    }
+
+    #[test]
+    fn make_class_is_covered_in_unit_instance_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "make_class_coverage");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        codegen.preregister_class("Box", None, &[]);
+        let class_global = *codegen.classes.get("Box").expect("class global");
+        let _ = codegen.make_class(class_global.as_pointer_value());
     }
 
     #[test]
