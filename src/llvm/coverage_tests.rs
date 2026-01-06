@@ -375,6 +375,57 @@ fetch "bad_class"
 }
 
 #[test]
+fn llvm_codegen_import_parse_error_branch_is_exercised_for_unit_coverage() {
+    let dir = tempdir().unwrap();
+    let main_path = dir.path().join("main.braw");
+    std::fs::write(
+        &main_path,
+        r#"
+fetch "bad_parse"
+"#,
+    )
+    .unwrap();
+    std::fs::write(dir.path().join("bad_parse.braw"), "ken a =\n").unwrap();
+
+    let _ = compile_with_source_path_for_unit_coverage(
+        r#"
+fetch "bad_parse"
+"#,
+        &main_path,
+    )
+    .unwrap_err();
+}
+
+#[test]
+fn llvm_codegen_import_duplicate_module_vars_reuse_existing_globals_for_unit_coverage() {
+    let dir = tempdir().unwrap();
+    let main_path = dir.path().join("main.braw");
+    std::fs::write(
+        &main_path,
+        r#"
+fetch "dup_vars"
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("dup_vars.braw"),
+        r#"
+ken a = 1
+ken a = 2
+"#,
+    )
+    .unwrap();
+
+    compile_with_source_path_for_unit_coverage(
+        r#"
+fetch "dup_vars"
+"#,
+        &main_path,
+    )
+    .unwrap();
+}
+
+#[test]
 fn llvm_codegen_misc_error_propagation_branches_are_exercised_for_unit_coverage() {
     // Targets additional `?` error-propagation branches inside `compile_expr` without relying on
     // any runtime behavior.
@@ -491,6 +542,46 @@ keek 1 {
     whan 1 -> { blether 1 }
 }
 blether 1
+"#,
+    );
+}
+
+#[test]
+fn llvm_codegen_defaults_restore_boxed_callers_for_unit_coverage() {
+    // Ensures default-evaluation temporarily binding param names does not lose boxed state from
+    // the caller scope when names collide (restoring `boxed_vars` via the `was_boxed` path).
+    compile_to_ir_for_unit_coverage(
+        r#"
+dae f(x = 1) { gie x }
+
+kin C {
+    dae init(x = 1) { masel.v = x }
+    dae m(x = 1) { gie x }
+}
+
+kin D {
+    dae init(x = 1) { masel.v = x }
+    dae m(x = 1) { gie x }
+}
+
+dae choose(flag) {
+    gin flag { gie C() } ither { gie D() }
+}
+
+dae outer() {
+    ken x = 0
+    dae inc() { x = x + 1 }
+    inc()
+
+    f()
+
+    ken c = C()
+    c.m()
+
+    ken u = choose(aye)
+    u.m()
+}
+outer()
 "#,
     );
 }
