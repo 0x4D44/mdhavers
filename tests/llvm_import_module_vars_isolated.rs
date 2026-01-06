@@ -105,3 +105,33 @@ blether b2["x"]
 
     assert_eq!(compile_and_run(dir.path(), &main_path), "2\n2");
 }
+
+#[test]
+fn llvm_unaliased_import_injects_module_level_vars_into_scope() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("a.braw"),
+        r#"
+ken x = 41
+
+dae bump() { x = x + 1 }
+dae get() { gie x }
+"#,
+    )
+    .unwrap();
+
+    let main_path = dir.path().join("main.braw");
+    fs::write(
+        &main_path,
+        r#"
+fetch "a"
+
+blether x
+bump()
+blether get()
+"#,
+    )
+    .unwrap();
+
+    assert_eq!(compile_and_run(dir.path(), &main_path), "41\n42");
+}

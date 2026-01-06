@@ -84,8 +84,10 @@ ken f = |p| {
     # Stmt::Destructure (with ignore + rest)
     ken [a, ...rest] = [1, 2, 3, 4]
     ken [_, first, ...rest2] = [0, 1, 2, 3]
+    ken [_, second] = [0, 1]
     blether a
     blether first
+    blether second
     blether len(rest)
 
     # Stmt::While + Stmt::Continue

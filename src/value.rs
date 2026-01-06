@@ -1037,6 +1037,10 @@ mod tests {
         assert_eq!(format!("{}", val), "<Dog instance>");
     }
 
+    fn is_function_value(value: Option<Value>) -> bool {
+        matches!(value, Some(Value::Function(_)))
+    }
+
     #[test]
     fn test_havers_instance_get_covers_field_and_method_branches() {
         let mut class = HaversClass::new("Test".to_string(), None);
@@ -1050,7 +1054,8 @@ mod tests {
         instance.set("field".to_string(), Value::Integer(123));
 
         assert_eq!(instance.get("field"), Some(Value::Integer(123)));
-        assert!(matches!(instance.get("method"), Some(Value::Function(_))));
+        assert!(is_function_value(instance.get("method")));
+        assert!(!is_function_value(instance.get("field")));
         assert_eq!(instance.get("missing"), None);
     }
 
