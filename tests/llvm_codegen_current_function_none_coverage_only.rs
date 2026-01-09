@@ -1,4 +1,4 @@
-#![cfg(coverage)]
+#![cfg(all(feature = "llvm", coverage))]
 
 use inkwell::context::Context;
 
@@ -15,4 +15,3 @@ fn codegen_current_function_none_branch_is_exercised_for_coverage() {
         .expect_err("expected compile error due to missing current function");
     assert!(matches!(err, HaversError::CompileError(_)));
 }
-

@@ -425,12 +425,13 @@ fn compile_wasm(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
 
 #[cfg(not(feature = "llvm"))]
 fn build_native(
-    _path: &PathBuf,
+    path: &PathBuf,
     _output: Option<PathBuf>,
     _opt_level: u8,
     _emit_llvm: bool,
 ) -> Result<(), String> {
     use colored::Colorize;
+    let _ = read_file(path)?;
     eprintln!("{}", "═".repeat(60).yellow());
     eprintln!(
         "{}",
