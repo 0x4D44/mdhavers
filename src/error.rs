@@ -1057,6 +1057,212 @@ mod tests {
     }
 
     #[test]
+    fn test_error_suggestion_branch_matrix_for_coverage() {
+        let err = HaversError::UndefinedVariable {
+            name: "String".to_string(),
+            line: 1,
+        };
+        assert!(get_error_suggestion(&err).is_some());
+        let err = HaversError::UndefinedVariable {
+            name: "nope".to_string(),
+            line: 1,
+        };
+        std::hint::black_box(get_error_suggestion(&err));
+
+        let err = HaversError::UnexpectedToken {
+            expected: "expression".to_string(),
+            found: "}".to_string(),
+            line: 1,
+        };
+        assert!(get_error_suggestion(&err).is_some());
+        let err = HaversError::UnexpectedToken {
+            expected: "other".to_string(),
+            found: "}".to_string(),
+            line: 1,
+        };
+        std::hint::black_box(get_error_suggestion(&err));
+        let err = HaversError::UnexpectedToken {
+            expected: "expression".to_string(),
+            found: "=".to_string(),
+            line: 1,
+        };
+        assert!(get_error_suggestion(&err).is_some());
+        let err = HaversError::UnexpectedToken {
+            expected: "other".to_string(),
+            found: "=".to_string(),
+            line: 1,
+        };
+        std::hint::black_box(get_error_suggestion(&err));
+        let err = HaversError::UnexpectedToken {
+            expected: "expression".to_string(),
+            found: ")".to_string(),
+            line: 1,
+        };
+        assert!(get_error_suggestion(&err).is_some());
+        let err = HaversError::UnexpectedToken {
+            expected: "other".to_string(),
+            found: ")".to_string(),
+            line: 1,
+        };
+        std::hint::black_box(get_error_suggestion(&err));
+
+        let err = HaversError::TypeError {
+            message: "add string".to_string(),
+            line: 1,
+        };
+        assert!(get_error_suggestion(&err).is_some());
+        let err = HaversError::TypeError {
+            message: "add nope".to_string(),
+            line: 1,
+        };
+        std::hint::black_box(get_error_suggestion(&err));
+        let err = HaversError::TypeError {
+            message: "string".to_string(),
+            line: 1,
+        };
+        std::hint::black_box(get_error_suggestion(&err));
+        let err = HaversError::TypeError {
+            message: "integer index".to_string(),
+            line: 1,
+        };
+        assert!(get_error_suggestion(&err).is_some());
+        let err = HaversError::TypeError {
+            message: "integer nope".to_string(),
+            line: 1,
+        };
+        std::hint::black_box(get_error_suggestion(&err));
+        let err = HaversError::TypeError {
+            message: "index".to_string(),
+            line: 1,
+        };
+        std::hint::black_box(get_error_suggestion(&err));
+        let err = HaversError::TypeError {
+            message: "other".to_string(),
+            line: 1,
+        };
+        std::hint::black_box(get_error_suggestion(&err));
+
+        let err = HaversError::WrongArity {
+            name: "f".to_string(),
+            expected: 0,
+            got: 1,
+            line: 1,
+        };
+        assert!(get_error_suggestion(&err).is_some());
+        let err = HaversError::WrongArity {
+            name: "f".to_string(),
+            expected: 0,
+            got: 0,
+            line: 1,
+        };
+        std::hint::black_box(get_error_suggestion(&err));
+        let err = HaversError::WrongArity {
+            name: "f".to_string(),
+            expected: 2,
+            got: 0,
+            line: 1,
+        };
+        assert!(get_error_suggestion(&err).is_some());
+        let err = HaversError::WrongArity {
+            name: "f".to_string(),
+            expected: 2,
+            got: 1,
+            line: 1,
+        };
+        std::hint::black_box(get_error_suggestion(&err));
+        let err = HaversError::WrongArity {
+            name: "f".to_string(),
+            expected: 2,
+            got: 2,
+            line: 1,
+        };
+        std::hint::black_box(get_error_suggestion(&err));
+
+        let err = HaversError::IndexOutOfBounds {
+            index: -1,
+            size: 3,
+            line: 1,
+        };
+        assert!(get_error_suggestion(&err).is_some());
+        let err = HaversError::IndexOutOfBounds {
+            index: 0,
+            size: 0,
+            line: 1,
+        };
+        assert!(get_error_suggestion(&err).is_some());
+        let err = HaversError::IndexOutOfBounds {
+            index: 10,
+            size: 5,
+            line: 1,
+        };
+        assert!(get_error_suggestion(&err).is_some());
+    }
+
+    #[test]
+    fn test_error_suggestion_additional_false_paths_for_coverage() {
+        let err = HaversError::UnexpectedToken {
+            expected: "expression".to_string(),
+            found: "foo".to_string(),
+            line: 1,
+        };
+        std::hint::black_box(get_error_suggestion(&err));
+
+        let err = HaversError::UnexpectedToken {
+            expected: "not an expr".to_string(),
+            found: "=".to_string(),
+            line: 1,
+        };
+        std::hint::black_box(get_error_suggestion(&err));
+
+        let err = HaversError::TypeError {
+            message: "add".to_string(),
+            line: 1,
+        };
+        std::hint::black_box(get_error_suggestion(&err));
+
+        let err = HaversError::TypeError {
+            message: "index".to_string(),
+            line: 1,
+        };
+        std::hint::black_box(get_error_suggestion(&err));
+
+        let err = HaversError::WrongArity {
+            name: "f".to_string(),
+            expected: 1,
+            got: 3,
+            line: 1,
+        };
+        std::hint::black_box(get_error_suggestion(&err));
+
+        let err = HaversError::IndexOutOfBounds {
+            index: 1,
+            size: 2,
+            line: 1,
+        };
+        std::hint::black_box(get_error_suggestion(&err));
+    }
+
+    #[test]
+    fn test_format_error_context_branch_matrix_for_coverage() {
+        let source = "ken x = 1\nken y = 2";
+        assert!(format_error_context(source, 0).is_empty());
+        assert!(format_error_context(source, 10).is_empty());
+        let context = format_error_context(source, 1);
+        assert!(context.contains("> 1 |"));
+        let context = format_error_context(source, 2);
+        assert!(context.contains("> 2 |"));
+    }
+
+    #[test]
+    fn test_format_error_context_handles_middle_lines_for_coverage() {
+        let source = "ken x = 1\nken y = 2\nken z = 3";
+        let context = format_error_context(source, 2);
+        assert!(context.contains("> 2 |"));
+        assert!(context.contains("  1 |"));
+        assert!(context.contains("  3 |"));
+    }
+
+    #[test]
     fn test_scots_phrases() {
         // Test that random phrases return valid strings
         let phrase = random_scots_exclamation();

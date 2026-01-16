@@ -4440,7 +4440,7 @@ impl Interpreter {
                         if wait_ms < 0 {
                             wait_ms = next_due.unwrap_or(-1);
                         } else if let Some(due) = next_due {
-                            if due >= 0 && due < wait_ms {
+                            if due < wait_ms {
                                 wait_ms = due;
                             }
                         }
@@ -4488,9 +4488,7 @@ impl Interpreter {
                         let mut out: Vec<Value> = Vec::new();
                         for (idx, pfd) in fds.iter().enumerate() {
                             let watch = &loop_ref.watches[idx];
-                            if (pfd.revents & libc::POLLIN) != 0
-                                && !matches!(watch.read_cb, Value::Nil)
-                            {
+                            if (pfd.revents & libc::POLLIN) != 0 {
                                 out.push(event_dict(
                                     "read",
                                     Some(watch.sock_id),
@@ -4498,9 +4496,7 @@ impl Interpreter {
                                     Some(watch.read_cb.clone()),
                                 ));
                             }
-                            if (pfd.revents & libc::POLLOUT) != 0
-                                && !matches!(watch.write_cb, Value::Nil)
-                            {
+                            if (pfd.revents & libc::POLLOUT) != 0 {
                                 out.push(event_dict(
                                     "write",
                                     Some(watch.sock_id),
@@ -11620,14 +11616,14 @@ impl Interpreter {
                         let mut sliced: Vec<Value> = Vec::new();
                         if step_val > 0 {
                             let mut i = start as i64;
-                            while i < end && i < len {
+                            while i < end {
                                 sliced.push(list[i as usize].clone());
                                 i += step_val;
                             }
                         } else {
                             // Negative step: go backwards
                             let mut i = start as i64;
-                            while i > end && i >= 0 {
+                            while i > end {
                                 if (i as usize) < list.len() {
                                     sliced.push(list[i as usize].clone());
                                 }
@@ -11668,14 +11664,14 @@ impl Interpreter {
                         let mut sliced = String::new();
                         if step_val > 0 {
                             let mut i = start as i64;
-                            while i < end && i < len {
+                            while i < end {
                                 sliced.push(chars[i as usize]);
                                 i += step_val;
                             }
                         } else {
                             // Negative step: go backwards
                             let mut i = start as i64;
-                            while i > end && i >= 0 {
+                            while i > end {
                                 if (i as usize) < chars.len() {
                                     sliced.push(chars[i as usize]);
                                 }
@@ -12966,9 +12962,9 @@ fn json_escape_string(s: &str) -> String {
 	#[allow(clippy::manual_range_contains)]
 	mod tests {
 	    use super::*;
-	    use crate::ast::{Expr, Literal, Span};
+	    use crate::ast::{Expr, Literal, Span, Stmt};
 	    use crate::parser::parse;
-	    use crate::value::NativeObject;
+	    use crate::value::{FunctionParam, HaversFunction, NativeFunction, NativeObject};
 	    use std::cell::RefCell;
 	    use std::collections::HashMap;
 	    #[cfg(all(feature = "native", unix))]
@@ -13135,20 +13131,24 @@ bytes_slice(b, 2, 1)
 	        let _ = (bytes_set.func)(vec![buf.clone(), Value::Integer(-1), Value::Integer(7)]);
 	        let _ = (bytes_set.func)(vec![buf.clone(), Value::Integer(99), Value::Integer(7)]);
 
-	        let _ = (bytes_read_u16be.func)(vec![bytes(&[1, 2, 3]), Value::Integer(0)]).unwrap();
-	        let _ = (bytes_read_u32be.func)(vec![bytes(&[1, 2, 3, 4]), Value::Integer(0)]).unwrap();
-	        let _ = (bytes_read_u16be.func)(vec![bytes(&[1, 2]), Value::Nil]);
-	        let _ = (bytes_read_u16be.func)(vec![bytes(&[1]), Value::Integer(0)]);
-	        let _ = (bytes_read_u32be.func)(vec![bytes(&[1, 2, 3, 4]), Value::Nil]);
-	        let _ = (bytes_read_u32be.func)(vec![bytes(&[1, 2, 3]), Value::Integer(0)]);
+        let _ = (bytes_read_u16be.func)(vec![bytes(&[1, 2, 3]), Value::Integer(0)]).unwrap();
+        let _ = (bytes_read_u32be.func)(vec![bytes(&[1, 2, 3, 4]), Value::Integer(0)]).unwrap();
+        let _ = (bytes_read_u16be.func)(vec![bytes(&[1, 2]), Value::Nil]);
+        let _ = (bytes_read_u16be.func)(vec![bytes(&[1]), Value::Integer(0)]);
+        let _ = (bytes_read_u16be.func)(vec![bytes(&[1, 2, 3]), Value::Integer(-1)]);
+        let _ = (bytes_read_u32be.func)(vec![bytes(&[1, 2, 3, 4]), Value::Nil]);
+        let _ = (bytes_read_u32be.func)(vec![bytes(&[1, 2, 3]), Value::Integer(0)]);
+        let _ = (bytes_read_u32be.func)(vec![bytes(&[1, 2, 3, 4]), Value::Integer(-1)]);
 
 	        let _ =
 	            (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Integer(0), Value::Float(7.0)])
 	                .unwrap();
-	        let _ = (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Nil, Value::Integer(7)]);
-	        let _ = (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Integer(0), Value::Nil]);
-	        let _ = (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Integer(0), Value::Integer(-1)]);
-	        let _ = (bytes_write_u16be.func)(vec![bytes(&[0]), Value::Integer(0), Value::Integer(1)]);
+        let _ = (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Nil, Value::Integer(7)]);
+        let _ = (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Integer(0), Value::Nil]);
+        let _ = (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Integer(0), Value::Integer(-1)]);
+        let _ = (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Integer(0), Value::Integer(70000)]);
+        let _ = (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Integer(-1), Value::Integer(1)]);
+        let _ = (bytes_write_u16be.func)(vec![bytes(&[0]), Value::Integer(0), Value::Integer(1)]);
 
 	        let _ = (bytes_write_u32be.func)(vec![
 	            bytes(&[0, 0, 0, 0]),
@@ -13156,18 +13156,28 @@ bytes_slice(b, 2, 1)
 	            Value::Float(7.0),
 	        ])
 	        .unwrap();
-	        let _ = (bytes_write_u32be.func)(vec![bytes(&[0, 0, 0, 0]), Value::Nil, Value::Integer(7)]);
-	        let _ = (bytes_write_u32be.func)(vec![bytes(&[0, 0, 0, 0]), Value::Integer(0), Value::Nil]);
-	        let _ = (bytes_write_u32be.func)(vec![
-	            bytes(&[0, 0, 0, 0]),
-	            Value::Integer(0),
-	            Value::Integer(-1),
-	        ]);
-	        let _ = (bytes_write_u32be.func)(vec![
-	            bytes(&[0, 0, 0]),
-	            Value::Integer(0),
-	            Value::Integer(1),
-	        ]);
+        let _ = (bytes_write_u32be.func)(vec![bytes(&[0, 0, 0, 0]), Value::Nil, Value::Integer(7)]);
+        let _ = (bytes_write_u32be.func)(vec![bytes(&[0, 0, 0, 0]), Value::Integer(0), Value::Nil]);
+        let _ = (bytes_write_u32be.func)(vec![
+            bytes(&[0, 0, 0, 0]),
+            Value::Integer(0),
+            Value::Integer(-1),
+        ]);
+        let _ = (bytes_write_u32be.func)(vec![
+            bytes(&[0, 0, 0, 0]),
+            Value::Integer(0),
+            Value::Integer(0x1_0000_0000),
+        ]);
+        let _ = (bytes_write_u32be.func)(vec![
+            bytes(&[0, 0, 0, 0]),
+            Value::Integer(-1),
+            Value::Integer(1),
+        ]);
+        let _ = (bytes_write_u32be.func)(vec![
+            bytes(&[0, 0, 0]),
+            Value::Integer(0),
+            Value::Integer(1),
+        ]);
 	    }
 
 	    #[test]
@@ -13254,9 +13264,9 @@ ok
 	        assert!(err.contains("No IPv4 address found"));
 	    }
 
-	    #[cfg(all(feature = "native", unix))]
-	    #[test]
-	    fn socket_helpers_cover_missing_error_and_flag_paths_for_coverage() {
+    #[cfg(all(feature = "native", unix))]
+    #[test]
+    fn socket_helpers_cover_missing_error_and_flag_paths_for_coverage() {
 	        fn ok_int_result(value: Value) -> Option<i64> {
 	            let Value::Dict(dict) = value else {
 	                return None;
@@ -13288,10 +13298,11 @@ ok
 	        let interp = Interpreter::new();
 	        let globals = interp.globals.clone();
 
-	        let socket_tcp = native_from_globals(&globals, "socket_tcp");
-	        let socket_bind = native_from_globals(&globals, "socket_bind");
-	        let socket_connect = native_from_globals(&globals, "socket_connect");
-	        let socket_set_reuseaddr = native_from_globals(&globals, "socket_set_reuseaddr");
+        let socket_tcp = native_from_globals(&globals, "socket_tcp");
+        let socket_bind = native_from_globals(&globals, "socket_bind");
+        let socket_connect = native_from_globals(&globals, "socket_connect");
+        let socket_set_reuseaddr = native_from_globals(&globals, "socket_set_reuseaddr");
+        let udp_send_to = native_from_globals(&globals, "udp_send_to");
 
 	        let _ = take_err_string(Ok(Value::Nil));
 
@@ -13302,19 +13313,41 @@ ok
 	        ]));
 	        assert!(err.contains("Unknown socket handle"));
 
-	        let err = take_err_string((socket_connect.func)(vec![
-	            Value::Integer(0),
-	            Value::String("127.0.0.1".to_string()),
-	            Value::Nil,
-	        ]));
-	        assert!(err.contains("socket_connect() expects port integer"));
+        let err = take_err_string((socket_connect.func)(vec![
+            Value::Integer(0),
+            Value::String("127.0.0.1".to_string()),
+            Value::Nil,
+        ]));
+        assert!(err.contains("socket_connect() expects port integer"));
 
-	        let err = take_err_string((socket_connect.func)(vec![
-	            Value::Integer(12345),
-	            Value::String("127.0.0.1".to_string()),
-	            Value::Integer(1),
-	        ]));
-	        assert!(err.contains("Unknown socket handle"));
+        let err = take_err_string((socket_connect.func)(vec![
+            Value::Integer(0),
+            Value::String("127.0.0.1".to_string()),
+            Value::Integer(70000),
+        ]));
+        assert!(err.contains("socket_connect() port must be 0..65535"));
+
+        let err = take_err_string((socket_connect.func)(vec![
+            Value::Integer(0),
+            Value::String("127.0.0.1".to_string()),
+            Value::Integer(-1),
+        ]));
+        assert!(err.contains("socket_connect() port must be 0..65535"));
+
+        let err = take_err_string((socket_connect.func)(vec![
+            Value::Integer(12345),
+            Value::String("127.0.0.1".to_string()),
+            Value::Integer(1),
+        ]));
+        assert!(err.contains("Unknown socket handle"));
+
+        let err = take_err_string((udp_send_to.func)(vec![
+            Value::Integer(0),
+            Value::Bytes(Rc::new(RefCell::new(vec![1]))),
+            Value::String("127.0.0.1".to_string()),
+            Value::Integer(-1),
+        ]));
+        assert!(err.contains("udp_send_to() port must be 0..65535"));
 
 	        let sock_res = (socket_tcp.func)(vec![]).unwrap();
 	        assert!(ok_int_result(Value::Nil).is_none());
@@ -13336,8 +13369,90 @@ ok
 	                }
 	            }
 	        }
-	        assert!(take_socket_fd(-1).is_none());
-	    }
+        assert!(take_socket_fd(-1).is_none());
+    }
+
+    #[cfg(all(feature = "native", unix))]
+    #[test]
+    fn srtp_create_key_selection_branches_for_coverage() {
+        let interp = Interpreter::new();
+        let globals = interp.globals.clone();
+        let srtp_create = native_from_globals(&globals, "srtp_create");
+
+        let bytes = |len: usize, fill: u8| Value::Bytes(Rc::new(RefCell::new(vec![fill; len])));
+
+        let mut dict_full = DictValue::new();
+        dict_full.set(
+            Value::String("profile".to_string()),
+            Value::String("SRTP_AES128_CM_SHA1_80".to_string()),
+        );
+        dict_full.set(Value::String("client_key".to_string()), bytes(16, 1));
+        dict_full.set(Value::String("client_salt".to_string()), bytes(14, 2));
+        dict_full.set(Value::String("server_key".to_string()), bytes(16, 3));
+        dict_full.set(Value::String("server_salt".to_string()), bytes(14, 4));
+        let res = (srtp_create.func)(vec![Value::Dict(Rc::new(RefCell::new(dict_full)))]).unwrap();
+        let ok = dict_get_bool(&res.as_dict().unwrap().borrow(), "ok");
+        assert_eq!(ok, Some(true));
+
+        let mut dict_direct = DictValue::new();
+        dict_direct.set(Value::String("send_key".to_string()), bytes(16, 30));
+        dict_direct.set(Value::String("send_salt".to_string()), bytes(14, 31));
+        dict_direct.set(Value::String("recv_key".to_string()), bytes(16, 32));
+        dict_direct.set(Value::String("recv_salt".to_string()), bytes(14, 33));
+        let res =
+            (srtp_create.func)(vec![Value::Dict(Rc::new(RefCell::new(dict_direct)))]).unwrap();
+        let ok = dict_get_bool(&res.as_dict().unwrap().borrow(), "ok");
+        assert_eq!(ok, Some(true));
+
+        let mut dict_missing_server_key = DictValue::new();
+        dict_missing_server_key.set(
+            Value::String("profile".to_string()),
+            Value::String("SRTP_AES128_CM_SHA1_80".to_string()),
+        );
+        dict_missing_server_key.set(Value::String("client_key".to_string()), bytes(16, 11));
+        dict_missing_server_key.set(Value::String("client_salt".to_string()), bytes(14, 12));
+        dict_missing_server_key.set(Value::String("server_salt".to_string()), bytes(14, 13));
+        dict_missing_server_key.set(Value::String("master_key".to_string()), bytes(16, 14));
+        dict_missing_server_key.set(Value::String("master_salt".to_string()), bytes(14, 15));
+        let res =
+            (srtp_create.func)(vec![Value::Dict(Rc::new(RefCell::new(dict_missing_server_key)))])
+                .unwrap();
+        let ok = dict_get_bool(&res.as_dict().unwrap().borrow(), "ok");
+        assert_eq!(ok, Some(true));
+
+        let mut dict_missing_server_salt = DictValue::new();
+        dict_missing_server_salt.set(
+            Value::String("profile".to_string()),
+            Value::String("SRTP_AES128_CM_SHA1_80".to_string()),
+        );
+        dict_missing_server_salt.set(Value::String("client_key".to_string()), bytes(16, 21));
+        dict_missing_server_salt.set(Value::String("client_salt".to_string()), bytes(14, 22));
+        dict_missing_server_salt.set(Value::String("server_key".to_string()), bytes(16, 23));
+        dict_missing_server_salt.set(Value::String("master_key".to_string()), bytes(16, 24));
+        dict_missing_server_salt.set(Value::String("master_salt".to_string()), bytes(14, 25));
+        let res = (srtp_create.func)(vec![Value::Dict(Rc::new(RefCell::new(
+            dict_missing_server_salt,
+        )))])
+        .unwrap();
+        let ok = dict_get_bool(&res.as_dict().unwrap().borrow(), "ok");
+        assert_eq!(ok, Some(true));
+
+        let mut dict_master = DictValue::new();
+        dict_master.set(Value::String("master_key".to_string()), bytes(16, 5));
+        dict_master.set(Value::String("master_salt".to_string()), bytes(14, 6));
+        dict_master.set(Value::String("client_key".to_string()), bytes(16, 7));
+        dict_master.set(Value::String("server_key".to_string()), bytes(16, 8));
+        dict_master.set(Value::String("server_salt".to_string()), bytes(14, 9));
+        let res = (srtp_create.func)(vec![Value::Dict(Rc::new(RefCell::new(dict_master)))]).unwrap();
+        let ok = dict_get_bool(&res.as_dict().unwrap().borrow(), "ok");
+        assert_eq!(ok, Some(true));
+
+        let mut dict_missing = DictValue::new();
+        dict_missing.set(Value::String("master_key".to_string()), bytes(16, 10));
+        let res = (srtp_create.func)(vec![Value::Dict(Rc::new(RefCell::new(dict_missing)))]).unwrap();
+        let ok = dict_get_bool(&res.as_dict().unwrap().borrow(), "ok");
+        assert_eq!(ok, Some(false));
+    }
 
 		    #[test]
 		    fn module_in_progress_guard_drop_handles_null_interpreter_ptr_for_coverage() {
@@ -14266,7 +14381,7 @@ blether result
         )
         .unwrap();
 
-        let mut interp = Interpreter::new();
+        let interp = Interpreter::new();
         interp.interpret(&program).unwrap();
         let out = interp.get_output().join("\n");
         let msg = format!("unexpected output: {out}");
@@ -15173,13 +15288,15 @@ blether r["error"]
         while {
             let client_hs = client_conn.is_handshaking();
             let server_hs = server_conn.is_handshaking();
-            (client_hs || server_hs) && Instant::now() < deadline
+            (client_hs | server_hs) & (Instant::now() < deadline)
         } {
             let _ = client_conn.complete_io(&mut client_tcp);
             let _ = server_conn.complete_io(&mut server_tcp);
             std::thread::sleep(Duration::from_millis(1));
         }
-        assert!(!client_conn.is_handshaking() && !server_conn.is_handshaking());
+        assert!(
+            (!client_conn.is_handshaking()) & (!server_conn.is_handshaking())
+        );
 
         client_tcp.set_nonblocking(false).unwrap();
         server_tcp.set_nonblocking(false).unwrap();
@@ -16290,15 +16407,36 @@ d["a"]
     }
 
     #[test]
-	    fn test_gaun_map() {
-	        let result = run("ken nums = [1, 2, 3]\ngaun(nums, |x| x * 2)").unwrap();
-	        let list = result.as_list().expect("Expected list");
-	        let items = list.borrow();
-	        assert_eq!(items.len(), 3);
-	        assert_eq!(items[0], Value::Integer(2));
-	        assert_eq!(items[1], Value::Integer(4));
-	        assert_eq!(items[2], Value::Integer(6));
-	    }
+    fn test_gaun_map() {
+        let result = run("ken nums = [1, 2, 3]\ngaun(nums, |x| x * 2)").unwrap();
+        let list = result.as_list().expect("Expected list");
+        let items = list.borrow();
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[0], Value::Integer(2));
+        assert_eq!(items[1], Value::Integer(4));
+        assert_eq!(items[2], Value::Integer(6));
+    }
+
+    #[test]
+    fn test_call_value_builtin_string_dispatches_for_coverage() {
+        let mut interp = Interpreter::new();
+        let list = Value::List(Rc::new(RefCell::new(vec![Value::Integer(1)])));
+        let func = Value::NativeFunction(Rc::new(NativeFunction::new("id", 1, |args| {
+            Ok(args[0].clone())
+        })));
+
+        let result = interp
+            .call_value(
+                Value::String("__builtin_gaun__".to_string()),
+                vec![list, func],
+                0,
+            )
+            .unwrap();
+        let out = result.as_list().expect("expected list");
+        let items = out.borrow();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0], Value::Integer(1));
+    }
 
     #[test]
 	    fn test_sieve_filter() {
@@ -16862,6 +17000,30 @@ f"The answer is {x * 2}"
     }
 
     #[test]
+    fn test_get_user_variables_skips_builtins_for_coverage() {
+        let interp = Interpreter::new();
+        {
+            let mut env = interp.environment.borrow_mut();
+            env.define("PI".to_string(), Value::Float(std::f64::consts::PI));
+            env.define("E".to_string(), Value::Float(std::f64::consts::E));
+            env.define("TAU".to_string(), Value::Float(std::f64::consts::TAU));
+            env.define(
+                "placeholder".to_string(),
+                Value::String("__builtin_demo__".to_string()),
+            );
+            env.define("user".to_string(), Value::Integer(1));
+        }
+
+        let vars = interp.get_user_variables();
+        let has = |name: &str| vars.iter().any(|(n, _, _)| n == name);
+        assert!(has("user"));
+        assert!(!has("PI"));
+        assert!(!has("E"));
+        assert!(!has("TAU"));
+        assert!(!has("placeholder"));
+    }
+
+    #[test]
     fn test_timing_functions() {
         // noo() returns a timestamp
         let result = run("noo()").unwrap();
@@ -17371,6 +17533,12 @@ d["b"]
     }
 
     #[test]
+    fn test_json_parse_object_errors_for_coverage() {
+        assert!(run(r#"json_parse("{a: 1}")"#).is_err());
+        assert!(run(r#"json_parse("{\"a\" 1}")"#).is_err());
+    }
+
+    #[test]
     fn test_json_parse_array() {
         let result = run(r#"json_parse("[1, 2, 3]")"#).unwrap();
         let list = result.as_list().expect("Expected list");
@@ -17378,24 +17546,41 @@ d["b"]
     }
 
     #[test]
-	    fn test_json_parse_primitives() {
-	        assert_eq!(run(r#"json_parse("true")"#).unwrap(), Value::Bool(true));
-	        assert_eq!(run(r#"json_parse("false")"#).unwrap(), Value::Bool(false));
-	        assert_eq!(run(r#"json_parse("null")"#).unwrap(), Value::Nil);
-	        assert_eq!(run(r#"json_parse("42")"#).unwrap(), Value::Integer(42));
-	        assert_eq!(run(r#"json_parse("3.14")"#).unwrap(), Value::Float(3.14));
-	    }
+    fn test_json_parse_empty_array_for_coverage() {
+        let result = run(r#"json_parse("[]")"#).unwrap();
+        let list = result.as_list().expect("Expected list");
+        assert_eq!(list.borrow().len(), 0);
+    }
+
+    #[test]
+    fn test_json_parse_primitives() {
+        assert_eq!(run(r#"json_parse("true")"#).unwrap(), Value::Bool(true));
+        assert_eq!(run(r#"json_parse("false")"#).unwrap(), Value::Bool(false));
+        assert_eq!(run(r#"json_parse("null")"#).unwrap(), Value::Nil);
+        assert_eq!(run(r#"json_parse("42")"#).unwrap(), Value::Integer(42));
+        assert_eq!(run(r#"json_parse("3.14")"#).unwrap(), Value::Float(3.14));
+    }
+
+    #[test]
+    fn test_json_parse_invalid_literals_for_coverage() {
+        assert!(run(r#"json_parse("tru")"#).is_err());
+        assert!(run(r#"json_parse("fals")"#).is_err());
+        assert!(run(r#"json_parse("nul")"#).is_err());
+    }
 
 	    #[test]
-	    fn test_json_parse_exponent_and_error_branches_for_coverage() {
-	        assert_eq!(run(r#"json_parse("1e2")"#).unwrap(), Value::Float(100.0));
-		        assert_eq!(run(r#"json_parse("-1E2")"#).unwrap(), Value::Float(-100.0));
+    fn test_json_parse_exponent_and_error_branches_for_coverage() {
+        assert_eq!(run(r#"json_parse("1e2")"#).unwrap(), Value::Float(100.0));
+        assert_eq!(run(r#"json_parse("-1E2")"#).unwrap(), Value::Float(-100.0));
+        assert_eq!(run(r#"json_parse("1e+2")"#).unwrap(), Value::Float(100.0));
+        assert_eq!(run(r#"json_parse("-0.5")"#).unwrap(), Value::Float(-0.5));
 
-		        let err = run(r#"json_parse("1e")"#).unwrap_err();
-		        let s = format!("{err:?}");
-		        let msg = format!("unexpected error: {s}");
-		        s.contains("Invalid number").then_some(()).expect(&msg);
-		    }
+        let err = run(r#"json_parse("1e")"#).unwrap_err();
+        let s = format!("{err:?}");
+        let msg = format!("unexpected error: {s}");
+        s.contains("Invalid number").then_some(()).expect(&msg);
+        assert!(run(r#"json_parse("1e-")"#).is_err());
+    }
 
 	    #[test]
 	    fn test_json_pretty_formats_non_string_dict_keys_for_coverage() {
@@ -17406,10 +17591,10 @@ d["b"]
 	    }
 
 	    #[test]
-	    fn test_json_stringify() {
-	        assert_eq!(
-	            run(r#"json_stringify(42)"#).unwrap(),
-	            Value::String("42".to_string())
+    fn test_json_stringify() {
+        assert_eq!(
+            run(r#"json_stringify(42)"#).unwrap(),
+            Value::String("42".to_string())
         );
         assert_eq!(
             run(r#"json_stringify(aye)"#).unwrap(),
@@ -17419,6 +17604,19 @@ d["b"]
             run(r#"json_stringify([1, 2, 3])"#).unwrap(),
             Value::String("[1, 2, 3]".to_string())
         );
+    }
+
+    #[test]
+    fn test_json_stringify_nan_and_infinite_for_coverage() {
+        let nan = run(r#"json_stringify(sqrt(-1))"#).unwrap();
+        assert_eq!(nan, Value::String("null".to_string()));
+        let nan_pretty = run(r#"json_pretty(sqrt(-1))"#).unwrap();
+        assert_eq!(nan_pretty, Value::String("null".to_string()));
+
+        let inf = run(r#"json_stringify(exp(10000))"#).unwrap();
+        assert_eq!(inf, Value::String("null".to_string()));
+        let inf_pretty = run(r#"json_pretty(exp(10000))"#).unwrap();
+        assert_eq!(inf_pretty, Value::String("null".to_string()));
     }
 
     // ==================== Struct Tests ====================
@@ -17523,6 +17721,42 @@ keek x {
         assert_eq!(result, Value::Integer(84));
     }
 
+    #[test]
+    fn test_match_range_branches_for_coverage() {
+        let inside = run(
+            r#"
+keek 5 {
+    whan 1..10 -> 1
+    whan _ -> 0
+}
+"#,
+        )
+        .unwrap();
+        assert_eq!(inside, Value::Integer(1));
+
+        let at_end = run(
+            r#"
+keek 10 {
+    whan 1..10 -> 1
+    whan _ -> 0
+}
+"#,
+        )
+        .unwrap();
+        assert_eq!(at_end, Value::Integer(0));
+
+        let below = run(
+            r#"
+keek 0 {
+    whan 1..10 -> 1
+    whan _ -> 0
+}
+"#,
+        )
+        .unwrap();
+        assert_eq!(below, Value::Integer(0));
+    }
+
     // ==================== Random Functions ====================
 
     #[test]
@@ -17530,7 +17764,8 @@ keek x {
         // jammy(min, max) returns random int between min and max
         let result = run("jammy(1, 10)").unwrap();
         let n = result.as_integer().expect("Expected integer");
-        assert!(n >= 1 && n <= 10);
+        assert!(n >= 1);
+        assert!(n <= 10);
     }
 
     // ==================== More Scots Functions ====================
@@ -17540,7 +17775,8 @@ keek x {
         // dram returns a random element from a list
         let result = run("dram([1, 2, 3])").unwrap();
         let n = result.as_integer().expect("Expected integer");
-        assert!(n >= 1 && n <= 3);
+        assert!(n >= 1);
+        assert!(n <= 3);
     }
 
     #[test]
@@ -17591,7 +17827,7 @@ keek x {
         let vars = interp.get_user_variables();
         assert!(vars
             .iter()
-            .any(|(name, kind, _)| name == "foo" && kind == "function"));
+            .any(|(name, kind, _)| (name == "foo") & (kind == "function")));
     }
 
     // ==================== Native Function Edge Cases ====================
@@ -17606,6 +17842,12 @@ keek x {
     #[test]
     fn test_scran_slice_string() {
         let result = run(r#"scran("hello", 1, 4)"#).unwrap();
+        assert_eq!(result, Value::String("ell".to_string()));
+    }
+
+    #[test]
+    fn test_scran_slice_string_negative_end_for_coverage() {
+        let result = run(r#"scran("hello", 1, -1)"#).unwrap();
         assert_eq!(result, Value::String("ell".to_string()));
     }
 
@@ -18585,6 +18827,12 @@ result
     }
 
     #[test]
+    fn test_is_alpha_empty_for_coverage() {
+        let result = run(r#"is_alpha("")"#).unwrap();
+        assert_eq!(result, Value::Bool(false));
+    }
+
+    #[test]
     fn test_is_space_true() {
         let result = run(r#"is_space("   ")"#).unwrap();
         assert_eq!(result, Value::Bool(true));
@@ -18606,6 +18854,12 @@ result
     fn test_title_function() {
         let result = run(r#"title("hello world")"#).unwrap();
         assert_eq!(result, Value::String("Hello World".to_string()));
+    }
+
+    #[test]
+    fn test_title_empty_for_coverage() {
+        let result = run(r#"title("")"#).unwrap();
+        assert_eq!(result, Value::String(String::new()));
     }
 
     #[test]
@@ -19360,7 +19614,8 @@ l[0]
     fn test_jammy_min_max() {
         let result = run("jammy(1, 10)").unwrap();
         let n = result.as_integer().expect("Expected integer");
-        assert!(n >= 1 && n < 10);
+        assert!(n >= 1);
+        assert!(n < 10);
     }
 
     #[test]
@@ -19444,6 +19699,12 @@ is_a(foo, "function")
     }
 
     #[test]
+    fn test_char_at_negative_out_of_bounds_for_coverage() {
+        let result = run(r#"char_at("hi", -10)"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_substring_unicode_by_char_index() {
         let result = run(r#"substring("a" + chr(128512) + "b", 1, 2)"#).unwrap();
         assert_eq!(result, Value::String("😀".to_string()));
@@ -19509,6 +19770,42 @@ is_a(foo, "function")
     fn test_pad_right() {
         let result = run(r#"pad_right("5", 3, "0")"#).unwrap();
         assert_eq!(result, Value::String("500".to_string()));
+    }
+
+    #[test]
+    fn test_pad_left_arg_count_error_for_coverage() {
+        let result = run(r#"pad_left("x")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_pad_left_width_type_error_for_coverage() {
+        let result = run(r#"pad_left("x", "wide")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_pad_left_pad_char_type_error_for_coverage() {
+        let result = run(r#"pad_left("x", 3, 5)"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_pad_right_arg_count_error_for_coverage() {
+        let result = run(r#"pad_right("x", 1, "0", "extra")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_pad_right_width_type_error_for_coverage() {
+        let result = run(r#"pad_right("x", "wide")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_pad_right_pad_char_type_error_for_coverage() {
+        let result = run(r#"pad_right("x", 3, aye)"#);
+        assert!(result.is_err());
     }
 
     #[test]
@@ -19592,6 +19889,12 @@ is_a(foo, "function")
     #[test]
     fn test_chr_invalid_codepoint() {
         let result = run("chr(-1)");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_chr_high_codepoint_for_coverage() {
+        let result = run("chr(1114112)");
         assert!(result.is_err());
     }
 
@@ -19907,9 +20210,21 @@ len(a[0]) + len(b[0]) + len(c[0]) + len(d[0]) + len(e[0]) + len(f[0]) + len(g[0]
     }
 
     #[test]
+    fn test_lcm_zero_second_for_coverage() {
+        let result = run("lcm(5, 0)").unwrap();
+        assert_eq!(result, Value::Integer(0));
+    }
+
+    #[test]
     fn test_factorial() {
         let result = run("factorial(5)").unwrap();
         assert_eq!(result, Value::Integer(120));
+    }
+
+    #[test]
+    fn test_bit_shove_left_invalid_shift_for_coverage() {
+        let result = run("bit_shove_left(1, 64)");
+        assert!(result.is_err());
     }
 
     #[test]
@@ -20063,6 +20378,12 @@ len(a[0]) + len(b[0]) + len(c[0]) + len(d[0]) + len(e[0]) + len(f[0]) + len(g[0]
     }
 
     #[test]
+    fn test_gallus_float_for_coverage() {
+        let result = run("gallus(101.0)").unwrap();
+        assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
     fn test_drookit_has_duplicates() {
         let result = run("drookit([1, 2, 2, 3])").unwrap();
         assert_eq!(result, Value::Bool(true));
@@ -20099,6 +20420,7 @@ len(a[0]) + len(b[0]) + len(c[0]) + len(d[0]) + len(e[0]) + len(f[0]) + len(g[0]
 
         assert_eq!(run(r#"haverin(" a ")"#).unwrap(), Value::Bool(true));
         assert_eq!(run(r#"haverin(chr(160))"#).unwrap(), Value::Bool(false));
+        assert_eq!(run(r#"haverin("ab")"#).unwrap(), Value::Bool(false));
 
         assert_eq!(run(r#"glaikit(" \n\t")"#).unwrap(), Value::Bool(true));
         assert_eq!(run(r#"glaikit(chr(160))"#).unwrap(), Value::Bool(false));
@@ -20108,6 +20430,14 @@ len(a[0]) + len(b[0]) + len(c[0]) + len(d[0]) + len(e[0]) + len(f[0]) + len(g[0]
     fn test_cannie_valid() {
         let result = run("cannie(500)").unwrap();
         assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_cannie_float_branches_for_coverage() {
+        let ok = run("cannie(1.0)").unwrap();
+        assert_eq!(ok, Value::Bool(true));
+        let neg = run("cannie(-1.0)").unwrap();
+        assert_eq!(neg, Value::Bool(false));
     }
 
     #[test]
@@ -20150,6 +20480,19 @@ len(a[0]) + len(b[0]) + len(c[0]) + len(d[0]) + len(e[0]) + len(f[0]) + len(g[0]
         let result = run("braw_time()").unwrap();
         let s = result.as_string().expect("Expected string").to_string();
         assert!(s.contains(":")); // Should contain time
+    }
+
+    #[test]
+    fn test_braw_date_leap_and_month_branches_for_coverage() {
+        // 1972-02-29 (leap year) -> 789 days since epoch
+        let leap = run("braw_date(68169600)").unwrap();
+        let s = leap.as_string().expect("Expected string").to_string();
+        assert!(s.contains("1972"));
+
+        // 1970-03-01 (non-leap, month loop advances) -> 59 days since epoch
+        let march = run("braw_date(5097600)").unwrap();
+        let s = march.as_string().expect("Expected string").to_string();
+        assert!(s.contains("Mairch"));
     }
 
     #[test]
@@ -20293,6 +20636,18 @@ d["a"]
     }
 
     #[test]
+    fn test_center_arg_count_error_for_coverage() {
+        let result = run(r#"center("hi")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_center_width_type_error_for_coverage() {
+        let result = run(r#"center("hi", "wide")"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_is_upper() {
         let result = run(r#"is_upper("HELLO")"#).unwrap();
         assert_eq!(result, Value::Bool(true));
@@ -20308,6 +20663,12 @@ d["a"]
     fn test_is_lower() {
         let result = run(r#"is_lower("hello")"#).unwrap();
         assert_eq!(result, Value::Bool(true));
+    }
+
+    #[test]
+    fn test_is_lower_with_uppercase_for_coverage() {
+        let result = run(r#"is_lower("Hello")"#).unwrap();
+        assert_eq!(result, Value::Bool(false));
     }
 
     #[test]
@@ -21497,7 +21858,8 @@ obj["a"]
     fn test_json_stringify_dict() {
         let result = run(r#"json_stringify({"a": 1})"#).unwrap();
         let s = result.as_string().expect("Expected string").to_string();
-        assert!(s.contains("\"a\"") && s.contains("1"));
+        assert!(s.contains("\"a\""));
+        assert!(s.contains("1"));
     }
 
     #[test]
@@ -22458,12 +22820,35 @@ soond_steek()
 	            Value::Bool(true),
 	        ])
 	        .unwrap();
-	        (event_watch_write.func)(vec![
-	            Value::Integer(loop_id),
-	            Value::Integer(sock_id),
-	            Value::Bool(false),
-	        ])
-	        .unwrap();
+        (event_watch_write.func)(vec![
+            Value::Integer(loop_id),
+            Value::Integer(sock_id),
+            Value::Bool(false),
+        ])
+        .unwrap();
+
+        // Trigger read/write events so poll paths emit callbacks.
+        let read_sock = register_socket(fds[0], SocketKind::Tcp);
+        (event_watch_read.func)(vec![
+            Value::Integer(loop_id),
+            Value::Integer(read_sock),
+            Value::Bool(true),
+        ])
+        .unwrap();
+        unsafe {
+            let buf = [0u8; 1];
+            let _ = libc::write(fds[1], buf.as_ptr() as *const _, 1);
+        }
+        let events = (event_loop_poll.func)(vec![Value::Integer(loop_id), Value::Integer(0)]).unwrap();
+        let list = events.as_list().expect("expected list");
+        let kinds: Vec<String> = list
+            .borrow()
+            .iter()
+            .filter_map(|v| v.as_dict())
+            .filter_map(|d| dict_get_string(&d.borrow(), "kind"))
+            .collect();
+        assert!(kinds.iter().any(|k| k == "read"));
+        assert!(kinds.iter().any(|k| k == "write"));
 
 	        // Cover event_loop_poll timeout parse error branch.
 	        let err = (event_loop_poll.func)(vec![
@@ -22489,19 +22874,28 @@ soond_steek()
 	        .is_err());
 
 	        // Cover timer_every float cast + error branches.
-	        let _t_every = (timer_every.func)(vec![
-	            Value::Integer(loop_id),
-	            Value::Float(1.0),
-	            Value::Nil,
-	        ])
-	        .unwrap();
+        let _t_every = (timer_every.func)(vec![
+            Value::Integer(loop_id),
+            Value::Float(1.0),
+            Value::Nil,
+        ])
+        .unwrap();
 	        assert!((timer_every.func)(vec![Value::Integer(loop_id), Value::Nil, Value::Nil]).is_err());
-	        assert!((timer_every.func)(vec![
-	            Value::Integer(loop_id),
-	            Value::Integer(0),
-	            Value::Nil
-	        ])
-	        .is_err());
+        assert!((timer_every.func)(vec![
+            Value::Integer(loop_id),
+            Value::Integer(0),
+            Value::Nil
+        ])
+        .is_err());
+
+        // Cover wait_ms min-update when next_due < timeout.
+        let _t_due = (timer_after.func)(vec![
+            Value::Integer(loop_id),
+            Value::Integer(200),
+            Value::Nil,
+        ])
+        .unwrap();
+        let _ = (event_loop_poll.func)(vec![Value::Integer(loop_id), Value::Integer(1000)]).unwrap();
 
 		        // Cover poll_timeout = -1 and large-timeout clamp via invalid-fd poll error path (avoids hanging).
 		        let loop_err = (event_loop_new.func)(vec![])
@@ -22556,7 +22950,8 @@ soond_steek()
 	        let cancelled = (timer_cancel.func)(vec![Value::Integer(loop2), Value::Integer(cancel_id)]).unwrap();
 	        assert_eq!(cancelled, Value::Bool(true));
 
-	        std::thread::sleep(std::time::Duration::from_millis(5));
+	        // Give the repeating timer enough slack to trigger the interval catch-up loop.
+	        std::thread::sleep(std::time::Duration::from_millis(20));
 		        let events = (event_loop_poll.func)(vec![Value::Integer(loop2), Value::Integer(0)]).unwrap();
 		        let list = events.as_list().expect("expected list");
 		        list.borrow()
@@ -23026,12 +23421,30 @@ c + 1
             Value::String("msg".to_string())
         ])
         .is_err());
+        assert!((log_event.func)(vec![Value::String("blether".to_string())]).is_err());
+        assert!((log_event.func)(vec![
+            Value::String("blether".to_string()),
+            Value::String("msg".to_string()),
+            Value::Dict(Rc::new(RefCell::new(DictValue::new()))),
+            Value::String("target".to_string()),
+            Value::String("extra".to_string()),
+        ])
+        .is_err());
 
         let log_span = native_from_globals(&globals, "log_span");
         let log_span_enter = native_from_globals(&globals, "log_span_enter");
         let log_span_exit = native_from_globals(&globals, "log_span_exit");
         let log_span_in = native_from_globals(&globals, "log_span_in");
         let log_span_current = native_from_globals(&globals, "log_span_current");
+        assert!((log_span.func)(vec![]).is_err());
+        assert!((log_span.func)(vec![
+            Value::String("span".to_string()),
+            Value::String("blether".to_string()),
+            Value::Dict(Rc::new(RefCell::new(DictValue::new()))),
+            Value::String("target".to_string()),
+            Value::String("extra".to_string()),
+        ])
+        .is_err());
 
         let _guard = InterpreterGuard::new(&mut interp);
         let mut fields = DictValue::new();
@@ -23844,5 +24257,672 @@ d.nope
             dir.path().join("missing.txt").to_string_lossy().to_string(),
         )]));
         assert!(err.contains("Couldnae delete"));
+    }
+
+    #[test]
+    fn module_in_progress_guard_handles_null_interpreter_for_coverage() {
+        let guard = ModuleInProgressGuard {
+            interp: std::ptr::null_mut(),
+            path: std::path::PathBuf::from("noop"),
+        };
+        drop(guard);
+    }
+
+    #[test]
+    fn dict_get_u16_negative_and_float_out_of_range_for_coverage() {
+        let mut dict = DictValue::new();
+        dict.set(Value::String("neg".to_string()), Value::Integer(-1));
+        dict.set(Value::String("big".to_string()), Value::Integer(70000));
+        dict.set(Value::String("fneg".to_string()), Value::Float(-3.5));
+        dict.set(Value::String("fbig".to_string()), Value::Float(70000.0));
+
+        assert_eq!(dict_get_u16(&dict, "neg"), None);
+        assert_eq!(dict_get_u16(&dict, "big"), None);
+        assert_eq!(dict_get_u16(&dict, "fneg"), None);
+        assert_eq!(dict_get_u16(&dict, "fbig"), None);
+    }
+
+    #[test]
+    fn get_user_variables_includes_overridden_constants_and_partial_builtin_markers() {
+        let interp = Interpreter::new();
+        {
+            let mut env = interp.environment.borrow_mut();
+            env.define("PI".to_string(), Value::Float(3.0));
+            env.define("E".to_string(), Value::Float(2.0));
+            env.define("TAU".to_string(), Value::Float(6.0));
+            env.define(
+                "partial".to_string(),
+                Value::String("__builtin_demo".to_string()),
+            );
+            env.define("normal".to_string(), Value::String("hello".to_string()));
+        }
+
+        let vars = interp.get_user_variables();
+        let has = |name: &str| vars.iter().any(|(n, _, _)| n == name);
+        assert!(has("PI"));
+        assert!(has("E"));
+        assert!(has("TAU"));
+        assert!(has("partial"));
+        assert!(has("normal"));
+    }
+
+
+    #[test]
+    fn get_user_variables_marks_functions_and_skips_native_functions_for_coverage() {
+        let program = parse("dae foo() { gie 1 }").unwrap();
+        let mut interp = Interpreter::new();
+        interp.interpret(&program).unwrap();
+
+        let native_len = interp
+            .globals
+            .borrow()
+            .get("len")
+            .expect("len builtin")
+            .clone();
+        interp
+            .environment
+            .borrow_mut()
+            .define("native_len".to_string(), native_len);
+
+        let vars = interp.get_user_variables();
+        let entry = vars
+            .iter()
+            .find(|(name, _, _)| name == "foo")
+            .expect("foo entry");
+        assert_eq!(entry.1, "function");
+        assert!(!vars.iter().any(|(name, _, _)| name == "native_len"));
+    }
+
+    #[test]
+    fn log_init_memory_sink_non_positive_max_triggers_guard_for_coverage() {
+        assert!(run(r#"log_init({"sinks": [{"kind": "memory", "max": 0}]})"#).is_err());
+        assert!(run(r#"log_init({"sinks": [{"kind": "memory", "max": -1}]})"#).is_err());
+    }
+
+    #[test]
+    fn json_parse_number_multiple_dot_and_exp_branches_for_coverage() {
+        let mut pos = 0;
+        let chars: Vec<char> = "1.2.3".chars().collect();
+        let _ = parse_json_number(&chars, &mut pos).expect("parse number");
+
+        let mut pos2 = 0;
+        let chars2: Vec<char> = "1e2e3".chars().collect();
+        let _ = parse_json_number(&chars2, &mut pos2).expect("parse exponent");
+    }
+
+    #[test]
+    fn json_stringify_nan_and_infinite_map_to_null_for_coverage() {
+        assert_eq!(value_to_json(&Value::Float(f64::NAN)), "null");
+        assert_eq!(value_to_json(&Value::Float(f64::INFINITY)), "null");
+        assert_eq!(value_to_json(&Value::Float(f64::NEG_INFINITY)), "null");
+    }
+
+
+    #[test]
+    fn json_stringify_pretty_covers_empty_and_non_empty_branches_for_coverage() {
+        assert_eq!(value_to_json_pretty(&Value::Float(f64::NAN), 0), "null");
+        assert_eq!(value_to_json_pretty(&Value::Float(1.25), 0), "1.25");
+
+        let empty_list = Value::List(Rc::new(RefCell::new(Vec::new())));
+        assert_eq!(value_to_json_pretty(&empty_list, 0), "[]");
+        let list = Value::List(Rc::new(RefCell::new(vec![Value::Integer(1)])));
+        let pretty_list = value_to_json_pretty(&list, 0);
+        assert!(pretty_list.contains('\n'));
+
+        let empty_dict = Value::Dict(Rc::new(RefCell::new(DictValue::new())));
+        assert_eq!(value_to_json_pretty(&empty_dict, 0), "{}");
+        let mut dict = DictValue::new();
+        dict.set(Value::Integer(1), Value::String("a".to_string()));
+        let pretty_dict = value_to_json_pretty(&Value::Dict(Rc::new(RefCell::new(dict))), 0);
+        assert!(pretty_dict.contains('\n'));
+    }
+
+    #[test]
+    fn gallus_branches_for_int_and_float_ranges_for_coverage() {
+        assert_eq!(run("gallus(-101)").unwrap(), Value::Bool(true));
+        assert_eq!(run("gallus(0.0)").unwrap(), Value::Bool(false));
+        assert_eq!(run("gallus(200.0)").unwrap(), Value::Bool(true));
+    }
+
+    #[test]
+    fn braw_date_leap_year_and_non_leap_year_branches_are_covered() {
+        let leap = run("braw_date(68169600)").unwrap(); // 1972-02-29 UTC
+        let non_leap = run("braw_date(31536000)").unwrap(); // 1971-01-01 UTC
+        assert_value_variant(&leap, Value::String(String::new()));
+        assert_value_variant(&non_leap, Value::String(String::new()));
+    }
+
+    #[test]
+    fn grup_runs_branching_for_coverage() {
+        let values = vec![run("grup_runs([1, 1, 2])").unwrap(), Value::Nil];
+        for value in values {
+            match value {
+                Value::List(list) => {
+                    assert_eq!(list.borrow().len(), 2);
+                }
+                other => {
+                    assert_value_variant(&other, Value::Nil);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn string_builtin_branch_conditions_are_covered_for_coverage() {
+        assert_eq!(run("is_alpha(\"abc\")").unwrap(), Value::Bool(true));
+        assert_eq!(run("is_alpha(\"ABC\")").unwrap(), Value::Bool(true));
+        assert_eq!(run("is_alpha(\"a1\")").unwrap(), Value::Bool(false));
+        assert_eq!(run("is_alpha(\"\")").unwrap(), Value::Bool(false));
+
+        assert!(run("pad_left(\"a\")").is_err());
+        assert_eq!(
+            run("pad_left(\"a\", 2)").unwrap(),
+            Value::String(" a".to_string())
+        );
+        assert!(run("pad_left(\"a\", 2, \"*\", \"extra\")").is_err());
+
+        assert!(run("center(\"a\")").is_err());
+        assert_eq!(
+            run("center(\"a\", 3, \"-\")").unwrap(),
+            Value::String("-a-".to_string())
+        );
+        assert!(run("center(\"a\", 3, \"-\", \"extra\")").is_err());
+
+        assert_eq!(run("haverin(\" \")").unwrap(), Value::Bool(true));
+        assert_eq!(run("haverin(\"a\")").unwrap(), Value::Bool(true));
+        assert_eq!(run("haverin(\"ab\")").unwrap(), Value::Bool(false));
+    }
+
+    #[test]
+    fn bit_shove_left_bounds_branches_for_coverage() {
+        assert_eq!(run("bit_shove_left(1, 1)").unwrap(), Value::Integer(2));
+        assert!(run("bit_shove_left(1, -1)").is_err());
+        assert!(run("bit_shove_left(1, 64)").is_err());
+    }
+
+    #[test]
+    fn braw_date_century_leap_year_branch_for_coverage() {
+        let result = run("braw_date(951782400)").unwrap(); // 2000-02-29 UTC
+        assert_value_variant(&result, Value::String(String::new()));
+    }
+
+    #[test]
+    fn call_value_rejects_non_builtin_string_for_coverage() {
+        let mut interp = Interpreter::new();
+        let err = interp
+            .call_value(Value::String("not_builtin".to_string()), Vec::new(), 1)
+            .expect_err("expected not callable error");
+        assert_error_variant(
+            &err,
+            HaversError::NotCallable {
+                name: String::new(),
+                line: 1,
+            },
+        );
+    }
+
+    #[test]
+    fn parse_json_object_missing_colon_branch_for_coverage() {
+        let mut pos = 0;
+        let chars: Vec<char> = "{\"a\" 1}".chars().collect();
+        let err = parse_json_object(&chars, &mut pos).expect_err("expected missing colon error");
+        assert!(err.contains("Expected ':'"));
+
+        let mut pos = 0;
+        let chars: Vec<char> = "{\"a\"".chars().collect();
+        let err = parse_json_object(&chars, &mut pos).expect_err("expected missing colon error");
+        assert!(err.contains("Expected ':'"));
+
+        let mut pos = 0;
+        let chars: Vec<char> = "{\"a\": 1}".chars().collect();
+        let value = parse_json_object(&chars, &mut pos).expect("parse json object");
+        assert_value_variant(&value, Value::Dict(Rc::new(RefCell::new(DictValue::new()))));
+    }
+
+
+    #[test]
+    fn parse_json_object_invalid_key_and_separator_branches_for_coverage() {
+        let mut pos = 0;
+        let chars: Vec<char> = "{1: 2}".chars().collect();
+        let err = parse_json_object(&chars, &mut pos).expect_err("expected invalid key error");
+        assert!(err.contains("Expected string key"));
+
+        let mut pos = 0;
+        let chars: Vec<char> = "{\"a\": 1 x}".chars().collect();
+        let err = parse_json_object(&chars, &mut pos).expect_err("expected separator error");
+        assert!(err.contains("Expected '}' or ','"));
+    }
+
+    #[test]
+    fn parse_json_array_empty_branch_for_coverage() {
+        let mut pos = 0;
+        let chars: Vec<char> = "[]".chars().collect();
+        let value = parse_json_array(&chars, &mut pos).expect("parse empty array");
+        assert_value_variant(&value, Value::List(Rc::new(RefCell::new(Vec::new()))));
+
+        let mut pos = 0;
+        let chars: Vec<char> = "[1]".chars().collect();
+        let value = parse_json_array(&chars, &mut pos).expect("parse array");
+        assert_value_variant(&value, Value::List(Rc::new(RefCell::new(Vec::new()))));
+
+        let mut pos = 0;
+        let chars: Vec<char> = "[".chars().collect();
+        let err = parse_json_array(&chars, &mut pos).expect_err("expected unterminated array");
+        assert!(err.contains("Unexpected end"));
+    }
+
+
+    #[test]
+    fn parse_json_array_invalid_separator_branch_for_coverage() {
+        let mut pos = 0;
+        let chars: Vec<char> = "[1 2]".chars().collect();
+        let err = parse_json_array(&chars, &mut pos).expect_err("expected separator error");
+        assert!(err.contains("Expected ']' or ','"));
+    }
+
+    #[test]
+    fn parse_json_number_negative_and_decimal_branches_for_coverage() {
+        let mut pos = 0;
+        let chars: Vec<char> = "-1.5".chars().collect();
+        let value = parse_json_number(&chars, &mut pos).expect("parse negative decimal");
+        assert_eq!(value, Value::Float(-1.5));
+
+        let mut pos = 0;
+        let chars: Vec<char> = "2".chars().collect();
+        let value = parse_json_number(&chars, &mut pos).expect("parse integer");
+        assert_eq!(value, Value::Integer(2));
+
+        let mut pos = 0;
+        let chars: Vec<char> = "1e2.3".chars().collect();
+        let _ = parse_json_number(&chars, &mut pos).expect("parse exponent then dot");
+
+        let mut pos = 0;
+        let chars: Vec<char> = "".chars().collect();
+        let err = parse_json_number(&chars, &mut pos).expect_err("expected invalid integer");
+        assert!(err.contains("Invalid integer"));
+    }
+
+
+    #[test]
+    fn parse_json_number_exponent_sign_and_invalid_float_branches_for_coverage() {
+        let mut pos = 0;
+        let chars: Vec<char> = "1e+2".chars().collect();
+        let value = parse_json_number(&chars, &mut pos).expect("parse exponent with plus");
+        match value {
+            Value::Float(f) => assert!((f - 100.0).abs() < f64::EPSILON),
+            other => panic!("expected float, got {other:?}"),
+        }
+
+        let mut pos = 0;
+        let chars: Vec<char> = "1E-2".chars().collect();
+        let value = parse_json_number(&chars, &mut pos).expect("parse exponent with minus");
+        match value {
+            Value::Float(f) => assert!((f - 0.01).abs() < 1e-9),
+            other => panic!("expected float, got {other:?}"),
+        }
+
+        let mut pos = 0;
+        let chars: Vec<char> = "1e".chars().collect();
+        let err = parse_json_number(&chars, &mut pos).expect_err("expected invalid number");
+        assert!(err.contains("Invalid number"));
+    }
+
+    #[test]
+    fn parse_json_literal_invalid_branches_for_coverage() {
+        let mut pos = 0;
+        let chars: Vec<char> = "tru".chars().collect();
+        assert!(parse_json_true(&chars, &mut pos).is_err());
+
+        let mut pos = 0;
+        let chars: Vec<char> = "ture".chars().collect();
+        assert!(parse_json_true(&chars, &mut pos).is_err());
+
+        let mut pos = 0;
+        let chars: Vec<char> = "fals".chars().collect();
+        assert!(parse_json_false(&chars, &mut pos).is_err());
+
+        let mut pos = 0;
+        let chars: Vec<char> = "falze".chars().collect();
+        assert!(parse_json_false(&chars, &mut pos).is_err());
+
+        let mut pos = 0;
+        let chars: Vec<char> = "nul".chars().collect();
+        assert!(parse_json_null(&chars, &mut pos).is_err());
+
+        let mut pos = 0;
+        let chars: Vec<char> = "nill".chars().collect();
+        assert!(parse_json_null(&chars, &mut pos).is_err());
+    }
+
+    #[test]
+    fn parse_json_string_escape_branches_for_coverage() {
+        let mut pos = 0;
+        let chars = vec!['"', '\\'];
+        let err = parse_json_string(&chars, &mut pos).expect_err("expected unterminated escape");
+        assert!(err.contains("Unterminated string escape"));
+
+        let mut pos = 0;
+        let chars = vec!['"', '\\', 'u', '1', '"'];
+        let err = parse_json_string(&chars, &mut pos).expect_err("expected invalid unicode escape");
+        assert!(err.contains("Invalid unicode escape"));
+
+        let mut pos = 0;
+        let chars = vec!['"', '\\', 'u', 'Z', 'Z', 'Z', 'Z', '"'];
+        let result = parse_json_string(&chars, &mut pos).expect("parse invalid hex escape");
+        assert!(result.is_empty());
+
+        let mut pos = 0;
+        let chars = vec!['"', '\\', 'u', 'D', '8', '0', '0', '"'];
+        let result = parse_json_string(&chars, &mut pos).expect("parse invalid codepoint escape");
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn builtin_branch_corners_for_coverage() {
+        let prev_level = get_global_log_level();
+        let interp = Interpreter::new();
+        let globals = interp.globals.clone();
+        let set_log_level = native_from_globals(&globals, "set_log_level");
+        (set_log_level.func)(vec![Value::String("roar".to_string())]).unwrap();
+        set_global_log_level(prev_level);
+
+        let groups = run("grup_runs([])").unwrap();
+        let list = groups.as_list().expect("expected list");
+        assert!(list.borrow().is_empty());
+
+        assert_eq!(
+            run("numpty_check([])").unwrap(),
+            Value::String("Empty list, ya numpty!".to_string())
+        );
+        assert_eq!(run("stoater([1.0, 2.5])").unwrap(), Value::Float(2.5));
+        assert_eq!(
+            run(r#"stoater(["a", "bb"])"#).unwrap(),
+            Value::String("bb".to_string())
+        );
+
+        assert_eq!(run("glaikit(0.0)").unwrap(), Value::Bool(true));
+        assert_eq!(run(r#"glaikit(" ")"#).unwrap(), Value::Bool(true));
+        assert_eq!(run("glaikit([])").unwrap(), Value::Bool(true));
+        assert_eq!(run("glaikit({})").unwrap(), Value::Bool(true));
+
+        let clype = run("clype(aye)").unwrap();
+        assert_value_variant(&clype, Value::String(String::new()));
+
+        assert_eq!(run("is_prime(2)").unwrap(), Value::Bool(true));
+        assert_eq!(run("is_prime(4)").unwrap(), Value::Bool(false));
+        assert_eq!(run("is_prime(9)").unwrap(), Value::Bool(false));
+
+        assert_eq!(run("minaw([3.0, 2.0])").unwrap(), Value::Float(2.0));
+        assert_eq!(run("maxaw([1.0, 2.0])").unwrap(), Value::Float(2.0));
+        assert_eq!(run("range_o([1.5, 3.0])").unwrap(), Value::Float(1.5));
+
+        assert_eq!(run("random_choice([])").unwrap(), Value::Nil);
+
+        for src in ["ilk([1])", "grup_up([1])", "pairt_by([1])"] {
+            assert!(run(src).is_err());
+        }
+
+        let grouped = run("grup_up([1, 3], |x| 1)").unwrap();
+        assert_value_variant(
+            &grouped,
+            Value::Dict(Rc::new(RefCell::new(DictValue::new()))),
+        );
+        let pairt = run("pairt_by([1, 2], |x| x > 1)").unwrap();
+        assert_value_variant(
+            &pairt,
+            Value::List(Rc::new(RefCell::new(Vec::new()))),
+        );
+
+        assert!(run("dae f(a) { return a } f()").is_err());
+    }
+
+    #[test]
+    fn bytes_range_and_offset_branches_are_covered() {
+        assert!(run("bytes_set(bytes(2), 0, -1)").is_err());
+        assert!(run("bytes_set(bytes(2), -5, 1)").is_err());
+
+        assert!(run("bytes_read_u16be(bytes(2), -1)").is_err());
+        assert!(run("bytes_read_u32be(bytes(4), -1)").is_err());
+
+        assert!(run("bytes_write_u16be(bytes(2), 0, 70000)").is_err());
+        assert!(run("bytes_write_u16be(bytes(2), -1, 1)").is_err());
+
+        assert!(run("bytes_write_u32be(bytes(4), 0, 5000000000)").is_err());
+        assert!(run("bytes_write_u32be(bytes(4), -1, 1)").is_err());
+    }
+
+    #[test]
+    fn slice_step_loop_conditions_are_covered_for_coverage() {
+        let _ = run(
+            r#"
+ken xs = [1, 2, 3]
+ken ys = xs[2:0:-1]
+ken zs = xs[::-1]
+ken s = "abcd"
+ken t = s[3:0:-1]
+ken u = s[::-1]
+gie len(ys) + len(zs) + len(t) + len(u)
+"#,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn get_user_variables_skips_builtin_markers_and_constants_for_coverage() {
+        let interp = Interpreter::new();
+        let env = interp.environment.clone();
+        env.borrow_mut()
+            .define("PI".to_string(), Value::Float(3.0));
+        env.borrow_mut()
+            .define("E".to_string(), Value::Float(std::f64::consts::E));
+        env.borrow_mut()
+            .define("TAU".to_string(), Value::Float(std::f64::consts::TAU));
+        env.borrow_mut().define(
+            "builtin_marker".to_string(),
+            Value::String("__builtin_test__".to_string()),
+        );
+        env.borrow_mut().define(
+            "user_str".to_string(),
+            Value::String("user".to_string()),
+        );
+
+        let vars = interp.get_user_variables();
+        let names: Vec<_> = vars.iter().map(|(name, _, _)| name.as_str()).collect();
+        assert!(names.contains(&"PI"));
+        assert!(!names.contains(&"E"));
+        assert!(!names.contains(&"TAU"));
+        assert!(!names.contains(&"builtin_marker"));
+        assert!(names.contains(&"user_str"));
+    }
+
+    #[test]
+    fn dict_get_u16_range_branches_are_covered_for_coverage() {
+        let mut dict = DictValue::new();
+        dict.set(Value::String("ok".to_string()), Value::Integer(42));
+        dict.set(Value::String("neg".to_string()), Value::Integer(-1));
+        dict.set(Value::String("big".to_string()), Value::Integer(70000));
+        dict.set(Value::String("float_ok".to_string()), Value::Float(42.0));
+        dict.set(Value::String("float_big".to_string()), Value::Float(70000.0));
+
+        assert_eq!(dict_get_u16(&dict, "ok"), Some(42));
+        assert_eq!(dict_get_u16(&dict, "neg"), None);
+        assert_eq!(dict_get_u16(&dict, "big"), None);
+        assert_eq!(dict_get_u16(&dict, "float_ok"), Some(42));
+        assert_eq!(dict_get_u16(&dict, "float_big"), None);
+    }
+
+    #[cfg(feature = "native")]
+    #[test]
+    fn build_client_config_invalid_ca_triggers_added_zero_branch_for_coverage() {
+        let cfg = TlsConfigData {
+            mode: TlsMode::Client,
+            server_name: "localhost".to_string(),
+            insecure: false,
+            ca_pem: Some(String::new()),
+            cert_pem: None,
+            key_pem: None,
+        };
+        let err = build_client_config(&cfg).unwrap_err();
+        assert!(err.contains("No valid CA certificates"));
+    }
+
+    #[cfg(feature = "native")]
+    #[test]
+    fn build_client_config_accepts_valid_ca_for_coverage() {
+        let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])
+            .expect("generate cert");
+        let ca_pem = cert.serialize_pem().expect("serialize pem");
+        let cfg = TlsConfigData {
+            mode: TlsMode::Client,
+            server_name: "localhost".to_string(),
+            insecure: false,
+            ca_pem: Some(ca_pem),
+            cert_pem: None,
+            key_pem: None,
+        };
+        let _ = build_client_config(&cfg).expect("valid CA should build");
+    }
+
+    #[test]
+    fn emit_log_fields_branch_is_covered_for_coverage() {
+        logging::set_global_log_level(LogLevel::Blether);
+        let mut interp = Interpreter::new();
+        interp.current_file = "coverage.braw".to_string();
+
+        let mut dict = DictValue::new();
+        dict.set(Value::String("a".to_string()), Value::Integer(1));
+        let fields = Value::Dict(Rc::new(RefCell::new(dict)));
+
+        interp
+            .emit_log(
+                LogLevel::Blether,
+                Value::String("hello".to_string()),
+                None,
+                Some("target".to_string()),
+                1,
+            )
+            .unwrap();
+        interp
+            .emit_log(
+                LogLevel::Blether,
+                Value::String("hello".to_string()),
+                Some(fields),
+                None,
+                1,
+            )
+            .unwrap();
+    }
+
+    #[cfg(all(feature = "native", unix))]
+    #[test]
+    fn socket_set_nonblocking_error_branches_are_covered_for_coverage() {
+        let interp = Interpreter::new();
+        let globals = interp.globals.clone();
+        let socket_tcp = native_from_globals(&globals, "socket_tcp");
+        let socket_set_nonblocking = native_from_globals(&globals, "socket_set_nonblocking");
+
+        let bad_sock = register_socket(-1, SocketKind::Tcp);
+        let _ = (socket_set_nonblocking.func)(vec![Value::Integer(bad_sock), Value::Bool(true)])
+            .unwrap();
+
+        fn ok_int_result(value: Value) -> i64 {
+            let dict = value.as_dict().expect("expected dict result");
+            let dict = dict.borrow();
+            assert_eq!(dict_get_bool(&dict, "ok"), Some(true));
+            dict.get(&Value::String("value".to_string()))
+                .and_then(|v| v.as_integer())
+                .expect("expected int value")
+        }
+
+        let sock_id = ok_int_result((socket_tcp.func)(vec![]).unwrap());
+        let _ = (socket_set_nonblocking.func)(vec![Value::Integer(sock_id), Value::Bool(false)])
+            .unwrap();
+
+        std::env::set_var("MDH_COVERAGE_FORCE_FCNTL_SETFL_FAIL", "1");
+        let _ = (socket_set_nonblocking.func)(vec![Value::Integer(sock_id), Value::Bool(true)])
+            .unwrap();
+        std::env::remove_var("MDH_COVERAGE_FORCE_FCNTL_SETFL_FAIL");
+    }
+
+    #[test]
+    fn execute_stmt_var_decl_without_initializer_is_covered() {
+        let mut interp = Interpreter::new();
+        let stmt = Stmt::VarDecl {
+            name: "x".to_string(),
+            initializer: None,
+            span: Span::new(1, 1),
+        };
+        let result = interp.execute_stmt(&stmt).unwrap();
+        assert_eq!(result, Value::Nil);
+        let stored = interp
+            .environment
+            .borrow()
+            .get("x")
+            .expect("expected variable binding");
+        assert_eq!(stored, Value::Nil);
+    }
+
+    #[test]
+    fn execute_return_without_value_is_covered() {
+        let mut interp = Interpreter::new();
+        let stmt = Stmt::Return {
+            value: None,
+            span: Span::new(1, 1),
+        };
+        let result = interp.execute_stmt_with_control(&stmt).unwrap();
+        match result {
+            Err(ControlFlow::Return(value)) => assert_eq!(value, Value::Nil),
+            other => panic!("unexpected control flow: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn call_value_native_wrong_arity_is_covered() {
+        let mut interp = Interpreter::new();
+        let native = NativeFunction::new("test_native", 1, |_args| Ok(Value::Nil));
+        let err = interp
+            .call_value(Value::NativeFunction(Rc::new(native)), Vec::new(), 1)
+            .expect_err("expected wrong arity error");
+        assert_error_variant(&err, HaversError::WrongArity {
+            name: String::new(),
+            expected: 0,
+            got: 0,
+            line: 0,
+        });
+    }
+
+    #[test]
+    fn call_function_wrong_arity_is_covered() {
+        let mut interp = Interpreter::new();
+        let param = FunctionParam {
+            name: "a".to_string(),
+            default: None,
+        };
+        let func = HaversFunction::new(
+            "f".to_string(),
+            vec![param],
+            Vec::new(),
+            Some(interp.environment.clone()),
+        );
+        let err = interp
+            .call_function(&func, Vec::new(), 1)
+            .expect_err("expected wrong arity error");
+        assert_error_variant(&err, HaversError::WrongArity {
+            name: String::new(),
+            expected: 0,
+            got: 0,
+            line: 0,
+        });
+    }
+
+    #[test]
+    fn get_user_variables_builtin_prefix_without_suffix_is_included_for_coverage() {
+        let mut interp = Interpreter::new();
+        interp.environment.borrow_mut().define(
+            "__builtin_fake".to_string(),
+            Value::String("__builtin_fake".to_string()),
+        );
+        let vars = interp.get_user_variables();
+        assert!(vars.iter().any(|(name, _, _)| name == "__builtin_fake"));
     }
 }

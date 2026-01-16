@@ -256,7 +256,8 @@ mod tests {
     #[test]
     fn test_run_list_operations() {
         let result = run("[1, 2, 3]").unwrap();
-        assert!(matches!(result, Value::List(items) if items.borrow().len() == 3));
+        let len = result.as_list().map(|items| items.borrow().len());
+        assert_eq!(len, Some(3));
     }
 
     #[test]

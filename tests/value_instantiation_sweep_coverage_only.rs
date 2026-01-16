@@ -25,6 +25,10 @@ fn value_helpers_are_exercised_for_instantiation_coverage() {
 
     let set = Value::Set(Rc::new(RefCell::new(SetValue::new())));
     assert!(set.as_set().is_some());
+    assert!(!set.is_truthy());
+
+    let truthy_float = Value::Float(0.1);
+    assert!(truthy_float.is_truthy());
 
     let n = Value::Integer(1);
     assert!(n.as_float().is_some());

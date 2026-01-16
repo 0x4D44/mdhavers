@@ -41,6 +41,58 @@ run(0)
     let wat = mdhavers::compile_to_wat(wasm_src).expect("compile_to_wat");
     assert!(wat.contains("(module"));
 
+    let audio_wat = mdhavers::compile_to_wat("soond_stairt()").expect("audio wat");
+    assert!(audio_wat.contains("(import \"env\" \"soond_stairt\""));
+
+    let err = mdhavers::compile_to_wat("fetch \"math\" tae m").unwrap_err();
+    assert!(err.to_string().contains("Only the tri module"));
+
+    let wasm_param_call = r#"
+dae apply(f) {
+    f(1)
+}
+
+dae id(x) {
+    gie x
+}
+
+apply(id)
+"#;
+    let wat_param = mdhavers::compile_to_wat(wasm_param_call).expect("param call wat");
+    assert!(wat_param.contains("(module"));
+    assert!(wat_param.contains("(call $mdh_method_call1)"));
+
+    {
+        use mdhavers::ast::{Expr, Literal, Param, Program, Span, Stmt};
+        let span = Span::new(1, 1);
+        let apply_fn = Stmt::Function {
+            name: "apply".to_string(),
+            params: vec![Param {
+                name: "f".to_string(),
+                default: None,
+            }],
+            body: vec![Stmt::Expression {
+                expr: Expr::Call {
+                    callee: Box::new(Expr::Variable {
+                        name: "f".to_string(),
+                        span,
+                    }),
+                    arguments: vec![Expr::Literal {
+                        value: Literal::Integer(1),
+                        span,
+                    }],
+                    span,
+                },
+                span,
+            }],
+            span,
+        };
+        let program = Program::new(vec![apply_fn]);
+        let mut wasm_compiler = mdhavers::wasm_compiler::WasmCompiler::new();
+        let wat_manual = wasm_compiler.compile(&program).expect("manual wasm compile");
+        assert!(wat_manual.contains("(call $mdh_method_call1)"));
+    }
+
     // Cover WasmCompiler::default() in the dependency crate instance.
     let _ = mdhavers::wasm_compiler::WasmCompiler::default();
 

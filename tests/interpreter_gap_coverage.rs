@@ -1,6 +1,6 @@
 use std::fs;
 
-use mdhavers::{parse, Interpreter};
+use mdhavers::{parse, HaversError, Interpreter};
 
 #[test]
 fn interpreter_can_fetch_modules_with_and_without_alias() {
@@ -622,6 +622,7 @@ kin Ops {
     dae __muckle_er__(o) { gie aye }
     dae __muckle_er_or_same__(o) { gie aye }
 }
+
 ken a = Ops()
 a + 1
 a - 1
@@ -1162,4 +1163,18 @@ c.conty()
             assert!(result.is_err(), "expected error for:\n{src}");
         }
     }
+}
+
+#[test]
+fn interpreter_fixed_arity_error_branch_for_coverage() {
+    let program = parse(
+        r#"
+dae f(a) { gie a }
+f()
+"#,
+    )
+    .unwrap();
+    let mut interp = Interpreter::new();
+    let err = interp.interpret(&program).unwrap_err();
+    assert!(matches!(err, HaversError::WrongArity { .. }));
 }

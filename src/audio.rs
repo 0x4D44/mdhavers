@@ -1803,10 +1803,19 @@ mod tests {
             pitch: 1.0,
         };
 
-        let mut slots: Vec<Option<BufferEntry>> = vec![None];
+        let mut slots: Vec<Option<BufferEntry>> = vec![Some(entry), None];
+        let entry = BufferEntry {
+            buffer: sample_buffer(1, 0.0, 0.0),
+            position: 0.0,
+            state: PlayState::Stopped,
+            looped: false,
+            volume: 1.0,
+            pan: 0.0,
+            pitch: 1.0,
+        };
         let handle = AudioState::alloc_handle(&mut slots, entry);
-        assert_eq!(handle, 0);
-        assert!(slots[0].is_some());
+        assert_eq!(handle, 1);
+        assert!(slots[1].is_some());
     }
 
     #[test]
@@ -1816,6 +1825,8 @@ mod tests {
         let settings = SynthesizerSettings::new(OUTPUT_SAMPLE_RATE as i32);
         let synth = Synthesizer::new(&soundfont, &settings).unwrap();
         let sequencer = MidiFileSequencer::new(synth);
+        let synth2 = Synthesizer::new(&soundfont, &settings).unwrap();
+        let sequencer2 = MidiFileSequencer::new(synth2);
 
         let mut midi_data = Cursor::new(Vec::new());
         let midi = Arc::new(MidiFile::new(&mut midi_data).unwrap());
@@ -1832,10 +1843,21 @@ mod tests {
             scratch_right: Vec::new(),
         };
 
-        let mut slots: Vec<Option<MidiEntry>> = vec![None];
+        let mut slots: Vec<Option<MidiEntry>> = vec![Some(entry), None];
+        let entry = MidiEntry {
+            midi: Arc::clone(&slots[0].as_ref().unwrap().midi),
+            sequencer: sequencer2,
+            state: PlayState::Stopped,
+            looped: false,
+            volume: 1.0,
+            pan: 0.0,
+            sample_rate: OUTPUT_SAMPLE_RATE,
+            scratch_left: Vec::new(),
+            scratch_right: Vec::new(),
+        };
         let handle = AudioState::alloc_handle(&mut slots, entry);
-        assert_eq!(handle, 0);
-        assert!(slots[0].is_some());
+        assert_eq!(handle, 1);
+        assert!(slots[1].is_some());
     }
 
     #[test]
@@ -2174,6 +2196,41 @@ mod tests {
         let mut output = vec![0.0_f32; 4];
         mix_midi_entry(&mut entry, &mut output, 2, 2);
         assert_eq!(entry.state, PlayState::Stopped);
+    }
+
+    #[test]
+    fn test_mix_midi_entry_keeps_playing_when_not_at_end() {
+        let dir = tempdir().unwrap();
+        let midi_path = dir.path().join("short.mid");
+        let sf_path = dir.path().join("short.sf2");
+        fs::write(&midi_path, b"midi").unwrap();
+        fs::write(&sf_path, b"sf").unwrap();
+
+        let sf = load_soundfont(sf_path.as_path()).unwrap();
+        let mut midi_file = File::open(&midi_path).unwrap();
+        let midi = MidiFile::new(&mut midi_file).unwrap();
+        let midi = Arc::new(midi);
+
+        let settings = SynthesizerSettings::new(1000);
+        let synth = Synthesizer::new(&sf, &settings).unwrap();
+        let mut sequencer = MidiFileSequencer::new(synth);
+        sequencer.play(&midi, false);
+
+        let mut entry = MidiEntry {
+            midi,
+            sequencer,
+            state: PlayState::Playing,
+            looped: false,
+            volume: 1.0,
+            pan: 0.0,
+            sample_rate: 1000,
+            scratch_left: Vec::new(),
+            scratch_right: Vec::new(),
+        };
+
+        let mut output = vec![0.0_f32; 2];
+        mix_midi_entry(&mut entry, &mut output, 1, 2);
+        assert_eq!(entry.state, PlayState::Playing);
     }
 
     #[test]
@@ -2701,6 +2758,109 @@ mod tests {
         register_audio_functions(&env);
         let native = get_native(&env, "soond_unlade");
         let err = (native.func)(vec![Value::Integer(999)]).unwrap_err();
+        assert_eq!(err, ERR_BAD_HANDLE);
+    }
+
+    #[test]
+    fn test_soond_unlade_releases_valid_handle_for_coverage() {
+        let dir = tempdir().unwrap();
+        let wav_path = dir.path().join("sound.wav");
+        fs::write(&wav_path, b"wav").unwrap();
+
+        let env = Rc::new(RefCell::new(crate::value::Environment::new()));
+        register_audio_functions(&env);
+        let soond_lade = get_native(&env, "soond_lade");
+        let soond_unlade = get_native(&env, "soond_unlade");
+
+        let handle = (soond_lade.func)(vec![Value::String(wav_path.to_string_lossy().to_string())])
+            .expect("load sound");
+        let handle = as_handle(&handle, "handle").unwrap() as i64;
+        (soond_unlade.func)(vec![Value::Integer(handle)]).unwrap();
+        let err = (soond_unlade.func)(vec![Value::Integer(handle)]).unwrap_err();
+        assert_eq!(err, ERR_BAD_HANDLE);
+    }
+
+    #[test]
+    fn test_alloc_handle_reuses_empty_slots_for_coverage() {
+        let mut slots = vec![Some(1_i32), None, Some(2)];
+        let handle = AudioState::alloc_handle(&mut slots, 3);
+        assert_eq!(handle, 1);
+        assert!(slots[1].is_some());
+
+        let mut slots = vec![Some(1_i32), Some(2)];
+        let handle = AudioState::alloc_handle(&mut slots, 3);
+        assert_eq!(handle, 2);
+        assert_eq!(slots.len(), 3);
+    }
+
+    #[test]
+    fn test_midi_sequencer_end_of_sequence_branches_for_coverage() {
+        let mut sf_data = std::io::Cursor::new(Vec::new());
+        let soundfont = SoundFont::new(&mut sf_data).unwrap();
+        let settings = SynthesizerSettings::new(10);
+        let synth = Synthesizer::new(&soundfont, &settings).unwrap();
+        let mut sequencer = MidiFileSequencer::new(synth);
+        let mut midi_data = std::io::Cursor::new(Vec::new());
+        let midi = MidiFile::new(&mut midi_data).unwrap();
+        let midi = Arc::new(midi);
+
+        assert!(!sequencer.end_of_sequence());
+
+        sequencer.play(&midi, true);
+        let mut left = vec![0.0_f32; 2];
+        let mut right = vec![0.0_f32; 2];
+        sequencer.render(&mut left, &mut right);
+        assert!(!sequencer.end_of_sequence());
+
+        sequencer.play(&midi, false);
+        assert!(!sequencer.end_of_sequence());
+        sequencer.render(&mut left, &mut right);
+        assert!(sequencer.end_of_sequence());
+    }
+
+    #[test]
+    fn test_soundfont_and_midifile_cursor_failures_for_coverage() {
+        rustysynth::fail_next_soundfont_new();
+        let mut sf_data = std::io::Cursor::new(Vec::new());
+        assert!(SoundFont::new(&mut sf_data).is_err());
+
+        rustysynth::fail_next_midi_file_new();
+        let mut midi_data = std::io::Cursor::new(Vec::new());
+        assert!(MidiFile::new(&mut midi_data).is_err());
+    }
+
+    #[test]
+    fn test_unlade_handles_with_none_slots_for_coverage() {
+        let dir = tempdir().unwrap();
+        let music_path = dir.path().join("song.wav");
+        fs::write(&music_path, b"wav").unwrap();
+        let midi_path = dir.path().join("song.mid");
+        fs::write(&midi_path, b"midi").unwrap();
+
+        let env = Rc::new(RefCell::new(Environment::new()));
+        register_audio_functions(&env);
+
+        let muisic_lade = get_native(&env, "muisic_lade");
+        let muisic_unlade = get_native(&env, "muisic_unlade");
+        let handle = (muisic_lade.func)(vec![Value::String(
+            music_path.to_string_lossy().to_string(),
+        )])
+        .unwrap();
+        let handle = as_handle(&handle, "handle").unwrap() as i64;
+        (muisic_unlade.func)(vec![Value::Integer(handle)]).unwrap();
+        let err = (muisic_unlade.func)(vec![Value::Integer(handle)]).unwrap_err();
+        assert_eq!(err, ERR_BAD_HANDLE);
+
+        let midi_lade = get_native(&env, "midi_lade");
+        let midi_unlade = get_native(&env, "midi_unlade");
+        let handle = (midi_lade.func)(vec![
+            Value::String(midi_path.to_string_lossy().to_string()),
+            Value::Nil,
+        ])
+        .unwrap();
+        let handle = as_handle(&handle, "handle").unwrap() as i64;
+        (midi_unlade.func)(vec![Value::Integer(handle)]).unwrap();
+        let err = (midi_unlade.func)(vec![Value::Integer(handle)]).unwrap_err();
         assert_eq!(err, ERR_BAD_HANDLE);
     }
 

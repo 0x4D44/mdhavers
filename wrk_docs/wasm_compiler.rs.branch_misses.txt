@@ -1,0 +1,6 @@
+Missing branch lines for /home/md/language/mdhavers/src/wasm_compiler.rs
+Total lines: 4
+375:                 if let Some(expr) = start {
+378:                 if let Some(expr) = end {
+381:                 if let Some(expr) = step {
+410:                     if let FStringPart::Expr(expr) = part {

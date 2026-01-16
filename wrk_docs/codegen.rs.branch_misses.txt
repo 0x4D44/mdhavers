@@ -1,0 +1,156 @@
+Missing branch lines for /home/md/language/mdhavers/src/llvm/codegen.rs
+Total lines: 154
+4096:         if let Some(super_name) = superclass {
+4102:         if self.classes.contains_key(name) {
+4124:                 if self.functions.contains_key(&func_name) {
+4795:                                 if let Some(int_val) = s.compile_int_expr(expr) {
+4822:                         if !left_fast || !right_fast {
+4829:                                 if let Some(int_val) = s.compile_int_expr(expr) {
+4894:                         if let Some(&shadow) = self.list_ptr_shadows.get(name) {
+5024:                 let right_cond = if let Some(r) = self.compile_condition_direct(right)? {
+5081:                     if lt == VarType::Int && rt == VarType::Int {
+5083:                     } else if lt == VarType::Float || rt == VarType::Float {
+5085:                     } else if lt == VarType::String && rt == VarType::String {
+5094:                     if lt == VarType::Int && rt == VarType::Int {
+5129:                 if self.try_depth == 0 {
+5141:                     if let Some(&alloca) = self.variables.get(name) {
+5166:                 if lt == VarType::Int && rt == VarType::Int {
+8149:             .const_int(if bool_val { 1 } else { 0 }, false);
+11925:                 let var_type = if let Some(init) = initializer {
+11933:                 if let Some(init) = initializer {
+11978:                     && self.loop_stack.is_empty()
+11986:                     let shadow = if let Some(&existing) = self.list_ptr_shadows.get(name) {
+12017:                     let shadow = if let Some(&existing) = self.int_shadows.get(name) {
+12028: 		                    if let Some(int_val) = self.compile_int_expr(init) {
+12051: 	                            if !self.variables.contains_key(name) {
+12061:                 let value = if let Some(init) = initializer {
+12072:                     && self.loop_stack.is_empty()
+12077:                 } else if let Some(&existing) = self.globals.get(name) {
+12099:                 if var_type == VarType::Int && !self.int_shadows.contains_key(name) {
+12109: 	                if var_type == VarType::String && !self.string_len_shadows.contains_key(name) {
+12126: 	                    if let Expr::Literal {
+12273:                 if let Some(loop_ctx) = self.loop_stack.last() {
+12284:                 if let Some(loop_ctx) = self.loop_stack.last() {
+12303:                 if let Some(super_name) = superclass.as_deref() {
+12309:                 if let Some(&flag) = self.class_defined_flags.get(name) {
+12455: 	                        if self.classes.contains_key(export) {
+12511:                 let file_str = if let Some(path) = &self.source_path {
+12559:                     if self.try_depth == 0
+12561:                         && self.var_types.get(name) == Some(&VarType::Int)
+12948: 	                    && !self.hidden_imported_classes.contains(name)
+12962:                 } else if name == "E" {
+12966:                 } else if name == "TAU" {
+12979:                 if self.import_alias_exports.contains_key(name) {
+13041:                         if let Expr::Binary {
+13050:                                 if let Expr::Variable { name: lname, .. } = left.as_ref() {
+13055:                             let right_literal_len = if let Expr::Literal {
+13064:                             if is_self_concat {
+13065:                                 if let Some(rlen) = right_literal_len {
+13080:                     if let Expr::Binary {
+13089:                             if let Expr::Variable { name: lname, .. } = left.as_ref() {
+13094:                         if is_self_concat {
+13107:                             } else if let Expr::Variable { name: rname, .. } = right.as_ref() {
+13108:                                 if let Some(&rshadow) = self.string_len_shadows.get(rname) {
+13127:                             } else if let Expr::Variable { name: rname, .. } = right.as_ref() {
+13132:                             if is_literal_or_shadow {
+13153:                     if let Expr::Variable {
+13157:                         if self.classes.contains_key(class_name.as_str()) {
+13172:                 if let Some(alloca) = alloca {
+13185:                         if let Some(new_len) = new_str_len {
+13414:             if let BinaryOp::Add = op {
+13638:                     let next_block = if idx + 1 < candidate_classes.len() {
+13682:                         if let Some(defaults) = self.function_defaults.get(func_name).cloned() {
+13685:                                 if let Some(Some(ref default_expr)) = defaults.get(i) {
+13713:                     if idx + 1 < candidate_classes.len() {
+13886:             if let Some(&shadow) = self.string_len_shadows.get(name) {
+13900:         } else if let Expr::Literal {
+13924:             if let Some(&shadow) = self.string_len_shadows.get(name) {
+14333: 	            if self.variables.contains_key(name) || self.globals.contains_key(name) {
+17373:                     if args.len() < 2 || args.len() > 4 {
+17385:                     let target = if args.len() >= 4 {
+17425:                     if args.is_empty() || args.len() > 4 {
+17441:                     let target = if args.len() >= 4 {
+20684:                     if args.len() < 2 || args.len() > 3 {
+20994:                     if args.len() < 2 || args.len() > 3 {
+24669:                     if args.len() < 2 || args.len() > 3 {
+24718:                     if args.len() < 2 || args.len() > 3 {
+24746:                     if args.len() < 2 || args.len() > 3 {
+25982:         let cond_bool = if let Some(direct) = self.compile_condition_direct(condition)? {
+25995:         if self
+26011:         if !was_in_loop {
+26545:                 if self.body_uses_masel(nested_body) || self.params_use_masel(nested_params) {
+26557: 	                if defaults.iter().any(|d| d.is_some()) {
+26571:             if captured_in_body.contains(&param.name) {
+26580:             if self.boxed_vars.contains(&param.name) {
+26705:                     if let Pattern::Identifier(name) = &arm.pattern {
+26718:         if self.variables.contains_key(name) || self.globals.contains_key(name) {
+27758:             if let Some(&shadow) = self.list_ptr_shadows.get(name) {
+27774:         let idx_i64 = if let Some(i) = self.compile_int_expr(index) {
+28208:             if self.import_alias_exports.contains_key(name) {
+28219:         if obj_type == VarType::List && idx_type == VarType::Int {
+28270:                     if let Some(&ptr) = self.variables.get(name) {
+28519:             if let Some(&shadow) = self.list_ptr_shadows.get(name) {
+30104:                 if !bound.contains(name) && self.variables.contains_key(name) {
+30117:                 if let Some(s) = start {
+30120:                 if let Some(e) = end {
+30123:                 if let Some(st) = step {
+30129:                     if let crate::ast::FStringPart::Expr(e) = part {
+30345:                 if let Some(else_stmt) = else_branch {
+30598:             if self
+31005:                                 if let Some(Some(ref default_expr)) = defaults.get(user_idx) {
+31399:                         if cap_name == "masel" {
+33735:         if let Some(masel_ptr) = self.current_masel {
+33754:         if parts.is_empty() {
+33814:                 if params.len() != 1 {
+33828:                 if let Some(old) = old_var {
+33857:                 if let Some(old) = old_var {
+33894:                 if let Some(old) = old_var {
+33968:         let is_top_level = !self.in_user_function
+33975:         } else if let Some(&existing) = self.globals.get(name) {
+34203:                     if let Some(super_name) = superclass.as_deref() {
+34252:                     if let Some(init) = initializer {
+34269:             if terminated {
+34279:         if !terminated {
+34359:             if ch.is_ascii_alphanumeric() {
+34400:         if self.import_in_progress.contains(&import_path) {
+34523:                     if let Some(global) = module_vars.get(name) {
+34590:                     if let Some(defaults) = module_defaults.get(name) {
+34601:                 if let Some(global) = module_vars.get(name) {
+34644:                 if examples_path.exists() {
+34661:                     if stdlib_path.exists() {
+34669:                     if grandparent_path.exists() {
+34674:                         if stdlib_path.exists() {
+34683:                     if candidate.exists() {
+34687:                     if stdlib_candidate.exists() {
+34692:                         if stdlib_path.exists() {
+34711:             if cwd_stripped.exists() {
+34718:         if examples_path.exists() {
+34726:                 if exe_path.exists() {
+34730:                 if exe_stdlib_path.exists() {
+34735:                     if exe_stripped.exists() {
+34901:                     let val = if let Some(Some(ref default_expr)) = defaults.get(user_idx) {
+34928:             } else if let Some(defaults) = self.function_defaults.get(func_name).cloned() {
+34931:                     if let Some(Some(ref default_expr)) = defaults.get(user_idx) {
+34978:         let msg = if let Some(msg_expr) = message {
+35057:                     if self
+35111:                 if self
+35125:         if let Some(old) = saved_error_binding {
+35131:         if self
+35169:         if !arm_blocks.is_empty() {
+35208:             if self
+35448:                     if rest_index.is_some() && i > rest_index.unwrap() {
+35471:                     if rest_index.is_none() || i < rest_index.unwrap() {
+35700:         if let Some(&existing) = self.functions.get(name) {
+35701:             if existing.get_first_basic_block().is_some() {
+36218:             if self.import_alias_exports.contains_key(name) {
+37098:         if let Some(super_name) = superclass {
+37512:                             if let Some(Some(ref default_expr)) = defaults.get(i) {
+37794:                         if func.count_params() as usize >= expected_param_count {
+37936:                                 let val = if let Some(Some(ref default_expr)) = defaults.get(user_idx) {
+37954:                         } else if let Some(defaults) = self.function_defaults.get(func_name).cloned() {
+37971:                             if was_boxed {
+39998:         let step_val = if let Some(s) = step {
+40063:         let start_mdh = if let Some(s) = start {
+40092:         let end_mdh = if let Some(e) = end {
+40226:         let start_val = if start.is_some() {
+40280:         let end_val = if end.is_some() {

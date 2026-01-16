@@ -132,6 +132,27 @@ blether d.f(1)
 }
 
 #[test]
+fn llvm_codegen_overload_eq_ne_and_read_lines_are_exercised_for_unit_coverage() {
+    // Covers operator overload dispatch for ==/!=, non-variable call callee tracking, and
+    // the read_lines builtin compilation path.
+    compile_to_ir_for_unit_coverage(
+        r#"
+kin C {
+    dae __same_as__(other) { gie aye }
+    dae __differs_fae__(other) { gie nae }
+}
+
+ken x = C()
+ken same = x == 3
+ken diff = x != 4
+ken called = (|y| y + 1)(1)
+ken lines = read_lines("missing.txt")
+blether len(lines)
+"#,
+    );
+}
+
+#[test]
 fn llvm_codegen_append_and_shove_builtins_are_exercised_for_unit_coverage() {
     compile_to_ir_for_unit_coverage(
         r#"
@@ -174,6 +195,25 @@ ken s = speir "aye?"
 blether r1
 blether r2
 blether s
+"#,
+    );
+}
+
+#[test]
+fn llvm_codegen_loop_breaks_and_global_dict_set_are_exercised_for_unit_coverage() {
+    compile_to_ir_for_unit_coverage(
+        r#"
+ken g = {}
+
+dae f() {
+    ken s = "hi"
+    fer i in 0..3 { brak }
+    fer x in [1] { brak }
+    fer c in "ab" { brak }
+    fer j in 0..1 { blether s }
+    g["a"] = 1
+}
+f()
 "#,
     );
 }
@@ -431,12 +471,13 @@ fn llvm_codegen_misc_error_propagation_branches_are_exercised_for_unit_coverage(
     // any runtime behavior.
     let cases = [
         // Range expression: start/end compile failures.
-        r#"ken r = __missing__..3"#,
-        r#"ken r = 1..__missing__"#,
+        (r#"ken r = __missing__..3"#, "Undefined variable"),
+        (r#"ken r = 1..__missing__"#, "Undefined variable"),
         // Input expression: prompt compile failure.
-        r#"ken s = speir __missing__"#,
+        (r#"ken s = speir __missing__"#, "Undefined variable"),
         // Boxed assignment path: boxed var assignment RHS compile failure.
-        r#"
+        (
+            r#"
 dae outer() {
     ken x = 0
     dae inc() { x = __missing__ }
@@ -444,15 +485,17 @@ dae outer() {
 }
 outer()
 "#,
+            "Undefined variable",
+        ),
         // Import resolution: exercise the `lib/*` stripped-path fallthrough.
-        r#"fetch "lib/__coverage_missing_module""#,
+        (r#"fetch "lib/__coverage_missing_module""#, "Cannot find module to import"),
     ];
 
-    for src in cases {
+    for (src, expected) in cases {
         let program = parse(src).unwrap();
         let err = LLVMCompiler::new().compile_to_ir(&program).unwrap_err();
         let msg = err.to_string();
-        assert!(msg.contains("Undefined variable") || msg.contains("Cannot find module to import"));
+        assert!(msg.contains(expected), "unexpected error: {msg}");
     }
 }
 

@@ -1064,7 +1064,6 @@ mod tests {
 
     #[test]
     fn test_pattern_variants() {
-        let id_pattern = Pattern::Identifier("x".to_string());
         let span = Span::new(1, 1);
 
         // Just verify they can be created and matched
@@ -1077,10 +1076,15 @@ mod tests {
                 expected
             );
         }
-        assert!(matches!(
-            id_pattern,
-            Pattern::Identifier(ref name) if name == "x"
-        ));
+        for (pattern, expected) in [
+            (Pattern::Identifier("x".to_string()), true),
+            (Pattern::Identifier("y".to_string()), false),
+        ] {
+            assert_eq!(
+                matches!(pattern, Pattern::Identifier(ref name) if name == "x"),
+                expected
+            );
+        }
         for (pattern, expected) in [
             (Pattern::Wildcard, true),
             (Pattern::Identifier("x".to_string()), false),
@@ -1109,17 +1113,24 @@ mod tests {
 
     #[test]
     fn test_destruct_pattern_variants() {
-        let var = DestructPattern::Variable("x".to_string());
-        let rest = DestructPattern::Rest("remaining".to_string());
-
-        assert!(matches!(
-            var,
-            DestructPattern::Variable(ref name) if name == "x"
-        ));
-        assert!(matches!(
-            rest,
-            DestructPattern::Rest(ref name) if name == "remaining"
-        ));
+        for (pattern, expected) in [
+            (DestructPattern::Variable("x".to_string()), true),
+            (DestructPattern::Variable("y".to_string()), false),
+        ] {
+            assert_eq!(
+                matches!(pattern, DestructPattern::Variable(ref name) if name == "x"),
+                expected
+            );
+        }
+        for (pattern, expected) in [
+            (DestructPattern::Rest("remaining".to_string()), true),
+            (DestructPattern::Rest("nope".to_string()), false),
+        ] {
+            assert_eq!(
+                matches!(pattern, DestructPattern::Rest(ref name) if name == "remaining"),
+                expected
+            );
+        }
         for (pattern, expected) in [
             (DestructPattern::Ignore, true),
             (DestructPattern::Variable("x".to_string()), false),
@@ -1130,10 +1141,17 @@ mod tests {
 
     #[test]
     fn test_fstring_part_variants() {
-        let text = FStringPart::Text("hello ".to_string());
         let span = Span::new(1, 1);
 
-        assert!(matches!(text, FStringPart::Text(ref s) if s == "hello "));
+        for (part, expected) in [
+            (FStringPart::Text("hello ".to_string()), true),
+            (FStringPart::Text("nope".to_string()), false),
+        ] {
+            assert_eq!(
+                matches!(part, FStringPart::Text(ref s) if s == "hello "),
+                expected
+            );
+        }
         for (part, expected) in [
             (
                 FStringPart::Expr(Box::new(Expr::Variable {

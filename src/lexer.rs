@@ -81,6 +81,22 @@ pub fn lex(source: &str) -> HaversResult<Vec<Token>> {
 mod tests {
     use super::*;
 
+    fn is_unkent_token(err: &HaversError, lexeme: &str, line: usize, column: usize) -> bool {
+        match err {
+            HaversError::UnkentToken {
+                lexeme: found,
+                line: found_line,
+                column: found_column,
+            } => {
+                let lexeme_ok = found == lexeme;
+                let line_ok = *found_line == line;
+                let column_ok = *found_column == column;
+                lexeme_ok && line_ok && column_ok
+            }
+            _ => false,
+        }
+    }
+
     #[test]
     fn test_keywords() {
         let source = "ken gin ither whiles fer gie blether";
@@ -182,14 +198,31 @@ greet(message)
     #[test]
     fn test_invalid_token_error() {
         let err = lex("@").unwrap_err();
-        assert!(matches!(
-            err,
-            HaversError::UnkentToken {
-                lexeme,
-                line: 1,
-                column: 1
-            } if lexeme == "@"
-        ));
+        assert!(is_unkent_token(&err, "@", 1, 1));
+        let mismatch = HaversError::UnkentToken {
+            lexeme: "#".to_string(),
+            line: 1,
+            column: 1,
+        };
+        assert!(!is_unkent_token(&mismatch, "@", 1, 1));
+        let mismatch = HaversError::UnkentToken {
+            lexeme: "@".to_string(),
+            line: 2,
+            column: 1,
+        };
+        assert!(!is_unkent_token(&mismatch, "@", 1, 1));
+        let mismatch = HaversError::UnkentToken {
+            lexeme: "@".to_string(),
+            line: 1,
+            column: 2,
+        };
+        assert!(!is_unkent_token(&mismatch, "@", 1, 1));
+        let other = HaversError::UnexpectedToken {
+            expected: "expression".to_string(),
+            found: "@".to_string(),
+            line: 1,
+        };
+        assert!(!is_unkent_token(&other, "@", 1, 1));
     }
 
     #[test]
@@ -206,14 +239,13 @@ greet(message)
     #[test]
     fn test_unicode_columns_count_chars_not_bytes() {
         let err = lex("\"é\" @").unwrap_err();
-        assert!(matches!(
-            err,
-            HaversError::UnkentToken {
-                lexeme,
-                line: 1,
-                column: 5
-            } if lexeme == "@"
-        ));
+        assert!(is_unkent_token(&err, "@", 1, 5));
+        let other = HaversError::UnexpectedToken {
+            expected: "expression".to_string(),
+            found: "@".to_string(),
+            line: 1,
+        };
+        assert!(!is_unkent_token(&other, "@", 1, 5));
     }
 
     #[test]
@@ -248,12 +280,11 @@ log_whisper log_mutter log_blether log_holler log_roar hurl
         assert!(tokens.iter().any(|t| t.kind == TokenKind::Arrow));
         assert!(tokens.iter().any(|t| t.kind == TokenKind::Underscore));
         assert!(tokens.iter().any(|t| t.kind == TokenKind::Newline));
-        assert!(tokens
-            .iter()
-            .any(|t| matches!(t.kind, TokenKind::SingleQuoteString(ref s) if s == "single")));
-        assert!(tokens.iter().any(|t| matches!(
-            t.kind,
-            TokenKind::FString(ref s) if s == "Hello {name}!"
-        )));
+        assert!(tokens.iter().any(|t| {
+            t.kind == TokenKind::SingleQuoteString("single".to_string())
+        }));
+        assert!(tokens.iter().any(|t| {
+            t.kind == TokenKind::FString("Hello {name}!".to_string())
+        }));
     }
 }

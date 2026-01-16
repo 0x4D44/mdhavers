@@ -1,0 +1,3 @@
+Missing branch lines for /home/md/language/mdhavers/src/llvm/compiler.rs
+Total lines: 1
+191:         if self.enabled && self.wrote_any {

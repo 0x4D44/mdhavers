@@ -537,6 +537,20 @@ pub fn timestamp_string() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn memory_sink_stats(sink: &LogSink) -> Option<(usize, usize)> {
+        match sink {
+            LogSink::Memory { entries, max } => Some((*max, entries.len())),
+            _ => None,
+        }
+    }
+
+    fn file_sink_has_handle(sink: &LogSink) -> Option<bool> {
+        match sink {
+            LogSink::File { file, .. } => Some(file.is_some()),
+            _ => None,
+        }
+    }
     use crate::value::{DictValue, RangeValue, SetValue, Value};
     use serde_json::Value as JsonValue;
     use std::cell::RefCell;
@@ -619,17 +633,15 @@ mod tests {
             timestamps: false,
             sinks: vec![LogSink::Memory {
                 entries: Vec::new(),
-                max: 2,
+                max: 1,
             }],
         };
         logger.log(&record);
         logger.log(&record);
         logger.log(&record);
 
-        assert!(matches!(
-            &logger.sinks[0],
-            LogSink::Memory { entries, max } if *max == 2 && entries.len() == 2
-        ));
+        assert_eq!(memory_sink_stats(&logger.sinks[0]), Some((1, 1)));
+        assert_eq!(memory_sink_stats(&LogSink::Stdout), None);
 
         let mut file_logger = LoggerCore {
             format: LogFormat::Compact,
@@ -642,9 +654,38 @@ mod tests {
             }],
         };
         file_logger.log(&record);
+        let set_file_handle = |logger: &mut LoggerCore, path: &std::path::Path| {
+            if let LogSink::File { file, .. } = &mut logger.sinks[0] {
+                match std::fs::File::create(path) {
+                    Ok(handle) => *file = Some(handle),
+                    Err(_) => {}
+                }
+            }
+        };
+        set_file_handle(&mut file_logger, &file_path);
         file_logger.log(&record);
         let contents = std::fs::read_to_string(&file_path).unwrap();
         assert!(contents.contains("hullo"));
+
+        let mut stdout_logger = LoggerCore {
+            format: LogFormat::Compact,
+            color: false,
+            timestamps: false,
+            sinks: vec![LogSink::Stdout],
+        };
+        set_file_handle(&mut stdout_logger, &file_path);
+
+        let mut bad_handle_logger = LoggerCore {
+            format: LogFormat::Compact,
+            color: false,
+            timestamps: false,
+            sinks: vec![LogSink::File {
+                path: dir.path().to_string_lossy().to_string(),
+                append: false,
+                file: None,
+            }],
+        };
+        set_file_handle(&mut bad_handle_logger, dir.path());
 
         let mut bad_file_logger = LoggerCore {
             format: LogFormat::Text,
@@ -657,10 +698,8 @@ mod tests {
             }],
         };
         bad_file_logger.log(&record);
-        assert!(matches!(
-            &bad_file_logger.sinks[0],
-            LogSink::File { file, .. } if file.is_none()
-        ));
+        assert_eq!(file_sink_has_handle(&bad_file_logger.sinks[0]), Some(false));
+        assert_eq!(file_sink_has_handle(&LogSink::Stdout), None);
     }
 
     #[test]
@@ -687,6 +726,101 @@ mod tests {
         };
         file_logger.log(&record);
         assert!(file_path.exists());
+    }
+
+    #[test]
+    fn test_logger_memory_drain_for_coverage() {
+        let record = sample_record(vec![]);
+        let mut logger = LoggerCore {
+            format: LogFormat::Compact,
+            color: false,
+            timestamps: false,
+            sinks: vec![LogSink::Memory {
+                entries: Vec::new(),
+                max: 0,
+            }],
+        };
+        logger.log(&record);
+        assert_eq!(memory_sink_stats(&logger.sinks[0]), Some((0, 0)));
+    }
+
+    #[test]
+    fn test_logger_text_and_compact_format_branches() {
+        let record_empty = LogRecord {
+            level: LogLevel::Blether,
+            message: "hullo".to_string(),
+            target: String::new(),
+            file: "test.rs".to_string(),
+            line: 1,
+            fields: Vec::new(),
+            span_path: Vec::new(),
+        };
+        let record_full = sample_record(vec![("x".to_string(), Value::Integer(1))]);
+
+        let logger = LoggerCore {
+            format: LogFormat::Text,
+            color: false,
+            timestamps: false,
+            sinks: vec![LogSink::Stdout],
+        };
+        let text = logger.format_text(&record_empty);
+        assert!(text.contains("[thread:"));
+        let text = logger.format_text(&record_full);
+        assert!(text.contains("span="));
+
+        let logger = LoggerCore {
+            format: LogFormat::Compact,
+            color: false,
+            timestamps: false,
+            sinks: vec![LogSink::Stdout],
+        };
+        let compact = logger.format_compact(&record_empty);
+        assert!(compact.contains("hullo"));
+        let compact = logger.format_compact(&record_full);
+        assert!(compact.contains("span="));
+    }
+
+    #[test]
+    fn test_logger_file_sink_branches() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("log_file.txt");
+        let record = sample_record(vec![]);
+
+        let handle = std::fs::File::create(&file_path).unwrap();
+        let mut logger = LoggerCore {
+            format: LogFormat::Text,
+            color: false,
+            timestamps: false,
+            sinks: vec![LogSink::File {
+                path: file_path.to_string_lossy().to_string(),
+                append: false,
+                file: Some(handle),
+            }],
+        };
+        logger.log(&record);
+
+        let mut bad_logger = LoggerCore {
+            format: LogFormat::Text,
+            color: false,
+            timestamps: false,
+            sinks: vec![LogSink::File {
+                path: dir.path().to_string_lossy().to_string(),
+                append: true,
+                file: None,
+            }],
+        };
+        bad_logger.log(&record);
+        assert_eq!(file_sink_has_handle(&bad_logger.sinks[0]), Some(false));
+    }
+
+    #[test]
+    fn test_span_exit_mismatch_branch() {
+        let span1 = new_span("one".to_string(), LogLevel::Blether, "t".to_string(), Vec::new());
+        let span2 = new_span("two".to_string(), LogLevel::Blether, "t".to_string(), Vec::new());
+        span_enter(span1.clone());
+        span_enter(span2.clone());
+        assert!(span_exit(span1.id).is_err());
+        assert!(span_exit(span2.id).is_ok());
     }
 
     #[test]
@@ -774,11 +908,10 @@ mod tests {
 
         let record = sample_record(vec![("a".to_string(), Value::Integer(1))]);
         let val = record_to_value(&record, Some("now".to_string()));
-        assert!(matches!(
-            val,
-            Value::Dict(ref map)
-                if map.borrow().contains_key(&Value::String("timestamp".to_string()))
-        ));
+        let dict = val.as_dict().expect("expected dict");
+        assert!(dict
+            .borrow()
+            .contains_key(&Value::String("timestamp".to_string())));
     }
 
     #[test]
@@ -808,11 +941,36 @@ mod tests {
             Value::String("holler".to_string())
         );
         let fields = handle.get("fields").unwrap();
-        assert!(matches!(
-            fields,
-            Value::Dict(ref dict)
-                if dict.borrow().get(&Value::String("k".to_string())) == Some(&Value::Integer(1))
-        ));
+        let dict = fields.as_dict().expect("expected dict");
+        assert_eq!(
+            dict.borrow().get(&Value::String("k".to_string())),
+            Some(&Value::Integer(1))
+        );
+    }
+
+    #[test]
+    fn test_log_filter_prefers_longest_rule_and_skips_empty_targets() {
+        let filter = LogFilter {
+            default: LogLevel::Blether,
+            rules: vec![
+                ("".to_string(), LogLevel::Roar),
+                ("app".to_string(), LogLevel::Mutter),
+                ("app.sub".to_string(), LogLevel::Holler),
+                ("app".to_string(), LogLevel::Blether),
+            ],
+        };
+        assert_eq!(filter.level_for_target("app.sub.module"), LogLevel::Holler);
+        assert_eq!(filter.level_for_target("other"), LogLevel::Blether);
+    }
+
+    #[test]
+    fn test_record_to_value_without_timestamp() {
+        let record = sample_record(vec![]);
+        let val = record_to_value(&record, None);
+        let dict = val.as_dict().expect("expected dict");
+        assert!(!dict
+            .borrow()
+            .contains_key(&Value::String("timestamp".to_string())));
     }
 
     #[test]
@@ -939,5 +1097,140 @@ mod tests {
         let _ = obj.get("name").unwrap();
         let _ = obj.set("anything", Value::Nil).unwrap();
         let _ = obj.call("noop", vec![]).unwrap();
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn logging_branch_matrix_for_coverage() {
+        let _lock = LOG_LOCK.lock().unwrap();
+
+        let filter = LogFilter {
+            default: LogLevel::Blether,
+            rules: vec![
+                ("".to_string(), LogLevel::Roar),
+                ("net.http".to_string(), LogLevel::Whisper),
+                ("net".to_string(), LogLevel::Roar),
+            ],
+        };
+        assert_eq!(filter.level_for_target("net.http.server"), LogLevel::Whisper);
+        assert_eq!(filter.level_for_target("net"), LogLevel::Roar);
+        assert_eq!(filter.level_for_target("other"), LogLevel::Blether);
+
+        let record_empty = LogRecord {
+            level: LogLevel::Blether,
+            message: "hullo".to_string(),
+            target: String::new(),
+            file: "file.braw".to_string(),
+            line: 42,
+            fields: Vec::new(),
+            span_path: Vec::new(),
+        };
+        let record_full = sample_record(vec![("k".to_string(), Value::Integer(1))]);
+
+        let mut logger = LoggerCore {
+            format: LogFormat::Text,
+            color: false,
+            timestamps: false,
+            sinks: vec![],
+        };
+        let _ = logger.format_text(&record_empty);
+        logger.timestamps = true;
+        let _ = logger.format_text(&record_full);
+
+        let _ = logger.format_compact(&record_empty);
+        let _ = logger.format_compact(&record_full);
+
+        let _ = record_to_value(&record_full, Some("ts".to_string()));
+
+        let span = new_span(
+            "span".to_string(),
+            LogLevel::Blether,
+            "target".to_string(),
+            vec![],
+        );
+        span_enter(span.clone());
+        assert!(span_exit(span.id + 1).is_err());
+        span_exit(span.id).unwrap();
+
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("log.txt");
+        let record = sample_record(vec![]);
+
+        let mut file_logger = LoggerCore {
+            format: LogFormat::Text,
+            color: false,
+            timestamps: false,
+            sinks: vec![LogSink::File {
+                path: file_path.to_string_lossy().to_string(),
+                append: true,
+                file: None,
+            }],
+        };
+        file_logger.log(&record);
+        file_logger.log(&record);
+        assert_eq!(file_sink_has_handle(&file_logger.sinks[0]), Some(true));
+
+        let mut bad_logger = LoggerCore {
+            format: LogFormat::Text,
+            color: false,
+            timestamps: false,
+            sinks: vec![LogSink::File {
+                path: dir.path().to_string_lossy().to_string(),
+                append: false,
+                file: None,
+            }],
+        };
+        bad_logger.log(&record);
+
+        let mut memory_logger = LoggerCore {
+            format: LogFormat::Text,
+            color: false,
+            timestamps: false,
+            sinks: vec![LogSink::Memory {
+                entries: Vec::new(),
+                max: 0,
+            }],
+        };
+        memory_logger.log(&record);
+        memory_logger.log(&record);
+
+        let mut memory_logger_safe = LoggerCore {
+            format: LogFormat::Text,
+            color: false,
+            timestamps: false,
+            sinks: vec![LogSink::Memory {
+                entries: Vec::new(),
+                max: 5,
+            }],
+        };
+        memory_logger_safe.log(&record);
+
+        let set_file_handle = |logger: &mut LoggerCore, path: &std::path::Path| {
+            if let LogSink::File { file, .. } = &mut logger.sinks[0] {
+                if let Ok(handle) = std::fs::File::create(path) {
+                    *file = Some(handle);
+                }
+            }
+        };
+        let mut stdout_logger = LoggerCore {
+            format: LogFormat::Compact,
+            color: false,
+            timestamps: false,
+            sinks: vec![LogSink::Stdout],
+        };
+        set_file_handle(&mut stdout_logger, dir.path());
+
+        let mut file_logger = LoggerCore {
+            format: LogFormat::Compact,
+            color: false,
+            timestamps: false,
+            sinks: vec![LogSink::File {
+                path: file_path.to_string_lossy().to_string(),
+                append: false,
+                file: None,
+            }],
+        };
+        set_file_handle(&mut file_logger, &file_path);
+        set_file_handle(&mut file_logger, dir.path());
     }
 }

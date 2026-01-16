@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use mdhavers::interpreter::{get_stack_trace, pop_stack_frame, push_stack_frame};
 use mdhavers::value::{DictValue, NativeFunction};
-use mdhavers::{parse, Interpreter, Value};
+use mdhavers::{parse, HaversError, Interpreter, Value};
 
 fn run(source: &str) -> Result<Value, mdhavers::HaversError> {
     let program = parse(source).unwrap();
@@ -60,6 +60,68 @@ fn interpreter_call_get_on_dict_falls_back_to_normal_call_path() {
 dae inc(x) { gie x + 1 }
 ken d = {"f": inc}
 d.f(1)
+"#,
+    )
+    .unwrap();
+    assert_eq!(value, Value::Integer(2));
+}
+
+#[test]
+fn interpreter_get_user_variables_in_dependency_instance_is_covered() {
+    let program = parse("dae foo() { gie 1 }").unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+
+    let vars = interp.get_user_variables();
+    assert!(vars.iter().any(|(name, kind, _)| name == "foo" && kind == "function"));
+    assert!(
+        !vars.iter().any(|(name, _, _)| name == "len"),
+        "native functions should be excluded"
+    );
+}
+
+#[test]
+fn interpreter_call_value_wrong_arity_is_covered() {
+    let err = run("len()").expect_err("expected wrong arity error");
+    assert!(matches!(err, HaversError::WrongArity { .. }));
+}
+
+#[test]
+fn interpreter_method_call_wrong_arity_is_covered() {
+    let err = run(
+        r#"
+kin C {
+    dae __pit_thegither__(a, b) { gie a }
+}
+ken c = C()
+c + c
+"#,
+    )
+    .expect_err("expected method arity error");
+    assert!(matches!(err, HaversError::WrongArity { .. }));
+}
+
+#[test]
+fn interpreter_match_range_non_integer_bounds_are_covered() {
+    let value = run(
+        r#"
+ken a = "x"
+keek 2 {
+    whan 1..a -> 1
+    whan 1..2 -> 2
+    whan _ -> 3
+}
+"#,
+    )
+    .unwrap();
+    assert_eq!(value, Value::Integer(3));
+
+    let value = run(
+        r#"
+keek "y" {
+    whan 1..3 -> 1
+    whan _ -> 2
+}
 "#,
     )
     .unwrap();
@@ -360,4 +422,140 @@ fn interpreter_native_ipv4_resolution_and_nonblocking_false_path_are_covered() {
         closed.borrow().get(&Value::String("ok".to_string())),
         Some(&Value::Bool(true))
     );
+}
+
+#[test]
+fn interpreter_var_decl_without_initializer_and_return_nil_are_covered() {
+    let value = run(
+        r#"
+ken x
+dae f() {
+    gie
+}
+f()
+x
+"#,
+    )
+    .unwrap();
+    assert_eq!(value, Value::Nil);
+}
+
+#[test]
+fn interpreter_assign_undefined_variable_errors() {
+    let err = run("x = 1").expect_err("expected undefined variable error");
+    assert!(matches!(err, HaversError::UndefinedVariable { .. }));
+}
+
+#[test]
+fn interpreter_native_wrong_arity_is_covered() {
+    let err = run("chr()").expect_err("expected wrong arity error");
+    assert!(matches!(err, HaversError::WrongArity { .. }));
+}
+
+#[test]
+fn interpreter_non_builtin_string_call_errors() {
+    let err = run(r#""hello"(1)"#).expect_err("expected not callable error");
+    assert!(matches!(err, HaversError::NotCallable { .. }));
+}
+
+#[test]
+fn interpreter_bytes_set_invalid_value_and_index_errors_are_covered() {
+    let err = run(
+        r#"
+ken b = bytes(1)
+bytes_set(b, 0, 999)
+"#,
+    )
+    .expect_err("expected bytes_set invalid value error");
+    assert!(matches!(err, HaversError::InternalError(_)));
+
+    let err = run(
+        r#"
+ken b = bytes(1)
+bytes_set(b, 2, 1)
+"#,
+    )
+    .expect_err("expected bytes_set index error");
+    assert!(matches!(err, HaversError::InternalError(_)));
+}
+
+#[test]
+fn interpreter_log_init_too_many_args_errors() {
+    let err = run("log_init(1, 2)").expect_err("expected log_init error");
+    assert!(matches!(err, HaversError::InternalError(_)));
+}
+
+#[test]
+fn interpreter_is_alpha_true_branch_is_covered() {
+    let value = run(r#"is_alpha("abc")"#).unwrap();
+    assert_eq!(value, Value::Bool(true));
+}
+
+#[test]
+fn interpreter_chr_invalid_codepoint_errors() {
+    let err = run("chr(-1)").expect_err("expected chr error");
+    assert!(matches!(err, HaversError::InternalError(_)));
+}
+
+#[test]
+fn interpreter_get_user_variables_includes_non_constant_float_and_string() {
+    let program = parse(
+        r#"
+ken x = 1.5
+ken s = "hi"
+"#,
+    )
+    .unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+
+    let vars = interp.get_user_variables();
+    assert!(vars.iter().any(|(name, kind, _)| name == "x" && kind == "float"));
+    assert!(vars.iter().any(|(name, kind, _)| name == "s" && kind == "string"));
+}
+
+#[test]
+fn interpreter_json_parse_empty_and_non_string_errors_are_covered() {
+    let err = run("json_parse(1)").expect_err("expected json_parse type error");
+    assert!(matches!(err, HaversError::InternalError(_)));
+
+    let err = run(r#"json_parse("")"#).expect_err("expected empty json error");
+    assert!(matches!(err, HaversError::InternalError(_)));
+
+    let value = run(r#"json_parse("-1")"#).unwrap();
+    assert_eq!(value, Value::Integer(-1));
+}
+
+#[test]
+fn interpreter_function_wrong_arity_errors_are_covered() {
+    let err = run(
+        r#"
+dae f(a, b = 2) { gie a }
+f()
+"#,
+    )
+    .expect_err("expected wrong arity error");
+    assert!(matches!(err, HaversError::TypeError { .. }));
+
+    let err = run(
+        r#"
+dae f(a, b = 2) { gie a }
+f(1, 2, 3)
+"#,
+    )
+    .expect_err("expected wrong arity error");
+    assert!(matches!(err, HaversError::TypeError { .. }));
+}
+
+#[test]
+fn interpreter_operator_overload_missing_method_falls_back() {
+    let err = run(
+        r#"
+kin C {}
+ken c = C()
+c + 1
+"#,
+    )
+    .expect_err("expected type error");
+    assert!(matches!(err, HaversError::TypeError { .. }));
 }

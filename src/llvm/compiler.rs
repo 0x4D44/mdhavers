@@ -1013,6 +1013,15 @@ mod tests {
     }
 
     #[test]
+    fn test_build_status_ensure_newline_skips_when_disabled() {
+        let mut status = BuildStatus::new("Disabled");
+        status.enabled = false;
+        status.wrote_any = true;
+        status.ensure_newline();
+        assert!(status.wrote_any);
+    }
+
+    #[test]
     fn test_compile_to_object_and_write_error_paths() {
         let program = parse("ken x = 1").unwrap();
         let compiler = LLVMCompiler::new();

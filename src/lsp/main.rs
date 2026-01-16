@@ -422,6 +422,28 @@ mod tests {
     }
 
     #[test]
+    fn get_word_at_position_handles_underscore_identifiers_for_coverage() {
+        let mut docs = DocumentStore::new();
+        let uri = Uri::from_str("file:///tmp/coverage_lsp_underscore.braw").unwrap();
+        docs.open(uri.clone(), "ken snake_case = 1\n".to_string());
+
+        let after_underscore = hover_params(&uri, 0, 10);
+        let word = get_word_at_position(&after_underscore, &docs);
+        assert_eq!(word.as_deref(), Some("snake_case"));
+
+        let before_underscore = hover_params(&uri, 0, 8);
+        let word = get_word_at_position(&before_underscore, &docs);
+        assert_eq!(word.as_deref(), Some("snake_case"));
+
+        let at_start = hover_params(&uri, 0, 0);
+        let word = get_word_at_position(&at_start, &docs);
+        assert_eq!(word.as_deref(), Some("ken"));
+
+        let at_equals = hover_params(&uri, 0, 15);
+        assert!(get_word_at_position(&at_equals, &docs).is_none());
+    }
+
+    #[test]
     fn handle_hover_returns_none_when_word_lookup_returns_none_for_coverage() {
         let docs = DocumentStore::new();
         let uri = Uri::from_str("file:///tmp/coverage_lsp_missing_hover.braw").unwrap();
@@ -580,6 +602,22 @@ mod tests {
     }
 
     #[test]
+    fn handle_hover_returns_documentation_for_keywords_for_coverage() {
+        let mut docs = DocumentStore::new();
+        let uri = Uri::from_str("file:///tmp/coverage_lsp_keyword.braw").unwrap();
+        docs.open(uri.clone(), "ken x = 1\n".to_string());
+
+        let params = hover_params(&uri, 0, 1);
+        let hover = handle_hover(&docs, params).expect("expected hover");
+        match hover.contents {
+            HoverContents::Markup(markup) => {
+                assert!(markup.value.contains("ken"));
+            }
+            other => panic!("unexpected hover contents: {other:?}"),
+        }
+    }
+
+    #[test]
     fn handle_notification_closes_document() {
         let (server, _client) = Connection::memory();
         let mut docs = DocumentStore::new();
@@ -611,6 +649,55 @@ mod tests {
             LspNotification::new(DidChangeTextDocument::METHOD.to_string(), params);
         handle_notification(&server, &mut docs, notification).unwrap();
         assert_eq!(docs.get(&uri).unwrap(), "ken x = 1\n");
+    }
+
+    #[test]
+    fn handle_notification_updates_document_on_last_change_for_coverage() {
+        let (server, _client) = Connection::memory();
+        let mut docs = DocumentStore::new();
+        let uri = Uri::from_str("file:///tmp/coverage_lsp_change_last.braw").unwrap();
+        docs.open(uri.clone(), "ken x = 1\n".to_string());
+
+        let params = DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier { uri: uri.clone(), version: 2 },
+            content_changes: vec![
+                TextDocumentContentChangeEvent {
+                    range: None,
+                    range_length: None,
+                    text: "ken x = 2\n".to_string(),
+                },
+                TextDocumentContentChangeEvent {
+                    range: None,
+                    range_length: None,
+                    text: "ken x = 3\n".to_string(),
+                },
+            ],
+        };
+        let notification =
+            LspNotification::new(DidChangeTextDocument::METHOD.to_string(), params);
+        handle_notification(&server, &mut docs, notification).unwrap();
+        assert_eq!(docs.get(&uri).unwrap(), "ken x = 3\n");
+    }
+
+    #[test]
+    fn handle_notification_updates_document_on_single_change_for_coverage() {
+        let (server, _client) = Connection::memory();
+        let mut docs = DocumentStore::new();
+        let uri = Uri::from_str("file:///tmp/coverage_lsp_change_single.braw").unwrap();
+        docs.open(uri.clone(), "ken x = 1\n".to_string());
+
+        let params = DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier { uri: uri.clone(), version: 2 },
+            content_changes: vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: "ken x = 2\n".to_string(),
+            }],
+        };
+        let notification =
+            LspNotification::new(DidChangeTextDocument::METHOD.to_string(), params);
+        handle_notification(&server, &mut docs, notification).unwrap();
+        assert_eq!(docs.get(&uri).unwrap(), "ken x = 2\n");
     }
 
     #[test]

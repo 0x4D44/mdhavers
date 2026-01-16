@@ -210,3 +210,48 @@ gin r["ok"] {
         "unexpected output: {out}"
     );
 }
+
+#[test]
+fn interpreter_event_loop_poll_timeout_zero_branches_for_coverage() {
+    let code = r#"
+ken loop = event_loop_new()
+
+dae on_timer(ev) {
+    # no-op
+}
+
+# Cancelled timer to exercise cancelled path in next_due scan.
+ken t1 = timer_after(loop, 1, on_timer)
+timer_cancel(loop, t1)
+
+# Past-due timer to exercise diff < 0 normalization.
+ken t2 = timer_after(loop, 1, on_timer)
+snooze(5)
+
+# Timeout 0 with no watchers -> poll_timeout == 0 and fds empty.
+ken evs0 = event_loop_poll(loop, 0)
+blether len(evs0)
+
+# Timeout 0 with watcher -> poll_timeout == 0, fds non-empty.
+ken r = socket_udp()
+gin r["ok"] {
+    ken sock = r["value"]
+    event_watch_read(loop, sock, on_timer)
+    ken evs1 = event_loop_poll(loop, 0)
+    blether len(evs1)
+    event_unwatch(loop, sock)
+    socket_close(sock)
+} ither {
+    blether "sock_fail"
+}
+
+# Negative timeout -> wait_ms < 0 branch (force a due timer).
+ken t3 = timer_after(loop, 10, on_timer)
+ken evs2 = event_loop_poll(loop, -1)
+blether len(evs2)
+"#;
+
+    let program = parse(code).unwrap();
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).unwrap();
+}

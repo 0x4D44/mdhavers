@@ -18,3 +18,9 @@ fn interpreter_log_init_invalid_filter_is_covered() {
     // Hit `logging::set_filter(&filter_str)?` via an invalid filter spec.
     assert!(run("log_init({\"filter\": \"nope\"})\n").is_err());
 }
+
+#[test]
+fn interpreter_log_init_non_dict_and_invalid_format_are_covered() {
+    assert!(run("log_init(1)\n").is_err());
+    assert!(run("log_init({\"format\": \"nope\"})\n").is_err());
+}

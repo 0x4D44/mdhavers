@@ -840,6 +840,15 @@ fn cli_repl_scripted_session_exits_cleanly() {
         "",
         "help",
         "clear",
+        ")",
+        "]",
+        "}",
+        "ken xs = [",
+        "1]",
+        "ken y = (",
+        "1)",
+        "blether \"unterminated",
+        "\"",
         ":wisdom",
         ":codewisdom",
         ":examples",
@@ -1040,6 +1049,18 @@ x.foo(1,2,3,4,5,6,7,8,9)
         assert_ne!(code, 0);
         assert!(err.contains("LLVM"), "stderr: {err}");
     }
+}
+
+#[test]
+fn cli_compile_bool_literals_for_branch_coverage() {
+    let dir = tempdir().unwrap();
+    let home = dir.path();
+
+    let bools = dir.path().join("bools.braw");
+    write_file(&bools, "ken t = aye\nken f = naw\n");
+
+    let (code, _out, err) = run_mdhavers(&["compile", bools.to_str().unwrap()], None, home);
+    assert_eq!(code, 0, "stderr: {err}");
 }
 
 #[test]

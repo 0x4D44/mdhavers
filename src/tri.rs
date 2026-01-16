@@ -365,6 +365,17 @@ fn make_constructor(kind: &'static str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn vec3_components(value: &Value) -> Option<(f64, f64, f64)> {
+        let obj = match value {
+            Value::NativeObject(obj) => obj,
+            _ => return None,
+        };
+        let x = obj.get("x").ok()?.as_float()?;
+        let y = obj.get("y").ok()?.as_float()?;
+        let z = obj.get("z").ok()?.as_float()?;
+        Some((x, y, z))
+    }
     #[test]
     fn test_is_tri_module() {
         assert!(is_tri_module("tri"));
@@ -384,16 +395,11 @@ mod tests {
     fn test_tri_module_constants_and_constructors() {
         let module = TriModule::new();
         let deg = module.get("DEG_TO_RAD").unwrap();
-        assert!(matches!(
-            deg,
-            Value::Float(v) if (v - std::f64::consts::PI / 180.0).abs() < 1e-6
-        ));
+        let deg = deg.as_float().expect("expected float");
+        assert!((deg - std::f64::consts::PI / 180.0).abs() < 1e-6);
 
         let result = module.call("Mesch", vec![]).unwrap();
-        assert!(matches!(
-            result,
-            Value::NativeObject(obj) if obj.type_name() == "Mesch"
-        ));
+        assert_eq!(format!("{}", result), "<native Mesch>");
     }
 
     #[test]
@@ -467,24 +473,15 @@ mod tests {
 
             // Empty args covers default-path constructor arg plumbing.
             let empty = (ctor.func)(Vec::new()).unwrap();
-            assert!(matches!(
-                empty,
-                Value::NativeObject(obj) if obj.type_name() == kind
-            ));
+            assert_eq!(format!("{}", empty), format!("<native {}>", kind));
 
             // Non-empty args covers explicit-arg path for kinds that accept options.
             let with_args = (ctor.func)(args_for_kind(kind)).unwrap();
-            assert!(matches!(
-                with_args,
-                Value::NativeObject(obj) if obj.type_name() == kind
-            ));
+            assert_eq!(format!("{}", with_args), format!("<native {}>", kind));
 
             // Also cover the module.call(...) constructor path.
             let called = module.call(kind, Vec::new()).unwrap();
-            assert!(matches!(
-                called,
-                Value::NativeObject(obj) if obj.type_name() == kind
-            ));
+            assert_eq!(format!("{}", called), format!("<native {}>", kind));
         }
     }
 
@@ -515,10 +512,7 @@ mod tests {
     fn test_tri_module_call_constructor() {
         let module = TriModule::new();
         let value = module.call("BoxGeometrie", vec![]).unwrap();
-        assert!(matches!(
-            value,
-            Value::NativeObject(obj) if obj.type_name() == "BoxGeometrie"
-        ));
+        assert_eq!(format!("{}", value), "<native BoxGeometrie>");
     }
 
     #[test]
@@ -568,16 +562,14 @@ mod tests {
         let obj = TriObject::new("Thing3D");
         obj.call("adde", vec![Value::Integer(1), Value::Integer(2)])
             .unwrap();
-        assert!(matches!(
-            obj.get("children").unwrap(),
-            Value::List(list) if list.borrow().len() == 2
-        ));
+        let children = obj.get("children").unwrap();
+        let list = children.as_list().expect("expected list");
+        assert_eq!(list.borrow().len(), 2);
 
         obj.call("remuiv", vec![Value::Integer(1)]).unwrap();
-        assert!(matches!(
-            obj.get("children").unwrap(),
-            Value::List(list) if list.borrow().len() == 1
-        ));
+        let children = obj.get("children").unwrap();
+        let list = children.as_list().expect("expected list");
+        assert_eq!(list.borrow().len(), 1);
 
         obj.call("luik_at", vec![Value::String("target".to_string())])
             .unwrap();
@@ -624,10 +616,7 @@ mod tests {
         assert_eq!(obj.call("dyspos", Vec::new()).unwrap(), Value::Nil);
 
         let cloned = obj.call("cloan", vec![]).unwrap();
-        assert!(matches!(
-            cloned,
-            Value::NativeObject(obj) if obj.type_name() == "Thing3D"
-        ));
+        assert_eq!(format!("{}", cloned), "<native Thing3D>");
     }
 
     #[test]
@@ -690,23 +679,17 @@ mod tests {
     fn test_tri_object_children_on_non_transform() {
         let obj = TriObject::new("Geometrie");
         obj.call("adde", vec![Value::Integer(1)]).unwrap();
-        assert!(matches!(
-            obj.get("children").unwrap(),
-            Value::List(list) if list.borrow().len() == 1
-        ));
+        let children = obj.get("children").unwrap();
+        let list = children.as_list().expect("expected list");
+        assert_eq!(list.borrow().len(), 1);
         obj.call("remuiv", vec![Value::Integer(2)]).unwrap();
     }
 
     #[test]
     fn test_make_vec3_and_transform_check() {
         let vec = make_vec3("Vec3", 1.0, 2.0, 3.0);
-        assert!(matches!(
-            vec,
-            Value::NativeObject(ref obj)
-                if obj.get("x").unwrap() == Value::Float(1.0)
-                    && obj.get("y").unwrap() == Value::Float(2.0)
-                    && obj.get("z").unwrap() == Value::Float(3.0)
-        ));
+        assert_eq!(vec3_components(&vec), Some((1.0, 2.0, 3.0)));
+        assert_eq!(vec3_components(&Value::Nil), None);
 
         assert!(tri_has_transform("Sicht"));
         assert!(!tri_has_transform("Geometrie"));
@@ -716,9 +699,8 @@ mod tests {
     fn test_add_children_creates_list() {
         let obj = TriObject::new("Maiterial");
         obj.add_children(&[Value::Integer(1)]);
-        assert!(matches!(
-            obj.get("children").unwrap(),
-            Value::List(children) if children.borrow().len() == 1
-        ));
+        let children = obj.get("children").unwrap();
+        let list = children.as_list().expect("expected list");
+        assert_eq!(list.borrow().len(), 1);
     }
 }

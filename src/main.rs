@@ -1349,6 +1349,7 @@ fn format_runtime_error(source: &str, error: mdhavers::HaversError) -> String {
     mod tests {
         use super::*;
         use std::io;
+        use std::os::unix::fs::PermissionsExt;
         use tempfile::tempdir;
 
     #[test]
@@ -1502,6 +1503,14 @@ fn format_runtime_error(source: &str, error: mdhavers::HaversError) -> String {
         }
 
         #[test]
+        fn print_environment_handles_only_functions_for_coverage() {
+            let mut interpreter = Interpreter::new();
+            let program = parse("dae f0() { gie 0 }\n").expect("parse");
+            interpreter.interpret(&program).expect("interpret");
+            print_environment(&interpreter);
+        }
+
+        #[test]
         fn run_file_and_trace_cover_empty_parent_paths_for_coverage() {
             let unique = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1517,17 +1526,87 @@ fn format_runtime_error(source: &str, error: mdhavers::HaversError) -> String {
         std::fs::remove_file(&filename).expect("cleanup file");
     }
 
-    #[test]
-	    fn format_error_helpers_cover_no_line_and_no_suggestion_paths_for_coverage() {
-	        let err = mdhavers::HaversError::ModuleNotFound {
-	            name: "missing".to_string(),
-	        };
-	        let msg = format_parse_error("", err.clone());
-	        assert!(msg.contains("Cannae find module"));
+        #[test]
+        fn format_error_helpers_cover_no_line_and_no_suggestion_paths_for_coverage() {
+            let err = mdhavers::HaversError::ModuleNotFound {
+                name: "missing".to_string(),
+            };
+            let msg = format_parse_error("", err.clone());
+            assert!(msg.contains("Cannae find module"));
 
-	        let msg = format_runtime_error("", err);
-	        assert!(msg.contains("Cannae find module"));
-	    }
+            let msg = format_runtime_error("", err);
+            assert!(msg.contains("Cannae find module"));
+        }
+
+        #[test]
+        fn format_error_helpers_include_suggestions_for_coverage() {
+            let err = mdhavers::HaversError::UndefinedVariable {
+                name: "true".to_string(),
+                line: 1,
+            };
+            let msg = format_parse_error("true\n", err);
+            assert!(msg.contains("aye"));
+        }
+
+        #[test]
+        fn repl_needs_more_input_covers_comments_strings_and_nesting_for_coverage() {
+            assert!(repl_needs_more_input("\"unterminated"));
+            assert!(!repl_needs_more_input("\"a\\\\b\""));
+            assert!(!repl_needs_more_input("# comment\nken x = 1\n"));
+            assert!(!repl_needs_more_input("}"));
+            assert!(!repl_needs_more_input("]"));
+            assert!(!repl_needs_more_input(")"));
+            assert!(repl_needs_more_input("["));
+            assert!(repl_needs_more_input("("));
+        }
+
+        #[test]
+        fn print_environment_handles_empty_and_long_values_for_coverage() {
+            let interpreter = Interpreter::new();
+            print_environment(&interpreter);
+
+            let long_value = "a".repeat(60);
+            let src = format!("ken x = \"{}\"\n", long_value);
+            let mut interpreter = Interpreter::new();
+            let program = parse(&src).expect("parse");
+            interpreter.interpret(&program).expect("interpret");
+            print_environment(&interpreter);
+        }
+
+        #[test]
+        fn format_file_check_only_reports_needs_formatting_for_coverage() {
+            let dir = tempdir().expect("tempdir");
+            let path = dir.path().join("needs_fmt.braw");
+            std::fs::write(&path, "ken x=1\n").expect("write file");
+            let err = format_file(&path, true).expect_err("expected format check error");
+            assert!(err.contains("needs formattin"));
+        }
+
+        #[test]
+        fn format_file_write_error_is_reported_for_coverage() {
+            let dir = tempdir().expect("tempdir");
+            let path = dir.path().join("readonly.braw");
+            std::fs::write(&path, "ken x = 1\n").expect("write file");
+            let mut perms = std::fs::metadata(&path).expect("metadata").permissions();
+            perms.set_mode(0o444);
+            std::fs::set_permissions(&path, perms).expect("set permissions");
+
+            let err = format_file(&path, false).expect_err("expected write error");
+            assert!(err.contains("Cannae write"));
+        }
+
+        #[test]
+        fn compile_file_and_wasm_surface_write_errors_for_coverage() {
+            let dir = tempdir().expect("tempdir");
+            let path = dir.path().join("ok.braw");
+            std::fs::write(&path, "ken x = 1\n").expect("write file");
+
+            let err = compile_file(&path, Some(dir.path().to_path_buf())).expect_err("expected write error");
+            assert!(err.contains("Cannae write"));
+
+            let err = compile_wasm(&path, Some(dir.path().to_path_buf())).expect_err("expected write error");
+            assert!(err.contains("Cannae write"));
+        }
 
 	    #[test]
 	    #[cfg(coverage)]
@@ -1538,12 +1617,25 @@ fn format_runtime_error(source: &str, error: mdhavers::HaversError) -> String {
 	        print_scots_wisdom();
 	        print_programming_wisdom();
 
-	        assert!(repl_needs_more_input("dae f() {"));
-	        assert!(!repl_needs_more_input("dae f() { gie 1 }\n"));
+        assert!(repl_needs_more_input("dae f() {"));
+        assert!(!repl_needs_more_input("dae f() { gie 1 }\n"));
+        assert!(!repl_needs_more_input(")"));
+        assert!(!repl_needs_more_input("]"));
+        assert!(!repl_needs_more_input("}"));
+        assert!(repl_needs_more_input("blether \"unterminated"));
+        assert!(repl_needs_more_input("["));
+        assert!(repl_needs_more_input("("));
 
-	        let dir = tempdir().expect("tempdir");
-	        let path = dir.path().join("ok.braw");
-	        std::fs::write(&path, "ken x = 1\nblether x\n").expect("write ok program");
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("ok.braw");
+        std::fs::write(&path, "ken x = 1\nblether x\n").expect("write ok program");
+
+        let noext = dir.path().join("noext");
+        std::fs::write(&noext, "blether 1\n").expect("write noext program");
+        let _ = read_file(&noext).expect("read_file no extension");
+
+        let empty_interp = Interpreter::new();
+        print_environment(&empty_interp);
 
 	        check_file(&path).expect("check_file");
 	        show_tokens(&path).expect("show_tokens");
@@ -1559,10 +1651,19 @@ fn format_runtime_error(source: &str, error: mdhavers::HaversError) -> String {
 	        compile_wasm(&path, None).expect("compile_wasm");
 	        assert!(dir.path().join("ok.wat").exists());
 
-	        #[cfg(feature = "llvm")]
-	        {
-	            build_native(&path, None, 0, true).expect("build_native emit llvm");
-	            assert!(dir.path().join("ok.ll").exists());
-	        }
-	    }
-	}
+        #[cfg(feature = "llvm")]
+        {
+            build_native(&path, None, 0, true).expect("build_native emit llvm");
+            assert!(dir.path().join("ok.ll").exists());
+
+            let err = build_native(&path, Some(dir.path().to_path_buf()), 0, true)
+                .expect_err("build_native emit llvm write error");
+            assert!(err.contains("Cannae write"));
+
+            let _ = build_native(&path, None, 0, false).expect("build_native native");
+            let err = build_native(&path, Some(dir.path().to_path_buf()), 0, false)
+                .expect_err("build_native native error");
+            assert!(!err.trim().is_empty());
+        }
+    }
+}

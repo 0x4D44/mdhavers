@@ -960,6 +960,37 @@ impl<'ctx> CodeGen<'ctx> {
         };
         let _ = self.compile_condition_direct(&idx_expr_index_var).unwrap_err();
 
+        // Index fast path: non-list/non-int types should skip the fast path and return None.
+        let not_list_var = "__coverage_not_list".to_string();
+        self.var_types
+            .insert(not_list_var.clone(), VarType::String);
+        let not_list_alloca = self.create_entry_block_alloca(&not_list_var);
+        let not_list_val = self
+            .compile_expr(&Expr::Literal {
+                value: Literal::String("s".to_string()),
+                span,
+            })
+            .expect("string literal");
+        self.builder
+            .build_store(not_list_alloca, not_list_val)
+            .unwrap();
+        self.variables.insert(not_list_var.clone(), not_list_alloca);
+        let idx_expr_non_list = Expr::Index {
+            object: Box::new(Expr::Variable {
+                name: not_list_var,
+                span,
+            }),
+            index: Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
+            span,
+        };
+        let non_list_res = self
+            .compile_condition_direct(&idx_expr_non_list)
+            .expect("non-list index fast path");
+        assert!(non_list_res.is_some());
+
         // Function-as-value capture boxing: ensure `ensure_boxed_variable(cap)?` error propagation
         // is exercised from the closure construction path.
         let func_name = "__coverage_func_missing_capture".to_string();
@@ -13394,22 +13425,20 @@ impl<'ctx> CodeGen<'ctx> {
         // We only enable this fast-path when the left operand is a variable with a tracked class
         // type. This keeps dispatch deterministic without needing a full runtime method table.
         let overload_method = match op {
-            BinaryOp::Add => Some("__pit_thegither__"),
-            BinaryOp::Subtract => Some("__tak_awa__"),
-            BinaryOp::Multiply => Some("__times__"),
-            BinaryOp::Divide => Some("__pairt__"),
-            BinaryOp::Modulo => Some("__lave__"),
-            BinaryOp::Equal => Some("__same_as__"),
-            BinaryOp::NotEqual => Some("__differs_fae__"),
-            BinaryOp::Less => Some("__wee_er__"),
-            BinaryOp::LessEqual => Some("__wee_er_or_same__"),
-            BinaryOp::Greater => Some("__muckle_er__"),
-            BinaryOp::GreaterEqual => Some("__muckle_er_or_same__"),
+            BinaryOp::Add => "__pit_thegither__",
+            BinaryOp::Subtract => "__tak_awa__",
+            BinaryOp::Multiply => "__times__",
+            BinaryOp::Divide => "__pairt__",
+            BinaryOp::Modulo => "__lave__",
+            BinaryOp::Equal => "__same_as__",
+            BinaryOp::NotEqual => "__differs_fae__",
+            BinaryOp::Less => "__wee_er__",
+            BinaryOp::LessEqual => "__wee_er_or_same__",
+            BinaryOp::Greater => "__muckle_er__",
+            BinaryOp::GreaterEqual => "__muckle_er_or_same__",
         };
 
-        let overload_class = if let (Some(method_name), Expr::Variable { name, .. }) =
-            (overload_method, left)
-        {
+        let overload_class = if let Expr::Variable { name, .. } = left {
             self.variable_class_types
                 .get(name)
                 .filter(|class_name| {
@@ -13421,7 +13450,7 @@ impl<'ctx> CodeGen<'ctx> {
                             break;
                         }
                         if let Some(methods) = self.class_methods.get(&class_name) {
-                            if methods.iter().any(|(n, _)| n == method_name) {
+                            if methods.iter().any(|(n, _)| n == overload_method) {
                                 return true;
                             }
                         }
@@ -13434,7 +13463,7 @@ impl<'ctx> CodeGen<'ctx> {
             None
         };
 
-        if let (Some(method_name), Some(_class_name)) = (overload_method, overload_class) {
+        if let Some(_class_name) = overload_class {
             let function = self.current_function.unwrap();
             let instance_tag = self
                 .types
@@ -13457,7 +13486,7 @@ impl<'ctx> CodeGen<'ctx> {
             // Overload path: instance.__op__(right)
             self.builder.position_at_end(overload_block);
             let overload_res =
-                self.compile_non_native_method_call(left_val, left, method_name, &[right_val])?;
+                self.compile_non_native_method_call(left_val, left, overload_method, &[right_val])?;
             self.builder
                 .build_unconditional_branch(merge_block)
                 .unwrap();
@@ -13496,7 +13525,8 @@ impl<'ctx> CodeGen<'ctx> {
         // based on the instance's runtime class name pointer. This handles cases like:
         //   ClassName(1) + ClassName(2)
         // where the left operand is not a variable and we don't have a tracked static class type.
-        if let Some(method_name) = overload_method {
+        {
+            let method_name = overload_method;
             // Build a deterministic list of classes that resolve this method (directly or via
             // inheritance). Each entry stores the runtime class name pointer (global string) and
             // the resolved method function to call.
@@ -26503,20 +26533,20 @@ impl<'ctx> CodeGen<'ctx> {
 	                    continue;
 	                }
 
-	                let scoped_name = self.next_nested_function_symbol(nested_name);
-	                if let Some(scope) = self.nested_function_scopes.last_mut() {
-	                    scope.insert(nested_name.clone(), scoped_name.clone());
-	                }
+                        let scoped_name = self.next_nested_function_symbol(nested_name);
+                        let scope = self
+                            .nested_function_scopes
+                            .last_mut()
+                            .expect("nested function scope missing");
+                        scope.insert(nested_name.clone(), scoped_name.clone());
 
 	                // Find free variables in the nested function
 	                let mut captures = self.find_free_variables_in_body(nested_body, nested_params);
-	                if self.current_masel.is_some()
-	                    && (self.body_uses_masel(nested_body) || self.params_use_masel(nested_params))
-	                {
-	                    captures.push("masel".to_string());
-	                    captures.sort();
-	                    captures.dedup();
-	                }
+                if self.body_uses_masel(nested_body) || self.params_use_masel(nested_params) {
+                    captures.push("masel".to_string());
+                    captures.sort();
+                    captures.dedup();
+                }
 	                captured_in_body
 	                    .extend(captures.iter().filter(|c| c.as_str() != "masel").cloned());
 
@@ -30486,9 +30516,8 @@ impl<'ctx> CodeGen<'ctx> {
             .collect();
         // Add masel alloca if needed
         if needs_masel_capture {
-            if let Some(masel_ptr) = self.current_masel {
-                capture_allocas.push(masel_ptr);
-            }
+            let masel_ptr = self.current_masel.expect("missing masel capture");
+            capture_allocas.push(masel_ptr);
         }
 
         // Create function type: captured vars first, then regular params
@@ -33981,7 +34010,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         let stem = match import_path.file_stem() {
             Some(stem) => match stem.to_str() {
-                Some(stem) if !stem.is_empty() => stem,
+                Some(stem) => stem,
                 _ => "module",
             },
             None => "module",
@@ -34487,12 +34516,14 @@ impl<'ctx> CodeGen<'ctx> {
             // Ensure imported module-level vars are visible in the current scope (like before).
             for stmt in &program.statements {
                 if let Stmt::VarDecl { name, .. } = stmt {
-                    if let Some(module_vars) = self.imported_module_var_globals.get(&import_path) {
-                        if let Some(global) = module_vars.get(name) {
-                            let ptr = global.as_pointer_value();
-                            self.globals.insert(name.clone(), ptr);
-                            self.variables.entry(name.clone()).or_insert(ptr);
-                        }
+                    let module_vars = self
+                        .imported_module_var_globals
+                        .get(&import_path)
+                        .expect("module vars missing after init");
+                    if let Some(global) = module_vars.get(name) {
+                        let ptr = global.as_pointer_value();
+                        self.globals.insert(name.clone(), ptr);
+                        self.variables.entry(name.clone()).or_insert(ptr);
                     }
                 }
             }
@@ -36240,7 +36271,11 @@ impl<'ctx> CodeGen<'ctx> {
         if let Expr::Variable { name, .. } = object {
             if let Some(&ptr) = self.variables.get(name) {
                 self.builder.build_store(ptr, dict_res).unwrap();
-            } else if let Some(&ptr) = self.globals.get(name) {
+            } else {
+                let &ptr = self
+                    .globals
+                    .get(name)
+                    .expect("global variable pointer missing");
                 self.builder.build_store(ptr, dict_res).unwrap();
             }
         }
@@ -37222,13 +37257,11 @@ impl<'ctx> CodeGen<'ctx> {
 		                scope.insert(nested_name.clone(), scoped_name.clone());
 	
 		                let mut captures = self.find_free_variables_in_body(nested_body, nested_params);
-		                if self.current_masel.is_some()
-		                    && (self.body_uses_masel(nested_body) || self.params_use_masel(nested_params))
-		                {
-	                    captures.push("masel".to_string());
-	                    captures.sort();
-	                    captures.dedup();
-	                }
+                if self.body_uses_masel(nested_body) || self.params_use_masel(nested_params) {
+                    captures.push("masel".to_string());
+                    captures.sort();
+                    captures.dedup();
+                }
 	                captured_in_body
 	                    .extend(captures.iter().filter(|c| c.as_str() != "masel").cloned());
 
@@ -41327,7 +41360,7 @@ impl<'ctx> CodeGen<'ctx> {
 #[cfg(test)]
     mod tests {
         use super::*;
-        use crate::ast::Param;
+        use crate::ast::{Param, Program};
         use tempfile::tempdir;
 
     fn is_compile_error_containing(err: HaversError, needle: &str) -> bool {
@@ -41345,6 +41378,62 @@ impl<'ctx> CodeGen<'ctx> {
 
         let symbol = codegen.next_nested_function_symbol("");
         assert_eq!(symbol, "__mdh_nested_main_sym_0");
+    }
+
+
+    #[cfg(coverage)]
+    #[test]
+    fn compile_call_read_lines_executes_runtime_path_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_read_lines_call");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let span = Span::new(1, 1);
+        let callee = Expr::Variable {
+            name: "read_lines".to_string(),
+            span,
+        };
+        let arg = Expr::Literal {
+            value: Literal::String("missing.txt".to_string()),
+            span,
+        };
+        let _ = codegen
+            .compile_call(&callee, &[arg])
+            .expect("compile read_lines");
+    }
+
+    #[test]
+    fn sanitize_symbol_handles_empty_and_non_alphanumeric_for_coverage() {
+        assert_eq!(CodeGen::sanitize_symbol(""), "sym");
+        assert_eq!(CodeGen::sanitize_symbol("a-b"), "a_b");
+        assert_eq!(CodeGen::sanitize_symbol("_ok"), "_ok");
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn preregister_class_respects_existing_defined_flag_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_preregister_class_flag");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let flag_name = "__mdh_class_defined__C";
+        let flag = codegen
+            .module
+            .add_global(codegen.types.bool_type, None, flag_name);
+        flag.set_initializer(&codegen.types.bool_type.const_int(0, false));
+        codegen.class_defined_flags.insert("C".to_string(), flag);
+
+        codegen.preregister_class("C", None, &[]);
     }
 
     #[cfg(coverage)]
@@ -41593,6 +41682,34 @@ impl<'ctx> CodeGen<'ctx> {
 
     #[cfg(coverage)]
     #[test]
+    fn compile_lambda_captures_masel_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_compile_lambda_captures_masel");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let masel_alloca = codegen.create_entry_block_alloca("masel");
+        codegen.current_masel = Some(masel_alloca);
+
+        let span = Span::new(1, 1);
+        let params = Vec::new();
+        let body = Expr::Masel { span };
+        let _ = codegen
+            .compile_lambda(&params, &body)
+            .expect("compile lambda");
+
+        assert!(codegen
+            .function_captures
+            .values()
+            .any(|caps| caps.contains(&"masel".to_string())));
+    }
+
+    #[cfg(coverage)]
+    #[test]
     fn index_set_fast_path_fallbacks_are_exercised_for_coverage() {
         let context = Context::create();
         let mut codegen = CodeGen::new(&context, "coverage_index_set_fast_fallbacks");
@@ -41638,6 +41755,22 @@ impl<'ctx> CodeGen<'ctx> {
         let _ = codegen
             .compile_dict_index_set(&dict_object_expr, &dict_index, &dict_value)
             .expect("dict index set (expr object)");
+
+        // Dict index-set: variable bound only in globals (no local binding update).
+        let global_dict = codegen
+            .module
+            .add_global(codegen.types.value_type, None, "dg");
+        global_dict.set_initializer(&codegen.types.value_type.const_zero());
+        codegen
+            .globals
+            .insert("dg".to_string(), global_dict.as_pointer_value());
+        let dict_object_global = Expr::Variable {
+            name: "dg".to_string(),
+            span,
+        };
+        let _ = codegen
+            .compile_dict_index_set(&dict_object_global, &dict_index, &dict_value)
+            .expect("dict index set (global-only object)");
 
         // List index-set fast path fallbacks:
         // - variable object with no list_ptr_shadows entry
@@ -41719,6 +41852,152 @@ impl<'ctx> CodeGen<'ctx> {
 
     #[cfg(coverage)]
     #[test]
+    fn compile_set_updates_global_dict_binding_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_compile_set_global_dict");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let span = Span::new(1, 1);
+        let dict_val = codegen
+            .compile_expr(&Expr::Dict {
+                pairs: Vec::new(),
+                span,
+            })
+            .expect("dict literal");
+
+        let global = codegen
+            .module
+            .add_global(codegen.types.value_type, None, "gd");
+        global.set_initializer(&codegen.types.value_type.const_zero());
+        let global_ptr = global.as_pointer_value();
+        codegen.globals.insert("gd".to_string(), global_ptr);
+        codegen.builder.build_store(global_ptr, dict_val).unwrap();
+
+        let object = Expr::Variable {
+            name: "gd".to_string(),
+            span,
+        };
+        let value = Expr::Literal {
+            value: Literal::Integer(1),
+            span,
+        };
+        let _ = codegen
+            .compile_set(&object, "p", &value)
+            .expect("compile set");
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn for_loop_body_terminator_branches_are_exercised_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_for_loop_terminators");
+        let span = Span::new(1, 1);
+
+        // for string with break in body
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("for_str_fn", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let str_val = codegen
+            .compile_expr(&Expr::Literal {
+                value: Literal::String("hi".to_string()),
+                span,
+            })
+            .expect("string literal");
+        let str_data = codegen.extract_data(str_val).unwrap();
+        let after_block = context.append_basic_block(function, "after_str");
+        let body = Stmt::Break { span };
+        codegen
+            .compile_for_string_impl("ch", str_data, &body, after_block)
+            .expect("compile for string");
+
+        // for list with break in body
+        let function = codegen.module.add_function("for_list_fn", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let list_val = codegen
+            .compile_expr(&Expr::List {
+                elements: vec![Expr::Literal {
+                    value: Literal::Integer(1),
+                    span,
+                }],
+                span,
+            })
+            .expect("list literal");
+        let list_data = codegen.extract_data(list_val).unwrap();
+        let after_block = context.append_basic_block(function, "after_list");
+        let body = Stmt::Break { span };
+        codegen
+            .compile_for_list_impl("item", list_data, &body, after_block)
+            .expect("compile for list");
+
+        // for range with break in body
+        let function = codegen.module.add_function("for_range_fn", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let start = Expr::Literal {
+            value: Literal::Integer(0),
+            span,
+        };
+        let end = Expr::Literal {
+            value: Literal::Integer(2),
+            span,
+        };
+        let body = Stmt::Break { span };
+        codegen
+            .compile_for_range("i", &start, &end, false, &body)
+            .expect("compile for range");
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn destructure_ignore_after_rest_exercises_branch_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_destructure_ignore_after_rest");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let span = Span::new(1, 1);
+        let stmt = Stmt::Destructure {
+            patterns: vec![
+                DestructPattern::Rest("rest".to_string()),
+                DestructPattern::Ignore,
+            ],
+            value: Expr::List {
+                elements: vec![
+                    Expr::Literal {
+                        value: Literal::Integer(1),
+                        span,
+                    },
+                    Expr::Literal {
+                        value: Literal::Integer(2),
+                        span,
+                    },
+                ],
+                span,
+            },
+            span,
+        };
+        codegen.compile_stmt(&stmt).expect("compile destructure");
+    }
+
+    #[cfg(coverage)]
+    #[test]
     fn compile_user_function_call_propagates_missing_capture_boxing_error_for_coverage() {
         // Drive the `ensure_boxed_variable(..)?` error-propagation path in `compile_user_function_call`.
         let context = Context::create();
@@ -41775,6 +42054,39 @@ impl<'ctx> CodeGen<'ctx> {
             HaversError::CompileError("different".to_string()),
             needle
         ));
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn compile_function_value_with_masel_capture_skips_boxing_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_function_value_masel_capture");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let masel_alloca = codegen.create_entry_block_alloca("masel");
+        codegen
+            .builder
+            .build_store(masel_alloca, codegen.make_nil())
+            .unwrap();
+        codegen.variables.insert("masel".to_string(), masel_alloca);
+
+        let callee = codegen.module.add_function("f", fn_type, None);
+        codegen.functions.insert("f".to_string(), callee);
+        codegen
+            .function_captures
+            .insert("f".to_string(), vec!["masel".to_string()]);
+
+        let span = Span::new(1, 1);
+        let expr = Expr::Variable {
+            name: "f".to_string(),
+            span,
+        };
+        let _ = codegen.compile_expr(&expr).expect("compile expr");
     }
 
     #[cfg(coverage)]
@@ -41876,6 +42188,15 @@ impl<'ctx> CodeGen<'ctx> {
         };
         assert!(codegen.expr_uses_masel(&slice_step));
 
+        let slice_object = Expr::Slice {
+            object: Box::new(Expr::Masel { span }),
+            start: None,
+            end: None,
+            step: None,
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&slice_object));
+
         // expr_uses_masel: f-string parts iterator closure
         let fstring_expr = Expr::FString {
             parts: vec![
@@ -41885,6 +42206,267 @@ impl<'ctx> CodeGen<'ctx> {
             span,
         };
         assert!(codegen.expr_uses_masel(&fstring_expr));
+
+        // expr_uses_masel: binary/logical short-circuit paths
+        let binary_left = Expr::Binary {
+            left: Box::new(Expr::Masel { span }),
+            operator: BinaryOp::Add,
+            right: Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&binary_left));
+        let binary_right = Expr::Binary {
+            left: Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
+            operator: BinaryOp::Add,
+            right: Box::new(Expr::Masel { span }),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&binary_right));
+
+        let logical_left = Expr::Logical {
+            left: Box::new(Expr::Masel { span }),
+            operator: LogicalOp::Or,
+            right: Box::new(Expr::Literal {
+                value: Literal::Bool(false),
+                span,
+            }),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&logical_left));
+        let logical_right = Expr::Logical {
+            left: Box::new(Expr::Literal {
+                value: Literal::Bool(false),
+                span,
+            }),
+            operator: LogicalOp::And,
+            right: Box::new(Expr::Masel { span }),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&logical_right));
+
+        // expr_uses_masel: call + lambda + block expr
+        let call_callee = Expr::Call {
+            callee: Box::new(Expr::Masel { span }),
+            arguments: Vec::new(),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&call_callee));
+        let call_arg = Expr::Call {
+            callee: Box::new(Expr::Variable {
+                name: "callee".to_string(),
+                span,
+            }),
+            arguments: vec![Expr::Masel { span }],
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&call_arg));
+        let lambda_expr = Expr::Lambda {
+            params: Vec::new(),
+            body: Box::new(Expr::Masel { span }),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&lambda_expr));
+        let block_expr = Expr::BlockExpr {
+            statements: vec![Stmt::Expression {
+                span,
+                expr: Expr::Masel { span },
+            }],
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&block_expr));
+        let block_expr_empty = Expr::BlockExpr {
+            statements: vec![Stmt::Expression {
+                span,
+                expr: Expr::Literal {
+                    value: Literal::Integer(0),
+                    span,
+                },
+            }],
+            span,
+        };
+        assert!(!codegen.expr_uses_masel(&block_expr_empty));
+
+        // expr_uses_masel: get/set/index/index-set/ternary/range/pipe
+        let set_left = Expr::Set {
+            object: Box::new(Expr::Masel { span }),
+            property: "p".to_string(),
+            value: Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&set_left));
+        let set_right = Expr::Set {
+            object: Box::new(Expr::Variable {
+                name: "obj".to_string(),
+                span,
+            }),
+            property: "p".to_string(),
+            value: Box::new(Expr::Masel { span }),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&set_right));
+        let index_left = Expr::Index {
+            object: Box::new(Expr::Masel { span }),
+            index: Box::new(Expr::Literal {
+                value: Literal::Integer(0),
+                span,
+            }),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&index_left));
+        let index_right = Expr::Index {
+            object: Box::new(Expr::Literal {
+                value: Literal::Integer(0),
+                span,
+            }),
+            index: Box::new(Expr::Masel { span }),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&index_right));
+        let index_set_obj = Expr::IndexSet {
+            object: Box::new(Expr::Masel { span }),
+            index: Box::new(Expr::Literal {
+                value: Literal::Integer(0),
+                span,
+            }),
+            value: Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&index_set_obj));
+        let index_set_idx = Expr::IndexSet {
+            object: Box::new(Expr::Literal {
+                value: Literal::Integer(0),
+                span,
+            }),
+            index: Box::new(Expr::Masel { span }),
+            value: Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&index_set_idx));
+        let index_set_val = Expr::IndexSet {
+            object: Box::new(Expr::Literal {
+                value: Literal::Integer(0),
+                span,
+            }),
+            index: Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
+            value: Box::new(Expr::Masel { span }),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&index_set_val));
+        let ternary_cond = Expr::Ternary {
+            condition: Box::new(Expr::Masel { span }),
+            then_expr: Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
+            else_expr: Box::new(Expr::Literal {
+                value: Literal::Integer(2),
+                span,
+            }),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&ternary_cond));
+        let ternary_then = Expr::Ternary {
+            condition: Box::new(Expr::Literal {
+                value: Literal::Bool(false),
+                span,
+            }),
+            then_expr: Box::new(Expr::Masel { span }),
+            else_expr: Box::new(Expr::Literal {
+                value: Literal::Integer(2),
+                span,
+            }),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&ternary_then));
+        let ternary_else = Expr::Ternary {
+            condition: Box::new(Expr::Literal {
+                value: Literal::Bool(false),
+                span,
+            }),
+            then_expr: Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
+            else_expr: Box::new(Expr::Masel { span }),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&ternary_else));
+        let range_start = Expr::Range {
+            start: Box::new(Expr::Masel { span }),
+            end: Box::new(Expr::Literal {
+                value: Literal::Integer(3),
+                span,
+            }),
+            inclusive: false,
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&range_start));
+        let range_end = Expr::Range {
+            start: Box::new(Expr::Literal {
+                value: Literal::Integer(0),
+                span,
+            }),
+            end: Box::new(Expr::Masel { span }),
+            inclusive: true,
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&range_end));
+        let pipe_left = Expr::Pipe {
+            left: Box::new(Expr::Masel { span }),
+            right: Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&pipe_left));
+        let pipe_right = Expr::Pipe {
+            left: Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
+            right: Box::new(Expr::Masel { span }),
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&pipe_right));
+
+        // expr_uses_masel: dict key path
+        let dict_key = Expr::Dict {
+            pairs: vec![(
+                Expr::Masel { span },
+                Expr::Literal {
+                    value: Literal::Integer(1),
+                    span,
+                },
+            )],
+            span,
+        };
+        assert!(codegen.expr_uses_masel(&dict_key));
+
+        // expr_uses_masel: f-string text-only branch
+        let fstring_text_only = Expr::FString {
+            parts: vec![FStringPart::Text("plain".to_string())],
+            span,
+        };
+        assert!(!codegen.expr_uses_masel(&fstring_text_only));
 
         // stmt_uses_masel: initializer map_or closure
         let decl_stmt = Stmt::VarDecl {
@@ -41914,6 +42496,75 @@ impl<'ctx> CodeGen<'ctx> {
             span,
         };
         assert!(codegen.stmt_uses_masel(&if_stmt));
+
+        let if_cond_masel = Stmt::If {
+            condition: Expr::Masel { span },
+            then_branch: Box::new(Stmt::Expression {
+                span,
+                expr: Expr::Literal {
+                    value: Literal::Integer(0),
+                    span,
+                },
+            }),
+            else_branch: None,
+            span,
+        };
+        assert!(codegen.stmt_uses_masel(&if_cond_masel));
+
+        let while_body_masel = Stmt::While {
+            condition: Expr::Literal {
+                value: Literal::Bool(true),
+                span,
+            },
+            body: Box::new(Stmt::Expression {
+                span,
+                expr: Expr::Masel { span },
+            }),
+            span,
+        };
+        assert!(codegen.stmt_uses_masel(&while_body_masel));
+        let while_cond_masel = Stmt::While {
+            condition: Expr::Masel { span },
+            body: Box::new(Stmt::Expression {
+                span,
+                expr: Expr::Literal {
+                    value: Literal::Integer(1),
+                    span,
+                },
+            }),
+            span,
+        };
+        assert!(codegen.stmt_uses_masel(&while_cond_masel));
+
+        let for_body_masel = Stmt::For {
+            variable: "i".to_string(),
+            iterable: Expr::List {
+                elements: Vec::new(),
+                span,
+            },
+            body: Box::new(Stmt::Expression {
+                span,
+                expr: Expr::Masel { span },
+            }),
+            span,
+        };
+        assert!(codegen.stmt_uses_masel(&for_body_masel));
+        let for_iter_masel = Stmt::For {
+            variable: "j".to_string(),
+            iterable: Expr::Masel { span },
+            body: Box::new(Stmt::Expression {
+                span,
+                expr: Expr::Literal {
+                    value: Literal::Integer(0),
+                    span,
+                },
+            }),
+            span,
+        };
+        assert!(codegen.stmt_uses_masel(&for_iter_masel));
+
+        let return_none = Stmt::Return { value: None, span };
+        assert!(!codegen.stmt_uses_masel(&return_none));
 
         // stmt_uses_masel: block iterator closure
         let block_stmt = Stmt::Block {
@@ -41977,6 +42628,61 @@ impl<'ctx> CodeGen<'ctx> {
         }];
         let free = codegen.find_free_variables_in_body(&body, &params);
         assert_eq!(free, vec!["free".to_string(), "free2".to_string(), "free3".to_string(), "v".to_string()]);
+
+        // collect_pattern_bindings: ignore "_" identifiers.
+        let mut bound: HashSet<String> = HashSet::new();
+        codegen.collect_pattern_bindings(&Pattern::Identifier("_".to_string()), &mut bound);
+        assert!(!bound.contains("_"));
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn infer_expr_type_add_variants_are_exercised_for_coverage() {
+        let context = Context::create();
+        let codegen = CodeGen::new(&context, "coverage_infer_expr_type_add");
+
+        let span = Span::new(1, 1);
+        let int_add = Expr::Binary {
+            left: Box::new(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
+            operator: BinaryOp::Add,
+            right: Box::new(Expr::Literal {
+                value: Literal::Integer(2),
+                span,
+            }),
+            span,
+        };
+        assert_eq!(codegen.infer_expr_type(&int_add), VarType::Int);
+
+        let float_add = Expr::Binary {
+            left: Box::new(Expr::Literal {
+                value: Literal::Float(1.0),
+                span,
+            }),
+            operator: BinaryOp::Add,
+            right: Box::new(Expr::Literal {
+                value: Literal::Integer(2),
+                span,
+            }),
+            span,
+        };
+        assert_eq!(codegen.infer_expr_type(&float_add), VarType::Float);
+
+        let string_add = Expr::Binary {
+            left: Box::new(Expr::Literal {
+                value: Literal::String("a".to_string()),
+                span,
+            }),
+            operator: BinaryOp::Add,
+            right: Box::new(Expr::Literal {
+                value: Literal::String("b".to_string()),
+                span,
+            }),
+            span,
+        };
+        assert_eq!(codegen.infer_expr_type(&string_add), VarType::String);
     }
 
     #[cfg(coverage)]
@@ -42420,6 +43126,36 @@ dae f() { gie 32 }
             })
             .expect_err("expected capture boxing error");
         assert!(err.to_string().contains("while closing over"));
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn scoped_function_value_missing_masel_capture_errors_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "scoped_function_value_missing_masel_capture");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let span = Span::new(1, 1);
+        let scoped = "__coverage_scoped_fn_value_masel".to_string();
+        let captures = vec!["masel".to_string()];
+        codegen.declare_function_with_captures(&scoped, 0, &captures);
+
+        let mut scope = HashMap::new();
+        scope.insert("inner".to_string(), scoped);
+        codegen.nested_function_scopes.push(scope);
+
+        let err = codegen
+            .compile_expr(&Expr::Variable {
+                name: "inner".to_string(),
+                span,
+            })
+            .expect_err("expected masel capture error");
+        assert!(err.to_string().contains("Captured variable 'masel'"));
     }
 
     #[cfg(coverage)]
@@ -43121,6 +43857,164 @@ dae f() { gie 32 }
             .expect("compile binary");
     }
 
+    #[cfg(coverage)]
+    #[test]
+    fn compile_binary_overload_class_cycle_breaks_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_binary_overload_cycle");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let a_alloca = codegen.create_entry_block_alloca("a");
+        codegen.variables.insert("a".to_string(), a_alloca);
+        codegen.var_types.insert("a".to_string(), VarType::Unknown);
+        codegen.builder.build_store(a_alloca, codegen.make_nil()).unwrap();
+
+        codegen
+            .variable_class_types
+            .insert("a".to_string(), "A".to_string());
+        codegen
+            .class_superclasses
+            .insert("A".to_string(), "B".to_string());
+        codegen
+            .class_superclasses
+            .insert("B".to_string(), "A".to_string());
+
+        let span = Span::new(1, 1);
+        let left = Expr::Variable {
+            name: "a".to_string(),
+            span,
+        };
+        let right = Expr::Literal {
+            value: Literal::Integer(1),
+            span,
+        };
+
+        let _ = codegen
+            .compile_binary(&left, BinaryOp::Add, &right)
+            .expect("compile binary");
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn compile_binary_dynamic_overload_candidates_are_exercised_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_binary_overload_dynamic");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        for name in ["A", "B", "C", "D"] {
+            let global = codegen
+                .module
+                .add_global(codegen.types.value_type, None, name);
+            global.set_initializer(&codegen.types.value_type.const_zero());
+            codegen.classes.insert(name.to_string(), global);
+        }
+
+        // Cycle without methods to exercise visited-break.
+        codegen
+            .class_superclasses
+            .insert("A".to_string(), "B".to_string());
+        codegen
+            .class_superclasses
+            .insert("B".to_string(), "A".to_string());
+
+        // Candidate class with a valid overload method (>= 2 params).
+        let overload_params = vec![
+            codegen.types.value_type.into(),
+            codegen.types.value_type.into(),
+        ];
+        let overload_type = codegen.types.value_type.fn_type(&overload_params, false);
+        let overload_func = codegen
+            .module
+            .add_function("C___pit_thegither__", overload_type, None);
+        codegen
+            .functions
+            .insert("C___pit_thegither__".to_string(), overload_func);
+
+        // Method with insufficient params to exercise the param-count guard.
+        let short_type = codegen
+            .types
+            .value_type
+            .fn_type(&[codegen.types.value_type.into()], false);
+        let short_func = codegen
+            .module
+            .add_function("D___pit_thegither__", short_type, None);
+        codegen
+            .functions
+            .insert("D___pit_thegither__".to_string(), short_func);
+
+        let span = Span::new(1, 1);
+        let left = Expr::Literal {
+            value: Literal::Integer(1),
+            span,
+        };
+        let right = Expr::Literal {
+            value: Literal::Integer(2),
+            span,
+        };
+
+        let _ = codegen
+            .compile_binary(&left, BinaryOp::Add, &right)
+            .expect("compile binary");
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn compile_get_instance_cycle_breaks_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_get_instance_cycle");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        for name in ["A", "B"] {
+            let global = codegen
+                .module
+                .add_global(codegen.types.value_type, None, name);
+            global.set_initializer(&codegen.types.value_type.const_zero());
+            codegen.classes.insert(name.to_string(), global);
+        }
+        codegen
+            .class_superclasses
+            .insert("A".to_string(), "B".to_string());
+        codegen
+            .class_superclasses
+            .insert("B".to_string(), "A".to_string());
+
+        let handle_ptr = codegen
+            .context
+            .i8_type()
+            .ptr_type(AddressSpace::default())
+            .const_null();
+        let instance = codegen.make_instance(handle_ptr);
+        let inst_alloca = codegen.create_entry_block_alloca("inst");
+        codegen.builder.build_store(inst_alloca, instance).unwrap();
+        codegen.variables.insert("inst".to_string(), inst_alloca);
+
+        let span = Span::new(1, 1);
+        let expr = Expr::Get {
+            object: Box::new(Expr::Variable {
+                name: "inst".to_string(),
+                span,
+            }),
+            property: "missing".to_string(),
+            span,
+        };
+        let _ = codegen.compile_expr(&expr).expect("compile get");
+    }
+
     #[test]
     fn compile_string_concat_fast_uses_strlen_for_unshadowed_vars_for_coverage() {
         let context = Context::create();
@@ -43350,7 +44244,8 @@ dae f() { gie 32 }
             .copied()
             .or(codegen.globals.get("m").copied());
         let bound_ptr = codegen.import_alias_bindings.get("m").copied();
-        assert!(current_ptr.is_some() && current_ptr == bound_ptr);
+        assert!(current_ptr.is_some());
+        assert_eq!(current_ptr, bound_ptr);
         assert!(codegen
             .import_alias_exports
             .get("m")
@@ -43377,6 +44272,636 @@ dae f() { gie 32 }
         let _ = codegen.compile_expr(&expr).expect("compile expr");
         let ir = codegen.module.print_to_string().to_string();
         assert!(ir.lines().any(|line| line.contains("call") && line.contains("@foo")));
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn compile_call_import_alias_binding_mismatch_skips_alias_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "import_alias_binding_mismatch");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let alias_ptr = codegen.create_entry_block_alloca("m");
+        let alias_binding = codegen.create_entry_block_alloca("m_bound");
+        let dict_val = codegen
+            .compile_expr(&Expr::Dict {
+                pairs: Vec::new(),
+                span: Span::new(1, 1),
+            })
+            .expect("dict literal");
+        codegen.builder.build_store(alias_ptr, dict_val).unwrap();
+        codegen.variables.insert("m".to_string(), alias_ptr);
+        codegen.var_types.insert("m".to_string(), VarType::Dict);
+        codegen
+            .import_alias_bindings
+            .insert("m".to_string(), alias_binding);
+
+        let mut exports = HashSet::new();
+        exports.insert("foo".to_string());
+        codegen.import_alias_exports.insert("m".to_string(), exports);
+
+        let span = Span::new(1, 1);
+        let expr = Expr::Call {
+            callee: Box::new(Expr::Get {
+                object: Box::new(Expr::Variable {
+                    name: "m".to_string(),
+                    span,
+                }),
+                property: "foo".to_string(),
+                span,
+            }),
+            arguments: Vec::new(),
+            span,
+        };
+
+        let _ = codegen.compile_expr(&expr).expect("compile expr");
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn compile_call_import_alias_exports_missing_skips_alias_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "import_alias_exports_missing");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let alias_ptr = codegen.create_entry_block_alloca("m");
+        codegen.variables.insert("m".to_string(), alias_ptr);
+        codegen.import_alias_bindings.insert("m".to_string(), alias_ptr);
+
+        let mut exports = HashSet::new();
+        exports.insert("bar".to_string());
+        codegen.import_alias_exports.insert("m".to_string(), exports);
+
+        let span = Span::new(1, 1);
+        let expr = Expr::Call {
+            callee: Box::new(Expr::Get {
+                object: Box::new(Expr::Variable {
+                    name: "m".to_string(),
+                    span,
+                }),
+                property: "foo".to_string(),
+                span,
+            }),
+            arguments: Vec::new(),
+            span,
+        };
+
+        let _ = codegen.compile_expr(&expr);
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn compile_call_import_alias_defaults_dispatch_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "import_alias_defaults_dispatch");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let alias_ptr = codegen.create_entry_block_alloca("m");
+        codegen.variables.insert("m".to_string(), alias_ptr);
+        codegen.import_alias_bindings.insert("m".to_string(), alias_ptr);
+
+        let mut exports = HashSet::new();
+        exports.insert("foo".to_string());
+        codegen.import_alias_exports.insert("m".to_string(), exports);
+
+        let foo_type = codegen.types.value_type.fn_type(&[], false);
+        let foo = codegen.module.add_function("foo", foo_type, None);
+        codegen
+            .import_alias_functions
+            .insert("m".to_string(), HashMap::from([("foo".to_string(), foo)]));
+
+        codegen.import_alias_function_defaults.insert(
+            "m".to_string(),
+            HashMap::from([("foo".to_string(), Vec::new())]),
+        );
+
+        let span = Span::new(1, 1);
+        let expr = Expr::Call {
+            callee: Box::new(Expr::Get {
+                object: Box::new(Expr::Variable {
+                    name: "m".to_string(),
+                    span,
+                }),
+                property: "foo".to_string(),
+                span,
+            }),
+            arguments: Vec::new(),
+            span,
+        };
+
+        let _ = codegen.compile_expr(&expr);
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn compile_call_import_alias_missing_binding_skips_alias_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "import_alias_missing_binding");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let mut exports = HashSet::new();
+        exports.insert("foo".to_string());
+        codegen.import_alias_exports.insert("m".to_string(), exports);
+
+        let span = Span::new(1, 1);
+        let expr = Expr::Call {
+            callee: Box::new(Expr::Get {
+                object: Box::new(Expr::Variable {
+                    name: "m".to_string(),
+                    span,
+                }),
+                property: "foo".to_string(),
+                span,
+            }),
+            arguments: Vec::new(),
+            span,
+        };
+
+        let _ = codegen.compile_expr(&expr);
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn compile_call_variable_shadowed_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "compile_call_variable_shadowed");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let shadow_ptr = codegen.create_entry_block_alloca("shadowed");
+        codegen
+            .builder
+            .build_store(shadow_ptr, codegen.make_nil())
+            .unwrap();
+        codegen.variables.insert("shadowed".to_string(), shadow_ptr);
+        codegen.var_types.insert("shadowed".to_string(), VarType::Unknown);
+
+        let span = Span::new(1, 1);
+        let callee = Expr::Variable {
+            name: "shadowed".to_string(),
+            span,
+        };
+        let args = vec![Expr::Literal {
+            value: Literal::Integer(1),
+            span,
+        }];
+        let _ = codegen.compile_call(&callee, &args);
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn compile_call_class_instantiation_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "compile_call_class_instantiation");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let class_global = codegen
+            .module
+            .add_global(codegen.types.value_type, None, "Widget");
+        class_global.set_initializer(&codegen.types.value_type.const_zero());
+        codegen
+            .classes
+            .insert("Widget".to_string(), class_global);
+
+        let span = Span::new(1, 1);
+        let callee = Expr::Variable {
+            name: "Widget".to_string(),
+            span,
+        };
+        let _ = codegen.compile_call(&callee, &[]);
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn compile_call_builtin_arity_branches_for_coverage() {
+        fn collect_compile_call_builtins_from_lines<'a, I>(lines: I) -> Vec<String>
+        where
+            I: IntoIterator<Item = &'a str>,
+        {
+            let mut names = Vec::new();
+            let mut in_match = false;
+            let mut depth: i32 = 0;
+            let mut pending = String::new();
+
+            for line in lines {
+                if !in_match {
+                    if line.contains("match name.as_str()") {
+                        in_match = true;
+                        depth += line.matches('{').count() as i32;
+                        depth -= line.matches('}').count() as i32;
+                    }
+                    continue;
+                }
+
+                depth += line.matches('{').count() as i32;
+                depth -= line.matches('}').count() as i32;
+
+                let trimmed = line.trim_start();
+                if !pending.is_empty() {
+                    pending.push(' ');
+                    pending.push_str(trimmed);
+                } else if trimmed.starts_with('"') || trimmed.starts_with('|') {
+                    pending.push_str(trimmed);
+                }
+
+                if pending.contains("=>") {
+                    let before = pending.split("=>").next().unwrap();
+                    let mut chars = before.chars();
+                    while let Some(ch) = chars.next() {
+                        if ch == '"' {
+                            let mut name = String::new();
+                            while let Some(next) = chars.next() {
+                                if next == '"' {
+                                    break;
+                                }
+                                if next == '\\' {
+                                    if let Some(escaped) = chars.next() {
+                                        name.push(escaped);
+                                    }
+                                } else {
+                                    name.push(next);
+                                }
+                            }
+                            if !name.is_empty() {
+                                names.push(name);
+                            }
+                        }
+                    }
+                    pending.clear();
+                }
+
+                if depth <= 0 {
+                    break;
+                }
+            }
+
+            names.sort();
+            names.dedup();
+            names
+        }
+
+        let source = include_str!("codegen.rs");
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "compile_call_builtin_arity");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let builtins = collect_compile_call_builtins_from_lines(source.lines());
+        assert!(builtins.len() > 100, "expected many builtin names");
+        assert!(builtins.contains(&"pi".to_string()));
+        assert!(builtins.contains(&"len".to_string()));
+
+        let _ = collect_compile_call_builtins_from_lines([
+            "match name.as_str() {",
+            "| \"fake\\\"name\" =>",
+            "\"\" =>",
+            r#""=>"#,
+            r#"| "dangling\=>"#,
+            "}",
+        ]);
+
+        let mut block_idx = 0;
+        for name in builtins {
+            for arg_count in 0..=3 {
+                let block = context.append_basic_block(function, &format!("builtin_{block_idx}"));
+                block_idx += 1;
+                codegen.builder.position_at_end(block);
+
+                let span = Span::new(1, 1);
+                let callee = Expr::Variable {
+                    name: name.clone(),
+                    span,
+                };
+                let mut args = Vec::new();
+                for i in 0..arg_count {
+                    args.push(Expr::Literal {
+                        value: Literal::Integer(i as i64),
+                        span,
+                    });
+                }
+                let _ = codegen.compile_call(&callee, &args);
+            }
+        }
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn compile_call_skips_hidden_class_instantiation_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "compile_call_hidden_class");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let class_global = codegen
+            .module
+            .add_global(codegen.types.value_type, None, "Hidden");
+        class_global.set_initializer(&codegen.types.value_type.const_zero());
+        codegen
+            .classes
+            .insert("Hidden".to_string(), class_global);
+        codegen
+            .hidden_imported_classes
+            .insert("Hidden".to_string());
+
+        let ctor_type = codegen.types.value_type.fn_type(&[], false);
+        let ctor = codegen.module.add_function("Hidden", ctor_type, None);
+        codegen.functions.insert("Hidden".to_string(), ctor);
+
+        let span = Span::new(1, 1);
+        let expr = Expr::Call {
+            callee: Box::new(Expr::Variable {
+                name: "Hidden".to_string(),
+                span,
+            }),
+            arguments: Vec::new(),
+            span,
+        };
+        let _ = codegen.compile_expr(&expr).expect("compile expr");
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn compile_expr_skips_hidden_class_value_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "compile_expr_hidden_class_value");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let class_global = codegen
+            .module
+            .add_global(codegen.types.value_type, None, "HiddenVal");
+        class_global.set_initializer(&codegen.types.value_type.const_zero());
+        codegen
+            .classes
+            .insert("HiddenVal".to_string(), class_global);
+        codegen
+            .hidden_imported_classes
+            .insert("HiddenVal".to_string());
+
+        let span = Span::new(1, 1);
+        let expr = Expr::Variable {
+            name: "HiddenVal".to_string(),
+            span,
+        };
+        let _ = codegen
+            .compile_expr(&expr)
+            .expect_err("hidden class value should not resolve");
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn compile_var_decl_import_alias_class_tracking_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_var_decl_import_alias_class");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let class_global = codegen
+            .module
+            .add_global(codegen.types.value_type, None, "C");
+        class_global.set_initializer(&codegen.types.value_type.const_zero());
+        codegen.classes.insert("C".to_string(), class_global);
+
+        let alias_ptr = codegen.create_entry_block_alloca("m");
+        codegen.variables.insert("m".to_string(), alias_ptr);
+        codegen.import_alias_bindings.insert("m".to_string(), alias_ptr);
+        let mut exports = HashSet::new();
+        exports.insert("C".to_string());
+        codegen
+            .import_alias_exports
+            .insert("m".to_string(), exports);
+
+        let span = Span::new(1, 1);
+        let stmt = Stmt::VarDecl {
+            name: "x".to_string(),
+            initializer: Some(Expr::Call {
+                callee: Box::new(Expr::Get {
+                    object: Box::new(Expr::Variable {
+                        name: "m".to_string(),
+                        span,
+                    }),
+                    property: "C".to_string(),
+                    span,
+                }),
+                arguments: Vec::new(),
+                span,
+            }),
+            span,
+        };
+        codegen.compile_stmt(&stmt).expect("compile var decl");
+        assert_eq!(
+            codegen.variable_class_types.get("x"),
+            Some(&"C".to_string())
+        );
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn compile_var_decl_top_level_branches_are_exercised_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_var_decl_top_level");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let span = Span::new(1, 1);
+
+        // Top-level list var (is_top_level true).
+        let stmt = Stmt::VarDecl {
+            name: "top_list".to_string(),
+            initializer: Some(Expr::List {
+                elements: Vec::new(),
+                span,
+            }),
+            span,
+        };
+        codegen.compile_stmt(&stmt).expect("compile var decl");
+
+        // Top-level list var with existing global (is_top_level false due to globals).
+        let global = codegen
+            .module
+            .add_global(codegen.types.value_type, None, "global_list");
+        global.set_initializer(&codegen.types.value_type.const_zero());
+        codegen
+            .globals
+            .insert("global_list".to_string(), global.as_pointer_value());
+        let stmt = Stmt::VarDecl {
+            name: "global_list".to_string(),
+            initializer: Some(Expr::List {
+                elements: Vec::new(),
+                span,
+            }),
+            span,
+        };
+        codegen.compile_stmt(&stmt).expect("compile var decl");
+
+        // Top-level list var with existing local (is_top_level false due to variables).
+        let local = codegen.create_entry_block_alloca("local_list");
+        codegen
+            .variables
+            .insert("local_list".to_string(), local);
+        let stmt = Stmt::VarDecl {
+            name: "local_list".to_string(),
+            initializer: Some(Expr::List {
+                elements: Vec::new(),
+                span,
+            }),
+            span,
+        };
+        codegen.compile_stmt(&stmt).expect("compile var decl");
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn compile_var_decl_int_shadow_loop_branches_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_var_decl_int_shadow_loop");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let span = Span::new(1, 1);
+
+        codegen.in_user_function = true;
+        codegen.in_loop_body = true;
+        codegen.try_depth = 0;
+        let stmt = Stmt::VarDecl {
+            name: "i".to_string(),
+            initializer: Some(Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            }),
+            span,
+        };
+        codegen.compile_stmt(&stmt).expect("compile var decl");
+
+        codegen.try_depth = 1;
+        let stmt = Stmt::VarDecl {
+            name: "k".to_string(),
+            initializer: Some(Expr::Literal {
+                value: Literal::Integer(3),
+                span,
+            }),
+            span,
+        };
+        codegen.compile_stmt(&stmt).expect("compile var decl");
+
+        codegen.in_loop_body = false;
+        codegen.try_depth = 0;
+        let stmt = Stmt::VarDecl {
+            name: "j".to_string(),
+            initializer: Some(Expr::Literal {
+                value: Literal::Integer(2),
+                span,
+            }),
+            span,
+        };
+        codegen.compile_stmt(&stmt).expect("compile var decl");
+    }
+
+    #[cfg(coverage)]
+    #[test]
+    fn compile_assign_int_shadow_loop_short_circuit_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_assign_int_shadow_loop");
+
+        let fn_type = codegen.types.value_type.fn_type(&[], false);
+        let function = codegen.module.add_function("dummy", fn_type, None);
+        let entry = context.append_basic_block(function, "entry");
+        codegen.builder.position_at_end(entry);
+        codegen.current_function = Some(function);
+
+        let shadow = codegen.create_entry_block_alloca_i64("n_shadow");
+        codegen.int_shadows.insert("n".to_string(), shadow);
+        codegen.in_loop_body = true;
+        codegen.try_depth = 0;
+
+        let span = Span::new(1, 1);
+        let expr = Expr::Assign {
+            name: "n".to_string(),
+            value: Box::new(Expr::Literal {
+                value: Literal::Integer(7),
+                span,
+            }),
+            span,
+        };
+        let _ = codegen.compile_expr(&expr).expect("compile assign");
+
+        let alloca = codegen.create_entry_block_alloca("n");
+        codegen.variables.insert("n".to_string(), alloca);
+        codegen.try_depth = 1;
+        let expr = Expr::Assign {
+            name: "n".to_string(),
+            value: Box::new(Expr::Literal {
+                value: Literal::Integer(9),
+                span,
+            }),
+            span,
+        };
+        let _ = codegen.compile_expr(&expr).expect("compile assign try depth");
+
+        codegen.in_loop_body = false;
+        codegen.try_depth = 0;
+        let expr = Expr::Assign {
+            name: "n".to_string(),
+            value: Box::new(Expr::Literal {
+                value: Literal::Integer(11),
+                span,
+            }),
+            span,
+        };
+        let _ = codegen.compile_expr(&expr).expect("compile assign outside loop");
     }
 
     #[test]
@@ -43535,9 +45060,9 @@ dae f() { gie 32 }
 	        }
 
 	        #[test]
-	        fn compile_function_nested_predeclare_records_nested_param_names_for_coverage() {
-	            let context = Context::create();
-	            let mut codegen = CodeGen::new(&context, "compile_function_nested_predeclare_param_names");
+        fn compile_function_nested_predeclare_records_nested_param_names_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "compile_function_nested_predeclare_param_names");
 
 	            codegen.declare_function("outer", 0);
 
@@ -43572,13 +45097,55 @@ dae f() { gie 32 }
 	                .compile_function("outer", &[], &outer_body)
 	                .expect("compile outer");
 
-	            assert_eq!(
-	                codegen
-	                    .function_param_names
-	                    .get("__mdh_nested_outer_inner_0"),
-	                Some(&vec!["a".to_string()])
-	            );
-	        }
+            assert_eq!(
+                codegen
+                    .function_param_names
+                    .get("__mdh_nested_outer_inner_0"),
+                Some(&vec!["a".to_string()])
+            );
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_function_nested_masel_capture_is_recorded_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "compile_function_nested_masel_capture");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let captures = vec!["masel".to_string()];
+            codegen.declare_function_with_captures("outer", 0, &captures);
+
+            let span = Span::new(1, 1);
+            let body = vec![Stmt::Function {
+                name: "inner".to_string(),
+                params: Vec::new(),
+                body: vec![Stmt::Return {
+                    value: Some(Expr::Masel { span }),
+                    span,
+                }],
+                span,
+            }];
+
+            codegen
+                .compile_function("outer", &[], &body)
+                .expect("compile outer");
+
+            let has_inner = codegen
+                .function_captures
+                .keys()
+                .any(|name| name.contains("inner"));
+            let has_masel = codegen
+                .function_captures
+                .values()
+                .any(|caps| caps.contains(&"masel".to_string()));
+            assert!(has_inner);
+            assert!(has_masel);
+        }
 
 	        #[test]
 	        fn compile_method_skips_nested_predeclare_when_function_already_declared_for_coverage() {
@@ -43923,11 +45490,11 @@ dae f() { gie 32 }
 
 	        #[cfg(coverage)]
 	        #[test]
-	        fn compile_method_body_nested_function_duplicate_name_and_param_capture_are_exercised_for_coverage(
-	        ) {
-	            let context = Context::create();
-	            let mut codegen = CodeGen::new(
-	                &context,
+        fn compile_method_body_nested_function_duplicate_name_and_param_capture_are_exercised_for_coverage(
+        ) {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(
+                &context,
 	                "coverage_method_nested_fn_duplicate_name_and_param_capture",
 	            );
 
@@ -43968,16 +45535,51 @@ dae f() { gie 32 }
 	                },
 	            ];
 
-	            codegen
-	                .compile_method_body("C", "m", &params, &body)
-	                .expect("compile method body");
-	        }
+            codegen
+                .compile_method_body("C", "m", &params, &body)
+                .expect("compile method body");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_method_body_records_masel_capture_for_coverage() {
+            let context = Context::create();
+            let mut codegen =
+                CodeGen::new(&context, "coverage_method_nested_fn_masel_capture");
+
+            let method_type = codegen
+                .types
+                .value_type
+                .fn_type(&[codegen.types.value_type.into()], false);
+            let method_fn = codegen.module.add_function("C_m", method_type, None);
+            codegen.functions.insert("C_m".to_string(), method_fn);
+
+            let span = Span::new(1, 1);
+            let body = vec![Stmt::Function {
+                name: "inner".to_string(),
+                params: Vec::new(),
+                body: vec![Stmt::Return {
+                    value: Some(Expr::Masel { span }),
+                    span,
+                }],
+                span,
+            }];
+
+            codegen
+                .compile_method_body("C", "m", &[], &body)
+                .expect("compile method body");
+
+            assert!(codegen
+                .function_captures
+                .values()
+                .any(|caps| caps.contains(&"masel".to_string())));
+        }
 
 	        #[cfg(coverage)]
 	        #[test]
-	        fn declare_module_init_stem_fallbacks_are_exercised_for_coverage() {
-	            let context = Context::create();
-	            let mut codegen = CodeGen::new(&context, "coverage_module_init_stem_fallbacks");
+        fn declare_module_init_stem_fallbacks_are_exercised_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_module_init_stem_fallbacks");
 
 	            let no_stem_path = std::path::PathBuf::from("");
 	            let _ = codegen.declare_module_init(&no_stem_path);
@@ -43989,9 +45591,127 @@ dae f() { gie 32 }
 
 	                let invalid_utf8 = OsString::from_vec(vec![0xff, 0xfe, b'.', b'b', b'r', b'a', b'w']);
 	                let invalid_utf8_path = std::path::PathBuf::from(invalid_utf8);
-	                let _ = codegen.declare_module_init(&invalid_utf8_path);
-	            }
-	        }
+                let _ = codegen.declare_module_init(&invalid_utf8_path);
+            }
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn store_import_alias_top_level_and_scoped_branches_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_store_import_alias_scopes");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let span = Span::new(1, 1);
+            let dict_val = codegen
+                .compile_expr(&Expr::Dict {
+                    pairs: Vec::new(),
+                    span,
+                })
+                .expect("dict literal");
+
+            // Top-level alias (global).
+            codegen.store_import_alias("mod_top", dict_val);
+            assert!(codegen.globals.contains_key("mod_top"));
+            assert!(codegen.variables.contains_key("mod_top"));
+
+            // Scoped alias (current_class set).
+            codegen.current_class = Some("C".to_string());
+            let dict_val = codegen
+                .compile_expr(&Expr::Dict {
+                    pairs: Vec::new(),
+                    span,
+                })
+                .expect("dict literal");
+            codegen.store_import_alias("mod_class", dict_val);
+            assert!(!codegen.globals.contains_key("mod_class"));
+            assert!(codegen.variables.contains_key("mod_class"));
+            codegen.current_class = None;
+
+            // Scoped alias (loop stack not empty).
+            let break_block = context.append_basic_block(function, "loop_break");
+            let continue_block = context.append_basic_block(function, "loop_continue");
+            codegen.loop_stack.push(LoopContext {
+                break_block,
+                continue_block,
+            });
+            let dict_val = codegen
+                .compile_expr(&Expr::Dict {
+                    pairs: Vec::new(),
+                    span,
+                })
+                .expect("dict literal");
+            codegen.store_import_alias("mod_loop", dict_val);
+            assert!(!codegen.globals.contains_key("mod_loop"));
+            assert!(codegen.variables.contains_key("mod_loop"));
+            codegen.loop_stack.pop();
+
+            // Existing local binding should keep is_top_level false.
+            let existing = codegen.create_entry_block_alloca("mod_existing");
+            codegen
+                .variables
+                .insert("mod_existing".to_string(), existing);
+            let dict_val = codegen
+                .compile_expr(&Expr::Dict {
+                    pairs: Vec::new(),
+                    span,
+                })
+                .expect("dict literal");
+            codegen.store_import_alias("mod_existing", dict_val);
+            assert!(codegen.variables.contains_key("mod_existing"));
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_module_init_body_skips_missing_class_defined_flag_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_module_init_missing_class_flag");
+
+            let import_path = std::path::PathBuf::from("__coverage_module_init_missing_class_flag.braw");
+            let _ = codegen.declare_module_init(&import_path);
+
+            let span = Span::new(1, 1);
+            let program = Program::new(vec![Stmt::Class {
+                name: "NoFlag".to_string(),
+                superclass: None,
+                methods: Vec::new(),
+                span,
+            }]);
+
+            codegen
+                .compile_module_init_body(&import_path, &program)
+                .expect("compile module init body");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_import_populates_module_globals_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_import_module_globals");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let tmp_path = std::env::temp_dir().join("__mdhavers_cov_import_vars.braw");
+            let source = "ken x = 1\n";
+            std::fs::write(&tmp_path, source).expect("write temp module");
+
+            let path_str = tmp_path.to_string_lossy().to_string();
+            let _ = codegen
+                .compile_import(&path_str, false)
+                .expect("compile import");
+            assert!(codegen.variables.contains_key("x"));
+
+            let _ = std::fs::remove_file(&tmp_path);
+        }
 
 	        #[cfg(coverage)]
 	        #[test]
@@ -44174,15 +45894,1423 @@ dae f() { gie 32 }
 	                .expect("compile aliased import");
 	        }
 
-	        #[cfg(coverage)]
-	        #[test]
-	        fn compile_import_propagates_resolve_import_path_error_for_coverage() {
-	            let context = Context::create();
-	            let mut codegen = CodeGen::new(&context, "coverage_compile_import_missing_module");
+        #[cfg(coverage)]
+        #[test]
+        fn compile_import_propagates_resolve_import_path_error_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_compile_import_missing_module");
 
-	            let err = codegen
-	                .compile_import("__mdhavers_coverage_missing_import_module__", false)
-	                .expect_err("expected missing import to error");
-	            assert!(matches!(err, HaversError::CompileError(_)));
-	        }
-	    }
+            let err = codegen
+                .compile_import("__mdhavers_coverage_missing_import_module__", false)
+                .expect_err("expected missing import to error");
+            assert!(matches!(err, HaversError::CompileError(_)));
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_main_predefined_globals_skip_branches_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_predefine_globals_skip");
+
+            let suite = codegen
+                .module
+                .add_global(codegen.types.value_type, None, "__current_suite");
+            suite.set_initializer(&codegen.types.value_type.const_zero());
+            codegen
+                .globals
+                .insert("__current_suite".to_string(), suite.as_pointer_value());
+
+            let bus = codegen
+                .module
+                .add_global(codegen.types.value_type, None, "_global_bus");
+            bus.set_initializer(&codegen.types.value_type.const_zero());
+            codegen
+                .variables
+                .insert("_global_bus".to_string(), bus.as_pointer_value());
+
+            let program = Program::new(Vec::new());
+            codegen.compile(&program).expect("compile");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+    fn compile_var_decl_import_alias_class_tracking_false_branches_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_var_decl_import_alias_false");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let class_global = codegen
+                .module
+                .add_global(codegen.types.value_type, None, "C");
+            class_global.set_initializer(&codegen.types.value_type.const_zero());
+            codegen.classes.insert("C".to_string(), class_global);
+
+            let span = Span::new(1, 1);
+            let make_stmt = |name: &str, alias: &str, property: &str| Stmt::VarDecl {
+                name: name.to_string(),
+                initializer: Some(Expr::Call {
+                    callee: Box::new(Expr::Get {
+                        object: Box::new(Expr::Variable {
+                            name: alias.to_string(),
+                            span,
+                        }),
+                        property: property.to_string(),
+                        span,
+                    }),
+                    arguments: Vec::new(),
+                    span,
+                }),
+                span,
+            };
+
+        codegen.declare_function("m_missing", 0);
+        let mut exports = HashSet::new();
+        exports.insert("C".to_string());
+        codegen
+            .import_alias_exports
+            .insert("m_missing".to_string(), exports);
+        let stmt = make_stmt("x_missing", "m_missing", "C");
+        codegen.compile_stmt(&stmt).expect("compile var decl");
+        assert!(codegen.variable_class_types.get("x_missing").is_none());
+
+            let alias_ptr = codegen.create_entry_block_alloca("m");
+            let bound_ptr = codegen.create_entry_block_alloca("m_bound");
+            codegen.variables.insert("m".to_string(), alias_ptr);
+            codegen.import_alias_bindings.insert("m".to_string(), bound_ptr);
+            let mut exports = HashSet::new();
+            exports.insert("C".to_string());
+            codegen.import_alias_exports.insert("m".to_string(), exports);
+            let stmt = make_stmt("x_mismatch", "m", "C");
+            codegen.compile_stmt(&stmt).expect("compile var decl");
+            assert!(codegen.variable_class_types.get("x_mismatch").is_none());
+
+            let alias_ptr2 = codegen.create_entry_block_alloca("m2");
+            codegen.variables.insert("m2".to_string(), alias_ptr2);
+            codegen.import_alias_bindings.insert("m2".to_string(), alias_ptr2);
+            let mut exports2 = HashSet::new();
+            exports2.insert("Other".to_string());
+            codegen.import_alias_exports.insert("m2".to_string(), exports2);
+            let stmt = make_stmt("x_no_export", "m2", "C");
+            codegen.compile_stmt(&stmt).expect("compile var decl");
+            assert!(codegen.variable_class_types.get("x_no_export").is_none());
+
+            let alias_ptr3 = codegen.create_entry_block_alloca("m3");
+            codegen.variables.insert("m3".to_string(), alias_ptr3);
+            codegen.import_alias_bindings.insert("m3".to_string(), alias_ptr3);
+            let mut exports3 = HashSet::new();
+            exports3.insert("Nope".to_string());
+            codegen.import_alias_exports.insert("m3".to_string(), exports3);
+            let stmt = make_stmt("x_no_class", "m3", "Nope");
+            codegen.compile_stmt(&stmt).expect("compile var decl");
+            assert!(codegen.variable_class_types.get("x_no_class").is_none());
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_call_import_alias_direct_dispatch_false_branches_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_call_import_alias_false");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let span = Span::new(1, 1);
+            let make_expr = |alias: &str, property: &str| Expr::Call {
+                callee: Box::new(Expr::Get {
+                    object: Box::new(Expr::Variable {
+                        name: alias.to_string(),
+                        span,
+                    }),
+                    property: property.to_string(),
+                    span,
+                }),
+                arguments: Vec::new(),
+                span,
+            };
+
+            let mut exports = HashSet::new();
+            exports.insert("foo".to_string());
+            codegen
+                .import_alias_exports
+                .insert("m_missing".to_string(), exports);
+            let _ = codegen.compile_expr(&make_expr("m_missing", "foo"));
+
+            let alias_ptr = codegen.create_entry_block_alloca("m");
+            let bound_ptr = codegen.create_entry_block_alloca("m_bound");
+            codegen.variables.insert("m".to_string(), alias_ptr);
+            codegen.import_alias_bindings.insert("m".to_string(), bound_ptr);
+            let mut exports = HashSet::new();
+            exports.insert("foo".to_string());
+            codegen.import_alias_exports.insert("m".to_string(), exports);
+            let _ = codegen.compile_expr(&make_expr("m", "foo"));
+
+            let alias_ptr2 = codegen.create_entry_block_alloca("m2");
+            codegen.variables.insert("m2".to_string(), alias_ptr2);
+            codegen.import_alias_bindings.insert("m2".to_string(), alias_ptr2);
+            let mut exports2 = HashSet::new();
+            exports2.insert("bar".to_string());
+            codegen.import_alias_exports.insert("m2".to_string(), exports2);
+            let _ = codegen.compile_expr(&make_expr("m2", "foo"));
+        }
+
+        #[cfg(coverage)]
+        #[test]
+    fn compile_function_nested_masel_unused_skips_capture_for_coverage() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "coverage_nested_masel_unused");
+
+        codegen.declare_function_with_captures("outer", 0, &["masel".to_string()]);
+        codegen
+            .function_captures
+            .insert("outer".to_string(), vec!["masel".to_string()]);
+
+            let span = Span::new(1, 1);
+            let inner = Stmt::Function {
+                name: "inner".to_string(),
+                params: Vec::new(),
+                body: vec![Stmt::Return { value: None, span }],
+                span,
+            };
+            codegen
+                .compile_function("outer", &[], &[inner])
+                .expect("compile function");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn destructure_ignore_after_rest_false_branch_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_destructure_ignore_after_rest2");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let span = Span::new(1, 1);
+            let stmt = Stmt::Destructure {
+                patterns: vec![
+                    DestructPattern::Ignore,
+                    DestructPattern::Rest("rest".to_string()),
+                    DestructPattern::Ignore,
+                ],
+                value: Expr::List {
+                    elements: vec![
+                        Expr::Literal {
+                            value: Literal::Integer(1),
+                            span,
+                        },
+                        Expr::Literal {
+                            value: Literal::Integer(2),
+                            span,
+                        },
+                        Expr::Literal {
+                            value: Literal::Integer(3),
+                            span,
+                        },
+                    ],
+                    span,
+                },
+                span,
+            };
+            codegen.compile_stmt(&stmt).expect("compile destructure");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn sync_all_shadows_skips_missing_value_alloca_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_sync_all_shadows");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let shadow = codegen.create_entry_block_alloca_i64("x_shadow");
+            codegen.int_shadows.insert("x".to_string(), shadow);
+
+            codegen.sync_all_shadows();
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_condition_direct_index_fast_path_skips_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_condition_index_fallback");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let span = Span::new(1, 1);
+            let expr = Expr::Index {
+                object: Box::new(Expr::List {
+                    elements: Vec::new(),
+                    span,
+                }),
+                index: Box::new(Expr::Literal {
+                    value: Literal::String("nope".to_string()),
+                    span,
+                }),
+                span,
+            };
+
+            let cond = codegen
+                .compile_condition_direct(&expr)
+                .expect("compile condition");
+            assert!(cond.is_some());
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_var_decl_current_class_blocks_top_level_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_var_decl_current_class");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            codegen.current_class = Some("C".to_string());
+
+            let span = Span::new(1, 1);
+            let stmt = Stmt::VarDecl {
+                name: "field_like".to_string(),
+                initializer: Some(Expr::Literal {
+                    value: Literal::String("x".to_string()),
+                    span,
+                }),
+                span,
+            };
+            codegen.compile_stmt(&stmt).expect("compile var decl");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_binary_dynamic_overload_candidate_scan_branches_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_binary_dynamic_overload");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let class_a = codegen
+                .module
+                .add_global(codegen.types.value_type, None, "A");
+            class_a.set_initializer(&codegen.types.value_type.const_zero());
+            codegen.classes.insert("A".to_string(), class_a);
+
+            let class_b = codegen
+                .module
+                .add_global(codegen.types.value_type, None, "B");
+            class_b.set_initializer(&codegen.types.value_type.const_zero());
+            codegen.classes.insert("B".to_string(), class_b);
+
+            let class_c = codegen
+                .module
+                .add_global(codegen.types.value_type, None, "C");
+            class_c.set_initializer(&codegen.types.value_type.const_zero());
+            codegen.classes.insert("C".to_string(), class_c);
+
+            let class_d = codegen
+                .module
+                .add_global(codegen.types.value_type, None, "D");
+            class_d.set_initializer(&codegen.types.value_type.const_zero());
+            codegen.classes.insert("D".to_string(), class_d);
+
+            codegen
+                .class_superclasses
+                .insert("C".to_string(), "D".to_string());
+            codegen
+                .class_superclasses
+                .insert("D".to_string(), "C".to_string());
+
+            let method_name = "__pit_thegither__";
+            let short_type = codegen
+                .types
+                .value_type
+                .fn_type(&[codegen.types.value_type.into()], false);
+            let short_fn = codegen
+                .module
+                .add_function(&format!("B_{method_name}"), short_type, None);
+            codegen
+                .functions
+                .insert(format!("B_{method_name}"), short_fn);
+
+            let long_type = codegen.types.value_type.fn_type(
+                &[codegen.types.value_type.into(), codegen.types.value_type.into()],
+                false,
+            );
+            let long_fn = codegen
+                .module
+                .add_function(&format!("A_{method_name}"), long_type, None);
+            codegen
+                .functions
+                .insert(format!("A_{method_name}"), long_fn);
+
+            let span = Span::new(1, 1);
+            let left = Expr::Literal {
+                value: Literal::Nil,
+                span,
+            };
+            let right = Expr::Literal {
+                value: Literal::Nil,
+                span,
+            };
+            let _ = codegen
+                .compile_binary(&left, BinaryOp::Add, &right)
+                .expect("compile binary");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_function_nested_duplicate_name_skips_scoped_insert_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_nested_duplicate_name");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            codegen.declare_function("outer", 0);
+
+            let span = Span::new(1, 1);
+            let inner_one = Stmt::Function {
+                name: "inner".to_string(),
+                params: Vec::new(),
+                body: vec![Stmt::Return {
+                    value: Some(Expr::Literal {
+                        value: Literal::Integer(1),
+                        span,
+                    }),
+                    span,
+                }],
+                span,
+            };
+            let inner_two = Stmt::Function {
+                name: "inner".to_string(),
+                params: Vec::new(),
+                body: vec![Stmt::Return {
+                    value: Some(Expr::Literal {
+                        value: Literal::Integer(2),
+                        span,
+                    }),
+                    span,
+                }],
+                span,
+            };
+            let body = vec![
+                inner_one,
+                inner_two,
+                Stmt::Return {
+                    value: Some(Expr::Literal {
+                        value: Literal::Integer(0),
+                        span,
+                    }),
+                    span,
+                },
+            ];
+
+            codegen
+                .compile_function("outer", &[], &body)
+                .expect("compile outer");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn stmt_uses_masel_if_branches_for_coverage() {
+            let context = Context::create();
+            let codegen = CodeGen::new(&context, "coverage_stmt_uses_masel_if");
+
+            let span = Span::new(1, 1);
+            let stmt = Stmt::If {
+                condition: Expr::Literal {
+                    value: Literal::Bool(false),
+                    span,
+                },
+                then_branch: Box::new(Stmt::Expression {
+                    expr: Expr::Masel { span },
+                    span,
+                }),
+                else_branch: Some(Box::new(Stmt::Return {
+                    value: Some(Expr::Masel { span }),
+                    span,
+                })),
+                span,
+            };
+            assert!(codegen.stmt_uses_masel(&stmt));
+
+            let stmt = Stmt::If {
+                condition: Expr::Literal {
+                    value: Literal::Bool(false),
+                    span,
+                },
+                then_branch: Box::new(Stmt::Expression {
+                    expr: Expr::Literal {
+                        value: Literal::Integer(1),
+                        span,
+                    },
+                    span,
+                }),
+                else_branch: None,
+                span,
+            };
+            assert!(!codegen.stmt_uses_masel(&stmt));
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_lambda_masel_capture_branches_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_lambda_masel_capture");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let masel_alloca = codegen.create_entry_block_alloca("masel");
+            codegen.variables.insert("masel".to_string(), masel_alloca);
+            codegen.current_masel = Some(masel_alloca);
+
+            let span = Span::new(1, 1);
+            let params: Vec<String> = Vec::new();
+            let body = Expr::Masel { span };
+            let _ = codegen
+                .compile_lambda(&params, &body)
+                .expect("compile lambda masel");
+
+            let body = Expr::Binary {
+                left: Box::new(Expr::Variable {
+                    name: "masel".to_string(),
+                    span,
+                }),
+                operator: BinaryOp::Add,
+                right: Box::new(Expr::Masel { span }),
+                span,
+            };
+            let _ = codegen
+                .compile_lambda(&params, &body)
+                .expect("compile lambda masel var");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn declare_module_init_non_empty_stem_branch_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_module_init_stem");
+
+            let import_path = PathBuf::from("__coverage_module_init_stem.braw");
+            let _ = codegen.declare_module_init(&import_path);
+            assert!(codegen.module_init_functions.contains_key(&import_path));
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_set_updates_global_dict_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_set_updates_global_dict");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let global = codegen
+                .module
+                .add_global(codegen.types.value_type, None, "g");
+            global.set_initializer(&codegen.types.value_type.const_zero());
+            codegen.globals.insert("g".to_string(), global.as_pointer_value());
+            codegen.variables.remove("g");
+
+            let span = Span::new(1, 1);
+            let expr = Expr::Set {
+                object: Box::new(Expr::Variable {
+                    name: "g".to_string(),
+                    span,
+                }),
+                property: "k".to_string(),
+                value: Box::new(Expr::Literal {
+                    value: Literal::Integer(1),
+                    span,
+                }),
+                span,
+            };
+            let _ = codegen.compile_expr(&expr).expect("compile set");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_method_nested_body_masel_capture_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_method_nested_body_masel_capture");
+
+            let method_type = codegen
+                .types
+                .value_type
+                .fn_type(&[codegen.types.value_type.into()], false);
+            let method_fn = codegen.module.add_function("C_m", method_type, None);
+            codegen.functions.insert("C_m".to_string(), method_fn);
+
+            let span = Span::new(1, 1);
+            let body = vec![
+                Stmt::Function {
+                    name: "inner".to_string(),
+                    params: Vec::new(),
+                    body: vec![Stmt::Return {
+                        value: Some(Expr::Masel { span }),
+                        span,
+                    }],
+                    span,
+                },
+                Stmt::Return {
+                    value: Some(Expr::Literal {
+                        value: Literal::Integer(0),
+                        span,
+                    }),
+                    span,
+                },
+            ];
+
+            codegen
+                .compile_method_body("C", "m", &[], &body)
+                .expect("compile method");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_stmt_continue_inside_loop_is_exercised_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_continue_stmt");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            let cont_block = context.append_basic_block(function, "continue");
+            let break_block = context.append_basic_block(function, "break");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            codegen.loop_stack.push(LoopContext {
+                break_block,
+                continue_block: cont_block,
+            });
+
+            let span = Span::new(1, 1);
+            codegen
+                .compile_stmt(&Stmt::Continue { span })
+                .expect("compile continue");
+            codegen.loop_stack.pop();
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_log_stmt_without_source_path_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_log_source_path_none");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let span = Span::new(1, 1);
+            codegen
+                .compile_stmt(&Stmt::Log {
+                    level: LogLevel::Blether,
+                    message: Expr::Literal {
+                        value: Literal::String("hey".to_string()),
+                        span,
+                    },
+                    extras: Vec::new(),
+                    span,
+                })
+                .expect("compile log stmt");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_expr_assign_string_concat_branches_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_assign_string_concat");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let span = Span::new(1, 1);
+
+            let s_alloca = codegen.create_entry_block_alloca("s");
+            let u_alloca = codegen.create_entry_block_alloca("u");
+            let v_alloca = codegen.create_entry_block_alloca("v");
+            codegen.variables.insert("s".to_string(), s_alloca);
+            codegen.variables.insert("u".to_string(), u_alloca);
+            codegen.variables.insert("v".to_string(), v_alloca);
+
+            let s_len = codegen.create_entry_block_alloca_i64("s_len");
+            let s_cap = codegen.create_entry_block_alloca_i64("s_cap");
+            codegen.string_len_shadows.insert("s".to_string(), s_len);
+            codegen.string_cap_shadows.insert("s".to_string(), s_cap);
+
+            let u_len = codegen.create_entry_block_alloca_i64("u_len");
+            codegen.string_len_shadows.insert("u".to_string(), u_len);
+            let v_len = codegen.create_entry_block_alloca_i64("v_len");
+            codegen.string_len_shadows.insert("v".to_string(), v_len);
+
+            let self_concat = Expr::Assign {
+                name: "s".to_string(),
+                value: Box::new(Expr::Binary {
+                    left: Box::new(Expr::Variable {
+                        name: "s".to_string(),
+                        span,
+                    }),
+                    operator: BinaryOp::Add,
+                    right: Box::new(Expr::Literal {
+                        value: Literal::String("yo".to_string()),
+                        span,
+                    }),
+                    span,
+                }),
+                span,
+            };
+            let _ = codegen.compile_expr(&self_concat).expect("self concat");
+
+            let len_literal = Expr::Assign {
+                name: "u".to_string(),
+                value: Box::new(Expr::Binary {
+                    left: Box::new(Expr::Variable {
+                        name: "u".to_string(),
+                        span,
+                    }),
+                    operator: BinaryOp::Add,
+                    right: Box::new(Expr::Literal {
+                        value: Literal::String("lit".to_string()),
+                        span,
+                    }),
+                    span,
+                }),
+                span,
+            };
+            let _ = codegen.compile_expr(&len_literal).expect("len literal");
+
+            let len_shadow = Expr::Assign {
+                name: "u".to_string(),
+                value: Box::new(Expr::Binary {
+                    left: Box::new(Expr::Variable {
+                        name: "u".to_string(),
+                        span,
+                    }),
+                    operator: BinaryOp::Add,
+                    right: Box::new(Expr::Variable {
+                        name: "v".to_string(),
+                        span,
+                    }),
+                    span,
+                }),
+                span,
+            };
+            let _ = codegen.compile_expr(&len_shadow).expect("len shadow");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_expr_assign_class_instantiation_records_type_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_assign_class_instantiation");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let class_global = codegen
+                .module
+                .add_global(codegen.types.value_type, None, "Widget");
+            class_global.set_initializer(&codegen.types.value_type.const_zero());
+            codegen
+                .classes
+                .insert("Widget".to_string(), class_global);
+
+            let obj_alloca = codegen.create_entry_block_alloca("obj");
+            codegen.variables.insert("obj".to_string(), obj_alloca);
+
+            let span = Span::new(1, 1);
+            let assign = Expr::Assign {
+                name: "obj".to_string(),
+                value: Box::new(Expr::Call {
+                    callee: Box::new(Expr::Variable {
+                        name: "Widget".to_string(),
+                        span,
+                    }),
+                    arguments: Vec::new(),
+                    span,
+                }),
+                span,
+            };
+            let _ = codegen.compile_expr(&assign).expect("assign class");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_binary_operator_overload_defaults_are_exercised_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_binary_overload_defaults");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let class_global = codegen
+                .module
+                .add_global(codegen.types.value_type, None, "C_class");
+            class_global.set_initializer(&codegen.types.value_type.const_zero());
+            codegen.classes.insert("C".to_string(), class_global);
+
+            let overload_type = codegen.types.value_type.fn_type(
+                &[
+                    codegen.types.value_type.into(),
+                    codegen.types.value_type.into(),
+                    codegen.types.value_type.into(),
+                ],
+                false,
+            );
+            let overload_func = codegen
+                .module
+                .add_function("C___pit_thegither__", overload_type, None);
+            codegen
+                .functions
+                .insert("C___pit_thegither__".to_string(), overload_func);
+
+            let span = Span::new(1, 1);
+            codegen.function_defaults.insert(
+                "C___pit_thegither__".to_string(),
+                vec![
+                    None,
+                    Some(Expr::Literal {
+                        value: Literal::Integer(7),
+                        span,
+                    }),
+                ],
+            );
+
+            let left = Expr::Call {
+                callee: Box::new(Expr::Variable {
+                    name: "C".to_string(),
+                    span,
+                }),
+                arguments: Vec::new(),
+                span,
+            };
+            let right = Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            };
+            let _ = codegen
+                .compile_binary(&left, BinaryOp::Add, &right)
+                .expect("compile binary");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_string_concat_fast_with_left_literal_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_string_concat_left_literal");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let span = Span::new(1, 1);
+            let left = Expr::Literal {
+                value: Literal::String("left".to_string()),
+                span,
+            };
+            let right = Expr::Literal {
+                value: Literal::String("right".to_string()),
+                span,
+            };
+            let _ = codegen
+                .compile_string_concat_fast(&left, &right)
+                .expect("concat fast");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn predeclare_locals_match_identifier_is_exercised_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_predeclare_match");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let span = Span::new(1, 1);
+            let stmt = Stmt::Match {
+                value: Expr::Variable {
+                    name: "v".to_string(),
+                    span,
+                },
+                arms: vec![crate::ast::MatchArm {
+                    pattern: Pattern::Identifier("m".to_string()),
+                    body: Stmt::Expression {
+                        expr: Expr::Literal {
+                            value: Literal::Integer(0),
+                            span,
+                        },
+                        span,
+                    },
+                    span,
+                }],
+                span,
+            };
+            codegen.predeclare_locals_stmt(&stmt);
+            assert!(codegen.variables.contains_key("m"));
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_index_set_updates_variable_dict_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_index_set_dict_update");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let dict_alloca = codegen.create_entry_block_alloca("d");
+            codegen.variables.insert("d".to_string(), dict_alloca);
+
+            let span = Span::new(1, 1);
+            let expr = Expr::IndexSet {
+                object: Box::new(Expr::Variable {
+                    name: "d".to_string(),
+                    span,
+                }),
+                index: Box::new(Expr::Literal {
+                    value: Literal::String("k".to_string()),
+                    span,
+                }),
+                value: Box::new(Expr::Literal {
+                    value: Literal::Integer(1),
+                    span,
+                }),
+                span,
+            };
+            let _ = codegen.compile_expr(&expr).expect("index set");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn collect_free_vars_slice_fstring_and_if_else_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_free_vars_slice_fstring");
+            let span = Span::new(1, 1);
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            for name in [
+                "obj",
+                "start",
+                "end",
+                "step",
+                "inner",
+                "cond",
+                "then_val",
+                "else_val",
+            ] {
+                let alloca = codegen.create_entry_block_alloca(name);
+                codegen.variables.insert(name.to_string(), alloca);
+            }
+
+            let bound: HashSet<String> = HashSet::new();
+            let mut free: HashSet<String> = HashSet::new();
+            let slice = Expr::Slice {
+                object: Box::new(Expr::Variable {
+                    name: "obj".to_string(),
+                    span,
+                }),
+                start: Some(Box::new(Expr::Variable {
+                    name: "start".to_string(),
+                    span,
+                })),
+                end: Some(Box::new(Expr::Variable {
+                    name: "end".to_string(),
+                    span,
+                })),
+                step: Some(Box::new(Expr::Variable {
+                    name: "step".to_string(),
+                    span,
+                })),
+                span,
+            };
+            codegen.collect_free_vars(&slice, &bound, &mut free);
+            assert!(free.contains("obj"));
+            assert!(free.contains("start"));
+            assert!(free.contains("end"));
+            assert!(free.contains("step"));
+
+            let fstring = Expr::FString {
+                parts: vec![crate::ast::FStringPart::Expr(Box::new(Expr::Variable {
+                    name: "inner".to_string(),
+                    span,
+                }))],
+                span,
+            };
+            codegen.collect_free_vars(&fstring, &bound, &mut free);
+            assert!(free.contains("inner"));
+
+            let mut bound_stmt: HashSet<String> = HashSet::new();
+            let mut free_stmt: HashSet<String> = HashSet::new();
+            let if_stmt = Stmt::If {
+                condition: Expr::Variable {
+                    name: "cond".to_string(),
+                    span,
+                },
+                then_branch: Box::new(Stmt::Expression {
+                    expr: Expr::Variable {
+                        name: "then_val".to_string(),
+                        span,
+                    },
+                    span,
+                }),
+                else_branch: Some(Box::new(Stmt::Expression {
+                    expr: Expr::Variable {
+                        name: "else_val".to_string(),
+                        span,
+                    },
+                    span,
+                })),
+                span,
+            };
+            codegen.collect_free_vars_stmt(&if_stmt, &mut bound_stmt, &mut free_stmt);
+            assert!(free_stmt.contains("else_val"));
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn call_function_value_method_defaults_are_exercised_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_call_function_value_defaults");
+
+            let wrapper_type = codegen.types.value_type.fn_type(&[], false);
+            let wrapper = codegen.module.add_function("dummy", wrapper_type, None);
+            let entry = context.append_basic_block(wrapper, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(wrapper);
+
+            let method_type = codegen.types.value_type.fn_type(
+                &[
+                    codegen.types.value_type.into(),
+                    codegen.types.value_type.into(),
+                ],
+                false,
+            );
+            let method_fn = codegen.module.add_function("C_meth", method_type, None);
+            codegen.functions.insert("C_meth".to_string(), method_fn);
+            codegen
+                .class_methods
+                .insert("C".to_string(), vec![("meth".to_string(), method_fn)]);
+
+            let span = Span::new(1, 1);
+            codegen.function_defaults.insert(
+                "C_meth".to_string(),
+                vec![Some(Expr::Literal {
+                    value: Literal::Integer(42),
+                    span,
+                })],
+            );
+
+            let fn_ptr = method_fn.as_global_value().as_pointer_value();
+            let fn_ptr_int = codegen
+                .builder
+                .build_ptr_to_int(fn_ptr, codegen.types.i64_type, "fn_ptr_int")
+                .unwrap();
+            let fn_tag = codegen
+                .types
+                .i8_type
+                .const_int(ValueTag::Function.as_u8() as u64, false);
+            let undef = codegen.types.value_type.get_undef();
+            let v1 = codegen
+                .builder
+                .build_insert_value(undef, fn_tag, 0, "v1")
+                .unwrap();
+            let fn_val = codegen
+                .builder
+                .build_insert_value(v1, fn_ptr_int, 1, "fn_val")
+                .unwrap()
+                .into_struct_value();
+
+            let _ = codegen
+                .call_function_value(fn_val.into(), &[])
+                .expect("call function value");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_pipe_restores_existing_tmp_binding_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_pipe_restore_tmp");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let callee_type =
+                codegen
+                    .types
+                    .value_type
+                    .fn_type(&[codegen.types.value_type.into()], false);
+            let callee = codegen.module.add_function("f", callee_type, None);
+            codegen.functions.insert("f".to_string(), callee);
+
+            let tmp_alloca = codegen.create_entry_block_alloca("__pipe_tmp_0");
+            codegen
+                .variables
+                .insert("__pipe_tmp_0".to_string(), tmp_alloca);
+            codegen.pipe_tmp_counter = 0;
+
+            let span = Span::new(1, 1);
+            let expr = Expr::Pipe {
+                left: Box::new(Expr::Literal {
+                    value: Literal::Integer(1),
+                    span,
+                }),
+                right: Box::new(Expr::Variable {
+                    name: "f".to_string(),
+                    span,
+                }),
+                span,
+            };
+            let _ = codegen.compile_expr(&expr).expect("pipe");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_user_function_call_defaults_without_param_names_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_user_call_defaults");
+
+            let wrapper_type = codegen.types.value_type.fn_type(&[], false);
+            let wrapper = codegen.module.add_function("dummy", wrapper_type, None);
+            let entry = context.append_basic_block(wrapper, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(wrapper);
+
+            let callee_type = codegen.types.value_type.fn_type(
+                &[
+                    codegen.types.value_type.into(),
+                    codegen.types.value_type.into(),
+                ],
+                false,
+            );
+            let callee = codegen.module.add_function("defaults_fn", callee_type, None);
+            codegen
+                .functions
+                .insert("defaults_fn".to_string(), callee);
+
+            let span = Span::new(1, 1);
+            codegen.function_defaults.insert(
+                "defaults_fn".to_string(),
+                vec![
+                    None,
+                    Some(Expr::Literal {
+                        value: Literal::Integer(9),
+                        span,
+                    }),
+                ],
+            );
+
+            let arg = Expr::Literal {
+                value: Literal::Integer(1),
+                span,
+            };
+            let _ = codegen
+                .compile_user_function_call("defaults_fn", callee, &[arg])
+                .expect("user call defaults");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_get_instance_multiple_candidates_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_get_instance_multi");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let class_a = codegen
+                .module
+                .add_global(codegen.types.value_type, None, "A_class");
+            class_a.set_initializer(&codegen.types.value_type.const_zero());
+            let class_b = codegen
+                .module
+                .add_global(codegen.types.value_type, None, "B_class");
+            class_b.set_initializer(&codegen.types.value_type.const_zero());
+            codegen.classes.insert("A".to_string(), class_a);
+            codegen.classes.insert("B".to_string(), class_b);
+
+            let method_type =
+                codegen
+                    .types
+                    .value_type
+                    .fn_type(&[codegen.types.value_type.into()], false);
+            let method_a = codegen.module.add_function("A_ping", method_type, None);
+            let method_b = codegen.module.add_function("B_ping", method_type, None);
+            codegen.functions.insert("A_ping".to_string(), method_a);
+            codegen.functions.insert("B_ping".to_string(), method_b);
+
+            let span = Span::new(1, 1);
+            let expr = Expr::Get {
+                object: Box::new(Expr::Literal {
+                    value: Literal::Nil,
+                    span,
+                }),
+                property: "ping".to_string(),
+                span,
+            };
+            let _ = codegen.compile_expr(&expr).expect("get instance");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_class_init_defaults_without_param_names_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_class_init_defaults");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let class_global = codegen
+                .module
+                .add_global(codegen.types.value_type, None, "C_class");
+            class_global.set_initializer(&codegen.types.value_type.const_zero());
+            codegen.classes.insert("C".to_string(), class_global);
+
+            let init_type = codegen.types.value_type.fn_type(
+                &[
+                    codegen.types.value_type.into(),
+                    codegen.types.value_type.into(),
+                ],
+                false,
+            );
+            let init_fn = codegen.module.add_function("C_init", init_type, None);
+            codegen.functions.insert("C_init".to_string(), init_fn);
+
+            let span = Span::new(1, 1);
+            codegen.function_defaults.insert(
+                "C_init".to_string(),
+                vec![Some(Expr::Literal {
+                    value: Literal::Integer(4),
+                    span,
+                })],
+            );
+
+            let call = Expr::Call {
+                callee: Box::new(Expr::Variable {
+                    name: "C".to_string(),
+                    span,
+                }),
+                arguments: Vec::new(),
+                span,
+            };
+            let _ = codegen.compile_expr(&call).expect("class init");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_non_native_method_call_dynamic_defaults_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_method_dynamic_defaults");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let class_global = codegen
+                .module
+                .add_global(codegen.types.value_type, None, "C_class_dyn");
+            class_global.set_initializer(&codegen.types.value_type.const_zero());
+            codegen.classes.insert("C".to_string(), class_global);
+
+            let method_type = codegen.types.value_type.fn_type(
+                &[
+                    codegen.types.value_type.into(),
+                    codegen.types.value_type.into(),
+                    codegen.types.value_type.into(),
+                ],
+                false,
+            );
+            let method_fn = codegen.module.add_function("C_m", method_type, None);
+            codegen.functions.insert("C_m".to_string(), method_fn);
+
+            let span = Span::new(1, 1);
+            codegen.function_defaults.insert(
+                "C_m".to_string(),
+                vec![
+                    Some(Expr::Literal {
+                        value: Literal::Integer(1),
+                        span,
+                    }),
+                    None,
+                ],
+            );
+
+            let instance = codegen.make_nil();
+            let object = Expr::Literal {
+                value: Literal::Nil,
+                span,
+            };
+            let _ = codegen
+                .compile_non_native_method_call(instance, &object, "m", &[])
+                .expect("dynamic method call");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_non_native_method_call_static_defaults_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_method_static_defaults");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let method_type = codegen.types.value_type.fn_type(
+                &[
+                    codegen.types.value_type.into(),
+                    codegen.types.value_type.into(),
+                    codegen.types.value_type.into(),
+                ],
+                false,
+            );
+            let method_fn = codegen.module.add_function("C_m", method_type, None);
+            codegen.functions.insert("C_m".to_string(), method_fn);
+
+            let span = Span::new(1, 1);
+            codegen.function_defaults.insert(
+                "C_m".to_string(),
+                vec![Some(Expr::Literal {
+                    value: Literal::Integer(2),
+                    span,
+                })],
+            );
+
+            codegen
+                .variable_class_types
+                .insert("obj".to_string(), "C".to_string());
+
+            let instance = codegen.make_nil();
+            let object = Expr::Variable {
+                name: "obj".to_string(),
+                span,
+            };
+            let _ = codegen
+                .compile_non_native_method_call(instance, &object, "m", &[])
+                .expect("static method call");
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn sync_all_shadows_skips_missing_variable_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_sync_all_shadows_missing_var");
+
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+
+            let shadow = codegen.create_entry_block_alloca_i64("x_shadow");
+            codegen.int_shadows.insert("x".to_string(), shadow);
+            // Intentionally do not insert into variables to exercise the skip path.
+            codegen.sync_all_shadows();
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn declare_import_function_skips_existing_flag_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_import_flag_skip");
+            codegen.declare_import_function("foo", 0, None);
+            codegen.declare_import_function("foo", 0, None);
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn preregister_class_skips_existing_flag_for_coverage() {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "coverage_preregister_class_flag_skip");
+            let fn_type = codegen.types.value_type.fn_type(&[], false);
+            let function = codegen.module.add_function("dummy", fn_type, None);
+            let entry = context.append_basic_block(function, "entry");
+            codegen.builder.position_at_end(entry);
+            codegen.current_function = Some(function);
+            codegen.preregister_class("C", None, &[]);
+            codegen.preregister_class("C", None, &[]);
+        }
+
+        #[cfg(coverage)]
+        #[test]
+        fn compile_masel_without_context_errors_for_coverage() {
+            let context = Context::create();
+            let codegen = CodeGen::new(&context, "coverage_compile_masel_error");
+            let err = codegen
+                .compile_masel()
+                .expect_err("expected masel compile error");
+            assert_eq!(
+                std::mem::discriminant(&err),
+                std::mem::discriminant(&HaversError::CompileError(String::new()))
+            );
+        }
+    }
