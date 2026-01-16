@@ -74,7 +74,8 @@ fn interpreter_covers_selected_ok_or_error_branches_for_coverage() {
     assert!((tls_connect.func)(vec![Value::Nil, Value::Integer(tcp_id)]).is_err());
     assert!((tls_connect.func)(vec![Value::Integer(tls_id), Value::Nil]).is_err());
     assert!((tls_connect.func)(vec![Value::Integer(tls_id), Value::Integer(999_999)]).is_err());
-    let unknown_tls = (tls_connect.func)(vec![Value::Integer(999_999), Value::Integer(tcp_id)]).unwrap();
+    let unknown_tls =
+        (tls_connect.func)(vec![Value::Integer(999_999), Value::Integer(tcp_id)]).unwrap();
     assert_result_err(unknown_tls);
 
     assert!((tls_send.func)(vec![Value::Nil, bytes(b"hi")]).is_err());
@@ -114,8 +115,12 @@ fn interpreter_covers_selected_ok_or_error_branches_for_coverage() {
         other => panic!("expected loop id integer, got {other:?}"),
     };
     assert!((event_loop_stop.func)(vec![Value::Integer(999_999)]).is_err());
-    assert!((event_watch_read.func)(vec![Value::Integer(loop_id), Value::Nil, Value::Nil]).is_err());
-    assert!((event_watch_write.func)(vec![Value::Integer(loop_id), Value::Nil, Value::Nil]).is_err());
+    assert!(
+        (event_watch_read.func)(vec![Value::Integer(loop_id), Value::Nil, Value::Nil]).is_err()
+    );
+    assert!(
+        (event_watch_write.func)(vec![Value::Integer(loop_id), Value::Nil, Value::Nil]).is_err()
+    );
     assert!((event_unwatch.func)(vec![Value::Integer(loop_id), Value::Nil]).is_err());
     assert!((timer_cancel.func)(vec![Value::Integer(loop_id), Value::Nil]).is_err());
 
@@ -128,10 +133,12 @@ fn interpreter_covers_selected_ok_or_error_branches_for_coverage() {
         other => panic!("expected condvar id integer, got {other:?}"),
     };
     assert!((condvar_wait.func)(vec![Value::Integer(condvar_id), Value::Nil]).is_err());
-    assert!(
-        (condvar_timed_wait.func)(vec![Value::Integer(condvar_id), Value::Nil, Value::Integer(0)])
-            .is_err()
-    );
+    assert!((condvar_timed_wait.func)(vec![
+        Value::Integer(condvar_id),
+        Value::Nil,
+        Value::Integer(0)
+    ])
+    .is_err());
 
     // Nested argument-validation branches in common stdlib-style natives.
     let range = native(&interp, "range");
@@ -197,4 +204,3 @@ fn interpreter_covers_selected_ok_or_error_branches_for_coverage() {
     // Clean up OS resources created above.
     let _ = (socket_close.func)(vec![Value::Integer(tcp_id)]);
 }
-

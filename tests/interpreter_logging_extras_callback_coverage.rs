@@ -30,7 +30,13 @@ hae_a_bash {
     let out = interp.get_output().join("\n");
     assert_eq!(
         out.trim(),
-        ["no extras", "structured fields", "targeted", "both", "caught"].join("\n")
+        [
+            "no extras",
+            "structured fields",
+            "targeted",
+            "both",
+            "caught"
+        ]
+        .join("\n")
     );
 }
-

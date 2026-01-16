@@ -1,8 +1,8 @@
 #![cfg(coverage)]
 
 use mdhavers::value::{
-    DictValue, Environment, HaversClass, HaversFunction, HaversInstance, NativeFunction, RangeValue,
-    SetValue,
+    DictValue, Environment, HaversClass, HaversFunction, HaversInstance, NativeFunction,
+    RangeValue, SetValue,
 };
 use mdhavers::Value;
 use std::cell::RefCell;
@@ -67,7 +67,12 @@ fn value_helpers_are_exercised_for_instantiation_coverage() {
     let mut class = HaversClass::new("Test".to_string(), None);
     class.methods.insert(
         "method".to_string(),
-        Rc::new(HaversFunction::new("method".to_string(), vec![], vec![], None)),
+        Rc::new(HaversFunction::new(
+            "method".to_string(),
+            vec![],
+            vec![],
+            None,
+        )),
     );
     let class = Rc::new(class);
 

@@ -148,32 +148,39 @@ fn interpreter_socket_and_io_builtins_cover_error_paths_for_coverage() {
     );
 
     // socket_bind: host type error + port range error
-    assert!(
-        (socket_bind.func)(vec![Value::Integer(tcp_id), Value::Integer(1), Value::Integer(0)])
-            .is_err()
-    );
-    assert!(
-        (socket_bind.func)(vec![Value::Integer(tcp_id), Value::Nil, Value::Integer(70000)]).is_err()
-    );
+    assert!((socket_bind.func)(vec![
+        Value::Integer(tcp_id),
+        Value::Integer(1),
+        Value::Integer(0)
+    ])
+    .is_err());
+    assert!((socket_bind.func)(vec![
+        Value::Integer(tcp_id),
+        Value::Nil,
+        Value::Integer(70000)
+    ])
+    .is_err());
     // socket_bind/socket_connect/udp_send_to: resolve_ipv4_addr error mapping (invalid host string)
     let bad_host = Value::String("bad host".to_string());
-    assert!(
-        (socket_bind.func)(vec![Value::Integer(tcp_id), bad_host.clone(), Value::Integer(0)])
-            .is_err()
-    );
-    assert!(
-        (socket_connect.func)(vec![Value::Integer(tcp_id), bad_host.clone(), Value::Integer(0)])
-            .is_err()
-    );
-    assert!(
-        (udp_send_to.func)(vec![
-            Value::Integer(udp_id),
-            bytes(b"hi"),
-            bad_host,
-            Value::Integer(0)
-        ])
-        .is_err()
-    );
+    assert!((socket_bind.func)(vec![
+        Value::Integer(tcp_id),
+        bad_host.clone(),
+        Value::Integer(0)
+    ])
+    .is_err());
+    assert!((socket_connect.func)(vec![
+        Value::Integer(tcp_id),
+        bad_host.clone(),
+        Value::Integer(0)
+    ])
+    .is_err());
+    assert!((udp_send_to.func)(vec![
+        Value::Integer(udp_id),
+        bytes(b"hi"),
+        bad_host,
+        Value::Integer(0)
+    ])
+    .is_err());
     assert!(
         (udp_send_to.func)(vec![
             Value::Nil,
@@ -206,11 +213,11 @@ fn interpreter_socket_and_io_builtins_cover_error_paths_for_coverage() {
     );
 
     // socket_bind: success (host=nil) then syscall error (bind twice on same socket)
-    let bind_ok = (socket_bind.func)(vec![Value::Integer(tcp_id), Value::Nil, Value::Integer(0)])
-        .unwrap();
+    let bind_ok =
+        (socket_bind.func)(vec![Value::Integer(tcp_id), Value::Nil, Value::Integer(0)]).unwrap();
     assert!(result_ok_value(bind_ok).is_some());
-    let bind_err = (socket_bind.func)(vec![Value::Integer(tcp_id), Value::Nil, Value::Integer(0)])
-        .unwrap();
+    let bind_err =
+        (socket_bind.func)(vec![Value::Integer(tcp_id), Value::Nil, Value::Integer(0)]).unwrap();
     assert_result_err(bind_err);
     // socket_bind: unknown socket handle
     assert!(
@@ -221,14 +228,12 @@ fn interpreter_socket_and_io_builtins_cover_error_paths_for_coverage() {
     assert!(
         (socket_connect.func)(vec![Value::Integer(tcp_id), Value::Nil, Value::Integer(0)]).is_err()
     );
-    assert!(
-        (socket_connect.func)(vec![
-            Value::Integer(tcp_id),
-            Value::String("127.0.0.1".to_string()),
-            Value::Integer(70000)
-        ])
-        .is_err()
-    );
+    assert!((socket_connect.func)(vec![
+        Value::Integer(tcp_id),
+        Value::String("127.0.0.1".to_string()),
+        Value::Integer(70000)
+    ])
+    .is_err());
     let conn_err = (socket_connect.func)(vec![
         Value::Integer(tcp_id),
         Value::String("127.0.0.1".to_string()),
@@ -237,14 +242,12 @@ fn interpreter_socket_and_io_builtins_cover_error_paths_for_coverage() {
     .unwrap();
     assert_result_err(conn_err);
     // socket_connect: unknown socket handle
-    assert!(
-        (socket_connect.func)(vec![
-            Value::Integer(999_999),
-            Value::String("127.0.0.1".to_string()),
-            Value::Integer(0)
-        ])
-        .is_err()
-    );
+    assert!((socket_connect.func)(vec![
+        Value::Integer(999_999),
+        Value::String("127.0.0.1".to_string()),
+        Value::Integer(0)
+    ])
+    .is_err());
 
     // socket_listen: syscall error (listen on UDP socket)
     let listen_err = (socket_listen.func)(vec![Value::Integer(udp_id), Value::Integer(1)]).unwrap();
@@ -277,8 +280,8 @@ fn interpreter_socket_and_io_builtins_cover_error_paths_for_coverage() {
         let _guard = ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap();
         let prev = std::env::var_os("MDH_COVERAGE_FORCE_FCNTL_SETFL_FAIL");
         std::env::set_var("MDH_COVERAGE_FORCE_FCNTL_SETFL_FAIL", "1");
-        let forced = (socket_set_nonblocking.func)(vec![Value::Integer(udp_id), Value::Bool(true)])
-            .unwrap();
+        let forced =
+            (socket_set_nonblocking.func)(vec![Value::Integer(udp_id), Value::Bool(true)]).unwrap();
         match prev {
             Some(value) => std::env::set_var("MDH_COVERAGE_FORCE_FCNTL_SETFL_FAIL", value),
             None => std::env::remove_var("MDH_COVERAGE_FORCE_FCNTL_SETFL_FAIL"),
@@ -330,20 +333,18 @@ fn interpreter_socket_and_io_builtins_cover_error_paths_for_coverage() {
     let _ = (socket_set_reuseport.func)(vec![Value::Integer(tcp_id), Value::Bool(false)]).unwrap();
 
     // socket_set_rcvbuf/sndbuf: argument validation errors (no syscalls)
-    assert!(
-        (socket_set_rcvbuf.func)(vec![Value::Integer(tcp_id), Value::Integer(-1)]).is_err()
-    );
-    assert!(
-        (socket_set_rcvbuf.func)(vec![Value::Integer(tcp_id), Value::Integer(i64::from(i32::MAX) + 1)])
-            .is_err()
-    );
-    assert!(
-        (socket_set_sndbuf.func)(vec![Value::Integer(tcp_id), Value::Integer(-1)]).is_err()
-    );
-    assert!(
-        (socket_set_sndbuf.func)(vec![Value::Integer(tcp_id), Value::Integer(i64::from(i32::MAX) + 1)])
-            .is_err()
-    );
+    assert!((socket_set_rcvbuf.func)(vec![Value::Integer(tcp_id), Value::Integer(-1)]).is_err());
+    assert!((socket_set_rcvbuf.func)(vec![
+        Value::Integer(tcp_id),
+        Value::Integer(i64::from(i32::MAX) + 1)
+    ])
+    .is_err());
+    assert!((socket_set_sndbuf.func)(vec![Value::Integer(tcp_id), Value::Integer(-1)]).is_err());
+    assert!((socket_set_sndbuf.func)(vec![
+        Value::Integer(tcp_id),
+        Value::Integer(i64::from(i32::MAX) + 1)
+    ])
+    .is_err());
     assert!(
         (socket_set_rcvbuf.func)(vec![Value::Nil, Value::Integer(0)]).is_err(),
         "socket_set_rcvbuf should require integer socket id"
@@ -410,26 +411,26 @@ fn interpreter_socket_and_io_builtins_cover_error_paths_for_coverage() {
 
     // udp_send_to: argument validation errors (avoid actual send)
     assert!((udp_send_to.func)(vec![
-            Value::Integer(udp_id),
-            Value::Nil,
-            Value::String("127.0.0.1".to_string()),
-            Value::Integer(0),
-        ])
-        .is_err());
+        Value::Integer(udp_id),
+        Value::Nil,
+        Value::String("127.0.0.1".to_string()),
+        Value::Integer(0),
+    ])
+    .is_err());
     assert!((udp_send_to.func)(vec![
-            Value::Integer(udp_id),
-            bytes(b"hi"),
-            Value::Nil,
-            Value::Integer(0),
-        ])
-        .is_err());
+        Value::Integer(udp_id),
+        bytes(b"hi"),
+        Value::Nil,
+        Value::Integer(0),
+    ])
+    .is_err());
     assert!((udp_send_to.func)(vec![
-            Value::Integer(udp_id),
-            bytes(b"hi"),
-            Value::String("127.0.0.1".to_string()),
-            Value::Integer(70000),
-        ])
-        .is_err());
+        Value::Integer(udp_id),
+        bytes(b"hi"),
+        Value::String("127.0.0.1".to_string()),
+        Value::Integer(70000),
+    ])
+    .is_err());
 
     // tcp_send/tcp_recv: bytes arg validation + syscall errors on unconnected socket.
     assert!(

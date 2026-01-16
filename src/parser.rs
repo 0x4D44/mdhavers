@@ -1697,7 +1697,12 @@ pub fn parse_fstring_for_coverage(content: &str) -> HaversResult<Expr> {
 #[cfg(coverage)]
 pub fn advance_at_end_for_coverage() {
     let tokens = vec![
-        Token::new(TokenKind::Identifier("x".to_string()), "x".to_string(), 1, 1),
+        Token::new(
+            TokenKind::Identifier("x".to_string()),
+            "x".to_string(),
+            1,
+            1,
+        ),
         Token::eof(1),
     ];
     let mut parser = Parser::new(tokens);
@@ -1710,7 +1715,12 @@ pub fn destructure_eof_for_coverage() {
     let tokens = vec![
         Token::new(TokenKind::Ken, "ken".to_string(), 1, 1),
         Token::new(TokenKind::LeftBracket, "[".to_string(), 1, 5),
-        Token::new(TokenKind::Identifier("a".to_string()), "a".to_string(), 1, 6),
+        Token::new(
+            TokenKind::Identifier("a".to_string()),
+            "a".to_string(),
+            1,
+            6,
+        ),
         Token::eof(1),
     ];
     let mut parser = Parser::new(tokens);
@@ -1721,7 +1731,12 @@ pub fn destructure_eof_for_coverage() {
 pub fn match_eof_for_coverage() {
     let tokens = vec![
         Token::new(TokenKind::Keek, "keek".to_string(), 1, 1),
-        Token::new(TokenKind::Identifier("x".to_string()), "x".to_string(), 1, 6),
+        Token::new(
+            TokenKind::Identifier("x".to_string()),
+            "x".to_string(),
+            1,
+            6,
+        ),
         Token::new(TokenKind::LeftBrace, "{".to_string(), 1, 8),
         Token::eof(1),
     ];
@@ -1792,7 +1807,12 @@ mod tests {
     #[test]
     fn destructure_declaration_requires_left_bracket_for_coverage() {
         let tokens = vec![
-            Token::new(TokenKind::Identifier("x".to_string()), "x".to_string(), 1, 1),
+            Token::new(
+                TokenKind::Identifier("x".to_string()),
+                "x".to_string(),
+                1,
+                1,
+            ),
             Token::eof(1),
         ];
         let mut parser = Parser::new(tokens);
@@ -1809,7 +1829,10 @@ mod tests {
 
     #[test]
     fn advance_does_not_increment_past_eof_for_coverage() {
-        let tokens = vec![Token::new(TokenKind::Ken, "ken".to_string(), 1, 1), Token::eof(1)];
+        let tokens = vec![
+            Token::new(TokenKind::Ken, "ken".to_string(), 1, 1),
+            Token::eof(1),
+        ];
         let mut parser = Parser::new(tokens);
         parser.current = 1;
         let prev_kind = parser.advance().kind.clone();

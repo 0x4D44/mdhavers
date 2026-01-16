@@ -250,10 +250,7 @@ fn lsp_binary_propagates_stdout_disconnect_after_initialize_for_coverage() {
                 Ok(0) => break,
                 Ok(n) => {
                     stdout.extend_from_slice(&buf[..n]);
-                    if stdout
-                        .windows(needle.len())
-                        .any(|window| window == needle)
-                    {
+                    if stdout.windows(needle.len()).any(|window| window == needle) {
                         break;
                     }
                 }
@@ -352,10 +349,7 @@ fn lsp_binary_reports_io_thread_join_error_after_stdout_disconnect_for_coverage(
                 Ok(0) => break,
                 Ok(n) => {
                     stdout.extend_from_slice(&buf[..n]);
-                    if stdout
-                        .windows(needle.len())
-                        .any(|window| window == needle)
-                    {
+                    if stdout.windows(needle.len()).any(|window| window == needle) {
                         break;
                     }
                 }

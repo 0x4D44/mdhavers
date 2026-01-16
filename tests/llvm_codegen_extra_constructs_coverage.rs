@@ -545,13 +545,13 @@ outer()
         r#"bitnot()"#,
         r#"shl()"#,
         r#"shr()"#,
-	        // assignment to undefined variable
-	        r#"x = 1"#,
-	        // Native method call supports up to 8 args.
-	        r#"1.foo(1, 2, 3, 4, 5, 6, 7, 8, 9)"#,
+        // assignment to undefined variable
+        r#"x = 1"#,
+        // Native method call supports up to 8 args.
+        r#"1.foo(1, 2, 3, 4, 5, 6, 7, 8, 9)"#,
         // Calling an undefined name as a function should compile-error (exercise compile_call fall-through).
         r#"__definitely_undefined_fn__()"#,
-	    ];
+    ];
 
     for src in ok_cases {
         compile_to_ir_ok(src);
@@ -611,7 +611,9 @@ fn llvm_codegen_inclusive_range_for_loop_ast_path_for_coverage() {
         }),
         span,
     }]);
-    let ir = LLVMCompiler::new().compile_to_ir(&program).expect("compile");
+    let ir = LLVMCompiler::new()
+        .compile_to_ir(&program)
+        .expect("compile");
     assert!(!ir.is_empty());
 }
 
@@ -627,7 +629,9 @@ fn llvm_codegen_covers_haud_yer_wheesht_builtin_via_ast_for_coverage() {
         span,
     };
     let program = Program::new(vec![Stmt::Print { value: call, span }]);
-    let ir = LLVMCompiler::new().compile_to_ir(&program).expect("compile");
+    let ir = LLVMCompiler::new()
+        .compile_to_ir(&program)
+        .expect("compile");
     assert!(!ir.is_empty());
 }
 
@@ -665,6 +669,8 @@ fn llvm_codegen_log_wheesht_ast_is_noop_for_coverage() {
         extras: vec![],
         span,
     }]);
-    let ir = LLVMCompiler::new().compile_to_ir(&program).expect("compile");
+    let ir = LLVMCompiler::new()
+        .compile_to_ir(&program)
+        .expect("compile");
     assert!(!ir.is_empty());
 }

@@ -33,4 +33,3 @@ fn llvm_codegen_try_catch_non_block_bodies_are_covered_in_dependency_instance() 
         .expect("expected compilation to succeed");
     assert!(!ir.is_empty());
 }
-

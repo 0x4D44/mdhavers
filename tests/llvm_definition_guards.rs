@@ -37,7 +37,10 @@ dae f() { gie 2 }
     let out = run_exe(&exe);
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("'f' hasnae been defined yet"), "stderr:\n{stderr}");
+    assert!(
+        stderr.contains("'f' hasnae been defined yet"),
+        "stderr:\n{stderr}"
+    );
 }
 
 #[test]
@@ -57,7 +60,10 @@ kin Foo { }
     let out = run_exe(&exe);
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("'Foo' hasnae been defined yet"), "stderr:\n{stderr}");
+    assert!(
+        stderr.contains("'Foo' hasnae been defined yet"),
+        "stderr:\n{stderr}"
+    );
 }
 
 #[test]
@@ -77,7 +83,10 @@ thing Point { x, y }
     let out = run_exe(&exe);
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("'Point' hasnae been defined yet"), "stderr:\n{stderr}");
+    assert!(
+        stderr.contains("'Point' hasnae been defined yet"),
+        "stderr:\n{stderr}"
+    );
 }
 
 #[test]
@@ -98,7 +107,10 @@ blether B()
     let out = run_exe(&exe);
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("'A' hasnae been defined yet"), "stderr:\n{stderr}");
+    assert!(
+        stderr.contains("'A' hasnae been defined yet"),
+        "stderr:\n{stderr}"
+    );
 }
 
 #[test]
@@ -126,5 +138,8 @@ fetch "mymod"
     let out = run_exe(&exe);
     assert!(!out.status.success());
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("'f' hasnae been defined yet"), "stderr:\n{stderr}");
+    assert!(
+        stderr.contains("'f' hasnae been defined yet"),
+        "stderr:\n{stderr}"
+    );
 }

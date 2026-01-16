@@ -18,7 +18,9 @@ fn tri_module_and_object_are_exercised_for_instantiation_coverage() {
     let _ = module.get("RAD_TO_DEG").unwrap();
 
     let ctor_val = module.get("Thing3D").unwrap();
-    let ctor = ctor_val.as_native_function().expect("expected tri constructor");
+    let ctor = ctor_val
+        .as_native_function()
+        .expect("expected tri constructor");
     let obj_val = (ctor.func)(Vec::new()).unwrap();
     let Value::NativeObject(obj) = obj_val else {
         panic!("expected tri object");
@@ -42,7 +44,9 @@ fn tri_module_and_object_are_exercised_for_instantiation_coverage() {
     let _ = obj.call("nope", vec![]).unwrap();
 
     // Exercise module.call constructor path (drives apply_constructor_args + set_arg).
-    let mesch_val = module.call("Mesch", vec![Value::Integer(10), Value::Integer(11)]).unwrap();
+    let mesch_val = module
+        .call("Mesch", vec![Value::Integer(10), Value::Integer(11)])
+        .unwrap();
     let Value::NativeObject(mesch) = mesch_val else {
         panic!("expected tri object from module.call");
     };

@@ -69,4 +69,3 @@ blether m.add(3)
 
     assert_eq!(compile_and_run(dir.path(), &main_path), "5");
 }
-

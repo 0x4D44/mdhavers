@@ -281,12 +281,16 @@ fn interpreter_tls_send_rejects_non_bytes_argument_for_coverage() {
         .interpret(&program)
         .expect_err("expected tls_send() type error");
     let s = format!("{err:?}");
-    assert!(s.contains("tls_send() expects bytes"), "unexpected error: {s}");
+    assert!(
+        s.contains("tls_send() expects bytes"),
+        "unexpected error: {s}"
+    );
 }
 
 #[test]
 fn interpreter_tls_client_new_rejects_invalid_ca_pem_for_coverage() {
-    let bad_ca = escape_for_braw("-----BEGIN CERTIFICATE-----\nNOT_BASE64\n-----END CERTIFICATE-----\n");
+    let bad_ca =
+        escape_for_braw("-----BEGIN CERTIFICATE-----\nNOT_BASE64\n-----END CERTIFICATE-----\n");
     let code = format!(
         r#"
 ken cfg = {{"mode": "client", "server_name": "localhost", "ca_pem": "{bad_ca}"}}
@@ -305,8 +309,10 @@ tls_client_new(cfg)
 
 #[test]
 fn interpreter_tls_server_new_rejects_invalid_server_cert_for_coverage() {
-    let bad_cert = escape_for_braw("-----BEGIN CERTIFICATE-----\nNOT_BASE64\n-----END CERTIFICATE-----\n");
-    let bad_key = escape_for_braw("-----BEGIN PRIVATE KEY-----\nNOT_BASE64\n-----END PRIVATE KEY-----\n");
+    let bad_cert =
+        escape_for_braw("-----BEGIN CERTIFICATE-----\nNOT_BASE64\n-----END CERTIFICATE-----\n");
+    let bad_key =
+        escape_for_braw("-----BEGIN PRIVATE KEY-----\nNOT_BASE64\n-----END PRIVATE KEY-----\n");
     let code = format!(
         r#"
 ken cfg = {{"mode": "server", "cert_pem": "{bad_cert}", "key_pem": "{bad_key}"}}
@@ -327,7 +333,8 @@ tls_client_new(cfg)
 fn interpreter_tls_server_new_rejects_invalid_pkcs8_key_for_coverage() {
     let (cert_pem, _key_pem) = generate_cert();
     let cert_escaped = escape_for_braw(&cert_pem);
-    let bad_key = escape_for_braw("-----BEGIN PRIVATE KEY-----\nNOT_BASE64\n-----END PRIVATE KEY-----\n");
+    let bad_key =
+        escape_for_braw("-----BEGIN PRIVATE KEY-----\nNOT_BASE64\n-----END PRIVATE KEY-----\n");
 
     let code = format!(
         r#"
@@ -349,8 +356,9 @@ tls_client_new(cfg)
 fn interpreter_tls_server_new_rejects_invalid_rsa_key_for_coverage() {
     let (cert_pem, _key_pem) = generate_cert();
     let cert_escaped = escape_for_braw(&cert_pem);
-    let bad_key =
-        escape_for_braw("-----BEGIN RSA PRIVATE KEY-----\nNOT_BASE64\n-----END RSA PRIVATE KEY-----\n");
+    let bad_key = escape_for_braw(
+        "-----BEGIN RSA PRIVATE KEY-----\nNOT_BASE64\n-----END RSA PRIVATE KEY-----\n",
+    );
 
     let code = format!(
         r#"

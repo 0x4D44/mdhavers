@@ -34,8 +34,10 @@ r["value"][0]["port"]
 
     // Cover the non-SRV filter path without touching the network.
     let name = Name::from_ascii("_sip._udp.example.com.").expect("query name");
-    let lookup =
-        Lookup::from_rdata(Query::query(name, RecordType::SRV), RData::A(A::new(127, 0, 0, 1)));
+    let lookup = Lookup::from_rdata(
+        Query::query(name, RecordType::SRV),
+        RData::A(A::new(127, 0, 0, 1)),
+    );
     mdhavers::interpreter::dns_set_next_srv_lookup_for_coverage(Ok(lookup));
 
     let value = interpret_ok(
@@ -77,8 +79,10 @@ r["value"][0]["service"]
 
     // Cover the non-NAPTR filter path without touching the network.
     let name = Name::from_ascii("example.com.").expect("query name");
-    let lookup =
-        Lookup::from_rdata(Query::query(name, RecordType::NAPTR), RData::A(A::new(127, 0, 0, 1)));
+    let lookup = Lookup::from_rdata(
+        Query::query(name, RecordType::NAPTR),
+        RData::A(A::new(127, 0, 0, 1)),
+    );
     mdhavers::interpreter::dns_set_next_naptr_lookup_for_coverage(Ok(lookup));
 
     let value = interpret_ok(

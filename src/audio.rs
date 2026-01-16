@@ -90,46 +90,46 @@ mod miniaudio {
         channels: u32,
     }
 
-		    impl Device {
-		        pub fn new(_ctx: Option<()>, config: &DeviceConfig) -> Result<Self, ()> {
-                    let fail = FAIL_NEXT_DEVICE_NEW.with(|flag| {
-                        let value = flag.get();
-                        flag.set(false);
-                        value
-                    });
-                    if fail {
-                        return Err(());
-                    }
-		            Ok(Device {
-		                callback: config.callback.clone(),
-		                channels: config.playback.channels,
-		            })
-		        }
+    impl Device {
+        pub fn new(_ctx: Option<()>, config: &DeviceConfig) -> Result<Self, ()> {
+            let fail = FAIL_NEXT_DEVICE_NEW.with(|flag| {
+                let value = flag.get();
+                flag.set(false);
+                value
+            });
+            if fail {
+                return Err(());
+            }
+            Ok(Device {
+                callback: config.callback.clone(),
+                channels: config.playback.channels,
+            })
+        }
 
-		        pub fn start(&self) -> Result<(), ()> {
-                    let fail = FAIL_NEXT_DEVICE_START.with(|flag| {
-                        let value = flag.get();
-                        flag.set(false);
-                        value
-                    });
-                    if fail {
-                        return Err(());
-                    }
-		            let Some(callback) = &self.callback else {
-		                return Ok(());
-		            };
+        pub fn start(&self) -> Result<(), ()> {
+            let fail = FAIL_NEXT_DEVICE_START.with(|flag| {
+                let value = flag.get();
+                flag.set(false);
+                value
+            });
+            if fail {
+                return Err(());
+            }
+            let Some(callback) = &self.callback else {
+                return Ok(());
+            };
 
-	            let mut output_samples = vec![0.0f32; self.channels as usize * 2];
-	            let mut output = FramesMut::wrap(&mut output_samples, Format::F32, self.channels);
+            let mut output_samples = vec![0.0f32; self.channels as usize * 2];
+            let mut output = FramesMut::wrap(&mut output_samples, Format::F32, self.channels);
 
-	            let mut input_samples = Vec::new();
-	            let mut input = FramesMut::wrap(&mut input_samples, Format::F32, self.channels);
+            let mut input_samples = Vec::new();
+            let mut input = FramesMut::wrap(&mut input_samples, Format::F32, self.channels);
 
-	            if let Ok(mut cb) = callback.lock() {
-	                (cb.as_mut())(self, &mut output, &mut input);
-	            }
-	            Ok(())
-	        }
+            if let Ok(mut cb) = callback.lock() {
+                (cb.as_mut())(self, &mut output, &mut input);
+            }
+            Ok(())
+        }
 
         pub fn stop(&self) -> Result<(), ()> {
             Ok(())
@@ -209,29 +209,29 @@ mod miniaudio {
     }
 
     #[cfg(test)]
-	    mod tests {
-	        use super::*;
+    mod tests {
+        use super::*;
 
-	        #[test]
-	        fn device_start_skips_poisoned_callback_lock_for_coverage() {
-	            let mut config = DeviceConfig::new(DeviceType::Playback);
-	            config.playback_mut().set_channels(2);
-	            config.set_data_callback(|_device, _output, _input| {});
+        #[test]
+        fn device_start_skips_poisoned_callback_lock_for_coverage() {
+            let mut config = DeviceConfig::new(DeviceType::Playback);
+            config.playback_mut().set_channels(2);
+            config.set_data_callback(|_device, _output, _input| {});
 
-	            let device = Device::new(None, &config).expect("device");
-	            device.start().expect("start");
+            let device = Device::new(None, &config).expect("device");
+            device.start().expect("start");
 
-	            let callback = config.callback.clone().expect("callback");
-	            let callback_clone = Arc::clone(&callback);
-	            let _ = std::thread::spawn(move || {
-	                let _guard = callback_clone.lock().expect("lock callback");
-	                panic!("poison callback");
-	            })
-	            .join();
+            let callback = config.callback.clone().expect("callback");
+            let callback_clone = Arc::clone(&callback);
+            let _ = std::thread::spawn(move || {
+                let _guard = callback_clone.lock().expect("lock callback");
+                panic!("poison callback");
+            })
+            .join();
 
-	            device.start().expect("start");
-	        }
-	    }
+            device.start().expect("start");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1890,14 +1890,14 @@ mod tests {
         let original_value = std::env::var_os(key);
         std::env::set_var(key, "1");
 
-	        let found = resolve_default_soundfont().unwrap();
-	        assert_eq!(found, sf_path);
+        let found = resolve_default_soundfont().unwrap();
+        assert_eq!(found, sf_path);
 
-	        restore_env_var(key, original_value);
-	        restore_env_var(key, pre_test_value);
+        restore_env_var(key, original_value);
+        restore_env_var(key, pre_test_value);
 
-	        std::env::set_current_dir(original_dir).unwrap();
-	    }
+        std::env::set_current_dir(original_dir).unwrap();
+    }
 
     #[test]
     fn test_resolve_default_soundfont_current_exe_error_branch_restores_existing_env_var() {
@@ -1919,15 +1919,15 @@ mod tests {
         let original_value = std::env::var_os(key);
         std::env::set_var(key, "1");
 
-	        let found = resolve_default_soundfont().unwrap();
-	        assert_eq!(found, sf_path);
+        let found = resolve_default_soundfont().unwrap();
+        assert_eq!(found, sf_path);
 
-	        restore_env_var(key, original_value);
-	        restore_env_var(key, actual_original);
-	        restore_env_var(key, pre_test_value);
+        restore_env_var(key, original_value);
+        restore_env_var(key, actual_original);
+        restore_env_var(key, pre_test_value);
 
-	        std::env::set_current_dir(original_dir).unwrap();
-	    }
+        std::env::set_current_dir(original_dir).unwrap();
+    }
 
     #[test]
     fn test_resolve_default_soundfont_missing() {
@@ -2043,11 +2043,8 @@ mod tests {
 
         let midi_lade = get_native(&env, "midi_lade");
         miniaudio::fail_next_device_new();
-        let err = (midi_lade.func)(vec![
-            Value::String("nope.mid".to_string()),
-            Value::Nil,
-        ])
-        .unwrap_err();
+        let err =
+            (midi_lade.func)(vec![Value::String("nope.mid".to_string()), Value::Nil]).unwrap_err();
         assert_eq!(err, "Cannae stairt the soond device");
     }
 
@@ -2461,8 +2458,10 @@ mod tests {
         assert_eq!(err, "muisic_lade needs a string path");
 
         let handle = as_handle(
-            &(muisic_lade.func)(vec![Value::String(music_path.to_string_lossy().to_string())])
-                .unwrap(),
+            &(muisic_lade.func)(vec![Value::String(
+                music_path.to_string_lossy().to_string(),
+            )])
+            .unwrap(),
             "handle",
         )
         .unwrap() as i64;
@@ -2876,9 +2875,18 @@ mod tests {
             ("soond_gae_on", vec![Value::Integer(999)]),
             ("soond_stap", vec![Value::Integer(999)]),
             ("soond_is_spielin", vec![Value::Integer(999)]),
-            ("soond_pit_luid", vec![Value::Integer(999), Value::Float(0.5)]),
-            ("soond_pit_pan", vec![Value::Integer(999), Value::Float(0.0)]),
-            ("soond_pit_tune", vec![Value::Integer(999), Value::Float(1.0)]),
+            (
+                "soond_pit_luid",
+                vec![Value::Integer(999), Value::Float(0.5)],
+            ),
+            (
+                "soond_pit_pan",
+                vec![Value::Integer(999), Value::Float(0.0)],
+            ),
+            (
+                "soond_pit_tune",
+                vec![Value::Integer(999), Value::Float(1.0)],
+            ),
             (
                 "soond_pit_rin_roond",
                 vec![Value::Integer(999), Value::Bool(true)],
@@ -2891,9 +2899,18 @@ mod tests {
             ("muisic_loup", vec![Value::Integer(999), Value::Float(0.0)]),
             ("muisic_hou_lang", vec![Value::Integer(999)]),
             ("muisic_whaur", vec![Value::Integer(999)]),
-            ("muisic_pit_luid", vec![Value::Integer(999), Value::Float(0.5)]),
-            ("muisic_pit_pan", vec![Value::Integer(999), Value::Float(0.0)]),
-            ("muisic_pit_tune", vec![Value::Integer(999), Value::Float(1.0)]),
+            (
+                "muisic_pit_luid",
+                vec![Value::Integer(999), Value::Float(0.5)],
+            ),
+            (
+                "muisic_pit_pan",
+                vec![Value::Integer(999), Value::Float(0.0)],
+            ),
+            (
+                "muisic_pit_tune",
+                vec![Value::Integer(999), Value::Float(1.0)],
+            ),
             (
                 "muisic_pit_rin_roond",
                 vec![Value::Integer(999), Value::Bool(false)],
@@ -2905,7 +2922,10 @@ mod tests {
             ("midi_loup", vec![Value::Integer(999), Value::Float(0.0)]),
             ("midi_hou_lang", vec![Value::Integer(999)]),
             ("midi_whaur", vec![Value::Integer(999)]),
-            ("midi_pit_luid", vec![Value::Integer(999), Value::Float(0.5)]),
+            (
+                "midi_pit_luid",
+                vec![Value::Integer(999), Value::Float(0.5)],
+            ),
             ("midi_pit_pan", vec![Value::Integer(999), Value::Float(0.0)]),
             (
                 "midi_pit_rin_roond",

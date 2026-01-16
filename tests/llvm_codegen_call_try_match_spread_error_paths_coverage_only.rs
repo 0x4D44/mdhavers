@@ -121,10 +121,8 @@ fn llvm_codegen_covers_user_function_call_non_spread_arg_error_path_when_any_spr
         }),
         span,
     };
-    let program = program_with_user_function_call(
-        vec![binary_with_nested_spread(span), spread_list],
-        span,
-    );
+    let program =
+        program_with_user_function_call(vec![binary_with_nested_spread(span), spread_list], span);
 
     let compiler = LLVMCompiler::new();
     let err = compiler
@@ -246,4 +244,3 @@ fn llvm_codegen_covers_match_value_compile_expr_error_path_for_coverage() {
         .expect_err("expected spread outside list to be a compile error");
     assert_spread_outside_list_compile_error(err);
 }
-

@@ -1,12 +1,11 @@
 #![cfg(coverage)]
 
-use mdhavers::{parse, run, HaversError, Interpreter, Value};
 use mdhavers::interpreter::TraceMode;
+use mdhavers::{parse, run, HaversError, Interpreter, Value};
 
 #[test]
 fn interpreter_instantiation_sweep_runs_for_coverage() {
-    let result = run(
-        r#"
+    let result = run(r#"
 mak_siccar 1 < 2
 mak_siccar 1 <= 1
 mak_siccar 2 > 1
@@ -76,8 +75,7 @@ fer i in [1, 2, 3] { sum2 = sum2 + i }
 mak_siccar sum2 == 6
 
 42
-"#,
-    )
+"#)
     .unwrap();
 
     assert_eq!(result, Value::Integer(42));

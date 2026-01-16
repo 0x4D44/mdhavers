@@ -238,7 +238,10 @@ fn interpreter_builtin_edges_and_errors_smoke() {
         ("log_init({\"sinks\": [{\"kind\": 1}]})", false),
         ("log_init({\"sinks\": [{\"kind\": \"callback\"}]})", false),
         // defaults: file.append and memory.max
-        ("log_init({\"sinks\": [{\"kind\": \"file\", \"path\": \"mdh_test.log\"}]})", true),
+        (
+            "log_init({\"sinks\": [{\"kind\": \"file\", \"path\": \"mdh_test.log\"}]})",
+            true,
+        ),
         ("log_init({\"sinks\": [{\"kind\": \"memory\"}]})", true),
         // reset logger back to defaults (config omitted)
         ("log_init()", true),
@@ -742,7 +745,9 @@ fn interpreter_file_io_error_branches_cover_map_err_for_coverage() {
     fn assert_interpret_err_contains(src: &str, needle: &str) {
         let program = parse(src).unwrap();
         let mut interp = Interpreter::new();
-        let err = interp.interpret(&program).expect_err("expected interpreter error");
+        let err = interp
+            .interpret(&program)
+            .expect_err("expected interpreter error");
         let err_str = format!("{err:?}");
         assert!(
             err_str.contains(needle),

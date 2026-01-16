@@ -10,7 +10,12 @@ fn parser_treats_identifier_underscore_token_as_wildcard_pattern_for_coverage() 
         Token::new(TokenKind::Integer(1), "1".to_string(), 1, 6),
         Token::new(TokenKind::LeftBrace, "{".to_string(), 1, 8),
         Token::new(TokenKind::Whan, "whan".to_string(), 1, 10),
-        Token::new(TokenKind::Identifier("_".to_string()), "_".to_string(), 1, 15),
+        Token::new(
+            TokenKind::Identifier("_".to_string()),
+            "_".to_string(),
+            1,
+            15,
+        ),
         Token::new(TokenKind::Arrow, "->".to_string(), 1, 17),
         Token::new(TokenKind::Integer(0), "0".to_string(), 1, 20),
         Token::new(TokenKind::RightBrace, "}".to_string(), 1, 21),

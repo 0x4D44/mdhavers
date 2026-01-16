@@ -2270,7 +2270,8 @@ dae f() {
             .is_err());
 
         // compile_expr: cover error propagation for various expression shapes.
-        let compile_expr: fn(&mut WasmCompiler, &Expr) -> HaversResult<()> = WasmCompiler::compile_expr;
+        let compile_expr: fn(&mut WasmCompiler, &Expr) -> HaversResult<()> =
+            WasmCompiler::compile_expr;
         assert!(compile_expr(
             &mut compiler,
             &Expr::Assign {
@@ -2544,7 +2545,10 @@ dae f() {
         });
 
         let mut req = WasmImportRequirements::default();
-        req.scan_stmt(&Stmt::Return { value: None, span }, &std::collections::HashSet::new());
+        req.scan_stmt(
+            &Stmt::Return { value: None, span },
+            &std::collections::HashSet::new(),
+        );
     }
 
     #[test]

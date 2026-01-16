@@ -38,8 +38,7 @@ fn run(source: &str) -> String {
 
 #[test]
 fn llvm_class_is_a_first_class_value_and_callable() {
-    let out = run(
-        r#"
+    let out = run(r#"
 kin Box {
     dae init(v) {
         masel.v = v
@@ -52,15 +51,13 @@ kin Box {
 ken C = Box
 ken b = C(41)
 blether b.get()
-"#,
-    );
+"#);
     assert_eq!(out.trim(), "41");
 }
 
 #[test]
 fn llvm_class_value_roundtrips_through_dict_and_is_callable() {
-    let out = run(
-        r#"
+    let out = run(r#"
 kin Box {
     dae init(v) { masel.v = v }
     dae get() { gie masel.v }
@@ -69,8 +66,6 @@ kin Box {
 ken d = {"C": Box}
 ken C = d.C
 blether C(7).get()
-"#,
-    );
+"#);
     assert_eq!(out.trim(), "7");
 }
-

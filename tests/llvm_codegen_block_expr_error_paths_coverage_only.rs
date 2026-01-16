@@ -45,4 +45,3 @@ fn llvm_codegen_covers_block_expr_stmt_compile_error_path_for_coverage() {
         .expect_err("expected spread outside list to be a compile error");
     assert_spread_outside_list_compile_error(err);
 }
-

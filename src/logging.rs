@@ -815,8 +815,18 @@ mod tests {
 
     #[test]
     fn test_span_exit_mismatch_branch() {
-        let span1 = new_span("one".to_string(), LogLevel::Blether, "t".to_string(), Vec::new());
-        let span2 = new_span("two".to_string(), LogLevel::Blether, "t".to_string(), Vec::new());
+        let span1 = new_span(
+            "one".to_string(),
+            LogLevel::Blether,
+            "t".to_string(),
+            Vec::new(),
+        );
+        let span2 = new_span(
+            "two".to_string(),
+            LogLevel::Blether,
+            "t".to_string(),
+            Vec::new(),
+        );
         span_enter(span1.clone());
         span_enter(span2.clone());
         assert!(span_exit(span1.id).is_err());
@@ -1037,25 +1047,28 @@ mod tests {
         use std::hint::black_box;
 
         // LogFilter::level_for_target closure (best.map(...))
-	        let filter = LogFilter {
-	            default: LogLevel::Blether,
-	            rules: vec![
-	                ("net".to_string(), LogLevel::Roar),
-	                ("net.http".to_string(), LogLevel::Whisper),
-	            ],
-	        };
-	        assert_eq!(filter.level_for_target("net.http.server"), LogLevel::Whisper);
-	        let filter_reversed = LogFilter {
-	            default: LogLevel::Blether,
-	            rules: vec![
-	                ("net.http".to_string(), LogLevel::Whisper),
-	                ("net".to_string(), LogLevel::Roar),
-	            ],
-	        };
-	        assert_eq!(
-	            filter_reversed.level_for_target("net.http.server"),
-	            LogLevel::Whisper
-	        );
+        let filter = LogFilter {
+            default: LogLevel::Blether,
+            rules: vec![
+                ("net".to_string(), LogLevel::Roar),
+                ("net.http".to_string(), LogLevel::Whisper),
+            ],
+        };
+        assert_eq!(
+            filter.level_for_target("net.http.server"),
+            LogLevel::Whisper
+        );
+        let filter_reversed = LogFilter {
+            default: LogLevel::Blether,
+            rules: vec![
+                ("net.http".to_string(), LogLevel::Whisper),
+                ("net".to_string(), LogLevel::Roar),
+            ],
+        };
+        assert_eq!(
+            filter_reversed.level_for_target("net.http.server"),
+            LogLevel::Whisper
+        );
 
         // parse_filter closure in split/map/filter path with an empty segment.
         assert!(parse_filter("blether,,net=roar").is_ok());
@@ -1112,7 +1125,10 @@ mod tests {
                 ("net".to_string(), LogLevel::Roar),
             ],
         };
-        assert_eq!(filter.level_for_target("net.http.server"), LogLevel::Whisper);
+        assert_eq!(
+            filter.level_for_target("net.http.server"),
+            LogLevel::Whisper
+        );
         assert_eq!(filter.level_for_target("net"), LogLevel::Roar);
         assert_eq!(filter.level_for_target("other"), LogLevel::Blether);
 

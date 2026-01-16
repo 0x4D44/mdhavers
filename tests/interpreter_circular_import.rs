@@ -16,7 +16,12 @@ fn interpreter_detects_circular_imports_and_reports_the_chain() {
     let HaversError::CircularImport { path } = err else {
         panic!("expected CircularImport, got: {err:?}");
     };
-    assert!(path.contains("a.braw"), "chain should mention a.braw, got: {path}");
-    assert!(path.contains("b.braw"), "chain should mention b.braw, got: {path}");
+    assert!(
+        path.contains("a.braw"),
+        "chain should mention a.braw, got: {path}"
+    );
+    assert!(
+        path.contains("b.braw"),
+        "chain should mention b.braw, got: {path}"
+    );
 }
-

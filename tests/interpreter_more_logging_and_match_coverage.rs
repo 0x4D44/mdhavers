@@ -5,7 +5,10 @@ use mdhavers::{parse, run, run_with_output, Interpreter};
 fn expect_interpret_err(source: &str) {
     let program = parse(source).expect("expected program to parse");
     let mut interp = Interpreter::new();
-    assert!(interp.interpret(&program).is_err(), "expected interpret() to error");
+    assert!(
+        interp.interpret(&program).is_err(),
+        "expected interpret() to error"
+    );
 }
 
 #[test]
@@ -26,11 +29,9 @@ keek "hi" {
 #[test]
 fn interpreter_log_init_color_and_timestamps_bool_are_covered() {
     // Exercises `Value::Bool` handling for `color` and `timestamps`.
-    run(
-        r#"
+    run(r#"
 log_init({"format": "text", "color": aye, "timestamps": nae})
-"#,
-    )
+"#)
     .expect("expected log_init to succeed");
 }
 
@@ -39,27 +40,23 @@ fn interpreter_log_init_json_format_and_explicit_stdout_stderr_sinks_are_covered
     // Exercises:
     // - `format == "json"` branch
     // - `"stderr"` and `"stdout"` sink kinds
-    let _ = run(
-        r#"
+    let _ = run(r#"
 log_init({"format": "text", "sinks": [{"kind": "stderr"}, {"kind": "stdout"}]})
 log_init({"format": "json", "sinks": [{"kind": "stderr"}, {"kind": "stdout"}]})
-"#,
-    );
+"#);
 }
 
 #[test]
 fn interpreter_class_init_error_propagates_from_call_value_for_coverage() {
     // Exercises the error-propagation path from `Interpreter::call_value` when calling a class init.
-    let _ = run(
-        r#"
+    let _ = run(r#"
 kin Boom {
     dae init() {
         blether missing
     }
 }
 Boom()
-"#,
-    );
+"#);
 }
 
 #[test]
@@ -70,7 +67,10 @@ fn interpreter_log_init_file_sink_requires_path_error_is_covered() {
 
 #[test]
 fn interpreter_log_init_file_sink_append_must_be_bool_error_is_covered() {
-    assert!(run(r#"log_init({"sinks": [{"kind": "file", "path": "/tmp/mdh_test.log", "append": 1}]})"#).is_err());
+    assert!(run(
+        r#"log_init({"sinks": [{"kind": "file", "path": "/tmp/mdh_test.log", "append": 1}]})"#
+    )
+    .is_err());
 }
 
 #[test]
@@ -85,12 +85,10 @@ fn interpreter_log_init_unknown_sink_kind_error_is_covered() {
 
 #[test]
 fn interpreter_log_init_empty_sinks_falls_back_to_stderr_for_coverage() {
-    run(
-        r#"
+    run(r#"
 log_init({"sinks": []})
 log_blether "hi"
-"#,
-    )
+"#)
     .expect("expected log_init to fall back to stderr");
 }
 
@@ -264,8 +262,7 @@ fn interpreter_pipe_operator_error_propagation_is_covered() {
 #[test]
 fn interpreter_float_and_list_binary_ops_are_covered() {
     // Covers float arithmetic, mixed int+float, list concatenation, and modulo-on-float.
-    assert!(run(
-        r#"
+    assert!(run(r#"
 blether 1.5 + 2.5
 blether 1 + 2.5
 blether 5.0 - 2.0
@@ -273,8 +270,7 @@ blether 2.0 * 3.0
 blether 5.0 / 2.0
 blether 5.0 % 2.0
 blether [1, 2] + [3]
-"#,
-    )
+"#,)
     .is_ok());
 }
 

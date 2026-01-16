@@ -4,9 +4,7 @@ use mdhavers::{parse, LLVMCompiler};
 
 fn expect_compile_error(src: &str) {
     let program = parse(src).expect("parse");
-    let _ = LLVMCompiler::new()
-        .compile_to_ir(&program)
-        .unwrap_err();
+    let _ = LLVMCompiler::new().compile_to_ir(&program).unwrap_err();
 }
 
 #[test]
@@ -28,4 +26,3 @@ fn llvm_pipe_left_compile_error_is_propagated_for_coverage() {
 fn llvm_pipe_lambda_body_compile_error_is_propagated_for_coverage() {
     expect_compile_error("blether 1 |> |x| __undef\n");
 }
-

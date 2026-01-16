@@ -1346,20 +1346,19 @@ fn format_runtime_error(source: &str, error: mdhavers::HaversError) -> String {
 }
 
 #[cfg(test)]
-    mod tests {
-        use super::*;
-        use std::io;
-        use std::os::unix::fs::PermissionsExt;
-        use tempfile::tempdir;
+mod tests {
+    use super::*;
+    use std::io;
+    use std::os::unix::fs::PermissionsExt;
+    use tempfile::tempdir;
 
     #[test]
     fn repl_readline_error_helper_covers_all_branches_for_coverage() {
         assert!(handle_repl_readline_error(ReadlineError::Interrupted));
         assert!(!handle_repl_readline_error(ReadlineError::Eof));
-        assert!(!handle_repl_readline_error(ReadlineError::Io(io::Error::new(
-            io::ErrorKind::Other,
-            "boom"
-        ))));
+        assert!(!handle_repl_readline_error(ReadlineError::Io(
+            io::Error::new(io::ErrorKind::Other, "boom")
+        )));
     }
 
     #[test]
@@ -1473,49 +1472,49 @@ fn format_runtime_error(source: &str, error: mdhavers::HaversError) -> String {
     }
 
     #[test]
-        fn print_environment_covers_function_listing_branch_for_coverage() {
-            let mut interpreter = Interpreter::new();
-            let mut src = String::new();
-            for i in 0..11 {
-                src.push_str(&format!("dae f{}() {{ gie {} }}\n", i, i));
-            }
-            src.push_str("ken x = 1\n");
-            let program = parse(&src).expect("parse");
-            interpreter.interpret(&program).expect("interpret");
-            print_environment(&interpreter);
+    fn print_environment_covers_function_listing_branch_for_coverage() {
+        let mut interpreter = Interpreter::new();
+        let mut src = String::new();
+        for i in 0..11 {
+            src.push_str(&format!("dae f{}() {{ gie {} }}\n", i, i));
         }
+        src.push_str("ken x = 1\n");
+        let program = parse(&src).expect("parse");
+        interpreter.interpret(&program).expect("interpret");
+        print_environment(&interpreter);
+    }
 
-        #[test]
-        fn print_environment_covers_function_listing_without_hidden_for_coverage() {
-            let mut interpreter = Interpreter::new();
-            let src = "dae f0() { gie 0 }\nken x = 1\n";
-            let program = parse(src).expect("parse");
-            interpreter.interpret(&program).expect("interpret");
-            print_environment(&interpreter);
-        }
+    #[test]
+    fn print_environment_covers_function_listing_without_hidden_for_coverage() {
+        let mut interpreter = Interpreter::new();
+        let src = "dae f0() { gie 0 }\nken x = 1\n";
+        let program = parse(src).expect("parse");
+        interpreter.interpret(&program).expect("interpret");
+        print_environment(&interpreter);
+    }
 
-        #[test]
-        fn print_environment_covers_values_only_without_functions_for_coverage() {
-            let mut interpreter = Interpreter::new();
-            let program = parse("ken x = 1\n").expect("parse");
-            interpreter.interpret(&program).expect("interpret");
-            print_environment(&interpreter);
-        }
+    #[test]
+    fn print_environment_covers_values_only_without_functions_for_coverage() {
+        let mut interpreter = Interpreter::new();
+        let program = parse("ken x = 1\n").expect("parse");
+        interpreter.interpret(&program).expect("interpret");
+        print_environment(&interpreter);
+    }
 
-        #[test]
-        fn print_environment_handles_only_functions_for_coverage() {
-            let mut interpreter = Interpreter::new();
-            let program = parse("dae f0() { gie 0 }\n").expect("parse");
-            interpreter.interpret(&program).expect("interpret");
-            print_environment(&interpreter);
-        }
+    #[test]
+    fn print_environment_handles_only_functions_for_coverage() {
+        let mut interpreter = Interpreter::new();
+        let program = parse("dae f0() { gie 0 }\n").expect("parse");
+        interpreter.interpret(&program).expect("interpret");
+        print_environment(&interpreter);
+    }
 
-        #[test]
-        fn run_file_and_trace_cover_empty_parent_paths_for_coverage() {
-            let unique = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("time")
-                .as_nanos();
+    #[test]
+    fn run_file_and_trace_cover_empty_parent_paths_for_coverage() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("time")
+            .as_nanos();
         let filename = format!(".tmp_mdhavers_main_{}.braw", unique);
         std::fs::write(&filename, "blether 1\n").expect("write file");
 
@@ -1526,96 +1525,98 @@ fn format_runtime_error(source: &str, error: mdhavers::HaversError) -> String {
         std::fs::remove_file(&filename).expect("cleanup file");
     }
 
-        #[test]
-        fn format_error_helpers_cover_no_line_and_no_suggestion_paths_for_coverage() {
-            let err = mdhavers::HaversError::ModuleNotFound {
-                name: "missing".to_string(),
-            };
-            let msg = format_parse_error("", err.clone());
-            assert!(msg.contains("Cannae find module"));
+    #[test]
+    fn format_error_helpers_cover_no_line_and_no_suggestion_paths_for_coverage() {
+        let err = mdhavers::HaversError::ModuleNotFound {
+            name: "missing".to_string(),
+        };
+        let msg = format_parse_error("", err.clone());
+        assert!(msg.contains("Cannae find module"));
 
-            let msg = format_runtime_error("", err);
-            assert!(msg.contains("Cannae find module"));
-        }
+        let msg = format_runtime_error("", err);
+        assert!(msg.contains("Cannae find module"));
+    }
 
-        #[test]
-        fn format_error_helpers_include_suggestions_for_coverage() {
-            let err = mdhavers::HaversError::UndefinedVariable {
-                name: "true".to_string(),
-                line: 1,
-            };
-            let msg = format_parse_error("true\n", err);
-            assert!(msg.contains("aye"));
-        }
+    #[test]
+    fn format_error_helpers_include_suggestions_for_coverage() {
+        let err = mdhavers::HaversError::UndefinedVariable {
+            name: "true".to_string(),
+            line: 1,
+        };
+        let msg = format_parse_error("true\n", err);
+        assert!(msg.contains("aye"));
+    }
 
-        #[test]
-        fn repl_needs_more_input_covers_comments_strings_and_nesting_for_coverage() {
-            assert!(repl_needs_more_input("\"unterminated"));
-            assert!(!repl_needs_more_input("\"a\\\\b\""));
-            assert!(!repl_needs_more_input("# comment\nken x = 1\n"));
-            assert!(!repl_needs_more_input("}"));
-            assert!(!repl_needs_more_input("]"));
-            assert!(!repl_needs_more_input(")"));
-            assert!(repl_needs_more_input("["));
-            assert!(repl_needs_more_input("("));
-        }
+    #[test]
+    fn repl_needs_more_input_covers_comments_strings_and_nesting_for_coverage() {
+        assert!(repl_needs_more_input("\"unterminated"));
+        assert!(!repl_needs_more_input("\"a\\\\b\""));
+        assert!(!repl_needs_more_input("# comment\nken x = 1\n"));
+        assert!(!repl_needs_more_input("}"));
+        assert!(!repl_needs_more_input("]"));
+        assert!(!repl_needs_more_input(")"));
+        assert!(repl_needs_more_input("["));
+        assert!(repl_needs_more_input("("));
+    }
 
-        #[test]
-        fn print_environment_handles_empty_and_long_values_for_coverage() {
-            let interpreter = Interpreter::new();
-            print_environment(&interpreter);
+    #[test]
+    fn print_environment_handles_empty_and_long_values_for_coverage() {
+        let interpreter = Interpreter::new();
+        print_environment(&interpreter);
 
-            let long_value = "a".repeat(60);
-            let src = format!("ken x = \"{}\"\n", long_value);
-            let mut interpreter = Interpreter::new();
-            let program = parse(&src).expect("parse");
-            interpreter.interpret(&program).expect("interpret");
-            print_environment(&interpreter);
-        }
+        let long_value = "a".repeat(60);
+        let src = format!("ken x = \"{}\"\n", long_value);
+        let mut interpreter = Interpreter::new();
+        let program = parse(&src).expect("parse");
+        interpreter.interpret(&program).expect("interpret");
+        print_environment(&interpreter);
+    }
 
-        #[test]
-        fn format_file_check_only_reports_needs_formatting_for_coverage() {
-            let dir = tempdir().expect("tempdir");
-            let path = dir.path().join("needs_fmt.braw");
-            std::fs::write(&path, "ken x=1\n").expect("write file");
-            let err = format_file(&path, true).expect_err("expected format check error");
-            assert!(err.contains("needs formattin"));
-        }
+    #[test]
+    fn format_file_check_only_reports_needs_formatting_for_coverage() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("needs_fmt.braw");
+        std::fs::write(&path, "ken x=1\n").expect("write file");
+        let err = format_file(&path, true).expect_err("expected format check error");
+        assert!(err.contains("needs formattin"));
+    }
 
-        #[test]
-        fn format_file_write_error_is_reported_for_coverage() {
-            let dir = tempdir().expect("tempdir");
-            let path = dir.path().join("readonly.braw");
-            std::fs::write(&path, "ken x = 1\n").expect("write file");
-            let mut perms = std::fs::metadata(&path).expect("metadata").permissions();
-            perms.set_mode(0o444);
-            std::fs::set_permissions(&path, perms).expect("set permissions");
+    #[test]
+    fn format_file_write_error_is_reported_for_coverage() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("readonly.braw");
+        std::fs::write(&path, "ken x = 1\n").expect("write file");
+        let mut perms = std::fs::metadata(&path).expect("metadata").permissions();
+        perms.set_mode(0o444);
+        std::fs::set_permissions(&path, perms).expect("set permissions");
 
-            let err = format_file(&path, false).expect_err("expected write error");
-            assert!(err.contains("Cannae write"));
-        }
+        let err = format_file(&path, false).expect_err("expected write error");
+        assert!(err.contains("Cannae write"));
+    }
 
-        #[test]
-        fn compile_file_and_wasm_surface_write_errors_for_coverage() {
-            let dir = tempdir().expect("tempdir");
-            let path = dir.path().join("ok.braw");
-            std::fs::write(&path, "ken x = 1\n").expect("write file");
+    #[test]
+    fn compile_file_and_wasm_surface_write_errors_for_coverage() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("ok.braw");
+        std::fs::write(&path, "ken x = 1\n").expect("write file");
 
-            let err = compile_file(&path, Some(dir.path().to_path_buf())).expect_err("expected write error");
-            assert!(err.contains("Cannae write"));
+        let err =
+            compile_file(&path, Some(dir.path().to_path_buf())).expect_err("expected write error");
+        assert!(err.contains("Cannae write"));
 
-            let err = compile_wasm(&path, Some(dir.path().to_path_buf())).expect_err("expected write error");
-            assert!(err.contains("Cannae write"));
-        }
+        let err =
+            compile_wasm(&path, Some(dir.path().to_path_buf())).expect_err("expected write error");
+        assert!(err.contains("Cannae write"));
+    }
 
-	    #[test]
-	    #[cfg(coverage)]
-	    fn main_cli_helpers_are_exercised_for_instantiation_coverage() {
-	        setup_crash_handlers();
-	        print_repl_help();
-	        print_repl_examples();
-	        print_scots_wisdom();
-	        print_programming_wisdom();
+    #[test]
+    #[cfg(coverage)]
+    fn main_cli_helpers_are_exercised_for_instantiation_coverage() {
+        setup_crash_handlers();
+        print_repl_help();
+        print_repl_examples();
+        print_scots_wisdom();
+        print_programming_wisdom();
 
         assert!(repl_needs_more_input("dae f() {"));
         assert!(!repl_needs_more_input("dae f() { gie 1 }\n"));
@@ -1637,19 +1638,19 @@ fn format_runtime_error(source: &str, error: mdhavers::HaversError) -> String {
         let empty_interp = Interpreter::new();
         print_environment(&empty_interp);
 
-	        check_file(&path).expect("check_file");
-	        show_tokens(&path).expect("show_tokens");
-	        show_ast(&path).expect("show_ast");
+        check_file(&path).expect("check_file");
+        show_tokens(&path).expect("show_tokens");
+        show_ast(&path).expect("show_ast");
 
-	        // Format check-only (no-op) then actually format.
-	        format_file(&path, true).expect("format_file check_only");
-	        format_file(&path, false).expect("format_file write");
+        // Format check-only (no-op) then actually format.
+        format_file(&path, true).expect("format_file check_only");
+        format_file(&path, false).expect("format_file write");
 
-	        compile_file(&path, None).expect("compile_file");
-	        assert!(dir.path().join("ok.js").exists());
+        compile_file(&path, None).expect("compile_file");
+        assert!(dir.path().join("ok.js").exists());
 
-	        compile_wasm(&path, None).expect("compile_wasm");
-	        assert!(dir.path().join("ok.wat").exists());
+        compile_wasm(&path, None).expect("compile_wasm");
+        assert!(dir.path().join("ok.wat").exists());
 
         #[cfg(feature = "llvm")]
         {

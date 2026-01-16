@@ -280,11 +280,11 @@ log_whisper log_mutter log_blether log_holler log_roar hurl
         assert!(tokens.iter().any(|t| t.kind == TokenKind::Arrow));
         assert!(tokens.iter().any(|t| t.kind == TokenKind::Underscore));
         assert!(tokens.iter().any(|t| t.kind == TokenKind::Newline));
-        assert!(tokens.iter().any(|t| {
-            t.kind == TokenKind::SingleQuoteString("single".to_string())
-        }));
-        assert!(tokens.iter().any(|t| {
-            t.kind == TokenKind::FString("Hello {name}!".to_string())
-        }));
+        assert!(tokens
+            .iter()
+            .any(|t| { t.kind == TokenKind::SingleQuoteString("single".to_string()) }));
+        assert!(tokens
+            .iter()
+            .any(|t| { t.kind == TokenKind::FString("Hello {name}!".to_string()) }));
     }
 }

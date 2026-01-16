@@ -18,4 +18,3 @@ blether sum
     let out = interp.get_output().join("\n");
     assert_eq!(out.trim(), "3\n6");
 }
-

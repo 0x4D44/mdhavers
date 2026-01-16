@@ -34,4 +34,3 @@ blether f()
         .compile_to_object_with_source(&program, &obj_path, Some(&main_path))
         .unwrap_err();
 }
-

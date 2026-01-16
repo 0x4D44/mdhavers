@@ -221,4 +221,3 @@ fn llvm_codegen_index_set_dict_value_compile_expr_error_is_covered_for_coverage(
 
     assert_compile_error_contains(program, SPREAD_ERR);
 }
-

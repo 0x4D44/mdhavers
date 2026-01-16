@@ -113,8 +113,14 @@ fn interpreter_calls_all_native_builtins_for_coverage() {
                     vec![Value::Float(1.0), Value::String("int".to_string())],
                     vec![Value::Float(1.0), Value::String("float".to_string())],
                     vec![Value::Integer(1), Value::String("float".to_string())],
-                    vec![Value::String("x".to_string()), Value::String("string".to_string())],
-                    vec![Value::String("x".to_string()), Value::String("str".to_string())],
+                    vec![
+                        Value::String("x".to_string()),
+                        Value::String("string".to_string()),
+                    ],
+                    vec![
+                        Value::String("x".to_string()),
+                        Value::String("str".to_string()),
+                    ],
                     vec![Value::Integer(1), Value::String("str".to_string())],
                     vec![Value::Bool(true), Value::String("bool".to_string())],
                     vec![Value::Nil, Value::String("bool".to_string())],
@@ -151,11 +157,17 @@ fn interpreter_calls_all_native_builtins_for_coverage() {
                     vec![Value::Integer(1), Value::String("unknown".to_string())],
                 ]
             }
-            ("fae_pairs", 1) => vec![vec![Value::List(Rc::new(RefCell::new(vec![
-                Value::List(Rc::new(RefCell::new(vec![Value::Integer(1), Value::Integer(2)]))),
-                Value::List(Rc::new(RefCell::new(vec![Value::Integer(3)]))),
-                Value::Integer(4),
-            ])))], vec![Value::Integer(1)]],
+            ("fae_pairs", 1) => vec![
+                vec![Value::List(Rc::new(RefCell::new(vec![
+                    Value::List(Rc::new(RefCell::new(vec![
+                        Value::Integer(1),
+                        Value::Integer(2),
+                    ]))),
+                    Value::List(Rc::new(RefCell::new(vec![Value::Integer(3)]))),
+                    Value::Integer(4),
+                ])))],
+                vec![Value::Integer(1)],
+            ],
             ("range_o", 1) => vec![
                 vec![Value::List(Rc::new(RefCell::new(vec![
                     Value::Float(2.0),
@@ -177,20 +189,32 @@ fn interpreter_calls_all_native_builtins_for_coverage() {
             ("interleave", 2) => vec![
                 vec![
                     Value::List(Rc::new(RefCell::new(vec![Value::Integer(1)]))),
-                    Value::List(Rc::new(RefCell::new(vec![Value::Integer(2), Value::Integer(3)]))),
+                    Value::List(Rc::new(RefCell::new(vec![
+                        Value::Integer(2),
+                        Value::Integer(3),
+                    ]))),
                 ],
                 vec![
-                    Value::List(Rc::new(RefCell::new(vec![Value::Integer(1), Value::Integer(2)]))),
+                    Value::List(Rc::new(RefCell::new(vec![
+                        Value::Integer(1),
+                        Value::Integer(2),
+                    ]))),
                     Value::List(Rc::new(RefCell::new(vec![Value::Integer(3)]))),
                 ],
             ],
             ("ceilidh", 2) => vec![
                 vec![
                     Value::List(Rc::new(RefCell::new(vec![Value::Integer(1)]))),
-                    Value::List(Rc::new(RefCell::new(vec![Value::Integer(2), Value::Integer(3)]))),
+                    Value::List(Rc::new(RefCell::new(vec![
+                        Value::Integer(2),
+                        Value::Integer(3),
+                    ]))),
                 ],
                 vec![
-                    Value::List(Rc::new(RefCell::new(vec![Value::Integer(1), Value::Integer(2)]))),
+                    Value::List(Rc::new(RefCell::new(vec![
+                        Value::Integer(1),
+                        Value::Integer(2),
+                    ]))),
                     Value::List(Rc::new(RefCell::new(vec![Value::Integer(3)]))),
                 ],
                 vec![

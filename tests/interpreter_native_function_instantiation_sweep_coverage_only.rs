@@ -53,10 +53,7 @@ fn interpreter_native_functions_are_invoked_for_instantiation_coverage() {
             // active interpreter context (the call will error, but still exercises instantiations).
             "log_enabled" => vec![
                 vec![Value::String("blether".to_string())],
-                vec![
-                    Value::Integer(3),
-                    Value::String("".to_string()),
-                ],
+                vec![Value::Integer(3), Value::String("".to_string())],
             ],
             "log_event" => vec![
                 vec![
@@ -69,7 +66,10 @@ fn interpreter_native_functions_are_invoked_for_instantiation_coverage() {
                     Value::Dict(Rc::new(RefCell::new(DictValue::new()))),
                 ],
             ],
-            "log_init" => vec![vec![], vec![Value::Dict(Rc::new(RefCell::new(DictValue::new())))]],
+            "log_init" => vec![
+                vec![],
+                vec![Value::Dict(Rc::new(RefCell::new(DictValue::new())))],
+            ],
             "log_span" => vec![vec![Value::String("span".to_string())]],
 
             // Exercise TLS config parsing + server-mode branch (expected to error due to missing
@@ -84,12 +84,12 @@ fn interpreter_native_functions_are_invoked_for_instantiation_coverage() {
                 vec![Value::String("123".to_string())],
                 vec![Value::String("{\"a\": 1}".to_string())],
             ],
-            "json_pretty" | "json_stringify_pretty" => vec![vec![
-                Value::List(Rc::new(RefCell::new(vec![
+            "json_pretty" | "json_stringify_pretty" => {
+                vec![vec![Value::List(Rc::new(RefCell::new(vec![
                     Value::Integer(1),
                     Value::String("x".to_string()),
-                ]))),
-            ]],
+                ])))]]
+            }
 
             "bytes_get" => vec![
                 vec![bytes(&[1, 2]), Value::Integer(-1)],
@@ -118,12 +118,24 @@ fn interpreter_native_functions_are_invoked_for_instantiation_coverage() {
             "bytes_write_u32be" => vec![
                 vec![bytes(&[0, 0, 0, 0]), Value::Integer(-1), Value::Integer(1)],
                 vec![bytes(&[0, 0, 0, 0]), Value::Integer(0), Value::Integer(-1)],
-                vec![bytes(&[0, 0, 0, 0]), Value::Integer(0), Value::Integer(5_000_000_000_i64)],
+                vec![
+                    bytes(&[0, 0, 0, 0]),
+                    Value::Integer(0),
+                    Value::Integer(5_000_000_000_i64),
+                ],
                 vec![bytes(&[0]), Value::Integer(0), Value::Integer(1)],
             ],
             "socket_bind" | "socket_connect" | "udp_send_to" => vec![
-                vec![Value::Integer(0), Value::String("127.0.0.1".to_string()), Value::Integer(-1)],
-                vec![Value::Integer(0), Value::String("127.0.0.1".to_string()), Value::Integer(70000)],
+                vec![
+                    Value::Integer(0),
+                    Value::String("127.0.0.1".to_string()),
+                    Value::Integer(-1),
+                ],
+                vec![
+                    Value::Integer(0),
+                    Value::String("127.0.0.1".to_string()),
+                    Value::Integer(70000),
+                ],
             ],
             "socket_set_ttl" => vec![
                 vec![Value::Integer(0), Value::Integer(-1)],

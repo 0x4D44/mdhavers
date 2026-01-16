@@ -128,10 +128,10 @@ impl NativeObject for CallOkNative {
 #[test]
 fn interpreter_native_object_get_and_call_errors_map_line_numbers_for_coverage() {
     let mut interp = Interpreter::new();
-    interp
-        .globals
-        .borrow_mut()
-        .define("obj".to_string(), Value::NativeObject(Rc::new(TestNative::new())));
+    interp.globals.borrow_mut().define(
+        "obj".to_string(),
+        Value::NativeObject(Rc::new(TestNative::new())),
+    );
 
     // NativeObject property get error -> map_err(|err| err.with_line_if_zero(span.line))
     let program = parse("obj.missing").unwrap();

@@ -67,4 +67,3 @@ fn interpreter_atomic_and_channel_unknown_handles_cover_ok_or_for_coverage() {
         "chan_close should error on unknown handle"
     );
 }
-

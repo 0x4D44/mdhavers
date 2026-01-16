@@ -412,7 +412,10 @@ blether result
     let mut interp = Interpreter::new();
     interp.interpret(&program).unwrap();
     let out = interp.get_output().join("\n");
-    assert!(out.contains("Unknown DTLS handle"), "unexpected output: {out}");
+    assert!(
+        out.contains("Unknown DTLS handle"),
+        "unexpected output: {out}"
+    );
 }
 
 #[test]
@@ -440,8 +443,14 @@ gin s["ok"] {
     let mut interp = Interpreter::new();
     interp.interpret(&program).unwrap();
     let out = interp.get_output().join("\n");
-    assert!(out.contains("Invalid remote address"), "unexpected output: {out}");
-    assert!(out.contains("DTLS connect failed:"), "unexpected output: {out}");
+    assert!(
+        out.contains("Invalid remote address"),
+        "unexpected output: {out}"
+    );
+    assert!(
+        out.contains("DTLS connect failed:"),
+        "unexpected output: {out}"
+    );
 }
 
 #[test]
@@ -474,8 +483,14 @@ gin s["ok"] {
     let mut interp = Interpreter::new();
     interp.interpret(&program).unwrap();
     let out = interp.get_output().join("\n");
-    assert!(out.contains("Server cert_pem required"), "unexpected output: {out}");
-    assert!(out.contains("Server key_pem required"), "unexpected output: {out}");
+    assert!(
+        out.contains("Server cert_pem required"),
+        "unexpected output: {out}"
+    );
+    assert!(
+        out.contains("Server key_pem required"),
+        "unexpected output: {out}"
+    );
     assert!(out.contains("Invalid cert PEM"), "unexpected output: {out}");
 }
 

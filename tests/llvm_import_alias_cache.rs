@@ -45,10 +45,13 @@ blether f()
         .unwrap();
 
     let output = Command::new(&exe_path).output().unwrap();
-    assert!(output.status.success(), "stderr: {}", String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).trim(),
         "10\n10\n32\n32\n10\n32"
     );
 }
-

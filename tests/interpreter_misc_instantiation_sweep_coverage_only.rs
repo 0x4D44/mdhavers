@@ -24,4 +24,3 @@ fn interpreter_misc_public_helpers_are_exercised_for_instantiation_coverage() {
     interpreter::poison_shadow_stack_for_coverage();
     interpreter::exercise_interpreter_dir_instantiations_for_coverage();
 }
-

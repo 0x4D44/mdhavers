@@ -822,7 +822,10 @@ mod tests {
         assert_eq!((&native_rc.func)(vec![]).unwrap(), Value::Nil);
         let native = Value::NativeFunction(Rc::clone(&native_rc));
         assert!(native.as_native_function().is_some());
-        assert!(Rc::ptr_eq(&native.as_native_function().unwrap(), &native_rc));
+        assert!(Rc::ptr_eq(
+            &native.as_native_function().unwrap(),
+            &native_rc
+        ));
         assert!(Value::Nil.as_native_function().is_none());
     }
 
@@ -1046,7 +1049,12 @@ mod tests {
         let mut class = HaversClass::new("Test".to_string(), None);
         class.methods.insert(
             "method".to_string(),
-            Rc::new(HaversFunction::new("method".to_string(), vec![], vec![], None)),
+            Rc::new(HaversFunction::new(
+                "method".to_string(),
+                vec![],
+                vec![],
+                None,
+            )),
         );
         let class = Rc::new(class);
 

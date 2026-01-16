@@ -40,6 +40,12 @@ make check
 # Build without any optional features (CLI only)
 cargo build --no-default-features --features cli
 
+# Build with TLS networking (Rustls) - works on all platforms
+cargo build --no-default-features --features "cli,native"
+
+# Build with DTLS/SRTP support (requires OpenSSL, Unix only)
+cargo build --features dtls
+
 # Build with LLVM support (requires LLVM 15 + libzstd-dev)
 cargo build --features llvm
 make build-with-llvm
@@ -240,6 +246,7 @@ node fizzbuzz.js
 
 ### Optional (auto-detected by Makefile)
 - **LLVM 15** + `libzstd-dev` - For native compilation
+- **OpenSSL** - For DTLS/SRTP support (dtls feature, Unix only)
 - **raylib dependencies** - For graphics: `cmake`, `libx11-dev`, `libxrandr-dev`, `libxinerama-dev`, `libxcursor-dev`, `libxi-dev`, `libgl1-mesa-dev`
 - **miniaudio** - For audio (no X11 needed for audio-only)
 - **wasmtime**, **wat** - For WASM runner feature
@@ -280,7 +287,8 @@ mdhavers/
 
 ## Notes
 
-- Default features: `cli` and `native` (networking/TLS/DNS)
+- Default features: `cli` and `native` (TLS/DNS networking via Rustls)
+- The `dtls` feature adds DTLS/SRTP support but requires OpenSSL and Unix
 - LLVM backend is optional and requires manual dependency installation
 - The Makefile auto-detects LLVM and adjusts build accordingly
 - Audio and graphics are independent optional features

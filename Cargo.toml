@@ -1,6 +1,6 @@
 [package]
 name = "mdhavers"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "A Scots programming language - pure havers, but working havers!"
 authors = ["Arthur"]
@@ -37,6 +37,9 @@ native = [
     "rustls",
     "rustls-pemfile",
     "webpki-roots",
+]
+dtls = [
+    "native",
     "libsrtp",
     "udp-dtls",
     "openssl",

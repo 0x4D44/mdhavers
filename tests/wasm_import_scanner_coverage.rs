@@ -72,5 +72,8 @@ log_mutter "hi"
 
     mdhavers::parser::parse(src).expect("expected source to parse successfully");
     let result = wasm_compiler::compile_to_wat(src);
-    assert!(result.is_err(), "expected unsupported nodes to fail WASM compilation");
+    assert!(
+        result.is_err(),
+        "expected unsupported nodes to fail WASM compilation"
+    );
 }

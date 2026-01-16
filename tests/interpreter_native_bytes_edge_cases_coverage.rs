@@ -41,12 +41,24 @@ fn interpreter_bytes_builtins_cover_edge_branches_for_coverage() {
     // bytes_slice: type errors + negative/clamped indices.
     assert!((bytes_slice.func)(vec![bytes(&[1, 2, 3]), Value::Nil, Value::Integer(1)]).is_err());
     assert!((bytes_slice.func)(vec![bytes(&[1, 2, 3]), Value::Integer(0), Value::Nil]).is_err());
-    let _ = (bytes_slice.func)(vec![bytes(&[1, 2, 3]), Value::Integer(-1), Value::Integer(99)])
-        .unwrap();
-    let _ = (bytes_slice.func)(vec![bytes(&[1, 2, 3]), Value::Integer(-99), Value::Integer(2)])
-        .unwrap();
-    let _ = (bytes_slice.func)(vec![bytes(&[1, 2, 3]), Value::Integer(2), Value::Integer(-99)])
-        .unwrap();
+    let _ = (bytes_slice.func)(vec![
+        bytes(&[1, 2, 3]),
+        Value::Integer(-1),
+        Value::Integer(99),
+    ])
+    .unwrap();
+    let _ = (bytes_slice.func)(vec![
+        bytes(&[1, 2, 3]),
+        Value::Integer(-99),
+        Value::Integer(2),
+    ])
+    .unwrap();
+    let _ = (bytes_slice.func)(vec![
+        bytes(&[1, 2, 3]),
+        Value::Integer(2),
+        Value::Integer(-99),
+    ])
+    .unwrap();
 
     // bytes_get: type error + negative index + oob.
     assert!((bytes_get.func)(vec![bytes(&[1, 2, 3]), Value::Nil]).is_err());
@@ -55,17 +67,31 @@ fn interpreter_bytes_builtins_cover_edge_branches_for_coverage() {
 
     // bytes_set: type errors, float conversion, range checks, negative idx handling.
     assert!((bytes_set.func)(vec![bytes(&[1, 2, 3]), Value::Nil, Value::Integer(1)]).is_err());
-    let _ = (bytes_set.func)(vec![bytes(&[0, 0, 0]), Value::Integer(0), Value::Float(42.0)])
-        .unwrap();
+    let _ = (bytes_set.func)(vec![
+        bytes(&[0, 0, 0]),
+        Value::Integer(0),
+        Value::Float(42.0),
+    ])
+    .unwrap();
     assert!((bytes_set.func)(vec![bytes(&[0, 0, 0]), Value::Integer(0), Value::Nil]).is_err());
-    assert!(
-        (bytes_set.func)(vec![bytes(&[0, 0, 0]), Value::Integer(0), Value::Integer(256)]).is_err()
-    );
-    let _ = (bytes_set.func)(vec![bytes(&[0, 0, 0]), Value::Integer(-1), Value::Integer(7)])
-        .unwrap();
-    assert!(
-        (bytes_set.func)(vec![bytes(&[0, 0, 0]), Value::Integer(99), Value::Integer(7)]).is_err()
-    );
+    assert!((bytes_set.func)(vec![
+        bytes(&[0, 0, 0]),
+        Value::Integer(0),
+        Value::Integer(256)
+    ])
+    .is_err());
+    let _ = (bytes_set.func)(vec![
+        bytes(&[0, 0, 0]),
+        Value::Integer(-1),
+        Value::Integer(7),
+    ])
+    .unwrap();
+    assert!((bytes_set.func)(vec![
+        bytes(&[0, 0, 0]),
+        Value::Integer(99),
+        Value::Integer(7)
+    ])
+    .is_err());
 
     // bytes_append: second arg type error.
     assert!((bytes_append.func)(vec![bytes(&[1, 2]), Value::Integer(1)]).is_err());
@@ -79,12 +105,8 @@ fn interpreter_bytes_builtins_cover_edge_branches_for_coverage() {
     // bytes_write_u16be/u32be: float conversion + range checks + oob.
     let _ = (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Integer(0), Value::Float(7.0)])
         .unwrap();
-    assert!(
-        (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Nil, Value::Integer(7)]).is_err()
-    );
-    assert!(
-        (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Integer(0), Value::Nil]).is_err()
-    );
+    assert!((bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Nil, Value::Integer(7)]).is_err());
+    assert!((bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Integer(0), Value::Nil]).is_err());
     assert!(
         (bytes_write_u16be.func)(vec![bytes(&[0, 0]), Value::Integer(0), Value::Integer(-1)])
             .is_err()
@@ -94,31 +116,25 @@ fn interpreter_bytes_builtins_cover_edge_branches_for_coverage() {
     );
 
     let _ = (bytes_write_u32be.func)(vec![
-            bytes(&[0, 0, 0, 0]),
-            Value::Integer(0),
-            Value::Float(7.0),
-        ])
-        .unwrap();
-    assert!((bytes_write_u32be.func)(vec![
         bytes(&[0, 0, 0, 0]),
-        Value::Nil,
-        Value::Integer(7)
+        Value::Integer(0),
+        Value::Float(7.0),
     ])
-    .is_err());
+    .unwrap();
+    assert!(
+        (bytes_write_u32be.func)(vec![bytes(&[0, 0, 0, 0]), Value::Nil, Value::Integer(7)])
+            .is_err()
+    );
+    assert!(
+        (bytes_write_u32be.func)(vec![bytes(&[0, 0, 0, 0]), Value::Integer(0), Value::Nil])
+            .is_err()
+    );
     assert!((bytes_write_u32be.func)(vec![
         bytes(&[0, 0, 0, 0]),
         Value::Integer(0),
-        Value::Nil
+        Value::Integer(-1)
     ])
     .is_err());
-    assert!(
-        (bytes_write_u32be.func)(vec![
-            bytes(&[0, 0, 0, 0]),
-            Value::Integer(0),
-            Value::Integer(-1)
-        ])
-        .is_err()
-    );
     assert!(
         (bytes_write_u32be.func)(vec![bytes(&[0]), Value::Integer(0), Value::Integer(1)]).is_err()
     );

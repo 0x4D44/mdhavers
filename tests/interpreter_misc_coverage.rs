@@ -24,44 +24,38 @@ fn native(interp: &Interpreter, name: &str) -> Rc<NativeFunction> {
 
 #[test]
 fn interpreter_for_loop_over_range_branch_is_covered() {
-    let value = run(
-        r#"
+    let value = run(r#"
 ken sum = 0
 fer i in 1..4 {
     sum = sum + i
 }
 sum
-"#,
-    )
+"#)
     .unwrap();
     assert_eq!(value, Value::Integer(6));
 }
 
 #[test]
 fn interpreter_operator_overload_method_path_is_used() {
-    let value = run(
-        r#"
+    let value = run(r#"
 kin Box {
     dae __pit_thegither__(other) { gie 123 }
 }
 ken a = Box()
 ken b = Box()
 a + b
-"#,
-    )
+"#)
     .unwrap();
     assert_eq!(value, Value::Integer(123));
 }
 
 #[test]
 fn interpreter_call_get_on_dict_falls_back_to_normal_call_path() {
-    let value = run(
-        r#"
+    let value = run(r#"
 dae inc(x) { gie x + 1 }
 ken d = {"f": inc}
 d.f(1)
-"#,
-    )
+"#)
     .unwrap();
     assert_eq!(value, Value::Integer(2));
 }
@@ -73,7 +67,9 @@ fn interpreter_get_user_variables_in_dependency_instance_is_covered() {
     interp.interpret(&program).unwrap();
 
     let vars = interp.get_user_variables();
-    assert!(vars.iter().any(|(name, kind, _)| name == "foo" && kind == "function"));
+    assert!(vars
+        .iter()
+        .any(|(name, kind, _)| name == "foo" && kind == "function"));
     assert!(
         !vars.iter().any(|(name, _, _)| name == "len"),
         "native functions should be excluded"
@@ -88,42 +84,36 @@ fn interpreter_call_value_wrong_arity_is_covered() {
 
 #[test]
 fn interpreter_method_call_wrong_arity_is_covered() {
-    let err = run(
-        r#"
+    let err = run(r#"
 kin C {
     dae __pit_thegither__(a, b) { gie a }
 }
 ken c = C()
 c + c
-"#,
-    )
+"#)
     .expect_err("expected method arity error");
     assert!(matches!(err, HaversError::WrongArity { .. }));
 }
 
 #[test]
 fn interpreter_match_range_non_integer_bounds_are_covered() {
-    let value = run(
-        r#"
+    let value = run(r#"
 ken a = "x"
 keek 2 {
     whan 1..a -> 1
     whan 1..2 -> 2
     whan _ -> 3
 }
-"#,
-    )
+"#)
     .unwrap();
     assert_eq!(value, Value::Integer(3));
 
-    let value = run(
-        r#"
+    let value = run(r#"
 keek "y" {
     whan 1..3 -> 1
     whan _ -> 2
 }
-"#,
-    )
+"#)
     .unwrap();
     assert_eq!(value, Value::Integer(2));
 }
@@ -179,32 +169,27 @@ fn interpreter_compare_float_and_string_paths_are_covered() {
 
 #[test]
 fn interpreter_destructure_ignore_before_rest_is_covered() {
-    let value = run(
-        r#"
+    let value = run(r#"
 ken [_, a, ...rest] = [1, 2, 3, 4]
 a + len(rest)
-"#,
-    )
+"#)
     .unwrap();
     assert_eq!(value, Value::Integer(4));
 }
 
 #[test]
 fn interpreter_destructure_ignore_after_rest_is_covered() {
-    let value = run(
-        r#"
+    let value = run(r#"
 ken [a, ...rest, _] = [1, 2, 3, 4]
 a + len(rest)
-"#,
-    )
+"#)
     .unwrap();
     assert_eq!(value, Value::Integer(3));
 }
 
 #[test]
 fn interpreter_slice_step_branches_for_list_and_string_are_covered() {
-    let value = run(
-        r#"
+    let value = run(r#"
 ken l = [1, 2, 3, 4, 5]
 ken a = l[0:5:2]
 ken b = l[5::-1]
@@ -212,8 +197,7 @@ ken s = "hello"
 ken c = s[0:5:2]
 ken d = s[5::-1]
 len(a) + len(b) + len(c) + len(d)
-"#,
-    )
+"#)
     .unwrap();
     assert_eq!(value, Value::Integer(16));
 }
@@ -221,40 +205,34 @@ len(a) + len(b) + len(c) + len(d)
 #[test]
 fn interpreter_slice_negative_start_index_normalization_is_covered() {
     // Exercise the `start < 0` normalization branch in list/string slicing.
-    let value = run(
-        r#"
+    let value = run(r#"
 ken l = [1, 2, 3, 4, 5]
 ken a = l[-1::-1]
 ken s = "hello"
 ken b = s[-1::-1]
 len(a) + len(b)
-"#,
-    )
+"#)
     .unwrap();
     assert_eq!(value, Value::Integer(10));
 }
 
 #[test]
 fn interpreter_list_literal_spread_for_list_and_string_is_covered() {
-    let value = run(
-        r#"
+    let value = run(r#"
 ken xs = [0, ...[1, 2], 3]
 ken ys = [..."ab"]
 xs[1] + xs[2] + len(ys)
-"#,
-    )
+"#)
     .unwrap();
     assert_eq!(value, Value::Integer(5));
 }
 
 #[test]
 fn interpreter_sclaff_recursive_flatten_list_branch_is_covered() {
-    let value = run(
-        r#"
+    let value = run(r#"
 ken flat = sclaff([[1, [2]], 3])
 flat[0] + flat[1] + flat[2]
-"#,
-    )
+"#)
     .unwrap();
     assert_eq!(value, Value::Integer(6));
 }
@@ -269,7 +247,10 @@ fn interpreter_log_level_integer_branches_are_covered() {
         "log_enabled(5)",
     ] {
         let v = run(src).unwrap();
-        assert!(matches!(v, Value::Bool(_)), "expected bool for {src}, got {v:?}");
+        assert!(
+            matches!(v, Value::Bool(_)),
+            "expected bool for {src}, got {v:?}"
+        );
     }
 
     assert!(run("log_enabled(6)").is_err());
@@ -323,13 +304,17 @@ fn interpreter_resolve_log_args_for_coverage_exercises_all_arms_in_dependency() 
         mdhavers::interpreter::resolve_log_args_for_coverage(&[]).unwrap(),
         (None, None)
     );
-    assert!(mdhavers::interpreter::resolve_log_args_for_coverage(std::slice::from_ref(&fields))
-        .unwrap()
-        .0
-        .is_some());
+    assert!(
+        mdhavers::interpreter::resolve_log_args_for_coverage(std::slice::from_ref(&fields))
+            .unwrap()
+            .0
+            .is_some()
+    );
     assert_eq!(
-        mdhavers::interpreter::resolve_log_args_for_coverage(&[Value::String("target".to_string())])
-            .unwrap(),
+        mdhavers::interpreter::resolve_log_args_for_coverage(&[Value::String(
+            "target".to_string()
+        )])
+        .unwrap(),
         (None, Some("target".to_string()))
     );
     assert!(mdhavers::interpreter::resolve_log_args_for_coverage(&[Value::Integer(1)]).is_err());
@@ -345,8 +330,9 @@ fn interpreter_resolve_log_args_for_coverage_exercises_all_arms_in_dependency() 
         Value::String("y".to_string())
     ])
     .is_err());
-    assert!(mdhavers::interpreter::resolve_log_args_for_coverage(&[fields, Value::Integer(1)])
-        .is_err());
+    assert!(
+        mdhavers::interpreter::resolve_log_args_for_coverage(&[fields, Value::Integer(1)]).is_err()
+    );
     assert!(mdhavers::interpreter::resolve_log_args_for_coverage(&[
         Value::String("x".to_string()),
         Value::String("y".to_string()),
@@ -426,16 +412,14 @@ fn interpreter_native_ipv4_resolution_and_nonblocking_false_path_are_covered() {
 
 #[test]
 fn interpreter_var_decl_without_initializer_and_return_nil_are_covered() {
-    let value = run(
-        r#"
+    let value = run(r#"
 ken x
 dae f() {
     gie
 }
 f()
 x
-"#,
-    )
+"#)
     .unwrap();
     assert_eq!(value, Value::Nil);
 }
@@ -460,21 +444,17 @@ fn interpreter_non_builtin_string_call_errors() {
 
 #[test]
 fn interpreter_bytes_set_invalid_value_and_index_errors_are_covered() {
-    let err = run(
-        r#"
+    let err = run(r#"
 ken b = bytes(1)
 bytes_set(b, 0, 999)
-"#,
-    )
+"#)
     .expect_err("expected bytes_set invalid value error");
     assert!(matches!(err, HaversError::InternalError(_)));
 
-    let err = run(
-        r#"
+    let err = run(r#"
 ken b = bytes(1)
 bytes_set(b, 2, 1)
-"#,
-    )
+"#)
     .expect_err("expected bytes_set index error");
     assert!(matches!(err, HaversError::InternalError(_)));
 }
@@ -510,8 +490,12 @@ ken s = "hi"
     interp.interpret(&program).unwrap();
 
     let vars = interp.get_user_variables();
-    assert!(vars.iter().any(|(name, kind, _)| name == "x" && kind == "float"));
-    assert!(vars.iter().any(|(name, kind, _)| name == "s" && kind == "string"));
+    assert!(vars
+        .iter()
+        .any(|(name, kind, _)| name == "x" && kind == "float"));
+    assert!(vars
+        .iter()
+        .any(|(name, kind, _)| name == "s" && kind == "string"));
 }
 
 #[test]
@@ -528,34 +512,28 @@ fn interpreter_json_parse_empty_and_non_string_errors_are_covered() {
 
 #[test]
 fn interpreter_function_wrong_arity_errors_are_covered() {
-    let err = run(
-        r#"
+    let err = run(r#"
 dae f(a, b = 2) { gie a }
 f()
-"#,
-    )
+"#)
     .expect_err("expected wrong arity error");
     assert!(matches!(err, HaversError::TypeError { .. }));
 
-    let err = run(
-        r#"
+    let err = run(r#"
 dae f(a, b = 2) { gie a }
 f(1, 2, 3)
-"#,
-    )
+"#)
     .expect_err("expected wrong arity error");
     assert!(matches!(err, HaversError::TypeError { .. }));
 }
 
 #[test]
 fn interpreter_operator_overload_missing_method_falls_back() {
-    let err = run(
-        r#"
+    let err = run(r#"
 kin C {}
 ken c = C()
 c + 1
-"#,
-    )
+"#)
     .expect_err("expected type error");
     assert!(matches!(err, HaversError::TypeError { .. }));
 }

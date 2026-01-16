@@ -84,4 +84,3 @@ fn interpreter_socket_udp_tcp_creation_error_branches_cover_emfile_for_coverage(
     drop(files);
     drop(guard);
 }
-

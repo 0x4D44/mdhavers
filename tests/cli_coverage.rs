@@ -701,7 +701,10 @@ fn cli_repl_vars_shows_user_float_values_for_coverage() {
         out.contains("f : float"),
         "expected float variable in env, got stdout:\n{out}\nstderr:\n{err}"
     );
-    assert!(out.contains("1.5"), "expected float value, got stdout:\n{out}");
+    assert!(
+        out.contains("1.5"),
+        "expected float value, got stdout:\n{out}"
+    );
 }
 
 #[test]
@@ -754,7 +757,8 @@ fn cli_trace_runtime_error_path_is_covered() {
     let runtime_error_braw = dir.path().join("runtime_error.braw");
     write_file(&runtime_error_braw, "blether 1 / 0\n");
 
-    let (code, _out, _err) = run_mdhavers(&["trace", runtime_error_braw.to_str().unwrap()], None, home);
+    let (code, _out, _err) =
+        run_mdhavers(&["trace", runtime_error_braw.to_str().unwrap()], None, home);
     assert_ne!(code, 0);
 }
 
@@ -783,10 +787,7 @@ fn cli_wasm_reports_internal_errors_without_line_context_for_coverage() {
     // line number. This should exercise the `format_parse_error` no-line/no-suggestion branches in
     // the CLI binary instantiation.
     let braw = dir.path().join("too_many_wasm_args.braw");
-    write_file(
-        &braw,
-        "ken xs = [1]\nxs.push(1, 2, 3, 4, 5, 6, 7, 8, 9)\n",
-    );
+    write_file(&braw, "ken xs = [1]\nxs.push(1, 2, 3, 4, 5, 6, 7, 8, 9)\n");
 
     let (code, _out, err) = run_mdhavers(&["wasm", braw.to_str().unwrap()], None, home);
     assert_ne!(code, 0);
@@ -992,7 +993,11 @@ fn cli_ast_and_fmt_parse_error_paths_are_covered() {
     let (code, _out, _err) = run_mdhavers(&["ast", bad_syntax.to_str().unwrap()], None, home);
     assert_ne!(code, 0);
 
-    let (code, _out, _err) = run_mdhavers(&["fmt", "--check", bad_syntax.to_str().unwrap()], None, home);
+    let (code, _out, _err) = run_mdhavers(
+        &["fmt", "--check", bad_syntax.to_str().unwrap()],
+        None,
+        home,
+    );
     assert_ne!(code, 0);
 }
 

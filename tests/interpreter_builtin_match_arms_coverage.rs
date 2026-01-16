@@ -25,12 +25,10 @@ fn interpreter_is_a_covers_remaining_type_name_arms_for_coverage() {
     assert_eq!(run(r#"is_a(naething, "nil")"#).unwrap(), Value::Bool(true));
 
     assert_eq!(
-        run(
-            r#"
+        run(r#"
 dae foo() { gie 1 }
 is_a(foo, "dae")
-"#,
-        )
+"#,)
         .unwrap(),
         Value::Bool(true)
     );
@@ -88,10 +86,7 @@ fn interpreter_drookit_rejects_non_list_for_coverage() {
 
 #[test]
 fn interpreter_log_init_covers_text_and_compact_formats_for_coverage() {
-    assert_eq!(
-        run(r#"log_init({"format": "text"})"#).unwrap(),
-        Value::Nil
-    );
+    assert_eq!(run(r#"log_init({"format": "text"})"#).unwrap(), Value::Nil);
     assert_eq!(
         run(r#"log_init({"format": "compact"})"#).unwrap(),
         Value::Nil

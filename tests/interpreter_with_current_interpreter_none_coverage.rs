@@ -1,7 +1,8 @@
 use mdhavers::{Interpreter, Value};
 
 #[test]
-fn interpreter_log_event_outside_interpreter_hits_missing_current_interpreter_branch_for_coverage() {
+fn interpreter_log_event_outside_interpreter_hits_missing_current_interpreter_branch_for_coverage()
+{
     let interp = Interpreter::new();
     let exports = interp.globals.borrow().get_exports();
     let log_event = exports
@@ -13,11 +14,8 @@ fn interpreter_log_event_outside_interpreter_hits_missing_current_interpreter_br
         panic!("expected log_event native function");
     };
 
-    let err = (log_event.func)(vec![
-        Value::Integer(3),
-        Value::String("msg".to_string()),
-    ])
-    .expect_err("expected log_event to fail outside the interpreter");
+    let err = (log_event.func)(vec![Value::Integer(3), Value::String("msg".to_string())])
+        .expect_err("expected log_event to fail outside the interpreter");
     assert!(err.contains("unavailable outside the interpreter"));
 }
 
@@ -34,7 +32,8 @@ fn interpreter_log_init_outside_interpreter_hits_missing_current_interpreter_bra
         panic!("expected log_init native function");
     };
 
-    let err = (log_init.func)(vec![]).expect_err("expected log_init to fail outside the interpreter");
+    let err =
+        (log_init.func)(vec![]).expect_err("expected log_init to fail outside the interpreter");
     assert!(err.contains("unavailable outside the interpreter"));
 }
 
@@ -57,7 +56,8 @@ fn interpreter_log_span_outside_interpreter_uses_default_target_for_coverage() {
 }
 
 #[test]
-fn interpreter_log_span_in_outside_interpreter_hits_missing_current_interpreter_branch_for_coverage() {
+fn interpreter_log_span_in_outside_interpreter_hits_missing_current_interpreter_branch_for_coverage(
+) {
     let interp = Interpreter::new();
     let exports = interp.globals.borrow().get_exports();
     let log_span = exports

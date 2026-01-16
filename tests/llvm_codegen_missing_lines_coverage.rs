@@ -84,7 +84,11 @@ blether m.a()
 #[test]
 fn llvm_codegen_resolve_import_path_finds_module_next_to_test_exe() {
     let module = unique_module_name("cov_exe_mod");
-    let exe_dir = std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
+    let exe_dir = std::env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
     let module_path = exe_dir.join(format!("{module}.braw"));
 
     fs::write(&module_path, "ken a = 1\n").unwrap();
@@ -114,7 +118,11 @@ blether m["a"]
 #[test]
 fn llvm_codegen_resolve_import_path_finds_module_in_exe_stdlib_dir() {
     let module = unique_module_name("cov_exe_stdlib_mod");
-    let exe_dir = std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
+    let exe_dir = std::env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
     let stdlib_dir = exe_dir.join("stdlib");
     fs::create_dir_all(&stdlib_dir).unwrap();
     let module_path = stdlib_dir.join(format!("{module}.braw"));
@@ -146,7 +154,11 @@ blether m["a"]
 #[test]
 fn llvm_codegen_resolve_import_path_supports_lib_stripped_next_to_exe_stdlib_dir() {
     let module = unique_module_name("cov_exe_lib_mod");
-    let exe_dir = std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
+    let exe_dir = std::env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf();
     let stdlib_dir = exe_dir.join("stdlib");
     fs::create_dir_all(&stdlib_dir).unwrap();
     let module_path = stdlib_dir.join(format!("{module}.braw"));

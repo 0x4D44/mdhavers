@@ -19,4 +19,3 @@ fn dict_remove_rebuilds_index_when_entries_shift_for_coverage() {
     );
     assert_eq!(dict.len(), 1);
 }
-

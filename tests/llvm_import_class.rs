@@ -53,4 +53,3 @@ blether b.get()
 
     assert_eq!(compile_and_run(dir.path(), &main_path), "41");
 }
-

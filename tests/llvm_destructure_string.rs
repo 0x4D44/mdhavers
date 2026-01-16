@@ -37,29 +37,25 @@ fn run(source: &str) -> String {
 
 #[test]
 fn llvm_destructure_string_splits_into_char_strings() {
-    let out = run(
-        r#"
+    let out = run(r#"
 ken [a, b, c] = "abc"
 blether a
 blether b
 blether c
-"#,
-    );
+"#);
     let lines: Vec<&str> = out.trim().lines().collect();
     assert_eq!(lines, vec!["a", "b", "c"]);
 }
 
 #[test]
 fn llvm_destructure_string_supports_rest_pattern() {
-    let out = run(
-        r#"
+    let out = run(r#"
 ken [first, ...mid, last] = "hełło"
 blether first
 blether len(mid)
 blether mid[0]
 blether last
-"#,
-    );
+"#);
     let lines: Vec<&str> = out.trim().lines().collect();
     assert_eq!(lines[0], "h");
     assert_eq!(lines[1], "3");
@@ -69,31 +65,26 @@ blether last
 
 #[test]
 fn llvm_destructure_non_list_non_string_throws_catchable_error() {
-    let out = run(
-        r#"
+    let out = run(r#"
 hae_a_bash {
     ken [a] = 1
     blether "unreachable"
 } gin_it_gangs_wrang e {
     blether "caught"
 }
-"#,
-    );
+"#);
     assert_eq!(out.trim(), "caught");
 }
 
 #[test]
 fn llvm_destructure_too_few_elements_throws_catchable_error() {
-    let out = run(
-        r#"
+    let out = run(r#"
 hae_a_bash {
     ken [a, b] = "a"
     blether "unreachable"
 } gin_it_gangs_wrang e {
     blether "caught"
 }
-"#,
-    );
+"#);
     assert_eq!(out.trim(), "caught");
 }
-

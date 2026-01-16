@@ -30,4 +30,3 @@ fn interpreter_median_nan_error_branch_is_covered() {
     let err = (median.func)(vec![list]).expect_err("expected median(NaN) to error");
     assert!(err.contains("NaN"), "unexpected error: {err}");
 }
-

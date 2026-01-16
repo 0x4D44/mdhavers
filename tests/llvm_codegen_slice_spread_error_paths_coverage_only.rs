@@ -104,7 +104,13 @@ fn llvm_codegen_covers_slice_string_end_compile_expr_error_path_for_coverage() {
         value: Literal::String("abc".to_string()),
         span,
     };
-    let program = slice_program(string_obj, None, Some(spread_outside_list(span)), None, span);
+    let program = slice_program(
+        string_obj,
+        None,
+        Some(spread_outside_list(span)),
+        None,
+        span,
+    );
 
     let compiler = LLVMCompiler::new();
     let err = compiler
@@ -123,13 +129,7 @@ fn llvm_codegen_covers_slice_list_start_compile_expr_error_path_for_coverage() {
         }],
         span,
     };
-    let program = slice_program(
-        list_obj,
-        Some(spread_outside_list(span)),
-        None,
-        None,
-        span,
-    );
+    let program = slice_program(list_obj, Some(spread_outside_list(span)), None, None, span);
 
     let compiler = LLVMCompiler::new();
     let err = compiler
@@ -156,4 +156,3 @@ fn llvm_codegen_covers_slice_list_end_compile_expr_error_path_for_coverage() {
         .expect_err("expected spread outside list to be a compile error");
     assert_spread_outside_list_compile_error(err);
 }
-

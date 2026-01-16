@@ -87,4 +87,3 @@ fn llvm_codegen_covers_assert_msg_compile_expr_error_path_for_coverage() {
         other => panic!("unexpected error: {other:?}"),
     }
 }
-

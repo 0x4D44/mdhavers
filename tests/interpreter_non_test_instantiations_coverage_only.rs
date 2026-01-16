@@ -82,7 +82,10 @@ fn read_lines_missing_path_executes_non_test_map_err_for_coverage() {
 #[test]
 fn tri_import_requires_alias_error_executes_non_test_closure_for_coverage() {
     let err = interpret_err(r#"fetch "tri""#);
-    assert!(err.contains("tri import requires an alias"), "unexpected error: {err}");
+    assert!(
+        err.contains("tri import requires an alias"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]
@@ -107,10 +110,7 @@ blether c
 0
 "#,
     );
-    assert_eq!(
-        out,
-        ["a".to_string(), "b".to_string(), "c".to_string()]
-    );
+    assert_eq!(out, ["a".to_string(), "b".to_string(), "c".to_string()]);
 }
 
 #[test]

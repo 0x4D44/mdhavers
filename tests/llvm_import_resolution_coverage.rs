@@ -48,10 +48,7 @@ ken PARENT_ONLY
     );
     // - Grandparent stdlib path: <grandparent>/stdlib/<name>.braw
     write_braw(
-        &project
-            .join("src")
-            .join("stdlib")
-            .join("grand_mod.braw"),
+        &project.join("src").join("stdlib").join("grand_mod.braw"),
         r#"
 ken GRAND_ONLY
 "#,
@@ -116,7 +113,9 @@ blether m["f"]()
         module_path.display()
     );
     let program = parse(&src).expect("parse");
-    let ir = LLVMCompiler::new().compile_to_ir(&program).expect("compile");
+    let ir = LLVMCompiler::new()
+        .compile_to_ir(&program)
+        .expect("compile");
     assert!(!ir.is_empty());
 }
 

@@ -278,7 +278,10 @@ gin s["ok"] {
 }
 "#,
     );
-    assert!(err.contains("Unknown event loop handle"), "unexpected error: {err}");
+    assert!(
+        err.contains("Unknown event loop handle"),
+        "unexpected error: {err}"
+    );
 
     let err = interpret_err(
         r#"
@@ -289,7 +292,10 @@ gin s["ok"] {
 }
 "#,
     );
-    assert!(err.contains("Unknown event loop handle"), "unexpected error: {err}");
+    assert!(
+        err.contains("Unknown event loop handle"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]

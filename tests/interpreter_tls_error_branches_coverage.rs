@@ -94,7 +94,10 @@ fn interpreter_tls_client_new_defaults_empty_server_name_to_localhost_for_covera
     let tls_close = native(&interp, "tls_close");
 
     let mut dict = DictValue::new();
-    dict.set(Value::String("mode".to_string()), Value::String("client".to_string()));
+    dict.set(
+        Value::String("mode".to_string()),
+        Value::String("client".to_string()),
+    );
     dict.set(
         Value::String("server_name".to_string()),
         Value::String(String::new()),
@@ -102,8 +105,7 @@ fn interpreter_tls_client_new_defaults_empty_server_name_to_localhost_for_covera
     dict.set(Value::String("insecure".to_string()), Value::Bool(true));
 
     let tls_id = result_ok_int(
-        (tls_client_new.func)(vec![Value::Dict(Rc::new(RefCell::new(dict)))])
-            .unwrap(),
+        (tls_client_new.func)(vec![Value::Dict(Rc::new(RefCell::new(dict)))]).unwrap(),
     );
     let _ = (tls_close.func)(vec![Value::Integer(tls_id)]).unwrap();
 }
@@ -124,8 +126,7 @@ fn interpreter_tls_client_new_treats_wrongly_typed_config_fields_as_absent_for_c
     dict.set(Value::String("key_pem".to_string()), Value::Integer(6));
 
     let tls_id = result_ok_int(
-        (tls_client_new.func)(vec![Value::Dict(Rc::new(RefCell::new(dict)))])
-            .unwrap(),
+        (tls_client_new.func)(vec![Value::Dict(Rc::new(RefCell::new(dict)))]).unwrap(),
     );
     let _ = (tls_close.func)(vec![Value::Integer(tls_id)]).unwrap();
 }
@@ -137,9 +138,18 @@ fn interpreter_tls_client_new_rejects_invalid_ca_pem_for_coverage() {
 
     let invalid_ca = "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n".to_string();
     let mut dict = DictValue::new();
-    dict.set(Value::String("mode".to_string()), Value::String("client".to_string()));
-    dict.set(Value::String("server_name".to_string()), Value::String("localhost".to_string()));
-    dict.set(Value::String("ca_pem".to_string()), Value::String(invalid_ca));
+    dict.set(
+        Value::String("mode".to_string()),
+        Value::String("client".to_string()),
+    );
+    dict.set(
+        Value::String("server_name".to_string()),
+        Value::String("localhost".to_string()),
+    );
+    dict.set(
+        Value::String("ca_pem".to_string()),
+        Value::String(invalid_ca),
+    );
 
     let err = (tls_client_new.func)(vec![Value::Dict(Rc::new(RefCell::new(dict)))])
         .expect_err("expected invalid CA to error");
@@ -163,13 +173,22 @@ fn interpreter_tls_server_config_exercises_rsa_key_fallback_branch_for_coverage(
         "-----BEGIN RSA PRIVATE KEY-----\nNOT_BASE64\n-----END RSA PRIVATE KEY-----\n".to_string();
 
     let mut dict = DictValue::new();
-    dict.set(Value::String("mode".to_string()), Value::String("server".to_string()));
-    dict.set(Value::String("cert_pem".to_string()), Value::String(cert_pem));
+    dict.set(
+        Value::String("mode".to_string()),
+        Value::String("server".to_string()),
+    );
+    dict.set(
+        Value::String("cert_pem".to_string()),
+        Value::String(cert_pem),
+    );
     dict.set(Value::String("key_pem".to_string()), Value::String(rsa_key));
 
     let err = (tls_client_new.func)(vec![Value::Dict(Rc::new(RefCell::new(dict)))])
         .expect_err("expected invalid RSA key to error");
-    assert!(err.contains("Invalid server key"), "unexpected error: {err}");
+    assert!(
+        err.contains("Invalid server key"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]
@@ -181,12 +200,22 @@ fn interpreter_tls_server_config_maps_with_single_cert_error_for_coverage() {
     let cert_pem = cert.serialize_pem().unwrap();
 
     // Base64-valid, but not a valid PKCS8 private key; this should fail at with_single_cert().
-    let invalid_der_key = "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n".to_string();
+    let invalid_der_key =
+        "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n".to_string();
 
     let mut dict = DictValue::new();
-    dict.set(Value::String("mode".to_string()), Value::String("server".to_string()));
-    dict.set(Value::String("cert_pem".to_string()), Value::String(cert_pem));
-    dict.set(Value::String("key_pem".to_string()), Value::String(invalid_der_key));
+    dict.set(
+        Value::String("mode".to_string()),
+        Value::String("server".to_string()),
+    );
+    dict.set(
+        Value::String("cert_pem".to_string()),
+        Value::String(cert_pem),
+    );
+    dict.set(
+        Value::String("key_pem".to_string()),
+        Value::String(invalid_der_key),
+    );
 
     let err = (tls_client_new.func)(vec![Value::Dict(Rc::new(RefCell::new(dict)))])
         .expect_err("expected invalid private key to error");
@@ -205,8 +234,14 @@ fn interpreter_tls_server_config_requires_key_pem_for_coverage() {
     let cert_pem = cert.serialize_pem().unwrap();
 
     let mut dict = DictValue::new();
-    dict.set(Value::String("mode".to_string()), Value::String("server".to_string()));
-    dict.set(Value::String("cert_pem".to_string()), Value::String(cert_pem));
+    dict.set(
+        Value::String("mode".to_string()),
+        Value::String("server".to_string()),
+    );
+    dict.set(
+        Value::String("cert_pem".to_string()),
+        Value::String(cert_pem),
+    );
 
     let err = (tls_client_new.func)(vec![Value::Dict(Rc::new(RefCell::new(dict)))])
         .expect_err("expected missing key_pem to error");
@@ -225,10 +260,19 @@ fn interpreter_tls_server_config_requires_private_key_for_coverage() {
     let cert_pem = cert.serialize_pem().unwrap();
 
     let mut dict = DictValue::new();
-    dict.set(Value::String("mode".to_string()), Value::String("server".to_string()));
-    dict.set(Value::String("cert_pem".to_string()), Value::String(cert_pem.clone()));
+    dict.set(
+        Value::String("mode".to_string()),
+        Value::String("server".to_string()),
+    );
+    dict.set(
+        Value::String("cert_pem".to_string()),
+        Value::String(cert_pem.clone()),
+    );
     // Provide a PEM value that does not contain a private key to hit the missing-key branch.
-    dict.set(Value::String("key_pem".to_string()), Value::String(cert_pem));
+    dict.set(
+        Value::String("key_pem".to_string()),
+        Value::String(cert_pem),
+    );
 
     let err = (tls_client_new.func)(vec![Value::Dict(Rc::new(RefCell::new(dict)))])
         .expect_err("expected missing private key to error");

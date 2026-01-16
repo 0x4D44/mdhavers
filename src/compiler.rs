@@ -958,10 +958,10 @@ impl Compiler {
                     Literal::Integer(n) => self.output.push_str(&n.to_string()),
                     Literal::Float(f) => self.output.push_str(&f.to_string()),
                     Literal::String(s) => self.output.push_str(&format!("\"{}\"", s)),
-            Literal::Bool(b) => {
-                const BOOL_LITERALS: [&str; 2] = ["false", "true"];
-                self.output.push_str(BOOL_LITERALS[*b as usize]);
-            }
+                    Literal::Bool(b) => {
+                        const BOOL_LITERALS: [&str; 2] = ["false", "true"];
+                        self.output.push_str(BOOL_LITERALS[*b as usize]);
+                    }
                     Literal::Nil => self.output.push_str("null"),
                 }
             }

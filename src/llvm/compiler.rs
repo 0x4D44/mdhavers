@@ -89,8 +89,8 @@ mod coverage_inject {
 
 #[cfg(coverage)]
 pub use coverage_inject::{
-    FailPoint as LLVMCompilerFailPoint, FailPointGuard as LLVMCompilerFailPointGuard,
-    set_failpoint as set_llvm_compiler_failpoint_for_coverage,
+    set_failpoint as set_llvm_compiler_failpoint_for_coverage, FailPoint as LLVMCompilerFailPoint,
+    FailPointGuard as LLVMCompilerFailPointGuard,
 };
 
 #[cfg(all(coverage, not(test)))]
@@ -574,8 +574,9 @@ impl LLVMCompiler {
         let target_triple = TargetMachine::get_default_triple();
         let target = {
             #[cfg(coverage)]
-            let target_from_triple_fn: fn(&inkwell::targets::TargetTriple) -> Result<Target, String> =
-                target_from_triple;
+            let target_from_triple_fn: fn(
+                &inkwell::targets::TargetTriple,
+            ) -> Result<Target, String> = target_from_triple;
             #[cfg(coverage)]
             let target_from_triple_fn = unsafe { std::ptr::read_volatile(&target_from_triple_fn) };
             #[cfg(not(coverage))]
@@ -587,10 +588,9 @@ impl LLVMCompiler {
             }
         };
 
-        let target_machine = create_target_machine(&target, &target_triple, self.opt_level)
-            .ok_or(HaversError::CompileError(
-                "Failed to create target machine".to_string(),
-            ))?;
+        let target_machine = create_target_machine(&target, &target_triple, self.opt_level).ok_or(
+            HaversError::CompileError("Failed to create target machine".to_string()),
+        )?;
 
         if let Some(status) = status.as_mut() {
             if matches!(self.opt_level, OptimizationLevel::None) {
@@ -963,12 +963,14 @@ mod tests {
     #[test]
     fn test_with_optimization_levels() {
         let none = LLVMCompiler::new().with_optimization(0);
-        let is_none = |compiler: &LLVMCompiler| matches!(compiler.opt_level, OptimizationLevel::None);
+        let is_none =
+            |compiler: &LLVMCompiler| matches!(compiler.opt_level, OptimizationLevel::None);
         assert!(is_none(&none));
         assert!(!is_none(&LLVMCompiler::new().with_optimization(1)));
 
         let less = LLVMCompiler::new().with_optimization(1);
-        let is_less = |compiler: &LLVMCompiler| matches!(compiler.opt_level, OptimizationLevel::Less);
+        let is_less =
+            |compiler: &LLVMCompiler| matches!(compiler.opt_level, OptimizationLevel::Less);
         assert!(is_less(&less));
         assert!(!is_less(&LLVMCompiler::new().with_optimization(0)));
 
@@ -1144,41 +1146,62 @@ mod tests {
         let obj_path = dir.path().join("injected.o");
 
         let err = {
-            let _guard =
-                super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::InitializeNativeTarget);
-            LLVMCompiler::new().compile_to_object(&program, &obj_path).unwrap_err()
+            let _guard = super::coverage_inject::set_failpoint(
+                super::coverage_inject::FailPoint::InitializeNativeTarget,
+            );
+            LLVMCompiler::new()
+                .compile_to_object(&program, &obj_path)
+                .unwrap_err()
         };
         assert!(err
             .to_string()
             .contains("coverage injected: initialize_native_target"));
 
         let err = {
-            let _guard = super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::TargetFromTriple);
-            LLVMCompiler::new().compile_to_object(&program, &obj_path).unwrap_err()
+            let _guard = super::coverage_inject::set_failpoint(
+                super::coverage_inject::FailPoint::TargetFromTriple,
+            );
+            LLVMCompiler::new()
+                .compile_to_object(&program, &obj_path)
+                .unwrap_err()
         };
-        assert!(err.to_string().contains("coverage injected: target_from_triple"));
+        assert!(err
+            .to_string()
+            .contains("coverage injected: target_from_triple"));
 
         let err = {
-            let _guard =
-                super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::CreateTargetMachine);
-            LLVMCompiler::new().compile_to_object(&program, &obj_path).unwrap_err()
+            let _guard = super::coverage_inject::set_failpoint(
+                super::coverage_inject::FailPoint::CreateTargetMachine,
+            );
+            LLVMCompiler::new()
+                .compile_to_object(&program, &obj_path)
+                .unwrap_err()
         };
         assert!(err.to_string().contains("Failed to create target machine"));
 
         let err = {
-            let _guard =
-                super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::RunOptimizationPasses);
-            LLVMCompiler::new().compile_to_object(&program, &obj_path).unwrap_err()
+            let _guard = super::coverage_inject::set_failpoint(
+                super::coverage_inject::FailPoint::RunOptimizationPasses,
+            );
+            LLVMCompiler::new()
+                .compile_to_object(&program, &obj_path)
+                .unwrap_err()
         };
         assert!(err
             .to_string()
             .contains("coverage injected: run_optimization_passes"));
 
         let err = {
-            let _guard = super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::WriteObjectFile);
-            LLVMCompiler::new().compile_to_object(&program, &obj_path).unwrap_err()
+            let _guard = super::coverage_inject::set_failpoint(
+                super::coverage_inject::FailPoint::WriteObjectFile,
+            );
+            LLVMCompiler::new()
+                .compile_to_object(&program, &obj_path)
+                .unwrap_err()
         };
-        assert!(err.to_string().contains("coverage injected: write_object_file"));
+        assert!(err
+            .to_string()
+            .contains("coverage injected: write_object_file"));
     }
 
     #[cfg(coverage)]
@@ -1189,24 +1212,33 @@ mod tests {
         let output_path = dir.path().join("out_exe");
 
         let err = {
-            let _guard = super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::CreateRuntimeFile);
+            let _guard = super::coverage_inject::set_failpoint(
+                super::coverage_inject::FailPoint::CreateRuntimeFile,
+            );
             LLVMCompiler::new()
                 .compile_to_native(&program, &output_path, 0)
                 .unwrap_err()
         };
-        assert!(err.to_string().contains("coverage injected: create_runtime_file"));
+        assert!(err
+            .to_string()
+            .contains("coverage injected: create_runtime_file"));
 
         let err = {
-            let _guard = super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::WriteRuntimeFile);
+            let _guard = super::coverage_inject::set_failpoint(
+                super::coverage_inject::FailPoint::WriteRuntimeFile,
+            );
             LLVMCompiler::new()
                 .compile_to_native(&program, &output_path, 0)
                 .unwrap_err()
         };
-        assert!(err.to_string().contains("coverage injected: write_runtime_file"));
+        assert!(err
+            .to_string()
+            .contains("coverage injected: write_runtime_file"));
 
         let err = {
-            let _guard =
-                super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::CreateRuntimeRsFile);
+            let _guard = super::coverage_inject::set_failpoint(
+                super::coverage_inject::FailPoint::CreateRuntimeRsFile,
+            );
             LLVMCompiler::new()
                 .compile_to_native(&program, &output_path, 0)
                 .unwrap_err()
@@ -1216,7 +1248,9 @@ mod tests {
             .contains("coverage injected: create_runtime_rs_file"));
 
         let err = {
-            let _guard = super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::WriteRuntimeRsFile);
+            let _guard = super::coverage_inject::set_failpoint(
+                super::coverage_inject::FailPoint::WriteRuntimeRsFile,
+            );
             LLVMCompiler::new()
                 .compile_to_native(&program, &output_path, 0)
                 .unwrap_err()
@@ -1226,27 +1260,39 @@ mod tests {
             .contains("coverage injected: write_runtime_rs_file"));
 
         let err = {
-            let _guard = super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::CreateGcStubFile);
+            let _guard = super::coverage_inject::set_failpoint(
+                super::coverage_inject::FailPoint::CreateGcStubFile,
+            );
             LLVMCompiler::new()
                 .compile_to_native(&program, &output_path, 0)
                 .unwrap_err()
         };
-        assert!(err.to_string().contains("coverage injected: create_gc_stub_file"));
+        assert!(err
+            .to_string()
+            .contains("coverage injected: create_gc_stub_file"));
 
         let err = {
-            let _guard = super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::WriteGcStubFile);
+            let _guard = super::coverage_inject::set_failpoint(
+                super::coverage_inject::FailPoint::WriteGcStubFile,
+            );
             LLVMCompiler::new()
                 .compile_to_native(&program, &output_path, 0)
                 .unwrap_err()
         };
-        assert!(err.to_string().contains("coverage injected: write_gc_stub_file"));
+        assert!(err
+            .to_string()
+            .contains("coverage injected: write_gc_stub_file"));
 
         let err = {
-            let _guard = super::coverage_inject::set_failpoint(super::coverage_inject::FailPoint::LinkCommandStatus);
+            let _guard = super::coverage_inject::set_failpoint(
+                super::coverage_inject::FailPoint::LinkCommandStatus,
+            );
             LLVMCompiler::new()
                 .compile_to_native(&program, &output_path, 0)
                 .unwrap_err()
         };
-        assert!(err.to_string().contains("coverage injected: link_command_status"));
+        assert!(err
+            .to_string()
+            .contains("coverage injected: link_command_status"));
     }
 }

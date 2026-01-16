@@ -4,9 +4,7 @@ use mdhavers::{parse, LLVMCompiler};
 
 fn expect_compile_error(src: &str) {
     let program = parse(src).expect("parse");
-    let _ = LLVMCompiler::new()
-        .compile_to_ir(&program)
-        .unwrap_err();
+    let _ = LLVMCompiler::new().compile_to_ir(&program).unwrap_err();
 }
 
 #[test]

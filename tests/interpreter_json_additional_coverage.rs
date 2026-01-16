@@ -53,8 +53,14 @@ fn interpreter_json_parse_additional_branches_are_covered() {
     let value = run(r#"json_parse("1E-2")"#).unwrap();
     assert!(matches!(value, Value::Float(_)));
 
-    assert_eq!(run(r#"json_pretty([])"#).unwrap(), Value::String("[]".to_string()));
-    assert_eq!(run(r#"json_pretty({})"#).unwrap(), Value::String("{}".to_string()));
+    assert_eq!(
+        run(r#"json_pretty([])"#).unwrap(),
+        Value::String("[]".to_string())
+    );
+    assert_eq!(
+        run(r#"json_pretty({})"#).unwrap(),
+        Value::String("{}".to_string())
+    );
 }
 
 #[test]

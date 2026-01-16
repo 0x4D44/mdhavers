@@ -25,7 +25,8 @@ fn assert_compile_error_contains(err: HaversError, needle: &str) {
 }
 
 #[test]
-fn llvm_codegen_covers_method_default_error_in_dyn_dispatch_when_param_names_present_for_coverage() {
+fn llvm_codegen_covers_method_default_error_in_dyn_dispatch_when_param_names_present_for_coverage()
+{
     let err = compile_to_ir_err(&format!(
         r#"
 kin C {{
@@ -71,7 +72,8 @@ C()
 }
 
 #[test]
-fn llvm_codegen_covers_method_default_error_in_dyn_dispatch_when_param_names_missing_for_coverage() {
+fn llvm_codegen_covers_method_default_error_in_dyn_dispatch_when_param_names_missing_for_coverage()
+{
     let dir = tempfile::Builder::new()
         .prefix("method_defaults_no_param_names_dyn")
         .tempdir_in("target")

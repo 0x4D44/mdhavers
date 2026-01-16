@@ -52,4 +52,3 @@ blether m2.one()
 
     assert_eq!(compile_and_run(dir.path(), &main_path), "loaded\n1\n1");
 }
-

@@ -89,7 +89,9 @@ apply(id)
         };
         let program = Program::new(vec![apply_fn]);
         let mut wasm_compiler = mdhavers::wasm_compiler::WasmCompiler::new();
-        let wat_manual = wasm_compiler.compile(&program).expect("manual wasm compile");
+        let wat_manual = wasm_compiler
+            .compile(&program)
+            .expect("manual wasm compile");
         assert!(wat_manual.contains("(call $mdh_method_call1)"));
     }
 
@@ -124,11 +126,11 @@ fetch "foo/bar.braw"
 
     #[cfg(feature = "llvm")]
     {
-        use std::hint::black_box;
         use inkwell::context::Context;
         use mdhavers::llvm::codegen::CodeGen;
-        use mdhavers::llvm::{InferredType, MdhTypes, ValueTag};
         use mdhavers::llvm::runtime::RuntimeFunctions;
+        use mdhavers::llvm::{InferredType, MdhTypes, ValueTag};
+        use std::hint::black_box;
 
         let context = Context::create();
         let types = MdhTypes::new(&context);

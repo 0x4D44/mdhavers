@@ -38,23 +38,20 @@ fn run(source: &str) -> String {
 
 #[test]
 fn llvm_calling_named_function_value_applies_defaults_like_interpreter() {
-    let out = run(
-        r#"
+    let out = run(r#"
 dae greet(name, greeting = "Hello") {
     gie greeting + " " + name
 }
 
 ken f = greet
 blether f("World")
-"#,
-    );
+"#);
     assert_eq!(out.trim(), "Hello World");
 }
 
 #[test]
 fn llvm_calling_captured_function_applies_defaults_with_correct_indexing() {
-    let out = run(
-        r#"
+    let out = run(r#"
 dae outer(x) {
     dae inner(a = x) {
         gie a
@@ -63,15 +60,13 @@ dae outer(x) {
 }
 
 blether outer(5)
-"#,
-    );
+"#);
     assert_eq!(out.trim(), "5");
 }
 
 #[test]
 fn llvm_calling_returned_closure_applies_captured_default() {
-    let out = run(
-        r#"
+    let out = run(r#"
 dae outer(x) {
     dae inner(a = x) { gie a }
     gie inner
@@ -79,15 +74,13 @@ dae outer(x) {
 
 ken f = outer(5)
 blether f()
-"#,
-    );
+"#);
     assert_eq!(out.trim(), "5");
 }
 
 #[test]
 fn llvm_bound_method_value_applies_defaults_using_masel() {
-    let out = run(
-        r#"
+    let out = run(r#"
 kin A {
     dae init(v) { masel.v = v }
     dae get(a = masel.v) { gie a }
@@ -95,30 +88,26 @@ kin A {
 
 ken f = A(5).get
 blether f()
-"#,
-    );
+"#);
     assert_eq!(out.trim(), "5");
 }
 
 #[test]
 fn llvm_direct_method_call_applies_defaults_using_masel() {
-    let out = run(
-        r#"
+    let out = run(r#"
 kin A {
     dae init(v) { masel.v = v }
     dae get(a = masel.v) { gie a }
 }
 
 blether A(5).get()
-"#,
-    );
+"#);
     assert_eq!(out.trim(), "5");
 }
 
 #[test]
 fn llvm_returned_closure_from_method_captures_masel_for_default() {
-    let out = run(
-        r#"
+    let out = run(r#"
 kin A {
     dae init(v) { masel.v = v }
     dae maker() {
@@ -129,38 +118,32 @@ kin A {
 
 ken f = A(7).maker()
 blether f()
-"#,
-    );
+"#);
     assert_eq!(out.trim(), "7");
 }
 
 #[test]
 fn llvm_defaults_can_reference_prior_param_in_direct_call() {
-    let out = run(
-        r#"
+    let out = run(r#"
 dae f(a, b = a) { gie b }
 blether f(3)
-"#,
-    );
+"#);
     assert_eq!(out.trim(), "3");
 }
 
 #[test]
 fn llvm_defaults_can_reference_prior_param_in_function_value_call() {
-    let out = run(
-        r#"
+    let out = run(r#"
 dae f(a, b = a) { gie b }
 ken g = f
 blether g(3)
-"#,
-    );
+"#);
     assert_eq!(out.trim(), "3");
 }
 
 #[test]
 fn llvm_defaults_can_reference_prior_param_in_returned_closure_value_call() {
-    let out = run(
-        r#"
+    let out = run(r#"
 dae outer(x) {
     dae inner(a, b = a, c = x) { gie b }
     gie inner
@@ -168,7 +151,6 @@ dae outer(x) {
 
 ken f = outer(9)
 blether f(3)
-"#,
-    );
+"#);
     assert_eq!(out.trim(), "3");
 }

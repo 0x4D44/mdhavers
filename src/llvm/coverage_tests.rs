@@ -12,7 +12,10 @@ fn compile_to_ir_for_unit_coverage(source: &str) {
     let _ = LLVMCompiler::new().compile_to_ir(&program).unwrap();
 }
 
-fn compile_with_source_path_for_unit_coverage(source: &str, source_path: &Path) -> crate::error::HaversResult<()> {
+fn compile_with_source_path_for_unit_coverage(
+    source: &str,
+    source_path: &Path,
+) -> crate::error::HaversResult<()> {
     let program = parse(source).unwrap();
     let context = Context::create();
     let mut codegen = CodeGen::new(&context, "coverage_codegen_source_path");
@@ -488,7 +491,10 @@ outer()
             "Undefined variable",
         ),
         // Import resolution: exercise the `lib/*` stripped-path fallthrough.
-        (r#"fetch "lib/__coverage_missing_module""#, "Cannot find module to import"),
+        (
+            r#"fetch "lib/__coverage_missing_module""#,
+            "Cannot find module to import",
+        ),
     ];
 
     for (src, expected) in cases {
@@ -630,7 +636,8 @@ outer()
 }
 
 #[test]
-fn llvm_codegen_for_ternary_slice_import_destructure_fstring_paths_are_exercised_for_unit_coverage() {
+fn llvm_codegen_for_ternary_slice_import_destructure_fstring_paths_are_exercised_for_unit_coverage()
+{
     // Covers a broad set of currently low-instantiation helpers in `codegen.rs`:
     // - fetch/import plumbing
     // - fer loops over list/string/range
@@ -688,9 +695,7 @@ fn llvm_codegen_import_tri_requires_alias_error_is_exercised_for_unit_coverage()
     let err = LLVMCompiler::new()
         .compile_to_ir(&program)
         .expect_err("expected tri import to require an alias");
-    assert!(err
-        .to_string()
-        .contains("tri import requires an alias"));
+    assert!(err.to_string().contains("tri import requires an alias"));
 }
 
 #[test]

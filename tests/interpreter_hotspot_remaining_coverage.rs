@@ -23,10 +23,10 @@ sum
     .unwrap();
 
     let mut interp = Interpreter::new();
-    interp.globals.borrow_mut().define(
-        "r".to_string(),
-        Value::Range(RangeValue::new(1, 4, false)),
-    );
+    interp
+        .globals
+        .borrow_mut()
+        .define("r".to_string(), Value::Range(RangeValue::new(1, 4, false)));
 
     let value = interp.interpret(&program).unwrap();
     assert_eq!(value, Value::Integer(6));
@@ -55,11 +55,9 @@ n
 
 #[test]
 fn interpreter_try_catch_success_path_is_covered() {
-    let value = run(
-        r#"
+    let value = run(r#"
 hae_a_bash { ken x = 1 } gin_it_gangs_wrang e { blether e }
-"#,
-    )
+"#)
     .unwrap();
     assert_eq!(value, Value::Nil);
 }
@@ -89,23 +87,19 @@ fn interpreter_destructure_too_few_elements_error_is_covered() {
 #[test]
 fn interpreter_dict_property_set_and_invalid_target_are_covered() {
     assert_eq!(
-        run(
-            r#"
+        run(r#"
 ken d = {"a": 1}
 d.a = 2
 d.a
-"#,
-        )
+"#,)
         .unwrap(),
         Value::Integer(2)
     );
 
-    let err = run(
-        r#"
+    let err = run(r#"
 ken x = 1
 x.a = 2
-"#,
-    )
+"#)
     .unwrap_err();
     match err {
         HaversError::TypeError { message, .. } => {
@@ -118,13 +112,11 @@ x.a = 2
 #[test]
 fn interpreter_negative_list_index_get_set_and_string_oob_are_covered() {
     assert_eq!(
-        run(
-            r#"
+        run(r#"
 ken xs = [1, 2, 3]
 xs[-1] = 9
 xs[-1]
-"#,
-        )
+"#,)
         .unwrap(),
         Value::Integer(9)
     );
@@ -138,12 +130,10 @@ xs[-1]
 
 #[test]
 fn interpreter_class_superclass_not_class_error_is_covered() {
-    let err = run(
-        r#"
+    let err = run(r#"
 ken A = 1
 kin C fae A { dae m() { gie 1 } }
-"#,
-    )
+"#)
     .unwrap_err();
 
     match err {

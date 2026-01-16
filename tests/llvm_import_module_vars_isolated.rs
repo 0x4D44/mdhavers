@@ -69,7 +69,10 @@ blether b.get()
     )
     .unwrap();
 
-    assert_eq!(compile_and_run(dir.path(), &main_path), "1\n2\n10\n2\n10\n20");
+    assert_eq!(
+        compile_and_run(dir.path(), &main_path),
+        "1\n2\n10\n2\n10\n20"
+    );
 }
 
 #[test]

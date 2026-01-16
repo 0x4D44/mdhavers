@@ -642,11 +642,13 @@ mod tests {
         docs.open(uri.clone(), "ken x = 1\n".to_string());
 
         let params = DidChangeTextDocumentParams {
-            text_document: VersionedTextDocumentIdentifier { uri: uri.clone(), version: 2 },
+            text_document: VersionedTextDocumentIdentifier {
+                uri: uri.clone(),
+                version: 2,
+            },
             content_changes: Vec::new(),
         };
-        let notification =
-            LspNotification::new(DidChangeTextDocument::METHOD.to_string(), params);
+        let notification = LspNotification::new(DidChangeTextDocument::METHOD.to_string(), params);
         handle_notification(&server, &mut docs, notification).unwrap();
         assert_eq!(docs.get(&uri).unwrap(), "ken x = 1\n");
     }
@@ -659,7 +661,10 @@ mod tests {
         docs.open(uri.clone(), "ken x = 1\n".to_string());
 
         let params = DidChangeTextDocumentParams {
-            text_document: VersionedTextDocumentIdentifier { uri: uri.clone(), version: 2 },
+            text_document: VersionedTextDocumentIdentifier {
+                uri: uri.clone(),
+                version: 2,
+            },
             content_changes: vec![
                 TextDocumentContentChangeEvent {
                     range: None,
@@ -673,8 +678,7 @@ mod tests {
                 },
             ],
         };
-        let notification =
-            LspNotification::new(DidChangeTextDocument::METHOD.to_string(), params);
+        let notification = LspNotification::new(DidChangeTextDocument::METHOD.to_string(), params);
         handle_notification(&server, &mut docs, notification).unwrap();
         assert_eq!(docs.get(&uri).unwrap(), "ken x = 3\n");
     }
@@ -687,15 +691,17 @@ mod tests {
         docs.open(uri.clone(), "ken x = 1\n".to_string());
 
         let params = DidChangeTextDocumentParams {
-            text_document: VersionedTextDocumentIdentifier { uri: uri.clone(), version: 2 },
+            text_document: VersionedTextDocumentIdentifier {
+                uri: uri.clone(),
+                version: 2,
+            },
             content_changes: vec![TextDocumentContentChangeEvent {
                 range: None,
                 range_length: None,
                 text: "ken x = 2\n".to_string(),
             }],
         };
-        let notification =
-            LspNotification::new(DidChangeTextDocument::METHOD.to_string(), params);
+        let notification = LspNotification::new(DidChangeTextDocument::METHOD.to_string(), params);
         handle_notification(&server, &mut docs, notification).unwrap();
         assert_eq!(docs.get(&uri).unwrap(), "ken x = 2\n");
     }
@@ -714,16 +720,19 @@ mod tests {
     #[test]
     fn completion_item_kind_and_diagnostic_severity_cover_fallbacks() {
         assert_eq!(completion_item_kind("keyword"), CompletionItemKind::KEYWORD);
-        assert_eq!(completion_item_kind("function"), CompletionItemKind::FUNCTION);
-        assert_eq!(completion_item_kind("constant"), CompletionItemKind::CONSTANT);
+        assert_eq!(
+            completion_item_kind("function"),
+            CompletionItemKind::FUNCTION
+        );
+        assert_eq!(
+            completion_item_kind("constant"),
+            CompletionItemKind::CONSTANT
+        );
         assert_eq!(completion_item_kind("unknown"), CompletionItemKind::TEXT);
 
         assert_eq!(diagnostic_severity("error"), DiagnosticSeverity::ERROR);
         assert_eq!(diagnostic_severity("warning"), DiagnosticSeverity::WARNING);
-        assert_eq!(
-            diagnostic_severity("info"),
-            DiagnosticSeverity::INFORMATION
-        );
+        assert_eq!(diagnostic_severity("info"), DiagnosticSeverity::INFORMATION);
     }
 
     #[test]

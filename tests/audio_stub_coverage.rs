@@ -6,7 +6,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 fn get_native(env: &Rc<RefCell<Environment>>, name: &str) -> Rc<NativeFunction> {
-    let value = env.borrow().get(name).unwrap_or_else(|| panic!("missing stub {name}"));
+    let value = env
+        .borrow()
+        .get(name)
+        .unwrap_or_else(|| panic!("missing stub {name}"));
     match value {
         Value::NativeFunction(func) => func,
         other => panic!("expected native function for {name}, got {other:?}"),
