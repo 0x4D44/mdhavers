@@ -311,9 +311,10 @@ function Main {
     Write-Host ""
     Write-Info "Next steps:"
     Write-Host "  1. Restart your terminal (for PATH changes)"
-    Write-Host "  2. Build with all features: cargo build"
+    Write-Host "  2. Build for Windows: cargo build --no-default-features --features windows"
+    Write-Host "     (includes graphics via raylib; LLVM not supported on Windows yet)"
     Write-Host "  3. Or build minimal: cargo build --no-default-features --features minimal"
-    Write-Host "  4. Run tests: cargo test"
+    Write-Host "  4. Run tests: cargo test --no-default-features --features minimal"
     Write-Host ""
 
     # Verify LLVM setup

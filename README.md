@@ -1201,15 +1201,18 @@ cargo test
 git clone <repo-url>
 cd mdhavers
 
-# Install all dependencies (run as Administrator for best results)
+# Install dependencies (run as Administrator for best results)
 .\scripts\setup-deps.ps1
 
-# Build with all features (default)
-cargo build --release
+# Build for Windows (graphics via raylib; LLVM not yet supported)
+cargo build --release --no-default-features --features windows
 
 # Run tests
-cargo test
+cargo test --no-default-features --features minimal
 ```
+
+**Note:** On Windows, the `windows` feature includes graphics (raylib with built-in audio).
+LLVM native compilation requires Unix (the runtime uses POSIX APIs).
 
 ### Minimal Build (CI / No Optional Dependencies)
 
@@ -1227,11 +1230,17 @@ cargo build --release --no-default-features --features cli
 
 | Feature | Description | Dependencies |
 |---------|-------------|--------------|
-| `full` | All features (default) | LLVM 15, raylib deps, ALSA |
+| `full` | All features (default, Linux/WSL) | LLVM 15, raylib deps, ALSA |
+| `windows` | Windows build (graphics, no LLVM) | CMake, VS Build Tools |
 | `minimal` | CLI + native networking | None (just Rust) |
-| `llvm` | Native code compilation | LLVM 15, libzstd |
+| `llvm` | Native code compilation | LLVM 15, libzstd (Unix only) |
 | `graphics` | 2D/3D graphics via raylib | cmake, X11 dev libs |
-| `audio` | Sound playback | ALSA (Linux) |
+| `audio` | Sound playback via miniaudio | ALSA (Linux) |
+
+**Platform notes:**
+- **Linux/WSL**: Use `full` for all features including LLVM native compilation
+- **Windows**: Use `windows` feature (LLVM runtime uses POSIX APIs not available on Windows)
+- `graphics` + `audio` conflict on Windows due to duplicate miniaudio symbols
 
 ### Manual Dependency Installation
 

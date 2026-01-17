@@ -84,7 +84,9 @@ fn build_with_cmake(src_path: &str) {
         .define("SUPPORT_BUSY_WAIT_LOOP", "OFF")
         .define("SUPPORT_FILEFORMAT_JPG", "ON")
         .define("CUSTOMIZE_BUILD", "ON")
-        .define("SUPPORT_MODULE_RAUDIO", "OFF");
+        // Audio must be ON - the raylib Rust crate always exports audio bindings
+        // and will cause linker errors if the C library doesn't include them
+        .define("SUPPORT_MODULE_RAUDIO", "ON");
 
     #[cfg(feature = "custom_frame_control")]
     {
