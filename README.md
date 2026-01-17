@@ -1175,68 +1175,96 @@ Try it in the playground at `playground/web/` tae see live compilation!
 
 ## Building from Source
 
+### Quick Start (Full Build)
+
+The default build includes all features (LLVM, graphics, audio). First install dependencies:
+
+**Linux/WSL:**
 ```bash
-# Clone the repository
+# Clone and enter the repository
 git clone <repo-url>
 cd mdhavers
 
-# Build minimal (interpreter only, no LLVM/graphics/audio)
-# Default build: CLI + native runtime (no LLVM/graphics/audio)
-cargo build --release
+# Install all dependencies (LLVM, graphics, audio)
+./scripts/setup-deps.sh
 
-# Minimal build (CLI only; disables native networking/TLS/DNS/etc too)
-cargo build --release --no-default-features --features cli
+# Build with all features (default)
+cargo build --release
 
 # Run tests
 cargo test
 ```
 
-### Building with LLVM Support
+**Windows (PowerShell):**
+```powershell
+# Clone and enter the repository
+git clone <repo-url>
+cd mdhavers
 
-To enable native code compilation via LLVM, you need to install LLVM 15 and its dependencies:
+# Install all dependencies (run as Administrator for best results)
+.\scripts\setup-deps.ps1
 
-**Ubuntu/Debian:**
+# Build with all features (default)
+cargo build --release
+
+# Run tests
+cargo test
+```
+
+### Minimal Build (CI / No Optional Dependencies)
+
+If you don't need LLVM, graphics, or audio:
+
 ```bash
-# Install LLVM 15 and required libraries
-sudo apt install llvm-15 llvm-15-dev libpolly-15-dev libzstd-dev
+# Minimal build with just CLI + native networking
+cargo build --release --no-default-features --features minimal
 
-# Set the LLVM prefix environment variable
+# Or even more minimal (CLI only, no native networking)
+cargo build --release --no-default-features --features cli
+```
+
+### Feature Summary
+
+| Feature | Description | Dependencies |
+|---------|-------------|--------------|
+| `full` | All features (default) | LLVM 15, raylib deps, ALSA |
+| `minimal` | CLI + native networking | None (just Rust) |
+| `llvm` | Native code compilation | LLVM 15, libzstd |
+| `graphics` | 2D/3D graphics via raylib | cmake, X11 dev libs |
+| `audio` | Sound playback | ALSA (Linux) |
+
+### Manual Dependency Installation
+
+If you prefer to install dependencies manually:
+
+**Ubuntu/Debian (LLVM):**
+```bash
+sudo apt install llvm-15 llvm-15-dev libpolly-15-dev lld-15 libzstd-dev
 export LLVM_SYS_150_PREFIX=/usr/lib/llvm-15
-
-# Add to your shell config to make it permanent
-echo 'export LLVM_SYS_150_PREFIX=/usr/lib/llvm-15' >> ~/.bashrc
 ```
 
-**Then build with LLVM:**
+**Ubuntu/Debian (Graphics):**
 ```bash
-cargo build --release --features llvm
+sudo apt install cmake libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev
 ```
 
-**Verify LLVM detection (using the Makefile):**
+**Ubuntu/Debian (Audio):**
+```bash
+sudo apt install libasound2-dev
+```
+
+**Windows (LLVM):**
+- Install LLVM 15 from [releases.llvm.org](https://releases.llvm.org/download.html) or via `choco install llvm --version=15.0.7`
+- Set environment variable: `LLVM_SYS_150_PREFIX=C:\Program Files\LLVM`
+
+**Verify LLVM detection:**
 ```bash
 make status
 ```
 
-**Note:** Default features enable `cli` and `native`.
-To build with LLVM but without any other optional features (graphics/audio):
-```bash
-cargo build --release --features llvm
-```
-
 ### Audio (Soond)
 
-Audio is optional and independent of graphics. To enable audio, build with:
-
-```bash
-cargo build --release --features audio
-```
-
-**Note:** Graphics uses raylib. On Ubuntu/WSL you’ll need:
-```bash
-sudo apt install cmake libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev
-```
-Audio (interpreter + native) uses miniaudio and does **not** require X11. X11 deps are only
-needed for graphics.
+Audio is optional and independent of graphics. Audio (interpreter + native) uses miniaudio and does **not** require X11. X11 deps are only needed for graphics.
 
 **Backend support:** Interpreter, LLVM/native, JavaScript, and WAT/WASM.
 

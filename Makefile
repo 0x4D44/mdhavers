@@ -1,6 +1,6 @@
 # Makefile for mdhavers - auto-detects LLVM and builds appropriately
 
-.PHONY: build release test clean install install-local uninstall check fmt clippy package coverage coverage-gate coverage-guardrails
+.PHONY: build release test clean install install-local uninstall check fmt clippy package coverage coverage-gate coverage-guardrails setup build-full build-minimal
 
 # Auto-detect LLVM - check for llvm-config variants
 LLVM_CONFIG := $(shell which llvm-config-15 2>/dev/null || which llvm-config-14 2>/dev/null || which llvm-config-16 2>/dev/null || which llvm-config-17 2>/dev/null || which llvm-config-18 2>/dev/null || which llvm-config 2>/dev/null)
@@ -23,10 +23,29 @@ else
     LLVM_STATUS := disabled (LLVM not found)
 endif
 
-# Default target
+# Install system dependencies (platform-aware)
+setup:
+	@echo "Installing dependencies..."
+	@if [ "$$(uname -s)" = "Linux" ] || [ "$$(uname -s)" = "Darwin" ]; then \
+		chmod +x scripts/setup-deps.sh && ./scripts/setup-deps.sh; \
+	else \
+		echo "On Windows, run: powershell -ExecutionPolicy Bypass -File scripts/setup-deps.ps1"; \
+	fi
+
+# Default target - builds with auto-detected features
 build:
 	@echo "Building mdhavers (LLVM: $(LLVM_STATUS))"
 	cargo build $(FEATURES)
+
+# Build with all features (requires setup first)
+build-full:
+	@echo "Building mdhavers with all features"
+	cargo build --features full
+
+# Build minimal (for CI or systems without optional deps)
+build-minimal:
+	@echo "Building mdhavers with minimal features"
+	cargo build --no-default-features --features minimal
 
 release:
 	@echo "Building mdhavers release (LLVM: $(LLVM_STATUS))"
@@ -122,7 +141,10 @@ status:
 
 help:
 	@echo "mdhavers build targets:"
+	@echo "  make setup           - Install system dependencies (run first!)"
 	@echo "  make build           - Build with auto-detected features"
+	@echo "  make build-full      - Build with all features (graphics, audio, llvm)"
+	@echo "  make build-minimal   - Build with minimal features (for CI)"
 	@echo "  make release         - Build release with auto-detected features"
 	@echo "  make test            - Run tests"
 	@echo "  make coverage        - Run canonical LLVM coverage scoreboard"

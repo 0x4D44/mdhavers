@@ -23,7 +23,15 @@ path = "src/lsp/main.rs"
 required-features = ["cli"]
 
 [features]
-default = ["cli", "native"]
+# Full features by default - run scripts/setup-deps first to install dependencies
+default = ["full"]
+
+# All optional features enabled (requires setup-deps script)
+full = ["cli", "native", "graphics", "audio", "llvm"]
+
+# Minimal build for CI or systems without optional deps
+minimal = ["cli", "native"]
+
 cli = ["clap", "rustyline", "crossterm", "dirs", "colored", "lsp-types", "lsp-server"]
 llvm = ["inkwell"]
 llvm_comprehensive_tests = []
@@ -44,15 +52,15 @@ dtls = [
     "udp-dtls",
     "openssl",
 ]
-# LLVM native compilation (optional):
-#   To enable: cargo build --features llvm
-#   Requires: sudo apt install llvm-15 libpolly-15-dev lld-15 libzstd-dev
-# Graphics (raylib) - optional feature:
-#   To enable: cargo build --features graphics
-#   Requires: cmake, libxrandr-dev, libxinerama-dev, libxcursor-dev, libxi-dev
-# Audio (miniaudio for all native/interpreter backends) - optional feature:
-#   To enable: cargo build --features audio
-#   Requires: an audio backend on the host system (no X11/cmake needed)
+
+# Dependencies:
+#   Full build: Run ./scripts/setup-deps.sh (Linux) or .\scripts\setup-deps.ps1 (Windows)
+#   Minimal build: cargo build --no-default-features --features minimal
+#
+# Individual feature requirements:
+#   llvm: LLVM 15 + libzstd-dev (Linux) or LLVM_SYS_150_PREFIX (Windows)
+#   graphics: cmake + X11 dev libs (Linux) or CMake + VS Build Tools (Windows)
+#   audio: ALSA dev libs (Linux) or just VS Build Tools (Windows)
 
 [dependencies]
 thiserror = "1.0"

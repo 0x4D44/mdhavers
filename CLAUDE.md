@@ -37,27 +37,29 @@ make check
 ### Feature-Specific Builds
 
 ```bash
-# Build without any optional features (CLI only)
-cargo build --no-default-features --features cli
+# Default build includes ALL features (llvm, graphics, audio, native)
+# Requires: ./scripts/setup-deps.sh (Linux) or .\scripts\setup-deps.ps1 (Windows)
+cargo build
 
-# Build with TLS networking (Rustls) - works on all platforms
-cargo build --no-default-features --features "cli,native"
+# Build with all features explicitly
+cargo build --features full
+make build-full
+
+# Minimal build for CI or systems without optional dependencies
+cargo build --no-default-features --features minimal
+make build-minimal
+
+# Build without any optional features (CLI only, no native networking)
+cargo build --no-default-features --features cli
 
 # Build with DTLS/SRTP support (requires OpenSSL, Unix only)
 cargo build --features dtls
 
-# Build with LLVM support (requires LLVM 15 + libzstd-dev)
-cargo build --features llvm
-make build-with-llvm
-
-# Build with graphics (requires raylib dependencies)
-cargo build --features graphics
-
-# Build with audio support
-cargo build --features audio
-
 # Check LLVM detection status
 make status
+
+# Install dependencies first (platform-aware)
+make setup
 ```
 
 ### Code Quality
@@ -287,9 +289,9 @@ mdhavers/
 
 ## Notes
 
-- Default features: `cli` and `native` (TLS/DNS networking via Rustls)
+- Default features: `full` (cli, native, llvm, graphics, audio) - run setup-deps script first
+- Use `--no-default-features --features minimal` for CI builds without optional dependencies
 - The `dtls` feature adds DTLS/SRTP support but requires OpenSSL and Unix
-- LLVM backend is optional and requires manual dependency installation
 - The Makefile auto-detects LLVM and adjusts build accordingly
 - Audio and graphics are independent optional features
 - Most development uses the interpreter for quick iteration
