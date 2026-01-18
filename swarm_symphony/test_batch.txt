@@ -1,0 +1,9 @@
+# Test batch file for Swarm Symphony
+# This tests the command system
+
+spawn predator 0 0 0
+spawn attractor 10 10 10
+spawn repulsor -10 -10 -10
+rule max_speed 3.0
+tick 5
+status
