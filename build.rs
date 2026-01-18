@@ -18,6 +18,9 @@ fn main() {
     println!("cargo:rerun-if-changed=runtime/mdh_runtime.c");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime.h");
     println!("cargo:rerun-if-changed=runtime/gc_stub.c");
+    println!("cargo:rerun-if-changed=runtime/platform/platform.h");
+    println!("cargo:rerun-if-changed=runtime/platform/platform_unix.c");
+    println!("cargo:rerun-if-changed=runtime/platform/platform_win32.c");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/Cargo.toml");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/Cargo.lock");
     println!("cargo:rerun-if-changed=runtime/mdh_runtime_rs/src/lib.rs");
@@ -41,8 +44,20 @@ fn main() {
     let mut build = cc::Build::new();
     build
         .file("runtime/mdh_runtime.c")
+        .include("runtime/platform")
         .opt_level(2)
         .warnings(false);
+
+    // Add platform-specific implementation
+    if target.contains("windows") {
+        build.file("runtime/platform/platform_win32.c");
+        // Link Windows libraries needed by platform layer
+        println!("cargo:rustc-link-lib=ws2_32");
+        println!("cargo:rustc-link-lib=userenv");
+    } else {
+        build.file("runtime/platform/platform_unix.c");
+        println!("cargo:rustc-link-lib=pthread");
+    }
 
     if env::var("CARGO_FEATURE_GRAPHICS3D").is_ok() {
         build.define("MDH_TRI_RUST", None);

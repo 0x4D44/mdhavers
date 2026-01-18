@@ -9,21 +9,31 @@
 #define _XOPEN_SOURCE 700
 
 #include "mdh_runtime.h"
+#include "platform/platform.h"
 
 #include <ctype.h>
-#include <dirent.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <math.h>
 #include <limits.h>
+#include <time.h>
+#include <setjmp.h>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <io.h>
+#include <fcntl.h>
+#else
+#include <dirent.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
-#include <time.h>
 #include <unistd.h>
-#include <setjmp.h>
 #include <termios.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -34,6 +44,32 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <pthread.h>
+#endif
+
+/* Cross-platform compatibility helpers */
+#ifdef _WIN32
+/* Windows doesn't have localtime_r, provide a wrapper using localtime_s */
+static struct tm *mdh_localtime_r(const time_t *timer, struct tm *result) {
+    return localtime_s(result, timer) == 0 ? result : NULL;
+}
+#define localtime_r mdh_localtime_r
+
+/* Windows doesn't have clock_gettime with CLOCK_REALTIME */
+static int mdh_clock_gettime_realtime(struct timespec *ts) {
+    uint64_t ns = mdh_time_realtime_ns();
+    ts->tv_sec = (time_t)(ns / 1000000000ULL);
+    ts->tv_nsec = (long)(ns % 1000000000ULL);
+    return 0;
+}
+#define clock_gettime(clk, ts) mdh_clock_gettime_realtime(ts)
+#define CLOCK_REALTIME 0
+#define CLOCK_MONOTONIC 1
+
+/* Windows uses _close for file descriptors */
+#define close _close
+#define dup _dup
+#define mkstemp mdh_mkstemp
+#endif
 
 /* Boehm GC - declared as extern */
 extern void GC_init(void);
@@ -1125,6 +1161,8 @@ MdhValue __mdh_speir(MdhValue prompt) {
     return __mdh_make_string("");
 }
 
+#ifndef _WIN32
+/* Unix terminal input using termios */
 MdhValue __mdh_get_key(void) {
     if (!isatty(STDIN_FILENO)) {
         return __mdh_make_string("");
@@ -1156,18 +1194,18 @@ MdhValue __mdh_get_key(void) {
             /* Try to read more chars non-blocking (simple hack for now) */
             /* In a real raw loop, we might want to return ESC immediately or parse.
                For parity with crossterm, we should try to detect arrows. */
-            
+
             /* Quick check for [A, [B, [C, [D */
             /* Re-enable raw mode briefly to peek */
             tcsetattr(STDIN_FILENO, TCSANOW, &new_tio);
-            
+
             unsigned char seq[2];
             /* Set non-blocking read for sequence */
             struct termios nb_tio = new_tio;
             nb_tio.c_cc[VMIN] = 0;
             nb_tio.c_cc[VTIME] = 0;
             tcsetattr(STDIN_FILENO, TCSANOW, &nb_tio);
-            
+
             if (read(STDIN_FILENO, &seq[0], 1) == 1 && seq[0] == '[') {
                  if (read(STDIN_FILENO, &seq[1], 1) == 1) {
                      tcsetattr(STDIN_FILENO, TCSANOW, &old_tio);
@@ -1180,7 +1218,7 @@ MdhValue __mdh_get_key(void) {
                      return __mdh_make_string("\x1b"); /* Unknown sequence */
                  }
             }
-            
+
             tcsetattr(STDIN_FILENO, TCSANOW, &old_tio);
             return __mdh_make_string("\x1b");
         } else if (c == 10 || c == 13) {
@@ -1188,7 +1226,7 @@ MdhValue __mdh_get_key(void) {
         } else if (c == 127) {
             return __mdh_make_string("\x08"); /* Backspace */
         }
-        
+
         char str[2] = { (char)c, '\0' };
         return __mdh_make_string(str);
     }
@@ -1215,6 +1253,41 @@ MdhValue __mdh_term_height(void) {
     }
     return __mdh_make_int(24);  /* Default fallback */
 }
+
+#else /* _WIN32 */
+/* Windows terminal functions using platform layer */
+
+MdhValue __mdh_get_key(void) {
+    int ch = mdh_terminal_read_char();
+    if (ch < 0) {
+        return __mdh_make_string("");
+    }
+    if (ch == '\r' || ch == '\n') {
+        return __mdh_make_string("\n");
+    }
+    if (ch == 8 || ch == 127) {
+        return __mdh_make_string("\x08");
+    }
+    char str[2] = { (char)ch, '\0' };
+    return __mdh_make_string(str);
+}
+
+MdhValue __mdh_term_width(void) {
+    int width, height;
+    if (mdh_terminal_get_size(&width, &height) == 0) {
+        return __mdh_make_int(width);
+    }
+    return __mdh_make_int(80);
+}
+
+MdhValue __mdh_term_height(void) {
+    int width, height;
+    if (mdh_terminal_get_size(&width, &height) == 0) {
+        return __mdh_make_int(height);
+    }
+    return __mdh_make_int(24);
+}
+#endif /* _WIN32 */
 
 /* ========== List Operations ========== */
 
@@ -2000,20 +2073,12 @@ MdhValue __mdh_round(MdhValue a) {
 /* ========== Timing ========== */
 
 MdhValue __mdh_mono_ms(void) {
-    struct timespec ts;
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
-        return __mdh_make_int(0);
-    }
-    uint64_t ms = ((uint64_t)ts.tv_sec * 1000ULL) + (uint64_t)(ts.tv_nsec / 1000000ULL);
-    return __mdh_make_int((int64_t)ms);
+    uint64_t ns = mdh_time_monotonic_ns();
+    return __mdh_make_int((int64_t)(ns / 1000000ULL));
 }
 
 MdhValue __mdh_mono_ns(void) {
-    struct timespec ts;
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
-        return __mdh_make_int(0);
-    }
-    uint64_t ns = ((uint64_t)ts.tv_sec * 1000000000ULL) + (uint64_t)ts.tv_nsec;
+    uint64_t ns = mdh_time_monotonic_ns();
     return __mdh_make_int((int64_t)ns);
 }
 
@@ -2360,7 +2425,7 @@ MdhValue __mdh_socket_close(MdhValue sock) {
     if (fd < 0) {
         return __mdh_result_err("Invalid socket", -1);
     }
-    if (close(fd) != 0) {
+    if (mdh_socket_close(fd) != 0) {
         return __mdh_result_errno("socket_close");
     }
     return __mdh_result_ok(__mdh_make_nil());
@@ -2587,7 +2652,7 @@ MdhValue __mdh_tls_connect(MdhValue tls, MdhValue sock) {
         if (!msg || msg[0] == '\0') {
             msg = "tls_connect failed";
         }
-        close(dup_fd);
+        mdh_socket_close(dup_fd);
         return __mdh_result_err(msg, -1);
     }
     return __mdh_result_ok(r.value);
@@ -2682,7 +2747,7 @@ MdhValue __mdh_dtls_handshake(MdhValue dtls, MdhValue sock) {
         if (!msg || msg[0] == '\0') {
             msg = "dtls_handshake failed";
         }
-        close(dup_fd);
+        mdh_socket_close(dup_fd);
         return __mdh_result_err(msg, -1);
     }
     return __mdh_result_ok(r.value);
@@ -2778,11 +2843,7 @@ typedef struct {
 static MdhLoopRegistry __mdh_loop_registry = {1, 0, 0, NULL, NULL};
 
 static int64_t __mdh_mono_ms_now(void) {
-    struct timespec ts;
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
-        return 0;
-    }
-    return (int64_t)((uint64_t)ts.tv_sec * 1000ULL + (uint64_t)(ts.tv_nsec / 1000000ULL));
+    return (int64_t)(mdh_time_monotonic_ns() / 1000000ULL);
 }
 
 static void __mdh_loop_ensure_watch_cap(MdhEventLoop *loop, int64_t needed) {
@@ -3124,6 +3185,9 @@ typedef MdhValue (*MdhFn3)(MdhValue, MdhValue, MdhValue);
 typedef MdhValue (*MdhFn4)(MdhValue, MdhValue, MdhValue, MdhValue);
 typedef MdhValue (*MdhFn5)(MdhValue, MdhValue, MdhValue, MdhValue, MdhValue);
 typedef MdhValue (*MdhFn6)(MdhValue, MdhValue, MdhValue, MdhValue, MdhValue, MdhValue);
+
+#ifndef _WIN32
+/* Unix/POSIX threading implementation */
 
 typedef struct {
     pthread_t thread;
@@ -3619,6 +3683,59 @@ MdhValue __mdh_chan_is_closed(MdhValue chan) {
     pthread_mutex_unlock(&ch->lock);
     return __mdh_make_bool(closed != 0);
 }
+
+#else /* _WIN32 */
+/* Windows threading stubs - threading not yet fully supported */
+
+MdhValue __mdh_thread_spawn(MdhValue func, MdhValue args) {
+    (void)func; (void)args;
+    __mdh_hurl(__mdh_make_string("Threading isnae available on Windows yet"));
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_thread_join(MdhValue thread) {
+    (void)thread;
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_thread_detach(MdhValue thread) {
+    (void)thread;
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_mutex_new(void) {
+    __mdh_hurl(__mdh_make_string("Threading isnae available on Windows yet"));
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_mutex_lock(MdhValue mutex) { (void)mutex; return __mdh_make_nil(); }
+MdhValue __mdh_mutex_unlock(MdhValue mutex) { (void)mutex; return __mdh_make_nil(); }
+MdhValue __mdh_mutex_trylock(MdhValue mutex) { (void)mutex; return __mdh_make_bool(false); }
+
+MdhValue __mdh_condvar_new(void) {
+    __mdh_hurl(__mdh_make_string("Threading isnae available on Windows yet"));
+    return __mdh_make_nil();
+}
+
+MdhValue __mdh_condvar_wait(MdhValue c, MdhValue m) { (void)c; (void)m; return __mdh_make_nil(); }
+MdhValue __mdh_condvar_wait_timeout(MdhValue c, MdhValue m, MdhValue ms) { (void)c; (void)m; (void)ms; return __mdh_make_bool(false); }
+MdhValue __mdh_condvar_signal(MdhValue c) { (void)c; return __mdh_make_nil(); }
+MdhValue __mdh_condvar_broadcast(MdhValue c) { (void)c; return __mdh_make_nil(); }
+
+MdhValue __mdh_atomic_new(MdhValue v) { (void)v; __mdh_hurl(__mdh_make_string("Threading isnae available on Windows yet")); return __mdh_make_nil(); }
+MdhValue __mdh_atomic_load(MdhValue a) { (void)a; return __mdh_make_int(0); }
+MdhValue __mdh_atomic_store(MdhValue a, MdhValue v) { (void)a; (void)v; return __mdh_make_nil(); }
+MdhValue __mdh_atomic_add(MdhValue a, MdhValue v) { (void)a; (void)v; return __mdh_make_int(0); }
+MdhValue __mdh_atomic_cas(MdhValue a, MdhValue e, MdhValue n) { (void)a; (void)e; (void)n; return __mdh_make_bool(false); }
+
+MdhValue __mdh_chan_new(MdhValue cap) { (void)cap; __mdh_hurl(__mdh_make_string("Threading isnae available on Windows yet")); return __mdh_make_nil(); }
+MdhValue __mdh_chan_send(MdhValue c, MdhValue v) { (void)c; (void)v; return __mdh_make_bool(false); }
+MdhValue __mdh_chan_recv(MdhValue c) { (void)c; return __mdh_make_nil(); }
+MdhValue __mdh_chan_try_recv(MdhValue c) { (void)c; return __mdh_make_nil(); }
+MdhValue __mdh_chan_close(MdhValue c) { (void)c; return __mdh_make_nil(); }
+MdhValue __mdh_chan_is_closed(MdhValue c) { (void)c; return __mdh_make_bool(true); }
+
+#endif /* _WIN32 */
 
 /* ========== Dict/Creel Operations ========== */
 /* Dict/creel values store a stable handle pointer to their payload.
@@ -4210,12 +4327,12 @@ static MdhNativeObject *__mdh_span_stack_pop(void) {
 
 static int __mdh_log_parse_level_str(const char *s) {
     if (!s) return 3;
-    if (strcasecmp(s, "wheesht") == 0) return 0;
-    if (strcasecmp(s, "roar") == 0) return 1;
-    if (strcasecmp(s, "holler") == 0) return 2;
-    if (strcasecmp(s, "blether") == 0) return 3;
-    if (strcasecmp(s, "mutter") == 0) return 4;
-    if (strcasecmp(s, "whisper") == 0) return 5;
+    if (mdh_strcasecmp(s, "wheesht") == 0) return 0;
+    if (mdh_strcasecmp(s, "roar") == 0) return 1;
+    if (mdh_strcasecmp(s, "holler") == 0) return 2;
+    if (mdh_strcasecmp(s, "blether") == 0) return 3;
+    if (mdh_strcasecmp(s, "mutter") == 0) return 4;
+    if (mdh_strcasecmp(s, "whisper") == 0) return 5;
     return 3;
 }
 
@@ -6854,7 +6971,7 @@ MdhValue __mdh_shell(MdhValue cmd) {
 
     int err_fd = mkstemp(err_template);
     if (err_fd < 0) {
-        unlink(out_template);
+        mdh_unlink(out_template);
         __mdh_hurl(__mdh_make_string("Shell command failed"));
         return __mdh_make_nil();
     }
@@ -6883,8 +7000,8 @@ MdhValue __mdh_shell(MdhValue cmd) {
     char *full = __mdh_build_shell_command(script, false);
     FILE *fp = popen(full, "r");
     if (!fp) {
-        unlink(out_template);
-        unlink(err_template);
+        mdh_unlink(out_template);
+        mdh_unlink(err_template);
         __mdh_hurl(__mdh_make_string("Shell command failed"));
         return __mdh_make_nil();
     }
@@ -6943,7 +7060,7 @@ MdhValue __mdh_file_delete(MdhValue path) {
         return __mdh_make_nil();
     }
     const char *p = __mdh_get_string(path);
-    if (unlink(p) != 0) {
+    if (mdh_unlink(p) != 0) {
         char buf[512];
         snprintf(buf, sizeof(buf), "Couldnae delete '%s': %s", p, strerror(errno));
         __mdh_hurl(__mdh_make_string(buf));
@@ -6957,7 +7074,7 @@ MdhValue __mdh_list_dir(MdhValue path) {
         return __mdh_make_list(0);
     }
     const char *p = __mdh_get_string(path);
-    DIR *dir = opendir(p);
+    mdh_dir_t *dir = mdh_opendir(p);
     if (!dir) {
         char buf[512];
         snprintf(buf, sizeof(buf), "Couldnae read directory '%s': %s", p, strerror(errno));
@@ -6966,16 +7083,16 @@ MdhValue __mdh_list_dir(MdhValue path) {
     }
 
     MdhValue result = __mdh_make_list(8);
-    struct dirent *ent = NULL;
-    while ((ent = readdir(dir)) != NULL) {
-        const char *name = ent->d_name;
+    mdh_dirent_t *ent = NULL;
+    while ((ent = mdh_readdir(dir)) != NULL) {
+        const char *name = ent->name;
         if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) {
             continue;
         }
         __mdh_list_push(result, __mdh_make_string(name));
     }
 
-    closedir(dir);
+    mdh_closedir(dir);
     return result;
 }
 
