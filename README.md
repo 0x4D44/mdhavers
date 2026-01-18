@@ -1204,18 +1204,24 @@ cd mdhavers
 # Install dependencies (run as Administrator for best results)
 .\scripts\setup-deps.ps1
 
-# Build for Windows (graphics + audio via raylib; LLVM not yet supported)
+# Build for Windows (graphics + audio via raylib)
 cargo build --release --no-default-features --features "cli,native,graphics"
 
 # Build with standalone audio (no graphics)
 cargo build --release --no-default-features --features "cli,native,audio"
+
+# Build with LLVM (requires LLVM 15 installed)
+cargo build --release --no-default-features --features "cli,native,llvm"
+
+# Full build with all features
+cargo build --release --features full
 
 # Run tests
 cargo test --no-default-features --features minimal
 ```
 
 **Note:** On Windows, use `graphics` for graphics + audio (raylib's built-in audio), or
-`audio` for standalone audio (miniaudio). LLVM native compilation requires Unix.
+`audio` for standalone audio (miniaudio). LLVM native compilation is supported (requires LLVM 15).
 
 ### Minimal Build (CI / No Optional Dependencies)
 
@@ -1233,10 +1239,10 @@ cargo build --release --no-default-features --features cli
 
 | Feature | Description | Dependencies |
 |---------|-------------|--------------|
-| `full` | All features (default, Linux/WSL) | LLVM 15, raylib deps, ALSA |
-| `full-no-llvm` | All except LLVM (works on Windows) | raylib deps |
+| `full` | All features (default) | LLVM 15, raylib deps, ALSA (Linux) |
+| `full-no-llvm` | All except LLVM | raylib deps |
 | `minimal` | CLI + native networking | None (just Rust) |
-| `llvm` | Native code compilation | LLVM 15, libzstd (Unix only) |
+| `llvm` | Native code compilation | LLVM 15, libzstd |
 | `graphics` | 2D/3D graphics + audio (raylib) | cmake, X11 dev libs (Linux) |
 | `audio` | Standalone audio (miniaudio) | ALSA (Linux) |
 
@@ -1247,8 +1253,7 @@ cargo build --release --no-default-features --features cli
 
 **Platform notes:**
 - **Linux/WSL**: Use `full` for all features including LLVM native compilation
-- **Windows**: Use `graphics` for graphics + audio, or `audio` for standalone audio
-  (LLVM runtime uses POSIX APIs not available on Windows yet)
+- **Windows**: Full support including LLVM. Install LLVM 15 and set `LLVM_SYS_150_PREFIX`
 
 ### Manual Dependency Installation
 

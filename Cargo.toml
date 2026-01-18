@@ -1,6 +1,6 @@
 [package]
 name = "mdhavers"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "A Scots programming language - pure havers, but working havers!"
 authors = ["Arthur"]
@@ -27,7 +27,7 @@ required-features = ["cli"]
 default = ["full"]
 
 # All optional features enabled (requires setup-deps script)
-# Note: LLVM requires Unix - the runtime uses POSIX APIs (dirent.h, termios.h, etc.)
+# Works on both Linux and Windows (platform abstraction layer for Windows)
 full = ["cli", "native", "graphics", "audio", "llvm"]
 
 # Full features without LLVM (for Linux/WSL without LLVM installed)
