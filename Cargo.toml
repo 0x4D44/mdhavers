@@ -1,6 +1,6 @@
 [package]
 name = "mdhavers"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 description = "A Scots programming language - pure havers, but working havers!"
 authors = ["Arthur"]
@@ -28,14 +28,10 @@ default = ["full"]
 
 # All optional features enabled (requires setup-deps script)
 # Note: LLVM requires Unix - the runtime uses POSIX APIs (dirent.h, termios.h, etc.)
-# Note: graphics + audio conflict on Windows (duplicate miniaudio symbols)
 full = ["cli", "native", "graphics", "audio", "llvm"]
 
 # Full features without LLVM (for Linux/WSL without LLVM installed)
 full-no-llvm = ["cli", "native", "graphics", "audio"]
-
-# Windows-compatible: graphics uses raylib's built-in audio (no miniaudio conflict)
-windows = ["cli", "native", "graphics"]
 
 # Minimal build for CI or systems without optional deps
 minimal = ["cli", "native"]
@@ -43,8 +39,13 @@ minimal = ["cli", "native"]
 cli = ["clap", "rustyline", "crossterm", "dirs", "colored", "lsp-types", "lsp-server"]
 llvm = ["inkwell"]
 llvm_comprehensive_tests = []
+
+# Audio backend selection (unified audio abstraction):
+# - `audio` alone: uses miniaudio backend (standalone audio without graphics)
+# - `graphics`: uses raylib's built-in audio (no symbol conflicts)
+# - `graphics` + `audio`: uses raylib audio (graphics takes precedence)
 audio = ["miniaudio", "rustysynth"]
-graphics = ["raylib"]
+graphics = ["raylib", "rustysynth"]
 graphics3d = []
 wasm_runner = ["wasmtime", "wat"]
 native = [

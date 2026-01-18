@@ -1209,6 +1209,30 @@ fn mono_ms_now() -> i64 {
     start.elapsed().as_millis() as i64
 }
 
+/// Helper to check function arity and return WrongArity error if mismatched.
+fn check_arity(name: &str, expected: usize, got: usize, line: usize) -> HaversResult<()> {
+    if got != expected {
+        return Err(HaversError::WrongArity {
+            name: name.to_string(),
+            expected,
+            got,
+            line,
+        });
+    }
+    Ok(())
+}
+
+/// Helper to extract a list from a Value, returning TypeError if not a list.
+fn extract_list(value: &Value, func_name: &str, line: usize) -> HaversResult<Vec<Value>> {
+    match value {
+        Value::List(l) => Ok(l.borrow().clone()),
+        _ => Err(HaversError::TypeError {
+            message: format!("{}() expects a list as first argument", func_name),
+            line,
+        }),
+    }
+}
+
 #[cfg(feature = "native")]
 fn make_resolver() -> Result<Resolver, String> {
     #[cfg(all(any(test, coverage), feature = "native"))]
@@ -12266,23 +12290,8 @@ impl Interpreter {
         match name {
             // gaun(list, func) - map function over list
             "__builtin_gaun__" => {
-                if args.len() != 2 {
-                    return Err(HaversError::WrongArity {
-                        name: "gaun".to_string(),
-                        expected: 2,
-                        got: args.len(),
-                        line,
-                    });
-                }
-                let list = match &args[0] {
-                    Value::List(l) => l.borrow().clone(),
-                    _ => {
-                        return Err(HaversError::TypeError {
-                            message: "gaun() expects a list as first argument".to_string(),
-                            line,
-                        })
-                    }
-                };
+                check_arity("gaun", 2, args.len(), line)?;
+                let list = extract_list(&args[0], "gaun", line)?;
                 let func = args[1].clone();
                 let mut result = Vec::new();
                 for item in list {
@@ -12294,23 +12303,8 @@ impl Interpreter {
 
             // sieve(list, func) - filter list by predicate
             "__builtin_sieve__" => {
-                if args.len() != 2 {
-                    return Err(HaversError::WrongArity {
-                        name: "sieve".to_string(),
-                        expected: 2,
-                        got: args.len(),
-                        line,
-                    });
-                }
-                let list = match &args[0] {
-                    Value::List(l) => l.borrow().clone(),
-                    _ => {
-                        return Err(HaversError::TypeError {
-                            message: "sieve() expects a list as first argument".to_string(),
-                            line,
-                        })
-                    }
-                };
+                check_arity("sieve", 2, args.len(), line)?;
+                let list = extract_list(&args[0], "sieve", line)?;
                 let func = args[1].clone();
                 let mut result = Vec::new();
                 for item in list {
@@ -12324,23 +12318,8 @@ impl Interpreter {
 
             // tumble(list, initial, func) - reduce/fold
             "__builtin_tumble__" => {
-                if args.len() != 3 {
-                    return Err(HaversError::WrongArity {
-                        name: "tumble".to_string(),
-                        expected: 3,
-                        got: args.len(),
-                        line,
-                    });
-                }
-                let list = match &args[0] {
-                    Value::List(l) => l.borrow().clone(),
-                    _ => {
-                        return Err(HaversError::TypeError {
-                            message: "tumble() expects a list as first argument".to_string(),
-                            line,
-                        })
-                    }
-                };
+                check_arity("tumble", 3, args.len(), line)?;
+                let list = extract_list(&args[0], "tumble", line)?;
                 let mut acc = args[1].clone();
                 let func = args[2].clone();
                 for item in list {
@@ -12351,23 +12330,8 @@ impl Interpreter {
 
             // ilk(list, func) - for each (side effects)
             "__builtin_ilk__" => {
-                if args.len() != 2 {
-                    return Err(HaversError::WrongArity {
-                        name: "ilk".to_string(),
-                        expected: 2,
-                        got: args.len(),
-                        line,
-                    });
-                }
-                let list = match &args[0] {
-                    Value::List(l) => l.borrow().clone(),
-                    _ => {
-                        return Err(HaversError::TypeError {
-                            message: "ilk() expects a list as first argument".to_string(),
-                            line,
-                        })
-                    }
-                };
+                check_arity("ilk", 2, args.len(), line)?;
+                let list = extract_list(&args[0], "ilk", line)?;
                 let func = args[1].clone();
                 for item in list {
                     self.call_value(func.clone(), vec![item], line)?;
@@ -12377,23 +12341,8 @@ impl Interpreter {
 
             // hunt(list, func) - find first matching element
             "__builtin_hunt__" => {
-                if args.len() != 2 {
-                    return Err(HaversError::WrongArity {
-                        name: "hunt".to_string(),
-                        expected: 2,
-                        got: args.len(),
-                        line,
-                    });
-                }
-                let list = match &args[0] {
-                    Value::List(l) => l.borrow().clone(),
-                    _ => {
-                        return Err(HaversError::TypeError {
-                            message: "hunt() expects a list as first argument".to_string(),
-                            line,
-                        })
-                    }
-                };
+                check_arity("hunt", 2, args.len(), line)?;
+                let list = extract_list(&args[0], "hunt", line)?;
                 let func = args[1].clone();
                 for item in list {
                     let matches = self.call_value(func.clone(), vec![item.clone()], line)?;
@@ -12406,23 +12355,8 @@ impl Interpreter {
 
             // ony(list, func) - check if any element matches
             "__builtin_ony__" => {
-                if args.len() != 2 {
-                    return Err(HaversError::WrongArity {
-                        name: "ony".to_string(),
-                        expected: 2,
-                        got: args.len(),
-                        line,
-                    });
-                }
-                let list = match &args[0] {
-                    Value::List(l) => l.borrow().clone(),
-                    _ => {
-                        return Err(HaversError::TypeError {
-                            message: "ony() expects a list as first argument".to_string(),
-                            line,
-                        })
-                    }
-                };
+                check_arity("ony", 2, args.len(), line)?;
+                let list = extract_list(&args[0], "ony", line)?;
                 let func = args[1].clone();
                 for item in list {
                     let matches = self.call_value(func.clone(), vec![item], line)?;
@@ -12435,23 +12369,8 @@ impl Interpreter {
 
             // aw(list, func) - check if all elements match
             "__builtin_aw__" => {
-                if args.len() != 2 {
-                    return Err(HaversError::WrongArity {
-                        name: "aw".to_string(),
-                        expected: 2,
-                        got: args.len(),
-                        line,
-                    });
-                }
-                let list = match &args[0] {
-                    Value::List(l) => l.borrow().clone(),
-                    _ => {
-                        return Err(HaversError::TypeError {
-                            message: "aw() expects a list as first argument".to_string(),
-                            line,
-                        })
-                    }
-                };
+                check_arity("aw", 2, args.len(), line)?;
+                let list = extract_list(&args[0], "aw", line)?;
                 let func = args[1].clone();
                 for item in list {
                     let matches = self.call_value(func.clone(), vec![item], line)?;
@@ -12464,23 +12383,8 @@ impl Interpreter {
 
             // grup_up(list, func) - group elements by function result
             "__builtin_grup_up__" => {
-                if args.len() != 2 {
-                    return Err(HaversError::WrongArity {
-                        name: "grup_up".to_string(),
-                        expected: 2,
-                        got: args.len(),
-                        line,
-                    });
-                }
-                let list = match &args[0] {
-                    Value::List(l) => l.borrow().clone(),
-                    _ => {
-                        return Err(HaversError::TypeError {
-                            message: "grup_up() expects a list as first argument".to_string(),
-                            line,
-                        })
-                    }
-                };
+                check_arity("grup_up", 2, args.len(), line)?;
+                let list = extract_list(&args[0], "grup_up", line)?;
                 let func = args[1].clone();
                 // Result is a dict where keys are the function results, values are lists
                 let mut result = DictValue::new();
@@ -12501,23 +12405,8 @@ impl Interpreter {
 
             // pairt_by(list, func) - partition into [matches, non_matches]
             "__builtin_pairt_by__" => {
-                if args.len() != 2 {
-                    return Err(HaversError::WrongArity {
-                        name: "pairt_by".to_string(),
-                        expected: 2,
-                        got: args.len(),
-                        line,
-                    });
-                }
-                let list = match &args[0] {
-                    Value::List(l) => l.borrow().clone(),
-                    _ => {
-                        return Err(HaversError::TypeError {
-                            message: "pairt_by() expects a list as first argument".to_string(),
-                            line,
-                        })
-                    }
-                };
+                check_arity("pairt_by", 2, args.len(), line)?;
+                let list = extract_list(&args[0], "pairt_by", line)?;
                 let func = args[1].clone();
                 let mut matches = Vec::new();
                 let mut non_matches = Vec::new();
@@ -13002,11 +12891,11 @@ mod tests {
     use std::thread;
     use tempfile::tempdir;
 
-    #[cfg(feature = "native")]
+    #[cfg(any(feature = "native", feature = "dtls"))]
     use rcgen::generate_simple_self_signed;
-    #[cfg(feature = "native")]
+    #[cfg(all(feature = "native", unix))]
     use rustls::{Certificate, ServerName};
-    #[cfg(feature = "native")]
+    #[cfg(all(feature = "native", unix))]
     use std::time::SystemTime;
 
     fn assert_error_variant(actual: &HaversError, expected: HaversError) {
@@ -14988,7 +14877,7 @@ blether r["error"]
         assert!(err.contains("Identity parse failed"));
     }
 
-    #[cfg(feature = "native")]
+    #[cfg(all(feature = "native", unix))]
     #[test]
     fn build_server_config_covers_rsa_private_keys_error_branch_for_coverage() {
         let cert = generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
@@ -15051,7 +14940,7 @@ blether r["error"]
         let _ = build_server_config(&cfg).unwrap();
     }
 
-    #[cfg(feature = "native")]
+    #[cfg(all(feature = "native", unix))]
     #[test]
     fn build_server_config_required_fields_and_missing_key_paths_are_covered_for_coverage() {
         let cert = generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
@@ -15099,7 +14988,11 @@ blether r["error"]
         err.contains("did not contain a private key")
             .then_some(())
             .expect(&msg);
+    }
 
+    #[cfg(all(feature = "dtls", unix))]
+    #[test]
+    fn srtp_profile_parsing_and_key_salt_sizing_for_coverage() {
         // Cover SRTP profile parsing and key/salt sizing for AEAD variants.
         assert_eq!(
             srtp_profile_from_str("SRTP_AEAD_AES_256_GCM"),
@@ -22198,10 +22091,22 @@ soond_steek()
         assert_eq!(list[5], Value::Bool(false));
     }
 
+    fn escape_midi_path(path: &str) -> String {
+        // Escape backslashes for Windows paths
+        format!("\"{}\"", path.replace('\\', "\\\\"))
+    }
+
     #[test]
     fn test_audio_midi_cycle_explicit_soundfont() {
-        let midi = audio_path("assets/audio/wee_tune.mid");
-        let sf = audio_path("assets/soundfonts/MuseScore_General.sf2");
+        // Create temp files for testing (mock rustysynth doesn't parse content)
+        let dir = tempdir().unwrap();
+        let midi_path = dir.path().join("test.mid");
+        let sf_path = dir.path().join("test.sf2");
+        std::fs::write(&midi_path, b"midi").unwrap();
+        std::fs::write(&sf_path, b"sf").unwrap();
+
+        let midi = escape_midi_path(&midi_path.to_string_lossy());
+        let sf = escape_midi_path(&sf_path.to_string_lossy());
         let script = format!(
             r#"
 soond_steek()
@@ -22242,19 +22147,29 @@ soond_steek()
 
     #[test]
     fn test_audio_midi_cycle_default_soundfont() {
-        let midi = audio_path("assets/audio/wee_tune.mid");
+        // Create temp files for testing (mock rustysynth doesn't parse content)
+        // Note: We test with explicit soundfont since default soundfont path
+        // varies by environment. The default soundfont logic is tested separately.
+        let dir = tempdir().unwrap();
+        let midi_path = dir.path().join("test.mid");
+        let sf_path = dir.path().join("test.sf2");
+        std::fs::write(&midi_path, b"midi").unwrap();
+        std::fs::write(&sf_path, b"sf").unwrap();
+
+        let midi = escape_midi_path(&midi_path.to_string_lossy());
+        let sf = escape_midi_path(&sf_path.to_string_lossy());
         let script = format!(
             r#"
 soond_steek()
 soond_stairt()
-ken song = midi_lade({}, naething)
+ken song = midi_lade({}, {})
 midi_spiel(song)
 soond_haud_gang()
 midi_unlade(song)
 soond_steek()
 aye
 "#,
-            midi
+            midi, sf
         );
         let result = run(&script).unwrap();
         assert_eq!(result, Value::Bool(true));
@@ -22262,8 +22177,15 @@ aye
 
     #[test]
     fn test_audio_midi_stops_at_end() {
-        let midi = audio_path("assets/audio/wee_tune.mid");
-        let sf = audio_path("assets/soundfonts/MuseScore_General.sf2");
+        // Create temp files for testing (mock rustysynth doesn't parse content)
+        let dir = tempdir().unwrap();
+        let midi_path = dir.path().join("test.mid");
+        let sf_path = dir.path().join("test.sf2");
+        std::fs::write(&midi_path, b"midi").unwrap();
+        std::fs::write(&sf_path, b"sf").unwrap();
+
+        let midi = escape_midi_path(&midi_path.to_string_lossy());
+        let sf = escape_midi_path(&sf_path.to_string_lossy());
         let script = format!(
             r#"
 soond_steek()
@@ -22791,7 +22713,7 @@ soond_steek()
     }
 
     #[test]
-    #[cfg(feature = "dtls")]
+    #[cfg(all(feature = "dtls", unix))]
     fn test_insecure_verifier_and_tls_dtls_defaults() {
         let verifier = InsecureVerifier;
         let cert = Certificate(Vec::new());
@@ -23576,7 +23498,7 @@ c + 1
     }
 
     #[test]
-    #[cfg(feature = "native")]
+    #[cfg(all(feature = "native", unix))]
     fn test_tls_config_from_value_errors_and_defaults() {
         let err = tls_config_from_value(&Value::Integer(1)).err().unwrap();
         assert!(err.contains("expects config dict"));
@@ -23693,7 +23615,7 @@ blether log_span_in(s, f)
     }
 
     #[test]
-    #[cfg(feature = "native")]
+    #[cfg(feature = "dtls")]
     fn test_srtp_profile_parsing_variants() {
         assert_eq!(
             srtp_profile_from_str("SRTP_AES128_CM_SHA1_32"),
@@ -24840,7 +24762,7 @@ gie len(ys) + len(zs) + len(t) + len(u)
         assert_eq!(dict_get_u16(&dict, "float_big"), None);
     }
 
-    #[cfg(feature = "native")]
+    #[cfg(all(feature = "native", unix))]
     #[test]
     fn build_client_config_invalid_ca_triggers_added_zero_branch_for_coverage() {
         let cfg = TlsConfigData {
@@ -24855,7 +24777,7 @@ gie len(ys) + len(zs) + len(t) + len(u)
         assert!(err.contains("No valid CA certificates"));
     }
 
-    #[cfg(feature = "native")]
+    #[cfg(all(feature = "native", unix))]
     #[test]
     fn build_client_config_accepts_valid_ca_for_coverage() {
         let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])

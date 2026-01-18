@@ -114,7 +114,11 @@ make package
 - **Error** (`src/error.rs`) - Error types with Scots-flavored messages
 - **Token** (`src/token.rs`) - Token definitions for lexer
 - **Formatter** (`src/formatter.rs`) - Code formatter
-- **Audio** (`src/audio.rs`) - Audio playback (optional)
+- **Audio** (`src/audio/`) - Unified audio abstraction with backend selection:
+  - `mod.rs` - Public API and backend selection
+  - `backend_miniaudio.rs` - miniaudio backend (standalone audio)
+  - `backend_raylib.rs` - raylib backend (when graphics enabled)
+  - `midi.rs` - MIDI synthesis via rustysynth
 - **Graphics** (`src/graphics.rs`) - 2D graphics via raylib (optional)
 - **Tri** (`src/tri.rs`) - 3D graphics module (optional)
 - **Logging** (`src/logging.rs`) - Logging infrastructure
@@ -293,7 +297,10 @@ mdhavers/
 - Use `--no-default-features --features minimal` for CI builds without optional dependencies
 - The `dtls` feature adds DTLS/SRTP support but requires OpenSSL and Unix
 - The Makefile auto-detects LLVM and adjusts build accordingly
-- Audio and graphics are independent optional features
+- Audio backend selection (unified audio abstraction):
+  - `graphics` feature → raylib's built-in audio (no symbol conflicts)
+  - `audio` feature alone → miniaudio backend
+  - Both features → raylib audio takes precedence
 - Most development uses the interpreter for quick iteration
 - Use LLVM backend for production/performance-critical code
 - Scots error messages are a core feature - preserve the dialect when modifying error handling

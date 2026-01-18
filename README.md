@@ -1204,15 +1204,18 @@ cd mdhavers
 # Install dependencies (run as Administrator for best results)
 .\scripts\setup-deps.ps1
 
-# Build for Windows (graphics via raylib; LLVM not yet supported)
-cargo build --release --no-default-features --features windows
+# Build for Windows (graphics + audio via raylib; LLVM not yet supported)
+cargo build --release --no-default-features --features "cli,native,graphics"
+
+# Build with standalone audio (no graphics)
+cargo build --release --no-default-features --features "cli,native,audio"
 
 # Run tests
 cargo test --no-default-features --features minimal
 ```
 
-**Note:** On Windows, the `windows` feature includes graphics (raylib with built-in audio).
-LLVM native compilation requires Unix (the runtime uses POSIX APIs).
+**Note:** On Windows, use `graphics` for graphics + audio (raylib's built-in audio), or
+`audio` for standalone audio (miniaudio). LLVM native compilation requires Unix.
 
 ### Minimal Build (CI / No Optional Dependencies)
 
@@ -1231,16 +1234,21 @@ cargo build --release --no-default-features --features cli
 | Feature | Description | Dependencies |
 |---------|-------------|--------------|
 | `full` | All features (default, Linux/WSL) | LLVM 15, raylib deps, ALSA |
-| `windows` | Windows build (graphics, no LLVM) | CMake, VS Build Tools |
+| `full-no-llvm` | All except LLVM (works on Windows) | raylib deps |
 | `minimal` | CLI + native networking | None (just Rust) |
 | `llvm` | Native code compilation | LLVM 15, libzstd (Unix only) |
-| `graphics` | 2D/3D graphics via raylib | cmake, X11 dev libs |
-| `audio` | Sound playback via miniaudio | ALSA (Linux) |
+| `graphics` | 2D/3D graphics + audio (raylib) | cmake, X11 dev libs (Linux) |
+| `audio` | Standalone audio (miniaudio) | ALSA (Linux) |
+
+**Audio backend selection:**
+- `graphics` → uses raylib's built-in audio (no conflicts)
+- `audio` without `graphics` → uses miniaudio backend
+- `graphics` + `audio` → raylib audio (graphics takes precedence)
 
 **Platform notes:**
 - **Linux/WSL**: Use `full` for all features including LLVM native compilation
-- **Windows**: Use `windows` feature (LLVM runtime uses POSIX APIs not available on Windows)
-- `graphics` + `audio` conflict on Windows due to duplicate miniaudio symbols
+- **Windows**: Use `graphics` for graphics + audio, or `audio` for standalone audio
+  (LLVM runtime uses POSIX APIs not available on Windows yet)
 
 ### Manual Dependency Installation
 
