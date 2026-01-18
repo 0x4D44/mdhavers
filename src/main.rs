@@ -1349,6 +1349,7 @@ fn format_runtime_error(source: &str, error: mdhavers::HaversError) -> String {
 mod tests {
     use super::*;
     use std::io;
+    #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use tempfile::tempdir;
 
@@ -1582,6 +1583,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn format_file_write_error_is_reported_for_coverage() {
         let dir = tempdir().expect("tempdir");
         let path = dir.path().join("readonly.braw");

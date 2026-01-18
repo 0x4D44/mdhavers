@@ -118,3 +118,8 @@ rcgen = "0.12"
 
 [patch.crates-io]
 raylib-sys = { path = "vendor/raylib-sys-5.5.1" }
+
+# LLVM-specific examples
+[[example]]
+name = "test_bs"
+required-features = ["llvm"]
