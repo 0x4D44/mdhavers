@@ -3186,11 +3186,10 @@ typedef MdhValue (*MdhFn4)(MdhValue, MdhValue, MdhValue, MdhValue);
 typedef MdhValue (*MdhFn5)(MdhValue, MdhValue, MdhValue, MdhValue, MdhValue);
 typedef MdhValue (*MdhFn6)(MdhValue, MdhValue, MdhValue, MdhValue, MdhValue, MdhValue);
 
-#ifndef _WIN32
-/* Unix/POSIX threading implementation */
+/* Cross-platform threading implementation using platform abstraction layer */
 
 typedef struct {
-    pthread_t thread;
+    mdh_thread_t *thread;     /* Platform thread handle (NULL after join/detach) */
     MdhValue func;
     MdhValue args;
     MdhValue result;
@@ -3199,22 +3198,22 @@ typedef struct {
 } MdhThread;
 
 typedef struct {
-    pthread_mutex_t mutex;
+    mdh_mutex_t *mutex;       /* Platform mutex */
 } MdhMutex;
 
 typedef struct {
-    pthread_cond_t cond;
+    mdh_cond_t *cond;         /* Platform condition variable */
 } MdhCondvar;
 
 typedef struct {
-    pthread_mutex_t lock;
+    mdh_mutex_t *lock;        /* Platform mutex for atomicity */
     int64_t value;
 } MdhAtomic;
 
 typedef struct {
-    pthread_mutex_t lock;
-    pthread_cond_t not_empty;
-    pthread_cond_t not_full;
+    mdh_mutex_t *lock;        /* Platform mutex */
+    mdh_cond_t *not_empty;    /* Platform condvar */
+    mdh_cond_t *not_full;     /* Platform condvar */
     MdhValue *buf;
     int64_t cap;
     int64_t count;
@@ -3386,8 +3385,8 @@ MdhValue __mdh_thread_spawn(MdhValue func, MdhValue args_list) {
     t->done = 0;
     t->detached = 0;
 
-    int rc = pthread_create(&t->thread, NULL, __mdh_thread_entry, t);
-    if (rc != 0) {
+    t->thread = mdh_thread_create(__mdh_thread_entry, t);
+    if (t->thread == NULL) {
         __mdh_hurl(__mdh_make_string("thread_spawn failed"));
         return __mdh_make_nil();
     }
@@ -3397,19 +3396,29 @@ MdhValue __mdh_thread_spawn(MdhValue func, MdhValue args_list) {
 MdhValue __mdh_thread_join(MdhValue thread_handle) {
     MdhThread *t = __mdh_thread_ptr(thread_handle);
     if (!t) return __mdh_make_nil();
+
+    /* Already joined - return cached result */
+    if (t->thread == NULL) {
+        return t->result;
+    }
+
     if (t->detached) {
         __mdh_hurl(__mdh_make_string("Cannot join detached thread"));
         return __mdh_make_nil();
     }
-    pthread_join(t->thread, NULL);
+
+    mdh_thread_join(t->thread, NULL);
+    t->thread = NULL;  /* Handle freed by mdh_thread_join */
     return t->result;
 }
 
 MdhValue __mdh_thread_detach(MdhValue thread_handle) {
     MdhThread *t = __mdh_thread_ptr(thread_handle);
-    if (!t) return __mdh_make_nil();
+    if (!t || t->thread == NULL) return __mdh_make_nil();
+
     if (!t->detached) {
-        pthread_detach(t->thread);
+        mdh_thread_detach(t->thread);
+        t->thread = NULL;  /* Handle freed by mdh_thread_detach */
         t->detached = 1;
     }
     return __mdh_make_nil();
@@ -3417,49 +3426,49 @@ MdhValue __mdh_thread_detach(MdhValue thread_handle) {
 
 MdhValue __mdh_mutex_new(void) {
     MdhMutex *m = (MdhMutex *)GC_malloc(sizeof(MdhMutex));
-    pthread_mutex_init(&m->mutex, NULL);
+    m->mutex = mdh_mutex_create();
     return __mdh_make_int((int64_t)(intptr_t)m);
 }
 
 MdhValue __mdh_mutex_lock(MdhValue mutex) {
     MdhMutex *m = __mdh_mutex_ptr(mutex);
-    if (!m) return __mdh_make_nil();
-    pthread_mutex_lock(&m->mutex);
+    if (!m || !m->mutex) return __mdh_make_nil();
+    mdh_mutex_lock(m->mutex);
     return __mdh_make_nil();
 }
 
 MdhValue __mdh_mutex_unlock(MdhValue mutex) {
     MdhMutex *m = __mdh_mutex_ptr(mutex);
-    if (!m) return __mdh_make_nil();
-    pthread_mutex_unlock(&m->mutex);
+    if (!m || !m->mutex) return __mdh_make_nil();
+    mdh_mutex_unlock(m->mutex);
     return __mdh_make_nil();
 }
 
 MdhValue __mdh_mutex_try_lock(MdhValue mutex) {
     MdhMutex *m = __mdh_mutex_ptr(mutex);
-    if (!m) return __mdh_make_bool(false);
-    int rc = pthread_mutex_trylock(&m->mutex);
+    if (!m || !m->mutex) return __mdh_make_bool(false);
+    int rc = mdh_mutex_trylock(m->mutex);
     return __mdh_make_bool(rc == 0);
 }
 
 MdhValue __mdh_condvar_new(void) {
     MdhCondvar *c = (MdhCondvar *)GC_malloc(sizeof(MdhCondvar));
-    pthread_cond_init(&c->cond, NULL);
+    c->cond = mdh_cond_create();
     return __mdh_make_int((int64_t)(intptr_t)c);
 }
 
 MdhValue __mdh_condvar_wait(MdhValue condvar, MdhValue mutex) {
     MdhCondvar *c = __mdh_condvar_ptr(condvar);
     MdhMutex *m = __mdh_mutex_ptr(mutex);
-    if (!c || !m) return __mdh_make_bool(false);
-    pthread_cond_wait(&c->cond, &m->mutex);
+    if (!c || !m || !c->cond || !m->mutex) return __mdh_make_bool(false);
+    mdh_cond_wait(c->cond, m->mutex);
     return __mdh_make_bool(true);
 }
 
 MdhValue __mdh_condvar_timed_wait(MdhValue condvar, MdhValue mutex, MdhValue timeout_ms) {
     MdhCondvar *c = __mdh_condvar_ptr(condvar);
     MdhMutex *m = __mdh_mutex_ptr(mutex);
-    if (!c || !m) return __mdh_make_bool(false);
+    if (!c || !m || !c->cond || !m->mutex) return __mdh_make_bool(false);
     int64_t ms = 0;
     if (!__mdh_int_value("condvar_timed_wait", timeout_ms, &ms)) {
         return __mdh_make_bool(false);
@@ -3468,29 +3477,24 @@ MdhValue __mdh_condvar_timed_wait(MdhValue condvar, MdhValue mutex, MdhValue tim
         __mdh_hurl(__mdh_make_string("condvar_timed_wait expects non-negative timeout"));
         return __mdh_make_bool(false);
     }
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    ts.tv_sec += ms / 1000;
-    ts.tv_nsec += (ms % 1000) * 1000000LL;
-    if (ts.tv_nsec >= 1000000000L) {
-        ts.tv_sec += 1;
-        ts.tv_nsec -= 1000000000L;
-    }
-    int rc = pthread_cond_timedwait(&c->cond, &m->mutex, &ts);
+    /* Platform layer takes relative timeout in nanoseconds */
+    uint64_t timeout_ns = (uint64_t)ms * 1000000ULL;
+    int rc = mdh_cond_timedwait(c->cond, m->mutex, timeout_ns);
+    /* Return true if signaled (rc == 0), false if timed out (rc == ETIMEDOUT) */
     return __mdh_make_bool(rc == 0);
 }
 
 MdhValue __mdh_condvar_signal(MdhValue condvar) {
     MdhCondvar *c = __mdh_condvar_ptr(condvar);
-    if (!c) return __mdh_make_nil();
-    pthread_cond_signal(&c->cond);
+    if (!c || !c->cond) return __mdh_make_nil();
+    mdh_cond_signal(c->cond);
     return __mdh_make_nil();
 }
 
 MdhValue __mdh_condvar_broadcast(MdhValue condvar) {
     MdhCondvar *c = __mdh_condvar_ptr(condvar);
-    if (!c) return __mdh_make_nil();
-    pthread_cond_broadcast(&c->cond);
+    if (!c || !c->cond) return __mdh_make_nil();
+    mdh_cond_broadcast(c->cond);
     return __mdh_make_nil();
 }
 
@@ -3500,50 +3504,50 @@ MdhValue __mdh_atomic_new(MdhValue initial_int) {
         return __mdh_make_nil();
     }
     MdhAtomic *a = (MdhAtomic *)GC_malloc(sizeof(MdhAtomic));
-    pthread_mutex_init(&a->lock, NULL);
+    a->lock = mdh_mutex_create();
     a->value = val;
     return __mdh_make_int((int64_t)(intptr_t)a);
 }
 
 MdhValue __mdh_atomic_load(MdhValue atomic) {
     MdhAtomic *a = __mdh_atomic_ptr(atomic);
-    if (!a) return __mdh_make_int(0);
-    pthread_mutex_lock(&a->lock);
+    if (!a || !a->lock) return __mdh_make_int(0);
+    mdh_mutex_lock(a->lock);
     int64_t val = a->value;
-    pthread_mutex_unlock(&a->lock);
+    mdh_mutex_unlock(a->lock);
     return __mdh_make_int(val);
 }
 
 MdhValue __mdh_atomic_store(MdhValue atomic, MdhValue value) {
     MdhAtomic *a = __mdh_atomic_ptr(atomic);
-    if (!a) return __mdh_make_nil();
+    if (!a || !a->lock) return __mdh_make_nil();
     int64_t val = 0;
     if (!__mdh_int_value("atomic_store", value, &val)) {
         return __mdh_make_nil();
     }
-    pthread_mutex_lock(&a->lock);
+    mdh_mutex_lock(a->lock);
     a->value = val;
-    pthread_mutex_unlock(&a->lock);
+    mdh_mutex_unlock(a->lock);
     return __mdh_make_nil();
 }
 
 MdhValue __mdh_atomic_add(MdhValue atomic, MdhValue delta) {
     MdhAtomic *a = __mdh_atomic_ptr(atomic);
-    if (!a) return __mdh_make_int(0);
+    if (!a || !a->lock) return __mdh_make_int(0);
     int64_t add = 0;
     if (!__mdh_int_value("atomic_add", delta, &add)) {
         return __mdh_make_int(0);
     }
-    pthread_mutex_lock(&a->lock);
+    mdh_mutex_lock(a->lock);
     a->value += add;
     int64_t val = a->value;
-    pthread_mutex_unlock(&a->lock);
+    mdh_mutex_unlock(a->lock);
     return __mdh_make_int(val);
 }
 
 MdhValue __mdh_atomic_cas(MdhValue atomic, MdhValue expected, MdhValue desired) {
     MdhAtomic *a = __mdh_atomic_ptr(atomic);
-    if (!a) return __mdh_make_bool(false);
+    if (!a || !a->lock) return __mdh_make_bool(false);
     int64_t exp = 0;
     int64_t des = 0;
     if (!__mdh_int_value("atomic_cas", expected, &exp)) {
@@ -3552,12 +3556,12 @@ MdhValue __mdh_atomic_cas(MdhValue atomic, MdhValue expected, MdhValue desired) 
     if (!__mdh_int_value("atomic_cas", desired, &des)) {
         return __mdh_make_bool(false);
     }
-    pthread_mutex_lock(&a->lock);
+    mdh_mutex_lock(a->lock);
     bool ok = (a->value == exp);
     if (ok) {
         a->value = des;
     }
-    pthread_mutex_unlock(&a->lock);
+    mdh_mutex_unlock(a->lock);
     return __mdh_make_bool(ok);
 }
 
@@ -3583,9 +3587,9 @@ MdhValue __mdh_chan_new(MdhValue capacity_int) {
     }
     MdhChan *ch = (MdhChan *)GC_malloc(sizeof(MdhChan));
     memset(ch, 0, sizeof(MdhChan));
-    pthread_mutex_init(&ch->lock, NULL);
-    pthread_cond_init(&ch->not_empty, NULL);
-    pthread_cond_init(&ch->not_full, NULL);
+    ch->lock = mdh_mutex_create();
+    ch->not_empty = mdh_cond_create();
+    ch->not_full = mdh_cond_create();
     if (cap == 0) {
         ch->unbounded = 1;
         ch->cap = 0;
@@ -3600,13 +3604,13 @@ MdhValue __mdh_chan_new(MdhValue capacity_int) {
 
 MdhValue __mdh_chan_send(MdhValue chan, MdhValue value) {
     MdhChan *ch = __mdh_chan_ptr(chan);
-    if (!ch) return __mdh_make_bool(false);
-    pthread_mutex_lock(&ch->lock);
+    if (!ch || !ch->lock) return __mdh_make_bool(false);
+    mdh_mutex_lock(ch->lock);
     while (!ch->unbounded && ch->count >= ch->cap && !ch->closed) {
-        pthread_cond_wait(&ch->not_full, &ch->lock);
+        mdh_cond_wait(ch->not_full, ch->lock);
     }
     if (ch->closed) {
-        pthread_mutex_unlock(&ch->lock);
+        mdh_mutex_unlock(ch->lock);
         return __mdh_make_bool(false);
     }
     if (ch->unbounded) {
@@ -3620,122 +3624,69 @@ MdhValue __mdh_chan_send(MdhValue chan, MdhValue value) {
     ch->buf[ch->tail] = value;
     ch->tail = (ch->tail + 1) % ch->cap;
     ch->count++;
-    pthread_cond_signal(&ch->not_empty);
-    pthread_mutex_unlock(&ch->lock);
+    mdh_cond_signal(ch->not_empty);
+    mdh_mutex_unlock(ch->lock);
     return __mdh_make_bool(true);
 }
 
 MdhValue __mdh_chan_recv(MdhValue chan) {
     MdhChan *ch = __mdh_chan_ptr(chan);
-    if (!ch) return __mdh_make_nil();
-    pthread_mutex_lock(&ch->lock);
+    if (!ch || !ch->lock) return __mdh_make_nil();
+    mdh_mutex_lock(ch->lock);
     while (ch->count == 0 && !ch->closed) {
-        pthread_cond_wait(&ch->not_empty, &ch->lock);
+        mdh_cond_wait(ch->not_empty, ch->lock);
     }
     if (ch->count == 0 && ch->closed) {
-        pthread_mutex_unlock(&ch->lock);
+        mdh_mutex_unlock(ch->lock);
         return __mdh_make_nil();
     }
     MdhValue v = ch->buf[ch->head];
     ch->head = (ch->head + 1) % ch->cap;
     ch->count--;
     if (!ch->unbounded) {
-        pthread_cond_signal(&ch->not_full);
+        mdh_cond_signal(ch->not_full);
     }
-    pthread_mutex_unlock(&ch->lock);
+    mdh_mutex_unlock(ch->lock);
     return v;
 }
 
 MdhValue __mdh_chan_try_recv(MdhValue chan) {
     MdhChan *ch = __mdh_chan_ptr(chan);
-    if (!ch) return __mdh_make_nil();
-    pthread_mutex_lock(&ch->lock);
+    if (!ch || !ch->lock) return __mdh_make_nil();
+    mdh_mutex_lock(ch->lock);
     if (ch->count == 0) {
-        pthread_mutex_unlock(&ch->lock);
+        mdh_mutex_unlock(ch->lock);
         return __mdh_make_nil();
     }
     MdhValue v = ch->buf[ch->head];
     ch->head = (ch->head + 1) % ch->cap;
     ch->count--;
     if (!ch->unbounded) {
-        pthread_cond_signal(&ch->not_full);
+        mdh_cond_signal(ch->not_full);
     }
-    pthread_mutex_unlock(&ch->lock);
+    mdh_mutex_unlock(ch->lock);
     return v;
 }
 
 MdhValue __mdh_chan_close(MdhValue chan) {
     MdhChan *ch = __mdh_chan_ptr(chan);
-    if (!ch) return __mdh_make_nil();
-    pthread_mutex_lock(&ch->lock);
+    if (!ch || !ch->lock) return __mdh_make_nil();
+    mdh_mutex_lock(ch->lock);
     ch->closed = 1;
-    pthread_cond_broadcast(&ch->not_empty);
-    pthread_cond_broadcast(&ch->not_full);
-    pthread_mutex_unlock(&ch->lock);
+    mdh_cond_broadcast(ch->not_empty);
+    mdh_cond_broadcast(ch->not_full);
+    mdh_mutex_unlock(ch->lock);
     return __mdh_make_nil();
 }
 
 MdhValue __mdh_chan_is_closed(MdhValue chan) {
     MdhChan *ch = __mdh_chan_ptr(chan);
-    if (!ch) return __mdh_make_bool(true);
-    pthread_mutex_lock(&ch->lock);
+    if (!ch || !ch->lock) return __mdh_make_bool(true);
+    mdh_mutex_lock(ch->lock);
     int closed = ch->closed;
-    pthread_mutex_unlock(&ch->lock);
+    mdh_mutex_unlock(ch->lock);
     return __mdh_make_bool(closed != 0);
 }
-
-#else /* _WIN32 */
-/* Windows threading stubs - threading not yet fully supported */
-
-MdhValue __mdh_thread_spawn(MdhValue func, MdhValue args) {
-    (void)func; (void)args;
-    __mdh_hurl(__mdh_make_string("Threading isnae available on Windows yet"));
-    return __mdh_make_nil();
-}
-
-MdhValue __mdh_thread_join(MdhValue thread) {
-    (void)thread;
-    return __mdh_make_nil();
-}
-
-MdhValue __mdh_thread_detach(MdhValue thread) {
-    (void)thread;
-    return __mdh_make_nil();
-}
-
-MdhValue __mdh_mutex_new(void) {
-    __mdh_hurl(__mdh_make_string("Threading isnae available on Windows yet"));
-    return __mdh_make_nil();
-}
-
-MdhValue __mdh_mutex_lock(MdhValue mutex) { (void)mutex; return __mdh_make_nil(); }
-MdhValue __mdh_mutex_unlock(MdhValue mutex) { (void)mutex; return __mdh_make_nil(); }
-MdhValue __mdh_mutex_trylock(MdhValue mutex) { (void)mutex; return __mdh_make_bool(false); }
-
-MdhValue __mdh_condvar_new(void) {
-    __mdh_hurl(__mdh_make_string("Threading isnae available on Windows yet"));
-    return __mdh_make_nil();
-}
-
-MdhValue __mdh_condvar_wait(MdhValue c, MdhValue m) { (void)c; (void)m; return __mdh_make_nil(); }
-MdhValue __mdh_condvar_wait_timeout(MdhValue c, MdhValue m, MdhValue ms) { (void)c; (void)m; (void)ms; return __mdh_make_bool(false); }
-MdhValue __mdh_condvar_signal(MdhValue c) { (void)c; return __mdh_make_nil(); }
-MdhValue __mdh_condvar_broadcast(MdhValue c) { (void)c; return __mdh_make_nil(); }
-
-MdhValue __mdh_atomic_new(MdhValue v) { (void)v; __mdh_hurl(__mdh_make_string("Threading isnae available on Windows yet")); return __mdh_make_nil(); }
-MdhValue __mdh_atomic_load(MdhValue a) { (void)a; return __mdh_make_int(0); }
-MdhValue __mdh_atomic_store(MdhValue a, MdhValue v) { (void)a; (void)v; return __mdh_make_nil(); }
-MdhValue __mdh_atomic_add(MdhValue a, MdhValue v) { (void)a; (void)v; return __mdh_make_int(0); }
-MdhValue __mdh_atomic_cas(MdhValue a, MdhValue e, MdhValue n) { (void)a; (void)e; (void)n; return __mdh_make_bool(false); }
-
-MdhValue __mdh_chan_new(MdhValue cap) { (void)cap; __mdh_hurl(__mdh_make_string("Threading isnae available on Windows yet")); return __mdh_make_nil(); }
-MdhValue __mdh_chan_send(MdhValue c, MdhValue v) { (void)c; (void)v; return __mdh_make_bool(false); }
-MdhValue __mdh_chan_recv(MdhValue c) { (void)c; return __mdh_make_nil(); }
-MdhValue __mdh_chan_try_recv(MdhValue c) { (void)c; return __mdh_make_nil(); }
-MdhValue __mdh_chan_close(MdhValue c) { (void)c; return __mdh_make_nil(); }
-MdhValue __mdh_chan_is_closed(MdhValue c) { (void)c; return __mdh_make_bool(true); }
-
-#endif /* _WIN32 */
 
 /* ========== Dict/Creel Operations ========== */
 /* Dict/creel values store a stable handle pointer to their payload.

@@ -21,6 +21,11 @@
 
 #pragma comment(lib, "ws2_32.lib")
 
+/* Define ETIMEDOUT if not available (for pthread compatibility) */
+#ifndef ETIMEDOUT
+#define ETIMEDOUT 110
+#endif
+
 /* ========== Directory Operations ========== */
 
 struct mdh_dir {
@@ -536,10 +541,5 @@ int mdh_unlink(const char *path) {
 const char *mdh_getenv(const char *name) {
     return getenv(name);
 }
-
-/* Define ETIMEDOUT if not available */
-#ifndef ETIMEDOUT
-#define ETIMEDOUT 110
-#endif
 
 #endif /* _WIN32 */
