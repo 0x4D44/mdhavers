@@ -1,0 +1,285 @@
+// Swarm Symphony - Graphics Module
+// 2D isometric projection and rendering
+
+// Graphics configuration
+ken GFX_ENABLED = env_get("SWARM_GFX") != naething
+ken SCREEN_WIDTH = 800
+ken SCREEN_HEIGHT = 600
+ken BACKGROUND_COLOR = [20, 20, 30]
+
+// Isometric projection parameters
+// For pseudo-3D effect: x' = x - z, y' = y + (x + z) / 2
+ken ISO_SCALE = 8.0  // Pixels per world unit
+ken ISO_X_OFFSET = SCREEN_WIDTH / 2
+ken ISO_Y_OFFSET = SCREEN_HEIGHT / 2
+
+// Graphics state
+ken gfx_initialized = nae
+
+// Color utilities
+dae rgb(r, g, b) {
+    gie [r, g, b]
+}
+
+dae rgba(r, g, b, a) {
+    gie [r, g, b, a]
+}
+
+dae blend_color(c1, c2, t) {
+    // Linear interpolation between two colors
+    gie [
+        floor(c1[0] + (c2[0] - c1[0]) * t),
+        floor(c1[1] + (c2[1] - c1[1]) * t),
+        floor(c1[2] + (c2[2] - c1[2]) * t)
+    ]
+}
+
+// 3D to 2D isometric projection
+dae project_iso(pos) {
+    // Isometric projection:
+    // screen_x = (x - z) * scale + offset
+    // screen_y = y * 0.5 + (x + z) * 0.25 * scale + offset
+    ken sx = (pos[0] - pos[2]) * ISO_SCALE + ISO_X_OFFSET
+    ken sy = pos[1] * 0.5 + (pos[0] + pos[2]) * 0.25 * ISO_SCALE + ISO_Y_OFFSET
+    gie [floor(sx), floor(sy)]
+}
+
+// Convert velocity to direction indicator points
+dae velocity_indicator(pos, vel, length) {
+    ken screen_pos = project_iso(pos)
+    // Project end of velocity vector
+    ken end_pos = [pos[0] + vel[0] * length, pos[1] + vel[1] * length, pos[2] + vel[2] * length]
+    ken screen_end = project_iso(end_pos)
+    gie {"start": screen_pos, "end": screen_end}
+}
+
+// Initialize graphics
+dae gfx_init() {
+    gin nae GFX_ENABLED {
+        blether "[gfx] Graphics disabled"
+        gie nae
+    }
+
+    hae_a_bash {
+        screen_open(SCREEN_WIDTH, SCREEN_HEIGHT, "Swarm Symphony")
+        gfx_initialized = aye
+        blether f"[gfx] Window opened: {SCREEN_WIDTH}x{SCREEN_HEIGHT}"
+        gie aye
+    } gin_it_gangs_wrang e {
+        blether f"[gfx] Failed to initialize: {e}"
+        gie nae
+    }
+}
+
+// Shutdown graphics
+dae gfx_shutdown() {
+    gin gfx_initialized {
+        hae_a_bash {
+            screen_close()
+            gfx_initialized = nae
+            blether "[gfx] Window closed"
+        } gin_it_gangs_wrang e {
+            blether f"[gfx] Shutdown error: {e}"
+        }
+    }
+}
+
+// Check if window should close
+dae gfx_should_close() {
+    gin nae gfx_initialized { gie aye }
+    hae_a_bash {
+        gie screen_should_close()
+    } gin_it_gangs_wrang e {
+        gie aye
+    }
+}
+
+// Draw a single agent
+dae draw_agent(agent, world) {
+    ken screen_pos = project_iso(agent["pos"])
+    ken x = screen_pos[0]
+    ken y = screen_pos[1]
+    ken col = agent["col"]
+
+    keek agent["kind"] {
+        whan "boid" -> {
+            // Boids are small circles with velocity indicator
+            draw_circle(x, y, 4, col)
+
+            // Draw velocity tail
+            ken indicator = velocity_indicator(agent["pos"], agent["vel"], 2.0)
+            ken tail_col = blend_color(col, [255, 255, 255], 0.5)
+            draw_line(indicator["start"][0], indicator["start"][1], indicator["end"][0], indicator["end"][1], tail_col)
+        }
+
+        whan "predator" -> {
+            // Predators are larger triangles
+            draw_circle(x, y, 8, col)
+            // Inner triangle shape (approximated with smaller circle)
+            draw_circle(x, y, 4, [255, 255, 255])
+        }
+
+        whan "attractor" -> {
+            // Attractors are pulsing green circles
+            ken pulse = sin(world["tick"] * 0.1) * 0.5 + 0.5
+            ken size = 6 + pulse * 4
+            draw_circle(x, y, floor(size), col)
+        }
+
+        whan "repulsor" -> {
+            // Repulsors are spiky purple circles
+            draw_circle(x, y, 10, col)
+            draw_circle(x, y, 6, BACKGROUND_COLOR)
+        }
+
+        whan "player" -> {
+            // Player is a distinct yellow shape
+            draw_circle(x, y, 8, col)
+            draw_circle(x, y, 5, [255, 200, 0])
+        }
+
+        whan _ -> {
+            // Unknown type - simple circle
+            draw_circle(x, y, 5, [128, 128, 128])
+        }
+    }
+}
+
+// Draw world bounds as a 3D wireframe box
+dae draw_bounds(bounds) {
+    ken b = bounds
+    ken col = [60, 60, 80]
+
+    // Project all 8 corners
+    ken corners = [
+        project_iso([b[0], b[1], b[2]]),  // min corner
+        project_iso([b[3], b[1], b[2]]),  // max x
+        project_iso([b[0], b[4], b[2]]),  // max y
+        project_iso([b[3], b[4], b[2]]),  // max xy
+        project_iso([b[0], b[1], b[5]]),  // max z
+        project_iso([b[3], b[1], b[5]]),  // max xz
+        project_iso([b[0], b[4], b[5]]),  // max yz
+        project_iso([b[3], b[4], b[5]])   // max corner
+    ]
+
+    // Draw edges (12 edges of a cube)
+    // Bottom face
+    draw_line(corners[0][0], corners[0][1], corners[1][0], corners[1][1], col)
+    draw_line(corners[0][0], corners[0][1], corners[2][0], corners[2][1], col)
+    draw_line(corners[1][0], corners[1][1], corners[3][0], corners[3][1], col)
+    draw_line(corners[2][0], corners[2][1], corners[3][0], corners[3][1], col)
+
+    // Top face
+    draw_line(corners[4][0], corners[4][1], corners[5][0], corners[5][1], col)
+    draw_line(corners[4][0], corners[4][1], corners[6][0], corners[6][1], col)
+    draw_line(corners[5][0], corners[5][1], corners[7][0], corners[7][1], col)
+    draw_line(corners[6][0], corners[6][1], corners[7][0], corners[7][1], col)
+
+    // Vertical edges
+    draw_line(corners[0][0], corners[0][1], corners[4][0], corners[4][1], col)
+    draw_line(corners[1][0], corners[1][1], corners[5][0], corners[5][1], col)
+    draw_line(corners[2][0], corners[2][1], corners[6][0], corners[6][1], col)
+    draw_line(corners[3][0], corners[3][1], corners[7][0], corners[7][1], col)
+}
+
+// Draw HUD (heads-up display)
+dae draw_hud(world) {
+    ken boid_count = len(sieve(world["agents"], |a| a["kind"] == "boid"))
+    ken coherence = calculate_coherence(world)
+    ken coherence_pct = round(coherence * 100)
+
+    // Background bar for HUD
+    draw_rect(5, 5, 200, 60, [0, 0, 0])
+
+    // Text info
+    draw_text(f"Tick: {world['tick']}", 10, 10, 16, [255, 255, 255])
+    draw_text(f"Boids: {boid_count}", 10, 28, 16, [100, 200, 255])
+    draw_text(f"Coherence: {coherence_pct}%", 10, 46, 16, [100, 255, 100])
+
+    // Coherence bar
+    ken bar_width = floor(coherence * 180)
+    ken bar_color = blend_color([255, 50, 50], [50, 255, 50], coherence)
+    draw_rect(10, 62, 180, 8, [40, 40, 40])
+    draw_rect(10, 62, bar_width, 8, bar_color)
+}
+
+// Main render function
+dae gfx_render(world) {
+    gin nae gfx_initialized { gie naething }
+
+    hae_a_bash {
+        // Begin frame
+        screen_begin()
+
+        // Clear background
+        draw_rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, BACKGROUND_COLOR)
+
+        // Draw world bounds
+        draw_bounds(world["bounds"])
+
+        // Sort agents by depth (y + z) for proper rendering order
+        // (Simplified: draw in order, back to front approximation)
+        ken sorted_agents = sort_by(world["agents"], |a| a["pos"][1] + a["pos"][2])
+
+        // Draw all agents
+        ilk(sorted_agents, |agent| {
+            draw_agent(agent, world)
+        })
+
+        // Draw HUD
+        draw_hud(world)
+
+        // End frame
+        screen_end()
+    } gin_it_gangs_wrang e {
+        blether f"[gfx] Render error: {e}"
+    }
+}
+
+// Get graphics state for debugging
+dae get_gfx_state() {
+    gie {
+        "enabled": GFX_ENABLED,
+        "initialized": gfx_initialized,
+        "width": SCREEN_WIDTH,
+        "height": SCREEN_HEIGHT,
+        "scale": ISO_SCALE
+    }
+}
+
+// Test function (non-visual tests)
+dae test_graphics() {
+    blether "Testing graphics module..."
+
+    // Test isometric projection
+    ken p1 = project_iso([0.0, 0.0, 0.0])
+    assert(p1[0] == ISO_X_OFFSET, "center x should be at offset")
+    assert(p1[1] == ISO_Y_OFFSET, "center y should be at offset")
+
+    // Test that moving +x and -z both shift screen right
+    ken p_x = project_iso([10.0, 0.0, 0.0])
+    ken p_z = project_iso([0.0, 0.0, -10.0])
+    assert(p_x[0] > p1[0], "+x should shift right")
+    assert(p_z[0] > p1[0], "-z should also shift right")
+
+    // Test color blending
+    ken c1 = rgb(0, 0, 0)
+    ken c2 = rgb(255, 255, 255)
+    ken mid = blend_color(c1, c2, 0.5)
+    assert(mid[0] == 127, "midpoint red should be 127")
+    assert(mid[1] == 127, "midpoint green should be 127")
+
+    // Test velocity indicator
+    ken ind = velocity_indicator([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], 1.0)
+    assert(ind["start"][0] == ISO_X_OFFSET, "start at center")
+    assert(ind["end"][0] > ind["start"][0], "velocity should extend right")
+
+    // Test gfx state
+    ken state = get_gfx_state()
+    assert(state["width"] == SCREEN_WIDTH, "width should match")
+    assert(state["height"] == SCREEN_HEIGHT, "height should match")
+
+    blether "All graphics tests passed!"
+}
+
+test_graphics()

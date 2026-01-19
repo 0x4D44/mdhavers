@@ -1,0 +1,402 @@
+// Swarm Symphony - Network Module
+// Peer-to-peer swarm synchronization over UDP
+
+// Network configuration
+ken NET_ENABLED = env_get("SWARM_NET") != naething
+ken NET_PORT = env_get("SWARM_PORT")
+ken NET_HOST = env_get("SWARM_HOST")
+ken NET_PEER = env_get("SWARM_PEER")
+
+// Convert port to integer if set
+gin NET_PORT != naething {
+    NET_PORT = tae_int(NET_PORT)
+} ither {
+    NET_PORT = 9000
+}
+
+// Default host
+gin NET_HOST == naething {
+    NET_HOST = "0.0.0.0"
+}
+
+// Protocol version
+ken PROTOCOL_VERSION = 1
+
+// Message types
+ken MSG_PING = 1
+ken MSG_PONG = 2
+ken MSG_AGENT_UPDATE = 3
+ken MSG_AGENT_SPAWN = 4
+ken MSG_AGENT_REMOVE = 5
+ken MSG_WORLD_STATE = 6
+ken MSG_SYNC_REQUEST = 7
+
+// Network state
+ken net_initialized = nae
+ken net_socket = naething
+ken net_peers = []  // List of known peer addresses
+ken net_node_id = naething
+ken net_last_sync = 0
+ken net_stats = {
+    "sent": 0,
+    "received": 0,
+    "errors": 0
+}
+
+// Generate unique node ID
+dae generate_node_id() {
+    ken timestamp = noo()
+    ken rand_part = random_int(0, 999999)
+    gie f"node_{timestamp}_{rand_part}"
+}
+
+// Initialize network
+dae net_init() {
+    gin nae NET_ENABLED {
+        blether "[net] Networking disabled"
+        gie nae
+    }
+
+    hae_a_bash {
+        net_socket = socket_udp()
+        socket_bind(net_socket, NET_HOST, NET_PORT)
+        socket_set_nonblocking(net_socket, aye)
+
+        net_node_id = generate_node_id()
+        net_initialized = aye
+
+        blether f"[net] Listening on {NET_HOST}:{NET_PORT} as {net_node_id}"
+
+        // Add initial peer if specified
+        gin NET_PEER != naething {
+            ken parts = split(NET_PEER, ":")
+            gin len(parts) == 2 {
+                ken peer_host = parts[0]
+                ken peer_port = tae_int(parts[1])
+                shove(net_peers, {"host": peer_host, "port": peer_port})
+                blether f"[net] Added peer: {peer_host}:{peer_port}"
+            }
+        }
+
+        gie aye
+    } gin_it_gangs_wrang e {
+        blether f"[net] Failed to initialize: {e}"
+        gie nae
+    }
+}
+
+// Shutdown network
+dae net_shutdown() {
+    gin net_initialized {
+        hae_a_bash {
+            socket_close(net_socket)
+            net_socket = naething
+            net_initialized = nae
+            blether "[net] Network shutdown"
+        } gin_it_gangs_wrang e {
+            blether f"[net] Shutdown error: {e}"
+        }
+    }
+}
+
+// Encode message to bytes
+dae encode_message(msg_type, payload) {
+    // Simple JSON-based protocol
+    ken msg = {
+        "v": PROTOCOL_VERSION,
+        "t": msg_type,
+        "id": net_node_id,
+        "ts": noo(),
+        "p": payload
+    }
+    gie json_stringify(msg)
+}
+
+// Decode message from bytes
+dae decode_message(data) {
+    hae_a_bash {
+        ken msg = json_parse(data)
+        gin msg["v"] != PROTOCOL_VERSION {
+            gie {"ok": nae, "msg": "version mismatch"}
+        }
+        gie {"ok": aye, "data": msg}
+    } gin_it_gangs_wrang e {
+        gie {"ok": nae, "msg": f"parse error: {e}"}
+    }
+}
+
+// Send message to peer
+dae send_to_peer(peer, msg_type, payload) {
+    gin nae net_initialized { gie nae }
+
+    hae_a_bash {
+        ken encoded = encode_message(msg_type, payload)
+        ken bytes = tae_bytes(encoded)
+        socket_sendto(net_socket, bytes, peer["host"], peer["port"])
+        net_stats["sent"] = net_stats["sent"] + 1
+        gie aye
+    } gin_it_gangs_wrang e {
+        net_stats["errors"] = net_stats["errors"] + 1
+        gie nae
+    }
+}
+
+// Broadcast message to all peers
+dae broadcast(msg_type, payload) {
+    ilk(net_peers, |peer| {
+        send_to_peer(peer, msg_type, payload)
+    })
+}
+
+// Receive pending messages
+dae receive_messages() {
+    gin nae net_initialized { gie [] }
+
+    ken messages = []
+
+    // Non-blocking receive loop
+    ken keep_reading = aye
+    whiles keep_reading {
+        hae_a_bash {
+            ken result = socket_recvfrom(net_socket, 4096)
+            gin result != naething {
+                ken data = bytes_tae_string(result["data"])
+                ken decoded = decode_message(data)
+                gin decoded["ok"] {
+                    shove(messages, {
+                        "from_host": result["host"],
+                        "from_port": result["port"],
+                        "msg": decoded["data"]
+                    })
+                    net_stats["received"] = net_stats["received"] + 1
+                }
+            } ither {
+                keep_reading = nae
+            }
+        } gin_it_gangs_wrang e {
+            // Would block or other error - stop reading
+            keep_reading = nae
+        }
+    }
+
+    gie messages
+}
+
+// Serialize agent for network transmission
+dae serialize_agent(agent) {
+    gie {
+        "id": agent["id"],
+        "kind": agent["kind"],
+        "pos": agent["pos"],
+        "vel": agent["vel"],
+        "col": agent["col"],
+        "energy": agent["energy"]
+    }
+}
+
+// Deserialize agent from network data
+dae deserialize_agent(data, world) {
+    // Create agent with network ID (prefixed with sender's node)
+    ken agent = {
+        "id": data["id"],
+        "kind": data["kind"],
+        "pos": data["pos"],
+        "vel": data["vel"],
+        "col": data["col"],
+        "energy": data["energy"],
+        "birth": world["tick"],
+        "sound_cooldown": 0
+    }
+    gie agent
+}
+
+// Send agent update to peers
+dae net_send_agent_update(agent) {
+    broadcast(MSG_AGENT_UPDATE, serialize_agent(agent))
+}
+
+// Send agent spawn to peers
+dae net_send_agent_spawn(agent) {
+    broadcast(MSG_AGENT_SPAWN, serialize_agent(agent))
+}
+
+// Send agent removal to peers
+dae net_send_agent_remove(agent_id) {
+    broadcast(MSG_AGENT_REMOVE, {"id": agent_id})
+}
+
+// Request full sync from peers
+dae net_request_sync() {
+    broadcast(MSG_SYNC_REQUEST, {})
+}
+
+// Send full world state
+dae net_send_world_state(world, to_peer) {
+    ken agents_data = []
+    ilk(world["agents"], |a| {
+        shove(agents_data, serialize_agent(a))
+    })
+    send_to_peer(to_peer, MSG_WORLD_STATE, {
+        "tick": world["tick"],
+        "agents": agents_data
+    })
+}
+
+// Process received messages
+dae net_process_messages(world) {
+    gin nae net_initialized { gie [] }
+
+    ken messages = receive_messages()
+    ken events = []
+
+    ilk(messages, |m| {
+        ken msg = m["msg"]
+        ken from_host = m["from_host"]
+        ken from_port = m["from_port"]
+
+        // Don't process own messages
+        gin msg["id"] == net_node_id { gie naething }
+
+        keek msg["t"] {
+            whan 1 -> {
+                // PING - respond with PONG
+                send_to_peer({"host": from_host, "port": from_port}, MSG_PONG, {})
+                shove(events, {"type": "ping", "from": msg["id"]})
+            }
+
+            whan 2 -> {
+                // PONG - peer is alive
+                shove(events, {"type": "pong", "from": msg["id"]})
+            }
+
+            whan 3 -> {
+                // AGENT_UPDATE - update existing agent
+                ken data = msg["p"]
+                ken existing = dict_get(world["agents_map"], data["id"], naething)
+                gin existing != naething {
+                    existing["pos"] = data["pos"]
+                    existing["vel"] = data["vel"]
+                }
+                shove(events, {"type": "agent_update", "id": data["id"]})
+            }
+
+            whan 4 -> {
+                // AGENT_SPAWN - add new agent
+                ken data = msg["p"]
+                gin nae dict_has(world["agents_map"], data["id"]) {
+                    ken agent = deserialize_agent(data, world)
+                    add_agent(world, agent)
+                    shove(events, {"type": "agent_spawn", "id": data["id"]})
+                }
+            }
+
+            whan 5 -> {
+                // AGENT_REMOVE - remove agent
+                ken data = msg["p"]
+                gin dict_has(world["agents_map"], data["id"]) {
+                    remove_agent(world, data["id"])
+                    shove(events, {"type": "agent_remove", "id": data["id"]})
+                }
+            }
+
+            whan 6 -> {
+                // WORLD_STATE - full sync
+                ken data = msg["p"]
+                ilk(data["agents"], |agent_data| {
+                    gin nae dict_has(world["agents_map"], agent_data["id"]) {
+                        ken agent = deserialize_agent(agent_data, world)
+                        add_agent(world, agent)
+                    }
+                })
+                shove(events, {"type": "world_sync", "agent_count": len(data["agents"])})
+            }
+
+            whan 7 -> {
+                // SYNC_REQUEST - send our state
+                net_send_world_state(world, {"host": from_host, "port": from_port})
+                shove(events, {"type": "sync_request", "from": msg["id"]})
+            }
+
+            whan _ -> {
+                // Unknown message type
+                shove(events, {"type": "unknown", "msg_type": msg["t"]})
+            }
+        }
+    })
+
+    gie events
+}
+
+// Periodic network update (called each tick)
+dae net_update(world) {
+    gin nae net_initialized { gie [] }
+
+    ken events = net_process_messages(world)
+
+    // Periodic sync every 60 ticks (1 second)
+    gin world["tick"] - net_last_sync >= 60 {
+        net_last_sync = world["tick"]
+
+        // Broadcast local agent updates (only our agents)
+        ilk(world["agents"], |agent| {
+            gin starts_with(agent["id"], net_node_id) {
+                net_send_agent_update(agent)
+            }
+        })
+    }
+
+    gie events
+}
+
+// Get network stats for debugging
+dae get_net_stats() {
+    gie {
+        "enabled": NET_ENABLED,
+        "initialized": net_initialized,
+        "node_id": net_node_id,
+        "port": NET_PORT,
+        "peers": len(net_peers),
+        "sent": net_stats["sent"],
+        "received": net_stats["received"],
+        "errors": net_stats["errors"]
+    }
+}
+
+// Test function
+dae test_network() {
+    blether "Testing network module..."
+
+    // Test node ID generation
+    ken id1 = generate_node_id()
+    ken id2 = generate_node_id()
+    assert(id1 != id2, "node IDs should be unique")
+    assert(starts_with(id1, "node_"), "node ID should start with node_")
+
+    // Test message encoding/decoding
+    ken encoded = encode_message(MSG_PING, {"test": "data"})
+    ken decoded = decode_message(encoded)
+    assert(decoded["ok"], "decode should succeed")
+    assert(decoded["data"]["t"] == MSG_PING, "message type should match")
+    assert(decoded["data"]["p"]["test"] == "data", "payload should match")
+
+    // Test agent serialization
+    ken fake_agent = {
+        "id": "test_001",
+        "kind": "boid",
+        "pos": [1.0, 2.0, 3.0],
+        "vel": [0.1, 0.2, 0.3],
+        "col": [100, 200, 255],
+        "energy": 100
+    }
+    ken serialized = serialize_agent(fake_agent)
+    assert(serialized["id"] == "test_001", "agent ID should serialize")
+    assert(serialized["pos"][0] == 1.0, "position should serialize")
+
+    // Test stats
+    ken stats = get_net_stats()
+    assert(stats["enabled"] == NET_ENABLED, "enabled should match")
+
+    blether "All network tests passed!"
+}
+
+test_network()

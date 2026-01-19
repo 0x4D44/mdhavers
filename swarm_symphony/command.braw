@@ -1,0 +1,319 @@
+// Swarm Symphony - Command Module
+// Command parser and input handling
+
+fetch "simulation"
+
+// Command types:
+// spawn <kind> [x y z] - spawn agent (kind: boid, predator, attractor, repulsor, player)
+// remove <id> - remove agent by id
+// move <id> <dx dy dz> - set agent velocity
+// rule <name> <value> - set simulation rule
+// pause - toggle pause
+// tick [n] - advance n ticks (default 1)
+// status - print simulation status
+// quit - exit simulation
+// help - show commands
+// batch <file> - load commands from file
+
+dae parse_command(line) {
+    ken trimmed = trim(line)
+
+    // Skip empty lines and comments
+    gin len(trimmed) == 0 { gie naething }
+    gin starts_with(trimmed, "#") { gie naething }
+    gin starts_with(trimmed, "//") { gie naething }
+
+    ken parts = split(trimmed, " ")
+    gin len(parts) == 0 { gie naething }
+
+    ken cmd = lower(parts[0])
+    ken args = []
+    fer i in range(1, len(parts)) {
+        shove(args, parts[i])
+    }
+
+    gie {"cmd": cmd, "args": args, "raw": trimmed}
+}
+
+dae execute_command(world, parsed) {
+    gin parsed == naething { gie {"ok": aye, "msg": ""} }
+
+    ken cmd = parsed["cmd"]
+    ken args = parsed["args"]
+
+    keek cmd {
+        whan "spawn" -> {
+            gin len(args) < 1 {
+                gie {"ok": nae, "msg": "spawn needs <kind> [x y z]"}
+            }
+            ken kind = args[0]
+            ken x = 0.0
+            ken y = 0.0
+            ken z = 0.0
+            gin len(args) >= 4 {
+                x = tae_float(args[1])
+                y = tae_float(args[2])
+                z = tae_float(args[3])
+            } ither {
+                // Random position within bounds
+                ken b = world["bounds"]
+                x = random() * (b[3] - b[0]) + b[0]
+                y = random() * (b[4] - b[1]) + b[1]
+                z = random() * (b[5] - b[2]) + b[2]
+            }
+
+            ken agent = make_agent(world, kind, x, y, z)
+            add_agent(world, agent)
+            gie {"ok": aye, "msg": f"spawned {kind} at ({x}, {y}, {z}) id={agent['id']}"}
+        }
+
+        whan "remove" -> {
+            gin len(args) < 1 {
+                gie {"ok": nae, "msg": "remove needs <id>"}
+            }
+            ken id = args[0]
+            gin dict_has(world["agents_map"], id) {
+                remove_agent(world, id)
+                gie {"ok": aye, "msg": f"removed {id}"}
+            } ither {
+                gie {"ok": nae, "msg": f"agent {id} not found"}
+            }
+        }
+
+        whan "move" -> {
+            gin len(args) < 4 {
+                gie {"ok": nae, "msg": "move needs <id> <dx dy dz>"}
+            }
+            ken id = args[0]
+            ken agent = dict_get(world["agents_map"], id, naething)
+            gin agent == naething {
+                gie {"ok": nae, "msg": f"agent {id} not found"}
+            }
+            ken dx = tae_float(args[1])
+            ken dy = tae_float(args[2])
+            ken dz = tae_float(args[3])
+            agent["vel"] = [dx, dy, dz]
+            gie {"ok": aye, "msg": f"set {id} velocity to ({dx}, {dy}, {dz})"}
+        }
+
+        whan "rule" -> {
+            gin len(args) < 2 {
+                gie {"ok": nae, "msg": "rule needs <name> <value>"}
+            }
+            ken name = args[0]
+            ken value = tae_float(args[1])
+            gin dict_has(world["rules"], name) {
+                world["rules"][name] = value
+                gie {"ok": aye, "msg": f"set {name} = {value}"}
+            } ither {
+                gie {"ok": nae, "msg": f"unknown rule: {name}"}
+            }
+        }
+
+        whan "pause" -> {
+            world["paused"] = nae world["paused"]
+            ken state = "paused"
+            gin nae world["paused"] { state = "running" }
+            gie {"ok": aye, "msg": f"simulation {state}"}
+        }
+
+        whan "tick" -> {
+            ken n = 1
+            gin len(args) >= 1 {
+                n = tae_int(args[0])
+            }
+            fer i in range(0, n) {
+                update_agents(world)
+            }
+            gie {"ok": aye, "msg": f"advanced {n} ticks, now at tick {world['tick']}"}
+        }
+
+        whan "status" -> {
+            ken boid_count = 0
+            ken pred_count = 0
+            ken attr_count = 0
+            ken rep_count = 0
+            ken player_count = 0
+
+            ilk(world["agents"], |a| {
+                keek a["kind"] {
+                    whan "boid" -> { boid_count = boid_count + 1 }
+                    whan "predator" -> { pred_count = pred_count + 1 }
+                    whan "attractor" -> { attr_count = attr_count + 1 }
+                    whan "repulsor" -> { rep_count = rep_count + 1 }
+                    whan "player" -> { player_count = player_count + 1 }
+                }
+            })
+
+            ken coherence = calculate_coherence(world)
+            ken status_str = f"tick={world['tick']} boids={boid_count} predators={pred_count} attractors={attr_count} repulsors={rep_count} players={player_count} coherence={coherence}"
+            gin world["paused"] {
+                status_str = f"{status_str} [PAUSED]"
+            }
+            gie {"ok": aye, "msg": status_str}
+        }
+
+        whan "quit" -> {
+            gie {"ok": aye, "msg": "quit", "quit": aye}
+        }
+
+        whan "help" -> {
+            ken help_text = "Commands:\n"
+            help_text = f"{help_text}  spawn <kind> [x y z] - spawn agent (boid/predator/attractor/repulsor/player)\n"
+            help_text = f"{help_text}  remove <id> - remove agent by id\n"
+            help_text = f"{help_text}  move <id> <dx dy dz> - set agent velocity\n"
+            help_text = f"{help_text}  rule <name> <value> - set simulation rule\n"
+            help_text = f"{help_text}  pause - toggle pause\n"
+            help_text = f"{help_text}  tick [n] - advance n ticks\n"
+            help_text = f"{help_text}  status - print simulation status\n"
+            help_text = f"{help_text}  batch <file> - load commands from file\n"
+            help_text = f"{help_text}  quit - exit simulation\n"
+            help_text = f"{help_text}  help - show this help"
+            gie {"ok": aye, "msg": help_text}
+        }
+
+        whan "batch" -> {
+            gin len(args) < 1 {
+                gie {"ok": nae, "msg": "batch needs <file>"}
+            }
+            // Return special batch result - caller handles file loading
+            gie {"ok": aye, "msg": "", "batch": args[0]}
+        }
+
+        whan _ -> {
+            gie {"ok": nae, "msg": f"unknown command: {cmd}"}
+        }
+    }
+}
+
+dae load_batch_file(path) {
+    ken commands = []
+    hae_a_bash {
+        ken lines = read_lines(path)
+        ilk(lines, |line| {
+            ken parsed = parse_command(line)
+            gin parsed != naething {
+                shove(commands, parsed)
+            }
+        })
+        gie {"ok": aye, "commands": commands}
+    } gin_it_gangs_wrang e {
+        gie {"ok": nae, "msg": f"failed to load batch file: {e}"}
+    }
+}
+
+// Process batch commands
+dae process_batch(world, batch_result) {
+    ken results = []
+    ilk(batch_result["commands"], |cmd| {
+        ken result = execute_command(world, cmd)
+        shove(results, result)
+
+        // Handle nested batch files
+        gin dict_has(result, "batch") {
+            ken nested = load_batch_file(result["batch"])
+            gin nested["ok"] {
+                ken nested_results = process_batch(world, nested)
+                ilk(nested_results, |nr| shove(results, nr))
+            } ither {
+                shove(results, nested)
+            }
+        }
+    })
+    gie results
+}
+
+// Test function
+dae test_commands() {
+    // Test parse_command
+    ken p1 = parse_command("spawn boid 1.0 2.0 3.0")
+    assert(p1["cmd"] == "spawn", "parse spawn cmd")
+    assert(len(p1["args"]) == 4, "parse spawn args")
+
+    // Test comment handling
+    ken p2 = parse_command("# this is a comment")
+    assert(p2 == naething, "comment should return naething")
+
+    ken p3 = parse_command("// another comment")
+    assert(p3 == naething, "// comment should return naething")
+
+    ken p4 = parse_command("")
+    assert(p4 == naething, "empty should return naething")
+
+    // Test execute_command with world
+    ken world = make_world()
+
+    // Test spawn
+    ken spawn_parsed = parse_command("spawn boid 5.0 5.0 5.0")
+    ken spawn_result = execute_command(world, spawn_parsed)
+    assert(spawn_result["ok"], f"spawn should succeed: {spawn_result['msg']}")
+    assert(len(world["agents"]) == 1, "should have 1 agent")
+
+    // Test status
+    ken status_parsed = parse_command("status")
+    ken status_result = execute_command(world, status_parsed)
+    assert(status_result["ok"], "status should succeed")
+
+    // Test tick
+    ken tick_parsed = parse_command("tick 5")
+    ken tick_result = execute_command(world, tick_parsed)
+    assert(tick_result["ok"], "tick should succeed")
+    assert(world["tick"] == 5, f"tick should be 5, got {world['tick']}")
+
+    // Test pause
+    ken pause_parsed = parse_command("pause")
+    ken pause_result = execute_command(world, pause_parsed)
+    assert(pause_result["ok"], "pause should succeed")
+    assert(world["paused"], "should be paused")
+
+    // Test rule
+    ken rule_parsed = parse_command("rule max_speed 5.0")
+    ken rule_result = execute_command(world, rule_parsed)
+    assert(rule_result["ok"], "rule should succeed")
+    assert(world["rules"]["max_speed"] == 5.0, "max_speed should be 5.0")
+
+    // Test move
+    ken agent_id = world["agents"][0]["id"]
+    ken move_parsed = parse_command(f"move {agent_id} 1.0 0.0 0.0")
+    ken move_result = execute_command(world, move_parsed)
+    assert(move_result["ok"], f"move should succeed: {move_result['msg']}")
+
+    // Test remove
+    ken remove_parsed = parse_command(f"remove {agent_id}")
+    ken remove_result = execute_command(world, remove_parsed)
+    assert(remove_result["ok"], "remove should succeed")
+    assert(len(world["agents"]) == 0, "should have 0 agents")
+
+    // Test help
+    ken help_parsed = parse_command("help")
+    ken help_result = execute_command(world, help_parsed)
+    assert(help_result["ok"], "help should succeed")
+
+    // Test quit
+    ken quit_parsed = parse_command("quit")
+    ken quit_result = execute_command(world, quit_parsed)
+    assert(quit_result["ok"], "quit should succeed")
+    assert(dict_get(quit_result, "quit", nae), "quit should set quit flag")
+
+    // Test unknown command
+    ken unknown_parsed = parse_command("unknown_cmd")
+    ken unknown_result = execute_command(world, unknown_parsed)
+    assert(nae unknown_result["ok"], "unknown should fail")
+
+    // Test error cases
+    ken spawn_err = execute_command(world, parse_command("spawn"))
+    assert(nae spawn_err["ok"], "spawn without args should fail")
+
+    ken remove_err = execute_command(world, parse_command("remove nonexistent"))
+    assert(nae remove_err["ok"], "remove nonexistent should fail")
+
+    ken move_err = execute_command(world, parse_command("move x"))
+    assert(nae move_err["ok"], "move with bad args should fail")
+
+    ken rule_err = execute_command(world, parse_command("rule unknown_rule 1.0"))
+    assert(nae rule_err["ok"], "unknown rule should fail")
+
+    blether "All command tests passed!"
+}
+
+test_commands()

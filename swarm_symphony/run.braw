@@ -1,0 +1,160 @@
+// Swarm Symphony - Runner Script
+// Runs the actual simulation (not just tests)
+
+fetch "command"
+
+// Configuration via environment variables
+ken HEADLESS = env_get("SWARM_HEADLESS") != naething
+ken BATCH_FILE = env_get("SWARM_BATCH")
+ken MAX_TICKS = env_get("SWARM_TICKS")
+ken VERBOSE = env_get("SWARM_VERBOSE") != naething
+ken OUTPUT_JSON = env_get("SWARM_JSON") != naething
+ken INITIAL_BOIDS = env_get("SWARM_BOIDS")
+
+// Convert max ticks to integer if set
+gin MAX_TICKS != naething {
+    MAX_TICKS = tae_int(MAX_TICKS)
+} ither {
+    MAX_TICKS = 0
+}
+
+// Convert initial boids to integer if set
+gin INITIAL_BOIDS != naething {
+    INITIAL_BOIDS = tae_int(INITIAL_BOIDS)
+} ither {
+    INITIAL_BOIDS = 50
+}
+
+// Output helpers
+dae log_msg(msg) {
+    gin VERBOSE {
+        blether f"[swarm] {msg}"
+    }
+}
+
+dae output_state(world) {
+    gin OUTPUT_JSON {
+        ken agents_data = []
+        ilk(world["agents"], |a| {
+            shove(agents_data, {
+                "id": a["id"],
+                "kind": a["kind"],
+                "pos": a["pos"],
+                "vel": a["vel"],
+                "col": a["col"]
+            })
+        })
+        ken state = {
+            "tick": world["tick"],
+            "agent_count": len(world["agents"]),
+            "coherence": calculate_coherence(world),
+            "paused": world["paused"],
+            "agents": agents_data
+        }
+        blether json_stringify(state)
+    } ither {
+        ken boid_count = len(sieve(world["agents"], |a| a["kind"] == "boid"))
+        ken coherence = calculate_coherence(world)
+        blether f"tick={world['tick']} boids={boid_count} coherence={round(coherence * 100) / 100}"
+    }
+}
+
+// Main simulation function
+dae run_simulation() {
+    log_msg("Swarm Symphony starting...")
+
+    ken world = make_world()
+    log_msg(f"World created with bounds {world['bounds']}")
+
+    // Spawn initial boids
+    fer i in range(0, INITIAL_BOIDS) {
+        ken b = world["bounds"]
+        ken x = random() * (b[3] - b[0]) + b[0]
+        ken y = random() * (b[4] - b[1]) + b[1]
+        ken z = random() * (b[5] - b[2]) + b[2]
+        ken agent = make_agent(world, "boid", x, y, z)
+        add_agent(world, agent)
+    }
+    log_msg(f"Spawned {INITIAL_BOIDS} initial boids")
+
+    // Load batch file if specified
+    gin BATCH_FILE != naething {
+        log_msg(f"Loading batch file: {BATCH_FILE}")
+        ken batch_result = load_batch_file(BATCH_FILE)
+        gin batch_result["ok"] {
+            ken results = process_batch(world, batch_result)
+            ilk(results, |r| {
+                gin r["msg"] != "" {
+                    log_msg(r["msg"])
+                }
+            })
+        } ither {
+            blether f"Error loading batch: {batch_result['msg']}"
+            gie 1
+        }
+    }
+
+    // Main loop
+    ken running = aye
+    ken exit_code = 0
+
+    log_msg(f"Starting main loop (headless={HEADLESS}, max_ticks={MAX_TICKS})")
+
+    whiles running {
+        // Check tick limit
+        gin MAX_TICKS > 0 an world["tick"] >= MAX_TICKS {
+            log_msg(f"Reached max ticks: {MAX_TICKS}")
+            running = nae
+            brak
+        }
+
+        // Update simulation if not paused
+        gin nae world["paused"] {
+            update_agents(world)
+        }
+
+        // Output state in headless mode
+        gin HEADLESS {
+            output_state(world)
+        }
+
+        // In headless mode without input, just continue
+        gin nae HEADLESS {
+            // Interactive mode
+            blether f"\ntick {world['tick']}> "
+            ken input = speir ""
+            ken parsed = parse_command(input)
+            ken result = execute_command(world, parsed)
+
+            gin result["msg"] != "" {
+                blether result["msg"]
+            }
+
+            gin dict_has(result, "quit") {
+                running = nae
+            }
+
+            gin dict_has(result, "batch") {
+                ken batch_result = load_batch_file(result["batch"])
+                gin batch_result["ok"] {
+                    ken batch_results = process_batch(world, batch_result)
+                    ilk(batch_results, |br| {
+                        gin br["msg"] != "" {
+                            blether br["msg"]
+                        }
+                    })
+                } ither {
+                    blether batch_result["msg"]
+                }
+            }
+        }
+    }
+
+    log_msg(f"Simulation ended at tick {world['tick']}")
+    log_msg(f"Final coherence: {calculate_coherence(world)}")
+
+    gie exit_code
+}
+
+// Run the simulation
+run_simulation()

@@ -1,0 +1,341 @@
+// Swarm Symphony - Simulation Module
+// Agent system and boid behaviors
+
+fetch "math"
+
+ken FIXED_DT = 1.0 / 60.0
+
+dae make_agent(world, kind, x, y, z) {
+    ken id = f"{world['node_id']}_{pad_left(tae_string(world['next_id']), 5, '0')}"
+    world["next_id"] = world["next_id"] + 1
+
+    ken colors = {
+        "boid": [100, 200, 255],
+        "predator": [255, 80, 80],
+        "attractor": [80, 255, 80],
+        "repulsor": [255, 80, 255],
+        "player": [255, 255, 80]
+    }
+
+    ken col = colors[kind]
+    gin col == naething {
+        col = [200, 200, 200]
+    }
+
+    gie {
+        "id": id,
+        "kind": kind,
+        "pos": [x, y, z],
+        "vel": [0.0, 0.0, 0.0],
+        "col": col,
+        "energy": 100,
+        "birth": world["tick"],
+        "sound_cooldown": 0
+    }
+}
+
+dae make_world() {
+    gie {
+        "agents": [],
+        "agents_map": {},
+        "spatial": {},
+        "tick": 0,
+        "bounds": [-25.0, -25.0, -25.0, 25.0, 25.0, 25.0],
+        "rules": {
+            "separation_radius": 2.0,
+            "separation_weight": 1.5,
+            "alignment_radius": 5.0,
+            "alignment_weight": 1.0,
+            "cohesion_radius": 5.0,
+            "cohesion_weight": 1.0,
+            "fear_radius": 10.0,
+            "fear_weight": 3.0,
+            "max_speed": 2.0,
+            "max_force": 0.1
+        },
+        "next_id": 0,
+        "node_id": "local",
+        "paused": nae
+    }
+}
+
+dae add_agent(world, agent) {
+    shove(world["agents"], agent)
+    world["agents_map"][agent["id"]] = agent
+}
+
+dae remove_agent(world, id) {
+    world["agents"] = sieve(world["agents"], |a| a["id"] != id)
+    world["agents_map"][id] = naething
+}
+
+// Boid Behaviors
+
+dae calculate_separation(agent, neighbors, rules) {
+    ken force = [0.0, 0.0, 0.0]
+    ken count = 0
+    ilk(neighbors, |n| {
+        gin n["id"] != agent["id"] {
+            ken dist = vec_distance(agent["pos"], n["pos"])
+            gin dist < rules["separation_radius"] an dist > 0.001 {
+                ken diff = vec_sub(agent["pos"], n["pos"])
+                diff = vec_scale(vec_normalize(diff), 1.0 / dist)
+                force = vec_add(force, diff)
+                count = count + 1
+            }
+        }
+    })
+    gin count > 0 {
+        gie vec_normalize(force)
+    }
+    gie force
+}
+
+dae calculate_alignment(agent, neighbors, rules) {
+    ken avg_vel = [0.0, 0.0, 0.0]
+    ken count = 0
+    ilk(neighbors, |n| {
+        gin n["id"] != agent["id"] {
+            ken dist = vec_distance(agent["pos"], n["pos"])
+            gin dist < rules["alignment_radius"] {
+                avg_vel = vec_add(avg_vel, n["vel"])
+                count = count + 1
+            }
+        }
+    })
+    gin count > 0 {
+        avg_vel = vec_scale(avg_vel, 1.0 / count)
+        gie vec_normalize(vec_sub(avg_vel, agent["vel"]))
+    }
+    gie [0.0, 0.0, 0.0]
+}
+
+dae calculate_cohesion(agent, neighbors, rules) {
+    ken center = [0.0, 0.0, 0.0]
+    ken count = 0
+    ilk(neighbors, |n| {
+        gin n["id"] != agent["id"] {
+            ken dist = vec_distance(agent["pos"], n["pos"])
+            gin dist < rules["cohesion_radius"] {
+                center = vec_add(center, n["pos"])
+                count = count + 1
+            }
+        }
+    })
+    gin count > 0 {
+        center = vec_scale(center, 1.0 / count)
+        gie vec_normalize(vec_sub(center, agent["pos"]))
+    }
+    gie [0.0, 0.0, 0.0]
+}
+
+dae calculate_avoidance(agent, world) {
+    ken force = [0.0, 0.0, 0.0]
+    ken predators = sieve(world["agents"], |a| a["kind"] == "predator")
+    ilk(predators, |p| {
+        ken dist = vec_distance(agent["pos"], p["pos"])
+        gin dist < world["rules"]["fear_radius"] an dist > 0.001 {
+            ken flee = vec_sub(agent["pos"], p["pos"])
+            flee = vec_scale(vec_normalize(flee), 1.0 / (dist * dist))
+            force = vec_add(force, flee)
+        }
+    })
+    gie vec_normalize(force)
+}
+
+dae calculate_boundary(agent, bounds) {
+    ken force = [0.0, 0.0, 0.0]
+    ken margin = 5.0
+
+    // X axis
+    gin agent["pos"][0] < bounds[0] + margin {
+        force[0] = (margin - (agent["pos"][0] - bounds[0])) / margin
+    }
+    gin agent["pos"][0] > bounds[3] - margin {
+        force[0] = -((agent["pos"][0] - (bounds[3] - margin))) / margin
+    }
+
+    // Y axis
+    gin agent["pos"][1] < bounds[1] + margin {
+        force[1] = (margin - (agent["pos"][1] - bounds[1])) / margin
+    }
+    gin agent["pos"][1] > bounds[4] - margin {
+        force[1] = -((agent["pos"][1] - (bounds[4] - margin))) / margin
+    }
+
+    // Z axis
+    gin agent["pos"][2] < bounds[2] + margin {
+        force[2] = (margin - (agent["pos"][2] - bounds[2])) / margin
+    }
+    gin agent["pos"][2] > bounds[5] - margin {
+        force[2] = -((agent["pos"][2] - (bounds[5] - margin))) / margin
+    }
+
+    gie force
+}
+
+dae calculate_attraction(agent, attractors) {
+    ken force = [0.0, 0.0, 0.0]
+    ilk(attractors, |a| {
+        ken dir = vec_sub(a["pos"], agent["pos"])
+        ken dist = vec_magnitude(dir)
+        gin dist > 0.1 {
+            force = vec_add(force, vec_scale(vec_normalize(dir), 1.0 / dist))
+        }
+    })
+    gie force
+}
+
+dae calculate_repulsion(agent, repulsors) {
+    ken force = [0.0, 0.0, 0.0]
+    ilk(repulsors, |r| {
+        ken dir = vec_sub(agent["pos"], r["pos"])
+        ken dist = vec_magnitude(dir)
+        gin dist > 0.1 an dist < 10.0 {
+            force = vec_add(force, vec_scale(vec_normalize(dir), 5.0 / (dist * dist)))
+        }
+    })
+    gie force
+}
+
+dae update_agents(world) {
+    // Rebuild spatial hash
+    world["spatial"] = {}
+    ilk(world["agents"], |a| spatial_insert(world["spatial"], a))
+
+    ken events = []
+    ken r_sep = world["rules"]["separation_radius"]
+    ken r_ali = world["rules"]["alignment_radius"]
+    ken r_coh = world["rules"]["cohesion_radius"]
+    ken max_radius = max(r_sep, max(r_ali, r_coh))
+
+    // Get attractors and repulsors once
+    ken attractors = sieve(world["agents"], |a| a["kind"] == "attractor")
+    ken repulsors = sieve(world["agents"], |a| a["kind"] == "repulsor")
+
+    ilk(world["agents"], |agent| {
+        keek agent["kind"] {
+            whan "boid" -> {
+                ken neighbors = spatial_query(world["spatial"], world["agents_map"], agent["pos"], max_radius)
+
+                ken sep = calculate_separation(agent, neighbors, world["rules"])
+                ken ali = calculate_alignment(agent, neighbors, world["rules"])
+                ken coh = calculate_cohesion(agent, neighbors, world["rules"])
+                ken avoid = calculate_avoidance(agent, world)
+                ken bound = calculate_boundary(agent, world["bounds"])
+                ken attract = calculate_attraction(agent, attractors)
+                ken repel = calculate_repulsion(agent, repulsors)
+
+                // Calculate weighted forces
+                ken f_sep = vec_scale(sep, world["rules"]["separation_weight"])
+                ken f_ali = vec_scale(ali, world["rules"]["alignment_weight"])
+                ken f_coh = vec_scale(coh, world["rules"]["cohesion_weight"])
+                ken f_avoid = vec_scale(avoid, world["rules"]["fear_weight"])
+                ken f_attract = vec_scale(attract, 0.5)
+
+                // Sum all forces
+                ken force = vec_add(f_sep, vec_add(f_ali, vec_add(f_coh, vec_add(f_avoid, vec_add(bound, vec_add(f_attract, repel))))))
+
+                force = clamp_magnitude(force, world["rules"]["max_force"])
+                ken new_vel = vec_add(agent["vel"], vec_scale(force, FIXED_DT))
+                agent["vel"] = clamp_magnitude(new_vel, world["rules"]["max_speed"])
+                agent["pos"] = vec_add(agent["pos"], vec_scale(agent["vel"], FIXED_DT))
+            }
+            whan "predator" -> {
+                // Chase nearest boid
+                ken boids = sieve(world["agents"], |a| a["kind"] == "boid")
+                gin len(boids) > 0 {
+                    ken nearest = boids[0]
+                    ken nearest_dist = vec_distance(agent["pos"], nearest["pos"])
+                    ilk(boids, |b| {
+                        ken d = vec_distance(agent["pos"], b["pos"])
+                        gin d < nearest_dist {
+                            nearest = b
+                            nearest_dist = d
+                        }
+                    })
+                    ken chase = vec_normalize(vec_sub(nearest["pos"], agent["pos"]))
+                    ken chase_force = vec_scale(chase, 0.03)
+                    ken new_vel = vec_add(agent["vel"], chase_force)
+                    ken pred_max = world["rules"]["max_speed"] * 0.8
+                    agent["vel"] = clamp_magnitude(new_vel, pred_max)
+                }
+                agent["pos"] = vec_add(agent["pos"], vec_scale(agent["vel"], FIXED_DT))
+
+                // Boundary
+                ken bound = calculate_boundary(agent, world["bounds"])
+                agent["vel"] = vec_add(agent["vel"], vec_scale(bound, 0.1))
+            }
+            whan "attractor" -> {
+                // Stationary or slow moving
+                agent["pos"] = vec_add(agent["pos"], vec_scale(agent["vel"], FIXED_DT))
+            }
+            whan "repulsor" -> {
+                // Stationary or slow moving
+                agent["pos"] = vec_add(agent["pos"], vec_scale(agent["vel"], FIXED_DT))
+            }
+            whan "player" -> {
+                // Player moves based on velocity set by commands
+                agent["pos"] = vec_add(agent["pos"], vec_scale(agent["vel"], FIXED_DT))
+                // Boundary check
+                ken bound = calculate_boundary(agent, world["bounds"])
+                agent["vel"] = vec_add(agent["vel"], vec_scale(bound, 0.1))
+            }
+        }
+
+        // Decrement sound cooldown
+        gin agent["sound_cooldown"] > 0 {
+            agent["sound_cooldown"] = agent["sound_cooldown"] - 1
+        }
+    })
+
+    world["tick"] = world["tick"] + 1
+    gie events
+}
+
+dae calculate_coherence(world) {
+    ken boids = sieve(world["agents"], |a| a["kind"] == "boid")
+    gin len(boids) < 2 { gie 1.0 }
+
+    ken avg_pos = [0.0, 0.0, 0.0]
+    ilk(boids, |b| { avg_pos = vec_add(avg_pos, b["pos"]) })
+    avg_pos = vec_scale(avg_pos, 1.0 / len(boids))
+
+    ken total_dist = 0.0
+    ilk(boids, |b| { total_dist = total_dist + vec_distance(b["pos"], avg_pos) })
+
+    ken avg_dist = total_dist / len(boids)
+    ken max_dist = world["bounds"][3] - world["bounds"][0]
+    gie max(0.0, 1.0 - (avg_dist / (max_dist * 0.5)))
+}
+
+// Test function
+dae test_simulation() {
+    ken world = make_world()
+    assert(world["tick"] == 0, "Initial tick should be 0")
+    assert(len(world["agents"]) == 0, "Initial agents should be empty")
+
+    // Add an agent
+    ken agent = make_agent(world, "boid", 0.0, 0.0, 0.0)
+    add_agent(world, agent)
+    assert(len(world["agents"]) == 1, "Should have 1 agent")
+    assert(agent["id"] == "local_00000", f"ID should be local_00000, got {agent['id']}")
+
+    // Add another
+    ken agent2 = make_agent(world, "boid", 1.0, 0.0, 0.0)
+    add_agent(world, agent2)
+    assert(len(world["agents"]) == 2, "Should have 2 agents")
+    assert(agent2["id"] == "local_00001", f"ID should be local_00001, got {agent2['id']}")
+
+    // Test update
+    update_agents(world)
+    assert(world["tick"] == 1, "Tick should be 1 after update")
+
+    // Test remove
+    remove_agent(world, "local_00000")
+    assert(len(world["agents"]) == 1, "Should have 1 agent after remove")
+
+    blether "All simulation tests passed!"
+}
+
+test_simulation()

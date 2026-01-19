@@ -1,0 +1,296 @@
+// Swarm Symphony - Audio Module
+// Sample-based procedural audio mapped to simulation state
+
+// Audio configuration
+ken AUDIO_ENABLED = env_get("SWARM_AUDIO") != naething
+ken AUDIO_VOLUME = 0.7
+ken BPM = 120
+ken QUANTIZE_STEPS = 16  // 16th notes per beat
+
+// Timing - convert BPM to ticks
+// At 60 ticks/second and 120 BPM:
+// 1 beat = 60/120 = 0.5 seconds = 30 ticks
+// 1 16th note = 30/4 = 7.5 ticks
+ken TICKS_PER_BEAT = 60.0 * 60.0 / BPM
+ken TICKS_PER_STEP = TICKS_PER_BEAT / QUANTIZE_STEPS
+
+// Scale definitions (semitone offsets from root)
+ken SCALE_MAJOR = [0, 2, 4, 5, 7, 9, 11]
+ken SCALE_MINOR = [0, 2, 3, 5, 7, 8, 10]
+ken SCALE_PENTATONIC = [0, 2, 4, 7, 9]
+ken SCALE_CHROMATIC = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+
+// Current scale (can be switched based on coherence)
+ken current_scale = SCALE_PENTATONIC
+ken root_note = 60  // Middle C (MIDI note number)
+
+// Sound handles (loaded samples)
+ken sounds = {
+    "boid_chirp": naething,
+    "predator_growl": naething,
+    "attractor_chime": naething,
+    "repulsor_pulse": naething,
+    "ambient_drone": naething
+}
+
+// Audio state
+ken audio_initialized = nae
+ken last_quantize_step = -1
+
+// Initialize audio system
+dae audio_init() {
+    gin nae AUDIO_ENABLED {
+        blether "[audio] Audio disabled"
+        gie nae
+    }
+
+    hae_a_bash {
+        soond_stairt()
+        soond_luid(AUDIO_VOLUME)
+
+        // In a real implementation, we'd load actual samples here
+        // For now, we'll use placeholder paths that would need real files
+        // sounds["boid_chirp"] = soond_lade({"path": "assets/audio/chirp.wav"})
+        // sounds["predator_growl"] = soond_lade({"path": "assets/audio/growl.wav"})
+        // etc.
+
+        audio_initialized = aye
+        blether f"[audio] Audio initialized at {BPM} BPM"
+        gie aye
+    } gin_it_gangs_wrang e {
+        blether f"[audio] Failed to initialize: {e}"
+        gie nae
+    }
+}
+
+// Shutdown audio system
+dae audio_shutdown() {
+    gin audio_initialized {
+        hae_a_bash {
+            // Unload all sounds
+            ilk(keys(sounds), |key| {
+                gin sounds[key] != naething {
+                    soond_unlade(sounds[key])
+                    sounds[key] = naething
+                }
+            })
+            soond_steek()
+            audio_initialized = nae
+            blether "[audio] Audio shutdown"
+        } gin_it_gangs_wrang e {
+            blether f"[audio] Shutdown error: {e}"
+        }
+    }
+}
+
+// Convert position to pitch (map 3D position to scale degree)
+dae position_to_pitch(pos, bounds) {
+    // Normalize position to 0-1 range
+    ken range_x = bounds[3] - bounds[0]
+    ken norm_x = (pos[0] - bounds[0]) / range_x
+
+    // Map to scale degree (0 to len(scale)-1)
+    ken scale_len = len(current_scale)
+    ken degree = floor(norm_x * scale_len * 2)  // 2 octaves
+    ken octave = floor(degree / scale_len)
+    ken scale_index = degree % scale_len
+
+    gin scale_index < 0 { scale_index = 0 }
+    gin scale_index >= scale_len { scale_index = scale_len - 1 }
+
+    // Calculate MIDI note
+    ken note = root_note + (octave * 12) + current_scale[scale_index]
+    gie note
+}
+
+// Convert MIDI note to pitch multiplier (relative to middle C)
+dae note_to_pitch_mult(note) {
+    // Each semitone is 2^(1/12) ratio
+    ken semitones = note - 60  // Distance from middle C
+    gie pow(2.0, semitones / 12.0)
+}
+
+// Convert velocity to volume (map velocity magnitude to 0-1)
+dae velocity_to_volume(vel, max_speed) {
+    ken speed = sqrt(vel[0]*vel[0] + vel[1]*vel[1] + vel[2]*vel[2])
+    ken vol = speed / max_speed
+    gin vol > 1.0 { vol = 1.0 }
+    gin vol < 0.1 { vol = 0.1 }  // Minimum volume
+    gie vol
+}
+
+// Convert position to stereo pan (-1 to 1)
+dae position_to_pan(pos, bounds) {
+    ken range_x = bounds[3] - bounds[0]
+    ken norm_x = (pos[0] - bounds[0]) / range_x
+    gie (norm_x * 2.0) - 1.0
+}
+
+// Get current quantize step from tick
+dae get_quantize_step(tick) {
+    gie floor(tick / TICKS_PER_STEP)
+}
+
+// Check if we're on a new quantize boundary
+dae is_quantize_boundary(tick) {
+    ken step = get_quantize_step(tick)
+    gin step != last_quantize_step {
+        last_quantize_step = step
+        gie aye
+    }
+    gie nae
+}
+
+// Select scale based on coherence
+dae update_scale_from_coherence(coherence) {
+    // High coherence -> consonant scale (pentatonic/major)
+    // Low coherence -> dissonant scale (chromatic/minor)
+    gin coherence > 0.7 {
+        current_scale = SCALE_PENTATONIC
+    } ither gin coherence > 0.4 {
+        current_scale = SCALE_MAJOR
+    } ither gin coherence > 0.2 {
+        current_scale = SCALE_MINOR
+    } ither {
+        current_scale = SCALE_CHROMATIC
+    }
+}
+
+// Process audio for a single agent (called each tick)
+dae process_agent_audio(agent, world) {
+    gin nae audio_initialized { gie naething }
+    gin agent["sound_cooldown"] > 0 { gie naething }
+
+    // Different behavior based on agent type
+    keek agent["kind"] {
+        whan "boid" -> {
+            // Boids make sounds based on proximity to neighbors
+            // (Audio events would be triggered here if samples were loaded)
+            ken pitch = position_to_pitch(agent["pos"], world["bounds"])
+            ken vol = velocity_to_volume(agent["vel"], world["rules"]["max_speed"])
+            ken pan = position_to_pan(agent["pos"], world["bounds"])
+
+            // Would play sound here with adjusted parameters:
+            // gin sounds["boid_chirp"] != naething {
+            //     soond_pit_tune(sounds["boid_chirp"], note_to_pitch_mult(pitch))
+            //     soond_pit_luid(sounds["boid_chirp"], vol * 0.3)
+            //     soond_pit_pan(sounds["boid_chirp"], pan)
+            //     soond_spiel(sounds["boid_chirp"])
+            // }
+
+            // Set cooldown to prevent audio spam
+            agent["sound_cooldown"] = 15  // Quarter second at 60 ticks/sec
+        }
+
+        whan "predator" -> {
+            // Predators make deeper, more ominous sounds
+            ken speed = vec_magnitude(agent["vel"])
+            gin speed > world["rules"]["max_speed"] * 0.5 {
+                agent["sound_cooldown"] = 30
+            }
+        }
+
+        whan "attractor" -> {
+            // Attractors emit a gentle hum
+            agent["sound_cooldown"] = 60
+        }
+
+        whan "repulsor" -> {
+            // Repulsors emit a warning tone
+            agent["sound_cooldown"] = 45
+        }
+
+        whan _ -> {
+            // No sound for other types
+        }
+    }
+}
+
+// Main audio update (called each simulation tick)
+dae audio_update(world) {
+    gin nae audio_initialized { gie naething }
+
+    // Check quantize boundary for rhythm-based sounds
+    ken on_beat = is_quantize_boundary(world["tick"])
+
+    // Update scale based on swarm coherence
+    ken coherence = calculate_coherence(world)
+    update_scale_from_coherence(coherence)
+
+    // Process audio for each agent (with probability to avoid noise)
+    gin on_beat {
+        // On quantize boundaries, allow some agents to play
+        ken boids = sieve(world["agents"], |a| a["kind"] == "boid")
+        gin len(boids) > 0 {
+            // Pick a random subset to potentially make sounds
+            ken num_to_play = min(3, len(boids))  // Max 3 simultaneous
+            fer i in range(0, num_to_play) {
+                ken idx = random_int(0, len(boids) - 1)
+                process_agent_audio(boids[idx], world)
+            }
+        }
+    }
+}
+
+// Get audio state for debugging/display
+dae get_audio_state() {
+    gie {
+        "enabled": AUDIO_ENABLED,
+        "initialized": audio_initialized,
+        "bpm": BPM,
+        "quantize_steps": QUANTIZE_STEPS,
+        "current_scale": current_scale,
+        "root_note": root_note,
+        "last_step": last_quantize_step
+    }
+}
+
+// Test function
+dae test_audio() {
+    blether "Testing audio module..."
+
+    // Test pitch conversion
+    ken bounds = [-25.0, -25.0, -25.0, 25.0, 25.0, 25.0]
+
+    // Test left edge (should be low pitch)
+    ken pitch_low = position_to_pitch([-25.0, 0.0, 0.0], bounds)
+    // Test right edge (should be high pitch)
+    ken pitch_high = position_to_pitch([25.0, 0.0, 0.0], bounds)
+    assert(pitch_high >= pitch_low, "high pitch should be >= low pitch")
+
+    // Test velocity to volume
+    ken vol1 = velocity_to_volume([0.0, 0.0, 0.0], 2.0)
+    ken vol2 = velocity_to_volume([2.0, 0.0, 0.0], 2.0)
+    assert(vol1 <= vol2, "faster should be louder or equal")
+
+    // Test pan
+    ken pan_left = position_to_pan([-25.0, 0.0, 0.0], bounds)
+    ken pan_right = position_to_pan([25.0, 0.0, 0.0], bounds)
+    assert(pan_left < 0, "left position should have negative pan")
+    assert(pan_right > 0, "right position should have positive pan")
+
+    // Test note to pitch multiplier
+    ken mult_c = note_to_pitch_mult(60)  // Middle C
+    ken mult_a = note_to_pitch_mult(69)  // A4 (440Hz, 9 semitones up)
+    assert(mult_c > 0.9 an mult_c < 1.1, "middle C should be ~1.0")
+    assert(mult_a > mult_c, "A4 should be higher than C4")
+
+    // Test quantize step
+    ken step1 = get_quantize_step(0)
+    ken step2 = get_quantize_step(ceil(TICKS_PER_STEP) + 1)
+    assert(step2 > step1, f"later tick should have higher step: step1={step1} step2={step2} ticks_per_step={TICKS_PER_STEP}")
+
+    // Test scale selection
+    update_scale_from_coherence(0.8)
+    assert(current_scale == SCALE_PENTATONIC, "high coherence should use pentatonic")
+    update_scale_from_coherence(0.1)
+    assert(current_scale == SCALE_CHROMATIC, "low coherence should use chromatic")
+
+    // Test audio state
+    ken state = get_audio_state()
+    assert(state["bpm"] == BPM, "BPM should match")
+
+    blether "All audio tests passed!"
+}
+
+test_audio()

@@ -1,0 +1,241 @@
+// Swarm Symphony - Full Integrated Application
+// Boid flocking simulation demonstrating mdhavers features:
+// - 3D simulation with isometric 2D projection
+// - Procedural audio mapped to swarm behavior
+// - Peer-to-peer networking for distributed swarms
+// - Command-line and pipe-based control
+
+fetch "command"
+fetch "audio"
+fetch "graphics"
+fetch "network"
+
+// ============================================================
+// Configuration
+// ============================================================
+
+ken HEADLESS = env_get("SWARM_HEADLESS") != naething
+ken BATCH_FILE = env_get("SWARM_BATCH")
+ken MAX_TICKS = env_get("SWARM_TICKS")
+ken VERBOSE = env_get("SWARM_VERBOSE") != naething
+ken OUTPUT_JSON = env_get("SWARM_JSON") != naething
+ken INITIAL_BOIDS = env_get("SWARM_BOIDS")
+
+// Convert configuration
+gin MAX_TICKS != naething {
+    MAX_TICKS = tae_int(MAX_TICKS)
+} ither {
+    MAX_TICKS = 0
+}
+
+gin INITIAL_BOIDS != naething {
+    INITIAL_BOIDS = tae_int(INITIAL_BOIDS)
+} ither {
+    INITIAL_BOIDS = 50
+}
+
+// ============================================================
+// Logging
+// ============================================================
+
+dae log_msg(msg) {
+    gin VERBOSE {
+        blether f"[swarm] {msg}"
+    }
+}
+
+// ============================================================
+// State Output
+// ============================================================
+
+dae output_state(world) {
+    gin OUTPUT_JSON {
+        ken agents_data = []
+        ilk(world["agents"], |a| {
+            shove(agents_data, {
+                "id": a["id"],
+                "kind": a["kind"],
+                "pos": a["pos"],
+                "vel": a["vel"],
+                "col": a["col"]
+            })
+        })
+        ken state = {
+            "tick": world["tick"],
+            "agent_count": len(world["agents"]),
+            "coherence": calculate_coherence(world),
+            "paused": world["paused"],
+            "agents": agents_data
+        }
+        blether json_stringify(state)
+    } ither {
+        ken boid_count = len(sieve(world["agents"], |a| a["kind"] == "boid"))
+        ken coherence = calculate_coherence(world)
+        blether f"tick={world['tick']} boids={boid_count} coherence={round(coherence * 100) / 100}"
+    }
+}
+
+// ============================================================
+// Main Application
+// ============================================================
+
+dae run_swarm() {
+    log_msg("╔══════════════════════════════════════╗")
+    log_msg("║     SWARM SYMPHONY                   ║")
+    log_msg("║     Emergent Music from Motion       ║")
+    log_msg("╚══════════════════════════════════════╝")
+
+    // Initialize world
+    ken world = make_world()
+    log_msg(f"World created with bounds {world['bounds']}")
+
+    // Spawn initial boids
+    fer i in range(0, INITIAL_BOIDS) {
+        ken b = world["bounds"]
+        ken x = random() * (b[3] - b[0]) + b[0]
+        ken y = random() * (b[4] - b[1]) + b[1]
+        ken z = random() * (b[5] - b[2]) + b[2]
+        ken agent = make_agent(world, "boid", x, y, z)
+        add_agent(world, agent)
+    }
+    log_msg(f"Spawned {INITIAL_BOIDS} initial boids")
+
+    // Initialize subsystems
+    ken audio_ok = audio_init()
+    log_msg(f"Audio: {audio_ok}")
+
+    ken gfx_ok = gfx_init()
+    log_msg(f"Graphics: {gfx_ok}")
+
+    ken net_ok = net_init()
+    log_msg(f"Network: {net_ok}")
+
+    // Load batch file if specified
+    gin BATCH_FILE != naething {
+        log_msg(f"Loading batch file: {BATCH_FILE}")
+        ken batch_result = load_batch_file(BATCH_FILE)
+        gin batch_result["ok"] {
+            ken results = process_batch(world, batch_result)
+            ilk(results, |r| {
+                gin r["msg"] != "" {
+                    log_msg(r["msg"])
+                }
+            })
+        } ither {
+            blether f"Error loading batch: {batch_result['msg']}"
+            gie 1
+        }
+    }
+
+    // Request network sync if connected
+    gin net_ok {
+        net_request_sync()
+    }
+
+    // Main loop
+    ken running = aye
+    ken exit_code = 0
+
+    log_msg(f"Starting main loop (headless={HEADLESS}, max_ticks={MAX_TICKS})")
+
+    whiles running {
+        // Check graphics window close
+        gin gfx_ok an gfx_should_close() {
+            log_msg("Window close requested")
+            running = nae
+            brak
+        }
+
+        // Check tick limit
+        gin MAX_TICKS > 0 an world["tick"] >= MAX_TICKS {
+            log_msg(f"Reached max ticks: {MAX_TICKS}")
+            running = nae
+            brak
+        }
+
+        // Process network messages
+        gin net_ok {
+            ken net_events = net_update(world)
+            ilk(net_events, |e| {
+                gin VERBOSE {
+                    log_msg(f"Net event: {e['type']}")
+                }
+            })
+        }
+
+        // Update simulation if not paused
+        gin nae world["paused"] {
+            update_agents(world)
+        }
+
+        // Update audio based on simulation state
+        gin audio_ok {
+            audio_update(world)
+        }
+
+        // Render graphics
+        gin gfx_ok {
+            gfx_render(world)
+        }
+
+        // Output state in headless mode
+        gin HEADLESS {
+            output_state(world)
+        }
+
+        // Interactive mode - process commands
+        gin nae HEADLESS an nae gfx_ok {
+            blether f"\ntick {world['tick']}> "
+            ken input = speir ""
+            ken parsed = parse_command(input)
+            ken result = execute_command(world, parsed)
+
+            gin result["msg"] != "" {
+                blether result["msg"]
+            }
+
+            gin dict_has(result, "quit") {
+                running = nae
+            }
+
+            gin dict_has(result, "batch") {
+                ken batch_result = load_batch_file(result["batch"])
+                gin batch_result["ok"] {
+                    ken batch_results = process_batch(world, batch_result)
+                    ilk(batch_results, |br| {
+                        gin br["msg"] != "" {
+                            blether br["msg"]
+                        }
+                    })
+                } ither {
+                    blether batch_result["msg"]
+                }
+            }
+        }
+    }
+
+    // Cleanup
+    log_msg("Shutting down...")
+
+    gin net_ok { net_shutdown() }
+    gin audio_ok { audio_shutdown() }
+    gin gfx_ok { gfx_shutdown() }
+
+    log_msg(f"Simulation ended at tick {world['tick']}")
+    log_msg(f"Final coherence: {calculate_coherence(world)}")
+
+    // Final stats
+    gin net_ok {
+        ken stats = get_net_stats()
+        log_msg(f"Network stats: sent={stats['sent']} received={stats['received']} errors={stats['errors']}")
+    }
+
+    gie exit_code
+}
+
+// ============================================================
+// Entry Point
+// ============================================================
+
+// Run the application
+run_swarm()

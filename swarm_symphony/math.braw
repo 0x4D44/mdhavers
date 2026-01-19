@@ -1,0 +1,148 @@
+// Swarm Symphony - Math Module
+// Vector operations for 3D vectors [x, y, z]
+
+dae vec_add(a, b) {
+    gie [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
+}
+
+dae vec_sub(a, b) {
+    gie [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+dae vec_scale(v, s) {
+    gie [v[0] * s, v[1] * s, v[2] * s]
+}
+
+dae vec_magnitude(v) {
+    gie sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+}
+
+dae vec_normalize(v) {
+    ken m = vec_magnitude(v)
+    gin m < 0.0001 { gie [0.0, 0.0, 0.0] }
+    gie vec_scale(v, 1.0 / m)
+}
+
+dae vec_distance(a, b) {
+    gie vec_magnitude(vec_sub(a, b))
+}
+
+dae clamp_magnitude(v, max_mag) {
+    ken m = vec_magnitude(v)
+    gin m > max_mag {
+        gie vec_scale(vec_normalize(v), max_mag)
+    }
+    gie v
+}
+
+dae vec_dot(a, b) {
+    gie a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+// Spatial Hashing for efficient neighbor queries
+ken CELL_SIZE = 5.0
+
+dae spatial_key(x, y, z) {
+    ken cx = floor(x / CELL_SIZE)
+    ken cy = floor(y / CELL_SIZE)
+    ken cz = floor(z / CELL_SIZE)
+    gie f"{cx},{cy},{cz}"
+}
+
+dae spatial_insert(spatial, agent) {
+    ken key = spatial_key(agent["pos"][0], agent["pos"][1], agent["pos"][2])
+    gin nae dict_has(spatial, key) {
+        spatial[key] = []
+    }
+    shove(spatial[key], agent["id"])
+}
+
+dae spatial_query(spatial, agents_map, pos, radius) {
+    ken results = []
+    ken cells = ceil(radius / CELL_SIZE)
+    ken base_x = floor(pos[0] / CELL_SIZE)
+    ken base_y = floor(pos[1] / CELL_SIZE)
+    ken base_z = floor(pos[2] / CELL_SIZE)
+
+    fer dx in range(-cells, cells + 1) {
+        fer dy in range(-cells, cells + 1) {
+            fer dz in range(-cells, cells + 1) {
+                ken key = f"{base_x + dx},{base_y + dy},{base_z + dz}"
+                gin dict_has(spatial, key) {
+                    ilk(spatial[key], |id| {
+                        ken agent = dict_get(agents_map, id, naething)
+                        gin agent != naething {
+                            ken dist = vec_distance(pos, agent["pos"])
+                            gin dist <= radius {
+                                shove(results, agent)
+                            }
+                        }
+                    })
+                }
+            }
+        }
+    }
+    gie results
+}
+
+// Test functions
+dae test_vectors() {
+    // Test vec_add
+    ken r1 = vec_add([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])
+    assert(r1[0] == 5.0 an r1[1] == 7.0 an r1[2] == 9.0, "vec_add failed")
+
+    // Test vec_sub
+    ken r2 = vec_sub([5.0, 7.0, 9.0], [1.0, 2.0, 3.0])
+    assert(r2[0] == 4.0 an r2[1] == 5.0 an r2[2] == 6.0, "vec_sub failed")
+
+    // Test vec_scale
+    ken r3 = vec_scale([1.0, 2.0, 3.0], 2.0)
+    assert(r3[0] == 2.0 an r3[1] == 4.0 an r3[2] == 6.0, "vec_scale failed")
+
+    // Test vec_magnitude (3-4-0 triangle = 5)
+    ken m = vec_magnitude([3.0, 4.0, 0.0])
+    assert(m == 5.0, "vec_magnitude failed")
+
+    // Test vec_normalize
+    ken n = vec_normalize([3.0, 0.0, 0.0])
+    assert(n[0] == 1.0 an n[1] == 0.0 an n[2] == 0.0, "vec_normalize failed")
+
+    // Test zero vector normalize
+    ken z = vec_normalize([0.0, 0.0, 0.0])
+    assert(z[0] == 0.0 an z[1] == 0.0 an z[2] == 0.0, "vec_normalize zero failed")
+
+    // Test clamp_magnitude
+    ken c = clamp_magnitude([10.0, 0.0, 0.0], 5.0)
+    ken cm = vec_magnitude(c)
+    assert(cm <= 5.01 an cm >= 4.99, "clamp_magnitude failed")
+
+    // Test vec_distance
+    ken d = vec_distance([0.0, 0.0, 0.0], [3.0, 4.0, 0.0])
+    assert(d == 5.0, "vec_distance failed")
+
+    // Test vec_dot
+    ken dot = vec_dot([1.0, 0.0, 0.0], [1.0, 0.0, 0.0])
+    assert(dot == 1.0, "vec_dot failed")
+
+    blether "All vector tests passed!"
+}
+
+dae test_spatial_hash() {
+    // Test with negative coordinates
+    ken key1 = spatial_key(-10.0, 5.0, -3.0)
+    ken key2 = spatial_key(10.0, 5.0, 3.0)
+    assert(key1 != key2, "spatial_key should differ for different coords")
+
+    // Test that negative coords produce correct cell indices
+    ken key_neg = spatial_key(-2.5, -2.5, -2.5)
+    assert(key_neg == "-1,-1,-1", f"spatial_key negative failed: got {key_neg}")
+
+    ken key_pos = spatial_key(2.5, 2.5, 2.5)
+    assert(key_pos == "0,0,0", f"spatial_key positive failed: got {key_pos}")
+
+    blether "All spatial hash tests passed!"
+}
+
+// Run tests when executed directly
+test_vectors()
+test_spatial_hash()
