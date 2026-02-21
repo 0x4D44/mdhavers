@@ -1,0 +1,15 @@
+# unicode_strip_left_right_codepoints.braw
+# strip_left/strip_right should operate on codepoints (not bytes) for Unicode safety.
+
+ken s = "😀😁"
+
+blether strip_left(s, "😀")
+blether strip_left(s, "😁")
+blether f"<{strip_left(s, \"😀😁\")}>"
+
+blether strip_right(s, "😁")
+blether strip_right(s, "😀")
+blether f"<{strip_right(s, \"😀😁\")}>"
+
+blether "done"
+

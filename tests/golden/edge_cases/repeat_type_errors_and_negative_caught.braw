@@ -1,0 +1,18 @@
+# repeat_type_errors_and_negative_caught.braw - repeat() validates types and rejects negative counts
+
+hae_a_bash {
+    blether repeat("ha", -1)
+} gin_it_gangs_wrang err {
+    blether "caught_neg"
+}
+
+hae_a_bash {
+    blether repeat(1, 2)
+} gin_it_gangs_wrang err {
+    blether "caught_types"
+}
+
+blether repeat("ha", 2)
+blether f"<{repeat(\"ha\", 0)}>"
+blether "done"
+

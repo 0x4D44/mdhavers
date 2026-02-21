@@ -1,0 +1,8 @@
+# Journal - Branch Coverage Push
+
+Date: 2026.01.09
+
+## Entry 1
+- Goal: drive branch coverage toward 100%.
+- Started by setting up this journal and reviewing latest branch-coverage report paths and hotspots.
+- Next: identify remaining missed branch sites (starting with smaller files, then interpreter/codegen).

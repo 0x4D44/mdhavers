@@ -1,0 +1,8 @@
+# chr_ord_unicode_roundtrip.braw - chr/ord should roundtrip Unicode codepoints
+
+ken smile = chr(128512)
+blether smile
+blether ord(smile)
+blether ord(chr(65))
+blether "done"
+

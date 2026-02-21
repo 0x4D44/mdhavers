@@ -1,0 +1,17 @@
+# method_nested_function_shadows_global_function.braw - nested method function should shadow global function name
+
+dae helper() { gie "global" }
+
+kin C {
+    dae run() {
+        dae helper() { gie "nested" }
+        gie helper()
+    }
+}
+
+blether "method_result"
+blether C().run()
+
+blether "global_result"
+blether helper()
+

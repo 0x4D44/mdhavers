@@ -1,0 +1,10 @@
+# product_numeric_type_parity.braw - product() should match interpreter semantics for ints vs floats
+
+blether product([])
+blether product([2, 3, 4])
+blether whit_kind(product([2, 3]))
+blether whit_kind(product([2.0, 3.0]))
+blether whit_kind(product([2, 3.0]))
+
+blether "done"
+

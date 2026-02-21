@@ -1,0 +1,11 @@
+# math_utils.braw - fixture module for golden tests
+
+ken PI = 3.14159
+
+dae square(x) {
+    gie x * x
+}
+
+dae add(a, b) {
+    gie a + b
+}

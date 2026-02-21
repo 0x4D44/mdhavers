@@ -1,0 +1,9 @@
+# unicode_blooter_codepoints.braw
+# Ensure blooter/stooshie scramble by codepoint (UTF-8 safe) and preserve codepoint length.
+
+ken s = "😀😀😀😀😀😀😀😀" + "😀😀😀😀😀😀😀😀" + "😀😀😀😀😀😀😀😀" + "😀😀😀😀😀😀😀😀"
+
+blether len(s)
+blether len(blooter(s))
+blether len(stooshie(s))
+

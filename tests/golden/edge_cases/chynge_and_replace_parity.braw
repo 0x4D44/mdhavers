@@ -1,0 +1,30 @@
+# chynge_and_replace_parity.braw - chynge(list insert) and replace(string replace) should match in interpreter and native
+
+ken l = [1, 3]
+ken r = chynge(l, 1, 2)
+blether r[0]
+blether r[1]
+blether r[2]
+blether l[0]
+blether l[1]
+
+ken r2 = chynge([1, 2, 3], -1, 99)
+blether len(r2)
+blether r2[2]
+blether r2[3]
+
+ken r3 = chynge([1, 2], 2, 3)
+blether r3[2]
+
+blether replace("hello world", "world", "there")
+blether replace("ab", "", "x")
+blether replace("", "", "x")
+blether replace("💩", "", ".")
+
+hae_a_bash { blether replace([1], "a", "b") } gin_it_gangs_wrang e { blether "replace_type_err" }
+hae_a_bash { blether chynge("hello", 0, 1) } gin_it_gangs_wrang e { blether "chynge_type_err" }
+hae_a_bash { blether chynge([1], "nope", 2) } gin_it_gangs_wrang e { blether "chynge_index_type_err" }
+hae_a_bash { blether chynge([1], 99, 0) } gin_it_gangs_wrang e { blether "chynge_oob_err" }
+
+blether "done"
+

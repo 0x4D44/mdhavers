@@ -1,0 +1,14 @@
+# method_chain_non_var_receiver.braw - chained method calls and field access on non-variable receivers
+
+kin A {
+    dae init(n) {
+        masel.n = n
+    }
+
+    dae id() {
+        gie masel
+    }
+}
+
+blether A(1).id().id().n
+

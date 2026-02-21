@@ -1,0 +1,37 @@
+# tak_drap_negative_and_float_n_parity.braw - tak/drap should clamp negative n and accept float n consistently (parity)
+
+ken xs = [1, 2, 3, 4]
+blether tak(xs, -1)
+blether tak(xs, 2.9)
+blether tak(xs, 99)
+
+blether drap(xs, -1)
+blether drap(xs, 2.1)
+blether drap(xs, 99)
+
+hae_a_bash {
+    blether tak(42, 1)
+} gin_it_gangs_wrang err {
+    blether "caught_tak_list_type"
+}
+
+hae_a_bash {
+    blether drap(42, 1)
+} gin_it_gangs_wrang err {
+    blether "caught_drap_list_type"
+}
+
+hae_a_bash {
+    blether tak(xs, "2")
+} gin_it_gangs_wrang err {
+    blether "caught_tak_n_type"
+}
+
+hae_a_bash {
+    blether drap(xs, "2")
+} gin_it_gangs_wrang err {
+    blether "caught_drap_n_type"
+}
+
+blether "done"
+

@@ -1,0 +1,7 @@
+# tattie_scone_negative_no_hang.braw - negative repeat count should not hang / allocate huge
+
+blether f"<{tattie_scone(\"yum\", -1)}>"
+blether f"<{tattie_scone(\"yum\", 0)}>"
+blether tattie_scone("yum", 3)
+blether "done"
+

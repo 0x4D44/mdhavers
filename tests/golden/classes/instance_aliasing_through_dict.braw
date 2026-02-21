@@ -1,0 +1,12 @@
+# instance_aliasing_through_dict.braw - aliasing should work through dict values
+
+kin A {
+    dae init() {
+    }
+}
+
+ken a = A()
+ken d = { "a": a }
+d.a.x = 1
+blether a.x
+

@@ -1,0 +1,15 @@
+global_before
+global
+shadow_call
+nested
+shadow_value
+nested
+nested_fact
+120
+nested_fact_value
+120
+nested_rec_capture
+4
+global_after
+global
+

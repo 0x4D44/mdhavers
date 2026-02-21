@@ -1,0 +1,17 @@
+# split_multi_char_delimiter_parity.braw
+# Exercise the multi-character delimiter path in split() and ensure join() works.
+
+blether len(split("a--b--c", "--"))
+blether join(split("a--b--c", "--"), "|")
+
+# Leading/trailing delimiter should include empty segments (Rust split parity).
+blether len(split("a--", "--"))
+blether join(split("a--", "--"), "|")
+
+blether len(split("--a", "--"))
+blether join(split("--a", "--"), "|")
+
+# Delimiter not found => single element
+blether len(split("abc", "--"))
+blether join(split("abc", "--"), "|")
+

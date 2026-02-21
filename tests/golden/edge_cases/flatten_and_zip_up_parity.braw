@@ -1,0 +1,50 @@
+# flatten_and_zip_up_parity.braw - flatten/zip_up should match stdlib semantics and never crash on type errors
+
+# flatten(list) flattens one level deep; non-lists are kept as-is.
+ken flat1 = flatten([[1, 2], [3], [4, 5]])
+blether len(flat1)
+blether flat1[0]
+blether flat1[1]
+blether flat1[2]
+blether flat1[3]
+blether flat1[4]
+
+ken flat2 = flatten([[1], 2, [3]])
+blether len(flat2)
+blether flat2[0]
+blether flat2[1]
+blether flat2[2]
+
+hae_a_bash {
+    blether flatten(42)
+} gin_it_gangs_wrang err {
+    blether "caught_flatten_type"
+}
+
+# zip works on lists and errors (catchably) on non-lists.
+ken zipped = zip([1, 2, 3], [4, 5])
+blether len(zipped)
+blether zipped[0][0]
+blether zipped[0][1]
+blether zipped[1][0]
+blether zipped[1][1]
+
+hae_a_bash {
+    blether zip("ab", "XYZ")
+} gin_it_gangs_wrang err {
+    blether "caught_zip_str_type"
+}
+
+hae_a_bash {
+    blether zip(42, [1])
+} gin_it_gangs_wrang err {
+    blether "caught_zip_type"
+}
+
+hae_a_bash {
+    blether zip([1], 42)
+} gin_it_gangs_wrang err {
+    blether "caught_zip_type2"
+}
+
+blether "done"

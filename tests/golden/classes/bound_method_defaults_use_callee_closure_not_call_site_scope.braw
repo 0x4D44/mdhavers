@@ -1,0 +1,18 @@
+# bound_method_defaults_use_callee_closure_not_call_site_scope.braw - bound method defaults use callee closure env
+
+ken g = 1
+
+kin A {
+    dae init() {}
+    dae m(x = g) { gie x }
+}
+
+dae caller() {
+    ken g = 2
+    ken m = A().m
+    gie m()
+}
+
+blether "call"
+blether caller()
+

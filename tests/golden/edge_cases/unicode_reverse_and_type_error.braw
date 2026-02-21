@@ -1,0 +1,13 @@
+# unicode_reverse_and_type_error.braw - reverse() should reverse by character and reject invalid types (catchable)
+
+ken s = "a" + chr(128512) + "b"
+blether reverse(s)
+
+hae_a_bash {
+    blether reverse(42)
+} gin_it_gangs_wrang err {
+    blether "caught_reverse_type"
+}
+
+blether "done"
+

@@ -1,0 +1,24 @@
+# named_method_closure_defaults_reflect_masel_mutation.braw - named nested method closure captures masel + defaults re-evaluate
+
+kin Box {
+    dae init(v) { masel.v = v }
+
+    dae make_getter() {
+        dae get(a = masel.v) { gie a }
+        gie get
+    }
+}
+
+ken b = Box(5)
+ken g = b.make_getter()
+
+blether "before"
+blether g()
+
+b.v = 9
+blether "after"
+blether g()
+
+blether "override"
+blether g(123)
+

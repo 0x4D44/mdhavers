@@ -1,0 +1,22 @@
+# list_helpers_empty_list_returns_copy_parity.braw - sort/unique/uniq should return a new list even for empty inputs (no aliasing)
+
+ken a = []
+ken b = sort(a)
+shove(b, 1)
+blether len(a)
+blether len(b)
+
+ken c = []
+ken d = unique(c)
+shove(d, 1)
+blether len(c)
+blether len(d)
+
+ken e = []
+ken f = uniq(e)
+shove(f, 1)
+blether len(e)
+blether len(f)
+
+blether "done"
+

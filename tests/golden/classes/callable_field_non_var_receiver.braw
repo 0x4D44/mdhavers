@@ -1,0 +1,10 @@
+# callable_field_non_var_receiver.braw - calling a stored lambda field via non-variable receiver
+
+kin Box {
+    dae init() {
+        masel.f = |x| x + 1
+    }
+}
+
+blether Box().f(4)
+

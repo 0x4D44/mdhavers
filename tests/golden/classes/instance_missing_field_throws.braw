@@ -1,0 +1,13 @@
+# instance_missing_field_throws.braw - missing instance fields should throw (not silently return naething)
+
+kin A {
+    dae init() {
+    }
+}
+
+hae_a_bash {
+    blether A().x
+} gin_it_gangs_wrang err {
+    blether "caught"
+}
+

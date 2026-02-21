@@ -1,0 +1,24 @@
+# yank_empty_list_and_type_errors_caught.braw - yank should be safe/catchable on empty/non-list and mutate the list correctly
+
+ken xs = [1, 2, 3]
+blether yank(xs)
+blether len(xs)
+blether yank(xs)
+blether len(xs)
+blether yank(xs)
+blether len(xs)
+
+hae_a_bash {
+    blether yank(xs)
+} gin_it_gangs_wrang err {
+    blether "caught_yank_empty"
+}
+
+hae_a_bash {
+    blether yank(42)
+} gin_it_gangs_wrang err {
+    blether "caught_yank_type"
+}
+
+blether "done"
+

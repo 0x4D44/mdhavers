@@ -1,0 +1,24 @@
+# slice_non_int_indices.braw - slice start/end/step must be integers
+
+ken arr = [0, 1, 2]
+
+hae_a_bash {
+    blether arr["1":2]
+} gin_it_gangs_wrang err {
+    blether "start"
+}
+
+hae_a_bash {
+    blether arr[1:"2"]
+} gin_it_gangs_wrang err {
+    blether "end"
+}
+
+hae_a_bash {
+    blether arr[0:2:aye]
+} gin_it_gangs_wrang err {
+    blether "step"
+}
+
+blether "done"
+

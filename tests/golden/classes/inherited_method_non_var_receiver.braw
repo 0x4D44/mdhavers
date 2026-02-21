@@ -1,0 +1,21 @@
+# inherited_method_non_var_receiver.braw - inherited method call on a non-variable receiver
+
+kin Animal {
+    dae init(name) {
+        masel.name = name
+    }
+
+    dae who() {
+        blether masel.name
+    }
+}
+
+kin Dog fae Animal {
+    dae bark() {
+        blether masel.name + " barks"
+    }
+}
+
+Dog("Rex").who()
+Dog("Rex").bark()
+

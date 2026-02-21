@@ -1,0 +1,9 @@
+# center_fill_empty_string_parity.braw - center() fill handling should match interpreter (empty fill string => space, multi-char fill string => first char)
+
+blether center("hi", 6, "-")
+blether replace(center("hi", 6, ""), " ", "_")
+blether center("hi", 6, "ab")
+blether center("hi", 1, "-")
+
+blether "done"
+

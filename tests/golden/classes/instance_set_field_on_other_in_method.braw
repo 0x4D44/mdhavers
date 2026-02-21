@@ -1,0 +1,17 @@
+# instance_set_field_on_other_in_method.braw - setting a field on another instance inside a method must not corrupt `masel`
+
+kin A {
+    dae init(name) {
+        masel.name = name
+    }
+
+    dae test() {
+        ken other = A("other")
+        other.x = 1
+        blether masel.name
+        blether other.x
+    }
+}
+
+A("self").test()
+

@@ -1,0 +1,61 @@
+dae greet(name, greeting = "Hello") {
+    gie greeting + " " + name
+}
+
+ken f = greet
+blether "named_fn"
+blether f("World")
+
+dae outer(x) {
+    dae inner(a = x) { gie a }
+    gie inner()
+}
+
+blether "captured_fn_default"
+blether outer(5)
+
+dae outer2(x) {
+    dae inner(a = x) { gie a }
+    gie inner
+}
+
+ken f2 = outer2(5)
+blether "returned_closure_default"
+blether f2()
+
+kin A {
+    dae init(v) { masel.v = v }
+    dae get(a = masel.v) { gie a }
+    dae maker() {
+        dae inner(a = masel.v) { gie a }
+        gie inner
+    }
+}
+
+ken m = A(5).get
+blether "bound_method_default"
+blether m()
+
+blether "direct_method_default"
+blether A(5).get()
+
+ken c = A(7).maker()
+blether "returned_closure_from_method_default"
+blether c()
+
+dae f3(a, b = a) { gie b }
+blether "prior_param_direct"
+blether f3(3)
+
+ken g3 = f3
+blether "prior_param_fn_value"
+blether g3(3)
+
+dae outer3(x) {
+    dae inner(a, b = a, c = x) { gie b }
+    gie inner
+}
+
+ken h = outer3(9)
+blether "prior_param_returned_closure"
+blether h(3)

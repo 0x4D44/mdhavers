@@ -1,0 +1,16 @@
+# starts_ends_wi_type_error_caught.braw - starts_wi/ends_wi reject non-string args (catchable)
+
+hae_a_bash {
+    blether starts_wi(1, "a")
+} gin_it_gangs_wrang err {
+    blether "caught_starts"
+}
+
+hae_a_bash {
+    blether ends_wi("a", 1)
+} gin_it_gangs_wrang err {
+    blether "caught_ends"
+}
+
+blether "done"
+

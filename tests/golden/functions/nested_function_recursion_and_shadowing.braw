@@ -1,0 +1,44 @@
+# nested_function_recursion_and_shadowing.braw - nested function name scoping + recursion
+
+dae greet() { gie "global" }
+
+blether "global_before"
+blether greet()
+
+dae outer(n) {
+    dae greet() { gie "nested" }
+
+    blether "shadow_call"
+    blether greet()
+
+    ken f = greet
+    blether "shadow_value"
+    blether f()
+
+    dae fact(x) {
+        gin x <= 1 { gie 1 }
+        gie x * fact(x - 1)
+    }
+
+    blether "nested_fact"
+    blether fact(n)
+
+    ken g = fact
+    blether "nested_fact_value"
+    blether g(n)
+
+    ken calls = 0
+    dae countdown(x) {
+        calls = calls + 1
+        gin x <= 0 { gie calls }
+        gie countdown(x - 1)
+    }
+    blether "nested_rec_capture"
+    blether countdown(3)
+}
+
+outer(5)
+
+blether "global_after"
+blether greet()
+

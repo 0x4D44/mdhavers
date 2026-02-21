@@ -1,0 +1,11 @@
+# instance_field_set_outside_method.braw - setting instance fields outside of methods should work (and not segfault under native)
+
+kin A {
+    dae init() {
+    }
+}
+
+ken a = A()
+a.x = 1
+blether a.x
+

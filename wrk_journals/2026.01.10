@@ -1,0 +1,7 @@
+# Journal - Branch coverage push
+
+Date: 2026.01.10
+
+## Entry 1
+- Reviewed current coverage summary and remaining missing branches.
+- Planned next steps for parser and wasm compiler misses.

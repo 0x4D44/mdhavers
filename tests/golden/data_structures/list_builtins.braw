@@ -1,0 +1,22 @@
+# list_builtins.braw - golden list built-ins
+
+ken nums = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+blether scran(nums, 2, 5)
+blether heid(nums)
+blether bum(nums)
+blether tail(nums)
+blether tak(nums, 3)
+blether drap(nums, 3)
+
+ken a = [1, 2, 3]
+ken b = [4, 5]
+blether slap(a, b)
+blether [...a, ...b]
+
+ken unsorted = [3, 1, 4, 2]
+blether sort(unsorted)
+blether reverse(unsorted)
+
+ken items = ["haggis", "neeps", "tatties", "haggis"]
+blether indices_o(items, "haggis")
+blether coont(items, "haggis")

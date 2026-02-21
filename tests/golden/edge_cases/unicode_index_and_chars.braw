@@ -1,0 +1,14 @@
+# unicode_index_and_chars.braw - unicode strings should index/split by character, not byte
+
+ken s = chr(128512) + "a" + chr(128512)
+blether s
+blether s[0]
+blether s[1]
+blether s[-1]
+blether char_at(s, 0)
+blether len(chars(s))
+blether chars(s)[0]
+blether chars(s)[1]
+blether chars(s)[2]
+blether "done"
+

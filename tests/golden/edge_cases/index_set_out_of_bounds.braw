@@ -1,0 +1,28 @@
+# index_set_out_of_bounds.braw - out-of-bounds index assignment should error (catchable)
+
+ken arr = [0, 1, 2]
+
+arr[-1] = 8
+blether arr[0]
+blether arr[1]
+blether arr[2]
+
+hae_a_bash {
+    arr[10] = 42
+    blether "nope"
+} gin_it_gangs_wrang err {
+    blether "list_set_oob"
+}
+
+hae_a_bash {
+    arr[-10] = 42
+    blether "nope"
+} gin_it_gangs_wrang err {
+    blether "list_set_neg_oob"
+}
+
+blether arr[0]
+blether arr[1]
+blether arr[2]
+blether "done"
+

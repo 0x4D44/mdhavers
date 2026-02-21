@@ -1,0 +1,13 @@
+# match_more_patterns.braw - golden match patterns
+
+ken word = "aye"
+keek word {
+    whan "aye" -> { blether "yes" }
+    whan _ -> { blether "no" }
+}
+
+ken flag = nae
+keek flag {
+    whan aye -> { blether "T" }
+    whan nae -> { blether "F" }
+}

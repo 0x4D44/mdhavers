@@ -1,0 +1,31 @@
+# set_aliasing_and_nested_updates.braw - creel mutations should be visible through aliases and nested containers
+
+ken s = creel([1])
+ken t = s
+
+hae_a_bash {
+    toss_in(s, 2)
+    blether len(s)
+    blether is_in_creel(t, 2)
+} gin_it_gangs_wrang e {
+    blether "caught_aliasing"
+}
+
+hae_a_bash {
+    heave_oot(t, 1)
+    blether len(s)
+    blether is_in_creel(s, 1)
+} gin_it_gangs_wrang e {
+    blether "caught_remove"
+}
+
+ken l = [creel([])]
+hae_a_bash {
+    toss_in(l[0], 9)
+    blether is_in_creel(l[0], 9)
+} gin_it_gangs_wrang e {
+    blether "caught_nested_list"
+}
+
+blether "done"
+

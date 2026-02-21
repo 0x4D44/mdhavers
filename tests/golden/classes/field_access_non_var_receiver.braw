@@ -1,0 +1,10 @@
+# field_access_non_var_receiver.braw - instance field access when the receiver is a non-variable expression
+
+kin Person {
+    dae init(name) {
+        masel.name = name
+    }
+}
+
+blether Person("Ada").name
+

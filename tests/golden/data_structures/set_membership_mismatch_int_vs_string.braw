@@ -1,0 +1,8 @@
+# set_membership_mismatch_int_vs_string.braw - membership respects typed elements
+
+ken s = creel([1])
+
+blether len(s)
+blether is_in_creel(s, 1)
+blether is_in_creel(s, "1")
+

@@ -1,0 +1,18 @@
+# unicode_substring_and_slices.braw - substring() + slice syntax should operate on characters (UTF-8 codepoints), not bytes
+
+ken s = "a" + chr(128512) + "b"
+blether s
+
+# substring() is end-exclusive and should use character indices.
+blether substring(s, 0, 1)
+blether substring(s, 1, 2)
+blether substring(s, 2, 3)
+
+# Slice syntax should also use character indices.
+blether f"<{s[0:1]}>"
+blether f"<{s[1:2]}>"
+blether f"<{s[2:3]}>"
+blether f"<{s[::-1]}>"
+
+blether "done"
+

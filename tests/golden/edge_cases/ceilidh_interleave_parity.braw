@@ -1,0 +1,18 @@
+# ceilidh_interleave_parity.braw - ceilidh should interleave two lists and error on non-lists (parity across backends)
+
+blether ceilidh([1, 2], [3, 4])
+
+hae_a_bash {
+    blether ceilidh({"a": 1}, {"b": 2})
+} gin_it_gangs_wrang err {
+    blether "caught_ceilidh_dict"
+}
+
+hae_a_bash {
+    blether ceilidh([1], 42)
+} gin_it_gangs_wrang err {
+    blether "caught_ceilidh_type"
+}
+
+blether "done"
+

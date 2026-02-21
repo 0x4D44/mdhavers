@@ -1,0 +1,7 @@
+# minaw_maxaw_singleton_type_check_parity.braw - minaw/maxaw should reject non-number lists even when length == 1
+
+hae_a_bash { blether minaw(["x"]) } gin_it_gangs_wrang e { blether "minaw_type_err" }
+hae_a_bash { blether maxaw(["x"]) } gin_it_gangs_wrang e { blether "maxaw_type_err" }
+
+blether "done"
+

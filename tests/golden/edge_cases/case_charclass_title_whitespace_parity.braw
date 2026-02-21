@@ -1,0 +1,65 @@
+# case_charclass_title_whitespace_parity.braw
+# Lock ASCII-only case conversion + char-class semantics across interpreter and LLVM native.
+
+blether upper("Hullo Scotland")
+blether lower("HULLO Scotland")
+
+# ASCII casing should leave non-ASCII bytes alone (UTF-8 safe).
+blether upper("Straße")
+blether lower("STRAßE")
+
+blether capitalize("hello")
+blether capitalize("ßeta")
+
+# Title should preserve whitespace (multiple spaces + tabs) while casing ASCII letters.
+blether title("  hello   WORLD	foo")
+
+blether swapcase("HeLLo-123")
+blether swapcase("ß")
+
+# is_upper / is_lower should behave like "all cased chars match" and require at least one letter.
+blether is_upper("HELLO")
+blether is_upper("HELLO123")
+blether is_upper("123")
+blether is_lower("hello")
+blether is_lower("hello123")
+blether is_lower("123")
+
+# ASCII-only alpha checks.
+blether is_alpha("hello")
+blether is_alpha("hello1")
+blether is_alpha("é")
+
+# Whitespace checks should treat multi-character strings correctly.
+blether is_space("   ")
+blether is_space(" 	  ")
+blether is_space("")
+blether is_space("  x")
+
+# Non-string inputs must be catchable errors (no native segfaults / silent coercions).
+hae_a_bash {
+    blether "before_title"
+    blether title(42)
+    blether "after_title"
+} gin_it_gangs_wrang err {
+    blether "caught_title"
+}
+
+hae_a_bash {
+    blether "before_is_upper"
+    blether is_upper(42)
+    blether "after_is_upper"
+} gin_it_gangs_wrang err {
+    blether "caught_is_upper"
+}
+
+hae_a_bash {
+    blether "before_is_space"
+    blether is_space(42)
+    blether "after_is_space"
+} gin_it_gangs_wrang err {
+    blether "caught_is_space"
+}
+
+blether "done"
+

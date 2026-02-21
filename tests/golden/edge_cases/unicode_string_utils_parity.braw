@@ -1,0 +1,28 @@
+# unicode_string_utils_parity.braw
+# Lock down Unicode-safe behavior for string utilities across interpreter and native.
+
+ken s1 = "😀a"
+ken s2 = "b😀"
+blether banter(s1, s2)
+
+blether geggie("😀")
+blether geggie("a😀b")
+blether geggie("😀a")
+
+blether skelp("a😀b😀c", 2)
+
+blether clype("a😀b")
+
+# ASCII whitespace semantics: NBSP is not treated as whitespace.
+ken nbsp = chr(160)
+blether is_blank(nbsp)
+blether haverin(nbsp)
+blether glaikit(nbsp)
+
+# ASCII whitespace still counts.
+blether is_blank(" \t\n")
+blether haverin(" a ")
+blether glaikit(" \n\t")
+
+blether "done"
+

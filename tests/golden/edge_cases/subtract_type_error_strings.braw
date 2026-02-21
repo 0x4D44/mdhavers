@@ -1,0 +1,12 @@
+# subtract_type_error_strings.braw - golden subtract type error (string - string)
+
+hae_a_bash {
+    blether "before"
+    ken x = "a" - "b"
+    blether "after"
+} gin_it_gangs_wrang err {
+    blether "caught"
+}
+
+blether "done"
+

@@ -1,0 +1,19 @@
+# functions_basics.braw - golden functions
+
+dae greet(name = "pal") {
+    blether "Hullo, " + name + "!"
+}
+
+dae factorial(n) {
+    gin n <= 1 {
+        gie 1
+    }
+    gie n * factorial(n - 1)
+}
+
+ken double = |x| x * 2
+
+greet("mdhavers")
+greet()
+blether f"5!={factorial(5)}"
+blether f"dbl={double(21)}"

@@ -1,0 +1,11 @@
+# for_break_continue.braw - golden control flow
+
+fer i in 1..11 {
+    gin i % 2 == 0 {
+        haud
+    }
+    gin i > 7 {
+        brak
+    }
+    blether i
+}

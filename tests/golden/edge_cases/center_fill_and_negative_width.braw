@@ -1,0 +1,7 @@
+# center_fill_and_negative_width.braw - center() supports fill char and negative widths safely
+
+blether center("hi", 6, "-")
+blether f"<{center(\"x\", -1, \"0\")}>"
+blether replace(center("x", 3, ""), " ", ".")
+blether "done"
+

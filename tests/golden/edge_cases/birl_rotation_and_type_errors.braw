@@ -1,0 +1,25 @@
+# birl_rotation_and_type_errors.braw - birl should return a new rotated list, handle negative rotation, and reject invalid types (catchable)
+
+blether birl([1, 2, 3, 4], 1)
+blether birl([1, 2, 3, 4], -1)
+
+ken l = [1, 2]
+ken r = birl(l, 0)
+r[0] = 99
+blether l
+blether r
+
+hae_a_bash {
+    blether birl(42, 1)
+} gin_it_gangs_wrang err {
+    blether "caught_birl_list"
+}
+
+hae_a_bash {
+    blether birl([1], "x")
+} gin_it_gangs_wrang err {
+    blether "caught_birl_count"
+}
+
+blether "done"
+

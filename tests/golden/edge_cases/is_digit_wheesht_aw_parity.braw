@@ -1,0 +1,15 @@
+# is_digit_wheesht_aw_parity.braw - is_digit() and wheesht_aw() should match interpreter semantics (results + errors)
+
+blether is_digit("123")
+blether is_digit("1")
+blether is_digit("")
+blether is_digit("12a")
+blether is_digit("١")
+
+hae_a_bash { blether is_digit([1]) } gin_it_gangs_wrang e { blether "is_digit_type_err" }
+
+blether wheesht_aw("  hello   world\t")
+hae_a_bash { blether wheesht_aw([1]) } gin_it_gangs_wrang e { blether "wheesht_aw_type_err" }
+
+blether "done"
+

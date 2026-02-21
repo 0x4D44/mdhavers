@@ -1,0 +1,22 @@
+# upper_lower_wheesht_type_error_caught.braw - upper/lower/wheesht reject non-string args (catchable)
+
+hae_a_bash {
+    blether upper(123)
+} gin_it_gangs_wrang err {
+    blether "caught_upper"
+}
+
+hae_a_bash {
+    blether lower(123)
+} gin_it_gangs_wrang err {
+    blether "caught_lower"
+}
+
+hae_a_bash {
+    blether wheesht(123)
+} gin_it_gangs_wrang err {
+    blether "caught_wheesht"
+}
+
+blether "done"
+

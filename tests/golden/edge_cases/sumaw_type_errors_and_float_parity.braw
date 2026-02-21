@@ -1,0 +1,24 @@
+# sumaw_type_errors_and_float_parity.braw - sumaw should sum ints/floats and error on non-list, bools, and non-number elements (catchable)
+
+blether sumaw([1, 2, 3])
+blether sumaw([1, 2.5])
+
+hae_a_bash {
+    blether sumaw(42)
+} gin_it_gangs_wrang err {
+    blether "caught_sumaw_list"
+}
+
+hae_a_bash {
+    blether sumaw([1, "x"])
+} gin_it_gangs_wrang err {
+    blether "caught_sumaw_numbers"
+}
+
+hae_a_bash {
+    blether sumaw([aye])
+} gin_it_gangs_wrang err {
+    blether "caught_sumaw_bool"
+}
+
+blether "done"

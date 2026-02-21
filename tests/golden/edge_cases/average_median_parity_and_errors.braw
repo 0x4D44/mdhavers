@@ -1,0 +1,16 @@
+# average_median_parity_and_errors.braw - average()/median() should match interpreter semantics (correct results + errors)
+
+blether average([1.0, 2.0, 3.0, 4.0, 5.0])
+blether average([10, 20, 30])
+
+# Median must not be implemented as a simple average:
+blether median([1.0, 2.0, 3.0, 100.0])
+blether median([1, 2, 3, 100, 101])
+
+hae_a_bash { blether average([]) } gin_it_gangs_wrang e { blether "avg_empty_err" }
+hae_a_bash { blether average([1, "x"]) } gin_it_gangs_wrang e { blether "avg_type_err" }
+hae_a_bash { blether median([]) } gin_it_gangs_wrang e { blether "median_empty_err" }
+hae_a_bash { blether median([1, "x"]) } gin_it_gangs_wrang e { blether "median_type_err" }
+
+blether "done"
+

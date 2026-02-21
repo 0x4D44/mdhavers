@@ -1,0 +1,7 @@
+# while_loop.braw - golden control flow
+
+ken count = 1
+whiles count <= 3 {
+    blether count
+    count = count + 1
+}

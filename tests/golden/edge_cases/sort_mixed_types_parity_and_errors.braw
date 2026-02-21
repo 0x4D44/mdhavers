@@ -1,0 +1,23 @@
+# sort_mixed_types_parity_and_errors.braw - sort() should match interpreter semantics on mixed types and type errors
+
+# Mixed int/float: ints sort within their segment; types act as stable barriers.
+ken a = sort([3, 2, 1.5])
+blether a[0]
+blether a[1]
+blether a[2]
+
+ken b = sort([3, 1.5, 2])
+blether b[0]
+blether b[1]
+blether b[2]
+
+# Mixed string/int: strings sort within their segment; ints remain in place.
+ken c = sort(["b", "a", 1])
+blether c[0]
+blether c[1]
+blether c[2]
+
+hae_a_bash { blether sort("hello") } gin_it_gangs_wrang e { blether "sort_type_err" }
+
+blether "done"
+

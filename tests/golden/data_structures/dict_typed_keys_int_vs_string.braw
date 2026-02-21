@@ -1,0 +1,8 @@
+# dict_typed_keys_int_vs_string.braw - dict keys are typed (1 != "1")
+
+ken d = {1: "int", "1": "str"}
+
+blether len(d)
+blether d[1]
+blether d["1"]
+

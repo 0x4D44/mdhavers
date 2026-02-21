@@ -1,0 +1,51 @@
+# math_trig_pow_pooer_errors_parity.braw - math builtins should match interpreter semantics and throw catchable errors on bad types
+
+blether sin(0)
+blether cos(0)
+blether tan(0)
+blether log10(100)
+blether exp(0)
+
+blether pow(2, 3)
+blether whit_kind(pow(2, 3))
+
+blether pooer(2, 3)
+blether whit_kind(pooer(2, 3))
+
+blether pooer(2, -2)
+blether whit_kind(pooer(2, -2))
+
+blether atan2(0, 1)
+
+hae_a_bash {
+    blether sin(aye)
+} gin_it_gangs_wrang err {
+    blether "caught_sin_type"
+}
+
+hae_a_bash {
+    blether log(aye)
+} gin_it_gangs_wrang err {
+    blether "caught_log_type"
+}
+
+hae_a_bash {
+    blether pow("a", 2)
+} gin_it_gangs_wrang err {
+    blether "caught_pow_type"
+}
+
+hae_a_bash {
+    blether pooer("a", 2)
+} gin_it_gangs_wrang err {
+    blether "caught_pooer_type"
+}
+
+hae_a_bash {
+    blether atan2("a", 1)
+} gin_it_gangs_wrang err {
+    blether "caught_atan2_type"
+}
+
+blether "done"
+

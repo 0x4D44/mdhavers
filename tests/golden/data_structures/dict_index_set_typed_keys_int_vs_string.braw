@@ -1,0 +1,15 @@
+# dict_index_set_typed_keys_int_vs_string.braw - dict index assignment respects typed keys
+
+ken d = {}
+d[1] = "int"
+d["1"] = "str"
+
+blether len(d)
+blether d[1]
+blether d["1"]
+
+d[1] = "int2"
+blether len(d)
+blether d[1]
+blether d["1"]
+

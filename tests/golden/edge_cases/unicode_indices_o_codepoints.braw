@@ -1,0 +1,22 @@
+# unicode_indices_o_codepoints.braw
+# Ensure indices_o(string, needle) returns codepoint indices (consistent with slicing/indexing).
+
+ken s = "a😀b😀c"
+
+blether indices_o(s, "😀")
+blether indices_o(s, "b")
+blether indices_o(s, "😀c")
+
+blether s[indices_o(s, "b")[0]]
+blether substring(s, indices_o(s, "😀c")[0], len(s))
+
+hae_a_bash {
+    blether "before_empty"
+    blether indices_o(s, "")
+    blether "after_empty"
+} gin_it_gangs_wrang err {
+    blether "caught_empty"
+}
+
+blether "done"
+

@@ -1,0 +1,12 @@
+# string_repeat_negative.braw - golden string repetition with negative count (catchable error)
+
+hae_a_bash {
+    blether "before"
+    blether "ha" * -1
+    blether "after"
+} gin_it_gangs_wrang err {
+    blether "caught"
+}
+
+blether "done"
+

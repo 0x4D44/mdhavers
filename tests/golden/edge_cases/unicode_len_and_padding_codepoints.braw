@@ -1,0 +1,33 @@
+# unicode_len_and_padding_codepoints.braw
+# Ensure len() and width-based string operations use codepoint (not byte) semantics.
+
+ken s = "a😀b"
+
+blether len(s)
+blether len("😀")
+blether len("")
+
+# Width semantics use codepoints.
+blether pad_left("😀", 3, ".")
+blether pad_right("😀", 3, ".")
+blether pad_left("x😀", 4, "0")
+blether pad_right("x😀", 4, "0")
+
+# Centering uses codepoints.
+blether sporran_fill("😀", 3, "-")
+blether center("😀", 3, "-")
+
+# Unicode fill strings repeat by codepoint (not first byte).
+blether pad_left("😀", 2, "🎉")
+blether pad_right("😀", 2, "🎉")
+blether sporran_fill("😀", 3, "🎉")
+blether center("😀", 3, "🎉")
+
+# Default fill for missing/empty fill arg is space.
+blether replace(pad_left("😀", 2), " ", ".")
+blether replace(pad_right("😀", 2), " ", ".")
+blether replace(center("😀", 3), " ", ".")
+blether replace(pad_left("😀", 3, ""), " ", ".")
+blether replace(pad_right("😀", 3, ""), " ", ".")
+blether replace(center("😀", 3, ""), " ", ".")
+

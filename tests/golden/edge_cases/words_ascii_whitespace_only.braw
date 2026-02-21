@@ -1,0 +1,11 @@
+# words_ascii_whitespace_only.braw
+# Ensure words() splits on ASCII whitespace only (space/tab/newline/CR), not Unicode whitespace.
+
+ken em_space = chr(8195)  # U+2003 EM SPACE (Unicode whitespace)
+ken s = "a" + em_space + "b"
+
+blether len(words("a b"))
+blether len(words("a\tb\nc\rd"))
+blether len(words(""))
+blether len(words(s))
+

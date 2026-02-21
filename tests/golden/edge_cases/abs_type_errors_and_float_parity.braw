@@ -1,0 +1,19 @@
+# abs_type_errors_and_float_parity.braw - abs should handle int/float and reject non-numbers (catchable)
+
+blether abs(-5)
+blether abs(-2.5)
+
+hae_a_bash {
+    blether abs(aye)
+} gin_it_gangs_wrang err {
+    blether "caught_abs_bool"
+}
+
+hae_a_bash {
+    blether abs("x")
+} gin_it_gangs_wrang err {
+    blether "caught_abs_str"
+}
+
+blether "done"
+

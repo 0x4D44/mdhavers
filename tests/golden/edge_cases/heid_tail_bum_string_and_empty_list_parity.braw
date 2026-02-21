@@ -1,0 +1,36 @@
+# heid_tail_bum_string_and_empty_list_parity.braw - ensure heid/tail/bum work on strings (Unicode) and handle empty list/string consistently
+
+ken s = chr(128512) + "a" + chr(128512)
+blether heid(s)
+blether tail(s)
+blether bum(s)
+
+# tail([]) should not crash and should return empty list
+blether len(tail([]))
+
+hae_a_bash {
+    blether heid([])
+} gin_it_gangs_wrang err {
+    blether "caught_heid_empty_list"
+}
+
+hae_a_bash {
+    blether bum([])
+} gin_it_gangs_wrang err {
+    blether "caught_bum_empty_list"
+}
+
+hae_a_bash {
+    blether heid("")
+} gin_it_gangs_wrang err {
+    blether "caught_heid_empty_string"
+}
+
+hae_a_bash {
+    blether bum("")
+} gin_it_gangs_wrang err {
+    blether "caught_bum_empty_string"
+}
+
+blether "done"
+

@@ -1,0 +1,20 @@
+# closure_capture_sees_mutations.braw - closures should capture variables by reference (see + perform mutations)
+
+ken x = 1
+ken bump = |y| {
+    x = x + y
+    gie x
+}
+
+blether bump(1)
+blether x
+blether bump(1)
+blether x
+
+ken z = 1
+ken addz = |y| z + y
+z = 10
+blether addz(1)
+
+blether "done"
+

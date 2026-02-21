@@ -1,0 +1,8 @@
+# set_typed_elements_int_vs_string.braw - creel elements are typed (1 != "1")
+
+ken s = creel([1, "1"])
+
+blether len(s)
+blether is_in_creel(s, 1)
+blether is_in_creel(s, "1")
+

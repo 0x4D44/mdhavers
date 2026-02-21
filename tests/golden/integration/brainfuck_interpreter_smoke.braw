@@ -1,0 +1,75 @@
+# brainfuck_interpreter_smoke.braw - small BF interpreter to stress core language features
+
+dae build_bracket_map(code) {
+    ken stack = []
+    ken pairs = {}
+    ken i = 0
+    whiles i < len(code) {
+        ken c = code[i]
+        gin c == "[" {
+            shove(stack, i)
+        } ither gin c == "]" {
+            ken open = yank(stack)
+            pairs[open] = i
+            pairs[i] = open
+        }
+        i = i + 1
+    }
+    gie pairs
+}
+
+dae run_bf(program) {
+    ken code = chars(program)
+    ken pairs = build_bracket_map(code)
+
+    ken tape = []
+    ken dp = 0
+    ken pre = 0
+    whiles pre < 32 {
+        shove(tape, 0)
+        pre = pre + 1
+    }
+
+    ken ip = 0
+    ken out = ""
+
+    whiles ip < len(code) {
+        ken c = code[ip]
+
+        gin c == ">" {
+            dp = dp + 1
+            gin dp >= len(tape) {
+                shove(tape, 0)
+            }
+        } ither gin c == "<" {
+            dp = dp - 1
+        } ither gin c == "+" {
+            tape[dp] = tape[dp] + 1
+            gin tape[dp] > 255 {
+                tape[dp] = 0
+            }
+        } ither gin c == "-" {
+            tape[dp] = tape[dp] - 1
+            gin tape[dp] < 0 {
+                tape[dp] = 255
+            }
+        } ither gin c == "." {
+            out = out + chr(tape[dp])
+        } ither gin c == "[" {
+            gin tape[dp] == 0 {
+                ip = pairs[ip]
+            }
+        } ither gin c == "]" {
+            gin tape[dp] != 0 {
+                ip = pairs[ip]
+            }
+        }
+
+        ip = ip + 1
+    }
+
+    gie out
+}
+
+blether run_bf("+++++++++++++[>+++++<-]>.")
+

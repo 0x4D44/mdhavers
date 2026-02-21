@@ -1,0 +1,23 @@
+# masel_dynamic_dispatch_overrides.braw - method calls on `masel` should use dynamic dispatch (respect overrides)
+
+kin Base {
+    dae init() {
+    }
+
+    dae b() {
+        gie "Base"
+    }
+
+    dae a() {
+        blether masel.b()
+    }
+}
+
+kin Sub fae Base {
+    dae b() {
+        gie "Sub"
+    }
+}
+
+Sub().a()
+

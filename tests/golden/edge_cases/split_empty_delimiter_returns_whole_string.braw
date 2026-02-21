@@ -1,0 +1,8 @@
+# split_empty_delimiter_returns_whole_string.braw
+# Ensure split(str, "") returns [str] (native parity + avoids empty-delimiter weirdness).
+
+blether len(split("abc", ""))
+blether join(split("abc", ""), "|")
+blether len(split("", ""))
+blether is_empty(join(split("", ""), "|"))
+

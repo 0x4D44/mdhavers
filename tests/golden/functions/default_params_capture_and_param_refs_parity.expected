@@ -1,0 +1,18 @@
+named_fn
+Hello World
+captured_fn_default
+5
+returned_closure_default
+5
+bound_method_default
+5
+direct_method_default
+5
+returned_closure_from_method_default
+7
+prior_param_direct
+3
+prior_param_fn_value
+3
+prior_param_returned_closure
+3

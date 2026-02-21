@@ -1,0 +1,18 @@
+# values_and_strings.braw - golden basics
+
+ken a = 2 + 3 * 4
+ken b = (2 + 3) * 4
+blether f"a={a}"
+blether f"b={b}"
+
+ken s = "hae" + " " + "ye"
+blether s
+ken t = 'single quotes'
+blether t
+
+blether aye
+blether nae
+blether naething
+
+ken trimmed = "  hello  " |> wheesht |> upper
+blether trimmed

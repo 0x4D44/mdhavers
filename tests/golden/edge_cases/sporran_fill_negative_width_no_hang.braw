@@ -1,0 +1,6 @@
+# sporran_fill_negative_width_no_hang.braw - negative width should not hang / allocate huge
+
+blether f"<{sporran_fill(\"x\", -1, \"0\")}>"
+blether replace(sporran_fill("x", 3, ""), " ", ".")
+blether "done"
+

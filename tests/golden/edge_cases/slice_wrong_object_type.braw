@@ -1,0 +1,17 @@
+# slice_wrong_object_type.braw - slicing non-list/string should error (catchable)
+
+hae_a_bash {
+    ken d = {"a": 1}
+    blether d[0:1]
+} gin_it_gangs_wrang err {
+    blether "dict"
+}
+
+hae_a_bash {
+    blether 123[0:1]
+} gin_it_gangs_wrang err {
+    blether "int"
+}
+
+blether "done"
+

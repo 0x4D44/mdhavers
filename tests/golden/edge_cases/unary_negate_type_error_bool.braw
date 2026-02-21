@@ -1,0 +1,12 @@
+# unary_negate_type_error_bool.braw - golden unary negate type error (catchable)
+
+hae_a_bash {
+    blether "before"
+    blether -aye
+    blether "after"
+} gin_it_gangs_wrang err {
+    blether "caught"
+}
+
+blether "done"
+

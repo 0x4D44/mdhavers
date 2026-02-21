@@ -1,0 +1,12 @@
+# shapes_mod.braw - fixture module for golden tests
+
+kin Rectangle {
+    dae init(width, height) {
+        masel.width = width
+        masel.height = height
+    }
+
+    dae area() {
+        gie masel.width * masel.height
+    }
+}

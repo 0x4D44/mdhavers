@@ -1,0 +1,6 @@
+# pad_empty_fill_defaults_to_space.braw - pad_* treats empty fill string as space (not NUL)
+
+blether replace(pad_left("x", 3, ""), " ", ".")
+blether replace(pad_right("x", 3, ""), " ", ".")
+blether "done"
+

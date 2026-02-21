@@ -1,0 +1,16 @@
+# get_prefers_field_over_method.braw - obj.field should return the field value even if a method exists with the same name
+
+kin Box {
+    dae init() {
+        masel.f = |x| x + 100
+    }
+
+    dae f(x) {
+        gie x + 1
+    }
+}
+
+blether Box().f(3)
+ken f = Box().f
+blether f(3)
+

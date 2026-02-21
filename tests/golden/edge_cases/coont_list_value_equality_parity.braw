@@ -1,0 +1,14 @@
+# coont_list_value_equality_parity.braw - coont(list, needle) should use Value equality semantics (deep for strings/lists/bytes)
+
+ken needle = "h" + "i"
+ken list = ["hi", needle, "h" + "i"]
+blether coont(list, needle)
+blether coont(list, "hi")
+
+ken needle_list = [1]
+ken list2 = [[1], needle_list, [1]]
+blether coont(list2, needle_list)
+blether coont(list2, [1])
+
+blether "done"
+

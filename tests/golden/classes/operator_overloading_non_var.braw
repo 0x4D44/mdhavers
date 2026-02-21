@@ -1,0 +1,30 @@
+# operator_overloading_non_var.braw - operator overloading when LHS is not a variable
+
+kin NumBox {
+    dae init(v) {
+        masel.v = v
+    }
+
+    dae __pit_thegither__(that) {
+        gie masel.v + that.v
+    }
+
+    dae __wee_er__(that) {
+        gie masel.v < that.v
+    }
+
+    dae __same_as__(that) {
+        gie masel.v == that.v
+    }
+
+    dae __differs_fae__(that) {
+        gie masel.v != that.v
+    }
+}
+
+blether NumBox(2) + NumBox(3)
+blether NumBox(2) < NumBox(3)
+blether NumBox(2) == NumBox(2)
+blether NumBox(2) != NumBox(3)
+blether NumBox(2) != NumBox(2)
+

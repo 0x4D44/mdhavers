@@ -1,0 +1,22 @@
+# ranges_and_slices.braw - golden ranges + slice syntax
+
+blether "exclusive"
+fer i in 1..4 {
+    blether i
+}
+
+blether "inclusive"
+fer i in 1..=4 {
+    blether i
+}
+
+ken arr = [0, 1, 2, 3, 4, 5]
+blether arr[2:5]
+blether arr[:3]
+blether arr[::2]
+blether arr[::-1]
+
+ken s = "abcdef"
+blether s[1:4]
+blether s[::2]
+blether s[::-1]

@@ -1,0 +1,14 @@
+# match_basic.braw - golden control flow
+
+ken day = 3
+keek day {
+    whan 1 -> { blether "Mon" }
+    whan 3 -> { blether "Wed" }
+    whan _ -> { blether "Other" }
+}
+
+ken mystery = 42
+keek mystery {
+    whan 0 -> { blether "Zero" }
+    whan x -> { blether f"Got {x}" }
+}

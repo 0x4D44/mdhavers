@@ -1,0 +1,32 @@
+# dict_aliasing_and_nested_updates.braw - dict mutations should be visible through aliases and nested containers
+
+ken a = {"x": 1}
+ken b = a
+
+hae_a_bash {
+    a["y"] = 2
+    a["x"] = 3
+    blether b["x"]
+    blether b["y"]
+} gin_it_gangs_wrang e {
+    blether "caught_aliasing"
+}
+
+ken l = [{"a": 1}]
+hae_a_bash {
+    l[0]["b"] = 2
+    blether l[0]["b"]
+} gin_it_gangs_wrang e {
+    blether "caught_nested_list"
+}
+
+ken holder = {"inner": {"k": 1}}
+hae_a_bash {
+    holder["inner"].k = 2
+    blether holder["inner"]["k"]
+} gin_it_gangs_wrang e {
+    blether "caught_nested_dict"
+}
+
+blether "done"
+

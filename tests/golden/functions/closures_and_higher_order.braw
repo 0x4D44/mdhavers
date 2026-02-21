@@ -1,0 +1,16 @@
+# closures_and_higher_order.braw - golden higher-order funcs + closure capture
+
+dae make_adder(x) {
+    gie |y| x + y
+}
+
+ken add5 = make_adder(5)
+blether add5(3)
+
+ken numbers = [1, 2, 3, 4, 5]
+ken squares = gaun(numbers, |x| x * x)
+blether squares
+ken evens = sieve(numbers, |x| x % 2 == 0)
+blether evens
+ken even_squares = gaun(sieve(numbers, |x| x % 2 == 0), |x| x * x)
+blether even_squares

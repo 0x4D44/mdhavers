@@ -1,0 +1,11 @@
+# if_else.braw - golden control flow
+
+ken temperature = 15
+
+gin temperature < 10 {
+    blether "cold"
+} ither gin temperature < 20 {
+    blether "nippy"
+} ither {
+    blether "warm"
+}

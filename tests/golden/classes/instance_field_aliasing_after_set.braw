@@ -1,0 +1,12 @@
+# instance_field_aliasing_after_set.braw - instance values should behave like references (aliases see field updates)
+
+kin A {
+    dae init() {
+    }
+}
+
+ken a = A()
+ken b = a
+a.x = 1
+blether b.x
+

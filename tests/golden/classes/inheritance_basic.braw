@@ -1,0 +1,25 @@
+# inheritance_basic.braw - golden classes
+
+kin Animal {
+    dae init(name) {
+        masel.name = name
+    }
+
+    dae speak() {
+        blether masel.name + " makes a noise"
+    }
+}
+
+kin Dog fae Animal {
+    dae speak() {
+        blether masel.name + " says: Woof!"
+    }
+
+    dae wag() {
+        blether masel.name + " wags tail!"
+    }
+}
+
+ken rex = Dog("Rex")
+rex.speak()
+rex.wag()

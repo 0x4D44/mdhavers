@@ -1,0 +1,15 @@
+# basic_class_fields.braw - golden classes
+
+kin Animal {
+    dae init(name, sound) {
+        masel.name = name
+        masel.sound = sound
+    }
+
+    dae speak() {
+        blether masel.name + " says: " + masel.sound
+    }
+}
+
+ken dug = Animal("Dug", "Woof!")
+dug.speak()

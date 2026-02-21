@@ -1,0 +1,13 @@
+# instance_to_string.braw - golden instance stringification
+
+kin Foo {
+    dae init() {
+        # nae fields
+    }
+}
+
+ken f = Foo()
+blether f
+blether tae_string(f)
+blether f"f={f}"
+

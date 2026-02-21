@@ -1,0 +1,15 @@
+# method_value_is_bound.braw - obj.method should return a callable bound to the instance (captures masel)
+
+kin A {
+    dae init(v) {
+        masel.v = v
+    }
+
+    dae add(x) {
+        gie masel.v + x
+    }
+}
+
+ken f = A(5).add
+blether f(3)
+

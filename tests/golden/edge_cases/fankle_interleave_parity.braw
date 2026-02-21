@@ -1,0 +1,20 @@
+# fankle_interleave_parity.braw - fankle should interleave two lists (not flatten) and error catchably on wrong types
+
+blether fankle([1, 2, 3], [10, 20])
+blether fankle([], [1, 2])
+blether fankle([1, 2], [])
+
+hae_a_bash {
+    blether fankle(42, [1])
+} gin_it_gangs_wrang err {
+    blether "caught_fankle_type"
+}
+
+hae_a_bash {
+    blether fankle([1], 42)
+} gin_it_gangs_wrang err {
+    blether "caught_fankle_type2"
+}
+
+blether "done"
+

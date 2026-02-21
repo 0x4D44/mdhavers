@@ -1,0 +1,46 @@
+# bitwise_ops_shift_range_and_type_errors_parity.braw - bitwise builtins should match interpreter semantics (errors are catchable; shifts are 0-63; right shift is arithmetic)
+
+blether bit_an(6, 3)
+blether bit_or(6, 3)
+blether bit_xor(6, 3)
+blether bit_nae(6)
+
+blether bit_shove_left(1, 3)
+blether bit_shove_right(8, 3)
+blether bit_shove_right(-8, 1)
+
+blether bit_coont(0)
+blether bit_coont(7)
+
+hae_a_bash {
+    blether bit_an(6, "3")
+} gin_it_gangs_wrang err {
+    blether "caught_bit_an_type"
+}
+
+hae_a_bash {
+    blether bit_nae("x")
+} gin_it_gangs_wrang err {
+    blether "caught_bit_nae_type"
+}
+
+hae_a_bash {
+    blether bit_shove_left(1, 64)
+} gin_it_gangs_wrang err {
+    blether "caught_shift_left_range"
+}
+
+hae_a_bash {
+    blether bit_shove_right(1, -1)
+} gin_it_gangs_wrang err {
+    blether "caught_shift_right_range"
+}
+
+hae_a_bash {
+    blether bit_coont("x")
+} gin_it_gangs_wrang err {
+    blether "caught_bit_coont_type"
+}
+
+blether "done"
+

@@ -1,0 +1,11 @@
+# unique_list_value_equality_parity.braw - unique(list) should use Value equality semantics (not pointer equality)
+
+ken needle = "h" + "i"
+ken list = ["hi", needle, "h" + "i", "bye"]
+ken u = unique(list)
+blether len(u)
+blether u[0]
+blether u[1]
+
+blether "done"
+

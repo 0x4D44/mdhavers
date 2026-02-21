@@ -1,0 +1,12 @@
+# modulo_by_zero.braw - golden modulo by zero (catchable error)
+
+hae_a_bash {
+    blether "before"
+    blether 10 % 0
+    blether "after"
+} gin_it_gangs_wrang err {
+    blether "caught"
+}
+
+blether "done"
+

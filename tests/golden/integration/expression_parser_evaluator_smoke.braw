@@ -1,0 +1,83 @@
+# expression_parser_evaluator_smoke.braw - small recursive-descent parser/evaluator
+
+dae peek(s, pos) {
+    gin pos >= len(s) { gie "" }
+    gie s[pos]
+}
+
+dae skip_ws(s, pos) {
+    whiles peek(s, pos) == " " {
+        pos = pos + 1
+    }
+    gie pos
+}
+
+dae parse_number(s, pos) {
+    pos = skip_ws(s, pos)
+    ken val = 0
+    whiles aye {
+        ken c = peek(s, pos)
+        gin c == "" { brak }
+        gin nae is_digit(c) { brak }
+        val = val * 10 + (ord(c) - ord("0"))
+        pos = pos + 1
+    }
+    gie [val, pos]
+}
+
+dae parse_factor(s, pos) {
+    pos = skip_ws(s, pos)
+    gin peek(s, pos) == "(" {
+        ken inner = parse_expr(s, pos + 1)
+        ken val = inner[0]
+        pos = skip_ws(s, inner[1])
+        # consume ')'
+        pos = pos + 1
+        gie [val, pos]
+    }
+    gie parse_number(s, pos)
+}
+
+dae parse_term(s, pos) {
+    ken left = parse_factor(s, pos)
+    ken acc = left[0]
+    pos = left[1]
+
+    whiles aye {
+        pos = skip_ws(s, pos)
+        gin peek(s, pos) != "*" { brak }
+        ken right = parse_factor(s, pos + 1)
+        acc = acc * right[0]
+        pos = right[1]
+    }
+    gie [acc, pos]
+}
+
+dae parse_expr(s, pos) {
+    ken left = parse_term(s, pos)
+    ken acc = left[0]
+    pos = left[1]
+
+    whiles aye {
+        pos = skip_ws(s, pos)
+        ken op = peek(s, pos)
+        gin op != "+" an op != "-" { brak }
+        ken right = parse_term(s, pos + 1)
+        gin op == "+" {
+            acc = acc + right[0]
+        } ither {
+            acc = acc - right[0]
+        }
+        pos = right[1]
+    }
+    gie [acc, pos]
+}
+
+dae eval_expr(s) {
+    ken res = parse_expr(s, 0)
+    gie res[0]
+}
+
+blether eval_expr("1+2*3")
+blether eval_expr("(1+2)*3")
+blether eval_expr("10 + 2 * (3+4)")

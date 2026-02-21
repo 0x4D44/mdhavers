@@ -1,0 +1,11 @@
+# date_parse_trailing_whitespace_rejected.braw
+# Ensure date_parse rejects trailing whitespace (parity between interpreter and native).
+
+hae_a_bash {
+    blether date_parse("2020-01-01 00:00:00 ", "%Y-%m-%d %H:%M:%S")
+} gin_it_gangs_wrang err {
+    blether "caught_trailing_ws"
+}
+
+blether date_parse("2020-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+

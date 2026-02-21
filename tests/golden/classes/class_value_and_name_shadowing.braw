@@ -1,0 +1,21 @@
+# class_value_and_name_shadowing.braw - class as value + class name shadowing by variable binding
+
+kin A {
+    dae init(v) { masel.v = v }
+    dae get() { gie masel.v }
+}
+
+ken Klass = A
+
+blether "class_value_call"
+blether Klass(5).get()
+
+ken Orig = A
+ken A = |x| x + 100
+
+blether "class_name_shadowed"
+blether A(1)
+
+blether "orig_class_still_callable"
+blether Orig(7).get()
+

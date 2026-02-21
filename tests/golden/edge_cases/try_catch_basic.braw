@@ -1,0 +1,12 @@
+# try_catch_basic.braw - golden error handling
+
+hae_a_bash {
+    blether "before"
+    ken result = 10 / 0
+    blether result
+    blether "after"
+} gin_it_gangs_wrang err {
+    blether "caught"
+}
+
+blether "done"

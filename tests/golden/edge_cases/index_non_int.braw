@@ -1,0 +1,32 @@
+# index_non_int.braw - list/string indices must be integers
+
+ken arr = [0, 1, 2]
+
+hae_a_bash {
+    blether arr["1"]
+} gin_it_gangs_wrang err {
+    blether "list_str"
+}
+
+hae_a_bash {
+    blether arr[aye]
+} gin_it_gangs_wrang err {
+    blether "list_bool"
+}
+
+ken s = "abc"
+
+hae_a_bash {
+    blether s["1"]
+} gin_it_gangs_wrang err {
+    blether "str_str"
+}
+
+hae_a_bash {
+    blether s[aye]
+} gin_it_gangs_wrang err {
+    blether "str_bool"
+}
+
+blether "done"
+

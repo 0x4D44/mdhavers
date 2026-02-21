@@ -1,0 +1,10 @@
+# modules_basic.braw - golden modules
+
+fetch "tests/fixtures/modules/math_utils" tae m
+blether m.PI
+blether m.square(5)
+blether m.add(2, 3)
+
+fetch "tests/fixtures/modules/shapes_mod"
+ken rect = Rectangle(4, 5)
+blether rect.area()

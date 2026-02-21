@@ -1,0 +1,10 @@
+# builtin_len_shadowed_by_variable_binding.braw - variable binding should shadow builtin call by name
+
+blether "builtin_before"
+blether len("abc")
+
+ken len = |s| 999
+
+blether "shadow_after"
+blether len("abc")
+

@@ -1,0 +1,25 @@
+# defaults_use_callee_closure_not_call_site_scope.braw - defaults evaluate in callee closure (not caller locals)
+
+ken g = 1
+
+dae f(a = g) { gie a }
+
+dae caller() {
+    ken g = 2
+    gie f()
+}
+
+blether "call"
+blether caller()
+
+dae caller_fn_value() {
+    ken g = 2
+    ken fv = f
+    gie fv()
+}
+
+blether "fn_value"
+blether caller_fn_value()
+
+blether "override"
+blether f(9)

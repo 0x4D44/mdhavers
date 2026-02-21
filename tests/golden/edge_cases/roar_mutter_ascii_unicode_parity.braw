@@ -1,0 +1,24 @@
+# roar_mutter_ascii_unicode_parity.braw
+# Lock roar/mutter semantics to ASCII-only (UTF-8 safe) across interpreter + native.
+
+blether roar("Straße")
+blether mutter("MÜTTER")
+
+hae_a_bash {
+    blether "before_roar"
+    blether roar(42)
+    blether "after_roar"
+} gin_it_gangs_wrang err {
+    blether "caught_roar"
+}
+
+hae_a_bash {
+    blether "before_mutter"
+    blether mutter(42)
+    blether "after_mutter"
+} gin_it_gangs_wrang err {
+    blether "caught_mutter"
+}
+
+blether "done"
+

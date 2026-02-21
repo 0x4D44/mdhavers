@@ -1,0 +1,14 @@
+# unicode_clarty_dreich_parity.braw
+# Ensure string predicates operate on UTF-8 codepoints (not bytes).
+
+blether clarty("😀😁")
+blether clarty("😀a😀")
+blether clarty("")
+
+blether dreich("")
+blether dreich("ää")
+blether dreich("😀😀")
+blether dreich("😀a")
+
+blether "done"
+

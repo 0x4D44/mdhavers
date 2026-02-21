@@ -1,0 +1,5 @@
+# wheesht_filters_falsy_list.braw - wheesht(list) filters falsy values
+
+ken xs = [0, 1, "", "x", [], [2], naething, aye, nae]
+blether wheesht(xs)
+

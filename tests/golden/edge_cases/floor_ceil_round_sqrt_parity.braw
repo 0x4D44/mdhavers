@@ -1,0 +1,25 @@
+# floor_ceil_round_sqrt_parity.braw - numeric builtins should handle ints/floats and reject non-numbers (catchable)
+
+blether floor(5)
+blether ceil(5)
+blether round(5)
+
+blether floor(2.9)
+blether ceil(2.1)
+blether round(2.6)
+blether round(sqrt(9))
+
+hae_a_bash {
+    blether floor(aye)
+} gin_it_gangs_wrang err {
+    blether "caught_floor_bool"
+}
+
+hae_a_bash {
+    blether sqrt("x")
+} gin_it_gangs_wrang err {
+    blether "caught_sqrt_type"
+}
+
+blether "done"
+

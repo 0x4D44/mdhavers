@@ -1,0 +1,12 @@
+# instance_aliasing_through_list.braw - aliasing should work through lists
+
+kin A {
+    dae init() {
+    }
+}
+
+ken a = A()
+ken l = [a]
+l[0].x = 1
+blether a.x
+

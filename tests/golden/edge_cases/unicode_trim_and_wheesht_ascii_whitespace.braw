@@ -1,0 +1,21 @@
+# unicode_trim_and_wheesht_ascii_whitespace.braw
+# Ensure trim/wheesht functions use ASCII whitespace only (not Unicode whitespace),
+# and never treat UTF-8 continuation bytes as whitespace (locale-independent).
+
+ken nbsp = chr(160)  # U+00A0 NO-BREAK SPACE
+ken s = nbsp + "hi" + nbsp
+
+blether len(s)
+blether len(wheesht(s))
+blether len(trim(s))
+blether len(trim_start(s))
+blether len(trim_end(s))
+blether len(wheesht_aw(s))
+
+blether wheesht("  hello  ")
+blether wheesht_aw("  hello   world  ")
+
+blether replace(trim("  hello  "), " ", ".")
+blether replace(trim_start("  hello  "), " ", ".")
+blether replace(trim_end("  hello  "), " ", ".")
+

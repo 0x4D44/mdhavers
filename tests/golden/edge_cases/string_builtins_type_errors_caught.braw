@@ -1,0 +1,74 @@
+# string_builtins_type_errors_caught.braw - ensure string builtins validate types/bounds and throw catchable errors
+
+hae_a_bash {
+    blether char_at("hi", 10)
+} gin_it_gangs_wrang err {
+    blether "caught_char_at_oob"
+}
+
+hae_a_bash {
+    blether char_at(1, 0)
+} gin_it_gangs_wrang err {
+    blether "caught_char_at_types"
+}
+
+blether char_at("hello", 1)
+blether char_at("hello", -1)
+
+hae_a_bash {
+    blether chars(42)
+} gin_it_gangs_wrang err {
+    blether "caught_chars_type"
+}
+
+blether len(chars("abc"))
+
+hae_a_bash {
+    blether ord("")
+} gin_it_gangs_wrang err {
+    blether "caught_ord_empty"
+}
+
+hae_a_bash {
+    blether ord(1)
+} gin_it_gangs_wrang err {
+    blether "caught_ord_type"
+}
+
+blether ord("A")
+
+hae_a_bash {
+    blether chr(-1)
+} gin_it_gangs_wrang err {
+    blether "caught_chr_neg"
+}
+
+hae_a_bash {
+    blether chr("65")
+} gin_it_gangs_wrang err {
+    blether "caught_chr_type"
+}
+
+blether chr(65)
+
+hae_a_bash {
+    blether substring(1, 0, 1)
+} gin_it_gangs_wrang err {
+    blether "caught_substring_type"
+}
+
+blether substring("hello", 1, 4)
+
+hae_a_bash {
+    blether pad_left(1, 3, "0")
+} gin_it_gangs_wrang err {
+    blether "caught_pad_left_type"
+}
+
+blether pad_left("5", 3, "0")
+blether pad_right("5", 3, "0")
+
+# Negative width should not hang (should behave like "already wide").
+blether f"<{pad_left(\"x\", -1, \"0\")}>"
+blether "done"
+

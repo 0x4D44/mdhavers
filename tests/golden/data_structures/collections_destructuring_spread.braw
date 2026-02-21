@@ -1,0 +1,15 @@
+# collections_destructuring_spread.braw - golden data structures
+
+ken list = [1, 2, 3]
+blether list
+
+ken dict = {"a": 1, "b": 2}
+blether dict
+
+ken [first, second, ...rest] = [10, 20, 30, 40]
+blether first
+blether second
+blether rest
+
+ken letters = [..."abc"]
+blether letters

@@ -1,0 +1,45 @@
+# base_conversion_parity_and_errors.braw - tae_* and fae_* base conversion builtins should match interpreter semantics (errors are catchable)
+
+blether tae_binary(5)
+blether tae_hex(255)
+blether tae_octal(9)
+
+blether tae_binary(0)
+blether tae_hex(0)
+blether tae_octal(0)
+
+blether tae_binary(-1)
+blether tae_hex(-5)
+blether tae_octal(-5)
+
+blether fae_binary("101")
+blether fae_binary("0b101")
+blether fae_hex("ff")
+blether fae_hex("0xff")
+
+hae_a_bash {
+    blether tae_binary("x")
+} gin_it_gangs_wrang err {
+    blether "caught_tae_binary_type"
+}
+
+hae_a_bash {
+    blether fae_binary(1)
+} gin_it_gangs_wrang err {
+    blether "caught_fae_binary_type"
+}
+
+hae_a_bash {
+    blether fae_binary("0b2")
+} gin_it_gangs_wrang err {
+    blether "caught_fae_binary_parse"
+}
+
+hae_a_bash {
+    blether fae_hex("0xg")
+} gin_it_gangs_wrang err {
+    blether "caught_fae_hex_parse"
+}
+
+blether "done"
+

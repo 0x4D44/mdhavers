@@ -1,0 +1,9 @@
+# string_concat_non_string.braw - golden string concatenation with non-string operands
+
+blether "a" + 1
+blether 1 + "a"
+blether "aye=" + aye
+blether [1, 2] + "x"
+blether "x" + [1, 2]
+blether "nil=" + naething
+

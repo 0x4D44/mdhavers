@@ -1,0 +1,32 @@
+# index_out_of_bounds.braw - out-of-bounds indexing should error (catchable)
+
+ken arr = [0, 1, 2]
+
+hae_a_bash {
+    blether arr[10]
+} gin_it_gangs_wrang err {
+    blether "list_oob"
+}
+
+hae_a_bash {
+    blether arr[-10]
+} gin_it_gangs_wrang err {
+    blether "list_neg_oob"
+}
+
+ken s = "abc"
+
+hae_a_bash {
+    blether s[10]
+} gin_it_gangs_wrang err {
+    blether "str_oob"
+}
+
+hae_a_bash {
+    blether s[-10]
+} gin_it_gangs_wrang err {
+    blether "str_neg_oob"
+}
+
+blether "done"
+

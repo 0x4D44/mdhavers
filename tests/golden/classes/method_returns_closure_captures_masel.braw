@@ -1,0 +1,29 @@
+# method_returns_closure_captures_masel.braw - closures returned from methods capture `masel`
+
+kin Adder {
+    dae init(v) {
+        masel.v = v
+    }
+
+    dae make() {
+        gie |x| masel.v + x
+    }
+
+    dae make_with(delta) {
+        gie |x| masel.v + delta + x
+    }
+}
+
+ken a = Adder(5)
+ken f = a.make()
+
+blether f(3)
+blether a.make()(4)
+blether a.make_with(2)(3)
+
+a.v = 10
+blether f(3)
+
+ken g = a.make_with(2)
+blether g(3)
+

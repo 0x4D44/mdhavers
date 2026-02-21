@@ -1,0 +1,38 @@
+# unicode_search_indices_codepoints.braw
+# Ensure string search APIs return codepoint indices (consistent with slicing/indexing).
+
+ken s = "a😀b😀c"
+
+blether index_of(s, "b")
+blether index_of(s, "😀")
+blether last_index_of(s, "😀")
+blether haggis_hunt(s, "😀")
+
+# Search indices should compose with substring/slice and indexing.
+blether substring(s, index_of(s, "b"), len(s))
+blether s[index_of(s, "😀")]
+
+# Empty needle semantics.
+blether index_of(s, "")
+blether last_index_of(s, "")
+blether haggis_hunt(s, "")
+
+# Type errors should be catchable (no silent -1, no segfaults).
+hae_a_bash {
+    blether "before_last"
+    blether last_index_of(42, "x")
+    blether "after_last"
+} gin_it_gangs_wrang err {
+    blether "caught_last"
+}
+
+hae_a_bash {
+    blether "before_last2"
+    blether last_index_of("x", 42)
+    blether "after_last2"
+} gin_it_gangs_wrang err {
+    blether "caught_last2"
+}
+
+blether "done"
+

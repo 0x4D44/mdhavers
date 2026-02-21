@@ -1,0 +1,20 @@
+# mak_siccar_is_catchable.braw - assertion failures should be catchable via hae_a_bash
+
+hae_a_bash {
+    blether "before_default"
+    mak_siccar nae
+    blether "after_default"
+} gin_it_gangs_wrang err {
+    blether "caught_default"
+}
+
+hae_a_bash {
+    blether "before_custom"
+    mak_siccar nae, "Custom message"
+    blether "after_custom"
+} gin_it_gangs_wrang err {
+    blether "caught_custom"
+}
+
+blether "done"
+

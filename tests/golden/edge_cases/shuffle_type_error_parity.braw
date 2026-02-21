@@ -1,0 +1,6 @@
+# shuffle_type_error_parity.braw - shuffle() should throw (catchably) on non-list inputs
+
+hae_a_bash { blether len(shuffle("hello")) } gin_it_gangs_wrang e { blether "shuffle_type_err" }
+
+blether "done"
+

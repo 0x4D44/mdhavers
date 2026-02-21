@@ -1,0 +1,16 @@
+# lines_and_read_lines_parity.braw
+# Lock parity for:
+# - lines(str) => split string into lines
+# - read_lines(path) => read file and split into lines
+
+ken path = "tests/golden/fixtures/lines_fixture.txt"
+
+blether len(lines("a\nb\nc"))
+blether join(lines("a\nb\nc"), "|")
+
+# Passing a path string to lines() should not read the file; it should split the string itself.
+blether len(lines(path))
+
+blether len(read_lines(path))
+blether join(read_lines(path), "|")
+

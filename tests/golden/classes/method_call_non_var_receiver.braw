@@ -1,0 +1,15 @@
+# method_call_non_var_receiver.braw - method dispatch when receiver is not a variable
+
+kin A {
+    dae init() {}
+    dae id() { gie "A" }
+}
+
+kin B {
+    dae init() {}
+    dae id() { gie "B" }
+}
+
+blether A().id()
+blether B().id()
+

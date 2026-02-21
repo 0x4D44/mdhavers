@@ -1,0 +1,17 @@
+# slice_out_of_range.braw - slicing should clamp indices safely
+
+ken arr = [0, 1, 2]
+
+blether arr[0:10]
+blether arr[10:20]
+blether arr[-10:2]
+blether arr[1:-1]
+blether arr[::-2]
+
+ken s = "abcdef"
+blether f"<{s[0:10]}>"
+blether f"<{s[10:20]}>"
+blether f"<{s[-10:3]}>"
+blether f"<{s[1:-1]}>"
+blether f"<{s[::-2]}>"
+

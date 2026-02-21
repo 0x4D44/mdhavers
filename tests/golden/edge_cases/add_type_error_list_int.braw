@@ -1,0 +1,12 @@
+# add_type_error_list_int.braw - golden add type error (list + int)
+
+hae_a_bash {
+    blether "before"
+    ken x = [1] + 2
+    blether "after"
+} gin_it_gangs_wrang err {
+    blether "caught"
+}
+
+blether "done"
+

@@ -1,0 +1,18 @@
+# scran_negative_and_float_indices_parity.braw - scran should handle negative indices, start>end, and float indices consistently
+
+ken xs = [1, 2, 3, 4]
+blether scran(xs, -2, len(xs))
+blether scran(xs, 0, -1)
+blether scran(xs, 3, 1)
+blether scran(xs, 1.9, 3.1)
+blether scran(xs, -99, 2)
+blether scran(xs, 0, 99)
+
+ken s = chr(128512) + "a" + chr(128512)
+blether f"<{scran(s, 0, 2)}>"
+blether f"<{scran(s, -1, len(s))}>"
+blether f"<{scran(s, 2, 1)}>"
+blether f"<{scran(s, 1.9, 3.1)}>"
+
+blether "done"
+

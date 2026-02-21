@@ -1,0 +1,15 @@
+# function_name_shadowed_by_variable_function_value.braw - variable binding should shadow function name
+
+dae add1(x) { gie x + 1 }
+ken orig = add1
+
+blether "orig_direct"
+blether add1(5)
+
+ken add1 = |x| x + 2
+blether "shadow_lambda"
+blether add1(5)
+
+blether "orig_value"
+blether orig(5)
+

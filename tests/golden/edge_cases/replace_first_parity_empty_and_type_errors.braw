@@ -1,0 +1,11 @@
+# replace_first_parity_empty_and_type_errors.braw - replace_first() should match interpreter semantics (errors + empty pattern)
+
+blether replace_first("hello hello", "hello", "hi")
+blether replace_first("ab", "", "x")
+blether replace_first("", "", "x")
+blether replace_first("💩", "", ".")
+
+hae_a_bash { blether replace_first([1], "a", "b") } gin_it_gangs_wrang e { blether "replace_first_type_err" }
+
+blether "done"
+

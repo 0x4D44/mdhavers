@@ -1,0 +1,11 @@
+# slice_step_zero.braw - slice step 0 should error (catchable)
+
+hae_a_bash {
+    ken arr = [0, 1, 2]
+    blether arr[::0]
+} gin_it_gangs_wrang err {
+    blether "caught"
+}
+
+blether "done"
+

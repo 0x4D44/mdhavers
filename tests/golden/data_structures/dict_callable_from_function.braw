@@ -1,0 +1,7 @@
+# dict_callable_from_function.braw - calling a dict key when the dict comes from an unknown-typed expression
+
+dae make_dict() {
+    gie { "f": |x| x + 1 }
+}
+
+blether make_dict().f(4)

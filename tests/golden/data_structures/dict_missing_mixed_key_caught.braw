@@ -1,0 +1,14 @@
+# dict_missing_mixed_key_caught.braw - missing mixed-type lookup throws (and is catchable)
+
+ken d = {1: "int"}
+
+hae_a_bash {
+    blether "before"
+    blether d["1"]
+    blether "after"
+} gin_it_gangs_wrang err {
+    blether "caught"
+}
+
+blether "done"
+

@@ -1,0 +1,44 @@
+# named_closure_mutation_and_default_eval.braw - named nested closure capture + default eval uses current state
+
+dae make_counter(start = 0) {
+    ken x = start
+
+    dae inc(step = 1) {
+        x = x + step
+        gie x
+    }
+
+    dae get(v = x) { gie v }
+
+    dae set(v) { x = v }
+
+    gie [inc, get, set]
+}
+
+ken trio = make_counter(10)
+ken inc = trio[0]
+ken get = trio[1]
+ken set = trio[2]
+
+blether "initial"
+blether get()
+
+blether "inc_default"
+blether inc()
+
+blether "after_inc"
+blether get()
+
+set(99)
+blether "after_set"
+blether get()
+
+blether "inc_by_2"
+blether inc(2)
+
+blether "get_override"
+blether get(123)
+
+blether "final"
+blether get()
+

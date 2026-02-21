@@ -1,0 +1,19 @@
+# radians_degrees_type_errors_parity.braw - radians/degrees should accept ints/floats and reject non-numbers (catchable)
+
+blether round(degrees(radians(180)))
+blether round(degrees(radians(45)))
+
+hae_a_bash {
+    blether radians(aye)
+} gin_it_gangs_wrang err {
+    blether "caught_radians_bool"
+}
+
+hae_a_bash {
+    blether degrees("x")
+} gin_it_gangs_wrang err {
+    blether "caught_degrees_type"
+}
+
+blether "done"
+

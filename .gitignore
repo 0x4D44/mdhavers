@@ -7,3 +7,13 @@ venv/
 env/
 *.tmp
 *.log
+*.profraw
+assets/soundfonts/*.sf2
+examples/outputs/
+examples/showcases/sip_rtp_echo
+examples/showcases/soond_showcase
+examples/showcases/tri_showcase/tri_showcase
+examples/showcases/tri_showcase/tri_showcase_controls
+examples/showcases/tri_showcase/tri_showcase_loop
+runtime/*.o
+runtime/*.a

@@ -1,0 +1,161 @@
+# json_parser_smoke.braw - small JSON parser (subset) to stress recursion + dict/list handling
+
+dae peek(s, pos) {
+    gin pos >= len(s) { gie "" }
+    gie s[pos]
+}
+
+dae is_ws(c) {
+    gie c == " " or c == "\n" or c == "\t" or c == "\r"
+}
+
+dae skip_ws(s, pos) {
+    whiles is_ws(peek(s, pos)) {
+        pos = pos + 1
+    }
+    gie pos
+}
+
+dae parse_string(s, pos) {
+    pos = skip_ws(s, pos)
+    gin peek(s, pos) != "\"" { hurl "expected string" }
+    pos = pos + 1
+
+    ken out = ""
+    whiles aye {
+        ken c = peek(s, pos)
+        gin c == "" { hurl "unterminated string" }
+        gin c == "\"" { brak }
+        out = out + c
+        pos = pos + 1
+    }
+
+    # consume closing quote
+    pos = pos + 1
+    gie [out, pos]
+}
+
+dae parse_keyword(s, pos, kw, value) {
+    ken end = pos + len(kw)
+    gin substring(s, pos, end) != kw { hurl f"expected {kw}" }
+    gie [value, end]
+}
+
+dae parse_number(s, pos) {
+    pos = skip_ws(s, pos)
+
+    ken sign = 1
+    gin peek(s, pos) == "-" {
+        sign = -1
+        pos = pos + 1
+    }
+
+    ken val = 0
+    ken saw_digit = nae
+    whiles aye {
+        ken c = peek(s, pos)
+        gin c == "" { brak }
+        gin nae is_digit(c) { brak }
+        saw_digit = aye
+        val = val * 10 + (ord(c) - ord("0"))
+        pos = pos + 1
+    }
+
+    gin nae saw_digit { hurl "expected number" }
+    gie [val * sign, pos]
+}
+
+dae parse_array(s, pos) {
+    pos = skip_ws(s, pos)
+    gin peek(s, pos) != "[" { hurl "expected [" }
+    pos = pos + 1
+
+    ken out = []
+    pos = skip_ws(s, pos)
+    gin peek(s, pos) == "]" { gie [out, pos + 1] }
+
+    whiles aye {
+        ken res = parse_value(s, pos)
+        shove(out, res[0])
+        pos = skip_ws(s, res[1])
+
+        ken c = peek(s, pos)
+        gin c == "," {
+            pos = pos + 1
+        } ither gin c == "]" {
+            pos = pos + 1
+            brak
+        } ither {
+            hurl "expected , or ]"
+        }
+        pos = skip_ws(s, pos)
+    }
+
+    gie [out, pos]
+}
+
+dae parse_object(s, pos) {
+    pos = skip_ws(s, pos)
+    gin peek(s, pos) != "{" { hurl "expected {" }
+    pos = pos + 1
+
+    ken out = {}
+    pos = skip_ws(s, pos)
+    gin peek(s, pos) == "}" { gie [out, pos + 1] }
+
+    whiles aye {
+        ken key_res = parse_string(s, pos)
+        ken key = key_res[0]
+        pos = skip_ws(s, key_res[1])
+
+        gin peek(s, pos) != ":" { hurl "expected :" }
+        pos = pos + 1
+
+        ken val_res = parse_value(s, pos)
+        out[key] = val_res[0]
+        pos = skip_ws(s, val_res[1])
+
+        ken c = peek(s, pos)
+        gin c == "," {
+            pos = pos + 1
+        } ither gin c == "}" {
+            pos = pos + 1
+            brak
+        } ither {
+            hurl "expected , or }"
+        }
+        pos = skip_ws(s, pos)
+    }
+
+    gie [out, pos]
+}
+
+dae parse_value(s, pos) {
+    pos = skip_ws(s, pos)
+    ken c = peek(s, pos)
+
+    gin c == "{" { gie parse_object(s, pos) }
+    gin c == "[" { gie parse_array(s, pos) }
+    gin c == "\"" { gie parse_string(s, pos) }
+
+    gin c == "t" { gie parse_keyword(s, pos, "true", aye) }
+    gin c == "f" { gie parse_keyword(s, pos, "false", nae) }
+    gin c == "n" { gie parse_keyword(s, pos, "null", naething) }
+
+    gie parse_number(s, pos)
+}
+
+dae parse_json(s) {
+    ken res = parse_value(s, 0)
+    ken pos = skip_ws(s, res[1])
+    gin peek(s, pos) != "" { hurl "trailing input" }
+    gie res[0]
+}
+
+ken doc = parse_json('{"a": 1, "b": [2, 3], "c": {"d": 4}, "t": true, "f": false, "n": null}')
+ken sum = doc["a"] + doc["b"][0] + doc["b"][1] + doc["c"]["d"]
+blether sum
+blether doc["t"]
+blether doc["f"]
+blether doc["n"]
+

@@ -1,0 +1,17 @@
+# init_defaults_use_callee_closure_not_call_site_scope.braw - constructor defaults evaluate in callee closure env
+
+ken g = 1
+
+kin A {
+    dae init(x = g) { masel.x = x }
+    dae get() { gie masel.x }
+}
+
+dae caller() {
+    ken g = 2
+    gie A().get()
+}
+
+blether "call"
+blether caller()
+

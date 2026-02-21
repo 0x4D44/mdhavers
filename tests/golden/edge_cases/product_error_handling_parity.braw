@@ -1,0 +1,7 @@
+# product_error_handling_parity.braw - product() should throw (catchably) on non-list inputs and non-number elements
+
+hae_a_bash { blether product("nope") } gin_it_gangs_wrang e { blether "product_type_err" }
+hae_a_bash { blether product([1, "x"]) } gin_it_gangs_wrang e { blether "product_elem_err" }
+
+blether "done"
+

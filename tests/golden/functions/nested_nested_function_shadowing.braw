@@ -1,0 +1,27 @@
+# nested_nested_function_shadowing.braw - nested functions should resolve to the nearest lexical scope
+
+dae outer() {
+    dae inner() { gie "outer_inner" }
+
+    dae mid() {
+        dae inner() { gie "mid_inner" }
+        blether "mid_call"
+        blether inner()
+
+        ken f = inner
+        blether "mid_value"
+        blether f()
+    }
+
+    blether "outer_call"
+    blether inner()
+
+    blether "mid_result"
+    mid()
+
+    blether "outer_after_mid"
+    blether inner()
+}
+
+outer()
+

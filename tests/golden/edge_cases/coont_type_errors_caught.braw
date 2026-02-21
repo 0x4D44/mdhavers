@@ -1,0 +1,16 @@
+# coont_type_errors_caught.braw - coont type errors are catchable (no segfaults)
+
+hae_a_bash {
+    blether coont("hello", 1)
+} gin_it_gangs_wrang err {
+    blether "caught_str_needle"
+}
+
+hae_a_bash {
+    blether coont(42, 1)
+} gin_it_gangs_wrang err {
+    blether "caught_container"
+}
+
+blether "done"
+
