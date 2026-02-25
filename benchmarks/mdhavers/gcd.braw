@@ -1,0 +1,85 @@
+# GCD (Greatest Common Divisor) Benchmark
+# Tests recursive and iterative Euclidean algorithm
+
+# Recursive GCD using Euclidean algorithm
+dae gcd(a, b) {
+    gin b == 0 { gie a }
+    gie gcd(b, a % b)
+}
+
+# Iterative GCD
+dae gcd_iter(a, b) {
+    whiles b != 0 {
+        ken temp = b
+        b = a % b
+        a = temp
+    }
+    gie a
+}
+
+# LCM (Least Common Multiple)
+dae lcm(a, b) {
+    gie (a * b) / gcd(a, b)
+}
+
+# Extended Euclidean algorithm (returns gcd only for simplicity)
+dae extended_gcd(a, b) {
+    gin b == 0 { gie a }
+    gie extended_gcd(b, a % b)
+}
+
+# Compute GCD of a list of numbers
+dae gcd_list(arr) {
+    gin len(arr) == 0 { gie 0 }
+    gin len(arr) == 1 { gie arr[0] }
+
+    ken result = arr[0]
+    ken i = 1
+    whiles i < len(arr) {
+        result = gcd(result, arr[i])
+        i = i + 1
+    }
+    gie result
+}
+
+# Run benchmarks
+blether "=== GCD Benchmark ==="
+
+# Test correctness
+blether "Testing correctness..."
+blether "gcd(48, 18) = " + tae_string(gcd(48, 18))
+blether "gcd(54, 24) = " + tae_string(gcd(54, 24))
+blether "gcd(17, 13) = " + tae_string(gcd(17, 13))
+blether "gcd(100, 35) = " + tae_string(gcd(100, 35))
+
+blether ""
+blether "Testing LCM..."
+blether "lcm(4, 6) = " + tae_string(lcm(4, 6))
+blether "lcm(21, 6) = " + tae_string(lcm(21, 6))
+
+# Stress test with many GCD computations
+blether ""
+blether "Computing 1000 GCDs..."
+ken i = 1
+ken sum = 0
+whiles i <= 1000 {
+    ken g = gcd_iter(i * 7, i * 5)
+    sum = sum + g
+    i = i + 1
+}
+blether "Sum of 1000 GCDs: " + tae_string(sum)
+
+# Test with large numbers
+blether ""
+blether "Testing with large numbers..."
+blether "gcd(123456789, 987654321) = " + tae_string(gcd(123456789, 987654321))
+blether "gcd(1000000007, 998244353) = " + tae_string(gcd(1000000007, 998244353))
+
+# GCD of list
+blether ""
+blether "GCD of [48, 36, 24, 12]..."
+ken numbers = [48, 36, 24, 12]
+blether "gcd_list = " + tae_string(gcd_list(numbers))
+
+blether ""
+blether "GCD benchmark complete!"

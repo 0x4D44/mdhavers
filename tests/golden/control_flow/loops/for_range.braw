@@ -1,0 +1,6 @@
+# SKIP_NATIVE
+# Note: For loops may not be fully supported in LLVM
+fer i in 0..5 {
+    blether i
+}
+blether "done"

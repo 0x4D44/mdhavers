@@ -1,0 +1,10 @@
+dae gcd(a, b) {
+    gin b == 0 {
+        gie a
+    }
+    gie gcd(b, a % b)
+}
+
+blether gcd(48, 18)
+blether gcd(100, 25)
+blether gcd(17, 13)

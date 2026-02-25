@@ -1,0 +1,489 @@
+# Colorful Terminal Tetris in mdhavers
+# Uses ANSI escape codes for colored blocks!
+
+# === ANSI Color Codes ===
+ken RESET = "\x1b[0m"
+ken BOLD = "\x1b[1m"
+
+# Background colors for pieces (classic tetris colors)
+ken COLOR_I = "\x1b[46m"    # Cyan
+ken COLOR_O = "\x1b[43m"    # Yellow
+ken COLOR_T = "\x1b[45m"    # Magenta/Purple
+ken COLOR_S = "\x1b[42m"    # Green
+ken COLOR_Z = "\x1b[41m"    # Red
+ken COLOR_J = "\x1b[44m"    # Blue
+ken COLOR_L = "\x1b[48;5;208m"  # Orange (256-color)
+
+# UI colors
+ken BORDER_COLOR = "\x1b[90m"   # Dark gray
+ken GHOST_COLOR = "\x1b[90m"    # Dark gray for ghost piece
+ken TEXT_COLOR = "\x1b[97m"     # Bright white
+ken SCORE_COLOR = "\x1b[93m"    # Bright yellow
+ken TITLE_COLOR = "\x1b[96m"    # Bright cyan
+
+# Cursor control
+ken CURSOR_HIDE = "\x1b[?25l"
+ken CURSOR_SHOW = "\x1b[?25h"
+ken CURSOR_HOME = "\x1b[H"
+ken CLEAR_LINE = "\x1b[K"       # Clear from cursor to end of line
+
+# === Constants ===
+ken BOARD_WIDTH = 10
+ken BOARD_HEIGHT = 20
+ken BLOCK = "  "  # Two spaces with background color = solid block
+
+# Tetromino shapes - each piece is a list of [row, col] offsets
+ken SHAPES = {
+    "I": [[0, 0], [0, 1], [0, 2], [0, 3]],
+    "O": [[0, 0], [0, 1], [1, 0], [1, 1]],
+    "T": [[0, 0], [0, 1], [0, 2], [1, 1]],
+    "S": [[0, 1], [0, 2], [1, 0], [1, 1]],
+    "Z": [[0, 0], [0, 1], [1, 1], [1, 2]],
+    "J": [[0, 0], [1, 0], [1, 1], [1, 2]],
+    "L": [[0, 2], [1, 0], [1, 1], [1, 2]]
+}
+
+# Color for each piece type
+ken PIECE_COLORS = {
+    "I": "\x1b[46m",
+    "O": "\x1b[43m",
+    "T": "\x1b[45m",
+    "S": "\x1b[42m",
+    "Z": "\x1b[41m",
+    "J": "\x1b[44m",
+    "L": "\x1b[48;5;208m"
+}
+
+ken SHAPE_NAMES = ["I", "O", "T", "S", "Z", "J", "L"]
+
+# === Game Class ===
+kin TetrisGame {
+    dae init() {
+        masel.board = masel.create_empty_board()
+        masel.board_colors = masel.create_empty_board()  # Store colors separately
+        masel.current_piece = naething
+        masel.current_shape = ""
+        masel.current_row = 0
+        masel.current_col = 0
+        masel.current_rotation = 0
+        masel.score = 0
+        masel.level = 1
+        masel.lines_cleared = 0
+        masel.game_over = nae
+        masel.spawn_piece()
+    }
+
+    dae create_empty_board() {
+        ken board = []
+        fer row in 0..BOARD_HEIGHT {
+            ken line = []
+            fer col in 0..BOARD_WIDTH {
+                shove(line, 0)
+            }
+            shove(board, line)
+        }
+        gie board
+    }
+
+    dae spawn_piece() {
+        ken idx = jammy(0, len(SHAPE_NAMES) - 1)
+        masel.current_shape = SHAPE_NAMES[idx]
+        masel.current_piece = SHAPES[masel.current_shape]
+        masel.current_rotation = 0
+        masel.current_row = 0
+        masel.current_col = (BOARD_WIDTH - 4) / 2
+
+        gin masel.check_collision(0, 0) {
+            masel.game_over = aye
+        }
+    }
+
+    dae get_rotated_piece() {
+        ken piece = masel.current_piece
+        ken rotated = []
+
+        fer cell in piece {
+            ken r = cell[0]
+            ken c = cell[1]
+
+            gin masel.current_rotation == 1 {
+                shove(rotated, [c, 3 - r])
+            } ither gin masel.current_rotation == 2 {
+                shove(rotated, [3 - r, 3 - c])
+            } ither gin masel.current_rotation == 3 {
+                shove(rotated, [3 - c, r])
+            } ither {
+                shove(rotated, [r, c])
+            }
+        }
+        gie rotated
+    }
+
+    dae check_collision(row_offset, col_offset) {
+        ken piece = masel.get_rotated_piece()
+        fer cell in piece {
+            ken new_row = masel.current_row + cell[0] + row_offset
+            ken new_col = masel.current_col + cell[1] + col_offset
+
+            gin new_row < 0 {
+                gie aye
+            }
+            gin new_row >= BOARD_HEIGHT {
+                gie aye
+            }
+            gin new_col < 0 {
+                gie aye
+            }
+            gin new_col >= BOARD_WIDTH {
+                gie aye
+            }
+            gin masel.board[new_row][new_col] != 0 {
+                gie aye
+            }
+        }
+        gie nae
+    }
+
+    dae move_left() {
+        gin nae masel.check_collision(0, -1) {
+            masel.current_col = masel.current_col - 1
+        }
+    }
+
+    dae move_right() {
+        gin nae masel.check_collision(0, 1) {
+            masel.current_col = masel.current_col + 1
+        }
+    }
+
+    dae move_down() {
+        gin nae masel.check_collision(1, 0) {
+            masel.current_row = masel.current_row + 1
+            gie aye
+        } ither {
+            masel.lock_piece()
+            masel.clear_lines()
+            masel.spawn_piece()
+            gie nae
+        }
+    }
+
+    dae hard_drop() {
+        ken dropped = aye
+        whiles dropped {
+            dropped = masel.move_down()
+            gin dropped {
+                masel.score = masel.score + 2
+            }
+        }
+    }
+
+    dae rotate() {
+        ken old_rotation = masel.current_rotation
+        masel.current_rotation = (masel.current_rotation + 1) % 4
+
+        gin masel.check_collision(0, 0) {
+            masel.current_rotation = old_rotation
+        }
+    }
+
+    dae lock_piece() {
+        ken piece = masel.get_rotated_piece()
+        ken color = PIECE_COLORS[masel.current_shape]
+
+        fer cell in piece {
+            ken row = masel.current_row + cell[0]
+            ken col = masel.current_col + cell[1]
+            gin row >= 0 an row < BOARD_HEIGHT an col >= 0 an col < BOARD_WIDTH {
+                masel.board[row][col] = 1
+                masel.board_colors[row][col] = color
+            }
+        }
+    }
+
+    dae clear_lines() {
+        ken num_cleared = 0
+
+        ken row = BOARD_HEIGHT - 1
+        whiles row >= 0 {
+            ken complete = aye
+            fer col in 0..BOARD_WIDTH {
+                gin masel.board[row][col] == 0 {
+                    complete = nae
+                }
+            }
+
+            gin complete {
+                num_cleared = num_cleared + 1
+                ken shift_row = row
+                whiles shift_row > 0 {
+                    fer col in 0..BOARD_WIDTH {
+                        masel.board[shift_row][col] = masel.board[shift_row - 1][col]
+                        masel.board_colors[shift_row][col] = masel.board_colors[shift_row - 1][col]
+                    }
+                    shift_row = shift_row - 1
+                }
+                fer col in 0..BOARD_WIDTH {
+                    masel.board[0][col] = 0
+                    masel.board_colors[0][col] = 0
+                }
+            } ither {
+                row = row - 1
+            }
+        }
+
+        gin num_cleared > 0 {
+            masel.lines_cleared = masel.lines_cleared + num_cleared
+            ken points = 0
+            gin num_cleared == 1 { points = 100 }
+            gin num_cleared == 2 { points = 300 }
+            gin num_cleared == 3 { points = 500 }
+            gin num_cleared == 4 { points = 800 }
+            masel.score = masel.score + (points * masel.level)
+            masel.level = (masel.lines_cleared / 10) + 1
+        }
+    }
+
+    dae get_ghost_row() {
+        ken ghost_row = masel.current_row
+        ken can_drop = aye
+        whiles can_drop {
+            gin masel.check_collision(ghost_row - masel.current_row + 1, 0) {
+                can_drop = nae
+            } ither {
+                ghost_row = ghost_row + 1
+            }
+        }
+        gie ghost_row
+    }
+}
+
+# === Rendering ===
+dae make_padding(n) {
+    ken pad = ""
+    gin n > 0 {
+        ken i = 0
+        whiles i < n {
+            pad = pad + " "
+            i = i + 1
+        }
+    }
+    gie pad
+}
+
+dae render(game) {
+    # Build entire frame as single string to reduce flicker
+    ken frame = CURSOR_HOME + CURSOR_HIDE
+
+    # Get terminal dimensions
+    ken term_h = term_height()
+    ken term_w = term_width()
+
+    # Board width in chars: 2 chars per cell (10 cells) + 2 border chars = 24
+    ken board_char_width = (BOARD_WIDTH * 2) + 4
+
+    # Calculate horizontal padding to center the board
+    ken left_pad = (term_w - board_char_width) / 2
+    gin left_pad < 0 {
+        left_pad = 0
+    }
+    ken padding = make_padding(left_pad)
+
+    # Calculate how many board rows to show (leave room for header + controls)
+    ken header_lines = 2
+    ken footer_lines = 3
+    ken available = term_h - header_lines - footer_lines
+    ken show_rows = min(BOARD_HEIGHT, available)
+
+    # Header
+    gin term_h < 28 {
+        frame = frame + padding + TITLE_COLOR + "TETRIS" + RESET + TEXT_COLOR + " S:" + SCORE_COLOR + tae_string(game.score) + TEXT_COLOR + " L:" + SCORE_COLOR + tae_string(game.level) + RESET + CLEAR_LINE + "\n"
+    } ither {
+        frame = frame + padding + TITLE_COLOR + BOLD + "═══ TETRIS ═══" + RESET + TEXT_COLOR + "  Score: " + SCORE_COLOR + BOLD + tae_string(game.score) + RESET + TEXT_COLOR + "  Lv: " + SCORE_COLOR + tae_string(game.level) + RESET + TEXT_COLOR + "  Lines: " + SCORE_COLOR + tae_string(game.lines_cleared) + RESET + CLEAR_LINE + "\n"
+        frame = frame + CLEAR_LINE + "\n"
+    }
+
+    # Create display board (copy of game board)
+    ken display = []
+    ken display_colors = []
+    fer row in 0..BOARD_HEIGHT {
+        ken line = []
+        ken color_line = []
+        fer col in 0..BOARD_WIDTH {
+            shove(line, game.board[row][col])
+            shove(color_line, game.board_colors[row][col])
+        }
+        shove(display, line)
+        shove(display_colors, color_line)
+    }
+
+    # Add ghost piece
+    ken ghost_row = game.get_ghost_row()
+    ken piece = game.get_rotated_piece()
+    fer cell in piece {
+        ken r = ghost_row + cell[0]
+        ken c = game.current_col + cell[1]
+        gin r >= 0 an r < BOARD_HEIGHT an c >= 0 an c < BOARD_WIDTH {
+            gin display[r][c] == 0 {
+                display[r][c] = 2
+                display_colors[r][c] = GHOST_COLOR
+            }
+        }
+    }
+
+    # Add current piece
+    ken current_color = PIECE_COLORS[game.current_shape]
+    fer cell in piece {
+        ken r = game.current_row + cell[0]
+        ken c = game.current_col + cell[1]
+        gin r >= 0 an r < BOARD_HEIGHT an c >= 0 an c < BOARD_WIDTH {
+            display[r][c] = 1
+            display_colors[r][c] = current_color
+        }
+    }
+
+    # Calculate which rows to show
+    ken start_row = 0
+    gin show_rows < BOARD_HEIGHT {
+        start_row = BOARD_HEIGHT - show_rows
+    }
+
+    # Top border
+    frame = frame + padding + BORDER_COLOR + "╔════════════════════╗" + RESET + CLEAR_LINE + "\n"
+
+    # Board rows
+    ken row = start_row
+    whiles row < BOARD_HEIGHT {
+        ken line = padding + BORDER_COLOR + "║" + RESET
+        fer col in 0..BOARD_WIDTH {
+            ken cell = display[row][col]
+            gin cell == 0 {
+                line = line + "  "
+            } ither gin cell == 2 {
+                line = line + GHOST_COLOR + "░░" + RESET
+            } ither {
+                ken color = display_colors[row][col]
+                line = line + color + BLOCK + RESET
+            }
+        }
+        frame = frame + line + BORDER_COLOR + "║" + RESET + CLEAR_LINE + "\n"
+        row = row + 1
+    }
+
+    # Bottom border
+    frame = frame + padding + BORDER_COLOR + "╚════════════════════╝" + RESET + CLEAR_LINE + "\n"
+
+    # Controls
+    gin term_h < 28 {
+        frame = frame + padding + TEXT_COLOR + "←→↑↓ Space P Q" + RESET + CLEAR_LINE
+    } ither {
+        frame = frame + padding + TEXT_COLOR + "←→↑↓=Move/Rotate  Space=Drop  P=Pause  Q=Quit" + RESET + CLEAR_LINE
+    }
+
+    # Output entire frame at once
+    blether(frame)
+}
+
+dae render_game_over(game) {
+    ken term_w = term_width()
+    ken box_width = 25
+    ken left_pad = (term_w - box_width) / 2
+    gin left_pad < 0 { left_pad = 0 }
+    ken padding = make_padding(left_pad)
+
+    ken frame = "\x1b[2J" + CURSOR_HOME + CURSOR_SHOW
+    frame = frame + "\n"
+    frame = frame + padding + "\x1b[91m" + BOLD + "╔═══════════════════════╗" + RESET + "\n"
+    frame = frame + padding + "\x1b[91m" + BOLD + "║     GAME OVER!        ║" + RESET + "\n"
+    frame = frame + padding + "\x1b[91m" + BOLD + "╚═══════════════════════╝" + RESET + "\n"
+    frame = frame + "\n"
+    frame = frame + padding + TEXT_COLOR + "Final Score: " + SCORE_COLOR + BOLD + tae_string(game.score) + RESET + "\n"
+    frame = frame + padding + TEXT_COLOR + "Level:       " + SCORE_COLOR + BOLD + tae_string(game.level) + RESET + "\n"
+    frame = frame + padding + TEXT_COLOR + "Lines:       " + SCORE_COLOR + BOLD + tae_string(game.lines_cleared) + RESET + "\n"
+    frame = frame + "\n"
+    frame = frame + padding + TEXT_COLOR + "Thanks fer playing!" + RESET
+    blether(frame)
+}
+
+dae render_pause(game) {
+    ken term_w = term_width()
+    ken box_width = 25
+    ken left_pad = (term_w - box_width) / 2
+    gin left_pad < 0 { left_pad = 0 }
+    ken padding = make_padding(left_pad)
+
+    ken frame = CURSOR_HOME + CURSOR_HIDE
+    frame = frame + CLEAR_LINE + "\n"
+    frame = frame + padding + TITLE_COLOR + BOLD + "╔═══════════════════════╗" + RESET + CLEAR_LINE + "\n"
+    frame = frame + padding + TITLE_COLOR + BOLD + "║       PAUSED          ║" + RESET + CLEAR_LINE + "\n"
+    frame = frame + padding + TITLE_COLOR + BOLD + "╚═══════════════════════╝" + RESET + CLEAR_LINE + "\n"
+    frame = frame + CLEAR_LINE + "\n"
+    frame = frame + padding + TEXT_COLOR + "Press " + SCORE_COLOR + "P" + TEXT_COLOR + " to resume" + RESET + CLEAR_LINE + "\n"
+    frame = frame + padding + TEXT_COLOR + "Press " + SCORE_COLOR + "Q" + TEXT_COLOR + " to quit" + RESET + CLEAR_LINE + "\n"
+    frame = frame + CLEAR_LINE + "\n"
+    frame = frame + padding + TEXT_COLOR + "Score: " + SCORE_COLOR + tae_string(game.score) + RESET + CLEAR_LINE + "\n"
+    frame = frame + padding + TEXT_COLOR + "Level: " + SCORE_COLOR + tae_string(game.level) + RESET + CLEAR_LINE + "\n"
+    frame = frame + padding + TEXT_COLOR + "Lines: " + SCORE_COLOR + tae_string(game.lines_cleared) + RESET + CLEAR_LINE
+    blether(frame)
+}
+
+# === Main Game Loop ===
+
+# Initial screen setup - clear screen once at start
+blether("\x1b[2J" + CURSOR_HOME + CURSOR_HIDE)
+
+ken game = TetrisGame()
+ken running = aye
+ken paused = nae
+ken last_drop = noo()
+ken drop_interval = 500
+
+whiles running {
+    gin paused {
+        render_pause(game)
+    } ither {
+        render(game)
+    }
+
+    gin game.game_over {
+        render_game_over(game)
+        running = nae
+    } ither {
+        ken key = get_key()
+
+        gin key == "q" or key == "Q" {
+            running = nae
+        } ither gin key == "p" or key == "P" {
+            paused = nae paused
+            gin nae paused {
+                last_drop = noo()
+            }
+        } ither gin nae paused {
+            gin key == "Left" {
+                game.move_left()
+            } ither gin key == "Right" {
+                game.move_right()
+            } ither gin key == "Down" {
+                game.move_down()
+                last_drop = noo()
+            } ither gin key == "Up" {
+                game.rotate()
+            } ither gin key == " " {
+                game.hard_drop()
+                last_drop = noo()
+            }
+
+            ken now = noo()
+            gin now - last_drop >= drop_interval {
+                game.move_down()
+                last_drop = now
+            }
+
+            drop_interval = max(100, 600 - (game.level * 50))
+        }
+    }
+}
+
+# Cleanup - show cursor and reset colors
+blether(CURSOR_SHOW + RESET)
+blether("Goodbye!")

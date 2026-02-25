@@ -1,0 +1,188 @@
+// mdhavers runtime - pure havers, but working havers!
+const __havers = {
+  len: (x) => {
+    if (typeof x === 'string' || Array.isArray(x)) return x.length;
+    if (x && typeof x === 'object') return Object.keys(x).length;
+    throw new Error('Och! Cannae get length o\' that!');
+  },
+  whit_kind: (x) => {
+    if (x === null || x === undefined) return 'naething';
+    if (Array.isArray(x)) return 'list';
+    if (typeof x === 'object') return 'dict';
+    return typeof x;
+  },
+  tae_string: (x) => String(x),
+  tae_int: (x) => {
+    const n = parseInt(x, 10);
+    if (isNaN(n)) throw new Error(`Cannae turn '${x}' intae an integer`);
+    return n;
+  },
+  tae_float: (x) => {
+    const n = parseFloat(x);
+    if (isNaN(n)) throw new Error(`Cannae turn '${x}' intae a float`);
+    return n;
+  },
+  shove: (arr, val) => { arr.push(val); },
+  yank: (arr) => {
+    if (arr.length === 0) throw new Error('Cannae yank fae an empty list!');
+    return arr.pop();
+  },
+  keys: (obj) => Object.keys(obj),
+  values: (obj) => Object.values(obj),
+  range: (start, end) => {
+    const result = [];
+    for (let i = start; i < end; i++) result.push(i);
+    return result;
+  },
+  abs: Math.abs,
+  min: Math.min,
+  max: Math.max,
+  floor: Math.floor,
+  ceil: Math.ceil,
+  round: Math.round,
+  sqrt: Math.sqrt,
+  split: (str, delim) => str.split(delim),
+  join: (arr, delim) => arr.join(delim),
+  contains: (container, item) => {
+    if (typeof container === 'string') return container.includes(item);
+    if (Array.isArray(container)) return container.includes(item);
+    if (typeof container === 'object') return item in container;
+    return false;
+  },
+  reverse: (x) => {
+    if (typeof x === 'string') return x.split('').reverse().join('');
+    if (Array.isArray(x)) return [...x].reverse();
+    throw new Error('reverse() expects a list or string');
+  },
+  sort: (arr) => [...arr].sort((a, b) => {
+    if (typeof a === 'number' && typeof b === 'number') return a - b;
+    return String(a).localeCompare(String(b));
+  }),
+  blether: console.log,
+  speir: (prompt) => {
+    const fs = require('fs');
+    process.stdout.write(String(prompt));
+    const buf = Buffer.alloc(1024);
+    const n = fs.readSync(0, buf);
+    return buf.toString('utf8', 0, n).trim();
+  },
+  heid: (x) => {
+    if (typeof x === 'string' || Array.isArray(x)) {
+      if (x.length === 0) throw new Error('Cannae get heid o\' an empty list!');
+      return x[0];
+    }
+    throw new Error('heid() expects a list or string');
+  },
+  tail: (x) => {
+    if (typeof x === 'string') return x.slice(1);
+    if (Array.isArray(x)) return x.slice(1);
+    throw new Error('tail() expects a list or string');
+  },
+  bum: (x) => {
+    if (typeof x === 'string' || Array.isArray(x)) {
+      if (x.length === 0) throw new Error('Cannae get bum o\' an empty list!');
+      return x[x.length - 1];
+    }
+    throw new Error('bum() expects a list or string');
+  },
+  scran: (x, start, end) => {
+    if (typeof x === 'string' || Array.isArray(x)) return x.slice(start, end);
+    throw new Error('scran() expects a list or string');
+  },
+  slap: (a, b) => {
+    if (typeof a === 'string' && typeof b === 'string') return a + b;
+    if (Array.isArray(a) && Array.isArray(b)) return [...a, ...b];
+    throw new Error('slap() expects two lists or two strings');
+  },
+  sumaw: (arr) => {
+    if (!Array.isArray(arr)) throw new Error('sumaw() expects a list');
+    return arr.reduce((a, b) => a + b, 0);
+  },
+  coont: (x, item) => {
+    if (typeof x === 'string') return x.split(item).length - 1;
+    if (Array.isArray(x)) return x.filter(e => e === item).length;
+    throw new Error('coont() expects a list or string');
+  },
+  wheesht: (str) => String(str).trim(),
+  upper: (str) => String(str).toUpperCase(),
+  lower: (str) => String(str).toLowerCase(),
+  shuffle: (arr) => {
+    if (!Array.isArray(arr)) throw new Error('shuffle() expects a list');
+    const result = [...arr];
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+  },
+  slice: (x, start, end, step) => {
+    const len = x.length;
+    const isStr = typeof x === 'string';
+    const arr = isStr ? x.split('') : x;
+    if (step === 0) throw new Error('Slice step cannae be zero, ya dafty!');
+    // Handle defaults based on step direction
+    const s = start !== null ? (start < 0 ? Math.max(len + start, 0) : Math.min(start, len)) : (step > 0 ? 0 : len - 1);
+    const e = end !== null ? (end < 0 ? Math.max(len + end, step > 0 ? 0 : -1) : Math.min(end, len)) : (step > 0 ? len : -len - 1);
+    const result = [];
+    if (step > 0) {
+      for (let i = s; i < e; i += step) result.push(arr[i]);
+    } else {
+      for (let i = s; i > e; i += step) result.push(arr[i]);
+    }
+    return isStr ? result.join('') : result;
+  },
+  // Timing functions
+  noo: () => Date.now(),
+  tick: () => {
+    if (typeof process !== 'undefined' && process.hrtime) {
+      const [s, ns] = process.hrtime();
+      return s * 1e9 + ns;
+    }
+    return Date.now() * 1e6; // Fallback for browser
+  },
+  bide: (ms) => {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {} // Busy wait (sync)
+  },
+  // Higher-order functions
+  gaun: (arr, fn) => arr.map(fn),
+  sieve: (arr, fn) => arr.filter(fn),
+  tumble: (arr, init, fn) => arr.reduce(fn, init),
+  aw: (arr, fn) => arr.every(fn),
+  ony: (arr, fn) => arr.some(fn),
+  hunt: (arr, fn) => arr.find(fn),
+};
+
+const { len, whit_kind, tae_string, tae_int, tae_float, shove, yank, keys, values, range, abs, min, max, floor, ceil, round, sqrt, split, join, contains, reverse, sort, blether, speir, heid, tail, bum, scran, slap, sumaw, coont, wheesht, upper, lower, shuffle, noo, tick, bide, gaun, sieve, tumble, aw, ony, hunt } = __havers;
+
+let a = "hello";
+let b = "hello";
+let c = "world";
+blether(("Testing string equality:"));
+if ((a === b)) {
+  blether(("a == b: PASS (both are 'hello')"));
+} else {
+  blether(("a == b: FAIL (should be equal)"));
+}
+if ((a === c)) {
+  blether(("a == c: FAIL (should not be equal)"));
+} else {
+  blether(("a == c: PASS (different strings)"));
+}
+if ((a !== c)) {
+  blether(("a != c: PASS (different strings)"));
+} else {
+  blether(("a != c: FAIL (should not be equal)"));
+}
+let key = "Left";
+if ((key === "Left")) {
+  blether(("key == 'Left': PASS"));
+} else {
+  blether(("key == 'Left': FAIL"));
+}
+if ((key === "Right")) {
+  blether(("key == 'Right': FAIL"));
+} else {
+  blether(("key == 'Right': PASS (key is 'Left')"));
+}
+blether(("Done!"));

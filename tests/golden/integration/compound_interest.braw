@@ -1,0 +1,13 @@
+dae compound_interest(principal, rate, years) {
+    ken amount = principal
+    ken i = 0
+    whiles i < years {
+        amount = amount + amount * rate / 100
+        i = i + 1
+    }
+    gie amount
+}
+
+blether compound_interest(1000, 10, 1)
+blether compound_interest(1000, 10, 2)
+blether compound_interest(1000, 5, 10)

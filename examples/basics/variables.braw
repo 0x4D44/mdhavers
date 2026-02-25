@@ -1,16 +1,36 @@
-# variables.braw - variables and basic types
+# variables.braw - Workin' wi' variables
+# Shows how tae use 'ken' tae declare variables
 
-ken name = "Hamish"
+# Numbers
 ken age = 42
 ken pi = 3.14159
-ken active = aye
-ken nothing = naething
+ken negative = -17
 
-ken nums = [1, 2, 3]
-ken info = {"name": name, "age": age, "active": active}
+blether "Age: " + tae_string(age)
+blether "Pi: " + tae_string(pi)
+blether "Negative: " + tae_string(negative)
 
-blether "Name: " + name
-blether f"Age next year: {age + 1}"
-blether f"Pi * 2 = {pi * 2}"
-blether f"Nums len: {len(nums)}"
-blether f"Info name: {info.name}"
+# Strings
+ken name = "Hamish McTavish"
+ken greeting = "Hullo, " + name + "!"
+blether greeting
+
+# Booleans
+ken is_scottish = aye
+ken is_english = nae
+
+blether "Is Scottish: " + tae_string(is_scottish)
+blether "Is English: " + tae_string(is_english)
+
+# Lists
+ken haggis_ingredients = ["sheep's pluck", "oatmeal", "onions", "suet", "spices"]
+blether "Haggis ingredients: " + tae_string(haggis_ingredients)
+blether "First ingredient: " + haggis_ingredients[0]
+
+# Dictionaries
+ken person = {
+    "name": "Rabbie Burns",
+    "job": "Poet",
+    "born": 1759
+}
+blether "Person: " + tae_string(person)

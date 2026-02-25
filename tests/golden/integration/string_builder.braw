@@ -1,0 +1,15 @@
+# SKIP_NATIVE
+# Note: String building loop has issues in native
+dae repeat_string(s, n) {
+    ken result = ""
+    ken i = 0
+    whiles i < n {
+        result = result + s
+        i = i + 1
+    }
+    gie result
+}
+
+blether repeat_string("a", 5)
+blether repeat_string("ab", 3)
+blether repeat_string("-", 10)

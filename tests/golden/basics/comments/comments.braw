@@ -1,0 +1,5 @@
+# This is a comment
+blether 1
+blether 2 # inline comment
+# blether 3 - this will not print
+blether 4

@@ -1,0 +1,332 @@
+# Sorting Algorithm Visualizer
+# "Watch the magic o' sortin' unfold!"
+
+# === ANSI Escape Codes ===
+ken RESET = "\x1b[0m"
+ken BOLD = "\x1b[1m"
+ken DIM = "\x1b[2m"
+
+# Colors for bars
+ken BAR_NORMAL = "\x1b[44m"      # Blue background
+ken BAR_COMPARE = "\x1b[43m"     # Yellow - being compared
+ken BAR_SWAP = "\x1b[41m"        # Red - being swapped
+ken BAR_SORTED = "\x1b[42m"      # Green - in final position
+ken BAR_PIVOT = "\x1b[45m"       # Magenta - pivot element
+
+# Text colors
+ken YELLOW_FG = "\x1b[93m"
+ken CYAN_FG = "\x1b[96m"
+ken GREEN_FG = "\x1b[92m"
+ken WHITE_FG = "\x1b[97m"
+ken RED_FG = "\x1b[91m"
+
+# Cursor control
+ken CURSOR_HIDE = "\x1b[?25l"
+ken CURSOR_SHOW = "\x1b[?25h"
+ken CURSOR_HOME = "\x1b[H"
+ken CLEAR_LINE = "\x1b[K"
+ken CLEAR_SCREEN = "\x1b[2J"
+
+# === Constants ===
+ken ARRAY_SIZE = 30
+ken MAX_HEIGHT = 15
+ken DELAY = 40  # milliseconds between frames
+
+# === Visualizer Class ===
+kin SortViz {
+    dae init() {
+        masel.arr = []
+        masel.comparisons = 0
+        masel.swaps = 0
+        masel.highlight_a = -1
+        masel.highlight_b = -1
+        masel.highlight_type = ""  # "compare", "swap", "pivot"
+        masel.sorted_count = 0
+        masel.algorithm_name = "Bubble Sort"
+        masel.is_sorting = nae
+        masel.init_array()
+    }
+
+    dae init_array() {
+        masel.arr = []
+        ken i = 0
+        whiles i < ARRAY_SIZE {
+            shove(masel.arr, jammy(1, MAX_HEIGHT))
+            i = i + 1
+        }
+        masel.comparisons = 0
+        masel.swaps = 0
+        masel.highlight_a = -1
+        masel.highlight_b = -1
+        masel.sorted_count = 0
+    }
+
+    dae shuffle() {
+        ken i = ARRAY_SIZE - 1
+        whiles i > 0 {
+            ken j = jammy(0, i)
+            ken temp = masel.arr[i]
+            masel.arr[i] = masel.arr[j]
+            masel.arr[j] = temp
+            i = i - 1
+        }
+        masel.comparisons = 0
+        masel.swaps = 0
+        masel.highlight_a = -1
+        masel.highlight_b = -1
+        masel.sorted_count = 0
+    }
+
+    dae swap(i, j) {
+        ken temp = masel.arr[i]
+        masel.arr[i] = masel.arr[j]
+        masel.arr[j] = temp
+        masel.swaps = masel.swaps + 1
+    }
+
+    dae delay_render() {
+        render(masel)
+        ken start = noo()
+        whiles noo() - start < DELAY {
+            # busy wait
+        }
+    }
+
+    # === Bubble Sort ===
+    dae bubble_sort() {
+        masel.is_sorting = aye
+        ken i = 0
+        whiles i < ARRAY_SIZE {
+            ken swapped = nae
+            ken limit = ARRAY_SIZE - 1 - i
+            ken j = 0
+            whiles j < limit {
+                masel.highlight_a = j
+                masel.highlight_b = j + 1
+                masel.highlight_type = "compare"
+                masel.comparisons = masel.comparisons + 1
+                masel.delay_render()
+
+                gin masel.arr[j] > masel.arr[j + 1] {
+                    masel.highlight_type = "swap"
+                    masel.delay_render()
+                    masel.swap(j, j + 1)
+                    swapped = aye
+                    masel.delay_render()
+                }
+                j = j + 1
+            }
+            masel.sorted_count = masel.sorted_count + 1
+            gin nae swapped {
+                masel.sorted_count = ARRAY_SIZE
+                masel.is_sorting = nae
+                gie naething
+            }
+            i = i + 1
+        }
+        masel.highlight_a = -1
+        masel.highlight_b = -1
+        masel.is_sorting = nae
+    }
+
+    # === Selection Sort ===
+    dae selection_sort() {
+        masel.is_sorting = aye
+        ken i = 0
+        whiles i < ARRAY_SIZE {
+            ken min_idx = i
+            ken start = i + 1
+            ken j = start
+            whiles j < ARRAY_SIZE {
+                masel.highlight_a = min_idx
+                masel.highlight_b = j
+                masel.highlight_type = "compare"
+                masel.comparisons = masel.comparisons + 1
+                masel.delay_render()
+
+                gin masel.arr[j] < masel.arr[min_idx] {
+                    min_idx = j
+                }
+                j = j + 1
+            }
+
+            gin min_idx != i {
+                masel.highlight_a = i
+                masel.highlight_b = min_idx
+                masel.highlight_type = "swap"
+                masel.delay_render()
+                masel.swap(i, min_idx)
+                masel.delay_render()
+            }
+
+            masel.sorted_count = i + 1
+            i = i + 1
+        }
+        masel.highlight_a = -1
+        masel.highlight_b = -1
+        masel.is_sorting = nae
+    }
+
+    # === Insertion Sort ===
+    dae insertion_sort() {
+        masel.is_sorting = aye
+        masel.sorted_count = 1
+
+        ken i = 1
+        whiles i < ARRAY_SIZE {
+            ken key = masel.arr[i]
+            ken j = i - 1
+
+            masel.highlight_a = i
+            masel.highlight_type = "pivot"
+            masel.delay_render()
+
+            whiles j >= 0 an masel.arr[j] > key {
+                masel.highlight_a = j
+                masel.highlight_b = j + 1
+                masel.highlight_type = "swap"
+                masel.comparisons = masel.comparisons + 1
+                masel.delay_render()
+
+                masel.arr[j + 1] = masel.arr[j]
+                masel.swaps = masel.swaps + 1
+                j = j - 1
+                masel.delay_render()
+            }
+
+            masel.arr[j + 1] = key
+            masel.sorted_count = i + 1
+            i = i + 1
+        }
+        masel.highlight_a = -1
+        masel.highlight_b = -1
+        masel.is_sorting = nae
+    }
+}
+
+# === Rendering ===
+dae make_padding(n) {
+    ken pad = ""
+    gin n > 0 {
+        ken i = 0
+        whiles i < n {
+            pad = pad + " "
+            i = i + 1
+        }
+    }
+    gie pad
+}
+
+dae render(viz) {
+    ken term_w = term_width()
+    ken board_width = ARRAY_SIZE + 4
+    ken left_pad = (term_w - board_width) / 2
+    gin left_pad < 0 { left_pad = 0 }
+    ken padding = make_padding(left_pad)
+
+    ken frame = CURSOR_HOME + CURSOR_HIDE
+
+    # Title
+    frame = frame + padding + CYAN_FG + BOLD + "SORTING VISUALIZER" + RESET
+    frame = frame + "  " + YELLOW_FG + viz.algorithm_name + RESET
+    frame = frame + CLEAR_LINE + "\n"
+
+    frame = frame + padding + "Comparisons: " + GREEN_FG + tae_string(viz.comparisons) + RESET
+    frame = frame + "  Swaps: " + RED_FG + tae_string(viz.swaps) + RESET
+    frame = frame + CLEAR_LINE + "\n\n"
+
+    # Draw bars from top to bottom
+    ken row = 0
+    whiles row < MAX_HEIGHT {
+        ken height_threshold = MAX_HEIGHT - row
+        ken line = padding
+
+        ken i = 0
+        whiles i < ARRAY_SIZE {
+            gin viz.arr[i] >= height_threshold {
+                # Choose color based on state
+                ken color = BAR_NORMAL
+
+                # Check if this is a highlighted index
+                gin i == viz.highlight_a or i == viz.highlight_b {
+                    gin viz.highlight_type == "compare" {
+                        color = BAR_COMPARE
+                    } ither gin viz.highlight_type == "swap" {
+                        color = BAR_SWAP
+                    } ither gin viz.highlight_type == "pivot" {
+                        color = BAR_PIVOT
+                    }
+                } ither gin i >= ARRAY_SIZE - viz.sorted_count {
+                    color = BAR_SORTED
+                }
+
+                line = line + color + " " + RESET
+            } ither {
+                line = line + " "
+            }
+            i = i + 1
+        }
+        frame = frame + line + CLEAR_LINE + "\n"
+        row = row + 1
+    }
+
+    # Base line
+    ken base = padding
+    ken i = 0
+    whiles i < ARRAY_SIZE {
+        base = base + "-"
+        i = i + 1
+    }
+    frame = frame + base + CLEAR_LINE + "\n\n"
+
+    # Controls
+    gin viz.is_sorting {
+        frame = frame + padding + DIM + "Sorting in progress..." + RESET + CLEAR_LINE + "\n"
+    } ither {
+        frame = frame + padding + DIM + "[1]=Bubble [2]=Selection [3]=Insertion [R]=Shuffle [Space]=Start [Q]=Quit" + RESET + CLEAR_LINE + "\n"
+    }
+
+    blether(frame)
+}
+
+# === Main ===
+blether(CLEAR_SCREEN + CURSOR_HOME + CURSOR_HIDE)
+
+ken viz = SortViz()
+
+ken quit = nae
+
+whiles nae quit {
+    render(viz)
+
+    gin nae viz.is_sorting {
+        ken key = get_key()
+
+        gin key == "q" or key == "Q" {
+            quit = aye
+        } ither gin key == "r" or key == "R" {
+            viz.shuffle()
+        } ither gin key == "1" {
+            viz.algorithm_name = "Bubble Sort"
+            viz.shuffle()
+        } ither gin key == "2" {
+            viz.algorithm_name = "Selection Sort"
+            viz.shuffle()
+        } ither gin key == "3" {
+            viz.algorithm_name = "Insertion Sort"
+            viz.shuffle()
+        } ither gin key == " " {
+            gin viz.algorithm_name == "Bubble Sort" {
+                viz.bubble_sort()
+            } ither gin viz.algorithm_name == "Selection Sort" {
+                viz.selection_sort()
+            } ither gin viz.algorithm_name == "Insertion Sort" {
+                viz.insertion_sort()
+            }
+            render(viz)
+        }
+    }
+}
+
+blether(CURSOR_SHOW + RESET + CLEAR_SCREEN + CURSOR_HOME)
+blether("Thanks fer watchin' the sortin'! Cheerio!")

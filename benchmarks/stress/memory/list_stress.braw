@@ -1,0 +1,112 @@
+# List Operations Stress Test
+# Tests list manipulation at scale
+
+blether "=== List Stress Test ==="
+
+# List building stress
+blether "List building:"
+ken start1 = tick()
+ken list1 = []
+ken i = 0
+whiles i < 10000 {
+    shove(list1, i)
+    i = i + 1
+}
+ken t1 = tick() - start1
+blether "  Build 10K element list: " + tae_string(t1 / 1000) + " us"
+
+# List access stress
+blether ""
+blether "List access:"
+ken start2 = tick()
+ken sum = 0
+ken j = 0
+whiles j < 10000 {
+    sum = sum + list1[j]
+    j = j + 1
+}
+ken t2 = tick() - start2
+blether "  10K sequential accesses: " + tae_string(t2 / 1000) + " us, sum=" + tae_string(sum)
+
+# Random access pattern
+ken start3 = tick()
+ken sum2 = 0
+ken k = 0
+whiles k < 1000 {
+    ken idx = (k * 7919) % 10000
+    sum2 = sum2 + list1[idx]
+    k = k + 1
+}
+ken t3 = tick() - start3
+blether "  1K pseudo-random accesses: " + tae_string(t3 / 1000) + " us"
+
+# List operations
+blether ""
+blether "List operations:"
+
+ken test_list = [5, 2, 8, 1, 9, 3, 7, 4, 6, 0]
+
+ken start4 = tick()
+ken m = 0
+whiles m < 100 {
+    ken sorted = sort(test_list)
+    m = m + 1
+}
+ken t4 = tick() - start4
+blether "  100x sort(10 elements): " + tae_string(t4 / 1000) + " us"
+
+ken start5 = tick()
+ken n = 0
+whiles n < 100 {
+    ken rev = reverse(test_list)
+    n = n + 1
+}
+ken t5 = tick() - start5
+blether "  100x reverse(10 elements): " + tae_string(t5 / 1000) + " us"
+
+# Slice operations
+blether ""
+blether "Slice operations:"
+ken start6 = tick()
+ken p = 0
+whiles p < 1000 {
+    ken slice = scran(list1, 100, 200)
+    p = p + 1
+}
+ken t6 = tick() - start6
+blether "  1000x scran(100 elements): " + tae_string(t6 / 1000) + " us"
+
+# HOF stress
+blether ""
+blether "Higher-order function stress:"
+ken small_list = range(0, 100)
+
+ken start7 = tick()
+ken q = 0
+whiles q < 100 {
+    ken doubled = gaun(small_list, |x| x * 2)
+    q = q + 1
+}
+ken t7 = tick() - start7
+blether "  100x gaun(100 elements): " + tae_string(t7 / 1000) + " us"
+
+ken start8 = tick()
+ken r = 0
+whiles r < 100 {
+    ken evens = sieve(small_list, |x| x % 2 == 0)
+    r = r + 1
+}
+ken t8 = tick() - start8
+blether "  100x sieve(100 elements): " + tae_string(t8 / 1000) + " us"
+
+ken start9 = tick()
+ken s = 0
+whiles s < 100 {
+    ken total = tumble(small_list, 0, |acc, x| acc + x)
+    s = s + 1
+}
+ken t9 = tick() - start9
+blether "  100x tumble(100 elements): " + tae_string(t9 / 1000) + " us"
+
+blether ""
+blether "=== List stress complete ==="

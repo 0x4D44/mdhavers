@@ -1,0 +1,6 @@
+# SKIP_NATIVE
+# Note: This test has issues in native compilation
+ken nums = [10, 20, 30, 40, 50]
+blether nums[0]
+blether nums[2]
+blether nums[4]

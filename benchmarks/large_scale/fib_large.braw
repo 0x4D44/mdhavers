@@ -1,0 +1,65 @@
+# Large-Scale Fibonacci Benchmark
+
+blether "=== Large-Scale Fibonacci Benchmark ==="
+
+# Iterative fibonacci - handles very large n
+dae fib_iter(n) {
+    gin n < 2 {
+        gie n
+    }
+    ken a = 0
+    ken b = 1
+    ken i = 2
+    whiles i <= n {
+        ken temp = a + b
+        a = b
+        b = temp
+        i = i + 1
+    }
+    gie b
+}
+
+# Test correctness first
+blether "Correctness check:"
+blether "  fib(10) = " + tae_string(fib_iter(10))
+blether "  fib(20) = " + tae_string(fib_iter(20))
+blether "  fib(50) = " + tae_string(fib_iter(50))
+
+# Large scale tests
+blether ""
+blether "Large-scale iterative tests:"
+
+ken start = tick()
+ken result = fib_iter(1000)
+ken elapsed = tick() - start
+blether "  fib_iter(1000): " + tae_string(elapsed) + " us"
+
+start = tick()
+result = fib_iter(10000)
+elapsed = tick() - start
+blether "  fib_iter(10000): " + tae_string(elapsed) + " us"
+
+start = tick()
+result = fib_iter(50000)
+elapsed = tick() - start
+blether "  fib_iter(50000): " + tae_string(elapsed) + " us"
+
+start = tick()
+result = fib_iter(100000)
+elapsed = tick() - start
+blether "  fib_iter(100000): " + tae_string(elapsed) + " us"
+
+# Stress test - many iterations
+blether ""
+blether "Stress test (10000 calls to fib_iter(100)):"
+start = tick()
+ken i = 0
+whiles i < 10000 {
+    fib_iter(100)
+    i = i + 1
+}
+elapsed = tick() - start
+blether "  10000x fib_iter(100): " + tae_string(elapsed / 1000) + " ms"
+
+blether ""
+blether "=== Fibonacci large-scale complete ==="

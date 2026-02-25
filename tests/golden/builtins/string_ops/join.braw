@@ -1,0 +1,5 @@
+# SKIP_NATIVE
+# Note: join may not be supported in LLVM
+ken parts = ["a", "b", "c"]
+ken result = join(parts, "-")
+blether result

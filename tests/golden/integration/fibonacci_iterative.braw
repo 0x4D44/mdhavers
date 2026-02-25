@@ -1,0 +1,20 @@
+dae fib_iter(n) {
+    gin n <= 1 {
+        gie n
+    }
+    ken a = 0
+    ken b = 1
+    ken i = 2
+    whiles i <= n {
+        ken temp = a + b
+        a = b
+        b = temp
+        i = i + 1
+    }
+    gie b
+}
+
+blether fib_iter(0)
+blether fib_iter(1)
+blether fib_iter(10)
+blether fib_iter(20)

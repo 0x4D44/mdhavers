@@ -1,0 +1,25 @@
+# Stack trace demonstration
+# Shows how to get the current call stack
+
+dae level3() {
+    blether "In level3, getting stack trace:"
+    blether stacktrace()
+    blether ""
+}
+
+dae level2() {
+    blether "In level2, calling level3"
+    level3()
+}
+
+dae level1() {
+    blether "In level1, calling level2"
+    level2()
+}
+
+blether "=== Stack Trace Demo ==="
+blether ""
+blether "Calling nested functions to show stack trace:"
+blether ""
+level1()
+blether "=== Demo complete ==="

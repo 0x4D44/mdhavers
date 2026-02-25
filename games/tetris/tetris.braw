@@ -1,0 +1,396 @@
+# Tetris in mdhavers - A Scots Programming Language
+# Pure havers, but working havers!
+#
+# This is the core game logic for Tetris.
+# The game compiles to JavaScript via mdhavers compiler
+# and runs in the browser with canvas rendering.
+
+# === Constants ===
+ken BOARD_WIDTH = 10
+ken BOARD_HEIGHT = 20
+ken CELL_SIZE = 30
+
+# Tetromino shapes - each piece is a list of [row, col] offsets
+ken SHAPES = {
+    "I": [[0, 0], [0, 1], [0, 2], [0, 3]],
+    "O": [[0, 0], [0, 1], [1, 0], [1, 1]],
+    "T": [[0, 0], [0, 1], [0, 2], [1, 1]],
+    "S": [[0, 1], [0, 2], [1, 0], [1, 1]],
+    "Z": [[0, 0], [0, 1], [1, 1], [1, 2]],
+    "J": [[0, 0], [1, 0], [1, 1], [1, 2]],
+    "L": [[0, 2], [1, 0], [1, 1], [1, 2]]
+}
+
+# Colours fer each piece (Scottish theme!)
+ken COLOURS = {
+    "I": "#00CED1",  # Turquoise like the sea
+    "O": "#FFD700",  # Gold like whisky
+    "T": "#9370DB",  # Purple like heather
+    "S": "#32CD32",  # Green like the Highlands
+    "Z": "#FF4500",  # Orange-red like a sunset
+    "J": "#4169E1",  # Royal blue like the Saltire
+    "L": "#FF8C00"   # Orange like Irn-Bru
+}
+
+ken SHAPE_NAMES = ["I", "O", "T", "S", "Z", "J", "L"]
+
+# === Game State ===
+kin TetrisGame {
+    dae init() {
+        # The board - 0 means empty, otherwise holds colour string
+        masel.board = masel.create_empty_board()
+
+        # Current piece state
+        masel.current_piece = naething
+        masel.current_shape = ""
+        masel.current_row = 0
+        masel.current_col = 0
+        masel.current_rotation = 0
+
+        # Game state
+        masel.score = 0
+        masel.level = 1
+        masel.lines_cleared = 0
+        masel.game_over = nae
+        masel.paused = nae
+
+        # Spawn first piece
+        masel.spawn_piece()
+    }
+
+    dae create_empty_board() {
+        ken board = []
+        fer row in 0..BOARD_HEIGHT {
+            ken line = []
+            fer col in 0..BOARD_WIDTH {
+                shove(line, 0)
+            }
+            shove(board, line)
+        }
+        gie board
+    }
+
+    dae spawn_piece() {
+        # Pick a random shape
+        ken idx = jammy(0, len(SHAPE_NAMES) - 1)
+        masel.current_shape = SHAPE_NAMES[idx]
+        masel.current_piece = SHAPES[masel.current_shape]
+        masel.current_rotation = 0
+
+        # Start at top centre
+        masel.current_row = 0
+        masel.current_col = (BOARD_WIDTH - 4) / 2
+
+        # Check if game over (collision at spawn)
+        gin masel.check_collision(0, 0) {
+            masel.game_over = aye
+        }
+    }
+
+    dae get_rotated_piece() {
+        # Rotate piece by current_rotation (0, 1, 2, 3 = 0, 90, 180, 270 degrees)
+        ken piece = masel.current_piece
+        ken rotated = []
+
+        fer cell in piece {
+            ken r = cell[0]
+            ken c = cell[1]
+
+            # Apply rotation transforms
+            gin masel.current_rotation == 1 {
+                # 90 degrees clockwise: (r, c) -> (c, -r)
+                shove(rotated, [c, 3 - r])
+            } ither gin masel.current_rotation == 2 {
+                # 180 degrees: (r, c) -> (-r, -c)
+                shove(rotated, [3 - r, 3 - c])
+            } ither gin masel.current_rotation == 3 {
+                # 270 degrees: (r, c) -> (-c, r)
+                shove(rotated, [3 - c, r])
+            } ither {
+                # No rotation
+                shove(rotated, [r, c])
+            }
+        }
+
+        gie rotated
+    }
+
+    dae check_collision(row_offset, col_offset) {
+        ken piece = masel.get_rotated_piece()
+
+        fer cell in piece {
+            ken new_row = masel.current_row + cell[0] + row_offset
+            ken new_col = masel.current_col + cell[1] + col_offset
+
+            # Check boundaries
+            gin new_row < 0 or new_row >= BOARD_HEIGHT {
+                gie aye
+            }
+            gin new_col < 0 or new_col >= BOARD_WIDTH {
+                gie aye
+            }
+
+            # Check collision with existing pieces
+            gin masel.board[new_row][new_col] != 0 {
+                gie aye
+            }
+        }
+
+        gie nae
+    }
+
+    dae move_left() {
+        gin nae masel.game_over an nae masel.paused {
+            gin nae masel.check_collision(0, -1) {
+                masel.current_col = masel.current_col - 1
+            }
+        }
+    }
+
+    dae move_right() {
+        gin nae masel.game_over an nae masel.paused {
+            gin nae masel.check_collision(0, 1) {
+                masel.current_col = masel.current_col + 1
+            }
+        }
+    }
+
+    dae move_down() {
+        gin nae masel.game_over an nae masel.paused {
+            gin nae masel.check_collision(1, 0) {
+                masel.current_row = masel.current_row + 1
+                gie aye  # Moved successfully
+            } ither {
+                # Lock piece and spawn new one
+                masel.lock_piece()
+                masel.clear_lines()
+                masel.spawn_piece()
+                gie nae  # Couldn't move, piece locked
+            }
+        }
+        gie nae
+    }
+
+    dae hard_drop() {
+        gin nae masel.game_over an nae masel.paused {
+            ken dropped = 0
+            whiles nae masel.check_collision(1, 0) {
+                masel.current_row = masel.current_row + 1
+                ken dropped = dropped + 1
+            }
+            # Bonus points for hard drop
+            masel.score = masel.score + (dropped * 2)
+            masel.lock_piece()
+            masel.clear_lines()
+            masel.spawn_piece()
+        }
+    }
+
+    dae rotate() {
+        gin nae masel.game_over an nae masel.paused {
+            ken old_rotation = masel.current_rotation
+            masel.current_rotation = (masel.current_rotation + 1) % 4
+
+            # Check if rotation is valid, if not try wall kicks
+            gin masel.check_collision(0, 0) {
+                # Try wall kicks
+                ken kicks = [0, 1, -1, 2, -2]
+                ken kicked = nae
+
+                fer kick in kicks {
+                    gin nae masel.check_collision(0, kick) {
+                        masel.current_col = masel.current_col + kick
+                        ken kicked = aye
+                        brak
+                    }
+                }
+
+                # If no kick works, revert rotation
+                gin nae kicked {
+                    masel.current_rotation = old_rotation
+                }
+            }
+        }
+    }
+
+    dae lock_piece() {
+        ken piece = masel.get_rotated_piece()
+        ken colour = COLOURS[masel.current_shape]
+
+        fer cell in piece {
+            ken row = masel.current_row + cell[0]
+            ken col = masel.current_col + cell[1]
+
+            gin row >= 0 an row < BOARD_HEIGHT an col >= 0 an col < BOARD_WIDTH {
+                masel.board[row][col] = colour
+            }
+        }
+    }
+
+    dae clear_lines() {
+        ken lines_to_clear = []
+
+        # Find complete lines
+        fer row in 0..BOARD_HEIGHT {
+            ken complete = aye
+            fer col in 0..BOARD_WIDTH {
+                gin masel.board[row][col] == 0 {
+                    ken complete = nae
+                    brak
+                }
+            }
+            gin complete {
+                shove(lines_to_clear, row)
+            }
+        }
+
+        # Clear lines and shift down
+        fer line in lines_to_clear {
+            # Remove the line
+            fer row in line..0 {
+                gin row > 0 {
+                    fer col in 0..BOARD_WIDTH {
+                        masel.board[row][col] = masel.board[row - 1][col]
+                    }
+                } ither {
+                    fer col in 0..BOARD_WIDTH {
+                        masel.board[0][col] = 0
+                    }
+                }
+            }
+        }
+
+        # Update score based on lines cleared
+        ken num_lines = len(lines_to_clear)
+        gin num_lines > 0 {
+            masel.lines_cleared = masel.lines_cleared + num_lines
+
+            # Scoring: 1 line = 100, 2 = 300, 3 = 500, 4 (Tetris!) = 800
+            ken points = {
+                1: 100,
+                2: 300,
+                3: 500,
+                4: 800
+            }
+            masel.score = masel.score + (points[num_lines] * masel.level)
+
+            # Level up every 10 lines
+            masel.level = (masel.lines_cleared / 10) + 1
+        }
+    }
+
+    dae toggle_pause() {
+        gin nae masel.game_over {
+            masel.paused = nae masel.paused
+        }
+    }
+
+    dae reset() {
+        masel.board = masel.create_empty_board()
+        masel.score = 0
+        masel.level = 1
+        masel.lines_cleared = 0
+        masel.game_over = nae
+        masel.paused = nae
+        masel.spawn_piece()
+    }
+
+    dae get_ghost_row() {
+        # Calculate where piece would land (ghost piece)
+        ken ghost_row = masel.current_row
+        whiles nae masel.check_collision_at(ghost_row + 1, masel.current_col) {
+            ken ghost_row = ghost_row + 1
+        }
+        gie ghost_row
+    }
+
+    dae check_collision_at(row, col) {
+        ken piece = masel.get_rotated_piece()
+        ken old_row = masel.current_row
+        ken old_col = masel.current_col
+        masel.current_row = row
+        masel.current_col = col
+        ken result = masel.check_collision(0, 0)
+        masel.current_row = old_row
+        masel.current_col = old_col
+        gie result
+    }
+
+    dae get_drop_speed() {
+        # Speed increases with level (milliseconds between drops)
+        ken base_speed = 1000
+        ken speed = base_speed - ((masel.level - 1) * 100)
+        gin speed < 100 {
+            gie 100
+        }
+        gie speed
+    }
+}
+
+# === Export game state for JavaScript ===
+ken game = TetrisGame()
+
+# Functions to be called from JavaScript
+dae new_game() {
+    game.reset()
+}
+
+dae tick() {
+    # Called on each game tick
+    game.move_down()
+}
+
+dae move_left() {
+    game.move_left()
+}
+
+dae move_right() {
+    game.move_right()
+}
+
+dae move_down() {
+    game.move_down()
+}
+
+dae hard_drop() {
+    game.hard_drop()
+}
+
+dae rotate() {
+    game.rotate()
+}
+
+dae toggle_pause() {
+    game.toggle_pause()
+}
+
+dae get_state() {
+    # Return game state as a dictionary for JavaScript to render
+    ken state = {
+        "board": game.board,
+        "current_piece": game.get_rotated_piece(),
+        "current_shape": game.current_shape,
+        "current_row": game.current_row,
+        "current_col": game.current_col,
+        "ghost_row": game.get_ghost_row(),
+        "score": game.score,
+        "level": game.level,
+        "lines": game.lines_cleared,
+        "game_over": game.game_over,
+        "paused": game.paused,
+        "colour": COLOURS[game.current_shape]
+    }
+    gie state
+}
+
+dae get_colours() {
+    gie COLOURS
+}
+
+dae get_dimensions() {
+    gie {
+        "width": BOARD_WIDTH,
+        "height": BOARD_HEIGHT,
+        "cell_size": CELL_SIZE
+    }
+}

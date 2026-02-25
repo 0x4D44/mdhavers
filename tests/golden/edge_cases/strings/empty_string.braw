@@ -1,0 +1,5 @@
+blether ""
+ken s = ""
+blether len(s)
+blether s + "hello"
+blether "hello" + s

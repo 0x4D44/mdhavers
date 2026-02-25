@@ -1,0 +1,111 @@
+# Large-Scale Prime Generation Benchmark
+
+blether "=== Large-Scale Prime Sieve Benchmark ==="
+
+# Sieve of Eratosthenes
+dae sieve(limit) {
+    ken is_prime = []
+    ken i = 0
+    whiles i <= limit {
+        shove(is_prime, aye)
+        i = i + 1
+    }
+
+    is_prime[0] = nae
+    is_prime[1] = nae
+
+    ken p = 2
+    whiles p * p <= limit {
+        gin is_prime[p] == aye {
+            ken multiple = p * p
+            whiles multiple <= limit {
+                is_prime[multiple] = nae
+                multiple = multiple + p
+            }
+        }
+        p = p + 1
+    }
+
+    ken primes = []
+    ken j = 0
+    whiles j <= limit {
+        gin is_prime[j] == aye {
+            shove(primes, j)
+        }
+        j = j + 1
+    }
+    gie primes
+}
+
+# Just count primes (less memory for results)
+dae count_primes(limit) {
+    ken is_prime = []
+    ken i = 0
+    whiles i <= limit {
+        shove(is_prime, aye)
+        i = i + 1
+    }
+
+    is_prime[0] = nae
+    is_prime[1] = nae
+
+    ken p = 2
+    whiles p * p <= limit {
+        gin is_prime[p] == aye {
+            ken multiple = p * p
+            whiles multiple <= limit {
+                is_prime[multiple] = nae
+                multiple = multiple + p
+            }
+        }
+        p = p + 1
+    }
+
+    ken count = 0
+    ken j = 0
+    whiles j <= limit {
+        gin is_prime[j] == aye {
+            count = count + 1
+        }
+        j = j + 1
+    }
+    gie count
+}
+
+# Correctness check
+blether "Correctness check:"
+ken small = sieve(100)
+blether "  Primes to 100: " + tae_string(len(small)) + " primes"
+blether "  First 10: " + tae_string(scran(small, 0, 10))
+
+# Scaling tests
+blether ""
+blether "Scaling tests:"
+
+ken start = tick()
+ken c = count_primes(10000)
+ken elapsed = tick() - start
+blether "  sieve(10K): " + tae_string(c) + " primes in " + tae_string(elapsed) + " us"
+
+start = tick()
+c = count_primes(50000)
+elapsed = tick() - start
+blether "  sieve(50K): " + tae_string(c) + " primes in " + tae_string(elapsed) + " us"
+
+start = tick()
+c = count_primes(100000)
+elapsed = tick() - start
+blether "  sieve(100K): " + tae_string(c) + " primes in " + tae_string(elapsed / 1000) + " ms"
+
+start = tick()
+c = count_primes(500000)
+elapsed = tick() - start
+blether "  sieve(500K): " + tae_string(c) + " primes in " + tae_string(elapsed / 1000) + " ms"
+
+start = tick()
+c = count_primes(1000000)
+elapsed = tick() - start
+blether "  sieve(1M): " + tae_string(c) + " primes in " + tae_string(elapsed / 1000) + " ms"
+
+blether ""
+blether "=== Prime sieve large-scale complete ==="

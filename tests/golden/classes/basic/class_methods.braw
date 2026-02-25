@@ -1,0 +1,23 @@
+# SKIP_NATIVE
+# Note: Classes may not be fully supported in LLVM
+kin Counter {
+    dae init() {
+        masel.count = 0
+    }
+
+    dae increment() {
+        masel.count = masel.count + 1
+    }
+
+    dae get() {
+        gie masel.count
+    }
+}
+
+ken c = Counter()
+blether c.get()
+c.increment()
+blether c.get()
+c.increment()
+c.increment()
+blether c.get()

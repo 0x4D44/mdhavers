@@ -1,0 +1,11 @@
+dae double(x) {
+    gie x * 2
+}
+blether double(5)
+blether double(21)
+
+dae make_greeting(name) {
+    gie "Hello, " + name
+}
+ken msg = make_greeting("World")
+blether msg

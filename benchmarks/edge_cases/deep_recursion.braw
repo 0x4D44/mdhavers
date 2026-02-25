@@ -1,0 +1,34 @@
+# Deep Recursion Test
+# Tests stack depth and recursion limits
+
+dae countdown(n) {
+    gin n <= 0 { gie 0 }
+    gie countdown(n - 1)
+}
+
+dae sum_recursive(n) {
+    gin n <= 0 { gie 0 }
+    gie n + sum_recursive(n - 1)
+}
+
+# Test various depths
+blether "=== Deep Recursion Test ==="
+
+blether "Testing countdown(100)..."
+ken result1 = countdown(100)
+blether "countdown(100) = " + tae_string(result1)
+
+blether "Testing countdown(500)..."
+ken result2 = countdown(500)
+blether "countdown(500) = " + tae_string(result2)
+
+blether "Testing sum_recursive(100)..."
+ken result3 = sum_recursive(100)
+blether "sum_recursive(100) = " + tae_string(result3)
+
+blether "Testing sum_recursive(500)..."
+ken result4 = sum_recursive(500)
+blether "sum_recursive(500) = " + tae_string(result4)
+
+blether ""
+blether "Deep recursion test complete!"

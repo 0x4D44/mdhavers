@@ -1,0 +1,8 @@
+ken outer = "outer"
+blether outer
+gin aye {
+    ken inner = "inner"
+    blether inner
+    blether outer
+}
+blether outer

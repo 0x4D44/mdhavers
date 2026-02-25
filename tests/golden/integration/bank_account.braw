@@ -1,0 +1,37 @@
+# SKIP_NATIVE
+# Note: Complex integration tests may not work in LLVM
+kin BankAccount {
+    dae init(owner, balance) {
+        masel.owner = owner
+        masel.balance = balance
+    }
+
+    dae deposit(amount) {
+        gin amount > 0 {
+            masel.balance = masel.balance + amount
+            gie aye
+        }
+        gie nae
+    }
+
+    dae withdraw(amount) {
+        gin amount > 0 an amount <= masel.balance {
+            masel.balance = masel.balance - amount
+            gie aye
+        }
+        gie nae
+    }
+
+    dae get_balance() {
+        gie masel.balance
+    }
+}
+
+ken account = BankAccount("Alice", 1000)
+blether account.get_balance()
+account.deposit(500)
+blether account.get_balance()
+account.withdraw(200)
+blether account.get_balance()
+blether account.withdraw(2000)
+blether account.get_balance()

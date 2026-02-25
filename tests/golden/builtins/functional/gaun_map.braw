@@ -1,0 +1,5 @@
+# SKIP_NATIVE
+# Note: gaun/map may not be fully supported in LLVM
+ken nums = [1, 2, 3, 4, 5]
+ken doubled = gaun(nums, |x| x * 2)
+blether doubled

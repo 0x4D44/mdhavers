@@ -1,0 +1,22 @@
+# SKIP_NATIVE
+# Note: Complex algorithms may not be fully supported in LLVM
+dae bubblesort(arr) {
+    ken n = len(arr)
+    ken i = 0
+    whiles i < n {
+        ken j = 0
+        whiles j < n - i - 1 {
+            gin arr[j] > arr[j + 1] {
+                ken temp = arr[j]
+                arr[j] = arr[j + 1]
+                arr[j + 1] = temp
+            }
+            j = j + 1
+        }
+        i = i + 1
+    }
+    gie arr
+}
+
+ken nums = [64, 34, 25, 12, 22, 11, 90]
+blether bubblesort(nums)

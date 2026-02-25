@@ -1,0 +1,106 @@
+# Mergesort Benchmark
+# Tests divide-and-conquer with list operations
+
+# Merge two sorted arrays
+dae merge(left, right) {
+    ken result = []
+    ken i = 0
+    ken j = 0
+
+    whiles i < len(left) an j < len(right) {
+        gin left[i] <= right[j] {
+            shove(result, left[i])
+            i = i + 1
+        } ither {
+            shove(result, right[j])
+            j = j + 1
+        }
+    }
+
+    # Append remaining elements
+    whiles i < len(left) {
+        shove(result, left[i])
+        i = i + 1
+    }
+    whiles j < len(right) {
+        shove(result, right[j])
+        j = j + 1
+    }
+
+    gie result
+}
+
+# Get slice of array from start to end (exclusive)
+dae slice(arr, start, end) {
+    ken result = []
+    ken i = start
+    whiles i < end {
+        shove(result, arr[i])
+        i = i + 1
+    }
+    gie result
+}
+
+# Mergesort implementation
+dae mergesort(arr) {
+    gin len(arr) <= 1 { gie arr }
+
+    ken mid = len(arr) / 2
+    ken left = slice(arr, 0, mid)
+    ken right = slice(arr, mid, len(arr))
+
+    ken sorted_left = mergesort(left)
+    ken sorted_right = mergesort(right)
+
+    gie merge(sorted_left, sorted_right)
+}
+
+# Generate test array
+dae make_array(size) {
+    ken arr = []
+    ken seed = 42
+    ken i = 0
+    whiles i < size {
+        seed = (seed * 1103515245 + 12345) % 2147483648
+        shove(arr, seed % 1000)
+        i = i + 1
+    }
+    gie arr
+}
+
+# Check if sorted
+dae is_sorted(arr) {
+    ken i = 0
+    whiles i < len(arr) - 1 {
+        gin arr[i] > arr[i + 1] { gie nae }
+        i = i + 1
+    }
+    gie aye
+}
+
+# Run benchmarks
+blether "=== Mergesort Benchmark ==="
+
+# Test correctness
+blether "Testing correctness..."
+ken test = [38, 27, 43, 3, 9, 82, 10]
+blether "Original: " + tae_string(test)
+ken sorted_test = mergesort(test)
+blether "Sorted: " + tae_string(sorted_test)
+
+# Small benchmark
+blether ""
+blether "Sorting 50 elements..."
+ken arr50 = make_array(50)
+ken sorted50 = mergesort(arr50)
+blether "Sorted 50 elements, is_sorted: " + tae_string(is_sorted(sorted50))
+
+# Medium benchmark
+blether ""
+blether "Sorting 200 elements..."
+ken arr200 = make_array(200)
+ken sorted200 = mergesort(arr200)
+blether "Sorted 200 elements, is_sorted: " + tae_string(is_sorted(sorted200))
+
+blether ""
+blether "Mergesort benchmark complete!"

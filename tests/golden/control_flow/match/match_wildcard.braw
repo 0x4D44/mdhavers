@@ -1,0 +1,8 @@
+# SKIP_NATIVE
+# Note: Match may not be fully supported in LLVM
+ken x = 99
+keek x {
+    whan 1 -> blether "one"
+    whan 2 -> blether "two"
+    whan _ -> blether "other"
+}

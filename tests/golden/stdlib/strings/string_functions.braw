@@ -1,0 +1,47 @@
+# Test string functions
+# SKIP_NATIVE - Uses native functions not available in LLVM backend
+
+# Test trim
+blether trim("  hello  ")
+blether trim("no spaces")
+blether trim("   ")
+
+# Test trim_start
+blether trim_start("  hello  ")
+blether trim_start("hello  ")
+
+# Test trim_end
+blether trim_end("  hello  ")
+blether trim_end("  hello")
+
+# Test starts_with
+blether starts_with("hello world", "hello")
+blether starts_with("hello world", "world")
+blether starts_with("", "")
+
+# Test ends_with
+blether ends_with("hello world", "world")
+blether ends_with("hello world", "hello")
+
+# Test last_index_of
+blether last_index_of("hello hello", "hello")
+blether last_index_of("hello hello", "o")
+blether last_index_of("abc", "z")
+
+# Test substring
+blether substring("hello world", 0, 5)
+blether substring("hello world", 6, 11)
+blether substring("hello world", 0, 0)
+
+# Test is_empty
+blether is_empty("")
+blether is_empty("a")
+blether is_empty([])
+blether is_empty([1])
+blether is_empty({})
+
+# Test is_blank
+blether is_blank("")
+blether is_blank("   ")
+blether is_blank("a")
+blether is_blank("  a  ")

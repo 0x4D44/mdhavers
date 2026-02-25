@@ -1,0 +1,7 @@
+# SKIP_NATIVE
+# Note: String multiplication has a bug in LLVM backend
+blether "hello" + " " + "world"
+blether "abc" * 3
+blether "x" * 5
+blether len("hello")
+blether len("")

@@ -1,0 +1,77 @@
+# Prime Numbers Stress Test
+# Tests sieve performance at different scales
+
+blether "=== Primes Stress Test ==="
+
+dae sieve(n) {
+    ken is_prime = []
+    ken i = 0
+    whiles i <= n {
+        shove(is_prime, aye)
+        i = i + 1
+    }
+    
+    gin n >= 0 { is_prime[0] = nae }
+    gin n >= 1 { is_prime[1] = nae }
+    
+    ken p = 2
+    whiles p * p <= n {
+        gin is_prime[p] {
+            ken j = p * p
+            whiles j <= n {
+                is_prime[j] = nae
+                j = j + p
+            }
+        }
+        p = p + 1
+    }
+    
+    ken primes = []
+    ken k = 2
+    whiles k <= n {
+        gin is_prime[k] {
+            shove(primes, k)
+        }
+        k = k + 1
+    }
+    gie primes
+}
+
+# Correctness
+blether "Correctness check:"
+ken p100 = sieve(100)
+blether "  Primes to 100: " + tae_string(len(p100)) + " primes"
+
+# Scale tests
+blether ""
+blether "Scalability tests:"
+
+ken start1 = tick()
+ken p1k = sieve(1000)
+ken t1 = tick() - start1
+blether "  sieve(1000): " + tae_string(len(p1k)) + " primes in " + tae_string(t1 / 1000) + " us"
+
+ken start2 = tick()
+ken p5k = sieve(5000)
+ken t2 = tick() - start2
+blether "  sieve(5000): " + tae_string(len(p5k)) + " primes in " + tae_string(t2 / 1000) + " us"
+
+ken start3 = tick()
+ken p10k = sieve(10000)
+ken t3 = tick() - start3
+blether "  sieve(10000): " + tae_string(len(p10k)) + " primes in " + tae_string(t3 / 1000) + " us"
+
+ken start4 = tick()
+ken p20k = sieve(20000)
+ken t4 = tick() - start4
+blether "  sieve(20000): " + tae_string(len(p20k)) + " primes in " + tae_string(t4 / 1000) + " us"
+
+# Calculate scaling factor
+blether ""
+blether "Scaling analysis:"
+blether "  5K/1K time ratio: " + tae_string(t2 / t1)
+blether "  10K/5K time ratio: " + tae_string(t3 / t2)
+blether "  20K/10K time ratio: " + tae_string(t4 / t3)
+
+blether ""
+blether "=== Primes stress complete ==="

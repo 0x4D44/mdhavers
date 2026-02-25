@@ -1,0 +1,11 @@
+dae power(base, exp) {
+    gin exp == 0 {
+        gie 1
+    }
+    gie base * power(base, exp - 1)
+}
+
+blether power(2, 0)
+blether power(2, 1)
+blether power(2, 10)
+blether power(3, 4)

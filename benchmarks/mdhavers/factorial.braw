@@ -1,0 +1,47 @@
+# Factorial Benchmark
+# Tests recursive computation with large numbers
+
+# Recursive factorial
+dae factorial(n) {
+    gin n <= 1 { gie 1 }
+    gie n * factorial(n - 1)
+}
+
+# Iterative factorial
+dae factorial_iter(n) {
+    ken result = 1
+    ken i = 2
+    whiles i <= n {
+        result = result * i
+        i = i + 1
+    }
+    gie result
+}
+
+# Run benchmarks
+blether "=== Factorial Benchmark ==="
+
+# Test correctness
+blether "Testing correctness..."
+blether "0! = " + tae_string(factorial(0))
+blether "1! = " + tae_string(factorial(1))
+blether "5! = " + tae_string(factorial(5))
+blether "10! = " + tae_string(factorial(10))
+
+# Benchmark with larger numbers
+blether ""
+blether "Computing 20!..."
+ken result20 = factorial(20)
+blether "20! = " + tae_string(result20)
+
+blether ""
+blether "Computing factorial iteratively..."
+ken i = 1
+whiles i <= 20 {
+    ken f = factorial_iter(i)
+    blether tae_string(i) + "! = " + tae_string(f)
+    i = i + 1
+}
+
+blether ""
+blether "Factorial benchmark complete!"

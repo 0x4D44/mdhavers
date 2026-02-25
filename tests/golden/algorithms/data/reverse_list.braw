@@ -1,0 +1,14 @@
+# SKIP_NATIVE
+# Note: List manipulation may not be fully supported in LLVM
+dae reverse_list(arr) {
+    ken result = []
+    ken i = len(arr) - 1
+    whiles i >= 0 {
+        shove(result, arr[i])
+        i = i - 1
+    }
+    gie result
+}
+
+blether reverse_list([1, 2, 3, 4, 5])
+blether reverse_list(["a", "b", "c"])

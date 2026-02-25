@@ -1,0 +1,6 @@
+blether -1
+blether -100
+blether -1 + -1
+blether -1 - -1
+blether -5 * 3
+blether -10 / 2

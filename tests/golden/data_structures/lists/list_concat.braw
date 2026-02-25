@@ -1,0 +1,5 @@
+# SKIP_NATIVE
+# Note: List concatenation may not be fully supported in LLVM
+ken a = [1, 2]
+ken b = [3, 4]
+blether a + b

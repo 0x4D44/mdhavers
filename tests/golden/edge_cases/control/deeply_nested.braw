@@ -1,0 +1,14 @@
+ken x = 10
+gin x > 5 {
+    gin x > 7 {
+        gin x > 9 {
+            blether "very big"
+        } ither {
+            blether "big"
+        }
+    } ither {
+        blether "medium"
+    }
+} ither {
+    blether "small"
+}

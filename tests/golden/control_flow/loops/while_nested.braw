@@ -1,0 +1,9 @@
+ken i = 0
+whiles i < 3 {
+    ken j = 0
+    whiles j < 3 {
+        blether i * 10 + j
+        j = j + 1
+    }
+    i = i + 1
+}

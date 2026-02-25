@@ -1,0 +1,69 @@
+# functions.braw - Definin' an' callin' functions
+# Shows how tae use 'dae' tae make functions
+
+# Simple function
+dae greet(name) {
+    blether "Hullo, " + name + "! Hoo's it gaun?"
+}
+
+greet("Jock")
+greet("Morag")
+
+# Function with return value
+dae add(a, b) {
+    gie a + b
+}
+
+ken result = add(5, 3)
+blether "5 + 3 = " + tae_string(result)
+
+# Function with multiple statements
+dae is_even(n) {
+    gin n % 2 == 0 {
+        gie aye
+    }
+    gie nae
+}
+
+blether "Is 4 even? " + tae_string(is_even(4))
+blether "Is 7 even? " + tae_string(is_even(7))
+
+# Recursive function - Factorial
+dae factorial(n) {
+    gin n <= 1 {
+        gie 1
+    }
+    gie n * factorial(n - 1)
+}
+
+blether ""
+blether "Factorials:"
+fer i in 1..8 {
+    blether tae_string(i) + "! = " + tae_string(factorial(i))
+}
+
+# Recursive function - Fibonacci
+dae fibonacci(n) {
+    gin n <= 1 {
+        gie n
+    }
+    gie fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+blether ""
+blether "Fibonacci sequence:"
+fer i in 0..10 {
+    blether "fib(" + tae_string(i) + ") = " + tae_string(fibonacci(i))
+}
+
+# Higher-order function - kinda
+dae apply_twice(n, f) {
+    gie f(f(n))
+}
+
+dae double(x) {
+    gie x * 2
+}
+
+blether ""
+blether "Double 5 twice: " + tae_string(apply_twice(5, double))

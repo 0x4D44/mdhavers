@@ -1,0 +1,7 @@
+# SKIP_NATIVE
+# Note: whit_kind may not be supported in LLVM
+blether whit_kind(42)
+blether whit_kind(3.14)
+blether whit_kind("hello")
+blether whit_kind(aye)
+blether whit_kind([1, 2, 3])

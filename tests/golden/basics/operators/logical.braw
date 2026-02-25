@@ -1,0 +1,12 @@
+ken t = aye
+ken f = nae
+blether t an t
+blether t an f
+blether f an t
+blether f an f
+blether t or t
+blether t or f
+blether f or t
+blether f or f
+blether nae t
+blether nae f

@@ -1,0 +1,11 @@
+dae factorial(n) {
+    gin n <= 1 {
+        gie 1
+    }
+    gie n * factorial(n - 1)
+}
+
+blether factorial(0)
+blether factorial(1)
+blether factorial(5)
+blether factorial(10)

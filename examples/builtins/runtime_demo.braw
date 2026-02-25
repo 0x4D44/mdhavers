@@ -1,0 +1,97 @@
+# Runtime Features Demo
+# Demonstrates logging, stack traces
+# Note: Graphics/Audio require --features graphics
+
+blether "╔═══════════════════════════════════════════════════════╗"
+blether "║     mdhavers Runtime Features Demo                    ║"
+blether "╚═══════════════════════════════════════════════════════╝"
+blether ""
+
+# ================================================
+# Part 1: Logging System
+# ================================================
+blether "━━━ Part 1: Logging System ━━━"
+blether ""
+
+# Show default level
+blether "Default log level: " + get_log_level()
+
+# Demonstrate each log level
+log_roar "This is a ROAR (error) message"
+log_holler "This is a HOLLER (warning) message"
+log_blether "This is a BLETHER (info) message"
+log_mutter "This is a MUTTER (debug) message - hidden by default"
+log_whisper "This is a WHISPER (trace) message - hidden by default"
+
+blether ""
+blether "Setting log level to WHISPER (show all)..."
+set_log_level("whisper")
+log_whisper "Now you can see WHISPER messages!"
+log_mutter "And MUTTER messages too!"
+
+blether ""
+blether "Setting log level back to BLETHER..."
+set_log_level("blether")
+
+# ================================================
+# Part 2: Stack Traces
+# ================================================
+blether ""
+blether "━━━ Part 2: Stack Traces ━━━"
+blether ""
+
+dae inner_function() {
+    blether "Inside inner_function, getting stack trace:"
+    blether stacktrace()
+}
+
+dae middle_function() {
+    inner_function()
+}
+
+dae outer_function() {
+    middle_function()
+}
+
+outer_function()
+
+# ================================================
+# Part 3: Recursive Stack Traces
+# ================================================
+blether ""
+blether "━━━ Part 3: Recursive Stack Trace ━━━"
+blether ""
+
+dae fibonacci(n) {
+    gin n <= 1 {
+        # Show stack at deepest point
+        gin n == 0 {
+            blether "Stack at fib(0):"
+            blether stacktrace()
+        }
+        gie n
+    }
+    gie fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+ken result = fibonacci(5)
+blether ""
+blether "fibonacci(5) = " + tae_string(result)
+
+# ================================================
+# Summary
+# ================================================
+blether ""
+blether "━━━ Demo Complete ━━━"
+blether ""
+blether "Runtime features demonstrated:"
+blether "  ✓ Logging: log_whisper, log_mutter, log_blether, log_holler, log_roar"
+blether "  ✓ Log levels: set_log_level(), get_log_level()"
+blether "  ✓ Stack traces: stacktrace()"
+blether "  ✓ Error handling: hae_a_bash/gin_it_gangs_wrang"
+blether ""
+blether "Graphics features (require --features graphics):"
+blether "  - screen_open, screen_close, screen_should_close"
+blether "  - draw_rect, draw_circle, draw_line, draw_text"
+blether "  - key_pressed, key_down, mouse_x, mouse_y"
+blether "  - audio_init, sound_load, music_load"

@@ -1,0 +1,391 @@
+# Terminal Tetris in mdhavers
+# ASCII-based tetris that runs in your terminal!
+
+# === Constants ===
+ken BOARD_WIDTH = 10
+ken BOARD_HEIGHT = 20
+
+# Tetromino shapes - each piece is a list of [row, col] offsets
+ken SHAPES = {
+    "I": [[0, 0], [0, 1], [0, 2], [0, 3]],
+    "O": [[0, 0], [0, 1], [1, 0], [1, 1]],
+    "T": [[0, 0], [0, 1], [0, 2], [1, 1]],
+    "S": [[0, 1], [0, 2], [1, 0], [1, 1]],
+    "Z": [[0, 0], [0, 1], [1, 1], [1, 2]],
+    "J": [[0, 0], [1, 0], [1, 1], [1, 2]],
+    "L": [[0, 2], [1, 0], [1, 1], [1, 2]]
+}
+
+# Characters for each piece
+ken PIECE_CHARS = {
+    "I": "#",
+    "O": "@",
+    "T": "*",
+    "S": "+",
+    "Z": "=",
+    "J": "%",
+    "L": "&"
+}
+
+ken SHAPE_NAMES = ["I", "O", "T", "S", "Z", "J", "L"]
+
+# === Game Class ===
+kin TetrisGame {
+    dae init() {
+        masel.board = masel.create_empty_board()
+        masel.current_piece = naething
+        masel.current_shape = ""
+        masel.current_row = 0
+        masel.current_col = 0
+        masel.current_rotation = 0
+        masel.score = 0
+        masel.level = 1
+        masel.lines_cleared = 0
+        masel.game_over = nae
+        masel.spawn_piece()
+    }
+
+    dae create_empty_board() {
+        ken board = []
+        fer row in 0..BOARD_HEIGHT {
+            ken line = []
+            fer col in 0..BOARD_WIDTH {
+                shove(line, 0)
+            }
+            shove(board, line)
+        }
+        gie board
+    }
+
+    dae spawn_piece() {
+        ken idx = jammy(0, len(SHAPE_NAMES) - 1)
+        masel.current_shape = SHAPE_NAMES[idx]
+        masel.current_piece = SHAPES[masel.current_shape]
+        masel.current_rotation = 0
+        masel.current_row = 0
+        masel.current_col = (BOARD_WIDTH - 4) / 2
+
+        gin masel.check_collision(0, 0) {
+            masel.game_over = aye
+        }
+    }
+
+    dae get_rotated_piece() {
+        ken piece = masel.current_piece
+        ken rotated = []
+
+        fer cell in piece {
+            ken r = cell[0]
+            ken c = cell[1]
+
+            gin masel.current_rotation == 1 {
+                shove(rotated, [c, 3 - r])
+            } ither gin masel.current_rotation == 2 {
+                shove(rotated, [3 - r, 3 - c])
+            } ither gin masel.current_rotation == 3 {
+                shove(rotated, [3 - c, r])
+            } ither {
+                shove(rotated, [r, c])
+            }
+        }
+        gie rotated
+    }
+
+    dae check_collision(row_offset, col_offset) {
+        ken piece = masel.get_rotated_piece()
+        fer cell in piece {
+            ken new_row = masel.current_row + cell[0] + row_offset
+            ken new_col = masel.current_col + cell[1] + col_offset
+
+            gin new_row < 0 {
+                gie aye
+            }
+            gin new_row >= BOARD_HEIGHT {
+                gie aye
+            }
+            gin new_col < 0 {
+                gie aye
+            }
+            gin new_col >= BOARD_WIDTH {
+                gie aye
+            }
+            gin masel.board[new_row][new_col] != 0 {
+                gie aye
+            }
+        }
+        gie nae
+    }
+
+    dae move_left() {
+        gin nae masel.check_collision(0, -1) {
+            masel.current_col = masel.current_col - 1
+        }
+    }
+
+    dae move_right() {
+        gin nae masel.check_collision(0, 1) {
+            masel.current_col = masel.current_col + 1
+        }
+    }
+
+    dae move_down() {
+        gin nae masel.check_collision(1, 0) {
+            masel.current_row = masel.current_row + 1
+            gie aye
+        } ither {
+            masel.lock_piece()
+            masel.clear_lines()
+            masel.spawn_piece()
+            gie nae
+        }
+    }
+
+    dae hard_drop() {
+        ken dropped = aye
+        whiles dropped {
+            dropped = masel.move_down()
+            gin dropped {
+                masel.score = masel.score + 2
+            }
+        }
+    }
+
+    dae rotate() {
+        ken old_rotation = masel.current_rotation
+        masel.current_rotation = (masel.current_rotation + 1) % 4
+
+        gin masel.check_collision(0, 0) {
+            masel.current_rotation = old_rotation
+        }
+    }
+
+    dae lock_piece() {
+        ken piece = masel.get_rotated_piece()
+        ken char = PIECE_CHARS[masel.current_shape]
+
+        fer cell in piece {
+            ken row = masel.current_row + cell[0]
+            ken col = masel.current_col + cell[1]
+            gin row >= 0 an row < BOARD_HEIGHT an col >= 0 an col < BOARD_WIDTH {
+                masel.board[row][col] = char
+            }
+        }
+    }
+
+    dae clear_lines() {
+        ken num_cleared = 0
+
+        # Check from bottom to top
+        ken row = BOARD_HEIGHT - 1
+        whiles row >= 0 {
+            # Check if this row is complete
+            ken complete = aye
+            fer col in 0..BOARD_WIDTH {
+                gin masel.board[row][col] == 0 {
+                    complete = nae
+                }
+            }
+
+            gin complete {
+                num_cleared = num_cleared + 1
+                # Shift all rows above this one down
+                ken shift_row = row
+                whiles shift_row > 0 {
+                    fer col in 0..BOARD_WIDTH {
+                        masel.board[shift_row][col] = masel.board[shift_row - 1][col]
+                    }
+                    shift_row = shift_row - 1
+                }
+                # Clear the top row
+                fer col in 0..BOARD_WIDTH {
+                    masel.board[0][col] = 0
+                }
+                # Don't decrement row - check same position again (new line shifted in)
+            } ither {
+                row = row - 1
+            }
+        }
+
+        gin num_cleared > 0 {
+            masel.lines_cleared = masel.lines_cleared + num_cleared
+            ken points = 0
+            gin num_cleared == 1 { points = 100 }
+            gin num_cleared == 2 { points = 300 }
+            gin num_cleared == 3 { points = 500 }
+            gin num_cleared == 4 { points = 800 }
+            masel.score = masel.score + (points * masel.level)
+            masel.level = (masel.lines_cleared / 10) + 1
+        }
+    }
+
+    dae get_ghost_row() {
+        ken ghost_row = masel.current_row
+        ken can_drop = aye
+        whiles can_drop {
+            gin masel.check_collision(ghost_row - masel.current_row + 1, 0) {
+                can_drop = nae
+            } ither {
+                ghost_row = ghost_row + 1
+            }
+        }
+        gie ghost_row
+    }
+}
+
+# === Rendering ===
+dae clear_screen() {
+    blether("\x1b[2J\x1b[H")
+}
+
+dae render(game) {
+    clear_screen()
+
+    # Header
+    blether("=== TETRIS ===")
+    blether("Score: " + tae_string(game.score) + "  Level: " + tae_string(game.level) + "  Lines: " + tae_string(game.lines_cleared))
+    blether("")
+
+    # Create display board (copy of game board)
+    ken display = []
+    fer row in 0..BOARD_HEIGHT {
+        ken line = []
+        fer col in 0..BOARD_WIDTH {
+            shove(line, game.board[row][col])
+        }
+        shove(display, line)
+    }
+
+    # Add ghost piece
+    ken ghost_row = game.get_ghost_row()
+    ken piece = game.get_rotated_piece()
+    fer cell in piece {
+        ken r = ghost_row + cell[0]
+        ken c = game.current_col + cell[1]
+        gin r >= 0 an r < BOARD_HEIGHT an c >= 0 an c < BOARD_WIDTH {
+            gin display[r][c] == 0 {
+                display[r][c] = "."
+            }
+        }
+    }
+
+    # Add current piece
+    fer cell in piece {
+        ken r = game.current_row + cell[0]
+        ken c = game.current_col + cell[1]
+        gin r >= 0 an r < BOARD_HEIGHT an c >= 0 an c < BOARD_WIDTH {
+            display[r][c] = PIECE_CHARS[game.current_shape]
+        }
+    }
+
+    # Draw board
+    blether("+------------------------------+")
+    fer row in 0..BOARD_HEIGHT {
+        ken line = "|"
+        fer col in 0..BOARD_WIDTH {
+            ken cell = display[row][col]
+            gin cell == 0 {
+                line = line + "   "
+            } ither {
+                line = line + " " + cell + " "
+            }
+        }
+        blether(line + "|")
+    }
+    blether("+------------------------------+")
+
+    # Controls
+    blether("")
+    blether("Controls: Arrows=move, Up=rotate, Space=drop, P=pause, Q=quit")
+}
+
+dae render_game_over(game) {
+    clear_screen()
+    blether("")
+    blether("  ####    ##   #    # ######")
+    blether(" #    #  #  #  ##  ## #     ")
+    blether(" #      #    # # ## # #####")
+    blether(" #  ### ###### #    # #     ")
+    blether(" #    # #    # #    # #     ")
+    blether("  ####  #    # #    # ######")
+    blether("")
+    blether("         ####  #    # ###### ##### ")
+    blether("        #    # #    # #      #    #")
+    blether("        #    # #    # #####  #    #")
+    blether("        #    # #    # #      #####")
+    blether("        #    #  #  #  #      #   #")
+    blether("         ####    ##   ###### #    #")
+    blether("")
+    blether("Final Score: " + tae_string(game.score))
+    blether("Level: " + tae_string(game.level))
+    blether("Lines Cleared: " + tae_string(game.lines_cleared))
+    blether("")
+    blether("Thanks fer playing!")
+}
+
+# === Main Game Loop ===
+ken game = TetrisGame()
+ken running = aye
+ken paused = nae
+ken last_drop = noo()
+ken drop_interval = 500  # milliseconds between drops
+
+whiles running {
+    gin paused {
+        clear_screen()
+        blether("=== TETRIS === PAUSED")
+        blether("")
+        blether("Press P to resume")
+        blether("Press Q to quit")
+        blether("")
+        blether("Score: " + tae_string(game.score))
+        blether("Level: " + tae_string(game.level))
+        blether("Lines: " + tae_string(game.lines_cleared))
+    } ither {
+        render(game)
+    }
+
+    gin game.game_over {
+        render_game_over(game)
+        running = nae
+    } ither {
+        # Get input (non-blocking, ~100ms timeout)
+        ken key = get_key()
+
+        gin key == "q" or key == "Q" {
+            running = nae
+        } ither gin key == "p" or key == "P" {
+            paused = nae paused
+            gin nae paused {
+                # Reset drop timer when unpausing
+                last_drop = noo()
+            }
+        } ither gin nae paused {
+            # Only handle game controls when not paused
+            gin key == "Left" {
+                game.move_left()
+            } ither gin key == "Right" {
+                game.move_right()
+            } ither gin key == "Down" {
+                game.move_down()
+                last_drop = noo()
+            } ither gin key == "Up" {
+                game.rotate()
+            } ither gin key == " " {
+                game.hard_drop()
+                last_drop = noo()
+            }
+
+            # Auto drop based on time
+            ken now = noo()
+            gin now - last_drop >= drop_interval {
+                game.move_down()
+                last_drop = now
+            }
+
+            # Adjust speed based on level (faster = smaller interval)
+            drop_interval = max(100, 600 - (game.level * 50))
+        }
+    }
+}
+
+blether("Goodbye!")

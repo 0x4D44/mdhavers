@@ -1,0 +1,140 @@
+# Large-Scale List Operations Benchmark
+
+blether "=== Large-Scale List Operations Benchmark ==="
+
+# Build a list of numbers
+dae make_list(n) {
+    ken result = []
+    ken i = 0
+    whiles i < n {
+        shove(result, i)
+        i = i + 1
+    }
+    gie result
+}
+
+# Helper functions for HOF operations
+dae double(x) {
+    gie x * 2
+}
+
+dae is_even(x) {
+    gie x % 2 == 0
+}
+
+dae is_div_by_4(x) {
+    gie x % 4 == 0
+}
+
+dae add(acc, x) {
+    gie acc + x
+}
+
+# Correctness check
+blether "Correctness check:"
+ken small = make_list(10)
+blether "  make_list(10): " + tae_string(small)
+blether "  gaun(double): " + tae_string(gaun(small, double))
+blether "  sieve(is_even): " + tae_string(sieve(small, is_even))
+blether "  tumble(0, add): " + tae_string(tumble(small, 0, add))
+
+# List building scaling
+blether ""
+blether "List building scaling:"
+
+ken start = tick()
+ken lst = make_list(1000)
+ken elapsed = tick() - start
+blether "  make_list(1000): " + tae_string(elapsed) + " us"
+
+start = tick()
+lst = make_list(10000)
+elapsed = tick() - start
+blether "  make_list(10000): " + tae_string(elapsed) + " us"
+
+start = tick()
+lst = make_list(50000)
+elapsed = tick() - start
+blether "  make_list(50000): " + tae_string(elapsed / 1000) + " ms"
+
+start = tick()
+lst = make_list(100000)
+elapsed = tick() - start
+blether "  make_list(100000): " + tae_string(elapsed / 1000) + " ms"
+
+# HOF scaling
+blether ""
+blether "Higher-order function scaling:"
+
+lst = make_list(10000)
+blether "  Using 10K element list:"
+
+start = tick()
+ken doubled = gaun(lst, double)
+elapsed = tick() - start
+blether "    gaun(double): " + tae_string(elapsed / 1000) + " ms"
+
+start = tick()
+ken evens = sieve(lst, is_even)
+elapsed = tick() - start
+blether "    sieve(even): " + tae_string(elapsed / 1000) + " ms, count=" + tae_string(len(evens))
+
+start = tick()
+ken total = tumble(lst, 0, add)
+elapsed = tick() - start
+blether "    tumble(sum): " + tae_string(elapsed / 1000) + " ms, sum=" + tae_string(total)
+
+# Larger HOF test
+lst = make_list(50000)
+blether "  Using 50K element list:"
+
+start = tick()
+doubled = gaun(lst, double)
+elapsed = tick() - start
+blether "    gaun(double): " + tae_string(elapsed / 1000) + " ms"
+
+start = tick()
+evens = sieve(lst, is_even)
+elapsed = tick() - start
+blether "    sieve(even): " + tae_string(elapsed / 1000) + " ms, count=" + tae_string(len(evens))
+
+start = tick()
+total = tumble(lst, 0, add)
+elapsed = tick() - start
+blether "    tumble(sum): " + tae_string(elapsed / 1000) + " ms, sum=" + tae_string(total)
+
+# Chained operations
+blether ""
+blether "Chained HOF operations (10K list):"
+lst = make_list(10000)
+
+start = tick()
+# Map then filter then reduce
+ken step1 = gaun(lst, double)
+ken step2 = sieve(step1, is_div_by_4)
+ken step3 = tumble(step2, 0, add)
+elapsed = tick() - start
+blether "  gaun -> sieve -> tumble: " + tae_string(elapsed / 1000) + " ms, result=" + tae_string(step3)
+
+# Slice operations
+blether ""
+blether "Slice operations:"
+lst = make_list(100000)
+
+start = tick()
+ken slice1 = scran(lst, 0, 1000)
+elapsed = tick() - start
+blether "  scran(100K, 0, 1000): " + tae_string(elapsed) + " us, len=" + tae_string(len(slice1))
+
+start = tick()
+ken slice2 = scran(lst, 50000, 60000)
+elapsed = tick() - start
+blether "  scran(100K, 50K, 60K): " + tae_string(elapsed) + " us, len=" + tae_string(len(slice2))
+
+start = tick()
+ken slice3 = scran(lst, 90000, 100000)
+elapsed = tick() - start
+blether "  scran(100K, 90K, 100K): " + tae_string(elapsed) + " us, len=" + tae_string(len(slice3))
+
+blether ""
+blether "=== List operations large-scale complete ==="

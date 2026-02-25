@@ -1,0 +1,5 @@
+# SKIP_NATIVE
+# Note: Dicts not supported in LLVM
+ken person = {"name": "Alice", "age": 30}
+blether person["name"]
+blether person["age"]

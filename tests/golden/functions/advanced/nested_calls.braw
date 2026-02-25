@@ -1,0 +1,11 @@
+dae add(a, b) {
+    gie a + b
+}
+
+dae double(x) {
+    gie x * 2
+}
+
+blether double(add(1, 2))
+blether add(double(3), double(4))
+blether double(double(double(2)))

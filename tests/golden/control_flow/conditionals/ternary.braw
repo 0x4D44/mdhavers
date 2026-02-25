@@ -1,0 +1,9 @@
+# SKIP_NATIVE
+# Note: Ternary may not be fully supported in LLVM
+ken a = gin aye than "yes" ither "no"
+blether a
+ken b = gin nae than "yes" ither "no"
+blether b
+ken x = 10
+ken result = gin x > 5 than "big" ither "small"
+blether result

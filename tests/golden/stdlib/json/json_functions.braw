@@ -1,0 +1,40 @@
+# Test JSON functions
+# SKIP_NATIVE - Uses native functions not available in LLVM backend
+
+# Test json_parse with simple values
+blether json_parse("42")
+blether json_parse("3.14")
+blether json_parse("true")
+blether json_parse("false")
+blether json_parse("null")
+blether json_parse("\"hello\"")
+
+# Test json_parse with arrays
+ken arr = json_parse("[1, 2, 3]")
+blether len(arr)
+blether arr[0]
+blether arr[1]
+blether arr[2]
+
+# Test json_parse with objects
+ken obj = json_parse("{\"name\": \"Hamish\", \"age\": 42}")
+blether obj["name"]
+blether obj["age"]
+
+# Test json_stringify with simple values
+blether json_stringify(42)
+blether json_stringify(3.14)
+blether json_stringify(aye)
+blether json_stringify(nae)
+blether json_stringify(naething)
+blether json_stringify("hello")
+
+# Test json_stringify with arrays
+blether json_stringify([1, 2, 3])
+
+# Test json_stringify with dicts
+blether json_stringify({"name": "Hamish"})
+
+# Test json_pretty
+ken pretty = json_pretty({"name": "Hamish", "items": [1, 2, 3]})
+blether len(pretty) > 0

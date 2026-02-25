@@ -1,0 +1,5 @@
+# SKIP_NATIVE
+# Note: Ranges may not be fully supported in LLVM
+fer i in 0..5 {
+    blether i
+}

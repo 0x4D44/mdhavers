@@ -1,0 +1,49 @@
+# file_io.braw - File I/O in mdhavers
+# Functions: scrieve, read_file, read_lines, append_file, file_exists
+
+blether "=== File I/O in mdhavers ==="
+blether ""
+
+ken test_file = "/tmp/mdhavers_test.txt"
+
+# Write to file
+blether "1. Writing to file:"
+scrieve(test_file, "Line 1: Hullo fae mdhavers!")
+blether "   Wrote to " + test_file
+
+# Check if file exists
+blether ""
+blether "2. Check file exists:"
+blether "   " + test_file + " exists: " + tae_string(file_exists(test_file))
+
+# Read entire file
+blether ""
+blether "3. Read entire file:"
+ken content = read_file(test_file)
+blether "   Content: " + content
+
+# Append to file
+blether ""
+blether "4. Append to file:"
+append_file(test_file, "Line 2: Added later")
+append_file(test_file, "Line 3: Even more text")
+
+# Read as lines
+blether ""
+blether "5. Read as lines:"
+ken lines = read_lines(test_file)
+blether "   Number of lines: " + tae_string(len(lines))
+fer i in 0..len(lines) {
+    blether "   Line " + tae_string(i + 1) + ": " + lines[i]
+}
+
+# Write a list to file
+blether ""
+blether "6. Write data structure:"
+ken data = ["Edinburgh", "Glasgow", "Aberdeen", "Dundee"]
+ken output = join(data, " | ")
+scrieve(test_file, output)
+blether "   Wrote: " + read_file(test_file)
+
+blether ""
+blether "Braw! File I/O works!"

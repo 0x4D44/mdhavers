@@ -1,0 +1,382 @@
+# Conway's Game of Life - Interactive Terminal Version
+# "Life finds a way, laddie!"
+
+# === ANSI Escape Codes ===
+ken RESET = "\x1b[0m"
+ken BOLD = "\x1b[1m"
+ken DIM = "\x1b[2m"
+
+# Colors
+ken BLACK_BG = "\x1b[40m"
+ken GREEN_BG = "\x1b[42m"
+ken CYAN_BG = "\x1b[46m"
+ken WHITE_BG = "\x1b[47m"
+ken YELLOW_FG = "\x1b[93m"
+ken CYAN_FG = "\x1b[96m"
+ken GREEN_FG = "\x1b[92m"
+ken WHITE_FG = "\x1b[97m"
+ken RED_FG = "\x1b[91m"
+ken MAGENTA_FG = "\x1b[95m"
+
+# Cursor control
+ken CURSOR_HIDE = "\x1b[?25l"
+ken CURSOR_SHOW = "\x1b[?25h"
+ken CURSOR_HOME = "\x1b[H"
+ken CLEAR_LINE = "\x1b[K"
+ken CLEAR_SCREEN = "\x1b[2J"
+
+# === Game Constants ===
+ken WIDTH = 50
+ken HEIGHT = 25
+
+# === Game State ===
+kin GameOfLife {
+    dae init() {
+        masel.grid = masel.create_grid()
+        masel.running = nae
+        masel.generation = 0
+        masel.cursor_x = WIDTH / 2
+        masel.cursor_y = HEIGHT / 2
+        masel.speed = 100  # ms between generations
+    }
+
+    dae create_grid() {
+        ken grid = []
+        fer y in 0..HEIGHT {
+            ken row = []
+            fer x in 0..WIDTH {
+                shove(row, 0)
+            }
+            shove(grid, row)
+        }
+        gie grid
+    }
+
+    dae clear_grid() {
+        fer y in 0..HEIGHT {
+            fer x in 0..WIDTH {
+                masel.grid[y][x] = 0
+            }
+        }
+        masel.generation = 0
+    }
+
+    dae toggle_cell(x, y) {
+        gin x >= 0 an x < WIDTH an y >= 0 an y < HEIGHT {
+            gin masel.grid[y][x] == 0 {
+                masel.grid[y][x] = 1
+            } ither {
+                masel.grid[y][x] = 0
+            }
+        }
+    }
+
+    dae set_cell(x, y, val) {
+        gin x >= 0 an x < WIDTH an y >= 0 an y < HEIGHT {
+            masel.grid[y][x] = val
+        }
+    }
+
+    dae get_cell(x, y) {
+        # Wraparound edges (toroidal grid)
+        ken wx = (x + WIDTH) % WIDTH
+        ken wy = (y + HEIGHT) % HEIGHT
+        gie masel.grid[wy][wx]
+    }
+
+    dae count_neighbors(x, y) {
+        ken count = 0
+        fer dy in -1..2 {
+            fer dx in -1..2 {
+                gin dx != 0 or dy != 0 {
+                    gin masel.get_cell(x + dx, y + dy) == 1 {
+                        count = count + 1
+                    }
+                }
+            }
+        }
+        gie count
+    }
+
+    dae step() {
+        ken new_grid = masel.create_grid()
+
+        fer y in 0..HEIGHT {
+            fer x in 0..WIDTH {
+                ken alive = masel.grid[y][x] == 1
+                ken neighbors = masel.count_neighbors(x, y)
+
+                # Conway's rules:
+                # 1. Live cell with 2 or 3 neighbors survives
+                # 2. Dead cell with exactly 3 neighbors becomes alive
+                # 3. All other cells die or stay dead
+                gin alive {
+                    gin neighbors == 2 or neighbors == 3 {
+                        new_grid[y][x] = 1
+                    }
+                } ither {
+                    gin neighbors == 3 {
+                        new_grid[y][x] = 1
+                    }
+                }
+            }
+        }
+
+        masel.grid = new_grid
+        masel.generation = masel.generation + 1
+    }
+
+    dae count_alive() {
+        ken count = 0
+        fer y in 0..HEIGHT {
+            fer x in 0..WIDTH {
+                gin masel.grid[y][x] == 1 {
+                    count = count + 1
+                }
+            }
+        }
+        gie count
+    }
+
+    # === Pattern Library ===
+    dae add_glider(sx, sy) {
+        masel.set_cell(sx + 1, sy, 1)
+        masel.set_cell(sx + 2, sy + 1, 1)
+        masel.set_cell(sx, sy + 2, 1)
+        masel.set_cell(sx + 1, sy + 2, 1)
+        masel.set_cell(sx + 2, sy + 2, 1)
+    }
+
+    dae add_blinker(sx, sy) {
+        masel.set_cell(sx, sy, 1)
+        masel.set_cell(sx + 1, sy, 1)
+        masel.set_cell(sx + 2, sy, 1)
+    }
+
+    dae add_block(sx, sy) {
+        masel.set_cell(sx, sy, 1)
+        masel.set_cell(sx + 1, sy, 1)
+        masel.set_cell(sx, sy + 1, 1)
+        masel.set_cell(sx + 1, sy + 1, 1)
+    }
+
+    dae add_beacon(sx, sy) {
+        masel.set_cell(sx, sy, 1)
+        masel.set_cell(sx + 1, sy, 1)
+        masel.set_cell(sx, sy + 1, 1)
+        masel.set_cell(sx + 3, sy + 2, 1)
+        masel.set_cell(sx + 2, sy + 3, 1)
+        masel.set_cell(sx + 3, sy + 3, 1)
+    }
+
+    dae add_pulsar(sx, sy) {
+        # Pulsar - period 3 oscillator
+        ken offsets = [
+            [2, 0], [3, 0], [4, 0], [8, 0], [9, 0], [10, 0],
+            [0, 2], [5, 2], [7, 2], [12, 2],
+            [0, 3], [5, 3], [7, 3], [12, 3],
+            [0, 4], [5, 4], [7, 4], [12, 4],
+            [2, 5], [3, 5], [4, 5], [8, 5], [9, 5], [10, 5],
+            [2, 7], [3, 7], [4, 7], [8, 7], [9, 7], [10, 7],
+            [0, 8], [5, 8], [7, 8], [12, 8],
+            [0, 9], [5, 9], [7, 9], [12, 9],
+            [0, 10], [5, 10], [7, 10], [12, 10],
+            [2, 12], [3, 12], [4, 12], [8, 12], [9, 12], [10, 12]
+        ]
+        fer offset in offsets {
+            masel.set_cell(sx + offset[0], sy + offset[1], 1)
+        }
+    }
+
+    dae add_glider_gun(sx, sy) {
+        # Gosper Glider Gun
+        ken cells = [
+            [0, 4], [0, 5], [1, 4], [1, 5],
+            [10, 4], [10, 5], [10, 6], [11, 3], [11, 7], [12, 2], [12, 8],
+            [13, 2], [13, 8], [14, 5], [15, 3], [15, 7], [16, 4], [16, 5], [16, 6],
+            [17, 5],
+            [20, 2], [20, 3], [20, 4], [21, 2], [21, 3], [21, 4], [22, 1], [22, 5],
+            [24, 0], [24, 1], [24, 5], [24, 6],
+            [34, 2], [34, 3], [35, 2], [35, 3]
+        ]
+        fer cell in cells {
+            masel.set_cell(sx + cell[0], sy + cell[1], 1)
+        }
+    }
+
+    dae add_spaceship(sx, sy) {
+        # Lightweight spaceship (LWSS)
+        masel.set_cell(sx, sy + 1, 1)
+        masel.set_cell(sx, sy + 3, 1)
+        masel.set_cell(sx + 1, sy, 1)
+        masel.set_cell(sx + 2, sy, 1)
+        masel.set_cell(sx + 3, sy, 1)
+        masel.set_cell(sx + 4, sy, 1)
+        masel.set_cell(sx + 4, sy + 1, 1)
+        masel.set_cell(sx + 4, sy + 2, 1)
+        masel.set_cell(sx + 3, sy + 3, 1)
+    }
+
+    dae randomize() {
+        fer y in 0..HEIGHT {
+            fer x in 0..WIDTH {
+                gin jammy(0, 100) < 25 {
+                    masel.grid[y][x] = 1
+                } ither {
+                    masel.grid[y][x] = 0
+                }
+            }
+        }
+        masel.generation = 0
+    }
+}
+
+# === Rendering ===
+dae make_padding(n) {
+    ken pad = ""
+    gin n > 0 {
+        ken i = 0
+        whiles i < n {
+            pad = pad + " "
+            i = i + 1
+        }
+    }
+    gie pad
+}
+
+dae render(game) {
+    ken term_w = term_width()
+    ken board_width = WIDTH + 4
+    ken left_pad = (term_w - board_width) / 2
+    gin left_pad < 0 { left_pad = 0 }
+    ken padding = make_padding(left_pad)
+
+    ken frame = CURSOR_HOME + CURSOR_HIDE
+
+    # Title
+    ken status = ""
+    gin game.running {
+        status = GREEN_FG + "RUNNING" + RESET
+    } ither {
+        status = YELLOW_FG + "PAUSED" + RESET
+    }
+
+    frame = frame + padding + CYAN_FG + BOLD + "GAME OF LIFE" + RESET
+    frame = frame + "  " + status
+    frame = frame + "  Gen: " + YELLOW_FG + tae_string(game.generation) + RESET
+    frame = frame + "  Cells: " + GREEN_FG + tae_string(game.count_alive()) + RESET
+    frame = frame + CLEAR_LINE + "\n"
+
+    # Top border
+    ken border = padding + WHITE_FG + "+"
+    ken i = 0
+    whiles i < WIDTH {
+        border = border + "-"
+        i = i + 1
+    }
+    border = border + "+" + RESET + CLEAR_LINE + "\n"
+    frame = frame + border
+
+    # Grid
+    fer y in 0..HEIGHT {
+        ken line = padding + WHITE_FG + "|" + RESET
+        fer x in 0..WIDTH {
+            ken cell = game.grid[y][x]
+            ken is_cursor = (x == game.cursor_x an y == game.cursor_y)
+
+            gin is_cursor an nae game.running {
+                gin cell == 1 {
+                    line = line + MAGENTA_FG + BOLD + "@" + RESET
+                } ither {
+                    line = line + YELLOW_FG + "+" + RESET
+                }
+            } ither gin cell == 1 {
+                line = line + GREEN_FG + "O" + RESET
+            } ither {
+                line = line + DIM + "." + RESET
+            }
+        }
+        frame = frame + line + WHITE_FG + "|" + RESET + CLEAR_LINE + "\n"
+    }
+
+    # Bottom border
+    frame = frame + border
+
+    # Controls
+    gin game.running {
+        frame = frame + padding + DIM + "[Space]=Pause  [R]=Random  [C]=Clear  [Q]=Quit" + RESET + CLEAR_LINE + "\n"
+    } ither {
+        frame = frame + padding + DIM + "[Arrows]=Move  [Space]=Run  [Enter]=Toggle  [1-6]=Patterns  [Q]=Quit" + RESET + CLEAR_LINE + "\n"
+        frame = frame + padding + DIM + "[R]=Random  [C]=Clear  [G]=Glider  [P]=Pulsar  [S]=Spaceship" + RESET + CLEAR_LINE + "\n"
+    }
+
+    blether(frame)
+}
+
+# === Main ===
+blether(CLEAR_SCREEN + CURSOR_HOME + CURSOR_HIDE)
+
+ken game = GameOfLife()
+
+# Add some starter patterns
+game.add_glider(5, 5)
+game.add_blinker(20, 10)
+game.add_block(35, 5)
+
+ken quit = nae
+ken last_step = noo()
+
+whiles nae quit {
+    render(game)
+
+    # Auto-step when running
+    gin game.running {
+        ken now = noo()
+        gin now - last_step >= game.speed {
+            game.step()
+            last_step = now
+        }
+    }
+
+    ken key = get_key()
+
+    gin key == "q" or key == "Q" {
+        quit = aye
+    } ither gin key == " " {
+        game.running = nae game.running
+        last_step = noo()
+    } ither gin key == "r" or key == "R" {
+        game.randomize()
+    } ither gin key == "c" or key == "C" {
+        game.clear_grid()
+    } ither gin nae game.running {
+        # Edit mode controls
+        gin key == "Left" {
+            game.cursor_x = (game.cursor_x - 1 + WIDTH) % WIDTH
+        } ither gin key == "Right" {
+            game.cursor_x = (game.cursor_x + 1) % WIDTH
+        } ither gin key == "Up" {
+            game.cursor_y = (game.cursor_y - 1 + HEIGHT) % HEIGHT
+        } ither gin key == "Down" {
+            game.cursor_y = (game.cursor_y + 1) % HEIGHT
+        } ither gin key == "\n" {
+            game.toggle_cell(game.cursor_x, game.cursor_y)
+        } ither gin key == "g" or key == "G" {
+            game.add_glider(game.cursor_x, game.cursor_y)
+        } ither gin key == "p" or key == "P" {
+            game.add_pulsar(game.cursor_x - 6, game.cursor_y - 6)
+        } ither gin key == "s" or key == "S" {
+            game.add_spaceship(game.cursor_x, game.cursor_y)
+        } ither gin key == "b" or key == "B" {
+            game.add_beacon(game.cursor_x, game.cursor_y)
+        } ither gin key == "n" or key == "N" {
+            game.add_glider_gun(game.cursor_x, game.cursor_y)
+        } ither gin key == "." {
+            # Single step
+            game.step()
+        }
+    }
+}
+
+blether(CURSOR_SHOW + RESET + CLEAR_SCREEN + CURSOR_HOME)
+blether("Thanks fer playing! Slàinte mhath!")

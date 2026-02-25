@@ -1,0 +1,5 @@
+# SKIP_NATIVE
+# Note: Spread operator may not be fully supported in LLVM
+ken nums = [1, 2, 3]
+ken more = [...nums, 4, 5]
+blether more

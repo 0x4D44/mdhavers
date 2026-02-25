@@ -1,0 +1,10 @@
+# SKIP_NATIVE
+# Note: Continue may not be supported in LLVM
+ken i = 0
+whiles i < 5 {
+    i = i + 1
+    gin i == 3 {
+        haud
+    }
+    blether i
+}

@@ -1,0 +1,60 @@
+# Logging Demo - Demonstrating the mdhavers logging system
+# Logging levels (most verbose to least):
+#   - log_whisper (TRACE)
+#   - log_mutter (DEBUG)
+#   - log_blether (INFO) - default level
+#   - log_holler (WARN)
+#   - log_roar (ERROR)
+#   - set_log_level("wheesht") silences all logging
+
+blether "=== Logging Demo ==="
+blether ""
+
+# Show current log level
+blether "Current log level: " + get_log_level()
+blether ""
+
+# Log at different levels
+log_roar "This is an ERROR message - critical issues!"
+log_holler "This is a WARNING message - potential problems"
+log_blether "This is an INFO message - normal operation"
+log_mutter "This is a DEBUG message - detailed info (hidden by default)"
+log_whisper "This is a TRACE message - very verbose (hidden by default)"
+
+blether ""
+blether "=== Changing log level to WHISPER (show all) ==="
+set_log_level("whisper")
+blether "New log level: " + get_log_level()
+blether ""
+
+log_roar "ERROR - visible at all levels"
+log_holler "WARNING - visible at holler and above"
+log_blether "INFO - visible at blether and above"
+log_mutter "DEBUG - visible at mutter and above"
+log_whisper "TRACE - only visible at whisper level"
+
+blether ""
+blether "=== Changing log level to ROAR (only errors) ==="
+set_log_level("roar")
+blether "New log level: " + get_log_level()
+blether ""
+
+log_roar "ERROR - visible (this is the only one)"
+log_holler "WARNING - hidden"
+log_blether "INFO - hidden"
+log_mutter "DEBUG - hidden"
+log_whisper "TRACE - hidden"
+
+blether ""
+blether "=== Changing log level to WHEESHT (silent) ==="
+set_log_level("wheesht")
+blether "New log level: " + get_log_level()
+blether ""
+
+log_roar "ERROR - even this is hidden"
+log_holler "WARNING - hidden"
+log_blether "INFO - hidden"
+
+blether ""
+blether "=== Demo complete ==="
+blether "(Note: log output goes to stderr, regular output to stdout)"

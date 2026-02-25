@@ -1,0 +1,6 @@
+blether 0
+blether 1
+blether -1
+blether 42
+blether 1000000
+blether -999

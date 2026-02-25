@@ -1,0 +1,11 @@
+ken x = 10
+ken y = 5
+gin x > 5 {
+    gin y > 3 {
+        blether "both"
+    } ither {
+        blether "only x"
+    }
+} ither {
+    blether "neither"
+}

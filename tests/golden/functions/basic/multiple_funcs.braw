@@ -1,0 +1,15 @@
+dae add(a, b) {
+    gie a + b
+}
+
+dae multiply(a, b) {
+    gie a * b
+}
+
+dae compute(x, y) {
+    ken sum = add(x, y)
+    ken product = multiply(x, y)
+    gie sum + product
+}
+
+blether compute(3, 4)

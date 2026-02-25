@@ -1,0 +1,653 @@
+# Roguelike Dungeon Crawler
+# "Delve intae the depths, brave adventurer!"
+
+# === ANSI Escape Codes ===
+ken RESET = "\x1b[0m"
+ken BOLD = "\x1b[1m"
+ken DIM = "\x1b[2m"
+
+# Colors
+ken BLACK_FG = "\x1b[30m"
+ken RED_FG = "\x1b[91m"
+ken GREEN_FG = "\x1b[92m"
+ken YELLOW_FG = "\x1b[93m"
+ken BLUE_FG = "\x1b[94m"
+ken MAGENTA_FG = "\x1b[95m"
+ken CYAN_FG = "\x1b[96m"
+ken WHITE_FG = "\x1b[97m"
+ken GRAY_FG = "\x1b[90m"
+
+ken BLACK_BG = "\x1b[40m"
+ken RED_BG = "\x1b[41m"
+ken GREEN_BG = "\x1b[42m"
+ken YELLOW_BG = "\x1b[43m"
+
+# Cursor control
+ken CURSOR_HIDE = "\x1b[?25l"
+ken CURSOR_SHOW = "\x1b[?25h"
+ken CURSOR_HOME = "\x1b[H"
+ken CLEAR_LINE = "\x1b[K"
+ken CLEAR_SCREEN = "\x1b[2J"
+
+# === Game Constants ===
+ken MAP_WIDTH = 60
+ken MAP_HEIGHT = 20
+ken MAX_ROOMS = 12
+ken MIN_ROOM_SIZE = 4
+ken MAX_ROOM_SIZE = 10
+ken MAX_ENEMIES = 8
+ken MAX_ITEMS = 10
+
+# Tile types
+ken TILE_VOID = 0
+ken TILE_WALL = 1
+ken TILE_FLOOR = 2
+ken TILE_DOOR = 3
+ken TILE_STAIRS = 4
+
+# === Entity Classes ===
+kin Entity {
+    dae init(x, y, char, color, name) {
+        masel.x = x
+        masel.y = y
+        masel.char = char
+        masel.color = color
+        masel.name = name
+        masel.hp = 10
+        masel.max_hp = 10
+        masel.attack = 2
+        masel.defense = 0
+        masel.alive = aye
+    }
+
+    dae take_damage(amount) {
+        ken actual = amount - masel.defense
+        gin actual < 1 { actual = 1 }
+        masel.hp = masel.hp - actual
+        gin masel.hp <= 0 {
+            masel.hp = 0
+            masel.alive = nae
+        }
+        gie actual
+    }
+
+    dae heal(amount) {
+        masel.hp = masel.hp + amount
+        gin masel.hp > masel.max_hp {
+            masel.hp = masel.max_hp
+        }
+    }
+}
+
+kin Item {
+    dae init(x, y, char, color, name, item_type, value) {
+        masel.x = x
+        masel.y = y
+        masel.char = char
+        masel.color = color
+        masel.name = name
+        masel.item_type = item_type  # "gold", "health", "weapon", "armor"
+        masel.value = value
+        masel.collected = nae
+    }
+}
+
+kin Room {
+    dae init(x, y, w, h) {
+        masel.x = x
+        masel.y = y
+        masel.w = w
+        masel.h = h
+    }
+
+    dae center() {
+        gie [masel.x + masel.w / 2, masel.y + masel.h / 2]
+    }
+
+    dae intersects(other) {
+        ken h_overlap = masel.x <= other.x + other.w an masel.x + masel.w >= other.x
+        ken v_overlap = masel.y <= other.y + other.h an masel.y + masel.h >= other.y
+        gie h_overlap an v_overlap
+    }
+}
+
+# === Game State ===
+kin Game {
+    dae init() {
+        masel.map = []
+        masel.rooms = []
+        masel.player = naething
+        masel.enemies = []
+        masel.items = []
+        masel.messages = []
+        masel.gold = 0
+        masel.level = 1
+        masel.turns = 0
+        masel.game_over = nae
+        masel.victory = nae
+
+        masel.generate_dungeon()
+    }
+
+    dae create_map() {
+        ken map = []
+        fer y in 0..MAP_HEIGHT {
+            ken row = []
+            fer x in 0..MAP_WIDTH {
+                shove(row, TILE_VOID)
+            }
+            shove(map, row)
+        }
+        gie map
+    }
+
+    dae create_room(room) {
+        ken y_start = room.y + 1
+        ken y_end = room.y + room.h
+        ken x_start = room.x + 1
+        ken x_end = room.x + room.w
+        fer y in y_start..y_end {
+            fer x in x_start..x_end {
+                gin x > 0 an x < MAP_WIDTH - 1 an y > 0 an y < MAP_HEIGHT - 1 {
+                    masel.map[y][x] = TILE_FLOOR
+                }
+            }
+        }
+    }
+
+    dae create_h_tunnel(x1, x2, y) {
+        ken min_x = x1
+        ken max_x = x2
+        gin x2 < x1 {
+            min_x = x2
+            max_x = x1
+        }
+        ken end_x = max_x + 1
+        fer x in min_x..end_x {
+            gin x > 0 an x < MAP_WIDTH - 1 an y > 0 an y < MAP_HEIGHT - 1 {
+                masel.map[y][x] = TILE_FLOOR
+            }
+        }
+    }
+
+    dae create_v_tunnel(y1, y2, x) {
+        ken min_y = y1
+        ken max_y = y2
+        gin y2 < y1 {
+            min_y = y2
+            max_y = y1
+        }
+        ken end_y = max_y + 1
+        fer y in min_y..end_y {
+            gin x > 0 an x < MAP_WIDTH - 1 an y > 0 an y < MAP_HEIGHT - 1 {
+                masel.map[y][x] = TILE_FLOOR
+            }
+        }
+    }
+
+    dae generate_dungeon() {
+        masel.map = masel.create_map()
+        masel.rooms = []
+        masel.enemies = []
+        masel.items = []
+
+        # Generate rooms
+        ken attempts = 0
+        whiles len(masel.rooms) < MAX_ROOMS an attempts < 100 {
+            ken w = jammy(MIN_ROOM_SIZE, MAX_ROOM_SIZE)
+            ken h = jammy(MIN_ROOM_SIZE - 1, MAX_ROOM_SIZE - 2)
+            ken x = jammy(1, MAP_WIDTH - w - 2)
+            ken y = jammy(1, MAP_HEIGHT - h - 2)
+
+            ken new_room = Room(x, y, w, h)
+            ken valid = aye
+
+            fer room in masel.rooms {
+                gin new_room.intersects(room) {
+                    valid = nae
+                }
+            }
+
+            gin valid {
+                masel.create_room(new_room)
+
+                gin len(masel.rooms) > 0 {
+                    ken prev = masel.rooms[len(masel.rooms) - 1]
+                    ken new_center = new_room.center()
+                    ken prev_center = prev.center()
+
+                    gin jammy(0, 1) == 0 {
+                        masel.create_h_tunnel(prev_center[0], new_center[0], prev_center[1])
+                        masel.create_v_tunnel(prev_center[1], new_center[1], new_center[0])
+                    } ither {
+                        masel.create_v_tunnel(prev_center[1], new_center[1], prev_center[0])
+                        masel.create_h_tunnel(prev_center[0], new_center[0], new_center[1])
+                    }
+                }
+
+                shove(masel.rooms, new_room)
+            }
+            attempts = attempts + 1
+        }
+
+        # Place player in first room
+        gin len(masel.rooms) > 0 {
+            ken start = masel.rooms[0].center()
+            masel.player = Entity(start[0], start[1], "@", YELLOW_FG + BOLD, "Hero")
+            masel.player.hp = 20
+            masel.player.max_hp = 20
+            masel.player.attack = 3
+        }
+
+        # Place stairs in last room
+        gin len(masel.rooms) > 1 {
+            ken last_room = masel.rooms[len(masel.rooms) - 1]
+            ken stairs_pos = last_room.center()
+            masel.map[stairs_pos[1]][stairs_pos[0]] = TILE_STAIRS
+        }
+
+        # Place enemies in random rooms (not first)
+        ken enemy_count = jammy(3, MAX_ENEMIES)
+        fer i in 0..enemy_count {
+            gin len(masel.rooms) > 1 {
+                ken room_idx = jammy(1, len(masel.rooms) - 1)
+                ken room = masel.rooms[room_idx]
+                ken ex = jammy(room.x + 1, room.x + room.w - 1)
+                ken ey = jammy(room.y + 1, room.y + room.h - 1)
+
+                # Different enemy types
+                ken roll = jammy(0, 100)
+                ken enemy = naething
+                gin roll < 50 {
+                    enemy = Entity(ex, ey, "g", GREEN_FG, "Goblin")
+                    enemy.hp = 5
+                    enemy.max_hp = 5
+                    enemy.attack = 2
+                } ither gin roll < 80 {
+                    enemy = Entity(ex, ey, "o", RED_FG, "Orc")
+                    enemy.hp = 10
+                    enemy.max_hp = 10
+                    enemy.attack = 3
+                    enemy.defense = 1
+                } ither {
+                    enemy = Entity(ex, ey, "T", MAGENTA_FG + BOLD, "Troll")
+                    enemy.hp = 15
+                    enemy.max_hp = 15
+                    enemy.attack = 4
+                    enemy.defense = 2
+                }
+                shove(masel.enemies, enemy)
+            }
+        }
+
+        # Place items
+        ken item_count = jammy(3, MAX_ITEMS)
+        fer i in 0..item_count {
+            gin len(masel.rooms) > 0 {
+                ken room_idx = jammy(0, len(masel.rooms) - 1)
+                ken room = masel.rooms[room_idx]
+                ken ix = jammy(room.x + 1, room.x + room.w - 1)
+                ken iy = jammy(room.y + 1, room.y + room.h - 1)
+
+                ken roll = jammy(0, 100)
+                ken item = naething
+                gin roll < 40 {
+                    item = Item(ix, iy, "$", YELLOW_FG + BOLD, "Gold", "gold", jammy(5, 25))
+                } ither gin roll < 70 {
+                    item = Item(ix, iy, "!", RED_FG, "Health Potion", "health", 8)
+                } ither gin roll < 85 {
+                    item = Item(ix, iy, "/", CYAN_FG, "Sword", "weapon", 1)
+                } ither {
+                    item = Item(ix, iy, "[", BLUE_FG, "Armor", "armor", 1)
+                }
+                shove(masel.items, item)
+            }
+        }
+
+        masel.add_message("Welcome tae level " + tae_string(masel.level) + "! Find the stairs >")
+    }
+
+    dae add_message(msg) {
+        shove(masel.messages, msg)
+        gin len(masel.messages) > 5 {
+            ken new_msgs = []
+            fer i in 1..len(masel.messages) {
+                shove(new_msgs, masel.messages[i])
+            }
+            masel.messages = new_msgs
+        }
+    }
+
+    dae is_blocked(x, y) {
+        gin x < 0 or x >= MAP_WIDTH or y < 0 or y >= MAP_HEIGHT {
+            gie aye
+        }
+        gin masel.map[y][x] == TILE_VOID or masel.map[y][x] == TILE_WALL {
+            gie aye
+        }
+        gie nae
+    }
+
+    dae get_enemy_at(x, y) {
+        fer enemy in masel.enemies {
+            gin enemy.alive an enemy.x == x an enemy.y == y {
+                gie enemy
+            }
+        }
+        gie naething
+    }
+
+    dae move_player(dx, dy) {
+        ken new_x = masel.player.x + dx
+        ken new_y = masel.player.y + dy
+
+        # Check for enemies
+        ken target = masel.get_enemy_at(new_x, new_y)
+        gin target != naething {
+            masel.attack_entity(masel.player, target)
+            masel.turns = masel.turns + 1
+            gie aye
+        }
+
+        # Check for blocked
+        gin masel.is_blocked(new_x, new_y) {
+            gie nae
+        }
+
+        masel.player.x = new_x
+        masel.player.y = new_y
+
+        # Check for items
+        masel.pickup_items()
+
+        # Check for stairs
+        gin masel.map[new_y][new_x] == TILE_STAIRS {
+            masel.next_level()
+        }
+
+        masel.turns = masel.turns + 1
+        gie aye
+    }
+
+    dae attack_entity(attacker, defender) {
+        ken damage = attacker.attack + jammy(0, 2)
+        ken actual = defender.take_damage(damage)
+        masel.add_message(attacker.name + " hits " + defender.name + " for " + tae_string(actual) + " damage!")
+
+        gin nae defender.alive {
+            gin defender.name == "Hero" {
+                masel.game_over = aye
+                masel.add_message("Ye have been slain! Game Over!")
+            } ither {
+                ken xp_gold = jammy(5, 15)
+                masel.gold = masel.gold + xp_gold
+                masel.add_message(defender.name + " is defeated! +" + tae_string(xp_gold) + " gold")
+            }
+        }
+    }
+
+    dae pickup_items() {
+        fer item in masel.items {
+            gin nae item.collected an item.x == masel.player.x an item.y == masel.player.y {
+                item.collected = aye
+                gin item.item_type == "gold" {
+                    masel.gold = masel.gold + item.value
+                    masel.add_message("Picked up " + tae_string(item.value) + " gold!")
+                } ither gin item.item_type == "health" {
+                    masel.player.heal(item.value)
+                    masel.add_message("Healed for " + tae_string(item.value) + " HP!")
+                } ither gin item.item_type == "weapon" {
+                    masel.player.attack = masel.player.attack + item.value
+                    masel.add_message("Attack increased! (+" + tae_string(item.value) + ")")
+                } ither gin item.item_type == "armor" {
+                    masel.player.defense = masel.player.defense + item.value
+                    masel.add_message("Defense increased! (+" + tae_string(item.value) + ")")
+                }
+            }
+        }
+    }
+
+    dae enemy_turn() {
+        fer enemy in masel.enemies {
+            gin enemy.alive {
+                # Simple AI: move toward player if within range
+                ken dx = masel.player.x - enemy.x
+                ken dy = masel.player.y - enemy.y
+                ken dist = dx * dx + dy * dy
+
+                gin dist <= 2 {
+                    # Adjacent - attack!
+                    masel.attack_entity(enemy, masel.player)
+                } ither gin dist < 100 {
+                    # Move toward player
+                    ken move_x = 0
+                    ken move_y = 0
+
+                    gin dx > 0 { move_x = 1 }
+                    gin dx < 0 { move_x = -1 }
+                    gin dy > 0 { move_y = 1 }
+                    gin dy < 0 { move_y = -1 }
+
+                    # Try horizontal first
+                    ken new_x = enemy.x + move_x
+                    ken new_y = enemy.y
+
+                    gin nae masel.is_blocked(new_x, new_y) an masel.get_enemy_at(new_x, new_y) == naething {
+                        enemy.x = new_x
+                    } ither {
+                        # Try vertical
+                        new_x = enemy.x
+                        new_y = enemy.y + move_y
+                        gin nae masel.is_blocked(new_x, new_y) an masel.get_enemy_at(new_x, new_y) == naething {
+                            enemy.y = new_y
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    dae next_level() {
+        masel.level = masel.level + 1
+        gin masel.level > 5 {
+            masel.victory = aye
+            masel.add_message("Ye escaped the dungeon! VICTORY!")
+        } ither {
+            masel.player.heal(5)
+            masel.generate_dungeon()
+        }
+    }
+}
+
+# === Rendering ===
+dae get_tile_char(tile) {
+    gin tile == TILE_VOID { gie " " }
+    gin tile == TILE_WALL { gie "#" }
+    gin tile == TILE_FLOOR { gie "." }
+    gin tile == TILE_DOOR { gie "+" }
+    gin tile == TILE_STAIRS { gie ">" }
+    gie "?"
+}
+
+dae get_tile_color(tile) {
+    gin tile == TILE_VOID { gie DIM }
+    gin tile == TILE_WALL { gie GRAY_FG }
+    gin tile == TILE_FLOOR { gie DIM }
+    gin tile == TILE_DOOR { gie YELLOW_FG }
+    gin tile == TILE_STAIRS { gie CYAN_FG + BOLD }
+    gie WHITE_FG
+}
+
+dae make_padding(n) {
+    ken pad = ""
+    gin n > 0 {
+        ken i = 0
+        whiles i < n {
+            pad = pad + " "
+            i = i + 1
+        }
+    }
+    gie pad
+}
+
+dae render(game) {
+    ken term_w = term_width()
+    ken board_width = MAP_WIDTH + 4
+    ken left_pad = (term_w - board_width) / 2
+    gin left_pad < 0 { left_pad = 0 }
+    ken padding = make_padding(left_pad)
+
+    ken frame = CURSOR_HOME + CURSOR_HIDE
+
+    # Title bar
+    frame = frame + padding + CYAN_FG + BOLD + "DUNGEON CRAWLER" + RESET
+    frame = frame + "  Level: " + YELLOW_FG + tae_string(game.level) + RESET
+    frame = frame + "  Gold: " + YELLOW_FG + BOLD + tae_string(game.gold) + RESET
+    frame = frame + "  Turn: " + DIM + tae_string(game.turns) + RESET
+    frame = frame + CLEAR_LINE + "\n"
+
+    # HP bar
+    ken hp_pct = game.player.hp * 20 / game.player.max_hp
+    ken hp_bar = "["
+    ken i = 0
+    whiles i < 20 {
+        gin i < hp_pct {
+            hp_bar = hp_bar + GREEN_FG + "=" + RESET
+        } ither {
+            hp_bar = hp_bar + RED_FG + "-" + RESET
+        }
+        i = i + 1
+    }
+    hp_bar = hp_bar + "]"
+    frame = frame + padding + "HP: " + hp_bar + " " + tae_string(game.player.hp) + "/" + tae_string(game.player.max_hp)
+    frame = frame + "  ATK:" + tae_string(game.player.attack) + " DEF:" + tae_string(game.player.defense)
+    frame = frame + CLEAR_LINE + "\n"
+
+    # Top border
+    ken border = padding + WHITE_FG + "+"
+    i = 0
+    whiles i < MAP_WIDTH {
+        border = border + "-"
+        i = i + 1
+    }
+    border = border + "+" + RESET + CLEAR_LINE + "\n"
+    frame = frame + border
+
+    # Map
+    fer y in 0..MAP_HEIGHT {
+        ken line = padding + WHITE_FG + "|" + RESET
+
+        fer x in 0..MAP_WIDTH {
+            ken tile = game.map[y][x]
+            ken char = get_tile_char(tile)
+            ken color = get_tile_color(tile)
+            ken drawn = nae
+
+            # Check for player
+            gin game.player.x == x an game.player.y == y {
+                line = line + game.player.color + game.player.char + RESET
+                drawn = aye
+            }
+
+            # Check for enemies
+            gin nae drawn {
+                fer enemy in game.enemies {
+                    gin enemy.alive an enemy.x == x an enemy.y == y {
+                        line = line + enemy.color + enemy.char + RESET
+                        drawn = aye
+                    }
+                }
+            }
+
+            # Check for items
+            gin nae drawn {
+                fer item in game.items {
+                    gin nae item.collected an item.x == x an item.y == y {
+                        line = line + item.color + item.char + RESET
+                        drawn = aye
+                    }
+                }
+            }
+
+            # Draw tile
+            gin nae drawn {
+                line = line + color + char + RESET
+            }
+        }
+
+        frame = frame + line + WHITE_FG + "|" + RESET + CLEAR_LINE + "\n"
+    }
+
+    # Bottom border
+    frame = frame + border
+
+    # Messages
+    fer msg in game.messages {
+        frame = frame + padding + DIM + "> " + msg + RESET + CLEAR_LINE + "\n"
+    }
+    # Pad remaining message lines
+    i = len(game.messages)
+    whiles i < 5 {
+        frame = frame + CLEAR_LINE + "\n"
+        i = i + 1
+    }
+
+    # Controls / Status
+    gin game.victory {
+        frame = frame + padding + GREEN_FG + BOLD + "VICTORY! Ye escaped with " + tae_string(game.gold) + " gold!" + RESET + CLEAR_LINE + "\n"
+        frame = frame + padding + DIM + "[Q] = Quit  [R] = Play Again" + RESET + CLEAR_LINE + "\n"
+    } ither gin game.game_over {
+        frame = frame + padding + RED_FG + BOLD + "GAME OVER! Ye fell in the dungeon..." + RESET + CLEAR_LINE + "\n"
+        frame = frame + padding + DIM + "[Q] = Quit  [R] = Try Again" + RESET + CLEAR_LINE + "\n"
+    } ither {
+        frame = frame + padding + DIM + "[Arrow Keys] = Move/Attack  [.] = Wait  [Q] = Quit" + RESET + CLEAR_LINE + "\n"
+    }
+
+    # Legend
+    frame = frame + padding + DIM + "@ You  g Goblin  o Orc  T Troll  $ Gold  ! Potion  / Weapon  [ Armor  > Stairs" + RESET + CLEAR_LINE + "\n"
+
+    blether(frame)
+}
+
+# === Main ===
+blether(CLEAR_SCREEN + CURSOR_HOME + CURSOR_HIDE)
+
+ken game = Game()
+ken quit = nae
+
+whiles nae quit {
+    render(game)
+
+    ken key = get_key()
+    ken moved = nae
+
+    gin key == "q" or key == "Q" {
+        quit = aye
+    } ither gin key == "r" or key == "R" {
+        gin game.game_over or game.victory {
+            game = Game()
+        }
+    } ither gin nae game.game_over an nae game.victory {
+        gin key == "Left" {
+            moved = game.move_player(-1, 0)
+        } ither gin key == "Right" {
+            moved = game.move_player(1, 0)
+        } ither gin key == "Up" {
+            moved = game.move_player(0, -1)
+        } ither gin key == "Down" {
+            moved = game.move_player(0, 1)
+        } ither gin key == "." {
+            # Wait a turn
+            game.turns = game.turns + 1
+            moved = aye
+        }
+
+        gin moved an nae game.game_over {
+            game.enemy_turn()
+        }
+    }
+}
+
+blether(CURSOR_SHOW + RESET + CLEAR_SCREEN + CURSOR_HOME)
+blether("Final Score: " + tae_string(game.gold) + " gold collected")
+blether("Thanks fer playin'! Haste ye back tae the dungeon!")

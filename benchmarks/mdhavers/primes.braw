@@ -1,0 +1,98 @@
+# Prime Numbers Benchmark
+# Sieve of Eratosthenes implementation
+
+# Sieve of Eratosthenes
+dae sieve(n) {
+    # Create boolean array
+    ken is_prime = []
+    ken i = 0
+    whiles i <= n {
+        shove(is_prime, aye)
+        i = i + 1
+    }
+
+    # 0 and 1 are not prime
+    gin n >= 0 { is_prime[0] = nae }
+    gin n >= 1 { is_prime[1] = nae }
+
+    # Sieve
+    ken p = 2
+    whiles p * p <= n {
+        gin is_prime[p] {
+            ken j = p * p
+            whiles j <= n {
+                is_prime[j] = nae
+                j = j + p
+            }
+        }
+        p = p + 1
+    }
+
+    # Collect primes
+    ken primes = []
+    ken k = 2
+    whiles k <= n {
+        gin is_prime[k] {
+            shove(primes, k)
+        }
+        k = k + 1
+    }
+    gie primes
+}
+
+# Simple primality test
+dae is_prime(n) {
+    gin n < 2 { gie nae }
+    gin n == 2 { gie aye }
+    gin n % 2 == 0 { gie nae }
+
+    ken i = 3
+    whiles i * i <= n {
+        gin n % i == 0 { gie nae }
+        i = i + 2
+    }
+    gie aye
+}
+
+# Count primes up to n using trial division
+dae count_primes_trial(n) {
+    ken count = 0
+    ken i = 2
+    whiles i <= n {
+        gin is_prime(i) {
+            count = count + 1
+        }
+        i = i + 1
+    }
+    gie count
+}
+
+# Run benchmarks
+blether "=== Prime Numbers Benchmark ==="
+
+# Test correctness
+blether "Testing primality..."
+blether "is_prime(2) = " + tae_string(is_prime(2))
+blether "is_prime(17) = " + tae_string(is_prime(17))
+blether "is_prime(18) = " + tae_string(is_prime(18))
+blether "is_prime(97) = " + tae_string(is_prime(97))
+
+# Sieve benchmark
+blether ""
+blether "Sieve of Eratosthenes up to 100..."
+ken primes100 = sieve(100)
+blether "Found " + tae_string(len(primes100)) + " primes"
+blether "First 10: " + tae_string(primes100[0]) + ", " + tae_string(primes100[1]) + ", " + tae_string(primes100[2]) + ", " + tae_string(primes100[3]) + ", " + tae_string(primes100[4]) + ", " + tae_string(primes100[5]) + ", " + tae_string(primes100[6]) + ", " + tae_string(primes100[7]) + ", " + tae_string(primes100[8]) + ", " + tae_string(primes100[9])
+
+blether ""
+blether "Sieve up to 1000..."
+ken primes1000 = sieve(1000)
+blether "Found " + tae_string(len(primes1000)) + " primes up to 1000"
+
+blether ""
+blether "Sieve up to 5000..."
+ken primes5000 = sieve(5000)
+blether "Found " + tae_string(len(primes5000)) + " primes up to 5000"
+
+blether ""
+blether "Prime numbers benchmark complete!"

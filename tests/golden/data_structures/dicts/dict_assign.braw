@@ -1,0 +1,10 @@
+# SKIP_NATIVE
+# Note: Dicts not supported in LLVM
+# SKIP_INTERPRETER
+# Note: Dict ordering is non-deterministic
+ken person = {"name": "Alice"}
+blether person
+person["age"] = 30
+blether person
+person["name"] = "Bob"
+blether person

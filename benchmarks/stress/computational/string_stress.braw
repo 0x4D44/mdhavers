@@ -1,0 +1,90 @@
+# String Operations Stress Test
+# Tests string manipulation at scale
+
+blether "=== String Stress Test ==="
+
+# String concatenation stress
+blether "String concatenation:"
+ken start1 = tick()
+ken s = ""
+ken i = 0
+whiles i < 1000 {
+    s = s + "x"
+    i = i + 1
+}
+ken t1 = tick() - start1
+blether "  1000 single-char concats: " + tae_string(t1 / 1000) + " us, len=" + tae_string(len(s))
+
+ken start2 = tick()
+ken s2 = ""
+ken j = 0
+whiles j < 100 {
+    s2 = s2 + "hello world "
+    j = j + 1
+}
+ken t2 = tick() - start2
+blether "  100 multi-char concats: " + tae_string(t2 / 1000) + " us, len=" + tae_string(len(s2))
+
+# String operations
+blether ""
+blether "String operations:"
+ken test_str = "The quick brown fox jumps over the lazy dog"
+
+ken start3 = tick()
+ken k = 0
+whiles k < 1000 {
+    ken u = upper(test_str)
+    k = k + 1
+}
+ken t3 = tick() - start3
+blether "  1000x upper(): " + tae_string(t3 / 1000) + " us"
+
+ken start4 = tick()
+ken m = 0
+whiles m < 1000 {
+    ken l = lower(test_str)
+    m = m + 1
+}
+ken t4 = tick() - start4
+blether "  1000x lower(): " + tae_string(t4 / 1000) + " us"
+
+# Split/join stress
+blether ""
+blether "Split/Join operations:"
+ken csv_line = "field1,field2,field3,field4,field5,field6,field7,field8,field9,field10"
+
+ken start5 = tick()
+ken n = 0
+whiles n < 1000 {
+    ken parts = split(csv_line, ",")
+    n = n + 1
+}
+ken t5 = tick() - start5
+blether "  1000x split(): " + tae_string(t5 / 1000) + " us"
+
+ken words = ["one", "two", "three", "four", "five"]
+ken start6 = tick()
+ken p = 0
+whiles p < 1000 {
+    ken joined = join(words, "-")
+    p = p + 1
+}
+ken t6 = tick() - start6
+blether "  1000x join(): " + tae_string(t6 / 1000) + " us"
+
+# Contains stress
+blether ""
+blether "Contains operations:"
+ken long_str = "Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor"
+
+ken start7 = tick()
+ken q = 0
+whiles q < 1000 {
+    ken found = contains(long_str, "tempor")
+    q = q + 1
+}
+ken t7 = tick() - start7
+blether "  1000x contains(): " + tae_string(t7 / 1000) + " us"
+
+blether ""
+blether "=== String stress complete ==="

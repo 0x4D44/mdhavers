@@ -1,0 +1,8 @@
+blether -5
+blether -(-5)
+ken x = 10
+blether -x
+ken a = !aye
+blether a
+ken b = !nae
+blether b

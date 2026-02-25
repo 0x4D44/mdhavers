@@ -1,0 +1,49 @@
+# Large Lists Test
+# Tests list operations with many elements
+
+blether "=== Large Lists Test ==="
+
+# Create a list with 1000 elements
+blether "Creating list with 1000 elements..."
+ken big_list = []
+ken i = 0
+whiles i < 1000 {
+    shove(big_list, i)
+    i = i + 1
+}
+blether "Created list with " + tae_string(len(big_list)) + " elements"
+
+# Sum all elements
+blether "Summing all elements..."
+ken sum = 0
+ken j = 0
+whiles j < len(big_list) {
+    sum = sum + big_list[j]
+    j = j + 1
+}
+blether "Sum = " + tae_string(sum)
+
+# Expected: 0+1+2+...+999 = 999*1000/2 = 499500
+blether "Expected: 499500"
+
+# Create and iterate nested list
+blether ""
+blether "Creating nested list..."
+ken nested = []
+ken k = 0
+whiles k < 100 {
+    ken inner = []
+    ken l = 0
+    whiles l < 10 {
+        shove(inner, k * 10 + l)
+        l = l + 1
+    }
+    shove(nested, inner)
+    k = k + 1
+}
+blether "Created nested list with " + tae_string(len(nested)) + " inner lists"
+blether "First inner: " + tae_string(nested[0])
+blether "Last inner: " + tae_string(nested[99])
+
+blether ""
+blether "Large lists test complete!"

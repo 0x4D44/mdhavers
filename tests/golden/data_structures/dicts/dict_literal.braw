@@ -1,0 +1,6 @@
+# SKIP_NATIVE
+# Note: Dicts not supported in LLVM
+# SKIP_INTERPRETER
+# Note: Dict ordering is non-deterministic, making golden tests unreliable
+ken person = {"name": "Alice"}
+blether person["name"]

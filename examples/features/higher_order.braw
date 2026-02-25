@@ -1,0 +1,126 @@
+# higher_order.braw - Demonstrating lambdas and higher-order functions
+# mdhavers has proper functional programming support!
+
+blether "=== Higher-Order Functions in mdhavers ==="
+blether ""
+
+# Lambdas (anonymous functions)
+blether "1. Lambda expressions:"
+ken add = |a, b| a + b
+ken square = |x| x * x
+ken is_even = |n| n % 2 == 0
+
+blether "   add(3, 4) = " + tae_string(add(3, 4))
+blether "   square(5) = " + tae_string(square(5))
+blether "   is_even(6) = " + tae_string(is_even(6))
+
+blether ""
+
+# gaun - map function (Scots: "going over")
+blether "2. gaun() - map a function over a list:"
+ken nums = [1, 2, 3, 4, 5]
+blether "   Original: " + tae_string(nums)
+
+ken doubled = gaun(nums, |x| x * 2)
+blether "   Doubled:  " + tae_string(doubled)
+
+ken squared = gaun(nums, |x| x * x)
+blether "   Squared:  " + tae_string(squared)
+
+ken words = ["hullo", "scotland", "braw"]
+ken shouted = gaun(words, |w| upper(w))
+blether "   Shouted:  " + tae_string(shouted)
+
+blether ""
+
+# sieve - filter function (keep what passes)
+blether "3. sieve() - filter a list:"
+ken numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+blether "   Original: " + tae_string(numbers)
+
+ken evens = sieve(numbers, |x| x % 2 == 0)
+blether "   Evens:    " + tae_string(evens)
+
+ken odds = sieve(numbers, |x| x % 2 != 0)
+blether "   Odds:     " + tae_string(odds)
+
+ken big = sieve(numbers, |x| x > 5)
+blether "   > 5:      " + tae_string(big)
+
+blether ""
+
+# tumble - reduce/fold function (Scots: tumble together)
+blether "4. tumble() - reduce/fold a list:"
+ken values = [1, 2, 3, 4, 5]
+blether "   values = " + tae_string(values)
+
+ken sum = tumble(values, 0, |acc, x| acc + x)
+blether "   Sum:      " + tae_string(sum)
+
+ken product = tumble(values, 1, |acc, x| acc * x)
+blether "   Product:  " + tae_string(product)
+
+dae bigger(a, b) {
+    gin a > b { gie a } ither { gie b }
+}
+ken maximum = tumble(values, values[0], |acc, x| bigger(acc, x))
+blether "   Maximum:  " + tae_string(maximum)
+
+# Concatenate strings
+ken names = ["Hamish", "Morag", "Angus"]
+ken greeting = tumble(names, "", |acc, name| acc + name + " ")
+blether "   Names:    " + wheesht(greeting)
+
+blether ""
+
+# ilk - for-each function (Scots: ilk = each)
+blether "5. ilk() - do something fer each item:"
+ken items = ["haggis", "neeps", "tatties"]
+blether "   Supper menu:"
+dae print_item(item) {
+    blether "   - " + item
+}
+ilk(items, print_item)
+
+blether ""
+
+# Combining HOFs - functional pipeline
+blether "6. Combining higher-order functions:"
+ken data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+blether "   Original:      " + tae_string(data)
+
+# Get even numbers, square them, sum them
+ken evens_only = sieve(data, |x| x % 2 == 0)
+blether "   Evens:         " + tae_string(evens_only)
+
+ken evens_squared = gaun(evens_only, |x| x * x)
+blether "   Squared:       " + tae_string(evens_squared)
+
+ken total = tumble(evens_squared, 0, |acc, x| acc + x)
+blether "   Sum of squares: " + tae_string(total)
+
+blether ""
+
+# Practical example: Processing data
+blether "7. Practical example - processing student scores:"
+ken scores = [72, 85, 91, 68, 77, 94, 82, 59, 88, 73]
+blether "   All scores:  " + tae_string(scores)
+
+ken passed = sieve(scores, |s| s >= 70)
+blether "   Passed (>=70): " + tae_string(passed)
+
+ken average = tumble(scores, 0, |acc, s| acc + s) / len(scores)
+blether "   Average:     " + tae_string(average)
+
+ken top_scores = sieve(scores, |s| s >= 90)
+blether "   Top scores:  " + tae_string(top_scores)
+
+# Grade distribution
+dae grade(s) {
+    gin s >= 90 { gie "A" } ither gin s >= 80 { gie "B" } ither gin s >= 70 { gie "C" } ither gin s >= 60 { gie "D" } ither { gie "F" }
+}
+ken grades = gaun(scores, |s| grade(s))
+blether "   Grades:      " + tae_string(grades)
+
+blether ""
+blether "Braw! Functional programming in Scots!"

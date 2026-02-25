@@ -1,0 +1,8 @@
+# SKIP_NATIVE
+# Note: This test has issues in native compilation
+ken empty = []
+blether empty
+blether len(empty)
+shove(empty, 1)
+blether empty
+blether len(empty)

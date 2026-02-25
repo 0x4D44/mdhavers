@@ -1,0 +1,6 @@
+# SKIP_NATIVE
+# Note: yank may not be supported in LLVM
+ken nums = [1, 2, 3]
+ken last = yank(nums)
+blether last
+blether nums

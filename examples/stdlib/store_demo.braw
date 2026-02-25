@@ -1,0 +1,377 @@
+# store_demo.braw - Demonstrate the state management module
+# "Keep yer state in order, like a guid Scots hoosekeeper!"
+
+fetch "lib/store"
+fetch "lib/colors"
+
+blether ""
+blether cyan("=============================================")
+blether cyan("    STORE MODULE DEMO")
+blether cyan("    'Redux-like State Management'")
+blether cyan("=============================================")
+blether ""
+
+# ===============================================================
+# Basic Store Usage
+# ===============================================================
+
+blether yellow("=== Basic Store ===")
+blether ""
+
+# Define a simple counter reducer
+dae counter_reducer(state, action) {
+    gin action["type"] == "INCREMENT" {
+        gie {"count": state["count"] + 1}
+    } ither gin action["type"] == "DECREMENT" {
+        gie {"count": state["count"] - 1}
+    } ither gin action["type"] == "ADD" {
+        gie {"count": state["count"] + action["payload"]}
+    } ither gin action["type"] == "RESET" {
+        gie {"count": 0}
+    }
+    gie state
+}
+
+ken store = create_store(counter_reducer, {"count": 0})
+
+blether f"Initial state: {store.get_state()}"
+
+store.dispatch(make_action("INCREMENT"))
+blether f"After INCREMENT: {store.get_state()}"
+
+store.dispatch(make_action("INCREMENT"))
+blether f"After INCREMENT: {store.get_state()}"
+
+store.dispatch(make_action("DECREMENT"))
+blether f"After DECREMENT: {store.get_state()}"
+
+store.dispatch(make_action("ADD", 10))
+blether f"After ADD 10: {store.get_state()}"
+
+store.dispatch(make_action("RESET"))
+blether f"After RESET: {store.get_state()}"
+blether ""
+
+# ===============================================================
+# Subscriptions
+# ===============================================================
+
+blether yellow("=== Subscriptions ===")
+blether ""
+
+ken sub_store = create_store(counter_reducer, {"count": 0})
+
+dae log_changes(state, action) {
+    blether f"  State changed tae: {state} (action: {action['type']})"
+}
+
+sub_store.subscribe(log_changes)
+
+blether "Dispatching actions with subscriber:"
+sub_store.dispatch(make_action("INCREMENT"))
+sub_store.dispatch(make_action("ADD", 5))
+sub_store.dispatch(make_action("DECREMENT"))
+blether ""
+
+# ===============================================================
+# Middleware
+# ===============================================================
+
+blether yellow("=== Middleware ===")
+blether ""
+
+ken mw_store = create_store(counter_reducer, {"count": 0})
+
+# Add logger middleware
+mw_store.use(logger_middleware)
+
+blether "Dispatching with logger middleware:"
+mw_store.dispatch(make_action("INCREMENT"))
+mw_store.dispatch(make_action("ADD", 7))
+blether ""
+
+# ===============================================================
+# History and Undo
+# ===============================================================
+
+blether yellow("=== History and Undo ===")
+blether ""
+
+ken hist_store = create_store(counter_reducer, {"count": 0})
+hist_store.enable_history(10)
+
+blether "Making some changes..."
+hist_store.dispatch(make_action("ADD", 10))
+blether f"After ADD 10: {hist_store.get_state()}"
+
+hist_store.dispatch(make_action("ADD", 5))
+blether f"After ADD 5: {hist_store.get_state()}"
+
+hist_store.dispatch(make_action("DECREMENT"))
+blether f"After DECREMENT: {hist_store.get_state()}"
+
+blether ""
+blether "Undoing last action..."
+hist_store.undo()
+blether f"After undo: {hist_store.get_state()}"
+
+blether "Undoing again..."
+hist_store.undo()
+blether f"After undo: {hist_store.get_state()}"
+blether ""
+
+# ===============================================================
+# Combined Reducers
+# ===============================================================
+
+blether yellow("=== Combined Reducers ===")
+blether ""
+
+dae user_reducer(state, action) {
+    gin action["type"] == "SET_NAME" {
+        gie {"name": action["payload"], "logged_in": state["logged_in"]}
+    } ither gin action["type"] == "LOGIN" {
+        gie {"name": state["name"], "logged_in": aye}
+    } ither gin action["type"] == "LOGOUT" {
+        gie {"name": state["name"], "logged_in": nae}
+    }
+    gie state
+}
+
+dae cart_reducer(state, action) {
+    gin action["type"] == "ADD_ITEM" {
+        ken new_items = state["items"] + []
+        shove(new_items, action["payload"])
+        gie {"items": new_items, "total": state["total"] + action["payload"]["price"]}
+    } ither gin action["type"] == "CLEAR_CART" {
+        gie {"items": [], "total": 0}
+    }
+    gie state
+}
+
+ken reducers = {
+    "user": user_reducer,
+    "cart": cart_reducer
+}
+
+ken root_reducer = combine_reducers(reducers)
+
+ken app_store = create_store(root_reducer, {
+    "user": {"name": "Guest", "logged_in": nae},
+    "cart": {"items": [], "total": 0}
+})
+
+blether f"Initial app state: {app_store.get_state()}"
+
+app_store.dispatch(make_action("SET_NAME", "Angus McTavish"))
+blether f"After SET_NAME: {app_store.get_state()}"
+
+app_store.dispatch(make_action("LOGIN"))
+blether f"After LOGIN: {app_store.get_state()}"
+
+app_store.dispatch(make_action("ADD_ITEM", {"name": "Haggis", "price": 15}))
+blether f"After ADD_ITEM: {app_store.get_state()}"
+
+app_store.dispatch(make_action("ADD_ITEM", {"name": "Whisky", "price": 45}))
+blether f"After ADD_ITEM: {app_store.get_state()}"
+blether ""
+
+# ===============================================================
+# Selectors
+# ===============================================================
+
+blether yellow("=== Selectors ===")
+blether ""
+
+dae get_user_name(state) {
+    gie state["user"]["name"]
+}
+
+dae get_cart_total(state) {
+    gie state["cart"]["total"]
+}
+
+ken cached_name_selector = create_selector(get_user_name)
+ken cached_total_selector = create_selector(get_cart_total)
+
+blether f"User name (via selector): {app_store.select(cached_name_selector)}"
+blether f"Cart total (via selector): {app_store.select(cached_total_selector)}"
+blether ""
+
+# ===============================================================
+# Action Type Helpers
+# ===============================================================
+
+blether yellow("=== Action Type Helpers ===")
+blether ""
+
+ken USER_ACTIONS = create_action_types("user", ["LOGIN", "LOGOUT", "SET_NAME", "UPDATE_PROFILE"])
+ken CART_ACTIONS = create_action_types("cart", ["ADD_ITEM", "REMOVE_ITEM", "CLEAR_CART"])
+
+blether "Generated action types:"
+blether f"  USER_ACTIONS: {USER_ACTIONS}"
+blether f"  CART_ACTIONS: {CART_ACTIONS}"
+blether ""
+
+# ===============================================================
+# Reactive Values
+# ===============================================================
+
+blether yellow("=== Reactive Values ===")
+blether ""
+
+ken counter = reactive(0)
+
+dae on_counter_change(new_val, old_val) {
+    blether f"  Counter changed: {old_val} -> {new_val}"
+}
+
+counter.subscribe(on_counter_change)
+
+blether "Updating reactive counter:"
+counter.set(5)
+counter.set(10)
+counter.update(|x| x * 2)
+blether f"Final value: {counter.get()}"
+blether ""
+
+# ===============================================================
+# Computed Values
+# ===============================================================
+
+blether yellow("=== Computed Values ===")
+blether ""
+
+ken price = reactive(100)
+ken quantity = reactive(2)
+
+ken total = computed([price, quantity], |deps| deps[0] * deps[1])
+
+blether f"Price: {price.get()}, Quantity: {quantity.get()}"
+blether f"Computed total: {total.get()}"
+
+blether "Updating price to 150..."
+price.set(150)
+blether f"Computed total (auto-updated): {total.get()}"
+
+blether "Updating quantity to 3..."
+quantity.set(3)
+blether f"Computed total (auto-updated): {total.get()}"
+blether ""
+
+# ===============================================================
+# Observable List
+# ===============================================================
+
+blether yellow("=== Observable List ===")
+blether ""
+
+ken shopping_list = observable_list(["Haggis", "Neeps", "Tatties"])
+
+dae on_list_change(event_type, data, index, items) {
+    blether f"  List event: {event_type} at index {index}"
+}
+
+shopping_list.subscribe(on_list_change)
+
+blether f"Initial list: {shopping_list.get_items()}"
+
+blether "Adding 'Whisky'..."
+shopping_list.add("Whisky")
+
+blether "Removing index 1..."
+shopping_list.remove(1)
+
+blether "Updating index 0 to 'Best Haggis'..."
+shopping_list.update(0, "Best Haggis")
+
+blether f"Final list: {shopping_list.get_items()}"
+blether f"Length: {shopping_list.length()}"
+blether ""
+
+# Filter and map
+ken filtered = shopping_list.filter(|item| len(item) > 6)
+blether f"Items longer than 6 chars: {filtered}"
+
+ken upper_items = shopping_list.map(|item| upper(item))
+blether f"Uppercase items: {upper_items}"
+blether ""
+
+# ===============================================================
+# State Machine
+# ===============================================================
+
+blether yellow("=== State Machine ===")
+blether ""
+
+# Define traffic light states
+ken traffic_states = {
+    "red": ["green"],
+    "green": ["yellow"],
+    "yellow": ["red"]
+}
+
+ken traffic_light = stateful_store(traffic_states, "red")
+
+dae on_traffic_change(from_state, to_state, data) {
+    blether f"  Traffic light: {from_state} -> {to_state}"
+}
+
+traffic_light.subscribe(on_traffic_change)
+
+blether f"Current state: {traffic_light.get_current()}"
+blether f"Can go to yellow? {traffic_light.can_transition('yellow')}"
+blether f"Can go to green? {traffic_light.can_transition('green')}"
+
+blether ""
+blether "Transitioning through states:"
+traffic_light.transition("green")
+traffic_light.transition("yellow")
+traffic_light.transition("red")
+blether f"Final state: {traffic_light.get_current()}"
+blether ""
+
+# ===============================================================
+# Validator Middleware
+# ===============================================================
+
+blether yellow("=== Validator Middleware ===")
+blether ""
+
+dae age_reducer(state, action) {
+    gin action["type"] == "SET_AGE" {
+        gie {"age": action["payload"]}
+    }
+    gie state
+}
+
+dae validate_age(payload) {
+    gie payload >= 0 an payload <= 150
+}
+
+ken validators = {
+    "SET_AGE": validate_age
+}
+
+ken val_store = create_store(age_reducer, {"age": 25})
+val_store.use(make_validator_middleware(validators))
+
+blether f"Initial age: {val_store.get_state()}"
+
+blether "Setting age to 30 (valid)..."
+val_store.dispatch(make_action("SET_AGE", 30))
+blether f"Age: {val_store.get_state()}"
+
+blether "Setting age to -5 (invalid - should be blocked)..."
+val_store.dispatch(make_action("SET_AGE", -5))
+blether f"Age: {val_store.get_state()}"
+
+blether "Setting age to 200 (invalid - should be blocked)..."
+val_store.dispatch(make_action("SET_AGE", 200))
+blether f"Age: {val_store.get_state()}"
+blether ""
+
+blether cyan("=============================================")
+blether cyan("    Store demo complete!")
+blether cyan("=============================================")
+blether ""

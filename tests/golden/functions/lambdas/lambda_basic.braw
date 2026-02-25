@@ -1,0 +1,8 @@
+# SKIP_NATIVE
+# Note: Lambdas may not be fully supported in LLVM
+ken double = |x| x * 2
+blether double(5)
+blether double(10)
+
+ken add = |a, b| a + b
+blether add(3, 4)

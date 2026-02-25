@@ -1,0 +1,6 @@
+# SKIP_NATIVE
+# Note: min/max may not be supported in LLVM
+blether min(3, 7)
+blether max(3, 7)
+blether min(-5, 5)
+blether max(-5, 5)

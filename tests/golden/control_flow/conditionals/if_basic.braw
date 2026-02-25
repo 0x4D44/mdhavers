@@ -1,0 +1,8 @@
+gin aye {
+    blether "yes"
+}
+ken flag = nae
+gin flag {
+    blether "no"
+}
+blether "done"

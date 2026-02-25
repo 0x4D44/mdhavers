@@ -1,0 +1,160 @@
+# Conway's Game of Life
+# Tests 2D array manipulation and simulation
+
+blether "=== Conway's Game of Life ==="
+
+ken WIDTH = 20
+ken HEIGHT = 10
+
+# Create empty grid
+dae make_grid(w, h) {
+    ken grid = []
+    ken y = 0
+    whiles y < h {
+        ken row = []
+        ken x = 0
+        whiles x < w {
+            shove(row, 0)
+            x = x + 1
+        }
+        shove(grid, row)
+        y = y + 1
+    }
+    gie grid
+}
+
+# Set cell value
+dae set_cell(grid, x, y, val) {
+    gin y >= 0 {
+        gin y < len(grid) {
+            gin x >= 0 {
+                gin x < len(grid[y]) {
+                    grid[y][x] = val
+                }
+            }
+        }
+    }
+}
+
+# Get cell value (with wrapping)
+dae get_cell(grid, x, y, h, w) {
+    ken ny = y
+    ken nx = x
+    gin ny < 0 { ny = h + ny }
+    gin ny >= h { ny = ny - h }
+    gin nx < 0 { nx = w + nx }
+    gin nx >= w { nx = nx - w }
+    gie grid[ny][nx]
+}
+
+# Count neighbors
+dae count_neighbors(grid, x, y, h, w) {
+    ken count = 0
+    ken dy = -1
+    whiles dy <= 1 {
+        ken dx = -1
+        whiles dx <= 1 {
+            gin dx != 0 {
+                count = count + get_cell(grid, x + dx, y + dy, h, w)
+            } ither gin dy != 0 {
+                count = count + get_cell(grid, x + dx, y + dy, h, w)
+            }
+            dx = dx + 1
+        }
+        dy = dy + 1
+    }
+    gie count
+}
+
+# Next generation
+dae step(grid, h, w) {
+    ken new_grid = make_grid(w, h)
+    ken y = 0
+    whiles y < h {
+        ken x = 0
+        whiles x < w {
+            ken neighbors = count_neighbors(grid, x, y, h, w)
+            ken alive = grid[y][x]
+            gin alive == 1 {
+                gin neighbors == 2 {
+                    set_cell(new_grid, x, y, 1)
+                } ither gin neighbors == 3 {
+                    set_cell(new_grid, x, y, 1)
+                }
+            } ither {
+                gin neighbors == 3 {
+                    set_cell(new_grid, x, y, 1)
+                }
+            }
+            x = x + 1
+        }
+        y = y + 1
+    }
+    gie new_grid
+}
+
+# Print grid
+dae print_grid(grid, h, w) {
+    ken y = 0
+    whiles y < h {
+        ken row_str = ""
+        ken x = 0
+        whiles x < w {
+            gin grid[y][x] == 1 {
+                row_str = row_str + "#"
+            } ither {
+                row_str = row_str + "."
+            }
+            x = x + 1
+        }
+        blether row_str
+        y = y + 1
+    }
+}
+
+# Count alive cells
+dae count_alive(grid, h, w) {
+    ken count = 0
+    ken y = 0
+    whiles y < h {
+        ken x = 0
+        whiles x < w {
+            count = count + grid[y][x]
+            x = x + 1
+        }
+        y = y + 1
+    }
+    gie count
+}
+
+# Initialize with glider pattern
+ken grid = make_grid(WIDTH, HEIGHT)
+set_cell(grid, 1, 0, 1)
+set_cell(grid, 2, 1, 1)
+set_cell(grid, 0, 2, 1)
+set_cell(grid, 1, 2, 1)
+set_cell(grid, 2, 2, 1)
+
+blether "Initial state (glider):"
+print_grid(grid, HEIGHT, WIDTH)
+blether "Alive cells: " + tae_string(count_alive(grid, HEIGHT, WIDTH))
+
+# Run simulation
+blether ""
+blether "Running 50 generations..."
+ken start = tick()
+ken gen = 0
+whiles gen < 50 {
+    grid = step(grid, HEIGHT, WIDTH)
+    gen = gen + 1
+}
+ken elapsed = tick() - start
+
+blether ""
+blether "After 50 generations:"
+print_grid(grid, HEIGHT, WIDTH)
+blether "Alive cells: " + tae_string(count_alive(grid, HEIGHT, WIDTH))
+blether "Time: " + tae_string(elapsed / 1000000) + " ms"
+
+blether ""
+blether "=== Game of Life complete ==="

@@ -1,0 +1,17 @@
+# SKIP_NATIVE
+# Note: Logging not yet supported in LLVM backend
+# Basic logging test - testing that output goes to stdout
+# We test log level changes, not the actual timestamp output
+
+blether "start"
+
+# Set to whisper so we see all messages  
+set_log_level("wheesht")
+
+# Now only stdout output should be visible
+blether get_log_level()
+
+set_log_level("roar")
+blether get_log_level()
+
+blether "end"

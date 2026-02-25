@@ -1,0 +1,7 @@
+blether 2 + 3 * 4
+blether (2 + 3) * 4
+blether 10 - 2 * 3
+blether 20 / 4 + 1
+blether 1 + 20 / 4
+blether 2 * 3 + 4 * 5
+blether 10 % 3 + 1

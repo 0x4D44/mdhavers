@@ -1,0 +1,156 @@
+# Particle Simulation Benchmark
+
+blether "=== Particle Simulation Benchmark ==="
+
+# Simple particle: [x, y, vx, vy, mass]
+# Simplified N-body simulation
+
+dae make_particles(n) {
+    ken particles = []
+    ken i = 0
+    whiles i < n {
+        # Position based on index, velocity starts small
+        ken x = tae_float(i % 10) * 10.0
+        ken y = tae_float(i / 10) * 10.0
+        ken vx = 0.1
+        ken vy = 0.1
+        ken mass = 1.0 + tae_float(i % 5)
+        shove(particles, [x, y, vx, vy, mass])
+        i = i + 1
+    }
+    gie particles
+}
+
+# Calculate distance squared between particles
+dae dist_sq(p1, p2) {
+    ken dx = p1[0] - p2[0]
+    ken dy = p1[1] - p2[1]
+    gie dx * dx + dy * dy
+}
+
+# Update velocities based on gravitational attraction
+dae update_velocities(particles, dt, g) {
+    ken n = len(particles)
+    ken i = 0
+    whiles i < n {
+        ken pi = particles[i]
+        ken ax = 0.0
+        ken ay = 0.0
+
+        ken j = 0
+        whiles j < n {
+            gin i != j {
+                ken pj = particles[j]
+                ken dx = pj[0] - pi[0]
+                ken dy = pj[1] - pi[1]
+                ken d2 = dx * dx + dy * dy + 0.1  # Softening
+                ken d = sqrt(d2)
+                ken force = g * pj[4] / d2
+                ax = ax + force * dx / d
+                ay = ay + force * dy / d
+            }
+            j = j + 1
+        }
+
+        pi[2] = pi[2] + ax * dt
+        pi[3] = pi[3] + ay * dt
+        i = i + 1
+    }
+}
+
+# Update positions
+dae update_positions(particles, dt) {
+    ken i = 0
+    whiles i < len(particles) {
+        ken p = particles[i]
+        p[0] = p[0] + p[2] * dt
+        p[1] = p[1] + p[3] * dt
+        i = i + 1
+    }
+}
+
+# Calculate total kinetic energy
+dae total_energy(particles) {
+    ken total = 0.0
+    ken i = 0
+    whiles i < len(particles) {
+        ken p = particles[i]
+        ken v2 = p[2] * p[2] + p[3] * p[3]
+        total = total + 0.5 * p[4] * v2
+        i = i + 1
+    }
+    gie total
+}
+
+# Run simulation
+dae simulate(n_particles, steps, dt, g) {
+    ken particles = make_particles(n_particles)
+    ken initial_energy = total_energy(particles)
+
+    ken step = 0
+    whiles step < steps {
+        update_velocities(particles, dt, g)
+        update_positions(particles, dt)
+        step = step + 1
+    }
+
+    ken final_energy = total_energy(particles)
+    gie [particles, initial_energy, final_energy]
+}
+
+# Correctness check
+blether "Correctness check:"
+ken small = make_particles(5)
+blether "  5 particles created"
+blether "  Particle 0: " + tae_string(small[0])
+blether "  Initial energy: " + tae_string(total_energy(small))
+
+ken result = simulate(5, 10, 0.01, 0.1)
+blether "  After 10 steps:"
+blether "    Final energy: " + tae_string(result[2])
+
+# Scaling tests
+blether ""
+blether "Particle simulation scaling:"
+
+ken start = tick()
+result = simulate(10, 100, 0.01, 0.1)
+ken elapsed = tick() - start
+blether "  10 particles, 100 steps: " + tae_string(elapsed / 1000) + " ms"
+
+start = tick()
+result = simulate(20, 100, 0.01, 0.1)
+elapsed = tick() - start
+blether "  20 particles, 100 steps: " + tae_string(elapsed / 1000) + " ms"
+
+start = tick()
+result = simulate(50, 100, 0.01, 0.1)
+elapsed = tick() - start
+blether "  50 particles, 100 steps: " + tae_string(elapsed / 1000) + " ms"
+
+start = tick()
+result = simulate(100, 100, 0.01, 0.1)
+elapsed = tick() - start
+blether "  100 particles, 100 steps: " + tae_string(elapsed / 1000) + " ms"
+
+# More steps test
+blether ""
+blether "Step count scaling (50 particles):"
+
+start = tick()
+result = simulate(50, 100, 0.01, 0.1)
+elapsed = tick() - start
+blether "  100 steps: " + tae_string(elapsed / 1000) + " ms"
+
+start = tick()
+result = simulate(50, 500, 0.01, 0.1)
+elapsed = tick() - start
+blether "  500 steps: " + tae_string(elapsed / 1000) + " ms"
+
+start = tick()
+result = simulate(50, 1000, 0.01, 0.1)
+elapsed = tick() - start
+blether "  1000 steps: " + tae_string(elapsed / 1000) + " ms"
+
+blether ""
+blether "=== Particle simulation complete ==="

@@ -1,0 +1,6 @@
+blether "hello"
+blether "Hello, World!"
+blether ""
+blether "123"
+blether "with spaces inside"
+blether "special: !@#$%"

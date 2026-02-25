@@ -1,0 +1,14 @@
+# SKIP_NATIVE
+# Note: Classes may not be fully supported in LLVM
+kin Point {
+    dae init(x, y) {
+        masel.x = x
+        masel.y = y
+    }
+}
+
+ken p = Point(3, 4)
+blether p.x
+blether p.y
+p.x = 10
+blether p.x

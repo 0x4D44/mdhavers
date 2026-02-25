@@ -1,0 +1,4 @@
+blether 1 + 2 + 3 + 4
+blether 10 - 5 - 2 - 1
+blether 2 * 3 * 4
+blether 100 / 5 / 2

@@ -1,0 +1,8 @@
+ken x = 42
+blether x
+ken name = "Alice"
+blether name
+ken flag = aye
+blether flag
+ken empty
+blether empty

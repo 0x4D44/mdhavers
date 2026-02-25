@@ -1,0 +1,19 @@
+dae grade(score) {
+    gin score >= 90 {
+        blether "A"
+    } ither gin score >= 80 {
+        blether "B"
+    } ither gin score >= 70 {
+        blether "C"
+    } ither gin score >= 60 {
+        blether "D"
+    } ither {
+        blether "F"
+    }
+}
+
+grade(95)
+grade(82)
+grade(73)
+grade(65)
+grade(50)

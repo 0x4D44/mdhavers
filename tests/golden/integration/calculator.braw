@@ -1,0 +1,42 @@
+# SKIP_NATIVE
+# Note: Complex integration tests may not work in LLVM
+kin Calculator {
+    dae init() {
+        masel.result = 0
+    }
+
+    dae add(x) {
+        masel.result = masel.result + x
+        gie masel
+    }
+
+    dae subtract(x) {
+        masel.result = masel.result - x
+        gie masel
+    }
+
+    dae multiply(x) {
+        masel.result = masel.result * x
+        gie masel
+    }
+
+    dae get_result() {
+        gie masel.result
+    }
+
+    dae reset() {
+        masel.result = 0
+        gie masel
+    }
+}
+
+ken calc = Calculator()
+calc.add(10)
+calc.add(5)
+blether calc.get_result()
+calc.subtract(3)
+blether calc.get_result()
+calc.multiply(2)
+blether calc.get_result()
+calc.reset()
+blether calc.get_result()

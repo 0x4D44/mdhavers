@@ -1,0 +1,17 @@
+dae classify(n) {
+    gin n < 0 {
+        gie "negative"
+    }
+    gin n == 0 {
+        gie "zero"
+    }
+    gin n < 10 {
+        gie "small"
+    }
+    gie "large"
+}
+
+blether classify(-5)
+blether classify(0)
+blether classify(5)
+blether classify(100)

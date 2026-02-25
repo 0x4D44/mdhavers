@@ -1,0 +1,139 @@
+# CSV Parser Benchmark
+
+blether "=== CSV Parser Benchmark ==="
+
+# Generate CSV data
+dae make_csv_row(id, cols) {
+    ken row = tae_string(id)
+    ken c = 0
+    whiles c < cols {
+        row = row + "," + tae_string(id * 100 + c)
+        c = c + 1
+    }
+    gie row
+}
+
+dae make_csv(rows, cols) {
+    # Header
+    ken csv = "id"
+    ken c = 0
+    whiles c < cols {
+        csv = csv + ",col" + tae_string(c)
+        c = c + 1
+    }
+    csv = csv + "\n"
+
+    # Data rows
+    ken r = 0
+    whiles r < rows {
+        csv = csv + make_csv_row(r, cols) + "\n"
+        r = r + 1
+    }
+    gie csv
+}
+
+# Parse CSV into list of lists
+dae parse_csv(csv) {
+    ken lines = split(csv, "\n")
+    ken result = []
+    ken i = 0
+    whiles i < len(lines) {
+        gin len(lines[i]) > 0 {
+            shove(result, split(lines[i], ","))
+        }
+        i = i + 1
+    }
+    gie result
+}
+
+# Sum a specific column (numeric)
+dae sum_column(data, col_idx) {
+    ken total = 0
+    ken i = 1  # Skip header
+    whiles i < len(data) {
+        total = total + tae_int(data[i][col_idx])
+        i = i + 1
+    }
+    gie total
+}
+
+# Count rows matching condition
+dae count_where(data, col_idx, threshold) {
+    ken count = 0
+    ken i = 1  # Skip header
+    whiles i < len(data) {
+        gin tae_int(data[i][col_idx]) > threshold {
+            count = count + 1
+        }
+        i = i + 1
+    }
+    gie count
+}
+
+# Correctness check
+blether "Correctness check:"
+ken small_csv = make_csv(5, 3)
+blether "Sample CSV (5 rows, 3 cols):"
+blether small_csv
+ken parsed = parse_csv(small_csv)
+blether "Parsed " + tae_string(len(parsed)) + " rows"
+blether "Header: " + tae_string(parsed[0])
+blether "Row 1: " + tae_string(parsed[1])
+
+# Scaling tests
+blether ""
+blether "CSV Generation scaling:"
+
+ken start = tick()
+ken csv = make_csv(100, 10)
+ken elapsed = tick() - start
+blether "  100 rows x 10 cols: " + tae_string(elapsed / 1000) + " ms, len=" + tae_string(len(csv))
+
+start = tick()
+csv = make_csv(500, 10)
+elapsed = tick() - start
+blether "  500 rows x 10 cols: " + tae_string(elapsed / 1000) + " ms, len=" + tae_string(len(csv))
+
+start = tick()
+csv = make_csv(1000, 10)
+elapsed = tick() - start
+blether "  1000 rows x 10 cols: " + tae_string(elapsed / 1000) + " ms, len=" + tae_string(len(csv))
+
+# Parsing tests
+blether ""
+blether "CSV Parsing scaling:"
+
+csv = make_csv(100, 10)
+start = tick()
+parsed = parse_csv(csv)
+elapsed = tick() - start
+blether "  Parse 100 rows: " + tae_string(elapsed / 1000) + " ms"
+
+csv = make_csv(500, 10)
+start = tick()
+parsed = parse_csv(csv)
+elapsed = tick() - start
+blether "  Parse 500 rows: " + tae_string(elapsed / 1000) + " ms"
+
+csv = make_csv(1000, 10)
+start = tick()
+parsed = parse_csv(csv)
+elapsed = tick() - start
+blether "  Parse 1000 rows: " + tae_string(elapsed / 1000) + " ms"
+
+# Aggregation tests
+blether ""
+blether "Aggregation operations (1000 rows):"
+
+start = tick()
+ken total = sum_column(parsed, 1)
+elapsed = tick() - start
+blether "  sum_column(col1): " + tae_string(elapsed) + " us, sum=" + tae_string(total)
+
+start = tick()
+ken count = count_where(parsed, 1, 50000)
+elapsed = tick() - start
+blether "  count_where(col1 > 50000): " + tae_string(elapsed) + " us, count=" + tae_string(count)
+
+blether ""
+blether "=== CSV parser complete ==="

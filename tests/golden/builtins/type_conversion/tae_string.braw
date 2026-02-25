@@ -1,0 +1,5 @@
+# SKIP_NATIVE
+blether tae_string(42)
+blether tae_string(3.14)
+blether tae_string(aye)
+blether tae_string([1, 2, 3])

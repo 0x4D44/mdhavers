@@ -1,0 +1,126 @@
+# Large-Scale String Processing Benchmark
+
+blether "=== Large-Scale String Processing Benchmark ==="
+
+# Build a large string
+dae build_string(n) {
+    ken result = ""
+    ken i = 0
+    whiles i < n {
+        result = result + "x"
+        i = i + 1
+    }
+    gie result
+}
+
+# Build string with pattern
+dae build_pattern_string(n) {
+    ken result = ""
+    ken i = 0
+    whiles i < n {
+        result = result + "abc,"
+        i = i + 1
+    }
+    gie result
+}
+
+# Small-scale correctness
+blether "Correctness check:"
+ken small = build_string(10)
+blether "  build_string(10): len=" + tae_string(len(small))
+ken pattern = build_pattern_string(5)
+blether "  build_pattern_string(5): " + pattern
+
+# String building scaling
+blether ""
+blether "String building scaling:"
+
+ken start = tick()
+ken s = build_string(100)
+ken elapsed = tick() - start
+blether "  build_string(100): " + tae_string(elapsed) + " us, len=" + tae_string(len(s))
+
+start = tick()
+s = build_string(500)
+elapsed = tick() - start
+blether "  build_string(500): " + tae_string(elapsed) + " us, len=" + tae_string(len(s))
+
+start = tick()
+s = build_string(1000)
+elapsed = tick() - start
+blether "  build_string(1000): " + tae_string(elapsed / 1000) + " ms, len=" + tae_string(len(s))
+
+start = tick()
+s = build_string(2000)
+elapsed = tick() - start
+blether "  build_string(2000): " + tae_string(elapsed / 1000) + " ms, len=" + tae_string(len(s))
+
+# Split/join on larger strings
+blether ""
+blether "Split/join on pattern strings:"
+
+start = tick()
+pattern = build_pattern_string(100)
+elapsed = tick() - start
+blether "  Build 100 patterns: " + tae_string(elapsed) + " us, len=" + tae_string(len(pattern))
+
+start = tick()
+ken parts = split(pattern, ",")
+elapsed = tick() - start
+blether "  Split 100 patterns: " + tae_string(elapsed) + " us, parts=" + tae_string(len(parts))
+
+start = tick()
+ken joined = join(parts, "-")
+elapsed = tick() - start
+blether "  Join 100 parts: " + tae_string(elapsed) + " us, len=" + tae_string(len(joined))
+
+# Larger pattern test
+start = tick()
+pattern = build_pattern_string(500)
+elapsed = tick() - start
+blether "  Build 500 patterns: " + tae_string(elapsed / 1000) + " ms, len=" + tae_string(len(pattern))
+
+start = tick()
+parts = split(pattern, ",")
+elapsed = tick() - start
+blether "  Split 500 patterns: " + tae_string(elapsed) + " us, parts=" + tae_string(len(parts))
+
+start = tick()
+joined = join(parts, "-")
+elapsed = tick() - start
+blether "  Join 500 parts: " + tae_string(elapsed) + " us, len=" + tae_string(len(joined))
+
+# String operations on large strings
+blether ""
+blether "String operations on large strings:"
+
+ken large = "The quick brown fox jumps over the lazy dog. "
+ken i = 0
+whiles i < 5 {
+    large = large + large
+    i = i + 1
+}
+blether "  Built string of length: " + tae_string(len(large))
+
+start = tick()
+ken u = upper(large)
+elapsed = tick() - start
+blether "  upper(): " + tae_string(elapsed) + " us"
+
+start = tick()
+ken l = lower(large)
+elapsed = tick() - start
+blether "  lower(): " + tae_string(elapsed) + " us"
+
+start = tick()
+ken found = contains(large, "fox")
+elapsed = tick() - start
+blether "  contains('fox'): " + tae_string(found) + " in " + tae_string(elapsed) + " us"
+
+start = tick()
+found = contains(large, "xyz")
+elapsed = tick() - start
+blether "  contains('xyz'): " + tae_string(found) + " in " + tae_string(elapsed) + " us"
+
+blether ""
+blether "=== String large-scale complete ==="

@@ -1,0 +1,5 @@
+# SKIP_NATIVE
+# Note: tumble/reduce may not be fully supported in LLVM
+ken nums = [1, 2, 3, 4, 5]
+ken total = tumble(nums, 0, |acc, x| acc + x)
+blether total

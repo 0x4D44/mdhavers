@@ -1,0 +1,303 @@
+# functional_demo.braw - Demonstrate functional programming in mdhavers
+# "Daein' things the functional way!"
+
+fetch "lib/functional"
+
+blether ""
+blether "======================================================="
+blether "    FUNCTIONAL PROGRAMMING DEMO"
+blether "    'Nae loops, just functions!'"
+blether "======================================================="
+blether ""
+
+# ===============================================================
+# Map, Filter, Reduce
+# ===============================================================
+
+blether "=== Map, Filter, Reduce ==="
+blether ""
+
+ken numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+blether f"Numbers: {numbers}"
+blether ""
+
+ken doubled = map_list(numbers, |x| x * 2)
+blether f"Doubled: {doubled}"
+
+ken evens = filter_list(numbers, is_even)
+blether f"Evens: {evens}"
+
+ken odds = filter_list(numbers, is_odd)
+blether f"Odds: {odds}"
+
+ken total = reduce(numbers, |acc, x| acc + x, 0)
+blether f"Sum: {total}"
+
+ken prod = reduce(numbers, |acc, x| acc * x, 1)
+blether f"Product: {prod}"
+
+blether ""
+
+# ===============================================================
+# Find Functions
+# ===============================================================
+
+blether "=== Find Functions ==="
+blether ""
+
+ken first_over_5 = find(numbers, |x| x > 5)
+blether f"First over 5: {first_over_5}"
+
+ken last_even = find_last(numbers, is_even)
+blether f"Last even: {last_even}"
+
+ken idx = find_index(numbers, |x| x > 5)
+blether f"Index of first over 5: {idx}"
+
+blether ""
+
+# ===============================================================
+# Any, All, None
+# ===============================================================
+
+blether "=== Any, All, None ==="
+blether ""
+
+blether f"Any even? {any(numbers, is_even)}"
+blether f"All positive? {all(numbers, is_positive)}"
+blether f"None negative? {none(numbers, is_negative)}"
+blether f"Count of evens: {count_if(numbers, is_even)}"
+
+blether ""
+
+# ===============================================================
+# Take While, Drop While
+# ===============================================================
+
+blether "=== Take While, Drop While ==="
+blether ""
+
+ken less_than_5 = take_while(numbers, |x| x < 5)
+blether f"Take while < 5: {less_than_5}"
+
+ken from_5 = drop_while(numbers, |x| x < 5)
+blether f"Drop while < 5: {from_5}"
+
+blether ""
+
+# ===============================================================
+# Partition
+# ===============================================================
+
+blether "=== Partition ==="
+blether ""
+
+ken parts = partition(numbers, is_even)
+blether f"Evens: {parts['match']}"
+blether f"Odds: {parts['no_match']}"
+
+blether ""
+
+# ===============================================================
+# Group By
+# ===============================================================
+
+blether "=== Group By ==="
+blether ""
+
+ken people = [
+    {"name": "Angus", "age": 25},
+    {"name": "Morag", "age": 30},
+    {"name": "Hamish", "age": 25},
+    {"name": "Fiona", "age": 30},
+    {"name": "Duncan", "age": 35}
+]
+
+ken by_age = group_by(people, |p| p["age"])
+blether f"Grouped by age: {by_age}"
+
+blether ""
+
+# ===============================================================
+# Function Composition
+# ===============================================================
+
+blether "=== Function Composition ==="
+blether ""
+
+ken add_one = |x| x + 1
+ken times_two = |x| x * 2
+
+ken add_then_times = compose(times_two, add_one)
+blether f"compose(times_two, add_one)(5) = times_two(add_one(5)) = {add_then_times(5)}"
+
+ken times_then_add = pipe_fn(times_two, add_one)
+blether f"pipe(times_two, add_one)(5) = add_one(times_two(5)) = {times_then_add(5)}"
+
+blether ""
+
+# ===============================================================
+# Pipeline
+# ===============================================================
+
+blether "=== Pipeline ==="
+blether ""
+
+ken process = pipeline([
+    |x| x + 1,
+    |x| x * 2,
+    |x| x - 3
+])
+
+blether f"Pipeline of (x+1, x*2, x-3) with x=5: {process(5)}"
+blether "  Steps: 5 -> 6 -> 12 -> 9"
+
+blether ""
+
+# ===============================================================
+# Apply N Times
+# ===============================================================
+
+blether "=== Apply N Times ==="
+blether ""
+
+ken result = apply_n(|x| x * 2, 4, 1)
+blether f"Double 4 times starting from 1: {result}"
+
+ken steps = iterate(|x| x * 2, 1, 5)
+blether f"Iteration of doubling: {steps}"
+
+blether ""
+
+# ===============================================================
+# Common Functions
+# ===============================================================
+
+blether "=== Common Functions ==="
+blether ""
+
+blether f"Sum of {numbers}: {sum(numbers)}"
+blether f"Product of [1,2,3,4]: {product([1, 2, 3, 4])}"
+blether f"Max of {numbers}: {max_of(numbers)}"
+blether f"Min of {numbers}: {min_of(numbers)}"
+blether f"Average of {numbers}: {average(numbers)}"
+
+blether ""
+
+# ===============================================================
+# Sort By
+# ===============================================================
+
+blether "=== Sort By ==="
+blether ""
+
+ken unsorted = [{"name": "Charlie", "score": 85}, {"name": "Alice", "score": 92}, {"name": "Bob", "score": 78}]
+
+blether f"Unsorted: {unsorted}"
+
+ken by_score = sort_by(unsorted, |p| p["score"])
+blether f"Sorted by score: {by_score}"
+
+ken by_score_desc = sort_by_desc(unsorted, |p| p["score"])
+blether f"Sorted by score (desc): {by_score_desc}"
+
+blether ""
+
+# ===============================================================
+# Generate and Iterate
+# ===============================================================
+
+blether "=== Generate and Iterate ==="
+blether ""
+
+ken squares = generate(5, |i| i * i)
+blether f"First 5 squares: {squares}"
+
+ken fibs = [1, 1]
+fer i in 2..10 {
+    shove(fibs, fibs[i-1] + fibs[i-2])
+}
+blether f"Fibonacci: {fibs}"
+
+ken replicated = replicate(5, "hello")
+blether f"Replicated: {replicated}"
+
+blether ""
+
+# ===============================================================
+# Memoization
+# ===============================================================
+
+blether "=== Memoization ==="
+blether ""
+
+dae slow_square(n) {
+    blether f"  Computing {n} * {n}..."
+    gie n * n
+}
+
+ken memo_square = memoize(slow_square)
+
+blether "First call (will compute):"
+blether f"  Result: {memo_square.call(5)}"
+
+blether "Second call (from cache):"
+blether f"  Result: {memo_square.call(5)}"
+
+blether "Third call with different value:"
+blether f"  Result: {memo_square.call(7)}"
+
+blether f"Cache size: {memo_square.cache_size()}"
+
+blether ""
+
+# ===============================================================
+# Functor Chaining
+# ===============================================================
+
+blether "=== Functor Chaining ==="
+blether ""
+
+ken wrapped = wrap([1, 2, 3, 4, 5])
+ken mapped = wrapped.map(|x| x * 2)
+ken filtered = mapped.filter(|x| x > 4)
+ken reduced = filtered.reduce(|a, b| a + b, 0)
+ken result = reduced.unwrap()
+
+blether "wrap([1,2,3,4,5]).map(x*2).filter(>4).reduce(sum).unwrap()"
+blether f"Result: {result}"
+
+blether ""
+
+# ===============================================================
+# Practical Example: Data Pipeline
+# ===============================================================
+
+blether "=== Practical Example: Data Pipeline ==="
+blether ""
+
+ken transactions = [
+    {"id": 1, "type": "credit", "amount": 100},
+    {"id": 2, "type": "debit", "amount": 50},
+    {"id": 3, "type": "credit", "amount": 200},
+    {"id": 4, "type": "debit", "amount": 75},
+    {"id": 5, "type": "credit", "amount": 150}
+]
+
+ken credits = filter_list(transactions, |t| t["type"] == "credit")
+ken total_credits = reduce(credits, |acc, t| acc + t["amount"], 0)
+
+ken debits = filter_list(transactions, |t| t["type"] == "debit")
+ken total_debits = reduce(debits, |acc, t| acc + t["amount"], 0)
+
+blether f"Transactions: {len(transactions)}"
+blether f"Total credits: {total_credits}"
+blether f"Total debits: {total_debits}"
+blether f"Net: {total_credits - total_debits}"
+
+blether ""
+blether "======================================================="
+blether "    Functional demo complete!"
+blether "    'Noo ye're thinkin' functionally!'"
+blether "======================================================="
+blether ""

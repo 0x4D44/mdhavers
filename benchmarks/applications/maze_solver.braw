@@ -1,0 +1,117 @@
+# Maze Solver using BFS
+
+blether "=== Maze Solver (BFS) ==="
+
+# Simple 5x5 maze: 0 = wall, 1 = path
+ken maze = [
+    [0, 1, 0, 0, 0],
+    [0, 1, 1, 1, 0],
+    [0, 0, 0, 1, 0],
+    [0, 1, 1, 1, 0],
+    [0, 1, 0, 0, 0]
+]
+
+# Print maze (5x5 hardcoded)
+dae print_maze(m) {
+    ken y = 0
+    whiles y < 5 {
+        ken row_str = ""
+        ken x = 0
+        whiles x < 5 {
+            gin m[y][x] == 0 {
+                row_str = row_str + "#"
+            } ither {
+                row_str = row_str + " "
+            }
+            x = x + 1
+        }
+        blether row_str
+        y = y + 1
+    }
+}
+
+# BFS solver (5x5 maze)
+dae solve(m, sr, sc, er, ec) {
+    ken visited = []
+    ken i = 0
+    whiles i < 25 {
+        shove(visited, 0)
+        i = i + 1
+    }
+    
+    ken queue = [[sr, sc, 0]]
+    visited[sr * 5 + sc] = 1
+    
+    whiles len(queue) > 0 {
+        ken curr = queue[0]
+        ken cy = curr[0]
+        ken cx = curr[1]
+        ken dist = curr[2]
+        
+        gin cy == er {
+            gin cx == ec {
+                gie dist
+            }
+        }
+        
+        ken new_q = tail(queue)
+        queue = new_q
+        
+        # Up
+        gin cy > 0 {
+            gin m[cy - 1][cx] == 1 {
+                gin visited[(cy - 1) * 5 + cx] == 0 {
+                    visited[(cy - 1) * 5 + cx] = 1
+                    shove(queue, [cy - 1, cx, dist + 1])
+                }
+            }
+        }
+        # Down
+        gin cy < 4 {
+            gin m[cy + 1][cx] == 1 {
+                gin visited[(cy + 1) * 5 + cx] == 0 {
+                    visited[(cy + 1) * 5 + cx] = 1
+                    shove(queue, [cy + 1, cx, dist + 1])
+                }
+            }
+        }
+        # Left
+        gin cx > 0 {
+            gin m[cy][cx - 1] == 1 {
+                gin visited[cy * 5 + (cx - 1)] == 0 {
+                    visited[cy * 5 + (cx - 1)] = 1
+                    shove(queue, [cy, cx - 1, dist + 1])
+                }
+            }
+        }
+        # Right
+        gin cx < 4 {
+            gin m[cy][cx + 1] == 1 {
+                gin visited[cy * 5 + (cx + 1)] == 0 {
+                    visited[cy * 5 + (cx + 1)] = 1
+                    shove(queue, [cy, cx + 1, dist + 1])
+                }
+            }
+        }
+    }
+    gie -1
+}
+
+blether "Maze:"
+print_maze(maze)
+
+blether ""
+blether "Finding path from (0,1) to (4,1)..."
+ken start = tick()
+ken dist = solve(maze, 0, 1, 4, 1)
+ken elapsed = tick() - start
+
+gin dist >= 0 {
+    blether "Path found! Distance: " + tae_string(dist)
+} ither {
+    blether "No path found"
+}
+blether "Time: " + tae_string(elapsed / 1000) + " us"
+
+blether ""
+blether "=== Maze solver complete ==="

@@ -1,0 +1,4 @@
+dae greet() {
+    blether "Hello!"
+}
+greet()

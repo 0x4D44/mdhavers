@@ -1,0 +1,6 @@
+# SKIP_NATIVE
+# Note: abs may not be supported in LLVM
+blether abs(5)
+blether abs(-5)
+blether abs(0)
+blether abs(-3.14)

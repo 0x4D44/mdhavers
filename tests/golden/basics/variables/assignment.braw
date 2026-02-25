@@ -1,0 +1,6 @@
+ken x = 10
+blether x
+x = 20
+blether x
+x = x + 5
+blether x

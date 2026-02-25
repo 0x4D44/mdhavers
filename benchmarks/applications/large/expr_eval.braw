@@ -1,0 +1,210 @@
+# Expression Evaluator Benchmark (Simplified)
+
+blether "=== Expression Evaluator Benchmark ==="
+
+dae is_digit(c) {
+    gin c == "0" { gie aye }
+    gin c == "1" { gie aye }
+    gin c == "2" { gie aye }
+    gin c == "3" { gie aye }
+    gin c == "4" { gie aye }
+    gin c == "5" { gie aye }
+    gin c == "6" { gie aye }
+    gin c == "7" { gie aye }
+    gin c == "8" { gie aye }
+    gin c == "9" { gie aye }
+    gie nae
+}
+
+# Evaluate simple expressions: "num op num op num..."
+# Only + and - for simplicity
+dae eval_add_sub(expr) {
+    ken result = 0.0
+    ken current_num = ""
+    ken op = "+"
+    ken i = 0
+
+    whiles i <= len(expr) {
+        ken c = ""
+        gin i < len(expr) {
+            c = scran(expr, i, i + 1)
+        }
+
+        gin i == len(expr) {
+            # End of string
+            gin len(current_num) > 0 {
+                ken val = tae_float(current_num)
+                gin op == "+" {
+                    result = result + val
+                } ither {
+                    result = result - val
+                }
+            }
+        } ither gin c == " " {
+            # Skip spaces
+        } ither gin c == "+" {
+            gin len(current_num) > 0 {
+                ken val = tae_float(current_num)
+                gin op == "+" {
+                    result = result + val
+                } ither {
+                    result = result - val
+                }
+                current_num = ""
+            }
+            op = "+"
+        } ither gin c == "-" {
+            gin len(current_num) > 0 {
+                ken val = tae_float(current_num)
+                gin op == "+" {
+                    result = result + val
+                } ither {
+                    result = result - val
+                }
+                current_num = ""
+            }
+            op = "-"
+        } ither {
+            current_num = current_num + c
+        }
+        i = i + 1
+    }
+
+    gie result
+}
+
+# Evaluate expressions with * and / (evaluate them first)
+dae eval_mul_div(left, op, right) {
+    gin op == "*" {
+        gie left * right
+    }
+    gie left / right
+}
+
+# Full evaluator: handle + - * /
+dae eval_expr(expr) {
+    # First, find all numbers and operators
+    ken nums = []
+    ken ops = []
+    ken current_num = ""
+    ken i = 0
+
+    whiles i < len(expr) {
+        ken c = scran(expr, i, i + 1)
+        gin c == " " {
+            # Skip
+        } ither gin c == "+" {
+            gin len(current_num) > 0 {
+                shove(nums, tae_float(current_num))
+                current_num = ""
+            }
+            shove(ops, c)
+        } ither gin c == "-" {
+            gin len(current_num) > 0 {
+                shove(nums, tae_float(current_num))
+                current_num = ""
+            }
+            shove(ops, c)
+        } ither gin c == "*" {
+            gin len(current_num) > 0 {
+                shove(nums, tae_float(current_num))
+                current_num = ""
+            }
+            shove(ops, c)
+        } ither gin c == "/" {
+            gin len(current_num) > 0 {
+                shove(nums, tae_float(current_num))
+                current_num = ""
+            }
+            shove(ops, c)
+        } ither {
+            current_num = current_num + c
+        }
+        i = i + 1
+    }
+    gin len(current_num) > 0 {
+        shove(nums, tae_float(current_num))
+    }
+
+    # Process * and / first
+    ken nums2 = []
+    ken ops2 = []
+    i = 0
+    whiles i < len(nums) {
+        gin i == 0 {
+            shove(nums2, nums[i])
+        } ither {
+            ken op = ops[i - 1]
+            gin op == "*" {
+                ken last_idx = len(nums2) - 1
+                ken result = nums2[last_idx] * nums[i]
+                nums2[last_idx] = result
+            } ither gin op == "/" {
+                ken last_idx = len(nums2) - 1
+                ken result = nums2[last_idx] / nums[i]
+                nums2[last_idx] = result
+            } ither {
+                shove(ops2, op)
+                shove(nums2, nums[i])
+            }
+        }
+        i = i + 1
+    }
+
+    # Now evaluate + and -
+    ken result = nums2[0]
+    i = 1
+    whiles i < len(nums2) {
+        ken op = ops2[i - 1]
+        gin op == "+" {
+            result = result + nums2[i]
+        } ither {
+            result = result - nums2[i]
+        }
+        i = i + 1
+    }
+
+    gie result
+}
+
+# Correctness check
+blether "Correctness check:"
+blether "  '2 + 3' = " + tae_string(eval_expr("2 + 3"))
+blether "  '10 - 4' = " + tae_string(eval_expr("10 - 4"))
+blether "  '3 * 4' = " + tae_string(eval_expr("3 * 4"))
+blether "  '8 / 2' = " + tae_string(eval_expr("8 / 2"))
+blether "  '2 + 3 * 4' = " + tae_string(eval_expr("2 + 3 * 4"))
+
+# Performance tests
+blether ""
+blether "Expression evaluation scaling:"
+
+ken start = tick()
+ken j = 0
+whiles j < 1000 {
+    eval_expr("2 + 3 * 4")
+    j = j + 1
+}
+ken elapsed = tick() - start
+blether "  1000x simple expr: " + tae_string(elapsed / 1000) + " ms"
+
+start = tick()
+j = 0
+whiles j < 1000 {
+    eval_expr("2 + 3 * 4 - 1 / 2")
+    j = j + 1
+}
+elapsed = tick() - start
+blether "  1000x medium expr: " + tae_string(elapsed / 1000) + " ms"
+
+start = tick()
+j = 0
+whiles j < 1000 {
+    eval_expr("1 + 2 * 3 - 4 / 2 + 5 * 6 - 7 + 8 / 4")
+    j = j + 1
+}
+elapsed = tick() - start
+blether "  1000x complex expr: " + tae_string(elapsed / 1000) + " ms"
+
+blether ""
+blether "=== Expression evaluator complete ==="

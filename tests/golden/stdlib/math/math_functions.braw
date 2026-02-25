@@ -1,0 +1,37 @@
+# Test math functions
+# SKIP_NATIVE - Uses native functions not available in LLVM backend
+
+# Test random (just verify it returns a float between 0 and 1)
+ken r = random()
+blether r >= 0.0 an r < 1.0
+
+# Test random_int (test range)
+ken ri = random_int(1, 10)
+blether ri >= 1 an ri <= 10
+
+# Test random_choice
+ken choices = [1, 2, 3, 4, 5]
+ken choice = random_choice(choices)
+blether contains(choices, choice)
+
+# Test pi
+ken pi_val = pi()
+blether pi_val > 3.14 an pi_val < 3.15
+
+# Test e
+ken e_val = e()
+blether e_val > 2.71 an e_val < 2.72
+
+# Test tau
+ken tau_val = tau()
+blether tau_val > 6.28 an tau_val < 6.29
+
+# Test trunc
+blether trunc(3.7)
+blether trunc(-3.7)
+blether trunc(5)
+
+# Test log2
+blether log2(8)
+blether log2(2)
+blether log2(1)

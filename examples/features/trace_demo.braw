@@ -1,0 +1,34 @@
+# trace_demo.braw - A wee demo fer the tracer
+# Try: mdhavers trace examples/trace_demo.braw
+# Or:  mdhavers trace examples/trace_demo.braw -v
+
+ken name = "Hamish"
+ken age = 42
+
+gin age >= 18 {
+    blether f"{name} is auld enough tae vote!"
+} ither {
+    blether f"{name} is too wee yet"
+}
+
+# A wee loop
+fer i in 1..4 {
+    blether f"Countin': {i}"
+}
+
+# A function
+dae greet(person) {
+    gie f"Hullo, {person}!"
+}
+
+ken message = greet("Scotland")
+blether message
+
+# Match statement
+ken score = 85
+keek score {
+    whan 100 -> blether "Perfect!"
+    whan 90..100 -> blether "Braw!"
+    whan 70..90 -> blether "No' bad!"
+    whan _ -> blether "Keep tryin'!"
+}

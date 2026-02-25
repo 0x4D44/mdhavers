@@ -1,0 +1,142 @@
+# Simplified Graph Algorithms Benchmark
+
+blether "=== Simplified Graph Algorithms Benchmark ==="
+
+# Simple BFS on a grid-like graph
+# Graph is represented as list of neighbor lists
+
+dae make_grid_graph(size) {
+    ken graph = []
+    ken i = 0
+    whiles i < size * size {
+        ken neighbors = []
+        ken row = i / size
+        ken col = i % size
+
+        # Up
+        gin row > 0 {
+            shove(neighbors, i - size)
+        }
+        # Down
+        gin row < size - 1 {
+            shove(neighbors, i + size)
+        }
+        # Left
+        gin col > 0 {
+            shove(neighbors, i - 1)
+        }
+        # Right
+        gin col < size - 1 {
+            shove(neighbors, i + 1)
+        }
+
+        shove(graph, neighbors)
+        i = i + 1
+    }
+    gie graph
+}
+
+# BFS using only shove to build visited list
+dae bfs_simple(graph, source) {
+    ken n = len(graph)
+    ken dist = []
+    ken i = 0
+    whiles i < n {
+        shove(dist, -1)
+        i = i + 1
+    }
+
+    ken queue = [[source, 0]]
+
+    whiles len(queue) > 0 {
+        ken item = queue[0]
+        ken curr = item[0]
+        ken d = item[1]
+        queue = tail(queue)
+
+        gin dist[curr] == -1 {
+            dist[curr] = d
+            ken neighbors = graph[curr]
+            ken j = 0
+            whiles j < len(neighbors) {
+                ken neighbor = neighbors[j]
+                gin dist[neighbor] == -1 {
+                    shove(queue, [neighbor, d + 1])
+                }
+                j = j + 1
+            }
+        }
+    }
+    gie dist
+}
+
+# Count reachable nodes
+dae count_reachable(dist) {
+    ken count = 0
+    ken i = 0
+    whiles i < len(dist) {
+        gin dist[i] >= 0 {
+            count = count + 1
+        }
+        i = i + 1
+    }
+    gie count
+}
+
+# Correctness check
+blether "Correctness check:"
+ken small = make_grid_graph(3)
+blether "  3x3 grid graph (9 nodes)"
+blether "  Node 0 neighbors: " + tae_string(small[0])
+blether "  Node 4 neighbors: " + tae_string(small[4])
+
+ken bfs_dist = bfs_simple(small, 0)
+blether "  BFS from 0: " + tae_string(bfs_dist)
+blether "  Reachable: " + tae_string(count_reachable(bfs_dist))
+
+# Scaling tests
+blether ""
+blether "Grid graph scaling:"
+
+ken start = tick()
+ken g = make_grid_graph(5)
+ken elapsed = tick() - start
+blether "  5x5 grid (25 nodes): create=" + tae_string(elapsed) + " us"
+
+start = tick()
+bfs_dist = bfs_simple(g, 0)
+elapsed = tick() - start
+blether "    BFS: " + tae_string(elapsed) + " us, reachable=" + tae_string(count_reachable(bfs_dist))
+
+start = tick()
+g = make_grid_graph(10)
+elapsed = tick() - start
+blether "  10x10 grid (100 nodes): create=" + tae_string(elapsed) + " us"
+
+start = tick()
+bfs_dist = bfs_simple(g, 0)
+elapsed = tick() - start
+blether "    BFS: " + tae_string(elapsed) + " us, reachable=" + tae_string(count_reachable(bfs_dist))
+
+start = tick()
+g = make_grid_graph(20)
+elapsed = tick() - start
+blether "  20x20 grid (400 nodes): create=" + tae_string(elapsed) + " us"
+
+start = tick()
+bfs_dist = bfs_simple(g, 0)
+elapsed = tick() - start
+blether "    BFS: " + tae_string(elapsed / 1000) + " ms, reachable=" + tae_string(count_reachable(bfs_dist))
+
+start = tick()
+g = make_grid_graph(30)
+elapsed = tick() - start
+blether "  30x30 grid (900 nodes): create=" + tae_string(elapsed / 1000) + " ms"
+
+start = tick()
+bfs_dist = bfs_simple(g, 0)
+elapsed = tick() - start
+blether "    BFS: " + tae_string(elapsed / 1000) + " ms, reachable=" + tae_string(count_reachable(bfs_dist))
+
+blether ""
+blether "=== Graph simple complete ==="

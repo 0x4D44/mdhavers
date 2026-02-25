@@ -1,0 +1,15 @@
+# SKIP_NATIVE
+# Note: Closures may not be fully supported in LLVM
+dae make_counter() {
+    ken count = 0
+    dae increment() {
+        count = count + 1
+        gie count
+    }
+    gie increment
+}
+
+ken counter = make_counter()
+blether counter()
+blether counter()
+blether counter()

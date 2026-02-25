@@ -1,0 +1,86 @@
+# Quicksort Benchmark
+# Tests recursive list manipulation
+
+# Helper to get list length
+dae list_len(arr) {
+    gie len(arr)
+}
+
+# Quicksort implementation
+dae quicksort(arr) {
+    gin len(arr) <= 1 { gie arr }
+
+    ken pivot = arr[0]
+    ken less = []
+    ken equal = []
+    ken greater = []
+
+    ken i = 0
+    whiles i < len(arr) {
+        gin arr[i] < pivot {
+            shove(less, arr[i])
+        } ither gin arr[i] > pivot {
+            shove(greater, arr[i])
+        } ither {
+            shove(equal, arr[i])
+        }
+        i = i + 1
+    }
+
+    gie quicksort(less) + equal + quicksort(greater)
+}
+
+# Generate a test array
+dae make_test_array(size) {
+    ken arr = []
+    ken i = 0
+    # Create a pseudo-random sequence using simple formula
+    ken seed = 12345
+    whiles i < size {
+        seed = (seed * 1103515245 + 12345) % 2147483648
+        shove(arr, seed % 1000)
+        i = i + 1
+    }
+    gie arr
+}
+
+# Check if array is sorted
+dae is_sorted(arr) {
+    gin len(arr) <= 1 { gie aye }
+    ken i = 0
+    whiles i < len(arr) - 1 {
+        gin arr[i] > arr[i + 1] {
+            gie nae
+        }
+        i = i + 1
+    }
+    gie aye
+}
+
+# Run benchmarks
+blether "=== Quicksort Benchmark ==="
+
+# Test correctness with small array
+blether "Testing correctness..."
+ken small = [5, 2, 8, 1, 9, 3, 7, 4, 6]
+blether "Original: " + tae_string(small)
+ken sorted_small = quicksort(small)
+blether "Sorted: " + tae_string(sorted_small)
+blether "Is sorted: " + tae_string(is_sorted(sorted_small))
+
+# Benchmark with medium array
+blether ""
+blether "Sorting 100 elements..."
+ken medium = make_test_array(100)
+ken sorted_medium = quicksort(medium)
+blether "Sorted 100 elements, is_sorted: " + tae_string(is_sorted(sorted_medium))
+
+# Benchmark with larger array
+blether ""
+blether "Sorting 500 elements..."
+ken large = make_test_array(500)
+ken sorted_large = quicksort(large)
+blether "Sorted 500 elements, is_sorted: " + tae_string(is_sorted(sorted_large))
+
+blether ""
+blether "Quicksort benchmark complete!"

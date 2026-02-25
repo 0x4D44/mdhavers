@@ -1,0 +1,19 @@
+dae is_prime(n) {
+    gin n < 2 {
+        gie nae
+    }
+    ken i = 2
+    whiles i * i <= n {
+        gin n % i == 0 {
+            gie nae
+        }
+        i = i + 1
+    }
+    gie aye
+}
+
+blether is_prime(2)
+blether is_prime(3)
+blether is_prime(4)
+blether is_prime(17)
+blether is_prime(100)

@@ -1,0 +1,6 @@
+ken i = 0
+whiles i < 5 {
+    blether i
+    i = i + 1
+}
+blether "done"

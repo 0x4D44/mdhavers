@@ -1,0 +1,9 @@
+# SKIP_NATIVE
+# Note: This test has issues in native compilation
+ken nums = [1, 2, 3]
+blether nums
+shove(nums, 4)
+blether nums
+shove(nums, 5)
+blether nums
+blether len(nums)

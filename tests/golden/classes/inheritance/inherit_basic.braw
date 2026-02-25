@@ -1,0 +1,22 @@
+# SKIP_NATIVE
+# Note: Inheritance may not be fully supported in LLVM
+kin Animal {
+    dae init(name) {
+        masel.name = name
+    }
+
+    dae speak() {
+        blether masel.name + " makes a sound"
+    }
+}
+
+kin Dog fae Animal {
+    dae speak() {
+        blether masel.name + " barks!"
+    }
+}
+
+ken animal = Animal("Generic")
+ken dog = Dog("Rex")
+animal.speak()
+dog.speak()

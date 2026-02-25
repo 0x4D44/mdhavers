@@ -1,0 +1,78 @@
+# Sort Stress Test Benchmark
+
+blether "=== Sort Stress Test Benchmark ==="
+
+# Simple pseudo-random number generator (LCG)
+# Uses a list to hold state that can be passed/modified
+
+# Generate random list using LCG algorithm
+dae make_random_list(n, start_seed) {
+    ken result = []
+    ken seed = start_seed
+    ken i = 0
+    whiles i < n {
+        seed = (seed * 1103515245 + 12345) % 2147483648
+        shove(result, seed % 10000)
+        i = i + 1
+    }
+    gie result
+}
+
+# Verify sorted
+dae is_sorted(lst) {
+    ken i = 1
+    whiles i < len(lst) {
+        gin lst[i] < lst[i - 1] {
+            gie nae
+        }
+        i = i + 1
+    }
+    gie aye
+}
+
+# Correctness check
+blether "Correctness check:"
+ken small = make_random_list(10, 12345)
+blether "  Unsorted: " + tae_string(small)
+ken sorted_small = sort(small)
+blether "  Sorted: " + tae_string(sorted_small)
+blether "  Is sorted: " + tae_string(is_sorted(sorted_small))
+
+# Scaling tests
+blether ""
+blether "Scaling tests:"
+
+ken start = tick()
+ken lst = make_random_list(1000, 12345)
+ken gen_time = tick() - start
+start = tick()
+ken s = sort(lst)
+ken sort_time = tick() - start
+blether "  1K elements: gen=" + tae_string(gen_time) + "us, sort=" + tae_string(sort_time) + "us, valid=" + tae_string(is_sorted(s))
+
+start = tick()
+lst = make_random_list(5000, 12345)
+gen_time = tick() - start
+start = tick()
+s = sort(lst)
+sort_time = tick() - start
+blether "  5K elements: gen=" + tae_string(gen_time) + "us, sort=" + tae_string(sort_time / 1000) + "ms, valid=" + tae_string(is_sorted(s))
+
+start = tick()
+lst = make_random_list(10000, 12345)
+gen_time = tick() - start
+start = tick()
+s = sort(lst)
+sort_time = tick() - start
+blether "  10K elements: gen=" + tae_string(gen_time / 1000) + "ms, sort=" + tae_string(sort_time / 1000) + "ms, valid=" + tae_string(is_sorted(s))
+
+start = tick()
+lst = make_random_list(50000, 12345)
+gen_time = tick() - start
+start = tick()
+s = sort(lst)
+sort_time = tick() - start
+blether "  50K elements: gen=" + tae_string(gen_time / 1000) + "ms, sort=" + tae_string(sort_time / 1000) + "ms, valid=" + tae_string(is_sorted(s))
+
+blether ""
+blether "=== Sort stress complete ==="

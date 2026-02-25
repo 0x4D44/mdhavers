@@ -1,0 +1,14 @@
+dae sum_to(n) {
+    ken total = 0
+    ken i = 1
+    whiles i <= n {
+        total = total + i
+        i = i + 1
+    }
+    gie total
+}
+
+blether sum_to(1)
+blether sum_to(5)
+blether sum_to(10)
+blether sum_to(100)

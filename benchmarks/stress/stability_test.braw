@@ -1,0 +1,130 @@
+# Long-Running Stability Test
+
+blether "=== Long-Running Stability Test ==="
+
+# Mix of operations to test for degradation over time
+
+ken seed = 12345
+
+dae random() {
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    gie seed % 1000
+}
+
+# Operations mix
+dae run_iteration(iter) {
+    # Arithmetic
+    ken a = iter * 7 + 13
+    ken b = a % 100 + 1
+    ken c = a / b
+    ken d = sqrt(tae_float(a))
+
+    # List operations
+    ken lst = [iter, a, b, c]
+    shove(lst, d)
+    ken sum = tumble(lst, 0, dae(acc, x) { gie acc + x })
+
+    # String operations
+    ken s = tae_string(iter) + "-" + tae_string(a)
+    ken parts = split(s, "-")
+    ken joined = join(parts, "_")
+
+    # Control flow
+    gin iter % 2 == 0 {
+        sum = sum + 1
+    } ither {
+        sum = sum - 1
+    }
+
+    gie sum
+}
+
+# Stability test
+blether "Running 10000 mixed iterations..."
+ken start = tick()
+ken total = 0.0
+ken i = 0
+whiles i < 10000 {
+    total = total + run_iteration(i)
+    i = i + 1
+}
+ken elapsed = tick() - start
+blether "  10000 iterations: " + tae_string(elapsed / 1000) + " ms"
+blether "  Total: " + tae_string(total)
+
+# Check for timing consistency
+blether ""
+blether "Timing consistency check (5 batches of 2000):"
+ken times = []
+ken batch = 0
+whiles batch < 5 {
+    start = tick()
+    i = 0
+    whiles i < 2000 {
+        run_iteration(i + batch * 2000)
+        i = i + 1
+    }
+    elapsed = tick() - start
+    shove(times, elapsed)
+    blether "  Batch " + tae_string(batch + 1) + ": " + tae_string(elapsed / 1000) + " ms"
+    batch = batch + 1
+}
+
+# Calculate variance
+ken avg = tumble(times, 0, dae(acc, x) { gie acc + x }) / 5
+ken max_time = times[0]
+ken min_time = times[0]
+i = 1
+whiles i < 5 {
+    gin times[i] > max_time {
+        max_time = times[i]
+    }
+    gin times[i] < min_time {
+        min_time = times[i]
+    }
+    i = i + 1
+}
+
+blether ""
+blether "Consistency metrics:"
+blether "  Average: " + tae_string(avg / 1000) + " ms"
+blether "  Min: " + tae_string(min_time / 1000) + " ms"
+blether "  Max: " + tae_string(max_time / 1000) + " ms"
+blether "  Variance: " + tae_string((max_time - min_time) * 100 / avg) + "%"
+
+# Memory churn test
+blether ""
+blether "Memory churn test (create/destroy 1000 times):"
+start = tick()
+i = 0
+whiles i < 1000 {
+    ken temp = []
+    ken j = 0
+    whiles j < 100 {
+        shove(temp, j * i)
+        j = j + 1
+    }
+    ken doubled = gaun(temp, dae(x) { gie x * 2 })
+    ken filtered = sieve(doubled, dae(x) { gie x % 4 == 0 })
+    ken sum = tumble(filtered, 0, dae(acc, x) { gie acc + x })
+    i = i + 1
+}
+elapsed = tick() - start
+blether "  1000 churn cycles: " + tae_string(elapsed / 1000) + " ms"
+
+# Final stability check
+blether ""
+blether "Final stability check (repeat first test):"
+start = tick()
+total = 0.0
+i = 0
+whiles i < 10000 {
+    total = total + run_iteration(i)
+    i = i + 1
+}
+elapsed = tick() - start
+blether "  10000 iterations: " + tae_string(elapsed / 1000) + " ms"
+blether "  Total: " + tae_string(total)
+
+blether ""
+blether "=== Stability test complete ==="

@@ -1,0 +1,6 @@
+blether "Hello, World!"
+blether 42
+blether 3.14
+blether aye
+blether nae
+blether naething

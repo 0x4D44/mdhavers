@@ -1,0 +1,6 @@
+ken i = 5
+whiles i > 0 {
+    blether i
+    i = i - 1
+}
+blether "Blast off!"

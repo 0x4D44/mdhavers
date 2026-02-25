@@ -1,0 +1,240 @@
+# Graph Algorithms Benchmark
+
+blether "=== Graph Algorithms Benchmark ==="
+
+# Graph represented as adjacency list
+# Each node has a list of [neighbor, weight] pairs
+
+# Create a connected graph
+dae make_graph(nodes) {
+    ken graph = []
+    ken i = 0
+    whiles i < nodes {
+        shove(graph, [])
+        i = i + 1
+    }
+
+    # Add edges to create connected graph
+    i = 0
+    whiles i < nodes - 1 {
+        # Connect to next node
+        shove(graph[i], [i + 1, 1])
+        shove(graph[i + 1], [i, 1])
+
+        # Connect to some nodes ahead
+        gin i + 5 < nodes {
+            shove(graph[i], [i + 5, 5])
+            shove(graph[i + 5], [i, 5])
+        }
+        gin i + 10 < nodes {
+            shove(graph[i], [i + 10, 10])
+            shove(graph[i + 10], [i, 10])
+        }
+        i = i + 1
+    }
+    gie graph
+}
+
+# BFS - returns distances from source
+dae bfs(graph, source) {
+    ken n = len(graph)
+    ken dist = []
+    ken i = 0
+    whiles i < n {
+        shove(dist, -1)
+        i = i + 1
+    }
+
+    ken queue = [source]
+    dist[source] = 0
+
+    whiles len(queue) > 0 {
+        ken curr = queue[0]
+        queue = tail(queue)
+
+        ken neighbors = graph[curr]
+        ken j = 0
+        whiles j < len(neighbors) {
+            ken neighbor = neighbors[j][0]
+            gin dist[neighbor] == -1 {
+                dist[neighbor] = dist[curr] + 1
+                shove(queue, neighbor)
+            }
+            j = j + 1
+        }
+    }
+    gie dist
+}
+
+# DFS - returns visit order
+dae dfs(graph, source) {
+    ken n = len(graph)
+    ken visited = []
+    ken i = 0
+    whiles i < n {
+        shove(visited, 0)
+        i = i + 1
+    }
+
+    ken order = []
+    ken stack = [source]
+
+    whiles len(stack) > 0 {
+        ken curr = stack[len(stack) - 1]
+        stack = scran(stack, 0, len(stack) - 1)
+
+        gin visited[curr] == 0 {
+            visited[curr] = 1
+            shove(order, curr)
+
+            ken neighbors = graph[curr]
+            ken j = len(neighbors) - 1
+            whiles j >= 0 {
+                ken neighbor = neighbors[j][0]
+                gin visited[neighbor] == 0 {
+                    shove(stack, neighbor)
+                }
+                j = j - 1
+            }
+        }
+    }
+    gie order
+}
+
+# Dijkstra's shortest path (simplified - O(V^2) version)
+dae dijkstra(graph, source) {
+    ken n = len(graph)
+    ken dist = []
+    ken visited = []
+    ken i = 0
+    whiles i < n {
+        shove(dist, 999999999)
+        shove(visited, 0)
+        i = i + 1
+    }
+    dist[source] = 0
+
+    ken count = 0
+    whiles count < n {
+        # Find min unvisited
+        ken min_dist = 999999999
+        ken u = -1
+        ken j = 0
+        whiles j < n {
+            gin visited[j] == 0 {
+                gin dist[j] < min_dist {
+                    min_dist = dist[j]
+                    u = j
+                }
+            }
+            j = j + 1
+        }
+
+        gin u == -1 {
+            gie dist
+        }
+
+        visited[u] = 1
+
+        # Update neighbors
+        ken neighbors = graph[u]
+        ken k = 0
+        whiles k < len(neighbors) {
+            ken v = neighbors[k][0]
+            ken weight = neighbors[k][1]
+            gin visited[v] == 0 {
+                ken new_dist = dist[u] + weight
+                gin new_dist < dist[v] {
+                    dist[v] = new_dist
+                }
+            }
+            k = k + 1
+        }
+        count = count + 1
+    }
+    gie dist
+}
+
+# Correctness check
+blether "Correctness check:"
+ken small = make_graph(10)
+blether "  10-node graph created"
+blether "  Node 0 neighbors: " + tae_string(small[0])
+
+ken bfs_result = bfs(small, 0)
+blether "  BFS from 0: " + tae_string(bfs_result)
+
+ken dfs_result = dfs(small, 0)
+blether "  DFS from 0: " + tae_string(dfs_result)
+
+ken dijk_result = dijkstra(small, 0)
+blether "  Dijkstra from 0: " + tae_string(dijk_result)
+
+# Scaling tests
+blether ""
+blether "Graph algorithm scaling:"
+
+ken start = tick()
+ken g = make_graph(50)
+ken elapsed = tick() - start
+blether "  Create 50-node graph: " + tae_string(elapsed) + " us"
+
+start = tick()
+bfs_result = bfs(g, 0)
+elapsed = tick() - start
+blether "  BFS 50 nodes: " + tae_string(elapsed) + " us"
+
+start = tick()
+dfs_result = dfs(g, 0)
+elapsed = tick() - start
+blether "  DFS 50 nodes: " + tae_string(elapsed) + " us"
+
+start = tick()
+dijk_result = dijkstra(g, 0)
+elapsed = tick() - start
+blether "  Dijkstra 50 nodes: " + tae_string(elapsed) + " us"
+
+# 100 nodes
+start = tick()
+g = make_graph(100)
+elapsed = tick() - start
+blether "  Create 100-node graph: " + tae_string(elapsed) + " us"
+
+start = tick()
+bfs_result = bfs(g, 0)
+elapsed = tick() - start
+blether "  BFS 100 nodes: " + tae_string(elapsed) + " us"
+
+start = tick()
+dfs_result = dfs(g, 0)
+elapsed = tick() - start
+blether "  DFS 100 nodes: " + tae_string(elapsed) + " us"
+
+start = tick()
+dijk_result = dijkstra(g, 0)
+elapsed = tick() - start
+blether "  Dijkstra 100 nodes: " + tae_string(elapsed / 1000) + " ms"
+
+# 200 nodes
+start = tick()
+g = make_graph(200)
+elapsed = tick() - start
+blether "  Create 200-node graph: " + tae_string(elapsed) + " us"
+
+start = tick()
+bfs_result = bfs(g, 0)
+elapsed = tick() - start
+blether "  BFS 200 nodes: " + tae_string(elapsed) + " us"
+
+start = tick()
+dfs_result = dfs(g, 0)
+elapsed = tick() - start
+blether "  DFS 200 nodes: " + tae_string(elapsed) + " us"
+
+start = tick()
+dijk_result = dijkstra(g, 0)
+elapsed = tick() - start
+blether "  Dijkstra 200 nodes: " + tae_string(elapsed / 1000) + " ms"
+
+blether ""
+blether "=== Graph algorithms complete ==="

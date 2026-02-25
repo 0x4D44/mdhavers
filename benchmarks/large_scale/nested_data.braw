@@ -1,0 +1,133 @@
+# Nested Data Structures Benchmark
+
+blether "=== Nested Data Structures Benchmark ==="
+
+# Build nested list
+dae build_nested(depth, value) {
+    gin depth <= 0 {
+        gie value
+    }
+    gie [build_nested(depth - 1, value)]
+}
+
+# Access nested value
+dae access_nested(lst, depth) {
+    gin depth <= 0 {
+        gie lst
+    }
+    gie access_nested(lst[0], depth - 1)
+}
+
+# Build 2D matrix
+dae make_matrix(rows, cols) {
+    ken result = []
+    ken r = 0
+    whiles r < rows {
+        ken row = []
+        ken c = 0
+        whiles c < cols {
+            shove(row, r * cols + c)
+            c = c + 1
+        }
+        shove(result, row)
+        r = r + 1
+    }
+    gie result
+}
+
+# Sum all elements in matrix
+dae sum_matrix(m) {
+    ken total = 0
+    ken r = 0
+    whiles r < len(m) {
+        ken c = 0
+        whiles c < len(m[r]) {
+            total = total + m[r][c]
+            c = c + 1
+        }
+        r = r + 1
+    }
+    gie total
+}
+
+# Correctness checks
+blether "Correctness check:"
+ken nested = build_nested(5, 42)
+blether "  5-level nested: " + tae_string(nested)
+ken val = access_nested(nested, 5)
+blether "  Access depth 5: " + tae_string(val)
+
+ken small_m = make_matrix(3, 3)
+blether "  3x3 matrix: " + tae_string(small_m)
+blether "  Sum: " + tae_string(sum_matrix(small_m))
+
+# Nested depth scaling
+blether ""
+blether "Nested list depth scaling:"
+
+ken start = tick()
+nested = build_nested(10, 1)
+ken elapsed = tick() - start
+blether "  build_nested(10): " + tae_string(elapsed) + " us"
+
+start = tick()
+val = access_nested(nested, 10)
+elapsed = tick() - start
+blether "  access_nested(10): " + tae_string(elapsed) + " us, value=" + tae_string(val)
+
+start = tick()
+nested = build_nested(50, 1)
+elapsed = tick() - start
+blether "  build_nested(50): " + tae_string(elapsed) + " us"
+
+start = tick()
+val = access_nested(nested, 50)
+elapsed = tick() - start
+blether "  access_nested(50): " + tae_string(elapsed) + " us, value=" + tae_string(val)
+
+start = tick()
+nested = build_nested(100, 1)
+elapsed = tick() - start
+blether "  build_nested(100): " + tae_string(elapsed) + " us"
+
+start = tick()
+val = access_nested(nested, 100)
+elapsed = tick() - start
+blether "  access_nested(100): " + tae_string(elapsed) + " us, value=" + tae_string(val)
+
+# Matrix scaling
+blether ""
+blether "Matrix scaling:"
+
+start = tick()
+ken m = make_matrix(10, 10)
+elapsed = tick() - start
+ken s = sum_matrix(m)
+blether "  10x10 matrix: build=" + tae_string(elapsed) + "us, sum=" + tae_string(s)
+
+start = tick()
+m = make_matrix(50, 50)
+elapsed = tick() - start
+start = tick()
+s = sum_matrix(m)
+ken sum_time = tick() - start
+blether "  50x50 matrix: build=" + tae_string(elapsed) + "us, sum_time=" + tae_string(sum_time) + "us, sum=" + tae_string(s)
+
+start = tick()
+m = make_matrix(100, 100)
+elapsed = tick() - start
+start = tick()
+s = sum_matrix(m)
+sum_time = tick() - start
+blether "  100x100 matrix: build=" + tae_string(elapsed / 1000) + "ms, sum_time=" + tae_string(sum_time) + "us, sum=" + tae_string(s)
+
+start = tick()
+m = make_matrix(200, 200)
+elapsed = tick() - start
+start = tick()
+s = sum_matrix(m)
+sum_time = tick() - start
+blether "  200x200 matrix: build=" + tae_string(elapsed / 1000) + "ms, sum_time=" + tae_string(sum_time / 1000) + "ms, sum=" + tae_string(s)
+
+blether ""
+blether "=== Nested data structures complete ==="

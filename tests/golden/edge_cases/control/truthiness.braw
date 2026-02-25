@@ -1,0 +1,18 @@
+# SKIP_NATIVE
+# Note: Complex truthiness tests may not work in LLVM
+dae check(val, name) {
+    gin val {
+        blether name + " is truthy"
+    } ither {
+        blether name + " is falsy"
+    }
+}
+
+check(aye, "aye")
+check(nae, "nae")
+check(1, "1")
+check(0, "0")
+check("hello", "non-empty string")
+check("", "empty string")
+check([1], "non-empty list")
+check([], "empty list")

@@ -1,0 +1,25 @@
+# Test hurl keyword with try-catch
+# SKIP_NATIVE - Try-catch and hurl not supported in LLVM backend
+
+# Test that hurl can be caught
+ken caught = nae
+hae_a_bash {
+    hurl "This is a test error"
+} gin_it_gangs_wrang err {
+    caught = aye
+}
+blether caught
+
+# Test hurl with a variable
+ken msg = "Error from variable"
+ken caught2 = nae
+hae_a_bash {
+    hurl msg
+} gin_it_gangs_wrang err2 {
+    caught2 = aye
+}
+blether caught2
+
+# Test normal flow after caught error
+ken final_value = 42
+blether final_value

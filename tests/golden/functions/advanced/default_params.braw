@@ -1,0 +1,9 @@
+# SKIP_NATIVE
+# Note: Default parameters may not be fully supported in LLVM
+dae greet(name, greeting = "Hello") {
+    blether greeting + ", " + name + "!"
+}
+
+greet("Alice")
+greet("Bob", "Hi")
+greet("Charlie", "Good morning")

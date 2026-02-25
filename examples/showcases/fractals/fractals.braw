@@ -1,0 +1,301 @@
+# Mandelbrot Fractal Explorer
+# "Zoom intae infinite complexity!"
+
+# === ANSI Escape Codes ===
+ken RESET = "\x1b[0m"
+ken BOLD = "\x1b[1m"
+ken DIM = "\x1b[2m"
+
+# Text colors
+ken YELLOW_FG = "\x1b[93m"
+ken CYAN_FG = "\x1b[96m"
+ken GREEN_FG = "\x1b[92m"
+ken WHITE_FG = "\x1b[97m"
+ken RED_FG = "\x1b[91m"
+ken MAGENTA_FG = "\x1b[95m"
+
+# Cursor control
+ken CURSOR_HIDE = "\x1b[?25l"
+ken CURSOR_SHOW = "\x1b[?25h"
+ken CURSOR_HOME = "\x1b[H"
+ken CLEAR_LINE = "\x1b[K"
+ken CLEAR_SCREEN = "\x1b[2J"
+
+# === Fractal Parameters ===
+ken WIDTH = 80
+ken HEIGHT = 40
+
+# Color palette (256-color mode)
+dae get_color(iter, max_iter) {
+    gin iter >= max_iter {
+        gie "\x1b[40m "  # Black for inside set
+    }
+
+    # Create a colorful gradient
+    ken palette_size = 16
+    ken idx = iter % palette_size
+
+    # Color palette using 256-color mode
+    gin idx == 0 { gie "\x1b[48;5;17m " }
+    gin idx == 1 { gie "\x1b[48;5;18m " }
+    gin idx == 2 { gie "\x1b[48;5;19m " }
+    gin idx == 3 { gie "\x1b[48;5;20m " }
+    gin idx == 4 { gie "\x1b[48;5;21m " }
+    gin idx == 5 { gie "\x1b[48;5;27m " }
+    gin idx == 6 { gie "\x1b[48;5;33m " }
+    gin idx == 7 { gie "\x1b[48;5;39m " }
+    gin idx == 8 { gie "\x1b[48;5;45m " }
+    gin idx == 9 { gie "\x1b[48;5;51m " }
+    gin idx == 10 { gie "\x1b[48;5;87m " }
+    gin idx == 11 { gie "\x1b[48;5;123m " }
+    gin idx == 12 { gie "\x1b[48;5;159m " }
+    gin idx == 13 { gie "\x1b[48;5;195m " }
+    gin idx == 14 { gie "\x1b[48;5;231m " }
+    gie "\x1b[48;5;230m "
+}
+
+dae get_char_color(iter, max_iter) {
+    gin iter >= max_iter {
+        gie "\x1b[30m "  # Black for inside set
+    }
+
+    # Gradient from blue to white
+    ken palette_size = 8
+    ken idx = iter % palette_size
+
+    gin idx == 0 { gie "\x1b[34m." }
+    gin idx == 1 { gie "\x1b[94m:" }
+    gin idx == 2 { gie "\x1b[36m-" }
+    gin idx == 3 { gie "\x1b[96m=" }
+    gin idx == 4 { gie "\x1b[32m+" }
+    gin idx == 5 { gie "\x1b[92m*" }
+    gin idx == 6 { gie "\x1b[93m#" }
+    gie "\x1b[97m@"
+}
+
+# === Fractal Viewer Class ===
+kin FractalViewer {
+    dae init() {
+        masel.center_x = -0.5
+        masel.center_y = 0.0
+        masel.zoom = 1.0
+        masel.max_iter = 50
+        masel.use_color = aye
+        masel.pan_speed = 0.1
+    }
+
+    dae reset() {
+        masel.center_x = -0.5
+        masel.center_y = 0.0
+        masel.zoom = 1.0
+    }
+
+    dae goto_seahorse() {
+        masel.center_x = -0.747
+        masel.center_y = 0.1
+        masel.zoom = 50.0
+    }
+
+    dae goto_spiral() {
+        masel.center_x = -0.761574
+        masel.center_y = -0.0847596
+        masel.zoom = 200.0
+    }
+
+    dae goto_lightning() {
+        masel.center_x = -1.315
+        masel.center_y = 0.0
+        masel.zoom = 20.0
+    }
+
+    dae goto_elephant() {
+        masel.center_x = 0.275
+        masel.center_y = 0.0
+        masel.zoom = 10.0
+    }
+
+    dae mandelbrot(cx, cy) {
+        ken x = 0.0
+        ken y = 0.0
+        ken iter = 0
+
+        whiles iter < masel.max_iter {
+            ken x2 = x * x
+            ken y2 = y * y
+
+            gin x2 + y2 > 4.0 {
+                gie iter
+            }
+
+            ken new_x = x2 - y2 + cx
+            y = 2.0 * x * y + cy
+            x = new_x
+            iter = iter + 1
+        }
+
+        gie iter
+    }
+
+    dae zoom_in() {
+        masel.zoom = masel.zoom * 1.5
+    }
+
+    dae zoom_out() {
+        masel.zoom = masel.zoom / 1.5
+        gin masel.zoom < 0.1 { masel.zoom = 0.1 }
+    }
+
+    dae pan_left() {
+        masel.center_x = masel.center_x - masel.pan_speed / masel.zoom
+    }
+
+    dae pan_right() {
+        masel.center_x = masel.center_x + masel.pan_speed / masel.zoom
+    }
+
+    dae pan_up() {
+        masel.center_y = masel.center_y - masel.pan_speed / masel.zoom
+    }
+
+    dae pan_down() {
+        masel.center_y = masel.center_y + masel.pan_speed / masel.zoom
+    }
+
+    dae increase_detail() {
+        masel.max_iter = masel.max_iter + 10
+        gin masel.max_iter > 200 { masel.max_iter = 200 }
+    }
+
+    dae decrease_detail() {
+        masel.max_iter = masel.max_iter - 10
+        gin masel.max_iter < 10 { masel.max_iter = 10 }
+    }
+
+    dae toggle_color() {
+        masel.use_color = nae masel.use_color
+    }
+}
+
+# === Rendering ===
+dae make_padding(n) {
+    ken pad = ""
+    gin n > 0 {
+        ken i = 0
+        whiles i < n {
+            pad = pad + " "
+            i = i + 1
+        }
+    }
+    gie pad
+}
+
+dae render(viewer) {
+    ken term_w = term_width()
+    ken term_h = term_height()
+
+    # Use terminal size for rendering
+    ken render_width = term_w - 2
+    ken render_height = term_h - 6
+    gin render_width > WIDTH { render_width = WIDTH }
+    gin render_height > HEIGHT { render_height = HEIGHT }
+
+    ken aspect = 2.0  # Terminal chars are roughly 2:1 height:width
+
+    # Calculate view bounds
+    ken view_width = 4.0 / viewer.zoom
+    ken view_height = view_width * (tae_float(render_height) / tae_float(render_width)) * aspect
+
+    ken x_min = viewer.center_x - view_width / 2.0
+    ken y_min = viewer.center_y - view_height / 2.0
+
+    ken dx = view_width / tae_float(render_width)
+    ken dy = view_height / tae_float(render_height)
+
+    ken frame = CURSOR_HOME + CURSOR_HIDE
+
+    # Title bar
+    frame = frame + CYAN_FG + BOLD + "MANDELBROT EXPLORER" + RESET
+    frame = frame + "  Zoom: " + YELLOW_FG + tae_string(tae_int(viewer.zoom * 100.0) / 100.0) + "x" + RESET
+    frame = frame + "  Center: (" + GREEN_FG + tae_string(tae_int(viewer.center_x * 1000.0) / 1000.0) + RESET
+    frame = frame + ", " + GREEN_FG + tae_string(tae_int(viewer.center_y * 1000.0) / 1000.0) + RESET + ")"
+    frame = frame + "  Iter: " + tae_string(viewer.max_iter)
+    frame = frame + CLEAR_LINE + "\n"
+    frame = frame + CLEAR_LINE + "\n"
+
+    # Render fractal
+    ken py = 0
+    whiles py < render_height {
+        ken cy = y_min + tae_float(py) * dy
+        ken line = ""
+
+        ken px = 0
+        whiles px < render_width {
+            ken cx = x_min + tae_float(px) * dx
+            ken iter = viewer.mandelbrot(cx, cy)
+
+            gin viewer.use_color {
+                line = line + get_color(iter, viewer.max_iter)
+            } ither {
+                line = line + get_char_color(iter, viewer.max_iter)
+            }
+
+            px = px + 1
+        }
+
+        frame = frame + line + RESET + CLEAR_LINE + "\n"
+        py = py + 1
+    }
+
+    # Controls
+    frame = frame + CLEAR_LINE + "\n"
+    frame = frame + DIM + "[Arrows]=Pan  [+/-]=Zoom  [C]=Color  [I/D]=Detail  [1-4]=Presets  [R]=Reset  [Q]=Quit" + RESET + CLEAR_LINE + "\n"
+
+    blether(frame)
+}
+
+# === Main ===
+blether(CLEAR_SCREEN + CURSOR_HOME + CURSOR_HIDE)
+
+ken viewer = FractalViewer()
+ken quit = nae
+
+whiles nae quit {
+    render(viewer)
+
+    ken key = get_key()
+
+    gin key == "q" or key == "Q" {
+        quit = aye
+    } ither gin key == "c" or key == "C" {
+        viewer.toggle_color()
+    } ither gin key == "r" or key == "R" {
+        viewer.reset()
+    } ither gin key == "+" or key == "=" {
+        viewer.zoom_in()
+    } ither gin key == "-" or key == "_" {
+        viewer.zoom_out()
+    } ither gin key == "Left" {
+        viewer.pan_left()
+    } ither gin key == "Right" {
+        viewer.pan_right()
+    } ither gin key == "Up" {
+        viewer.pan_up()
+    } ither gin key == "Down" {
+        viewer.pan_down()
+    } ither gin key == "1" {
+        viewer.goto_seahorse()
+    } ither gin key == "2" {
+        viewer.goto_spiral()
+    } ither gin key == "3" {
+        viewer.goto_lightning()
+    } ither gin key == "4" {
+        viewer.goto_elephant()
+    } ither gin key == "i" or key == "I" {
+        viewer.increase_detail()
+    } ither gin key == "d" or key == "D" {
+        viewer.decrease_detail()
+    }
+}
+
+blether(CURSOR_SHOW + RESET + CLEAR_SCREEN + CURSOR_HOME)
+blether("Thanks fer explorin' the infinite! Haste ye back!")

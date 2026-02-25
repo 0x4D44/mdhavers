@@ -1,0 +1,271 @@
+# promise_demo.braw - Demonstrate promise patterns in mdhavers
+# "Promises are like haggis - ye hope they turn oot weel!"
+
+fetch "lib/promise"
+
+blether ""
+blether "═══════════════════════════════════════════════════"
+blether "    PROMISE PATTERNS DEMO"
+blether "    'Deferred computation the Scots way!'"
+blether "═══════════════════════════════════════════════════"
+blether ""
+
+# ===============================================================
+# Basic Promise
+# ===============================================================
+
+blether "=== Basic Promise ==="
+blether ""
+
+ken p1 = Promise()
+blether f"Promise state: {p1.state}"
+
+dae on_success_handler(val) {
+    blether f"  Success: {val}"
+}
+
+dae on_error_handler(err) {
+    blether f"  Error: {err}"
+}
+
+dae on_done_handler() {
+    blether "  Done!"
+}
+
+p1.on_success(on_success_handler)
+p1.catch(on_error_handler)
+p1.finally(on_done_handler)
+
+blether "Resolving promise..."
+p1.resolve("Haggis is ready!")
+
+blether ""
+
+# ===============================================================
+# Pre-resolved Promise
+# ===============================================================
+
+blether "=== Pre-resolved Promise ==="
+blether ""
+
+ken p2 = resolved("Already cooked!")
+blether f"State: {p2.state}"
+blether f"Value: {p2.await()}"
+
+blether ""
+
+# ===============================================================
+# Rejected Promise
+# ===============================================================
+
+blether "=== Rejected Promise ==="
+blether ""
+
+ken p3 = rejected("The haggis burned!")
+blether f"State: {p3.state}"
+blether f"Error: {p3.error}"
+
+blether ""
+
+# ===============================================================
+# Result Type (Either)
+# ===============================================================
+
+blether "=== Result Type ==="
+blether ""
+
+dae divide(a, b) {
+    gin b == 0 {
+        gie err_result("Division by zero!")
+    }
+    gie ok_result(a / b)
+}
+
+ken r1 = divide(10, 2)
+ken r2 = divide(10, 0)
+
+blether f"10 / 2:"
+blether f"  is_ok: {r1.is_success()}"
+blether f"  value: {r1.unwrap_or('error')}"
+
+blether f"10 / 0:"
+blether f"  is_ok: {r2.is_success()}"
+blether f"  error: {r2.error}"
+blether f"  with default: {r2.unwrap_or(0)}"
+
+blether ""
+
+# ===============================================================
+# Option Type (Maybe)
+# ===============================================================
+
+blether "=== Option Type ==="
+blether ""
+
+dae find_first_even(numbers) {
+    fer n in numbers {
+        gin n % 2 == 0 {
+            gie some_option(n)
+        }
+    }
+    gie none_option()
+}
+
+ken opt1 = find_first_even([1, 3, 5, 6, 7])
+ken opt2 = find_first_even([1, 3, 5, 7])
+
+blether f"Finding first even in [1, 3, 5, 6, 7]:"
+blether f"  is_some: {opt1.is_some()}"
+blether f"  value: {opt1.unwrap_or('none')}"
+
+blether f"Finding first even in [1, 3, 5, 7]:"
+blether f"  is_some: {opt2.is_some()}"
+blether f"  value: {opt2.unwrap_or('none')}"
+
+blether ""
+
+# Mapping over options
+ken doubled = opt1.map(|x| x * 2)
+blether f"Doubled first even: {doubled.unwrap_or('none')}"
+
+blether ""
+
+# ===============================================================
+# Lazy Evaluation
+# ===============================================================
+
+blether "=== Lazy Evaluation ==="
+blether ""
+
+ken computation_count = 0
+
+dae expensive_computation() {
+    blether "  (Computing...)"
+    computation_count = computation_count + 1
+    gie 42
+}
+
+ken lazy_val = Lazy(expensive_computation)
+
+blether f"Lazy value created, evaluated: {lazy_val.is_evaluated()}"
+blether "First access:"
+ken result1 = lazy_val.force()
+blether f"  Result: {result1}"
+
+blether "Second access (should nae recompute):"
+ken result2 = lazy_val.force()
+blether f"  Result: {result2}"
+blether f"  Total computations: {computation_count}"
+
+blether ""
+
+# ===============================================================
+# Task Queue
+# ===============================================================
+
+blether "=== Task Queue ==="
+blether ""
+
+ken queue = TaskQueue()
+
+queue.add(|| "Step 1: Gather ingredients")
+queue.add(|| "Step 2: Mix the oats")
+queue.add(|| "Step 3: Cook the haggis")
+queue.add(|| "Step 4: Serve wi' neeps an' tatties")
+
+blether f"Tasks queued: {queue.count()}"
+blether "Running tasks:"
+
+ken results = queue.run()
+fer result in results {
+    blether f"  - {result}"
+}
+
+blether ""
+
+# ===============================================================
+# Pipeline
+# ===============================================================
+
+blether "=== Pipeline ==="
+blether ""
+
+ken pipeline = Pipeline()
+pipeline.pipe(|x| x * 2)
+pipeline.pipe(|x| x + 10)
+pipeline.pipe(|x| x * 3)
+
+ken input = 5
+ken output = pipeline.execute(input)
+
+blether f"Pipeline: x -> x*2 -> x+10 -> x*3"
+blether f"Input: {input}"
+blether f"Output: {output}"
+blether f"Steps: {pipeline.length()}"
+
+blether ""
+
+# ===============================================================
+# Chaining
+# ===============================================================
+
+blether "=== Chaining Promises ==="
+blether ""
+
+dae chain_step1(val) {
+    blether f"  1. Got: {val}"
+}
+
+dae chain_step2(val) {
+    blether "  2. Processing..."
+}
+
+dae chain_done() {
+    blether "  3. All done!"
+}
+
+ken chain = Promise()
+chain.on_success(chain_step1)
+chain.on_success(chain_step2)
+chain.finally(chain_done)
+
+blether "Resolving chain..."
+chain.resolve("Initial value")
+
+blether ""
+
+# ===============================================================
+# Practical Example
+# ===============================================================
+
+blether "=== Practical Example: User Lookup ==="
+blether ""
+
+ken users = {
+    "1": {"name": "Angus", "age": 35},
+    "2": {"name": "Morag", "age": 28},
+    "3": {"name": "Hamish", "age": 42}
+}
+
+dae find_user(id) {
+    gin contains(users, id) {
+        gie some_option(users[id])
+    }
+    gie none_option()
+}
+
+dae get_user_name(id) {
+    ken user_opt = find_user(id)
+    gie user_opt.map(|u| u["name"]).unwrap_or("Unknown")
+}
+
+blether f"User 1: {get_user_name('1')}"
+blether f"User 2: {get_user_name('2')}"
+blether f"User 99: {get_user_name('99')}"
+
+blether ""
+blether "═══════════════════════════════════════════════════"
+blether "    Promise patterns demo complete!"
+blether "    'The future's lookin' braw!'"
+blether "═══════════════════════════════════════════════════"
+blether ""

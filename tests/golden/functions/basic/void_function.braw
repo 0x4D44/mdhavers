@@ -1,0 +1,7 @@
+dae print_twice(msg) {
+    blether msg
+    blether msg
+}
+
+print_twice("Hello")
+print_twice("World")

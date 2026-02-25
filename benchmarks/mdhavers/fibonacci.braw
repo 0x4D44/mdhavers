@@ -1,0 +1,48 @@
+# Fibonacci Benchmark
+# Tests recursive and iterative implementations
+
+# Naive recursive fibonacci - exponential time complexity
+dae fib_naive(n) {
+    gin n <= 1 { gie n }
+    gie fib_naive(n - 1) + fib_naive(n - 2)
+}
+
+# Iterative fibonacci - linear time complexity
+dae fib_iter(n) {
+    gin n <= 1 { gie n }
+    ken a = 0
+    ken b = 1
+    ken i = 2
+    whiles i <= n {
+        ken temp = a + b
+        a = b
+        b = temp
+        i = i + 1
+    }
+    gie b
+}
+
+# Run benchmarks
+blether "=== Fibonacci Benchmark ==="
+
+# Test correctness first
+blether "Testing correctness..."
+blether "fib(0) = " + tae_string(fib_iter(0))
+blether "fib(1) = " + tae_string(fib_iter(1))
+blether "fib(10) = " + tae_string(fib_iter(10))
+blether "fib(20) = " + tae_string(fib_iter(20))
+
+# Iterative benchmark - can handle large n
+blether ""
+blether "Iterative fib(40)..."
+ken result_iter = fib_iter(40)
+blether "fib_iter(40) = " + tae_string(result_iter)
+
+# Naive recursive - use smaller n to avoid timeout
+blether ""
+blether "Naive recursive fib(30)..."
+ken result_naive = fib_naive(30)
+blether "fib_naive(30) = " + tae_string(result_naive)
+
+blether ""
+blether "Fibonacci benchmark complete!"

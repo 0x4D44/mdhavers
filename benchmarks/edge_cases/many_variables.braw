@@ -1,0 +1,127 @@
+# Many Variables Test
+# Tests variable scoping and lookup performance
+
+blether "=== Many Variables Test ==="
+
+# Create many variables in sequence
+blether "Creating 100 variables..."
+ken v0 = 0
+ken v1 = 1
+ken v2 = 2
+ken v3 = 3
+ken v4 = 4
+ken v5 = 5
+ken v6 = 6
+ken v7 = 7
+ken v8 = 8
+ken v9 = 9
+ken v10 = 10
+ken v11 = 11
+ken v12 = 12
+ken v13 = 13
+ken v14 = 14
+ken v15 = 15
+ken v16 = 16
+ken v17 = 17
+ken v18 = 18
+ken v19 = 19
+ken v20 = 20
+ken v21 = 21
+ken v22 = 22
+ken v23 = 23
+ken v24 = 24
+ken v25 = 25
+ken v26 = 26
+ken v27 = 27
+ken v28 = 28
+ken v29 = 29
+ken v30 = 30
+ken v31 = 31
+ken v32 = 32
+ken v33 = 33
+ken v34 = 34
+ken v35 = 35
+ken v36 = 36
+ken v37 = 37
+ken v38 = 38
+ken v39 = 39
+ken v40 = 40
+ken v41 = 41
+ken v42 = 42
+ken v43 = 43
+ken v44 = 44
+ken v45 = 45
+ken v46 = 46
+ken v47 = 47
+ken v48 = 48
+ken v49 = 49
+ken v50 = 50
+ken v51 = 51
+ken v52 = 52
+ken v53 = 53
+ken v54 = 54
+ken v55 = 55
+ken v56 = 56
+ken v57 = 57
+ken v58 = 58
+ken v59 = 59
+ken v60 = 60
+ken v61 = 61
+ken v62 = 62
+ken v63 = 63
+ken v64 = 64
+ken v65 = 65
+ken v66 = 66
+ken v67 = 67
+ken v68 = 68
+ken v69 = 69
+ken v70 = 70
+ken v71 = 71
+ken v72 = 72
+ken v73 = 73
+ken v74 = 74
+ken v75 = 75
+ken v76 = 76
+ken v77 = 77
+ken v78 = 78
+ken v79 = 79
+ken v80 = 80
+ken v81 = 81
+ken v82 = 82
+ken v83 = 83
+ken v84 = 84
+ken v85 = 85
+ken v86 = 86
+ken v87 = 87
+ken v88 = 88
+ken v89 = 89
+ken v90 = 90
+ken v91 = 91
+ken v92 = 92
+ken v93 = 93
+ken v94 = 94
+ken v95 = 95
+ken v96 = 96
+ken v97 = 97
+ken v98 = 98
+ken v99 = 99
+blether "Created 100 variables"
+
+# Sum them
+ken sum = v0 + v1 + v2 + v3 + v4 + v5 + v6 + v7 + v8 + v9 + v10 + v11 + v12 + v13 + v14 + v15 + v16 + v17 + v18 + v19 + v20 + v21 + v22 + v23 + v24 + v25 + v26 + v27 + v28 + v29 + v30 + v31 + v32 + v33 + v34 + v35 + v36 + v37 + v38 + v39 + v40 + v41 + v42 + v43 + v44 + v45 + v46 + v47 + v48 + v49 + v50 + v51 + v52 + v53 + v54 + v55 + v56 + v57 + v58 + v59 + v60 + v61 + v62 + v63 + v64 + v65 + v66 + v67 + v68 + v69 + v70 + v71 + v72 + v73 + v74 + v75 + v76 + v77 + v78 + v79 + v80 + v81 + v82 + v83 + v84 + v85 + v86 + v87 + v88 + v89 + v90 + v91 + v92 + v93 + v94 + v95 + v96 + v97 + v98 + v99
+blether "Sum of v0..v99 = " + tae_string(sum)
+# Expected: 0+1+2+...+99 = 99*100/2 = 4950
+
+# Test nested scopes
+blether ""
+blether "Testing nested scopes..."
+ken outer = 100
+gin aye {
+    ken inner = 200
+    blether "outer in block = " + tae_string(outer)
+    blether "inner in block = " + tae_string(inner)
+}
+blether "outer after block = " + tae_string(outer)
+
+blether ""
+blether "Many variables test complete!"

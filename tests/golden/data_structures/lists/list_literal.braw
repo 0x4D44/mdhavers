@@ -1,0 +1,6 @@
+# SKIP_NATIVE
+# Note: This test has issues in native compilation
+blether [1, 2, 3]
+blether ["a", "b", "c"]
+blether [aye, nae, aye]
+blether []

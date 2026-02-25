@@ -1,0 +1,30 @@
+# Test file I/O operations
+# SKIP_NATIVE - File I/O uses native functions not available in LLVM backend
+
+# Test path_join
+blether path_join("foo", "bar")
+blether path_join("/home", "user")
+
+# Test is_dir on existing directories
+blether is_dir(".")
+blether is_dir("tests")
+
+# Test is_dir on non-directories
+blether is_dir("Cargo.toml")
+
+# Test list_dir (just test that it returns a list with items)
+ken files = list_dir(".")
+blether len(files) > 0
+blether contains(files, "Cargo.toml")
+blether contains(files, "src")
+
+# Test file_exists on known files
+blether file_exists("Cargo.toml")
+blether file_exists("src/lib.rs")
+
+# Test file_exists on missing files
+blether file_exists("this_file_does_not_exist.xyz")
+
+# Test file_size on a known file
+ken size = file_size("Cargo.toml")
+blether size > 0

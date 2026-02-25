@@ -1,0 +1,18 @@
+dae is_even(n) {
+    gin n == 0 {
+        gie aye
+    }
+    gie is_odd(n - 1)
+}
+
+dae is_odd(n) {
+    gin n == 0 {
+        gie nae
+    }
+    gie is_even(n - 1)
+}
+
+blether is_even(4)
+blether is_even(5)
+blether is_odd(4)
+blether is_odd(5)

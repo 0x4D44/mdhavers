@@ -1,0 +1,59 @@
+# Fibonacci Stress Test
+# Tests recursive and iterative performance at scale
+
+blether "=== Fibonacci Stress Test ==="
+
+# Naive recursive (exponential time) - limited to fib(35)
+dae fib_naive(n) {
+    gin n <= 1 { gie n }
+    gie fib_naive(n - 1) + fib_naive(n - 2)
+}
+
+# Iterative (linear time)
+dae fib_iter(n) {
+    gin n <= 1 { gie n }
+    ken a = 0
+    ken b = 1
+    ken i = 2
+    whiles i <= n {
+        ken temp = a + b
+        a = b
+        b = temp
+        i = i + 1
+    }
+    gie b
+}
+
+# Test correctness
+blether "Correctness check:"
+blether "  fib(10) = " + tae_string(fib_iter(10))
+blether "  fib(20) = " + tae_string(fib_iter(20))
+
+# Stress test: iterative to large N
+blether ""
+blether "Iterative stress test:"
+ken start = tick()
+ken result = fib_iter(10000)
+ken elapsed = tick() - start
+blether "  fib_iter(10000) completed in " + tae_string(elapsed / 1000) + " us"
+
+# More iterations
+ken start2 = tick()
+ken i = 0
+whiles i < 1000 {
+    ken r = fib_iter(1000)
+    i = i + 1
+}
+ken elapsed2 = tick() - start2
+blether "  1000x fib_iter(1000) in " + tae_string(elapsed2 / 1000000) + " ms"
+
+# Recursive stress (limited)
+blether ""
+blether "Recursive stress test:"
+ken start3 = tick()
+ken r35 = fib_naive(30)
+ken elapsed3 = tick() - start3
+blether "  fib_naive(30) = " + tae_string(r35) + " in " + tae_string(elapsed3 / 1000000) + " ms"
+
+blether ""
+blether "=== Fibonacci stress complete ==="

@@ -1,0 +1,11 @@
+dae add(a, b) {
+    gie a + b
+}
+blether add(3, 4)
+blether add(10, 20)
+
+dae greet(name) {
+    blether "Hello, " + name + "!"
+}
+greet("Alice")
+greet("Bob")

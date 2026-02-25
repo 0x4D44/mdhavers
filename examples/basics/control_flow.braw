@@ -1,21 +1,57 @@
-# control_flow.braw - if/else, loops, break, continue
+# control_flow.braw - If statements an' loops
+# Shows how tae use gin, ither, whiles, an' fer
 
-ken total = 0
-fer i in 1..11 {
-    total = total + i
+# If statements with gin/ither
+ken temperature = 15
+
+gin temperature < 10 {
+    blether "It's pure Baltic oot there!"
+} ither gin temperature < 20 {
+    blether "It's a wee bit nippy."
+} ither {
+    blether "Rare weather fer Scotland!"
 }
-blether f"Sum 1..10 = {total}"
 
-ken odds = []
-fer i in 1..20 {
-    gin i % 2 == 0 { haud }
-    gin i > 15 { brak }
-    shove(odds, i)
+# While loops with whiles
+blether ""
+blether "Countin' wi' whiles:"
+ken count = 1
+whiles count <= 5 {
+    blether "Count: " + tae_string(count)
+    count = count + 1
 }
-blether f"Odds under 16: {odds}"
 
-ken n = 3
-whiles n > 0 {
-    blether f"Countdown: {n}"
-    n = n - 1
+# For loops with fer
+blether ""
+blether "Countin' wi' fer:"
+fer i in 1..6 {
+    blether "Number: " + tae_string(i)
+}
+
+# Looping over a list
+blether ""
+blether "Scottish cities:"
+ken cities = ["Edinburgh", "Glasgow", "Aberdeen", "Dundee", "Inverness"]
+fer city in cities {
+    blether "  - " + city
+}
+
+# Break an' continue
+blether ""
+blether "Usin' brak (break):"
+fer i in 1..100 {
+    gin i > 5 {
+        blether "Stoapin' at " + tae_string(i)
+        brak
+    }
+    blether i
+}
+
+blether ""
+blether "Usin' haud (continue):"
+fer i in 1..10 {
+    gin i % 2 == 0 {
+        haud  # Skip even numbers
+    }
+    blether "Odd: " + tae_string(i)
 }

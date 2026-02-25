@@ -1,0 +1,9 @@
+# SKIP_NATIVE
+# Note: LLVM backend doesn't properly restore outer scope after shadowing
+ken x = 10
+blether x
+gin aye {
+    ken x = 20
+    blether x
+}
+blether x

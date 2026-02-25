@@ -1,0 +1,63 @@
+# Graphics Demo - Demonstrates the mdhavers graphics API
+# Requires: cargo build --features graphics
+# Run with: cargo run --features graphics -- examples/graphics_demo.braw
+
+blether "=== Graphics Demo ==="
+blether "Opening window..."
+
+# Open a 800x600 window
+screen_open(800, 600, "mdhavers Graphics Demo")
+screen_fps(60)
+
+# Define some colors
+ken reid = "reid"    # Red in Scots
+ken blae = "blae"    # Blue in Scots  
+ken whit = "whit"    # White in Scots
+ken bleck = "bleck"  # Black in Scots
+ken yella = "yella"  # Yellow in Scots
+
+# Ball position and velocity
+ken ball_x = 400
+ken ball_y = 300
+ken ball_vx = 5
+ken ball_vy = 3
+ken ball_radius = 20
+
+# Main game loop
+whiles !screen_should_close() {
+    # Update ball position
+    ball_x = ball_x + ball_vx
+    ball_y = ball_y + ball_vy
+    
+    # Bounce off walls
+    gin ball_x < ball_radius or ball_x > screen_width() - ball_radius {
+        ball_vx = -ball_vx
+    }
+    gin ball_y < ball_radius or ball_y > screen_height() - ball_radius {
+        ball_vy = -ball_vy
+    }
+    
+    # Check for key input
+    gin key_down("space") {
+        ball_vx = ball_vx * 1.1
+        ball_vy = ball_vy * 1.1
+    }
+    
+    # Draw frame
+    screen_clear(bleck)
+    
+    # Draw the ball
+    draw_circle(ball_x, ball_y, ball_radius, reid)
+    
+    # Draw some text
+    draw_text("Press SPACE tae speed up!", 10, 10, 20, whit)
+    draw_text("Press ESC tae exit", 10, 40, 20, whit)
+    
+    # Draw a rectangle
+    draw_rect(700, 500, 80, 40, blae)
+    
+    screen_end()
+}
+
+screen_close()
+blether "Window closed. Demo complete!"

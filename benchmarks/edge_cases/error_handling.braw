@@ -1,0 +1,104 @@
+# Error Handling and Edge Cases Test
+# Tests resilience to edge conditions
+
+blether "=== Error Handling Tests ==="
+
+# Empty list operations
+blether "Empty list operations:"
+ken empty = []
+blether "  len([]): " + tae_string(len(empty))
+blether "  reverse([]): " + tae_string(reverse(empty))
+
+# Single element operations
+blether ""
+blether "Single element operations:"
+ken single = [42]
+blether "  heid([42]): " + tae_string(heid(single))
+blether "  bum([42]): " + tae_string(bum(single))
+blether "  tail([42]): " + tae_string(tail(single))
+
+# Boundary values
+blether ""
+blether "Boundary values:"
+blether "  abs(0): " + tae_string(abs(0))
+blether "  abs(-1): " + tae_string(abs(-1))
+blether "  min(0, 0): " + tae_string(min(0, 0))
+blether "  max(0, 0): " + tae_string(max(0, 0))
+
+# Large numbers
+blether ""
+blether "Large number operations:"
+ken big = 9223372036854775807
+blether "  Large int: " + tae_string(big)
+ken big_neg = -9223372036854775807
+blether "  Large negative: " + tae_string(big_neg)
+
+# Float edge cases
+blether ""
+blether "Float operations:"
+blether "  floor(0.0): " + tae_string(floor(0.0))
+blether "  ceil(0.0): " + tae_string(ceil(0.0))
+blether "  round(0.5): " + tae_string(round(0.5))
+blether "  round(-0.5): " + tae_string(round(-0.5))
+blether "  sqrt(0.0): " + tae_string(sqrt(0.0))
+blether "  sqrt(1.0): " + tae_string(sqrt(1.0))
+
+# String edge cases
+blether ""
+blether "String edge cases:"
+ken empty_str = ""
+blether "  len(''): " + tae_string(len(empty_str))
+blether "  upper(''): '" + upper(empty_str) + "'"
+blether "  lower(''): '" + lower(empty_str) + "'"
+blether "  wheesht(''): '" + wheesht(empty_str) + "'"
+blether "  contains('', ''): " + tae_string(contains("", ""))
+blether "  contains('abc', ''): " + tae_string(contains("abc", ""))
+
+# Split edge cases
+blether ""
+blether "Split edge cases:"
+ken parts1 = split("", ",")
+blether "  split('', ','): " + tae_string(len(parts1)) + " parts"
+ken parts2 = split("abc", "")
+blether "  split('abc', ''): " + tae_string(len(parts2)) + " parts"
+ken parts3 = split("no-delim", ",")
+blether "  split('no-delim', ','): " + tae_string(len(parts3)) + " parts"
+
+# Type checking
+blether ""
+blether "Type checking:"
+blether "  whit_kind(naething): " + whit_kind(naething)
+blether "  whit_kind(aye): " + whit_kind(aye)
+blether "  whit_kind(nae): " + whit_kind(nae)
+blether "  whit_kind(0): " + whit_kind(0)
+blether "  whit_kind(''): " + whit_kind("")
+blether "  whit_kind([]): " + whit_kind([])
+
+# Range edge cases
+blether ""
+blether "Range edge cases:"
+ken r1 = range(0, 0)
+blether "  range(0, 0): " + tae_string(r1)
+ken r2 = range(5, 5)
+blether "  range(5, 5): " + tae_string(r2)
+ken r3 = range(0, 1)
+blether "  range(0, 1): " + tae_string(r3)
+
+# HOF with empty lists
+blether ""
+blether "HOF with empty lists:"
+ken empty_mapped = gaun([], |x| x * 2)
+blether "  gaun([], fn): " + tae_string(empty_mapped)
+ken empty_filtered = sieve([], |x| x > 0)
+blether "  sieve([], fn): " + tae_string(empty_filtered)
+ken empty_reduced = tumble([], 0, |acc, x| acc + x)
+blether "  tumble([], 0, fn): " + tae_string(empty_reduced)
+ken all_empty = aw([], |x| x > 0)
+blether "  aw([], fn): " + tae_string(all_empty)
+ken any_empty = ony([], |x| x > 0)
+blether "  ony([], fn): " + tae_string(any_empty)
+ken hunt_empty = hunt([], |x| x > 0)
+blether "  hunt([], fn): " + tae_string(hunt_empty)
+
+blether ""
+blether "=== Error handling tests complete ==="

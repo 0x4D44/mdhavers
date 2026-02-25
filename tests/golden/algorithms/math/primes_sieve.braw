@@ -1,0 +1,36 @@
+# SKIP_NATIVE
+# Note: This test has issues in native compilation
+dae sieve(n) {
+    ken is_prime = []
+    ken i = 0
+    whiles i <= n {
+        shove(is_prime, aye)
+        i = i + 1
+    }
+    is_prime[0] = nae
+    is_prime[1] = nae
+
+    ken p = 2
+    whiles p * p <= n {
+        gin is_prime[p] {
+            ken j = p * p
+            whiles j <= n {
+                is_prime[j] = nae
+                j = j + p
+            }
+        }
+        p = p + 1
+    }
+
+    ken primes = []
+    ken k = 2
+    whiles k <= n {
+        gin is_prime[k] {
+            shove(primes, k)
+        }
+        k = k + 1
+    }
+    gie primes
+}
+
+blether sieve(30)

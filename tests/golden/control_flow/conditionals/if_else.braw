@@ -1,0 +1,12 @@
+ken t = aye
+ken f = nae
+gin t {
+    blether "true branch"
+} ither {
+    blether "false branch"
+}
+gin f {
+    blether "true branch"
+} ither {
+    blether "false branch"
+}

@@ -1,0 +1,5 @@
+# SKIP_NATIVE
+# Note: For-in-string may not be fully supported in LLVM
+fer c in "abc" {
+    blether c
+}

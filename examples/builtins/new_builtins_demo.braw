@@ -1,0 +1,309 @@
+# new_builtins_demo.braw - Demonstration of New Built-in Functions
+# Showcasing bitwise ops, dict utilities, string functions, math, and more!
+
+fetch "lib/colors"
+
+blether ""
+blether cyan("╔════════════════════════════════════════════════════════╗")
+blether cyan("║           NEW BUILT-IN FUNCTIONS DEMO                  ║")
+blether cyan("║         Mair tools fer yer programming needs!          ║")
+blether cyan("╚════════════════════════════════════════════════════════╝")
+blether ""
+
+# ============================================================
+# BITWISE OPERATIONS - Binary fiddlin'!
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  BITWISE OPERATIONS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken a = 12   # Binary: 1100
+ken b = 10   # Binary: 1010
+
+blether f"a = {a} (binary: {tae_binary(a)})"
+blether f"b = {b} (binary: {tae_binary(b)})"
+blether ""
+
+blether f"bit_an({a}, {b})  = {bit_an(a, b)}  (AND: {tae_binary(bit_an(a, b))})"
+blether f"bit_or({a}, {b})  = {bit_or(a, b)}  (OR: {tae_binary(bit_or(a, b))})"
+blether f"bit_xor({a}, {b}) = {bit_xor(a, b)}  (XOR: {tae_binary(bit_xor(a, b))})"
+blether f"bit_nae({a})      = {bit_nae(a)} (NOT)"
+blether ""
+
+blether f"bit_shove_left({a}, 2) = {bit_shove_left(a, 2)} ({tae_binary(bit_shove_left(a, 2))})"
+blether f"bit_shove_right({a}, 1) = {bit_shove_right(a, 1)} ({tae_binary(bit_shove_right(a, 1))})"
+blether f"bit_coont({a}) = {bit_coont(a)} set bits"
+blether ""
+
+# Number base conversions
+ken num = 255
+blether f"Number: {num}"
+blether f"  Binary:  {tae_binary(num)}"
+blether f"  Hex:     {tae_hex(num)}"
+blether f"  Octal:   {tae_octal(num)}"
+blether ""
+
+blether f"fae_binary('1111') = {fae_binary(\"1111\")}"
+blether f"fae_hex('ff')     = {fae_hex(\"ff\")}"
+blether ""
+
+# ============================================================
+# DICTIONARY FUNCTIONS
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  DICTIONARY FUNCTIONS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken dict1 = {"name": "Hamish", "age": 30}
+ken dict2 = {"city": "Edinburgh", "age": 31}
+
+blether f"dict1 = {dict1}"
+blether f"dict2 = {dict2}"
+blether ""
+
+ken merged = dict_merge(dict1, dict2)
+blether f"dict_merge(dict1, dict2) = {merged}"
+blether ""
+
+blether f"dict_get(dict1, \"name\", \"unknown\") = {dict_get(dict1, \"name\", \"unknown\")}"
+blether f"dict_get(dict1, \"missing\", \"default\") = {dict_get(dict1, \"missing\", \"default\")}"
+blether ""
+
+blether f"dict_has(dict1, \"name\") = {dict_has(dict1, \"name\")}"
+blether f"dict_has(dict1, \"missing\") = {dict_has(dict1, \"missing\")}"
+blether ""
+
+ken with_key_removed = dict_remove(dict1, "age")
+blether f"dict_remove(dict1, \"age\") = {with_key_removed}"
+blether ""
+
+ken score_map = {"Alice": 95, "Bob": 87, "Charlie": 92}
+ken inverted = dict_invert(score_map)
+blether f"score_map = {score_map}"
+blether f"dict_invert(score_map) = {inverted}"
+blether ""
+
+ken pair_list = items(dict1)
+blether f"items(dict1) = {pair_list}"
+blether ""
+
+ken pairs = [["x", 10], ["y", 20], ["z", 30]]
+ken dict_from_pairs = fae_pairs(pairs)
+blether f"fae_pairs({pairs}) = {dict_from_pairs}"
+blether ""
+
+# ============================================================
+# STRING UTILITIES
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  STRING UTILITIES")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken text = "Hello World"
+
+blether f"center(\"{text}\", 20, '*') = \"{center(text, 20, \"*\")}\""
+blether ""
+
+blether f"is_upper(\"HELLO\") = {is_upper(\"HELLO\")}"
+blether f"is_upper(\"Hello\") = {is_upper(\"Hello\")}"
+blether f"is_lower(\"hello\") = {is_lower(\"hello\")}"
+blether ""
+
+blether f"swapcase(\"{text}\") = \"{swapcase(text)}\""
+blether ""
+
+ken padded_text = "---hello---"
+blether f"strip_left(\"{padded_text}\", \"-\") = \"{strip_left(padded_text, \"-\")}\""
+blether f"strip_right(\"{padded_text}\", \"-\") = \"{strip_right(padded_text, \"-\")}\""
+blether ""
+
+ken sentence = "the cat sat on the mat"
+blether f"replace_first(\"{sentence}\", \"the\", \"a\") = \"{replace_first(sentence, \"the\", \"a\")}\""
+blether ""
+
+ken html = "<div>Hello</div>"
+blether f"substr_between(\"{html}\", \"<div>\", \"</div>\") = \"{substr_between(html, \"<div>\", \"</div>\")}\""
+blether ""
+
+# ============================================================
+# MATHEMATICAL FUNCTIONS
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  MATHEMATICAL FUNCTIONS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+blether f"sign(-5)  = {sign(-5)}"
+blether f"sign(0)   = {sign(0)}"
+blether f"sign(10)  = {sign(10)}"
+blether ""
+
+blether f"clamp(15, 0, 10) = {clamp(15, 0, 10)}"
+blether f"clamp(-5, 0, 10) = {clamp(-5, 0, 10)}"
+blether f"clamp(5, 0, 10)  = {clamp(5, 0, 10)}"
+blether ""
+
+blether f"lerp(0.0, 100.0, 0.5) = {lerp(0.0, 100.0, 0.5)}"
+blether f"lerp(0.0, 100.0, 0.25) = {lerp(0.0, 100.0, 0.25)}"
+blether ""
+
+blether f"gcd(48, 18) = {gcd(48, 18)}"
+blether f"lcm(4, 6)   = {lcm(4, 6)}"
+blether ""
+
+blether f"factorial(5) = {factorial(5)}"
+blether f"factorial(10) = {factorial(10)}"
+blether ""
+
+blether f"is_even(4) = {is_even(4)}"
+blether f"is_odd(7)  = {is_odd(7)}"
+blether ""
+
+blether f"is_prime(17) = {is_prime(17)}"
+blether f"is_prime(18) = {is_prime(18)}"
+blether ""
+
+# Find primes up to 50
+ken primes = []
+fer n in 2..51 {
+    gin is_prime(n) {
+        shove(primes, n)
+    }
+}
+blether f"Primes up to 50: {primes}"
+blether ""
+
+# ============================================================
+# ASSERTION FUNCTIONS
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  ASSERTION FUNCTIONS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+# These throw errors if they fail - let's test passing ones
+assert(aye, "This should pass")
+blether "assert(aye, ...) passed!"
+
+assert_equal(5, 5)
+blether "assert_equal(5, 5) passed!"
+
+assert_nae_equal(5, 10)
+blether "assert_nae_equal(5, 10) passed!"
+
+# Math assertions
+assert(is_prime(17), "17 should be prime")
+assert(is_even(42), "42 should be even")
+blether "All math assertions passed!"
+blether ""
+
+# ============================================================
+# LIST STATISTICS
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  LIST STATISTICS")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken numbers = [23, 45, 12, 67, 34, 89, 8, 52]
+blether f"numbers = {numbers}"
+blether ""
+
+blether f"average(numbers) = {average(numbers)}"
+blether f"median(numbers)  = {median(numbers)}"
+blether f"sumaw(numbers)   = {sumaw(numbers)}"
+blether f"product([1,2,3,4,5]) = {product([1, 2, 3, 4, 5])}"
+blether ""
+
+blether f"minaw(numbers) = {minaw(numbers)}"
+blether f"maxaw(numbers) = {maxaw(numbers)}"
+blether f"range_o(numbers) = {range_o(numbers)}"
+blether ""
+
+# ============================================================
+# PUTTING IT ALL TOGETHER - A wee example
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  EXAMPLE: Bit Manipulation Cipher")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+# A simple XOR cipher using the new bitwise functions
+dae xor_cipher(text, key) {
+    ken result = []
+    fer i in 0..len(text) {
+        ken char_code = ord(char_at(text, i))
+        ken key_code = ord(char_at(key, i % len(key)))
+        ken encrypted = bit_xor(char_code, key_code)
+        shove(result, chr(encrypted))
+    }
+    gie join(result, "")
+}
+
+ken message = "Hello Scotland!"
+ken secret_key = "braw"
+
+ken encrypted = xor_cipher(message, secret_key)
+ken decrypted = xor_cipher(encrypted, secret_key)
+
+blether f"Original:  {message}"
+blether f"Key:       {secret_key}"
+blether f"Encrypted: (binary data - length {len(encrypted)})"
+blether f"Decrypted: {decrypted}"
+blether ""
+
+# ============================================================
+# EXAMPLE: Statistics Calculator
+# ============================================================
+
+blether yellow("═══════════════════════════════════════")
+blether yellow("  EXAMPLE: Statistics Calculator")
+blether yellow("═══════════════════════════════════════")
+blether ""
+
+ken scores = [78, 85, 92, 68, 95, 88, 73, 91, 84, 79]
+
+blether "Student Scores Analysis:"
+blether f"  Scores: {scores}"
+blether f"  Count:  {len(scores)}"
+blether f"  Sum:    {sumaw(scores)}"
+blether f"  Mean:   {average(scores)}"
+blether f"  Median: {median(scores)}"
+blether f"  Min:    {minaw(scores)}"
+blether f"  Max:    {maxaw(scores)}"
+blether f"  Range:  {range_o(scores)}"
+blether ""
+
+# Grade distribution
+ken grades = {"A": 0, "B": 0, "C": 0, "D": 0, "F": 0}
+fer score in scores {
+    gin score >= 90 {
+        grades["A"] = grades["A"] + 1
+    } ither gin score >= 80 {
+        grades["B"] = grades["B"] + 1
+    } ither gin score >= 70 {
+        grades["C"] = grades["C"] + 1
+    } ither gin score >= 60 {
+        grades["D"] = grades["D"] + 1
+    } ither {
+        grades["F"] = grades["F"] + 1
+    }
+}
+
+blether f"Grade Distribution: {grades}"
+blether ""
+
+blether green("═══════════════════════════════════════")
+blether green("  Demo complete! Braw work!")
+blether green("═══════════════════════════════════════")
+blether ""

@@ -1,0 +1,6 @@
+# SKIP_NATIVE
+# Note: Nested list access may not be fully supported in LLVM
+ken matrix = [[1, 2], [3, 4], [5, 6]]
+blether matrix
+blether matrix[0]
+blether matrix[1][1]

@@ -1,0 +1,6 @@
+blether 0
+blether 0 + 0
+blether 0 * 100
+blether 100 * 0
+blether 0 - 0
+blether 0 / 1

@@ -1,0 +1,4 @@
+# SKIP_NATIVE
+# Note: split may not be supported in LLVM
+ken parts = split("a,b,c", ",")
+blether parts

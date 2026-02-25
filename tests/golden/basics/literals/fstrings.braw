@@ -1,0 +1,8 @@
+# SKIP_NATIVE
+# Note: F-strings not yet supported in LLVM backend
+ken name = "Alice"
+ken age = 30
+blether f"Hello, {name}!"
+blether f"Age: {age}"
+blether f"{name} is {age} years old"
+blether f"Math: {2 + 2}"

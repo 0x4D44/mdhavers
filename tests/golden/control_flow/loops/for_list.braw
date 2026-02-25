@@ -1,0 +1,6 @@
+# SKIP_NATIVE
+# Note: For-in-list may not be fully supported in LLVM
+ken nums = [10, 20, 30]
+fer n in nums {
+    blether n
+}

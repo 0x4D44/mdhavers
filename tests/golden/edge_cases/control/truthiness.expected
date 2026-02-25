@@ -1,0 +1,8 @@
+aye is truthy
+nae is falsy
+1 is truthy
+0 is falsy
+non-empty string is truthy
+empty string is falsy
+non-empty list is truthy
+empty list is falsy

@@ -1,0 +1,9 @@
+dae absolute(x) {
+    gin x < 0 {
+        gie -x
+    }
+    gie x
+}
+blether absolute(5)
+blether absolute(-5)
+blether absolute(0)

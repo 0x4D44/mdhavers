@@ -1,0 +1,6 @@
+# SKIP_NATIVE
+# Note: This test has issues in native compilation
+ken single = [42]
+blether single
+blether len(single)
+blether single[0]

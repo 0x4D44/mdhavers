@@ -1,0 +1,27 @@
+# Test date/time functions
+# SKIP_NATIVE - Uses native functions not available in LLVM backend
+
+# Test date_now returns a dict with expected keys
+ken now = date_now()
+blether now["year"] >= 2024
+blether now["month"] >= 1 an now["month"] <= 12
+blether now["day"] >= 1 an now["day"] <= 31
+blether now["hour"] >= 0 an now["hour"] <= 23
+blether now["minute"] >= 0 an now["minute"] <= 59
+blether now["second"] >= 0 an now["second"] <= 59
+blether now["weekday"] >= 0 an now["weekday"] <= 6
+
+# Test timestamp (should be positive and large)
+ken ts = timestamp()
+blether ts > 1700000000
+
+# Test timestamp_millis
+ken ts_ms = timestamp_millis()
+blether ts_ms > 1700000000000
+
+# Test date_diff
+ken ts1 = 1000
+ken ts2 = 61000
+blether date_diff(ts1, ts2, "milliseconds")
+blether date_diff(ts1, ts2, "seconds")
+blether date_diff(ts1, ts2, "minutes")

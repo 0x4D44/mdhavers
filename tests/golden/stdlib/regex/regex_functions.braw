@@ -1,0 +1,41 @@
+# Test regex functions
+# SKIP_NATIVE - Uses native functions not available in LLVM backend
+
+# Test regex_test
+blether regex_test("hello world", "hello")
+blether regex_test("hello world", "xyz")
+blether regex_test("hello123", "[0-9]+")
+blether regex_test("hello", "[0-9]+")
+
+# Test regex_match
+ken match1 = regex_match("hello world", "wo.ld")
+blether match1["match"]
+blether match1["start"]
+blether match1["end"]
+
+# Test regex_match with no match
+ken match2 = regex_match("hello", "xyz")
+blether match2 == naething
+
+# Test regex_match_all
+ken matches = regex_match_all("cat bat rat", "[a-z]at")
+blether len(matches)
+blether matches[0]["match"]
+blether matches[1]["match"]
+blether matches[2]["match"]
+
+# Test regex_replace
+blether regex_replace("hello world", "o", "0")
+blether regex_replace("aaa bbb aaa", "aaa", "xxx")
+
+# Test regex_replace_first
+blether regex_replace_first("hello hello", "hello", "hi")
+blether regex_replace_first("aaa bbb aaa", "aaa", "xxx")
+
+# Test regex_split
+ken parts = regex_split("a,b;c:d", "[,;:]")
+blether len(parts)
+blether parts[0]
+blether parts[1]
+blether parts[2]
+blether parts[3]

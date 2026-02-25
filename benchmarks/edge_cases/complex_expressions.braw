@@ -1,0 +1,65 @@
+# Complex Expressions Test
+# Tests deeply nested expressions and operator precedence
+
+blether "=== Complex Expressions Test ==="
+
+# Deeply nested arithmetic
+blether "Testing deeply nested arithmetic..."
+ken result1 = ((((1 + 2) * 3) + 4) * 5) + 6
+blether "((((1 + 2) * 3) + 4) * 5) + 6 = " + tae_string(result1)
+# Expected: (((3 * 3) + 4) * 5) + 6 = ((9 + 4) * 5) + 6 = (13 * 5) + 6 = 65 + 6 = 71
+
+# Operator precedence
+blether ""
+blether "Testing operator precedence..."
+ken result2 = 2 + 3 * 4
+blether "2 + 3 * 4 = " + tae_string(result2)
+# Expected: 14 (multiplication first)
+
+ken result3 = (2 + 3) * 4
+blether "(2 + 3) * 4 = " + tae_string(result3)
+# Expected: 20
+
+ken result4 = 10 - 5 - 2
+blether "10 - 5 - 2 = " + tae_string(result4)
+# Expected: 3 (left associative)
+
+# Complex boolean expressions
+blether ""
+blether "Testing boolean expressions..."
+ken bool1 = aye an aye
+blether "aye an aye = " + tae_string(bool1)
+
+ken bool2 = aye or nae
+blether "aye or nae = " + tae_string(bool2)
+
+ken bool3 = (5 > 3) an (10 < 20)
+blether "(5 > 3) an (10 < 20) = " + tae_string(bool3)
+
+ken bool4 = (5 > 10) or (3 < 5)
+blether "(5 > 10) or (3 < 5) = " + tae_string(bool4)
+
+# Comparison chains
+blether ""
+blether "Testing comparisons..."
+ken cmp1 = 5 == 5
+blether "5 == 5 = " + tae_string(cmp1)
+
+ken cmp2 = 5 != 3
+blether "5 != 3 = " + tae_string(cmp2)
+
+ken cmp3 = 10 >= 10
+blether "10 >= 10 = " + tae_string(cmp3)
+
+ken cmp4 = 5 <= 10
+blether "5 <= 10 = " + tae_string(cmp4)
+
+# Long expression
+blether ""
+blether "Testing long expression..."
+ken long = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10
+blether "1+2+3+4+5+6+7+8+9+10 = " + tae_string(long)
+# Expected: 55
+
+blether ""
+blether "Complex expressions test complete!"

@@ -1,0 +1,480 @@
+# 2048 - The Classic Tile Puzzle Game
+# "Slide yer tiles an' reach 2048!"
+
+# === ANSI Escape Codes ===
+ken RESET = "\x1b[0m"
+ken BOLD = "\x1b[1m"
+ken DIM = "\x1b[2m"
+
+# Tile colors (background)
+ken BG_EMPTY = "\x1b[48;5;238m"
+ken BG_2 = "\x1b[48;5;230m\x1b[38;5;236m"
+ken BG_4 = "\x1b[48;5;223m\x1b[38;5;236m"
+ken BG_8 = "\x1b[48;5;209m\x1b[38;5;255m"
+ken BG_16 = "\x1b[48;5;208m\x1b[38;5;255m"
+ken BG_32 = "\x1b[48;5;203m\x1b[38;5;255m"
+ken BG_64 = "\x1b[48;5;196m\x1b[38;5;255m"
+ken BG_128 = "\x1b[48;5;227m\x1b[38;5;236m"
+ken BG_256 = "\x1b[48;5;226m\x1b[38;5;236m"
+ken BG_512 = "\x1b[48;5;220m\x1b[38;5;236m"
+ken BG_1024 = "\x1b[48;5;214m\x1b[38;5;255m"
+ken BG_2048 = "\x1b[48;5;208m\x1b[38;5;255m"
+ken BG_SUPER = "\x1b[48;5;201m\x1b[38;5;255m"
+
+# Text colors
+ken YELLOW_FG = "\x1b[93m"
+ken CYAN_FG = "\x1b[96m"
+ken GREEN_FG = "\x1b[92m"
+ken WHITE_FG = "\x1b[97m"
+ken RED_FG = "\x1b[91m"
+ken MAGENTA_FG = "\x1b[95m"
+
+# Cursor control
+ken CURSOR_HIDE = "\x1b[?25l"
+ken CURSOR_SHOW = "\x1b[?25h"
+ken CURSOR_HOME = "\x1b[H"
+ken CLEAR_LINE = "\x1b[K"
+ken CLEAR_SCREEN = "\x1b[2J"
+
+# === Game State ===
+ken SIZE = 4
+ken TILE_WIDTH = 7
+
+kin Game2048 {
+    dae init() {
+        masel.grid = masel.create_grid()
+        masel.score = 0
+        masel.best_score = 0
+        masel.game_over = nae
+        masel.won = nae
+        masel.temp_arr = []  # temporary array for row/col operations
+        masel.result_arr = []  # result array for slide operations
+        masel.add_random_tile()
+        masel.add_random_tile()
+    }
+
+    dae create_grid() {
+        ken grid = []
+        fer y in 0..SIZE {
+            ken row = []
+            fer x in 0..SIZE {
+                shove(row, 0)
+            }
+            shove(grid, row)
+        }
+        gie grid
+    }
+
+    dae reset() {
+        masel.grid = masel.create_grid()
+        masel.score = 0
+        masel.game_over = nae
+        masel.won = nae
+        masel.add_random_tile()
+        masel.add_random_tile()
+    }
+
+    dae add_random_tile() {
+        ken empty = []
+        fer y in 0..SIZE {
+            fer x in 0..SIZE {
+                gin masel.grid[y][x] == 0 {
+                    shove(empty, [x, y])
+                }
+            }
+        }
+
+        gin len(empty) > 0 {
+            ken idx = jammy(0, len(empty) - 1)
+            ken pos = empty[idx]
+            # 90% chance of 2, 10% chance of 4
+            gin jammy(1, 10) == 1 {
+                masel.grid[pos[1]][pos[0]] = 4
+            } ither {
+                masel.grid[pos[1]][pos[0]] = 2
+            }
+        }
+    }
+
+    dae slide_row_left(row) {
+        # Remove zeros
+        ken tiles = []
+        fer i in 0..SIZE {
+            gin row[i] != 0 {
+                shove(tiles, row[i])
+            }
+        }
+
+        # Merge adjacent equal tiles
+        ken result = []
+        ken i = 0
+        whiles i < len(tiles) {
+            gin i + 1 < len(tiles) an tiles[i] == tiles[i + 1] {
+                ken merged = tiles[i] + tiles[i + 1]
+                shove(result, merged)
+                masel.score = masel.score + merged
+                gin merged >= 2048 {
+                    masel.won = aye
+                }
+                i = i + 2
+            } ither {
+                shove(result, tiles[i])
+                i = i + 1
+            }
+        }
+
+        # Pad with zeros
+        whiles len(result) < SIZE {
+            shove(result, 0)
+        }
+
+        gie result
+    }
+
+    dae fill_row(y) {
+        masel.temp_arr = []
+        ken x = 0
+        whiles x < SIZE {
+            shove(masel.temp_arr, masel.grid[y][x])
+            x = x + 1
+        }
+    }
+
+    dae fill_row_reversed(y) {
+        masel.temp_arr = []
+        ken x = 0
+        whiles x < SIZE {
+            shove(masel.temp_arr, masel.grid[y][SIZE - 1 - x])
+            x = x + 1
+        }
+    }
+
+    dae fill_col(col_x) {
+        masel.temp_arr = []
+        ken y = 0
+        whiles y < SIZE {
+            shove(masel.temp_arr, masel.grid[y][col_x])
+            y = y + 1
+        }
+    }
+
+    dae fill_col_reversed(col_x) {
+        masel.temp_arr = []
+        ken y = 0
+        whiles y < SIZE {
+            shove(masel.temp_arr, masel.grid[SIZE - 1 - y][col_x])
+            y = y + 1
+        }
+    }
+
+    dae slide_and_store(arr) {
+        masel.result_arr = masel.slide_row_left(arr)
+    }
+
+    dae move_left() {
+        ken moved = nae
+        ken y = 0
+        whiles y < SIZE {
+            masel.fill_row(y)
+            masel.slide_and_store(masel.temp_arr)
+            ken x = 0
+            whiles x < SIZE {
+                gin masel.grid[y][x] != masel.result_arr[x] {
+                    moved = aye
+                }
+                masel.grid[y][x] = masel.result_arr[x]
+                x = x + 1
+            }
+            y = y + 1
+        }
+        gie moved
+    }
+
+    dae move_right() {
+        ken moved = nae
+        ken y = 0
+        whiles y < SIZE {
+            masel.fill_row_reversed(y)
+            masel.slide_and_store(masel.temp_arr)
+            ken x = 0
+            whiles x < SIZE {
+                ken new_x = SIZE - 1 - x
+                gin masel.grid[y][new_x] != masel.result_arr[x] {
+                    moved = aye
+                }
+                masel.grid[y][new_x] = masel.result_arr[x]
+                x = x + 1
+            }
+            y = y + 1
+        }
+        gie moved
+    }
+
+    dae move_up() {
+        ken moved = nae
+        ken x = 0
+        whiles x < SIZE {
+            masel.fill_col(x)
+            masel.slide_and_store(masel.temp_arr)
+            ken y = 0
+            whiles y < SIZE {
+                gin masel.grid[y][x] != masel.result_arr[y] {
+                    moved = aye
+                }
+                masel.grid[y][x] = masel.result_arr[y]
+                y = y + 1
+            }
+            x = x + 1
+        }
+        gie moved
+    }
+
+    dae move_down() {
+        ken moved = nae
+        ken x = 0
+        whiles x < SIZE {
+            masel.fill_col_reversed(x)
+            masel.slide_and_store(masel.temp_arr)
+            ken y = 0
+            whiles y < SIZE {
+                ken new_y = SIZE - 1 - y
+                gin masel.grid[new_y][x] != masel.result_arr[y] {
+                    moved = aye
+                }
+                masel.grid[new_y][x] = masel.result_arr[y]
+                y = y + 1
+            }
+            x = x + 1
+        }
+        gie moved
+    }
+
+    dae can_move() {
+        # Check for empty cells
+        fer y in 0..SIZE {
+            fer x in 0..SIZE {
+                gin masel.grid[y][x] == 0 {
+                    gie aye
+                }
+            }
+        }
+        # Check for adjacent matching tiles
+        fer y in 0..SIZE {
+            fer x in 0..SIZE {
+                ken val = masel.grid[y][x]
+                gin x + 1 < SIZE an masel.grid[y][x + 1] == val {
+                    gie aye
+                }
+                gin y + 1 < SIZE an masel.grid[y + 1][x] == val {
+                    gie aye
+                }
+            }
+        }
+        gie nae
+    }
+
+    dae check_game_over() {
+        gin nae masel.can_move() {
+            masel.game_over = aye
+        }
+    }
+}
+
+# === Rendering ===
+dae get_tile_color(val) {
+    gin val == 0 { gie BG_EMPTY }
+    gin val == 2 { gie BG_2 }
+    gin val == 4 { gie BG_4 }
+    gin val == 8 { gie BG_8 }
+    gin val == 16 { gie BG_16 }
+    gin val == 32 { gie BG_32 }
+    gin val == 64 { gie BG_64 }
+    gin val == 128 { gie BG_128 }
+    gin val == 256 { gie BG_256 }
+    gin val == 512 { gie BG_512 }
+    gin val == 1024 { gie BG_1024 }
+    gin val == 2048 { gie BG_2048 }
+    gie BG_SUPER
+}
+
+dae center_number(val, width) {
+    ken s = ""
+    gin val == 0 {
+        s = " "
+    } ither {
+        s = tae_string(val)
+    }
+    ken pad_total = width - len(s)
+    ken pad_left = pad_total / 2
+    ken pad_right = pad_total - pad_left
+    ken result = ""
+    ken i = 0
+    whiles i < pad_left {
+        result = result + " "
+        i = i + 1
+    }
+    result = result + s
+    i = 0
+    whiles i < pad_right {
+        result = result + " "
+        i = i + 1
+    }
+    gie result
+}
+
+dae make_padding(n) {
+    ken pad = ""
+    gin n > 0 {
+        ken i = 0
+        whiles i < n {
+            pad = pad + " "
+            i = i + 1
+        }
+    }
+    gie pad
+}
+
+dae render(game) {
+    ken term_w = term_width()
+    ken board_width = (TILE_WIDTH + 1) * SIZE + 1
+    ken left_pad = (term_w - board_width) / 2
+    gin left_pad < 0 { left_pad = 0 }
+    ken padding = make_padding(left_pad)
+
+    ken frame = CURSOR_HOME + CURSOR_HIDE
+
+    # Title
+    frame = frame + "\n"
+    frame = frame + padding + YELLOW_FG + BOLD + "    2048    " + RESET
+    frame = frame + "   Score: " + GREEN_FG + BOLD + tae_string(game.score) + RESET
+    frame = frame + "   Best: " + CYAN_FG + tae_string(game.best_score) + RESET
+    frame = frame + CLEAR_LINE + "\n\n"
+
+    # Grid
+    fer y in 0..SIZE {
+        # Top border of row
+        ken border = padding
+        fer x in 0..SIZE {
+            border = border + "+"
+            ken j = 0
+            whiles j < TILE_WIDTH {
+                border = border + "-"
+                j = j + 1
+            }
+        }
+        border = border + "+"
+        frame = frame + border + CLEAR_LINE + "\n"
+
+        # Tile row (3 lines per tile for height)
+        # Empty line
+        ken line1 = padding
+        fer x in 0..SIZE {
+            ken color = get_tile_color(game.grid[y][x])
+            line1 = line1 + "|" + color
+            ken j = 0
+            whiles j < TILE_WIDTH {
+                line1 = line1 + " "
+                j = j + 1
+            }
+            line1 = line1 + RESET
+        }
+        line1 = line1 + "|"
+        frame = frame + line1 + CLEAR_LINE + "\n"
+
+        # Number line
+        ken line2 = padding
+        fer x in 0..SIZE {
+            ken val = game.grid[y][x]
+            ken color = get_tile_color(val)
+            line2 = line2 + "|" + color + BOLD + center_number(val, TILE_WIDTH) + RESET
+        }
+        line2 = line2 + "|"
+        frame = frame + line2 + CLEAR_LINE + "\n"
+
+        # Empty line
+        ken line3 = padding
+        fer x in 0..SIZE {
+            ken color = get_tile_color(game.grid[y][x])
+            line3 = line3 + "|" + color
+            ken j = 0
+            whiles j < TILE_WIDTH {
+                line3 = line3 + " "
+                j = j + 1
+            }
+            line3 = line3 + RESET
+        }
+        line3 = line3 + "|"
+        frame = frame + line3 + CLEAR_LINE + "\n"
+    }
+
+    # Bottom border
+    ken bottom = padding
+    fer x in 0..SIZE {
+        bottom = bottom + "+"
+        ken j = 0
+        whiles j < TILE_WIDTH {
+            bottom = bottom + "-"
+            j = j + 1
+        }
+    }
+    bottom = bottom + "+"
+    frame = frame + bottom + CLEAR_LINE + "\n\n"
+
+    # Status and controls
+    gin game.won {
+        frame = frame + padding + GREEN_FG + BOLD + "   YOU WIN! Reached 2048!" + RESET + CLEAR_LINE + "\n"
+        frame = frame + padding + DIM + "   Press [N] for new game or keep playing!" + RESET + CLEAR_LINE + "\n"
+    } ither gin game.game_over {
+        frame = frame + padding + RED_FG + BOLD + "   GAME OVER!" + RESET + CLEAR_LINE + "\n"
+        frame = frame + padding + DIM + "   Press [N] for new game, [Q] to quit" + RESET + CLEAR_LINE + "\n"
+    } ither {
+        frame = frame + padding + DIM + "   [Arrow Keys] = Move   [N] = New Game   [Q] = Quit" + RESET + CLEAR_LINE + "\n"
+    }
+
+    blether(frame)
+}
+
+# === Main ===
+blether(CLEAR_SCREEN + CURSOR_HOME + CURSOR_HIDE)
+
+ken game = Game2048()
+ken quit = nae
+
+whiles nae quit {
+    render(game)
+
+    ken key = get_key()
+    ken moved = nae
+
+    gin key == "q" or key == "Q" {
+        quit = aye
+    } ither gin key == "n" or key == "N" {
+        gin game.score > game.best_score {
+            game.best_score = game.score
+        }
+        game.reset()
+    } ither gin nae game.game_over {
+        gin key == "Left" {
+            moved = game.move_left()
+        } ither gin key == "Right" {
+            moved = game.move_right()
+        } ither gin key == "Up" {
+            moved = game.move_up()
+        } ither gin key == "Down" {
+            moved = game.move_down()
+        }
+
+        gin moved {
+            game.add_random_tile()
+            game.check_game_over()
+        }
+    }
+}
+
+gin game.score > game.best_score {
+    game.best_score = game.score
+}
+
+blether(CURSOR_SHOW + RESET + CLEAR_SCREEN + CURSOR_HOME)
+blether("Final Score: " + tae_string(game.score))
+blether("Thanks fer playing! Haste ye back!")

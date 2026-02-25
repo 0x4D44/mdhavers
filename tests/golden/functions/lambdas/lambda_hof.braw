@@ -1,0 +1,8 @@
+# SKIP_NATIVE
+# Note: Higher-order functions with lambdas may not be fully supported in LLVM
+dae apply_twice(fn, x) {
+    gie fn(fn(x))
+}
+
+blether apply_twice(|x| x * 2, 3)
+blether apply_twice(|x| x + 1, 10)

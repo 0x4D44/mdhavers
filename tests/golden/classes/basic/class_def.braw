@@ -1,0 +1,14 @@
+# SKIP_NATIVE
+# Note: Classes may not be fully supported in LLVM
+kin Dog {
+    dae init(name) {
+        masel.name = name
+    }
+
+    dae bark() {
+        blether masel.name + " says woof!"
+    }
+}
+
+ken dog = Dog("Rex")
+dog.bark()

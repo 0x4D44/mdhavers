@@ -1,0 +1,15 @@
+# SKIP_NATIVE
+# Note: List iteration not fully supported in native
+dae sum_list(arr) {
+    ken total = 0
+    ken i = 0
+    whiles i < len(arr) {
+        total = total + arr[i]
+        i = i + 1
+    }
+    gie total
+}
+
+blether sum_list([1, 2, 3, 4, 5])
+blether sum_list([10, 20, 30])
+blether sum_list([])
