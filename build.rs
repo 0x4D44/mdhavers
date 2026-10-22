@@ -72,6 +72,22 @@ fn main() {
         .warnings(false)
         .compile("gc_stub");
 
+    // cc names its object files `<hash>-<stem>.o`, so embed the archives it
+    // produces instead. The runtime archive also carries the platform layer.
+    let archive_name = |stem: &str| {
+        if target.contains("msvc") {
+            format!("{stem}.lib")
+        } else {
+            format!("lib{stem}.a")
+        }
+    };
+    for (stem, embedded) in [("mdh_runtime", "mdh_runtime_c.a"), ("gc_stub", "gc_stub_c.a")] {
+        let built = out_dir.join(archive_name(stem));
+        let dest = out_dir.join(embedded);
+        fs::copy(&built, &dest)
+            .unwrap_or_else(|e| panic!("Failed to copy {} to {}: {}", built.display(), dest.display(), e));
+    }
+
     // Build Rust runtime helpers (JSON + regex) as a staticlib.
     let profile = env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
     let mut cargo_args = vec![

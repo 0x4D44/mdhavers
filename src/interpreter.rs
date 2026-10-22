@@ -1776,7 +1776,19 @@ fn event_dict(
 #[cfg(all(feature = "native", unix))]
 fn resolve_ipv4_addr(host: Option<&str>, port: u16) -> Result<libc::sockaddr_in, String> {
     let mut addr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
-    addr.sin_family = libc::AF_INET as u16;
+    addr.sin_family = libc::AF_INET as libc::sa_family_t;
+    // BSD-derived sockaddrs carry their own length byte.
+    #[cfg(any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "freebsd",
+        target_os = "openbsd",
+        target_os = "netbsd",
+        target_os = "dragonfly"
+    ))]
+    {
+        addr.sin_len = std::mem::size_of::<libc::sockaddr_in>() as u8;
+    }
     addr.sin_port = port.to_be();
 
     if let Some(host_str) = host {
@@ -14063,7 +14075,7 @@ blether m2["a"]
         client_thread.join().unwrap();
     }
 
-    #[cfg(all(feature = "native", unix))]
+    #[cfg(all(feature = "dtls", unix))]
     #[test]
     fn dtls_handshake_maps_connector_connect_error_for_coverage() {
         dtls_fail_next_connect();
@@ -14110,7 +14122,7 @@ blether result
             .expect(&msg);
     }
 
-    #[cfg(all(feature = "native", unix))]
+    #[cfg(all(feature = "dtls", unix))]
     #[test]
     fn dtls_keying_material_failure_hook_is_consumed_for_coverage() {
         dtls_fail_next_keying_material();
@@ -14260,7 +14272,7 @@ blether result
         assert!(client_out.contains("Keying material failed:"));
     }
 
-    #[cfg(all(feature = "native", unix))]
+    #[cfg(all(feature = "dtls", unix))]
     #[test]
     fn dtls_handshake_maps_set_nonblocking_error_for_coverage() {
         dtls_fail_next_set_nonblocking();
@@ -14307,7 +14319,7 @@ blether result
             .expect(&msg);
     }
 
-    #[cfg(all(feature = "native", unix))]
+    #[cfg(all(feature = "dtls", unix))]
     #[test]
     fn dtls_handshake_maps_connector_new_error_for_coverage() {
         dtls_fail_next_connector_new();
@@ -14352,7 +14364,7 @@ blether result
         out.contains("bad SRTP profile").then_some(()).expect(&msg);
     }
 
-    #[cfg(all(feature = "native", unix))]
+    #[cfg(all(feature = "dtls", unix))]
     #[test]
     fn dtls_handshake_maps_connector_connect_wouldblock_for_coverage() {
         dtls_force_nonblocking_next_handshake();
@@ -14399,7 +14411,7 @@ blether result
             .expect(&msg);
     }
 
-    #[cfg(all(feature = "native", unix))]
+    #[cfg(all(feature = "dtls", unix))]
     #[test]
     fn dtls_handshake_maps_acceptor_accept_error_for_coverage() {
         fn escape_for_braw(input: &str) -> String {
@@ -14457,7 +14469,7 @@ blether result
             .expect(&msg);
     }
 
-    #[cfg(all(feature = "native", unix))]
+    #[cfg(all(feature = "dtls", unix))]
     #[test]
     fn dtls_handshake_maps_acceptor_new_error_for_coverage() {
         fn escape_for_braw(input: &str) -> String {
@@ -14513,7 +14525,7 @@ blether result
         out.contains("bad SRTP profile").then_some(()).expect(&msg);
     }
 
-    #[cfg(all(feature = "native", unix))]
+    #[cfg(all(feature = "dtls", unix))]
     #[test]
     fn dtls_handshake_maps_acceptor_accept_wouldblock_for_coverage() {
         fn escape_for_braw(input: &str) -> String {

@@ -7,14 +7,14 @@ use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Embedded runtime object file - compiled into the binary at build time.
-static EMBEDDED_RUNTIME: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/mdh_runtime.o"));
+/// Embedded C runtime archive (runtime + platform layer) - compiled into the binary at build time.
+static EMBEDDED_RUNTIME: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/mdh_runtime_c.a"));
 
 /// Embedded Rust runtime staticlib (JSON/regex helpers).
 static EMBEDDED_RUNTIME_RS: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/mdh_runtime_rs.a"));
 
-/// Embedded GC stub - minimal malloc wrappers for standalone builds.
-static EMBEDDED_GC_STUB: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/gc_stub.o"));
+/// Embedded GC stub archive - minimal malloc wrappers for standalone builds.
+static EMBEDDED_GC_STUB: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/gc_stub_c.a"));
 
 use inkwell::context::Context;
 use inkwell::module::Module;
@@ -403,9 +403,9 @@ fn link_native_executable_from_object(
     // Generate unique temp file names using process ID and a counter
     // This avoids race conditions when tests run in parallel
     let unique_id = format!("{}_{:?}", std::process::id(), std::thread::current().id());
-    let runtime_path = std::env::temp_dir().join(format!("mdh_runtime_{}.o", unique_id));
+    let runtime_path = std::env::temp_dir().join(format!("mdh_runtime_{}.a", unique_id));
     let runtime_rs_path = std::env::temp_dir().join(format!("mdh_runtime_rs_{}.a", unique_id));
-    let gc_stub_path = std::env::temp_dir().join(format!("mdh_gc_stub_{}.o", unique_id));
+    let gc_stub_path = std::env::temp_dir().join(format!("mdh_gc_stub_{}.a", unique_id));
     let _cleanup = TempFileCleanup::new(vec![
         obj_path.to_path_buf(),
         runtime_path.clone(),
@@ -450,16 +450,26 @@ fn link_native_executable_from_object(
 
     status.update("Linking native executable", StatusColor::Yellow);
 
-    // Link with system linker
-    let mut link_args = vec![
-        obj_path.to_str().unwrap(),
+    // Link with system linker. The runtime archives call into each other, so
+    // single-pass ELF linkers need them in a group (ld64 resolves regardless).
+    let elf_group = !cfg!(target_os = "macos") && !cfg!(windows);
+    let mut link_args = vec![obj_path.to_str().unwrap()];
+    if elf_group {
+        link_args.push("-Wl,--start-group");
+    }
+    link_args.extend([
         runtime_path.to_str().unwrap(),
         runtime_rs_path.to_str().unwrap(),
         gc_stub_path.to_str().unwrap(),
-        "-lm", // Math library (for floor, ceil, etc.)
-        "-pthread",
-        "-static-libgcc",
-    ];
+    ]);
+    if elf_group {
+        link_args.push("-Wl,--end-group");
+    }
+    link_args.extend(["-lm", "-pthread"]); // libm for floor, ceil, etc.
+    // Apple clang rejects -static-libgcc (there is no libgcc on Darwin).
+    if !cfg!(target_os = "macos") {
+        link_args.push("-static-libgcc");
+    }
 
     #[cfg(feature = "audio")]
     {

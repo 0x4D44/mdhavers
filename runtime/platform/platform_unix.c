@@ -6,6 +6,8 @@
 
 #define _GNU_SOURCE
 #define _XOPEN_SOURCE 700
+/* _XOPEN_SOURCE hides BSD extensions (timegm etc.) on Darwin. */
+#define _DARWIN_C_SOURCE
 
 #include "platform.h"
 
@@ -14,6 +16,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <pthread.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>

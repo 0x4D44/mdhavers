@@ -7,6 +7,8 @@
 
 #define _GNU_SOURCE
 #define _XOPEN_SOURCE 700
+/* _XOPEN_SOURCE hides BSD extensions (timegm etc.) on Darwin. */
+#define _DARWIN_C_SOURCE
 
 #include "mdh_runtime.h"
 #include "platform/platform.h"
