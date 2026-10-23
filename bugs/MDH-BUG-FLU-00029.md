@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00029 — mdhavers fmt does not re-escape string literals
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** High
 - **Area:** formatter
 - **Raised:** 2026-10-22T23:24:09Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T015816Z-fa4529d4
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00029-run-fix-20261023T015816Z-fa4529d4
-- **Owner base:** 87d0040b75d58a95d774e4eabce06bffdb179c0a
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T01:58:16Z
-- **Owner until:** 2026-10-23T05:58:16Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-22T23:24:09Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-22T23:24:09Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T01:58:22Z, deltic:auto role=fix run=fix-20261023T015816Z-fa4529d4 branch=task/bug-MDH-BUG-FLU-00029-run-fix-20261023T015816Z-fa4529d4 code=6e06c31 gate=manual)
 
 ## Observation
 
