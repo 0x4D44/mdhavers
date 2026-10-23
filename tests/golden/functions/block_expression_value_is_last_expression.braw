@@ -1,5 +1,6 @@
 # SKIP_NATIVE
-# Note: MDH-BUG-FLU-00064 (a block expression's value is its last expression); the native lane lifts this marker.
+# Native: `blether { gie 7 }` is ReturnOutsideFunction there (gie leaves the enclosing function, per the DEC doc).
+# Note: MDH-BUG-FLU-00064 (a block expression's value is its last expression).
 blether {0 + 1}
 ken a = {0 + {0 + 1}}
 blether a

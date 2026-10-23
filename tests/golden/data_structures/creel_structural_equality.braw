@@ -1,5 +1,4 @@
-# SKIP_NATIVE
-# Note: decision F1 (creels compare by their members); the native lane lifts this marker.
+# Note: decision F1 (creels compare by their members).
 blether creel([1, 2, 3]) == creel([3, 2, 1])
 blether creel([1, 2]) != creel([2, 1])
 blether creel([1, 2]) == creel([1, 2, 3])

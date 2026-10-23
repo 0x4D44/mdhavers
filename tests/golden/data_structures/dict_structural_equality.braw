@@ -1,5 +1,4 @@
-# SKIP_NATIVE
-# Note: decision F1 (dicts compare by keys an' values, like lists); the native lane lifts this marker.
+# Note: decision F1 (dicts compare by keys an' values, like lists).
 blether {"a": 1} == {"a": 1}
 blether {"a": 1} != {"a": 1}
 blether {"a": 1} == {"a": 2}

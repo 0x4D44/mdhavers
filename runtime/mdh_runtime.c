@@ -138,6 +138,7 @@ typedef struct {
 static const char *__mdh_type_name(MdhValue v);
 static int64_t *__mdh_kv_payload_ptr(MdhValue v);
 static void __mdh_kv_set_payload_ptr(MdhValue v, int64_t *payload);
+static int64_t __mdh_kv_find(MdhValue kv, MdhValue key);
 
 /* ========== Native Object Support ========== */
 
@@ -491,7 +492,24 @@ MdhValue __mdh_neg(MdhValue a) {
 
 /* ========== Comparison Operations ========== */
 
+/* The (left, right) container pairs being compared right now, innermost first. */
+typedef struct MdhEqPath {
+    int64_t a;
+    int64_t b;
+    const struct MdhEqPath *outer;
+} MdhEqPath;
+
+static bool __mdh_eq_in(MdhValue a, MdhValue b, const MdhEqPath *path);
+
 bool __mdh_eq(MdhValue a, MdhValue b) {
+    return __mdh_eq_in(a, b, NULL);
+}
+
+/* Equality of two values while `path` is being compared. Meeting a container pair that
+   is already on the path means the comparison has come full circle without finding a
+   difference, so that pair counts as equal; cyclic lists and dicts compare in finite
+   time, like the interpreter's containers_equal. */
+static bool __mdh_eq_in(MdhValue a, MdhValue b, const MdhEqPath *path) {
     if (a.tag != b.tag) {
         /* Allow int/float comparison */
         if ((a.tag == MDH_TAG_INT && b.tag == MDH_TAG_FLOAT) ||
@@ -518,8 +536,12 @@ bool __mdh_eq(MdhValue a, MdhValue b) {
             MdhList *lb = __mdh_get_list(b);
             if (!la || !lb) return la == lb;
             if (la->length != lb->length) return false;
+            for (const MdhEqPath *p = path; p; p = p->outer) {
+                if (p->a == a.data && p->b == b.data) return true;
+            }
+            MdhEqPath here = { a.data, b.data, path };
             for (int64_t i = 0; i < la->length; i++) {
-                if (!__mdh_eq(la->items[i], lb->items[i])) {
+                if (!__mdh_eq_in(la->items[i], lb->items[i], &here)) {
                     return false;
                 }
             }
@@ -532,6 +554,30 @@ bool __mdh_eq(MdhValue a, MdhValue b) {
             if (ba->length != bb->length) return false;
             if (ba->length == 0) return true;
             return memcmp(ba->data, bb->data, (size_t)ba->length) == 0;
+        }
+        case MDH_TAG_DICT:
+        case MDH_TAG_SET: {
+            /* Structural, like lists: the same keys, and (for dicts) equal values.
+               Key order does not matter. */
+            int64_t *pa = __mdh_kv_payload_ptr(a);
+            int64_t *pb = __mdh_kv_payload_ptr(b);
+            int64_t ca = pa ? pa[0] : 0;
+            int64_t cb = pb ? pb[0] : 0;
+            if (ca != cb) return false;
+            MdhValue *ea = pa ? (MdhValue *)(pa + 1) : NULL;
+            MdhValue *eb = pb ? (MdhValue *)(pb + 1) : NULL;
+            for (const MdhEqPath *p = path; p; p = p->outer) {
+                if (p->a == a.data && p->b == b.data) return true;
+            }
+            MdhEqPath here = { a.data, b.data, path };
+            for (int64_t i = 0; i < ca; i++) {
+                int64_t j = __mdh_kv_find(b, ea[i * 2]);
+                if (j < 0) return false;
+                if (a.tag == MDH_TAG_DICT && !__mdh_eq_in(ea[i * 2 + 1], eb[j * 2 + 1], &here)) {
+                    return false;
+                }
+            }
+            return true;
         }
         default:
             /* Reference equality for complex types */
@@ -602,13 +648,13 @@ bool __mdh_truthy(MdhValue a) {
             MdhBytes *bytes = __mdh_get_bytes(a);
             return bytes && bytes->length > 0;
         }
+        case MDH_TAG_DICT:
         case MDH_TAG_SET: {
-            int64_t *set_ptr = __mdh_kv_payload_ptr(a);
-            int64_t count = set_ptr ? set_ptr[0] : 0;
+            /* Empty dicts and creels are falsy, like the other empty containers. */
+            int64_t *kv_ptr = __mdh_kv_payload_ptr(a);
+            int64_t count = kv_ptr ? kv_ptr[0] : 0;
             return count > 0;
         }
-        case MDH_TAG_DICT:
-            return true;
         default:
             return true;  /* Objects are truthy */
     }

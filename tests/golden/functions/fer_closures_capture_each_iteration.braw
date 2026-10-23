@@ -1,5 +1,4 @@
-# SKIP_NATIVE
-# Note: decision F3 (each `fer` iteration gets a fresh binding); the native lane lifts this marker.
+# Note: decision F3 (each `fer` iteration gets a fresh binding).
 ken fs = []
 fer i in 0..3 {
     shove(fs, || i)

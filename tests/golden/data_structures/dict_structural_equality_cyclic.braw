@@ -1,4 +1,3 @@
-# SKIP_NATIVE
 # Note: decision F1 (structural dict equality must still finish on dicts that contain themselves).
 ken a = {"n": 1}
 a["me"] = a

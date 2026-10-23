@@ -1,4 +1,3 @@
-# SKIP_NATIVE
 # Note: decision F2 (an empty dict is falsy, like the other empty containers).
 gin {} { blether "empty dict truthy" } ither { blether "empty dict falsy" }
 gin {"a": 1} { blether "full dict truthy" } ither { blether "full dict falsy" }

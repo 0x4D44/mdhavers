@@ -582,6 +582,11 @@ pub struct CodeGen<'ctx> {
     /// bindings (see `unstable_vars_of`); they are typed Unknown and get no shadows.
     unstable_vars: HashSet<String>,
 
+    /// Top-level globals declared up front whose `ken` main has not reached yet. Only
+    /// function and lambda bodies see them, as a last resort after every other binding,
+    /// so a body can use a global the file declares later (MDH-BUG-FLU-00072).
+    forward_globals: HashMap<String, PointerValue<'ctx>>,
+
     /// Set by an expression statement that is an assignment, and consumed by
     /// `Expr::Assign`: the assigned value is discarded, so it cannot escape.
     assign_value_unused: bool,
@@ -759,6 +764,7 @@ impl<'ctx> CodeGen<'ctx> {
             boxed_vars: HashSet::new(),
             var_types: HashMap::new(),
             unstable_vars: HashSet::new(),
+            forward_globals: HashMap::new(),
             assign_value_unused: false,
             variable_class_types: HashMap::new(),
             functions: HashMap::new(),
@@ -825,6 +831,47 @@ impl<'ctx> CodeGen<'ctx> {
     /// bare name (`pow`, `atan2`, `strtod`, `strncmp`, ...) or a runtime function.
     fn user_function_symbol(name: &str) -> String {
         format!("__mdh_fn_{name}")
+    }
+
+    /// The LLVM symbol for a user's top-level global. Mangled like functions so a global
+    /// called `main` or `stdout` cannot clash wi' a C symbol (MDH-BUG-FLU-00088).
+    fn user_global_symbol(name: &str) -> String {
+        format!("__mdh_global_{name}")
+    }
+
+    /// The (zero-initialised) LLVM global holding top-level variable `name`, created on
+    /// first use.
+    fn global_symbol_ptr(&mut self, name: &str) -> PointerValue<'ctx> {
+        let symbol = Self::user_global_symbol(name);
+        let global = match self.module.get_global(&symbol) {
+            Some(existing) => existing,
+            None => {
+                let global = self.module.add_global(self.types.value_type, None, &symbol);
+                global.set_initializer(&self.types.value_type.const_zero());
+                global
+            }
+        };
+        global.as_pointer_value()
+    }
+
+    /// Bind top-level variable `name` to its LLVM global and register it in `globals`.
+    fn top_level_global(&mut self, name: &str) -> PointerValue<'ctx> {
+        let global_ptr = self.global_symbol_ptr(name);
+        self.forward_globals.remove(name);
+        self.globals.insert(name.to_string(), global_ptr);
+        global_ptr
+    }
+
+    /// A forward-declared global (see `forward_globals`), visible only outside main.
+    fn visible_forward_global(&self, name: &str) -> Option<PointerValue<'ctx>> {
+        let in_main = self
+            .current_function
+            .is_some_and(|f| f.get_name().to_bytes() == b"main");
+        if in_main {
+            None
+        } else {
+            self.forward_globals.get(name).copied()
+        }
     }
 
     fn sanitize_symbol(input: &str) -> String {
@@ -4207,10 +4254,11 @@ impl<'ctx> CodeGen<'ctx> {
             ("_global_logger", nil),
         ] {
             if !self.globals.contains_key(name) && !self.variables.contains_key(name) {
-                let global = self.module.add_global(self.types.value_type, None, name);
-                global.set_initializer(&init.into_struct_value());
-                let global_ptr = global.as_pointer_value();
-                self.globals.insert(name.to_string(), global_ptr);
+                let global_ptr = self.top_level_global(name);
+                self.module
+                    .get_global(&Self::user_global_symbol(name))
+                    .expect("top-level global just declared")
+                    .set_initializer(&init.into_struct_value());
 
                 // Ensure __current_suite is an empty string by default (prints as empty output).
                 if name == "__current_suite" {
@@ -4241,6 +4289,22 @@ impl<'ctx> CodeGen<'ctx> {
         // Names whose static type changes between bindings get no shadow caches.
         let bindings = Self::scope_bindings_of_stmts(&[], &program.statements);
         self.unstable_vars = self.unstable_vars_of(&bindings);
+
+        // Declare every top-level `ken` up front, so a function body can use a global the
+        // file declares further down, as the interpreter allows (MDH-BUG-FLU-00072).
+        // Names that are also functions or classes keep their existing resolution.
+        for stmt in &program.statements {
+            if let Stmt::VarDecl { name, .. } = stmt {
+                if !self.globals.contains_key(name)
+                    && !self.variables.contains_key(name)
+                    && !self.functions.contains_key(name)
+                    && !self.classes.contains_key(name)
+                {
+                    let global_ptr = self.global_symbol_ptr(name);
+                    self.forward_globals.insert(name.clone(), global_ptr);
+                }
+            }
+        }
 
         // Compile all statements. A top-level `hurl` terminates the current block; later
         // statements (which may still define functions and classes) go into a fresh,
@@ -4813,7 +4877,6 @@ impl<'ctx> CodeGen<'ctx> {
         let string_block = self.context.append_basic_block(function, "truthy_string");
         let list_block = self.context.append_basic_block(function, "truthy_list");
         let bytes_block = self.context.append_basic_block(function, "truthy_bytes");
-        let dict_block = self.context.append_basic_block(function, "truthy_dict");
         let set_block = self.context.append_basic_block(function, "truthy_set");
         let other_block = self.context.append_basic_block(function, "truthy_other");
         let merge_block = self.context.append_basic_block(function, "truthy_merge");
@@ -4867,7 +4930,8 @@ impl<'ctx> CodeGen<'ctx> {
                     (string_tag, string_block),
                     (list_tag, list_block),
                     (bytes_tag, bytes_block),
-                    (dict_tag, dict_block),
+                    // Dicts and creels share the kv payload layout (count first).
+                    (dict_tag, set_block),
                     (set_tag, set_block),
                 ],
             )
@@ -4981,15 +5045,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let bytes_end = self.builder.get_insert_block().unwrap();
 
-        // dict -> always truthy (even empty)
-        self.builder.position_at_end(dict_block);
-        let dict_result = self.types.bool_type.const_int(1, false);
-        self.builder
-            .build_unconditional_branch(merge_block)
-            .unwrap();
-        let dict_end = self.builder.get_insert_block().unwrap();
-
-        // set -> truthy if non-empty
+        // dict or set -> truthy if non-empty
         self.builder.position_at_end(set_block);
         let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
         let payload_data = self.load_kv_payload_ptr(data, "truthy_set");
@@ -5033,7 +5089,6 @@ impl<'ctx> CodeGen<'ctx> {
             (&string_result, string_end),
             (&list_result, list_end),
             (&bytes_result, bytes_end),
-            (&dict_result, dict_end),
             (&set_result, set_end),
             (&other_result, other_end),
         ]);
@@ -12650,6 +12705,12 @@ impl<'ctx> CodeGen<'ctx> {
                 // Reads/writes dereference/update element 0, enabling mutable captures.
                 if self.boxed_vars.contains(name) {
                     self.var_types.insert(name.clone(), VarType::Unknown);
+                    if !self.in_user_function
+                        && self.current_class.is_none()
+                        && self.loop_stack.is_empty()
+                    {
+                        self.forward_globals.remove(name);
+                    }
 
                     let alloca = if let Some(&alloca) = self.variables.get(name) {
                         alloca
@@ -12852,11 +12913,8 @@ impl<'ctx> CodeGen<'ctx> {
                     // Already exists as a global
                     existing
                 } else if is_top_level {
-                    // Create an LLVM global variable
-                    let global = self.module.add_global(self.types.value_type, None, name);
-                    global.set_initializer(&self.types.value_type.const_zero());
-                    let global_ptr = global.as_pointer_value();
-                    self.globals.insert(name.clone(), global_ptr);
+                    // An LLVM global variable (declared up front if forward-declared)
+                    let global_ptr = self.top_level_global(name);
                     // Also add to variables so main function can find it easily
                     self.variables.insert(name.clone(), global_ptr);
                     global_ptr
@@ -13038,7 +13096,15 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(())
             }
 
-            Stmt::Return { value, .. } => {
+            Stmt::Return { value, span } => {
+                // A `gie` in top-level code (say, inside a block expression) has nae
+                // function to leave (decision F4); main returns an i32, not a value.
+                if self
+                    .current_function
+                    .is_some_and(|f| f.get_name().to_bytes() == b"main")
+                {
+                    return Err(HaversError::ReturnOutsideFunction { line: span.line });
+                }
                 let ret_val = if let Some(v) = value {
                     self.compile_expr(v)?
                 } else {
@@ -13762,6 +13828,12 @@ impl<'ctx> CodeGen<'ctx> {
                     // Built-in constant: TAU (2*PI)
                     let tau_val = self.context.f64_type().const_float(std::f64::consts::TAU);
                     Ok(self.make_float(tau_val))
+                } else if let Some(global) = self.visible_forward_global(name) {
+                    // A global the file declares further down (MDH-BUG-FLU-00072).
+                    Ok(self
+                        .builder
+                        .build_load(self.types.value_type, global, &format!("{}_global", name))
+                        .unwrap())
                 } else {
                     Err(HaversError::CompileError(format!(
                         "Undefined variable: {}",
@@ -13985,7 +14057,8 @@ impl<'ctx> CodeGen<'ctx> {
                     .variables
                     .get(name)
                     .copied()
-                    .or_else(|| self.globals.get(name).copied());
+                    .or_else(|| self.globals.get(name).copied())
+                    .or_else(|| self.visible_forward_global(name));
                 if let Some(alloca) = alloca {
                     self.builder.build_store(alloca, val).unwrap();
                     // Every shadow of the name must follow the new value
@@ -15116,6 +15189,17 @@ impl<'ctx> CodeGen<'ctx> {
             };
             if let Some(&func) = self.functions.get(&resolved_name) {
                 return self.compile_user_function_call(&resolved_name, func, args);
+            }
+
+            // A global the file declares further down, holding a function value
+            // (MDH-BUG-FLU-00072).
+            if self.visible_forward_global(name).is_some() {
+                let func_val = self.compile_expr(callee)?;
+                let mut compiled_args: Vec<BasicValueEnum<'ctx>> = Vec::new();
+                for arg in args {
+                    compiled_args.push(self.compile_expr(arg)?);
+                }
+                return self.call_function_value(func_val, &compiled_args);
             }
 
             match name.as_str() {
@@ -26990,6 +27074,57 @@ impl<'ctx> CodeGen<'ctx> {
         self.compile_for_iterable(variable, iterable, body)
     }
 
+    /// Each `fer` iteration gets a fresh binding (decision F3). When a lambda or nested
+    /// function in the body captures the loop variable, the variable is boxed from the
+    /// start and every iteration stores its value in a new cell, so each closure keeps
+    /// its own iteration's value. Otherwise the variable is a plain (unboxed) slot.
+    fn begin_loop_var(&mut self, variable: &str, body: &Stmt) -> bool {
+        let captured = Self::scope_bindings_of_stmts(&[], std::slice::from_ref(body))
+            .iter()
+            .any(|b| {
+                b.name == variable
+                    && matches!(b.kind, BindingKind::CapturedRead | BindingKind::GlobalRead)
+            });
+        if captured {
+            self.int_shadows.remove(variable);
+            self.list_ptr_shadows.remove(variable);
+            self.string_len_shadows.remove(variable);
+            self.string_cap_shadows.remove(variable);
+            self.var_types
+                .insert(variable.to_string(), VarType::Unknown);
+            self.boxed_vars.insert(variable.to_string());
+        } else {
+            self.boxed_vars.remove(variable);
+        }
+        captured
+    }
+
+    /// Bind the loop variable for one iteration (see `begin_loop_var`).
+    fn store_loop_var(
+        &mut self,
+        alloca: PointerValue<'ctx>,
+        value: BasicValueEnum<'ctx>,
+        boxed: bool,
+    ) {
+        if !boxed {
+            self.builder.build_store(alloca, value).unwrap();
+            return;
+        }
+        let one_i32 = self.context.i32_type().const_int(1, false);
+        let cell = self
+            .builder
+            .build_call(self.libc.make_list, &[one_i32.into()], "loop_var_cell")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .compile_ok_or("make_list returned void")
+            .unwrap();
+        self.builder
+            .build_call(self.libc.list_push, &[cell.into(), value.into()], "")
+            .unwrap();
+        self.builder.build_store(alloca, cell).unwrap();
+    }
+
     fn compile_for_iterable(
         &mut self,
         variable: &str,
@@ -27058,6 +27193,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // Create loop variable (holds single-char string)
+        let boxed = self.begin_loop_var(variable, body);
         let var_alloca = self.create_entry_block_alloca(variable);
         self.variables.insert(variable.to_string(), var_alloca);
 
@@ -27136,7 +27272,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Create MdhValue for the char string
         let char_str_val = self.make_string(char_str_ptr);
-        self.builder.build_store(var_alloca, char_str_val).unwrap();
+        self.store_loop_var(var_alloca, char_str_val, boxed);
 
         // Compile body
         self.compile_stmt(body)?;
@@ -27216,6 +27352,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Create loop variable
+        let boxed = self.begin_loop_var(variable, body);
         let var_alloca = self.create_entry_block_alloca(variable);
         self.variables.insert(variable.to_string(), var_alloca);
 
@@ -27265,7 +27402,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_load(self.types.value_type, elem_ptr, "elem_val")
             .unwrap();
-        self.builder.build_store(var_alloca, elem_val).unwrap();
+        self.store_loop_var(var_alloca, elem_val, boxed);
 
         self.compile_stmt(body)?;
         if self
@@ -27314,9 +27451,10 @@ impl<'ctx> CodeGen<'ctx> {
         let end_data = self.coerce_i64(end_val, "range");
 
         // Create loop variable
+        let boxed = self.begin_loop_var(variable, body);
         let var_alloca = self.create_entry_block_alloca(variable);
         let start_mdh = self.make_int(start_data);
-        self.builder.build_store(var_alloca, start_mdh).unwrap();
+        self.store_loop_var(var_alloca, start_mdh, boxed);
         self.variables.insert(variable.to_string(), var_alloca);
 
         // Create counter
@@ -27389,7 +27527,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(counter_alloca, next).unwrap();
 
         let next_mdh = self.make_int(next);
-        self.builder.build_store(var_alloca, next_mdh).unwrap();
+        self.store_loop_var(var_alloca, next_mdh, boxed);
 
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
@@ -31459,10 +31597,16 @@ impl<'ctx> CodeGen<'ctx> {
         let param_set: HashSet<String> = params.iter().cloned().collect();
         let free_vars = self.find_free_variables(body, &param_set);
 
-        // Filter to only include variables that exist in current scope
+        // Filter to only include variables that exist in current scope. A top-level global
+        // is not captured: the lambda reads and writes the LLVM global directly, as
+        // functions do. Boxing it would leave functions reading the box.
         let mut captures: Vec<String> = free_vars
             .iter()
-            .filter(|v| self.variables.contains_key(*v))
+            .filter(|v| {
+                self.variables
+                    .get(*v)
+                    .is_some_and(|ptr| self.globals.get(*v) != Some(ptr))
+            })
             .cloned()
             .collect();
 
@@ -31567,14 +31711,10 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         // Compile the lambda body
-        // For BlockExpr, the block compiles statements and may contain 'gie' (return)
-        // For regular expressions, we return the value
+        // A block body may `gie`; otherwise the lambda returns the block's value, its
+        // final expression statement (MDH-BUG-FLU-00064). Other bodies return their value.
         if let Expr::BlockExpr { statements, .. } = body {
-            // Compile all statements
-            for stmt in statements {
-                self.compile_stmt(stmt)?;
-            }
-            // If the block didn't return (no gie), add implicit return of nil
+            let value = self.compile_block_expr(statements)?;
             if self
                 .builder
                 .get_insert_block()
@@ -31582,7 +31722,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .get_terminator()
                 .is_none()
             {
-                self.builder.build_return(Some(&self.make_nil())).unwrap();
+                self.builder.build_return(Some(&value)).unwrap();
             }
         } else {
             let result = self.compile_expr(body)?;
@@ -34985,10 +35125,7 @@ impl<'ctx> CodeGen<'ctx> {
         } else if let Some(&existing) = self.globals.get(name) {
             existing
         } else if is_top_level {
-            let global = self.module.add_global(self.types.value_type, None, name);
-            global.set_initializer(&self.types.value_type.const_zero());
-            let global_ptr = global.as_pointer_value();
-            self.globals.insert(name.to_string(), global_ptr);
+            let global_ptr = self.top_level_global(name);
             self.variables.insert(name.to_string(), global_ptr);
             global_ptr
         } else {
@@ -41124,13 +41261,41 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         statements: &[Stmt],
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        // Note: When called from lambda bodies, the block is handled specially
-        // in compile_lambda to handle 'gie' statements correctly.
-        // This function is for standalone block expressions which evaluate to nil.
-        for stmt in statements {
+        // A block's value is its final expression statement; any other final statement
+        // (or an empty block) gives naething. `gie` still returns from the enclosing
+        // function (MDH-BUG-FLU-00064).
+        let Some((last, init)) = statements.split_last() else {
+            return Ok(self.make_nil());
+        };
+        for stmt in init {
+            self.ensure_open_block("block_expr_dead");
             self.compile_stmt(stmt)?;
         }
-        Ok(self.make_nil())
+        self.ensure_open_block("block_expr_dead");
+        let value = if let Stmt::Expression { expr, span } = last {
+            self.emit_set_current_line(span.line);
+            self.compile_expr(expr)?
+        } else {
+            self.compile_stmt(last)?;
+            self.make_nil()
+        };
+        // After a `gie` (or `hurl`) the rest of the enclosing code is unreachable; keep
+        // emitting into a fresh block so the IR stays well formed.
+        if self.current_block_terminated() {
+            self.ensure_open_block("block_expr_dead");
+            return Ok(self.make_nil());
+        }
+        Ok(value)
+    }
+
+    /// Position the builder in a fresh (unreachable) block if the current one is
+    /// already terminated.
+    fn ensure_open_block(&mut self, label: &str) {
+        if self.current_block_terminated() {
+            let function = self.current_function.unwrap();
+            let dead = self.context.append_basic_block(function, label);
+            self.builder.position_at_end(dead);
+        }
     }
 
     /// Compile slice expression: obj[start:end:step]
