@@ -274,6 +274,55 @@ MdhValue __mdh_make_list(int32_t capacity) {
     return v;
 }
 
+/* ========== Runtime error locations ========== */
+
+/* Source line of the statement being run. Compiled code stores it at the start of
+ * every statement (and restores the caller's line when a function returns), so
+ * runtime-raised errors can carry the interpreter's " at line N" (MDH-BUG-FLU-00086).
+ * 0 = unknown. */
+int64_t __mdh_current_line = 0;
+
+#define MDH_DIV_BY_ZERO_MSG "Ye numpty! Tryin' tae divide by zero"
+
+static char *__mdh_alloc_text(int size_overflowed, size_t out_len);
+
+/* Hurl `text`, with " at line N" appended when the current line is known. */
+static void __mdh_hurl_text_at_line(const char *text) {
+    if (__mdh_current_line <= 0) {
+        __mdh_hurl(__mdh_make_string(text));
+        return;
+    }
+    char suffix[40];
+    int suffix_len =
+        snprintf(suffix, sizeof(suffix), " at line %lld", (long long)__mdh_current_line);
+    size_t text_len = strlen(text);
+    size_t total = 0;
+    int overflowed =
+        suffix_len < 0 || __builtin_add_overflow(text_len, (size_t)suffix_len, &total);
+    char *buf = __mdh_alloc_text(overflowed, total);
+    memcpy(buf, text, text_len);
+    memcpy(buf + text_len, suffix, (size_t)suffix_len + 1);
+    __mdh_hurl(__mdh_make_string(buf));
+}
+
+/* Division or remainder by zero, as the interpreter words it. */
+void __mdh_div_by_zero(void) {
+    __mdh_hurl_text_at_line(MDH_DIV_BY_ZERO_MSG);
+}
+
+/* Index out of range: the interpreter's IndexOutOfBounds text, with the index as written. */
+void __mdh_index_oob(int64_t index, int64_t size) {
+    char buf[160];
+    snprintf(
+        buf,
+        sizeof(buf),
+        "Hoachin'! Index %lld is oot o' bounds (size is %lld)",
+        (long long)index,
+        (long long)size
+    );
+    __mdh_hurl_text_at_line(buf);
+}
+
 /* ========== Arithmetic Operations ========== */
 
 /* Integer overflow hurls, as in the interpreter (keep the text in step with
@@ -386,7 +435,7 @@ MdhValue __mdh_mul(MdhValue a, MdhValue b) {
 MdhValue __mdh_div(MdhValue a, MdhValue b) {
     if (a.tag == MDH_TAG_INT && b.tag == MDH_TAG_INT) {
         if (b.data == 0) {
-            __mdh_hurl(__mdh_make_string("Ye numpty! Tryin' tae divide by zero"));
+            __mdh_div_by_zero();
             return __mdh_make_nil();
         }
         if (a.data == INT64_MIN && b.data == -1) return __mdh_int_overflow();
@@ -397,7 +446,7 @@ MdhValue __mdh_div(MdhValue a, MdhValue b) {
         double af = (a.tag == MDH_TAG_FLOAT) ? __mdh_get_float(a) : (double)a.data;
         double bf = (b.tag == MDH_TAG_FLOAT) ? __mdh_get_float(b) : (double)b.data;
         if (bf == 0.0) {
-            __mdh_hurl(__mdh_make_string("Ye numpty! Tryin' tae divide by zero"));
+            __mdh_div_by_zero();
             return __mdh_make_nil();
         }
         return __mdh_make_float(af / bf);
@@ -410,7 +459,7 @@ MdhValue __mdh_div(MdhValue a, MdhValue b) {
 MdhValue __mdh_mod(MdhValue a, MdhValue b) {
     if (a.tag == MDH_TAG_INT && b.tag == MDH_TAG_INT) {
         if (b.data == 0) {
-            __mdh_hurl(__mdh_make_string("Ye numpty! Tryin' tae divide by zero"));
+            __mdh_div_by_zero();
             return __mdh_make_nil();
         }
         if (a.data == INT64_MIN && b.data == -1) return __mdh_int_overflow();
@@ -579,6 +628,46 @@ void __mdh_type_error(const char *op, uint8_t got1, uint8_t got2) {
     };
 
     char buf[256];
+
+    /* Operators: the interpreter's TypeError text, "That's pure mince! Type error at line N:
+     * <message>" (MDH-BUG-FLU-00086). For these, got2 is the right operand's tag. */
+    if (got1 < 15 && got2 < 15) {
+        const char *l = type_names[got1];
+        const char *r = type_names[got2];
+        char msg[128];
+        msg[0] = '\0';
+        if (strcmp(op, "add") == 0) {
+            snprintf(msg, sizeof(msg), "Cannae add %s an' %s", l, r);
+        } else if (strcmp(op, "subtract") == 0) {
+            snprintf(msg, sizeof(msg), "Cannae subtract %s fae %s", r, l);
+        } else if (strcmp(op, "multiply") == 0) {
+            snprintf(msg, sizeof(msg), "Cannae multiply %s by %s", l, r);
+        } else if (strcmp(op, "divide") == 0) {
+            snprintf(msg, sizeof(msg), "Cannae divide %s by %s", l, r);
+        } else if (strcmp(op, "modulo") == 0) {
+            snprintf(msg, sizeof(msg), "Cannae get remainder o' %s by %s", l, r);
+        } else if (strcmp(op, "compare") == 0) {
+            snprintf(msg, sizeof(msg), "Cannae compare %s wi' %s", l, r);
+        } else if (strcmp(op, "negate") == 0) {
+            snprintf(msg, sizeof(msg), "Cannae negate a %s", l);
+        }
+        if (msg[0] != '\0') {
+            if (__mdh_current_line > 0) {
+                snprintf(
+                    buf,
+                    sizeof(buf),
+                    "That's pure mince! Type error at line %lld: %s",
+                    (long long)__mdh_current_line,
+                    msg
+                );
+            } else {
+                snprintf(buf, sizeof(buf), "That's pure mince! Type error: %s", msg);
+            }
+            __mdh_hurl(__mdh_make_string(buf));
+            return;
+        }
+    }
+
     if (got1 < 15 && got2 > 0 && got2 < 15) {
         snprintf(
             buf,
@@ -620,7 +709,7 @@ void __mdh_key_not_found(MdhValue key) {
         "Awa' an bile yer heid! '%s' hasnae been defined yet",
         k
     );
-    __mdh_hurl(__mdh_make_string(buf));
+    __mdh_hurl_text_at_line(buf);
 }
 
 /* ========== Native Object Operations ========== */
@@ -1343,14 +1432,14 @@ MdhValue __mdh_list_get(MdhValue list, int64_t index) {
     }
 
     MdhList *l = __mdh_get_list(list);
-    if (index < 0) index += l->length;  /* Negative indexing */
+    int64_t pos = index < 0 ? index + l->length : index; /* Negative indexing */
 
-    if (index < 0 || index >= l->length) {
-        __mdh_hurl(__mdh_make_string("Hoachin'! Index is oot o' bounds"));
+    if (pos < 0 || pos >= l->length) {
+        __mdh_index_oob(index, l->length);
         return __mdh_make_nil();
     }
 
-    return l->items[index];
+    return l->items[pos];
 }
 
 void __mdh_list_set(MdhValue list, int64_t index, MdhValue value) {
@@ -1360,14 +1449,14 @@ void __mdh_list_set(MdhValue list, int64_t index, MdhValue value) {
     }
 
     MdhList *l = __mdh_get_list(list);
-    if (index < 0) index += l->length;
+    int64_t pos = index < 0 ? index + l->length : index;
 
-    if (index < 0 || index >= l->length) {
-        __mdh_hurl(__mdh_make_string("Hoachin'! Index is oot o' bounds"));
+    if (pos < 0 || pos >= l->length) {
+        __mdh_index_oob(index, l->length);
         return;
     }
 
-    l->items[index] = value;
+    l->items[pos] = value;
 }
 
 void __mdh_list_push(MdhValue list, MdhValue value) {
@@ -3895,7 +3984,14 @@ MdhValue __mdh_chan_is_closed(MdhValue chan) {
 
 /* ========== Dict/Creel Operations ========== */
 /* Dict/creel values store a stable handle pointer to their payload.
-   Payload memory layout: [i64 count][entry0][entry1]... where entry = [MdhValue key][MdhValue val] = 32 bytes */
+   Payload memory layout: [i64 count][entry0][entry1]... where entry = [MdhValue key][MdhValue val] = 32 bytes.
+   Handle layout (MDH_KV_HANDLE_WORDS words; keep in step with compile_dict in src/llvm/codegen.rs):
+     [0] payload pointer
+     [1] payload capacity in entries (0 = unknown: exactly `count` entries were allocated)
+     [2] MdhKvIndex * hash index over the keys (NULL = none built yet)
+   Inserts grow the payload by doubling and find keys through the hash index, so they are
+   amortised O(1) instead of copying the whole payload and scanning every key. */
+#define MDH_KV_HANDLE_WORDS 3
 
 static const int64_t MDH_CREEL_SENTINEL = INT64_C(0x4d4448435245454c); /* "MDHCREEL" */
 
@@ -3909,6 +4005,16 @@ static void __mdh_kv_set_payload_ptr(MdhValue v, int64_t *payload) {
     intptr_t *handle = (intptr_t *)(intptr_t)v.data;
     if (!handle) return;
     handle[0] = (intptr_t)payload;
+    handle[1] = 0; /* capacity unknown: exactly count entries */
+    handle[2] = 0; /* keys may have changed: drop the index */
+}
+
+static intptr_t *__mdh_kv_new_handle(int64_t *payload) {
+    intptr_t *handle = (intptr_t *)GC_malloc(MDH_KV_HANDLE_WORDS * sizeof(intptr_t));
+    handle[0] = (intptr_t)payload;
+    handle[1] = 0;
+    handle[2] = 0;
+    return handle;
 }
 
 MdhValue __mdh_empty_dict(void) {
@@ -3917,8 +4023,7 @@ MdhValue __mdh_empty_dict(void) {
     payload[0] = 0; /* count = 0 */
     payload[1] = 0; /* marker */
 
-    intptr_t *handle = (intptr_t *)GC_malloc(sizeof(intptr_t));
-    handle[0] = (intptr_t)payload;
+    intptr_t *handle = __mdh_kv_new_handle(payload);
 
     MdhValue v;
     v.tag = MDH_TAG_DICT;
@@ -3932,8 +4037,7 @@ MdhValue __mdh_empty_creel(void) {
     payload[0] = 0; /* count = 0 */
     payload[1] = MDH_CREEL_SENTINEL; /* marker */
 
-    intptr_t *handle = (intptr_t *)GC_malloc(sizeof(intptr_t));
-    handle[0] = (intptr_t)payload;
+    intptr_t *handle = __mdh_kv_new_handle(payload);
 
     MdhValue v;
     v.tag = MDH_TAG_SET;
@@ -3967,23 +4071,164 @@ static bool __mdh_values_equal(MdhValue a, MdhValue b) {
     return a.data == b.data;
 }
 
+/* Hash index over a dict/creel payload's keys: open addressing, slots hold entry index + 1
+   (0 = empty). Valid only while the payload still holds `count` entries. */
+typedef struct {
+    int64_t count; /* payload count the index covers */
+    int64_t mask;  /* slot count - 1 (slot count is a power of two) */
+    int64_t *slots;
+} MdhKvIndex;
+
+/* Below this many keys a linear scan is as quick as hashing. */
+#define MDH_KV_INDEX_MIN 8
+
+#define MDH_DICT_TOO_BIG_MSG "Och! That dictionary would be ower muckle tae fit in memory"
+
+/* Must agree with __mdh_values_equal: strings hash their text, everything else its bits. */
+static uint64_t __mdh_kv_hash(MdhValue key) {
+    uint64_t h = UINT64_C(14695981039346656037) ^ (uint64_t)(uint8_t)key.tag;
+    if (key.tag == MDH_TAG_STRING) {
+        const unsigned char *p = (const unsigned char *)(intptr_t)key.data;
+        if (p) {
+            while (*p) {
+                h ^= *p++;
+                h *= UINT64_C(1099511628211);
+            }
+        }
+    } else {
+        h ^= (uint64_t)key.data;
+        h *= UINT64_C(1099511628211);
+    }
+    h ^= h >> 33;
+    h *= UINT64_C(0xff51afd7ed558ccd);
+    h ^= h >> 33;
+    return h;
+}
+
+static void __mdh_kv_index_put(MdhKvIndex *idx, MdhValue *entries, int64_t entry) {
+    uint64_t i = __mdh_kv_hash(entries[entry * 2]) & (uint64_t)idx->mask;
+    while (idx->slots[i] != 0) {
+        i = (i + 1) & (uint64_t)idx->mask;
+    }
+    idx->slots[i] = entry + 1;
+}
+
+/* Index the first `count` entries, with room for `room` keys at load <= 1/2.
+   Returns NULL (callers fall back to a scan) if the table cannot be allocated. */
+static MdhKvIndex *__mdh_kv_index_build(MdhValue *entries, int64_t count, int64_t room) {
+    int64_t slots = 16;
+    while (slots < room * 2) {
+        if (slots > INT64_MAX / 4 / (int64_t)sizeof(int64_t)) {
+            return NULL;
+        }
+        slots *= 2;
+    }
+    MdhKvIndex *idx = (MdhKvIndex *)GC_malloc(sizeof(MdhKvIndex));
+    int64_t *table = (int64_t *)GC_malloc((size_t)slots * sizeof(int64_t));
+    if (!idx || !table) {
+        return NULL;
+    }
+    memset(table, 0, (size_t)slots * sizeof(int64_t));
+    idx->count = count;
+    idx->mask = slots - 1;
+    idx->slots = table;
+    for (int64_t e = 0; e < count; e++) {
+        __mdh_kv_index_put(idx, entries, e);
+    }
+    return idx;
+}
+
+/* Entry index of `key` in a dict/creel, or -1. Builds and uses the hash index once the
+   payload is big enough for a scan to hurt. */
+static int64_t __mdh_kv_find(MdhValue kv, MdhValue key) {
+    int64_t *payload = __mdh_kv_payload_ptr(kv);
+    int64_t count = payload ? payload[0] : 0;
+    MdhValue *entries = payload ? (MdhValue *)(payload + 1) : NULL;
+    intptr_t *handle = (intptr_t *)(intptr_t)kv.data;
+
+    MdhKvIndex *idx = NULL;
+    if (count >= MDH_KV_INDEX_MIN) {
+        idx = (MdhKvIndex *)(intptr_t)handle[2];
+        if (!idx || idx->count != count) {
+            idx = __mdh_kv_index_build(entries, count, count);
+            handle[2] = (intptr_t)idx;
+        }
+    }
+    if (!idx) {
+        for (int64_t i = 0; i < count; i++) {
+            if (__mdh_values_equal(entries[i * 2], key)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    uint64_t i = __mdh_kv_hash(key) & (uint64_t)idx->mask;
+    while (idx->slots[i] != 0) {
+        int64_t e = idx->slots[i] - 1;
+        if (__mdh_values_equal(entries[e * 2], key)) {
+            return e;
+        }
+        i = (i + 1) & (uint64_t)idx->mask;
+    }
+    return -1;
+}
+
+/* Append an entry whose key the caller has checked is absent. Grows the payload by
+   doubling (amortised O(1)) and keeps the hash index in step. The old payload is left
+   alive: a loop iterating the dict may still hold it. */
+static void __mdh_kv_append(MdhValue kv, MdhValue key, MdhValue value) {
+    intptr_t *handle = (intptr_t *)(intptr_t)kv.data;
+    int64_t *payload = __mdh_kv_payload_ptr(kv);
+    int64_t count = payload ? payload[0] : 0;
+    int64_t cap = (int64_t)handle[1];
+    if (cap < count) {
+        cap = count;
+    }
+
+    if (count + 1 > cap) {
+        if (count > (INT64_MAX - 8) / 64) {
+            __mdh_hurl(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
+            return;
+        }
+        int64_t new_cap = count < 4 ? 8 : count * 2;
+        int64_t *grown = (int64_t *)GC_malloc((size_t)(8 + new_cap * 32));
+        if (!grown) {
+            __mdh_hurl(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
+            return;
+        }
+        grown[0] = count;
+        if (count > 0) {
+            memcpy(grown + 1, payload + 1, (size_t)count * 32);
+        }
+        payload = grown;
+        handle[0] = (intptr_t)payload;
+        handle[1] = (intptr_t)new_cap;
+    }
+
+    MdhValue *entries = (MdhValue *)(payload + 1);
+    entries[count * 2] = key;
+    entries[count * 2 + 1] = value;
+    payload[0] = count + 1;
+
+    MdhKvIndex *idx = (MdhKvIndex *)(intptr_t)handle[2];
+    if (idx && idx->count == count) {
+        if ((count + 1) * 2 > idx->mask + 1) {
+            idx = __mdh_kv_index_build(entries, count + 1, (count + 1) * 2);
+            handle[2] = (intptr_t)idx;
+        } else {
+            __mdh_kv_index_put(idx, entries, count);
+            idx->count = count + 1;
+        }
+    }
+}
+
 MdhValue __mdh_dict_contains(MdhValue dict, MdhValue key) {
     if (dict.tag != MDH_TAG_DICT) {
         __mdh_type_error("dict_has", dict.tag, 0);
         return __mdh_make_bool(false);
     }
-
-    int64_t *dict_ptr = __mdh_kv_payload_ptr(dict);
-    int64_t count = dict_ptr ? dict_ptr[0] : 0;
-    MdhValue *entries = dict_ptr ? (MdhValue *)(dict_ptr + 1) : NULL;
-
-    for (int64_t i = 0; i < count; i++) {
-        MdhValue entry_key = entries[i * 2];
-        if (__mdh_values_equal(entry_key, key)) {
-            return __mdh_make_bool(true);
-        }
-    }
-    return __mdh_make_bool(false);
+    return __mdh_make_bool(__mdh_kv_find(dict, key) >= 0);
 }
 
 MdhValue __mdh_set_contains(MdhValue set, MdhValue key) {
@@ -3991,18 +4236,7 @@ MdhValue __mdh_set_contains(MdhValue set, MdhValue key) {
         __mdh_type_error("is_in_creel", set.tag, 0);
         return __mdh_make_bool(false);
     }
-
-    int64_t *set_ptr = __mdh_kv_payload_ptr(set);
-    int64_t count = set_ptr ? set_ptr[0] : 0;
-    MdhValue *entries = set_ptr ? (MdhValue *)(set_ptr + 1) : NULL;
-
-    for (int64_t i = 0; i < count; i++) {
-        MdhValue entry_key = entries[i * 2];
-        if (__mdh_values_equal(entry_key, key)) {
-            return __mdh_make_bool(true);
-        }
-    }
-    return __mdh_make_bool(false);
+    return __mdh_make_bool(__mdh_kv_find(set, key) >= 0);
 }
 
 MdhValue __mdh_dict_keys(MdhValue dict) {
@@ -4045,38 +4279,15 @@ MdhValue __mdh_dict_set(MdhValue dict, MdhValue key, MdhValue value) {
         return __mdh_empty_dict();
     }
 
-    int64_t *old_ptr = __mdh_kv_payload_ptr(dict);
-    int64_t count = old_ptr ? old_ptr[0] : 0;
-    MdhValue *entries = old_ptr ? (MdhValue *)(old_ptr + 1) : NULL;
-
-    /* Check if key already exists */
-    for (int64_t i = 0; i < count; i++) {
-        MdhValue entry_key = entries[i * 2];
-        if (__mdh_values_equal(entry_key, key)) {
-            /* Update existing entry */
-            entries[i * 2 + 1] = value;
-            return dict;
-        }
+    int64_t found = __mdh_kv_find(dict, key);
+    if (found >= 0) {
+        /* Update existing entry in place */
+        MdhValue *entries = (MdhValue *)(__mdh_kv_payload_ptr(dict) + 1);
+        entries[found * 2 + 1] = value;
+        return dict;
     }
 
-    /* Add new entry: reallocate */
-    int64_t new_count = count + 1;
-    size_t new_size = 8 + new_count * 32;  /* 8 for count, 32 per entry */
-    int64_t *new_ptr = (int64_t *)GC_malloc(new_size);
-
-    /* Copy old data */
-    *new_ptr = new_count;
-    MdhValue *new_entries = (MdhValue *)(new_ptr + 1);
-    for (int64_t i = 0; i < count; i++) {
-        new_entries[i * 2] = entries[i * 2];       /* key */
-        new_entries[i * 2 + 1] = entries[i * 2 + 1]; /* value */
-    }
-
-    /* Add new entry */
-    new_entries[count * 2] = key;
-    new_entries[count * 2 + 1] = value;
-
-    __mdh_kv_set_payload_ptr(dict, new_ptr);
+    __mdh_kv_append(dict, key, value);
     return dict;
 }
 
@@ -4086,15 +4297,10 @@ MdhValue __mdh_dict_get(MdhValue dict, MdhValue key) {
         return __mdh_make_nil();
     }
 
-    int64_t *dict_ptr = __mdh_kv_payload_ptr(dict);
-    int64_t count = dict_ptr ? dict_ptr[0] : 0;
-    MdhValue *entries = dict_ptr ? (MdhValue *)(dict_ptr + 1) : NULL;
-
-    for (int64_t i = 0; i < count; i++) {
-        MdhValue entry_key = entries[i * 2];
-        if (__mdh_values_equal(entry_key, key)) {
-            return entries[i * 2 + 1];
-        }
+    int64_t found = __mdh_kv_find(dict, key);
+    if (found >= 0) {
+        MdhValue *entries = (MdhValue *)(__mdh_kv_payload_ptr(dict) + 1);
+        return entries[found * 2 + 1];
     }
     __mdh_key_not_found(key);
     return __mdh_make_nil();
@@ -4108,15 +4314,10 @@ MdhValue __mdh_dict_get_default(MdhValue dict, MdhValue key, MdhValue default_va
         return default_val;
     }
 
-    int64_t *dict_ptr = __mdh_kv_payload_ptr(dict);
-    int64_t count = dict_ptr ? dict_ptr[0] : 0;
-    MdhValue *entries = dict_ptr ? (MdhValue *)(dict_ptr + 1) : NULL;
-
-    for (int64_t i = 0; i < count; i++) {
-        MdhValue entry_key = entries[i * 2];
-        if (__mdh_values_equal(entry_key, key)) {
-            return entries[i * 2 + 1];
-        }
+    int64_t found = __mdh_kv_find(dict, key);
+    if (found >= 0) {
+        MdhValue *entries = (MdhValue *)(__mdh_kv_payload_ptr(dict) + 1);
+        return entries[found * 2 + 1];
     }
     return default_val;
 }
@@ -4219,37 +4420,13 @@ MdhValue __mdh_toss_in(MdhValue dict, MdhValue item) {
         return __mdh_empty_creel();
     }
 
-    int64_t *old_ptr = __mdh_kv_payload_ptr(dict);
-    int64_t count = old_ptr ? old_ptr[0] : 0;
-    MdhValue *entries = old_ptr ? (MdhValue *)(old_ptr + 1) : NULL;
-
-    /* Check if item already exists */
-    for (int64_t i = 0; i < count; i++) {
-        MdhValue entry_key = entries[i * 2];
-        if (__mdh_values_equal(entry_key, item)) {
-            /* Already exists, return unchanged */
-            return dict;
-        }
-    }
-
-    /* Add new entry: reallocate */
-    int64_t new_count = count + 1;
-    size_t new_size = 8 + new_count * 32;  /* 8 for count, 32 per entry */
-    int64_t *new_ptr = (int64_t *)GC_malloc(new_size);
-
-    /* Copy old data */
-    *new_ptr = new_count;
-    MdhValue *new_entries = (MdhValue *)(new_ptr + 1);
-    for (int64_t i = 0; i < count; i++) {
-        new_entries[i * 2] = entries[i * 2];       /* key */
-        new_entries[i * 2 + 1] = entries[i * 2 + 1]; /* value */
+    if (__mdh_kv_find(dict, item) >= 0) {
+        /* Already exists, return unchanged */
+        return dict;
     }
 
     /* Add new entry (for sets, key == value) */
-    new_entries[count * 2] = item;
-    new_entries[count * 2 + 1] = item;
-
-    __mdh_kv_set_payload_ptr(dict, new_ptr);
+    __mdh_kv_append(dict, item, item);
     return dict;
 }
 
@@ -5571,7 +5748,7 @@ MdhValue __mdh_char_at(MdhValue str, MdhValue idx_val) {
     }
 
 oob:
-    __mdh_hurl(__mdh_make_string("Hoachin'! Index is oot o' bounds"));
+    __mdh_index_oob(idx_val.data, __mdh_utf8_count_codepoints(s));
     return __mdh_make_string("");
 
 invalid_utf8:

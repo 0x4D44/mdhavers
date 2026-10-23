@@ -41,7 +41,6 @@ use super::types::{MdhTypes, ValueTag};
 /// Hurled on i64 overflow (the interpreter's IntegerOverflow, without the line).
 /// Keep in step with MDH_INT_OVERFLOW_MSG in runtime/mdh_runtime.c.
 const INT_OVERFLOW_MSG: &str = "Wheesht! Yer number's too muckle - it's overflowed!";
-const DIV_BY_ZERO_MSG: &str = "Ye numpty! Tryin' tae divide by zero";
 /// Hurled when a string size computation would overflow or cannot be allocated.
 /// Keep in step with MDH_STRING_TOO_BIG_MSG in runtime/mdh_runtime.c.
 const STRING_TOO_BIG_MSG: &str = "Och! That string would be ower muckle tae fit in memory";
@@ -820,15 +819,12 @@ impl<'ctx> CodeGen<'ctx> {
         self.source_path = Some(resolved);
     }
 
-    /// LLVM symbol for a user-defined function. A user function called `main` would
-    /// take the C entry point's symbol (user functions are declared before the entry
-    /// point), so it is mangled; every other name is used as-is.
+    /// LLVM symbol for a user-defined function, struct constructor or method.
+    /// Every user symbol is mangled into a reserved namespace so it can never take
+    /// the symbol of the C entry point (`main`), a libc helper codegen looks up by
+    /// bare name (`pow`, `atan2`, `strtod`, `strncmp`, ...) or a runtime function.
     fn user_function_symbol(name: &str) -> String {
-        if name == "main" {
-            "__mdh_user_main".to_string()
-        } else {
-            name.to_string()
-        }
+        format!("__mdh_fn_{name}")
     }
 
     fn sanitize_symbol(input: &str) -> String {
@@ -852,7 +848,13 @@ impl<'ctx> CodeGen<'ctx> {
         self.nested_function_counter += 1;
 
         let outer = match self.current_function {
-            Some(f) => f.get_name().to_string_lossy().into_owned(),
+            Some(f) => {
+                let llvm_name = f.get_name().to_string_lossy().into_owned();
+                match llvm_name.strip_prefix("__mdh_fn_") {
+                    Some(source_name) => source_name.to_string(),
+                    None => llvm_name,
+                }
+            }
             None => "main".to_string(),
         };
 
@@ -4050,6 +4052,97 @@ impl<'ctx> CodeGen<'ctx> {
             .add_function("__mdh_hurl_at", fn_type, Some(Linkage::External))
     }
 
+    /// Runtime error helpers that word the error as the interpreter does, with the
+    /// " at line N" of the running statement (MDH-BUG-FLU-00086). Declared on first use.
+    /// `__mdh_div_by_zero()` and `__mdh_index_oob(index, size)` never return.
+    fn runtime_error_fn(&self, name: &str, i64_args: usize) -> FunctionValue<'ctx> {
+        if let Some(f) = self.module.get_function(name) {
+            return f;
+        }
+        let params: Vec<BasicMetadataTypeEnum> =
+            (0..i64_args).map(|_| self.types.i64_type.into()).collect();
+        let fn_type = self.types.void_type.fn_type(&params, false);
+        self.module
+            .add_function(name, fn_type, Some(Linkage::External))
+    }
+
+    /// Emit a call to `__mdh_index_oob(index, size)` followed by `unreachable`.
+    fn emit_index_oob(&mut self, index: IntValue<'ctx>, size: IntValue<'ctx>) {
+        let oob = self.runtime_error_fn("__mdh_index_oob", 2);
+        self.builder
+            .build_call(oob, &[index.into(), size.into()], "")
+            .unwrap();
+        self.builder.build_unreachable().unwrap();
+    }
+
+    /// Emit a call to `__mdh_div_by_zero()` followed by `unreachable`.
+    fn emit_div_by_zero(&mut self) {
+        let f = self.runtime_error_fn("__mdh_div_by_zero", 0);
+        self.builder.build_call(f, &[], "").unwrap();
+        self.builder.build_unreachable().unwrap();
+    }
+
+    /// The runtime's `__mdh_current_line` global (declared on first use).
+    fn current_line_global(&self) -> PointerValue<'ctx> {
+        let global = match self.module.get_global("__mdh_current_line") {
+            Some(g) => g,
+            None => {
+                let g = self
+                    .module
+                    .add_global(self.types.i64_type, None, "__mdh_current_line");
+                g.set_linkage(Linkage::External);
+                g
+            }
+        };
+        global.as_pointer_value()
+    }
+
+    /// Record the running statement's line for runtime-raised errors.
+    fn emit_set_current_line(&mut self, line: usize) {
+        if line == 0 || self.current_function.is_none() {
+            return;
+        }
+        let Some(block) = self.builder.get_insert_block() else {
+            return;
+        };
+        if block.get_terminator().is_some() {
+            return;
+        }
+        let ptr = self.current_line_global();
+        self.builder
+            .build_store(ptr, self.types.i64_type.const_int(line as u64, false))
+            .unwrap();
+    }
+
+    /// A user function runs statements that move `__mdh_current_line`; put the caller's
+    /// line back on every return so errors later in the calling statement report its line.
+    fn restore_current_line_on_return(&mut self, function: FunctionValue<'ctx>) {
+        let Some(entry) = function.get_first_basic_block() else {
+            return;
+        };
+        let saved_block = self.builder.get_insert_block();
+        let ptr = self.current_line_global();
+        match entry.get_first_instruction() {
+            Some(first) => self.builder.position_before(&first),
+            None => self.builder.position_at_end(entry),
+        }
+        let caller_line = self
+            .builder
+            .build_load(self.types.i64_type, ptr, "caller_line")
+            .unwrap();
+        for block in function.get_basic_blocks() {
+            if let Some(term) = block.get_terminator() {
+                if term.get_opcode() == inkwell::values::InstructionOpcode::Return {
+                    self.builder.position_before(&term);
+                    self.builder.build_store(ptr, caller_line).unwrap();
+                }
+            }
+        }
+        if let Some(block) = saved_block {
+            self.builder.position_at_end(block);
+        }
+    }
+
     /// Get the compiled module
     pub fn get_module(&self) -> &Module<'ctx> {
         &self.module
@@ -4338,7 +4431,11 @@ impl<'ctx> CodeGen<'ctx> {
                         .chain(params.iter().map(|_| self.types.value_type.into()))
                         .collect();
                 let fn_type = self.types.value_type.fn_type(&param_types, false);
-                let function = self.module.add_function(&func_name, fn_type, None);
+                let function = self.module.add_function(
+                    &Self::user_function_symbol(&func_name),
+                    fn_type,
+                    None,
+                );
                 self.functions.insert(func_name.clone(), function);
                 method_list.push((method_name.clone(), function));
                 self.function_param_names.insert(
@@ -5807,6 +5904,24 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(ok_block);
     }
 
+    /// Branch to a block that raises the interpreter's divide-by-zero error (with the
+    /// running line) when `cond` is true; continue emitting on the fall-through path.
+    fn emit_div_by_zero_if(&mut self, cond: IntValue<'ctx>, label: &str) {
+        let function = self.current_function.unwrap();
+        let fail_block = self
+            .context
+            .append_basic_block(function, &format!("{label}_fail"));
+        let ok_block = self
+            .context
+            .append_basic_block(function, &format!("{label}_ok"));
+        self.builder
+            .build_conditional_branch(cond, fail_block, ok_block)
+            .unwrap();
+        self.builder.position_at_end(fail_block);
+        self.emit_div_by_zero();
+        self.builder.position_at_end(ok_block);
+    }
+
     /// `l op r` on raw i64 operands with the interpreter's checked semantics
     /// (MDH-BUG-FLU-00050): add/sub/mul overflow and `i64::MIN / -1` (or `% -1`) hurl
     /// the integer-overflow error; division or modulo by zero hurls as before.
@@ -5867,7 +5982,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_int_compare(IntPredicate::EQ, r, zero, &format!("{name}_by_zero"))
                     .unwrap();
-                self.emit_hurl_if(is_zero, DIV_BY_ZERO_MSG, &format!("{name}_zero"));
+                self.emit_div_by_zero_if(is_zero, &format!("{name}_zero"));
 
                 let min = i64_type.const_int(i64::MIN as u64, true);
                 let minus_one = i64_type.const_all_ones();
@@ -6776,12 +6891,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         self.builder.position_at_end(div_zero);
-        let msg = self.compile_string_literal("Ye numpty! Tryin' tae divide by zero");
-        let _ = self
-            .builder
-            .build_call(self.libc.hurl, &[msg.into()], "div_zero_hurl")
-            .unwrap();
-        self.builder.build_unreachable().unwrap();
+        self.emit_div_by_zero();
 
         self.builder.position_at_end(div_nonzero);
         let right_is_numeric = self
@@ -12526,6 +12636,12 @@ impl<'ctx> CodeGen<'ctx> {
     // ========== Statement Compilation ==========
 
     fn compile_stmt(&mut self, stmt: &Stmt) -> Result<(), HaversError> {
+        if !matches!(
+            stmt,
+            Stmt::Function { .. } | Stmt::Class { .. } | Stmt::Struct { .. } | Stmt::Block { .. }
+        ) {
+            self.emit_set_current_line(stmt.span().line);
+        }
         match stmt {
             Stmt::VarDecl {
                 name, initializer, ..
@@ -27456,6 +27572,7 @@ impl<'ctx> CodeGen<'ctx> {
         {
             self.builder.build_return(Some(&self.make_nil())).unwrap();
         }
+        self.restore_current_line_on_return(function);
 
         // Restore state - all shadow maps to prevent cross-function leakage
         self.current_function = saved_function;
@@ -28274,9 +28391,10 @@ impl<'ctx> CodeGen<'ctx> {
                 .unwrap();
         }
 
-        // Dict values store a stable handle pointer to the payload pointer.
-        // Allocate the handle and store the payload pointer into it.
-        let handle_size = self.types.i64_type.const_int(8, false);
+        // Dict values store a stable handle pointer to the payload pointer. The handle is
+        // [payload, capacity, key index] (MDH_KV_HANDLE_WORDS in runtime/mdh_runtime.c);
+        // a literal's payload is exactly `count` entries, so capacity and index start at 0.
+        let handle_size = self.types.i64_type.const_int(24, false);
         let handle_ptr = self
             .builder
             .build_call(self.libc.malloc, &[handle_size.into()], "dict_handle_alloc")
@@ -28297,6 +28415,20 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(handle_i64_ptr, payload_int)
             .unwrap();
+        let zero = self.types.i64_type.const_int(0, false);
+        for word in 1..3u64 {
+            let slot = unsafe {
+                self.builder
+                    .build_gep(
+                        self.types.i64_type,
+                        handle_i64_ptr,
+                        &[self.types.i64_type.const_int(word, false)],
+                        "dict_handle_meta",
+                    )
+                    .unwrap()
+            };
+            self.builder.build_store(slot, zero).unwrap();
+        }
 
         // Return the dict as a tagged value (data = handle pointer)
         Ok(self.make_dict(handle_ptr))
@@ -28550,12 +28682,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         self.builder.position_at_end(err_block);
-        let msg = self.compile_string_literal("Hoachin'! Index is oot o' bounds");
-        let _ = self
-            .builder
-            .build_call(self.libc.hurl, &[msg.into()], "list_index_oob_hurl")
-            .unwrap();
-        self.builder.build_unreachable().unwrap();
+        self.emit_index_oob(index, length);
 
         self.builder.position_at_end(ok_block);
 
@@ -28696,12 +28823,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         self.builder.position_at_end(err_block);
-        let msg = self.compile_string_literal("Hoachin'! Index is oot o' bounds");
-        let _ = self
-            .builder
-            .build_call(self.libc.hurl, &[msg.into()], "list_index_oob_hurl_fast")
-            .unwrap();
-        self.builder.build_unreachable().unwrap();
+        self.emit_index_oob(idx_i64, length);
 
         self.builder.position_at_end(ok_block);
 
@@ -29243,12 +29365,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         self.builder.position_at_end(err_block);
-        let msg = self.compile_string_literal("Hoachin'! Index is oot o' bounds");
-        let _ = self
-            .builder
-            .build_call(self.libc.hurl, &[msg.into()], "list_set_oob_hurl")
-            .unwrap();
-        self.builder.build_unreachable().unwrap();
+        self.emit_index_oob(idx_data, length);
 
         self.builder.position_at_end(ok_block);
 
@@ -29447,12 +29564,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         self.builder.position_at_end(err_block);
-        let msg = self.compile_string_literal("Hoachin'! Index is oot o' bounds");
-        let _ = self
-            .builder
-            .build_call(self.libc.hurl, &[msg.into()], "list_set_oob_hurl_fast")
-            .unwrap();
-        self.builder.build_unreachable().unwrap();
+        self.emit_index_oob(idx_i64, length);
 
         self.builder.position_at_end(ok_block);
 
@@ -38072,7 +38184,11 @@ impl<'ctx> CodeGen<'ctx> {
                         .chain(params.iter().map(|_| self.types.value_type.into()))
                         .collect();
                 let fn_type = self.types.value_type.fn_type(&param_types, false);
-                let function = self.module.add_function(&func_name, fn_type, None);
+                let function = self.module.add_function(
+                    &Self::user_function_symbol(&func_name),
+                    fn_type,
+                    None,
+                );
                 self.functions.insert(func_name.clone(), function);
                 method_list.push((method_name.clone(), function));
                 self.function_param_names.insert(
@@ -38278,6 +38394,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .unwrap();
             self.builder.build_return(Some(&masel_val)).unwrap();
         }
+        self.restore_current_line_on_return(function);
 
         // Restore state - IMPORTANT: restore ALL shadow maps to prevent cross-method leakage
         self.current_function = old_function;
