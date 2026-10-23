@@ -6,15 +6,15 @@
 - **Area:** llvm
 - **Raised:** 2026-10-22T23:53:42Z
 - **Discovery source:** Agent
-- **Owner:** -
-- **Owner role:** -
-- **Owner run:** -
-- **Owner host:** -
-- **Owner branch:** -
-- **Owner base:** -
+- **Owner:** deltic:manual
+- **Owner role:** fix
+- **Owner run:** fix-20261023T035219Z-e43a21b4
+- **Owner host:** flux
+- **Owner branch:** task/bug-MDH-BUG-FLU-00062-run-fix-20261023T035219Z-e43a21b4
+- **Owner base:** 79f22a1e301244240be26e42fbb604e959a8e013
 - **Owner fingerprint:** -
-- **Owner since:** -
-- **Owner until:** -
+- **Owner since:** 2026-10-23T03:52:19Z
+- **Owner until:** 2026-10-23T07:52:19Z
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
