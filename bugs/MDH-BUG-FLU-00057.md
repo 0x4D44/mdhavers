@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00057 — Test suite fails outside the Linux full-feature configuration
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** tests
 - **Raised:** 2026-10-22T23:24:11Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T024938Z-0c4c279e
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00057-run-fix-20261023T024938Z-0c4c279e
-- **Owner base:** 9104de68b2e124ce3089a2fe3c9bc19f7e223f28
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T02:49:38Z
-- **Owner until:** 2026-10-23T06:49:38Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-22T23:24:11Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-22T23:24:11Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T02:49:44Z, deltic:auto role=fix run=fix-20261023T024938Z-0c4c279e branch=task/bug-MDH-BUG-FLU-00057-run-fix-20261023T024938Z-0c4c279e code=77f950a gate=manual)
 
 ## Observation
 
