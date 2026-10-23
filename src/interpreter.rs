@@ -2366,6 +2366,10 @@ fn dict_get(dict: &DictValue, key: &str) -> Option<Value> {
     dict.get(&Value::String(key.to_string())).cloned()
 }
 
+/// The InternalError that carries a `gie` oot o' a block expression; the
+/// value waits in `Interpreter::pending_return`.
+const BLOCK_RETURN_UNWIND: &str = "gie inside a block expression";
+
 /// Control flow signals
 #[derive(Debug)]
 enum ControlFlow {
@@ -2414,6 +2418,9 @@ pub struct Interpreter {
     log_callback: Option<Value>,
     /// Current source file name for log messages
     current_file: String,
+    /// The value o' a `gie` inside a block expression, on its way oot tae
+    /// the enclosing function (see `eval_block_expr`).
+    pending_return: Option<Value>,
 }
 
 impl Interpreter {
@@ -2500,6 +2507,7 @@ impl Interpreter {
             logger: logging::LoggerCore::new(),
             log_callback: None,
             current_file: "<repl>".to_string(),
+            pending_return: None,
         }
     }
 
@@ -11415,6 +11423,8 @@ impl Interpreter {
                 });
                 Ok(result)
             }
+            // A `gie` unwindin' oot o' a block expression is no' an error.
+            Err(e) if self.pending_return.is_some() => Err(e),
             Err(e) => {
                 self.trace_with(|| {
                     format!(
@@ -12542,8 +12552,9 @@ impl Interpreter {
     #[inline(never)]
     fn eval_block_expr(&mut self, statements: &[Stmt]) -> HaversResult<Value> {
         // A block's value is its last expression statement (MDH-BUG-FLU-00064);
-        // a `gie` inside sets the value straight away. A block that ends in
-        // ony other statement is naething.
+        // a block that ends in ony other statement is naething. A `gie` inside
+        // returns frae the enclosing function (DEC row 64, MDH-BUG-FLU-00094):
+        // it unwinds as an error tae the function call (`take_block_return`).
         let mut value = Value::Nil;
         for (i, stmt) in statements.iter().enumerate() {
             match self.execute_stmt_with_control(stmt)? {
@@ -12553,7 +12564,8 @@ impl Interpreter {
                     }
                 }
                 Err(ControlFlow::Return(returned)) => {
-                    return Ok(returned);
+                    self.pending_return = Some(returned);
+                    return Err(HaversError::InternalError(BLOCK_RETURN_UNWIND.to_string()));
                 }
                 Err(ControlFlow::Break) | Err(ControlFlow::Continue) => {
                     // Propagate break/continue - shouldn't happen in block expr
@@ -13151,12 +13163,37 @@ impl Interpreter {
     ) -> HaversResult<Value> {
         let _stack_guard = StackFrameGuard::new(&func.name, line);
 
-        self.bind_params(func, args, &env)?;
+        // A `gie` inside a block expression (even in a default value)
+        // unwinds as an error tae here: see `take_block_return`.
+        if let Err(e) = self.bind_params(func, args, &env) {
+            return self.take_block_return(e);
+        }
 
-        match self.execute_block(&func.body, Some(env))? {
-            Ok(v) => Ok(v),
-            Err(ControlFlow::Return(v)) => Ok(v),
-            Err(ControlFlow::Break) | Err(ControlFlow::Continue) => Ok(Value::Nil),
+        match self.execute_block(&func.body, Some(env)) {
+            Ok(Ok(v)) | Ok(Err(ControlFlow::Return(v))) => Ok(v),
+            Ok(Err(ControlFlow::Break)) | Ok(Err(ControlFlow::Continue)) => Ok(Value::Nil),
+            Err(e) => self.take_block_return(e),
+        }
+    }
+
+    /// A `gie` inside a block expression returns frae the enclosing
+    /// function (DEC row 64), but an expression cannae carry a Return: it
+    /// parks the value in `pending_return` and unwinds as an error tae the
+    /// function call, which gies the value back here. Only
+    /// `hae_a_bash` stands in the way, and it lets the unwind through.
+    /// Nothing is added tae the per-statement path, which every recursive
+    /// call goes through.
+    #[cold]
+    #[inline(never)]
+    fn take_block_return(&mut self, error: HaversError) -> HaversResult<Value> {
+        match error {
+            HaversError::InternalError(message) if message == BLOCK_RETURN_UNWIND => {
+                match self.pending_return.take() {
+                    Some(value) => Ok(value),
+                    None => Err(HaversError::InternalError(message)),
+                }
+            }
+            other => Err(other),
         }
     }
 

@@ -467,3 +467,47 @@ fn parity_js_integer_model_f5() {
         ),
     ]);
 }
+
+#[test]
+fn parity_js_gie_in_block_expression_returns_from_function_mdh_bug_flu_00094() {
+    if !node_available() {
+        return;
+    }
+    assert_js_parity(&[
+        (
+            "00094 gie in a block returns frae the dae",
+            "dae f() {\n    ken b = { gie 4 }\n    gie 9\n}\nblether f()",
+            "4",
+        ),
+        (
+            "00094 gie in a block in a lambda returns frae the lambda",
+            "dae outer() {\n    ken inner = |x| {\n        ken y = { gie x * 10 }\n        gie 0\n    }\n    gie inner(5) + 1\n}\nblether outer()",
+            "51",
+        ),
+        (
+            "00094 expression-bodied lambda",
+            "ken g = |x| x + { gie x * 3 }\nblether g(2)",
+            "6",
+        ),
+        (
+            "00094 a lambda's ain block body still returns frae the lambda",
+            "ken add_one = |x| { gie x + 1 }\nblether add_one(2)",
+            "3",
+        ),
+        (
+            "00094 nested blocks in a loop",
+            "dae first_big(xs) {\n    fer x in xs {\n        ken seen = {\n            ken inner = {\n                gin x > 2 {\n                    gie x\n                }\n                x\n            }\n            inner\n        }\n    }\n    gie -1\n}\nblether first_big([1, 2, 5, 7])\nblether first_big([1, 2])",
+            "5\n-1",
+        ),
+        (
+            "00094 hae_a_bash does no' catch the gie",
+            "dae guarded() {\n    hae_a_bash {\n        ken b = { gie \"oot\" }\n    } gin_it_gangs_wrang e {\n        gie \"caught\"\n    }\n    gie \"fell through\"\n}\nblether guarded()",
+            "oot",
+        ),
+        (
+            "00094 method and recursion",
+            "kin Coonter {\n    dae pick(n) {\n        ken b = { gie n * 2 }\n        gie 0\n    }\n}\nblether Coonter().pick(21)\ndae down(n) {\n    ken r = {\n        gin n == 0 {\n            gie \"bottom\"\n        }\n        down(n - 1)\n    }\n    gie r\n}\nblether down(3)",
+            "42\nbottom",
+        ),
+    ]);
+}

@@ -1,5 +1,3 @@
-# SKIP_NATIVE
-# Native: `blether { gie 7 }` is ReturnOutsideFunction there (gie leaves the enclosing function, per the DEC doc).
 # Note: MDH-BUG-FLU-00064 (a block expression's value is its last expression).
 blether {0 + 1}
 ken a = {0 + {0 + 1}}
@@ -22,8 +20,12 @@ blether gaun([1, 2, 3], |n| {
     sq + 1
 })
 
-# `gie` still sets the value
-blether { gie 7 }
+# `gie` returns frae the enclosing function (MDH-BUG-FLU-00094)
+dae seven() {
+    ken b = { gie 7 }
+    gie 0
+}
+blether seven()
 
 # A block that ends in a statement is naething
 blether { ken z = 5 }

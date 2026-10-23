@@ -43,6 +43,12 @@ fn top_level_gie_is_return_outside_function_decision_f4() {
     assert_return_outside_function("keek 1 {\n    whan 1 -> gie 2\n}", 2);
     // A gie efter a function ends is back at the top level.
     assert_return_outside_function("dae f() { gie 1 }\ngie 2", 2);
+    // A block expression is no' a function: its `gie` returns frae the
+    // enclosing one, so it needs one (DEC row 64, MDH-BUG-FLU-00094).
+    assert_return_outside_function("ken b = { gie 4 }", 1);
+    assert_return_outside_function("blether { gie 4 }", 1);
+    assert_return_outside_function("ken b = {\n    ken a = { gie 1 }\n    a\n}", 2);
+    assert_return_outside_function("dae f() { gie 1 }\nken b = { gie 2 }", 2);
     let msg = parse("gie 5").unwrap_err().to_string();
     assert!(msg.contains("ootside a function"), "{msg}");
 }
@@ -55,7 +61,14 @@ fn gie_inside_functions_lambdas_and_blocks_still_parses_decision_f4() {
         "2"
     );
     assert_eq!(run("ken g = |x| { gie x + 1 }\nblether g(2)"), "3");
-    assert_eq!(run("blether { gie 4 }"), "4");
+    assert_eq!(
+        run("dae f() {\n    ken b = { gie 4 }\n    gie 9\n}\nblether f()"),
+        "4"
+    );
+    assert_eq!(
+        run("ken g = |x| {\n    ken b = { gie x }\n    gie 0\n}\nblether g(6)"),
+        "6"
+    );
     assert_eq!(
         run("dae h() {\n    ken k = |y| { gie y }\n    gie k(5)\n}\nblether h()"),
         "5"
@@ -116,12 +129,14 @@ fn nested_brace_expressions_still_evaluate() {
     let code = r#"
 ken d = {"k": {"j": 2}}
 blether d["k"]["j"]
-ken b = { gie {"j": 3} }
-blether b["j"]
+dae pick() {
+    ken b = { gie {"j": 3} }
+}
+blether pick()["j"]
 ken e = {
     "a": [1,
           2],
-    "b": { gie 4 }
+    "b": { 4 }
 }
 blether e["a"][1] + e["b"]
 "#;

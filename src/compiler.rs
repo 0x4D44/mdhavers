@@ -305,6 +305,20 @@ pub struct Compiler {
     rename_counter: usize,
     /// `kin`/`thing` names never bound ony ither way: calls tae these get `new`.
     static_classes: HashSet<String>,
+    /// One entry per enclosing JS function, the top level first.
+    fn_contexts: Vec<FnContext>,
+    /// Counter fer namin' the `gie` sentinels.
+    gie_counter: usize,
+}
+
+/// Where a `gie` is, relative tae the JS function it returns frae.
+#[derive(Default)]
+struct FnContext {
+    /// How many block-expression IIFEs deep the cursor is.
+    block_depth: usize,
+    /// Set once a `gie` inside a block expression needs it: that `gie`
+    /// throws this object, and the function catches it (MDH-BUG-FLU-00094).
+    sentinel: Option<String>,
 }
 
 impl Compiler {
@@ -316,6 +330,8 @@ impl Compiler {
             scopes: vec![HashMap::new()],
             rename_counter: 0,
             static_classes: HashSet::new(),
+            fn_contexts: vec![FnContext::default()],
+            gie_counter: 0,
         }
     }
 
@@ -325,6 +341,8 @@ impl Compiler {
         self.indent = 0;
         self.match_counter = 0;
         self.rename_counter = 0;
+        self.fn_contexts = vec![FnContext::default()];
+        self.gie_counter = 0;
 
         let mut needs_tri_runtime = false;
         for stmt in &program.statements {
@@ -1261,6 +1279,20 @@ impl Compiler {
             }
 
             Stmt::Return { value, .. } => {
+                if self.current_fn().block_depth > 0 {
+                    // A JS `return` here would only leave the block's IIFE: throw
+                    // the value oot tae the enclosing function instead.
+                    let sentinel = self.block_return_sentinel();
+                    self.emit_indent();
+                    self.output.push_str(&format!("{}.v = ", sentinel));
+                    match value {
+                        Some(expr) => self.compile_expr(expr),
+                        None => self.output.push_str("undefined"),
+                    }
+                    self.output.push_str(";\n");
+                    self.emit_line(&format!("throw {};", sentinel));
+                    return;
+                }
                 self.emit_indent();
                 self.output.push_str("return");
                 if let Some(expr) = value {
@@ -1392,6 +1424,10 @@ impl Compiler {
                 self.indent += 1;
                 self.push_scope();
                 let (js, _) = self.declare(error_name);
+                if let Some(sentinel) = self.current_fn().sentinel.clone() {
+                    // A `gie` frae a block expression is no' an error.
+                    self.emit_line(&format!("if (__err === {}) throw __err;", sentinel));
+                }
                 self.emit_line(&format!("let {} = __havers.caught(__err);", js));
                 self.compile_block_body(catch_block);
                 self.pop_scope();
@@ -1583,17 +1619,91 @@ impl Compiler {
     /// Emit `params) { body }` fer a function or method, in its ain scope.
     fn compile_callable(&mut self, params: &[Param], body: &[Stmt]) {
         self.push_scope();
+        self.fn_contexts.push(FnContext::default());
         let params_str = self.compile_params(params);
         self.output.push_str(&params_str);
         self.output.push_str(") {\n");
         self.indent += 1;
+        let body_start = self.output.len();
         for stmt in body {
             self.compile_stmt(stmt);
+        }
+        if let Some(sentinel) = self.fn_contexts.pop().and_then(|ctx| ctx.sentinel) {
+            let body_js = self.output.split_off(body_start);
+            self.emit_line(&format!("const {} = {{}};", sentinel));
+            self.emit_line("try {");
+            self.output.push_str(&body_js);
+            self.emit_line(&Self::block_return_catch(&sentinel));
         }
         self.indent -= 1;
         self.emit_indent();
         self.output.push('}');
         self.pop_scope();
+    }
+
+    fn current_fn(&self) -> &FnContext {
+        self.fn_contexts
+            .last()
+            .expect("the top level is aye a function context")
+    }
+
+    /// The sentinel a `gie` inside a block expression throws tae reach the
+    /// enclosing function, made on first use.
+    fn block_return_sentinel(&mut self) -> String {
+        let counter = &mut self.gie_counter;
+        let ctx = self
+            .fn_contexts
+            .last_mut()
+            .expect("the top level is aye a function context");
+        ctx.sentinel
+            .get_or_insert_with(|| {
+                *counter += 1;
+                format!("__gie_{}", counter)
+            })
+            .clone()
+    }
+
+    /// The `catch` that turns a function's `gie` sentinel back intae a return.
+    fn block_return_catch(sentinel: &str) -> String {
+        format!(
+            "}} catch (__e) {{ if (__e === {0}) return {0}.v; throw __e; }}",
+            sentinel
+        )
+    }
+
+    /// A block expression as an IIFE. `in_block` is false only fer a lambda's
+    /// ain block body, where a `gie` returns frae the IIFE (the lambda).
+    fn compile_block_expr(&mut self, statements: &[Stmt], in_block: bool) {
+        self.output.push_str("(() => {\n");
+        self.indent += 1;
+        self.push_scope();
+        if in_block {
+            self.fn_contexts
+                .last_mut()
+                .expect("the top level is aye a function context")
+                .block_depth += 1;
+        }
+        for (i, stmt) in statements.iter().enumerate() {
+            match stmt {
+                Stmt::Expression { expr, .. } if i + 1 == statements.len() => {
+                    self.emit_indent();
+                    self.output.push_str("return (");
+                    self.compile_expr(expr);
+                    self.output.push_str(");\n");
+                }
+                _ => self.compile_stmt(stmt),
+            }
+        }
+        if in_block {
+            self.fn_contexts
+                .last_mut()
+                .expect("the top level is aye a function context")
+                .block_depth -= 1;
+        }
+        self.pop_scope();
+        self.indent -= 1;
+        self.emit_indent();
+        self.output.push_str("})()");
     }
 
     fn compile_pattern(&mut self, pattern: &Pattern, match_var: &str) {
@@ -1980,14 +2090,25 @@ impl Compiler {
                 self.output.push('(');
                 self.output.push_str(&js_params.join(", "));
                 self.output.push_str(") => ");
-                if !matches!(**body, Expr::BlockExpr { .. }) {
+                self.fn_contexts.push(FnContext::default());
+                let body_start = self.output.len();
+                if let Expr::BlockExpr { statements, .. } = &**body {
+                    self.compile_block_expr(statements, false);
+                } else {
                     // `=> {` would start a function body, no' an object - and no'
                     // only fer a bare dict: `|k| {"a": 1}[k]` starts wi' one too.
                     self.output.push('(');
                     self.compile_expr(body);
                     self.output.push(')');
-                } else {
-                    self.compile_expr(body);
+                }
+                if let Some(sentinel) = self.fn_contexts.pop().and_then(|ctx| ctx.sentinel) {
+                    let body_js = self.output.split_off(body_start);
+                    self.output.push_str(&format!(
+                        "{{ const {0} = {{}}; try {{ return {1}; {2} }}",
+                        sentinel,
+                        body_js,
+                        Self::block_return_catch(&sentinel)
+                    ));
                 }
                 self.pop_scope();
             }
@@ -2052,25 +2173,9 @@ impl Compiler {
             Expr::BlockExpr { statements, .. } => {
                 // Block expressions compile to an IIFE (immediately invoked function
                 // expression). The last expression statement is the block's value
-                // (MDH-BUG-FLU-00064).
-                self.output.push_str("(() => {\n");
-                self.indent += 1;
-                self.push_scope();
-                for (i, stmt) in statements.iter().enumerate() {
-                    match stmt {
-                        Stmt::Expression { expr, .. } if i + 1 == statements.len() => {
-                            self.emit_indent();
-                            self.output.push_str("return (");
-                            self.compile_expr(expr);
-                            self.output.push_str(");\n");
-                        }
-                        _ => self.compile_stmt(stmt),
-                    }
-                }
-                self.pop_scope();
-                self.indent -= 1;
-                self.emit_indent();
-                self.output.push_str("})()");
+                // (MDH-BUG-FLU-00064); a `gie` inside returns frae the enclosing
+                // function (MDH-BUG-FLU-00094).
+                self.compile_block_expr(statements, true);
             }
         }
     }
@@ -3059,7 +3164,7 @@ xs[:2]
 
 ken s = f"a`b$c"
 
-ken bx = {
+ken bx = || {
     ken t = 1
     gie t
 }

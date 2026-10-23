@@ -1,0 +1,60 @@
+# MDH-BUG-FLU-00094 (DEC row 64): a `gie` inside a block expression returns frae
+# the enclosing function.
+dae f() {
+    ken b = { gie 4 }
+    gie 9
+}
+blether f()
+
+# Nested: the gie returns frae the lambda, no' frae the function aroond it
+dae outer() {
+    ken inner = |x| {
+        ken y = { gie x * 10 }
+        gie 0
+    }
+    ken got = inner(5)
+    gie got + 1
+}
+blether outer()
+
+# A lambda's ain block body still returns frae the lambda
+ken add_one = |x| { gie x + 1 }
+blether add_one(2)
+
+# Oot o' a loop, frae a block nested in a block
+dae first_big(xs) {
+    fer x in xs {
+        ken seen = {
+            ken inner = {
+                gin x > 2 {
+                    gie x
+                }
+                x
+            }
+            inner
+        }
+    }
+    gie -1
+}
+blether first_big([1, 2, 5, 7])
+blether first_big([1, 2])
+
+# A gie through a hae_a_bash is a return, no' an error
+dae guarded() {
+    hae_a_bash {
+        ken b = { gie "oot" }
+    } gin_it_gangs_wrang e {
+        gie "caught"
+    }
+    gie "fell through"
+}
+blether guarded()
+
+# In a method
+kin Coonter {
+    dae pick(n) {
+        ken b = { gie n * 2 }
+        gie 0
+    }
+}
+blether Coonter().pick(21)

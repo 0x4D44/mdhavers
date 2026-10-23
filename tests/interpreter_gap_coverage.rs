@@ -1152,7 +1152,10 @@ c.conty()
         ("[1, 2, 3][::\"x\"]\n", false),
         ("1[:1]\n", false),
         // Block expression return path
-        ("ken x = { gie 42 }\nx\n", true),
+        (
+            "dae f() {\n    ken x = { gie 42 }\n    gie 0\n}\nf()\n",
+            true,
+        ),
     ];
 
     for (src, should_succeed) in cases {

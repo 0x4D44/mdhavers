@@ -191,8 +191,10 @@ fn formatter_exercises_uncovered_branches_for_coverage() {
     assert!(out.contains("hurl"));
 
     // Cover BlockExpr formatting + format_stmt_single branches (var/expr/return/break/continue/_).
+    // A lambda body, since a `gie` in a top-level block expression is
+    // ReturnOutsideFunction (MDH-BUG-FLU-00094); it formats the same way.
     let block_expr_source = r#"
-ken x = {
+ken x = || {
     ken a = 1
     ken b
     a + 2

@@ -2079,8 +2079,10 @@ hurl "boom"
 
     #[test]
     fn test_format_block_expr_for_coverage() {
+        // A lambda body: a `gie` in a top-level block expression is
+        // ReturnOutsideFunction (MDH-BUG-FLU-00094). It formats the same way.
         let source = r#"
-ken x = {
+ken x = || {
     ken a = 1
     ken b
     brak
@@ -2094,7 +2096,7 @@ ken x = {
         let mut formatter = Formatter::new();
         let result = formatter.format(&program);
 
-        assert!(result.contains("ken x = {"));
+        assert!(result.contains("ken x = || {"));
         assert!(result.contains("ken a = 1"));
         assert!(result.contains("ken b"));
         assert!(result.contains("brak"));

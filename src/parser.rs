@@ -14,8 +14,8 @@ pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
     depth: usize,
-    /// How many function bodies (`dae`, methods, lambdas) or block
-    /// expressions enclose the cursor; `gie` at zero is an error.
+    /// How many function bodies (`dae`, methods, lambdas) enclose the
+    /// cursor; `gie` at zero is an error.
     function_depth: usize,
 }
 
@@ -29,8 +29,7 @@ impl Parser {
         }
     }
 
-    /// Run `parse_fn` inside a function body (or block expression), where
-    /// `gie` is allowed.
+    /// Run `parse_fn` inside a function body, where `gie` is allowed.
     fn in_function<T>(
         &mut self,
         parse_fn: impl FnOnce(&mut Self) -> HaversResult<T>,
@@ -1394,16 +1393,14 @@ impl Parser {
         // nae re-parsing): it's a dict if a ':' turns up on the first
         // line, ootside any brackets.
         if !self.brace_starts_dict() {
-            // A `gie` in a block expression gies the block its value.
-            let statements = self.in_function(|p| {
-                let mut statements = Vec::new();
-                while !p.check(&TokenKind::RightBrace) && !p.is_at_end() {
-                    statements.push(p.declaration()?);
-                    p.skip_newlines();
-                }
-                p.expect(&TokenKind::RightBrace, "}")?;
-                Ok(statements)
-            })?;
+            // A `gie` in a block expression returns frae the enclosing
+            // function (DEC row 64), so it needs one.
+            let mut statements = Vec::new();
+            while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+                statements.push(self.declaration()?);
+                self.skip_newlines();
+            }
+            self.expect(&TokenKind::RightBrace, "}")?;
             return Ok(Expr::BlockExpr { statements, span });
         }
 
