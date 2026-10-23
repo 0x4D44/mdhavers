@@ -973,6 +973,10 @@ pub struct NativeFunction {
     pub name: String,
     pub arity: usize,
     pub func: Box<dyn Fn(Vec<Value>) -> Result<Value, String>>,
+    /// A higher-order builtin (gaun, sieve, ...) that needs the interpreter
+    /// to call its function argument; the interpreter dispatches it by name
+    /// instead of calling `func`.
+    pub higher_order: bool,
 }
 
 impl NativeFunction {
@@ -984,6 +988,24 @@ impl NativeFunction {
             name: name.to_string(),
             arity,
             func: Box::new(func),
+            higher_order: false,
+        }
+    }
+
+    /// A higher-order builtin. Its `func` only reports that it needs the
+    /// interpreter; `Interpreter::call_value` runs the real thing.
+    pub fn higher_order(name: &str, arity: usize) -> Self {
+        let owned = name.to_string();
+        NativeFunction {
+            name: owned.clone(),
+            arity,
+            func: Box::new(move |_| {
+                Err(format!(
+                    "{}() needs the interpreter tae ca' its function",
+                    owned
+                ))
+            }),
+            higher_order: true,
         }
     }
 }

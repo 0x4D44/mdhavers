@@ -150,7 +150,7 @@ blether add(1)
         r#"aw(1, |x| aye)"#,
         r#"grup_up(1, |x| x)"#,
         r#"pairt_by(1, |x| x)"#,
-        // Unknown builtin marker should be rejected
+        // A string is never callable, even one shaped like a builtin name
         r#"("__builtin_nope__")(1)"#,
         // JSON parser error branches
         r#"json_parse("")"#,

@@ -2819,12 +2819,6 @@ impl Interpreter {
                     continue;
                 }
             }
-            // Skip internal builtin placeholders used by the JS compiler.
-            if let Value::String(s) = value {
-                if s.starts_with("__builtin_") && s.ends_with("__") {
-                    continue;
-                }
-            }
             // Skip prelude functions (they have specific patterns)
             if matches!(value, Value::Function(_)) {
                 // Include user-defined functions but mark them
@@ -8162,62 +8156,27 @@ impl Interpreter {
             }))),
         );
 
-        // Higher-order functions are defined as marker values
-        // They get special handling in call_value
-
-        // gaun - map function over list (Scots: "going")
-        globals.borrow_mut().define(
-            "gaun".to_string(),
-            Value::String("__builtin_gaun__".to_string()),
-        );
-
-        // sieve - filter list (keep elements that pass)
-        globals.borrow_mut().define(
-            "sieve".to_string(),
-            Value::String("__builtin_sieve__".to_string()),
-        );
-
-        // tumble - reduce/fold list (Scots: tumble together)
-        globals.borrow_mut().define(
-            "tumble".to_string(),
-            Value::String("__builtin_tumble__".to_string()),
-        );
-
-        // ilk - for each (Scots: each/every)
-        globals.borrow_mut().define(
-            "ilk".to_string(),
-            Value::String("__builtin_ilk__".to_string()),
-        );
-
-        // hunt - find first matching element
-        globals.borrow_mut().define(
-            "hunt".to_string(),
-            Value::String("__builtin_hunt__".to_string()),
-        );
-
-        // ony - check if any element matches (Scots: any)
-        globals.borrow_mut().define(
-            "ony".to_string(),
-            Value::String("__builtin_ony__".to_string()),
-        );
-
-        // aw - check if all elements match (Scots: all)
-        globals.borrow_mut().define(
-            "aw".to_string(),
-            Value::String("__builtin_aw__".to_string()),
-        );
-
-        // grup_up - group list elements by function result (Scots: group up)
-        globals.borrow_mut().define(
-            "grup_up".to_string(),
-            Value::String("__builtin_grup_up__".to_string()),
-        );
-
-        // pairt_by - partition list by predicate into [true, false] lists
-        globals.borrow_mut().define(
-            "pairt_by".to_string(),
-            Value::String("__builtin_pairt_by__".to_string()),
-        );
+        // Higher-order builtins need the interpreter to call their function
+        // argument, so call_value dispatches them by name (call_builtin_hof).
+        // gaun - map (Scots: "going"); sieve - filter; tumble - reduce/fold;
+        // ilk - for each; hunt - find first; ony - any; aw - all;
+        // grup_up - group by key; pairt_by - partition into [matches, rest].
+        for (name, arity) in [
+            ("gaun", 2),
+            ("sieve", 2),
+            ("tumble", 3),
+            ("ilk", 2),
+            ("hunt", 2),
+            ("ony", 2),
+            ("aw", 2),
+            ("grup_up", 2),
+            ("pairt_by", 2),
+        ] {
+            globals.borrow_mut().define(
+                name.to_string(),
+                Value::NativeFunction(Rc::new(NativeFunction::higher_order(name, arity))),
+            );
+        }
 
         // === More Scots-Flavoured Functions ===
 
@@ -12846,15 +12805,15 @@ impl Interpreter {
         let _guard = InterpreterGuard::new(self);
         match &callee {
             Value::Function(func) => self.call_function(&func, args, line),
+            // Higher-order builtins call back into the interpreter.
+            Value::NativeFunction(native) if native.higher_order => {
+                self.call_builtin_hof(&native.name, args, line)
+            }
             Value::NativeFunction(native) => Self::call_native_function(&native, args, line),
             Value::NativeObject(_) => Err(HaversError::TypeError {
                 message: "Cannae ca' a native object like a function".to_string(),
                 line,
             }),
-            // Higher-order function builtins
-            Value::String(ref s) if s.starts_with("__builtin_") => {
-                self.call_builtin_hof(s, args, line)
-            }
             Value::Class(class) => self.construct_instance(class.clone(), args, line),
             Value::Struct(structure) => Self::construct_struct(&structure, args, line),
             _ => Err(Self::not_callable(&callee, line)),
@@ -12945,7 +12904,7 @@ impl Interpreter {
     ) -> HaversResult<Value> {
         match name {
             // gaun(list, func) - map function over list
-            "__builtin_gaun__" => {
+            "gaun" => {
                 check_arity("gaun", 2, args.len(), line)?;
                 let list = extract_list(&args[0], "gaun", line)?;
                 let func = args[1].clone();
@@ -12958,7 +12917,7 @@ impl Interpreter {
             }
 
             // sieve(list, func) - filter list by predicate
-            "__builtin_sieve__" => {
+            "sieve" => {
                 check_arity("sieve", 2, args.len(), line)?;
                 let list = extract_list(&args[0], "sieve", line)?;
                 let func = args[1].clone();
@@ -12973,7 +12932,7 @@ impl Interpreter {
             }
 
             // tumble(list, initial, func) - reduce/fold
-            "__builtin_tumble__" => {
+            "tumble" => {
                 check_arity("tumble", 3, args.len(), line)?;
                 let list = extract_list(&args[0], "tumble", line)?;
                 let mut acc = args[1].clone();
@@ -12985,7 +12944,7 @@ impl Interpreter {
             }
 
             // ilk(list, func) - for each (side effects)
-            "__builtin_ilk__" => {
+            "ilk" => {
                 check_arity("ilk", 2, args.len(), line)?;
                 let list = extract_list(&args[0], "ilk", line)?;
                 let func = args[1].clone();
@@ -12996,7 +12955,7 @@ impl Interpreter {
             }
 
             // hunt(list, func) - find first matching element
-            "__builtin_hunt__" => {
+            "hunt" => {
                 check_arity("hunt", 2, args.len(), line)?;
                 let list = extract_list(&args[0], "hunt", line)?;
                 let func = args[1].clone();
@@ -13010,7 +12969,7 @@ impl Interpreter {
             }
 
             // ony(list, func) - check if any element matches
-            "__builtin_ony__" => {
+            "ony" => {
                 check_arity("ony", 2, args.len(), line)?;
                 let list = extract_list(&args[0], "ony", line)?;
                 let func = args[1].clone();
@@ -13024,7 +12983,7 @@ impl Interpreter {
             }
 
             // aw(list, func) - check if all elements match
-            "__builtin_aw__" => {
+            "aw" => {
                 check_arity("aw", 2, args.len(), line)?;
                 let list = extract_list(&args[0], "aw", line)?;
                 let func = args[1].clone();
@@ -13038,7 +12997,7 @@ impl Interpreter {
             }
 
             // grup_up(list, func) - group elements by function result
-            "__builtin_grup_up__" => {
+            "grup_up" => {
                 check_arity("grup_up", 2, args.len(), line)?;
                 let list = extract_list(&args[0], "grup_up", line)?;
                 let func = args[1].clone();
@@ -13060,7 +13019,7 @@ impl Interpreter {
             }
 
             // pairt_by(list, func) - partition into [matches, non_matches]
-            "__builtin_pairt_by__" => {
+            "pairt_by" => {
                 check_arity("pairt_by", 2, args.len(), line)?;
                 let list = extract_list(&args[0], "pairt_by", line)?;
                 let func = args[1].clone();
@@ -17153,24 +17112,32 @@ d["a"]
     }
 
     #[test]
-    fn test_call_value_builtin_string_dispatches_for_coverage() {
+    fn test_call_value_higher_order_builtin_dispatches_for_coverage() {
         let mut interp = Interpreter::new();
+        let gaun = interp.globals.borrow().get("gaun").expect("gaun defined");
         let list = Value::List(Rc::new(RefCell::new(vec![Value::Integer(1)])));
         let func = Value::NativeFunction(Rc::new(NativeFunction::new("id", 1, |args| {
             Ok(args[0].clone())
         })));
 
-        let result = interp
-            .call_value(
-                Value::String("__builtin_gaun__".to_string()),
-                vec![list, func],
-                0,
-            )
-            .unwrap();
+        let result = interp.call_value(gaun, vec![list, func], 0).unwrap();
         let out = result.as_list().expect("expected list");
         let items = out.borrow();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0], Value::Integer(1));
+    }
+
+    #[test]
+    fn test_call_value_unknown_higher_order_builtin_is_not_callable() {
+        let mut interp = Interpreter::new();
+        let nope = Value::NativeFunction(Rc::new(NativeFunction::higher_order("nope", 1)));
+        // Its plain native entry point only says it needs the interpreter.
+        if let Value::NativeFunction(native) = &nope {
+            let err = (native.func)(vec![Value::Nil]).unwrap_err();
+            assert!(err.contains("nope()"), "{err}");
+        }
+        let err = interp.call_value(nope, vec![Value::Nil], 0).unwrap_err();
+        assert!(matches!(err, HaversError::NotCallable { .. }), "{err:?}");
     }
 
     #[test]
@@ -17755,7 +17722,10 @@ f"The answer is {x * 2}"
         assert!(!has("PI"));
         assert!(!has("E"));
         assert!(!has("TAU"));
-        assert!(!has("placeholder"));
+        // MDH-BUG-FLU-00013: a "__builtin_*__" string is just a user string now.
+        assert!(has("placeholder"));
+        // The higher-order builtins are native functions, so they stay hidden.
+        assert!(!has("gaun"));
     }
 
     #[test]
@@ -25523,7 +25493,8 @@ gie len(ys) + len(zs) + len(t) + len(u)
         assert!(names.contains(&"PI"));
         assert!(!names.contains(&"E"));
         assert!(!names.contains(&"TAU"));
-        assert!(!names.contains(&"builtin_marker"));
+        // MDH-BUG-FLU-00013: a "__builtin_*__" string is just a user string now.
+        assert!(names.contains(&"builtin_marker"));
         assert!(names.contains(&"user_str"));
     }
 
