@@ -72,7 +72,7 @@ ken o = { ken x = 1
     assert!(output.contains("log_event(\"roar\""));
     assert!(output.contains("log_event(\"blether\", \"structured fields\", {"));
     assert!(output.contains("log_event(\"blether\", \"target only\", \"examples.logging\""));
-    assert!(output.contains("throw new Error(\"boom\")"));
+    assert!(output.contains("throw __havers.hurl(\"boom\", "));
 }
 
 #[test]

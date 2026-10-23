@@ -1,11 +1,325 @@
 use crate::ast::*;
 use crate::error::{HaversError, HaversResult};
+use std::collections::{HashMap, HashSet};
+
+/// Runtime helpers bound as ordinary (shadowable) names at the top o' the user's block.
+const RUNTIME_BINDINGS: &[&str] = &[
+    "len",
+    "whit_kind",
+    "tae_string",
+    "tae_int",
+    "tae_float",
+    "shove",
+    "yank",
+    "keys",
+    "values",
+    "range",
+    "abs",
+    "min",
+    "max",
+    "floor",
+    "ceil",
+    "round",
+    "sqrt",
+    "split",
+    "join",
+    "contains",
+    "reverse",
+    "sort",
+    "blether",
+    "set_log_level",
+    "get_log_level",
+    "log_set_filter",
+    "log_get_filter",
+    "log_enabled",
+    "log_event",
+    "log_init",
+    "log_span",
+    "log_span_enter",
+    "log_span_exit",
+    "log_span_current",
+    "log_span_in",
+    "speir",
+    "heid",
+    "tail",
+    "bum",
+    "scran",
+    "slap",
+    "sumaw",
+    "coont",
+    "wheesht",
+    "upper",
+    "lower",
+    "shuffle",
+    "noo",
+    "tick",
+    "bide",
+    "gaun",
+    "sieve",
+    "tumble",
+    "aw",
+    "ony",
+    "hunt",
+    "soond_stairt",
+    "soond_steek",
+    "soond_wheesht",
+    "soond_luid",
+    "soond_hou_luid",
+    "soond_haud_gang",
+    "soond_lade",
+    "soond_spiel",
+    "soond_haud",
+    "soond_gae_on",
+    "soond_stap",
+    "soond_unlade",
+    "soond_is_spielin",
+    "soond_pit_luid",
+    "soond_pit_pan",
+    "soond_pit_tune",
+    "soond_pit_rin_roond",
+    "soond_ready",
+    "muisic_lade",
+    "muisic_spiel",
+    "muisic_haud",
+    "muisic_gae_on",
+    "muisic_stap",
+    "muisic_unlade",
+    "muisic_is_spielin",
+    "muisic_loup",
+    "muisic_hou_lang",
+    "muisic_whaur",
+    "muisic_pit_luid",
+    "muisic_pit_pan",
+    "muisic_pit_tune",
+    "muisic_pit_rin_roond",
+    "midi_lade",
+    "midi_spiel",
+    "midi_haud",
+    "midi_gae_on",
+    "midi_stap",
+    "midi_unlade",
+    "midi_is_spielin",
+    "midi_loup",
+    "midi_hou_lang",
+    "midi_whaur",
+    "midi_pit_luid",
+    "midi_pit_pan",
+    "midi_pit_rin_roond",
+];
+
+/// JS reserved words, strict-mode restricted names an' awkward globals. An mdhavers
+/// identifier spelled like ane o' these gets a `$` suffix (mdhavers names cannae contain `$`).
+const JS_RESERVED: &[&str] = &[
+    "arguments",
+    "await",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "debugger",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "enum",
+    "eval",
+    "export",
+    "extends",
+    "false",
+    "finally",
+    "for",
+    "function",
+    "if",
+    "implements",
+    "import",
+    "in",
+    "instanceof",
+    "interface",
+    "let",
+    "new",
+    "null",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "return",
+    "static",
+    "super",
+    "switch",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typeof",
+    "var",
+    "void",
+    "while",
+    "with",
+    "yield",
+    "undefined",
+    "NaN",
+    "Infinity",
+];
+
+/// Map an mdhavers identifier tae a safe JS binding name. Reserved words an' names
+/// startin' `__` (the runtime's ain namespace: `__havers`, `__match_val_N`, ...) are
+/// suffixed wi' `$`, which cannae appear in an mdhavers identifier.
+fn js_ident(name: &str) -> String {
+    if name.starts_with("__") || JS_RESERVED.contains(&name) {
+        format!("{}$", name)
+    } else {
+        name.to_string()
+    }
+}
+
+/// Escape text so it is safe inside ony JS string form: '...', "..." or `...`.
+/// Every string the compiler emits gaes through here.
+fn js_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\'' => out.push_str("\\'"),
+            '`' => out.push_str("\\`"),
+            '$' => out.push_str("\\$"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{2028}' => out.push_str("\\u2028"),
+            '\u{2029}' => out.push_str("\\u2029"),
+            c if (c as u32) < 0x20 || c as u32 == 0x7f => {
+                out.push_str(&format!("\\u{:04x}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// A double-quoted JS string literal.
+fn js_string(s: &str) -> String {
+    format!("\"{}\"", js_escape(s))
+}
+
+/// The binding name fer `fetch "path"` wi'oot an alias: the file stem, made intae
+/// a valid identifier (`js_ident` then handles reserved words).
+fn module_binding_name(path: &str) -> String {
+    let stem = path
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(path)
+        .replace(".braw", "")
+        .replace(".js", "");
+    let mut ident: String = stem
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if ident.is_empty() || ident.starts_with(|c: char| c.is_ascii_digit()) {
+        ident.insert(0, '_');
+    }
+    ident
+}
+
+/// True when the expression always yields a JS boolean, so JS truthiness
+/// already matches the interpreter's.
+fn is_bool_expr(expr: &Expr) -> bool {
+    match expr {
+        Expr::Literal {
+            value: Literal::Bool(_),
+            ..
+        } => true,
+        Expr::Binary { operator, .. } => matches!(
+            operator,
+            BinaryOp::Equal
+                | BinaryOp::NotEqual
+                | BinaryOp::Less
+                | BinaryOp::LessEqual
+                | BinaryOp::Greater
+                | BinaryOp::GreaterEqual
+        ),
+        Expr::Unary {
+            operator: UnaryOp::Not,
+            ..
+        } => true,
+        Expr::Logical { left, right, .. } => is_bool_expr(left) && is_bool_expr(right),
+        Expr::Grouping { expr, .. } => is_bool_expr(expr),
+        _ => false,
+    }
+}
+
+fn is_number_literal(expr: &Expr) -> bool {
+    match expr {
+        Expr::Literal {
+            value: Literal::Integer(_) | Literal::Float(_),
+            ..
+        } => true,
+        Expr::Grouping { expr, .. } => is_number_literal(expr),
+        Expr::Unary {
+            operator: UnaryOp::Negate,
+            operand,
+            ..
+        } => is_number_literal(operand),
+        _ => false,
+    }
+}
+
+fn is_int_literal(expr: &Expr) -> bool {
+    match expr {
+        Expr::Literal {
+            value: Literal::Integer(_),
+            ..
+        } => true,
+        Expr::Grouping { expr, .. } => is_int_literal(expr),
+        Expr::Unary {
+            operator: UnaryOp::Negate,
+            operand,
+            ..
+        } => is_int_literal(operand),
+        _ => false,
+    }
+}
+
+fn is_string_literal(expr: &Expr) -> bool {
+    match expr {
+        Expr::Literal {
+            value: Literal::String(_),
+            ..
+        }
+        | Expr::FString { .. } => true,
+        Expr::Grouping { expr, .. } => is_string_literal(expr),
+        _ => false,
+    }
+}
+
+/// A literal whose JS `===` agrees wi' the interpreter's `==` against ony value.
+fn is_scalar_literal(expr: &Expr) -> bool {
+    match expr {
+        Expr::Literal { value, .. } => !matches!(value, Literal::Nil),
+        Expr::Grouping { expr, .. } => is_scalar_literal(expr),
+        _ => is_number_literal(expr),
+    }
+}
 
 /// Compiler - transpiles mdhavers tae JavaScript
 pub struct Compiler {
     indent: usize,
     output: String,
     match_counter: usize,
+    /// mdhavers name -> JS name fer each enclosing JS block, innermost last.
+    scopes: Vec<HashMap<String, String>>,
+    /// Counter fer renamin' bindings that shadow an outer name.
+    rename_counter: usize,
+    /// `kin`/`thing` names never bound ony ither way: calls tae these get `new`.
+    static_classes: HashSet<String>,
 }
 
 impl Compiler {
@@ -14,6 +328,9 @@ impl Compiler {
             indent: 0,
             output: String::new(),
             match_counter: 0,
+            scopes: vec![HashMap::new()],
+            rename_counter: 0,
+            static_classes: HashSet::new(),
         }
     }
 
@@ -22,21 +339,372 @@ impl Compiler {
         self.output.clear();
         self.indent = 0;
         self.match_counter = 0;
+        self.rename_counter = 0;
 
         let mut needs_tri_runtime = false;
         for stmt in &program.statements {
             Self::scan_stmt_for_runtime_requirements(stmt, &mut needs_tri_runtime)?;
         }
 
+        let mut kin_names = HashSet::new();
+        let mut other_names = HashSet::new();
+        for stmt in &program.statements {
+            Self::collect_bindings_stmt(stmt, &mut kin_names, &mut other_names);
+        }
+        self.static_classes = kin_names.difference(&other_names).cloned().collect();
+
         // Add runtime helpers
         self.emit_runtime(needs_tri_runtime);
+
+        // User code lives in its ain block, wi' the runtime helpers bound as ordinary
+        // `let`s, so a user `ken len` or `dae max` shadows (or rebinds) the builtin
+        // just as it does in the interpreter.
+        self.emit_line("{");
+        self.indent += 1;
+        self.emit_line(&format!(
+            "let {{ {} }} = __havers;",
+            RUNTIME_BINDINGS.join(", ")
+        ));
+        self.scopes = vec![RUNTIME_BINDINGS
+            .iter()
+            .map(|name| (name.to_string(), name.to_string()))
+            .collect()];
 
         // Compile all statements
         for stmt in &program.statements {
             self.compile_stmt(stmt);
         }
 
+        self.indent -= 1;
+        self.emit_line("}");
+
         Ok(self.output.clone())
+    }
+
+    /// Record every name bound by a `kin`/`thing` declaration, an' every name bound
+    /// ony ither way (ken, dae, parameters, loop variables, assignment...).
+    fn collect_bindings_stmt(
+        stmt: &Stmt,
+        kin_names: &mut HashSet<String>,
+        other: &mut HashSet<String>,
+    ) {
+        match stmt {
+            Stmt::VarDecl {
+                name, initializer, ..
+            } => {
+                other.insert(name.clone());
+                if let Some(init) = initializer {
+                    Self::collect_bindings_expr(init, kin_names, other);
+                }
+            }
+            Stmt::Expression { expr, .. } | Stmt::Print { value: expr, .. } => {
+                Self::collect_bindings_expr(expr, kin_names, other);
+            }
+            Stmt::Block { statements, .. } => {
+                for s in statements {
+                    Self::collect_bindings_stmt(s, kin_names, other);
+                }
+            }
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                Self::collect_bindings_expr(condition, kin_names, other);
+                Self::collect_bindings_stmt(then_branch, kin_names, other);
+                if let Some(else_branch) = else_branch {
+                    Self::collect_bindings_stmt(else_branch, kin_names, other);
+                }
+            }
+            Stmt::While {
+                condition, body, ..
+            } => {
+                Self::collect_bindings_expr(condition, kin_names, other);
+                Self::collect_bindings_stmt(body, kin_names, other);
+            }
+            Stmt::For {
+                variable,
+                iterable,
+                body,
+                ..
+            } => {
+                other.insert(variable.clone());
+                Self::collect_bindings_expr(iterable, kin_names, other);
+                Self::collect_bindings_stmt(body, kin_names, other);
+            }
+            Stmt::Function {
+                name, params, body, ..
+            } => {
+                other.insert(name.clone());
+                for param in params {
+                    other.insert(param.name.clone());
+                    if let Some(default) = &param.default {
+                        Self::collect_bindings_expr(default, kin_names, other);
+                    }
+                }
+                for s in body {
+                    Self::collect_bindings_stmt(s, kin_names, other);
+                }
+            }
+            Stmt::Return { value, .. } => {
+                if let Some(value) = value {
+                    Self::collect_bindings_expr(value, kin_names, other);
+                }
+            }
+            Stmt::Class { name, methods, .. } => {
+                kin_names.insert(name.clone());
+                for method in methods {
+                    if let Stmt::Function { params, body, .. } = method {
+                        for param in params {
+                            other.insert(param.name.clone());
+                            if let Some(default) = &param.default {
+                                Self::collect_bindings_expr(default, kin_names, other);
+                            }
+                        }
+                        for s in body {
+                            Self::collect_bindings_stmt(s, kin_names, other);
+                        }
+                    }
+                }
+            }
+            Stmt::Struct { name, .. } => {
+                kin_names.insert(name.clone());
+            }
+            Stmt::Import { path, alias, .. } => {
+                other.insert(alias.clone().unwrap_or_else(|| path.clone()));
+            }
+            Stmt::TryCatch {
+                try_block,
+                error_name,
+                catch_block,
+                ..
+            } => {
+                other.insert(error_name.clone());
+                Self::collect_bindings_stmt(try_block, kin_names, other);
+                Self::collect_bindings_stmt(catch_block, kin_names, other);
+            }
+            Stmt::Match { value, arms, .. } => {
+                Self::collect_bindings_expr(value, kin_names, other);
+                for arm in arms {
+                    if let Pattern::Identifier(name) = &arm.pattern {
+                        other.insert(name.clone());
+                    }
+                    Self::collect_bindings_stmt(&arm.body, kin_names, other);
+                }
+            }
+            Stmt::Assert {
+                condition, message, ..
+            } => {
+                Self::collect_bindings_expr(condition, kin_names, other);
+                if let Some(message) = message {
+                    Self::collect_bindings_expr(message, kin_names, other);
+                }
+            }
+            Stmt::Destructure {
+                patterns, value, ..
+            } => {
+                for pattern in patterns {
+                    if let DestructPattern::Variable(name) | DestructPattern::Rest(name) = pattern {
+                        other.insert(name.clone());
+                    }
+                }
+                Self::collect_bindings_expr(value, kin_names, other);
+            }
+            Stmt::Log {
+                message, extras, ..
+            } => {
+                Self::collect_bindings_expr(message, kin_names, other);
+                for extra in extras {
+                    Self::collect_bindings_expr(extra, kin_names, other);
+                }
+            }
+            Stmt::Hurl { message, .. } => {
+                Self::collect_bindings_expr(message, kin_names, other);
+            }
+            Stmt::Break { .. } | Stmt::Continue { .. } => {}
+        }
+    }
+
+    fn collect_bindings_expr(
+        expr: &Expr,
+        kin_names: &mut HashSet<String>,
+        other: &mut HashSet<String>,
+    ) {
+        macro_rules! walk {
+            ($e:expr) => {
+                Self::collect_bindings_expr($e, kin_names, other)
+            };
+        }
+        match expr {
+            Expr::Literal { .. } | Expr::Variable { .. } | Expr::Masel { .. } => {}
+            Expr::Assign { name, value, .. } => {
+                other.insert(name.clone());
+                Self::collect_bindings_expr(value, kin_names, other);
+            }
+            Expr::Binary { left, right, .. }
+            | Expr::Logical { left, right, .. }
+            | Expr::Pipe { left, right, .. } => {
+                walk!(left);
+                walk!(right);
+            }
+            Expr::Unary { operand: e, .. }
+            | Expr::Grouping { expr: e, .. }
+            | Expr::Input { prompt: e, .. }
+            | Expr::Spread { expr: e, .. }
+            | Expr::Get { object: e, .. } => walk!(e),
+            Expr::Call {
+                callee, arguments, ..
+            } => {
+                walk!(callee);
+                for arg in arguments {
+                    walk!(arg);
+                }
+            }
+            Expr::Set { object, value, .. } => {
+                walk!(object);
+                walk!(value);
+            }
+            Expr::Index { object, index, .. } => {
+                walk!(object);
+                walk!(index);
+            }
+            Expr::IndexSet {
+                object,
+                index,
+                value,
+                ..
+            } => {
+                walk!(object);
+                walk!(index);
+                walk!(value);
+            }
+            Expr::Slice {
+                object,
+                start,
+                end,
+                step,
+                ..
+            } => {
+                walk!(object);
+                for part in [start, end, step].into_iter().flatten() {
+                    walk!(part);
+                }
+            }
+            Expr::List { elements, .. } => {
+                for e in elements {
+                    walk!(e);
+                }
+            }
+            Expr::Dict { pairs, .. } => {
+                for (k, v) in pairs {
+                    walk!(k);
+                    walk!(v);
+                }
+            }
+            Expr::Range { start, end, .. } => {
+                walk!(start);
+                walk!(end);
+            }
+            Expr::Lambda { params, body, .. } => {
+                for param in params {
+                    other.insert(param.clone());
+                }
+                Self::collect_bindings_expr(body, kin_names, other);
+            }
+            Expr::BlockExpr { statements, .. } => {
+                for s in statements {
+                    Self::collect_bindings_stmt(s, kin_names, other);
+                }
+            }
+            Expr::FString { parts, .. } => {
+                for part in parts {
+                    if let FStringPart::Expr(e) = part {
+                        walk!(e);
+                    }
+                }
+            }
+            Expr::Ternary {
+                condition,
+                then_expr,
+                else_expr,
+                ..
+            } => {
+                walk!(condition);
+                walk!(then_expr);
+                walk!(else_expr);
+            }
+        }
+    }
+
+    fn push_scope(&mut self) {
+        self.scopes.push(HashMap::new());
+    }
+
+    fn pop_scope(&mut self) {
+        self.scopes.pop();
+        if self.scopes.is_empty() {
+            self.scopes.push(HashMap::new());
+        }
+    }
+
+    /// The JS name an mdhavers name refers tae at this point in the program.
+    fn resolve(&self, name: &str) -> String {
+        for scope in self.scopes.iter().rev() {
+            if let Some(js) = scope.get(name) {
+                return js.clone();
+            }
+        }
+        js_ident(name)
+    }
+
+    /// Bind a parameter-like name (initialised on entry, so nae TDZ hazard).
+    fn bind_param(&mut self, name: &str) -> String {
+        let js = js_ident(name);
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name.to_string(), js.clone());
+        }
+        js
+    }
+
+    /// Declare a name in the current block. Returns the JS name an' whether it is
+    /// fresh here (emit `let`) or a re-declaration (emit plain assignment, as the
+    /// interpreter just redefines it). A fresh binding that shadows an outer name
+    /// gets a unique JS name, so uses o' the outer name earlier in this block (or
+    /// in its ain initialiser) never hit JS's temporal dead zone.
+    fn declare(&mut self, name: &str) -> (String, bool) {
+        if let Some(js) = self.scopes.last().and_then(|scope| scope.get(name)) {
+            return (js.clone(), false);
+        }
+        let shadows = self.scopes.iter().any(|scope| scope.contains_key(name));
+        let js = if shadows {
+            self.rename_counter += 1;
+            format!("{}${}", js_ident(name), self.rename_counter)
+        } else {
+            js_ident(name)
+        };
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name.to_string(), js.clone());
+        }
+        (js, true)
+    }
+
+    /// Compile an expression intae a string wi'oot touchin' the main output.
+    fn expr_to_string(&mut self, expr: &Expr) -> String {
+        let old_output = std::mem::take(&mut self.output);
+        self.compile_expr(expr);
+        std::mem::replace(&mut self.output, old_output)
+    }
+
+    /// Compile a condition usin' mdhavers truthiness.
+    fn compile_condition(&mut self, expr: &Expr) {
+        if is_bool_expr(expr) {
+            self.compile_expr(expr);
+        } else {
+            self.output.push_str("__havers.truthy(");
+            self.compile_expr(expr);
+            self.output.push(')');
+        }
     }
 
     fn is_tri_import_path(path: &str) -> bool {
@@ -135,6 +803,8 @@ impl Compiler {
             .push_str(include_str!("../runtime/js/audio_runtime.js"));
         self.output
             .push_str(include_str!("../runtime/js/logging_runtime.js"));
+        self.output
+            .push_str(include_str!("../runtime/js/core_runtime.js"));
         // Normalize to exactly one trailing newline before we start emitting runtime bindings.
         while self.output.ends_with('\n') {
             self.output.pop();
@@ -143,27 +813,24 @@ impl Compiler {
         self.emit_line("const __havers = {");
         self.indent += 1;
 
-        // len function
+        // Core helpers the compiled code calls as __havers.<name> (show, truthy, eq, ...)
+        self.emit_line("...__havers_core,");
+
+        // len function (strings count characters, like the interpreter)
         self.emit_line("len: (x) => {");
         self.indent += 1;
-        self.emit_line("if (typeof x === 'string' || Array.isArray(x)) return x.length;");
+        self.emit_line("if (typeof x === 'string') return Array.from(x).length;");
+        self.emit_line("if (Array.isArray(x)) return x.length;");
         self.emit_line("if (x && typeof x === 'object') return Object.keys(x).length;");
         self.emit_line("throw new Error('Och! Cannae get length o\\' that!');");
         self.indent -= 1;
         self.emit_line("},");
 
         // whit_kind (type) function
-        self.emit_line("whit_kind: (x) => {");
-        self.indent += 1;
-        self.emit_line("if (x === null || x === undefined) return 'naething';");
-        self.emit_line("if (Array.isArray(x)) return 'list';");
-        self.emit_line("if (typeof x === 'object') return 'dict';");
-        self.emit_line("return typeof x;");
-        self.indent -= 1;
-        self.emit_line("},");
+        self.emit_line("whit_kind: (x) => __havers_core.typeName(x),");
 
-        // tae_string function
-        self.emit_line("tae_string: (x) => String(x),");
+        // tae_string function (same text as blether prints)
+        self.emit_line("tae_string: (x) => __havers_core.show(x),");
 
         // tae_int function
         self.emit_line("tae_int: (x) => {");
@@ -234,7 +901,7 @@ impl Compiler {
         self.emit_line("split: (str, delim) => str.split(delim),");
 
         // join function
-        self.emit_line("join: (arr, delim) => arr.join(delim),");
+        self.emit_line("join: (arr, delim) => arr.map(__havers_core.show).join(delim),");
 
         // contains function
         self.emit_line("contains: (container, item) => {");
@@ -263,8 +930,8 @@ impl Compiler {
         self.indent -= 1;
         self.emit_line("}),");
 
-        // blether (print) function
-        self.emit_line("blether: console.log,");
+        // blether (print) function - prints like the interpreter's Value Display
+        self.emit_line("blether: (x) => console.log(__havers_core.show(x)),");
 
         // logging helpers
         self.emit_line("set_log_level: __mdh_log_set_level,");
@@ -585,9 +1252,8 @@ impl Compiler {
             self.emit_line("");
         }
 
-        // Import runtime functions to global scope
-        self.emit_line("const { len, whit_kind, tae_string, tae_int, tae_float, shove, yank, keys, values, range, abs, min, max, floor, ceil, round, sqrt, split, join, contains, reverse, sort, blether, set_log_level, get_log_level, log_set_filter, log_get_filter, log_enabled, log_event, log_init, log_span, log_span_enter, log_span_exit, log_span_current, log_span_in, speir, heid, tail, bum, scran, slap, sumaw, coont, wheesht, upper, lower, shuffle, noo, tick, bide, gaun, sieve, tumble, aw, ony, hunt, soond_stairt, soond_steek, soond_wheesht, soond_luid, soond_hou_luid, soond_haud_gang, soond_lade, soond_spiel, soond_haud, soond_gae_on, soond_stap, soond_unlade, soond_is_spielin, soond_pit_luid, soond_pit_pan, soond_pit_tune, soond_pit_rin_roond, soond_ready, muisic_lade, muisic_spiel, muisic_haud, muisic_gae_on, muisic_stap, muisic_unlade, muisic_is_spielin, muisic_loup, muisic_hou_lang, muisic_whaur, muisic_pit_luid, muisic_pit_pan, muisic_pit_tune, muisic_pit_rin_roond, midi_lade, midi_spiel, midi_haud, midi_gae_on, midi_stap, midi_unlade, midi_is_spielin, midi_loup, midi_hou_lang, midi_whaur, midi_pit_luid, midi_pit_pan, midi_pit_rin_roond } = __havers;");
-        self.emit_line("");
+        // The runtime helpers are bound tae plain names at the top o' the user's
+        // block (see `compile`), never at module scope, so user code can shadow them.
     }
 
     fn compile_stmt(&mut self, stmt: &Stmt) {
@@ -595,28 +1261,38 @@ impl Compiler {
             Stmt::VarDecl {
                 name, initializer, ..
             } => {
-                self.emit_indent();
-                self.output.push_str(&format!("let {} = ", name));
-                if let Some(init) = initializer {
-                    self.compile_expr(init);
-                } else {
-                    self.output.push_str("null");
-                }
-                self.output.push_str(";\n");
+                // The initialiser is compiled before the name is bound, so `ken x = x + 1`
+                // in an inner block reads the outer `x`, as in the interpreter.
+                let init_js = match initializer {
+                    Some(init) => self.expr_to_string(init),
+                    None => "null".to_string(),
+                };
+                let (js, fresh) = self.declare(name);
+                let keyword = if fresh { "let " } else { "" };
+                self.emit_line(&format!("{}{} = {};", keyword, js, init_js));
             }
 
             Stmt::Expression { expr, .. } => {
                 self.emit_indent();
-                self.compile_expr(expr);
+                if matches!(expr, Expr::Dict { .. }) {
+                    // A statement startin' wi' `{` would parse as a JS block.
+                    self.output.push('(');
+                    self.compile_expr(expr);
+                    self.output.push(')');
+                } else {
+                    self.compile_expr(expr);
+                }
                 self.output.push_str(";\n");
             }
 
             Stmt::Block { statements, .. } => {
                 self.emit_line("{");
                 self.indent += 1;
+                self.push_scope();
                 for stmt in statements {
                     self.compile_stmt(stmt);
                 }
+                self.pop_scope();
                 self.indent -= 1;
                 self.emit_line("}");
             }
@@ -629,7 +1305,7 @@ impl Compiler {
             } => {
                 self.emit_indent();
                 self.output.push_str("if (");
-                self.compile_expr(condition);
+                self.compile_condition(condition);
                 self.output.push_str(") ");
                 self.compile_stmt_inline(then_branch);
                 if let Some(else_br) = else_branch {
@@ -644,7 +1320,7 @@ impl Compiler {
             } => {
                 self.emit_indent();
                 self.output.push_str("while (");
-                self.compile_expr(condition);
+                self.compile_condition(condition);
                 self.output.push_str(") ");
                 self.compile_stmt_inline(body);
                 self.output.push('\n');
@@ -654,30 +1330,36 @@ impl Compiler {
                 variable,
                 iterable,
                 body,
-                ..
+                span,
             } => {
+                let iter_js = self.expr_to_string(iterable);
+                self.push_scope();
+                let (js, _) = self.declare(variable);
                 self.emit_indent();
-                self.output
-                    .push_str(&format!("for (const {} of ", variable));
-                self.compile_expr(iterable);
-                self.output.push_str(") ");
+                self.output.push_str(&format!(
+                    "for (let {} of __havers.iter({}, {})) ",
+                    js, iter_js, span.line
+                ));
                 self.compile_stmt_inline(body);
                 self.output.push('\n');
+                self.pop_scope();
             }
 
             Stmt::Function {
                 name, params, body, ..
             } => {
+                let (js, fresh) = self.declare(name);
                 self.emit_indent();
-                let params_str = self.compile_params(params);
-                self.output
-                    .push_str(&format!("function {}({}) {{\n", name, params_str));
-                self.indent += 1;
-                for stmt in body {
-                    self.compile_stmt(stmt);
+                if fresh {
+                    self.output.push_str(&format!("function {}(", js));
+                    self.compile_callable(params, body);
+                    self.output.push('\n');
+                } else {
+                    // Redefinin' a name in the same block: rebind it, like the interpreter.
+                    self.output.push_str(&format!("{} = function {}(", js, js));
+                    self.compile_callable(params, body);
+                    self.output.push_str(";\n");
                 }
-                self.indent -= 1;
-                self.emit_line("}");
             }
 
             Stmt::Return { value, .. } => {
@@ -692,7 +1374,7 @@ impl Compiler {
 
             Stmt::Print { value, .. } => {
                 self.emit_indent();
-                self.output.push_str("blether(");
+                self.output.push_str("__havers.blether(");
                 self.compile_expr(value);
                 self.output.push_str(");\n");
             }
@@ -711,13 +1393,30 @@ impl Compiler {
                 methods,
                 ..
             } => {
+                let super_js = superclass.as_ref().map(|s| self.resolve(s));
+                let (js, fresh) = self.declare(name);
                 self.emit_indent();
-                self.output.push_str(&format!("class {}", name));
-                if let Some(super_name) = superclass {
-                    self.output.push_str(&format!(" extends {}", super_name));
+                if fresh {
+                    self.output.push_str("let ");
+                }
+                self.output
+                    .push_str(&format!("{} = __havers.kin(class {}", js, js_ident(name)));
+                if let Some(super_js) = &super_js {
+                    self.output.push_str(&format!(" extends {}", super_js));
                 }
                 self.output.push_str(" {\n");
                 self.indent += 1;
+
+                if super_js.is_none() {
+                    // `init` stays an ordinary method. The root constructor dispatches tae
+                    // the maist-derived `init`, so a subclass init replaces its parent's
+                    // (mdhavers has nae super call), exactly as the interpreter does.
+                    self.emit_line("constructor(...args) {");
+                    self.indent += 1;
+                    self.emit_line("if (typeof this.init === \"function\") this.init(...args);");
+                    self.indent -= 1;
+                    self.emit_line("}");
+                }
 
                 for method in methods {
                     if let Stmt::Function {
@@ -728,59 +1427,56 @@ impl Compiler {
                     } = method
                     {
                         self.emit_indent();
-                        let js_name = if method_name == "init" {
-                            "constructor"
-                        } else {
-                            method_name
-                        };
-                        let params_str = self.compile_params(params);
-                        self.output
-                            .push_str(&format!("{}({}) {{\n", js_name, params_str));
-                        self.indent += 1;
-                        for stmt in body {
-                            self.compile_stmt(stmt);
-                        }
-                        self.indent -= 1;
-                        self.emit_line("}");
+                        self.output.push_str(&format!("{}(", method_name));
+                        self.compile_callable(params, body);
+                        self.output.push('\n');
                     }
                 }
 
                 self.indent -= 1;
-                self.emit_line("}");
+                self.emit_line("});");
             }
 
             Stmt::Struct { name, fields, .. } => {
-                // Compile struct as a class with a constructor
+                // Compile struct as a (callable) class with a constructor
+                let (js, fresh) = self.declare(name);
+                let params: Vec<String> = fields.iter().map(|f| js_ident(f)).collect();
                 self.emit_indent();
-                self.output.push_str(&format!("class {} {{\n", name));
+                if fresh {
+                    self.output.push_str("let ");
+                }
+                self.output.push_str(&format!(
+                    "{} = __havers.kin(class {} {{\n",
+                    js,
+                    js_ident(name)
+                ));
                 self.indent += 1;
-                self.emit_indent();
-                self.output
-                    .push_str(&format!("constructor({}) {{\n", fields.join(", ")));
+                self.emit_line(&format!("constructor({}) {{", params.join(", ")));
                 self.indent += 1;
-                for field in fields {
-                    self.emit_line(&format!("this.{} = {};", field, field));
+                for (field, param) in fields.iter().zip(&params) {
+                    self.emit_line(&format!("this.{} = {};", field, param));
                 }
                 self.indent -= 1;
                 self.emit_line("}");
                 self.indent -= 1;
-                self.emit_line("}");
+                self.emit_line("}, true);");
             }
 
             Stmt::Import { path, alias, .. } => {
-                if path == "tri" || path == "tri.js" || path == "tri.braw" {
-                    let module_name = alias.as_deref().unwrap_or("tri").to_string();
-                    self.emit_line(&format!("const {} = __havers_tri;", module_name));
+                if Self::is_tri_import_path(path) {
+                    let (js, fresh) = self.declare(alias.as_deref().unwrap_or("tri"));
+                    let keyword = if fresh { "let " } else { "" };
+                    self.emit_line(&format!("{}{} = __havers_tri;", keyword, js));
                 } else {
-                    let module_name = alias.clone().unwrap_or_else(|| {
-                        // Extract filename from path
-                        path.rsplit('/')
-                            .next()
-                            .unwrap_or(path)
-                            .replace(".braw", "")
-                            .replace(".js", "")
-                    });
-                    self.emit_line(&format!("const {} = require('{}');", module_name, path));
+                    let binding = alias.clone().unwrap_or_else(|| module_binding_name(path));
+                    let (js, fresh) = self.declare(&binding);
+                    let keyword = if fresh { "let " } else { "" };
+                    self.emit_line(&format!(
+                        "{}{} = require('{}');",
+                        keyword,
+                        js,
+                        js_escape(path)
+                    ));
                 }
             }
 
@@ -793,12 +1489,20 @@ impl Compiler {
                 self.emit_indent();
                 self.output.push_str("try ");
                 self.compile_stmt_inline(try_block);
-                self.output.push_str(&format!(" catch ({}) ", error_name));
-                self.compile_stmt_inline(catch_block);
-                self.output.push('\n');
+                // The catch binding sees the error's message string, as in the interpreter.
+                self.output.push_str(" catch (__err) {\n");
+                self.indent += 1;
+                self.push_scope();
+                let (js, _) = self.declare(error_name);
+                self.emit_line(&format!("let {} = __havers.caught(__err);", js));
+                self.compile_block_body(catch_block);
+                self.pop_scope();
+                self.indent -= 1;
+                self.emit_indent();
+                self.output.push_str("}\n");
             }
 
-            Stmt::Match { value, arms, .. } => {
+            Stmt::Match { value, arms, span } => {
                 // Compile match as switch or if-else chain
                 // Use unique variable name for each match statement
                 let match_var = format!("__match_val_{}", self.match_counter);
@@ -819,24 +1523,18 @@ impl Compiler {
                     self.compile_pattern(&arm.pattern, &match_var);
                     self.output.push_str(") {\n");
                     self.indent += 1;
+                    self.push_scope();
 
                     // Bind pattern variable if identifier
                     if let Pattern::Identifier(name) = &arm.pattern {
-                        self.emit_line(&format!("const {} = {};", name, match_var));
+                        let (js, _) = self.declare(name);
+                        self.emit_line(&format!("let {} = {};", js, match_var));
                     }
 
                     // Compile the body - unwrap block to avoid double braces
-                    match &arm.body {
-                        Stmt::Block { statements, .. } => {
-                            for s in statements {
-                                self.compile_stmt(s);
-                            }
-                        }
-                        other => {
-                            self.compile_stmt(other);
-                        }
-                    }
+                    self.compile_block_body(&arm.body);
 
+                    self.pop_scope();
                     self.indent -= 1;
                     self.emit_indent();
                     self.output.push_str("} ");
@@ -845,28 +1543,44 @@ impl Compiler {
                 if !arms.is_empty() {
                     self.output.push_str("else {\n");
                     self.indent += 1;
-                    self.emit_line("throw new Error('Nae match found!');");
+                    let prefix = js_string(&format!(
+                        "That's pure mince! Type error at line {}: Nae match found fer ",
+                        span.line
+                    ));
+                    self.emit_line(&format!(
+                        "throw __havers.fail({} + __havers.show({}));",
+                        prefix, match_var
+                    ));
                     self.indent -= 1;
                     self.emit_line("}");
                 }
             }
 
             Stmt::Assert {
-                condition, message, ..
+                condition,
+                message,
+                span,
             } => {
                 self.emit_indent();
                 self.output.push_str("if (!(");
-                self.compile_expr(condition);
+                self.compile_condition(condition);
                 self.output.push_str(")) {\n");
                 self.indent += 1;
                 self.emit_indent();
+                self.output.push_str("throw __havers.fail(");
+                self.output.push_str(&js_string(&format!(
+                    "Mak siccar failed at line {}! ",
+                    span.line
+                )));
+                self.output.push_str(" + ");
                 if let Some(msg) = message {
-                    self.output.push_str("throw new Error(");
+                    self.output.push_str("__havers.show(");
                     self.compile_expr(msg);
-                    self.output.push_str(");\n");
+                    self.output.push(')');
                 } else {
-                    self.emit_line("throw new Error('Assertion failed');");
+                    self.output.push_str(&js_string("Assertion failed"));
                 }
+                self.output.push_str(");\n");
                 self.indent -= 1;
                 self.emit_line("}");
             }
@@ -874,27 +1588,39 @@ impl Compiler {
             Stmt::Destructure {
                 patterns, value, ..
             } => {
-                // JavaScript destructuring: const [a, b, ...rest] = value
-                self.emit_indent();
-                self.output.push_str("const [");
-
-                for (i, pattern) in patterns.iter().enumerate() {
-                    if i > 0 {
-                        self.output.push_str(", ");
-                    }
+                // JavaScript destructuring: let [a, , ...rest] = value. Ignored slots are
+                // holes (so `_` can appear twice); names already bound in this block are
+                // reassigned rather than redeclared.
+                let value_js = self.expr_to_string(value);
+                let mut parts = Vec::new();
+                let mut fresh_names = Vec::new();
+                let mut named = 0;
+                for pattern in patterns {
                     match pattern {
-                        DestructPattern::Variable(name) => self.output.push_str(name),
-                        DestructPattern::Rest(name) => {
-                            self.output.push_str("...");
-                            self.output.push_str(name);
+                        DestructPattern::Variable(name) | DestructPattern::Rest(name) => {
+                            named += 1;
+                            let (js, fresh) = self.declare(name);
+                            if fresh {
+                                fresh_names.push(js.clone());
+                            }
+                            if matches!(pattern, DestructPattern::Rest(_)) {
+                                parts.push(format!("...{}", js));
+                            } else {
+                                parts.push(js);
+                            }
                         }
-                        DestructPattern::Ignore => self.output.push('_'),
+                        DestructPattern::Ignore => parts.push(String::new()),
                     }
                 }
-
-                self.output.push_str("] = ");
-                self.compile_expr(value);
-                self.output.push_str(";\n");
+                let target = format!("[{}]", parts.join(", "));
+                if fresh_names.len() == named {
+                    self.emit_line(&format!("let {} = {};", target, value_js));
+                } else {
+                    if !fresh_names.is_empty() {
+                        self.emit_line(&format!("let {};", fresh_names.join(", ")));
+                    }
+                    self.emit_line(&format!("{} = {};", target, value_js));
+                }
             }
 
             Stmt::Log {
@@ -914,7 +1640,7 @@ impl Compiler {
                 };
                 self.emit_indent();
                 self.output
-                    .push_str(&format!("log_event(\"{}\", ", level_name));
+                    .push_str(&format!("__havers.log_event(\"{}\", ", level_name));
                 self.compile_expr(message);
                 for extra in extras {
                     self.output.push_str(", ");
@@ -923,31 +1649,53 @@ impl Compiler {
                 self.output.push_str(");\n");
             }
 
-            Stmt::Hurl { message, .. } => {
+            Stmt::Hurl { message, span } => {
                 self.emit_indent();
-                self.output.push_str("throw new Error(");
+                self.output.push_str("throw __havers.hurl(");
                 self.compile_expr(message);
-                self.output.push_str(");\n");
+                self.output.push_str(&format!(", {});\n", span.line));
             }
         }
     }
 
+    /// Compile a statement as a braced JS block wi' its ain scope.
     fn compile_stmt_inline(&mut self, stmt: &Stmt) {
+        self.output.push_str("{\n");
+        self.indent += 1;
+        self.push_scope();
+        self.compile_block_body(stmt);
+        self.pop_scope();
+        self.indent -= 1;
+        self.emit_indent();
+        self.output.push('}');
+    }
+
+    /// Compile the statements o' a block (or a lone statement) intae the current block.
+    fn compile_block_body(&mut self, stmt: &Stmt) {
         match stmt {
             Stmt::Block { statements, .. } => {
-                self.output.push_str("{\n");
-                self.indent += 1;
                 for s in statements {
                     self.compile_stmt(s);
                 }
-                self.indent -= 1;
-                self.emit_indent();
-                self.output.push('}');
             }
-            _ => {
-                self.compile_stmt(stmt);
-            }
+            other => self.compile_stmt(other),
         }
+    }
+
+    /// Emit `params) { body }` fer a function or method, in its ain scope.
+    fn compile_callable(&mut self, params: &[Param], body: &[Stmt]) {
+        self.push_scope();
+        let params_str = self.compile_params(params);
+        self.output.push_str(&params_str);
+        self.output.push_str(") {\n");
+        self.indent += 1;
+        for stmt in body {
+            self.compile_stmt(stmt);
+        }
+        self.indent -= 1;
+        self.emit_indent();
+        self.output.push('}');
+        self.pop_scope();
     }
 
     fn compile_pattern(&mut self, pattern: &Pattern, match_var: &str) {
@@ -957,7 +1705,7 @@ impl Compiler {
                 match lit {
                     Literal::Integer(n) => self.output.push_str(&n.to_string()),
                     Literal::Float(f) => self.output.push_str(&f.to_string()),
-                    Literal::String(s) => self.output.push_str(&format!("\"{}\"", s)),
+                    Literal::String(s) => self.output.push_str(&js_string(s)),
                     Literal::Bool(b) => {
                         const BOOL_LITERALS: [&str; 2] = ["false", "true"];
                         self.output.push_str(BOOL_LITERALS[*b as usize]);
@@ -981,51 +1729,78 @@ impl Compiler {
         }
     }
 
-    /// Compile function parameters, handling default values
+    /// Compile function parameters (bindin' them in the current scope), handling default values
     fn compile_params(&mut self, params: &[Param]) -> String {
         let mut result = Vec::new();
         for param in params {
             if let Some(default_expr) = &param.default {
                 // Compile the default value
-                let old_output = std::mem::take(&mut self.output);
-                self.compile_expr(default_expr);
-                let default_js = std::mem::replace(&mut self.output, old_output);
-                result.push(format!("{} = {}", param.name, default_js));
+                let default_js = self.expr_to_string(default_expr);
+                let js = self.bind_param(&param.name);
+                result.push(format!("{} = {}", js, default_js));
             } else {
-                result.push(param.name.clone());
+                result.push(self.bind_param(&param.name));
             }
         }
         result.join(", ")
     }
 
+    /// Compile the object o' a `.member` access; `123.slice` is a JS syntax error,
+    /// so numeric literals are parenthesised.
+    fn compile_receiver(&mut self, object: &Expr) {
+        if matches!(
+            object,
+            Expr::Literal {
+                value: Literal::Integer(_) | Literal::Float(_),
+                ..
+            }
+        ) {
+            self.output.push('(');
+            self.compile_expr(object);
+            self.output.push(')');
+        } else {
+            self.compile_expr(object);
+        }
+    }
+
+    /// Emit `helper(left, right[, line])`.
+    fn compile_binary_helper(
+        &mut self,
+        helper: &str,
+        left: &Expr,
+        right: &Expr,
+        line: Option<usize>,
+    ) {
+        self.output.push_str(helper);
+        self.output.push('(');
+        self.compile_expr(left);
+        self.output.push_str(", ");
+        self.compile_expr(right);
+        if let Some(line) = line {
+            self.output.push_str(&format!(", {}", line));
+        }
+        self.output.push(')');
+    }
+
     fn compile_expr(&mut self, expr: &Expr) {
         match expr {
-            Expr::Literal { value, .. } => {
-                match value {
-                    Literal::Integer(n) => self.output.push_str(&n.to_string()),
-                    Literal::Float(f) => self.output.push_str(&f.to_string()),
-                    Literal::String(s) => {
-                        // Escape the string properly
-                        let escaped = s
-                            .replace('\\', "\\\\")
-                            .replace('"', "\\\"")
-                            .replace('\n', "\\n")
-                            .replace('\r', "\\r")
-                            .replace('\t', "\\t");
-                        self.output.push_str(&format!("\"{}\"", escaped));
-                    }
-                    Literal::Bool(true) => self.output.push_str("true"),
-                    Literal::Bool(false) => self.output.push_str("false"),
-                    Literal::Nil => self.output.push_str("null"),
-                }
-            }
+            Expr::Literal { value, .. } => match value {
+                Literal::Integer(n) => self.output.push_str(&n.to_string()),
+                Literal::Float(f) => self.output.push_str(&f.to_string()),
+                Literal::String(s) => self.output.push_str(&js_string(s)),
+                Literal::Bool(true) => self.output.push_str("true"),
+                Literal::Bool(false) => self.output.push_str("false"),
+                Literal::Nil => self.output.push_str("null"),
+            },
 
             Expr::Variable { name, .. } => {
-                self.output.push_str(name);
+                let js = self.resolve(name);
+                self.output.push_str(&js);
             }
 
             Expr::Assign { name, value, .. } => {
-                self.output.push_str(&format!("({} = ", name));
+                let js = self.resolve(name);
+                self.output.push_str(&format!("({} = ", js));
                 self.compile_expr(value);
                 self.output.push(')');
             }
@@ -1034,26 +1809,65 @@ impl Compiler {
                 left,
                 operator,
                 right,
-                ..
+                span,
             } => {
-                self.output.push('(');
-                self.compile_expr(left);
-                let op_str = match operator {
-                    BinaryOp::Add => " + ",
-                    BinaryOp::Subtract => " - ",
-                    BinaryOp::Multiply => " * ",
-                    BinaryOp::Divide => " / ",
-                    BinaryOp::Modulo => " % ",
-                    BinaryOp::Equal => " === ",
-                    BinaryOp::NotEqual => " !== ",
-                    BinaryOp::Less => " < ",
-                    BinaryOp::LessEqual => " <= ",
-                    BinaryOp::Greater => " > ",
-                    BinaryOp::GreaterEqual => " >= ",
-                };
-                self.output.push_str(op_str);
-                self.compile_expr(right);
-                self.output.push(')');
+                let line = Some(span.line);
+                match operator {
+                    // `+` concatenates strings wi' Display text, lists element-wise, and
+                    // refuses mixed nonsense; a numeric literal operand keeps plain `+`.
+                    BinaryOp::Add
+                        if !(is_number_literal(left)
+                            || is_number_literal(right)
+                            || (is_string_literal(left) && is_string_literal(right))) =>
+                    {
+                        self.compile_binary_helper("__havers.add", left, right, line);
+                    }
+                    BinaryOp::Divide => {
+                        // Two integer literals divide like the interpreter's integers;
+                        // the general int/float model is a separate design question.
+                        let helper = if is_int_literal(left) && is_int_literal(right) {
+                            "__havers.idiv"
+                        } else {
+                            "__havers.div"
+                        };
+                        self.compile_binary_helper(helper, left, right, line);
+                    }
+                    BinaryOp::Modulo => {
+                        self.compile_binary_helper("__havers.mod", left, right, line);
+                    }
+                    BinaryOp::Equal | BinaryOp::NotEqual
+                        if !(is_scalar_literal(left) || is_scalar_literal(right)) =>
+                    {
+                        let negate = matches!(operator, BinaryOp::NotEqual);
+                        if negate {
+                            self.output.push_str("(!");
+                        }
+                        self.compile_binary_helper("__havers.eq", left, right, None);
+                        if negate {
+                            self.output.push(')');
+                        }
+                    }
+                    _ => {
+                        self.output.push('(');
+                        self.compile_expr(left);
+                        let op_str = match operator {
+                            BinaryOp::Add => " + ",
+                            BinaryOp::Subtract => " - ",
+                            BinaryOp::Multiply => " * ",
+                            BinaryOp::Divide => " / ",
+                            BinaryOp::Modulo => " % ",
+                            BinaryOp::Equal => " === ",
+                            BinaryOp::NotEqual => " !== ",
+                            BinaryOp::Less => " < ",
+                            BinaryOp::LessEqual => " <= ",
+                            BinaryOp::Greater => " > ",
+                            BinaryOp::GreaterEqual => " >= ",
+                        };
+                        self.output.push_str(op_str);
+                        self.compile_expr(right);
+                        self.output.push(')');
+                    }
+                }
             }
 
             Expr::Unary {
@@ -1066,7 +1880,7 @@ impl Compiler {
                 }
                 UnaryOp::Not => {
                     self.output.push_str("(!");
-                    self.compile_expr(operand);
+                    self.compile_condition(operand);
                     self.output.push(')');
                 }
             },
@@ -1077,23 +1891,38 @@ impl Compiler {
                 right,
                 ..
             } => {
-                self.output.push('(');
-                self.compile_expr(left);
-                let op_str = match operator {
-                    LogicalOp::And => " && ",
-                    LogicalOp::Or => " || ",
-                };
-                self.output.push_str(op_str);
-                self.compile_expr(right);
-                self.output.push(')');
+                if is_bool_expr(left) && is_bool_expr(right) {
+                    self.output.push('(');
+                    self.compile_expr(left);
+                    let op_str = match operator {
+                        LogicalOp::And => " && ",
+                        LogicalOp::Or => " || ",
+                    };
+                    self.output.push_str(op_str);
+                    self.compile_expr(right);
+                    self.output.push(')');
+                } else {
+                    // Short-circuit on mdhavers truthiness, yieldin' the deciding operand.
+                    let helper = match operator {
+                        LogicalOp::And => "__havers.and(",
+                        LogicalOp::Or => "__havers.or(",
+                    };
+                    self.output.push_str(helper);
+                    self.compile_expr(left);
+                    self.output.push_str(", () => (");
+                    self.compile_expr(right);
+                    self.output.push_str("))");
+                }
             }
 
             Expr::Call {
                 callee, arguments, ..
             } => {
-                // Heuristic: If calling a variable with a capitalized name, assume it's a class constructor
+                // A `kin`/`thing` name that is never rebound is constructed directly.
+                // Ony ither callee is called plainly: classes are wrapped by
+                // __havers.kin so callin' one wi'oot `new` still constructs it.
                 if let Expr::Variable { name, .. } = &**callee {
-                    if name.chars().next().is_some_and(|c| c.is_uppercase()) {
+                    if self.static_classes.contains(name) {
                         self.output.push_str("new ");
                     }
                 }
@@ -1112,7 +1941,7 @@ impl Compiler {
             Expr::Get {
                 object, property, ..
             } => {
-                self.compile_expr(object);
+                self.compile_receiver(object);
                 self.output.push('.');
                 self.output.push_str(property);
             }
@@ -1124,7 +1953,7 @@ impl Compiler {
                 ..
             } => {
                 self.output.push('(');
-                self.compile_expr(object);
+                self.compile_receiver(object);
                 self.output.push('.');
                 self.output.push_str(property);
                 self.output.push_str(" = ");
@@ -1132,11 +1961,13 @@ impl Compiler {
                 self.output.push(')');
             }
 
-            Expr::Index { object, index, .. } => {
-                self.compile_expr(object);
-                self.output.push('[');
-                self.compile_expr(index);
-                self.output.push(']');
+            Expr::Index {
+                object,
+                index,
+                span,
+            } => {
+                // Negative indices, codepoint strings an' bounds errors, like the interpreter.
+                self.compile_binary_helper("__havers.idx", object, index, Some(span.line));
             }
 
             Expr::IndexSet {
@@ -1146,7 +1977,7 @@ impl Compiler {
                 ..
             } => {
                 self.output.push('(');
-                self.compile_expr(object);
+                self.compile_receiver(object);
                 self.output.push('[');
                 self.compile_expr(index);
                 self.output.push_str("] = ");
@@ -1183,7 +2014,7 @@ impl Compiler {
                     self.output.push(')');
                 } else {
                     // Simple slice: obj.slice(start, end)
-                    self.compile_expr(object);
+                    self.compile_receiver(object);
                     self.output.push_str(".slice(");
                     if let Some(s) = start {
                         self.compile_expr(s);
@@ -1215,7 +2046,18 @@ impl Compiler {
                     if i > 0 {
                         self.output.push_str(", ");
                     }
-                    self.compile_expr(key);
+                    match key {
+                        Expr::Literal {
+                            value: Literal::String(s),
+                            ..
+                        } => self.output.push_str(&js_string(s)),
+                        // Keys are expressions: `{k: 1}` uses the value o' k.
+                        _ => {
+                            self.output.push('[');
+                            self.compile_expr(key);
+                            self.output.push(']');
+                        }
+                    }
                     self.output.push_str(": ");
                     self.compile_expr(value);
                 }
@@ -1248,10 +2090,20 @@ impl Compiler {
             }
 
             Expr::Lambda { params, body, .. } => {
+                self.push_scope();
+                let js_params: Vec<String> = params.iter().map(|p| self.bind_param(p)).collect();
                 self.output.push('(');
-                self.output.push_str(&params.join(", "));
+                self.output.push_str(&js_params.join(", "));
                 self.output.push_str(") => ");
-                self.compile_expr(body);
+                if matches!(**body, Expr::Dict { .. }) {
+                    // `=> {` would start a function body, no' an object.
+                    self.output.push('(');
+                    self.compile_expr(body);
+                    self.output.push(')');
+                } else {
+                    self.compile_expr(body);
+                }
+                self.pop_scope();
             }
 
             Expr::Masel { .. } => {
@@ -1259,32 +2111,24 @@ impl Compiler {
             }
 
             Expr::Input { prompt, .. } => {
-                self.output.push_str("speir(");
+                self.output.push_str("__havers.speir(");
                 self.compile_expr(prompt);
                 self.output.push(')');
             }
 
             Expr::FString { parts, .. } => {
-                // Compile to JavaScript template literal
+                // Compile to JavaScript template literal; text is fully escaped and
+                // interpolations print like blether does.
                 self.output.push('`');
                 for part in parts {
                     match part {
                         FStringPart::Text(text) => {
-                            // Escape backticks in the text
-                            for c in text.chars() {
-                                if c == '`' {
-                                    self.output.push_str("\\`");
-                                } else if c == '$' {
-                                    self.output.push_str("\\$");
-                                } else {
-                                    self.output.push(c);
-                                }
-                            }
+                            self.output.push_str(&js_escape(text));
                         }
                         FStringPart::Expr(expr) => {
-                            self.output.push_str("${");
+                            self.output.push_str("${__havers.show(");
                             self.compile_expr(expr);
-                            self.output.push('}');
+                            self.output.push_str(")}");
                         }
                     }
                 }
@@ -1312,7 +2156,7 @@ impl Compiler {
             } => {
                 // JavaScript ternary: condition ? then : else
                 self.output.push('(');
-                self.compile_expr(condition);
+                self.compile_condition(condition);
                 self.output.push_str(" ? ");
                 self.compile_expr(then_expr);
                 self.output.push_str(" : ");
@@ -1323,9 +2167,11 @@ impl Compiler {
                 // Block expressions compile to an IIFE (immediately invoked function expression)
                 self.output.push_str("(() => {\n");
                 self.indent += 1;
+                self.push_scope();
                 for stmt in statements {
                     self.compile_stmt(stmt);
                 }
+                self.pop_scope();
                 self.indent -= 1;
                 self.emit_indent();
                 self.output.push_str("})()");
@@ -1362,7 +2208,6 @@ pub fn compile(source: &str) -> HaversResult<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
 
     // ==================== Basic Tests ====================
 
@@ -1796,7 +2641,7 @@ gin x > 5 {
     #[test]
     fn test_for_compile() {
         let result = compile("fer i in 0..10 { blether i }").unwrap();
-        assert!(result.contains("for (const i of"));
+        assert!(result.contains("for (let i of __havers.iter("));
     }
 
     #[test]
@@ -1838,7 +2683,8 @@ kin Animal {
         )
         .unwrap();
         assert!(result.contains("class Animal"));
-        assert!(result.contains("constructor(name)"));
+        assert!(result.contains("init(name)"));
+        assert!(result.contains("constructor(...args)"));
         assert!(result.contains("this.name"));
     }
 
@@ -1877,19 +2723,19 @@ kin Animal {
     #[test]
     fn test_import_with_alias() {
         let result = compile("fetch \"math\" tae m").unwrap();
-        assert!(result.contains("const m = require('math')"));
+        assert!(result.contains("let m = require('math')"));
     }
 
     #[test]
     fn test_import_tri_compile() {
         let result = compile("fetch \"tri\" tae tri").unwrap();
-        assert!(result.contains("const tri = __havers_tri"));
+        assert!(result.contains("let tri = __havers_tri"));
     }
 
     #[test]
     fn test_import_tri_braw_compile() {
         let result = compile("fetch \"tri.braw\" tae tri").unwrap();
-        assert!(result.contains("const tri = __havers_tri"));
+        assert!(result.contains("let tri = __havers_tri"));
     }
 
     #[test]
@@ -2013,7 +2859,8 @@ kin C {
         let result =
             compile("hae_a_bash { ken x = 1 } gin_it_gangs_wrang e { blether e }").unwrap();
         assert!(result.contains("try {"));
-        assert!(result.contains("catch (e)"));
+        assert!(result.contains("catch (__err)"));
+        assert!(result.contains("let e = __havers.caught(__err);"));
     }
 
     #[test]
@@ -2074,7 +2921,7 @@ kin C {
         )
         .unwrap();
         // Identifier patterns bind the value
-        assert!(result.contains("const value ="));
+        assert!(result.contains("let value ="));
     }
 
     #[test]
@@ -2096,14 +2943,16 @@ kin C {
     fn test_assert_compile() {
         let result = compile("mak_siccar x > 0").unwrap();
         assert!(result.contains("if (!("));
-        assert!(result.contains("throw new Error"));
+        assert!(result.contains(
+            "throw __havers.fail(\"Mak siccar failed at line 1! \" + \"Assertion failed\")"
+        ));
     }
 
     #[test]
     fn test_assert_with_message() {
         let result = compile("mak_siccar x > 0, \"x must be positive\"").unwrap();
-        assert!(result.contains("throw new Error("));
-        assert!(result.contains("\"x must be positive\""));
+        assert!(result.contains("throw __havers.fail("));
+        assert!(result.contains("__havers.show(\"x must be positive\")"));
     }
 
     // ==================== Destructuring Tests ====================
@@ -2111,19 +2960,19 @@ kin C {
     #[test]
     fn test_destructure_compile() {
         let result = compile("ken [a, b] = [1, 2]").unwrap();
-        assert!(result.contains("const [a, b] = "));
+        assert!(result.contains("let [a, b] = "));
     }
 
     #[test]
     fn test_destructure_rest() {
         let result = compile("ken [first, ...rest] = [1, 2, 3]").unwrap();
-        assert!(result.contains("const [first, ...rest] = "));
+        assert!(result.contains("let [first, ...rest] = "));
     }
 
     #[test]
     fn test_destructure_ignore() {
         let result = compile("ken [_, second, _] = [1, 2, 3]").unwrap();
-        assert!(result.contains("const [_, second, _] = "));
+        assert!(result.contains("let [, second, ] = "));
     }
 
     // ==================== Expression Tests ====================
@@ -2184,7 +3033,7 @@ kin C {
     #[test]
     fn test_index_compile() {
         let result = compile("list[0]").unwrap();
-        assert!(result.contains("list[0]"));
+        assert!(result.contains("__havers.idx(list, 0, 1)"));
     }
 
     #[test]
@@ -2263,7 +3112,7 @@ kin C {
     #[test]
     fn test_fstring_compile() {
         let result = compile("ken name = \"world\"\nf\"Hello {name}!\"").unwrap();
-        assert!(result.contains("`Hello ${name}!`"));
+        assert!(result.contains("`Hello ${__havers.show(name)}!`"));
     }
 
     #[test]
@@ -2330,8 +3179,10 @@ keek 1 {
 
         assert!(result.contains("log_event(\"blether\""));
         assert!(result.contains("log_event(\"roar\""));
-        assert!(result.contains("throw new Error("));
-        assert!(result.contains("new Point"));
+        assert!(result.contains("throw __havers.hurl(\"boom\", 7);"));
+        // Point is no' a declared kin, so it is called plainly (nae capitalisation guess)
+        assert!(!result.contains("new Point"));
+        assert!(result.contains("Point(1, 2)"));
         assert!(result.contains("__havers.slice("));
         assert!(result.contains(".slice(0, 2)"));
         assert!(result.contains("`a\\`b\\$c`"));
@@ -2433,12 +3284,12 @@ mak_siccar aye
 ken s = f"price: $5"
 "#;
         let result = compile(src).unwrap();
-        assert!(result.contains("const [a, b, ...rest] ="));
+        assert!(result.contains("let [a, b, ...rest] ="));
         assert!(result.contains(".slice("));
         assert!(result.contains("__havers.range("));
         assert!(result.contains("blether(sum(1, 2, 3))"));
-        assert!(result.contains("const x = __match_val_"));
-        assert!(result.contains("throw new Error"));
+        assert!(result.contains("let x = __match_val_"));
+        assert!(result.contains("throw __havers.fail(\"Mak siccar failed at line 17! \""));
         assert!(result.contains("price: \\$5"));
     }
 
@@ -2450,7 +3301,7 @@ ken s = f"price: $5"
         assert!(!Compiler::is_tri_import_path("triangles"));
 
         let result = compile("fetch \"tri.js\" tae tri").unwrap();
-        assert!(result.contains("const tri = __havers_tri"));
+        assert!(result.contains("let tri = __havers_tri"));
     }
 
     #[test]
@@ -2501,5 +3352,158 @@ ken s = f"price: $5"
         assert!(result.contains("whit_kind:"));
         assert!(result.contains("blether:"));
         assert!(result.contains("soond_stairt"));
+    }
+
+    // ==================== Hygiene Tests (MDH-BUG-FLU-00037..00042) ====================
+
+    #[test]
+    fn test_js_escape_covers_every_string_form() {
+        assert_eq!(
+            js_escape("a\\b\"c'd`e${f}\n\r\t\u{0}\u{7f}\u{2028}\u{2029}é"),
+            "a\\\\b\\\"c\\'d\\`e\\${f}\\n\\r\\t\\u0000\\u007f\\u2028\\u2029é"
+        );
+        assert_eq!(js_string("hi"), "\"hi\"");
+    }
+
+    #[test]
+    fn test_js_ident_mangles_reserved_and_runtime_names() {
+        for word in ["new", "class", "this", "var", "function", "let", "typeof"] {
+            assert_eq!(js_ident(word), format!("{}$", word));
+        }
+        for word in ["delete", "default", "static", "arguments", "eval"] {
+            assert_eq!(js_ident(word), format!("{}$", word));
+        }
+        assert_eq!(js_ident("__havers"), "__havers$");
+        assert_eq!(js_ident("_private"), "_private");
+        assert_eq!(js_ident("len"), "len");
+    }
+
+    #[test]
+    fn test_module_binding_name_is_a_valid_identifier() {
+        assert_eq!(module_binding_name("lib/my-mod.braw"), "my_mod");
+        assert_eq!(module_binding_name("2fast.js"), "_2fast");
+        assert_eq!(module_binding_name("dir\\x.y.braw"), "x_y");
+        assert_eq!(module_binding_name(""), "_");
+    }
+
+    #[test]
+    fn test_match_string_pattern_is_escaped() {
+        let result = compile(
+            r#"keek "x" {
+    whan "\" || console.log(\"INJECTED\") || \"" -> blether "bad"
+    whan _ -> blether "ok"
+}"#,
+        )
+        .unwrap();
+        assert!(result.contains(r#"=== "\" || console.log(\"INJECTED\") || \"""#));
+        assert!(!result.contains(r#"=== "" || console.log"#));
+    }
+
+    #[test]
+    fn test_import_path_is_escaped_and_binding_mangled() {
+        let result = compile("fetch \"x'); console.log('INJECTED'); ('\"").unwrap();
+        assert!(result.contains(r#"require('x\'); console.log(\'INJECTED\'); (\'')"#));
+        let result = compile("fetch \"lib/my-mod\"").unwrap();
+        assert!(result.contains("let my_mod = require('lib/my-mod');"));
+    }
+
+    #[test]
+    fn test_fstring_text_escapes_backslashes() {
+        let result = compile(
+            r#"ken who = "nae"
+f"C:\\users\\{who}""#,
+        )
+        .unwrap();
+        assert!(result.contains(r#"`C:\\users\\${__havers.show(who)}`"#));
+    }
+
+    #[test]
+    fn test_reserved_identifiers_are_mangled() {
+        let result = compile("ken new = 1\nken class = 2\ndae function(var) { gie var }\nblether function(new + class)").unwrap();
+        assert!(result.contains("let new$ = 1;"));
+        assert!(result.contains("let class$ = 2;"));
+        assert!(result.contains("function function$(var$)"));
+        assert!(!result.contains("let new ="));
+    }
+
+    #[test]
+    fn test_user_code_shadows_runtime_helpers() {
+        let result = compile("dae len(x) { gie 99 }\nken max = 5").unwrap();
+        // Helpers are bound wi' `let` inside the user block, never as module-level consts
+        assert!(result.contains("let { len, whit_kind,"));
+        assert!(!result.contains("const { len"));
+        assert!(result.contains("len = function len(x) {"));
+        assert!(result.contains("\n  max = 5;"));
+    }
+
+    #[test]
+    fn test_ken_redeclaration_and_loop_variable() {
+        let result = compile("ken x = 1\nken x = x + 1\nfer i in 0..2 { i = i + 1 }").unwrap();
+        assert!(result.contains("let x = 1;"));
+        assert!(result.contains("\n  x = (x + 1);"));
+        assert!(result.contains("for (let i of __havers.iter("));
+    }
+
+    #[test]
+    fn test_inner_ken_shadowing_outer_name_is_renamed() {
+        let result = compile("ken x = 1\ngin aye { ken x = x + 1\nblether x }").unwrap();
+        assert!(result.contains("let x$1 = (x + 1);"));
+        assert!(result.contains("__havers.blether(x$1);"));
+    }
+
+    #[test]
+    fn test_subclass_init_and_new_decision() {
+        let result = compile(
+            r#"kin Animal { dae init(name) { masel.name = name } }
+kin Dog fae Animal { dae init(name) { masel.name = name } }
+dae Square(n) { gie n * n }
+ken d = Dog("Rex")
+blether Square(3)"#,
+        )
+        .unwrap();
+        assert!(result.contains("let Dog = __havers.kin(class Dog extends Animal {"));
+        assert!(result.contains("new Dog(\"Rex\")"));
+        assert!(result.contains("Square(3)"));
+        assert!(!result.contains("new Square"));
+        // Only the root class has a constructor; it dispatches tae the derived init.
+        assert_eq!(result.matches("constructor(...args)").count(), 1);
+    }
+
+    #[test]
+    fn test_rebound_class_name_is_called_plainly() {
+        let result = compile("kin A { }\nken A = |x| x\nblether A(1)").unwrap();
+        assert!(!result.contains("new A("));
+        assert!(result.contains("A(1)"));
+    }
+
+    #[test]
+    fn test_dict_literal_keys_are_expressions() {
+        let result = compile("ken k = \"colour\"\nken d = {k: 1, \"a\": 2}").unwrap();
+        assert!(result.contains("{[k]: 1, \"a\": 2}"));
+    }
+
+    #[test]
+    fn test_truthiness_and_equality_lowering() {
+        let result =
+            compile("ken xs = []\ngin xs { blether 1 }\nblether xs == [1]\nblether 1 == 1")
+                .unwrap();
+        assert!(result.contains("if (__havers.truthy(xs))"));
+        assert!(result.contains("__havers.eq(xs, [1])"));
+        assert!(result.contains("(1 === 1)"));
+    }
+
+    #[test]
+    fn test_numeric_literal_receiver_is_parenthesised() {
+        let result = compile("blether 123[0:1]\nblether 1.5.x").unwrap();
+        assert!(result.contains("(123).slice(0, 1)"));
+        assert!(result.contains("(1.5).x"));
+    }
+
+    #[test]
+    fn test_division_lowering() {
+        let result = compile("ken a = 7\nblether 7 / 2\nblether a / 2\nblether a % 2").unwrap();
+        assert!(result.contains("__havers.idiv(7, 2, 2)"));
+        assert!(result.contains("__havers.div(a, 2, 3)"));
+        assert!(result.contains("__havers.mod(a, 2, 4)"));
     }
 }
