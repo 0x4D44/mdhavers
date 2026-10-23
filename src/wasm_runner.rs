@@ -3,6 +3,8 @@ use std::path::Path;
 
 use wasmtime::{Caller, Engine, Linker, Memory, MemoryType, Module, Store};
 
+use crate::wasm_compiler::AUDIO_IMPORTS;
+
 type Handle = i64;
 
 #[derive(Debug, Clone)]
@@ -13,9 +15,24 @@ enum HostValue {
     Float(f64),
     String(String),
     List(Vec<Handle>),
-    Dict(HashMap<ValueKey, Handle>),
+    Dict(DictEntries),
     NativeObject(TriObject),
     NativeCtor(String),
+}
+
+/// Dict entries in insertion order (like the interpreter's dicts).
+type DictEntries = Vec<(ValueKey, Handle)>;
+
+fn dict_get(entries: &DictEntries, key: &ValueKey) -> Option<Handle> {
+    entries.iter().find(|(k, _)| k == key).map(|(_, v)| *v)
+}
+
+/// Insert or replace; an existing key keeps its original position.
+fn dict_put(entries: &mut DictEntries, key: ValueKey, value: Handle) {
+    match entries.iter_mut().find(|(k, _)| *k == key) {
+        Some(slot) => slot.1 = value,
+        None => entries.push((key, value)),
+    }
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -53,8 +70,13 @@ struct HostStore {
 
 impl HostStore {
     fn new() -> Self {
+        // Nil, false and true are interned at fixed handles so they never grow the store.
         HostStore {
-            values: vec![HostValue::Nil],
+            values: vec![
+                HostValue::Nil,
+                HostValue::Bool(false),
+                HostValue::Bool(true),
+            ],
         }
     }
 
@@ -139,15 +161,34 @@ impl HostStore {
 struct HostState {
     store: HostStore,
     tri_modules: HashSet<Handle>,
+    /// `Some` when stdout is being captured (tests) instead of printed.
+    captured: Option<String>,
+    /// The message of the runtime error that trapped the module, if any.
+    runtime_error: Option<String>,
 }
 
 impl HostState {
-    fn new() -> Self {
+    fn new(capture: bool) -> Self {
         HostState {
             store: HostStore::new(),
             tri_modules: HashSet::new(),
+            captured: if capture { Some(String::new()) } else { None },
+            runtime_error: None,
         }
     }
+}
+
+/// Record a runtime error (so the caller can report it cleanly) and turn it into a trap.
+fn trap(state: &mut HostState, message: String) -> wasmtime::Error {
+    state.runtime_error = Some(message.clone());
+    wasmtime::Error::msg(message)
+}
+
+fn finish(
+    caller: &mut Caller<'_, HostState>,
+    result: Result<Handle, String>,
+) -> Result<i64, wasmtime::Error> {
+    result.map_err(|message| trap(caller.data_mut(), message))
 }
 
 fn read_memory_string(caller: &Caller<'_, HostState>, mem: &Memory, ptr: i32, len: i32) -> String {
@@ -161,8 +202,15 @@ fn read_memory_string(caller: &Caller<'_, HostState>, mem: &Memory, ptr: i32, le
     }
 }
 
-fn alloc_bool(store: &mut HostStore, value: bool) -> Handle {
-    store.alloc(HostValue::Bool(value))
+const FALSE_HANDLE: Handle = 1;
+const TRUE_HANDLE: Handle = 2;
+
+fn alloc_bool(_store: &mut HostStore, value: bool) -> Handle {
+    if value {
+        TRUE_HANDLE
+    } else {
+        FALSE_HANDLE
+    }
 }
 
 fn alloc_int(store: &mut HostStore, value: i64) -> Handle {
@@ -505,18 +553,30 @@ fn tri_handle_call(
     None
 }
 
-fn add_binop(
+#[derive(Clone, Copy)]
+enum ArithOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+}
+
+fn add_arith(
     linker: &mut Linker<HostState>,
     name: &'static str,
-    op: fn(f64, f64) -> f64,
+    op: ArithOp,
 ) -> Result<(), String> {
     linker
         .func_wrap(
             "env",
             name,
-            move |mut caller: Caller<'_, HostState>, a: i64, b: i64| -> i64 {
-                let store = &mut caller.data_mut().store;
-                numeric_binop(store, a, b, op)
+            move |mut caller: Caller<'_, HostState>,
+                  a: i64,
+                  b: i64|
+                  -> Result<i64, wasmtime::Error> {
+                let result = arith(&mut caller.data_mut().store, op, a, b);
+                finish(&mut caller, result)
             },
         )
         .map_err(|e| e.to_string())
@@ -570,27 +630,123 @@ fn add_audio_stub2(linker: &mut Linker<HostState>, name: &str) -> Result<(), Str
         .map(|_| ())
 }
 
-fn numeric_binop(store: &mut HostStore, a: Handle, b: Handle, op: fn(f64, f64) -> f64) -> Handle {
-    let left = store.get(a);
-    let right = store.get(b);
-    match (left, right) {
-        (Some(HostValue::Int(x)), Some(HostValue::Int(y))) => {
-            let result = op(*x as f64, *y as f64);
-            if result.fract() == 0.0 {
-                alloc_int(store, result as i64)
-            } else {
-                alloc_float(store, result)
+fn host_type_name(value: &HostValue) -> &'static str {
+    match value {
+        HostValue::Nil => "naething",
+        HostValue::Bool(_) => "bool",
+        HostValue::Int(_) => "integer",
+        HostValue::Float(_) => "float",
+        HostValue::String(_) => "string",
+        HostValue::List(_) => "list",
+        HostValue::Dict(_) => "dict",
+        HostValue::NativeObject(_) | HostValue::NativeCtor(_) => "native",
+    }
+}
+
+const ERR_OVERFLOW: &str = "Wheesht! Yer number's too muckle - it's overflowed!";
+const ERR_DIV_ZERO: &str = "Ye numpty! Tryin' tae divide by zero";
+
+/// Longest string a `string * integer` repeat may build (guards the host against OOM).
+const MAX_REPEAT_BYTES: usize = 1 << 28;
+
+/// Arithmetic wi' the interpreter's semantics: integers stay i64 wi' checked overflow,
+/// integer division truncates, dividing by zero and mismatched types are errors.
+fn arith(store: &mut HostStore, op: ArithOp, a: Handle, b: Handle) -> Result<Handle, String> {
+    use HostValue as V;
+    let (left, right) = match (store.get(a), store.get(b)) {
+        (Some(l), Some(r)) => (l, r),
+        _ => return Err("That's pure mince! Type error: invalid value".to_string()),
+    };
+    let type_error = |what: String| format!("That's pure mince! Type error: {}", what);
+    let value = match op {
+        ArithOp::Add => match (left, right) {
+            (V::Int(x), V::Int(y)) => V::Int(x.checked_add(*y).ok_or(ERR_OVERFLOW)?),
+            (V::Float(x), V::Float(y)) => V::Float(x + y),
+            (V::Int(x), V::Float(y)) => V::Float(*x as f64 + y),
+            (V::Float(x), V::Int(y)) => V::Float(x + *y as f64),
+            (V::String(x), _) => V::String(format!("{}{}", x, store.to_string(b))),
+            (_, V::String(y)) => V::String(format!("{}{}", store.to_string(a), y)),
+            (V::List(x), V::List(y)) => V::List(x.iter().chain(y.iter()).copied().collect()),
+            _ => {
+                return Err(type_error(format!(
+                    "Cannae add {} an' {}",
+                    host_type_name(left),
+                    host_type_name(right)
+                )))
+            }
+        },
+        ArithOp::Sub => match (left, right) {
+            (V::Int(x), V::Int(y)) => V::Int(x.checked_sub(*y).ok_or(ERR_OVERFLOW)?),
+            (V::Float(x), V::Float(y)) => V::Float(x - y),
+            (V::Int(x), V::Float(y)) => V::Float(*x as f64 - y),
+            (V::Float(x), V::Int(y)) => V::Float(x - *y as f64),
+            _ => {
+                return Err(type_error(format!(
+                    "Cannae subtract {} fae {}",
+                    host_type_name(right),
+                    host_type_name(left)
+                )))
+            }
+        },
+        ArithOp::Mul => match (left, right) {
+            (V::Int(x), V::Int(y)) => V::Int(x.checked_mul(*y).ok_or(ERR_OVERFLOW)?),
+            (V::Float(x), V::Float(y)) => V::Float(x * y),
+            (V::Int(x), V::Float(y)) => V::Float(*x as f64 * y),
+            (V::Float(x), V::Int(y)) => V::Float(x * *y as f64),
+            (V::String(s), V::Int(n)) | (V::Int(n), V::String(s)) => {
+                if *n < 0 {
+                    return Err(type_error("Repeat count must be non-negative".to_string()));
+                }
+                let count = usize::try_from(*n).unwrap_or(usize::MAX);
+                if s.len().saturating_mul(count) > MAX_REPEAT_BYTES {
+                    return Err(type_error("Repeat count is too large".to_string()));
+                }
+                V::String(s.repeat(count))
+            }
+            _ => {
+                return Err(type_error(format!(
+                    "Cannae multiply {} by {}",
+                    host_type_name(left),
+                    host_type_name(right)
+                )))
+            }
+        },
+        ArithOp::Div => {
+            if matches!(right, V::Int(0)) || matches!(right, V::Float(f) if *f == 0.0) {
+                return Err(ERR_DIV_ZERO.to_string());
+            }
+            match (left, right) {
+                (V::Int(x), V::Int(y)) => V::Int(x.checked_div(*y).ok_or(ERR_OVERFLOW)?),
+                (V::Float(x), V::Float(y)) => V::Float(x / y),
+                (V::Int(x), V::Float(y)) => V::Float(*x as f64 / y),
+                (V::Float(x), V::Int(y)) => V::Float(x / *y as f64),
+                _ => {
+                    return Err(type_error(format!(
+                        "Cannae divide {} by {}",
+                        host_type_name(left),
+                        host_type_name(right)
+                    )))
+                }
             }
         }
-        (Some(HostValue::Float(x)), Some(HostValue::Float(y))) => alloc_float(store, op(*x, *y)),
-        (Some(HostValue::Int(x)), Some(HostValue::Float(y))) => {
-            alloc_float(store, op(*x as f64, *y))
+        ArithOp::Mod => {
+            if matches!(right, V::Int(0)) {
+                return Err(ERR_DIV_ZERO.to_string());
+            }
+            match (left, right) {
+                (V::Int(x), V::Int(y)) => V::Int(x.checked_rem(*y).ok_or(ERR_OVERFLOW)?),
+                (V::Float(x), V::Float(y)) => V::Float(x % y),
+                _ => {
+                    return Err(type_error(format!(
+                        "Cannae get remainder o' {} by {}",
+                        host_type_name(left),
+                        host_type_name(right)
+                    )))
+                }
+            }
         }
-        (Some(HostValue::Float(x)), Some(HostValue::Int(y))) => {
-            alloc_float(store, op(*x, *y as f64))
-        }
-        _ => 0,
-    }
+    };
+    Ok(store.alloc(value))
 }
 
 fn eq_values(store: &HostStore, a: Handle, b: Handle) -> bool {
@@ -602,8 +758,22 @@ fn eq_values(store: &HostStore, a: Handle, b: Handle) -> bool {
         (Some(HostValue::Int(x)), Some(HostValue::Float(y))) => (*x as f64) == *y,
         (Some(HostValue::Float(x)), Some(HostValue::Int(y))) => *x == (*y as f64),
         (Some(HostValue::String(x)), Some(HostValue::String(y))) => x == y,
+        (Some(HostValue::List(x)), Some(HostValue::List(y))) => {
+            x.len() == y.len()
+                && x.iter()
+                    .zip(y.iter())
+                    .all(|(p, q)| eq_values(store, *p, *q))
+        }
         _ => a == b,
     }
+}
+
+/// What a captured run produced: everything `blether` printed, and the runtime
+/// error that stopped the module, if any.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WasmRunOutput {
+    pub stdout: String,
+    pub error: Option<String>,
 }
 
 pub fn run_wasm_file(path: &Path) -> Result<(), String> {
@@ -617,10 +787,29 @@ pub fn run_wasm_file(path: &Path) -> Result<(), String> {
         _ => Module::from_file(&engine, path).map_err(|e| e.to_string())?,
     };
 
-    let mut store = Store::new(&engine, HostState::new());
+    let output = run_module(&engine, &module, false)?;
+    match output.error {
+        Some(error) => Err(error),
+        None => Ok(()),
+    }
+}
+
+/// Parse (and so validate) WAT text, run it, and capture what it prints.
+///
+/// `Err` means the module did not load (bad WAT, unresolved import, no `main`);
+/// a trap while running is reported in `WasmRunOutput::error`.
+pub fn run_wat_captured(wat_text: &str) -> Result<WasmRunOutput, String> {
+    let engine = Engine::default();
+    let bytes = wat::parse_str(wat_text).map_err(|e| e.to_string())?;
+    let module = Module::new(&engine, bytes).map_err(|e| e.to_string())?;
+    run_module(&engine, &module, true)
+}
+
+fn run_module(engine: &Engine, module: &Module, capture: bool) -> Result<WasmRunOutput, String> {
+    let mut store = Store::new(engine, HostState::new(capture));
     let memory = Memory::new(&mut store, MemoryType::new(1, None)).map_err(|e| e.to_string())?;
 
-    let mut linker = Linker::new(&engine);
+    let mut linker = Linker::new(engine);
     linker
         .define(&mut store, "env", "memory", memory)
         .map_err(|e| e.to_string())?;
@@ -700,31 +889,11 @@ pub fn run_wasm_file(path: &Path) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     // Arithmetic and comparisons
-    linker
-        .func_wrap(
-            "env",
-            "__mdh_add",
-            |mut caller: Caller<'_, HostState>, a: i64, b: i64| -> i64 {
-                let store = &mut caller.data_mut().store;
-                match (store.get(a), store.get(b)) {
-                    (Some(HostValue::String(sa)), _) => {
-                        let out = format!("{}{}", sa, store.to_string(b));
-                        alloc_string(store, out)
-                    }
-                    (_, Some(HostValue::String(sb))) => {
-                        let out = format!("{}{}", store.to_string(a), sb);
-                        alloc_string(store, out)
-                    }
-                    _ => numeric_binop(store, a, b, |x, y| x + y),
-                }
-            },
-        )
-        .map_err(|e| e.to_string())?;
-
-    add_binop(&mut linker, "__mdh_sub", |x, y| x - y)?;
-    add_binop(&mut linker, "__mdh_mul", |x, y| x * y)?;
-    add_binop(&mut linker, "__mdh_div", |x, y| x / y)?;
-    add_binop(&mut linker, "__mdh_mod", |x, y| x % y)?;
+    add_arith(&mut linker, "__mdh_add", ArithOp::Add)?;
+    add_arith(&mut linker, "__mdh_sub", ArithOp::Sub)?;
+    add_arith(&mut linker, "__mdh_mul", ArithOp::Mul)?;
+    add_arith(&mut linker, "__mdh_div", ArithOp::Div)?;
+    add_arith(&mut linker, "__mdh_mod", ArithOp::Mod)?;
 
     add_cmp(&mut linker, "__mdh_eq", |store, a, b| {
         eq_values(store, a, b)
@@ -777,13 +946,24 @@ pub fn run_wasm_file(path: &Path) -> Result<(), String> {
         .func_wrap(
             "env",
             "__mdh_neg",
-            |mut caller: Caller<'_, HostState>, value: i64| -> i64 {
+            |mut caller: Caller<'_, HostState>, value: i64| -> Result<i64, wasmtime::Error> {
                 let store = &mut caller.data_mut().store;
-                match store.get(value) {
-                    Some(HostValue::Int(n)) => alloc_int(store, -n),
-                    Some(HostValue::Float(f)) => alloc_float(store, -f),
-                    _ => 0,
-                }
+                let result = match store.get(value) {
+                    Some(HostValue::Int(n)) => match n.checked_neg() {
+                        Some(neg) => Ok(alloc_int(store, neg)),
+                        None => Err(ERR_OVERFLOW.to_string()),
+                    },
+                    Some(HostValue::Float(f)) => {
+                        let neg = -*f;
+                        Ok(alloc_float(store, neg))
+                    }
+                    Some(other) => Err(format!(
+                        "That's pure mince! Type error: Cannae negate a {}",
+                        host_type_name(other)
+                    )),
+                    None => Err("That's pure mince! Type error: invalid value".to_string()),
+                };
+                finish(&mut caller, result)
             },
         )
         .map_err(|e| e.to_string())?;
@@ -805,8 +985,15 @@ pub fn run_wasm_file(path: &Path) -> Result<(), String> {
             "env",
             "__mdh_blether",
             |mut caller: Caller<'_, HostState>, value: i64| {
-                let store = &mut caller.data_mut().store;
-                println!("{}", store.to_string(value));
+                let state = caller.data_mut();
+                let line = state.store.to_string(value);
+                match state.captured.as_mut() {
+                    Some(buffer) => {
+                        buffer.push_str(&line);
+                        buffer.push('\n');
+                    }
+                    None => println!("{}", line),
+                }
             },
         )
         .map_err(|e| e.to_string())?;
@@ -844,7 +1031,7 @@ pub fn run_wasm_file(path: &Path) -> Result<(), String> {
             "__mdh_make_dict",
             |mut caller: Caller<'_, HostState>| -> i64 {
                 let store = &mut caller.data_mut().store;
-                store.alloc(HostValue::Dict(HashMap::new()))
+                store.alloc(HostValue::Dict(Vec::new()))
             },
         )
         .map_err(|e| e.to_string())?;
@@ -855,12 +1042,12 @@ pub fn run_wasm_file(path: &Path) -> Result<(), String> {
             "__mdh_tri_module",
             |mut caller: Caller<'_, HostState>| -> i64 {
                 let state = caller.data_mut();
-                let module_handle = state.store.alloc(HostValue::Dict(HashMap::new()));
+                let module_handle = state.store.alloc(HostValue::Dict(Vec::new()));
                 let deg = alloc_float(&mut state.store, std::f64::consts::PI / 180.0);
                 let rad = alloc_float(&mut state.store, 180.0 / std::f64::consts::PI);
                 if let Some(HostValue::Dict(map)) = state.store.get_mut(module_handle) {
-                    map.insert(ValueKey::String("DEG_TO_RAD".to_string()), deg);
-                    map.insert(ValueKey::String("RAD_TO_DEG".to_string()), rad);
+                    dict_put(map, ValueKey::String("DEG_TO_RAD".to_string()), deg);
+                    dict_put(map, ValueKey::String("RAD_TO_DEG".to_string()), rad);
                 }
                 state.tri_modules.insert(module_handle);
                 module_handle
@@ -877,7 +1064,7 @@ pub fn run_wasm_file(path: &Path) -> Result<(), String> {
                 let key_value = store.key_for(key);
                 if let Some(HostValue::Dict(map)) = store.get_mut(dict) {
                     if let Some(k) = key_value {
-                        map.insert(k, value);
+                        dict_put(map, k, value);
                     }
                 }
                 dict
@@ -902,7 +1089,7 @@ pub fn run_wasm_file(path: &Path) -> Result<(), String> {
                 match state.store.get(obj) {
                     Some(HostValue::Dict(map)) => {
                         if let Some(ValueKey::String(key)) = state.store.key_for(prop) {
-                            return map.get(&ValueKey::String(key)).copied().unwrap_or(0);
+                            return dict_get(map, &ValueKey::String(key)).unwrap_or(0);
                         }
                         0
                     }
@@ -928,7 +1115,7 @@ pub fn run_wasm_file(path: &Path) -> Result<(), String> {
                 match store.get_mut(obj) {
                     Some(HostValue::Dict(map)) => {
                         if let Some(ValueKey::String(key)) = prop_key {
-                            map.insert(ValueKey::String(key), value);
+                            dict_put(map, ValueKey::String(key), value);
                         }
                     }
                     Some(HostValue::NativeObject(native)) => {
@@ -1169,79 +1356,101 @@ pub fn run_wasm_file(path: &Path) -> Result<(), String> {
         )
         .map_err(|e| e.to_string())?;
 
-    for name in [
-        "soond_stairt",
-        "soond_steek",
-        "soond_hou_luid",
-        "soond_haud_gang",
-    ] {
-        add_audio_stub0(&mut linker, name)?;
-    }
-
-    for name in [
-        "soond_wheesht",
-        "soond_luid",
-        "soond_lade",
-        "soond_spiel",
-        "soond_haud",
-        "soond_gae_on",
-        "soond_stap",
-        "soond_unlade",
-        "soond_is_spielin",
-        "soond_ready",
-        "muisic_lade",
-        "muisic_spiel",
-        "muisic_haud",
-        "muisic_gae_on",
-        "muisic_stap",
-        "muisic_unlade",
-        "muisic_is_spielin",
-        "muisic_hou_lang",
-        "muisic_whaur",
-        "midi_spiel",
-        "midi_haud",
-        "midi_gae_on",
-        "midi_stap",
-        "midi_unlade",
-        "midi_is_spielin",
-        "midi_hou_lang",
-        "midi_whaur",
-    ] {
-        add_audio_stub1(&mut linker, name)?;
-    }
-
-    for name in [
-        "soond_pit_luid",
-        "soond_pit_pan",
-        "soond_pit_tune",
-        "soond_pit_rin_roond",
-        "muisic_loup",
-        "muisic_pit_luid",
-        "muisic_pit_pan",
-        "muisic_pit_tune",
-        "muisic_pit_rin_roond",
-        "midi_lade",
-        "midi_loup",
-        "midi_pit_luid",
-        "midi_pit_pan",
-        "midi_pit_tune",
-    ] {
-        add_audio_stub2(&mut linker, name)?;
+    // Audio stubs come from the compiler's own import table so the two cannot drift.
+    for (name, arity) in AUDIO_IMPORTS {
+        match *arity {
+            0 => add_audio_stub0(&mut linker, name)?,
+            1 => add_audio_stub1(&mut linker, name)?,
+            2 => add_audio_stub2(&mut linker, name)?,
+            other => {
+                return Err(format!(
+                    "No audio stub fer {} wi' {} arguments",
+                    name, other
+                ))
+            }
+        }
     }
 
     let instance = linker
-        .instantiate(&mut store, &module)
+        .instantiate(&mut store, module)
         .map_err(|e| e.to_string())?;
 
-    if let Ok(func) = instance.get_typed_func::<(), i64>(&mut store, "main") {
-        let _ = func.call(&mut store, ()).map_err(|e| e.to_string())?;
-        return Ok(());
+    let outcome = if let Ok(func) = instance.get_typed_func::<(), i64>(&mut store, "main") {
+        func.call(&mut store, ()).map(|_| ())
+    } else if let Ok(func) = instance.get_typed_func::<(), ()>(&mut store, "_start") {
+        func.call(&mut store, ())
+    } else {
+        return Err("WASM module lacks exported 'main' or '_start'".to_string());
+    };
+
+    let state = store.data_mut();
+    let stdout = state.captured.take().unwrap_or_default();
+    let error = outcome.err().map(|e| {
+        state
+            .runtime_error
+            .take()
+            .unwrap_or_else(|| format!("{:#}", e))
+    });
+    Ok(WasmRunOutput { stdout, error })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nil_and_bools_are_interned_and_never_grow_the_store() {
+        let mut store = HostStore::new();
+        let before = store.values.len();
+        let t1 = alloc_bool(&mut store, true);
+        let t2 = alloc_bool(&mut store, true);
+        let f1 = alloc_bool(&mut store, false);
+        assert_eq!(t1, t2);
+        assert_ne!(t1, f1);
+        assert_eq!(store.values.len(), before);
+        assert!(matches!(store.get(t1), Some(HostValue::Bool(true))));
+        assert!(matches!(store.get(f1), Some(HostValue::Bool(false))));
+        assert!(matches!(store.get(0), Some(HostValue::Nil)));
     }
 
-    if let Ok(func) = instance.get_typed_func::<(), ()>(&mut store, "_start") {
-        func.call(&mut store, ()).map_err(|e| e.to_string())?;
-        return Ok(());
+    #[test]
+    fn dict_put_keeps_insertion_order_and_replaces_in_place() {
+        let mut entries: DictEntries = Vec::new();
+        dict_put(&mut entries, ValueKey::String("b".to_string()), 1);
+        dict_put(&mut entries, ValueKey::String("a".to_string()), 2);
+        dict_put(&mut entries, ValueKey::String("b".to_string()), 3);
+        assert_eq!(
+            entries,
+            vec![
+                (ValueKey::String("b".to_string()), 3),
+                (ValueKey::String("a".to_string()), 2)
+            ]
+        );
+        assert_eq!(
+            dict_get(&entries, &ValueKey::String("a".to_string())),
+            Some(2)
+        );
+        assert_eq!(dict_get(&entries, &ValueKey::String("z".to_string())), None);
     }
 
-    Err("WASM module lacks exported 'main' or '_start'".to_string())
+    #[test]
+    fn arith_follows_the_interpreter() {
+        let mut store = HostStore::new();
+        let seven = alloc_int(&mut store, 7);
+        let two = alloc_int(&mut store, 2);
+        let zero = alloc_int(&mut store, 0);
+        let q = arith(&mut store, ArithOp::Div, seven, two).unwrap();
+        assert!(matches!(store.get(q), Some(HostValue::Int(3))));
+        assert!(arith(&mut store, ArithOp::Div, seven, zero)
+            .unwrap_err()
+            .contains("divide by zero"));
+        let max = alloc_int(&mut store, i64::MAX);
+        assert!(arith(&mut store, ArithOp::Add, max, two)
+            .unwrap_err()
+            .contains("overflowed"));
+        let text = alloc_string(&mut store, "a".to_string());
+        assert!(arith(&mut store, ArithOp::Sub, seven, text)
+            .unwrap_err()
+            .contains("Cannae subtract"));
+    }
 }

@@ -29,7 +29,7 @@ dae add(a, b) {
 }
 
 dae run(dummy) {
-    ken f = add
+    ken f = 7
     blether f(1, 2)
     blether "a b"
     blether "he\\\"llo\\n"
@@ -56,7 +56,7 @@ dae id(x) {
     gie x
 }
 
-apply(id)
+apply(7)
 "#;
     let wat_param = mdhavers::compile_to_wat(wasm_param_call).expect("param call wat");
     assert!(wat_param.contains("(module"));

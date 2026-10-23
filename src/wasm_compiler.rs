@@ -11,190 +11,69 @@
 
 use crate::ast::*;
 use crate::error::{HaversError, HaversResult};
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
-const AUDIO_IMPORTS: &[(&str, &str)] = &[
-    (
-        "soond_stairt",
-        "(import \"env\" \"soond_stairt\" (func $soond_stairt (result i64)))",
-    ),
-    (
-        "soond_steek",
-        "(import \"env\" \"soond_steek\" (func $soond_steek (result i64)))",
-    ),
-    (
-        "soond_wheesht",
-        "(import \"env\" \"soond_wheesht\" (func $soond_wheesht (param i64) (result i64)))",
-    ),
-    (
-        "soond_luid",
-        "(import \"env\" \"soond_luid\" (func $soond_luid (param i64) (result i64)))",
-    ),
-    (
-        "soond_hou_luid",
-        "(import \"env\" \"soond_hou_luid\" (func $soond_hou_luid (result i64)))",
-    ),
-    (
-        "soond_haud_gang",
-        "(import \"env\" \"soond_haud_gang\" (func $soond_haud_gang (result i64)))",
-    ),
-    (
-        "soond_lade",
-        "(import \"env\" \"soond_lade\" (func $soond_lade (param i64) (result i64)))",
-    ),
-    (
-        "soond_spiel",
-        "(import \"env\" \"soond_spiel\" (func $soond_spiel (param i64) (result i64)))",
-    ),
-    (
-        "soond_haud",
-        "(import \"env\" \"soond_haud\" (func $soond_haud (param i64) (result i64)))",
-    ),
-    (
-        "soond_gae_on",
-        "(import \"env\" \"soond_gae_on\" (func $soond_gae_on (param i64) (result i64)))",
-    ),
-    (
-        "soond_stap",
-        "(import \"env\" \"soond_stap\" (func $soond_stap (param i64) (result i64)))",
-    ),
-    (
-        "soond_unlade",
-        "(import \"env\" \"soond_unlade\" (func $soond_unlade (param i64) (result i64)))",
-    ),
-    (
-        "soond_is_spielin",
-        "(import \"env\" \"soond_is_spielin\" (func $soond_is_spielin (param i64) (result i64)))",
-    ),
-    (
-        "soond_pit_luid",
-        "(import \"env\" \"soond_pit_luid\" (func $soond_pit_luid (param i64 i64) (result i64)))",
-    ),
-    (
-        "soond_pit_pan",
-        "(import \"env\" \"soond_pit_pan\" (func $soond_pit_pan (param i64 i64) (result i64)))",
-    ),
-    (
-        "soond_pit_tune",
-        "(import \"env\" \"soond_pit_tune\" (func $soond_pit_tune (param i64 i64) (result i64)))",
-    ),
-    (
-        "soond_pit_rin_roond",
-        "(import \"env\" \"soond_pit_rin_roond\" (func $soond_pit_rin_roond (param i64 i64) (result i64)))",
-    ),
-    (
-        "soond_ready",
-        "(import \"env\" \"soond_ready\" (func $soond_ready (param i64) (result i64)))",
-    ),
-    (
-        "muisic_lade",
-        "(import \"env\" \"muisic_lade\" (func $muisic_lade (param i64) (result i64)))",
-    ),
-    (
-        "muisic_spiel",
-        "(import \"env\" \"muisic_spiel\" (func $muisic_spiel (param i64) (result i64)))",
-    ),
-    (
-        "muisic_haud",
-        "(import \"env\" \"muisic_haud\" (func $muisic_haud (param i64) (result i64)))",
-    ),
-    (
-        "muisic_gae_on",
-        "(import \"env\" \"muisic_gae_on\" (func $muisic_gae_on (param i64) (result i64)))",
-    ),
-    (
-        "muisic_stap",
-        "(import \"env\" \"muisic_stap\" (func $muisic_stap (param i64) (result i64)))",
-    ),
-    (
-        "muisic_unlade",
-        "(import \"env\" \"muisic_unlade\" (func $muisic_unlade (param i64) (result i64)))",
-    ),
-    (
-        "muisic_is_spielin",
-        "(import \"env\" \"muisic_is_spielin\" (func $muisic_is_spielin (param i64) (result i64)))",
-    ),
-    (
-        "muisic_loup",
-        "(import \"env\" \"muisic_loup\" (func $muisic_loup (param i64 i64) (result i64)))",
-    ),
-    (
-        "muisic_hou_lang",
-        "(import \"env\" \"muisic_hou_lang\" (func $muisic_hou_lang (param i64) (result i64)))",
-    ),
-    (
-        "muisic_whaur",
-        "(import \"env\" \"muisic_whaur\" (func $muisic_whaur (param i64) (result i64)))",
-    ),
-    (
-        "muisic_pit_luid",
-        "(import \"env\" \"muisic_pit_luid\" (func $muisic_pit_luid (param i64 i64) (result i64)))",
-    ),
-    (
-        "muisic_pit_pan",
-        "(import \"env\" \"muisic_pit_pan\" (func $muisic_pit_pan (param i64 i64) (result i64)))",
-    ),
-    (
-        "muisic_pit_tune",
-        "(import \"env\" \"muisic_pit_tune\" (func $muisic_pit_tune (param i64 i64) (result i64)))",
-    ),
-    (
-        "muisic_pit_rin_roond",
-        "(import \"env\" \"muisic_pit_rin_roond\" (func $muisic_pit_rin_roond (param i64 i64) (result i64)))",
-    ),
-    (
-        "midi_lade",
-        "(import \"env\" \"midi_lade\" (func $midi_lade (param i64 i64) (result i64)))",
-    ),
-    (
-        "midi_spiel",
-        "(import \"env\" \"midi_spiel\" (func $midi_spiel (param i64) (result i64)))",
-    ),
-    (
-        "midi_haud",
-        "(import \"env\" \"midi_haud\" (func $midi_haud (param i64) (result i64)))",
-    ),
-    (
-        "midi_gae_on",
-        "(import \"env\" \"midi_gae_on\" (func $midi_gae_on (param i64) (result i64)))",
-    ),
-    (
-        "midi_stap",
-        "(import \"env\" \"midi_stap\" (func $midi_stap (param i64) (result i64)))",
-    ),
-    (
-        "midi_unlade",
-        "(import \"env\" \"midi_unlade\" (func $midi_unlade (param i64) (result i64)))",
-    ),
-    (
-        "midi_is_spielin",
-        "(import \"env\" \"midi_is_spielin\" (func $midi_is_spielin (param i64) (result i64)))",
-    ),
-    (
-        "midi_loup",
-        "(import \"env\" \"midi_loup\" (func $midi_loup (param i64 i64) (result i64)))",
-    ),
-    (
-        "midi_hou_lang",
-        "(import \"env\" \"midi_hou_lang\" (func $midi_hou_lang (param i64) (result i64)))",
-    ),
-    (
-        "midi_whaur",
-        "(import \"env\" \"midi_whaur\" (func $midi_whaur (param i64) (result i64)))",
-    ),
-    (
-        "midi_pit_luid",
-        "(import \"env\" \"midi_pit_luid\" (func $midi_pit_luid (param i64 i64) (result i64)))",
-    ),
-    (
-        "midi_pit_pan",
-        "(import \"env\" \"midi_pit_pan\" (func $midi_pit_pan (param i64 i64) (result i64)))",
-    ),
-    (
-        "midi_pit_rin_roond",
-        "(import \"env\" \"midi_pit_rin_roond\" (func $midi_pit_rin_roond (param i64 i64) (result i64)))",
-    ),
+/// Audio host imports: (name, arity). Every argument and the result is an i64 handle.
+///
+/// This is the single source of truth: the compiler derives its `(import ...)` lines from it
+/// and the wasm runner registers its stubs from it, so the two cannot drift apart.
+pub const AUDIO_IMPORTS: &[(&str, usize)] = &[
+    ("soond_stairt", 0),
+    ("soond_steek", 0),
+    ("soond_wheesht", 1),
+    ("soond_luid", 1),
+    ("soond_hou_luid", 0),
+    ("soond_haud_gang", 0),
+    ("soond_lade", 1),
+    ("soond_spiel", 1),
+    ("soond_haud", 1),
+    ("soond_gae_on", 1),
+    ("soond_stap", 1),
+    ("soond_unlade", 1),
+    ("soond_is_spielin", 1),
+    ("soond_pit_luid", 2),
+    ("soond_pit_pan", 2),
+    ("soond_pit_tune", 2),
+    ("soond_pit_rin_roond", 2),
+    ("soond_ready", 1),
+    ("muisic_lade", 1),
+    ("muisic_spiel", 1),
+    ("muisic_haud", 1),
+    ("muisic_gae_on", 1),
+    ("muisic_stap", 1),
+    ("muisic_unlade", 1),
+    ("muisic_is_spielin", 1),
+    ("muisic_loup", 2),
+    ("muisic_hou_lang", 1),
+    ("muisic_whaur", 1),
+    ("muisic_pit_luid", 2),
+    ("muisic_pit_pan", 2),
+    ("muisic_pit_tune", 2),
+    ("muisic_pit_rin_roond", 2),
+    ("midi_lade", 2),
+    ("midi_spiel", 1),
+    ("midi_haud", 1),
+    ("midi_gae_on", 1),
+    ("midi_stap", 1),
+    ("midi_unlade", 1),
+    ("midi_is_spielin", 1),
+    ("midi_loup", 2),
+    ("midi_hou_lang", 1),
+    ("midi_whaur", 1),
+    ("midi_pit_luid", 2),
+    ("midi_pit_pan", 2),
+    ("midi_pit_rin_roond", 2),
 ];
+
+/// The `(import ...)` line for one audio host function.
+fn audio_import_line(name: &str, arity: usize) -> String {
+    let params = if arity == 0 {
+        String::new()
+    } else {
+        format!(" (param{})", " i64".repeat(arity))
+    };
+    format!("(import \"env\" \"{name}\" (func ${name}{params} (result i64)))")
+}
 
 #[derive(Debug, Default)]
 struct WasmImportRequirements {
@@ -438,6 +317,345 @@ pub struct WasmCompiler {
     local_vars: Vec<String>,
     func_params: Vec<String>,
     string_data: Vec<String>,
+    /// User functions (name -> params), filled by `compile` so calls can fill in defaults.
+    functions: HashMap<String, Vec<Param>>,
+}
+
+/// Linear memory the host gives a module (one 64KiB page); string data must fit inside it.
+const WASM_MEMORY_BYTES: usize = 65_536;
+
+/// The WAT id fer a user function. Names that would collide wi' the exported `$main`
+/// or the `$mdh_*` host imports are mangled; `$` cannae appear in an mdhavers identifier,
+/// so a mangled id never clashes wi' another user function.
+fn function_id(name: &str) -> String {
+    if name == "main" || name.starts_with("mdh_") {
+        format!("u${}", name)
+    } else {
+        name.to_string()
+    }
+}
+
+fn compile_err(line: usize, message: String) -> HaversError {
+    HaversError::CompileError(format!("{} (line {})", message, line))
+}
+
+/// Is this expression safe tae copy intae a caller as a parameter default?
+/// Defaults are compiled at the call site, so they maunnae touch variables or calls.
+fn is_const_default(expr: &Expr) -> bool {
+    match expr {
+        Expr::Literal { .. } => true,
+        Expr::Grouping { expr, .. } => is_const_default(expr),
+        Expr::Unary { operand, .. } => is_const_default(operand),
+        Expr::Binary { left, right, .. } | Expr::Logical { left, right, .. } => {
+            is_const_default(left) && is_const_default(right)
+        }
+        Expr::List { elements, .. } => elements.iter().all(is_const_default),
+        Expr::Dict { pairs, .. } => pairs
+            .iter()
+            .all(|(k, v)| is_const_default(k) && is_const_default(v)),
+        _ => false,
+    }
+}
+
+/// Every name a function body (or the top level) declares as a WASM local.
+fn declared_names<'a>(params: &[String], stmts: impl Iterator<Item = &'a Stmt>) -> HashSet<String> {
+    let mut collector = WasmCompiler::new();
+    collector.func_params = params.to_vec();
+    for stmt in stmts {
+        collector.collect_locals_stmt(stmt);
+    }
+    collector
+        .local_vars
+        .into_iter()
+        .chain(params.iter().cloned())
+        .collect()
+}
+
+/// Checks a program can become a *valid* WASM module before any code is emitted, so
+/// `compile_to_wat` fails wi' a clear error instead o' producing WAT that willnae load.
+/// Constructs the code generator doesnae support are left tae it tae report.
+struct Validator<'a> {
+    functions: HashMap<&'a str, &'a [Param]>,
+    top_level_vars: HashSet<String>,
+    scope: HashSet<String>,
+    current_fn: Option<&'a str>,
+    loop_depth: usize,
+}
+
+fn validate_program(program: &Program) -> HaversResult<()> {
+    let mut functions: HashMap<&str, &[Param]> = HashMap::new();
+    let mut fn_stmts: Vec<&Stmt> = Vec::new();
+    let mut main_stmts: Vec<&Stmt> = Vec::new();
+
+    for stmt in &program.statements {
+        if let Stmt::Function {
+            name, params, span, ..
+        } = stmt
+        {
+            if functions.insert(name.as_str(), params.as_slice()).is_some() {
+                return Err(compile_err(
+                    span.line,
+                    format!(
+                        "Dae '{}' is defined mair than once - WASM cannae hae twa o' the same name",
+                        name
+                    ),
+                ));
+            }
+            let mut seen = HashSet::new();
+            for p in params {
+                if !seen.insert(p.name.as_str()) {
+                    return Err(compile_err(
+                        span.line,
+                        format!(
+                            "Dae '{}' has the parameter '{}' mair than once",
+                            name, p.name
+                        ),
+                    ));
+                }
+            }
+            fn_stmts.push(stmt);
+        } else {
+            main_stmts.push(stmt);
+        }
+    }
+
+    let top_level_vars = declared_names(&[], main_stmts.iter().copied());
+    let mut validator = Validator {
+        functions,
+        top_level_vars: top_level_vars.clone(),
+        scope: HashSet::new(),
+        current_fn: None,
+        loop_depth: 0,
+    };
+
+    for stmt in fn_stmts {
+        if let Stmt::Function {
+            name, params, body, ..
+        } = stmt
+        {
+            let param_names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
+            validator.scope = declared_names(&param_names, body.iter());
+            validator.current_fn = Some(name.as_str());
+            validator.loop_depth = 0;
+            validator.stmts(body)?;
+        }
+    }
+
+    validator.scope = top_level_vars;
+    validator.current_fn = None;
+    validator.loop_depth = 0;
+    for stmt in main_stmts {
+        validator.stmt(stmt)?;
+    }
+    Ok(())
+}
+
+impl<'a> Validator<'a> {
+    fn stmts(&mut self, stmts: &[Stmt]) -> HaversResult<()> {
+        for stmt in stmts {
+            self.stmt(stmt)?;
+        }
+        Ok(())
+    }
+
+    fn stmt(&mut self, stmt: &Stmt) -> HaversResult<()> {
+        match stmt {
+            Stmt::VarDecl { initializer, .. } => {
+                if let Some(expr) = initializer {
+                    self.expr(expr)?;
+                }
+            }
+            Stmt::Expression { expr, .. } => self.expr(expr)?,
+            Stmt::Block { statements, .. } => self.stmts(statements)?,
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                self.expr(condition)?;
+                self.stmt(then_branch)?;
+                if let Some(else_branch) = else_branch {
+                    self.stmt(else_branch)?;
+                }
+            }
+            Stmt::While {
+                condition, body, ..
+            } => {
+                self.expr(condition)?;
+                self.loop_depth += 1;
+                let result = self.stmt(body);
+                self.loop_depth -= 1;
+                result?;
+            }
+            Stmt::Return { value, .. } => {
+                if let Some(expr) = value {
+                    self.expr(expr)?;
+                }
+            }
+            Stmt::Print { value, .. } => self.expr(value)?,
+            Stmt::Break { span } => {
+                if self.loop_depth == 0 {
+                    return Err(compile_err(
+                        span.line,
+                        "'brak' can only be used inside a loop".to_string(),
+                    ));
+                }
+            }
+            Stmt::Continue { span } => {
+                if self.loop_depth == 0 {
+                    return Err(compile_err(
+                        span.line,
+                        "'haud' can only be used inside a loop".to_string(),
+                    ));
+                }
+            }
+            // Anything else is reported by the code generator as unsupported.
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn expr(&mut self, expr: &Expr) -> HaversResult<()> {
+        match expr {
+            Expr::Variable { name, span } => self.check_name(name, span.line, false)?,
+            Expr::Assign { name, value, span } => {
+                self.expr(value)?;
+                self.check_name(name, span.line, true)?;
+            }
+            Expr::Binary { left, right, .. } | Expr::Logical { left, right, .. } => {
+                self.expr(left)?;
+                self.expr(right)?;
+            }
+            Expr::Unary { operand, .. } => self.expr(operand)?,
+            Expr::Grouping { expr, .. } => self.expr(expr)?,
+            Expr::Get { object, .. } => self.expr(object)?,
+            Expr::Set { object, value, .. } => {
+                self.expr(object)?;
+                self.expr(value)?;
+            }
+            Expr::List { elements, .. } => {
+                for element in elements {
+                    self.expr(element)?;
+                }
+            }
+            Expr::Dict { pairs, .. } => {
+                for (key, value) in pairs {
+                    self.expr(key)?;
+                    self.expr(value)?;
+                }
+            }
+            Expr::Call {
+                callee,
+                arguments,
+                span,
+            } => {
+                match callee.as_ref() {
+                    Expr::Get { object, .. } => self.expr(object)?,
+                    Expr::Variable { name, .. } if !self.scope.contains(name) => {
+                        self.check_direct_call(name, arguments.len(), span.line)?;
+                    }
+                    // Local-value calls and unsupported callees are left tae the code generator.
+                    _ => {}
+                }
+                for arg in arguments {
+                    self.expr(arg)?;
+                }
+            }
+            // Anything else is reported by the code generator as unsupported.
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn check_name(&self, name: &str, line: usize, assigning: bool) -> HaversResult<()> {
+        if self.scope.contains(name) {
+            return Ok(());
+        }
+        let message = if let (Some(func), true) =
+            (self.current_fn, self.top_level_vars.contains(name))
+        {
+            format!(
+                "Top-level variable '{}' cannae be used inside dae '{}' in WASM yet - pass it in as a parameter",
+                name, func
+            )
+        } else if self.functions.contains_key(name) {
+            format!(
+                "'{}' is a dae - WASM cannae use daes as values yet, only call them",
+                name
+            )
+        } else if assigning {
+            format!(
+                "Cannae assign tae '{}' - it hasnae been declared wi' ken",
+                name
+            )
+        } else {
+            format!(
+                "'{}' hasnae been declared - use ken tae declare it first",
+                name
+            )
+        };
+        Err(compile_err(line, message))
+    }
+
+    fn check_direct_call(&self, name: &str, argc: usize, line: usize) -> HaversResult<()> {
+        if let Some(params) = self.functions.get(name) {
+            if argc > params.len() {
+                return Err(compile_err(
+                    line,
+                    format!(
+                        "Dae '{}' tak's at maist {} argument(s) but wis gien {}",
+                        name,
+                        params.len(),
+                        argc
+                    ),
+                ));
+            }
+            for param in &params[argc..] {
+                match &param.default {
+                    None => {
+                        return Err(compile_err(
+                            line,
+                            format!(
+                                "Dae '{}' needs the argument '{}' but wis gien only {}",
+                                name, param.name, argc
+                            ),
+                        ));
+                    }
+                    Some(default) if !is_const_default(default) => {
+                        return Err(compile_err(
+                            line,
+                            format!(
+                                "The default fer '{}' in dae '{}' maun be a constant in WASM",
+                                param.name, name
+                            ),
+                        ));
+                    }
+                    Some(_) => {}
+                }
+            }
+            return Ok(());
+        }
+        if let Some((_, arity)) = AUDIO_IMPORTS.iter().find(|(import, _)| *import == name) {
+            if argc != *arity {
+                return Err(compile_err(
+                    line,
+                    format!(
+                        "Dae '{}' tak's {} argument(s) but wis gien {}",
+                        name, arity, argc
+                    ),
+                ));
+            }
+            return Ok(());
+        }
+        Err(compile_err(
+            line,
+            format!(
+                "Dae '{}' isnae kent tae the WASM backend - builtin functions arenae supported in WASM yet",
+                name
+            ),
+        ))
+    }
 }
 
 const TMP_LOGIC: &str = "__mdh$tmp0";
@@ -457,13 +675,27 @@ impl WasmCompiler {
             local_vars: Vec::new(),
             func_params: Vec::new(),
             string_data: Vec::new(),
+            functions: HashMap::new(),
         }
     }
 
     /// Compile a program tae WAT (WebAssembly Text Format)
+    ///
+    /// Never returns `Ok` fer a module that willnae load: scoping, callee and arity
+    /// problems are reported as `CompileError`s up front.
     pub fn compile(&mut self, program: &Program) -> HaversResult<String> {
+        validate_program(program)?;
         self.output.clear();
+        self.indent = 0;
         self.string_data.clear();
+        self.functions = program
+            .statements
+            .iter()
+            .filter_map(|stmt| match stmt {
+                Stmt::Function { name, params, .. } => Some((name.clone(), params.clone())),
+                _ => None,
+            })
+            .collect();
         let import_requirements = WasmImportRequirements::from_program(program);
 
         // Start the module
@@ -540,9 +772,10 @@ impl WasmCompiler {
         if !import_requirements.audio_imports.is_empty() {
             self.emit_line("");
             self.emit_line(";; Audio imports (i64 value ABI)");
-            for (name, import_line) in AUDIO_IMPORTS {
+            for (name, arity) in AUDIO_IMPORTS {
                 if import_requirements.audio_imports.contains(*name) {
-                    self.emit_line(import_line);
+                    let import_line = audio_import_line(name, *arity);
+                    self.emit_line(&import_line);
                 }
             }
         }
@@ -564,16 +797,22 @@ impl WasmCompiler {
             self.compile_function(func)?;
         }
 
-        // Compile main code as start function
-        if !main_stmts.is_empty() {
-            self.compile_main(&main_stmts)?;
-        }
+        // Compile main code. `$main` is always emitted (empty if there are nae top-level
+        // statements) because it is always exported.
+        self.compile_main(&main_stmts)?;
 
         // Export the main function
         self.emit_line("");
         self.emit_line("(export \"main\" (func $main))");
 
         // Add string data section if we have strings
+        let string_bytes: usize = self.string_data.iter().map(|s| s.len() + 1).sum();
+        if string_bytes > WASM_MEMORY_BYTES {
+            return Err(HaversError::CompileError(format!(
+                "String data ({} bytes) is too muckle fer the {} byte WASM memory",
+                string_bytes, WASM_MEMORY_BYTES
+            )));
+        }
         if !self.string_data.is_empty() {
             self.emit_line("");
             self.emit_line(";; String data");
@@ -619,7 +858,11 @@ impl WasmCompiler {
             }
 
             // Start function
-            self.emit_line(&format!("(func ${} {}(result i64)", name, param_types));
+            self.emit_line(&format!(
+                "(func ${} {}(result i64)",
+                function_id(name),
+                param_types
+            ));
             self.indent += 1;
 
             // Collect locals from body
@@ -1068,7 +1311,29 @@ impl WasmCompiler {
                         for arg in arguments {
                             self.compile_expr(arg)?;
                         }
-                        self.emit_line(&format!("(call ${})", name));
+                        // Fill in any omitted trailing parameters from their defaults.
+                        if let Some(params) = self.functions.get(name).cloned() {
+                            if arguments.len() > params.len() {
+                                return Err(HaversError::CompileError(format!(
+                                    "Dae '{}' tak's at maist {} argument(s) but wis gien {}",
+                                    name,
+                                    params.len(),
+                                    arguments.len()
+                                )));
+                            }
+                            for param in &params[arguments.len()..] {
+                                match &param.default {
+                                    Some(default) => self.compile_expr(default)?,
+                                    None => {
+                                        return Err(HaversError::CompileError(format!(
+                                            "Dae '{}' needs the argument '{}'",
+                                            name, param.name
+                                        )));
+                                    }
+                                }
+                            }
+                        }
+                        self.emit_line(&format!("(call ${})", function_id(name)));
                     }
                 } else {
                     return Err(HaversError::InternalError(
@@ -1101,7 +1366,7 @@ impl WasmCompiler {
             Expr::List { elements, .. } => {
                 self.emit_line(&format!("(i32.const {})", elements.len()));
                 self.emit_line("(call $mdh_make_list)");
-                self.emit_line(&format!("(local.tee ${})", TMP_BUILD));
+                self.emit_line(&format!("(local.set ${})", TMP_BUILD));
                 for elem in elements {
                     self.emit_line(&format!("(local.get ${})", TMP_BUILD));
                     self.compile_expr(elem)?;
@@ -1113,7 +1378,7 @@ impl WasmCompiler {
 
             Expr::Dict { pairs, .. } => {
                 self.emit_line("(call $mdh_make_dict)");
-                self.emit_line(&format!("(local.tee ${})", TMP_BUILD));
+                self.emit_line(&format!("(local.set ${})", TMP_BUILD));
                 for (key, value) in pairs {
                     self.emit_line(&format!("(local.get ${})", TMP_BUILD));
                     self.compile_expr(key)?;
@@ -1150,16 +1415,18 @@ impl WasmCompiler {
 
 /// Escape a string fer WAT data section
 fn escape_wat_string(s: &str) -> String {
+    // WAT string escapes are per *byte*, so walk the UTF-8 bytes (the same bytes whose
+    // length is handed tae `__mdh_make_string`), never the code points.
     let mut result = String::new();
-    for c in s.chars() {
-        match c {
-            '"' => result.push_str("\\\""),
-            '\\' => result.push_str("\\\\"),
-            '\n' => result.push_str("\\n"),
-            '\r' => result.push_str("\\r"),
-            '\t' => result.push_str("\\t"),
-            c if c.is_ascii_graphic() || c == ' ' => result.push(c),
-            c => result.push_str(&format!("\\{:02x}", c as u32)),
+    for &b in s.as_bytes() {
+        match b {
+            b'"' => result.push_str("\\\""),
+            b'\\' => result.push_str("\\\\"),
+            b'\n' => result.push_str("\\n"),
+            b'\r' => result.push_str("\\r"),
+            b'\t' => result.push_str("\\t"),
+            b if b.is_ascii_graphic() || b == b' ' => result.push(b as char),
+            b => result.push_str(&format!("\\{:02x}", b)),
         }
     }
     result
@@ -1926,10 +2193,7 @@ mod tests {
     #[test]
     fn test_value_call_arity_too_large_wasm_errors() {
         let source = r#"
-            dae add(a, b) {
-                gie a + b
-            }
-            ken f = add
+            ken f = aye
             f(1, 2, 3, 4, 5, 6, 7, 8, 9)
         "#;
         let err = compile_to_wat(source).unwrap_err();
@@ -2629,6 +2893,85 @@ dae f() {
             span,
         });
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn escape_wat_string_emits_utf8_bytes_matching_the_byte_length() {
+        // MDH-BUG-FLU-00045
+        assert_eq!(escape_wat_string("£"), "\\c2\\a3");
+        assert_eq!(escape_wat_string("€"), "\\e2\\82\\ac");
+        assert_eq!(escape_wat_string("😀"), "\\f0\\9f\\98\\80");
+        let wat = compile_to_wat("ken s = \"£5\"").unwrap();
+        assert!(
+            wat.contains("(data (i32.const 0) \"\\c2\\a35\\00\")"),
+            "{wat}"
+        );
+        assert!(wat.contains("(i32.const 3)"), "byte length is 3: {wat}");
+    }
+
+    #[test]
+    fn functions_only_program_still_defines_the_exported_main() {
+        // MDH-BUG-FLU-00044
+        let wat = compile_to_wat("dae f() { gie 1 }").unwrap();
+        assert!(wat.contains("(func $main (result i64)"), "{wat}");
+        assert!(wat.contains("(export \"main\" (func $main))"));
+    }
+
+    #[test]
+    fn user_main_and_host_import_names_are_mangled() {
+        assert_eq!(function_id("main"), "u$main");
+        assert_eq!(function_id("mdh_add"), "u$mdh_add");
+        assert_eq!(function_id("add"), "add");
+        let wat = compile_to_wat("dae main() { gie 1 }\nblether main()").unwrap();
+        assert!(wat.contains("(func $u$main "), "{wat}");
+        assert!(wat.contains("(call $u$main)"), "{wat}");
+        assert!(wat.contains("(func $main (result i64)"), "{wat}");
+    }
+
+    #[test]
+    fn default_parameters_are_compiled_at_the_call_site() {
+        let wat = compile_to_wat("dae add(a, b = 2) { gie a + b }\nblether add(40)").unwrap();
+        assert!(wat.contains("(i64.const 2)"), "{wat}");
+        assert!(wat.contains("(call $add)"), "{wat}");
+    }
+
+    #[test]
+    fn validation_rejects_calls_and_names_the_backend_cannot_resolve() {
+        for (source, needle) in [
+            ("blether len([1])", "'len'"),
+            ("dae f(a) { gie a }\nf()", "'a'"),
+            ("dae f(a) { gie a }\nf(1, 2)", "'f'"),
+            ("ken x = 1\ndae f() { gie x }", "'x'"),
+            ("y = 1", "'y'"),
+            ("brak", "brak"),
+            ("haud", "haud"),
+            ("soond_luid()", "'soond_luid'"),
+        ] {
+            match compile_to_wat(source) {
+                Err(HaversError::CompileError(message)) => {
+                    assert!(message.contains(needle), "{source}: {message}")
+                }
+                other => panic!("{source}: expected CompileError, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn audio_import_lines_are_derived_from_the_single_table() {
+        assert_eq!(
+            audio_import_line("soond_stairt", 0),
+            "(import \"env\" \"soond_stairt\" (func $soond_stairt (result i64)))"
+        );
+        assert_eq!(
+            audio_import_line("midi_pit_rin_roond", 2),
+            "(import \"env\" \"midi_pit_rin_roond\" (func $midi_pit_rin_roond (param i64 i64) (result i64)))"
+        );
+        assert!(AUDIO_IMPORTS
+            .iter()
+            .any(|(name, arity)| *name == "midi_pit_rin_roond" && *arity == 2));
+        assert!(!AUDIO_IMPORTS
+            .iter()
+            .any(|(name, _)| *name == "midi_pit_tune"));
     }
 
     #[test]

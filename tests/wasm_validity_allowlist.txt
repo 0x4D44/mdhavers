@@ -1,0 +1,4 @@
+# Golden programs the WASM backend accepts but whose output differs from .expected.
+# Format: `path | reason` (path relative to the repo root). The test fails if an entry
+# starts passing (remove it) or no longer exists. Phase 2 fills this from observed runs.
+tests/golden/basics/variables/shadowing.braw | WASM locals are function-wide, so a block-scoped `ken x` shadow overwrites the outer x (no block scoping in the WAT backend)
