@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00048 — LLVM shadow caches are not invalidated on reassignment (stale lists, heap overflow, use-after-free)
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** High
 - **Area:** llvm
 - **Raised:** 2026-10-22T23:24:11Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T030425Z-04261bc7
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00048-run-fix-20261023T030425Z-04261bc7
-- **Owner base:** 25e664c356dc8488fcbd807b2b8f161b2cd95c2a
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T03:04:25Z
-- **Owner until:** 2026-10-23T07:04:25Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-22T23:24:11Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-22T23:24:11Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T03:04:31Z, deltic:auto role=fix run=fix-20261023T030425Z-04261bc7 branch=task/bug-MDH-BUG-FLU-00048-run-fix-20261023T030425Z-04261bc7 code=8e071f4 gate=manual)
 
 ## Observation
 
