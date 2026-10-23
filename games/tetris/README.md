@@ -75,7 +75,7 @@ mdhavers is a Scots programming language where:
 - `aye` = true
 - `nae` = false/not
 
-See the [mdhavers documentation](../../docs/book/) for more.
+See the [mdhavers documentation](../../docs/src/index.md) for more.
 
 ## Embedding in Substack
 
