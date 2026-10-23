@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00059 — Makefile and setup-deps.sh are Linux-only
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** build
 - **Raised:** 2026-10-22T23:24:12Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T025001Z-c9390bf4
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00059-run-fix-20261023T025001Z-c9390bf4
-- **Owner base:** c69953cdb09017208cdf38dac271ca0b9fafbe0a
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T02:50:01Z
-- **Owner until:** 2026-10-23T06:50:01Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-22T23:24:12Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-22T23:24:12Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T02:50:07Z, deltic:auto role=fix run=fix-20261023T025001Z-c9390bf4 branch=task/bug-MDH-BUG-FLU-00059-run-fix-20261023T025001Z-c9390bf4 code=77f950a gate=manual)
 
 ## Observation
 
