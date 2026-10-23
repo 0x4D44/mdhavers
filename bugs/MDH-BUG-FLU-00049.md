@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00049 — LLVM try/catch leaves dangling jmp_buf on gie/brak and grows the stack in loops
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** High
 - **Area:** llvm
 - **Raised:** 2026-10-22T23:24:11Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T030437Z-98c48c60
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00049-run-fix-20261023T030437Z-98c48c60
-- **Owner base:** c1bbb5e4d31d7b3763fbc50ff68ab265097db8b4
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T03:04:37Z
-- **Owner until:** 2026-10-23T07:04:37Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-22T23:24:11Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-22T23:24:11Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T03:04:43Z, deltic:auto role=fix run=fix-20261023T030437Z-98c48c60 branch=task/bug-MDH-BUG-FLU-00049-run-fix-20261023T030437Z-98c48c60 code=8e071f4 gate=manual)
 
 ## Observation
 
