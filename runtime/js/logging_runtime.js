@@ -16,6 +16,10 @@ function __mdh_log_parse_level(level) {
   if (typeof level === "number") {
     return level;
   }
+  // mdhavers integers are BigInts (see core_runtime.js).
+  if (typeof level === "bigint") {
+    return Number(level);
+  }
   if (typeof level !== "string") {
     return 3;
   }
@@ -104,7 +108,10 @@ function __mdh_log_enabled(level, target) {
 
 function __mdh_log_format(record) {
   if (__mdh_log_state.format === "json") {
-    return JSON.stringify(record);
+    // JSON.stringify refuses BigInts; write integer fields as their exact digits.
+    return JSON.stringify(record, (_k, v) =>
+      typeof v === "bigint" ? (JSON.rawJSON ? JSON.rawJSON(String(v)) : Number(v)) : v
+    );
   }
   const levelName = __mdh_log_level_name(record.level);
   const ts = __mdh_log_state.timestamps ? new Date().toISOString() : "";

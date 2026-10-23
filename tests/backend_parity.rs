@@ -423,3 +423,47 @@ fn parity_js_semantics_decisions_f1_f2_f3_block_value() {
         ),
     ]);
 }
+
+#[test]
+fn parity_js_integer_model_f5() {
+    if !node_available() {
+        return;
+    }
+    assert_js_parity(&[
+        (
+            "F5 integer overflow raises the interpreter's error",
+            "ken big = 9223372036854775807\nhae_a_bash {\n    blether big + 1\n} gin_it_gangs_wrang e {\n    blether e\n}\nhae_a_bash {\n    blether -big - 2\n} gin_it_gangs_wrang e {\n    blether e\n}\nhae_a_bash {\n    blether big * big\n} gin_it_gangs_wrang e {\n    blether e\n}\nken wee = -big - 1\nhae_a_bash {\n    blether -wee\n} gin_it_gangs_wrang e {\n    blether e\n}\nhae_a_bash {\n    blether wee % -1\n} gin_it_gangs_wrang e {\n    blether e\n}",
+            "Wheesht! Yer number's too muckle at line 3 - it's overflowed!\nWheesht! Yer number's too muckle at line 8 - it's overflowed!\nWheesht! Yer number's too muckle at line 13 - it's overflowed!\nWheesht! Yer number's too muckle at line 19 - it's overflowed!\nWheesht! Yer number's too muckle at line 24 - it's overflowed!",
+        ),
+        (
+            "F5 integer division and remainder truncate toward zero",
+            "ken a = 7\nken b = -2\nblether a / b\nblether a % b\nblether -a / 2\nblether -a % 2\nblether a / 2.0\nken z = 0.0\nhae_a_bash {\n    blether a / z\n} gin_it_gangs_wrang e {\n    blether e\n}",
+            "-3\n1\n-3\n-1\n3.5\nYe numpty! Tryin' tae divide by zero at line 10",
+        ),
+        (
+            "F5 products beyond 2^53 stay exact",
+            "ken r = 3037000499\nblether r * r\nblether 9007199254740992 + 1\nblether 9007199254740993 - 2\nken f = 1\nfer i in 1..=20 { f = f * i }\nblether f",
+            "9223372030926249001\n9007199254740993\n9007199254740991\n2432902008176640000",
+        ),
+        (
+            "F5 int/float mixing",
+            "blether 1 + 2.5\nblether 3 - 0.5\nblether 2 * 1.5\nblether whit_kind(1 + 1.0)\nblether whit_kind(6 / 3)\nblether 1 == 1.0\nblether [1, 2] == [1.0, 2.0]\nblether 1 < 1.5\nblether 2 >= 2.0\nhae_a_bash {\n    blether 7 % 2.0\n} gin_it_gangs_wrang e {\n    blether e\n}\nhae_a_bash {\n    blether \"a\" < 1\n} gin_it_gangs_wrang e {\n    blether e\n}",
+            "3.5\n2.5\n3\nfloat\ninteger\naye\naye\naye\naye\nThat's pure mince! Type error at line 11: Cannae get remainder o' integer by float\nThat's pure mince! Type error at line 16: Cannae compare string wi' integer",
+        ),
+        (
+            "F5 display of integers and floats",
+            "blether 2.0\nblether -0.5\nblether [1, 2.5, 3.0]\nblether f\"{10 / 4} {10.0 / 4}\"\nblether \"n=\" + 5\nblether tae_string(12) + tae_string(1.5)",
+            "2\n-0.5\n[1, 2.5, 3]\n2 2.5\nn=5\n121.5",
+        ),
+        (
+            "F5 builtins take and gie integers",
+            "ken xs = [10, 20, 30]\nblether len(xs) - 1\nblether xs[len(xs) - 1]\nblether xs[-1]\nblether xs[1:]\nblether xs[::-1]\nblether range(1, 4)\nblether whit_kind(len(\"abc\"))\nblether tae_int(\"41\") + 1\nblether whit_kind(tae_float(3))\nblether floor(2.7) + ceil(2.1) + round(2.5)\nblether abs(-5) + abs(-2.5)\nblether min(3, 2) + max(1, 4)\nblether sumaw([1, 2, 3]) + sumaw([0.5])\nblether coont([1, 1.0, 2], 1)\nblether scran(\"hello\", 1, 3)\nblether sqrt(16)\nblether sort([3, 1.5, 2])\nxs[0] = 5\nblether xs",
+            "2\n30\n30\n[20, 30]\n[30, 20, 10]\n[1, 2, 3]\ninteger\n42\nfloat\n8\n7.5\n6\n6.5\n2\nel\n4\n[1.5, 2, 3]\n[5, 20, 30]",
+        ),
+        (
+            "F5 match arms and ranges compare by value",
+            "keek 2.0 {\n    whan 2 -> blether \"two\"\n    whan _ -> blether \"other\"\n}\nkeek 5 {\n    whan 1..=5 -> blether \"in\"\n    whan _ -> blether \"oot\"\n}\nfer i in 0..3 { blether i * 10 }",
+            "two\nin\n0\n10\n20",
+        ),
+    ]);
+}

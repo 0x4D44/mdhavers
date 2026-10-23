@@ -272,22 +272,6 @@ fn is_number_literal(expr: &Expr) -> bool {
     }
 }
 
-fn is_int_literal(expr: &Expr) -> bool {
-    match expr {
-        Expr::Literal {
-            value: Literal::Integer(_),
-            ..
-        } => true,
-        Expr::Grouping { expr, .. } => is_int_literal(expr),
-        Expr::Unary {
-            operator: UnaryOp::Negate,
-            operand,
-            ..
-        } => is_int_literal(operand),
-        _ => false,
-    }
-}
-
 fn is_string_literal(expr: &Expr) -> bool {
     match expr {
         Expr::Literal {
@@ -301,11 +285,12 @@ fn is_string_literal(expr: &Expr) -> bool {
 }
 
 /// A literal whose JS `===` agrees wi' the interpreter's `==` against ony value.
+/// No' numbers: an integer (BigInt) equals a float (JS number) o' the same value.
 fn is_scalar_literal(expr: &Expr) -> bool {
     match expr {
-        Expr::Literal { value, .. } => !matches!(value, Literal::Nil),
+        Expr::Literal { value, .. } => matches!(value, Literal::String(_) | Literal::Bool(_)),
         Expr::Grouping { expr, .. } => is_scalar_literal(expr),
-        _ => is_number_literal(expr),
+        _ => false,
     }
 }
 
@@ -816,39 +801,15 @@ impl Compiler {
         // Core helpers the compiled code calls as __havers.<name> (show, truthy, eq, ...)
         self.emit_line("...__havers_core,");
 
-        // len function (strings count characters, like the interpreter)
-        self.emit_line("len: (x) => {");
-        self.indent += 1;
-        self.emit_line("if (typeof x === 'string') return Array.from(x).length;");
-        self.emit_line("if (Array.isArray(x)) return x.length;");
-        self.emit_line("if (x && typeof x === 'object') return Object.keys(x).length;");
-        self.emit_line("throw new Error('Och! Cannae get length o\\' that!');");
-        self.indent -= 1;
-        self.emit_line("},");
+        // Builtins that take or gie integers (len, range, abs, tae_int, ...) live
+        // in core_runtime.js, which carries the BigInt integer model.
+        self.emit_line("...__havers_core.builtins,");
 
         // whit_kind (type) function
         self.emit_line("whit_kind: (x) => __havers_core.typeName(x),");
 
         // tae_string function (same text as blether prints)
         self.emit_line("tae_string: (x) => __havers_core.show(x),");
-
-        // tae_int function
-        self.emit_line("tae_int: (x) => {");
-        self.indent += 1;
-        self.emit_line("const n = parseInt(x, 10);");
-        self.emit_line("if (isNaN(n)) throw new Error(`Cannae turn '${x}' intae an integer`);");
-        self.emit_line("return n;");
-        self.indent -= 1;
-        self.emit_line("},");
-
-        // tae_float function
-        self.emit_line("tae_float: (x) => {");
-        self.indent += 1;
-        self.emit_line("const n = parseFloat(x);");
-        self.emit_line("if (isNaN(n)) throw new Error(`Cannae turn '${x}' intae a float`);");
-        self.emit_line("return n;");
-        self.indent -= 1;
-        self.emit_line("},");
 
         // shove (push) function
         self.emit_line("shove: (arr, val) => { arr.push(val); },");
@@ -866,36 +827,6 @@ impl Compiler {
 
         // values function
         self.emit_line("values: (obj) => Object.values(obj),");
-
-        // range function
-        self.emit_line("range: (start, end) => {");
-        self.indent += 1;
-        self.emit_line("const result = [];");
-        self.emit_line("for (let i = start; i < end; i++) result.push(i);");
-        self.emit_line("return result;");
-        self.indent -= 1;
-        self.emit_line("},");
-
-        // abs function
-        self.emit_line("abs: Math.abs,");
-
-        // min function
-        self.emit_line("min: Math.min,");
-
-        // max function
-        self.emit_line("max: Math.max,");
-
-        // floor function
-        self.emit_line("floor: Math.floor,");
-
-        // ceil function
-        self.emit_line("ceil: Math.ceil,");
-
-        // round function
-        self.emit_line("round: Math.round,");
-
-        // sqrt function
-        self.emit_line("sqrt: Math.sqrt,");
 
         // split function
         self.emit_line("split: (str, delim) => str.split(delim),");
@@ -933,7 +864,7 @@ impl Compiler {
         self.indent += 1;
         self.emit_line("if (!Array.isArray(arr)) throw new Error('sort() expects a list');");
         self.emit_line(
-            "const rank = (v) => typeof v === 'number' ? 0 : typeof v === 'string' ? 1 : 2;",
+            "const rank = (v) => typeof v === 'bigint' || typeof v === 'number' ? 0 : typeof v === 'string' ? 1 : 2;",
         );
         self.emit_line("const cpCmp = (x, y) => {");
         self.indent += 1;
@@ -1035,39 +966,12 @@ impl Compiler {
         self.indent -= 1;
         self.emit_line("},");
 
-        // scran - slice
-        self.emit_line("scran: (x, start, end) => {");
-        self.indent += 1;
-        self.emit_line(
-            "if (typeof x === 'string' || Array.isArray(x)) return x.slice(start, end);",
-        );
-        self.emit_line("throw new Error('scran() expects a list or string');");
-        self.indent -= 1;
-        self.emit_line("},");
-
         // slap - concatenate
         self.emit_line("slap: (a, b) => {");
         self.indent += 1;
         self.emit_line("if (typeof a === 'string' && typeof b === 'string') return a + b;");
         self.emit_line("if (Array.isArray(a) && Array.isArray(b)) return [...a, ...b];");
         self.emit_line("throw new Error('slap() expects two lists or two strings');");
-        self.indent -= 1;
-        self.emit_line("},");
-
-        // sumaw - sum all
-        self.emit_line("sumaw: (arr) => {");
-        self.indent += 1;
-        self.emit_line("if (!Array.isArray(arr)) throw new Error('sumaw() expects a list');");
-        self.emit_line("return arr.reduce((a, b) => a + b, 0);");
-        self.indent -= 1;
-        self.emit_line("},");
-
-        // coont - count occurrences
-        self.emit_line("coont: (x, item) => {");
-        self.indent += 1;
-        self.emit_line("if (typeof x === 'string') return x.split(item).length - 1;");
-        self.emit_line("if (Array.isArray(x)) return x.filter(e => e === item).length;");
-        self.emit_line("throw new Error('coont() expects a list or string');");
         self.indent -= 1;
         self.emit_line("},");
 
@@ -1092,51 +996,6 @@ impl Compiler {
         self.indent -= 1;
         self.emit_line("}");
         self.emit_line("return result;");
-        self.indent -= 1;
-        self.emit_line("},");
-
-        // slice - slice with step (fer [start:end:step] syntax)
-        self.emit_line("slice: (x, start, end, step) => {");
-        self.indent += 1;
-        self.emit_line("const len = x.length;");
-        self.emit_line("const isStr = typeof x === 'string';");
-        self.emit_line("const arr = isStr ? x.split('') : x;");
-        self.emit_line("if (step === 0) throw new Error('Slice step cannae be zero, ya dafty!');");
-        self.emit_line("// Handle defaults based on step direction");
-        self.emit_line("const s = start !== null ? (start < 0 ? Math.max(len + start, 0) : Math.min(start, len)) : (step > 0 ? 0 : len - 1);");
-        self.emit_line("const e = end !== null ? (end < 0 ? Math.max(len + end, step > 0 ? 0 : -1) : Math.min(end, len)) : (step > 0 ? len : -len - 1);");
-        self.emit_line("const result = [];");
-        self.emit_line("if (step > 0) {");
-        self.indent += 1;
-        self.emit_line("for (let i = s; i < e; i += step) result.push(arr[i]);");
-        self.indent -= 1;
-        self.emit_line("} else {");
-        self.indent += 1;
-        self.emit_line("for (let i = s; i > e; i += step) result.push(arr[i]);");
-        self.indent -= 1;
-        self.emit_line("}");
-        self.emit_line("return isStr ? result.join('') : result;");
-        self.indent -= 1;
-        self.emit_line("},");
-
-        // Timing functions
-        self.emit_line("// Timing functions");
-        self.emit_line("noo: () => Date.now(),");
-        self.emit_line("tick: () => {");
-        self.indent += 1;
-        self.emit_line("if (typeof process !== 'undefined' && process.hrtime) {");
-        self.indent += 1;
-        self.emit_line("const [s, ns] = process.hrtime();");
-        self.emit_line("return s * 1e9 + ns;");
-        self.indent -= 1;
-        self.emit_line("}");
-        self.emit_line("return Date.now() * 1e6; // Fallback for browser");
-        self.indent -= 1;
-        self.emit_line("},");
-        self.emit_line("bide: (ms) => {");
-        self.indent += 1;
-        self.emit_line("const end = Date.now() + ms;");
-        self.emit_line("while (Date.now() < end) {} // Busy wait (sync)");
         self.indent -= 1;
         self.emit_line("},");
 
@@ -1199,6 +1058,9 @@ impl Compiler {
 
         self.indent -= 1;
         self.emit_line("};");
+        // The audio runtime checks fer JS numbers, so integer (BigInt) arguments
+        // reach it as plain numbers.
+        self.emit_line("for (const k of Object.keys(__havers)) if (/^(soond|muisic|midi)_/.test(k)) __havers[k] = __havers_core.numArgs(__havers[k]);");
         self.emit_line("");
 
         if include_tri {
@@ -1245,40 +1107,40 @@ impl Compiler {
             );
             self.emit_line("return {");
             self.indent += 1;
-            self.emit_line("Sicht: (...args) => __havers_tri_wrap(new THREE.Scene(...args)),");
+            self.emit_line("Sicht: (...args) => __havers_tri_wrap(new THREE.Scene(...__havers_core.nums(args))),");
             self.emit_line("Thing3D: (...args) => __havers_tri_wrap(new THREE.Object3D(...args)),");
-            self.emit_line("Clump: (...args) => __havers_tri_wrap(new THREE.Group(...args)),");
-            self.emit_line("Mesch: (...args) => __havers_tri_wrap(new THREE.Mesh(...args)),");
-            self.emit_line("Kamera: (...args) => __havers_tri_wrap(new THREE.Camera(...args)),");
-            self.emit_line("PerspectivKamera: (...args) => __havers_tri_wrap(new THREE.PerspectiveCamera(...args)),");
-            self.emit_line("OrthograffikKamera: (...args) => __havers_tri_wrap(new THREE.OrthographicCamera(...args)),");
+            self.emit_line("Clump: (...args) => __havers_tri_wrap(new THREE.Group(...__havers_core.nums(args))),");
+            self.emit_line("Mesch: (...args) => __havers_tri_wrap(new THREE.Mesh(...__havers_core.nums(args))),");
+            self.emit_line("Kamera: (...args) => __havers_tri_wrap(new THREE.Camera(...__havers_core.nums(args))),");
+            self.emit_line("PerspectivKamera: (...args) => __havers_tri_wrap(new THREE.PerspectiveCamera(...__havers_core.nums(args))),");
+            self.emit_line("OrthograffikKamera: (...args) => __havers_tri_wrap(new THREE.OrthographicCamera(...__havers_core.nums(args))),");
             self.emit_line(
-                "Geometrie: (...args) => __havers_tri_wrap(new THREE.BufferGeometry(...args)),",
+                "Geometrie: (...args) => __havers_tri_wrap(new THREE.BufferGeometry(...__havers_core.nums(args))),",
             );
             self.emit_line(
-                "BoxGeometrie: (...args) => __havers_tri_wrap(new THREE.BoxGeometry(...args)),",
+                "BoxGeometrie: (...args) => __havers_tri_wrap(new THREE.BoxGeometry(...__havers_core.nums(args))),",
             );
             self.emit_line(
-                "SpherGeometrie: (...args) => __havers_tri_wrap(new THREE.SphereGeometry(...args)),",
+                "SpherGeometrie: (...args) => __havers_tri_wrap(new THREE.SphereGeometry(...__havers_core.nums(args))),",
             );
             self.emit_line(
-                "Maiterial: (...args) => __havers_tri_wrap(new THREE.Material(...args)),",
+                "Maiterial: (...args) => __havers_tri_wrap(new THREE.Material(...__havers_core.nums(args))),",
             );
-            self.emit_line("MeshBasicMaiterial: (...args) => __havers_tri_wrap(new THREE.MeshBasicMaterial(...args)),");
-            self.emit_line("MeshStandardMaiterial: (...args) => __havers_tri_wrap(new THREE.MeshStandardMaterial(...args)),");
-            self.emit_line("Licht: (...args) => __havers_tri_wrap(new THREE.Light(...args)),");
+            self.emit_line("MeshBasicMaiterial: (...args) => __havers_tri_wrap(new THREE.MeshBasicMaterial(...__havers_core.nums(args))),");
+            self.emit_line("MeshStandardMaiterial: (...args) => __havers_tri_wrap(new THREE.MeshStandardMaterial(...__havers_core.nums(args))),");
+            self.emit_line("Licht: (...args) => __havers_tri_wrap(new THREE.Light(...__havers_core.nums(args))),");
             self.emit_line(
-                "AmbiantLicht: (...args) => __havers_tri_wrap(new THREE.AmbientLight(...args)),",
+                "AmbiantLicht: (...args) => __havers_tri_wrap(new THREE.AmbientLight(...__havers_core.nums(args))),",
             );
-            self.emit_line("DireksionalLicht: (...args) => __havers_tri_wrap(new THREE.DirectionalLight(...args)),");
+            self.emit_line("DireksionalLicht: (...args) => __havers_tri_wrap(new THREE.DirectionalLight(...__havers_core.nums(args))),");
             self.emit_line(
-                "PyntLicht: (...args) => __havers_tri_wrap(new THREE.PointLight(...args)),",
+                "PyntLicht: (...args) => __havers_tri_wrap(new THREE.PointLight(...__havers_core.nums(args))),",
             );
-            self.emit_line("Textur: (...args) => __havers_tri_wrap(new THREE.Texture(...args)),");
+            self.emit_line("Textur: (...args) => __havers_tri_wrap(new THREE.Texture(...__havers_core.nums(args))),");
             self.emit_line(
-                "Renderar: (...args) => __havers_tri_wrap(new THREE.WebGLRenderer(...args)),",
+                "Renderar: (...args) => __havers_tri_wrap(new THREE.WebGLRenderer(...__havers_core.nums(args))),",
             );
-            self.emit_line("Colour: (...args) => __havers_tri_wrap(new THREE.Color(...args)),");
+            self.emit_line("Colour: (...args) => __havers_tri_wrap(new THREE.Color(...__havers_core.nums(args))),");
             self.emit_line("DEG_TO_RAD: Math.PI / 180,");
             self.emit_line("RAD_TO_DEG: 180 / Math.PI,");
             self.indent -= 1;
@@ -1737,17 +1599,15 @@ impl Compiler {
     fn compile_pattern(&mut self, pattern: &Pattern, match_var: &str) {
         match pattern {
             Pattern::Literal(lit) => {
-                self.output.push_str(&format!("{} === ", match_var));
-                match lit {
-                    Literal::Integer(n) => self.output.push_str(&n.to_string()),
-                    Literal::Float(f) => self.output.push_str(&f.to_string()),
-                    Literal::String(s) => self.output.push_str(&js_string(s)),
-                    Literal::Bool(b) => {
-                        const BOOL_LITERALS: [&str; 2] = ["false", "true"];
-                        self.output.push_str(BOOL_LITERALS[*b as usize]);
-                    }
-                    Literal::Nil => self.output.push_str("null"),
-                }
+                // A number arm matches by value, so `whan 1` matches 1.0 too.
+                let test = match lit {
+                    Literal::Integer(n) => format!("__havers.eq({}, {}n)", match_var, n),
+                    Literal::Float(f) => format!("__havers.eq({}, {})", match_var, f),
+                    Literal::String(s) => format!("{} === {}", match_var, js_string(s)),
+                    Literal::Bool(b) => format!("{} === {}", match_var, b),
+                    Literal::Nil => format!("{} === null", match_var),
+                };
+                self.output.push_str(&test);
             }
             Pattern::Identifier(_) => {
                 self.output.push_str("true"); // Always matches
@@ -1760,12 +1620,13 @@ impl Compiler {
                 end,
                 inclusive,
             } => {
-                self.output.push_str(&format!("({} >= ", match_var));
+                // Only an integer inside the bounds matches, as in the interpreter.
+                self.output
+                    .push_str(&format!("__havers.inRange({}, ", match_var));
                 self.compile_expr(start);
-                let op = if *inclusive { "<=" } else { "<" };
-                self.output.push_str(&format!(" && {} {} ", match_var, op));
+                self.output.push_str(", ");
                 self.compile_expr(end);
-                self.output.push(')');
+                self.output.push_str(&format!(", {})", inclusive));
             }
         }
     }
@@ -1826,7 +1687,8 @@ impl Compiler {
     fn compile_expr(&mut self, expr: &Expr) {
         match expr {
             Expr::Literal { value, .. } => match value {
-                Literal::Integer(n) => self.output.push_str(&n.to_string()),
+                // Integers are BigInts; a float is a JS number (Rust prints 2.0 as "2").
+                Literal::Integer(n) => self.output.push_str(&format!("{}n", n)),
                 Literal::Float(f) => self.output.push_str(&f.to_string()),
                 Literal::String(s) => self.output.push_str(&js_string(s)),
                 Literal::Bool(true) => self.output.push_str("true"),
@@ -1854,27 +1716,37 @@ impl Compiler {
             } => {
                 let line = Some(span.line);
                 match operator {
-                    // `+` concatenates strings wi' Display text, lists element-wise, and
-                    // refuses mixed nonsense; a numeric literal operand keeps plain `+`.
-                    BinaryOp::Add
-                        if !(is_number_literal(left)
-                            || is_number_literal(right)
-                            || (is_string_literal(left) && is_string_literal(right))) =>
-                    {
-                        self.compile_binary_helper("__havers.add", left, right, line);
+                    // Two string literals concatenate wi' plain `+`.
+                    BinaryOp::Add if is_string_literal(left) && is_string_literal(right) => {
+                        self.output.push('(');
+                        self.compile_expr(left);
+                        self.output.push_str(" + ");
+                        self.compile_expr(right);
+                        self.output.push(')');
                     }
-                    BinaryOp::Divide => {
-                        // Two integer literals divide like the interpreter's integers;
-                        // the general int/float model is a separate design question.
-                        let helper = if is_int_literal(left) && is_int_literal(right) {
-                            "__havers.idiv"
-                        } else {
-                            "__havers.div"
+                    // Arithmetic an' ordering go through the runtime's int/float helpers
+                    // (integers are BigInts, floats JS numbers; DEC F5).
+                    BinaryOp::Add
+                    | BinaryOp::Subtract
+                    | BinaryOp::Multiply
+                    | BinaryOp::Divide
+                    | BinaryOp::Modulo
+                    | BinaryOp::Less
+                    | BinaryOp::LessEqual
+                    | BinaryOp::Greater
+                    | BinaryOp::GreaterEqual => {
+                        let helper = match operator {
+                            BinaryOp::Add => "__havers.add",
+                            BinaryOp::Subtract => "__havers.sub",
+                            BinaryOp::Multiply => "__havers.mul",
+                            BinaryOp::Divide => "__havers.div",
+                            BinaryOp::Modulo => "__havers.mod",
+                            BinaryOp::Less => "__havers.lt",
+                            BinaryOp::LessEqual => "__havers.le",
+                            BinaryOp::Greater => "__havers.gt",
+                            _ => "__havers.ge",
                         };
                         self.compile_binary_helper(helper, left, right, line);
-                    }
-                    BinaryOp::Modulo => {
-                        self.compile_binary_helper("__havers.mod", left, right, line);
                     }
                     BinaryOp::Equal | BinaryOp::NotEqual
                         if !(is_scalar_literal(left) || is_scalar_literal(right)) =>
@@ -1888,23 +1760,15 @@ impl Compiler {
                             self.output.push(')');
                         }
                     }
-                    _ => {
+                    // `==` against a string or bool literal: JS `===` agrees.
+                    BinaryOp::Equal | BinaryOp::NotEqual => {
                         self.output.push('(');
                         self.compile_expr(left);
-                        let op_str = match operator {
-                            BinaryOp::Add => " + ",
-                            BinaryOp::Subtract => " - ",
-                            BinaryOp::Multiply => " * ",
-                            BinaryOp::Divide => " / ",
-                            BinaryOp::Modulo => " % ",
-                            BinaryOp::Equal => " === ",
-                            BinaryOp::NotEqual => " !== ",
-                            BinaryOp::Less => " < ",
-                            BinaryOp::LessEqual => " <= ",
-                            BinaryOp::Greater => " > ",
-                            BinaryOp::GreaterEqual => " >= ",
-                        };
-                        self.output.push_str(op_str);
+                        if matches!(operator, BinaryOp::Equal) {
+                            self.output.push_str(" === ");
+                        } else {
+                            self.output.push_str(" !== ");
+                        }
                         self.compile_expr(right);
                         self.output.push(')');
                     }
@@ -1912,12 +1776,20 @@ impl Compiler {
             }
 
             Expr::Unary {
-                operator, operand, ..
+                operator,
+                operand,
+                span,
             } => match operator {
-                UnaryOp::Negate => {
+                // A negated number literal cannae overflow, so it stays a literal.
+                UnaryOp::Negate if is_number_literal(operand) => {
                     self.output.push_str("(-");
                     self.compile_expr(operand);
                     self.output.push(')');
+                }
+                UnaryOp::Negate => {
+                    self.output.push_str("__havers.neg(");
+                    self.compile_expr(operand);
+                    self.output.push_str(&format!(", {})", span.line));
                 }
                 UnaryOp::Not => {
                     self.output.push_str("(!");
@@ -2015,15 +1887,16 @@ impl Compiler {
                 object,
                 index,
                 value,
-                ..
+                span,
             } => {
-                self.output.push('(');
-                self.compile_receiver(object);
-                self.output.push('[');
+                // Lists need an in-range integer index, like the interpreter.
+                self.output.push_str("__havers.setIdx(");
+                self.compile_expr(object);
+                self.output.push_str(", ");
                 self.compile_expr(index);
-                self.output.push_str("] = ");
+                self.output.push_str(", ");
                 self.compile_expr(value);
-                self.output.push(')');
+                self.output.push_str(&format!(", {})", span.line));
             }
 
             Expr::Slice {
@@ -2031,43 +1904,19 @@ impl Compiler {
                 start,
                 end,
                 step,
-                ..
+                span,
             } => {
-                // JavaScript: Use helper function fer step slices, or .slice() fer simple ones
-                if let Some(st) = step {
-                    // Need to use a helper function fer step slices
-                    self.output.push_str("__havers.slice(");
-                    self.compile_expr(object);
+                // `__havers.slice(obj, start, end, step, line)`; a missing part is null.
+                self.output.push_str("__havers.slice(");
+                self.compile_expr(object);
+                for part in [start, end, step] {
                     self.output.push_str(", ");
-                    if let Some(s) = start {
-                        self.compile_expr(s);
-                    } else {
-                        self.output.push_str("null");
+                    match part {
+                        Some(e) => self.compile_expr(e),
+                        None => self.output.push_str("null"),
                     }
-                    self.output.push_str(", ");
-                    if let Some(e) = end {
-                        self.compile_expr(e);
-                    } else {
-                        self.output.push_str("null");
-                    }
-                    self.output.push_str(", ");
-                    self.compile_expr(st);
-                    self.output.push(')');
-                } else {
-                    // Simple slice: obj.slice(start, end)
-                    self.compile_receiver(object);
-                    self.output.push_str(".slice(");
-                    if let Some(s) = start {
-                        self.compile_expr(s);
-                    } else {
-                        self.output.push('0');
-                    }
-                    if let Some(e) = end {
-                        self.output.push_str(", ");
-                        self.compile_expr(e);
-                    }
-                    self.output.push(')');
                 }
+                self.output.push_str(&format!(", {})", span.line));
             }
 
             Expr::List { elements, .. } => {
@@ -2109,19 +1958,14 @@ impl Compiler {
                 start,
                 end,
                 inclusive,
-                ..
+                span,
             } => {
-                self.output.push_str("__havers.range(");
+                self.output.push_str("__havers.rangeOf(");
                 self.compile_expr(start);
                 self.output.push_str(", ");
-                if *inclusive {
-                    self.output.push('(');
-                    self.compile_expr(end);
-                    self.output.push_str(" + 1)");
-                } else {
-                    self.compile_expr(end);
-                }
-                self.output.push(')');
+                self.compile_expr(end);
+                self.output
+                    .push_str(&format!(", {}, {})", inclusive, span.line));
             }
 
             Expr::Grouping { expr, .. } => {
@@ -2266,7 +2110,7 @@ mod tests {
     #[test]
     fn test_simple_compile() {
         let result = compile("ken x = 5").unwrap();
-        assert!(result.contains("let x = 5;"));
+        assert!(result.contains("let x = 5n;"));
     }
 
     #[test]
@@ -2278,7 +2122,7 @@ mod tests {
     #[test]
     fn test_expression_statement() {
         let result = compile("ken x = 1\nx + 2").unwrap();
-        assert!(result.contains("(x + 2);"));
+        assert!(result.contains("__havers.add(x, 2n, 2);"));
     }
 
     // ==================== Function Tests ====================
@@ -2713,8 +2557,8 @@ gin x > 5 {
     #[test]
     fn test_block_compile() {
         let result = compile("{ ken x = 1\n ken y = 2 }").unwrap();
-        assert!(result.contains("let x = 1;"));
-        assert!(result.contains("let y = 2;"));
+        assert!(result.contains("let x = 1n;"));
+        assert!(result.contains("let y = 2n;"));
     }
 
     // ==================== Class Tests ====================
@@ -2918,7 +2762,7 @@ kin C {
     #[test]
     fn test_return_with_value_compile() {
         let result = compile("dae add() { gie 1 }").unwrap();
-        assert!(result.contains("return 1"));
+        assert!(result.contains("return 1n"));
     }
 
     // ==================== Match Tests ====================
@@ -2958,7 +2802,7 @@ kin C {
         )
         .unwrap();
         assert!(result.contains("=== \"hello\""));
-        assert!(result.contains("=== 3.14"));
+        assert!(result.contains("__havers.eq(__match_val_0, 3.14)"));
         assert!(result.contains("=== true"));
         assert!(result.contains("=== false"));
         assert!(result.contains("=== null"));
@@ -2985,8 +2829,7 @@ kin C {
 }"#,
         )
         .unwrap();
-        assert!(result.contains(">= "));
-        assert!(result.contains("< "));
+        assert!(result.contains("__havers.inRange(__match_val_0, 1n, 10n, false)"));
     }
 
     // ==================== Assert Tests ====================
@@ -3032,13 +2875,13 @@ kin C {
     #[test]
     fn test_assignment_compile() {
         let result = compile("ken x = 1\nx = 42").unwrap();
-        assert!(result.contains("(x = 42)"));
+        assert!(result.contains("(x = 42n)"));
     }
 
     #[test]
     fn test_unary_negate() {
         let result = compile("-42").unwrap();
-        assert!(result.contains("(-42)"));
+        assert!(result.contains("(-42n)"));
     }
 
     #[test]
@@ -3062,7 +2905,7 @@ kin C {
     #[test]
     fn test_call_compile() {
         let result = compile("foo(1, 2, 3)").unwrap();
-        assert!(result.contains("foo(1, 2, 3)"));
+        assert!(result.contains("foo(1n, 2n, 3n)"));
     }
 
     #[test]
@@ -3079,43 +2922,43 @@ kin C {
     #[test]
     fn test_set_property() {
         let result = compile("ken obj = {}\nobj.prop = 42").unwrap();
-        assert!(result.contains("obj.prop = 42"));
+        assert!(result.contains("obj.prop = 42n"));
     }
 
     #[test]
     fn test_index_compile() {
         let result = compile("list[0]").unwrap();
-        assert!(result.contains("__havers.idx(list, 0, 1)"));
+        assert!(result.contains("__havers.idx(list, 0n, 1)"));
     }
 
     #[test]
     fn test_index_set_compile() {
         let result = compile("ken list = [1,2,3]\nlist[0] = 99").unwrap();
-        assert!(result.contains("list[0] = 99"));
+        assert!(result.contains("__havers.setIdx(list, 0n, 99n, 2)"));
     }
 
     #[test]
     fn test_slice_simple() {
         let result = compile("list[1:3]").unwrap();
-        assert!(result.contains(".slice("));
+        assert!(result.contains("__havers.slice(list, 1n, 3n, null, 1)"));
     }
 
     #[test]
     fn test_slice_with_step() {
         let result = compile("list[::2]").unwrap();
-        assert!(result.contains("__havers.slice("));
+        assert!(result.contains("__havers.slice(list, null, null, 2n, 1)"));
     }
 
     #[test]
     fn test_slice_start_only() {
         let result = compile("list[1:]").unwrap();
-        assert!(result.contains(".slice(1)"));
+        assert!(result.contains("__havers.slice(list, 1n, null, null, 1)"));
     }
 
     #[test]
     fn test_list_compile() {
         let result = compile("[1, 2, 3]").unwrap();
-        assert!(result.contains("[1, 2, 3]"));
+        assert!(result.contains("[1n, 2n, 3n]"));
     }
 
     #[test]
@@ -3128,19 +2971,19 @@ kin C {
     #[test]
     fn test_range_compile() {
         let result = compile("0..10").unwrap();
-        assert!(result.contains("__havers.range(0, 10)"));
+        assert!(result.contains("__havers.rangeOf(0n, 10n, false, 1)"));
     }
 
     #[test]
     fn test_range_compile_inclusive() {
         let result = compile("0..=10").unwrap();
-        assert!(result.contains("__havers.range(0, (10 + 1))"));
+        assert!(result.contains("__havers.rangeOf(0n, 10n, true, 1)"));
     }
 
     #[test]
     fn test_grouping_compile() {
         let result = compile("(1 + 2) * 3").unwrap();
-        assert!(result.contains("((1 + 2))"));
+        assert!(result.contains("__havers.mul((__havers.add(1n, 2n, 1)), 3n, 1)"));
     }
 
     #[test]
@@ -3176,19 +3019,19 @@ kin C {
     #[test]
     fn test_spread_compile() {
         let result = compile("[1, ...[2, 3]]").unwrap();
-        assert!(result.contains("...[2, 3]"));
+        assert!(result.contains("...[2n, 3n]"));
     }
 
     #[test]
     fn test_pipe_compile() {
         let result = compile("ken dbl = |x| x * 2\n5 |> dbl").unwrap();
-        assert!(result.contains("dbl(5)"));
+        assert!(result.contains("dbl(5n)"));
     }
 
     #[test]
     fn test_ternary_compile() {
         let result = compile("ken x = gin aye than 1 ither 0").unwrap();
-        assert!(result.contains("true ? 1 : 0"));
+        assert!(result.contains("true ? 1n : 0n"));
     }
 
     #[test]
@@ -3234,9 +3077,9 @@ keek 1 {
         assert!(result.contains("throw __havers.hurl(\"boom\", 7);"));
         // Point is no' a declared kin, so it is called plainly (nae capitalisation guess)
         assert!(!result.contains("new Point"));
-        assert!(result.contains("Point(1, 2)"));
-        assert!(result.contains("__havers.slice("));
-        assert!(result.contains(".slice(0, 2)"));
+        assert!(result.contains("Point(1n, 2n)"));
+        assert!(result.contains("__havers.slice(xs, 1n, 5n, 2n, 18)"));
+        assert!(result.contains("__havers.slice(xs, null, 2n, null, 19)"));
         assert!(result.contains("`a\\`b\\$c`"));
         assert!(result.contains("(() => {"));
     }
@@ -3337,9 +3180,9 @@ ken s = f"price: $5"
 "#;
         let result = compile(src).unwrap();
         assert!(result.contains("let [a, b, ...rest] ="));
-        assert!(result.contains(".slice("));
-        assert!(result.contains("__havers.range("));
-        assert!(result.contains("blether(sum(1, 2, 3))"));
+        assert!(result.contains("__havers.slice(xs, 1n, null, null, 4)"));
+        assert!(result.contains("__havers.rangeOf(1n, 3n, true, 9)"));
+        assert!(result.contains("blether(sum(1n, 2n, 3n))"));
         assert!(result.contains("let x = __match_val_"));
         assert!(result.contains("throw __havers.fail(\"Mak siccar failed at line 17! \""));
         assert!(result.contains("price: \\$5"));
@@ -3472,8 +3315,8 @@ f"C:\\users\\{who}""#,
     #[test]
     fn test_reserved_identifiers_are_mangled() {
         let result = compile("ken new = 1\nken class = 2\ndae function(var) { gie var }\nblether function(new + class)").unwrap();
-        assert!(result.contains("let new$ = 1;"));
-        assert!(result.contains("let class$ = 2;"));
+        assert!(result.contains("let new$ = 1n;"));
+        assert!(result.contains("let class$ = 2n;"));
         assert!(result.contains("function function$(var$)"));
         assert!(!result.contains("let new ="));
     }
@@ -3485,21 +3328,21 @@ f"C:\\users\\{who}""#,
         assert!(result.contains("let { len, whit_kind,"));
         assert!(!result.contains("const { len"));
         assert!(result.contains("len = function len(x) {"));
-        assert!(result.contains("\n  max = 5;"));
+        assert!(result.contains("\n  max = 5n;"));
     }
 
     #[test]
     fn test_ken_redeclaration_and_loop_variable() {
         let result = compile("ken x = 1\nken x = x + 1\nfer i in 0..2 { i = i + 1 }").unwrap();
-        assert!(result.contains("let x = 1;"));
-        assert!(result.contains("\n  x = (x + 1);"));
+        assert!(result.contains("let x = 1n;"));
+        assert!(result.contains("\n  x = __havers.add(x, 1n, 2);"));
         assert!(result.contains("for (let i of __havers.iter("));
     }
 
     #[test]
     fn test_inner_ken_shadowing_outer_name_is_renamed() {
         let result = compile("ken x = 1\ngin aye { ken x = x + 1\nblether x }").unwrap();
-        assert!(result.contains("let x$1 = (x + 1);"));
+        assert!(result.contains("let x$1 = __havers.add(x, 1n, 2);"));
         assert!(result.contains("__havers.blether(x$1);"));
     }
 
@@ -3515,7 +3358,7 @@ blether Square(3)"#,
         .unwrap();
         assert!(result.contains("let Dog = __havers.kin(class Dog extends Animal {"));
         assert!(result.contains("new Dog(\"Rex\")"));
-        assert!(result.contains("Square(3)"));
+        assert!(result.contains("Square(3n)"));
         assert!(!result.contains("new Square"));
         // Only the root class has a constructor; it dispatches tae the derived init.
         assert_eq!(result.matches("constructor(...args)").count(), 1);
@@ -3525,13 +3368,13 @@ blether Square(3)"#,
     fn test_rebound_class_name_is_called_plainly() {
         let result = compile("kin A { }\nken A = |x| x\nblether A(1)").unwrap();
         assert!(!result.contains("new A("));
-        assert!(result.contains("A(1)"));
+        assert!(result.contains("A(1n)"));
     }
 
     #[test]
     fn test_dict_literal_keys_are_expressions() {
         let result = compile("ken k = \"colour\"\nken d = {k: 1, \"a\": 2}").unwrap();
-        assert!(result.contains("{[k]: 1, \"a\": 2}"));
+        assert!(result.contains("{[k]: 1n, \"a\": 2n}"));
     }
 
     #[test]
@@ -3540,22 +3383,22 @@ blether Square(3)"#,
             compile("ken xs = []\ngin xs { blether 1 }\nblether xs == [1]\nblether 1 == 1")
                 .unwrap();
         assert!(result.contains("if (__havers.truthy(xs))"));
-        assert!(result.contains("__havers.eq(xs, [1])"));
-        assert!(result.contains("(1 === 1)"));
+        assert!(result.contains("__havers.eq(xs, [1n])"));
+        assert!(result.contains("__havers.eq(1n, 1n)"));
     }
 
     #[test]
     fn test_numeric_literal_receiver_is_parenthesised() {
         let result = compile("blether 123[0:1]\nblether 1.5.x").unwrap();
-        assert!(result.contains("(123).slice(0, 1)"));
+        assert!(result.contains("__havers.slice(123n, 0n, 1n, null, 1)"));
         assert!(result.contains("(1.5).x"));
     }
 
     #[test]
     fn test_division_lowering() {
         let result = compile("ken a = 7\nblether 7 / 2\nblether a / 2\nblether a % 2").unwrap();
-        assert!(result.contains("__havers.idiv(7, 2, 2)"));
-        assert!(result.contains("__havers.div(a, 2, 3)"));
-        assert!(result.contains("__havers.mod(a, 2, 4)"));
+        assert!(result.contains("__havers.div(7n, 2n, 2)"));
+        assert!(result.contains("__havers.div(a, 2n, 3)"));
+        assert!(result.contains("__havers.mod(a, 2n, 4)"));
     }
 }

@@ -2,7 +2,6 @@
 # Checked by tests/js_golden_parity.rs. This list may only shrink: fix a case,
 # then delete its line (the test fails while a listed case passes).
 # Regenerate: MDH_JS_PARITY_BLESS=1 cargo test --test js_golden_parity
-tests/golden/basics/operators/string_ops.braw # output mismatch
 tests/golden/classes/get_prefers_field_over_method.braw # output mismatch
 tests/golden/classes/instance_missing_field_throws.braw # output mismatch
 tests/golden/classes/method_value_is_bound.braw # node exit 1: TypeError: Cannot read properties of undefined (reading 'v')
@@ -14,13 +13,9 @@ tests/golden/data_structures/dict_index_set_typed_keys_int_vs_string.braw # outp
 tests/golden/data_structures/dict_missing_mixed_key_caught.braw # output mismatch
 tests/golden/data_structures/dict_typed_keys_int_vs_string.braw # output mismatch
 tests/golden/data_structures/list_builtins.braw # node exit 1: ReferenceError: tak is not defined
-tests/golden/data_structures/ranges_and_slices.braw # output mismatch
 tests/golden/data_structures/set_membership_mismatch_int_vs_string.braw # node exit 1: ReferenceError: creel is not defined
 tests/golden/data_structures/set_typed_elements_int_vs_string.braw # node exit 1: ReferenceError: creel is not defined
-tests/golden/data_structures/slice_out_of_range.braw # output mismatch
 tests/golden/data_structures/wheesht_filters_falsy_list.braw # output mismatch
-tests/golden/edge_cases/abs_type_errors_and_float_parity.braw # output mismatch
-tests/golden/edge_cases/add_type_error_list_int.braw # output mismatch
 tests/golden/edge_cases/average_median_parity_and_errors.braw # node exit 1: ReferenceError: average is not defined
 tests/golden/edge_cases/base_conversion_parity_and_errors.braw # node exit 1: ReferenceError: tae_binary is not defined
 tests/golden/edge_cases/birl_rotation_and_type_errors.braw # node exit 1: ReferenceError: birl is not defined
@@ -32,16 +27,10 @@ tests/golden/edge_cases/center_fill_and_negative_width.braw # node exit 1: Refer
 tests/golden/edge_cases/center_fill_empty_string_parity.braw # node exit 1: ReferenceError: center is not defined
 tests/golden/edge_cases/chr_ord_unicode_roundtrip.braw # node exit 1: ReferenceError: chr is not defined
 tests/golden/edge_cases/chynge_and_replace_parity.braw # node exit 1: ReferenceError: chynge is not defined
-tests/golden/edge_cases/coont_list_value_equality_parity.braw # output mismatch
-tests/golden/edge_cases/coont_type_errors_caught.braw # output mismatch
 tests/golden/edge_cases/date_parse_trailing_whitespace_rejected.braw # node exit 1: ReferenceError: date_parse is not defined
 tests/golden/edge_cases/fankle_interleave_parity.braw # node exit 1: ReferenceError: fankle is not defined
 tests/golden/edge_cases/flatten_and_zip_up_parity.braw # node exit 1: ReferenceError: flatten is not defined
-tests/golden/edge_cases/floor_ceil_round_sqrt_parity.braw # output mismatch
 tests/golden/edge_cases/heid_tail_bum_string_and_empty_list_parity.braw # node exit 1: ReferenceError: chr is not defined
-tests/golden/edge_cases/index_non_int.braw # output mismatch
-tests/golden/edge_cases/index_set_non_int.braw # output mismatch
-tests/golden/edge_cases/index_set_out_of_bounds.braw # output mismatch
 tests/golden/edge_cases/is_digit_wheesht_aw_parity.braw # node exit 1: ReferenceError: is_digit is not defined
 tests/golden/edge_cases/lines_and_read_lines_parity.braw # node exit 1: ReferenceError: lines is not defined
 tests/golden/edge_cases/list_helpers_empty_list_returns_copy_parity.braw # node exit 1: ReferenceError: unique is not defined
@@ -54,16 +43,11 @@ tests/golden/edge_cases/replace_first_parity_empty_and_type_errors.braw # node e
 tests/golden/edge_cases/roar_mutter_ascii_unicode_parity.braw # node exit 1: ReferenceError: roar is not defined
 tests/golden/edge_cases/scran_negative_and_float_indices_parity.braw # node exit 1: ReferenceError: chr is not defined
 tests/golden/edge_cases/set_aliasing_and_nested_updates.braw # node exit 1: ReferenceError: creel is not defined
-tests/golden/edge_cases/slice_non_int_indices.braw # output mismatch
 tests/golden/edge_cases/split_empty_delimiter_returns_whole_string.braw # node exit 1: ReferenceError: is_empty is not defined
 tests/golden/edge_cases/sporran_fill_negative_width_no_hang.braw # node exit 1: ReferenceError: sporran_fill is not defined
 tests/golden/edge_cases/string_builtins_type_errors_caught.braw # node exit 1: ReferenceError: char_at is not defined
-tests/golden/edge_cases/string_repeat_negative.braw # output mismatch
-tests/golden/edge_cases/subtract_type_error_strings.braw # output mismatch
-tests/golden/edge_cases/sumaw_type_errors_and_float_parity.braw # output mismatch
 tests/golden/edge_cases/tak_drap_negative_and_float_n_parity.braw # node exit 1: ReferenceError: tak is not defined
 tests/golden/edge_cases/tattie_scone_negative_no_hang.braw # node exit 1: ReferenceError: tattie_scone is not defined
-tests/golden/edge_cases/unary_negate_type_error_bool.braw # output mismatch
 tests/golden/edge_cases/unicode_blooter_codepoints.braw # node exit 1: ReferenceError: blooter is not defined
 tests/golden/edge_cases/unicode_clarty_dreich_parity.braw # node exit 1: ReferenceError: clarty is not defined
 tests/golden/edge_cases/unicode_index_and_chars.braw # node exit 1: ReferenceError: chr is not defined
@@ -80,7 +64,6 @@ tests/golden/edge_cases/upper_lower_wheesht_type_error_caught.braw # output mism
 tests/golden/edge_cases/words_ascii_whitespace_only.braw # node exit 1: ReferenceError: chr is not defined
 tests/golden/functions/default_params_capture_and_param_refs_parity.braw # node exit 1: TypeError: Cannot read properties of undefined (reading 'v')
 tests/golden/integration/brainfuck_interpreter_smoke.braw # node exit 1: ReferenceError: chars is not defined
-tests/golden/integration/compound_interest.braw # output mismatch
 tests/golden/integration/expression_parser_evaluator_smoke.braw # node exit 1: ReferenceError: is_digit is not defined
 tests/golden/integration/json_parser_smoke.braw # node exit 1: ReferenceError: is_digit is not defined
 tests/golden/integration/showcase_blether_lisp.braw # node exit 1: ReferenceError: chars is not defined

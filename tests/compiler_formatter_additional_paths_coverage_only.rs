@@ -65,9 +65,9 @@ ken o = { ken x = 1
     let output = compile(source).unwrap();
     assert!(output.contains("new Foo("));
     assert!(output.contains("obj.method("));
-    assert!(output.contains("arr.slice(1, 3)"));
-    assert!(output.contains("arr.slice(0, 3)"));
-    assert!(output.contains("__havers.slice(arr, 1, 3, 2)"));
+    assert!(output.contains("__havers.slice(arr, 1n, 3n, null, 39)"));
+    assert!(output.contains("__havers.slice(arr, null, 3n, null, 40)"));
+    assert!(output.contains("__havers.slice(arr, 1n, 3n, 2n, 41)"));
     assert!(output.contains("`hi\\`there`"));
     assert!(output.contains("log_event(\"roar\""));
     assert!(output.contains("log_event(\"blether\", \"structured fields\", {"));

@@ -1,0 +1,72 @@
+# integer_model.braw - i64 integers an' f64 floats (DEC F5): every backend
+# must agree on integer division, overflow, big products, mixing an' display.
+# SKIP_NATIVE: native's overflow error omits "at line N" (all else matches).
+
+# Integer division truncates toward zero; % takes the dividend's sign
+ken a = 7
+ken b = 2
+blether a / b
+blether -a / b
+blether a % b
+blether -a % b
+blether a / 2.0
+
+# Products past 2^53 stay exact
+ken root = 3037000499
+blether root * root
+blether 9007199254740992 + 1
+ken max = 9223372036854775807
+blether max
+blether -max - 1
+
+# Overflow is a catchable error
+hae_a_bash {
+    blether max + 1
+} gin_it_gangs_wrang e {
+    blether e
+}
+hae_a_bash {
+    blether max * 2
+} gin_it_gangs_wrang e {
+    blether e
+}
+hae_a_bash {
+    blether (-max - 1) / -1
+} gin_it_gangs_wrang e {
+    blether e
+}
+
+# Mixing an integer wi' a float gies a float
+blether 1 + 2.5
+blether 2 * 1.5
+blether whit_kind(1 + 1.0)
+blether whit_kind(4 / 2)
+blether 1 == 1.0
+blether 1 < 1.5
+blether 3 >= 3.0
+
+# Display: integers wi'oot a point, whole floats as Rust prints them
+blether 2.0
+blether [1, 2.5, 3.0]
+blether f"{10 / 4} {10.0 / 4}"
+blether tae_string(7) + "!"
+blether tae_float(3)
+blether tae_int("42") + 1
+blether tae_int(-2.7)
+
+# Builtins gie integers
+blether len("abc") * 2
+blether floor(2.7) + 1
+blether round(-2.5)
+blether sumaw([1, 2, 3])
+blether sumaw([1, 2.5])
+ken xs = [10, 20, 30]
+blether xs[len(xs) - 1]
+blether xs[1:3]
+fer i in 0..=2 {
+    blether i * i
+}
+keek 2.0 {
+    whan 2 -> blether "two"
+    whan _ -> blether "other"
+}
