@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00061 — LLVM toss_in/heave_oot store their result into a boxed variable's raw storage
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** llvm
 - **Raised:** 2026-10-22T23:53:42Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T035155Z-040c74c9
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00061-run-fix-20261023T035155Z-040c74c9
-- **Owner base:** 9c5268a3e468d0abf7d701b45964e87a56d47fc2
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T03:51:55Z
-- **Owner until:** 2026-10-23T07:51:55Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-22T23:53:42Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-22T23:53:42Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T03:52:01Z, deltic:auto role=fix run=fix-20261023T035155Z-040c74c9 branch=task/bug-MDH-BUG-FLU-00061-run-fix-20261023T035155Z-040c74c9 code=6029d44 gate=manual)
 
 ## Observation
 
