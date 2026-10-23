@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00028 — mdhavers fmt writes `fetch "x" as m` which does not parse
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** High
 - **Area:** formatter
 - **Raised:** 2026-10-22T23:24:09Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T015806Z-7b19ab19
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00028-run-fix-20261023T015806Z-7b19ab19
-- **Owner base:** 604e12f2981952feb2dcca5c0bbfdb96a0f7fac1
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T01:58:06Z
-- **Owner until:** 2026-10-23T05:58:06Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-22T23:24:09Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-22T23:24:09Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T01:58:11Z, deltic:auto role=fix run=fix-20261023T015806Z-7b19ab19 branch=task/bug-MDH-BUG-FLU-00028-run-fix-20261023T015806Z-7b19ab19 code=6e06c31 gate=manual)
 
 ## Observation
 
