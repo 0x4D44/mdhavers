@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00055 — speir truncates input lines at 1023 bytes
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** llvm
 - **Raised:** 2026-10-22T23:24:11Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T030536Z-c58fd48f
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00055-run-fix-20261023T030536Z-c58fd48f
-- **Owner base:** d31ab2d202d38959050f113496e1e48190cc5322
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T03:05:36Z
-- **Owner until:** 2026-10-23T07:05:36Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-22T23:24:11Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-22T23:24:11Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T03:05:42Z, deltic:auto role=fix run=fix-20261023T030536Z-c58fd48f branch=task/bug-MDH-BUG-FLU-00055-run-fix-20261023T030536Z-c58fd48f code=8e071f4 gate=manual)
 
 ## Observation
 
