@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00088 — Native: top-level globals use bare symbol names and can collide with C symbols
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-23T04:31:21Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T220208Z-7855b16d
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00088-run-fix-20261023T220208Z-7855b16d
-- **Owner base:** 237e213eb0509bda6de9ead23acf03bef043059f
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T22:02:08Z
-- **Owner until:** 2026-10-24T02:02:08Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T04:31:21Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-23T04:31:21Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T22:02:15Z, deltic:auto role=fix run=fix-20261023T220208Z-7855b16d branch=task/bug-MDH-BUG-FLU-00088-run-fix-20261023T220208Z-7855b16d code=5404d6a gate=manual)
 
 ## Observation
 
