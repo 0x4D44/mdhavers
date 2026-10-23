@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00022 — F-string containing a double-quoted string literal fails to lex (README example broken)
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** parser
 - **Raised:** 2026-10-22T23:24:08Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T015135Z-eb4f690e
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00022-run-fix-20261023T015135Z-eb4f690e
-- **Owner base:** 8893d9bb5f5af5c3a041001a6e8f6e180a8947a4
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T01:51:35Z
-- **Owner until:** 2026-10-23T05:51:35Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-22T23:24:08Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-22T23:24:08Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T01:51:40Z, deltic:auto role=fix run=fix-20261023T015135Z-eb4f690e branch=task/bug-MDH-BUG-FLU-00022-run-fix-20261023T015135Z-eb4f690e code=8204122 gate=manual)
 
 ## Observation
 
