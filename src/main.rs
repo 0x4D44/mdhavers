@@ -1239,10 +1239,24 @@ fn check_file(path: &PathBuf) -> Result<(), String> {
 fn format_file(path: &PathBuf, check_only: bool) -> Result<(), String> {
     let source = read_file(path)?;
 
-    // Format the code
-    let formatted = match formatter::format_source(&source) {
+    // Format the code. The checked formatter only hands back output that
+    // re-parses tae the same program an' keeps every comment; if it refuses,
+    // the file is left alane (in --check mode too).
+    let formatted = match formatter::format_source_checked(&source) {
         Ok(s) => s,
-        Err(e) => return Err(format_parse_error(&source, e)),
+        Err(formatter::FormatError::Parse(e)) => return Err(format_parse_error(&source, e)),
+        Err(formatter::FormatError::Refused { line, reason }) => {
+            let mut msg = format!(
+                "Haud on! Ah'll no' format {} - {}. Yer file's been left jist as it wis.",
+                path.display(),
+                reason
+            );
+            if let Some(line) = line {
+                msg.push_str("\n\n");
+                msg.push_str(&format_error_context(&source, line));
+            }
+            return Err(msg);
+        }
     };
 
     if check_only {
@@ -1611,6 +1625,38 @@ mod tests {
         std::fs::write(&path, "ken x=1\n").expect("write file");
         let err = format_file(&path, true).expect_err("expected format check error");
         assert!(err.contains("needs formattin"));
+    }
+
+    #[test]
+    fn format_file_refuses_unsafe_output_and_leaves_file_untouched() {
+        // MDH-BUG-FLU-00025: a comment inside an expression cannae be placed,
+        // so fmt must refuse rather than drop it
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("comment_in_thing.braw");
+        let original = "thing P {\n    # odd\n    x\n}\n";
+        std::fs::write(&path, original).expect("write file");
+
+        let err = format_file(&path, false).expect_err("expected refusal");
+        assert!(err.contains("Ah'll no' format"), "{}", err);
+        assert!(err.contains("left jist as it wis"), "{}", err);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+
+        let err = format_file(&path, true).expect_err("expected refusal in --check");
+        assert!(err.contains("Ah'll no' format"), "{}", err);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+    }
+
+    #[test]
+    fn format_file_keeps_comments_when_writing() {
+        let dir = tempdir().expect("tempdir");
+        let path = dir.path().join("comments.braw");
+        std::fs::write(&path, "# heid\nken x=1 # tail\n").expect("write file");
+        format_file(&path, false).expect("format");
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "# heid\nken x = 1  # tail\n"
+        );
+        format_file(&path, true).expect("already formatted");
     }
 
     #[test]

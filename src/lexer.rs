@@ -90,6 +90,82 @@ pub fn lex(source: &str) -> HaversResult<Vec<Token>> {
     lexer.tokenize()
 }
 
+/// A comment found in the source, wi' where it sits.
+/// The token stream skips comments, so the formatter gets them fae here.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SourceComment {
+    /// 1-based line o' the comment's first character
+    pub line: usize,
+    /// 1-based column (in chars) o' the comment's first character
+    pub column: usize,
+    /// The comment text, includin' its `#` or `//`, wi' trailin' whitespace trimmed
+    pub text: String,
+    /// True when code comes afore the comment on the same line
+    pub trailing: bool,
+}
+
+/// Collect aw the `#` and `//` comments in the source, in order.
+///
+/// This disnae change the token stream: it runs the same logos lexer and
+/// looks at the gaps between tokens, which only ever haud whitespace and
+/// comments. It stops quietly at the first lexing error.
+pub fn collect_comments(source: &str) -> Vec<SourceComment> {
+    fn advance_position(
+        source: &str,
+        cursor: &mut usize,
+        line: &mut usize,
+        column: &mut usize,
+        pos: usize,
+    ) {
+        for ch in source[*cursor..pos].chars() {
+            if ch == '\n' {
+                *line += 1;
+                *column = 1;
+            } else {
+                *column += 1;
+            }
+        }
+        *cursor = pos;
+    }
+
+    let mut comments = Vec::new();
+    let mut logos = TokenKind::lexer(source);
+    let mut prev_end = 0usize;
+    let mut prev_is_code = false;
+    let mut cursor = 0usize;
+    let mut line = 1usize;
+    let mut column = 1usize;
+
+    loop {
+        let next = logos.next();
+        let token_span = next.as_ref().map(|_| logos.span());
+        let gap_end = token_span.as_ref().map(|s| s.start).unwrap_or(source.len());
+
+        let gap = &source[prev_end..gap_end];
+        let trimmed = gap.trim_start_matches([' ', '\t', '\r']);
+        if trimmed.starts_with('#') || trimmed.starts_with("//") {
+            let offset = prev_end + (gap.len() - trimmed.len());
+            advance_position(source, &mut cursor, &mut line, &mut column, offset);
+            comments.push(SourceComment {
+                line,
+                column,
+                text: trimmed.trim_end().to_string(),
+                trailing: prev_is_code,
+            });
+        }
+
+        match (next, token_span) {
+            (Some(Ok(kind)), Some(span)) => {
+                prev_is_code = kind != TokenKind::Newline;
+                prev_end = span.end;
+            }
+            _ => break,
+        }
+    }
+
+    comments
+}
+
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
 mod tests {
@@ -182,6 +258,50 @@ mod tests {
 
         // Should have: ken, x, =, 5, newline, ken, y, =, 10, eof
         assert_eq!(tokens.len(), 10);
+    }
+
+    #[test]
+    fn test_collect_comments_finds_whole_line_and_trailing_comments() {
+        let source = "# heid  \nken x = 5 // tail\n  \"# no a comment\"\n\t# indented\r\nken y = 'a#b' # last";
+        let comments = collect_comments(source);
+        let expected = vec![
+            SourceComment {
+                line: 1,
+                column: 1,
+                text: "# heid".to_string(),
+                trailing: false,
+            },
+            SourceComment {
+                line: 2,
+                column: 11,
+                text: "// tail".to_string(),
+                trailing: true,
+            },
+            SourceComment {
+                line: 4,
+                column: 2,
+                text: "# indented".to_string(),
+                trailing: false,
+            },
+            SourceComment {
+                line: 5,
+                column: 15,
+                text: "# last".to_string(),
+                trailing: true,
+            },
+        ];
+        assert_eq!(comments, expected);
+        // The token stream is unchanged: comments are still skipped
+        assert_eq!(lex("ken x = 5 // tail").unwrap().len(), 5);
+    }
+
+    #[test]
+    fn test_collect_comments_after_multiline_string_is_trailing() {
+        let comments = collect_comments("ken s = \"a\nb\" # efter\n");
+        assert_eq!(comments.len(), 1);
+        assert_eq!(comments[0].line, 2);
+        assert_eq!(comments[0].column, 4);
+        assert!(comments[0].trailing);
     }
 
     #[test]

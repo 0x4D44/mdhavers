@@ -212,7 +212,9 @@ ken x = {
     assert!(out.contains("\n    gie\n"));
     assert!(out.contains("brak"));
     assert!(out.contains("haud"));
-    assert!(out.contains("\n    ...\n"));
+    // MDH-BUG-FLU-00027: nested functions are printed in full, not as "..."
+    assert!(!out.contains("..."));
+    assert!(out.contains("\n    dae foo() {\n        gie 1\n    }\n"));
 
     // Cover Pattern::Identifier formatting in match arms.
     let match_source = r#"
