@@ -17,7 +17,7 @@ fn native(interp: &Interpreter, name: &str) -> Rc<NativeFunction> {
         .find_map(|(n, v)| {
             if n == name {
                 match v {
-                    Value::NativeFunction(native) => Some(native),
+                    Value::NativeFunction(ref native) => Some(native.clone()),
                     other => panic!("expected native function {name}, got {other:?}"),
                 }
             } else {
@@ -32,7 +32,7 @@ fn bytes(data: &[u8]) -> Value {
 }
 
 fn result_ok_value(value: Value) -> Option<Value> {
-    let Value::Dict(d) = value else {
+    let Value::Dict(ref d) = value else {
         return None;
     };
     let dict = d.borrow();
@@ -51,7 +51,7 @@ fn result_ok_int(value: Value) -> i64 {
 }
 
 fn assert_result_err(value: Value) {
-    let Value::Dict(d) = value else {
+    let Value::Dict(ref d) = value else {
         panic!("expected dict result, got {value:?}");
     };
     let dict = d.borrow();

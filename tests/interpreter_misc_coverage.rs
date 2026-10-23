@@ -16,7 +16,7 @@ fn native(interp: &Interpreter, name: &str) -> Rc<NativeFunction> {
     exports
         .into_iter()
         .find_map(|(n, v)| match (n == name, v) {
-            (true, Value::NativeFunction(native)) => Some(native),
+            (true, Value::NativeFunction(ref native)) => Some(native.clone()),
             _ => None,
         })
         .unwrap_or_else(|| panic!("native function not found: {name}"))
@@ -143,13 +143,13 @@ fn interpreter_json_unicode_escape_paths_are_covered() {
 #[test]
 fn interpreter_json_stringify_handles_non_string_dict_keys() {
     let value = run(r#"json_stringify({1: 2})"#).unwrap();
-    let Value::String(s) = value else {
+    let Value::String(ref s) = value else {
         panic!("expected json_stringify to return string, got {value:?}");
     };
     assert!(s.contains("\"1\""), "unexpected json: {s}");
 
     let value = run(r#"json_pretty({1: 2})"#).unwrap();
-    let Value::String(s) = value else {
+    let Value::String(ref s) = value else {
         panic!("expected json_pretty to return string, got {value:?}");
     };
     assert!(s.contains("\"1\""), "unexpected json: {s}");
@@ -359,7 +359,7 @@ fn interpreter_native_ipv4_resolution_and_nonblocking_false_path_are_covered() {
     let socket_close = native(&interp, "socket_close");
 
     let created = (socket_udp.func)(Vec::new()).expect("socket_udp ok");
-    let Value::Dict(created) = created else {
+    let Value::Dict(ref created) = created else {
         panic!("expected result dict, got {created:?}");
     };
     let created = created.borrow();
@@ -380,7 +380,7 @@ fn interpreter_native_ipv4_resolution_and_nonblocking_false_path_are_covered() {
         Value::Integer(0),
     ])
     .expect("socket_bind ok");
-    let Value::Dict(bound) = bound else {
+    let Value::Dict(ref bound) = bound else {
         panic!("expected result dict, got {bound:?}");
     };
     assert_eq!(
@@ -391,7 +391,7 @@ fn interpreter_native_ipv4_resolution_and_nonblocking_false_path_are_covered() {
     // Exercise the enable=false branch in socket_set_nonblocking.
     let updated = (socket_set_nonblocking.func)(vec![Value::Integer(sock_id), Value::Bool(false)])
         .expect("socket_set_nonblocking ok");
-    let Value::Dict(updated) = updated else {
+    let Value::Dict(ref updated) = updated else {
         panic!("expected result dict, got {updated:?}");
     };
     assert_eq!(
@@ -401,7 +401,7 @@ fn interpreter_native_ipv4_resolution_and_nonblocking_false_path_are_covered() {
 
     // Clean up FD.
     let closed = (socket_close.func)(vec![Value::Integer(sock_id)]).expect("socket_close ok");
-    let Value::Dict(closed) = closed else {
+    let Value::Dict(ref closed) = closed else {
         panic!("expected result dict, got {closed:?}");
     };
     assert_eq!(

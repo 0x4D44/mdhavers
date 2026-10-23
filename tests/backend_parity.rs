@@ -365,3 +365,27 @@ fn parity_js_parser_followups_mdh_bug_flu_00066_00075_00078() {
         ),
     ]);
 }
+
+#[test]
+fn parity_js_sort_total_order_mdh_bug_flu_00077() {
+    if !node_available() {
+        return;
+    }
+    assert_js_parity(&[
+        (
+            "00077 numbers then strings then others, others keep order",
+            "blether sort([10, \"b\", 2, \"B\", \"a\", naething, aye, 7])",
+            "[2, 7, 10, B, a, b, naething, aye]",
+        ),
+        (
+            "00077 numbers compare by value not text",
+            "blether sort([10, 9, 100, 1])",
+            "[1, 9, 10, 100]",
+        ),
+        (
+            "00077 strings compare by code point",
+            "blether sort([\"b\", \"Z\", \"a\", \"10\", \"9\"])",
+            "[10, 9, Z, a, b]",
+        ),
+    ]);
+}

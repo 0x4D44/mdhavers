@@ -14,7 +14,7 @@ fn native(interp: &Interpreter, name: &str) -> Rc<NativeFunction> {
         .find_map(|(n, v)| {
             if n == name {
                 match v {
-                    Value::NativeFunction(native) => Some(native),
+                    Value::NativeFunction(ref native) => Some(native.clone()),
                     other => panic!("expected native function {name}, got {other:?}"),
                 }
             } else {
@@ -29,7 +29,7 @@ fn bytes(data: &[u8]) -> Value {
 }
 
 fn result_ok_int(value: Value) -> i64 {
-    let Value::Dict(d) = value else {
+    let Value::Dict(ref d) = value else {
         panic!("expected dict result, got {value:?}");
     };
     let dict = d.borrow();
@@ -44,7 +44,7 @@ fn result_ok_int(value: Value) -> i64 {
 }
 
 fn assert_result_err_contains(value: Value, needle: &str) {
-    let Value::Dict(d) = value else {
+    let Value::Dict(ref d) = value else {
         panic!("expected dict result, got {value:?}");
     };
     let dict = d.borrow();
@@ -53,7 +53,7 @@ fn assert_result_err_contains(value: Value, needle: &str) {
         Some(&Value::Bool(false)),
         "expected ok=false result"
     );
-    let Value::String(msg) = dict
+    let Value::String(ref msg) = dict
         .get(&Value::String("error".to_string()))
         .cloned()
         .unwrap_or(Value::String(String::new()))

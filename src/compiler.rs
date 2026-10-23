@@ -923,12 +923,45 @@ impl Compiler {
         self.emit_line("},");
 
         // sort function
-        self.emit_line("sort: (arr) => [...arr].sort((a, b) => {");
+        // Same total order as the interpreter: numbers (NaN last) < strings
+        // (code point / UTF-8 byte order) < everything else (all equal, so the
+        // stable sort keeps their order).
+        self.emit_line("sort: (arr) => {");
         self.indent += 1;
-        self.emit_line("if (typeof a === 'number' && typeof b === 'number') return a - b;");
-        self.emit_line("return String(a).localeCompare(String(b));");
+        self.emit_line("if (!Array.isArray(arr)) throw new Error('sort() expects a list');");
+        self.emit_line(
+            "const rank = (v) => typeof v === 'number' ? 0 : typeof v === 'string' ? 1 : 2;",
+        );
+        self.emit_line("const cpCmp = (x, y) => {");
+        self.indent += 1;
+        self.emit_line("const xs = Array.from(x), ys = Array.from(y);");
+        self.emit_line("const n = Math.min(xs.length, ys.length);");
+        self.emit_line("for (let i = 0; i < n; i++) {");
+        self.indent += 1;
+        self.emit_line("const d = xs[i].codePointAt(0) - ys[i].codePointAt(0);");
+        self.emit_line("if (d !== 0) return d;");
         self.indent -= 1;
-        self.emit_line("}),");
+        self.emit_line("}");
+        self.emit_line("return xs.length - ys.length;");
+        self.indent -= 1;
+        self.emit_line("};");
+        self.emit_line("return [...arr].sort((a, b) => {");
+        self.indent += 1;
+        self.emit_line("const ra = rank(a), rb = rank(b);");
+        self.emit_line("if (ra !== rb) return ra - rb;");
+        self.emit_line("if (ra === 0) {");
+        self.indent += 1;
+        self.emit_line("const na = Number.isNaN(a), nb = Number.isNaN(b);");
+        self.emit_line("if (na || nb) return na === nb ? 0 : (na ? 1 : -1);");
+        self.emit_line("return a < b ? -1 : a > b ? 1 : 0;");
+        self.indent -= 1;
+        self.emit_line("}");
+        self.emit_line("if (ra === 1) return cpCmp(a, b);");
+        self.emit_line("return 0;");
+        self.indent -= 1;
+        self.emit_line("});");
+        self.indent -= 1;
+        self.emit_line("},");
 
         // blether (print) function - prints like the interpreter's Value Display
         self.emit_line("blether: (x) => console.log(__havers_core.show(x)),");

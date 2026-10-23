@@ -25,6 +25,17 @@ fn collect_braw_files(dir: &Path, out: &mut Vec<PathBuf>) {
 
 #[test]
 fn llvm_compiles_stdlib_and_examples_modules_to_ir_for_coverage() {
+    // Compiling the larger repo modules recurses deeply; a default 2 MiB test
+    // thread overflows, so run on a big stack like the golden harness.
+    std::thread::Builder::new()
+        .stack_size(512 * 1024 * 1024)
+        .spawn(compile_repo_modules_to_ir)
+        .expect("failed to spawn compiler thread")
+        .join()
+        .expect("compiler thread panicked");
+}
+
+fn compile_repo_modules_to_ir() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let dirs = [root.join("stdlib"), root.join("examples")];
 

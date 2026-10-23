@@ -208,7 +208,7 @@ fn handle_hover(_documents: &DocumentStore, params: HoverParams) -> Option<Hover
 
     // This is a simplified version - ideally we'd parse the document
     // and find the exact token at the position
-    let keyword = get_word_at_position(&params, _documents)?;
+    let (keyword, start16, end16) = get_word_span_at_position(&params, _documents)?;
 
     if let Some(info) = get_keyword_info(&keyword) {
         return Some(Hover {
@@ -217,10 +217,13 @@ fn handle_hover(_documents: &DocumentStore, params: HoverParams) -> Option<Hover
                 value: info,
             }),
             range: Some(Range {
-                start: position,
+                start: Position {
+                    line: position.line,
+                    character: start16,
+                },
                 end: Position {
                     line: position.line,
-                    character: position.character + keyword.encode_utf16().count() as u32,
+                    character: end16,
                 },
             }),
         });
@@ -343,6 +346,18 @@ fn publish_diagnostics(
     Ok(())
 }
 
+fn get_word_span_at_position(
+    params: &HoverParams,
+    documents: &DocumentStore,
+) -> Option<(String, u32, u32)> {
+    let uri = &params.text_document_position_params.text_document.uri;
+    let position = params.text_document_position_params.position;
+
+    let text = documents.get(uri)?;
+    word_span_at(text, position.line, position.character)
+}
+
+#[cfg(test)]
 fn get_word_at_position(params: &HoverParams, documents: &DocumentStore) -> Option<String> {
     let uri = &params.text_document_position_params.text_document.uri;
     let position = params.text_document_position_params.position;
@@ -369,6 +384,12 @@ fn utf16_col_to_char_index(chars: &[char], utf16_col: u32) -> Option<usize> {
 
 /// The identifier word at an LSP position (line, UTF-16 column), if any.
 fn word_at(text: &str, line: u32, character: u32) -> Option<String> {
+    word_span_at(text, line, character).map(|(word, _, _)| word)
+}
+
+/// The identifier word at an LSP position, plus its start and end columns
+/// (UTF-16 code units) on that line.
+fn word_span_at(text: &str, line: u32, character: u32) -> Option<(String, u32, u32)> {
     let line = text.lines().nth(line as usize)?;
     let chars: Vec<char> = line.chars().collect();
     let col = utf16_col_to_char_index(&chars, character)?;
@@ -385,7 +406,10 @@ fn word_at(text: &str, line: u32, character: u32) -> Option<String> {
     }
 
     if start < end {
-        Some(chars[start..end].iter().collect())
+        let utf16_len = |cs: &[char]| cs.iter().map(|c| c.len_utf16() as u32).sum::<u32>();
+        let start16 = utf16_len(&chars[..start]);
+        let end16 = start16 + utf16_len(&chars[start..end]);
+        Some((chars[start..end].iter().collect(), start16, end16))
     } else {
         None
     }
@@ -662,6 +686,50 @@ mod tests {
 
         let params = hover_params(&uri, 0, 2);
         assert!(handle_hover(&docs, params).is_none());
+    }
+
+    #[test]
+    fn hover_range_covers_the_whole_word_in_utf16_columns() {
+        let mut docs = DocumentStore::new();
+        let uri = Uri::from_str("file:///tmp/coverage_lsp_hover_range.braw").unwrap();
+        // The emoji is two UTF-16 units, so `gin` spans columns 7..10.
+        docs.open(uri.clone(), "ken \u{1F600} gin x\n".to_string());
+
+        // Cursor in the middle of `gin`.
+        let hover = handle_hover(&docs, hover_params(&uri, 0, 8)).expect("gin hover");
+        let range = hover.range.expect("range");
+        assert_eq!(
+            range.start,
+            Position {
+                line: 0,
+                character: 7
+            }
+        );
+        assert_eq!(
+            range.end,
+            Position {
+                line: 0,
+                character: 10
+            }
+        );
+
+        // Cursor at the start of `ken`.
+        let hover = handle_hover(&docs, hover_params(&uri, 0, 2)).expect("ken hover");
+        let range = hover.range.expect("range");
+        assert_eq!(
+            range.start,
+            Position {
+                line: 0,
+                character: 0
+            }
+        );
+        assert_eq!(
+            range.end,
+            Position {
+                line: 0,
+                character: 3
+            }
+        );
     }
 
     #[test]

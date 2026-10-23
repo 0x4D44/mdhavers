@@ -13,7 +13,7 @@ fn native(interp: &Interpreter, name: &str) -> Rc<NativeFunction> {
         .find_map(|(n, v)| {
             if n == name {
                 match v {
-                    Value::NativeFunction(native) => Some(native),
+                    Value::NativeFunction(ref native) => Some(native.clone()),
                     other => panic!("expected native function {name}, got {other:?}"),
                 }
             } else {
@@ -24,7 +24,7 @@ fn native(interp: &Interpreter, name: &str) -> Rc<NativeFunction> {
 }
 
 fn assert_result_err(value: Value) {
-    let Value::Dict(d) = value else {
+    let Value::Dict(ref d) = value else {
         panic!("expected dict result, got {value:?}");
     };
     let dict = d.borrow();

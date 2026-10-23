@@ -84,6 +84,53 @@ pub enum Value {
     Bytes(Rc<RefCell<Vec<u8>>>),
 }
 
+/// Move the children of a uniquely-owned container into `out`, leaving the
+/// container empty, so teardown can proceed iteratively (MDH-BUG-FLU-00085).
+fn take_children(v: &mut Value, out: &mut Vec<Value>) {
+    match v {
+        Value::List(rc) if Rc::strong_count(rc) == 1 => {
+            if let Ok(mut b) = rc.try_borrow_mut() {
+                out.append(&mut b);
+            }
+        }
+        Value::Dict(rc) if Rc::strong_count(rc) == 1 => {
+            if let Ok(mut b) = rc.try_borrow_mut() {
+                b.index.clear();
+                for (k, val) in std::mem::take(&mut b.entries) {
+                    out.push(k);
+                    out.push(val);
+                }
+            }
+        }
+        Value::Set(rc) if Rc::strong_count(rc) == 1 => {
+            if let Ok(mut b) = rc.try_borrow_mut() {
+                out.extend(std::mem::take(&mut b.items).into_values());
+            }
+        }
+        Value::Instance(rc) if Rc::strong_count(rc) == 1 => {
+            if let Ok(mut b) = rc.try_borrow_mut() {
+                out.extend(std::mem::take(&mut b.fields).into_values());
+            }
+        }
+        _ => {}
+    }
+}
+
+impl Drop for Value {
+    /// Iterative teardown: a million-deep nested list would otherwise recurse
+    /// once per level in the compiler-generated drop glue and overflow the
+    /// native stack.
+    fn drop(&mut self) {
+        let mut stack = Vec::new();
+        take_children(self, &mut stack);
+        while let Some(mut v) = stack.pop() {
+            take_children(&mut v, &mut stack);
+            // `v` drops here with its children already removed, so its own
+            // Drop finds nothing to do.
+        }
+    }
+}
+
 impl Value {
     pub fn type_name(&self) -> &'static str {
         match self {
@@ -1843,7 +1890,7 @@ mod tests {
 
         for name in ["calculate", "nonexistent"] {
             let found = instance.get(name);
-            if let Some(Value::Function(f)) = found {
+            if let Some(Value::Function(ref f)) = found {
                 assert_eq!(name, "calculate");
                 assert_eq!(f.name, "calculate");
             } else {

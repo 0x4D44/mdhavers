@@ -10,7 +10,7 @@ fn native(interp: &Interpreter, name: &str) -> Rc<NativeFunction> {
         .find_map(|(n, v)| {
             if n == name {
                 match v {
-                    Value::NativeFunction(native) => Some(native),
+                    Value::NativeFunction(ref native) => Some(native.clone()),
                     other => panic!("expected native function {name}, got {other:?}"),
                 }
             } else {
@@ -68,7 +68,7 @@ fn interpreter_json_stringify_control_chars_are_covered() {
     let interp = Interpreter::new();
     let json_stringify = native(&interp, "json_stringify");
     let result = (json_stringify.func)(vec![Value::String("\u{0001}".to_string())]).unwrap();
-    let Value::String(s) = result else {
+    let Value::String(ref s) = result else {
         panic!("expected json_stringify to return string, got {result:?}");
     };
     assert!(s.contains("\\u0001"), "unexpected json escape: {s}");

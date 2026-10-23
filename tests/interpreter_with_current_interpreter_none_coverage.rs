@@ -10,7 +10,7 @@ fn interpreter_log_event_outside_interpreter_hits_missing_current_interpreter_br
         .find_map(|(name, value)| (name == "log_event").then_some(value))
         .expect("log_event not found");
 
-    let Value::NativeFunction(log_event) = log_event else {
+    let Value::NativeFunction(ref log_event) = log_event else {
         panic!("expected log_event native function");
     };
 
@@ -28,7 +28,7 @@ fn interpreter_log_init_outside_interpreter_hits_missing_current_interpreter_bra
         .find_map(|(name, value)| (name == "log_init").then_some(value))
         .expect("log_init not found");
 
-    let Value::NativeFunction(log_init) = log_init else {
+    let Value::NativeFunction(ref log_init) = log_init else {
         panic!("expected log_init native function");
     };
 
@@ -46,7 +46,7 @@ fn interpreter_log_span_outside_interpreter_uses_default_target_for_coverage() {
         .find_map(|(name, value)| (name == "log_span").then_some(value))
         .expect("log_span not found");
 
-    let Value::NativeFunction(log_span) = log_span else {
+    let Value::NativeFunction(ref log_span) = log_span else {
         panic!("expected log_span native function");
     };
 
@@ -69,10 +69,10 @@ fn interpreter_log_span_in_outside_interpreter_hits_missing_current_interpreter_
         .find_map(|(name, value)| (name == "log_span_in").then_some(value))
         .expect("log_span_in not found");
 
-    let Value::NativeFunction(log_span) = log_span else {
+    let Value::NativeFunction(ref log_span) = log_span else {
         panic!("expected log_span native function");
     };
-    let Value::NativeFunction(log_span_in) = log_span_in else {
+    let Value::NativeFunction(ref log_span_in) = log_span_in else {
         panic!("expected log_span_in native function");
     };
 

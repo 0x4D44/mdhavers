@@ -755,8 +755,6 @@ fn deep_list_equality_does_not_overflow_the_stack() {
             let b = nested_list(200_000, 1);
             let c = nested_list(200_000, 2);
             let result = (a == b, a == c);
-            // Dropping lists this deep recurses natively too; leak them.
-            std::mem::forget((a, b, c));
             result
         })
         .unwrap()
@@ -764,6 +762,30 @@ fn deep_list_equality_does_not_overflow_the_stack() {
         .unwrap();
     assert!(same);
     assert!(!different);
+}
+
+/// MDH-BUG-FLU-00085: dropping a 1,000,000-deep list on a 1 MiB thread used to
+/// recurse once per level in the drop glue and overflow the native stack.
+#[test]
+fn deeply_nested_list_drops_without_overflowing_the_stack() {
+    std::thread::Builder::new()
+        .stack_size(MIB)
+        .spawn(|| {
+            let deep = nested_list(1_000_000, 1);
+            drop(deep);
+            // Same through dict values.
+            use mdhavers::Value;
+            let mut v = Value::List(new_list(vec![]));
+            for _ in 0..500_000 {
+                let mut d = mdhavers::value::DictValue::new();
+                d.set(Value::String("k".to_string()), v);
+                v = Value::Dict(std::rc::Rc::new(std::cell::RefCell::new(d)));
+            }
+            drop(v);
+        })
+        .unwrap()
+        .join()
+        .unwrap();
 }
 
 /// `prefix` single-item lists leading into a cycle of `cycle` lists, where

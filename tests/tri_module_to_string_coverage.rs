@@ -3,7 +3,7 @@ use mdhavers::value::Value;
 
 fn native_object_to_string(value: Value) -> Option<String> {
     match value {
-        Value::NativeObject(obj) => Some(obj.to_string()),
+        Value::NativeObject(ref obj) => Some(obj.to_string()),
         _ => None,
     }
 }

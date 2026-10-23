@@ -54,7 +54,6 @@ tests/golden/edge_cases/roar_mutter_ascii_unicode_parity.braw # node exit 1: Ref
 tests/golden/edge_cases/scran_negative_and_float_indices_parity.braw # node exit 1: ReferenceError: chr is not defined
 tests/golden/edge_cases/set_aliasing_and_nested_updates.braw # node exit 1: ReferenceError: creel is not defined
 tests/golden/edge_cases/slice_non_int_indices.braw # output mismatch
-tests/golden/edge_cases/sort_mixed_types_parity_and_errors.braw # output mismatch
 tests/golden/edge_cases/split_empty_delimiter_returns_whole_string.braw # node exit 1: ReferenceError: is_empty is not defined
 tests/golden/edge_cases/sporran_fill_negative_width_no_hang.braw # node exit 1: ReferenceError: sporran_fill is not defined
 tests/golden/edge_cases/string_builtins_type_errors_caught.braw # node exit 1: ReferenceError: char_at is not defined

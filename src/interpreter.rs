@@ -2581,9 +2581,9 @@ impl Interpreter {
         }
 
         match values.len() {
-            1 => match values.remove(0) {
-                v @ Value::Dict(_) => Ok((Some(v), None)),
-                Value::String(s) => Ok((None, Some(s))),
+            1 => match &values.remove(0) {
+                v @ Value::Dict(_) => Ok((Some(v.clone()), None)),
+                Value::String(s) => Ok((None, Some(s.clone()))),
                 _ => Err(HaversError::TypeError {
                     message: "log_* expects a dict or string for the extra argument".to_string(),
                     line,
@@ -2602,8 +2602,8 @@ impl Interpreter {
                         })
                     }
                 };
-                let target = match target_val {
-                    Value::String(s) => Some(s),
+                let target = match &target_val {
+                    Value::String(s) => Some(s.clone()),
                     _ => {
                         return Err(HaversError::TypeError {
                             message: "log_* expects target as a string".to_string(),
@@ -2620,7 +2620,7 @@ impl Interpreter {
     }
 
     fn apply_log_config(&mut self, config: Option<Value>) -> Result<(), String> {
-        let dict = match config {
+        let dict = match &config {
             None => {
                 self.logger = logging::LoggerCore::new();
                 self.log_callback = None;
@@ -2638,7 +2638,7 @@ impl Interpreter {
         }
 
         if let Some(filter_val) = dict_get(&dict_ref, "filter") {
-            let filter_str = match filter_val {
+            let filter_str = match &filter_val {
                 Value::String(s) => s,
                 _ => return Err("log_init() filter must be a string".to_string()),
             };
@@ -2646,7 +2646,7 @@ impl Interpreter {
         }
 
         if let Some(format_val) = dict_get(&dict_ref, "format") {
-            let format_str = match format_val {
+            let format_str = match &format_val {
                 Value::String(s) => s,
                 _ => return Err("log_init() format must be a string".to_string()),
             };
@@ -2673,7 +2673,7 @@ impl Interpreter {
         }
 
         if let Some(sinks_val) = dict_get(&dict_ref, "sinks") {
-            let list = match sinks_val {
+            let list = match &sinks_val {
                 Value::List(list) => list.borrow().clone(),
                 _ => return Err("log_init() sinks must be a list".to_string()),
             };
@@ -2681,13 +2681,13 @@ impl Interpreter {
             let mut callback: Option<Value> = None;
 
             for spec in list {
-                let spec_dict = match spec {
+                let spec_dict = match &spec {
                     Value::Dict(d) => d,
                     _ => return Err("log_init() sink specs must be dicts".to_string()),
                 };
                 let spec_ref = spec_dict.borrow();
-                let kind = match dict_get(&spec_ref, "kind") {
-                    Some(Value::String(s)) => s,
+                let kind = match &dict_get(&spec_ref, "kind") {
+                    Some(Value::String(s)) => s.clone(),
                     _ => return Err("log_init() sink kind must be a string".to_string()),
                 };
 
@@ -2695,8 +2695,8 @@ impl Interpreter {
                     "stderr" => sinks.push(logging::LogSink::Stderr),
                     "stdout" => sinks.push(logging::LogSink::Stdout),
                     "file" => {
-                        let path = match dict_get(&spec_ref, "path") {
-                            Some(Value::String(s)) => s,
+                        let path = match &dict_get(&spec_ref, "path") {
+                            Some(Value::String(s)) => s.clone(),
                             _ => {
                                 return Err("log_init() file sink requires string path".to_string())
                             }
@@ -5092,7 +5092,7 @@ impl Interpreter {
                         return Err("thread_spawn() expects a list of arguments or nil".to_string())
                     }
                 };
-                let result = match func {
+                let result = match &func {
                     Value::NativeFunction(native) => (native.func)(arg_vec)?,
                     _ => {
                         return Err(
@@ -11198,7 +11198,7 @@ impl Interpreter {
             }
         } else {
             let iter_value = self.evaluate(iterable)?;
-            let items: Box<dyn Iterator<Item = Value>> = match iter_value {
+            let items: Box<dyn Iterator<Item = Value>> = match &iter_value {
                 Value::Range(range) => Box::new(range.iter().map(Value::Integer)),
                 Value::List(list) => Box::new(list.borrow().clone().into_iter()),
                 Value::String(s) => Box::new(
@@ -11337,8 +11337,8 @@ impl Interpreter {
                     line: span.line,
                 }
             })?;
-            match super_val {
-                Value::Class(c) => Some(c),
+            match &super_val {
+                Value::Class(c) => Some(c.clone()),
                 _ => {
                     return Err(HaversError::TypeError {
                         message: format!("{} isnae a class", super_name),
@@ -11597,8 +11597,8 @@ impl Interpreter {
     #[inline(never)]
     fn exec_hurl(&mut self, message: &Expr, span: &Span) -> ExecResult {
         let msg = self.evaluate(message)?;
-        let error_msg = match msg {
-            Value::String(s) => s,
+        let error_msg = match &msg {
+            Value::String(s) => s.clone(),
             v => format!("{}", v),
         };
         Err(HaversError::UserError {
@@ -11945,7 +11945,7 @@ impl Interpreter {
             object, property, ..
         } = callee
         {
-            match self.evaluate(object)? {
+            match &self.evaluate(object)? {
                 Value::NativeObject(native) => {
                     return self.call_native_method(&native, property, arguments, span);
                 }
@@ -12019,7 +12019,7 @@ impl Interpreter {
     #[inline(never)]
     fn eval_get(&mut self, object: &Expr, property: &str, span: &Span) -> HaversResult<Value> {
         let obj = self.evaluate(object)?;
-        match obj {
+        match &obj {
             Value::NativeObject(native) => native
                 .get(property)
                 .map_err(|err| err.with_line_if_zero(span.line)),
@@ -12080,7 +12080,7 @@ impl Interpreter {
     ) -> HaversResult<Value> {
         let obj = self.evaluate(object)?;
         let val = self.evaluate(value)?;
-        match obj {
+        match &obj {
             Value::NativeObject(native) => native
                 .set(property, val)
                 .map_err(|err| err.with_line_if_zero(span.line)),
@@ -12272,7 +12272,7 @@ impl Interpreter {
             1
         };
 
-        match obj {
+        match &obj {
             Value::List(list) => {
                 let list = list.borrow();
                 let len = list.len() as i64;
@@ -12400,7 +12400,7 @@ impl Interpreter {
             // Handle spread operator (...) - skail the elements intae the list
             if let Expr::Spread { expr, span } = elem {
                 let spread_value = self.evaluate(expr)?;
-                match spread_value {
+                match &spread_value {
                     Value::List(list) => {
                         items.extend(list.borrow().clone());
                     }
@@ -12824,7 +12824,7 @@ impl Interpreter {
         for arg in arguments {
             if let Expr::Spread { expr, span } = arg {
                 let spread_value = self.evaluate(expr)?;
-                match spread_value {
+                match &spread_value {
                     Value::List(list) => {
                         args.extend(list.borrow().clone());
                     }
@@ -12844,7 +12844,7 @@ impl Interpreter {
 
     fn call_value(&mut self, callee: Value, args: Vec<Value>, line: usize) -> HaversResult<Value> {
         let _guard = InterpreterGuard::new(self);
-        match callee {
+        match &callee {
             Value::Function(func) => self.call_function(&func, args, line),
             Value::NativeFunction(native) => Self::call_native_function(&native, args, line),
             Value::NativeObject(_) => Err(HaversError::TypeError {
@@ -12855,7 +12855,7 @@ impl Interpreter {
             Value::String(ref s) if s.starts_with("__builtin_") => {
                 self.call_builtin_hof(s, args, line)
             }
-            Value::Class(class) => self.construct_instance(class, args, line),
+            Value::Class(class) => self.construct_instance(class.clone(), args, line),
             Value::Struct(structure) => Self::construct_struct(&structure, args, line),
             _ => Err(Self::not_callable(&callee, line)),
         }
@@ -13047,7 +13047,7 @@ impl Interpreter {
                 for item in list {
                     let key = self.call_value(func.clone(), vec![item.clone()], line)?;
                     let key_value = key;
-                    if let Some(Value::List(l)) = result.get(&key_value).cloned() {
+                    if let Some(Value::List(ref l)) = result.get(&key_value).cloned() {
                         l.borrow_mut().push(item);
                     } else {
                         result.set(
@@ -13952,7 +13952,7 @@ ok
     #[test]
     fn socket_helpers_cover_missing_error_and_flag_paths_for_coverage() {
         fn ok_int_result(value: Value) -> Option<i64> {
-            let Value::Dict(dict) = value else {
+            let Value::Dict(ref dict) = value else {
                 return None;
             };
             let dict = dict.borrow();
@@ -15784,7 +15784,7 @@ blether r["error"]
 
         fn dict_value(result: Value) -> Option<Rc<RefCell<DictValue>>> {
             match result {
-                Value::Dict(dict) => Some(dict),
+                Value::Dict(ref dict) => Some(dict.clone()),
                 _ => None,
             }
         }
@@ -16059,7 +16059,7 @@ blether r["error"]
 
         fn dict_value(result: Value) -> Option<Rc<RefCell<DictValue>>> {
             match result {
-                Value::Dict(dict) => Some(dict),
+                Value::Dict(ref dict) => Some(dict.clone()),
                 _ => None,
             }
         }
@@ -25200,7 +25200,7 @@ d.nope
         let values = vec![run("grup_runs([1, 1, 2])").unwrap(), Value::Nil];
         for value in values {
             match value {
-                Value::List(list) => {
+                Value::List(ref list) => {
                     assert_eq!(list.borrow().len(), 2);
                 }
                 other => {

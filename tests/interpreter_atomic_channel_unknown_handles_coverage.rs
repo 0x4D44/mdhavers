@@ -9,8 +9,8 @@ fn native(interp: &Interpreter, name: &str) -> Rc<NativeFunction> {
         .into_iter()
         .find_map(|(n, v)| {
             if n == name {
-                match v {
-                    Value::NativeFunction(native) => Some(native),
+                match &v {
+                    Value::NativeFunction(native) => Some(native.clone()),
                     other => panic!("expected native function {name}, got {other:?}"),
                 }
             } else {

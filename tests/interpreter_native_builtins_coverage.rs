@@ -90,7 +90,7 @@ fn interpreter_calls_all_native_builtins_for_coverage() {
     ];
 
     for (name, value) in exports {
-        let Value::NativeFunction(native) = value else {
+        let Value::NativeFunction(ref native) = value else {
             continue;
         };
         if skip.contains(&name.as_str()) {
