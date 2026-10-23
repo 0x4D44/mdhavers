@@ -218,6 +218,18 @@ blether dict_has(person, "name")  # aye
 blether dict_has(person, "job")   # nae
 ```
 
+### Comparing Dictionaries
+
+`==` compares dictionaries by their contents, like lists: the same keys (in any order)
+wi' equal values. Creels compare by their members. An empty dictionary counts as false.
+
+```scots
+blether {"a": 1, "b": 2} == {"b": 2, "a": 1}  # aye
+blether {"a": 1} == {"a": 2}                  # nae
+blether creel([1, 2]) == creel([2, 1])        # aye
+gin {} { blether "full" } ither { blether "empty" }  # empty
+```
+
 ### Merging Dictionaries
 
 ```scots

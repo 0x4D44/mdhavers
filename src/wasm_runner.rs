@@ -848,8 +848,49 @@ fn order_values(
     Ok(ord.is_some_and(test))
 }
 
+/// Mirrors `impl PartialEq for Value`: lists an' dicts compare structurally.
 fn eq_values(store: &HostStore, a: Handle, b: Handle) -> bool {
-    match (store.view(a).as_deref(), store.view(b).as_deref()) {
+    eq_values_on_path(store, a, b, &mut Vec::new())
+}
+
+/// `path` holds the container pairs being compared right now; meeting one
+/// again counts as equal, so self-referential containers finish.
+fn eq_values_on_path(
+    store: &HostStore,
+    a: Handle,
+    b: Handle,
+    path: &mut Vec<(Handle, Handle)>,
+) -> bool {
+    let (left, right) = (store.view(a), store.view(b));
+    let containers = matches!(
+        (left.as_deref(), right.as_deref()),
+        (Some(HostValue::List(_)), Some(HostValue::List(_)))
+            | (Some(HostValue::Dict(_)), Some(HostValue::Dict(_)))
+    );
+    if containers {
+        if a == b || path.contains(&(a, b)) {
+            return true;
+        }
+        path.push((a, b));
+        let same = match (left.as_deref(), right.as_deref()) {
+            (Some(HostValue::List(x)), Some(HostValue::List(y))) => {
+                x.len() == y.len()
+                    && x.iter()
+                        .zip(y.iter())
+                        .all(|(p, q)| eq_values_on_path(store, *p, *q, path))
+            }
+            (Some(HostValue::Dict(x)), Some(HostValue::Dict(y))) => {
+                x.len() == y.len()
+                    && x.iter().all(|(key, p)| {
+                        dict_get(y, key).is_some_and(|q| eq_values_on_path(store, *p, q, path))
+                    })
+            }
+            _ => false,
+        };
+        path.pop();
+        return same;
+    }
+    match (left.as_deref(), right.as_deref()) {
         (Some(HostValue::Nil), Some(HostValue::Nil)) => true,
         (Some(HostValue::Bool(x)), Some(HostValue::Bool(y))) => x == y,
         (Some(HostValue::Int(x)), Some(HostValue::Int(y))) => x == y,
@@ -857,12 +898,6 @@ fn eq_values(store: &HostStore, a: Handle, b: Handle) -> bool {
         (Some(HostValue::Int(x)), Some(HostValue::Float(y))) => (*x as f64) == *y,
         (Some(HostValue::Float(x)), Some(HostValue::Int(y))) => *x == (*y as f64),
         (Some(HostValue::String(x)), Some(HostValue::String(y))) => x == y,
-        (Some(HostValue::List(x)), Some(HostValue::List(y))) => {
-            x.len() == y.len()
-                && x.iter()
-                    .zip(y.iter())
-                    .all(|(p, q)| eq_values(store, *p, *q))
-        }
         _ => a == b,
     }
 }

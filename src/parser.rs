@@ -14,6 +14,9 @@ pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
     depth: usize,
+    /// How many function bodies (`dae`, methods, lambdas) or block
+    /// expressions enclose the cursor; `gie` at zero is an error.
+    function_depth: usize,
 }
 
 impl Parser {
@@ -22,7 +25,20 @@ impl Parser {
             tokens,
             current: 0,
             depth: 0,
+            function_depth: 0,
         }
+    }
+
+    /// Run `parse_fn` inside a function body (or block expression), where
+    /// `gie` is allowed.
+    fn in_function<T>(
+        &mut self,
+        parse_fn: impl FnOnce(&mut Self) -> HaversResult<T>,
+    ) -> HaversResult<T> {
+        self.function_depth += 1;
+        let result = parse_fn(self);
+        self.function_depth -= 1;
+        result
     }
 
     /// Run `parse_fn` one nesting level deeper, failing cleanly (instead o'
@@ -154,6 +170,10 @@ impl Parser {
     }
 
     fn function_declaration(&mut self) -> HaversResult<Stmt> {
+        self.in_function(Self::function_declaration_inner)
+    }
+
+    fn function_declaration_inner(&mut self) -> HaversResult<Stmt> {
         let span = self.current_span();
         self.advance(); // consume 'dae'
 
@@ -394,6 +414,10 @@ impl Parser {
 
     fn return_statement(&mut self) -> HaversResult<Stmt> {
         let span = self.current_span();
+        if self.function_depth == 0 {
+            // Decision F4: a top-level `gie` is an error on every backend.
+            return Err(HaversError::ReturnOutsideFunction { line: span.line });
+        }
         self.advance(); // consume 'gie'
 
         // A bare `gie` (nae value) ends at a newline, `;`, `}` or the end o' the file.
@@ -1232,7 +1256,7 @@ impl Parser {
             // Lambda expressions: |x, y| x + y  or  |x, y| { statements... }
             TokenKind::Pipe => {
                 self.advance();
-                self.lambda_expression(span)
+                self.in_function(|p| p.lambda_expression(span))
             }
             _ => Err(HaversError::ParseError {
                 message: format!("Unexpected token: {}", token.kind),
@@ -1370,12 +1394,16 @@ impl Parser {
         // nae re-parsing): it's a dict if a ':' turns up on the first
         // line, ootside any brackets.
         if !self.brace_starts_dict() {
-            let mut statements = Vec::new();
-            while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
-                statements.push(self.declaration()?);
-                self.skip_newlines();
-            }
-            self.expect(&TokenKind::RightBrace, "}")?;
+            // A `gie` in a block expression gies the block its value.
+            let statements = self.in_function(|p| {
+                let mut statements = Vec::new();
+                while !p.check(&TokenKind::RightBrace) && !p.is_at_end() {
+                    statements.push(p.declaration()?);
+                    p.skip_newlines();
+                }
+                p.expect(&TokenKind::RightBrace, "}")?;
+                Ok(statements)
+            })?;
             return Ok(Expr::BlockExpr { statements, span });
         }
 
@@ -2340,16 +2368,25 @@ mod tests {
 
     #[test]
     fn test_match_statement_parses_return_break_and_continue_arms() {
+        // Inside a function: a top-level `gie` is an error (decision F4).
         let program = parse(
-            r#"keek x {
+            r#"dae f(x) {
+keek x {
   whan 1 -> gie 1
   whan 2 -> brak
   whan 3 -> haud
+}
 }"#,
         )
         .unwrap();
+        let Some(Stmt::Function { body, .. }) = program.statements.first() else {
+            panic!("expected function");
+        };
+        let body = Program {
+            statements: body.clone(),
+        };
 
-        let arms = first_match_arms(&program).expect("expected match statement");
+        let arms = first_match_arms(&body).expect("expected match statement");
         assert_stmt_variant(
             &arms[0].body,
             Stmt::Return {
@@ -3021,8 +3058,13 @@ mod tests {
 
     #[test]
     fn test_return_without_value_at_end_of_file_for_coverage() {
-        let program = parse("gie").unwrap();
-        assert_eq!(program.statements.len(), 1);
+        // A bare `gie` right at the end o' the file (inside a function, since a
+        // top-level `gie` is an error); the unclosed body then fails.
+        assert!(parse("dae f() { gie").is_err());
+        assert!(matches!(
+            parse("gie"),
+            Err(HaversError::ReturnOutsideFunction { line: 1 })
+        ));
     }
 
     #[test]

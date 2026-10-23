@@ -123,7 +123,8 @@ dae greet(name) {
 
 ### gie
 **Meaning:** "To give"
-**Usage:** Return a value from a function
+**Usage:** Return a value from a function (or set the value of a lambda or block expression).
+A `gie` at the top level of a program is an error.
 
 ```scots
 dae add(a, b) {

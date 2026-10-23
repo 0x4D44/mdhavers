@@ -9,6 +9,7 @@ tests/golden/classes/method_value_is_bound.braw # node exit 1: TypeError: Cannot
 tests/golden/classes/named_method_closure_defaults_reflect_masel_mutation.braw # node exit 1: TypeError: Cannot read properties of undefined (reading 'v')
 tests/golden/classes/operator_overloading_basic.braw # node exit 1: Error: That's pure mince! Type error at line 28: Cannae add instance an' instance
 tests/golden/classes/operator_overloading_non_var.braw # node exit 1: Error: That's pure mince! Type error at line 25: Cannae add instance an' instance
+tests/golden/data_structures/creel_structural_equality.braw # node exit 1: ReferenceError: creel is not defined
 tests/golden/data_structures/dict_index_set_typed_keys_int_vs_string.braw # output mismatch
 tests/golden/data_structures/dict_missing_mixed_key_caught.braw # output mismatch
 tests/golden/data_structures/dict_typed_keys_int_vs_string.braw # output mismatch

@@ -12,6 +12,56 @@ fn run(code: &str) -> String {
     interp.get_output().join("\n").trim().to_string()
 }
 
+fn assert_return_outside_function(code: &str, want_line: usize) {
+    match parse(code) {
+        Err(HaversError::ReturnOutsideFunction { line }) => assert_eq!(line, want_line, "{code}"),
+        other => panic!("expected ReturnOutsideFunction for {code:?}, got {other:?}"),
+    }
+    // Every backend parses first, so none o' them gets as far as codegen.
+    assert!(
+        matches!(
+            mdhavers::compile_to_js(code),
+            Err(HaversError::ReturnOutsideFunction { .. })
+        ),
+        "JS backend accepted {code:?}"
+    );
+    assert!(
+        matches!(
+            mdhavers::wasm_compiler::compile_to_wat(code),
+            Err(HaversError::ReturnOutsideFunction { .. })
+        ),
+        "WASM backend accepted {code:?}"
+    );
+}
+
+#[test]
+fn top_level_gie_is_return_outside_function_decision_f4() {
+    assert_return_outside_function("blether 1\ngie 5\nblether 2", 2);
+    assert_return_outside_function("gie", 1);
+    assert_return_outside_function("gin aye {\n    gie 1\n}", 2);
+    assert_return_outside_function("fer i in 0..3 {\n    gie i\n}", 2);
+    assert_return_outside_function("keek 1 {\n    whan 1 -> gie 2\n}", 2);
+    // A gie efter a function ends is back at the top level.
+    assert_return_outside_function("dae f() { gie 1 }\ngie 2", 2);
+    let msg = parse("gie 5").unwrap_err().to_string();
+    assert!(msg.contains("ootside a function"), "{msg}");
+}
+
+#[test]
+fn gie_inside_functions_lambdas_and_blocks_still_parses_decision_f4() {
+    assert_eq!(run("dae f() { gie 1 }\nblether f()"), "1");
+    assert_eq!(
+        run("kin K {\n    dae m() { gie 2 }\n}\nblether K().m()"),
+        "2"
+    );
+    assert_eq!(run("ken g = |x| { gie x + 1 }\nblether g(2)"), "3");
+    assert_eq!(run("blether { gie 4 }"), "4");
+    assert_eq!(
+        run("dae h() {\n    ken k = |y| { gie y }\n    gie k(5)\n}\nblether h()"),
+        "5"
+    );
+}
+
 #[test]
 fn fer_over_negative_range_counts_from_the_negative_start() {
     // MDH-BUG-FLU-00014 (used tae be -(1..2): "Cannae negate a list")

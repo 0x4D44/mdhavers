@@ -312,6 +312,29 @@ fn lists_compare_structurally_and_concatenate() {
     assert_eq!(run(source), "aye\nnae\n[1, 2, 3]\n");
 }
 
+#[test]
+fn dicts_compare_structurally_decision_f1() {
+    let source = "blether {\"a\": 1, \"b\": [1]} == {\"b\": [1], \"a\": 1}\n\
+                  blether {\"a\": 1} == {\"a\": 2}\n\
+                  blether {\"a\": 1} == {\"a\": 1, \"b\": 2}\n\
+                  blether {\"a\": {\"x\": 1}} != {\"a\": {\"x\": 1}}\n\
+                  blether {} == {}\n";
+    assert_eq!(run(source), "aye\nnae\nnae\nnae\naye\n");
+}
+
+#[test]
+fn self_referential_dicts_compare_without_hanging_decision_f1() {
+    let source = "ken a = {\"n\": 1}\na.me = a\nken b = {\"n\": 1}\nb.me = b\nblether a == b\n\
+                  ken c = {\"n\": 2}\nc.me = c\nblether a == c\n";
+    assert_eq!(run(source), "aye\nnae\n");
+}
+
+#[test]
+fn empty_dict_is_falsy_decision_f2() {
+    let source = "gin {} { blether \"truthy\" } ither { blether \"falsy\" }\nblether !{}\n";
+    assert_eq!(run(source), "falsy\naye\n");
+}
+
 // ---------------------------------------------------------------------------
 // corpus: everything the backend accepts is a valid module
 // ---------------------------------------------------------------------------

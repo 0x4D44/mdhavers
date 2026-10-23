@@ -1,0 +1,40 @@
+# SKIP_NATIVE
+# Note: decision F3 (each `fer` iteration gets a fresh binding); the native lane lifts this marker.
+ken fs = []
+fer i in 0..3 {
+    shove(fs, || i)
+}
+blether gaun(fs, |f| f())
+
+ken gs = []
+fer w in ["a", "b", "c"] {
+    shove(gs, || w)
+}
+blether gaun(gs, |f| f())
+
+# A closure sees changes tae its ain iteration's binding, an' nae ither
+ken hs = []
+fer n in 1..=3 {
+    shove(hs, || n)
+    n = n * 10
+}
+blether gaun(hs, |f| f())
+
+# Nested loops: each closure keeps its ain pair
+ken pairs = []
+fer x in 0..2 {
+    fer y in 0..2 {
+        shove(pairs, || f"{x}{y}")
+    }
+}
+blether gaun(pairs, |f| f())
+
+# A `ken` inside a `whiles` body is already fresh each time roond
+ken ws = []
+ken k = 0
+whiles k < 3 {
+    ken snap = k
+    shove(ws, || snap)
+    k = k + 1
+}
+blether gaun(ws, |f| f())

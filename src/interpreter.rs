@@ -10927,7 +10927,7 @@ impl Interpreter {
                 span,
             } => self.exec_var_decl(name, initializer.as_ref(), span),
             Stmt::Expression { expr, span } => self.exec_expression(expr, span),
-            Stmt::Block { statements, span } => self.exec_block_stmt(statements, span),
+            Stmt::Block { statements, span } => self.exec_block_stmt(statements, span, None),
             Stmt::If {
                 condition,
                 then_branch,
@@ -11051,10 +11051,16 @@ impl Interpreter {
 
     /// A `{ ... }` block statement
     #[inline(never)]
-    fn exec_block_stmt(&mut self, statements: &[Stmt], span: &Span) -> ExecResult {
+    /// `env` is the scope tae run in; `None` makes a fresh one.
+    fn exec_block_stmt(
+        &mut self,
+        statements: &[Stmt],
+        span: &Span,
+        env: Option<Rc<RefCell<Environment>>>,
+    ) -> ExecResult {
         self.trace_with(|| format!("[line {}] enterin' block", span.line));
         self.trace_depth += 1;
-        let result = self.execute_block(statements, None);
+        let result = self.execute_block(statements, env);
         self.trace_depth = self.trace_depth.saturating_sub(1);
         self.trace_with(|| format!("[line {}] leavin' block", span.line));
         result
@@ -11189,10 +11195,25 @@ impl Interpreter {
             self.trace_verbose_with(|| {
                 format!("→ iteration {}: {} = {}", iteration, variable, item)
             });
-            self.environment
+            // Each iteration gets a fresh binding (decision F3), so a closure
+            // made in this iteration keeps this iteration's value.
+            let iteration_env = Rc::new(RefCell::new(Environment::with_enclosing(
+                self.environment.clone(),
+            )));
+            iteration_env
                 .borrow_mut()
                 .define(variable.to_string(), item);
-            match self.execute_stmt_with_control(body)? {
+            let flow = match body {
+                // The usual case: the body block's ain scope holds the binding.
+                Stmt::Block { statements, span } => {
+                    self.exec_block_stmt(statements, span, Some(iteration_env))?
+                }
+                _ => {
+                    let _env_guard = EnvSwapGuard::new(self, iteration_env);
+                    self.execute_stmt_with_control(body)?
+                }
+            };
+            match flow {
                 Ok(_) => {}
                 Err(ControlFlow::Break) => {
                     self.trace_with(|| {
@@ -12520,20 +12541,26 @@ impl Interpreter {
     /// Block expression: the value of its `gie`, if any
     #[inline(never)]
     fn eval_block_expr(&mut self, statements: &[Stmt]) -> HaversResult<Value> {
-        // Execute statements and return the value from 'gie' if any
-        // Use execute_stmt_with_control to handle return properly
-        for stmt in statements {
+        // A block's value is its last expression statement (MDH-BUG-FLU-00064);
+        // a `gie` inside sets the value straight away. A block that ends in
+        // ony other statement is naething.
+        let mut value = Value::Nil;
+        for (i, stmt) in statements.iter().enumerate() {
             match self.execute_stmt_with_control(stmt)? {
-                Ok(_) => {}
-                Err(ControlFlow::Return(value)) => {
-                    return Ok(value);
+                Ok(v) => {
+                    if i + 1 == statements.len() && matches!(stmt, Stmt::Expression { .. }) {
+                        value = v;
+                    }
+                }
+                Err(ControlFlow::Return(returned)) => {
+                    return Ok(returned);
                 }
                 Err(ControlFlow::Break) | Err(ControlFlow::Continue) => {
                     // Propagate break/continue - shouldn't happen in block expr
                 }
             }
         }
-        Ok(Value::Nil)
+        Ok(value)
     }
 
     fn binary_op(
@@ -17667,7 +17694,16 @@ f"The answer is {x * 2}"
 
         // `execute_stmt` instantiations: cover the wrapper match arms that are only hit for
         // top-level return/break/continue.
-        let program = crate::parser::parse("gie 7").unwrap();
+        // The parser rejects a top-level `gie` (decision F4), so build the AST by hand.
+        let program = crate::ast::Program {
+            statements: vec![Stmt::Return {
+                value: Some(Expr::Literal {
+                    value: Literal::Integer(7),
+                    span: Span::new(1, 1),
+                }),
+                span: Span::new(1, 1),
+            }],
+        };
         let mut interp = Interpreter::new();
         let result = interp.interpret(&program).unwrap();
         assert_eq!(result, Value::Integer(7));
@@ -25467,7 +25503,7 @@ ken zs = xs[::-1]
 ken s = "abcd"
 ken t = s[3:0:-1]
 ken u = s[::-1]
-gie len(ys) + len(zs) + len(t) + len(u)
+len(ys) + len(zs) + len(t) + len(u)
 "#)
         .unwrap();
     }

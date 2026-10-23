@@ -1,0 +1,30 @@
+# SKIP_NATIVE
+# Note: MDH-BUG-FLU-00064 (a block expression's value is its last expression); the native lane lifts this marker.
+blether {0 + 1}
+ken a = {0 + {0 + 1}}
+blether a
+
+ken b = {
+    ken x = 10
+    x * 2
+}
+blether b
+
+# A lambda wi' a block body gies its last expression
+ken twice_plus = |x| {
+    ken y = x + 1
+    y * 2
+}
+blether twice_plus(3)
+blether gaun([1, 2, 3], |n| {
+    ken sq = n * n
+    sq + 1
+})
+
+# `gie` still sets the value
+blether { gie 7 }
+
+# A block that ends in a statement is naething
+blether { ken z = 5 }
+ken quiet = { blether "side effect" }
+blether quiet

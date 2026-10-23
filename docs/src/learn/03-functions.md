@@ -77,6 +77,13 @@ ken result = say_hello()
 blether result  # naething
 ```
 
+`gie` only makes sense inside a function (or a lambda, or a `{ ... }` block expression).
+A `gie` at the top level of a program is an error, caught before the program runs:
+
+```scots
+gie 5  # Error: Return statement ootside a function
+```
+
 ## Default Parameters
 
 Provide default values for parameters:
@@ -177,6 +184,24 @@ blether add(3, 4)  # 7
 # No parameters
 ken greet = || "Hullo!"
 blether greet()  # "Hullo!"
+```
+
+A lambda body can be a `{ ... }` block. Like any block expression, its value is
+its last expression (or whatever `gie` gives):
+
+```scots
+ken describe = |n| {
+    ken doubled = n * 2
+    f"{n} doubled is {doubled}"
+}
+blether describe(4)  # 4 doubled is 8
+
+ken total = {
+    ken a = 2
+    ken b = 3
+    a + b
+}
+blether total  # 5
 ```
 
 Lambdas are great with higher-order functions:

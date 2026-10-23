@@ -1,0 +1,24 @@
+# SKIP_NATIVE
+# Note: decision F1 (dicts compare by keys an' values, like lists); the native lane lifts this marker.
+blether {"a": 1} == {"a": 1}
+blether {"a": 1} != {"a": 1}
+blether {"a": 1} == {"a": 2}
+blether {"a": 1} == {"b": 1}
+blether {"a": 1} == {"a": 1, "b": 2}
+blether {} == {}
+
+# Key order doesnae matter
+blether {"a": 1, "b": 2} == {"b": 2, "a": 1}
+
+# Nested dicts an' lists compare all the way doon
+blether {"xs": [1, 2], "d": {"k": "v"}} == {"d": {"k": "v"}, "xs": [1, 2]}
+blether {"xs": [1, 2], "d": {"k": "v"}} == {"d": {"k": "w"}, "xs": [1, 2]}
+blether [{"a": 1}, {"b": 2}] == [{"a": 1}, {"b": 2}]
+
+# Two separate dicts that are equal are still separate
+ken d1 = {"n": 1}
+ken d2 = {"n": 1}
+blether d1 == d2
+d2["n"] = 2
+blether d1 == d2
+blether d1["n"]

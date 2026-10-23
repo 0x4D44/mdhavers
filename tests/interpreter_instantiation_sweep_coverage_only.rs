@@ -100,7 +100,17 @@ x
 #[test]
 fn interpreter_execute_stmt_control_flow_arms_execute_for_instantiation_coverage_in_dependency_instance(
 ) {
-    let program = parse("gie 7").expect("parse");
+    // The parser rejects a top-level `gie` (decision F4), so build the AST by hand.
+    let span = mdhavers::ast::Span::new(1, 1);
+    let program = mdhavers::ast::Program {
+        statements: vec![mdhavers::ast::Stmt::Return {
+            value: Some(mdhavers::ast::Expr::Literal {
+                value: mdhavers::ast::Literal::Integer(7),
+                span,
+            }),
+            span,
+        }],
+    };
     let mut interp = Interpreter::new();
     let value = interp.interpret(&program).expect("interpret");
     assert_eq!(value, Value::Integer(7));

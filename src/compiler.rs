@@ -907,7 +907,10 @@ impl Compiler {
         self.emit_line("contains: (container, item) => {");
         self.indent += 1;
         self.emit_line("if (typeof container === 'string') return container.includes(item);");
-        self.emit_line("if (Array.isArray(container)) return container.includes(item);");
+        // Lists find items by ==, so a list or dict member matches structurally.
+        self.emit_line(
+            "if (Array.isArray(container)) return container.some((x) => __havers_core.eq(x, item));",
+        );
         self.emit_line("if (typeof container === 'object') return item in container;");
         self.emit_line("return false;");
         self.indent -= 1;
@@ -2203,12 +2206,22 @@ impl Compiler {
                 self.output.push(')');
             }
             Expr::BlockExpr { statements, .. } => {
-                // Block expressions compile to an IIFE (immediately invoked function expression)
+                // Block expressions compile to an IIFE (immediately invoked function
+                // expression). The last expression statement is the block's value
+                // (MDH-BUG-FLU-00064).
                 self.output.push_str("(() => {\n");
                 self.indent += 1;
                 self.push_scope();
-                for stmt in statements {
-                    self.compile_stmt(stmt);
+                for (i, stmt) in statements.iter().enumerate() {
+                    match stmt {
+                        Stmt::Expression { expr, .. } if i + 1 == statements.len() => {
+                            self.emit_indent();
+                            self.output.push_str("return (");
+                            self.compile_expr(expr);
+                            self.output.push_str(");\n");
+                        }
+                        _ => self.compile_stmt(stmt),
+                    }
                 }
                 self.pop_scope();
                 self.indent -= 1;

@@ -43,24 +43,53 @@ const __havers_core = (() => {
     return String(x);
   };
 
-  // Mirrors `Value::is_truthy`: empty dicts and NaN stay truthy, as in the interpreter.
+  // A plain dict (no' a class instance or a struct).
+  const isDict = (x) => {
+    if (x === null || typeof x !== "object" || Array.isArray(x) || x instanceof Set) return false;
+    const proto = Object.getPrototypeOf(x);
+    return proto === Object.prototype || proto === null;
+  };
+
+  // Mirrors `Value::is_truthy`: empty containers are falsy; NaN stays truthy, as in the interpreter.
   const truthy = (x) => {
     if (x === null || x === undefined || x === false || x === 0 || x === "") return false;
     if (Array.isArray(x)) return x.length > 0;
     if (x instanceof Set) return x.size > 0;
+    if (isDict(x)) return Object.keys(x).length > 0;
     return true;
   };
 
-  // Mirrors `impl PartialEq for Value`: lists compare structurally, the rest by identity.
-  const eq = (a, b) => {
+  // Mirrors `impl PartialEq for Value`: lists an' dicts compare structurally, creels
+  // by their members, the rest by identity. `path` holds the container pairs being
+  // compared right now; meeting one again counts as equal, so cycles finish.
+  const eq = (a, b, path = []) => {
     if (a === undefined) a = null;
     if (b === undefined) b = null;
-    if (Array.isArray(a) && Array.isArray(b)) {
-      if (a.length !== b.length) return false;
-      for (let i = 0; i < a.length; i++) if (!eq(a[i], b[i])) return false;
+    if (a instanceof Set && b instanceof Set) {
+      if (a.size !== b.size) return false;
+      for (const item of a) if (!b.has(item)) return false;
       return true;
     }
-    return a === b;
+    const lists = Array.isArray(a) && Array.isArray(b);
+    const dicts = isDict(a) && isDict(b);
+    if (!lists && !dicts) return a === b;
+    if (a === b) return true;
+    if (path.some(([x, y]) => x === a && y === b)) return true;
+    path.push([a, b]);
+    let same = true;
+    if (lists) {
+      if (a.length !== b.length) same = false;
+      for (let i = 0; same && i < a.length; i++) same = eq(a[i], b[i], path);
+    } else {
+      const keys = Object.keys(a);
+      if (keys.length !== Object.keys(b).length) same = false;
+      for (let i = 0; same && i < keys.length; i++) {
+        const k = keys[i];
+        same = Object.prototype.hasOwnProperty.call(b, k) && eq(a[k], b[k], path);
+      }
+    }
+    path.pop();
+    return same;
   };
 
   const fail = (message) => new Error(message);

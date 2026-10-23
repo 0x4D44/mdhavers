@@ -1031,9 +1031,9 @@ t()
 "#,
             false,
         ),
-        // Return at top-level (value + no-value)
-        ("gie 123", true),
-        ("gie\n", true),
+        // Return (value + no-value); a top-level `gie` is a parse error now (decision F4)
+        ("dae f() { gie 123 }\nf()", true),
+        ("dae f() {\n    gie\n}\nf()", true),
         // VarDecl without initializer path
         ("ken x\nx\n", true),
         // For-loop non-iterable type error

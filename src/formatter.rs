@@ -2138,7 +2138,7 @@ ken x = {
 
     #[test]
     fn test_format_single_stmt_return_in_if() {
-        let source = "gin aye { gie 42 }";
+        let source = "dae f() { gin aye { gie 42 } }";
         let program = parse(source).unwrap();
         let mut formatter = Formatter::new();
         let result = formatter.format(&program);

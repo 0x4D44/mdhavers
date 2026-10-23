@@ -389,3 +389,37 @@ fn parity_js_sort_total_order_mdh_bug_flu_00077() {
         ),
     ]);
 }
+
+#[test]
+fn parity_js_semantics_decisions_f1_f2_f3_block_value() {
+    if !node_available() {
+        return;
+    }
+    assert_js_parity(&[
+        (
+            "F1 dicts compare structurally",
+            "blether {\"a\": 1, \"b\": [1]} == {\"b\": [1], \"a\": 1}\nblether {\"a\": 1} == {\"a\": 2}\nblether {\"a\": {\"x\": 1}} != {\"a\": {\"x\": 1}}",
+            "aye\nnae\nnae",
+        ),
+        (
+            "F1 cyclic dicts compare without hanging",
+            "ken a = {\"n\": 1}\na[\"me\"] = a\nken b = {\"n\": 1}\nb[\"me\"] = b\nblether a == b",
+            "aye",
+        ),
+        (
+            "F2 empty dict is falsy",
+            "gin {} { blether \"truthy\" } ither { blether \"falsy\" }\nblether !{}\nblether {} or \"fallback\"",
+            "falsy\naye\nfallback",
+        ),
+        (
+            "F3 fer closures capture each iteration",
+            "ken fs = []\nfer i in 0..3 { shove(fs, || i) }\nblether gaun(fs, |f| f())",
+            "[0, 1, 2]",
+        ),
+        (
+            "64 block value is its last expression",
+            "blether {0 + {0 + 1}}\nken f = |x| {\n    ken y = x + 1\n    y * 2\n}\nblether f(3)\nblether { ken z = 1 }",
+            "1\n8\nnaething",
+        ),
+    ]);
+}

@@ -1,0 +1,10 @@
+# SKIP_NATIVE
+# Note: decision F1 (structural dict equality must still finish on dicts that contain themselves).
+ken a = {"n": 1}
+a["me"] = a
+ken b = {"n": 1}
+b["me"] = b
+blether a == b
+ken c = {"n": 2}
+c["me"] = c
+blether a == c

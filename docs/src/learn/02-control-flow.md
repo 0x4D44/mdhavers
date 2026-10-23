@@ -44,6 +44,17 @@ gin score >= 90 {
 }
 ```
 
+### Truthiness
+
+A condition doesnae have to be `aye` or `nae`. These values count as false:
+`naething`, `nae`, `0`, `0.0`, `""`, and the empty containers `[]`, `{}` and an empty creel.
+Everything else counts as true.
+
+```scots
+ken basket = {}
+gin basket { blether "something in it" } ither { blether "empty basket" }  # empty basket
+```
+
 ### Comparison Operators
 
 | Operator | Meaning |
@@ -231,6 +242,19 @@ fer fruit in fruits {
     blether f"{i}: {fruit}"
     i = i + 1
 }
+```
+
+### Each Iteration Gets Its Own Variable
+
+The loop variable is a fresh binding on every pass, so a closure made in the loop
+keeps the value from its own iteration. The variable only exists inside the loop.
+
+```scots
+ken callbacks = []
+fer i in 0..3 {
+    shove(callbacks, || i)
+}
+blether gaun(callbacks, |f| f())  # [0, 1, 2]
 ```
 
 ## Break and Continue

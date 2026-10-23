@@ -162,6 +162,7 @@ impl Value {
             Value::String(s) if s.is_empty() => false,
             Value::List(l) if l.borrow().is_empty() => false,
             Value::Set(s) if s.borrow().is_empty() => false,
+            Value::Dict(d) if d.borrow().is_empty() => false,
             Value::Bytes(b) if b.borrow().is_empty() => false,
             _ => true,
         }
@@ -634,42 +635,98 @@ impl fmt::Debug for Value {
 
 // ---------- Equality ----------
 
-/// Address pair identifying two lists being compared.
-fn list_pair(a: &Rc<RefCell<Vec<Value>>>, b: &Rc<RefCell<Vec<Value>>>) -> (usize, usize) {
-    (
-        Rc::as_ptr(a) as *const () as usize,
-        Rc::as_ptr(b) as *const () as usize,
-    )
+/// A pair of containers of the same kind being compared structurally.
+enum EqPair {
+    List(Rc<RefCell<Vec<Value>>>, Rc<RefCell<Vec<Value>>>),
+    Dict(Rc<RefCell<DictValue>>, Rc<RefCell<DictValue>>),
 }
 
-/// One pair of lists on the comparison path, and the next index to check.
-struct ListEqFrame {
-    a: Rc<RefCell<Vec<Value>>>,
-    b: Rc<RefCell<Vec<Value>>>,
-    pair: (usize, usize),
+impl EqPair {
+    /// The pair for two values that are both lists or both dicts, if they
+    /// are; `None` for anything else (which compares without recursing).
+    fn of(x: &Value, y: &Value) -> Option<EqPair> {
+        match (x, y) {
+            (Value::List(a), Value::List(b)) => Some(EqPair::List(a.clone(), b.clone())),
+            (Value::Dict(a), Value::Dict(b)) => Some(EqPair::Dict(a.clone(), b.clone())),
+            _ => None,
+        }
+    }
+
+    /// Address pair identifying the two containers.
+    fn addresses(&self) -> (usize, usize) {
+        match self {
+            EqPair::List(a, b) => (
+                Rc::as_ptr(a) as *const () as usize,
+                Rc::as_ptr(b) as *const () as usize,
+            ),
+            EqPair::Dict(a, b) => (
+                Rc::as_ptr(a) as *const () as usize,
+                Rc::as_ptr(b) as *const () as usize,
+            ),
+        }
+    }
+
+    fn same_len(&self) -> bool {
+        match self {
+            EqPair::List(a, b) => a.borrow().len() == b.borrow().len(),
+            EqPair::Dict(a, b) => a.borrow().len() == b.borrow().len(),
+        }
+    }
+
+    /// The `i`th pair of children to compare: `Ok(None)` when there are no
+    /// more, `Err(())` when a dict key on the left is missing on the right.
+    fn child(&self, i: usize) -> Result<Option<(Value, Value)>, ()> {
+        match self {
+            EqPair::List(a, b) => {
+                let (xs, ys) = (a.borrow(), b.borrow());
+                match (xs.get(i), ys.get(i)) {
+                    (Some(x), Some(y)) => Ok(Some((x.clone(), y.clone()))),
+                    _ => Ok(None),
+                }
+            }
+            EqPair::Dict(a, b) => {
+                let (xs, ys) = (a.borrow(), b.borrow());
+                let Some((key, x)) = xs.entries.get(i) else {
+                    return Ok(None);
+                };
+                match ys.get(key) {
+                    Some(y) => Ok(Some((x.clone(), y.clone()))),
+                    None => Err(()),
+                }
+            }
+        }
+    }
+}
+
+/// One pair of containers on the comparison path, and the next child to check.
+struct EqFrame {
+    pair: EqPair,
+    addresses: (usize, usize),
     next: usize,
 }
 
 /// Paths shorter than this are searched linearly for repeats; deeper ones
-/// also keep a hash set so very deep lists stay linear time.
+/// also keep a hash set so very deep containers stay linear time.
 const LIST_EQ_LINEAR_DEPTH: usize = 64;
 
-/// Structural list equality that terminates on cyclic lists and works on
-/// any nesting depth. It walks the lists with an explicit heap stack rather
-/// than native recursion, so a list nested a million deep cannae overflow
-/// the native stack (PartialEq has no way to report an error).
+/// Structural list and dict equality that terminates on cyclic containers
+/// and works on any nesting depth. It walks them with an explicit heap stack
+/// rather than native recursion, so a list nested a million deep cannae
+/// overflow the native stack (PartialEq has no way to report an error).
 ///
-/// The path holds the (left, right) list pairs being compared right now.
-/// Meeting one again means the comparison has come full circle without
+/// Lists are equal when their items are equal in order; dicts when they hold
+/// the same keys (in any order) wi' equal values.
+///
+/// The path holds the (left, right) container pairs being compared right
+/// now. Meeting one again means the comparison has come full circle without
 /// finding a difference, so that pair counts as equal (bisimulation).
-fn lists_equal(a: &Rc<RefCell<Vec<Value>>>, b: &Rc<RefCell<Vec<Value>>>) -> bool {
-    if a.borrow().len() != b.borrow().len() {
+fn containers_equal(root: EqPair) -> bool {
+    if !root.same_len() {
         return false;
     }
-    let mut path = vec![ListEqFrame {
-        a: a.clone(),
-        b: b.clone(),
-        pair: list_pair(a, b),
+    let mut path = vec![EqFrame {
+        addresses: root.addresses(),
+        pair: root,
         next: 0,
     }];
     // Pairs on the path below LIST_EQ_LINEAR_DEPTH (only filled once the
@@ -680,19 +737,16 @@ fn lists_equal(a: &Rc<RefCell<Vec<Value>>>, b: &Rc<RefCell<Vec<Value>>>) -> bool
         let Some(top) = path.last_mut() else {
             return true;
         };
-        // Look at the next element pair of the innermost lists.
-        let child = {
-            let xs = top.a.borrow();
-            let ys = top.b.borrow();
-            let i = top.next;
-            if i >= xs.len() || i >= ys.len() {
-                None
-            } else {
+        // Look at the next child pair of the innermost containers.
+        let child = match top.pair.child(top.next) {
+            Err(()) => return false,
+            Ok(None) => None,
+            Ok(Some((x, y))) => {
                 top.next += 1;
-                match (&xs[i], &ys[i]) {
-                    (Value::List(xl), Value::List(yl)) => Some((xl.clone(), yl.clone())),
-                    (x, y) => {
-                        // Not both lists, so this does not recurse.
+                match EqPair::of(&x, &y) {
+                    Some(pair) => Some(pair),
+                    None => {
+                        // Not both lists or both dicts, so this does not recurse.
                         if x != y {
                             return false;
                         }
@@ -706,34 +760,43 @@ fn lists_equal(a: &Rc<RefCell<Vec<Value>>>, b: &Rc<RefCell<Vec<Value>>>) -> bool
                 // This pair is equal; leave it.
                 let done = path.pop().expect("path is not empty");
                 if path.len() >= LIST_EQ_LINEAR_DEPTH {
-                    deep.remove(&done.pair);
+                    deep.remove(&done.addresses);
                 }
             }
-            Some((xl, yl)) => {
-                let pair = list_pair(&xl, &yl);
+            Some(pair) => {
+                let addresses = pair.addresses();
                 let on_path = path
                     .iter()
                     .take(LIST_EQ_LINEAR_DEPTH)
-                    .any(|f| f.pair == pair)
-                    || deep.contains(&pair);
+                    .any(|f| f.addresses == addresses)
+                    || deep.contains(&addresses);
                 if on_path {
                     continue;
                 }
-                if xl.borrow().len() != yl.borrow().len() {
+                if !pair.same_len() {
                     return false;
                 }
                 if path.len() >= LIST_EQ_LINEAR_DEPTH {
-                    deep.insert(pair);
+                    deep.insert(addresses);
                 }
-                path.push(ListEqFrame {
-                    a: xl,
-                    b: yl,
+                path.push(EqFrame {
                     pair,
+                    addresses,
                     next: 0,
                 });
             }
         }
     }
+}
+
+/// Creels are equal when they hold the same members, by the same test that
+/// `contains` uses (so a list member matches only that very list).
+fn sets_equal(a: &Rc<RefCell<SetValue>>, b: &Rc<RefCell<SetValue>>) -> bool {
+    if Rc::ptr_eq(a, b) {
+        return true;
+    }
+    let (a, b) = (a.borrow(), b.borrow());
+    a.len() == b.len() && a.is_subset(&b)
 }
 
 impl PartialEq for Value {
@@ -746,9 +809,13 @@ impl PartialEq for Value {
             (Value::String(a), Value::String(b)) => a == b,
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Nil, Value::Nil) => true,
-            (Value::List(a), Value::List(b)) => lists_equal(a, b),
-            (Value::Dict(a), Value::Dict(b)) => Rc::ptr_eq(a, b),
-            (Value::Set(a), Value::Set(b)) => Rc::ptr_eq(a, b),
+            (Value::List(a), Value::List(b)) => {
+                containers_equal(EqPair::List(a.clone(), b.clone()))
+            }
+            (Value::Dict(a), Value::Dict(b)) => {
+                containers_equal(EqPair::Dict(a.clone(), b.clone()))
+            }
+            (Value::Set(a), Value::Set(b)) => sets_equal(a, b),
             (Value::Bytes(a), Value::Bytes(b)) => *a.borrow() == *b.borrow(),
             (Value::Function(a), Value::Function(b)) => Rc::ptr_eq(a, b),
             (Value::NativeFunction(a), Value::NativeFunction(b)) => Rc::ptr_eq(a, b),
@@ -1386,9 +1453,12 @@ mod tests {
         assert!(!empty_set.is_truthy());
         assert!(non_empty_set.is_truthy());
 
-        // Dict is always truthy (even if empty - default case)
+        // Empty dict is falsy, non-empty truthy (decision F2)
         let empty_dict = Value::Dict(Rc::new(RefCell::new(DictValue::new())));
-        assert!(empty_dict.is_truthy());
+        assert!(!empty_dict.is_truthy());
+        let mut full = DictValue::new();
+        full.set(Value::String("k".to_string()), Value::Integer(1));
+        assert!(Value::Dict(Rc::new(RefCell::new(full))).is_truthy());
 
         // Bytes are falsy when empty
         let empty_bytes = Value::Bytes(Rc::new(RefCell::new(Vec::new())));
@@ -2235,15 +2305,23 @@ mod tests {
         let dict_rc = Rc::new(RefCell::new(DictValue::new()));
         let dict_val = Value::Dict(dict_rc.clone());
         assert_eq!(dict_val, Value::Dict(dict_rc.clone()));
-        assert_ne!(
+        // Dicts an' creels compare structurally (decision F1): two separate
+        // empty ones are equal, ones wi' different contents are no'.
+        assert_eq!(
             dict_val,
             Value::Dict(Rc::new(RefCell::new(DictValue::new())))
         );
+        let mut other = DictValue::new();
+        other.set(Value::String("k".to_string()), Value::Integer(1));
+        assert_ne!(dict_val, Value::Dict(Rc::new(RefCell::new(other))));
 
         let set_rc = Rc::new(RefCell::new(SetValue::new()));
         let set_val = Value::Set(set_rc.clone());
         assert_eq!(set_val, Value::Set(set_rc.clone()));
-        assert_ne!(set_val, Value::Set(Rc::new(RefCell::new(SetValue::new()))));
+        assert_eq!(set_val, Value::Set(Rc::new(RefCell::new(SetValue::new()))));
+        let mut other_set = SetValue::new();
+        other_set.insert(Value::Integer(1));
+        assert_ne!(set_val, Value::Set(Rc::new(RefCell::new(other_set))));
 
         let bytes_a = Value::Bytes(Rc::new(RefCell::new(vec![1, 2])));
         let bytes_b = Value::Bytes(Rc::new(RefCell::new(vec![1, 2])));

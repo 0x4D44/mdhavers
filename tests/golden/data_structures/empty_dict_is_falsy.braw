@@ -1,0 +1,14 @@
+# SKIP_NATIVE
+# Note: decision F2 (an empty dict is falsy, like the other empty containers).
+gin {} { blether "empty dict truthy" } ither { blether "empty dict falsy" }
+gin {"a": 1} { blether "full dict truthy" } ither { blether "full dict falsy" }
+blether !{}
+blether !{"a": 1}
+
+ken d = {}
+gin d { blether "still empty?" } ither { blether "nothing in d yet" }
+d["k"] = 1
+gin d { blether "d has something" } ither { blether "d still empty" }
+
+ken pick = {} or "fallback"
+blether pick

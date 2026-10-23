@@ -1,0 +1,10 @@
+# SKIP_NATIVE
+# Note: decision F1 (creels compare by their members); the native lane lifts this marker.
+blether creel([1, 2, 3]) == creel([3, 2, 1])
+blether creel([1, 2]) != creel([2, 1])
+blether creel([1, 2]) == creel([1, 2, 3])
+blether creel([1, 2]) == creel([1, 4])
+blether creel([]) == creel([])
+blether creel(["a"]) == creel(["a", "a"])
+blether [creel([1])] == [creel([1])]
+blether {"s": creel([1])} == {"s": creel([1])}
