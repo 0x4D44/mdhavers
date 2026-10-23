@@ -468,3 +468,54 @@ fn golden_programs_the_wasm_backend_accepts_match_their_expected_output() {
     );
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
 }
+
+// ---- MDH-BUG-FLU-00047: ordering comparisons and host store growth ----
+
+#[test]
+fn ordering_comparisons_on_mismatched_types_raise_the_interpreter_type_error() {
+    for (src, want) in [
+        ("blether 1 < \"a\"\n", "Cannae compare integer wi' string"),
+        ("blether \"a\" <= 1\n", "Cannae compare string wi' integer"),
+        ("blether aye > 1\n", "Cannae compare bool wi' integer"),
+        (
+            "blether naething >= 1\n",
+            "Cannae compare naething wi' integer",
+        ),
+        ("blether [1] < [2]\n", "Cannae compare list wi' list"),
+    ] {
+        let out = run_full(src);
+        let err = out
+            .error
+            .unwrap_or_else(|| panic!("{src:?}: expected an error"));
+        assert!(
+            err.contains(&format!("Type error: {want}")),
+            "{src:?}: got {err}"
+        );
+    }
+}
+
+#[test]
+fn ordering_comparisons_keep_numeric_and_string_semantics() {
+    assert_eq!(
+        run("blether 1 < 2.5\nblether 3.0 >= 3\nblether \"a\" < \"b\"\nblether \"b\" <= \"a\"\nblether 2 > 1\n"),
+        "aye\naye\naye\nnae\naye\n"
+    );
+}
+
+#[test]
+fn long_arithmetic_loop_keeps_the_host_store_bounded() {
+    let out = run_full(
+        "ken i = 0\nken f = 0.5\nwhiles i < 10000000 {\n    i = i + 1\n    f = f + 0.25\n}\nblether i\nblether f\n",
+    );
+    assert_eq!(out.error, None);
+    assert_eq!(out.stdout, "10000000\n2500000.5\n");
+    assert!(out.store_size < 1000, "store grew to {}", out.store_size);
+}
+
+#[test]
+fn inline_numbers_round_trip_at_the_edges() {
+    assert_eq!(
+        run("blether 4611686018427387903 + 1\nblether -4611686018427387904 - 1\nblether 9223372036854775807\nblether 1.0e300 * 10.0 > 1.0e300\nblether 0.0 - 0.0\nblether -2.5 * 2\n"),
+        "4611686018427387904\n-4611686018427387905\n9223372036854775807\naye\n0\n-5\n"
+    );
+}

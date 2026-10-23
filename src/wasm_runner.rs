@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
@@ -66,7 +67,21 @@ impl TriObject {
 #[derive(Debug)]
 struct HostStore {
     values: Vec<HostValue>,
+    /// Out-of-range ints and floats, interned by value so repeats share one slot.
+    wide_ints: HashMap<i64, Handle>,
+    wide_floats: HashMap<u64, Handle>,
 }
+
+// Handle layout. Plain heap handles are store indices (>= 0, far below FLOAT_TAG).
+// Ints in [-2^61, 2^61) live in the handle itself as a negative number (`n - INT_BIAS`).
+// Floats whose top exponent bits are 011 or 100 (about 1e-77..1e77) live in the handle
+// as FLOAT_TAG | payload. Arithmetic on those never touches the store, so loops of
+// ordinary numeric work cannot grow it. Anything else is interned in the store.
+const INT_BIAS: i64 = 1 << 62;
+const INT_MIN_INLINE: i64 = -(1 << 61);
+const INT_MAX_INLINE: i64 = (1 << 61) - 1;
+const FLOAT_TAG: i64 = 1 << 62;
+const LOW60: u64 = (1 << 60) - 1;
 
 impl HostStore {
     fn new() -> Self {
@@ -77,7 +92,51 @@ impl HostStore {
                 HostValue::Bool(false),
                 HostValue::Bool(true),
             ],
+            wide_ints: HashMap::new(),
+            wide_floats: HashMap::new(),
         }
+    }
+
+    fn int_handle(&mut self, value: i64) -> Handle {
+        if (INT_MIN_INLINE..=INT_MAX_INLINE).contains(&value) {
+            return value - INT_BIAS;
+        }
+        if let Some(handle) = self.wide_ints.get(&value) {
+            return *handle;
+        }
+        let handle = self.alloc(HostValue::Int(value));
+        self.wide_ints.insert(value, handle);
+        handle
+    }
+
+    fn float_handle(&mut self, value: f64) -> Handle {
+        let bits = value.to_bits();
+        let top = (bits >> 60) & 7;
+        if top == 3 || top == 4 {
+            let sign = bits >> 63;
+            let sel = u64::from(top == 4);
+            return FLOAT_TAG | ((sel << 61) | (sign << 60) | (bits & LOW60)) as i64;
+        }
+        if let Some(handle) = self.wide_floats.get(&bits) {
+            return *handle;
+        }
+        let handle = self.alloc(HostValue::Float(value));
+        self.wide_floats.insert(bits, handle);
+        handle
+    }
+
+    /// The value behind a handle; inline numbers are decoded on the fly.
+    fn view(&self, handle: Handle) -> Option<Cow<'_, HostValue>> {
+        if handle < 0 {
+            return Some(Cow::Owned(HostValue::Int(handle + INT_BIAS)));
+        }
+        if handle >= FLOAT_TAG {
+            let payload = (handle & (FLOAT_TAG - 1)) as u64;
+            let top: u64 = if (payload >> 61) & 1 == 1 { 4 } else { 3 };
+            let bits = (((payload >> 60) & 1) << 63) | (top << 60) | (payload & LOW60);
+            return Some(Cow::Owned(HostValue::Float(f64::from_bits(bits))));
+        }
+        self.get(handle).map(Cow::Borrowed)
     }
 
     fn alloc(&mut self, value: HostValue) -> Handle {
@@ -96,7 +155,7 @@ impl HostStore {
     }
 
     fn key_for(&self, handle: Handle) -> Option<ValueKey> {
-        match self.get(handle)? {
+        match &*self.view(handle)? {
             HostValue::Nil => Some(ValueKey::Nil),
             HostValue::Bool(b) => Some(ValueKey::Bool(*b)),
             HostValue::Int(n) => Some(ValueKey::Int(*n)),
@@ -110,7 +169,7 @@ impl HostStore {
     }
 
     fn is_truthy(&self, handle: Handle) -> bool {
-        match self.get(handle) {
+        match self.view(handle).as_deref() {
             Some(HostValue::Nil) => false,
             Some(HostValue::Bool(b)) => *b,
             Some(HostValue::Int(n)) => *n != 0,
@@ -125,7 +184,7 @@ impl HostStore {
     }
 
     fn to_string(&self, handle: Handle) -> String {
-        match self.get(handle) {
+        match self.view(handle).as_deref() {
             Some(HostValue::Nil) => "naething".to_string(),
             Some(HostValue::Bool(true)) => "aye".to_string(),
             Some(HostValue::Bool(false)) => "nae".to_string(),
@@ -214,11 +273,11 @@ fn alloc_bool(_store: &mut HostStore, value: bool) -> Handle {
 }
 
 fn alloc_int(store: &mut HostStore, value: i64) -> Handle {
-    store.alloc(HostValue::Int(value))
+    store.int_handle(value)
 }
 
 fn alloc_float(store: &mut HostStore, value: f64) -> Handle {
-    store.alloc(HostValue::Float(value))
+    store.float_handle(value)
 }
 
 fn alloc_string(store: &mut HostStore, value: String) -> Handle {
@@ -586,15 +645,19 @@ fn add_arith(
 fn add_cmp(
     linker: &mut Linker<HostState>,
     name: &'static str,
-    op: fn(&HostStore, i64, i64) -> bool,
+    op: fn(&HostStore, i64, i64) -> Result<bool, String>,
 ) -> Result<(), String> {
     linker
         .func_wrap(
             "env",
             name,
-            move |mut caller: Caller<'_, HostState>, a: i64, b: i64| -> i64 {
+            move |mut caller: Caller<'_, HostState>,
+                  a: i64,
+                  b: i64|
+                  -> Result<i64, wasmtime::Error> {
                 let store = &mut caller.data_mut().store;
-                alloc_bool(store, op(store, a, b))
+                let result = op(store, a, b).map(|v| alloc_bool(store, v));
+                finish(&mut caller, result)
             },
         )
         .map_err(|e| e.to_string())
@@ -653,10 +716,11 @@ const MAX_REPEAT_BYTES: usize = 1 << 28;
 /// integer division truncates, dividing by zero and mismatched types are errors.
 fn arith(store: &mut HostStore, op: ArithOp, a: Handle, b: Handle) -> Result<Handle, String> {
     use HostValue as V;
-    let (left, right) = match (store.get(a), store.get(b)) {
+    let (left_cow, right_cow) = match (store.view(a), store.view(b)) {
         (Some(l), Some(r)) => (l, r),
         _ => return Err("That's pure mince! Type error: invalid value".to_string()),
     };
+    let (left, right): (&HostValue, &HostValue) = (&left_cow, &right_cow);
     let type_error = |what: String| format!("That's pure mince! Type error: {}", what);
     let value = match op {
         ArithOp::Add => match (left, right) {
@@ -746,11 +810,46 @@ fn arith(store: &mut HostStore, op: ArithOp, a: Handle, b: Handle) -> Result<Han
             }
         }
     };
-    Ok(store.alloc(value))
+    Ok(match value {
+        V::Int(n) => store.int_handle(n),
+        V::Float(f) => store.float_handle(f),
+        other => store.alloc(other),
+    })
+}
+
+/// `<`, `<=`, `>`, `>=` like the interpreter's `compare`: numbers (int/float mixed by
+/// value) and strings order; anything else is a type error. `test` maps the ordering
+/// to the operator's answer; a NaN operand makes every ordering false.
+fn order_values(
+    store: &HostStore,
+    a: Handle,
+    b: Handle,
+    test: fn(std::cmp::Ordering) -> bool,
+) -> Result<bool, String> {
+    use HostValue as V;
+    let (left, right) = match (store.view(a), store.view(b)) {
+        (Some(l), Some(r)) => (l, r),
+        _ => return Err("That's pure mince! Type error: invalid value".to_string()),
+    };
+    let ord = match (&*left, &*right) {
+        (V::Int(x), V::Int(y)) => Some(x.cmp(y)),
+        (V::Float(x), V::Float(y)) => x.partial_cmp(y),
+        (V::Int(x), V::Float(y)) => (*x as f64).partial_cmp(y),
+        (V::Float(x), V::Int(y)) => x.partial_cmp(&(*y as f64)),
+        (V::String(x), V::String(y)) => Some(x.cmp(y)),
+        (l, r) => {
+            return Err(format!(
+                "That's pure mince! Type error: Cannae compare {} wi' {}",
+                host_type_name(l),
+                host_type_name(r)
+            ))
+        }
+    };
+    Ok(ord.is_some_and(test))
 }
 
 fn eq_values(store: &HostStore, a: Handle, b: Handle) -> bool {
-    match (store.get(a), store.get(b)) {
+    match (store.view(a).as_deref(), store.view(b).as_deref()) {
         (Some(HostValue::Nil), Some(HostValue::Nil)) => true,
         (Some(HostValue::Bool(x)), Some(HostValue::Bool(y))) => x == y,
         (Some(HostValue::Int(x)), Some(HostValue::Int(y))) => x == y,
@@ -774,6 +873,8 @@ fn eq_values(store: &HostStore, a: Handle, b: Handle) -> bool {
 pub struct WasmRunOutput {
     pub stdout: String,
     pub error: Option<String>,
+    /// Live slots in the host value store when the run ended (leak regression guard).
+    pub store_size: usize,
 }
 
 pub fn run_wasm_file(path: &Path) -> Result<(), String> {
@@ -896,50 +997,22 @@ fn run_module(engine: &Engine, module: &Module, capture: bool) -> Result<WasmRun
     add_arith(&mut linker, "__mdh_mod", ArithOp::Mod)?;
 
     add_cmp(&mut linker, "__mdh_eq", |store, a, b| {
-        eq_values(store, a, b)
+        Ok(eq_values(store, a, b))
     })?;
     add_cmp(&mut linker, "__mdh_ne", |store, a, b| {
-        !eq_values(store, a, b)
+        Ok(!eq_values(store, a, b))
     })?;
     add_cmp(&mut linker, "__mdh_lt", |store, a, b| {
-        match (store.get(a), store.get(b)) {
-            (Some(HostValue::Int(x)), Some(HostValue::Int(y))) => x < y,
-            (Some(HostValue::Float(x)), Some(HostValue::Float(y))) => x < y,
-            (Some(HostValue::Int(x)), Some(HostValue::Float(y))) => (*x as f64) < *y,
-            (Some(HostValue::Float(x)), Some(HostValue::Int(y))) => *x < (*y as f64),
-            (Some(HostValue::String(x)), Some(HostValue::String(y))) => x < y,
-            _ => false,
-        }
+        order_values(store, a, b, |o| o.is_lt())
     })?;
     add_cmp(&mut linker, "__mdh_le", |store, a, b| {
-        match (store.get(a), store.get(b)) {
-            (Some(HostValue::Int(x)), Some(HostValue::Int(y))) => x <= y,
-            (Some(HostValue::Float(x)), Some(HostValue::Float(y))) => x <= y,
-            (Some(HostValue::Int(x)), Some(HostValue::Float(y))) => (*x as f64) <= *y,
-            (Some(HostValue::Float(x)), Some(HostValue::Int(y))) => *x <= (*y as f64),
-            (Some(HostValue::String(x)), Some(HostValue::String(y))) => x <= y,
-            _ => false,
-        }
+        order_values(store, a, b, |o| o.is_le())
     })?;
     add_cmp(&mut linker, "__mdh_gt", |store, a, b| {
-        match (store.get(a), store.get(b)) {
-            (Some(HostValue::Int(x)), Some(HostValue::Int(y))) => x > y,
-            (Some(HostValue::Float(x)), Some(HostValue::Float(y))) => x > y,
-            (Some(HostValue::Int(x)), Some(HostValue::Float(y))) => (*x as f64) > *y,
-            (Some(HostValue::Float(x)), Some(HostValue::Int(y))) => *x > (*y as f64),
-            (Some(HostValue::String(x)), Some(HostValue::String(y))) => x > y,
-            _ => false,
-        }
+        order_values(store, a, b, |o| o.is_gt())
     })?;
     add_cmp(&mut linker, "__mdh_ge", |store, a, b| {
-        match (store.get(a), store.get(b)) {
-            (Some(HostValue::Int(x)), Some(HostValue::Int(y))) => x >= y,
-            (Some(HostValue::Float(x)), Some(HostValue::Float(y))) => x >= y,
-            (Some(HostValue::Int(x)), Some(HostValue::Float(y))) => (*x as f64) >= *y,
-            (Some(HostValue::Float(x)), Some(HostValue::Int(y))) => *x >= (*y as f64),
-            (Some(HostValue::String(x)), Some(HostValue::String(y))) => x >= y,
-            _ => false,
-        }
+        order_values(store, a, b, |o| o.is_ge())
     })?;
 
     linker
@@ -948,18 +1021,19 @@ fn run_module(engine: &Engine, module: &Module, capture: bool) -> Result<WasmRun
             "__mdh_neg",
             |mut caller: Caller<'_, HostState>, value: i64| -> Result<i64, wasmtime::Error> {
                 let store = &mut caller.data_mut().store;
-                let result = match store.get(value) {
+                let viewed = store.view(value).map(|v| v.into_owned());
+                let result = match viewed {
                     Some(HostValue::Int(n)) => match n.checked_neg() {
                         Some(neg) => Ok(alloc_int(store, neg)),
                         None => Err(ERR_OVERFLOW.to_string()),
                     },
                     Some(HostValue::Float(f)) => {
-                        let neg = -*f;
+                        let neg = -f;
                         Ok(alloc_float(store, neg))
                     }
                     Some(other) => Err(format!(
                         "That's pure mince! Type error: Cannae negate a {}",
-                        host_type_name(other)
+                        host_type_name(&other)
                     )),
                     None => Err("That's pure mince! Type error: invalid value".to_string()),
                 };
@@ -1385,13 +1459,18 @@ fn run_module(engine: &Engine, module: &Module, capture: bool) -> Result<WasmRun
 
     let state = store.data_mut();
     let stdout = state.captured.take().unwrap_or_default();
+    let store_size = state.store.values.len();
     let error = outcome.err().map(|e| {
         state
             .runtime_error
             .take()
             .unwrap_or_else(|| format!("{:#}", e))
     });
-    Ok(WasmRunOutput { stdout, error })
+    Ok(WasmRunOutput {
+        stdout,
+        error,
+        store_size,
+    })
 }
 
 #[cfg(test)]
@@ -1440,7 +1519,7 @@ mod tests {
         let two = alloc_int(&mut store, 2);
         let zero = alloc_int(&mut store, 0);
         let q = arith(&mut store, ArithOp::Div, seven, two).unwrap();
-        assert!(matches!(store.get(q), Some(HostValue::Int(3))));
+        assert!(matches!(store.view(q).as_deref(), Some(HostValue::Int(3))));
         assert!(arith(&mut store, ArithOp::Div, seven, zero)
             .unwrap_err()
             .contains("divide by zero"));
