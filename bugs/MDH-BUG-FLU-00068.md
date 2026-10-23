@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00068 — Native: a whiles loop corrupts function parameters not used inside the loop
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-23T02:06:57Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T030547Z-a7d84499
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00068-run-fix-20261023T030547Z-a7d84499
-- **Owner base:** 9834a0ea29994f95c93207823788179a219d8810
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T03:05:47Z
-- **Owner until:** 2026-10-23T07:05:47Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T02:06:57Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-23T02:06:57Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T03:05:53Z, deltic:auto role=fix run=fix-20261023T030547Z-a7d84499 branch=task/bug-MDH-BUG-FLU-00068-run-fix-20261023T030547Z-a7d84499 code=8e071f4 gate=manual)
 
 ## Observation
 
