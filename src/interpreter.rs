@@ -2374,6 +2374,9 @@ enum ControlFlow {
     Continue,
 }
 
+/// What running a statement gives: a value, or a control-flow signal.
+type ExecResult = HaversResult<Result<Value, ControlFlow>>;
+
 /// Trace mode fer debugging - shows step-by-step execution
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum TraceMode {
@@ -10752,6 +10755,10 @@ impl Interpreter {
             return Ok(Ok(Value::Nil));
         }
 
+        // A module that fetches another nests the evaluator (and parser)
+        // just like a call does, so a long import chain gets the same guard.
+        self.check_stack_room(span.line)?;
+
         // Read the module file
         let source =
             std::fs::read_to_string(&module_path).map_err(|_| HaversError::ModuleNotFound {
@@ -10769,7 +10776,10 @@ impl Interpreter {
         let _dir_guard = module_path
             .parent()
             .map(|parent| CurrentDirGuard::new(self, parent.to_path_buf()));
-        let exports = self.execute_module_program(&program)?;
+        self.call_depth += 1;
+        let exports = self.execute_module_program(&program);
+        self.call_depth -= 1;
+        let exports = exports?;
         self.module_cache.insert(module_path, exports.clone());
         self.inject_module_exports(exports, alias);
         Ok(Ok(Value::Nil))
@@ -10946,256 +10956,44 @@ impl Interpreter {
         }
     }
 
-    fn execute_stmt_with_control(
-        &mut self,
-        stmt: &Stmt,
-    ) -> HaversResult<Result<Value, ControlFlow>> {
+    /// Run one statement. This sits on the recursion path of every mdhavers
+    /// call, so it only dispatches: each arm lives in its own
+    /// `#[inline(never)]` method and this frame stays small (a debug build
+    /// would otherwise reserve stack for every arm's locals at once).
+    fn execute_stmt_with_control(&mut self, stmt: &Stmt) -> ExecResult {
         match stmt {
             Stmt::VarDecl {
                 name,
                 initializer,
                 span,
-            } => {
-                self.trace_with(|| format!("[line {}] ken {} = ...", span.line, name));
-                let value = if let Some(init) = initializer {
-                    let v = self.evaluate(init)?;
-                    self.trace_verbose_with(|| format!("→ {} is noo {}", name, v));
-                    v
-                } else {
-                    self.trace_verbose_with(|| format!("→ {} is noo naething", name));
-                    Value::Nil
-                };
-                self.environment.borrow_mut().define(name.clone(), value);
-                Ok(Ok(Value::Nil))
-            }
-
-            Stmt::Expression { expr, span } => {
-                self.trace_with(|| format!("[line {}] evaluatin' expression", span.line));
-                let value = self.evaluate(expr)?;
-                self.trace_verbose_with(|| format!("→ result: {}", value));
-                Ok(Ok(value))
-            }
-
-            Stmt::Block { statements, span } => {
-                self.trace_with(|| format!("[line {}] enterin' block", span.line));
-                self.trace_depth += 1;
-                let result = self.execute_block(statements, None);
-                self.trace_depth = self.trace_depth.saturating_sub(1);
-                self.trace_with(|| format!("[line {}] leavin' block", span.line));
-                result
-            }
-
+            } => self.exec_var_decl(name, initializer.as_ref(), span),
+            Stmt::Expression { expr, span } => self.exec_expression(expr, span),
+            Stmt::Block { statements, span } => self.exec_block_stmt(statements, span),
             Stmt::If {
                 condition,
                 then_branch,
                 else_branch,
                 span,
-            } => {
-                self.trace_with(|| format!("[line {}] gin (if) statement", span.line));
-                let cond_value = self.evaluate(condition)?;
-                self.trace_verbose_with(|| format!("→ condition is {}", cond_value));
-                if cond_value.is_truthy() {
-                    self.trace_with(|| {
-                        format!("[line {}] condition is aye - takin' then branch", span.line)
-                    });
-                    self.execute_stmt_with_control(then_branch)
-                } else if let Some(else_br) = else_branch {
-                    self.trace_with(|| {
-                        format!(
-                            "[line {}] condition is nae - takin' ither branch",
-                            span.line
-                        )
-                    });
-                    self.execute_stmt_with_control(else_br)
-                } else {
-                    self.trace_verbose("→ condition is nae, nae ither branch");
-                    Ok(Ok(Value::Nil))
-                }
-            }
-
+            } => self.exec_if(condition, then_branch, else_branch.as_deref(), span),
             Stmt::While {
                 condition,
                 body,
                 span,
-            } => {
-                self.trace_with(|| format!("[line {}] whiles (while) loop startin'", span.line));
-                let mut iteration = 0;
-                while self.evaluate(condition)?.is_truthy() {
-                    iteration += 1;
-                    self.trace_verbose_with(|| format!("→ loop iteration {}", iteration));
-                    match self.execute_stmt_with_control(body)? {
-                        Ok(_) => {}
-                        Err(ControlFlow::Break) => {
-                            self.trace_with(|| {
-                                format!("[line {}] brak! (break) - leavin' loop", span.line)
-                            });
-                            break;
-                        }
-                        Err(ControlFlow::Continue) => {
-                            self.trace_verbose("→ haud! (continue)");
-                            continue;
-                        }
-                        Err(ControlFlow::Return(v)) => return Ok(Err(ControlFlow::Return(v))),
-                    }
-                }
-                self.trace_with(|| {
-                    format!(
-                        "[line {}] whiles loop done after {} iterations",
-                        span.line, iteration
-                    )
-                });
-                Ok(Ok(Value::Nil))
-            }
-
+            } => self.exec_while(condition, body, span),
             Stmt::For {
                 variable,
                 iterable,
                 body,
                 span,
-            } => {
-                self.trace_with(|| {
-                    format!("[line {}] fer (for) loop: {} in ...", span.line, variable)
-                });
-                // A range literal is iterated lazily, so `fer i in 0..10000000000`
-                // does not build ten billion items first.
-                let items: Box<dyn Iterator<Item = Value>> = if let Expr::Range {
-                    start,
-                    end,
-                    inclusive,
-                    ..
-                } = iterable
-                {
-                    let start_val = self.evaluate(start)?;
-                    let end_val = self.evaluate(end)?;
-                    match (start_val.as_integer(), end_val.as_integer()) {
-                        (Some(s), Some(e)) => {
-                            Box::new(RangeValue::new(s, e, *inclusive).iter().map(Value::Integer))
-                        }
-                        _ => {
-                            return Err(HaversError::TypeError {
-                                message: "Range bounds must be integers".to_string(),
-                                line: iterable.span().line,
-                            })
-                        }
-                    }
-                } else {
-                    let iter_value = self.evaluate(iterable)?;
-                    let items: Box<dyn Iterator<Item = Value>> = match iter_value {
-                        Value::Range(range) => Box::new(range.iter().map(Value::Integer)),
-                        Value::List(list) => Box::new(list.borrow().clone().into_iter()),
-                        Value::String(s) => Box::new(
-                            s.chars()
-                                .map(|c| Value::String(c.to_string()))
-                                .collect::<Vec<_>>()
-                                .into_iter(),
-                        ),
-                        _ => {
-                            return Err(HaversError::TypeError {
-                                message: format!(
-                                    "Cannae iterate ower a {}",
-                                    iter_value.type_name()
-                                ),
-                                line: span.line,
-                            });
-                        }
-                    };
-                    items
-                };
-
-                self.trace_verbose_with(|| {
-                    let (lo, hi) = items.size_hint();
-                    match hi {
-                        Some(hi) if hi == lo => format!("→ iteratin' ower {} items", lo),
-                        _ => "→ iteratin' ower a range".to_string(),
-                    }
-                });
-                let mut iteration = 0;
-                for item in items {
-                    iteration += 1;
-                    self.trace_verbose_with(|| {
-                        format!("→ iteration {}: {} = {}", iteration, variable, item)
-                    });
-                    self.environment.borrow_mut().define(variable.clone(), item);
-                    match self.execute_stmt_with_control(body)? {
-                        Ok(_) => {}
-                        Err(ControlFlow::Break) => {
-                            self.trace_with(|| {
-                                format!("[line {}] brak! (break) - leavin' fer loop", span.line)
-                            });
-                            break;
-                        }
-                        Err(ControlFlow::Continue) => {
-                            self.trace_verbose("→ haud! (continue)");
-                            continue;
-                        }
-                        Err(ControlFlow::Return(v)) => return Ok(Err(ControlFlow::Return(v))),
-                    }
-                }
-                self.trace_with(|| {
-                    format!(
-                        "[line {}] fer loop done after {} iterations",
-                        span.line, iteration
-                    )
-                });
-                Ok(Ok(Value::Nil))
-            }
-
+            } => self.exec_for(variable, iterable, body, span),
             Stmt::Function {
                 name,
                 params,
                 body,
                 span,
-            } => {
-                self.trace_with(|| {
-                    format!(
-                        "[line {}] dae (function) {} wi' {} params",
-                        span.line,
-                        name,
-                        params.len()
-                    )
-                });
-                // Convert AST Param tae runtime FunctionParam
-                let runtime_params: Vec<FunctionParam> = params
-                    .iter()
-                    .map(|p| FunctionParam {
-                        name: p.name.clone(),
-                        default: p.default.clone(),
-                    })
-                    .collect();
-
-                let func = HaversFunction::new(
-                    name.clone(),
-                    runtime_params,
-                    body.clone(),
-                    Some(self.environment.clone()),
-                );
-                self.environment
-                    .borrow_mut()
-                    .define(name.clone(), Value::Function(Rc::new(func)));
-                Ok(Ok(Value::Nil))
-            }
-
-            Stmt::Return { value, span } => {
-                let ret_val = if let Some(expr) = value {
-                    let v = self.evaluate(expr)?;
-                    self.trace_with(|| format!("[line {}] gie (return) {}", span.line, v));
-                    v
-                } else {
-                    self.trace_with(|| format!("[line {}] gie (return) naething", span.line));
-                    Value::Nil
-                };
-                Ok(Err(ControlFlow::Return(ret_val)))
-            }
-
-            Stmt::Print { value, span } => {
-                let val = self.evaluate(value)?;
-                self.trace_with(|| format!("[line {}] blether (print): {}", span.line, val));
-                let output = format!("{}", val);
-                println!("{}", output);
-                self.output.push(output);
-                Ok(Ok(Value::Nil))
-            }
-
+            } => self.exec_function_decl(name, params, body, span),
+            Stmt::Return { value, span } => self.exec_return(value.as_ref(), span),
+            Stmt::Print { value, span } => self.exec_print(value, span),
             Stmt::Break { span } => {
                 self.trace_with(|| format!("[line {}] brak! (break)", span.line));
                 Ok(Err(ControlFlow::Break))
@@ -11205,131 +11003,20 @@ impl Interpreter {
                 self.trace_with(|| format!("[line {}] haud! (continue)", span.line));
                 Ok(Err(ControlFlow::Continue))
             }
-
             Stmt::Class {
                 name,
                 superclass,
                 methods,
                 span,
-            } => {
-                self.trace_with(|| format!("[line {}] kin (class) {} defined", span.line, name));
-                let super_class = if let Some(super_name) = superclass {
-                    let super_val = self.environment.borrow().get(super_name).ok_or_else(|| {
-                        HaversError::UndefinedVariable {
-                            name: super_name.clone(),
-                            line: span.line,
-                        }
-                    })?;
-                    match super_val {
-                        Value::Class(c) => Some(c),
-                        _ => {
-                            return Err(HaversError::TypeError {
-                                message: format!("{} isnae a class", super_name),
-                                line: span.line,
-                            });
-                        }
-                    }
-                } else {
-                    None
-                };
-
-                let mut class = HaversClass::new(name.clone(), super_class);
-
-                for method in methods {
-                    let Stmt::Function {
-                        name: method_name,
-                        params,
-                        body,
-                        ..
-                    } = method
-                    else {
-                        continue;
-                    };
-
-                    // Convert AST Param tae runtime FunctionParam
-                    let runtime_params: Vec<FunctionParam> = params
-                        .iter()
-                        .map(|p| FunctionParam {
-                            name: p.name.clone(),
-                            default: p.default.clone(),
-                        })
-                        .collect();
-
-                    let func = HaversFunction::new(
-                        method_name.clone(),
-                        runtime_params,
-                        body.clone(),
-                        Some(self.environment.clone()),
-                    );
-                    class.methods.insert(method_name.clone(), Rc::new(func));
-                }
-
-                self.environment
-                    .borrow_mut()
-                    .define(name.clone(), Value::Class(Rc::new(class)));
-                Ok(Ok(Value::Nil))
-            }
-
-            Stmt::Struct { name, fields, span } => {
-                self.trace_with(|| {
-                    format!(
-                        "[line {}] thing (struct) {} defined wi' {} fields",
-                        span.line,
-                        name,
-                        fields.len()
-                    )
-                });
-                let structure = HaversStruct::new(name.clone(), fields.clone());
-                self.environment
-                    .borrow_mut()
-                    .define(name.clone(), Value::Struct(Rc::new(structure)));
-                Ok(Ok(Value::Nil))
-            }
-
-            Stmt::Import { path, alias, span } => {
-                let alias_str = alias
-                    .as_ref()
-                    .map(|a| format!(" as {}", a))
-                    .unwrap_or_default();
-                self.trace_with(|| {
-                    format!(
-                        "[line {}] fetch (import) \"{}\"{}",
-                        span.line, path, alias_str
-                    )
-                });
-                self.load_module(path, alias.as_deref(), *span)
-            }
-
+            } => self.exec_class(name, superclass.as_deref(), methods, span),
+            Stmt::Struct { name, fields, span } => self.exec_struct(name, fields, span),
+            Stmt::Import { path, alias, span } => self.exec_import(path, alias.as_deref(), span),
             Stmt::TryCatch {
                 try_block,
                 error_name,
                 catch_block,
                 span,
-            } => {
-                self.trace_with(|| format!("[line {}] hae_a_bash (try) startin'", span.line));
-                match self.execute_stmt_with_control(try_block) {
-                    Ok(result) => {
-                        self.trace_with(|| {
-                            format!("[line {}] try block succeeded - nae bother!", span.line)
-                        });
-                        Ok(result)
-                    }
-                    Err(e) => {
-                        self.trace_with(|| {
-                            format!(
-                                "[line {}] gin_it_gangs_wrang (catch) - caught: {}",
-                                span.line, e
-                            )
-                        });
-                        // Bind the error to the catch variable
-                        self.environment
-                            .borrow_mut()
-                            .define(error_name.clone(), Value::String(e.to_string()));
-                        self.execute_stmt_with_control(catch_block)
-                    }
-                }
-            }
-
+            } => self.exec_try_catch(try_block, error_name, catch_block, span),
             Stmt::Match { value, arms, span } => {
                 self.trace_with(|| format!("[line {}] keek (match) statement", span.line));
                 let val = self.evaluate(value)?;
@@ -11360,152 +11047,564 @@ impl Interpreter {
                 condition,
                 message,
                 span,
-            } => {
-                self.trace_with(|| format!("[line {}] mak_siccar (assert)", span.line));
-                let cond_value = self.evaluate(condition)?;
-                self.trace_verbose_with(|| format!("→ condition is {}", cond_value));
-                if !cond_value.is_truthy() {
-                    let msg = if let Some(msg_expr) = message {
-                        let msg_val = self.evaluate(msg_expr)?;
-                        msg_val.to_string()
-                    } else {
-                        "Assertion failed".to_string()
-                    };
-                    self.trace_with(|| format!("[line {}] assertion FAILED: {}", span.line, msg));
-                    return Err(HaversError::AssertionFailed {
-                        message: msg,
-                        line: span.line,
-                    });
-                }
-                self.trace_verbose("→ assertion passed - braw!");
-                Ok(Ok(Value::Nil))
-            }
-
+            } => self.exec_assert(condition, message.as_ref(), span),
             Stmt::Destructure {
                 patterns,
                 value,
                 span,
-            } => {
-                self.trace_with(|| {
-                    format!(
-                        "[line {}] destructurin' intae {} variables",
-                        span.line,
-                        patterns.len()
-                    )
-                });
-                let val = self.evaluate(value)?;
-                self.trace_verbose_with(|| format!("→ unpackin': {}", val));
-
-                // The value must be a list
-                let items = match &val {
-                    Value::List(list) => list.borrow().clone(),
-                    Value::String(s) => {
-                        // Strings can be destructured intae characters
-                        s.chars().map(|c| Value::String(c.to_string())).collect()
-                    }
-                    _ => {
-                        return Err(HaversError::TypeError {
-                            message: format!(
-                                "Ye can only destructure lists and strings, no' {}",
-                                val.type_name()
-                            ),
-                            line: span.line,
-                        });
-                    }
-                };
-
-                // Find the rest pattern position if any
-                let rest_pos = patterns
-                    .iter()
-                    .position(|p| matches!(p, DestructPattern::Rest(_)));
-
-                // Calculate positions
-                let before_rest = rest_pos.unwrap_or(patterns.len());
-                let after_rest = if let Some(pos) = rest_pos {
-                    patterns.len() - pos - 1
-                } else {
-                    0
-                };
-
-                // Check we have enough elements
-                let min_required = before_rest + after_rest;
-                if items.len() < min_required {
-                    return Err(HaversError::TypeError {
-                        message: format!(
-                            "Cannae destructure: need at least {} elements but got {}",
-                            min_required,
-                            items.len()
-                        ),
-                        line: span.line,
-                    });
-                }
-
-                // Bind the variables
-                let mut item_idx = 0;
-                for (pat_idx, pattern) in patterns.iter().enumerate() {
-                    match pattern {
-                        DestructPattern::Variable(name) => {
-                            if pat_idx < before_rest {
-                                // Before rest: take from start
-                                self.environment
-                                    .borrow_mut()
-                                    .define(name.clone(), items[item_idx].clone());
-                                item_idx += 1;
-                            } else {
-                                // After rest: take from end
-                                let from_end = patterns.len() - pat_idx - 1;
-                                let end_idx = items.len() - from_end - 1;
-                                self.environment
-                                    .borrow_mut()
-                                    .define(name.clone(), items[end_idx].clone());
-                            }
-                        }
-                        DestructPattern::Rest(name) => {
-                            // Capture all elements in the middle
-                            let rest_end = items.len() - after_rest;
-                            let rest_items: Vec<Value> = items[item_idx..rest_end].to_vec();
-                            self.environment.borrow_mut().define(
-                                name.clone(),
-                                Value::List(Rc::new(RefCell::new(rest_items))),
-                            );
-                            item_idx = rest_end;
-                        }
-                        DestructPattern::Ignore => {
-                            if pat_idx < before_rest {
-                                item_idx += 1;
-                            }
-                            // Just skip this element
-                        }
-                    }
-                }
-
-                Ok(Ok(Value::Nil))
-            }
-
+            } => self.exec_destructure(patterns, value, span),
             Stmt::Log {
                 level,
                 message,
                 extras,
                 span,
-            } => {
-                let msg = self.evaluate(message)?;
-                let (fields, target) = self.parse_log_extras(extras, span.line)?;
-                self.emit_log(*level, msg, fields, target, span.line)?;
-                Ok(Ok(Value::Nil))
-            }
+            } => self.exec_log(level, message, extras, span),
+            Stmt::Hurl { message, span } => self.exec_hurl(message, span),
+        }
+    }
 
-            Stmt::Hurl { message, span } => {
-                let msg = self.evaluate(message)?;
-                let error_msg = match msg {
-                    Value::String(s) => s,
-                    v => format!("{}", v),
-                };
-                Err(HaversError::UserError {
-                    message: error_msg,
-                    line: span.line,
-                })
+    /// `ken name = ...`
+    #[inline(never)]
+    fn exec_var_decl(&mut self, name: &str, initializer: Option<&Expr>, span: &Span) -> ExecResult {
+        self.trace_with(|| format!("[line {}] ken {} = ...", span.line, name));
+        let value = if let Some(init) = initializer {
+            let v = self.evaluate(init)?;
+            self.trace_verbose_with(|| format!("→ {} is noo {}", name, v));
+            v
+        } else {
+            self.trace_verbose_with(|| format!("→ {} is noo naething", name));
+            Value::Nil
+        };
+        self.environment
+            .borrow_mut()
+            .define(name.to_string(), value);
+        Ok(Ok(Value::Nil))
+    }
+
+    /// An expression statement
+    #[inline(never)]
+    fn exec_expression(&mut self, expr: &Expr, span: &Span) -> ExecResult {
+        self.trace_with(|| format!("[line {}] evaluatin' expression", span.line));
+        let value = self.evaluate(expr)?;
+        self.trace_verbose_with(|| format!("→ result: {}", value));
+        Ok(Ok(value))
+    }
+
+    /// A `{ ... }` block statement
+    #[inline(never)]
+    fn exec_block_stmt(&mut self, statements: &[Stmt], span: &Span) -> ExecResult {
+        self.trace_with(|| format!("[line {}] enterin' block", span.line));
+        self.trace_depth += 1;
+        let result = self.execute_block(statements, None);
+        self.trace_depth = self.trace_depth.saturating_sub(1);
+        self.trace_with(|| format!("[line {}] leavin' block", span.line));
+        result
+    }
+
+    /// `gin` (if)
+    #[inline(never)]
+    fn exec_if(
+        &mut self,
+        condition: &Expr,
+        then_branch: &Stmt,
+        else_branch: Option<&Stmt>,
+        span: &Span,
+    ) -> ExecResult {
+        self.trace_with(|| format!("[line {}] gin (if) statement", span.line));
+        let cond_value = self.evaluate(condition)?;
+        self.trace_verbose_with(|| format!("→ condition is {}", cond_value));
+        if cond_value.is_truthy() {
+            self.trace_with(|| {
+                format!("[line {}] condition is aye - takin' then branch", span.line)
+            });
+            self.execute_stmt_with_control(then_branch)
+        } else if let Some(else_br) = else_branch {
+            self.trace_with(|| {
+                format!(
+                    "[line {}] condition is nae - takin' ither branch",
+                    span.line
+                )
+            });
+            self.execute_stmt_with_control(else_br)
+        } else {
+            self.trace_verbose("→ condition is nae, nae ither branch");
+            Ok(Ok(Value::Nil))
+        }
+    }
+
+    /// `whiles` (while) loop
+    #[inline(never)]
+    fn exec_while(&mut self, condition: &Expr, body: &Stmt, span: &Span) -> ExecResult {
+        self.trace_with(|| format!("[line {}] whiles (while) loop startin'", span.line));
+        let mut iteration = 0;
+        while self.evaluate(condition)?.is_truthy() {
+            iteration += 1;
+            self.trace_verbose_with(|| format!("→ loop iteration {}", iteration));
+            match self.execute_stmt_with_control(body)? {
+                Ok(_) => {}
+                Err(ControlFlow::Break) => {
+                    self.trace_with(|| {
+                        format!("[line {}] brak! (break) - leavin' loop", span.line)
+                    });
+                    break;
+                }
+                Err(ControlFlow::Continue) => {
+                    self.trace_verbose("→ haud! (continue)");
+                    continue;
+                }
+                Err(ControlFlow::Return(v)) => return Ok(Err(ControlFlow::Return(v))),
             }
         }
+        self.trace_with(|| {
+            format!(
+                "[line {}] whiles loop done after {} iterations",
+                span.line, iteration
+            )
+        });
+        Ok(Ok(Value::Nil))
+    }
+
+    /// `fer` (for) loop
+    #[inline(never)]
+    fn exec_for(
+        &mut self,
+        variable: &str,
+        iterable: &Expr,
+        body: &Stmt,
+        span: &Span,
+    ) -> ExecResult {
+        self.trace_with(|| format!("[line {}] fer (for) loop: {} in ...", span.line, variable));
+        // A range literal is iterated lazily, so `fer i in 0..10000000000`
+        // does not build ten billion items first.
+        let items: Box<dyn Iterator<Item = Value>> = if let Expr::Range {
+            start,
+            end,
+            inclusive,
+            ..
+        } = iterable
+        {
+            let start_val = self.evaluate(start)?;
+            let end_val = self.evaluate(end)?;
+            match (start_val.as_integer(), end_val.as_integer()) {
+                (Some(s), Some(e)) => {
+                    Box::new(RangeValue::new(s, e, *inclusive).iter().map(Value::Integer))
+                }
+                _ => {
+                    return Err(HaversError::TypeError {
+                        message: "Range bounds must be integers".to_string(),
+                        line: iterable.span().line,
+                    })
+                }
+            }
+        } else {
+            let iter_value = self.evaluate(iterable)?;
+            let items: Box<dyn Iterator<Item = Value>> = match iter_value {
+                Value::Range(range) => Box::new(range.iter().map(Value::Integer)),
+                Value::List(list) => Box::new(list.borrow().clone().into_iter()),
+                Value::String(s) => Box::new(
+                    s.chars()
+                        .map(|c| Value::String(c.to_string()))
+                        .collect::<Vec<_>>()
+                        .into_iter(),
+                ),
+                _ => {
+                    return Err(HaversError::TypeError {
+                        message: format!("Cannae iterate ower a {}", iter_value.type_name()),
+                        line: span.line,
+                    });
+                }
+            };
+            items
+        };
+
+        self.trace_verbose_with(|| {
+            let (lo, hi) = items.size_hint();
+            match hi {
+                Some(hi) if hi == lo => format!("→ iteratin' ower {} items", lo),
+                _ => "→ iteratin' ower a range".to_string(),
+            }
+        });
+        let mut iteration = 0;
+        for item in items {
+            iteration += 1;
+            self.trace_verbose_with(|| {
+                format!("→ iteration {}: {} = {}", iteration, variable, item)
+            });
+            self.environment
+                .borrow_mut()
+                .define(variable.to_string(), item);
+            match self.execute_stmt_with_control(body)? {
+                Ok(_) => {}
+                Err(ControlFlow::Break) => {
+                    self.trace_with(|| {
+                        format!("[line {}] brak! (break) - leavin' fer loop", span.line)
+                    });
+                    break;
+                }
+                Err(ControlFlow::Continue) => {
+                    self.trace_verbose("→ haud! (continue)");
+                    continue;
+                }
+                Err(ControlFlow::Return(v)) => return Ok(Err(ControlFlow::Return(v))),
+            }
+        }
+        self.trace_with(|| {
+            format!(
+                "[line {}] fer loop done after {} iterations",
+                span.line, iteration
+            )
+        });
+        Ok(Ok(Value::Nil))
+    }
+
+    /// `dae` (function) declaration
+    #[inline(never)]
+    fn exec_function_decl(
+        &mut self,
+        name: &str,
+        params: &[Param],
+        body: &[Stmt],
+        span: &Span,
+    ) -> ExecResult {
+        self.trace_with(|| {
+            format!(
+                "[line {}] dae (function) {} wi' {} params",
+                span.line,
+                name,
+                params.len()
+            )
+        });
+        // Convert AST Param tae runtime FunctionParam
+        let runtime_params: Vec<FunctionParam> = params
+            .iter()
+            .map(|p| FunctionParam {
+                name: p.name.clone(),
+                default: p.default.clone(),
+            })
+            .collect();
+
+        let func = HaversFunction::new(
+            name.to_string(),
+            runtime_params,
+            body.to_vec(),
+            Some(self.environment.clone()),
+        );
+        self.environment
+            .borrow_mut()
+            .define(name.to_string(), Value::Function(Rc::new(func)));
+        Ok(Ok(Value::Nil))
+    }
+
+    /// `gie` (return)
+    #[inline(never)]
+    fn exec_return(&mut self, value: Option<&Expr>, span: &Span) -> ExecResult {
+        let ret_val = if let Some(expr) = value {
+            let v = self.evaluate(expr)?;
+            self.trace_with(|| format!("[line {}] gie (return) {}", span.line, v));
+            v
+        } else {
+            self.trace_with(|| format!("[line {}] gie (return) naething", span.line));
+            Value::Nil
+        };
+        Ok(Err(ControlFlow::Return(ret_val)))
+    }
+
+    /// `blether` (print)
+    #[inline(never)]
+    fn exec_print(&mut self, value: &Expr, span: &Span) -> ExecResult {
+        let val = self.evaluate(value)?;
+        self.trace_with(|| format!("[line {}] blether (print): {}", span.line, val));
+        let output = format!("{}", val);
+        println!("{}", output);
+        self.output.push(output);
+        Ok(Ok(Value::Nil))
+    }
+
+    /// `kin` (class) declaration
+    #[inline(never)]
+    fn exec_class(
+        &mut self,
+        name: &str,
+        superclass: Option<&str>,
+        methods: &[Stmt],
+        span: &Span,
+    ) -> ExecResult {
+        self.trace_with(|| format!("[line {}] kin (class) {} defined", span.line, name));
+        let super_class = if let Some(super_name) = superclass {
+            let super_val = self.environment.borrow().get(super_name).ok_or_else(|| {
+                HaversError::UndefinedVariable {
+                    name: super_name.to_string(),
+                    line: span.line,
+                }
+            })?;
+            match super_val {
+                Value::Class(c) => Some(c),
+                _ => {
+                    return Err(HaversError::TypeError {
+                        message: format!("{} isnae a class", super_name),
+                        line: span.line,
+                    });
+                }
+            }
+        } else {
+            None
+        };
+
+        let mut class = HaversClass::new(name.to_string(), super_class);
+
+        for method in methods {
+            let Stmt::Function {
+                name: method_name,
+                params,
+                body,
+                ..
+            } = method
+            else {
+                continue;
+            };
+
+            // Convert AST Param tae runtime FunctionParam
+            let runtime_params: Vec<FunctionParam> = params
+                .iter()
+                .map(|p| FunctionParam {
+                    name: p.name.clone(),
+                    default: p.default.clone(),
+                })
+                .collect();
+
+            let func = HaversFunction::new(
+                method_name.clone(),
+                runtime_params,
+                body.clone(),
+                Some(self.environment.clone()),
+            );
+            class.methods.insert(method_name.clone(), Rc::new(func));
+        }
+
+        self.environment
+            .borrow_mut()
+            .define(name.to_string(), Value::Class(Rc::new(class)));
+        Ok(Ok(Value::Nil))
+    }
+
+    /// `thing` (struct) declaration
+    #[inline(never)]
+    fn exec_struct(&mut self, name: &str, fields: &[String], span: &Span) -> ExecResult {
+        self.trace_with(|| {
+            format!(
+                "[line {}] thing (struct) {} defined wi' {} fields",
+                span.line,
+                name,
+                fields.len()
+            )
+        });
+        let structure = HaversStruct::new(name.to_string(), fields.to_vec());
+        self.environment
+            .borrow_mut()
+            .define(name.to_string(), Value::Struct(Rc::new(structure)));
+        Ok(Ok(Value::Nil))
+    }
+
+    /// `fetch` (import)
+    #[inline(never)]
+    fn exec_import(&mut self, path: &str, alias: Option<&str>, span: &Span) -> ExecResult {
+        let alias_str = alias.map(|a| format!(" as {}", a)).unwrap_or_default();
+        self.trace_with(|| {
+            format!(
+                "[line {}] fetch (import) \"{}\"{}",
+                span.line, path, alias_str
+            )
+        });
+        self.load_module(path, alias, *span)
+    }
+
+    /// `hae_a_bash` / `gin_it_gangs_wrang` (try/catch)
+    #[inline(never)]
+    fn exec_try_catch(
+        &mut self,
+        try_block: &Stmt,
+        error_name: &str,
+        catch_block: &Stmt,
+        span: &Span,
+    ) -> ExecResult {
+        self.trace_with(|| format!("[line {}] hae_a_bash (try) startin'", span.line));
+        match self.execute_stmt_with_control(try_block) {
+            Ok(result) => {
+                self.trace_with(|| {
+                    format!("[line {}] try block succeeded - nae bother!", span.line)
+                });
+                Ok(result)
+            }
+            Err(e) => {
+                self.trace_with(|| {
+                    format!(
+                        "[line {}] gin_it_gangs_wrang (catch) - caught: {}",
+                        span.line, e
+                    )
+                });
+                // Bind the error to the catch variable
+                self.environment
+                    .borrow_mut()
+                    .define(error_name.to_string(), Value::String(e.to_string()));
+                self.execute_stmt_with_control(catch_block)
+            }
+        }
+    }
+
+    /// `mak_siccar` (assert)
+    #[inline(never)]
+    fn exec_assert(&mut self, condition: &Expr, message: Option<&Expr>, span: &Span) -> ExecResult {
+        self.trace_with(|| format!("[line {}] mak_siccar (assert)", span.line));
+        let cond_value = self.evaluate(condition)?;
+        self.trace_verbose_with(|| format!("→ condition is {}", cond_value));
+        if !cond_value.is_truthy() {
+            let msg = if let Some(msg_expr) = message {
+                let msg_val = self.evaluate(msg_expr)?;
+                msg_val.to_string()
+            } else {
+                "Assertion failed".to_string()
+            };
+            self.trace_with(|| format!("[line {}] assertion FAILED: {}", span.line, msg));
+            return Err(HaversError::AssertionFailed {
+                message: msg,
+                line: span.line,
+            });
+        }
+        self.trace_verbose("→ assertion passed - braw!");
+        Ok(Ok(Value::Nil))
+    }
+
+    /// Destructuring `ken [a, b, ...rest] = ...`
+    #[inline(never)]
+    fn exec_destructure(
+        &mut self,
+        patterns: &[DestructPattern],
+        value: &Expr,
+        span: &Span,
+    ) -> ExecResult {
+        self.trace_with(|| {
+            format!(
+                "[line {}] destructurin' intae {} variables",
+                span.line,
+                patterns.len()
+            )
+        });
+        let val = self.evaluate(value)?;
+        self.trace_verbose_with(|| format!("→ unpackin': {}", val));
+
+        // The value must be a list
+        let items = match &val {
+            Value::List(list) => list.borrow().clone(),
+            Value::String(s) => {
+                // Strings can be destructured intae characters
+                s.chars().map(|c| Value::String(c.to_string())).collect()
+            }
+            _ => {
+                return Err(HaversError::TypeError {
+                    message: format!(
+                        "Ye can only destructure lists and strings, no' {}",
+                        val.type_name()
+                    ),
+                    line: span.line,
+                });
+            }
+        };
+
+        // Find the rest pattern position if any
+        let rest_pos = patterns
+            .iter()
+            .position(|p| matches!(p, DestructPattern::Rest(_)));
+
+        // Calculate positions
+        let before_rest = rest_pos.unwrap_or(patterns.len());
+        let after_rest = if let Some(pos) = rest_pos {
+            patterns.len() - pos - 1
+        } else {
+            0
+        };
+
+        // Check we have enough elements
+        let min_required = before_rest + after_rest;
+        if items.len() < min_required {
+            return Err(HaversError::TypeError {
+                message: format!(
+                    "Cannae destructure: need at least {} elements but got {}",
+                    min_required,
+                    items.len()
+                ),
+                line: span.line,
+            });
+        }
+
+        // Bind the variables
+        let mut item_idx = 0;
+        for (pat_idx, pattern) in patterns.iter().enumerate() {
+            match pattern {
+                DestructPattern::Variable(name) => {
+                    if pat_idx < before_rest {
+                        // Before rest: take from start
+                        self.environment
+                            .borrow_mut()
+                            .define(name.to_string(), items[item_idx].clone());
+                        item_idx += 1;
+                    } else {
+                        // After rest: take from end
+                        let from_end = patterns.len() - pat_idx - 1;
+                        let end_idx = items.len() - from_end - 1;
+                        self.environment
+                            .borrow_mut()
+                            .define(name.to_string(), items[end_idx].clone());
+                    }
+                }
+                DestructPattern::Rest(name) => {
+                    // Capture all elements in the middle
+                    let rest_end = items.len() - after_rest;
+                    let rest_items: Vec<Value> = items[item_idx..rest_end].to_vec();
+                    self.environment.borrow_mut().define(
+                        name.to_string(),
+                        Value::List(Rc::new(RefCell::new(rest_items))),
+                    );
+                    item_idx = rest_end;
+                }
+                DestructPattern::Ignore => {
+                    if pat_idx < before_rest {
+                        item_idx += 1;
+                    }
+                    // Just skip this element
+                }
+            }
+        }
+
+        Ok(Ok(Value::Nil))
+    }
+
+    /// `log_*` statements
+    #[inline(never)]
+    fn exec_log(
+        &mut self,
+        level: &LogLevel,
+        message: &Expr,
+        extras: &[Expr],
+        span: &Span,
+    ) -> ExecResult {
+        let msg = self.evaluate(message)?;
+        let (fields, target) = self.parse_log_extras(extras, span.line)?;
+        self.emit_log(*level, msg, fields, target, span.line)?;
+        Ok(Ok(Value::Nil))
+    }
+
+    /// `hurl` (throw)
+    #[inline(never)]
+    fn exec_hurl(&mut self, message: &Expr, span: &Span) -> ExecResult {
+        let msg = self.evaluate(message)?;
+        let error_msg = match msg {
+            Value::String(s) => s,
+            v => format!("{}", v),
+        };
+        Err(HaversError::UserError {
+            message: error_msg,
+            line: span.line,
+        })
     }
 
     fn execute_block(
@@ -11608,6 +11707,9 @@ impl Interpreter {
         Value::List(Rc::new(RefCell::new(items)))
     }
 
+    /// Evaluate an expression. Like `execute_stmt_with_control`, this is on
+    /// the recursion path of every mdhavers call and only dispatches; the
+    /// bulky arms live in their own `#[inline(never)]` methods.
     fn evaluate(&mut self, expr: &Expr) -> HaversResult<Value> {
         match expr {
             Expr::Literal { value, .. } => Ok(match value {
@@ -11626,617 +11728,78 @@ impl Interpreter {
                     name: name.clone(),
                     line: span.line,
                 }),
-
-            Expr::Assign { name, value, span } => {
-                let val = self.evaluate(value)?;
-                if !self.environment.borrow_mut().assign(name, val.clone()) {
-                    return Err(HaversError::UndefinedVariable {
-                        name: name.clone(),
-                        line: span.line,
-                    });
-                }
-                Ok(val)
-            }
-
+            Expr::Assign { name, value, span } => self.eval_assign(name, value, span),
             Expr::Binary {
                 left,
                 operator,
                 right,
                 span,
-            } => {
-                let left_val = self.evaluate(left)?;
-                let right_val = self.evaluate(right)?;
-
-                // Check for operator overloading on instances
-                if let Value::Instance(ref inst) = left_val {
-                    let method_name = self.operator_method_name(operator);
-                    // Bind first: the borrow must end before the method runs,
-                    // or a method that sets masel.x panics (already borrowed).
-                    let method = inst.borrow().class.find_method(&method_name);
-                    if let Some(method) = method {
-                        // Call the overloaded operator method
-                        return self.call_method_on_instance(
-                            inst.clone(),
-                            method,
-                            vec![right_val],
-                            span.line,
-                        );
-                    }
-                }
-
-                self.binary_op(&left_val, operator, &right_val, span.line)
-            }
-
+            } => self.eval_binary(left, operator, right, span),
             Expr::Unary {
                 operator,
                 operand,
                 span,
-            } => {
-                let val = self.evaluate(operand)?;
-                match operator {
-                    UnaryOp::Negate => match val {
-                        Value::Integer(n) => n
-                            .checked_neg()
-                            .map(Value::Integer)
-                            .ok_or(HaversError::IntegerOverflow { line: span.line }),
-                        Value::Float(f) => Ok(Value::Float(-f)),
-                        _ => Err(HaversError::TypeError {
-                            message: format!("Cannae negate a {}", val.type_name()),
-                            line: span.line,
-                        }),
-                    },
-                    UnaryOp::Not => Ok(Value::Bool(!val.is_truthy())),
-                }
-            }
-
+            } => self.eval_unary(operator, operand, span),
             Expr::Logical {
                 left,
                 operator,
                 right,
                 ..
-            } => {
-                let left_val = self.evaluate(left)?;
-                match operator {
-                    LogicalOp::And => {
-                        if !left_val.is_truthy() {
-                            Ok(left_val)
-                        } else {
-                            self.evaluate(right)
-                        }
-                    }
-                    LogicalOp::Or => {
-                        if left_val.is_truthy() {
-                            Ok(left_val)
-                        } else {
-                            self.evaluate(right)
-                        }
-                    }
-                }
-            }
-
+            } => self.eval_logical(left, operator, right),
             Expr::Call {
                 callee,
                 arguments,
                 span,
-            } => {
-                // Check if this is a method call (callee is a Get expression)
-                if let Expr::Get { object, property, .. } = callee.as_ref() {
-                    let obj = self.evaluate(object)?;
-                    if let Value::NativeObject(native) = &obj {
-                        let args = self.evaluate_call_args(arguments, span.line)?;
-                        return native
-                            .call(property, args)
-                            .map_err(|err| err.with_line_if_zero(span.line));
-                    }
-                    if let Value::Instance(inst) = &obj {
-                        // It's a method call - get the method and bind 'masel'
-                        // Clone what we need to avoid holding the borrow
-                        let method_opt = {
-                            let borrowed = inst.borrow();
-                            borrowed.class.find_method(property)
-                        };
-                        if let Some(method) = method_opt {
-                            let args = self.evaluate_call_args(arguments, span.line)?;
-                            let env = Rc::new(RefCell::new(Environment::with_enclosing(
-                                method.closure.clone().unwrap_or(self.globals.clone()),
-                            )));
-                            env.borrow_mut()
-                                .define("masel".to_string(), Value::Instance(inst.clone()));
-                            return self.call_function_with_env(&method, args, env, span.line);
-                        }
-                        // Check instance fields for callable values
-                        let field_val_opt = {
-                            let borrowed = inst.borrow();
-                            borrowed.fields.get(property).cloned()
-                        };
-                        if let Some(field_val) = field_val_opt {
-                            let args = self.evaluate_call_args(arguments, span.line)?;
-                            return self.call_value(field_val, args, span.line);
-                        }
-                        return Err(HaversError::UndefinedVariable {
-                            name: property.clone(),
-                            line: span.line,
-                        });
-                    }
-                }
-
-                let callee_val = self.evaluate(callee)?;
-                let args = self.evaluate_call_args(arguments, span.line)?;
-                self.call_value(callee_val, args, span.line)
-            }
-
+            } => self.eval_call(callee, arguments, span),
             Expr::Get {
                 object,
                 property,
                 span,
-            } => {
-                let obj = self.evaluate(object)?;
-                match obj {
-                    Value::NativeObject(native) => native
-                        .get(property)
-                        .map_err(|err| err.with_line_if_zero(span.line)),
-                    Value::Instance(inst) => {
-                        // Prefer instance fields over methods (fields can shadow method names).
-                        if let Some(field_val) = inst.borrow().fields.get(property).cloned() {
-                            return Ok(field_val);
-                        }
-
-                        // If it's a method, return a bound callable (captures `masel`).
-                        let method_opt = { inst.borrow().class.find_method(property) };
-                        if let Some(method) = method_opt {
-                            let base_env = method.closure.clone().unwrap_or(self.globals.clone());
-                            let env =
-                                Rc::new(RefCell::new(Environment::with_enclosing(base_env)));
-                            env.borrow_mut().define(
-                                "masel".to_string(),
-                                Value::Instance(inst.clone()),
-                            );
-                            let bound = HaversFunction::new(
-                                method.name.clone(),
-                                method.params.clone(),
-                                method.body.clone(),
-                                Some(env),
-                            );
-                            return Ok(Value::Function(Rc::new(bound)));
-                        }
-
-                        Err(HaversError::UndefinedVariable {
-                            name: property.clone(),
-                            line: span.line,
-                        })
-                    }
-                    Value::Dict(dict) => dict
-                        .borrow()
-                        .get(&Value::String(property.clone()))
-                        .cloned()
-                        .ok_or_else(|| HaversError::UndefinedVariable {
-                            name: property.clone(),
-                            line: span.line,
-                        }),
-                    _ => Err(HaversError::TypeError {
-                        message: format!(
-                            "Cannae access property '{}' on a {}",
-                            property,
-                            obj.type_name()
-                        ),
-                        line: span.line,
-                    }),
-                }
-            }
-
+            } => self.eval_get(object, property, span),
             Expr::Set {
                 object,
                 property,
                 value,
                 span,
-            } => {
-                let obj = self.evaluate(object)?;
-                let val = self.evaluate(value)?;
-                match obj {
-                    Value::NativeObject(native) => native
-                        .set(property, val)
-                        .map_err(|err| err.with_line_if_zero(span.line)),
-                    Value::Instance(inst) => {
-                        inst.borrow_mut().set(property.clone(), val.clone());
-                        Ok(val)
-                    }
-                    Value::Dict(dict) => {
-                        dict.borrow_mut()
-                            .set(Value::String(property.clone()), val.clone());
-                        Ok(val)
-                    }
-                    _ => Err(HaversError::TypeError {
-                        message: format!(
-                            "Cannae set property '{}' on a {}",
-                            property,
-                            obj.type_name()
-                        ),
-                        line: span.line,
-                    }),
-                }
-            }
-
+            } => self.eval_set(object, property, value, span),
             Expr::Index {
                 object,
                 index,
                 span,
-            } => {
-                let obj = self.evaluate(object)?;
-                let idx = self.evaluate(index)?;
-                match (&obj, &idx) {
-                    (Value::List(list), Value::Integer(i)) => {
-                        let list = list.borrow();
-                        let idx = if *i < 0 {
-                            list.len() as i64 + *i
-                        } else {
-                            *i
-                        };
-                        list.get(idx as usize)
-                            .cloned()
-                            .ok_or_else(|| HaversError::IndexOutOfBounds {
-                                index: *i,
-                                size: list.len(),
-                                line: span.line,
-                            })
-                    }
-                    (Value::String(s), Value::Integer(i)) => {
-                        let char_len = s.chars().count();
-                        let idx = if *i < 0 { char_len as i64 + *i } else { *i };
-                        if idx < 0 || idx as usize >= char_len {
-                            return Err(HaversError::IndexOutOfBounds {
-                                index: *i,
-                                size: char_len,
-                                line: span.line,
-                            });
-                        }
-                        Ok(Value::String(
-                            s.chars()
-                                .nth(idx as usize)
-                                .expect("checked bounds above")
-                                .to_string(),
-                        ))
-                    }
-                    (Value::Dict(dict), key) => dict
-                        .borrow()
-                        .get(key)
-                        .cloned()
-                        .ok_or_else(|| HaversError::UndefinedVariable {
-                            name: format!("{}", key),
-                            line: span.line,
-                        }),
-                    _ => Err(HaversError::TypeError {
-                        message: format!(
-                            "Cannae index a {} wi' a {}",
-                            obj.type_name(),
-                            idx.type_name()
-                        ),
-                        line: span.line,
-                    }),
-                }
-            }
-
+            } => self.eval_index(object, index, span),
             Expr::IndexSet {
                 object,
                 index,
                 value,
                 span,
-            } => {
-                let obj = self.evaluate(object)?;
-                let idx = self.evaluate(index)?;
-                let val = self.evaluate(value)?;
-
-                match (&obj, &idx) {
-                    (Value::List(list), Value::Integer(i)) => {
-                        let mut list_mut = list.borrow_mut();
-                        let idx = if *i < 0 {
-                            list_mut.len() as i64 + *i
-                        } else {
-                            *i
-                        };
-                        if idx < 0 || idx as usize >= list_mut.len() {
-                            return Err(HaversError::IndexOutOfBounds {
-                                index: *i,
-                                size: list_mut.len(),
-                                line: span.line,
-                            });
-                        }
-                        list_mut[idx as usize] = val.clone();
-                        Ok(val)
-                    }
-                    (Value::Dict(dict), key) => {
-                        dict.borrow_mut().set(key.clone(), val.clone());
-                        Ok(val)
-                    }
-                    _ => Err(HaversError::TypeError {
-                        message: format!(
-                            "Cannae set index on a {} wi' a {}",
-                            obj.type_name(),
-                            idx.type_name()
-                        ),
-                        line: span.line,
-                    }),
-                }
-            }
-
+            } => self.eval_index_set(object, index, value, span),
             Expr::Slice {
                 object,
                 start,
                 end,
                 step,
                 span,
-            } => {
-                let obj = self.evaluate(object)?;
-
-                // Get start index, handling None as default
-                let start_idx = if let Some(s) = start {
-                    let val = self.evaluate(s)?;
-                    match val {
-                        Value::Integer(i) => Some(i),
-                        _ => {
-                            return Err(HaversError::TypeError {
-                                message: "Slice start must be an integer".to_string(),
-                                line: span.line,
-                            })
-                        }
-                    }
-                } else {
-                    None
-                };
-
-                // Get end index
-                let end_idx = if let Some(e) = end {
-                    let val = self.evaluate(e)?;
-                    match val {
-                        Value::Integer(i) => Some(i),
-                        _ => {
-                            return Err(HaversError::TypeError {
-                                message: "Slice end must be an integer".to_string(),
-                                line: span.line,
-                            })
-                        }
-                    }
-                } else {
-                    None
-                };
-
-                // Get step value (default is 1)
-                let step_val = if let Some(st) = step {
-                    let val = self.evaluate(st)?;
-                    match val {
-                        Value::Integer(i) => {
-                            if i == 0 {
-                                return Err(HaversError::TypeError {
-                                    message: "Slice step cannae be zero, ya dafty!".to_string(),
-                                    line: span.line,
-                                });
-                            }
-                            i
-                        }
-                        _ => {
-                            return Err(HaversError::TypeError {
-                                message: "Slice step must be an integer".to_string(),
-                                line: span.line,
-                            })
-                        }
-                    }
-                } else {
-                    1
-                };
-
-                match obj {
-                    Value::List(list) => {
-                        let list = list.borrow();
-                        let len = list.len() as i64;
-
-                        // Handle defaults based on step direction
-                        let (start, end) = if step_val > 0 {
-                            let s = start_idx.unwrap_or(0);
-                            let e = end_idx.unwrap_or(len);
-                            (s, e)
-                        } else {
-                            // Negative step: default start is -1 (end), default end is before start
-                            let s = start_idx.unwrap_or(-1);
-                            let e = end_idx.unwrap_or(-(len + 1));
-                            (s, e)
-                        };
-
-                        // Normalize negative indices
-                        let start = if start < 0 {
-                            (len + start).max(0) as usize
-                        } else {
-                            (start as usize).min(list.len())
-                        };
-
-                        let end = if end < 0 {
-                            (len + end).max(-1)
-                        } else {
-                            (end as usize).min(list.len()) as i64
-                        };
-
-                        let mut sliced: Vec<Value> = Vec::new();
-                        if step_val > 0 {
-                            let mut i = start as i64;
-                            while i < end {
-                                sliced.push(list[i as usize].clone());
-                                // A huge step jumps past the end; never overflow
-                                match i.checked_add(step_val) {
-                                    Some(next) => i = next,
-                                    None => break,
-                                }
-                            }
-                        } else {
-                            // Negative step: go backwards
-                            let mut i = start as i64;
-                            while i > end {
-                                if (i as usize) < list.len() {
-                                    sliced.push(list[i as usize].clone());
-                                }
-                                // step_val is negative; stop rather than overflow
-                                match i.checked_add(step_val) {
-                                    Some(next) => i = next,
-                                    None => break,
-                                }
-                            }
-                        }
-                        Ok(Value::List(Rc::new(RefCell::new(sliced))))
-                    }
-                    Value::String(s) => {
-                        let chars: Vec<char> = s.chars().collect();
-                        let len = chars.len() as i64;
-
-                        // Handle defaults based on step direction
-                        let (start, end) = if step_val > 0 {
-                            let st = start_idx.unwrap_or(0);
-                            let en = end_idx.unwrap_or(len);
-                            (st, en)
-                        } else {
-                            // Negative step: default start is -1 (end), default end is before start
-                            let st = start_idx.unwrap_or(-1);
-                            let en = end_idx.unwrap_or(-(len + 1));
-                            (st, en)
-                        };
-
-                        // Normalize negative indices
-                        let start = if start < 0 {
-                            (len + start).max(0) as usize
-                        } else {
-                            (start as usize).min(chars.len())
-                        };
-
-                        let end = if end < 0 {
-                            (len + end).max(-1)
-                        } else {
-                            (end as usize).min(chars.len()) as i64
-                        };
-
-                        let mut sliced = String::new();
-                        if step_val > 0 {
-                            let mut i = start as i64;
-                            while i < end {
-                                sliced.push(chars[i as usize]);
-                                // A huge step jumps past the end; never overflow
-                                match i.checked_add(step_val) {
-                                    Some(next) => i = next,
-                                    None => break,
-                                }
-                            }
-                        } else {
-                            // Negative step: go backwards
-                            let mut i = start as i64;
-                            while i > end {
-                                if (i as usize) < chars.len() {
-                                    sliced.push(chars[i as usize]);
-                                }
-                                // step_val is negative; stop rather than overflow
-                                match i.checked_add(step_val) {
-                                    Some(next) => i = next,
-                                    None => break,
-                                }
-                            }
-                        }
-                        Ok(Value::String(sliced))
-                    }
-                    _ => Err(HaversError::TypeError {
-                        message: format!("Cannae slice a {}, ya numpty!", obj.type_name()),
-                        line: span.line,
-                    }),
-                }
-            }
-
-            Expr::List { elements, .. } => {
-                let mut items = Vec::new();
-                for elem in elements {
-                    // Handle spread operator (...) - skail the elements intae the list
-                    if let Expr::Spread { expr, span } = elem {
-                        let spread_value = self.evaluate(expr)?;
-                        match spread_value {
-                            Value::List(list) => {
-                                items.extend(list.borrow().clone());
-                            }
-                            Value::String(s) => {
-                                // Spread string into characters
-                                for c in s.chars() {
-                                    items.push(Value::String(c.to_string()));
-                                }
-                            }
-                            _ => {
-                                return Err(HaversError::TypeError {
-                                    message: "Cannae skail (spread) somethin' that isnae a list or string!".to_string(),
-                                    line: span.line,
-                                });
-                            }
-                        }
-                    } else {
-                        items.push(self.evaluate(elem)?);
-                    }
-                }
-                Ok(Value::List(Rc::new(RefCell::new(items))))
-            }
-
-            Expr::Dict { pairs, .. } => {
-                let mut map = DictValue::new();
-                for (key, value) in pairs {
-                    let k = self.evaluate(key)?;
-                    let v = self.evaluate(value)?;
-                    map.set(k, v);
-                }
-                Ok(Value::Dict(Rc::new(RefCell::new(map))))
-            }
-
+            } => self.eval_slice(
+                object,
+                start.as_deref(),
+                end.as_deref(),
+                step.as_deref(),
+                span,
+            ),
+            Expr::List { elements, .. } => self.eval_list(elements),
+            Expr::Dict { pairs, .. } => self.eval_dict(pairs),
             Expr::Range {
                 start,
                 end,
                 inclusive,
                 ..
-            } => {
-                let start_val = self.evaluate(start)?;
-                let end_val = self.evaluate(end)?;
-                match (start_val.as_integer(), end_val.as_integer()) {
-                    (Some(s), Some(e)) => {
-                        Self::check_range_size(s, e, *inclusive).map_err(|message| {
-                            HaversError::InvalidNumberOperation {
-                                message,
-                                line: expr.span().line,
-                            }
-                        })?;
-                        Ok(Self::range_to_list(s, e, *inclusive))
-                    }
-                    _ => Err(HaversError::TypeError {
-                        message: "Range bounds must be integers".to_string(),
-                        line: expr.span().line,
-                    }),
-                }
-            }
-
+            } => self.eval_range(expr, start, end, inclusive),
             Expr::Grouping { expr, .. } => self.evaluate(expr),
-
             Expr::Lambda {
                 params,
                 body,
                 span,
-            } => {
-                // Convert lambda params tae FunctionParams (lambdas dinnae hae defaults)
-                let runtime_params: Vec<FunctionParam> = params
-                    .iter()
-                    .map(|name| FunctionParam {
-                        name: name.clone(),
-                        default: None,
-                    })
-                    .collect();
-
-                // Create a function from the lambda
-                let func = HaversFunction::new(
-                    "<lambda>".to_string(),
-                    runtime_params,
-                    vec![Stmt::Return {
-                        value: Some((**body).clone()),
-                        span: *span,
-                    }],
-                    Some(self.environment.clone()),
-                );
-                Ok(Value::Function(Rc::new(func)))
-            }
-
+            } => self.eval_lambda(params, body, span),
             Expr::Masel { span } => {
                 self.environment
                     .borrow()
@@ -12247,89 +11810,771 @@ impl Interpreter {
                     })
             }
 
-            Expr::Input { prompt, span: _ } => {
-                #[cfg(coverage)]
-                {
-                    let _ = self.evaluate(prompt)?;
-                    Err(HaversError::InternalError(
-                        "speir() input is disabled under coverage runs".to_string(),
-                    ))
-                }
-
-                #[cfg(not(coverage))]
-                {
-                    let prompt_val = self.evaluate(prompt)?;
-                    print!("{}", prompt_val);
-                    io::stdout().flush().unwrap();
-
-                    let mut input = String::new();
-                    io::stdin()
-                        .read_line(&mut input)
-                        .map_err(|e| HaversError::InternalError(e.to_string()))?;
-
-                    Ok(Value::String(input.trim().to_string()))
-                }
-            }
-
-            Expr::FString { parts, .. } => {
-                let mut result = String::new();
-                for part in parts {
-                    match part {
-                        FStringPart::Text(text) => result.push_str(text),
-                        FStringPart::Expr(expr) => {
-                            let val = self.evaluate(expr)?;
-                            result.push_str(&val.to_string());
-                        }
-                    }
-                }
-                Ok(Value::String(result))
-            }
-
+            Expr::Input { prompt, .. } => self.eval_input(prompt),
+            Expr::FString { parts, .. } => self.eval_fstring(parts),
             // Spread is only valid in specific contexts (lists, function calls)
             // If we get here, it's an error
             Expr::Spread { .. } => unreachable!(
                 "Spread expressions are handled by list literals and function-call argument expansion"
             ),
 
-            // Pipe forward: left |> right means call right(left)
-            Expr::Pipe { left, right, span } => {
-                let left_val = self.evaluate(left)?;
-                let right_val = self.evaluate(right)?;
-                // Call the right side as a function with left as the argument
-                self.call_value(right_val, vec![left_val], span.line)
-            }
-
+            Expr::Pipe { left, right, span } => self.eval_pipe(left, right, span),
             Expr::Ternary {
                 condition,
                 then_expr,
                 else_expr,
                 ..
-            } => {
-                // Evaluate condition and pick the appropriate branch
-                let cond_val = self.evaluate(condition)?;
-                if cond_val.is_truthy() {
-                    self.evaluate(then_expr)
+            } => self.eval_ternary(condition, then_expr, else_expr),
+            Expr::BlockExpr { statements, .. } => self.eval_block_expr(statements),
+        }
+    }
+
+    /// Assignment `name = value`
+    #[inline(never)]
+    fn eval_assign(&mut self, name: &str, value: &Expr, span: &Span) -> HaversResult<Value> {
+        let val = self.evaluate(value)?;
+        if !self.environment.borrow_mut().assign(name, val.clone()) {
+            return Err(HaversError::UndefinedVariable {
+                name: name.to_string(),
+                line: span.line,
+            });
+        }
+        Ok(val)
+    }
+
+    /// Binary operators, including operator overloading on instances
+    #[inline(never)]
+    fn eval_binary(
+        &mut self,
+        left: &Expr,
+        operator: &BinaryOp,
+        right: &Expr,
+        span: &Span,
+    ) -> HaversResult<Value> {
+        let left_val = self.evaluate(left)?;
+        let right_val = self.evaluate(right)?;
+
+        // Check for operator overloading on instances
+        if let Value::Instance(inst) = &left_val {
+            if let Some(method) = self.operator_overload(inst, operator) {
+                // Call the overloaded operator method
+                return self.call_method_on_instance(
+                    inst.clone(),
+                    method,
+                    vec![right_val],
+                    span.line,
+                );
+            }
+        }
+
+        self.binary_op(&left_val, operator, &right_val, span.line)
+    }
+
+    /// The instance's method overloading `op`, if it has one.
+    #[inline(never)]
+    fn operator_overload(
+        &self,
+        inst: &Rc<RefCell<HaversInstance>>,
+        op: &BinaryOp,
+    ) -> Option<Rc<HaversFunction>> {
+        let method_name = self.operator_method_name(op);
+        // Take the class out first: the borrow must end before the method
+        // runs, or a method that sets masel.x panics (already borrowed).
+        let class = inst.borrow().class.clone();
+        class.find_method(&method_name)
+    }
+
+    /// Unary negate and not
+    #[inline(never)]
+    fn eval_unary(
+        &mut self,
+        operator: &UnaryOp,
+        operand: &Expr,
+        span: &Span,
+    ) -> HaversResult<Value> {
+        let val = self.evaluate(operand)?;
+        match operator {
+            UnaryOp::Negate => match val {
+                Value::Integer(n) => n
+                    .checked_neg()
+                    .map(Value::Integer)
+                    .ok_or(HaversError::IntegerOverflow { line: span.line }),
+                Value::Float(f) => Ok(Value::Float(-f)),
+                _ => Err(HaversError::TypeError {
+                    message: format!("Cannae negate a {}", val.type_name()),
+                    line: span.line,
+                }),
+            },
+            UnaryOp::Not => Ok(Value::Bool(!val.is_truthy())),
+        }
+    }
+
+    /// Short-circuit logical and / or
+    #[inline(never)]
+    fn eval_logical(
+        &mut self,
+        left: &Expr,
+        operator: &LogicalOp,
+        right: &Expr,
+    ) -> HaversResult<Value> {
+        let left_val = self.evaluate(left)?;
+        match operator {
+            LogicalOp::And => {
+                if !left_val.is_truthy() {
+                    Ok(left_val)
                 } else {
-                    self.evaluate(else_expr)
+                    self.evaluate(right)
                 }
             }
-            Expr::BlockExpr { statements, .. } => {
-                // Execute statements and return the value from 'gie' if any
-                // Use execute_stmt_with_control to handle return properly
-                for stmt in statements {
-                    match self.execute_stmt_with_control(stmt)? {
-                        Ok(_) => {}
-                        Err(ControlFlow::Return(value)) => {
-                            return Ok(value);
+            LogicalOp::Or => {
+                if left_val.is_truthy() {
+                    Ok(left_val)
+                } else {
+                    self.evaluate(right)
+                }
+            }
+        }
+    }
+
+    /// A call `callee(args)`. On the recursion path of every mdhavers call,
+    /// so method calls on objects are handled out of line.
+    #[inline(never)]
+    fn eval_call(&mut self, callee: &Expr, arguments: &[Expr], span: &Span) -> HaversResult<Value> {
+        // Check if this is a method call (callee is a Get expression)
+        if let Expr::Get {
+            object, property, ..
+        } = callee
+        {
+            match self.evaluate(object)? {
+                Value::NativeObject(native) => {
+                    return self.call_native_method(&native, property, arguments, span);
+                }
+                Value::Instance(inst) => {
+                    return self.call_instance_method(&inst, property, arguments, span);
+                }
+                _ => {}
+            }
+        }
+
+        let callee_val = self.evaluate(callee)?;
+        let args = self.evaluate_call_args(arguments, span.line)?;
+        self.call_value(callee_val, args, span.line)
+    }
+
+    /// `object.method(args)` on a native object.
+    #[inline(never)]
+    fn call_native_method(
+        &mut self,
+        native: &Rc<dyn NativeObject>,
+        property: &str,
+        arguments: &[Expr],
+        span: &Span,
+    ) -> HaversResult<Value> {
+        let args = self.evaluate_call_args(arguments, span.line)?;
+        native
+            .call(property, args)
+            .map_err(|err| err.with_line_if_zero(span.line))
+    }
+
+    /// `instance.method(args)`: a method (bound to `masel`) or a callable field.
+    #[inline(never)]
+    fn call_instance_method(
+        &mut self,
+        inst: &Rc<RefCell<HaversInstance>>,
+        property: &str,
+        arguments: &[Expr],
+        span: &Span,
+    ) -> HaversResult<Value> {
+        // It's a method call - get the method and bind 'masel'
+        // Clone what we need to avoid holding the borrow
+        let method_opt = {
+            let borrowed = inst.borrow();
+            borrowed.class.find_method(property)
+        };
+        if let Some(method) = method_opt {
+            let args = self.evaluate_call_args(arguments, span.line)?;
+            let env = Rc::new(RefCell::new(Environment::with_enclosing(
+                method.closure.clone().unwrap_or(self.globals.clone()),
+            )));
+            env.borrow_mut()
+                .define("masel".to_string(), Value::Instance(inst.clone()));
+            return self.call_function_with_env(&method, args, env, span.line);
+        }
+        // Check instance fields for callable values
+        let field_val_opt = {
+            let borrowed = inst.borrow();
+            borrowed.fields.get(property).cloned()
+        };
+        if let Some(field_val) = field_val_opt {
+            let args = self.evaluate_call_args(arguments, span.line)?;
+            return self.call_value(field_val, args, span.line);
+        }
+        Err(HaversError::UndefinedVariable {
+            name: property.to_string(),
+            line: span.line,
+        })
+    }
+
+    /// Property access `object.property`
+    #[inline(never)]
+    fn eval_get(&mut self, object: &Expr, property: &str, span: &Span) -> HaversResult<Value> {
+        let obj = self.evaluate(object)?;
+        match obj {
+            Value::NativeObject(native) => native
+                .get(property)
+                .map_err(|err| err.with_line_if_zero(span.line)),
+            Value::Instance(inst) => {
+                // Prefer instance fields over methods (fields can shadow method names).
+                if let Some(field_val) = inst.borrow().fields.get(property).cloned() {
+                    return Ok(field_val);
+                }
+
+                // If it's a method, return a bound callable (captures `masel`).
+                let method_opt = { inst.borrow().class.find_method(property) };
+                if let Some(method) = method_opt {
+                    let base_env = method.closure.clone().unwrap_or(self.globals.clone());
+                    let env = Rc::new(RefCell::new(Environment::with_enclosing(base_env)));
+                    env.borrow_mut()
+                        .define("masel".to_string(), Value::Instance(inst.clone()));
+                    let bound = HaversFunction::new(
+                        method.name.clone(),
+                        method.params.clone(),
+                        method.body.clone(),
+                        Some(env),
+                    );
+                    return Ok(Value::Function(Rc::new(bound)));
+                }
+
+                Err(HaversError::UndefinedVariable {
+                    name: property.to_string(),
+                    line: span.line,
+                })
+            }
+            Value::Dict(dict) => dict
+                .borrow()
+                .get(&Value::String(property.to_string()))
+                .cloned()
+                .ok_or_else(|| HaversError::UndefinedVariable {
+                    name: property.to_string(),
+                    line: span.line,
+                }),
+            _ => Err(HaversError::TypeError {
+                message: format!(
+                    "Cannae access property '{}' on a {}",
+                    property,
+                    obj.type_name()
+                ),
+                line: span.line,
+            }),
+        }
+    }
+
+    /// Property assignment `object.property = value`
+    #[inline(never)]
+    fn eval_set(
+        &mut self,
+        object: &Expr,
+        property: &str,
+        value: &Expr,
+        span: &Span,
+    ) -> HaversResult<Value> {
+        let obj = self.evaluate(object)?;
+        let val = self.evaluate(value)?;
+        match obj {
+            Value::NativeObject(native) => native
+                .set(property, val)
+                .map_err(|err| err.with_line_if_zero(span.line)),
+            Value::Instance(inst) => {
+                inst.borrow_mut().set(property.to_string(), val.clone());
+                Ok(val)
+            }
+            Value::Dict(dict) => {
+                dict.borrow_mut()
+                    .set(Value::String(property.to_string()), val.clone());
+                Ok(val)
+            }
+            _ => Err(HaversError::TypeError {
+                message: format!(
+                    "Cannae set property '{}' on a {}",
+                    property,
+                    obj.type_name()
+                ),
+                line: span.line,
+            }),
+        }
+    }
+
+    /// Indexing `object[index]`
+    #[inline(never)]
+    fn eval_index(&mut self, object: &Expr, index: &Expr, span: &Span) -> HaversResult<Value> {
+        let obj = self.evaluate(object)?;
+        let idx = self.evaluate(index)?;
+        match (&obj, &idx) {
+            (Value::List(list), Value::Integer(i)) => {
+                let list = list.borrow();
+                let idx = if *i < 0 { list.len() as i64 + *i } else { *i };
+                list.get(idx as usize)
+                    .cloned()
+                    .ok_or_else(|| HaversError::IndexOutOfBounds {
+                        index: *i,
+                        size: list.len(),
+                        line: span.line,
+                    })
+            }
+            (Value::String(s), Value::Integer(i)) => {
+                let char_len = s.chars().count();
+                let idx = if *i < 0 { char_len as i64 + *i } else { *i };
+                if idx < 0 || idx as usize >= char_len {
+                    return Err(HaversError::IndexOutOfBounds {
+                        index: *i,
+                        size: char_len,
+                        line: span.line,
+                    });
+                }
+                Ok(Value::String(
+                    s.chars()
+                        .nth(idx as usize)
+                        .expect("checked bounds above")
+                        .to_string(),
+                ))
+            }
+            (Value::Dict(dict), key) => {
+                dict.borrow()
+                    .get(key)
+                    .cloned()
+                    .ok_or_else(|| HaversError::UndefinedVariable {
+                        name: format!("{}", key),
+                        line: span.line,
+                    })
+            }
+            _ => Err(HaversError::TypeError {
+                message: format!(
+                    "Cannae index a {} wi' a {}",
+                    obj.type_name(),
+                    idx.type_name()
+                ),
+                line: span.line,
+            }),
+        }
+    }
+
+    /// Index assignment `object[index] = value`
+    #[inline(never)]
+    fn eval_index_set(
+        &mut self,
+        object: &Expr,
+        index: &Expr,
+        value: &Expr,
+        span: &Span,
+    ) -> HaversResult<Value> {
+        let obj = self.evaluate(object)?;
+        let idx = self.evaluate(index)?;
+        let val = self.evaluate(value)?;
+
+        match (&obj, &idx) {
+            (Value::List(list), Value::Integer(i)) => {
+                let mut list_mut = list.borrow_mut();
+                let idx = if *i < 0 {
+                    list_mut.len() as i64 + *i
+                } else {
+                    *i
+                };
+                if idx < 0 || idx as usize >= list_mut.len() {
+                    return Err(HaversError::IndexOutOfBounds {
+                        index: *i,
+                        size: list_mut.len(),
+                        line: span.line,
+                    });
+                }
+                list_mut[idx as usize] = val.clone();
+                Ok(val)
+            }
+            (Value::Dict(dict), key) => {
+                dict.borrow_mut().set(key.clone(), val.clone());
+                Ok(val)
+            }
+            _ => Err(HaversError::TypeError {
+                message: format!(
+                    "Cannae set index on a {} wi' a {}",
+                    obj.type_name(),
+                    idx.type_name()
+                ),
+                line: span.line,
+            }),
+        }
+    }
+
+    /// Slicing `object[start:end:step]`
+    #[inline(never)]
+    fn eval_slice(
+        &mut self,
+        object: &Expr,
+        start: Option<&Expr>,
+        end: Option<&Expr>,
+        step: Option<&Expr>,
+        span: &Span,
+    ) -> HaversResult<Value> {
+        let obj = self.evaluate(object)?;
+
+        // Get start index, handling None as default
+        let start_idx = if let Some(s) = start {
+            let val = self.evaluate(s)?;
+            match val {
+                Value::Integer(i) => Some(i),
+                _ => {
+                    return Err(HaversError::TypeError {
+                        message: "Slice start must be an integer".to_string(),
+                        line: span.line,
+                    })
+                }
+            }
+        } else {
+            None
+        };
+
+        // Get end index
+        let end_idx = if let Some(e) = end {
+            let val = self.evaluate(e)?;
+            match val {
+                Value::Integer(i) => Some(i),
+                _ => {
+                    return Err(HaversError::TypeError {
+                        message: "Slice end must be an integer".to_string(),
+                        line: span.line,
+                    })
+                }
+            }
+        } else {
+            None
+        };
+
+        // Get step value (default is 1)
+        let step_val = if let Some(st) = step {
+            let val = self.evaluate(st)?;
+            match val {
+                Value::Integer(i) => {
+                    if i == 0 {
+                        return Err(HaversError::TypeError {
+                            message: "Slice step cannae be zero, ya dafty!".to_string(),
+                            line: span.line,
+                        });
+                    }
+                    i
+                }
+                _ => {
+                    return Err(HaversError::TypeError {
+                        message: "Slice step must be an integer".to_string(),
+                        line: span.line,
+                    })
+                }
+            }
+        } else {
+            1
+        };
+
+        match obj {
+            Value::List(list) => {
+                let list = list.borrow();
+                let len = list.len() as i64;
+
+                // Handle defaults based on step direction
+                let (start, end) = if step_val > 0 {
+                    let s = start_idx.unwrap_or(0);
+                    let e = end_idx.unwrap_or(len);
+                    (s, e)
+                } else {
+                    // Negative step: default start is -1 (end), default end is before start
+                    let s = start_idx.unwrap_or(-1);
+                    let e = end_idx.unwrap_or(-(len + 1));
+                    (s, e)
+                };
+
+                // Normalize negative indices
+                let start = if start < 0 {
+                    (len + start).max(0) as usize
+                } else {
+                    (start as usize).min(list.len())
+                };
+
+                let end = if end < 0 {
+                    (len + end).max(-1)
+                } else {
+                    (end as usize).min(list.len()) as i64
+                };
+
+                let mut sliced: Vec<Value> = Vec::new();
+                if step_val > 0 {
+                    let mut i = start as i64;
+                    while i < end {
+                        sliced.push(list[i as usize].clone());
+                        // A huge step jumps past the end; never overflow
+                        match i.checked_add(step_val) {
+                            Some(next) => i = next,
+                            None => break,
                         }
-                        Err(ControlFlow::Break) | Err(ControlFlow::Continue) => {
-                            // Propagate break/continue - shouldn't happen in block expr
+                    }
+                } else {
+                    // Negative step: go backwards
+                    let mut i = start as i64;
+                    while i > end {
+                        if (i as usize) < list.len() {
+                            sliced.push(list[i as usize].clone());
+                        }
+                        // step_val is negative; stop rather than overflow
+                        match i.checked_add(step_val) {
+                            Some(next) => i = next,
+                            None => break,
                         }
                     }
                 }
-                Ok(Value::Nil)
+                Ok(Value::List(Rc::new(RefCell::new(sliced))))
+            }
+            Value::String(s) => {
+                let chars: Vec<char> = s.chars().collect();
+                let len = chars.len() as i64;
+
+                // Handle defaults based on step direction
+                let (start, end) = if step_val > 0 {
+                    let st = start_idx.unwrap_or(0);
+                    let en = end_idx.unwrap_or(len);
+                    (st, en)
+                } else {
+                    // Negative step: default start is -1 (end), default end is before start
+                    let st = start_idx.unwrap_or(-1);
+                    let en = end_idx.unwrap_or(-(len + 1));
+                    (st, en)
+                };
+
+                // Normalize negative indices
+                let start = if start < 0 {
+                    (len + start).max(0) as usize
+                } else {
+                    (start as usize).min(chars.len())
+                };
+
+                let end = if end < 0 {
+                    (len + end).max(-1)
+                } else {
+                    (end as usize).min(chars.len()) as i64
+                };
+
+                let mut sliced = String::new();
+                if step_val > 0 {
+                    let mut i = start as i64;
+                    while i < end {
+                        sliced.push(chars[i as usize]);
+                        // A huge step jumps past the end; never overflow
+                        match i.checked_add(step_val) {
+                            Some(next) => i = next,
+                            None => break,
+                        }
+                    }
+                } else {
+                    // Negative step: go backwards
+                    let mut i = start as i64;
+                    while i > end {
+                        if (i as usize) < chars.len() {
+                            sliced.push(chars[i as usize]);
+                        }
+                        // step_val is negative; stop rather than overflow
+                        match i.checked_add(step_val) {
+                            Some(next) => i = next,
+                            None => break,
+                        }
+                    }
+                }
+                Ok(Value::String(sliced))
+            }
+            _ => Err(HaversError::TypeError {
+                message: format!("Cannae slice a {}, ya numpty!", obj.type_name()),
+                line: span.line,
+            }),
+        }
+    }
+
+    /// List literal (with `...` spread)
+    #[inline(never)]
+    fn eval_list(&mut self, elements: &[Expr]) -> HaversResult<Value> {
+        let mut items = Vec::new();
+        for elem in elements {
+            // Handle spread operator (...) - skail the elements intae the list
+            if let Expr::Spread { expr, span } = elem {
+                let spread_value = self.evaluate(expr)?;
+                match spread_value {
+                    Value::List(list) => {
+                        items.extend(list.borrow().clone());
+                    }
+                    Value::String(s) => {
+                        // Spread string into characters
+                        for c in s.chars() {
+                            items.push(Value::String(c.to_string()));
+                        }
+                    }
+                    _ => {
+                        return Err(HaversError::TypeError {
+                            message: "Cannae skail (spread) somethin' that isnae a list or string!"
+                                .to_string(),
+                            line: span.line,
+                        });
+                    }
+                }
+            } else {
+                items.push(self.evaluate(elem)?);
             }
         }
+        Ok(Value::List(Rc::new(RefCell::new(items))))
+    }
+
+    /// Dict literal
+    #[inline(never)]
+    fn eval_dict(&mut self, pairs: &[(Expr, Expr)]) -> HaversResult<Value> {
+        let mut map = DictValue::new();
+        for (key, value) in pairs {
+            let k = self.evaluate(key)?;
+            let v = self.evaluate(value)?;
+            map.set(k, v);
+        }
+        Ok(Value::Dict(Rc::new(RefCell::new(map))))
+    }
+
+    /// Range literal `start..end` built as a list
+    #[inline(never)]
+    fn eval_range(
+        &mut self,
+        expr: &Expr,
+        start: &Expr,
+        end: &Expr,
+        inclusive: &bool,
+    ) -> HaversResult<Value> {
+        let start_val = self.evaluate(start)?;
+        let end_val = self.evaluate(end)?;
+        match (start_val.as_integer(), end_val.as_integer()) {
+            (Some(s), Some(e)) => {
+                Self::check_range_size(s, e, *inclusive).map_err(|message| {
+                    HaversError::InvalidNumberOperation {
+                        message,
+                        line: expr.span().line,
+                    }
+                })?;
+                Ok(Self::range_to_list(s, e, *inclusive))
+            }
+            _ => Err(HaversError::TypeError {
+                message: "Range bounds must be integers".to_string(),
+                line: expr.span().line,
+            }),
+        }
+    }
+
+    /// Lambda expression
+    #[inline(never)]
+    fn eval_lambda(&mut self, params: &[String], body: &Expr, span: &Span) -> HaversResult<Value> {
+        // Convert lambda params tae FunctionParams (lambdas dinnae hae defaults)
+        let runtime_params: Vec<FunctionParam> = params
+            .iter()
+            .map(|name| FunctionParam {
+                name: name.clone(),
+                default: None,
+            })
+            .collect();
+
+        // Create a function from the lambda
+        let func = HaversFunction::new(
+            "<lambda>".to_string(),
+            runtime_params,
+            vec![Stmt::Return {
+                value: Some(body.clone()),
+                span: *span,
+            }],
+            Some(self.environment.clone()),
+        );
+        Ok(Value::Function(Rc::new(func)))
+    }
+
+    /// `speir` (input)
+    #[inline(never)]
+    fn eval_input(&mut self, prompt: &Expr) -> HaversResult<Value> {
+        #[cfg(coverage)]
+        {
+            let _ = self.evaluate(prompt)?;
+            Err(HaversError::InternalError(
+                "speir() input is disabled under coverage runs".to_string(),
+            ))
+        }
+
+        #[cfg(not(coverage))]
+        {
+            let prompt_val = self.evaluate(prompt)?;
+            print!("{}", prompt_val);
+            io::stdout().flush().unwrap();
+
+            let mut input = String::new();
+            io::stdin()
+                .read_line(&mut input)
+                .map_err(|e| HaversError::InternalError(e.to_string()))?;
+
+            Ok(Value::String(input.trim().to_string()))
+        }
+    }
+
+    /// f-string
+    #[inline(never)]
+    fn eval_fstring(&mut self, parts: &[FStringPart]) -> HaversResult<Value> {
+        let mut result = String::new();
+        for part in parts {
+            match part {
+                FStringPart::Text(text) => result.push_str(text),
+                FStringPart::Expr(expr) => {
+                    let val = self.evaluate(expr)?;
+                    result.push_str(&val.to_string());
+                }
+            }
+        }
+        Ok(Value::String(result))
+    }
+
+    /// Pipe forward: `left |> right` calls `right(left)`
+    #[inline(never)]
+    fn eval_pipe(&mut self, left: &Expr, right: &Expr, span: &Span) -> HaversResult<Value> {
+        let left_val = self.evaluate(left)?;
+        let right_val = self.evaluate(right)?;
+        // Call the right side as a function with left as the argument
+        self.call_value(right_val, vec![left_val], span.line)
+    }
+
+    /// Ternary (conditional) expression
+    #[inline(never)]
+    fn eval_ternary(
+        &mut self,
+        condition: &Expr,
+        then_expr: &Expr,
+        else_expr: &Expr,
+    ) -> HaversResult<Value> {
+        // Evaluate condition and pick the appropriate branch
+        let cond_val = self.evaluate(condition)?;
+        if cond_val.is_truthy() {
+            self.evaluate(then_expr)
+        } else {
+            self.evaluate(else_expr)
+        }
+    }
+
+    /// Block expression: the value of its `gie`, if any
+    #[inline(never)]
+    fn eval_block_expr(&mut self, statements: &[Stmt]) -> HaversResult<Value> {
+        // Execute statements and return the value from 'gie' if any
+        // Use execute_stmt_with_control to handle return properly
+        for stmt in statements {
+            match self.execute_stmt_with_control(stmt)? {
+                Ok(_) => {}
+                Err(ControlFlow::Return(value)) => {
+                    return Ok(value);
+                }
+                Err(ControlFlow::Break) | Err(ControlFlow::Continue) => {
+                    // Propagate break/continue - shouldn't happen in block expr
+                }
+            }
+        }
+        Ok(Value::Nil)
     }
 
     fn binary_op(
@@ -12601,17 +12846,7 @@ impl Interpreter {
         let _guard = InterpreterGuard::new(self);
         match callee {
             Value::Function(func) => self.call_function(&func, args, line),
-            Value::NativeFunction(native) => {
-                if native.arity != usize::MAX && args.len() != native.arity {
-                    return Err(HaversError::WrongArity {
-                        name: native.name.clone(),
-                        expected: native.arity,
-                        got: args.len(),
-                        line,
-                    });
-                }
-                (native.func)(args).map_err(HaversError::InternalError)
-            }
+            Value::NativeFunction(native) => Self::call_native_function(&native, args, line),
             Value::NativeObject(_) => Err(HaversError::TypeError {
                 message: "Cannae ca' a native object like a function".to_string(),
                 line,
@@ -12620,45 +12855,84 @@ impl Interpreter {
             Value::String(ref s) if s.starts_with("__builtin_") => {
                 self.call_builtin_hof(s, args, line)
             }
-            Value::Class(class) => {
-                // Create new instance
-                let instance = Rc::new(RefCell::new(HaversInstance::new(class.clone())));
+            Value::Class(class) => self.construct_instance(class, args, line),
+            Value::Struct(structure) => Self::construct_struct(&structure, args, line),
+            _ => Err(Self::not_callable(&callee, line)),
+        }
+    }
 
-                // Call init if it exists
-                if let Some(init) = class.find_method("init") {
-                    let env = Rc::new(RefCell::new(Environment::with_enclosing(
-                        init.closure.clone().unwrap_or(self.globals.clone()),
-                    )));
-                    env.borrow_mut()
-                        .define("masel".to_string(), Value::Instance(instance.clone()));
-                    self.call_function_with_env(&init, args, env, line)?;
-                }
-
-                Ok(Value::Instance(instance))
-            }
-            Value::Struct(structure) => {
-                // Create instance with fields
-                if args.len() != structure.fields.len() {
-                    return Err(HaversError::WrongArity {
-                        name: structure.name.clone(),
-                        expected: structure.fields.len(),
-                        got: args.len(),
-                        line,
-                    });
-                }
-
-                let mut fields = DictValue::new();
-                for (field, value) in structure.fields.iter().zip(args) {
-                    fields.set(Value::String(field.clone()), value);
-                }
-
-                // Return as a dict for now
-                Ok(Value::Dict(Rc::new(RefCell::new(fields))))
-            }
-            _ => Err(HaversError::NotCallable {
-                name: format!("{}", callee),
+    #[inline(never)]
+    fn call_native_function(
+        native: &NativeFunction,
+        args: Vec<Value>,
+        line: usize,
+    ) -> HaversResult<Value> {
+        if native.arity != usize::MAX && args.len() != native.arity {
+            return Err(HaversError::WrongArity {
+                name: native.name.clone(),
+                expected: native.arity,
+                got: args.len(),
                 line,
-            }),
+            });
+        }
+        (native.func)(args).map_err(HaversError::InternalError)
+    }
+
+    /// Calling a class makes an instance and runs its `init`, if any.
+    #[inline(never)]
+    fn construct_instance(
+        &mut self,
+        class: Rc<HaversClass>,
+        args: Vec<Value>,
+        line: usize,
+    ) -> HaversResult<Value> {
+        // Create new instance
+        let instance = Rc::new(RefCell::new(HaversInstance::new(class.clone())));
+
+        // Call init if it exists
+        if let Some(init) = class.find_method("init") {
+            let env = Rc::new(RefCell::new(Environment::with_enclosing(
+                init.closure.clone().unwrap_or(self.globals.clone()),
+            )));
+            env.borrow_mut()
+                .define("masel".to_string(), Value::Instance(instance.clone()));
+            self.call_function_with_env(&init, args, env, line)?;
+        }
+
+        Ok(Value::Instance(instance))
+    }
+
+    /// Calling a struct builds a dict of its fields.
+    #[inline(never)]
+    fn construct_struct(
+        structure: &HaversStruct,
+        args: Vec<Value>,
+        line: usize,
+    ) -> HaversResult<Value> {
+        // Create instance with fields
+        if args.len() != structure.fields.len() {
+            return Err(HaversError::WrongArity {
+                name: structure.name.clone(),
+                expected: structure.fields.len(),
+                got: args.len(),
+                line,
+            });
+        }
+
+        let mut fields = DictValue::new();
+        for (field, value) in structure.fields.iter().zip(args) {
+            fields.set(Value::String(field.clone()), value);
+        }
+
+        // Return as a dict for now
+        Ok(Value::Dict(Rc::new(RefCell::new(fields))))
+    }
+
+    #[inline(never)]
+    fn not_callable(callee: &Value, line: usize) -> HaversError {
+        HaversError::NotCallable {
+            name: format!("{}", callee),
+            line,
         }
     }
 
@@ -12864,16 +13138,22 @@ impl Interpreter {
         line: usize,
     ) -> HaversResult<Value> {
         Self::check_function_arity(func, args.len(), line)?;
-
-        let here = current_stack_address();
-        if self.call_depth >= MAX_CALL_DEPTH || here < stack_call_limit(here) {
-            return Err(HaversError::StackOverflow { line });
-        }
+        self.check_stack_room(line)?;
 
         self.call_depth += 1;
         let result = self.call_function_body(func, args, env, line);
         self.call_depth -= 1;
         result
+    }
+
+    /// Raise the catchable `StackOverflow` if another nested call (or
+    /// module import) would get too close to the end of the native stack.
+    fn check_stack_room(&self, line: usize) -> HaversResult<()> {
+        let here = current_stack_address();
+        if self.call_depth >= MAX_CALL_DEPTH || here < stack_call_limit(here) {
+            return Err(HaversError::StackOverflow { line });
+        }
+        Ok(())
     }
 
     fn call_function_body(
@@ -12885,30 +13165,42 @@ impl Interpreter {
     ) -> HaversResult<Value> {
         let _stack_guard = StackFrameGuard::new(&func.name, line);
 
-        // Set up closure environment fer evaluating default values
-        {
-            let _env_guard = EnvSwapGuard::new(self, env.clone());
-
-            // Bind parameters, using defaults where nae argument was provided
-            for (i, param) in func.params.iter().enumerate() {
-                let value = if i < args.len() {
-                    args[i].clone()
-                } else if let Some(default_expr) = &param.default {
-                    // Evaluate the default value in the function's closure
-                    self.evaluate(default_expr)?
-                } else {
-                    // This shouldnae happen if arity checking worked
-                    Value::Nil
-                };
-                env.borrow_mut().define(param.name.clone(), value);
-            }
-        }
+        self.bind_params(func, args, &env)?;
 
         match self.execute_block(&func.body, Some(env))? {
             Ok(v) => Ok(v),
             Err(ControlFlow::Return(v)) => Ok(v),
             Err(ControlFlow::Break) | Err(ControlFlow::Continue) => Ok(Value::Nil),
         }
+    }
+
+    /// Bind a call's parameters in `env`, using defaults where nae argument
+    /// was provided. Kept out of line so its locals are not on the native
+    /// stack while the body runs.
+    #[inline(never)]
+    fn bind_params(
+        &mut self,
+        func: &HaversFunction,
+        args: Vec<Value>,
+        env: &Rc<RefCell<Environment>>,
+    ) -> HaversResult<()> {
+        // Set up closure environment fer evaluating default values
+        let _env_guard = EnvSwapGuard::new(self, env.clone());
+
+        let mut args = args.into_iter();
+        for param in func.params.iter() {
+            let value = if let Some(arg) = args.next() {
+                arg
+            } else if let Some(default_expr) = &param.default {
+                // Evaluate the default value in the function's closure
+                self.evaluate(default_expr)?
+            } else {
+                // This shouldnae happen if arity checking worked
+                Value::Nil
+            };
+            env.borrow_mut().define(param.name.clone(), value);
+        }
+        Ok(())
     }
 }
 

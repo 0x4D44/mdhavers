@@ -540,3 +540,312 @@ blether json_parse("-9223372036854775808")
     );
     assert_eq!(out, "float\n12345678901234567000\n-9223372036854775808");
 }
+
+// ---------- MDH-BUG-FLU-00067: native stack per mdhavers call ----------
+
+/// Deepest mdhavers call reached before the stack guard fires, on a fresh
+/// thread with `stack` bytes of native stack. With `with_try`, every level
+/// also sits inside a `hae_a_bash` block.
+fn max_recursion_depth(stack: usize, with_try: bool) -> usize {
+    let code = if with_try {
+        r#"
+ken deepest = 0
+dae dive(n) {
+    deepest = n
+    hae_a_bash {
+        dive(n + 1)
+    } gin_it_gangs_wrang e {
+        ken stopped = aye
+    }
+}
+dive(1)
+blether deepest
+"#
+    } else {
+        r#"
+ken deepest = 0
+dae dive(n) {
+    deepest = n
+    gie dive(n + 1)
+}
+hae_a_bash {
+    dive(1)
+} gin_it_gangs_wrang e {
+    ken stopped = aye
+}
+blether deepest
+"#
+    };
+    std::thread::Builder::new()
+        .stack_size(stack)
+        .spawn(move || {
+            mdhavers::interpreter::register_thread_stack(stack);
+            run_ok(code).trim().parse::<usize>().expect("a depth")
+        })
+        .unwrap()
+        .join()
+        .unwrap()
+}
+
+const MIB: usize = 1024 * 1024;
+
+/// Minimum depth on an 8 MiB thread (the macOS main-thread size, where the
+/// default graphics build has to run). Debug builds used to manage ~165.
+const MIN_DEPTH_8MIB: usize = if cfg!(debug_assertions) { 400 } else { 3000 };
+
+#[test]
+fn recursion_depth_on_an_8mib_thread_is_practical() {
+    let depth = max_recursion_depth(8 * MIB, false);
+    assert!(
+        depth >= MIN_DEPTH_8MIB,
+        "only {depth} nested calls fit in 8 MiB (want {MIN_DEPTH_8MIB})"
+    );
+}
+
+#[test]
+fn recursion_depth_with_try_on_an_8mib_thread_is_practical() {
+    // A hae_a_bash per level used to cut the debug depth to ~96.
+    let depth = max_recursion_depth(8 * MIB, true);
+    assert!(
+        depth >= MIN_DEPTH_8MIB / 2,
+        "only {depth} nested calls (each in a hae_a_bash) fit in 8 MiB"
+    );
+}
+
+/// Measurement probe: `cargo test --test interpreter_robustness
+/// recursion_depth_probe -- --ignored --nocapture`
+#[test]
+#[ignore]
+fn recursion_depth_probe() {
+    eprintln!(
+        "sizes: Value={} HaversError={} HaversResult<Value>={}",
+        std::mem::size_of::<mdhavers::Value>(),
+        std::mem::size_of::<HaversError>(),
+        std::mem::size_of::<mdhavers::HaversResult<mdhavers::Value>>()
+    );
+    for stack in [2 * MIB, 8 * MIB] {
+        for with_try in [false, true] {
+            let depth = max_recursion_depth(stack, with_try);
+            eprintln!(
+                "depth probe: stack={} MiB try={} depth={}",
+                stack / MIB,
+                with_try,
+                depth
+            );
+        }
+    }
+}
+
+// ---------- MDH-BUG-FLU-00063: Debug on cyclic values ----------
+
+type ListRc = std::rc::Rc<std::cell::RefCell<Vec<mdhavers::Value>>>;
+
+fn new_list(items: Vec<mdhavers::Value>) -> ListRc {
+    std::rc::Rc::new(std::cell::RefCell::new(items))
+}
+
+#[test]
+fn debug_of_acyclic_values_keeps_the_derived_shape() {
+    use mdhavers::Value;
+    let v = Value::List(new_list(vec![
+        Value::Integer(1),
+        Value::Float(2.5),
+        Value::String("x".to_string()),
+        Value::Bool(true),
+        Value::Nil,
+        Value::List(new_list(vec![])),
+    ]));
+    assert_eq!(
+        format!("{v:?}"),
+        "List(RefCell { value: [Integer(1), Float(2.5), String(\"x\"), Bool(true), Nil, \
+         List(RefCell { value: [] })] })"
+    );
+}
+
+#[test]
+fn debug_of_a_self_referential_list_terminates() {
+    use mdhavers::Value;
+    let list = new_list(vec![Value::Integer(1)]);
+    list.borrow_mut().push(Value::List(list.clone()));
+    let v = Value::List(list.clone());
+    assert_eq!(
+        format!("{v:?}"),
+        "List(RefCell { value: [Integer(1), List(...)] })"
+    );
+    assert!(format!("{v:#?}").contains("List(\n"));
+    list.borrow_mut().clear(); // break the cycle
+}
+
+#[test]
+fn debug_of_a_self_referential_dict_terminates() {
+    use mdhavers::value::DictValue;
+    use mdhavers::Value;
+    let dict = std::rc::Rc::new(std::cell::RefCell::new(DictValue::new()));
+    dict.borrow_mut()
+        .set(Value::String("me".to_string()), Value::Dict(dict.clone()));
+    let v = Value::Dict(dict.clone());
+    assert_eq!(
+        format!("{v:?}"),
+        "Dict(RefCell { value: DictValue { entries: [(String(\"me\"), Dict(...))] } })"
+    );
+    dict.borrow_mut().remove(&Value::String("me".to_string()));
+}
+
+#[test]
+fn debug_of_instances_and_functions_terminates() {
+    let program = parse(
+        r#"
+kin Node {
+    dae init() {
+        masel.me = masel
+    }
+}
+ken n = Node()
+dae f() {
+    gie 1
+}
+"#,
+    )
+    .expect("parse");
+    let mut interp = Interpreter::new();
+    interp.interpret(&program).expect("run");
+    let n = interp.globals.borrow().get("n").expect("n");
+    let s = format!("{n:?}");
+    assert!(
+        s.starts_with("Instance(RefCell { value: HaversInstance { class: \"Node\""),
+        "{s}"
+    );
+    assert!(s.contains("\"me\": Instance(...)"), "{s}");
+    // A function's closure holds the globals, which hold the function.
+    let f = interp.globals.borrow().get("f").expect("f");
+    assert!(format!("{f:?}").starts_with("Function(<dae f @"), "{f:?}");
+}
+
+#[test]
+fn uniq_of_self_referential_lists_terminates() {
+    // uniq keys on Debug output, so it used to recurse forever here.
+    let out = run_ok(
+        r#"
+ken a = [1]
+shove(a, a)
+blether len(uniq([a, a, 2]))
+"#,
+    );
+    assert_eq!(out, "2");
+}
+
+// ---------- MDH-BUG-FLU-00079: deep list equality, import chains ----------
+
+/// `[[[...[leaf]...]]]`, `depth` lists deep.
+fn nested_list(depth: usize, leaf: i64) -> mdhavers::Value {
+    use mdhavers::Value;
+    let mut v = Value::List(new_list(vec![Value::Integer(leaf)]));
+    for _ in 0..depth {
+        v = Value::List(new_list(vec![v]));
+    }
+    v
+}
+
+#[test]
+fn deep_list_equality_does_not_overflow_the_stack() {
+    let (same, different) = std::thread::Builder::new()
+        .stack_size(MIB)
+        .spawn(|| {
+            let a = nested_list(200_000, 1);
+            let b = nested_list(200_000, 1);
+            let c = nested_list(200_000, 2);
+            let result = (a == b, a == c);
+            // Dropping lists this deep recurses natively too; leak them.
+            std::mem::forget((a, b, c));
+            result
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+    assert!(same);
+    assert!(!different);
+}
+
+/// `prefix` single-item lists leading into a cycle of `cycle` lists, where
+/// cycle list `i` is `[i, <next>]`.
+fn chain_into_cycle(prefix: usize, cycle: i64) -> mdhavers::Value {
+    use mdhavers::Value;
+    let first = new_list(vec![Value::Integer(0)]);
+    let mut last = first.clone();
+    for i in 1..cycle {
+        let next = new_list(vec![Value::Integer(i)]);
+        last.borrow_mut().push(Value::List(next.clone()));
+        last = next;
+    }
+    last.borrow_mut().push(Value::List(first.clone()));
+    let mut v = Value::List(first);
+    for _ in 0..prefix {
+        v = Value::List(new_list(vec![v]));
+    }
+    v
+}
+
+#[test]
+fn equality_of_cycles_reached_deep_in_a_list_terminates() {
+    // The repeated pair is first met past the linear-search depth (64).
+    let a = chain_into_cycle(70, 10);
+    let b = chain_into_cycle(70, 10);
+    assert!(a == b);
+    assert!(a != chain_into_cycle(70, 11));
+    assert!(a != chain_into_cycle(71, 10));
+}
+
+#[test]
+fn long_import_chain_is_a_catchable_stack_overflow() {
+    let dir = tempfile::tempdir().unwrap();
+    let modules = 5000;
+    for i in 0..modules {
+        let body = if i + 1 < modules {
+            format!("fetch \"m{}\"\nken v{} = {}\n", i + 1, i, i)
+        } else {
+            "ken last = 1\n".to_string()
+        };
+        std::fs::write(dir.path().join(format!("m{i}.braw")), body).unwrap();
+    }
+    let path = dir.path().to_path_buf();
+    let err = std::thread::Builder::new()
+        .stack_size(2 * MIB)
+        .spawn(move || {
+            mdhavers::interpreter::register_thread_stack(2 * MIB);
+            let program = parse("fetch \"m0\"").expect("parse");
+            let mut interp = Interpreter::new();
+            interp.set_current_dir(&path);
+            interp.interpret(&program).unwrap_err().to_string()
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+    assert!(err.starts_with("Stack's fair puggled!"), "{err}");
+}
+
+#[test]
+fn short_import_chain_still_works() {
+    let dir = tempfile::tempdir().unwrap();
+    for i in 0..10 {
+        let body = if i < 9 {
+            format!("fetch \"m{}\"\n", i + 1)
+        } else {
+            "ken last = 42\n".to_string()
+        };
+        std::fs::write(dir.path().join(format!("m{i}.braw")), body).unwrap();
+    }
+    let path = dir.path().to_path_buf();
+    let out = std::thread::Builder::new()
+        .stack_size(8 * MIB)
+        .spawn(move || {
+            let program = parse("fetch \"m0\"\nblether last").expect("parse");
+            let mut interp = Interpreter::new();
+            interp.set_current_dir(&path);
+            interp.interpret(&program).expect("run");
+            interp.get_output().join("\n")
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+    assert_eq!(out, "42");
+}

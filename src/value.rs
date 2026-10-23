@@ -1,6 +1,6 @@
 use std::any::Any;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::Rc;
 
@@ -43,7 +43,10 @@ pub trait NativeObject: fmt::Debug {
 }
 
 /// Runtime values in mdhavers
-#[derive(Debug, Clone)]
+///
+/// `Debug` is written by hand (see `debug_value`) so it terminates on
+/// self-referential containers and never walks a function's closure.
+#[derive(Clone)]
 pub enum Value {
     /// Integer number
     Integer(i64),
@@ -306,34 +309,384 @@ impl fmt::Display for Value {
     }
 }
 
-/// Structural list equality that terminates on cyclic lists.
-/// `active` holds the (left, right) list pairs being compared right now.
-/// Meeting one again means the comparison has come full circle without
-/// finding a difference, so that pair counts as equal (bisimulation).
-fn lists_equal(
-    a: &Rc<RefCell<Vec<Value>>>,
-    b: &Rc<RefCell<Vec<Value>>>,
-    active: &mut Vec<(usize, usize)>,
-) -> bool {
-    let pair = (
+// ---------- Debug ----------
+
+/// Containers already being written by `debug_value`, by address.
+type DebugOpen = RefCell<Vec<usize>>;
+
+/// Marks a container as open for the life of the guard. `None` if it is
+/// already open (a cycle) or the nesting is past `MAX_DISPLAY_DEPTH`.
+struct DebugEnter<'a>(&'a DebugOpen);
+
+impl<'a> DebugEnter<'a> {
+    fn new(open: &'a DebugOpen, id: usize) -> Option<Self> {
+        let mut stack = open.borrow_mut();
+        if stack.contains(&id) || stack.len() >= MAX_DISPLAY_DEPTH {
+            return None;
+        }
+        stack.push(id);
+        Some(DebugEnter(open))
+    }
+}
+
+impl Drop for DebugEnter<'_> {
+    fn drop(&mut self) {
+        self.0.borrow_mut().pop();
+    }
+}
+
+/// A value plus the shared open-container set, so nested `Debug` calls
+/// (including pretty `{:#?}` ones) keep tracking cycles.
+struct DebugWith<'a> {
+    value: &'a Value,
+    open: &'a DebugOpen,
+}
+
+impl fmt::Debug for DebugWith<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        debug_value(self.value, f, self.open)
+    }
+}
+
+/// Writes its text as-is (for `...` and pre-rendered parts).
+struct DebugRaw<'a>(&'a str);
+
+impl fmt::Debug for DebugRaw<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.0)
+    }
+}
+
+/// `RefCell { value: <inner> }`, the shape derived Debug gave containers.
+struct DebugRefCell<T>(T);
+
+impl<T: fmt::Debug> fmt::Debug for DebugRefCell<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RefCell").field("value", &self.0).finish()
+    }
+}
+
+struct DebugItems<'a> {
+    items: &'a [Value],
+    open: &'a DebugOpen,
+}
+
+impl fmt::Debug for DebugItems<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_list()
+            .entries(self.items.iter().map(|value| DebugWith {
+                value,
+                open: self.open,
+            }))
+            .finish()
+    }
+}
+
+struct DebugDict<'a> {
+    dict: &'a DictValue,
+    open: &'a DebugOpen,
+}
+
+impl fmt::Debug for DebugDict<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let entries: Vec<(DebugWith<'_>, DebugWith<'_>)> = self
+            .dict
+            .iter()
+            .map(|(k, v)| {
+                (
+                    DebugWith {
+                        value: k,
+                        open: self.open,
+                    },
+                    DebugWith {
+                        value: v,
+                        open: self.open,
+                    },
+                )
+            })
+            .collect();
+        f.debug_struct("DictValue")
+            .field("entries", &entries)
+            .finish()
+    }
+}
+
+/// Fields of an instance, sorted by name so the output is stable.
+struct DebugFields<'a> {
+    fields: &'a HashMap<String, Value>,
+    open: &'a DebugOpen,
+}
+
+impl fmt::Debug for DebugFields<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut names: Vec<&String> = self.fields.keys().collect();
+        names.sort();
+        f.debug_map()
+            .entries(names.into_iter().map(|name| {
+                (
+                    name,
+                    DebugWith {
+                        value: &self.fields[name],
+                        open: self.open,
+                    },
+                )
+            }))
+            .finish()
+    }
+}
+
+/// `<dae name @0x...>`: a function or class by name and identity. Their
+/// closures hold environments that usually contain the function itself.
+struct DebugIdentity<'a> {
+    kind: &'a str,
+    name: &'a str,
+    ptr: *const (),
+}
+
+impl fmt::Debug for DebugIdentity<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "<{} {} @{:p}>", self.kind, self.name, self.ptr)
+    }
+}
+
+/// Cycle-safe `Debug` for a value. Scalars, structs, ranges, bytes and
+/// native values print as derived `Debug` did; lists keep the
+/// `List(RefCell { value: [...] })` shape. A list, dict, creel or
+/// instance met again inside itself (or nested past `MAX_DISPLAY_DEPTH`)
+/// prints as `List(...)` / `Dict(...)` / `Set(...)` / `Instance(...)`.
+/// Dicts list their entries in order, creels their items sorted, instances
+/// their class name and sorted fields; functions and classes print by name
+/// and address rather than walking their closures.
+fn debug_value(value: &Value, f: &mut fmt::Formatter<'_>, open: &DebugOpen) -> fmt::Result {
+    let elided = DebugRaw("...");
+    match value {
+        Value::Integer(n) => f.debug_tuple("Integer").field(n).finish(),
+        Value::Float(x) => f.debug_tuple("Float").field(x).finish(),
+        Value::String(s) => f.debug_tuple("String").field(s).finish(),
+        Value::Bool(b) => f.debug_tuple("Bool").field(b).finish(),
+        Value::Nil => f.write_str("Nil"),
+        Value::Range(r) => f.debug_tuple("Range").field(r).finish(),
+        Value::Bytes(b) => f.debug_tuple("Bytes").field(b).finish(),
+        Value::NativeFunction(func) => f.debug_tuple("NativeFunction").field(func).finish(),
+        Value::NativeObject(obj) => f.debug_tuple("NativeObject").field(obj).finish(),
+        Value::Struct(s) => f.debug_tuple("Struct").field(s).finish(),
+        Value::Function(func) => f
+            .debug_tuple("Function")
+            .field(&DebugIdentity {
+                kind: "dae",
+                name: &func.name,
+                ptr: Rc::as_ptr(func) as *const (),
+            })
+            .finish(),
+        Value::Class(class) => f
+            .debug_tuple("Class")
+            .field(&DebugIdentity {
+                kind: "kin",
+                name: &class.name,
+                ptr: Rc::as_ptr(class) as *const (),
+            })
+            .finish(),
+        Value::List(items) => {
+            let Some(_entered) = DebugEnter::new(open, Rc::as_ptr(items) as *const () as usize)
+            else {
+                return f.debug_tuple("List").field(&elided).finish();
+            };
+            match items.try_borrow() {
+                Ok(items) => f
+                    .debug_tuple("List")
+                    .field(&DebugRefCell(DebugItems {
+                        items: &items,
+                        open,
+                    }))
+                    .finish(),
+                Err(_) => f
+                    .debug_tuple("List")
+                    .field(&DebugRefCell(DebugRaw("<borrowed>")))
+                    .finish(),
+            }
+        }
+        Value::Dict(dict) => {
+            let Some(_entered) = DebugEnter::new(open, Rc::as_ptr(dict) as *const () as usize)
+            else {
+                return f.debug_tuple("Dict").field(&elided).finish();
+            };
+            match dict.try_borrow() {
+                Ok(dict) => f
+                    .debug_tuple("Dict")
+                    .field(&DebugRefCell(DebugDict { dict: &dict, open }))
+                    .finish(),
+                Err(_) => f
+                    .debug_tuple("Dict")
+                    .field(&DebugRefCell(DebugRaw("<borrowed>")))
+                    .finish(),
+            }
+        }
+        Value::Set(set) => {
+            let Some(_entered) = DebugEnter::new(open, Rc::as_ptr(set) as *const () as usize)
+            else {
+                return f.debug_tuple("Set").field(&elided).finish();
+            };
+            let Ok(set) = set.try_borrow() else {
+                return f
+                    .debug_tuple("Set")
+                    .field(&DebugRefCell(DebugRaw("<borrowed>")))
+                    .finish();
+            };
+            // A creel's own order is a hash order; sort for stable output.
+            let mut items: Vec<String> = set
+                .iter()
+                .map(|value| format!("{:?}", DebugWith { value, open }))
+                .collect();
+            items.sort();
+            let items: Vec<DebugRaw<'_>> = items.iter().map(|s| DebugRaw(s)).collect();
+            f.debug_tuple("Set").field(&DebugRefCell(items)).finish()
+        }
+        Value::Instance(inst) => {
+            let Some(_entered) = DebugEnter::new(open, Rc::as_ptr(inst) as *const () as usize)
+            else {
+                return f.debug_tuple("Instance").field(&elided).finish();
+            };
+            let Ok(inst) = inst.try_borrow() else {
+                return f
+                    .debug_tuple("Instance")
+                    .field(&DebugRefCell(DebugRaw("<borrowed>")))
+                    .finish();
+            };
+            f.debug_tuple("Instance")
+                .field(&DebugRefCell(DebugInstance {
+                    class: &inst.class.name,
+                    fields: DebugFields {
+                        fields: &inst.fields,
+                        open,
+                    },
+                }))
+                .finish()
+        }
+    }
+}
+
+struct DebugInstance<'a> {
+    class: &'a str,
+    fields: DebugFields<'a>,
+}
+
+impl fmt::Debug for DebugInstance<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HaversInstance")
+            .field("class", &self.class)
+            .field("fields", &self.fields)
+            .finish()
+    }
+}
+
+impl fmt::Debug for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        debug_value(self, f, &RefCell::new(Vec::new()))
+    }
+}
+
+// ---------- Equality ----------
+
+/// Address pair identifying two lists being compared.
+fn list_pair(a: &Rc<RefCell<Vec<Value>>>, b: &Rc<RefCell<Vec<Value>>>) -> (usize, usize) {
+    (
         Rc::as_ptr(a) as *const () as usize,
         Rc::as_ptr(b) as *const () as usize,
-    );
-    if active.contains(&pair) {
-        return true;
-    }
-    let a = a.borrow();
-    let b = b.borrow();
-    if a.len() != b.len() {
+    )
+}
+
+/// One pair of lists on the comparison path, and the next index to check.
+struct ListEqFrame {
+    a: Rc<RefCell<Vec<Value>>>,
+    b: Rc<RefCell<Vec<Value>>>,
+    pair: (usize, usize),
+    next: usize,
+}
+
+/// Paths shorter than this are searched linearly for repeats; deeper ones
+/// also keep a hash set so very deep lists stay linear time.
+const LIST_EQ_LINEAR_DEPTH: usize = 64;
+
+/// Structural list equality that terminates on cyclic lists and works on
+/// any nesting depth. It walks the lists with an explicit heap stack rather
+/// than native recursion, so a list nested a million deep cannae overflow
+/// the native stack (PartialEq has no way to report an error).
+///
+/// The path holds the (left, right) list pairs being compared right now.
+/// Meeting one again means the comparison has come full circle without
+/// finding a difference, so that pair counts as equal (bisimulation).
+fn lists_equal(a: &Rc<RefCell<Vec<Value>>>, b: &Rc<RefCell<Vec<Value>>>) -> bool {
+    if a.borrow().len() != b.borrow().len() {
         return false;
     }
-    active.push(pair);
-    let equal = a.iter().zip(b.iter()).all(|(x, y)| match (x, y) {
-        (Value::List(xl), Value::List(yl)) => lists_equal(xl, yl, active),
-        _ => x == y,
-    });
-    active.pop();
-    equal
+    let mut path = vec![ListEqFrame {
+        a: a.clone(),
+        b: b.clone(),
+        pair: list_pair(a, b),
+        next: 0,
+    }];
+    // Pairs on the path below LIST_EQ_LINEAR_DEPTH (only filled once the
+    // path gets that deep).
+    let mut deep: HashSet<(usize, usize)> = HashSet::new();
+
+    loop {
+        let Some(top) = path.last_mut() else {
+            return true;
+        };
+        // Look at the next element pair of the innermost lists.
+        let child = {
+            let xs = top.a.borrow();
+            let ys = top.b.borrow();
+            let i = top.next;
+            if i >= xs.len() || i >= ys.len() {
+                None
+            } else {
+                top.next += 1;
+                match (&xs[i], &ys[i]) {
+                    (Value::List(xl), Value::List(yl)) => Some((xl.clone(), yl.clone())),
+                    (x, y) => {
+                        // Not both lists, so this does not recurse.
+                        if x != y {
+                            return false;
+                        }
+                        continue;
+                    }
+                }
+            }
+        };
+        match child {
+            None => {
+                // This pair is equal; leave it.
+                let done = path.pop().expect("path is not empty");
+                if path.len() >= LIST_EQ_LINEAR_DEPTH {
+                    deep.remove(&done.pair);
+                }
+            }
+            Some((xl, yl)) => {
+                let pair = list_pair(&xl, &yl);
+                let on_path = path
+                    .iter()
+                    .take(LIST_EQ_LINEAR_DEPTH)
+                    .any(|f| f.pair == pair)
+                    || deep.contains(&pair);
+                if on_path {
+                    continue;
+                }
+                if xl.borrow().len() != yl.borrow().len() {
+                    return false;
+                }
+                if path.len() >= LIST_EQ_LINEAR_DEPTH {
+                    deep.insert(pair);
+                }
+                path.push(ListEqFrame {
+                    a: xl,
+                    b: yl,
+                    pair,
+                    next: 0,
+                });
+            }
+        }
+    }
 }
 
 impl PartialEq for Value {
@@ -346,7 +699,7 @@ impl PartialEq for Value {
             (Value::String(a), Value::String(b)) => a == b,
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Nil, Value::Nil) => true,
-            (Value::List(a), Value::List(b)) => lists_equal(a, b, &mut Vec::new()),
+            (Value::List(a), Value::List(b)) => lists_equal(a, b),
             (Value::Dict(a), Value::Dict(b)) => Rc::ptr_eq(a, b),
             (Value::Set(a), Value::Set(b)) => Rc::ptr_eq(a, b),
             (Value::Bytes(a), Value::Bytes(b)) => *a.borrow() == *b.borrow(),
