@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00034 — REPL `vars` panics on non-ASCII values
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** cli
 - **Raised:** 2026-10-22T23:24:09Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T024851Z-16839b1a
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00034-run-fix-20261023T024851Z-16839b1a
-- **Owner base:** 3eb3ef021bbfbb31d62480877c90fe79a688e63a
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T02:48:51Z
-- **Owner until:** 2026-10-23T06:48:51Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-22T23:24:09Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-22T23:24:09Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T02:48:57Z, deltic:auto role=fix run=fix-20261023T024851Z-16839b1a branch=task/bug-MDH-BUG-FLU-00034-run-fix-20261023T024851Z-16839b1a code=77f950a gate=manual)
 
 ## Observation
 
