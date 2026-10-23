@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00084 — llvm_compile_repo_modules_coverage overflows the test thread stack
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** tests
 - **Raised:** 2026-10-23T03:06:29Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T034526Z-e8262a2d
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00084-run-fix-20261023T034526Z-e8262a2d
-- **Owner base:** 54ce8fb0975eae78631a07d2bb0ffcf1eb89f1b4
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T03:45:26Z
-- **Owner until:** 2026-10-23T07:45:26Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T03:06:29Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-23T03:06:29Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T03:45:31Z, deltic:auto role=fix run=fix-20261023T034526Z-e8262a2d branch=task/bug-MDH-BUG-FLU-00084-run-fix-20261023T034526Z-e8262a2d code=54979e9 gate=manual)
 
 ## Observation
 
