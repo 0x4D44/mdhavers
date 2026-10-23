@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00072 — Native: functions cannot reference globals defined later in the file
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-23T02:06:58Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T220155Z-449b24f2
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00072-run-fix-20261023T220155Z-449b24f2
-- **Owner base:** f88b63d1c8a9f669e13748e68cf00df06ccf3927
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T22:01:55Z
-- **Owner until:** 2026-10-24T02:01:55Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T02:06:58Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-23T02:06:58Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T22:02:02Z, deltic:auto role=fix run=fix-20261023T220155Z-449b24f2 branch=task/bug-MDH-BUG-FLU-00072-run-fix-20261023T220155Z-449b24f2 code=5404d6a gate=manual)
 
 ## Observation
 
