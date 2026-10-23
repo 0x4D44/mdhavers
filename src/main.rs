@@ -580,10 +580,28 @@ fn build_native(
         println!("  {} {}", "Output:".dimmed(), output_path.display());
         println!();
         println!("{}", "Tae run:".dimmed());
-        println!("  {} ./{}", "$".dimmed(), output_path.display());
+        println!("  {} {}", "$".dimmed(), run_hint_path(&output_path));
     }
 
     Ok(())
+}
+
+/// How to invoke a built executable from the shell: a bare relative name needs `./`,
+/// while an absolute path or one already starting `./` or `../` is used as it is
+/// (MDH-BUG-FLU-00076).
+#[cfg(feature = "llvm")]
+fn run_hint_path(output_path: &Path) -> String {
+    use std::path::Component;
+    let explicit = output_path.is_absolute()
+        || matches!(
+            output_path.components().next(),
+            Some(Component::CurDir | Component::ParentDir)
+        );
+    if explicit {
+        output_path.display().to_string()
+    } else {
+        format!("./{}", output_path.display())
+    }
 }
 
 fn repl_needs_more_input(buffer: &str) -> bool {

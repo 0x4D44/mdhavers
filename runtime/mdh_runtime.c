@@ -1528,8 +1528,85 @@ static int __mdh_cmp_cstr(const void *a, const void *b) {
 
 static bool __mdh_dict_is_creel(MdhValue dict);
 
+/* Big enough for any double written out in full: up to 309 integer digits, or
+ * "0." + 323 zeros + 17 digits, plus a sign and the terminator. */
+#define MDH_FLOAT_TEXT_MAX 400
+
+/* Format a double exactly as Rust's `{}` does, which is what the interpreter prints
+ * (MDH-BUG-FLU-00074): the shortest digits that round-trip, written in plain decimal
+ * (never an exponent), no ".0" on integral values, and NaN / inf / -inf / -0 spelled
+ * as Rust spells them. buf must hold MDH_FLOAT_TEXT_MAX bytes. */
+static void __mdh_format_float(char *buf, double f) {
+    if (isnan(f)) {
+        strcpy(buf, "NaN");
+        return;
+    }
+    if (isinf(f)) {
+        strcpy(buf, f < 0 ? "-inf" : "inf");
+        return;
+    }
+    char *out = buf;
+    if (signbit(f)) {
+        *out++ = '-';
+        f = -f;
+    }
+    if (f == 0.0) {
+        strcpy(out, "0");
+        return;
+    }
+
+    /* Shortest significant-digit count whose correctly rounded form reads back as f;
+     * 17 digits always round-trip. */
+    char sci[40];
+    for (int prec = 1; prec <= 17; prec++) {
+        snprintf(sci, sizeof(sci), "%.*e", prec - 1, f);
+        if (prec == 17 || strtod(sci, NULL) == f) {
+            break;
+        }
+    }
+
+    /* sci is "d[.ddd]e[+-]XX": collect the digits and the decimal exponent. */
+    char digits[20];
+    int nd = 0;
+    const char *p = sci;
+    while (*p && *p != 'e') {
+        if (*p != '.') {
+            digits[nd++] = *p;
+        }
+        p++;
+    }
+    int exp10 = atoi(p + 1);
+    while (nd > 1 && digits[nd - 1] == '0') {
+        nd--;
+    }
+
+    if (exp10 >= nd - 1) {
+        /* Integral: every digit, then zeros up to the units place. */
+        memcpy(out, digits, (size_t)nd);
+        out += nd;
+        for (int i = 0; i < exp10 - (nd - 1); i++) {
+            *out++ = '0';
+        }
+    } else if (exp10 >= 0) {
+        memcpy(out, digits, (size_t)(exp10 + 1));
+        out += exp10 + 1;
+        *out++ = '.';
+        memcpy(out, digits + exp10 + 1, (size_t)(nd - exp10 - 1));
+        out += nd - exp10 - 1;
+    } else {
+        *out++ = '0';
+        *out++ = '.';
+        for (int i = 0; i < -exp10 - 1; i++) {
+            *out++ = '0';
+        }
+        memcpy(out, digits, (size_t)nd);
+        out += nd;
+    }
+    *out = '\0';
+}
+
 static void __mdh_value_to_string_sb(MdhStrBuf *out, MdhValue v) {
-    char tmp[128];
+    char tmp[MDH_FLOAT_TEXT_MAX];
 
     switch (v.tag) {
         case MDH_TAG_NIL:
@@ -1543,7 +1620,7 @@ static void __mdh_value_to_string_sb(MdhStrBuf *out, MdhValue v) {
             __mdh_sb_append(out, tmp);
             return;
         case MDH_TAG_FLOAT:
-            snprintf(tmp, sizeof(tmp), "%g", __mdh_get_float(v));
+            __mdh_format_float(tmp, __mdh_get_float(v));
             __mdh_sb_append(out, tmp);
             return;
         case MDH_TAG_STRING:
@@ -5958,8 +6035,12 @@ MdhValue __mdh_replace(MdhValue str, MdhValue old_sub, MdhValue new_sub) {
     /* Rust's String::replace inserts the replacement at every char boundary for empty patterns. */
     if (old_len == 0) {
         int64_t chars = __mdh_utf8_count_codepoints((const unsigned char *)s);
-        size_t result_len = s_len + ((size_t)chars + 1) * new_len;
-        char *result = (char *)GC_malloc(result_len + 1);
+        /* s_len + (chars + 1) * new_len, checked (MDH-BUG-FLU-00082). */
+        size_t inserted = 0;
+        size_t result_len = 0;
+        int overflowed = __builtin_mul_overflow((size_t)chars + 1, new_len, &inserted) ||
+                         __builtin_add_overflow(s_len, inserted, &result_len);
+        char *result = __mdh_alloc_text(overflowed, result_len);
         char *r = result;
 
         memcpy(r, new_s, new_len);
@@ -5998,9 +6079,13 @@ MdhValue __mdh_replace(MdhValue str, MdhValue old_sub, MdhValue new_sub) {
     }
     if (count == 0) return str;
 
-    /* Allocate result */
-    size_t result_len = s_len + count * new_len - count * old_len;
-    char *result = (char *)GC_malloc(result_len + 1);
+    /* Allocate result: s_len - count * old_len + count * new_len. The matches lie inside
+     * s, so count * old_len <= s_len; the growth term is checked (MDH-BUG-FLU-00082). */
+    size_t grown = 0;
+    size_t result_len = 0;
+    int overflowed = __builtin_mul_overflow(count, new_len, &grown) ||
+                     __builtin_add_overflow(s_len - count * old_len, grown, &result_len);
+    char *result = __mdh_alloc_text(overflowed, result_len);
 
     char *r = result;
     const char *prev = s;
@@ -9921,4 +10006,23 @@ void __mdh_hurl(MdhValue msg) {
     MdhValue s = __mdh_to_string(msg);
     fprintf(stderr, "%s\n", __mdh_get_string(s));
     exit(1);
+}
+
+/* A user `hurl msg`: the interpreter's UserError text is "Hurled at line N: <msg>",
+ * and that is what a catch binds and what an uncaught hurl prints (MDH-BUG-FLU-00073). */
+void __mdh_hurl_at(MdhValue msg, int64_t line) {
+    const char *text = __mdh_get_string(__mdh_to_string(msg));
+    if (!text) {
+        text = "";
+    }
+    char prefix[48];
+    int prefix_len = snprintf(prefix, sizeof(prefix), "Hurled at line %lld: ", (long long)line);
+    size_t text_len = strlen(text);
+    size_t total = 0;
+    int overflowed =
+        prefix_len < 0 || __builtin_add_overflow((size_t)prefix_len, text_len, &total);
+    char *buf = __mdh_alloc_text(overflowed, total);
+    memcpy(buf, prefix, (size_t)prefix_len);
+    memcpy(buf + prefix_len, text, text_len + 1);
+    __mdh_hurl(__mdh_make_string(buf));
 }

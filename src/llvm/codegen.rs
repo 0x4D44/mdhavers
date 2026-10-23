@@ -631,6 +631,15 @@ pub struct CodeGen<'ctx> {
     /// Counter for generating unique lambda names
     lambda_counter: u32,
 
+    /// Late-bound function-value dispatchers, keyed by argument count. A call through a
+    /// function value only knows the functions that exist when the call site is compiled;
+    /// any other callee (e.g. a lambda written later in the source) is routed through
+    /// `__mdh_late_call_<argc>`, whose body is emitted once every function is known.
+    late_call_dispatchers: HashMap<usize, FunctionValue<'ctx>>,
+
+    /// True while emitting a late dispatcher body; an unmatched callee is then a type error.
+    in_late_dispatch: bool,
+
     /// Counter for generating unique pipe temporaries
     pipe_tmp_counter: u32,
     /// Counter for generating unique import prefixes
@@ -689,7 +698,6 @@ pub struct CodeGen<'ctx> {
 
     /// Format strings for printf
     fmt_int: inkwell::values::GlobalValue<'ctx>,
-    fmt_float: inkwell::values::GlobalValue<'ctx>,
     fmt_string: inkwell::values::GlobalValue<'ctx>,
     fmt_true: inkwell::values::GlobalValue<'ctx>,
     fmt_false: inkwell::values::GlobalValue<'ctx>,
@@ -730,7 +738,6 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Create format strings
         let fmt_int = Self::create_global_string(&module, context, "%lld", "fmt_int");
-        let fmt_float = Self::create_global_string(&module, context, "%g", "fmt_float");
         let fmt_string = Self::create_global_string(&module, context, "%s", "fmt_string");
         let fmt_true = Self::create_global_string(&module, context, "aye", "fmt_true");
         let fmt_false = Self::create_global_string(&module, context, "nae", "fmt_false");
@@ -767,6 +774,8 @@ impl<'ctx> CodeGen<'ctx> {
             try_depth: 0,
             in_user_function: false,
             lambda_counter: 0,
+            late_call_dispatchers: HashMap::new(),
+            in_late_dispatch: false,
             pipe_tmp_counter: 0,
             import_unique_counter: 0,
             classes: HashMap::new(),
@@ -790,7 +799,6 @@ impl<'ctx> CodeGen<'ctx> {
             import_alias_functions: HashMap::new(),
             import_alias_function_defaults: HashMap::new(),
             fmt_int,
-            fmt_float,
             fmt_string,
             fmt_true,
             fmt_false,
@@ -810,6 +818,17 @@ impl<'ctx> CodeGen<'ctx> {
         };
         resolved = resolved.canonicalize().unwrap_or(resolved);
         self.source_path = Some(resolved);
+    }
+
+    /// LLVM symbol for a user-defined function. A user function called `main` would
+    /// take the C entry point's symbol (user functions are declared before the entry
+    /// point), so it is mangled; every other name is used as-is.
+    fn user_function_symbol(name: &str) -> String {
+        if name == "main" {
+            "__mdh_user_main".to_string()
+        } else {
+            name.to_string()
+        }
     }
 
     fn sanitize_symbol(input: &str) -> String {
@@ -4016,6 +4035,21 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
     }
 
+    /// `__mdh_hurl_at(msg, line)`: hurl a user error with the interpreter's
+    /// "Hurled at line N: " prefix. Declared on first use.
+    fn hurl_at_fn(&self) -> FunctionValue<'ctx> {
+        if let Some(f) = self.module.get_function("__mdh_hurl_at") {
+            return f;
+        }
+        let fn_type = self.types.void_type.fn_type(
+            &[self.types.value_type.into(), self.types.i64_type.into()],
+            false,
+        );
+        // Every call site is followed by `unreachable`, so no noreturn attribute is needed.
+        self.module
+            .add_function("__mdh_hurl_at", fn_type, Some(Linkage::External))
+    }
+
     /// Get the compiled module
     pub fn get_module(&self) -> &Module<'ctx> {
         &self.module
@@ -4133,7 +4167,94 @@ impl<'ctx> CodeGen<'ctx> {
                 .unwrap();
         }
 
+        // Every function and lambda is now known: give the late dispatchers their bodies.
+        self.emit_late_call_dispatchers()?;
+
         Ok(())
+    }
+
+    /// Get (declaring on first use) the late-bound dispatcher for calls with `argc` args.
+    /// Signature: `(callee, arg1, ..., argN) -> value`.
+    fn late_call_dispatcher(&mut self, argc: usize) -> FunctionValue<'ctx> {
+        if let Some(dispatcher) = self.late_call_dispatchers.get(&argc) {
+            return *dispatcher;
+        }
+        let param_types: Vec<BasicMetadataTypeEnum> =
+            (0..=argc).map(|_| self.types.value_type.into()).collect();
+        let fn_type = self.types.value_type.fn_type(&param_types, false);
+        let dispatcher =
+            self.module
+                .add_function(&format!("__mdh_late_call_{argc}"), fn_type, None);
+        self.late_call_dispatchers.insert(argc, dispatcher);
+        dispatcher
+    }
+
+    /// Emit the bodies of all declared late dispatchers. Each body is an ordinary
+    /// `call_function_value` dispatch compiled now that every function is known, so
+    /// late-bound calls get the same arity, default-argument and closure handling as
+    /// calls to functions known at the call site (MDH-BUG-FLU-00070).
+    fn emit_late_call_dispatchers(&mut self) -> Result<(), HaversError> {
+        let mut pending: Vec<usize> = self.late_call_dispatchers.keys().copied().collect();
+        pending.sort_unstable();
+
+        let saved_function = self.current_function;
+        let saved_block = self.builder.get_insert_block();
+        let saved_variables = std::mem::take(&mut self.variables);
+        let saved_var_types = std::mem::take(&mut self.var_types);
+        let saved_int_shadows = std::mem::take(&mut self.int_shadows);
+        let saved_list_ptr_shadows = std::mem::take(&mut self.list_ptr_shadows);
+        let saved_string_len_shadows = std::mem::take(&mut self.string_len_shadows);
+        let saved_string_cap_shadows = std::mem::take(&mut self.string_cap_shadows);
+        let saved_boxed_vars = std::mem::take(&mut self.boxed_vars);
+        let saved_unstable_vars = std::mem::take(&mut self.unstable_vars);
+        let saved_class_types = std::mem::take(&mut self.variable_class_types);
+        let saved_loop_stack = std::mem::take(&mut self.loop_stack);
+        let saved_masel = self.current_masel.take();
+        let saved_try_depth = std::mem::replace(&mut self.try_depth, 0);
+        let saved_in_loop_body = std::mem::replace(&mut self.in_loop_body, false);
+        self.in_late_dispatch = true;
+
+        let mut result = Ok(());
+        for argc in pending {
+            let dispatcher = self.late_call_dispatchers[&argc];
+            self.current_function = Some(dispatcher);
+            let entry = self.context.append_basic_block(dispatcher, "entry");
+            self.builder.position_at_end(entry);
+            let callee = dispatcher.get_nth_param(0).unwrap();
+            let args: Vec<BasicValueEnum<'ctx>> = (1..=argc)
+                .map(|i| dispatcher.get_nth_param(i as u32).unwrap())
+                .collect();
+            match self.call_function_value(callee, &args) {
+                Ok(value) => {
+                    self.builder.build_return(Some(&value)).unwrap();
+                    dispatcher.set_linkage(Linkage::Internal);
+                }
+                Err(err) => {
+                    result = Err(err);
+                    break;
+                }
+            }
+        }
+
+        self.in_late_dispatch = false;
+        self.current_function = saved_function;
+        self.variables = saved_variables;
+        self.var_types = saved_var_types;
+        self.int_shadows = saved_int_shadows;
+        self.list_ptr_shadows = saved_list_ptr_shadows;
+        self.string_len_shadows = saved_string_len_shadows;
+        self.string_cap_shadows = saved_string_cap_shadows;
+        self.boxed_vars = saved_boxed_vars;
+        self.unstable_vars = saved_unstable_vars;
+        self.variable_class_types = saved_class_types;
+        self.loop_stack = saved_loop_stack;
+        self.current_masel = saved_masel;
+        self.try_depth = saved_try_depth;
+        self.in_loop_body = saved_in_loop_body;
+        if let Some(block) = saved_block {
+            self.builder.position_at_end(block);
+        }
+        result
     }
 
     /// Declare a function (first pass)
@@ -4155,7 +4276,9 @@ impl<'ctx> CodeGen<'ctx> {
             .collect();
 
         let fn_type = self.types.value_type.fn_type(&param_types, false);
-        let function = self.module.add_function(name, fn_type, None);
+        let function = self
+            .module
+            .add_function(&Self::user_function_symbol(name), fn_type, None);
         self.functions.insert(name.to_string(), function);
 
         let llvm_name = function.get_name().to_string_lossy().into_owned();
@@ -8120,15 +8243,32 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         self.builder.build_unconditional_branch(print_done).unwrap();
 
-        // Print float
+        // Print float: the runtime formats it as the interpreter does (MDH-BUG-FLU-00074).
         self.builder.position_at_end(print_float);
-        let float_fmt = self.get_string_ptr(self.fmt_float);
-        let float_val = self
+        let float_str = self
             .builder
-            .build_bitcast(data, self.types.f64_type, "f")
+            .build_call(self.libc.to_string, &[val.into()], "float_str")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .compile_ok_or("to_string returned void")
             .unwrap();
+        let float_str_data = self.extract_data(float_str).unwrap();
+        let float_str_ptr = self
+            .builder
+            .build_int_to_ptr(
+                float_str_data,
+                self.context.i8_type().ptr_type(AddressSpace::default()),
+                "float_str_ptr",
+            )
+            .unwrap();
+        let float_fmt = self.get_string_ptr(self.fmt_string);
         self.builder
-            .build_call(self.libc.printf, &[float_fmt.into(), float_val.into()], "")
+            .build_call(
+                self.libc.printf,
+                &[float_fmt.into(), float_str_ptr.into()],
+                "",
+            )
             .unwrap();
         self.builder.build_unconditional_branch(print_done).unwrap();
 
@@ -8294,37 +8434,16 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(str_merge).unwrap();
         let int_block = self.builder.get_insert_block().unwrap();
 
-        // float -> format with snprintf
+        // float -> the runtime formats it as the interpreter does (MDH-BUG-FLU-00074)
         self.builder.position_at_end(str_float);
-        let float_buf = self
+        let float_result = self
             .builder
-            .build_call(self.libc.malloc, &[buf_size.into()], "float_buf")
+            .build_call(self.libc.to_string, &[val.into()], "float_to_string")
             .unwrap()
             .try_as_basic_value()
             .left()
-            .unwrap()
-            .into_pointer_value();
-        let float_fmt = self
-            .builder
-            .build_global_string_ptr("%g", "float_fmt")
+            .compile_ok_or("to_string returned void")
             .unwrap();
-        let float_val = self
-            .builder
-            .build_bitcast(data, self.types.f64_type, "f")
-            .unwrap();
-        self.builder
-            .build_call(
-                self.libc.snprintf,
-                &[
-                    float_buf.into(),
-                    buf_size.into(),
-                    float_fmt.as_pointer_value().into(),
-                    float_val.into(),
-                ],
-                "",
-            )
-            .unwrap();
-        let float_result = self.make_string(float_buf);
         self.builder.build_unconditional_branch(str_merge).unwrap();
         let float_block = self.builder.get_insert_block().unwrap();
 
@@ -8764,6 +8883,31 @@ impl<'ctx> CodeGen<'ctx> {
         let zero = self.types.i64_type.const_int(0, false);
         let elem_ptr = self.get_list_element_ptr(cell_data, zero).unwrap();
         self.builder.build_store(elem_ptr, value).unwrap();
+    }
+
+    /// After `toss_in`/`heave_oot`, write the resulting creel back to the variable that
+    /// was passed. A boxed (captured) variable's storage holds its 1-element cell, so the
+    /// value goes into the cell, never over it (MDH-BUG-FLU-00081).
+    fn store_back_creel_arg(&mut self, arg: &Expr, result: BasicValueEnum<'ctx>) {
+        let Expr::Variable { name, .. } = arg else {
+            return;
+        };
+        let ptr = match self.variables.get(name) {
+            Some(&ptr) => ptr,
+            None => *self
+                .globals
+                .get(name)
+                .expect("creel arg compiled but binding not found"),
+        };
+        if self.boxed_vars.contains(name) {
+            let cell = self
+                .builder
+                .build_load(self.types.value_type, ptr, &format!("{name}_cell"))
+                .unwrap();
+            self.box_set(cell, result);
+        } else {
+            self.builder.build_store(ptr, result).unwrap();
+        }
     }
 
     // ========== Phase 1: Math Functions ==========
@@ -13002,10 +13146,14 @@ impl<'ctx> CodeGen<'ctx> {
                 ..
             } => self.compile_try_catch(try_block, error_name, catch_block),
 
-            Stmt::Hurl { message, .. } => {
+            Stmt::Hurl { message, span } => {
+                // A user hurl carries the interpreter's UserError text,
+                // "Hurled at line N: <msg>", which is what a catch binds (MDH-BUG-FLU-00073).
                 let msg = self.compile_expr(message)?;
+                let line = self.types.i64_type.const_int(span.line as u64, false);
+                let hurl_at = self.hurl_at_fn();
                 self.builder
-                    .build_call(self.libc.hurl, &[msg.into()], "")
+                    .build_call(hurl_at, &[msg.into(), line.into()], "")
                     .unwrap();
                 self.builder.build_unreachable().unwrap();
                 Ok(())
@@ -17098,19 +17246,10 @@ impl<'ctx> CodeGen<'ctx> {
                                 "toss_in returned void",
                             )
                         })
-                        .and_then(|result| {
+                        .map(|result| {
                             // If first argument is a variable, update it (toss_in may reallocate).
-                            if let Expr::Variable { name, .. } = &args[0] {
-                                let ptr = match self.variables.get(name) {
-                                    Some(&ptr) => ptr,
-                                    None => *self
-                                        .globals
-                                        .get(name)
-                                        .expect("toss_in arg compiled but binding not found"),
-                                };
-                                self.builder.build_store(ptr, result).unwrap();
-                            }
-                            Ok(result)
+                            self.store_back_creel_arg(&args[0], result);
+                            result
                         });
                 }
                 "heave_oot" => {
@@ -17131,19 +17270,10 @@ impl<'ctx> CodeGen<'ctx> {
                                 "heave_oot returned void",
                             )
                         })
-                        .and_then(|result| {
+                        .map(|result| {
                             // If first argument is a variable, update it (heave_oot may reallocate).
-                            if let Expr::Variable { name, .. } = &args[0] {
-                                let ptr = match self.variables.get(name) {
-                                    Some(&ptr) => ptr,
-                                    None => *self
-                                        .globals
-                                        .get(name)
-                                        .expect("heave_oot arg compiled but binding not found"),
-                                };
-                                self.builder.build_store(ptr, result).unwrap();
-                            }
-                            Ok(result)
+                            self.store_back_creel_arg(&args[0], result);
+                            result
                         });
                 }
                 "empty_creel" => {
@@ -31947,21 +32077,45 @@ impl<'ctx> CodeGen<'ctx> {
             class_result_opt = Some((class_result, class_end));
         }
 
-        // Error path for non-callable values
+        // No callee known at this call site matched. Outside a late dispatcher, hand the
+        // call to the late-bound dispatcher (it sees every function, including lambdas
+        // compiled after this call site); inside one, the value really is not callable.
         self.builder.position_at_end(error_block);
-        let op = self
-            .builder
-            .build_global_string_ptr("call", "call_op")
-            .unwrap();
-        let zero_tag = self.types.i8_type.const_int(0, false);
-        self.builder
-            .build_call(
-                self.libc.type_error,
-                &[op.as_pointer_value().into(), tag.into(), zero_tag.into()],
-                "",
-            )
-            .unwrap();
-        self.builder.build_unreachable().unwrap();
+        let mut late_result_opt: Option<(
+            BasicValueEnum<'ctx>,
+            inkwell::basic_block::BasicBlock<'ctx>,
+        )> = None;
+        if self.in_late_dispatch {
+            let op = self
+                .builder
+                .build_global_string_ptr("call", "call_op")
+                .unwrap();
+            let zero_tag = self.types.i8_type.const_int(0, false);
+            self.builder
+                .build_call(
+                    self.libc.type_error,
+                    &[op.as_pointer_value().into(), tag.into(), zero_tag.into()],
+                    "",
+                )
+                .unwrap();
+            self.builder.build_unreachable().unwrap();
+        } else {
+            let dispatcher = self.late_call_dispatcher(args.len());
+            let mut late_args: Vec<BasicMetadataValueEnum> = Vec::with_capacity(args.len() + 1);
+            late_args.push(func_val.into());
+            late_args.extend(args.iter().map(|a| BasicMetadataValueEnum::from(*a)));
+            let late_result = self
+                .builder
+                .build_call(dispatcher, &late_args, "late_call")
+                .unwrap()
+                .try_as_basic_value()
+                .left()
+                .unwrap();
+            self.builder
+                .build_unconditional_branch(merge_block)
+                .unwrap();
+            late_result_opt = Some((late_result, self.builder.get_insert_block().unwrap()));
+        }
 
         // Closure call - dispatch based on the underlying function pointer stored in element 0.
         self.builder.position_at_end(closure_block);
@@ -32233,6 +32387,9 @@ impl<'ctx> CodeGen<'ctx> {
         phi.add_incoming(&[(&native_result, native_end)]);
         if let Some((class_result, class_end)) = class_result_opt {
             phi.add_incoming(&[(&class_result, class_end)]);
+        }
+        if let Some((late_result, late_end)) = late_result_opt {
+            phi.add_incoming(&[(&late_result, late_end)]);
         }
 
         Ok(phi.as_basic_value())
@@ -35125,7 +35282,7 @@ impl<'ctx> CodeGen<'ctx> {
         let llvm_name = if let Some(prefix) = import_prefix {
             format!("{prefix}{name}")
         } else {
-            name.to_string()
+            Self::user_function_symbol(name)
         };
         let param_types: Vec<BasicMetadataTypeEnum> = (0..param_count)
             .map(|_| self.types.value_type.into())
@@ -35338,7 +35495,7 @@ impl<'ctx> CodeGen<'ctx> {
             let llvm_name = if let Some(ref prefix) = prefix {
                 format!("{prefix}{name}")
             } else {
-                name.clone()
+                Self::user_function_symbol(name)
             };
             if let Some(func) = self.module.get_function(&llvm_name) {
                 self.functions.insert(name.clone(), func);

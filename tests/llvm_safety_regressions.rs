@@ -354,7 +354,10 @@ hae_a_bash {
 blether "after"
 "#,
     );
-    assert_eq!(out, vec!["main caught: worker failed", "after"]);
+    assert_eq!(
+        out,
+        vec!["main caught: Hurled at line 3: worker failed", "after"]
+    );
 }
 
 // ---------- MDH-BUG-FLU-00054: native handles are validated ----------

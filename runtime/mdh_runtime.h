@@ -517,6 +517,7 @@ int64_t __mdh_jmp_buf_size(void);
 void __mdh_try_push(void *env);
 void __mdh_try_pop(void);
 void __mdh_hurl(MdhValue msg);
+void __mdh_hurl_at(MdhValue msg, int64_t line);
 MdhValue __mdh_get_last_error(void);
 
 /* ========== Helpers ========== */

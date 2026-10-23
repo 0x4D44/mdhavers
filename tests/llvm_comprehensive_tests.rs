@@ -1367,8 +1367,8 @@ mod numeric_edge_cases {
 
     #[test]
     fn test_float_precision() {
-        // LLVM backend rounds some float output differently
-        assert_eq!(run("blether 0.1 + 0.2").trim(), "0.3");
+        // Floats print as the interpreter prints them (MDH-BUG-FLU-00074).
+        assert_eq!(run("blether 0.1 + 0.2").trim(), "0.30000000000000004");
         assert_eq!(run("blether 1.0 / 3.0 * 3.0").trim(), "1");
     }
 
@@ -33683,7 +33683,7 @@ hae_a_bash {
     blether e
 }
         "#;
-        assert_eq!(run(code).trim(), "test error");
+        assert_eq!(run(code).trim(), "Hurled at line 3: test error");
     }
 
     #[test]
@@ -33728,7 +33728,7 @@ hae_a_bash {
     blether e
 }
         "#;
-        assert_eq!(run(code).trim(), "negative");
+        assert_eq!(run(code).trim(), "Hurled at line 5: negative");
     }
 
     #[test]
@@ -33821,7 +33821,7 @@ hae_a_bash {
     blether outer
 }
         "#;
-        assert_eq!(run(code).trim(), "reprocessed");
+        assert_eq!(run(code).trim(), "Hurled at line 6: reprocessed");
     }
 
     #[test]
@@ -33878,7 +33878,7 @@ hae_a_bash {
     blether e
 }
         "#;
-        assert_eq!(run(code).trim(), "zero");
+        assert_eq!(run(code).trim(), "Hurled at line 3: zero");
     }
 
     #[test]
@@ -33949,7 +33949,7 @@ hae_a_bash {
     blether e
 }
         "#;
-        assert_eq!(run(code).trim(), "test failed");
+        assert_eq!(run(code).trim(), "Hurled at line 4: test failed");
     }
 }
 
