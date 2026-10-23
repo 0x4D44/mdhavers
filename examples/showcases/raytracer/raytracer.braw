@@ -1,0 +1,429 @@
+# ============================================================
+#  Braw Rays - a wee ray tracer written in mdhavers
+#
+#  Spheres an' a tartan floor, lit by three lichts, wi' diffuse
+#  an' specular shading, hard shadows, mirror reflections an'
+#  gamma correction. Writes a PPM image an' blethers an ASCII
+#  preview tae the terminal.
+#
+#  Environment (all optional):
+#    RAYTRACE_SIZE    small (default, 96x54) | medium (320x180)
+#                     | large (640x360) | WxH, e.g. 200x120
+#    RAYTRACE_OUT     PPM output path (default: raytracer.ppm)
+#    RAYTRACE_ASCII   ASCII preview width in characters (default 72)
+#    RAYTRACE_COLOUR  set tae 1 fer a 24-bit ANSI colour preview
+#
+#  Fully deterministic: nae randomness at a'.
+# ============================================================
+
+ken EPSILON = 0.0001
+ken MAX_DEPTH = 3
+ken INFINITY = 1000000000.0
+
+# ------------------------------------------------------------
+#  Vec3 - a three-component vector (also used fer colours)
+# ------------------------------------------------------------
+kin Vec3 {
+    dae init(x, y, z) {
+        masel.x = x
+        masel.y = y
+        masel.z = z
+    }
+    dae add(o) { gie Vec3(masel.x + o.x, masel.y + o.y, masel.z + o.z) }
+    dae sub(o) { gie Vec3(masel.x - o.x, masel.y - o.y, masel.z - o.z) }
+    dae scale(k) { gie Vec3(masel.x * k, masel.y * k, masel.z * k) }
+    dae mul(o) { gie Vec3(masel.x * o.x, masel.y * o.y, masel.z * o.z) }
+    dae dot(o) { gie masel.x * o.x + masel.y * o.y + masel.z * o.z }
+    dae cross(o) {
+        ken cx = masel.y * o.z - masel.z * o.y
+        ken cy = masel.z * o.x - masel.x * o.z
+        ken cz = masel.x * o.y - masel.y * o.x
+        gie Vec3(cx, cy, cz)
+    }
+    dae length() { gie sqrt(masel.dot(masel)) }
+    dae norm() {
+        ken l = masel.length()
+        gin l == 0.0 { gie masel }
+        gie masel.scale(1.0 / l)
+    }
+    # Reflect this direction aboot normal n
+    dae reflect(n) { gie masel.sub(n.scale(2.0 * masel.dot(n))) }
+    dae lerp(o, t) { gie masel.scale(1.0 - t).add(o.scale(t)) }
+}
+
+dae colour(r, g, b) { gie Vec3(r, g, b) }
+
+# ------------------------------------------------------------
+#  Ray - an origin an' a (unit) direction
+# ------------------------------------------------------------
+kin Ray {
+    dae init(origin, dir) {
+        masel.origin = origin
+        masel.dir = dir
+    }
+    dae at(t) { gie masel.origin.add(masel.dir.scale(t)) }
+}
+
+# ------------------------------------------------------------
+#  Materials
+# ------------------------------------------------------------
+kin Material {
+    dae init(base, diffuse, specular, shininess, reflectivity) {
+        masel.base = base
+        masel.diffuse = diffuse
+        masel.specular = specular
+        masel.shininess = shininess
+        masel.reflectivity = reflectivity
+    }
+    dae colour_at(p) { gie masel.base }
+}
+
+# A woven tartan: each thread colour comes fae a sett (stripe
+# pattern) applied along x an' z, then the warp an' weft are
+# blended thegither, just like the real cloth.
+kin Tartan fae Material {
+    dae init(diffuse, specular, shininess, reflectivity) {
+        masel.base = colour(0.0, 0.0, 0.0)
+        masel.diffuse = diffuse
+        masel.specular = specular
+        masel.shininess = shininess
+        masel.reflectivity = reflectivity
+        masel.navy = colour(0.04, 0.08, 0.32)
+        masel.green = colour(0.03, 0.28, 0.10)
+        masel.black = colour(0.01, 0.01, 0.02)
+        masel.red = colour(0.75, 0.05, 0.05)
+        masel.white = colour(0.90, 0.90, 0.85)
+    }
+    dae thread(u) {
+        ken f = u - floor(u)
+        gin f < 0.36 { gie masel.navy }
+        gin f < 0.42 { gie masel.black }
+        gin f < 0.46 { gie masel.red }
+        gin f < 0.52 { gie masel.black }
+        gin f < 0.89 { gie masel.green }
+        gin f < 0.905 { gie masel.white }
+        gie masel.black
+    }
+    dae colour_at(p) {
+        ken warp = masel.thread(p.x * 0.5)
+        ken weft = masel.thread(p.z * 0.5)
+        gie warp.lerp(weft, 0.5)
+    }
+}
+
+# ------------------------------------------------------------
+#  Scene objects. intersect() returns the hit distance, or
+#  -1.0 if the ray misses.
+# ------------------------------------------------------------
+kin Sphere {
+    dae init(centre, radius, material) {
+        masel.centre = centre
+        masel.radius = radius
+        masel.r2 = radius * radius
+        masel.material = material
+    }
+    dae intersect(ray) {
+        ken o = ray.origin
+        ken d = ray.dir
+        ken c = masel.centre
+        ken ox = o.x - c.x
+        ken oy = o.y - c.y
+        ken oz = o.z - c.z
+        ken b = ox * d.x + oy * d.y + oz * d.z
+        ken cc = ox * ox + oy * oy + oz * oz - masel.r2
+        ken disc = b * b - cc
+        gin disc < 0.0 { gie -1.0 }
+        ken s = sqrt(disc)
+        ken t = 0.0 - b - s
+        gin t > EPSILON { gie t }
+        t = 0.0 - b + s
+        gin t > EPSILON { gie t }
+        gie -1.0
+    }
+    dae normal_at(p) { gie p.sub(masel.centre).scale(1.0 / masel.radius) }
+}
+
+# A horizontal plane at height y
+kin Floor {
+    dae init(height, material) {
+        masel.height = height
+        masel.material = material
+    }
+    dae intersect(ray) {
+        ken dy = ray.dir.y
+        gin abs(dy) < EPSILON { gie -1.0 }
+        ken t = (masel.height - ray.origin.y) / dy
+        gin t > EPSILON { gie t }
+        gie -1.0
+    }
+    dae normal_at(p) { gie Vec3(0.0, 1.0, 0.0) }
+}
+
+kin Light {
+    dae init(position, tint, intensity) {
+        masel.position = position
+        masel.tint = tint.scale(intensity)
+    }
+}
+
+kin Hit {
+    dae init(t, object) {
+        masel.t = t
+        masel.object = object
+    }
+}
+
+# ------------------------------------------------------------
+#  The scene
+# ------------------------------------------------------------
+kin Scene {
+    dae init() {
+        masel.objects = []
+        masel.lights = []
+        masel.ambient = 0.08
+    }
+    dae add(obj) { shove(masel.objects, obj) }
+    dae add_light(l) { shove(masel.lights, l) }
+
+    dae closest(ray) {
+        ken best = naething
+        ken best_t = INFINITY
+        fer obj in masel.objects {
+            ken t = obj.intersect(ray)
+            gin t > 0.0 an t < best_t {
+                best_t = t
+                best = obj
+            }
+        }
+        gin best == naething { gie naething }
+        gie Hit(best_t, best)
+    }
+
+    # Is anything between point p an' a licht at distance dist?
+    dae in_shadow(ray, dist) {
+        fer obj in masel.objects {
+            ken t = obj.intersect(ray)
+            gin t > 0.0 an t < dist { gie aye }
+        }
+        gie nae
+    }
+
+    dae sky(dir) {
+        ken t = clamp(dir.y * 2.5, 0.0, 1.0)
+        gie colour(0.78, 0.82, 0.90).lerp(colour(0.10, 0.22, 0.55), t)
+    }
+
+    dae trace(ray, depth) {
+        ken hit = masel.closest(ray)
+        gin hit == naething { gie masel.sky(ray.dir) }
+
+        ken obj = hit.object
+        ken mat = obj.material
+        ken p = ray.at(hit.t)
+        ken n = obj.normal_at(p)
+        ken base = mat.colour_at(p)
+        ken view = ray.dir.scale(-1.0)
+        ken lifted = p.add(n.scale(EPSILON * 10.0))
+
+        ken result = base.scale(masel.ambient)
+        fer light in masel.lights {
+            ken to_light = light.position.sub(p)
+            ken dist = to_light.length()
+            ken l = to_light.scale(1.0 / dist)
+            ken ndotl = n.dot(l)
+            gin ndotl > 0.0 {
+                gin nae masel.in_shadow(Ray(lifted, l), dist) {
+                    ken diff = base.mul(light.tint).scale(ndotl * mat.diffuse)
+                    result = result.add(diff)
+                    ken r = l.scale(-1.0).reflect(n)
+                    ken rv = r.dot(view)
+                    gin rv > 0.0 an mat.specular > 0.0 {
+                        ken spec = pooer(rv, mat.shininess) * mat.specular
+                        result = result.add(light.tint.scale(spec))
+                    }
+                }
+            }
+        }
+
+        gin mat.reflectivity > 0.0 an depth < MAX_DEPTH {
+            ken rdir = ray.dir.reflect(n).norm()
+            ken bounced = masel.trace(Ray(lifted, rdir), depth + 1)
+            result = result.lerp(bounced, mat.reflectivity)
+        }
+
+        # A wee bit o' haar (mist) in the distance
+        ken fog = 1.0 - exp(0.0 - max(hit.t - 6.0, 0.0) * 0.06)
+        gie result.lerp(masel.sky(ray.dir), fog)
+    }
+}
+
+dae build_scene() {
+    ken scene = Scene()
+
+    ken thistle = Material(colour(0.55, 0.25, 0.70), 0.85, 0.6, 40.0, 0.10)
+    ken saltire = Material(colour(0.00, 0.37, 0.72), 0.80, 0.4, 25.0, 0.15)
+    ken mirror = Material(colour(0.85, 0.87, 0.90), 0.15, 0.9, 120.0, 0.80)
+    ken gold = Material(colour(0.95, 0.70, 0.15), 0.70, 0.8, 60.0, 0.30)
+    ken heather = Material(colour(0.85, 0.45, 0.65), 0.85, 0.3, 15.0, 0.05)
+
+    scene.add(Floor(0.0, Tartan(0.9, 0.2, 10.0, 0.15)))
+    scene.add(Sphere(Vec3(0.0, 1.0, 0.0), 1.0, thistle))
+    scene.add(Sphere(Vec3(-2.1, 0.75, 0.9), 0.75, saltire))
+    scene.add(Sphere(Vec3(2.0, 0.9, 1.2), 0.9, mirror))
+    scene.add(Sphere(Vec3(0.95, 0.35, -1.25), 0.35, gold))
+    scene.add(Sphere(Vec3(-0.9, 0.3, -1.5), 0.3, heather))
+
+    scene.add_light(Light(Vec3(-5.0, 7.0, -4.0), colour(1.0, 0.95, 0.85), 0.85))
+    scene.add_light(Light(Vec3(6.0, 4.0, -3.0), colour(0.75, 0.85, 1.0), 0.40))
+    scene.add_light(Light(Vec3(0.0, 6.0, 6.0), colour(1.0, 1.0, 1.0), 0.30))
+    gie scene
+}
+
+# ------------------------------------------------------------
+#  Camera
+# ------------------------------------------------------------
+kin Camera {
+    dae init(eye, target, fov_degrees) {
+        masel.eye = eye
+        masel.forward = target.sub(eye).norm()
+        masel.right = masel.forward.cross(Vec3(0.0, 1.0, 0.0)).norm().scale(-1.0)
+        masel.up = masel.right.cross(masel.forward).scale(-1.0)
+        masel.half = tan(radians(fov_degrees) * 0.5)
+    }
+    # u, v in [-1, 1]; aspect = width / height of the image plane
+    dae ray(u, v, aspect) {
+        ken d = masel.forward.add(masel.right.scale(u * masel.half * aspect)).add(masel.up.scale(v * masel.half))
+        gie Ray(masel.eye, d.norm())
+    }
+}
+
+# ------------------------------------------------------------
+#  Rendering
+# ------------------------------------------------------------
+ken GAMMA = 1.0 / 2.2
+
+dae tone(c) {
+    gin c <= 0.0 { gie 0.0 }
+    gin c >= 1.0 { gie 1.0 }
+    gie pooer(c, GAMMA)
+}
+
+dae to_byte(c) {
+    gie tae_int(floor(tone(c) * 255.0 + 0.5))
+}
+
+# Render a grid o' colours. pixel_aspect is height/width o' one
+# cell (2.0 fer terminal characters, 1.0 fer square pixels).
+dae render(scene, camera, width, height, pixel_aspect) {
+    ken rows = []
+    ken aspect = (tae_float(width) / tae_float(height)) / pixel_aspect
+    fer j in 0..height {
+        ken row = []
+        ken v = 1.0 - 2.0 * (tae_float(j) + 0.5) / tae_float(height)
+        fer i in 0..width {
+            ken u = 2.0 * (tae_float(i) + 0.5) / tae_float(width) - 1.0
+            shove(row, scene.trace(camera.ray(u, v, aspect), 0))
+        }
+        shove(rows, row)
+    }
+    gie rows
+}
+
+dae ppm_text(rows, width, height) {
+    ken lines = ["P3", f"{width} {height}", "255"]
+    fer row in rows {
+        ken parts = []
+        fer c in row {
+            shove(parts, f"{to_byte(c.x)} {to_byte(c.y)} {to_byte(c.z)}")
+        }
+        shove(lines, join(parts, " "))
+    }
+    gie join(lines, "\n") + "\n"
+}
+
+ken RAMP = " .:-=+*#%@"
+
+dae ascii_lines(rows, use_colour) {
+    ken out = []
+    ken last = len(RAMP) - 1
+    fer row in rows {
+        ken chs = []
+        fer c in row {
+            ken r = tone(c.x)
+            ken g = tone(c.y)
+            ken b = tone(c.z)
+            ken lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+            ken idx = tae_int(floor(lum * tae_float(last) + 0.5))
+            gin use_colour {
+                ken rr = tae_int(floor(r * 255.0 + 0.5))
+                ken gg = tae_int(floor(g * 255.0 + 0.5))
+                ken bb = tae_int(floor(b * 255.0 + 0.5))
+                shove(chs, f"\x1b[38;2;{rr};{gg};{bb}m{RAMP[idx]}")
+            } ither {
+                shove(chs, RAMP[idx])
+            }
+        }
+        ken line = join(chs, "")
+        gin use_colour { line = line + "\x1b[0m" }
+        shove(out, line)
+    }
+    gie out
+}
+
+dae make_camera() {
+    gie Camera(Vec3(0.0, 1.6, -5.2), Vec3(0.0, 0.7, 0.0), 52.0)
+}
+
+# ==== main ====
+
+dae parse_size(spec) {
+    gin spec == "" { gie [96, 54] }
+    gin spec == "small" { gie [96, 54] }
+    gin spec == "medium" { gie [320, 180] }
+    gin spec == "large" { gie [640, 360] }
+    ken parts = split(spec, "x")
+    gin len(parts) == 2 {
+        gie [tae_int(parts[0]), tae_int(parts[1])]
+    }
+    blether f"Och, '{spec}' isnae a size I ken - using small."
+    gie [96, 54]
+}
+
+dae env_or(name, fallback) {
+    ken v = env_get(name)
+    gin v == naething { gie fallback }
+    gie v
+}
+
+# Note: settings are computed in one go rather than reassigned
+# inside a `gin`, tae dodge a native-backend constant-folding
+# bug wi reassigned list variables.
+# (Named braw_rays, no' main: a user function called `main` clashes wi'
+# the native entry point.)
+dae braw_rays() {
+    ken size = parse_size(env_or("RAYTRACE_SIZE", "small"))
+    ken width = size[0]
+    ken height = size[1]
+    ken out_path = env_or("RAYTRACE_OUT", "raytracer.ppm")
+    ken ascii_w = tae_int(env_or("RAYTRACE_ASCII", "72"))
+    ken ascii_h = tae_int(floor(tae_float(ascii_w) * 9.0 / 32.0 + 0.5))
+
+    ken use_colour = env_get("RAYTRACE_COLOUR") == "1"
+
+    ken scene = build_scene()
+    ken camera = make_camera()
+
+    blether "Braw Rays - a ray tracer in mdhavers"
+    blether f"Preview ({ascii_w}x{ascii_h} characters):"
+    ken preview = render(scene, camera, ascii_w, ascii_h, 2.0)
+    fer line in ascii_lines(preview, use_colour) {
+        blether line
+    }
+
+    ken t0 = noo()
+    ken rows = render(scene, camera, width, height, 1.0)
+    scrieve(out_path, ppm_text(rows, width, height))
+    blether f"Wrote {width}x{height} image tae {out_path} in {noo() - t0} ms"
+}
+
+braw_rays()

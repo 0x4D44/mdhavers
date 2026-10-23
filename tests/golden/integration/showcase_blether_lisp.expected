@@ -1,0 +1,96 @@
+lisp> (define (fact n) (if (<= n 1) 1 (* n (fact (- n 1)))))
+lisp> (fact 10)
+=> 3628800
+lisp> (fact 15)
+=> 1307674368000
+lisp> (define (fib n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2)))))
+lisp> (fib 12)
+=> 144
+lisp> (map fib (range 0 10))
+=> (0 1 1 2 3 5 8 13 21 34)
+lisp> (define (make-counter start) (let ((n start)) (lambda () (set! n (+ n 1)) n)))
+lisp> (define c1 (make-counter 0))
+lisp> (define c2 (make-counter 100))
+lisp> (list (c1) (c1) (c2) (c1) (c2))
+=> (1 2 101 3 102)
+lisp> (define (make-adder k) (lambda (x) (+ x k)))
+lisp> (map (make-adder 10) '(1 2 3))
+=> (11 12 13)
+lisp> (filter even? (range 0 12))
+=> (0 2 4 6 8 10)
+lisp> (reduce * 1 (range 1 7))
+=> 720
+lisp> (sum (map (lambda (x) (* x x)) (range 1 6)))
+=> 55
+lisp> (define (quicksort xs) (if (null? xs) '() (let ((p (car xs)) (rest (cdr xs))) (append (quicksort (filter (lambda (x) (< x p)) rest)) (list p) (quicksort (filter (lambda (x) (>= x p)) rest))))))
+lisp> (quicksort '(5 3 9 1 5 8 2 7))
+=> (1 2 3 5 5 7 8 9)
+lisp> (define (loop n acc) (if (= n 0) acc (loop (- n 1) (+ acc 1))))
+lisp> (loop 1500 0)
+=> 1500
+lisp> (let ((a 2) (b 3)) (begin (define c 4) (+ a b c)))
+=> 9
+lisp> (cond ((< 5 3) 'nae) ((> 5 3) 'aye) (else 'mibbe))
+=> aye
+lisp> (and 1 2 3)
+=> 3
+lisp> (and 1 #f 3)
+=> #f
+lisp> (or #f #f 'found)
+=> found
+lisp> (not #f)
+=> #t
+lisp> (/ 12 4)
+=> 3
+lisp> (/ 7 2)
+=> 3.5
+lisp> (modulo -7 3)
+=> 2
+lisp> (- 5)
+=> -5
+lisp> (equal? '(1 (2 3)) (list 1 (list 2 3)))
+=> #t
+lisp> (cons 'first '(second third))
+=> (first second third)
+lisp> (apply + '(1 2 3 4))
+=> 10
+lisp> ((lambda args (length args)) 'a 'b 'c)
+=> 3
+lisp> (length '())
+=> 0
+lisp> (cadr '(ane twa three))
+=> twa
+lisp> (symbol? 'haggis)
+=> #t
+lisp> (number? "42")
+=> #f
+lisp> "a string wi' \"quotes\""
+=> "a string wi' \"quotes\""
+lisp> (display "Here's tae us - wha's like us?" 1 'two)
+Here's tae us - wha's like us? 1 two
+lisp> (define x 1)
+lisp> (set! x (+ x 41))
+lisp> x
+=> 42
+lisp> (set! undefined-var 5)
+!! Och! Ah dinnae ken whit 'undefined-var' is - it's no' been defined.
+lisp> (car 5)
+!! 'car' wants a list, but '5' isnae yin.
+lisp> (cdr '())
+!! Ye cannae tak the cdr o' an empty list, ya numpty!
+lisp> (+ 'a 1)
+!! '+' wants numbers, no' 'a'.
+lisp> ((lambda (a b) a) 1)
+!! Wrang number o' arguments tae 'lambda': it wants 2, ye gied it 1.
+lisp> ("not-a-function" 1)
+!! Haud on! '"not-a-function"' isnae a procedure - ye cannae cry it.
+lisp> (modulo 5 0)
+!! Dividin' by nocht? Awa' an bile yer heid!
+lisp> (error "custom" 'trouble)
+!! Ye hurled an error: custom trouble
+lisp> (if)
+!! That 'if' is hauf-built - it needs mair bits.
+Reader error: Yer brackets are aw ower the place - a ')' is missin'.
+--- reader errors ---
+Reader error: Whit's this stray ')' daein' here?
+Reader error: Yer string's rinnin' awa' - there's nae closin' quote.

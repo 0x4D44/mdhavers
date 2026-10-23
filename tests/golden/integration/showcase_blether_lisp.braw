@@ -1,0 +1,922 @@
+# Golden test: the Blether Lisp showcase (a copy o' the interpreter fae
+# examples/showcases/blether_lisp/blether_lisp.braw) running a fixed set o'
+# Lisp programs: recursion, closures, higher-order functions, tail calls,
+# special forms, an' Scots error messages. Must match in both backends.
+
+# ============================================================
+#  Blether Lisp - a wee Scheme-ish Lisp written in mdhavers
+#
+#  Tokeniser, reader (nested lists, numbers, symbols, strings,
+#  'quote), lexically scoped environments, closures, proper
+#  tail calls, special forms (define lambda if let begin quote
+#  set! cond and or), a standard library, an' error messages
+#  in guid braid Scots.
+#
+#  Run the built-in demo:
+#      mdhavers run blether_lisp.braw
+#  Run yer ain Lisp file:
+#      LISP_FILE=prog.scm mdhavers run blether_lisp.braw
+# ============================================================
+
+# ------------------------------------------------------------
+#  Lisp values
+#    numbers  -> mdhavers integers / floats
+#    strings  -> mdhavers strings
+#    booleans -> aye / nae   (#t / #f)
+#    lists    -> mdhavers lists ('() is the empty list)
+#    symbols, procedures an' environments are kin instances,
+#    each wi' a `tag` field so we can tell them apart.
+# ------------------------------------------------------------
+kin Sym {
+    dae init(name) {
+        masel.tag = "sym"
+        masel.name = name
+    }
+}
+
+kin Lambda {
+    dae init(params, rest, body, env, name) {
+        masel.tag = "lambda"
+        masel.params = params
+        masel.rest = rest
+        masel.body = body
+        masel.env = env
+        masel.name = name
+    }
+}
+
+kin Prim {
+    dae init(name, f) {
+        masel.tag = "prim"
+        masel.name = name
+        masel.f = f
+    }
+}
+
+# Errors are hurled wi' a "~" marker so we can strip ony
+# line-number prefix the host adds.
+dae lisp_error(msg) {
+    hurl "~" + msg
+}
+
+dae clean_error(err) {
+    ken parts = split(tae_string(err), "~")
+    gin len(parts) > 1 { gie parts[len(parts) - 1] }
+    gie tae_string(err)
+}
+
+dae tag_of(v) {
+    gin whit_kind(v) == "instance" { gie v.tag }
+    gie whit_kind(v)
+}
+
+dae is_sym(v) { gie tag_of(v) == "sym" }
+dae is_sym_named(v, name) { gie is_sym(v) an v.name == name }
+dae is_number(v) {
+    ken k = whit_kind(v)
+    gie k == "integer" or k == "float"
+}
+dae is_proc(v) {
+    ken t = tag_of(v)
+    gie t == "lambda" or t == "prim"
+}
+dae truthy(v) {
+    gin whit_kind(v) == "bool" { gie v }
+    gie aye
+}
+
+# ------------------------------------------------------------
+#  Environments: a dict o' bindings plus an outer link
+# ------------------------------------------------------------
+kin Env {
+    dae init(outer) {
+        masel.tag = "env"
+        masel.vars = {}
+        masel.outer = outer
+    }
+    dae define(name, value) {
+        masel.vars[name] = value
+    }
+    dae find(name) {
+        ken e = masel
+        whiles e != naething {
+            gin dict_has(e.vars, name) { gie e }
+            e = e.outer
+        }
+        lisp_error(f"Och! Ah dinnae ken whit '{name}' is - it's no' been defined.")
+    }
+    dae lookup(name) {
+        ken e = masel.find(name)
+        gie e.vars[name]
+    }
+    dae set(name, value) {
+        ken e = masel.find(name)
+        e.vars[name] = value
+    }
+}
+
+# ------------------------------------------------------------
+#  Tokeniser
+# ------------------------------------------------------------
+ken DELIMS = " \t\n\r()';\""
+
+dae tokenise(src) {
+    ken cs = chars(src)
+    ken n = len(cs)
+    ken toks = []
+    ken i = 0
+    whiles i < n {
+        ken c = cs[i]
+        gin c == " " or c == "\t" or c == "\n" or c == "\r" {
+            i = i + 1
+        } ither gin c == ";" {
+            whiles i < n an cs[i] != "\n" { i = i + 1 }
+        } ither gin c == "(" or c == ")" or c == "'" {
+            shove(toks, [c, c])
+            i = i + 1
+        } ither gin c == "\"" {
+            ken buf = []
+            i = i + 1
+            ken closed = nae
+            whiles i < n an nae closed {
+                ken d = cs[i]
+                gin d == "\\" an i + 1 < n {
+                    ken e = cs[i + 1]
+                    gin e == "n" { shove(buf, "\n") } ither { shove(buf, e) }
+                    i = i + 2
+                } ither gin d == "\"" {
+                    closed = aye
+                    i = i + 1
+                } ither {
+                    shove(buf, d)
+                    i = i + 1
+                }
+            }
+            gin nae closed {
+                lisp_error("Yer string's rinnin' awa' - there's nae closin' quote.")
+            }
+            shove(toks, ["str", join(buf, "")])
+        } ither {
+            ken buf = []
+            whiles i < n an nae contains(DELIMS, cs[i]) {
+                shove(buf, cs[i])
+                i = i + 1
+            }
+            shove(toks, ["atom", join(buf, "")])
+        }
+    }
+    gie toks
+}
+
+ken DIGITS = "0123456789"
+
+# Is this atom an integer, a float, or a symbol?
+# (Kept apart fae parse_atom: the native backend mis-handles a
+# string parameter used efter a `whiles` loop in the same
+# function - see the README.)
+dae atom_shape(text) {
+    ken cs = chars(text)
+    ken start = 0
+    gin len(cs) > 1 an (cs[0] == "-" or cs[0] == "+") { start = 1 }
+    ken digits = 0
+    ken dots = 0
+    ken ok = aye
+    ken i = start
+    whiles i < len(cs) {
+        gin contains(DIGITS, cs[i]) {
+            digits = digits + 1
+        } ither gin cs[i] == "." {
+            dots = dots + 1
+        } ither {
+            ok = nae
+        }
+        i = i + 1
+    }
+    gin ok an digits > 0 an dots == 0 { gie "int" }
+    gin ok an digits > 0 an dots == 1 { gie "float" }
+    gie "sym"
+}
+
+dae parse_atom(text) {
+    gin text == "#t" { gie aye }
+    gin text == "#f" { gie nae }
+    ken shape = atom_shape(text)
+    gin shape == "int" { gie tae_int(text) }
+    gin shape == "float" { gie tae_float(text) }
+    gie Sym(text)
+}
+
+# ------------------------------------------------------------
+#  Reader
+# ------------------------------------------------------------
+kin Reader {
+    dae init(src) {
+        masel.toks = tokenise(src)
+        masel.pos = 0
+    }
+    dae at_end() { gie masel.pos >= len(masel.toks) }
+    dae read() {
+        gin masel.at_end() {
+            lisp_error("Yer brackets are aw ower the place - a ')' is missin'.")
+        }
+        ken tok = masel.toks[masel.pos]
+        masel.pos = masel.pos + 1
+        ken kind = tok[0]
+        gin kind == "(" {
+            ken items = []
+            whiles aye {
+                gin masel.at_end() {
+                    lisp_error("Yer brackets are aw ower the place - a ')' is missin'.")
+                }
+                gin masel.toks[masel.pos][0] == ")" {
+                    masel.pos = masel.pos + 1
+                    gie items
+                }
+                shove(items, masel.read())
+            }
+        }
+        gin kind == ")" {
+            lisp_error("Whit's this stray ')' daein' here?")
+        }
+        gin kind == "'" {
+            gie [Sym("quote"), masel.read()]
+        }
+        gin kind == "str" { gie tok[1] }
+        gie parse_atom(tok[1])
+    }
+    dae read_all() {
+        ken forms = []
+        whiles nae masel.at_end() {
+            shove(forms, masel.read())
+        }
+        gie forms
+    }
+}
+
+# ------------------------------------------------------------
+#  Printer
+# ------------------------------------------------------------
+dae lisp_repr(v) {
+    ken k = whit_kind(v)
+    gin k == "bool" {
+        gin v { gie "#t" }
+        gie "#f"
+    }
+    gin k == "naething" { gie "" }
+    gin k == "integer" or k == "float" { gie tae_string(v) }
+    gin k == "string" {
+        gie "\"" + replace(replace(v, "\\", "\\\\"), "\"", "\\\"") + "\""
+    }
+    gin k == "list" {
+        gin len(v) == 2 an is_sym_named(v[0], "quote") {
+            gie "'" + lisp_repr(v[1])
+        }
+        ken parts = []
+        fer item in v { shove(parts, lisp_repr(item)) }
+        gie "(" + join(parts, " ") + ")"
+    }
+    ken t = tag_of(v)
+    gin t == "sym" { gie v.name }
+    gin t == "lambda" { gie f"#<lambda {v.name}>" }
+    gin t == "prim" { gie f"#<builtin {v.name}>" }
+    gin t == "env" { gie "#<environment>" }
+    gie "#<unkent>"
+}
+
+# `display` shows strings wi'oot their quotes
+dae lisp_display_text(v) {
+    gin whit_kind(v) == "string" { gie v }
+    gie lisp_repr(v)
+}
+
+# ------------------------------------------------------------
+#  Evaluator - a loop, so tail calls dinnae grow the stack
+# ------------------------------------------------------------
+dae check_form(x, n, what) {
+    gin len(x) < n {
+        lisp_error(f"That '{what}' is hauf-built - it needs mair bits.")
+    }
+}
+
+dae make_lambda(params_form, body, env, name) {
+    gin is_sym(params_form) {
+        gie Lambda([], params_form.name, body, env, name)
+    }
+    ken names = []
+    fer p in params_form {
+        gin nae is_sym(p) {
+            lisp_error(f"'{lisp_repr(p)}' cannae be a parameter name.")
+        }
+        shove(names, p.name)
+    }
+    gie Lambda(names, naething, body, env, name)
+}
+
+dae bind_args(proc, args) {
+    # Copied tae a local, an the rest list bound afore the loop:
+    # the native backend loses parameters that a `whiles` loop
+    # only touches through field access or method-call arguments.
+    ken f = proc
+    ken np = len(f.params)
+    ken na = len(args)
+    gin f.rest == naething an na != np {
+        lisp_error(f"Wrang number o' arguments tae '{f.name}': it wants {np}, ye gied it {na}.")
+    }
+    gin f.rest != naething an na < np {
+        lisp_error(f"No' enough arguments tae '{f.name}': it wants at least {np}.")
+    }
+    ken e = Env(f.env)
+    gin f.rest != naething {
+        e.define(f.rest, scran(args, np, na))
+    }
+    ken i = 0
+    whiles i < np {
+        e.define(f.params[i], args[i])
+        i = i + 1
+    }
+    gie e
+}
+
+dae apply_proc(f, args) {
+    ken t = tag_of(f)
+    gin t == "prim" {
+        ken fn = f.f
+        gie fn(args)
+    }
+    gin t == "lambda" {
+        ken e = bind_args(f, args)
+        ken body = f.body
+        ken last = len(body) - 1
+        ken i = 0
+        whiles i < last {
+            lisp_eval(body[i], e)
+            i = i + 1
+        }
+        gie lisp_eval(body[last], e)
+    }
+    lisp_error(f"Haud on! '{lisp_repr(f)}' isnae a procedure - ye cannae cry it.")
+}
+
+dae lisp_eval(form, scope) {
+    # Copied intae locals: the loop below reassigns them, an the
+    # native backend disnae like reassigned parameters in a loop.
+    ken x = form
+    ken env = scope
+    whiles aye {
+        gin whit_kind(x) == "instance" {
+            gin x.tag == "sym" { gie env.lookup(x.name) }
+            gie x
+        }
+        gin whit_kind(x) != "list" { gie x }
+        gin len(x) == 0 { gie x }
+
+        ken op = x[0]
+        gin is_sym(op) {
+            ken name = op.name
+            gin name == "quote" {
+                check_form(x, 2, "quote")
+                gie x[1]
+            }
+            gin name == "if" {
+                check_form(x, 3, "if")
+                gin truthy(lisp_eval(x[1], env)) {
+                    x = x[2]
+                } ither gin len(x) > 3 {
+                    x = x[3]
+                } ither {
+                    gie naething
+                }
+                haud
+            }
+            gin name == "define" {
+                check_form(x, 3, "define")
+                ken target = x[1]
+                gin whit_kind(target) == "list" {
+                    gin len(target) == 0 or nae is_sym(target[0]) {
+                        lisp_error("Ye cannae define that - it needs a name.")
+                    }
+                    ken fname = target[0].name
+                    ken params = scran(target, 1, len(target))
+                    env.define(fname, make_lambda(params, scran(x, 2, len(x)), env, fname))
+                    gie naething
+                }
+                gin nae is_sym(target) {
+                    lisp_error(f"'{lisp_repr(target)}' cannae be defined - it's no' a name.")
+                }
+                ken value = lisp_eval(x[2], env)
+                gin tag_of(value) == "lambda" an value.name == "lambda" {
+                    value.name = target.name
+                }
+                env.define(target.name, value)
+                gie naething
+            }
+            gin name == "set!" {
+                check_form(x, 3, "set!")
+                gin nae is_sym(x[1]) {
+                    lisp_error("set! needs a name tae set, ya numpty.")
+                }
+                env.set(x[1].name, lisp_eval(x[2], env))
+                gie naething
+            }
+            gin name == "lambda" {
+                check_form(x, 3, "lambda")
+                gie make_lambda(x[1], scran(x, 2, len(x)), env, "lambda")
+            }
+            gin name == "begin" {
+                gin len(x) == 1 { gie naething }
+                ken i = 1
+                whiles i < len(x) - 1 {
+                    lisp_eval(x[i], env)
+                    i = i + 1
+                }
+                x = x[len(x) - 1]
+                haud
+            }
+            gin name == "let" {
+                check_form(x, 3, "let")
+                ken inner = Env(env)
+                fer binding in x[1] {
+                    gin whit_kind(binding) != "list" or len(binding) != 2 or nae is_sym(binding[0]) {
+                        lisp_error(f"Thon let binding '{lisp_repr(binding)}' is a richt guddle.")
+                    }
+                    inner.define(binding[0].name, lisp_eval(binding[1], env))
+                }
+                ken i = 2
+                whiles i < len(x) - 1 {
+                    lisp_eval(x[i], inner)
+                    i = i + 1
+                }
+                x = x[len(x) - 1]
+                env = inner
+                haud
+            }
+            gin name == "cond" {
+                ken chosen = naething
+                ken i = 1
+                whiles i < len(x) an chosen == naething {
+                    ken clause = x[i]
+                    gin is_sym_named(clause[0], "else") or truthy(lisp_eval(clause[0], env)) {
+                        chosen = clause
+                    }
+                    i = i + 1
+                }
+                gin chosen == naething { gie naething }
+                ken j = 1
+                whiles j < len(chosen) - 1 {
+                    lisp_eval(chosen[j], env)
+                    j = j + 1
+                }
+                x = chosen[len(chosen) - 1]
+                haud
+            }
+            gin name == "and" {
+                gin len(x) == 1 { gie aye }
+                ken i = 1
+                whiles i < len(x) - 1 {
+                    gin nae truthy(lisp_eval(x[i], env)) { gie nae }
+                    i = i + 1
+                }
+                x = x[len(x) - 1]
+                haud
+            }
+            gin name == "or" {
+                gin len(x) == 1 { gie nae }
+                ken i = 1
+                whiles i < len(x) - 1 {
+                    ken v = lisp_eval(x[i], env)
+                    gin truthy(v) { gie v }
+                    i = i + 1
+                }
+                x = x[len(x) - 1]
+                haud
+            }
+        }
+
+        # Procedure application
+        ken f = lisp_eval(op, env)
+        ken args = []
+        ken i = 1
+        whiles i < len(x) {
+            shove(args, lisp_eval(x[i], env))
+            i = i + 1
+        }
+        ken t = tag_of(f)
+        gin t == "prim" {
+            ken fn = f.f
+            gie fn(args)
+        }
+        gin t != "lambda" {
+            lisp_error(f"Haud on! '{lisp_repr(f)}' isnae a procedure - ye cannae cry it.")
+        }
+        # Tail call: evaluate the body in the new environment
+        # by looping, no' by recursing.
+        env = bind_args(f, args)
+        ken body = f.body
+        ken j = 0
+        whiles j < len(body) - 1 {
+            lisp_eval(body[j], env)
+            j = j + 1
+        }
+        x = body[len(body) - 1]
+    }
+}
+
+# ------------------------------------------------------------
+#  Standard library (builtins)
+# ------------------------------------------------------------
+dae want_args(name, args, n) {
+    gin len(args) != n {
+        lisp_error(f"'{name}' wants {n} argument(s), but ye gied it {len(args)}.")
+    }
+}
+
+dae want_numbers(name, args) {
+    fer a in args {
+        gin nae is_number(a) {
+            lisp_error(f"'{name}' wants numbers, no' '{lisp_repr(a)}'.")
+        }
+    }
+}
+
+dae want_list(name, v) {
+    gin whit_kind(v) != "list" {
+        lisp_error(f"'{name}' wants a list, but '{lisp_repr(v)}' isnae yin.")
+    }
+}
+
+dae prim_add(args) {
+    want_numbers("+", args)
+    ken total = 0
+    fer a in args { total = total + a }
+    gie total
+}
+
+dae prim_mul(args) {
+    want_numbers("*", args)
+    ken total = 1
+    fer a in args { total = total * a }
+    gie total
+}
+
+dae prim_sub(args) {
+    want_numbers("-", args)
+    gin len(args) == 0 { lisp_error("'-' needs at least ae number.") }
+    gin len(args) == 1 { gie 0 - args[0] }
+    ken total = args[0]
+    ken i = 1
+    whiles i < len(args) {
+        total = total - args[i]
+        i = i + 1
+    }
+    gie total
+}
+
+dae prim_div(args) {
+    want_numbers("/", args)
+    gin len(args) < 2 { lisp_error("'/' needs at least twa numbers.") }
+    ken total = args[0]
+    ken i = 1
+    whiles i < len(args) {
+        ken d = args[i]
+        gin d == 0 { lisp_error("Dividin' by nocht? Awa' an bile yer heid!") }
+        gin whit_kind(total) == "integer" an whit_kind(d) == "integer" an total % d == 0 {
+            total = total / d
+        } ither {
+            total = tae_float(total) / tae_float(d)
+        }
+        i = i + 1
+    }
+    gie total
+}
+
+dae prim_modulo(args) {
+    want_args("modulo", args, 2)
+    want_numbers("modulo", args)
+    gin args[1] == 0 { lisp_error("Dividin' by nocht? Awa' an bile yer heid!") }
+    ken m = args[0] % args[1]
+    gin m != 0 an (m < 0) != (args[1] < 0) { m = m + args[1] }
+    gie m
+}
+
+# Chain a numeric comparison across a' the arguments
+dae compare_chain(name, args, op) {
+    want_numbers(name, args)
+    ken i = 0
+    whiles i < len(args) - 1 {
+        gin nae op(args[i], args[i + 1]) { gie nae }
+        i = i + 1
+    }
+    gie aye
+}
+
+# (Named functions, no lambdas: the native backend cannae yet
+# call a lambda that was passed in as a parameter.)
+dae num_eq(a, b) { gie a == b }
+dae num_lt(a, b) { gie a < b }
+dae num_gt(a, b) { gie a > b }
+dae num_le(a, b) { gie a <= b }
+dae num_ge(a, b) { gie a >= b }
+
+dae prim_num_eq(args) { gie compare_chain("=", args, num_eq) }
+dae prim_lt(args) { gie compare_chain("<", args, num_lt) }
+dae prim_gt(args) { gie compare_chain(">", args, num_gt) }
+dae prim_le(args) { gie compare_chain("<=", args, num_le) }
+dae prim_ge(args) { gie compare_chain(">=", args, num_ge) }
+
+dae lisp_equal(a, b) {
+    ken ta = tag_of(a)
+    ken tb = tag_of(b)
+    gin is_number(a) an is_number(b) { gie a == b }
+    gin ta != tb { gie nae }
+    gin ta == "sym" { gie a.name == b.name }
+    gin ta == "list" {
+        gin len(a) != len(b) { gie nae }
+        ken i = 0
+        whiles i < len(a) {
+            gin nae lisp_equal(a[i], b[i]) { gie nae }
+            i = i + 1
+        }
+        gie aye
+    }
+    gin ta == "lambda" or ta == "prim" or ta == "env" {
+        # Procedures are only equal tae themsels; we compare by
+        # name since kin instances hae nae identity test here.
+        gie a.name == b.name
+    }
+    gie a == b
+}
+
+dae prim_eq(args) {
+    want_args("equal?", args, 2)
+    gie lisp_equal(args[0], args[1])
+}
+
+dae prim_car(args) {
+    want_args("car", args, 1)
+    want_list("car", args[0])
+    gin len(args[0]) == 0 {
+        lisp_error("Ye cannae tak the car o' an empty list, ya numpty!")
+    }
+    gie args[0][0]
+}
+
+dae prim_cdr(args) {
+    want_args("cdr", args, 1)
+    want_list("cdr", args[0])
+    gin len(args[0]) == 0 {
+        lisp_error("Ye cannae tak the cdr o' an empty list, ya numpty!")
+    }
+    gie scran(args[0], 1, len(args[0]))
+}
+
+dae prim_cons(args) {
+    want_args("cons", args, 2)
+    want_list("cons", args[1])
+    gie [args[0], ...args[1]]
+}
+
+dae prim_list(args) { gie args }
+
+dae prim_null(args) {
+    want_args("null?", args, 1)
+    gie whit_kind(args[0]) == "list" an len(args[0]) == 0
+}
+
+dae prim_length(args) {
+    want_args("length", args, 1)
+    want_list("length", args[0])
+    gie len(args[0])
+}
+
+dae prim_append(args) {
+    ken out = []
+    fer a in args {
+        want_list("append", a)
+        fer item in a { shove(out, item) }
+    }
+    gie out
+}
+
+dae prim_map(args) {
+    want_args("map", args, 2)
+    want_list("map", args[1])
+    ken out = []
+    fer item in args[1] { shove(out, apply_proc(args[0], [item])) }
+    gie out
+}
+
+dae prim_filter(args) {
+    want_args("filter", args, 2)
+    want_list("filter", args[1])
+    ken out = []
+    fer item in args[1] {
+        gin truthy(apply_proc(args[0], [item])) { shove(out, item) }
+    }
+    gie out
+}
+
+# (reduce f init list) - a left fold
+dae prim_reduce(args) {
+    want_args("reduce", args, 3)
+    want_list("reduce", args[2])
+    ken acc = args[1]
+    fer item in args[2] { acc = apply_proc(args[0], [acc, item]) }
+    gie acc
+}
+
+dae prim_apply(args) {
+    want_args("apply", args, 2)
+    want_list("apply", args[1])
+    gie apply_proc(args[0], args[1])
+}
+
+dae prim_not(args) {
+    want_args("not", args, 1)
+    gie nae truthy(args[0])
+}
+
+dae prim_display(args) {
+    ken parts = []
+    fer a in args { shove(parts, lisp_display_text(a)) }
+    blether join(parts, " ")
+    gie naething
+}
+
+dae prim_error(args) {
+    ken parts = []
+    fer a in args { shove(parts, lisp_display_text(a)) }
+    lisp_error("Ye hurled an error: " + join(parts, " "))
+}
+
+dae prim_is_number(args) { want_args("number?", args, 1)
+    gie is_number(args[0]) }
+dae prim_is_symbol(args) { want_args("symbol?", args, 1)
+    gie is_sym(args[0]) }
+dae prim_is_list(args) { want_args("list?", args, 1)
+    gie whit_kind(args[0]) == "list" }
+dae prim_is_proc(args) { want_args("procedure?", args, 1)
+    gie is_proc(args[0]) }
+dae prim_abs(args) { want_args("abs", args, 1)
+    want_numbers("abs", args)
+    gie abs(args[0]) }
+
+ken PRELUDE = join([
+    "(define (cadr xs) (car (cdr xs)))",
+    "(define (zero? n) (= n 0))",
+    "(define (even? n) (= (modulo n 2) 0))",
+    "(define (odd? n) (not (even? n)))",
+    "(define (range a b) (if (>= a b) '() (cons a (range (+ a 1) b))))",
+    "(define (compose f g) (lambda (x) (f (g x))))",
+    "(define (sum xs) (reduce + 0 xs))"
+], "\n")
+
+dae run_silently(env, src) {
+    fer form in Reader(src).read_all() {
+        lisp_eval(form, env)
+    }
+}
+
+dae make_global_env() {
+    ken g = Env(naething)
+    g.define("+", Prim("+", prim_add))
+    g.define("-", Prim("-", prim_sub))
+    g.define("*", Prim("*", prim_mul))
+    g.define("/", Prim("/", prim_div))
+    g.define("modulo", Prim("modulo", prim_modulo))
+    g.define("=", Prim("=", prim_num_eq))
+    g.define("<", Prim("<", prim_lt))
+    g.define(">", Prim(">", prim_gt))
+    g.define("<=", Prim("<=", prim_le))
+    g.define(">=", Prim(">=", prim_ge))
+    g.define("equal?", Prim("equal?", prim_eq))
+    g.define("eq?", Prim("eq?", prim_eq))
+    g.define("car", Prim("car", prim_car))
+    g.define("cdr", Prim("cdr", prim_cdr))
+    g.define("cons", Prim("cons", prim_cons))
+    g.define("list", Prim("list", prim_list))
+    g.define("null?", Prim("null?", prim_null))
+    g.define("length", Prim("length", prim_length))
+    g.define("append", Prim("append", prim_append))
+    g.define("map", Prim("map", prim_map))
+    g.define("filter", Prim("filter", prim_filter))
+    g.define("reduce", Prim("reduce", prim_reduce))
+    g.define("apply", Prim("apply", prim_apply))
+    g.define("not", Prim("not", prim_not))
+    g.define("display", Prim("display", prim_display))
+    g.define("error", Prim("error", prim_error))
+    g.define("number?", Prim("number?", prim_is_number))
+    g.define("symbol?", Prim("symbol?", prim_is_symbol))
+    g.define("list?", Prim("list?", prim_is_list))
+    g.define("procedure?", Prim("procedure?", prim_is_proc))
+    g.define("abs", Prim("abs", prim_abs))
+    # A wee prelude written in Blether Lisp itsel'
+    run_silently(g, PRELUDE)
+    gie g
+}
+
+# Read an' evaluate every form in src, echoin' each form an'
+# its value like a REPL transcript. Errors are reported an'
+# the run cairries on wi' the next form.
+dae run_transcript(env, src) {
+    ken reader = naething
+    hae_a_bash {
+        reader = Reader(src)
+    } gin_it_gangs_wrang err {
+        blether "Reader error: " + clean_error(err)
+        gie naething
+    }
+    ken going = aye
+    whiles going an nae reader.at_end() {
+        ken form = naething
+        hae_a_bash {
+            form = reader.read()
+        } gin_it_gangs_wrang err {
+            blether "Reader error: " + clean_error(err)
+            going = nae
+        }
+        gin going {
+            blether "lisp> " + lisp_repr(form)
+            hae_a_bash {
+                ken v = lisp_eval(form, env)
+                gin v != naething {
+                    blether "=> " + lisp_repr(v)
+                }
+            } gin_it_gangs_wrang err {
+                blether "!! " + clean_error(err)
+            }
+        }
+    }
+}
+
+# ==== golden test main ====
+
+ken GOLDEN_PROGRAM = join([
+    "(define (fact n) (if (<= n 1) 1 (* n (fact (- n 1)))))",
+    "(fact 10)",
+    "(fact 15)",
+    "(define (fib n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2)))))",
+    "(fib 12)",
+    "(map fib (range 0 10))",
+    "(define (make-counter start)",
+    "  (let ((n start)) (lambda () (set! n (+ n 1)) n)))",
+    "(define c1 (make-counter 0))",
+    "(define c2 (make-counter 100))",
+    "(list (c1) (c1) (c2) (c1) (c2))",
+    "(define (make-adder k) (lambda (x) (+ x k)))",
+    "(map (make-adder 10) '(1 2 3))",
+    "(filter even? (range 0 12))",
+    "(reduce * 1 (range 1 7))",
+    "(sum (map (lambda (x) (* x x)) (range 1 6)))",
+    "(define (quicksort xs)",
+    "  (if (null? xs) '()",
+    "      (let ((p (car xs)) (rest (cdr xs)))",
+    "        (append (quicksort (filter (lambda (x) (< x p)) rest))",
+    "                (list p)",
+    "                (quicksort (filter (lambda (x) (>= x p)) rest))))))",
+    "(quicksort '(5 3 9 1 5 8 2 7))",
+    "(define (loop n acc) (if (= n 0) acc (loop (- n 1) (+ acc 1))))",
+    "(loop 1500 0)",
+    "(let ((a 2) (b 3)) (begin (define c 4) (+ a b c)))",
+    "(cond ((< 5 3) 'nae) ((> 5 3) 'aye) (else 'mibbe))",
+    "(and 1 2 3)",
+    "(and 1 #f 3)",
+    "(or #f #f 'found)",
+    "(not #f)",
+    "(/ 12 4)",
+    "(/ 7 2)",
+    "(modulo -7 3)",
+    "(- 5)",
+    "(equal? '(1 (2 3)) (list 1 (list 2 3)))",
+    "(cons 'first '(second third))",
+    "(apply + '(1 2 3 4))",
+    "((lambda args (length args)) 'a 'b 'c)",
+    "(length '())",
+    "(cadr '(ane twa three))",
+    "(symbol? 'haggis)",
+    "(number? \"42\")",
+    "\"a string wi' \\\"quotes\\\"\"",
+    "(display \"Here's tae us - wha's like us?\" 1 'two)",
+    "(define x 1)",
+    "(set! x (+ x 41))",
+    "x",
+    "(set! undefined-var 5)",
+    "(car 5)",
+    "(cdr '())",
+    "(+ 'a 1)",
+    "((lambda (a b) a) 1)",
+    "(\"not-a-function\" 1)",
+    "(modulo 5 0)",
+    "(error \"custom\" 'trouble)",
+    "(if)",
+    "(+ 1 2"
+], "\n")
+
+dae golden_main() {
+    ken env = make_global_env()
+    run_transcript(env, GOLDEN_PROGRAM)
+    blether "--- reader errors ---"
+    run_transcript(env, ")")
+    run_transcript(env, "(display \"unclosed)")
+}
+
+golden_main()
