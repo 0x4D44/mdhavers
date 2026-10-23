@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00069 — Native: list reassigned inside a gin block keeps its old value when indexed
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-23T02:06:57Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T030559Z-a63f4c39
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00069-run-fix-20261023T030559Z-a63f4c39
-- **Owner base:** 4510b06581a9a4e890f8e705911849ba871499df
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T03:05:59Z
-- **Owner until:** 2026-10-23T07:05:59Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T02:06:57Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-23T02:06:57Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T03:06:06Z, deltic:auto role=fix run=fix-20261023T030559Z-a63f4c39 branch=task/bug-MDH-BUG-FLU-00069-run-fix-20261023T030559Z-a63f4c39 code=8e071f4 gate=manual)
 
 ## Observation
 
