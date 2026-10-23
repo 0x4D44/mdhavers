@@ -73,8 +73,19 @@ fn run_interpreter_test(braw_path: &Path) -> Result<String, String> {
     let source = fs::read_to_string(braw_path)
         .map_err(|e| format!("Failed to read {}: {}", braw_path.display(), e))?;
 
-    let (_value, output) =
-        mdhavers::run_with_output(&source).map_err(|e| format!("Interpreter error: {:?}", e))?;
+    // Match the CLI, which runs programs on a 512 MiB thread: a 2 MB test thread
+    // only fits a few dozen nested calls in a debug build.
+    let output = std::thread::Builder::new()
+        .stack_size(512 * 1024 * 1024)
+        .spawn(move || {
+            mdhavers::run_with_output(&source)
+                .map(|(_value, output)| output)
+                .map_err(|e| format!("{:?}", e))
+        })
+        .map_err(|e| format!("Failed to spawn interpreter thread: {}", e))?
+        .join()
+        .map_err(|_| "Interpreter thread panicked".to_string())?
+        .map_err(|e| format!("Interpreter error: {}", e))?;
 
     Ok(output.join("\n"))
 }
