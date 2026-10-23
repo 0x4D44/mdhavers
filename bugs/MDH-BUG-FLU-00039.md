@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00039 — JS compiler emits JS reserved words and runtime helper names verbatim
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** High
 - **Area:** js
 - **Raised:** 2026-10-22T23:24:10Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T021647Z-ce08c85a
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00039-run-fix-20261023T021647Z-ce08c85a
-- **Owner base:** 53a16487c6b1353fd147afd9864bcf57e4efce4a
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T02:16:47Z
-- **Owner until:** 2026-10-23T06:16:47Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-22T23:24:10Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-22T23:24:10Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T02:16:52Z, deltic:auto role=fix run=fix-20261023T021647Z-ce08c85a branch=task/bug-MDH-BUG-FLU-00039-run-fix-20261023T021647Z-ce08c85a code=3e24904 gate=manual)
 
 ## Observation
 
