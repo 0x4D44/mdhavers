@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00067 — Debug-build evaluator uses ~45 KB of native stack per mdhavers call
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** interpreter
 - **Raised:** 2026-10-23T02:06:57Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T032310Z-c098bf45
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00067-run-fix-20261023T032310Z-c098bf45
-- **Owner base:** dace99a9d262cf372e780b118599f8ba1e5961cb
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T03:23:10Z
-- **Owner until:** 2026-10-23T07:23:10Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T02:06:57Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-23T02:06:57Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T03:23:16Z, deltic:auto role=fix run=fix-20261023T032310Z-c098bf45 branch=task/bug-MDH-BUG-FLU-00067-run-fix-20261023T032310Z-c098bf45 code=a920344 gate=manual)
 
 ## Observation
 
