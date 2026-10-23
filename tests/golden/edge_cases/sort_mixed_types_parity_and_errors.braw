@@ -1,6 +1,6 @@
 # sort_mixed_types_parity_and_errors.braw - sort() should match interpreter semantics on mixed types and type errors
 
-# Mixed int/float: ints sort within their segment; types act as stable barriers.
+# Mixed int/float: numbers sort by value (MDH-BUG-FLU-00009).
 ken a = sort([3, 2, 1.5])
 blether a[0]
 blether a[1]
@@ -11,7 +11,7 @@ blether b[0]
 blether b[1]
 blether b[2]
 
-# Mixed string/int: strings sort within their segment; ints remain in place.
+# Mixed string/int: numbers sort before strings.
 ken c = sort(["b", "a", 1])
 blether c[0]
 blether c[1]

@@ -170,8 +170,39 @@ enum Commands {
     },
 }
 
+/// Stack for the thread that runs the CLI. Deep recursion in a script then
+/// ends in the interpreter's catchable StackOverflow error lang afore the
+/// native stack runs oot. Only touched pages are ever committed.
+#[cfg(all(not(test), not(all(target_os = "macos", feature = "graphics"))))]
+const CLI_STACK_SIZE: usize = 512 * 1024 * 1024;
+
 #[cfg(not(test))]
 fn main() {
+    // raylib/GLFW windows must be opened on the macOS main thread, so
+    // graphics builds there stay on the main thread and its smaller stack.
+    // The interpreter's stack guard keeps either case from aborting.
+    #[cfg(not(all(target_os = "macos", feature = "graphics")))]
+    {
+        let spawned = std::thread::Builder::new()
+            .name("mdhavers".to_string())
+            .stack_size(CLI_STACK_SIZE)
+            .spawn(|| {
+                mdhavers::interpreter::register_thread_stack(CLI_STACK_SIZE);
+                cli_main();
+            });
+        if let Ok(handle) = spawned {
+            if handle.join().is_err() {
+                // The panic hook has already reported it
+                process::exit(101);
+            }
+            return;
+        }
+    }
+    cli_main();
+}
+
+#[cfg(not(test))]
+fn cli_main() {
     // Set up crash handlers for graceful error reporting
     setup_crash_handlers();
 

@@ -210,54 +210,130 @@ impl Value {
     }
 }
 
+/// Containers nested deeper than this print as `[...]` / `{...}` rather
+/// than risk overflowing the native stack.
+const MAX_DISPLAY_DEPTH: usize = 1000;
+
+/// Write a value, tracking the containers already being written (`open`)
+/// so a self-referential list or dict prints `[...]` / `{...}` instead of
+/// recursing forever.
+fn write_value(value: &Value, out: &mut dyn fmt::Write, open: &mut Vec<usize>) -> fmt::Result {
+    match value {
+        Value::Integer(n) => write!(out, "{}", n),
+        Value::Float(n) => write!(out, "{}", n),
+        Value::String(s) => write!(out, "{}", s),
+        Value::Bool(true) => write!(out, "aye"),
+        Value::Bool(false) => write!(out, "nae"),
+        Value::Nil => write!(out, "naething"),
+        Value::List(items) => {
+            let id = Rc::as_ptr(items) as *const () as usize;
+            if open.contains(&id) || open.len() >= MAX_DISPLAY_DEPTH {
+                return write!(out, "[...]");
+            }
+            open.push(id);
+            let items = items.borrow();
+            write!(out, "[")?;
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    write!(out, ", ")?;
+                }
+                write_value(item, out, open)?;
+            }
+            open.pop();
+            write!(out, "]")
+        }
+        Value::Dict(map) => {
+            let id = Rc::as_ptr(map) as *const () as usize;
+            if open.contains(&id) || open.len() >= MAX_DISPLAY_DEPTH {
+                return write!(out, "{{...}}");
+            }
+            open.push(id);
+            let map = map.borrow();
+            write!(out, "{{")?;
+            for (i, (k, v)) in map.iter().enumerate() {
+                if i > 0 {
+                    write!(out, ", ")?;
+                }
+                write!(out, "\"")?;
+                write_value(k, out, open)?;
+                write!(out, "\": ")?;
+                write_value(v, out, open)?;
+            }
+            open.pop();
+            write!(out, "}}")
+        }
+        Value::Set(set) => {
+            let id = Rc::as_ptr(set) as *const () as usize;
+            if open.contains(&id) || open.len() >= MAX_DISPLAY_DEPTH {
+                return write!(out, "creel{{...}}");
+            }
+            open.push(id);
+            let set = set.borrow();
+            let mut strs: Vec<String> = Vec::with_capacity(set.len());
+            for item in set.iter() {
+                let mut s = String::new();
+                write_value(item, &mut s, open)?;
+                strs.push(s);
+            }
+            open.pop();
+            strs.sort(); // Sort fer consistent display
+            write!(out, "creel{{")?;
+            for (i, s) in strs.iter().enumerate() {
+                if i > 0 {
+                    write!(out, ", ")?;
+                }
+                write!(out, "\"{}\"", s)?;
+            }
+            write!(out, "}}")
+        }
+        Value::Bytes(bytes) => {
+            let len = bytes.borrow().len();
+            write!(out, "bytes[{}]", len)
+        }
+        Value::Function(func) => write!(out, "<dae {}>", func.name),
+        Value::NativeFunction(func) => write!(out, "<native dae {}>", func.name),
+        Value::Class(class) => write!(out, "<kin {}>", class.name),
+        Value::Instance(inst) => write!(out, "<{} instance>", inst.borrow().class.name),
+        Value::Struct(s) => write!(out, "<thing {}>", s.name),
+        Value::Range(r) => write!(out, "{}..{}", r.start, r.end),
+        Value::NativeObject(obj) => write!(out, "{}", obj.to_string()),
+    }
+}
+
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Value::Integer(n) => write!(f, "{}", n),
-            Value::Float(n) => write!(f, "{}", n),
-            Value::String(s) => write!(f, "{}", s),
-            Value::Bool(true) => write!(f, "aye"),
-            Value::Bool(false) => write!(f, "nae"),
-            Value::Nil => write!(f, "naething"),
-            Value::List(items) => {
-                let items = items.borrow();
-                let strs: Vec<String> = items.iter().map(|v| format!("{}", v)).collect();
-                write!(f, "[{}]", strs.join(", "))
-            }
-            Value::Dict(map) => {
-                let map = map.borrow();
-                let strs: Vec<String> = map
-                    .iter()
-                    .map(|(k, v)| format!("\"{}\": {}", k, v))
-                    .collect();
-                write!(f, "{{{}}}", strs.join(", "))
-            }
-            Value::Set(set) => {
-                let set = set.borrow();
-                let mut strs: Vec<String> = set.iter().map(|v| format!("{}", v)).collect();
-                strs.sort(); // Sort fer consistent display
-                write!(
-                    f,
-                    "creel{{{}}}",
-                    strs.iter()
-                        .map(|s| format!("\"{}\"", s))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-            Value::Bytes(bytes) => {
-                let len = bytes.borrow().len();
-                write!(f, "bytes[{}]", len)
-            }
-            Value::Function(func) => write!(f, "<dae {}>", func.name),
-            Value::NativeFunction(func) => write!(f, "<native dae {}>", func.name),
-            Value::Class(class) => write!(f, "<kin {}>", class.name),
-            Value::Instance(inst) => write!(f, "<{} instance>", inst.borrow().class.name),
-            Value::Struct(s) => write!(f, "<thing {}>", s.name),
-            Value::Range(r) => write!(f, "{}..{}", r.start, r.end),
-            Value::NativeObject(obj) => write!(f, "{}", obj.to_string()),
-        }
+        write_value(self, f, &mut Vec::new())
     }
+}
+
+/// Structural list equality that terminates on cyclic lists.
+/// `active` holds the (left, right) list pairs being compared right now.
+/// Meeting one again means the comparison has come full circle without
+/// finding a difference, so that pair counts as equal (bisimulation).
+fn lists_equal(
+    a: &Rc<RefCell<Vec<Value>>>,
+    b: &Rc<RefCell<Vec<Value>>>,
+    active: &mut Vec<(usize, usize)>,
+) -> bool {
+    let pair = (
+        Rc::as_ptr(a) as *const () as usize,
+        Rc::as_ptr(b) as *const () as usize,
+    );
+    if active.contains(&pair) {
+        return true;
+    }
+    let a = a.borrow();
+    let b = b.borrow();
+    if a.len() != b.len() {
+        return false;
+    }
+    active.push(pair);
+    let equal = a.iter().zip(b.iter()).all(|(x, y)| match (x, y) {
+        (Value::List(xl), Value::List(yl)) => lists_equal(xl, yl, active),
+        _ => x == y,
+    });
+    active.pop();
+    equal
 }
 
 impl PartialEq for Value {
@@ -270,7 +346,7 @@ impl PartialEq for Value {
             (Value::String(a), Value::String(b)) => a == b,
             (Value::Bool(a), Value::Bool(b)) => a == b,
             (Value::Nil, Value::Nil) => true,
-            (Value::List(a), Value::List(b)) => *a.borrow() == *b.borrow(),
+            (Value::List(a), Value::List(b)) => lists_equal(a, b, &mut Vec::new()),
             (Value::Dict(a), Value::Dict(b)) => Rc::ptr_eq(a, b),
             (Value::Set(a), Value::Set(b)) => Rc::ptr_eq(a, b),
             (Value::Bytes(a), Value::Bytes(b)) => *a.borrow() == *b.borrow(),
@@ -612,6 +688,7 @@ impl RangeValue {
             current: self.start,
             end: self.end,
             inclusive: self.inclusive,
+            done: false,
         }
     }
 }
@@ -620,24 +697,40 @@ pub struct RangeIterator {
     current: i64,
     end: i64,
     inclusive: bool,
+    /// Set once the last value is handed out, so `..=i64::MAX` never overflows
+    done: bool,
+}
+
+impl RangeIterator {
+    /// Items still to come, as an i128 so no range can overflow it
+    fn remaining(&self) -> i128 {
+        if self.done {
+            return 0;
+        }
+        let span = self.end as i128 - self.current as i128 + i128::from(self.inclusive);
+        span.max(0)
+    }
 }
 
 impl Iterator for RangeIterator {
     type Item = i64;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let should_yield = if self.inclusive {
-            self.current <= self.end
-        } else {
-            self.current < self.end
-        };
+        if self.remaining() == 0 {
+            return None;
+        }
+        let val = self.current;
+        match self.current.checked_add(1) {
+            Some(next) => self.current = next,
+            None => self.done = true,
+        }
+        Some(val)
+    }
 
-        if should_yield {
-            let val = self.current;
-            self.current += 1;
-            Some(val)
-        } else {
-            None
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match usize::try_from(self.remaining()) {
+            Ok(n) => (n, Some(n)),
+            Err(_) => (usize::MAX, None),
         }
     }
 }

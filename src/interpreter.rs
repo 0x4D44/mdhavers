@@ -63,6 +63,319 @@ static CRASH_HANDLING_ENABLED: AtomicBool = AtomicBool::new(true);
 /// Monotonic clock anchor for mono_ms/mono_ns
 static MONO_START: OnceLock<std::time::Instant> = OnceLock::new();
 
+// ==================== Random Numbers ====================
+
+/// Bumped every time a generator is seeded, so two seeds taken in the same
+/// clock tick still differ.
+static RNG_SEED_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+thread_local! {
+    /// The one pseudo-random generator behind every random builtin (jammy,
+    /// shuffle, dram, random, ...). Seeded once per thread, then stepped.
+    static HAVERS_RNG: std::cell::Cell<u64> = std::cell::Cell::new(havers_rng_seed());
+}
+
+/// splitmix64 finaliser: turns a weak seed into a well-mixed 64-bit value.
+fn splitmix64_mix(mut z: u64) -> u64 {
+    z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    z ^ (z >> 31)
+}
+
+/// Seed from the wall clock, a stack address and a process-wide counter.
+/// macOS clocks only tick in microseconds, so the clock alone is not enough.
+fn havers_rng_seed() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    let local = 0u8;
+    let addr = &local as *const u8 as usize as u64;
+    let count = RNG_SEED_COUNTER.fetch_add(1, Ordering::Relaxed);
+    splitmix64_mix(nanos ^ addr.rotate_left(32) ^ splitmix64_mix(count))
+}
+
+/// Next 64 random bits (splitmix64 sequence).
+fn havers_random_u64() -> u64 {
+    HAVERS_RNG.with(|state| {
+        let next = state.get().wrapping_add(0x9e37_79b9_7f4a_7c15);
+        state.set(next);
+        splitmix64_mix(next)
+    })
+}
+
+/// Uniform random number in `0..bound` (bound must be > 0), without modulo bias.
+fn havers_random_below(bound: u64) -> u64 {
+    debug_assert!(bound > 0);
+    // Lemire's multiply-shift with rejection.
+    let threshold = bound.wrapping_neg() % bound;
+    loop {
+        let product = (havers_random_u64() as u128) * (bound as u128);
+        if (product as u64) >= threshold {
+            return (product >> 64) as u64;
+        }
+    }
+}
+
+/// Uniform random integer in `min..=max` (requires min <= max).
+fn havers_random_int_inclusive(min: i64, max: i64) -> i64 {
+    let span = (max as i128 - min as i128) as u128;
+    if span >= u64::MAX as u128 {
+        // Full i64 range: every bit pattern is fair game.
+        return havers_random_u64() as i64;
+    }
+    let offset = havers_random_below(span as u64 + 1);
+    (min as i128 + offset as i128) as i64
+}
+
+/// Uniform random float in `[0, 1)`.
+fn havers_random_f64() -> f64 {
+    (havers_random_u64() >> 11) as f64 / (1u64 << 53) as f64
+}
+
+// ==================== Native Stack Guard ====================
+//
+// Deep mdhavers recursion used to overflow the native stack and abort the
+// process. Every user-function call now checks how much native stack is left
+// and raises the catchable `HaversError::StackOverflow` well before the end.
+// Measuring the real stack (rather than guessing a depth) keeps this safe in
+// debug builds, whose evaluator frames are many times bigger than release.
+
+/// Native stack kept free below the deepest mdhavers call. It must cover the
+/// evaluator frames between two calls plus the deepest builtin work
+/// (value display, JSON) done at the bottom.
+const STACK_SAFETY_MARGIN: usize = 512 * 1024;
+
+/// Stack assumed usable below the first call on a thread whose real stack
+/// bounds cannae be found (and that was not registered).
+const FALLBACK_STACK_BUDGET: usize = 512 * 1024;
+
+/// Hard cap on nested mdhavers calls, whatever the stack size.
+pub const MAX_CALL_DEPTH: usize = 100_000;
+
+thread_local! {
+    /// Lowest usable native stack address on this thread (0 = not known yet).
+    static THREAD_STACK_LOW: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Address of a local in this frame: where the native stack has got to.
+#[inline(never)]
+fn current_stack_address() -> usize {
+    let marker = 0u8;
+    std::hint::black_box(&marker) as *const u8 as usize
+}
+
+/// Tell the interpreter that the current thread was spawned with `size`
+/// bytes of stack. Call it first thing in the new thread; the CLI does this
+/// for the big-stack thread it runs programs on.
+pub fn register_thread_stack(size: usize) {
+    let here = current_stack_address();
+    // We are near the top of the stack; leave room for the frames above us.
+    let low = here.saturating_sub(size.saturating_sub(64 * 1024));
+    THREAD_STACK_LOW.with(|cell| cell.set(low));
+}
+
+#[cfg(all(feature = "native", target_os = "macos"))]
+fn os_thread_stack_low() -> Option<usize> {
+    // SAFETY: both calls only read the current thread's own attributes.
+    let (top, size) = unsafe {
+        let this = libc::pthread_self();
+        (
+            libc::pthread_get_stackaddr_np(this) as usize,
+            libc::pthread_get_stacksize_np(this),
+        )
+    };
+    if top == 0 || size == 0 || size > top {
+        None
+    } else {
+        Some(top - size)
+    }
+}
+
+#[cfg(all(feature = "native", target_os = "linux"))]
+fn os_thread_stack_low() -> Option<usize> {
+    // SAFETY: attr is initialised by pthread_getattr_np before use and
+    // destroyed exactly once afterwards.
+    unsafe {
+        let mut attr: libc::pthread_attr_t = std::mem::zeroed();
+        if libc::pthread_getattr_np(libc::pthread_self(), &mut attr) != 0 {
+            return None;
+        }
+        let mut addr: *mut libc::c_void = std::ptr::null_mut();
+        let mut size: libc::size_t = 0;
+        let rc = libc::pthread_attr_getstack(&attr, &mut addr, &mut size);
+        libc::pthread_attr_destroy(&mut attr);
+        if rc != 0 || addr.is_null() || size == 0 {
+            None
+        } else {
+            Some(addr as usize)
+        }
+    }
+}
+
+#[cfg(not(all(feature = "native", any(target_os = "macos", target_os = "linux"))))]
+fn os_thread_stack_low() -> Option<usize> {
+    None
+}
+
+/// Lowest stack address a new mdhavers call may start from on this thread.
+fn stack_call_limit(here: usize) -> usize {
+    THREAD_STACK_LOW.with(|cell| {
+        let mut low = cell.get();
+        if low == 0 {
+            low = os_thread_stack_low().unwrap_or_else(|| {
+                here.saturating_sub(FALLBACK_STACK_BUDGET + STACK_SAFETY_MARGIN)
+            });
+            cell.set(low.max(1));
+        }
+        low.saturating_add(STACK_SAFETY_MARGIN)
+    })
+}
+
+// ==================== Size Limits ====================
+
+/// Largest string, list or byte buffer a single builtin will build (1 GiB).
+/// Bigger requests get a Scots error instead of a capacity-overflow panic or
+/// an allocation-failure abort.
+const MAX_BUILT_SIZE: usize = 1 << 30;
+
+/// Error text for a builtin whose integer result will not fit in an i64.
+fn overflow_msg(what: &str) -> String {
+    format!(
+        "Wheesht! Yer number's too muckle in {} - it's overflowed!",
+        what
+    )
+}
+
+/// `base ^ exp` for a non-negative exponent, or None if it overflows an i64.
+/// Exponents beyond u32 are only representable for bases 0, 1 and -1.
+fn checked_int_pow(base: i64, exp: i64) -> Option<i64> {
+    if exp < 0 {
+        return None;
+    }
+    match u32::try_from(exp) {
+        Ok(e) => base.checked_pow(e),
+        Err(_) => match base {
+            0 => Some(0),
+            1 => Some(1),
+            -1 => Some(if exp % 2 == 0 { 1 } else { -1 }),
+            _ => None,
+        },
+    }
+}
+
+/// Greatest common divisor of |a| and |b| in u64, so i64::MIN cannot overflow.
+/// Only gcd(i64::MIN, 0) and gcd(i64::MIN, i64::MIN) exceed i64::MAX.
+fn gcd_u64(a: i64, b: i64) -> u64 {
+    let (mut a, mut b) = (a.unsigned_abs(), b.unsigned_abs());
+    while b != 0 {
+        let r = a % b;
+        a = b;
+        b = r;
+    }
+    a
+}
+
+/// `base ^ exp` as a float, without truncating the exponent to i32.
+fn float_pow_int(base: f64, exp: i64) -> f64 {
+    match i32::try_from(exp) {
+        Ok(e) => base.powi(e),
+        Err(_) => base.powf(exp as f64),
+    }
+}
+
+/// Error unless `size` (bytes or elements) is within `MAX_BUILT_SIZE`.
+fn check_alloc_size(size: usize, what: &str) -> Result<usize, String> {
+    if size > MAX_BUILT_SIZE {
+        Err(format!(
+            "{} wid be ower muckle ({} is mair than the {} limit), ya greedy gannet!",
+            what, size, MAX_BUILT_SIZE
+        ))
+    } else {
+        Ok(size)
+    }
+}
+
+/// `unit * count` as an allocation size, checked against `MAX_BUILT_SIZE`.
+fn checked_alloc_size(unit: usize, count: usize, what: &str) -> Result<usize, String> {
+    match unit.checked_mul(count) {
+        Some(size) => check_alloc_size(size, what),
+        None => Err(format!(
+            "{} wid be ower muckle (bigger than the {} limit), ya greedy gannet!",
+            what, MAX_BUILT_SIZE
+        )),
+    }
+}
+
+// ==================== Sort Order ====================
+
+/// Compare an integer with a float exactly (no lossy i64 -> f64 cast).
+/// NaN sorts after every number.
+fn cmp_int_float(i: i64, f: f64) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    if f.is_nan() {
+        return Ordering::Less;
+    }
+    // 2^63 is exactly representable; every i64 is below it.
+    if f >= 9_223_372_036_854_775_808.0 {
+        return Ordering::Less;
+    }
+    if f < -9_223_372_036_854_775_808.0 {
+        return Ordering::Greater;
+    }
+    let whole = f.trunc();
+    match i.cmp(&(whole as i64)) {
+        Ordering::Equal => {
+            let frac = f - whole;
+            if frac > 0.0 {
+                Ordering::Less
+            } else if frac < 0.0 {
+                Ordering::Greater
+            } else {
+                Ordering::Equal
+            }
+        }
+        other => other,
+    }
+}
+
+/// The total order used by `sort()`:
+/// numbers (integers and floats compared by value, NaN last) < strings
+/// (byte order) < everything else. Values of any other kind compare equal
+/// to each other, so a stable sort keeps their original order.
+fn sort_order(a: &Value, b: &Value) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    fn rank(v: &Value) -> u8 {
+        match v {
+            Value::Integer(_) | Value::Float(_) => 0,
+            Value::String(_) => 1,
+            _ => 2,
+        }
+    }
+    match (a, b) {
+        (Value::Integer(x), Value::Integer(y)) => x.cmp(y),
+        (Value::Float(x), Value::Float(y)) => match (x.is_nan(), y.is_nan()) {
+            (true, true) => Ordering::Equal,
+            (true, false) => Ordering::Greater,
+            (false, true) => Ordering::Less,
+            (false, false) => x.partial_cmp(y).unwrap_or(Ordering::Equal),
+        },
+        (Value::Integer(x), Value::Float(y)) => cmp_int_float(*x, *y),
+        (Value::Float(x), Value::Integer(y)) => cmp_int_float(*y, *x).reverse(),
+        (Value::String(x), Value::String(y)) => x.cmp(y),
+        _ => rank(a).cmp(&rank(b)),
+    }
+}
+
+/// In-place Fisher-Yates shuffle using the shared generator.
+fn havers_shuffle<T>(items: &mut [T]) {
+    for i in (1..items.len()).rev() {
+        let j = havers_random_below(i as u64 + 1) as usize;
+        items.swap(i, j);
+    }
+}
+
 // ==================== Coverage/Test Overrides ====================
 
 #[cfg(any(test, coverage))]
@@ -2090,6 +2403,8 @@ pub struct Interpreter {
     trace_mode: TraceMode,
     /// Current trace indentation level
     trace_depth: usize,
+    /// Nested mdhavers function calls in progress (see `call_function_with_env`)
+    call_depth: usize,
     /// Logger configuration and sinks
     logger: logging::LoggerCore,
     /// Optional callback hook for log events
@@ -2178,6 +2493,7 @@ impl Interpreter {
             prelude_loaded: false,
             trace_mode: TraceMode::Off,
             trace_depth: 0,
+            call_depth: 0,
             logger: logging::LoggerCore::new(),
             log_callback: None,
             current_file: "<repl>".to_string(),
@@ -2450,6 +2766,22 @@ impl Interpreter {
         }
     }
 
+    /// Like `trace`, but only builds the message when tracing is on.
+    /// Formatting values eagerly cost time on every statement and recursed
+    /// forever on self-referential lists and dicts.
+    fn trace_with<F: FnOnce() -> String>(&self, msg: F) {
+        if self.trace_mode != TraceMode::Off {
+            self.trace(&msg());
+        }
+    }
+
+    /// Like `trace_verbose`, but only builds the message in verbose mode.
+    fn trace_verbose_with<F: FnOnce() -> String>(&self, msg: F) {
+        if self.trace_mode == TraceMode::Verbose {
+            self.trace_verbose(&msg());
+        }
+    }
+
     /// Create an interpreter with a specific working directory
     #[allow(dead_code)]
     pub fn with_dir<P: AsRef<Path>>(dir: P) -> Self {
@@ -2620,6 +2952,7 @@ impl Interpreter {
                     _ => return Err("bytes() expects an integer size".to_string()),
                 };
                 let size = if size < 0 { 0 } else { size } as usize;
+                check_alloc_size(size, "bytes()")?;
                 Ok(Value::Bytes(Rc::new(RefCell::new(vec![0u8; size]))))
             }))),
         );
@@ -2753,10 +3086,13 @@ impl Interpreter {
                     Value::Bytes(b) => b.clone(),
                     _ => return Err("bytes_append() expects bytes".to_string()),
                 };
-                let other = match &args[1] {
-                    Value::Bytes(b) => b.borrow(),
+                // Copy first: `other` may be the very same buffer as `bytes`.
+                let other: Vec<u8> = match &args[1] {
+                    Value::Bytes(b) => b.borrow().clone(),
                     _ => return Err("bytes_append() expects bytes".to_string()),
                 };
+                let new_len = bytes.borrow().len().saturating_add(other.len());
+                check_alloc_size(new_len, "bytes_append()")?;
                 bytes.borrow_mut().extend_from_slice(&other);
                 Ok(Value::Bytes(bytes))
             }))),
@@ -3422,6 +3758,7 @@ impl Interpreter {
                         .as_integer()
                         .ok_or("udp_recv_from() expects max_len integer")?;
                     let max_len = if max_len < 0 { 0 } else { max_len } as usize;
+                    check_alloc_size(max_len, "recv max_len")?;
                     let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
 
                     let mut buf = vec![0u8; max_len];
@@ -3490,6 +3827,7 @@ impl Interpreter {
                         .as_integer()
                         .ok_or("tcp_recv() expects max_len integer")?;
                     let max_len = if max_len < 0 { 0 } else { max_len } as usize;
+                    check_alloc_size(max_len, "recv max_len")?;
                     let entry = get_socket(sock_id).ok_or("Unknown socket handle")?;
                     let mut buf = vec![0u8; max_len];
                     let n = unsafe {
@@ -3815,6 +4153,7 @@ impl Interpreter {
                         .as_integer()
                         .ok_or("tls_recv() expects max_len integer")?;
                     let max_len = if max_len < 0 { 0 } else { max_len } as usize;
+                    check_alloc_size(max_len, "recv max_len")?;
                     let res = with_tls_mut(tls_id, |session| {
                         let stream = session.stream.as_mut().ok_or("TLS not connected")?;
                         let mut buf = vec![0u8; max_len];
@@ -5223,6 +5562,7 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("range", 2, |args| {
                 let start = args[0].as_integer().ok_or("range() expects integers")?;
                 let end = args[1].as_integer().ok_or("range() expects integers")?;
+                Interpreter::check_range_size(start, end, false)?;
                 Ok(Interpreter::range_to_list(start, end, false))
             }))),
         );
@@ -5232,7 +5572,10 @@ impl Interpreter {
             "abs".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("abs", 1, |args| {
                 match &args[0] {
-                    Value::Integer(n) => Ok(Value::Integer(n.abs())),
+                    Value::Integer(n) => n
+                        .checked_abs()
+                        .map(Value::Integer)
+                        .ok_or_else(|| overflow_msg("abs()")),
                     Value::Float(f) => Ok(Value::Float(f.abs())),
                     _ => Err("abs() expects a number".to_string()),
                 }
@@ -5835,10 +6178,15 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("sumaw", 1, |args| {
                 if let Value::List(list) = &args[0] {
                     let mut sum: f64 = 0.0;
+                    // Exact integer total (i128 cannae overflow summing i64s)
+                    let mut int_sum: i128 = 0;
                     let mut is_float = false;
                     for item in list.borrow().iter() {
                         match item {
-                            Value::Integer(n) => sum += *n as f64,
+                            Value::Integer(n) => {
+                                sum += *n as f64;
+                                int_sum += *n as i128;
+                            }
                             Value::Float(f) => {
                                 sum += f;
                                 is_float = true;
@@ -5849,7 +6197,9 @@ impl Interpreter {
                     if is_float {
                         Ok(Value::Float(sum))
                     } else {
-                        Ok(Value::Integer(sum as i64))
+                        i64::try_from(int_sum)
+                            .map(Value::Integer)
+                            .map_err(|_| overflow_msg("sumaw()"))
                     }
                 } else {
                     Err("sumaw() expects a list".to_string())
@@ -5935,19 +6285,8 @@ impl Interpreter {
             "shuffle".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("shuffle", 1, |args| {
                 if let Value::List(list) = &args[0] {
-                    use std::time::{SystemTime, UNIX_EPOCH};
-                    let seed = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_nanos() as u64;
                     let mut shuffled = list.borrow().clone();
-                    // Simple Fisher-Yates shuffle with basic RNG
-                    let mut rng = seed;
-                    for i in (1..shuffled.len()).rev() {
-                        rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
-                        let j = (rng as usize) % (i + 1);
-                        shuffled.swap(i, j);
-                    }
+                    havers_shuffle(&mut shuffled);
                     Ok(Value::List(Rc::new(RefCell::new(shuffled))))
                 } else {
                     Err("shuffle() expects a list".to_string())
@@ -5961,14 +6300,7 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new("sort", 1, |args| {
                 if let Value::List(list) = &args[0] {
                     let mut sorted = list.borrow().clone();
-                    sorted.sort_by(|a, b| match (a, b) {
-                        (Value::Integer(x), Value::Integer(y)) => x.cmp(y),
-                        (Value::Float(x), Value::Float(y)) => {
-                            x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
-                        }
-                        (Value::String(x), Value::String(y)) => x.cmp(y),
-                        _ => std::cmp::Ordering::Equal,
-                    });
+                    sorted.sort_by(sort_order);
                     Ok(Value::List(Rc::new(RefCell::new(sorted))))
                 } else {
                     Err("sort() expects a list".to_string())
@@ -5980,20 +6312,13 @@ impl Interpreter {
         globals.borrow_mut().define(
             "jammy".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("jammy", 2, |args| {
-                use std::time::{SystemTime, UNIX_EPOCH};
                 let min = args[0].as_integer().ok_or("jammy() needs integer bounds")?;
                 let max = args[1].as_integer().ok_or("jammy() needs integer bounds")?;
                 if min >= max {
                     return Err("jammy() needs min < max, ya numpty!".to_string());
                 }
-                let seed = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos() as u64;
-                let rng = seed.wrapping_mul(1103515245).wrapping_add(12345);
-                let range = (max - min) as u64;
-                let result = min + ((rng % range) as i64);
-                Ok(Value::Integer(result))
+                // Half-open range min..max; max - 1 cannot underflow as min < max.
+                Ok(Value::Integer(havers_random_int_inclusive(min, max - 1)))
             }))),
         );
 
@@ -6141,7 +6466,9 @@ impl Interpreter {
                         if *n < 0 {
                             Err("Cannae repeat a negative number o' times!".to_string())
                         } else {
-                            Ok(Value::String(s.repeat(*n as usize)))
+                            let count = usize::try_from(*n).unwrap_or(usize::MAX);
+                            checked_alloc_size(s.len(), count, "repeat()")?;
+                            Ok(Value::String(s.repeat(count)))
                         }
                     }
                     _ => Err("repeat() needs a string and an integer".to_string()),
@@ -6637,13 +6964,15 @@ impl Interpreter {
                 match (&args[0], &args[1]) {
                     (Value::Integer(base), Value::Integer(exp)) => {
                         if *exp < 0 {
-                            Ok(Value::Float((*base as f64).powi(*exp as i32)))
+                            Ok(Value::Float(float_pow_int(*base as f64, *exp)))
                         } else {
-                            Ok(Value::Integer(base.pow(*exp as u32)))
+                            checked_int_pow(*base, *exp)
+                                .map(Value::Integer)
+                                .ok_or_else(|| overflow_msg("pooer()"))
                         }
                     }
                     (Value::Float(base), Value::Integer(exp)) => {
-                        Ok(Value::Float(base.powi(*exp as i32)))
+                        Ok(Value::Float(float_pow_int(*base, *exp)))
                     }
                     (Value::Float(base), Value::Float(exp)) => Ok(Value::Float(base.powf(*exp))),
                     (Value::Integer(base), Value::Float(exp)) => {
@@ -6916,19 +7245,8 @@ impl Interpreter {
             "blooter".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("blooter", 1, |args| {
                 if let Value::String(s) = &args[0] {
-                    use std::time::{SystemTime, UNIX_EPOCH};
-                    let seed = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_nanos() as u64;
                     let mut chars: Vec<char> = s.chars().collect();
-                    // Fisher-Yates shuffle
-                    let mut rng = seed;
-                    for i in (1..chars.len()).rev() {
-                        rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
-                        let j = (rng as usize) % (i + 1);
-                        chars.swap(i, j);
-                    }
+                    havers_shuffle(&mut chars);
                     Ok(Value::String(chars.into_iter().collect()))
                 } else {
                     Err("blooter() expects a string".to_string())
@@ -6969,10 +7287,11 @@ impl Interpreter {
                     if width <= len {
                         Ok(Value::String(s))
                     } else {
-                        let w = width as usize;
+                        let pad = usize::try_from(width - len).unwrap_or(usize::MAX);
+                        checked_alloc_size(pad_char.len_utf8(), pad, "pad_left()")?;
                         Ok(Value::String(format!(
                             "{}{}",
-                            pad_char.to_string().repeat(w - len as usize),
+                            pad_char.to_string().repeat(pad),
                             s
                         )))
                     }
@@ -7015,11 +7334,12 @@ impl Interpreter {
                     if width <= len {
                         Ok(Value::String(s))
                     } else {
-                        let w = width as usize;
+                        let pad = usize::try_from(width - len).unwrap_or(usize::MAX);
+                        checked_alloc_size(pad_char.len_utf8(), pad, "pad_right()")?;
                         Ok(Value::String(format!(
                             "{}{}",
                             s,
-                            pad_char.to_string().repeat(w - len as usize),
+                            pad_char.to_string().repeat(pad),
                         )))
                     }
                 },
@@ -7452,7 +7772,6 @@ impl Interpreter {
         globals.borrow_mut().define(
             "haver".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("haver", 0, |_args| {
-                use std::time::{SystemTime, UNIX_EPOCH};
                 let havers = [
                     "Och, yer bum's oot the windae!",
                     "Awa' an bile yer heid!",
@@ -7470,12 +7789,7 @@ impl Interpreter {
                     "That's pure mince!",
                     "Jings, crivvens, help ma boab!",
                 ];
-                let seed = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos() as u64;
-                let rng = seed.wrapping_mul(1103515245).wrapping_add(12345);
-                let idx = (rng as usize) % havers.len();
+                let idx = havers_random_below(havers.len() as u64) as usize;
                 Ok(Value::String(havers[idx].to_string()))
             }))),
         );
@@ -7484,7 +7798,6 @@ impl Interpreter {
         globals.borrow_mut().define(
             "slainte".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("slainte", 0, |_args| {
-                use std::time::{SystemTime, UNIX_EPOCH};
                 let toasts = [
                     "Slàinte mhath! (Good health!)",
                     "Here's tae us, wha's like us? Gey few, and they're a' deid!",
@@ -7493,12 +7806,7 @@ impl Interpreter {
                     "May ye aye be happy, an' never drink frae a toom glass!",
                     "Here's tae the heath, the hill and the heather!",
                 ];
-                let seed = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos() as u64;
-                let rng = seed.wrapping_mul(1103515245).wrapping_add(12345);
-                let idx = (rng as usize) % toasts.len();
+                let idx = havers_random_below(toasts.len() as u64) as usize;
                 Ok(Value::String(toasts[idx].to_string()))
             }))),
         );
@@ -7562,21 +7870,11 @@ impl Interpreter {
         globals.borrow_mut().define(
             "bampot_mode".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("bampot_mode", 1, |args| {
-                use std::time::{SystemTime, UNIX_EPOCH};
                 if let Value::List(list) = &args[0] {
                     let mut items: Vec<Value> = list.borrow().clone();
-                    let seed = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_nanos() as u64;
-                    let mut rng = seed;
                     // Double shuffle for extra chaos!
                     for _ in 0..2 {
-                        for i in (1..items.len()).rev() {
-                            rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
-                            let j = (rng as usize) % (i + 1);
-                            items.swap(i, j);
-                        }
+                        havers_shuffle(&mut items);
                     }
                     items.reverse(); // And reverse for good measure!
                     Ok(Value::List(Rc::new(RefCell::new(items))))
@@ -7963,7 +8261,7 @@ impl Interpreter {
                 "is_wee",
                 1,
                 |args| match &args[0] {
-                    Value::Integer(n) => Ok(Value::Bool(n.abs() < 10)),
+                    Value::Integer(n) => Ok(Value::Bool(n.unsigned_abs() < 10)),
                     Value::Float(f) => Ok(Value::Bool(f.abs() < 10.0)),
                     Value::String(s) => Ok(Value::Bool(s.len() < 5)),
                     Value::List(l) => Ok(Value::Bool(l.borrow().len() < 5)),
@@ -7979,7 +8277,7 @@ impl Interpreter {
                 "is_muckle",
                 1,
                 |args| match &args[0] {
-                    Value::Integer(n) => Ok(Value::Bool(n.abs() >= 100)),
+                    Value::Integer(n) => Ok(Value::Bool(n.unsigned_abs() >= 100)),
                     Value::Float(f) => Ok(Value::Bool(f.abs() >= 100.0)),
                     Value::String(s) => Ok(Value::Bool(s.len() >= 50)),
                     Value::List(l) => Ok(Value::Bool(l.borrow().len() >= 50)),
@@ -8034,7 +8332,9 @@ impl Interpreter {
                 if n <= 0 {
                     return Ok(Value::String("".to_string()));
                 }
-                let n = n as usize;
+                let n = usize::try_from(n).unwrap_or(usize::MAX);
+                // n copies of s plus n - 1 separators
+                checked_alloc_size(s.len() + 3, n, "tattie_scone")?;
                 let result = vec![s; n].join(" | ");
                 Ok(Value::String(result))
             }))),
@@ -8085,8 +8385,8 @@ impl Interpreter {
                 if width <= len {
                     return Ok(Value::String(s));
                 }
-                let width = width as usize;
-                let padding = width - len as usize;
+                let padding = usize::try_from(width - len).unwrap_or(usize::MAX);
+                checked_alloc_size(fill.len_utf8(), padding, "sporran_fill")?;
                 let left_pad = padding / 2;
                 let right_pad = padding - left_pad;
                 let result = format!(
@@ -8159,7 +8459,6 @@ impl Interpreter {
         globals.borrow_mut().define(
             "dram".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("dram", 1, |args| {
-                use std::time::{SystemTime, UNIX_EPOCH};
                 let list = match &args[0] {
                     Value::List(l) => l.borrow().clone(),
                     _ => return Err("dram needs a list tae pick fae".to_string()),
@@ -8167,11 +8466,7 @@ impl Interpreter {
                 if list.is_empty() {
                     return Ok(Value::Nil);
                 }
-                let seed = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos() as usize;
-                let idx = seed % list.len();
+                let idx = havers_random_below(list.len() as u64) as usize;
                 Ok(list[idx].clone())
             }))),
         );
@@ -8204,23 +8499,12 @@ impl Interpreter {
         globals.borrow_mut().define(
             "stooshie".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("stooshie", 1, |args| {
-                use std::time::{SystemTime, UNIX_EPOCH};
                 let s = match &args[0] {
                     Value::String(s) => s.clone(),
                     _ => return Err("stooshie needs a string".to_string()),
                 };
                 let mut chars: Vec<char> = s.chars().collect();
-                // Simple Fisher-Yates shuffle
-                let seed = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos() as u64;
-                let mut rng = seed;
-                for i in (1..chars.len()).rev() {
-                    rng = rng.wrapping_mul(1103515245).wrapping_add(12345);
-                    let j = (rng as usize) % (i + 1);
-                    chars.swap(i, j);
-                }
+                havers_shuffle(&mut chars);
                 Ok(Value::String(chars.into_iter().collect()))
             }))),
         );
@@ -8254,24 +8538,38 @@ impl Interpreter {
         globals.borrow_mut().define(
             "sclaff".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("sclaff", 1, |args| {
-                fn flatten_recursive(val: &Value, result: &mut Vec<Value>) {
+                /// `open` holds the lists being flattened, to catch a list inside itsel.
+                fn flatten_recursive(
+                    val: &Value,
+                    result: &mut Vec<Value>,
+                    open: &mut Vec<usize>,
+                ) -> Result<(), String> {
                     match val {
                         Value::List(l) => {
-                            for item in l.borrow().iter() {
-                                flatten_recursive(item, result);
+                            let id = Rc::as_ptr(l) as *const () as usize;
+                            if open.contains(&id) {
+                                return Err(
+                                    "sclaff cannae flatten a list that's inside itsel!".to_string()
+                                );
                             }
+                            if open.len() >= MAX_JSON_DEPTH {
+                                return Err("sclaff: yer lists are nested ower deep!".to_string());
+                            }
+                            open.push(id);
+                            for item in l.borrow().iter() {
+                                flatten_recursive(item, result, open)?;
+                            }
+                            open.pop();
                         }
                         other => result.push(other.clone()),
                     }
+                    Ok(())
                 }
-                let list = match &args[0] {
-                    Value::List(l) => l.clone(),
-                    _ => return Err("sclaff needs a list".to_string()),
-                };
+                if !matches!(&args[0], Value::List(_)) {
+                    return Err("sclaff needs a list".to_string());
+                }
                 let mut result = Vec::new();
-                for item in list.borrow().iter() {
-                    flatten_recursive(item, &mut result);
-                }
+                flatten_recursive(&args[0], &mut result, &mut Vec::new())?;
                 Ok(Value::List(Rc::new(RefCell::new(result))))
             }))),
         );
@@ -8524,7 +8822,7 @@ impl Interpreter {
         globals.borrow_mut().define(
             "json_stringify".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("json_stringify", 1, |args| {
-                Ok(Value::String(value_to_json(&args[0])))
+                value_to_json(&args[0]).map(Value::String)
             }))),
         );
 
@@ -8532,7 +8830,7 @@ impl Interpreter {
         globals.borrow_mut().define(
             "json_pretty".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("json_pretty", 1, |args| {
-                Ok(Value::String(value_to_json_pretty(&args[0], 0)))
+                value_to_json_pretty(&args[0], 0).map(Value::String)
             }))),
         );
 
@@ -8871,8 +9169,8 @@ impl Interpreter {
                 if width <= len {
                     return Ok(Value::String(s));
                 }
-                let width = width as usize;
-                let padding = width - len as usize;
+                let padding = usize::try_from(width - len).unwrap_or(usize::MAX);
+                checked_alloc_size(fill.len_utf8(), padding, "center()")?;
                 let left_pad = padding / 2;
                 let right_pad = padding - left_pad;
                 Ok(Value::String(format!(
@@ -9108,15 +9406,10 @@ impl Interpreter {
         globals.borrow_mut().define(
             "gcd".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("gcd", 2, |args| {
-                fn gcd_calc(a: i64, b: i64) -> i64 {
-                    if b == 0 {
-                        a.abs()
-                    } else {
-                        gcd_calc(b, a % b)
-                    }
-                }
                 match (&args[0], &args[1]) {
-                    (Value::Integer(a), Value::Integer(b)) => Ok(Value::Integer(gcd_calc(*a, *b))),
+                    (Value::Integer(a), Value::Integer(b)) => i64::try_from(gcd_u64(*a, *b))
+                        .map(Value::Integer)
+                        .map_err(|_| overflow_msg("gcd()")),
                     _ => Err("gcd() needs two integers".to_string()),
                 }
             }))),
@@ -9126,19 +9419,17 @@ impl Interpreter {
         globals.borrow_mut().define(
             "lcm".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("lcm", 2, |args| {
-                fn gcd_calc(a: i64, b: i64) -> i64 {
-                    if b == 0 {
-                        a.abs()
-                    } else {
-                        gcd_calc(b, a % b)
-                    }
-                }
                 match (&args[0], &args[1]) {
                     (Value::Integer(a), Value::Integer(b)) => {
                         if *a == 0 || *b == 0 {
                             Ok(Value::Integer(0))
                         } else {
-                            Ok(Value::Integer((*a * *b).abs() / gcd_calc(*a, *b)))
+                            // |a| / gcd * |b|, in u64 so i64::MIN is fine
+                            (a.unsigned_abs() / gcd_u64(*a, *b))
+                                .checked_mul(b.unsigned_abs())
+                                .and_then(|l| i64::try_from(l).ok())
+                                .map(Value::Integer)
+                                .ok_or_else(|| overflow_msg("lcm()"))
                         }
                     }
                     _ => Err("lcm() needs two integers".to_string()),
@@ -9357,10 +9648,15 @@ impl Interpreter {
                         return Ok(Value::Integer(1));
                     }
                     let mut prod: f64 = 1.0;
+                    // Exact integer product; None once it has overflowed
+                    let mut int_prod: Option<i64> = Some(1);
                     let mut is_float = false;
                     for item in items.iter() {
                         match item {
-                            Value::Integer(n) => prod *= *n as f64,
+                            Value::Integer(n) => {
+                                prod *= *n as f64;
+                                int_prod = int_prod.and_then(|p| p.checked_mul(*n));
+                            }
                             Value::Float(f) => {
                                 prod *= *f;
                                 is_float = true;
@@ -9370,8 +9666,13 @@ impl Interpreter {
                     }
                     if is_float {
                         Ok(Value::Float(prod))
+                    } else if items.iter().any(|v| matches!(v, Value::Integer(0))) {
+                        // A zero wins even if an earlier partial product overflowed
+                        Ok(Value::Integer(0))
                     } else {
-                        Ok(Value::Integer(prod as i64))
+                        int_prod
+                            .map(Value::Integer)
+                            .ok_or_else(|| overflow_msg("product()"))
                     }
                 } else {
                     Err("product() needs a list".to_string())
@@ -9772,14 +10073,7 @@ impl Interpreter {
         globals.borrow_mut().define(
             "random".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("random", 0, |_args| {
-                use std::time::{SystemTime, UNIX_EPOCH};
-                let seed = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos() as u64;
-                let rng = seed.wrapping_mul(1103515245).wrapping_add(12345);
-                let random_float = (rng as f64) / (u64::MAX as f64);
-                Ok(Value::Float(random_float))
+                Ok(Value::Float(havers_random_f64()))
             }))),
         );
 
@@ -9787,7 +10081,6 @@ impl Interpreter {
         globals.borrow_mut().define(
             "random_int".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("random_int", 2, |args| {
-                use std::time::{SystemTime, UNIX_EPOCH};
                 let min = args[0]
                     .as_integer()
                     .ok_or("random_int() needs integer bounds")?;
@@ -9797,14 +10090,7 @@ impl Interpreter {
                 if min > max {
                     return Err("random_int() min must be <= max".to_string());
                 }
-                let seed = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos() as u64;
-                let rng = seed.wrapping_mul(1103515245).wrapping_add(12345);
-                let range = (max - min + 1) as u64;
-                let result = min + ((rng % range) as i64);
-                Ok(Value::Integer(result))
+                Ok(Value::Integer(havers_random_int_inclusive(min, max)))
             }))),
         );
 
@@ -9812,18 +10098,12 @@ impl Interpreter {
         globals.borrow_mut().define(
             "random_choice".to_string(),
             Value::NativeFunction(Rc::new(NativeFunction::new("random_choice", 1, |args| {
-                use std::time::{SystemTime, UNIX_EPOCH};
                 if let Value::List(list) = &args[0] {
                     let items = list.borrow();
                     if items.is_empty() {
                         return Ok(Value::Nil);
                     }
-                    let seed = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_nanos() as u64;
-                    let rng = seed.wrapping_mul(1103515245).wrapping_add(12345);
-                    let idx = (rng as usize) % items.len();
+                    let idx = havers_random_below(items.len() as u64) as usize;
                     Ok(items[idx].clone())
                 } else {
                     Err("random_choice() needs a list".to_string())
@@ -10387,7 +10667,7 @@ impl Interpreter {
             Value::NativeFunction(Rc::new(NativeFunction::new(
                 "json_stringify_pretty",
                 1,
-                |args| Ok(Value::String(value_to_json_pretty(&args[0], 0))),
+                |args| value_to_json_pretty(&args[0], 0).map(Value::String),
             ))),
         );
     }
@@ -10652,13 +10932,13 @@ impl Interpreter {
                 initializer,
                 span,
             } => {
-                self.trace(&format!("[line {}] ken {} = ...", span.line, name));
+                self.trace_with(|| format!("[line {}] ken {} = ...", span.line, name));
                 let value = if let Some(init) = initializer {
                     let v = self.evaluate(init)?;
-                    self.trace_verbose(&format!("→ {} is noo {}", name, v));
+                    self.trace_verbose_with(|| format!("→ {} is noo {}", name, v));
                     v
                 } else {
-                    self.trace_verbose(&format!("→ {} is noo naething", name));
+                    self.trace_verbose_with(|| format!("→ {} is noo naething", name));
                     Value::Nil
                 };
                 self.environment.borrow_mut().define(name.clone(), value);
@@ -10666,18 +10946,18 @@ impl Interpreter {
             }
 
             Stmt::Expression { expr, span } => {
-                self.trace(&format!("[line {}] evaluatin' expression", span.line));
+                self.trace_with(|| format!("[line {}] evaluatin' expression", span.line));
                 let value = self.evaluate(expr)?;
-                self.trace_verbose(&format!("→ result: {}", value));
+                self.trace_verbose_with(|| format!("→ result: {}", value));
                 Ok(Ok(value))
             }
 
             Stmt::Block { statements, span } => {
-                self.trace(&format!("[line {}] enterin' block", span.line));
+                self.trace_with(|| format!("[line {}] enterin' block", span.line));
                 self.trace_depth += 1;
                 let result = self.execute_block(statements, None);
                 self.trace_depth = self.trace_depth.saturating_sub(1);
-                self.trace(&format!("[line {}] leavin' block", span.line));
+                self.trace_with(|| format!("[line {}] leavin' block", span.line));
                 result
             }
 
@@ -10687,20 +10967,21 @@ impl Interpreter {
                 else_branch,
                 span,
             } => {
-                self.trace(&format!("[line {}] gin (if) statement", span.line));
+                self.trace_with(|| format!("[line {}] gin (if) statement", span.line));
                 let cond_value = self.evaluate(condition)?;
-                self.trace_verbose(&format!("→ condition is {}", cond_value));
+                self.trace_verbose_with(|| format!("→ condition is {}", cond_value));
                 if cond_value.is_truthy() {
-                    self.trace(&format!(
-                        "[line {}] condition is aye - takin' then branch",
-                        span.line
-                    ));
+                    self.trace_with(|| {
+                        format!("[line {}] condition is aye - takin' then branch", span.line)
+                    });
                     self.execute_stmt_with_control(then_branch)
                 } else if let Some(else_br) = else_branch {
-                    self.trace(&format!(
-                        "[line {}] condition is nae - takin' ither branch",
-                        span.line
-                    ));
+                    self.trace_with(|| {
+                        format!(
+                            "[line {}] condition is nae - takin' ither branch",
+                            span.line
+                        )
+                    });
                     self.execute_stmt_with_control(else_br)
                 } else {
                     self.trace_verbose("→ condition is nae, nae ither branch");
@@ -10713,21 +10994,17 @@ impl Interpreter {
                 body,
                 span,
             } => {
-                self.trace(&format!(
-                    "[line {}] whiles (while) loop startin'",
-                    span.line
-                ));
+                self.trace_with(|| format!("[line {}] whiles (while) loop startin'", span.line));
                 let mut iteration = 0;
                 while self.evaluate(condition)?.is_truthy() {
                     iteration += 1;
-                    self.trace_verbose(&format!("→ loop iteration {}", iteration));
+                    self.trace_verbose_with(|| format!("→ loop iteration {}", iteration));
                     match self.execute_stmt_with_control(body)? {
                         Ok(_) => {}
                         Err(ControlFlow::Break) => {
-                            self.trace(&format!(
-                                "[line {}] brak! (break) - leavin' loop",
-                                span.line
-                            ));
+                            self.trace_with(|| {
+                                format!("[line {}] brak! (break) - leavin' loop", span.line)
+                            });
                             break;
                         }
                         Err(ControlFlow::Continue) => {
@@ -10737,10 +11014,12 @@ impl Interpreter {
                         Err(ControlFlow::Return(v)) => return Ok(Err(ControlFlow::Return(v))),
                     }
                 }
-                self.trace(&format!(
-                    "[line {}] whiles loop done after {} iterations",
-                    span.line, iteration
-                ));
+                self.trace_with(|| {
+                    format!(
+                        "[line {}] whiles loop done after {} iterations",
+                        span.line, iteration
+                    )
+                });
                 Ok(Ok(Value::Nil))
             }
 
@@ -10750,40 +11029,75 @@ impl Interpreter {
                 body,
                 span,
             } => {
-                self.trace(&format!(
-                    "[line {}] fer (for) loop: {} in ...",
-                    span.line, variable
-                ));
-                let iter_value = self.evaluate(iterable)?;
-
-                let items: Vec<Value> = match iter_value {
-                    Value::Range(range) => range.iter().map(Value::Integer).collect(),
-                    Value::List(list) => list.borrow().clone(),
-                    Value::String(s) => s.chars().map(|c| Value::String(c.to_string())).collect(),
-                    _ => {
-                        return Err(HaversError::TypeError {
-                            message: format!("Cannae iterate ower a {}", iter_value.type_name()),
-                            line: span.line,
-                        });
+                self.trace_with(|| {
+                    format!("[line {}] fer (for) loop: {} in ...", span.line, variable)
+                });
+                // A range literal is iterated lazily, so `fer i in 0..10000000000`
+                // does not build ten billion items first.
+                let items: Box<dyn Iterator<Item = Value>> = if let Expr::Range {
+                    start,
+                    end,
+                    inclusive,
+                    ..
+                } = iterable
+                {
+                    let start_val = self.evaluate(start)?;
+                    let end_val = self.evaluate(end)?;
+                    match (start_val.as_integer(), end_val.as_integer()) {
+                        (Some(s), Some(e)) => {
+                            Box::new(RangeValue::new(s, e, *inclusive).iter().map(Value::Integer))
+                        }
+                        _ => {
+                            return Err(HaversError::TypeError {
+                                message: "Range bounds must be integers".to_string(),
+                                line: iterable.span().line,
+                            })
+                        }
                     }
+                } else {
+                    let iter_value = self.evaluate(iterable)?;
+                    let items: Box<dyn Iterator<Item = Value>> = match iter_value {
+                        Value::Range(range) => Box::new(range.iter().map(Value::Integer)),
+                        Value::List(list) => Box::new(list.borrow().clone().into_iter()),
+                        Value::String(s) => Box::new(
+                            s.chars()
+                                .map(|c| Value::String(c.to_string()))
+                                .collect::<Vec<_>>()
+                                .into_iter(),
+                        ),
+                        _ => {
+                            return Err(HaversError::TypeError {
+                                message: format!(
+                                    "Cannae iterate ower a {}",
+                                    iter_value.type_name()
+                                ),
+                                line: span.line,
+                            });
+                        }
+                    };
+                    items
                 };
 
-                self.trace_verbose(&format!("→ iteratin' ower {} items", items.len()));
+                self.trace_verbose_with(|| {
+                    let (lo, hi) = items.size_hint();
+                    match hi {
+                        Some(hi) if hi == lo => format!("→ iteratin' ower {} items", lo),
+                        _ => "→ iteratin' ower a range".to_string(),
+                    }
+                });
                 let mut iteration = 0;
                 for item in items {
                     iteration += 1;
-                    self.trace_verbose(&format!(
-                        "→ iteration {}: {} = {}",
-                        iteration, variable, item
-                    ));
+                    self.trace_verbose_with(|| {
+                        format!("→ iteration {}: {} = {}", iteration, variable, item)
+                    });
                     self.environment.borrow_mut().define(variable.clone(), item);
                     match self.execute_stmt_with_control(body)? {
                         Ok(_) => {}
                         Err(ControlFlow::Break) => {
-                            self.trace(&format!(
-                                "[line {}] brak! (break) - leavin' fer loop",
-                                span.line
-                            ));
+                            self.trace_with(|| {
+                                format!("[line {}] brak! (break) - leavin' fer loop", span.line)
+                            });
                             break;
                         }
                         Err(ControlFlow::Continue) => {
@@ -10793,10 +11107,12 @@ impl Interpreter {
                         Err(ControlFlow::Return(v)) => return Ok(Err(ControlFlow::Return(v))),
                     }
                 }
-                self.trace(&format!(
-                    "[line {}] fer loop done after {} iterations",
-                    span.line, iteration
-                ));
+                self.trace_with(|| {
+                    format!(
+                        "[line {}] fer loop done after {} iterations",
+                        span.line, iteration
+                    )
+                });
                 Ok(Ok(Value::Nil))
             }
 
@@ -10806,12 +11122,14 @@ impl Interpreter {
                 body,
                 span,
             } => {
-                self.trace(&format!(
-                    "[line {}] dae (function) {} wi' {} params",
-                    span.line,
-                    name,
-                    params.len()
-                ));
+                self.trace_with(|| {
+                    format!(
+                        "[line {}] dae (function) {} wi' {} params",
+                        span.line,
+                        name,
+                        params.len()
+                    )
+                });
                 // Convert AST Param tae runtime FunctionParam
                 let runtime_params: Vec<FunctionParam> = params
                     .iter()
@@ -10836,10 +11154,10 @@ impl Interpreter {
             Stmt::Return { value, span } => {
                 let ret_val = if let Some(expr) = value {
                     let v = self.evaluate(expr)?;
-                    self.trace(&format!("[line {}] gie (return) {}", span.line, v));
+                    self.trace_with(|| format!("[line {}] gie (return) {}", span.line, v));
                     v
                 } else {
-                    self.trace(&format!("[line {}] gie (return) naething", span.line));
+                    self.trace_with(|| format!("[line {}] gie (return) naething", span.line));
                     Value::Nil
                 };
                 Ok(Err(ControlFlow::Return(ret_val)))
@@ -10847,7 +11165,7 @@ impl Interpreter {
 
             Stmt::Print { value, span } => {
                 let val = self.evaluate(value)?;
-                self.trace(&format!("[line {}] blether (print): {}", span.line, val));
+                self.trace_with(|| format!("[line {}] blether (print): {}", span.line, val));
                 let output = format!("{}", val);
                 println!("{}", output);
                 self.output.push(output);
@@ -10855,12 +11173,12 @@ impl Interpreter {
             }
 
             Stmt::Break { span } => {
-                self.trace(&format!("[line {}] brak! (break)", span.line));
+                self.trace_with(|| format!("[line {}] brak! (break)", span.line));
                 Ok(Err(ControlFlow::Break))
             }
 
             Stmt::Continue { span } => {
-                self.trace(&format!("[line {}] haud! (continue)", span.line));
+                self.trace_with(|| format!("[line {}] haud! (continue)", span.line));
                 Ok(Err(ControlFlow::Continue))
             }
 
@@ -10870,10 +11188,7 @@ impl Interpreter {
                 methods,
                 span,
             } => {
-                self.trace(&format!(
-                    "[line {}] kin (class) {} defined",
-                    span.line, name
-                ));
+                self.trace_with(|| format!("[line {}] kin (class) {} defined", span.line, name));
                 let super_class = if let Some(super_name) = superclass {
                     let super_val = self.environment.borrow().get(super_name).ok_or_else(|| {
                         HaversError::UndefinedVariable {
@@ -10932,12 +11247,14 @@ impl Interpreter {
             }
 
             Stmt::Struct { name, fields, span } => {
-                self.trace(&format!(
-                    "[line {}] thing (struct) {} defined wi' {} fields",
-                    span.line,
-                    name,
-                    fields.len()
-                ));
+                self.trace_with(|| {
+                    format!(
+                        "[line {}] thing (struct) {} defined wi' {} fields",
+                        span.line,
+                        name,
+                        fields.len()
+                    )
+                });
                 let structure = HaversStruct::new(name.clone(), fields.clone());
                 self.environment
                     .borrow_mut()
@@ -10950,10 +11267,12 @@ impl Interpreter {
                     .as_ref()
                     .map(|a| format!(" as {}", a))
                     .unwrap_or_default();
-                self.trace(&format!(
-                    "[line {}] fetch (import) \"{}\"{}",
-                    span.line, path, alias_str
-                ));
+                self.trace_with(|| {
+                    format!(
+                        "[line {}] fetch (import) \"{}\"{}",
+                        span.line, path, alias_str
+                    )
+                });
                 self.load_module(path, alias.as_deref(), *span)
             }
 
@@ -10963,20 +11282,21 @@ impl Interpreter {
                 catch_block,
                 span,
             } => {
-                self.trace(&format!("[line {}] hae_a_bash (try) startin'", span.line));
+                self.trace_with(|| format!("[line {}] hae_a_bash (try) startin'", span.line));
                 match self.execute_stmt_with_control(try_block) {
                     Ok(result) => {
-                        self.trace(&format!(
-                            "[line {}] try block succeeded - nae bother!",
-                            span.line
-                        ));
+                        self.trace_with(|| {
+                            format!("[line {}] try block succeeded - nae bother!", span.line)
+                        });
                         Ok(result)
                     }
                     Err(e) => {
-                        self.trace(&format!(
-                            "[line {}] gin_it_gangs_wrang (catch) - caught: {}",
-                            span.line, e
-                        ));
+                        self.trace_with(|| {
+                            format!(
+                                "[line {}] gin_it_gangs_wrang (catch) - caught: {}",
+                                span.line, e
+                            )
+                        });
                         // Bind the error to the catch variable
                         self.environment
                             .borrow_mut()
@@ -10987,13 +11307,13 @@ impl Interpreter {
             }
 
             Stmt::Match { value, arms, span } => {
-                self.trace(&format!("[line {}] keek (match) statement", span.line));
+                self.trace_with(|| format!("[line {}] keek (match) statement", span.line));
                 let val = self.evaluate(value)?;
-                self.trace_verbose(&format!("→ matchin' against: {}", val));
+                self.trace_verbose_with(|| format!("→ matchin' against: {}", val));
 
                 for (i, arm) in arms.iter().enumerate() {
                     if self.pattern_matches(&arm.pattern, &val)? {
-                        self.trace(&format!("[line {}] matched arm {}", span.line, i + 1));
+                        self.trace_with(|| format!("[line {}] matched arm {}", span.line, i + 1));
                         // Bind pattern variables if needed
                         if let Pattern::Identifier(name) = &arm.pattern {
                             self.environment
@@ -11005,7 +11325,7 @@ impl Interpreter {
                 }
 
                 // No match found
-                self.trace(&format!("[line {}] nae match found!", span.line));
+                self.trace_with(|| format!("[line {}] nae match found!", span.line));
                 Err(HaversError::TypeError {
                     message: format!("Nae match found fer {}", val),
                     line: span.line,
@@ -11017,9 +11337,9 @@ impl Interpreter {
                 message,
                 span,
             } => {
-                self.trace(&format!("[line {}] mak_siccar (assert)", span.line));
+                self.trace_with(|| format!("[line {}] mak_siccar (assert)", span.line));
                 let cond_value = self.evaluate(condition)?;
-                self.trace_verbose(&format!("→ condition is {}", cond_value));
+                self.trace_verbose_with(|| format!("→ condition is {}", cond_value));
                 if !cond_value.is_truthy() {
                     let msg = if let Some(msg_expr) = message {
                         let msg_val = self.evaluate(msg_expr)?;
@@ -11027,7 +11347,7 @@ impl Interpreter {
                     } else {
                         "Assertion failed".to_string()
                     };
-                    self.trace(&format!("[line {}] assertion FAILED: {}", span.line, msg));
+                    self.trace_with(|| format!("[line {}] assertion FAILED: {}", span.line, msg));
                     return Err(HaversError::AssertionFailed {
                         message: msg,
                         line: span.line,
@@ -11042,13 +11362,15 @@ impl Interpreter {
                 value,
                 span,
             } => {
-                self.trace(&format!(
-                    "[line {}] destructurin' intae {} variables",
-                    span.line,
-                    patterns.len()
-                ));
+                self.trace_with(|| {
+                    format!(
+                        "[line {}] destructurin' intae {} variables",
+                        span.line,
+                        patterns.len()
+                    )
+                });
                 let val = self.evaluate(value)?;
-                self.trace_verbose(&format!("→ unpackin': {}", val));
+                self.trace_verbose_with(|| format!("→ unpackin': {}", val));
 
                 // The value must be a list
                 let items = match &val {
@@ -11215,13 +11537,38 @@ impl Interpreter {
         }
     }
 
+    /// Refuse to build a range list bigger than `MAX_BUILT_SIZE` bytes of
+    /// values, instead of running oot o' memory. `fer` loops over a range
+    /// literal stay lazy and never call this.
+    fn check_range_size(start: i64, end: i64, inclusive: bool) -> Result<(), String> {
+        let count = (end as i128 - start as i128 + i128::from(inclusive)).max(0);
+        let max_items = (MAX_BUILT_SIZE / std::mem::size_of::<Value>()) as i128;
+        if count > max_items {
+            Err(format!(
+                "range {}..{}{} has {} items - that's ower muckle tae build as a list, ya greedy gannet!",
+                start,
+                if inclusive { "=" } else { "" },
+                end,
+                count
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
     fn range_to_list(start: i64, end: i64, inclusive: bool) -> Value {
         let mut items = Vec::new();
         if inclusive {
-            let mut i = start;
-            while i <= end {
-                items.push(Value::Integer(i));
-                i += 1;
+            if start <= end {
+                // Stop at `end` itself so `..=i64::MAX` never overflows
+                let mut i = start;
+                loop {
+                    items.push(Value::Integer(i));
+                    if i == end {
+                        break;
+                    }
+                    i += 1;
+                }
             }
         } else {
             let mut i = start;
@@ -11275,7 +11622,10 @@ impl Interpreter {
                 // Check for operator overloading on instances
                 if let Value::Instance(ref inst) = left_val {
                     let method_name = self.operator_method_name(operator);
-                    if let Some(method) = inst.borrow().class.find_method(&method_name) {
+                    // Bind first: the borrow must end before the method runs,
+                    // or a method that sets masel.x panics (already borrowed).
+                    let method = inst.borrow().class.find_method(&method_name);
+                    if let Some(method) = method {
                         // Call the overloaded operator method
                         return self.call_method_on_instance(
                             inst.clone(),
@@ -11680,7 +12030,11 @@ impl Interpreter {
                             let mut i = start as i64;
                             while i < end {
                                 sliced.push(list[i as usize].clone());
-                                i += step_val;
+                                // A huge step jumps past the end; never overflow
+                                match i.checked_add(step_val) {
+                                    Some(next) => i = next,
+                                    None => break,
+                                }
                             }
                         } else {
                             // Negative step: go backwards
@@ -11689,7 +12043,11 @@ impl Interpreter {
                                 if (i as usize) < list.len() {
                                     sliced.push(list[i as usize].clone());
                                 }
-                                i += step_val; // step_val is negative
+                                // step_val is negative; stop rather than overflow
+                                match i.checked_add(step_val) {
+                                    Some(next) => i = next,
+                                    None => break,
+                                }
                             }
                         }
                         Ok(Value::List(Rc::new(RefCell::new(sliced))))
@@ -11728,7 +12086,11 @@ impl Interpreter {
                             let mut i = start as i64;
                             while i < end {
                                 sliced.push(chars[i as usize]);
-                                i += step_val;
+                                // A huge step jumps past the end; never overflow
+                                match i.checked_add(step_val) {
+                                    Some(next) => i = next,
+                                    None => break,
+                                }
                             }
                         } else {
                             // Negative step: go backwards
@@ -11737,7 +12099,11 @@ impl Interpreter {
                                 if (i as usize) < chars.len() {
                                     sliced.push(chars[i as usize]);
                                 }
-                                i += step_val; // step_val is negative
+                                // step_val is negative; stop rather than overflow
+                                match i.checked_add(step_val) {
+                                    Some(next) => i = next,
+                                    None => break,
+                                }
                             }
                         }
                         Ok(Value::String(sliced))
@@ -11798,7 +12164,15 @@ impl Interpreter {
                 let start_val = self.evaluate(start)?;
                 let end_val = self.evaluate(end)?;
                 match (start_val.as_integer(), end_val.as_integer()) {
-                    (Some(s), Some(e)) => Ok(Self::range_to_list(s, e, *inclusive)),
+                    (Some(s), Some(e)) => {
+                        Self::check_range_size(s, e, *inclusive).map_err(|message| {
+                            HaversError::InvalidNumberOperation {
+                                message,
+                                line: expr.span().line,
+                            }
+                        })?;
+                        Ok(Self::range_to_list(s, e, *inclusive))
+                    }
                     _ => Err(HaversError::TypeError {
                         message: "Range bounds must be integers".to_string(),
                         line: expr.span().line,
@@ -11993,19 +12367,9 @@ impl Interpreter {
                             line,
                         });
                     }
-                    let count: usize = {
-                        #[cfg(target_pointer_width = "32")]
-                        {
-                            (*n).try_into().map_err(|_| HaversError::TypeError {
-                                message: "Repeat count is too large".to_string(),
-                                line,
-                            })?
-                        }
-                        #[cfg(not(target_pointer_width = "32"))]
-                        {
-                            *n as usize
-                        }
-                    };
+                    let count = usize::try_from(*n).unwrap_or(usize::MAX);
+                    checked_alloc_size(s.len(), count, "Repeatin' that string")
+                        .map_err(|message| HaversError::InvalidNumberOperation { message, line })?;
                     Ok(Value::String(s.repeat(count)))
                 }
                 _ => Err(HaversError::TypeError {
@@ -12163,16 +12527,6 @@ impl Interpreter {
         args: Vec<Value>,
         line: usize,
     ) -> HaversResult<Value> {
-        // Check arity
-        if method.params.len() != args.len() {
-            return Err(HaversError::WrongArity {
-                name: method.name.clone(),
-                expected: method.params.len(),
-                got: args.len(),
-                line,
-            });
-        }
-
         // Create a new environment for the method
         let method_env = if let Some(closure) = &method.closure {
             Environment::with_enclosing(closure.clone())
@@ -12186,21 +12540,9 @@ impl Interpreter {
             .borrow_mut()
             .define("masel".to_string(), Value::Instance(instance));
 
-        // Bind the parameters
-        for (param, arg) in method.params.iter().zip(args) {
-            method_env.borrow_mut().define(param.name.clone(), arg);
-        }
-
-        // Execute the method body with our custom environment
-        let result = self.execute_block(&method.body, Some(method_env));
-
-        match result {
-            Ok(Ok(val)) => Ok(val),
-            Ok(Err(ControlFlow::Return(val))) => Ok(val),
-            Ok(Err(ControlFlow::Break)) => Ok(Value::Nil),
-            Ok(Err(ControlFlow::Continue)) => Ok(Value::Nil),
-            Err(e) => Err(e),
-        }
+        // Same path as every other call: arity (with defaults), depth guard,
+        // parameter binding
+        self.call_function_with_env(&method, args, method_env, line)
     }
 
     /// Evaluate function arguments, handling spread operator (...args)
@@ -12443,38 +12785,39 @@ impl Interpreter {
         }
     }
 
-    fn call_function(
-        &mut self,
-        func: &HaversFunction,
-        args: Vec<Value>,
-        line: usize,
-    ) -> HaversResult<Value> {
+    /// Error unless `got` arguments suit `func`, counting default parameters.
+    fn check_function_arity(func: &HaversFunction, got: usize, line: usize) -> HaversResult<()> {
         let min_arity = func.min_arity();
         let max_arity = func.max_arity();
 
         // Check arity: need at least min_arity, but no more than max_arity
-        if args.len() < min_arity || args.len() > max_arity {
+        if got < min_arity || got > max_arity {
             if min_arity == max_arity {
                 return Err(HaversError::WrongArity {
                     name: func.name.clone(),
                     expected: max_arity,
-                    got: args.len(),
+                    got,
                     line,
                 });
             } else {
                 return Err(HaversError::TypeError {
                     message: format!(
                         "Function '{}' expects {} tae {} arguments but ye gave it {}",
-                        func.name,
-                        min_arity,
-                        max_arity,
-                        args.len()
+                        func.name, min_arity, max_arity, got
                     ),
                     line,
                 });
             }
         }
+        Ok(())
+    }
 
+    fn call_function(
+        &mut self,
+        func: &HaversFunction,
+        args: Vec<Value>,
+        line: usize,
+    ) -> HaversResult<Value> {
         let env = Rc::new(RefCell::new(Environment::with_enclosing(
             func.closure.clone().unwrap_or(self.globals.clone()),
         )));
@@ -12482,7 +12825,30 @@ impl Interpreter {
         self.call_function_with_env(func, args, env, line)
     }
 
+    /// Every call of a user function, method, constructor or operator
+    /// overload comes through here: check the arity (honouring defaults)
+    /// and that there is native stack left, then run the body.
     fn call_function_with_env(
+        &mut self,
+        func: &HaversFunction,
+        args: Vec<Value>,
+        env: Rc<RefCell<Environment>>,
+        line: usize,
+    ) -> HaversResult<Value> {
+        Self::check_function_arity(func, args.len(), line)?;
+
+        let here = current_stack_address();
+        if self.call_depth >= MAX_CALL_DEPTH || here < stack_call_limit(here) {
+            return Err(HaversError::StackOverflow { line });
+        }
+
+        self.call_depth += 1;
+        let result = self.call_function_body(func, args, env, line);
+        self.call_depth -= 1;
+        result
+    }
+
+    fn call_function_body(
         &mut self,
         func: &HaversFunction,
         args: Vec<Value>,
@@ -12528,6 +12894,17 @@ impl Default for Interpreter {
 // JSON Helper Functions
 // ========================================
 
+/// Deepest nesting of JSON arrays/objects that json_parse and json_stringify
+/// will handle. Deeper input gets an error rather than a native stack overflow.
+const MAX_JSON_DEPTH: usize = 512;
+
+fn json_too_deep() -> String {
+    format!(
+        "JSON's nested ower deep (mair than {} levels) - ah'm no' diggin' that far!",
+        MAX_JSON_DEPTH
+    )
+}
+
 /// Parse a JSON string into a mdhavers Value
 fn parse_json_value(s: &str) -> Result<Value, String> {
     let s = s.trim();
@@ -12537,7 +12914,7 @@ fn parse_json_value(s: &str) -> Result<Value, String> {
 
     let chars: Vec<char> = s.chars().collect();
     let mut pos = 0;
-    parse_json_inner(&chars, &mut pos)
+    parse_json_inner(&chars, &mut pos, 0)
 }
 
 fn skip_json_whitespace(chars: &[char], pos: &mut usize) {
@@ -12546,15 +12923,17 @@ fn skip_json_whitespace(chars: &[char], pos: &mut usize) {
     }
 }
 
-fn parse_json_inner(chars: &[char], pos: &mut usize) -> Result<Value, String> {
+/// `depth` is the number of arrays/objects already open around this value.
+fn parse_json_inner(chars: &[char], pos: &mut usize, depth: usize) -> Result<Value, String> {
     skip_json_whitespace(chars, pos);
     if *pos >= chars.len() {
         return Err("Unexpected end of JSON".to_string());
     }
 
     match chars[*pos] {
-        '{' => parse_json_object(chars, pos),
-        '[' => parse_json_array(chars, pos),
+        '{' | '[' if depth >= MAX_JSON_DEPTH => Err(json_too_deep()),
+        '{' => parse_json_object(chars, pos, depth),
+        '[' => parse_json_array(chars, pos, depth),
         '"' => parse_json_string(chars, pos).map(Value::String),
         't' => parse_json_true(chars, pos),
         'f' => parse_json_false(chars, pos),
@@ -12564,7 +12943,7 @@ fn parse_json_inner(chars: &[char], pos: &mut usize) -> Result<Value, String> {
     }
 }
 
-fn parse_json_object(chars: &[char], pos: &mut usize) -> Result<Value, String> {
+fn parse_json_object(chars: &[char], pos: &mut usize, depth: usize) -> Result<Value, String> {
     *pos += 1; // skip '{'
     skip_json_whitespace(chars, pos);
 
@@ -12593,7 +12972,7 @@ fn parse_json_object(chars: &[char], pos: &mut usize) -> Result<Value, String> {
         *pos += 1;
 
         // Parse value
-        let value = parse_json_inner(chars, pos)?;
+        let value = parse_json_inner(chars, pos, depth + 1)?;
         dict.borrow_mut().set(Value::String(key), value);
 
         skip_json_whitespace(chars, pos);
@@ -12617,7 +12996,7 @@ fn parse_json_object(chars: &[char], pos: &mut usize) -> Result<Value, String> {
     Ok(Value::Dict(dict))
 }
 
-fn parse_json_array(chars: &[char], pos: &mut usize) -> Result<Value, String> {
+fn parse_json_array(chars: &[char], pos: &mut usize, depth: usize) -> Result<Value, String> {
     *pos += 1; // skip '['
     skip_json_whitespace(chars, pos);
 
@@ -12630,7 +13009,7 @@ fn parse_json_array(chars: &[char], pos: &mut usize) -> Result<Value, String> {
     }
 
     loop {
-        let value = parse_json_inner(chars, pos)?;
+        let value = parse_json_inner(chars, pos, depth + 1)?;
         list.borrow_mut().push(value);
 
         skip_json_whitespace(chars, pos);
@@ -12736,9 +13115,11 @@ fn parse_json_number(chars: &[char], pos: &mut usize) -> Result<Value, String> {
             .map(Value::Float)
             .map_err(|_| format!("Invalid number: {}", num_str))
     } else {
+        // Integers beyond i64 are still valid JSON numbers: fall back tae float
         num_str
             .parse::<i64>()
             .map(Value::Integer)
+            .or_else(|_| num_str.parse::<f64>().map(Value::Float))
             .map_err(|_| format!("Invalid integer: {}", num_str))
     }
 }
@@ -12770,9 +13151,29 @@ fn parse_json_null(chars: &[char], pos: &mut usize) -> Result<Value, String> {
     }
 }
 
+/// Note that the list or dict `id` is being written, failing on a cycle
+/// (JSON cannot express one) or on nesting deeper than `MAX_JSON_DEPTH`.
+fn json_enter(id: usize, open: &mut Vec<usize>) -> Result<(), String> {
+    if open.contains(&id) {
+        return Err(
+            "Cannae write JSON fer a list or dict that contains itsel - it wid gang roond forever!"
+                .to_string(),
+        );
+    }
+    if open.len() >= MAX_JSON_DEPTH {
+        return Err(json_too_deep());
+    }
+    open.push(id);
+    Ok(())
+}
+
 /// Convert a mdhavers Value to a JSON string
-fn value_to_json(value: &Value) -> String {
-    match value {
+fn value_to_json(value: &Value) -> Result<String, String> {
+    value_to_json_in(value, &mut Vec::new())
+}
+
+fn value_to_json_in(value: &Value, open: &mut Vec<usize>) -> Result<String, String> {
+    Ok(match value {
         Value::Nil => "null".to_string(),
         Value::Bool(true) => "true".to_string(),
         Value::Bool(false) => "false".to_string(),
@@ -12786,33 +13187,49 @@ fn value_to_json(value: &Value) -> String {
         }
         Value::String(s) => json_escape_string(s),
         Value::List(l) => {
-            let items: Vec<String> = l.borrow().iter().map(value_to_json).collect();
+            json_enter(Rc::as_ptr(l) as *const () as usize, open)?;
+            let items = l
+                .borrow()
+                .iter()
+                .map(|v| value_to_json_in(v, open))
+                .collect::<Result<Vec<String>, String>>()?;
+            open.pop();
             format!("[{}]", items.join(", "))
         }
         Value::Dict(d) => {
-            let pairs: Vec<String> = d
+            json_enter(Rc::as_ptr(d) as *const () as usize, open)?;
+            let pairs = d
                 .borrow()
                 .iter()
-                .map(|(k, v)| {
+                .map(|(k, v)| -> Result<String, String> {
                     let key_json = match k {
                         Value::String(s) => json_escape_string(s),
                         _ => json_escape_string(&format!("{}", k)),
                     };
-                    format!("{}: {}", key_json, value_to_json(v))
+                    Ok(format!("{}: {}", key_json, value_to_json_in(v, open)?))
                 })
-                .collect();
+                .collect::<Result<Vec<String>, String>>()?;
+            open.pop();
             format!("{{{}}}", pairs.join(", "))
         }
         _ => format!("\"{}\"", format!("{}", value).replace('\"', "\\\"")),
-    }
+    })
 }
 
 /// Convert a mdhavers Value to a pretty-printed JSON string
-fn value_to_json_pretty(value: &Value, indent: usize) -> String {
+fn value_to_json_pretty(value: &Value, indent: usize) -> Result<String, String> {
+    value_to_json_pretty_in(value, indent, &mut Vec::new())
+}
+
+fn value_to_json_pretty_in(
+    value: &Value,
+    indent: usize,
+    open: &mut Vec<usize>,
+) -> Result<String, String> {
     let ws = "  ".repeat(indent);
     let ws_inner = "  ".repeat(indent + 1);
 
-    match value {
+    Ok(match value {
         Value::Nil => "null".to_string(),
         Value::Bool(true) => "true".to_string(),
         Value::Bool(false) => "false".to_string(),
@@ -12830,10 +13247,18 @@ fn value_to_json_pretty(value: &Value, indent: usize) -> String {
             if items.is_empty() {
                 "[]".to_string()
             } else {
-                let formatted: Vec<String> = items
+                json_enter(Rc::as_ptr(l) as *const () as usize, open)?;
+                let formatted = items
                     .iter()
-                    .map(|v| format!("{}{}", ws_inner, value_to_json_pretty(v, indent + 1)))
-                    .collect();
+                    .map(|v| -> Result<String, String> {
+                        Ok(format!(
+                            "{}{}",
+                            ws_inner,
+                            value_to_json_pretty_in(v, indent + 1, open)?
+                        ))
+                    })
+                    .collect::<Result<Vec<String>, String>>()?;
+                open.pop();
                 format!("[\n{}\n{}]", formatted.join(",\n"), ws)
             }
         }
@@ -12842,26 +13267,28 @@ fn value_to_json_pretty(value: &Value, indent: usize) -> String {
             if dict.is_empty() {
                 "{}".to_string()
             } else {
-                let formatted: Vec<String> = dict
+                json_enter(Rc::as_ptr(d) as *const () as usize, open)?;
+                let formatted = dict
                     .iter()
-                    .map(|(k, v)| {
+                    .map(|(k, v)| -> Result<String, String> {
                         let key_json = match k {
                             Value::String(s) => json_escape_string(s),
                             _ => json_escape_string(&format!("{}", k)),
                         };
-                        format!(
+                        Ok(format!(
                             "{}{}: {}",
                             ws_inner,
                             key_json,
-                            value_to_json_pretty(v, indent + 1)
-                        )
+                            value_to_json_pretty_in(v, indent + 1, open)?
+                        ))
                     })
-                    .collect();
+                    .collect::<Result<Vec<String>, String>>()?;
+                open.pop();
                 format!("{{\n{}\n{}}}", formatted.join(",\n"), ws)
             }
         }
         _ => format!("\"{}\"", format!("{}", value).replace('\"', "\\\"")),
-    }
+    })
 }
 
 /// Escape a string for JSON output
@@ -23333,9 +23760,13 @@ c + 1
         let env = Rc::new(RefCell::new(Environment::with_enclosing(
             interp.globals.clone(),
         )));
-        let out = interp
-            .call_function_with_env(&func, vec![], env, 1)
-            .unwrap();
+        // The arity check now lives in call_function_with_env (MDH-BUG-FLU-00010),
+        // so only the body helper can reach the Nil fallback.
+        let err = interp
+            .call_function_with_env(&func, vec![], env.clone(), 1)
+            .unwrap_err();
+        assert!(matches!(err, HaversError::WrongArity { .. }), "{err:?}");
+        let out = interp.call_function_body(&func, vec![], env, 1).unwrap();
         assert_eq!(out, Value::Nil);
     }
 
@@ -23969,8 +24400,11 @@ d.nope
         let _ = run("2.0 >= 1.0").unwrap();
         let _ = run("\"b\" >= \"a\"").unwrap();
 
-        // json: invalid integer overflow map_err closure.
-        let err = run(r#"json_parse("999999999999999999999999999999")"#).unwrap_err();
+        // json: an integer beyond i64 falls back to a float (MDH-BUG-FLU-00012)...
+        let big = run(r#"json_parse("999999999999999999999999999999")"#).unwrap();
+        assert!(matches!(big, Value::Float(f) if f == 1e30));
+        // ...and a bare minus sign still hits the invalid integer map_err closure.
+        let err = run(r#"json_parse("-")"#).unwrap_err();
         let s = format!("{err:?}");
         assert!(s.contains("Invalid integer"));
 
@@ -24384,27 +24818,37 @@ d.nope
 
     #[test]
     fn json_stringify_nan_and_infinite_map_to_null_for_coverage() {
-        assert_eq!(value_to_json(&Value::Float(f64::NAN)), "null");
-        assert_eq!(value_to_json(&Value::Float(f64::INFINITY)), "null");
-        assert_eq!(value_to_json(&Value::Float(f64::NEG_INFINITY)), "null");
+        assert_eq!(value_to_json(&Value::Float(f64::NAN)).unwrap(), "null");
+        assert_eq!(value_to_json(&Value::Float(f64::INFINITY)).unwrap(), "null");
+        assert_eq!(
+            value_to_json(&Value::Float(f64::NEG_INFINITY)).unwrap(),
+            "null"
+        );
     }
 
     #[test]
     fn json_stringify_pretty_covers_empty_and_non_empty_branches_for_coverage() {
-        assert_eq!(value_to_json_pretty(&Value::Float(f64::NAN), 0), "null");
-        assert_eq!(value_to_json_pretty(&Value::Float(1.25), 0), "1.25");
+        assert_eq!(
+            value_to_json_pretty(&Value::Float(f64::NAN), 0).unwrap(),
+            "null"
+        );
+        assert_eq!(
+            value_to_json_pretty(&Value::Float(1.25), 0).unwrap(),
+            "1.25"
+        );
 
         let empty_list = Value::List(Rc::new(RefCell::new(Vec::new())));
-        assert_eq!(value_to_json_pretty(&empty_list, 0), "[]");
+        assert_eq!(value_to_json_pretty(&empty_list, 0).unwrap(), "[]");
         let list = Value::List(Rc::new(RefCell::new(vec![Value::Integer(1)])));
-        let pretty_list = value_to_json_pretty(&list, 0);
+        let pretty_list = value_to_json_pretty(&list, 0).unwrap();
         assert!(pretty_list.contains('\n'));
 
         let empty_dict = Value::Dict(Rc::new(RefCell::new(DictValue::new())));
-        assert_eq!(value_to_json_pretty(&empty_dict, 0), "{}");
+        assert_eq!(value_to_json_pretty(&empty_dict, 0).unwrap(), "{}");
         let mut dict = DictValue::new();
         dict.set(Value::Integer(1), Value::String("a".to_string()));
-        let pretty_dict = value_to_json_pretty(&Value::Dict(Rc::new(RefCell::new(dict))), 0);
+        let pretty_dict =
+            value_to_json_pretty(&Value::Dict(Rc::new(RefCell::new(dict))), 0).unwrap();
         assert!(pretty_dict.contains('\n'));
     }
 
@@ -24496,17 +24940,17 @@ d.nope
     fn parse_json_object_missing_colon_branch_for_coverage() {
         let mut pos = 0;
         let chars: Vec<char> = "{\"a\" 1}".chars().collect();
-        let err = parse_json_object(&chars, &mut pos).expect_err("expected missing colon error");
+        let err = parse_json_object(&chars, &mut pos, 0).expect_err("expected missing colon error");
         assert!(err.contains("Expected ':'"));
 
         let mut pos = 0;
         let chars: Vec<char> = "{\"a\"".chars().collect();
-        let err = parse_json_object(&chars, &mut pos).expect_err("expected missing colon error");
+        let err = parse_json_object(&chars, &mut pos, 0).expect_err("expected missing colon error");
         assert!(err.contains("Expected ':'"));
 
         let mut pos = 0;
         let chars: Vec<char> = "{\"a\": 1}".chars().collect();
-        let value = parse_json_object(&chars, &mut pos).expect("parse json object");
+        let value = parse_json_object(&chars, &mut pos, 0).expect("parse json object");
         assert_value_variant(&value, Value::Dict(Rc::new(RefCell::new(DictValue::new()))));
     }
 
@@ -24514,12 +24958,12 @@ d.nope
     fn parse_json_object_invalid_key_and_separator_branches_for_coverage() {
         let mut pos = 0;
         let chars: Vec<char> = "{1: 2}".chars().collect();
-        let err = parse_json_object(&chars, &mut pos).expect_err("expected invalid key error");
+        let err = parse_json_object(&chars, &mut pos, 0).expect_err("expected invalid key error");
         assert!(err.contains("Expected string key"));
 
         let mut pos = 0;
         let chars: Vec<char> = "{\"a\": 1 x}".chars().collect();
-        let err = parse_json_object(&chars, &mut pos).expect_err("expected separator error");
+        let err = parse_json_object(&chars, &mut pos, 0).expect_err("expected separator error");
         assert!(err.contains("Expected '}' or ','"));
     }
 
@@ -24527,17 +24971,17 @@ d.nope
     fn parse_json_array_empty_branch_for_coverage() {
         let mut pos = 0;
         let chars: Vec<char> = "[]".chars().collect();
-        let value = parse_json_array(&chars, &mut pos).expect("parse empty array");
+        let value = parse_json_array(&chars, &mut pos, 0).expect("parse empty array");
         assert_value_variant(&value, Value::List(Rc::new(RefCell::new(Vec::new()))));
 
         let mut pos = 0;
         let chars: Vec<char> = "[1]".chars().collect();
-        let value = parse_json_array(&chars, &mut pos).expect("parse array");
+        let value = parse_json_array(&chars, &mut pos, 0).expect("parse array");
         assert_value_variant(&value, Value::List(Rc::new(RefCell::new(Vec::new()))));
 
         let mut pos = 0;
         let chars: Vec<char> = "[".chars().collect();
-        let err = parse_json_array(&chars, &mut pos).expect_err("expected unterminated array");
+        let err = parse_json_array(&chars, &mut pos, 0).expect_err("expected unterminated array");
         assert!(err.contains("Unexpected end"));
     }
 
@@ -24545,7 +24989,7 @@ d.nope
     fn parse_json_array_invalid_separator_branch_for_coverage() {
         let mut pos = 0;
         let chars: Vec<char> = "[1 2]".chars().collect();
-        let err = parse_json_array(&chars, &mut pos).expect_err("expected separator error");
+        let err = parse_json_array(&chars, &mut pos, 0).expect_err("expected separator error");
         assert!(err.contains("Expected ']' or ','"));
     }
 

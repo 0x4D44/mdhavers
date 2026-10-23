@@ -6355,7 +6355,33 @@ typedef struct {
     int64_t index;
 } MdhSortItem;
 
-/* Stable sort comparator for mdhavers `sort()` semantics (matches interpreter). */
+/* Compare an int with a float exactly (NaN sorts after every number). */
+static int __mdh_sort_cmp_int_float(int64_t i, double f) {
+    if (isnan(f)) return -1;
+    if (f >= 9223372036854775808.0) return -1;
+    if (f < -9223372036854775808.0) return 1;
+    double whole = trunc(f);
+    int64_t w = (int64_t)whole;
+    if (i < w) return -1;
+    if (i > w) return 1;
+    double frac = f - whole;
+    if (frac > 0.0) return -1;
+    if (frac < 0.0) return 1;
+    return 0;
+}
+
+/* Sort rank: numbers, then strings, then everything else. */
+static int __mdh_sort_rank(MdhValue v) {
+    if (v.tag == MDH_TAG_INT || v.tag == MDH_TAG_FLOAT) return 0;
+    if (v.tag == MDH_TAG_STRING) return 1;
+    return 2;
+}
+
+/*
+ * Stable sort comparator for mdhavers `sort()` (matches interpreter sort_order):
+ * numbers (ints and floats by value, NaN last) < strings (byte order) < other kinds,
+ * which keep their original order.
+ */
 static int __mdh_sort_items_cmp(const void *a, const void *b) {
     const MdhSortItem *ia = (const MdhSortItem *)a;
     const MdhSortItem *ib = (const MdhSortItem *)b;
@@ -6369,10 +6395,17 @@ static int __mdh_sort_items_cmp(const void *a, const void *b) {
     } else if (va.tag == MDH_TAG_FLOAT && vb.tag == MDH_TAG_FLOAT) {
         double af = __mdh_get_float(va);
         double bf = __mdh_get_float(vb);
-        if (!isnan(af) && !isnan(bf)) {
-            if (af < bf) cmp = -1;
-            else if (af > bf) cmp = 1;
+        if (isnan(af) || isnan(bf)) {
+            cmp = isnan(af) ? (isnan(bf) ? 0 : 1) : -1;
+        } else if (af < bf) {
+            cmp = -1;
+        } else if (af > bf) {
+            cmp = 1;
         }
+    } else if (va.tag == MDH_TAG_INT && vb.tag == MDH_TAG_FLOAT) {
+        cmp = __mdh_sort_cmp_int_float(va.data, __mdh_get_float(vb));
+    } else if (va.tag == MDH_TAG_FLOAT && vb.tag == MDH_TAG_INT) {
+        cmp = -__mdh_sort_cmp_int_float(vb.data, __mdh_get_float(va));
     } else if (va.tag == MDH_TAG_STRING && vb.tag == MDH_TAG_STRING) {
         const char *sa = __mdh_get_string(va);
         const char *sb = __mdh_get_string(vb);
@@ -6382,8 +6415,9 @@ static int __mdh_sort_items_cmp(const void *a, const void *b) {
         if (str_cmp < 0) cmp = -1;
         else if (str_cmp > 0) cmp = 1;
     } else {
-        /* Mismatched types compare equal in interpreter; preserve original order via index. */
-        cmp = 0;
+        int ra = __mdh_sort_rank(va);
+        int rb = __mdh_sort_rank(vb);
+        cmp = (ra < rb) ? -1 : (ra > rb) ? 1 : 0;
     }
 
     if (cmp != 0) {
@@ -6414,37 +6448,17 @@ MdhValue __mdh_list_sort(MdhValue list) {
         result->items[i] = l->items[i];
     }
 
-    /*
-     * Match interpreter semantics:
-     * - Only values of the same runtime type are comparable for sorting.
-     * - For mismatched types, the comparator returns Equal, and Rust's stable sort preserves order.
-     * Therefore, the *sequence of tags* is preserved; we only need to sort within contiguous runs
-     * of the same tag.
-     */
+    /* Total order shared with the interpreter; the index tie-break keeps it stable. */
     if (result->length > 1) {
-        int64_t start = 0;
-        while (start < result->length) {
-            uint8_t tag = result->items[start].tag;
-            int64_t end = start + 1;
-            while (end < result->length && result->items[end].tag == tag) {
-                end++;
-            }
-
-            int64_t run_len = end - start;
-            if (run_len > 1) {
-                MdhSortItem *items =
-                    (MdhSortItem *)GC_malloc(sizeof(MdhSortItem) * (size_t)run_len);
-                for (int64_t i = 0; i < run_len; i++) {
-                    items[i].value = result->items[start + i];
-                    items[i].index = start + i;
-                }
-                qsort(items, (size_t)run_len, sizeof(MdhSortItem), __mdh_sort_items_cmp);
-                for (int64_t i = 0; i < run_len; i++) {
-                    result->items[start + i] = items[i].value;
-                }
-            }
-
-            start = end;
+        int64_t n = result->length;
+        MdhSortItem *items = (MdhSortItem *)GC_malloc(sizeof(MdhSortItem) * (size_t)n);
+        for (int64_t i = 0; i < n; i++) {
+            items[i].value = result->items[i];
+            items[i].index = i;
+        }
+        qsort(items, (size_t)n, sizeof(MdhSortItem), __mdh_sort_items_cmp);
+        for (int64_t i = 0; i < n; i++) {
+            result->items[i] = items[i].value;
         }
     }
 
