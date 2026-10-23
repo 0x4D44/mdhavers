@@ -263,19 +263,28 @@ dae expect_type(value, expected_type, message = "") {
 # Test Organization
 # ===============================================================
 
-# Start a test suite
-dae describe(suite_name, tests_fn) {
+# Start a test suite. tests_fn is optional: wi' it the suite runs it,
+# wi'oot it the header is printed an' the tests follow on after.
+dae describe(suite_name, tests_fn = naething) {
     __test_current_suite = suite_name
     blether ""
     blether f"═══ {suite_name} ═══"
-    tests_fn()
-    blether ""
+    gin tests_fn != naething {
+        tests_fn()
+        blether ""
+    }
 }
 
-# Run an individual test
+# Run an individual test. A thrown error (e.g. frae an assert_* helper)
+# is caught an' counted as a failure.
 dae test(test_name, test_fn) {
     blether f"  Testing: {test_name}"
-    test_fn()
+    hae_a_bash {
+        test_fn()
+    } gin_it_gangs_wrang err {
+        __test_failed = __test_failed + 1
+        blether f"  ✗ {test_name}: {err}"
+    }
 }
 
 # Display test summary
@@ -334,6 +343,151 @@ dae skip(reason = "Test skipped") {
 # Mark test as TODO
 dae todo(what = "Test not implemented yet") {
     blether f"  📝 TODO: {what}"
+}
+
+# ===============================================================
+# assert_* helpers (merged frae the retired examples/lib/testing.braw)
+# They throw on failure (see test()) an' count a pass on success.
+# ===============================================================
+
+# Count a pass, or throw the message
+dae __assert_that(ok, msg) {
+    gin ok {
+        __test_passed = __test_passed + 1
+        gie aye
+    }
+    mak_siccar nae, msg
+}
+
+# Assert two values are equal
+dae assert_eq(actual, expected, msg) {
+    gin actual != expected {
+        blether f"Expected: {expected}"
+        blether f"Actual: {actual}"
+        mak_siccar nae, msg
+    }
+    __test_passed = __test_passed + 1
+}
+
+# Assert two values are not equal
+dae assert_ne(actual, expected, msg) {
+    __assert_that(actual != expected, msg)
+}
+
+# Assert value is true
+dae assert_true(val, msg) {
+    __assert_that(val == aye, msg)
+}
+
+# Assert value is false
+dae assert_false(val, msg) {
+    __assert_that(val == nae, msg)
+}
+
+# Assert value is naething
+dae assert_nil(val, msg) {
+    __assert_that(val == naething, msg)
+}
+
+# Assert value is not naething
+dae assert_not_nil(val, msg) {
+    __assert_that(val != naething, msg)
+}
+
+# Assert list contains item
+dae assert_contains(list, item, msg) {
+    __assert_that(contains(list, item), msg)
+}
+
+# Assert list does not contain item
+dae assert_not_contains(list, item, msg) {
+    __assert_that(nae contains(list, item), msg)
+}
+
+# Assert list is empty
+dae assert_empty(list, msg) {
+    __assert_that(len(list) == 0, msg)
+}
+
+# Assert list is not empty
+dae assert_not_empty(list, msg) {
+    __assert_that(len(list) > 0, msg)
+}
+
+# Assert value is in range [min, max]
+dae assert_in_range(val, min_val, max_val, msg) {
+    __assert_that(val >= min_val an val <= max_val, msg)
+}
+
+# Assert value is greater than
+dae assert_gt(actual, expected, msg) {
+    __assert_that(actual > expected, msg)
+}
+
+# Assert value is greater than or equal
+dae assert_gte(actual, expected, msg) {
+    __assert_that(actual >= expected, msg)
+}
+
+# Assert value is less than
+dae assert_lt(actual, expected, msg) {
+    __assert_that(actual < expected, msg)
+}
+
+# Assert value is less than or equal
+dae assert_lte(actual, expected, msg) {
+    __assert_that(actual <= expected, msg)
+}
+
+# Assert string starts with prefix
+dae assert_starts_with(s, prefix, msg) {
+    ken actual = scran(s, 0, len(prefix))
+    __assert_that(actual == prefix, msg)
+}
+
+# Assert string ends with suffix
+dae assert_ends_with(s, suffix, msg) {
+    ken actual = scran(s, len(s) - len(suffix), len(s))
+    __assert_that(actual == suffix, msg)
+}
+
+# Assert two floats are approximately equal
+dae assert_approx(actual, expected, epsilon, msg) {
+    ken diff = abs(actual - expected)
+    __assert_that(diff < epsilon, msg)
+}
+
+# Assert lists are equal (same elements in same order)
+dae assert_list_eq(actual, expected, msg) {
+    gin len(actual) != len(expected) {
+        blether f"Length mismatch: {len(actual)} vs {len(expected)}"
+        mak_siccar nae, msg
+    }
+    ken i = 0
+    whiles i < len(actual) {
+        gin actual[i] != expected[i] {
+            blether f"Mismatch at index {i}: {actual[i]} vs {expected[i]}"
+            mak_siccar nae, msg
+        }
+        i = i + 1
+    }
+    __test_passed = __test_passed + 1
+}
+
+# Assert code throws an error (test should fail if no error)
+dae assert_throws(fn, msg) {
+    ken did_throw = nae
+    hae_a_bash {
+        fn()
+    } gin_it_gangs_wrang err {
+        did_throw = aye
+    }
+    __assert_that(did_throw, msg)
+}
+
+# Reset test state (alias o' reset_tests)
+dae test_reset() {
+    reset_tests()
 }
 
 blether "Testing module loaded! Time tae mak siccar!"

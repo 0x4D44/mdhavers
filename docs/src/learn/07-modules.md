@@ -290,7 +290,7 @@ mdhavers comes with several useful library modules in `examples/lib/`:
 Example usage:
 
 ```scots
-fetch "examples/lib/collections"
+fetch "stdlib/collections"
 
 ken stack = Stack()
 stack.push(1)

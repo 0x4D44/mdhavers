@@ -337,4 +337,47 @@ dae add_signoff(s) {
     gie s + " - Cheerio!"
 }
 
+# ===============================================================
+# Aliases (merged frae the retired examples/lib/strings.braw)
+# ===============================================================
+
+# Check if string is empty
+dae is_empty(s) {
+    gie len(s) == 0
+}
+
+# American spellin' o' capitalise
+dae capitalize(s) {
+    gie capitalise(s)
+}
+
+# Reverse a string
+dae reverse_string(s) {
+    gie reverse_str(s)
+}
+
+# Check if string is a palindrome
+dae is_palindrome(s) {
+    ken clean = lower(wheesht(s))
+    gie clean == reverse_str(clean)
+}
+
+# Remove all occurrences of a character
+dae remove_char(s, ch) {
+    gie replace(s, ch, "")
+}
+
+# Count occurrences of substring
+dae count_substr(s, sub) {
+    ken count = 0
+    ken i = 0
+    whiles i <= len(s) - len(sub) {
+        gin scran(s, i, i + len(sub)) == sub {
+            count = count + 1
+        }
+        i = i + 1
+    }
+    gie count
+}
+
 blether "Strings module loaded! Words are bonnie!"

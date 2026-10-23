@@ -40,8 +40,8 @@ fetch "stdlib/bytes"
 fetch "stdlib/network_real"
 
 # Import an example module
-fetch "examples/lib/collections"
-fetch "examples/lib/strings" tae str
+fetch "stdlib/collections"
+fetch "stdlib/strings" tae str
 ```
 
 ## collections.braw
@@ -51,7 +51,7 @@ Data structures: Stack, Queue, Set.
 ### Stack
 
 ```scots
-fetch "examples/lib/collections"
+fetch "stdlib/collections"
 
 ken stack = Stack()
 stack.push(1)
@@ -95,7 +95,7 @@ blether set.to_list()   # [1, 2]
 String manipulation utilities.
 
 ```scots
-fetch "examples/lib/strings" tae str
+fetch "stdlib/strings" tae str
 
 # Capitalization
 blether str["capitalize"]("hello")      # "Hello"
@@ -116,7 +116,7 @@ blether str["is_blank"]("   ")   # aye
 Mathematical utilities beyond built-ins.
 
 ```scots
-fetch "examples/lib/maths" tae m
+fetch "stdlib/maths" tae m
 
 # Basic operations
 blether m["square"](5)        # 25
@@ -165,7 +165,7 @@ blether f["flip"](|a,b| a-b)(3, 10)  # 7
 Simple testing framework.
 
 ```scots
-fetch "examples/lib/testing"
+fetch "stdlib/testing"
 
 # Create a test suite
 ken suite = TestSuite("Math Tests")
@@ -305,7 +305,7 @@ blether v["all_match"]([2,4,6], |x| x % 2 == 0)  # aye
 Common programming patterns.
 
 ```scots
-fetch "examples/lib/patterns"
+fetch "stdlib/patterns"
 
 # Singleton
 ken instance = Singleton.get_instance()

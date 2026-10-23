@@ -49,8 +49,8 @@ The `examples/` directory contains runnable `.braw` programs grouped by topic.
 
 These are importable modules under `examples/lib/` and are not standalone programs:
 
-- `examples/lib/collections.braw`
+- `stdlib/collections.braw`
 - `examples/lib/functional.braw`
 - `examples/lib/logging.braw`
-- `examples/lib/testing.braw`
-- `examples/lib/strings.braw`
+- `stdlib/testing.braw`
+- `stdlib/strings.braw`

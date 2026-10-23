@@ -297,4 +297,40 @@ dae repeat(val, n) {
     gie result
 }
 
+# ===============================================================
+# Merged frae the retired examples/lib/maths.braw
+# ===============================================================
+
+# Square a number
+dae square(x) {
+    gie x * x
+}
+
+# Cube a number
+dae cube(x) {
+    gie x * x * x
+}
+
+# Calculate fibonacci (recursive)
+dae fibonacci(n) {
+    gin n <= 0 {
+        gie 0
+    }
+    gin n == 1 {
+        gie 1
+    }
+    gie fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+# Clamp a value between min and max
+dae clamp(val, min_val, max_val) {
+    gin val < min_val {
+        gie min_val
+    }
+    gin val > max_val {
+        gie max_val
+    }
+    gie val
+}
+
 blether "Maths module loaded! Numbers are braw!"

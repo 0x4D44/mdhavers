@@ -1148,11 +1148,11 @@ See the `examples/` directory for sample programs:
 
 ### Library Modules (importable, not standalone)
 
-- `examples/lib/collections.braw` - Data structures and utilities
+- `stdlib/collections.braw` - Data structures and utilities
 - `examples/lib/functional.braw` - Higher‑order helpers
 - `examples/lib/logging.braw` - Logging helpers
-- `examples/lib/testing.braw` - Simple testing helpers
-- `examples/lib/strings.braw` - String helpers
+- `stdlib/testing.braw` - Simple testing helpers
+- `stdlib/strings.braw` - String helpers
 
 ### Games
 

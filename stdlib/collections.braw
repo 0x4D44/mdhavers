@@ -499,4 +499,187 @@ dae max(a, b) {
     gie b
 }
 
+# ===============================================================
+# List-based helpers (merged frae the retired examples/lib/collections.braw)
+# ===============================================================
+
+# === Stack operations (LIFO) ===
+
+dae stack_new() {
+    gie []
+}
+
+dae stack_push(stack, item) {
+    shove(stack, item)
+}
+
+dae stack_pop(stack) {
+    gie yank(stack)
+}
+
+dae stack_peek(stack) {
+    gin len(stack) == 0 {
+        gie naething
+    }
+    gie bum(stack)
+}
+
+dae stack_empty(stack) {
+    gie len(stack) == 0
+}
+
+# === Queue operations (FIFO) ===
+
+dae queue_new() {
+    gie []
+}
+
+dae queue_enqueue(queue, item) {
+    shove(queue, item)
+}
+
+dae queue_dequeue(queue) {
+    gin len(queue) == 0 {
+        gie naething
+    }
+    ken first = heid(queue)
+    ken i = 0
+    whiles i < len(queue) - 1 {
+        queue[i] = queue[i + 1]
+        i = i + 1
+    }
+    yank(queue)
+    gie first
+}
+
+dae queue_peek(queue) {
+    gin len(queue) == 0 {
+        gie naething
+    }
+    gie heid(queue)
+}
+
+dae queue_empty(queue) {
+    gie len(queue) == 0
+}
+
+# === Set operations (list with uniqueness check) ===
+
+dae set_new() {
+    gie []
+}
+
+dae set_add(set, item) {
+    gin nae contains(set, item) {
+        shove(set, item)
+        gie aye
+    }
+    gie nae
+}
+
+dae set_remove(set, item) {
+    ken i = 0
+    whiles i < len(set) {
+        gin set[i] == item {
+            ken j = i
+            whiles j < len(set) - 1 {
+                set[j] = set[j + 1]
+                j = j + 1
+            }
+            yank(set)
+            gie aye
+        }
+        i = i + 1
+    }
+    gie nae
+}
+
+dae set_contains(set, item) {
+    gie contains(set, item)
+}
+
+dae set_union(a, b) {
+    ken result = []
+    fer item in a {
+        shove(result, item)
+    }
+    fer item in b {
+        gin nae contains(result, item) {
+            shove(result, item)
+        }
+    }
+    gie result
+}
+
+dae set_intersection(a, b) {
+    ken result = []
+    fer item in a {
+        gin contains(b, item) {
+            shove(result, item)
+        }
+    }
+    gie result
+}
+
+dae set_difference(a, b) {
+    ken result = []
+    fer item in a {
+        gin nae contains(b, item) {
+            shove(result, item)
+        }
+    }
+    gie result
+}
+
+# === Counter/bag operations ===
+
+dae counter(items) {
+    ken counts = {}
+    fer item in items {
+        ken key = tae_string(item)
+        gin contains(keys(counts), key) {
+            counts[key] = counts[key] + 1
+        } ither {
+            counts[key] = 1
+        }
+    }
+    gie counts
+}
+
+dae counter_get(counts, item) {
+    ken key = tae_string(item)
+    gin contains(keys(counts), key) {
+        gie counts[key]
+    }
+    gie 0
+}
+
+dae counter_most_common(counts, n) {
+    ken items = []
+    fer k in keys(counts) {
+        shove(items, [k, counts[k]])
+    }
+    ken sorted = []
+    whiles len(items) > 0 {
+        ken max_idx = 0
+        ken max_count = items[0][1]
+        ken i = 1
+        whiles i < len(items) {
+            gin items[i][1] > max_count {
+                max_idx = i
+                max_count = items[i][1]
+            }
+            i = i + 1
+        }
+        shove(sorted, items[max_idx])
+        ken j = max_idx
+        whiles j < len(items) - 1 {
+            items[j] = items[j + 1]
+            j = j + 1
+        }
+        yank(items)
+    }
+    gie tak(sorted, n)
+}
+
 blether "Collections module loaded! Yer data's in guid hauns!"

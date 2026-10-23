@@ -32584,10 +32584,11 @@ blether sumaw(v)
         let code = r#"
 ken d1 = {"a": 1}
 ken d2 = {"b": 2}
-ken merged = ceilidh(d1, d2)
+ken merged = dict_merge(d1, d2)
 blether len(keys(merged))
+blether merged["a"] + merged["b"]
         "#;
-        assert_eq!(run(code).trim(), "2");
+        assert_eq!(run(code).trim(), "2\n3");
     }
 
     #[test]
@@ -47469,14 +47470,16 @@ blether content
         let path = "/tmp/test_lines_braw.txt";
         fs::write(path, "line1\nline2\nline3").unwrap();
 
+        // lines() splits a string on newlines; slurp() supplies the file's text.
         let code = format!(
             r#"
-ken lns = lines("{}")
+ken lns = lines(slurp("{}"))
 blether len(lns)
+blether lns[2]
         "#,
             path
         );
-        assert_eq!(run(&code).trim(), "3");
+        assert_eq!(run(&code).trim(), "3\nline3");
 
         fs::remove_file(path).ok();
     }
@@ -49398,10 +49401,9 @@ blether lst[-1]
 ken lst = [1, 2, 3]
 blether lst[100]
         "#;
-        let binding = run(code);
-        let output = binding.trim();
-        // Out of bounds behavior varies
-        assert!(!output.is_empty(), "Got something");
+        // An out-of-bounds index hurls: the program exits non-zero wi' the error on stderr.
+        let err = compile_and_run(code).expect_err("lst[100] should raise");
+        assert!(err.contains("bounds"), "Got: {}", err);
     }
 }
 
@@ -51649,38 +51651,42 @@ mod fankle_cov {
     #[test]
     fn test_fankle_basic() {
         let code = r#"
-ken nested = [[1, 2], [3, 4], [5]]
-ken flat = fankle(nested)
+ken a = [1, 2, 3]
+ken b = [10, 20, 30]
+ken flat = fankle(a, b)
 blether len(flat)
+blether flat[0]
+blether flat[1]
+blether flat[5]
         "#;
-        let binding = run(code);
-        let output = binding.trim();
-        // Flattened: [1,2,3,4,5] = 5 elements
-        assert!(output == "5" || output.len() > 0, "Got: {}", output);
+        // fankle interleaves two lists: [1, 10, 2, 20, 3, 30]
+        assert_eq!(run(code).trim(), "6\n1\n10\n30");
     }
 
     #[test]
     fn test_fankle_already_flat() {
         let code = r#"
-ken arr = [1, 2, 3]
-ken flat = fankle(arr)
+ken a = [1, 2, 3]
+ken b = [9]
+ken flat = fankle(a, b)
 blether len(flat)
+blether flat[1]
+blether flat[3]
         "#;
-        let binding = run(code);
-        let output = binding.trim();
-        assert!(output == "3" || output.len() > 0, "Got: {}", output);
+        // Unequal lengths: the longer list's remainder is appended: [1, 9, 2, 3]
+        assert_eq!(run(code).trim(), "4\n9\n3");
     }
 
     #[test]
     fn test_fankle_empty_nested() {
         let code = r#"
-ken nested = [[], [1], []]
-ken flat = fankle(nested)
+ken a = []
+ken b = [1]
+ken flat = fankle(a, b)
 blether len(flat)
+blether flat[0]
         "#;
-        let binding = run(code);
-        let output = binding.trim();
-        assert!(output == "1" || output.len() > 0, "Got: {}", output);
+        assert_eq!(run(code).trim(), "1\n1");
     }
 }
 
@@ -51988,7 +51994,8 @@ fetch "lib/maths"
 blether square(5)
         "#;
         let binding = run(code);
-        let output = binding.trim();
+        // The stdlib module announces itself when fetched; the result is the last line.
+        let output = binding.trim().lines().last().unwrap_or("");
         assert_eq!(output, "25");
     }
 }
