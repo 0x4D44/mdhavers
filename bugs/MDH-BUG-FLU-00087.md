@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00087 — Native: user functions named pow/atan2/strtod/strncmp collide with libc lookups
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-23T03:53:00Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T043029Z-099ddc31
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00087-run-fix-20261023T043029Z-099ddc31
-- **Owner base:** 00cc38d439be0c554b257d8c632416d733e897e6
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T04:30:29Z
-- **Owner until:** 2026-10-23T08:30:29Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T03:53:00Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-23T03:53:00Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T04:30:35Z, deltic:auto role=fix run=fix-20261023T043029Z-099ddc31 branch=task/bug-MDH-BUG-FLU-00087-run-fix-20261023T043029Z-099ddc31 code=c9f3fd5 gate=manual)
 
 ## Observation
 
