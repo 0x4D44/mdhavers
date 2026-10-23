@@ -642,20 +642,25 @@ impl Parser {
         }
     }
 
-    /// An integer pattern, or a range pattern `n..end` when `..` follows.
+    /// An integer pattern, or a range pattern when `..` (end left oot) or
+    /// `..=` (end kept in) follows: `n..end` / `n..=end`.
     fn integer_pattern(&mut self, n: i64, span: Span) -> HaversResult<Pattern> {
-        if self.match_token(&TokenKind::DotDot) {
-            let end = self.expression()?;
-            Ok(Pattern::Range {
-                start: Box::new(Expr::Literal {
-                    value: Literal::Integer(n),
-                    span,
-                }),
-                end: Box::new(end),
-            })
+        let inclusive = if self.match_token(&TokenKind::DotDotEquals) {
+            true
+        } else if self.match_token(&TokenKind::DotDot) {
+            false
         } else {
-            Ok(Pattern::Literal(Literal::Integer(n)))
-        }
+            return Ok(Pattern::Literal(Literal::Integer(n)));
+        };
+        let end = self.expression()?;
+        Ok(Pattern::Range {
+            start: Box::new(Expr::Literal {
+                value: Literal::Integer(n),
+                span,
+            }),
+            end: Box::new(end),
+            inclusive,
+        })
     }
 
     fn block(&mut self) -> HaversResult<Stmt> {
@@ -1075,6 +1080,10 @@ impl Parser {
                 };
             } else if self.match_token(&TokenKind::LeftBracket) {
                 expr = self.index_or_slice(expr)?;
+            } else if self.newlines_then_dot() {
+                // A continuation line startin' wi' `.method()`: a line cannae
+                // otherwise begin wi' a `.`, sae this changes nae meanin'.
+                self.skip_newlines();
             } else {
                 break;
             }
@@ -1083,10 +1092,24 @@ impl Parser {
         Ok(expr)
     }
 
+    /// Is the cursor on a run o' newlines whose next real token is a `.`?
+    fn newlines_then_dot(&self) -> bool {
+        if !self.check(&TokenKind::Newline) {
+            return false;
+        }
+        self.tokens[self.current..]
+            .iter()
+            .find(|t| t.kind != TokenKind::Newline)
+            .is_some_and(|t| t.kind == TokenKind::Dot)
+    }
+
     fn finish_call(&mut self, callee: Expr) -> HaversResult<Expr> {
         let span = callee.span();
         let mut arguments = Vec::new();
 
+        // Newlines inside the brackets are just layoot: a lang call can spread
+        // its arguments ower several lines.
+        self.skip_newlines();
         if !self.check(&TokenKind::RightParen) {
             loop {
                 // Check for spread operator in function arguments
@@ -1100,9 +1123,11 @@ impl Parser {
                 } else {
                     arguments.push(self.expression()?);
                 }
+                self.skip_newlines();
                 if !self.match_token(&TokenKind::Comma) {
                     break;
                 }
+                self.skip_newlines();
             }
         }
 
@@ -1393,7 +1418,7 @@ impl Parser {
         }
         self.expect(&TokenKind::Pipe, "|")?;
         // Check for block body: |x, y| { ... }
-        let body = if self.check(&TokenKind::LeftBrace) {
+        let body = if self.check(&TokenKind::LeftBrace) && !self.lambda_brace_starts_dict() {
             let brace_token = self.peek();
             let block_span = Span::new(brace_token.line, brace_token.column);
             self.advance(); // consume {
@@ -1416,6 +1441,18 @@ impl Parser {
             body: Box::new(body),
             span,
         })
+    }
+
+    /// Wi' the cursor on the `{` efter a lambda's `|...|`: does it open a dict
+    /// literal (`|x| {"k": x}`) raither than a block body? Same rule as a `{` in
+    /// expression position, except `{}` stays an empty block body, as it aye was.
+    fn lambda_brace_starts_dict(&mut self) -> bool {
+        let saved = self.current;
+        self.advance(); // consume {
+        self.skip_newlines();
+        let is_dict = !self.check(&TokenKind::RightBrace) && self.brace_starts_dict();
+        self.current = saved;
+        is_dict
     }
 
     /// Wi' the cursor just past a `{` (and any newlines) in expression position,
@@ -3489,5 +3526,108 @@ mod tests {
                 other => panic!("{src:?}: expected blether f\"...\", got {other:?}"),
             }
         }
+    }
+
+    // ==================== Follow-ups (MDH-BUG-FLU-00066/75/78) ====================
+
+    /// The body o' the lambda that is the first `ken`'s initializer.
+    fn first_lambda_body(src: &str) -> Expr {
+        match first_initializer(src) {
+            Expr::Lambda { body, .. } => *body,
+            other => panic!("{src:?}: expected a lambda, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn lambda_brace_body_picks_dict_or_block_like_expression_position() {
+        // MDH-BUG-FLU-00066: a `key:` on the first line means a dict literal.
+        assert!(matches!(
+            first_lambda_body("ken f = |x| {\"item\": x, \"key\": k(x)}"),
+            Expr::Dict { ref pairs, .. } if pairs.len() == 2
+        ));
+        assert!(matches!(
+            first_lambda_body("ken f = |x| {\n  \"a\": x\n}"),
+            Expr::Dict { .. }
+        ));
+        // A dict body can carry on as an expression.
+        assert!(matches!(
+            first_lambda_body("ken f = |k| {\"a\": 1}[k]"),
+            Expr::Index { .. }
+        ));
+        // Blocks stay blocks, and `{}` stays an empty block body.
+        for src in [
+            "ken f = |x| { shove(xs, x) }",
+            "ken f = |x| {\n  ken y = x[1:2]\n  gie y\n}",
+            "ken f = |x| { obj.a = x; obj.b = x }",
+            "ken f = |x| {}",
+            "ken f = || { naething }",
+        ] {
+            assert!(
+                matches!(first_lambda_body(src), Expr::BlockExpr { .. }),
+                "{src:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn call_arguments_may_span_lines() {
+        // MDH-BUG-FLU-00075
+        for src in [
+            "ken r = f(\n  1,\n  2\n)",
+            "ken r = f(1,\n      2)",
+            "ken r = f(\n)",
+            "ken r = f(\n  ...xs\n)",
+        ] {
+            assert!(
+                matches!(first_initializer(src), Expr::Call { .. }),
+                "{src:?}"
+            );
+        }
+        match first_initializer("ken r = f(\n  1,\n\n  2\n)") {
+            Expr::Call { arguments, .. } => assert_eq!(arguments.len(), 2),
+            other => panic!("expected a call, got {other:?}"),
+        }
+        // A dangling comma is still an error, as it was on one line.
+        assert!(parse("ken r = f(1,\n)").is_err());
+    }
+
+    #[test]
+    fn leading_dot_continues_a_chain_on_the_next_line() {
+        // MDH-BUG-FLU-00075
+        let program = parse("ken r = xs\n  .map(f)\n\n  .len()\nblether r\n").unwrap();
+        assert_eq!(program.statements.len(), 2);
+        assert!(matches!(
+            &program.statements[0],
+            Stmt::VarDecl {
+                initializer: Some(Expr::Call { .. }),
+                ..
+            }
+        ));
+        // Ony ither token on the next line still starts a new statement.
+        let program = parse("ken r = xs\n(1)\n").unwrap();
+        assert_eq!(program.statements.len(), 2);
+        let program = parse("ken r = xs\n[1]\n").unwrap();
+        assert_eq!(program.statements.len(), 2);
+        // A statement can still never start wi' a bare `.`.
+        assert!(parse(".len()\n").is_err());
+    }
+
+    #[test]
+    fn inclusive_range_pattern_is_parsed() {
+        // MDH-BUG-FLU-00078
+        let program =
+            parse("keek x {\n  whan 1..=5 -> 1\n  whan 6..9 -> 2\n  whan -3..=-1 -> 3\n}").unwrap();
+        let arms = match &program.statements[0] {
+            Stmt::Match { arms, .. } => arms,
+            other => panic!("expected a match, got {other:?}"),
+        };
+        let flags: Vec<bool> = arms
+            .iter()
+            .map(|arm| match &arm.pattern {
+                Pattern::Range { inclusive, .. } => *inclusive,
+                other => panic!("expected a range pattern, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(flags, vec![true, false, true]);
     }
 }

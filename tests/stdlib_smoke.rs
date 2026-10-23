@@ -10,11 +10,6 @@ use std::path::PathBuf;
 const SKIP: &[(&str, &str)] = &[
     // (module name, reason) - filled in only where a load genuinely cannae work
     // here (needs a terminal, a network, or a feature this build lacks).
-    ("functional", "does not parse on trunk: MDH-BUG-FLU-00066"),
-    (
-        "tri",
-        "stdlib/tri.braw:22 uses `thing` (a keyword) as a lambda parameter, so the module does not parse; reported by L7, no bug id yet",
-    ),
 ];
 
 fn stdlib_dir() -> PathBuf {
@@ -74,6 +69,18 @@ blether len(g["0"])
     .expect("group_by should run");
     // The module prints a load banner first; check only what the test printed.
     assert_eq!(out[out.len() - 2..], ["3".to_string(), "2".to_string()]);
+}
+
+#[test]
+fn functional_sort_by_works() {
+    // sort_by builds `|item| {"item": ..., "key": ...}` - a lambda returning a
+    // dict literal, which didnae parse afore MDH-BUG-FLU-00066.
+    let out = run(r#"
+fetch "stdlib/functional"
+blether join(sort_by(["ccc", "a", "bb"], |s| len(s)), ",")
+"#)
+    .expect("sort_by should run");
+    assert_eq!(out.last().map(String::as_str), Some("a,bb,ccc"));
 }
 
 #[test]

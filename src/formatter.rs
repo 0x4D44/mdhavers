@@ -773,10 +773,15 @@ impl Formatter {
             Pattern::Literal(lit) => self.format_literal(lit, None),
             Pattern::Identifier(name) => name.clone(),
             Pattern::Wildcard => "_".to_string(),
-            Pattern::Range { start, end } => {
+            Pattern::Range {
+                start,
+                end,
+                inclusive,
+            } => {
                 let s = self.format_expr(start);
                 let e = self.format_expr(end);
-                format!("{}..{}", s, e)
+                let op = if *inclusive { "..=" } else { ".." };
+                format!("{}{}{}", s, op, e)
             }
         }
     }

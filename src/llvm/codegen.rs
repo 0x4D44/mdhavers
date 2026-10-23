@@ -5341,7 +5341,7 @@ impl<'ctx> CodeGen<'ctx> {
                 for arm in arms {
                     match &arm.pattern {
                         Pattern::Identifier(name) => out.push(unknown_decl(name)),
-                        Pattern::Range { start, end } => {
+                        Pattern::Range { start, end, .. } => {
                             Self::collect_expr_bindings(start, out);
                             Self::collect_expr_bindings(end, out);
                         }
@@ -36011,17 +36011,26 @@ impl<'ctx> CodeGen<'ctx> {
                 let lit_val = self.compile_literal(lit);
                 self.inline_eq_raw(value, lit_val)
             }
-            Pattern::Range { start, end } => {
-                // Check if value is in range [start, end)
+            Pattern::Range {
+                start,
+                end,
+                inclusive,
+            } => {
+                // Check if value is in range [start, end) or, inclusive, [start, end]
                 let start_val = self.compile_expr(start)?;
                 let end_val = self.compile_expr(end)?;
 
                 let ge_start = self.inline_ge_raw(value, start_val);
-                let lt_end = self.inline_lt_raw(value, end_val);
+                let within_end = if *inclusive {
+                    // value <= end is end >= value
+                    self.inline_ge_raw(end_val, value)
+                } else {
+                    self.inline_lt_raw(value, end_val)
+                };
 
                 Ok(self
                     .builder
-                    .build_and(ge_start, lt_end, "in_range")
+                    .build_and(ge_start, within_end, "in_range")
                     .unwrap())
             }
         }

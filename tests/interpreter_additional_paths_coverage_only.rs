@@ -244,6 +244,7 @@ fn interpreter_match_range_start_eval_error_branch_is_covered_via_ast_for_covera
                     value: Literal::Integer(2),
                     span,
                 }),
+                inclusive: false,
             },
             body: Stmt::Expression {
                 expr: Expr::Literal {

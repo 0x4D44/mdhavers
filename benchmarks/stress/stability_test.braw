@@ -22,7 +22,7 @@ dae run_iteration(iter) {
     # List operations
     ken lst = [iter, a, b, c]
     shove(lst, d)
-    ken sum = tumble(lst, 0, dae(acc, x) { gie acc + x })
+    ken sum = tumble(lst, 0, |acc, x| acc + x)
 
     # String operations
     ken s = tae_string(iter) + "-" + tae_string(a)
@@ -71,7 +71,7 @@ whiles batch < 5 {
 }
 
 # Calculate variance
-ken avg = tumble(times, 0, dae(acc, x) { gie acc + x }) / 5
+ken avg = tumble(times, 0, |acc, x| acc + x) / 5
 ken max_time = times[0]
 ken min_time = times[0]
 i = 1
@@ -104,9 +104,9 @@ whiles i < 1000 {
         shove(temp, j * i)
         j = j + 1
     }
-    ken doubled = gaun(temp, dae(x) { gie x * 2 })
-    ken filtered = sieve(doubled, dae(x) { gie x % 4 == 0 })
-    ken sum = tumble(filtered, 0, dae(acc, x) { gie acc + x })
+    ken doubled = gaun(temp, |x| x * 2)
+    ken filtered = sieve(doubled, |x| x % 4 == 0)
+    ken sum = tumble(filtered, 0, |acc, x| acc + x)
     i = i + 1
 }
 elapsed = tick() - start

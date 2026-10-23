@@ -341,3 +341,27 @@ fn parity_js_values_mdh_bug_flu_00043() {
         ),
     ]);
 }
+
+#[test]
+fn parity_js_parser_followups_mdh_bug_flu_00066_00075_00078() {
+    if !node_available() {
+        return;
+    }
+    assert_js_parity(&[
+        (
+            "00066 lambda returning a dict",
+            "ken f = |x| {\"k\": x * 2}\nblether f(4)[\"k\"]\nken g = |k| {\"a\": 1, \"b\": 2}[k]\nblether g(\"b\")\nken h = |k| {\"a\": 1, \"b\": 3}.b\nblether h(0)",
+            "8\n2\n3",
+        ),
+        (
+            "00075 multi-line call arguments and leading-dot chain",
+            "dae add(a, b) {\n    gie a + b\n}\nblether add(\n    1,\n    2\n)\nken d = {\"a\": {\"b\": 5}}\nblether d\n    .a\n    .b",
+            "3\n5",
+        ),
+        (
+            "00078 inclusive range pattern",
+            "fer i in 0..5 {\n    keek i {\n        whan 1..=2 -> blether \"in\"\n        whan 3..4 -> blether \"mid\"\n        whan _ -> blether \"oot\"\n    }\n}",
+            "oot\nin\nin\nmid\noot",
+        ),
+    ]);
+}

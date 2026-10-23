@@ -20,13 +20,13 @@ dae _tri_clone(obj) {
 }
 
 dae _tri_attach_common(obj) {
-    obj.adde = |thing| { shove(obj.children, thing) }
+    obj.adde = |item| { shove(obj.children, item) }
     obj.add = obj.adde
 
-    obj.remuiv = |thing| {
+    obj.remuiv = |item| {
         ken new_children = []
         fer child in obj.children {
-            gin child != thing { shove(new_children, child) }
+            gin child != item { shove(new_children, child) }
         }
         obj.children = new_children
     }

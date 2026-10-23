@@ -217,8 +217,12 @@ pub enum Pattern {
     Identifier(String),
     /// Wildcard (_)
     Wildcard,
-    /// Range pattern: 1..10
-    Range { start: Box<Expr>, end: Box<Expr> },
+    /// Range pattern: 1..10 (end excluded) or 1..=10 (end included)
+    Range {
+        start: Box<Expr>,
+        end: Box<Expr>,
+        inclusive: bool,
+    },
 }
 
 /// A function parameter with optional default value
@@ -1102,6 +1106,7 @@ mod tests {
                         value: Literal::Integer(10),
                         span,
                     }),
+                    inclusive: false,
                 },
                 true,
             ),

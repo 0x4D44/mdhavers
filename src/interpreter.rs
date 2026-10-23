@@ -11545,12 +11545,16 @@ impl Interpreter {
             }
             Pattern::Identifier(_) => Ok(true), // Always matches, binds value
             Pattern::Wildcard => Ok(true),
-            Pattern::Range { start, end } => {
+            Pattern::Range {
+                start,
+                end,
+                inclusive,
+            } => {
                 if let Value::Integer(n) = value {
                     let start_val = self.evaluate(start)?;
                     let end_val = self.evaluate(end)?;
                     if let (Some(s), Some(e)) = (start_val.as_integer(), end_val.as_integer()) {
-                        Ok(*n >= s && *n < e)
+                        Ok(*n >= s && if *inclusive { *n <= e } else { *n < e })
                     } else {
                         Ok(false)
                     }
@@ -13955,6 +13959,7 @@ blether m2["a"]
                 value: Literal::Integer(10),
                 span,
             }),
+            inclusive: false,
         };
         assert!(interp
             .pattern_matches(&start_err, &Value::Integer(5))
@@ -13969,6 +13974,7 @@ blether m2["a"]
                 name: "nope".to_string(),
                 span,
             }),
+            inclusive: false,
         };
         assert!(interp
             .pattern_matches(&end_err, &Value::Integer(5))

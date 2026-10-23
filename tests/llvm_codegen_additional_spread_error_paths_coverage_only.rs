@@ -102,6 +102,7 @@ fn llvm_codegen_covers_match_range_start_compile_expr_error_path_for_coverage() 
                     value: Literal::Integer(10),
                     span,
                 }),
+                inclusive: false,
             },
             body: Stmt::Block {
                 statements: vec![],
@@ -134,6 +135,7 @@ fn llvm_codegen_covers_match_range_end_compile_expr_error_path_for_coverage() {
                     span,
                 }),
                 end: Box::new(spread_outside_list(span)),
+                inclusive: false,
             },
             body: Stmt::Block {
                 statements: vec![],

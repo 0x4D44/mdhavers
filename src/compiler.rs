@@ -1719,10 +1719,15 @@ impl Compiler {
             Pattern::Wildcard => {
                 self.output.push_str("true"); // Always matches
             }
-            Pattern::Range { start, end } => {
+            Pattern::Range {
+                start,
+                end,
+                inclusive,
+            } => {
                 self.output.push_str(&format!("({} >= ", match_var));
                 self.compile_expr(start);
-                self.output.push_str(&format!(" && {} < ", match_var));
+                let op = if *inclusive { "<=" } else { "<" };
+                self.output.push_str(&format!(" && {} {} ", match_var, op));
                 self.compile_expr(end);
                 self.output.push(')');
             }
@@ -2095,8 +2100,9 @@ impl Compiler {
                 self.output.push('(');
                 self.output.push_str(&js_params.join(", "));
                 self.output.push_str(") => ");
-                if matches!(**body, Expr::Dict { .. }) {
-                    // `=> {` would start a function body, no' an object.
+                if !matches!(**body, Expr::BlockExpr { .. }) {
+                    // `=> {` would start a function body, no' an object - and no'
+                    // only fer a bare dict: `|k| {"a": 1}[k]` starts wi' one too.
                     self.output.push('(');
                     self.compile_expr(body);
                     self.output.push(')');
