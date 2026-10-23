@@ -2852,11 +2852,19 @@ impl Interpreter {
         // 2. stdlib/prelude.braw relative tae current directory
         // 3. Embedded prelude as fallback
 
-        let prelude_locations = [
+        let prelude_locations: Vec<Option<PathBuf>> = vec![
             // Next tae the executable
             std::env::current_exe()
                 .ok()
                 .and_then(|p| p.parent().map(|d| d.join("stdlib/prelude.braw"))),
+            // Installed layout: <home>/bin/mdhavers wi' <home>/lib/prelude.braw
+            std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.join("../lib/prelude.braw"))),
+            // $MDHAVERS_HOME/lib (the installer's LIB_DIR)
+            std::env::var_os("MDHAVERS_HOME")
+                .filter(|h| !h.is_empty())
+                .map(|h| PathBuf::from(h).join("lib/prelude.braw")),
             // In the current directory
             Some(PathBuf::from("stdlib/prelude.braw")),
             // In the project root (fer development)
@@ -2885,8 +2893,9 @@ impl Interpreter {
             }
         }
 
-        // If nae prelude file found, that's okay - just continue without it
-        // The language still works, just without the convenience functions
+        // If nae prelude file found, carry on without it - the language still
+        // works, just without the convenience functions - but say so.
+        eprintln!("Och, cannae find stdlib/prelude.braw - carryin' on wi'oot the prelude. Set MDHAVERS_HOME or run frae the project folder.");
         self.prelude_loaded = true;
         Ok(())
     }
@@ -10895,6 +10904,21 @@ impl Interpreter {
                 if let Ok(stripped) = module_path.strip_prefix("lib") {
                     candidates.push(parent.join("stdlib").join(stripped));
                 }
+                // Installed layout: <home>/bin/mdhavers wi' <home>/lib/*.braw
+                let install_lib = parent.join("..").join("lib");
+                candidates.push(install_lib.join(&module_path));
+                if let Ok(stripped) = module_path.strip_prefix("lib") {
+                    candidates.push(install_lib.join(stripped));
+                }
+            }
+        }
+
+        // $MDHAVERS_HOME/lib (the installer's LIB_DIR)
+        if let Some(home) = std::env::var_os("MDHAVERS_HOME").filter(|h| !h.is_empty()) {
+            let install_lib = PathBuf::from(home).join("lib");
+            candidates.push(install_lib.join(&module_path));
+            if let Ok(stripped) = module_path.strip_prefix("lib") {
+                candidates.push(install_lib.join(stripped));
             }
         }
 
@@ -22417,6 +22441,7 @@ r[0]
         format!("\"{}\"", std::path::Path::new(rel).display())
     }
 
+    #[cfg(any(feature = "audio", feature = "graphics"))]
     #[test]
     fn test_audio_device_controls() {
         let result = run(r#"
@@ -22436,6 +22461,7 @@ v
         assert!((v - 0.7).abs() < 1e-6);
     }
 
+    #[cfg(any(feature = "audio", feature = "graphics"))]
     #[test]
     fn test_audio_sfx_cycle() {
         let ding = audio_path("assets/audio/ding.wav");
@@ -22530,11 +22556,13 @@ soond_steek()
         assert_eq!(list[5], Value::Bool(false));
     }
 
+    #[cfg(any(feature = "audio", feature = "graphics"))]
     fn escape_midi_path(path: &str) -> String {
         // Escape backslashes for Windows paths
         format!("\"{}\"", path.replace('\\', "\\\\"))
     }
 
+    #[cfg(any(feature = "audio", feature = "graphics"))]
     #[test]
     fn test_audio_midi_cycle_explicit_soundfont() {
         // Create temp files for testing (mock rustysynth doesn't parse content)
@@ -22584,6 +22612,7 @@ soond_steek()
         assert_eq!(list[3], Value::Bool(true));
     }
 
+    #[cfg(any(feature = "audio", feature = "graphics"))]
     #[test]
     fn test_audio_midi_cycle_default_soundfont() {
         // Create temp files for testing (mock rustysynth doesn't parse content)
@@ -22614,6 +22643,7 @@ aye
         assert_eq!(result, Value::Bool(true));
     }
 
+    #[cfg(any(feature = "audio", feature = "graphics"))]
     #[test]
     fn test_audio_midi_stops_at_end() {
         // Create temp files for testing (mock rustysynth doesn't parse content)

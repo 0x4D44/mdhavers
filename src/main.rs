@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 #[cfg(not(test))]
 use std::process;
 
@@ -391,6 +391,41 @@ fn trace_file(path: &PathBuf, verbose: bool) -> Result<(), String> {
     Ok(())
 }
 
+/// Work oot where compiled output goes: the given path, or the input path wi'
+/// its extension swapped. Refuses if that would overwrite the source file.
+fn resolve_output_path(
+    input: &Path,
+    output: Option<PathBuf>,
+    extension: &str,
+) -> Result<PathBuf, String> {
+    let out = match output {
+        Some(p) => p,
+        None => input.with_extension(extension),
+    };
+    let same = out == input
+        || match (fs::canonicalize(input), fs::canonicalize(&out)) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => false,
+        };
+    if same {
+        return Err(format!(
+            "Haud yer wheesht! The output wid overwrite the source file {} - gie us a different name wi' -o",
+            input.display()
+        ));
+    }
+    Ok(out)
+}
+
+/// Shorten a REPL value fer display, cuttin' on a character boundary.
+fn truncate_for_display(value: &str) -> String {
+    if value.chars().count() > 50 {
+        let head: String = value.chars().take(47).collect();
+        format!("{}...", head)
+    } else {
+        value.to_string()
+    }
+}
+
 fn compile_file(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
     let source = read_file(path)?;
     let js_code = match compile(&source) {
@@ -398,14 +433,7 @@ fn compile_file(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
         Err(e) => return Err(format_parse_error(&source, e)),
     };
 
-    let output_path = match output {
-        Some(p) => p,
-        None => {
-            let mut p = path.clone();
-            p.set_extension("js");
-            p
-        }
-    };
+    let output_path = resolve_output_path(path, output, "js")?;
 
     if let Err(e) = fs::write(&output_path, &js_code) {
         return Err(format!("Cannae write tae {}: {}", output_path.display(), e));
@@ -428,14 +456,7 @@ fn compile_wasm(path: &PathBuf, output: Option<PathBuf>) -> Result<(), String> {
         Err(e) => return Err(format_parse_error(&source, e)),
     };
 
-    let output_path = match output {
-        Some(p) => p,
-        None => {
-            let mut p = path.clone();
-            p.set_extension("wat");
-            p
-        }
-    };
+    let output_path = resolve_output_path(path, output, "wat")?;
 
     if let Err(e) = fs::write(&output_path, &wat_code) {
         return Err(format!("Cannae write tae {}: {}", output_path.display(), e));
@@ -528,14 +549,7 @@ fn build_native(
             Err(e) => return Err(format!("{}", e)),
         };
 
-        let output_path = match output {
-            Some(p) => p,
-            None => {
-                let mut p = path.clone();
-                p.set_extension("ll");
-                p
-            }
-        };
+        let output_path = resolve_output_path(path, output, "ll")?;
 
         if let Err(e) = fs::write(&output_path, &ir) {
             return Err(format!("Cannae write tae {}: {}", output_path.display(), e));
@@ -549,14 +563,7 @@ fn build_native(
         println!("  {} {}", "Output:".dimmed(), output_path.display());
     } else {
         // Build native executable
-        let output_path = match output {
-            Some(p) => p,
-            None => {
-                let mut p = path.clone();
-                p.set_extension("");
-                p
-            }
-        };
+        let output_path = resolve_output_path(path, output, "")?;
 
         let compiler = mdhavers::LLVMCompiler::new();
         if let Err(e) =
@@ -1178,11 +1185,7 @@ fn print_environment(interpreter: &Interpreter) {
             println!("{}", "  Values:".yellow().bold());
             for (name, type_name, value) in &user_vars {
                 // Truncate long values
-                let display_value = if value.len() > 50 {
-                    format!("{}...", &value[..47])
-                } else {
-                    value.clone()
-                };
+                let display_value = truncate_for_display(value);
                 println!(
                     "    {} : {} = {}",
                     name.green(),
@@ -1397,6 +1400,56 @@ mod tests {
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
     use tempfile::tempdir;
+
+    #[test]
+    fn truncate_for_display_cuts_on_char_boundary() {
+        assert_eq!(truncate_for_display("short"), "short");
+        let exactly_50 = "a".repeat(50);
+        assert_eq!(truncate_for_display(&exactly_50), exactly_50);
+        // Byte 47 lands inside a multi-byte char: used tae panic.
+        let long = "é".repeat(60);
+        let cut = truncate_for_display(&long);
+        assert_eq!(cut, format!("{}...", "é".repeat(47)));
+        let emoji = "😀".repeat(51);
+        assert_eq!(truncate_for_display(&emoji).chars().count(), 50);
+    }
+
+    #[test]
+    fn resolve_output_path_refuses_to_overwrite_the_source() {
+        // Extension-less input: derived output equals input.
+        let err = resolve_output_path(Path::new("prog"), None, "").unwrap_err();
+        assert!(err.contains("overwrite"), "{err}");
+        // Explicit -o pointin' at the source is refused tae.
+        assert!(resolve_output_path(
+            Path::new("prog.braw"),
+            Some(PathBuf::from("prog.braw")),
+            "js"
+        )
+        .is_err());
+        // Normal cases pass.
+        assert_eq!(
+            resolve_output_path(Path::new("prog.braw"), None, "js").unwrap(),
+            PathBuf::from("prog.js")
+        );
+        assert_eq!(
+            resolve_output_path(Path::new("prog"), None, "js").unwrap(),
+            PathBuf::from("prog.js")
+        );
+        assert_eq!(
+            resolve_output_path(Path::new("prog.braw"), None, "").unwrap(),
+            PathBuf::from("prog")
+        );
+    }
+
+    #[test]
+    fn compile_file_does_not_clobber_extensionless_input() {
+        let dir = tempdir().unwrap();
+        let src = dir.path().join("prog");
+        fs::write(&src, "blether 1\n").unwrap();
+        let err = compile_wasm(&src, Some(src.clone())).unwrap_err();
+        assert!(err.contains("overwrite"), "{err}");
+        assert_eq!(fs::read_to_string(&src).unwrap(), "blether 1\n");
+    }
 
     #[test]
     fn repl_readline_error_helper_covers_all_branches_for_coverage() {

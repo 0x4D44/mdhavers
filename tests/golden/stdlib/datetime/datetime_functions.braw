@@ -20,8 +20,9 @@ ken ts_ms = timestamp_millis()
 blether ts_ms > 1700000000000
 
 # Test date_diff
+# Timestamps are in seconds (like timestamp()), so these are 60 seconds apart
 ken ts1 = 1000
-ken ts2 = 61000
+ken ts2 = 1060
 blether date_diff(ts1, ts2, "milliseconds")
 blether date_diff(ts1, ts2, "seconds")
 blether date_diff(ts1, ts2, "minutes")

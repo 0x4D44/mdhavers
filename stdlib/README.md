@@ -72,7 +72,7 @@ If you are running untrusted mdhavers code, treat native-backed stdlib modules a
 
 | Module | Description | Key Features |
 |--------|-------------|--------------|
-| **patterns** | Design patterns | Builder, Factory, Observer, State patterns |
+| **patterns** | Simple wildcard matching | `*` and `?` wildcards, `[abc]` character classes |
 | **patterns_match** | Pattern matching | Glob matching, templates, tokenizer |
 
 ### Configuration & Logging

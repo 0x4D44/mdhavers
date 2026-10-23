@@ -28,6 +28,22 @@ pub struct LogFilter {
     pub rules: Vec<(String, LogLevel)>,
 }
 
+/// Does a filter rule cover a target? The rule must equal the target or be a
+/// whole-segment prefix (`net` covers `net`, `net.http`, `net::http` but no'
+/// `network`).
+fn target_matches_rule(target: &str, rule: &str) -> bool {
+    match target.strip_prefix(rule) {
+        Some("") => true,
+        Some(rest) => {
+            rule.ends_with('.')
+                || rule.ends_with("::")
+                || rest.starts_with('.')
+                || rest.starts_with("::")
+        }
+        None => false,
+    }
+}
+
 impl LogFilter {
     fn level_for_target(&self, target: &str) -> LogLevel {
         let mut best: Option<(usize, LogLevel)> = None;
@@ -35,7 +51,7 @@ impl LogFilter {
             if rule_target.is_empty() {
                 continue;
             }
-            if target.starts_with(rule_target) {
+            if target_matches_rule(target, rule_target) {
                 let len = rule_target.len();
                 if best.map(|(best_len, _)| len > best_len).unwrap_or(true) {
                     best = Some((len, *level));
@@ -956,6 +972,20 @@ mod tests {
             dict.borrow().get(&Value::String("k".to_string())),
             Some(&Value::Integer(1))
         );
+    }
+
+    #[test]
+    fn test_log_filter_rule_matches_whole_segments_only() {
+        let filter = LogFilter {
+            default: LogLevel::Blether,
+            rules: vec![("net".to_string(), LogLevel::Roar)],
+        };
+        assert_eq!(filter.level_for_target("net"), LogLevel::Roar);
+        assert_eq!(filter.level_for_target("net.http"), LogLevel::Roar);
+        assert_eq!(filter.level_for_target("net::http"), LogLevel::Roar);
+        assert_eq!(filter.level_for_target("network"), LogLevel::Blether);
+        assert_eq!(filter.level_for_target("netting.x"), LogLevel::Blether);
+        assert_eq!(filter.level_for_target("ne"), LogLevel::Blether);
     }
 
     #[test]

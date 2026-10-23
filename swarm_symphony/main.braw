@@ -52,7 +52,7 @@ dae output_state(world) {
             "paused": world["paused"],
             "agents": agents_data
         }
-        blether tae_json(state)
+        blether json_stringify(state)
     } ither {
         // Simple text status
         ken boid_count = len(sieve(world["agents"], |a| a["kind"] == "boid"))

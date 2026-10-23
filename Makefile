@@ -2,24 +2,43 @@
 
 .PHONY: build release test clean install install-local uninstall check fmt clippy package coverage coverage-gate coverage-guardrails setup build-full build-minimal
 
-# Auto-detect LLVM - check for llvm-config variants
+UNAME_S := $(shell uname -s)
+
+ifeq ($(UNAME_S),Darwin)
+# macOS: Homebrew llvm@15 is keg-only, so it is not on PATH. Ask brew where it lives.
+BREW_LLVM := $(shell brew --prefix llvm@15 2>/dev/null)
+BREW_ZSTD := $(shell brew --prefix zstd 2>/dev/null)
+ifneq ($(wildcard $(BREW_LLVM)/bin/llvm-config),)
+    LLVM_CONFIG := $(BREW_LLVM)/bin/llvm-config
+    export LLVM_SYS_150_PREFIX := $(BREW_LLVM)
+endif
+ifneq ($(wildcard $(BREW_ZSTD)/lib/libzstd.dylib)$(wildcard $(BREW_ZSTD)/lib/libzstd.a),)
+    HAVE_ZSTD := yes
+else
+    HAVE_ZSTD := no
+endif
+else
+# Linux/other: auto-detect LLVM - check for llvm-config variants
 LLVM_CONFIG := $(shell which llvm-config-15 2>/dev/null || which llvm-config-14 2>/dev/null || which llvm-config-16 2>/dev/null || which llvm-config-17 2>/dev/null || which llvm-config-18 2>/dev/null || which llvm-config 2>/dev/null)
 
 # Check if we have all LLVM dependencies (including libzstd-dev for linking)
 # We need the static library or the .so symlink that -dev packages provide
 HAVE_ZSTD := $(shell test -f /usr/lib/x86_64-linux-gnu/libzstd.a -o -f /usr/lib/x86_64-linux-gnu/libzstd.so && echo "yes" || echo "no")
+endif
 
-# Determine features based on LLVM availability
+# Determine features based on LLVM availability.
+# Without LLVM we must opt out o' the default `full` feature set (it includes llvm),
+# otherwise cargo would still try tae build the LLVM backend.
 ifdef LLVM_CONFIG
 ifeq ($(HAVE_ZSTD),yes)
     FEATURES := --features llvm
     LLVM_STATUS := enabled ($(LLVM_CONFIG))
 else
-    FEATURES :=
-    LLVM_STATUS := disabled (missing libzstd-dev)
+    FEATURES := --no-default-features --features full-no-llvm
+    LLVM_STATUS := disabled (missing libzstd)
 endif
 else
-    FEATURES :=
+    FEATURES := --no-default-features --features full-no-llvm
     LLVM_STATUS := disabled (LLVM not found)
 endif
 

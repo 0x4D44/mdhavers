@@ -9,14 +9,16 @@
 use std::collections::HashMap;
 use std::error::Error;
 
-use lsp_server::{Connection, ExtractError, Message, Notification, Request, RequestId, Response};
+use lsp_server::{
+    Connection, ErrorCode, ExtractError, Message, Notification, Request, RequestId, Response,
+};
 use lsp_types::{
     notification::{DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument},
-    request::{Completion, GotoDefinition, HoverRequest},
+    request::{Completion, GotoDefinition, HoverRequest, Request as _},
     CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse, Diagnostic,
     DiagnosticSeverity, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
     DidOpenTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents,
-    HoverParams, InitializeParams, MarkupContent, MarkupKind, Position, Range, Uri,
+    HoverParams, InitializeParams, Location, MarkupContent, MarkupKind, Position, Range, Uri,
 };
 #[cfg(not(test))]
 use lsp_types::{
@@ -110,14 +112,8 @@ fn main_loop(connection: Connection, params: Value) -> Result<(), Box<dyn Error 
                     return Ok(());
                 }
 
-                let result = handle_request(&documents, req);
-                if let Some((id, response)) = result {
-                    connection.sender.send(Message::Response(Response {
-                        id,
-                        result: Some(response),
-                        error: None,
-                    }))?;
-                }
+                let response = handle_request(&documents, req);
+                connection.sender.send(Message::Response(response))?;
             }
             Message::Notification(not) => {
                 handle_notification(&connection, &mut documents, not)?;
@@ -128,26 +124,45 @@ fn main_loop(connection: Connection, params: Value) -> Result<(), Box<dyn Error 
     Ok(())
 }
 
-fn handle_request(documents: &DocumentStore, req: Request) -> Option<(RequestId, Value)> {
-    // Handle hover request
-    if let Ok((id, params)) = cast_request::<HoverRequest>(req.clone()) {
-        let result = handle_hover(documents, params);
-        return Some((id, serde_json::to_value(result).unwrap()));
+/// Answer a request. Every request gets a response: unknown methods get
+/// MethodNotFound (-32601) an' unreadable params get InvalidParams (-32602),
+/// so a client is never left hangin'.
+fn handle_request(documents: &DocumentStore, req: Request) -> Response {
+    let id = req.id.clone();
+    let method = req.method.clone();
+
+    let invalid = |id: RequestId| {
+        Response::new_err(
+            id,
+            ErrorCode::InvalidParams as i32,
+            format!("Och, the params fer '{method}' are no' richt"),
+        )
+    };
+
+    if method == HoverRequest::METHOD {
+        return match cast_request::<HoverRequest>(req) {
+            Ok((id, params)) => Response::new_ok(id, handle_hover(documents, params)),
+            Err(_) => invalid(id),
+        };
+    }
+    if method == Completion::METHOD {
+        return match cast_request::<Completion>(req) {
+            Ok((id, params)) => Response::new_ok(id, handle_completion(documents, params)),
+            Err(_) => invalid(id),
+        };
+    }
+    if method == GotoDefinition::METHOD {
+        return match cast_request::<GotoDefinition>(req) {
+            Ok((id, params)) => Response::new_ok(id, handle_goto_definition(documents, params)),
+            Err(_) => invalid(id),
+        };
     }
 
-    // Handle completion request
-    if let Ok((id, params)) = cast_request::<Completion>(req.clone()) {
-        let result = handle_completion(documents, params);
-        return Some((id, serde_json::to_value(result).unwrap()));
-    }
-
-    // Handle go-to-definition request
-    if let Ok((id, params)) = cast_request::<GotoDefinition>(req.clone()) {
-        let result = handle_goto_definition(documents, params);
-        return Some((id, serde_json::to_value(result).unwrap()));
-    }
-
-    None
+    Response::new_err(
+        id,
+        ErrorCode::MethodNotFound as i32,
+        format!("Haud on, A dinnae ken the request '{method}'"),
+    )
 }
 
 fn handle_notification(
@@ -205,7 +220,7 @@ fn handle_hover(_documents: &DocumentStore, params: HoverParams) -> Option<Hover
                 start: position,
                 end: Position {
                     line: position.line,
-                    character: position.character + keyword.len() as u32,
+                    character: position.character + keyword.encode_utf16().count() as u32,
                 },
             }),
         });
@@ -238,11 +253,51 @@ fn handle_completion(
 }
 
 fn handle_goto_definition(
-    _documents: &DocumentStore,
-    _params: GotoDefinitionParams,
+    documents: &DocumentStore,
+    params: GotoDefinitionParams,
 ) -> Option<GotoDefinitionResponse> {
-    // For now, we don't support go-to-definition
-    // This would require tracking function definitions
+    let pos_params = params.text_document_position_params;
+    let uri = pos_params.text_document.uri;
+    let text = documents.get(&uri)?;
+    let word = word_at(
+        text,
+        pos_params.position.line,
+        pos_params.position.character,
+    )?;
+    let range = find_top_level_definition(text, &word)?;
+    Some(GotoDefinitionResponse::Scalar(Location { uri, range }))
+}
+
+/// Find a top-level `dae NAME` or `kin NAME` (startin' in column 0) an' give
+/// back the range o' the name in UTF-16 columns.
+fn find_top_level_definition(text: &str, name: &str) -> Option<Range> {
+    for (line_no, line) in text.lines().enumerate() {
+        for keyword in ["dae ", "kin "] {
+            let Some(rest) = line.strip_prefix(keyword) else {
+                continue;
+            };
+            let rest_trimmed = rest.trim_start();
+            let ident: String = rest_trimmed
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if ident == name {
+                let prefix = &line[..line.len() - rest_trimmed.len()];
+                let start = prefix.encode_utf16().count() as u32;
+                let end = start + ident.encode_utf16().count() as u32;
+                return Some(Range {
+                    start: Position {
+                        line: line_no as u32,
+                        character: start,
+                    },
+                    end: Position {
+                        line: line_no as u32,
+                        character: end,
+                    },
+                });
+            }
+        }
+    }
     None
 }
 
@@ -293,31 +348,39 @@ fn get_word_at_position(params: &HoverParams, documents: &DocumentStore) -> Opti
     let position = params.text_document_position_params.position;
 
     let text = documents.get(uri)?;
-    let lines: Vec<&str> = text.lines().collect();
+    word_at(text, position.line, position.character)
+}
 
-    if position.line as usize >= lines.len() {
-        return None;
+/// Map an LSP column (UTF-16 code units) tae an index intae `chars`.
+/// A column in the middle o' a surrogate pair maps tae that character.
+/// Gives `None` when the column is at or past the end o' the line.
+fn utf16_col_to_char_index(chars: &[char], utf16_col: u32) -> Option<usize> {
+    let target = utf16_col as usize;
+    let mut offset = 0usize;
+    for (index, c) in chars.iter().enumerate() {
+        let width = c.len_utf16();
+        if target < offset + width {
+            return Some(index);
+        }
+        offset += width;
     }
+    None
+}
 
-    let line = lines[position.line as usize];
-    let col = position.character as usize;
-
-    if col >= line.len() {
-        return None;
-    }
-
-    // Find word boundaries
+/// The identifier word at an LSP position (line, UTF-16 column), if any.
+fn word_at(text: &str, line: u32, character: u32) -> Option<String> {
+    let line = text.lines().nth(line as usize)?;
     let chars: Vec<char> = line.chars().collect();
+    let col = utf16_col_to_char_index(&chars, character)?;
+
+    let is_word = |c: char| c.is_alphanumeric() || c == '_';
     let mut start = col;
     let mut end = col;
 
-    // Find start of word
-    while start > 0 && (chars[start - 1].is_alphanumeric() || chars[start - 1] == '_') {
+    while start > 0 && is_word(chars[start - 1]) {
         start -= 1;
     }
-
-    // Find end of word
-    while end < chars.len() && (chars[end].is_alphanumeric() || chars[end] == '_') {
+    while end < chars.len() && is_word(chars[end]) {
         end += 1;
     }
 
@@ -855,5 +918,133 @@ mod tests {
 
         let result = handle.join().expect("join main_loop");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn word_at_handles_multibyte_lines_without_panicking() {
+        // 'é' is 1 UTF-16 unit (2 bytes); the emoji is 2 UTF-16 units (4 bytes).
+        let text = "ken é = \"😀\" ken\n";
+        // UTF-16 columns: k0 e1 n2 ' '3 é4 ' '5 =6 ' '7 "8 😀9,10 "11 ' '12 k13 e14 n15
+        assert_eq!(word_at(text, 0, 1).as_deref(), Some("ken"));
+        assert_eq!(word_at(text, 0, 4).as_deref(), Some("é"));
+        assert_eq!(word_at(text, 0, 6), None);
+        assert_eq!(word_at(text, 0, 8), None);
+        // Both halves of the surrogate pair map tae the emoji (no' a word).
+        assert_eq!(word_at(text, 0, 9), None);
+        assert_eq!(word_at(text, 0, 10), None);
+        // Past the emoji the columns are shifted by UTF-16 width, no' bytes.
+        assert_eq!(word_at(text, 0, 13).as_deref(), Some("ken"));
+        assert_eq!(word_at(text, 0, 15).as_deref(), Some("ken"));
+        // At the end o' the line an' well past it: None, never a panic.
+        assert_eq!(word_at(text, 0, 16), None);
+        assert_eq!(word_at(text, 0, 17), None);
+        assert_eq!(word_at(text, 0, u32::MAX), None);
+        assert_eq!(word_at(text, 5, 0), None);
+    }
+
+    #[test]
+    fn utf16_col_to_char_index_counts_surrogate_pairs() {
+        let chars: Vec<char> = "a😀b".chars().collect();
+        assert_eq!(utf16_col_to_char_index(&chars, 0), Some(0));
+        assert_eq!(utf16_col_to_char_index(&chars, 1), Some(1));
+        assert_eq!(utf16_col_to_char_index(&chars, 2), Some(1));
+        assert_eq!(utf16_col_to_char_index(&chars, 3), Some(2));
+        assert_eq!(utf16_col_to_char_index(&chars, 4), None);
+    }
+
+    #[test]
+    fn handle_hover_on_multibyte_line_does_not_panic() {
+        let mut docs = DocumentStore::new();
+        let uri = Uri::from_str("file:///tmp/coverage_lsp_multibyte.braw").unwrap();
+        docs.open(uri.clone(), "blether \"é😀é😀é😀\" gin\n".to_string());
+        for col in 0..40 {
+            let _ = handle_hover(&docs, hover_params(&uri, 0, col));
+        }
+        // `gin` sits after the emoji; its UTF-16 column is 8 + 1 + 9 + 1 + 1 = 20.
+        let hover = handle_hover(&docs, hover_params(&uri, 0, 21)).expect("gin hover");
+        match hover.contents {
+            HoverContents::Markup(markup) => assert!(markup.value.contains("gin")),
+            other => panic!("unexpected hover contents: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_request_gets_method_not_found() {
+        let docs = DocumentStore::new();
+        let req = LspRequest::new(
+            lsp_server::RequestId::from(7),
+            "textDocument/formatting".to_string(),
+            JsonValue::Null,
+        );
+        let response = handle_request(&docs, req);
+        assert_eq!(response.id, lsp_server::RequestId::from(7));
+        assert!(response.result.is_none());
+        let error = response.error.expect("error response");
+        assert_eq!(error.code, -32601);
+    }
+
+    #[test]
+    fn bad_params_get_invalid_params() {
+        let docs = DocumentStore::new();
+        let req = LspRequest::new(
+            lsp_server::RequestId::from(8),
+            HoverRequest::METHOD.to_string(),
+            JsonValue::Null,
+        );
+        let response = handle_request(&docs, req);
+        assert_eq!(response.error.expect("error").code, -32602);
+    }
+
+    #[test]
+    fn goto_definition_finds_top_level_dae_and_kin() {
+        let mut docs = DocumentStore::new();
+        let uri = Uri::from_str("file:///tmp/coverage_lsp_goto.braw").unwrap();
+        docs.open(
+            uri.clone(),
+            "dae greet(naam) {\n    blether naam\n}\nkin Animal {\n}\ngreet(\"x\")\nken a = Animal()\n"
+                .to_string(),
+        );
+        let goto = |line: u32, character: u32| GotoDefinitionParams {
+            text_document_position_params: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier { uri: uri.clone() },
+                position: Position { line, character },
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+
+        match handle_goto_definition(&docs, goto(5, 1)) {
+            Some(GotoDefinitionResponse::Scalar(loc)) => {
+                assert_eq!(
+                    loc.range.start,
+                    Position {
+                        line: 0,
+                        character: 4
+                    }
+                );
+                assert_eq!(
+                    loc.range.end,
+                    Position {
+                        line: 0,
+                        character: 9
+                    }
+                );
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        match handle_goto_definition(&docs, goto(6, 11)) {
+            Some(GotoDefinitionResponse::Scalar(loc)) => {
+                assert_eq!(
+                    loc.range.start,
+                    Position {
+                        line: 3,
+                        character: 4
+                    }
+                );
+            }
+            other => panic!("unexpected: {other:?}"),
+        }
+        // Not a definition: a local variable.
+        assert!(handle_goto_definition(&docs, goto(6, 5)).is_none());
     }
 }

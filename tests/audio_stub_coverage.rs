@@ -1,4 +1,4 @@
-#![cfg(not(feature = "audio"))]
+#![cfg(not(any(feature = "audio", feature = "graphics")))]
 
 use mdhavers::audio::register_audio_functions;
 use mdhavers::value::{Environment, NativeFunction, Value};
@@ -21,7 +21,7 @@ fn audio_stubs_are_registered_and_return_expected_error_when_audio_feature_disab
     let env = Rc::new(RefCell::new(Environment::new()));
     register_audio_functions(&env);
 
-    let expected = "Soond isnae available - build wi' --features audio";
+    let expected = "Soond isnae available - build wi' --features audio or --features graphics";
 
     let stubs: &[(&str, usize)] = &[
         ("soond_stairt", 0),

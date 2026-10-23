@@ -420,7 +420,7 @@ dae group_by(items, key_func) {
     fer item in items {
         ken key = key_func(item)
         ken key_str = tae_string(key)
-        gin nae has_key(groups, key_str) {
+        gin nae dict_has(groups, key_str) {
             groups[key_str] = []
         }
         shove(groups[key_str], item)

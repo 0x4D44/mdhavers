@@ -89,18 +89,22 @@ fn interpreter_covers_selected_ok_or_error_branches_for_coverage() {
 
     assert!((tls_close.func)(vec![Value::Nil]).is_err());
 
-    // dtls_handshake argument validation for socket/dtls handles.
-    let dtls_handshake = native(&interp, "dtls_handshake");
-    assert!((dtls_handshake.func)(vec![Value::Nil, Value::Integer(0)]).is_err());
-    assert!((dtls_handshake.func)(vec![Value::Integer(0), Value::Nil]).is_err());
-    assert!((dtls_handshake.func)(vec![Value::Integer(0), Value::Integer(999_999)]).is_err());
+    // dtls_handshake / srtp_* only exist wi' the `dtls` feature.
+    #[cfg(feature = "dtls")]
+    {
+        // dtls_handshake argument validation for socket/dtls handles.
+        let dtls_handshake = native(&interp, "dtls_handshake");
+        assert!((dtls_handshake.func)(vec![Value::Nil, Value::Integer(0)]).is_err());
+        assert!((dtls_handshake.func)(vec![Value::Integer(0), Value::Nil]).is_err());
+        assert!((dtls_handshake.func)(vec![Value::Integer(0), Value::Integer(999_999)]).is_err());
 
-    // srtp_* handle validation.
-    let srtp_protect = native(&interp, "srtp_protect");
-    let srtp_unprotect = native(&interp, "srtp_unprotect");
-    let pkt = bytes(b"pkt");
-    assert!((srtp_protect.func)(vec![Value::Nil, pkt.clone()]).is_err());
-    assert!((srtp_unprotect.func)(vec![Value::Nil, pkt]).is_err());
+        // srtp_* handle validation.
+        let srtp_protect = native(&interp, "srtp_protect");
+        let srtp_unprotect = native(&interp, "srtp_unprotect");
+        let pkt = bytes(b"pkt");
+        assert!((srtp_protect.func)(vec![Value::Nil, pkt.clone()]).is_err());
+        assert!((srtp_unprotect.func)(vec![Value::Nil, pkt]).is_err());
+    }
 
     // Event-loop watcher/socket validations.
     let event_loop_new = native(&interp, "event_loop_new");

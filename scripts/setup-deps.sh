@@ -26,7 +26,12 @@ error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 
 # Detect package manager
 detect_package_manager() {
-    if command -v apt-get &>/dev/null; then
+    if [ "$(uname -s)" = "Darwin" ]; then
+        command -v brew &>/dev/null || error "Homebrew not found. Install it from https://brew.sh first."
+        PKG_MANAGER="brew"
+        PKG_INSTALL="brew install"
+        PKG_UPDATE="brew update"
+    elif command -v apt-get &>/dev/null; then
         PKG_MANAGER="apt"
         PKG_INSTALL="sudo apt-get install -y"
         PKG_UPDATE="sudo apt-get update"
@@ -53,6 +58,11 @@ install_llvm() {
     info "Installing LLVM 15 and dependencies..."
 
     case $PKG_MANAGER in
+        brew)
+            $PKG_INSTALL llvm@15 cmake zstd
+            info "llvm@15 is keg-only. Build with:"
+            info "  export LLVM_SYS_150_PREFIX=\"$(brew --prefix llvm@15)\""
+            ;;
         apt)
             # Add LLVM apt repository for Ubuntu/Debian
             if ! command -v llvm-config-15 &>/dev/null; then
@@ -100,7 +110,8 @@ install_llvm() {
             ;;
     esac
 
-    if command -v llvm-config-15 &>/dev/null || command -v llvm-config &>/dev/null; then
+    if command -v llvm-config-15 &>/dev/null || command -v llvm-config &>/dev/null \
+        || { [ "$PKG_MANAGER" = "brew" ] && [ -x "$(brew --prefix llvm@15)/bin/llvm-config" ]; }; then
         success "LLVM installed successfully"
     else
         warn "LLVM installation may have failed. Check manually with: llvm-config-15 --version"
@@ -112,6 +123,10 @@ install_graphics() {
     info "Installing graphics (raylib) dependencies..."
 
     case $PKG_MANAGER in
+        brew)
+            # raylib builds against the macOS system frameworks; only cmake is needed.
+            $PKG_INSTALL cmake
+            ;;
         apt)
             $PKG_INSTALL cmake libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev libx11-dev
             ;;
@@ -134,6 +149,9 @@ install_audio() {
     info "Installing audio dependencies..."
 
     case $PKG_MANAGER in
+        brew)
+            info "Audio uses CoreAudio on macOS - nae extra packages needed"
+            ;;
         apt)
             $PKG_INSTALL libasound2-dev
             ;;
@@ -166,6 +184,10 @@ install_build_tools() {
     info "Installing essential build tools..."
 
     case $PKG_MANAGER in
+        brew)
+            xcode-select -p &>/dev/null || xcode-select --install || true
+            $PKG_INSTALL pkg-config
+            ;;
         apt)
             $PKG_INSTALL build-essential pkg-config
             ;;
@@ -206,7 +228,7 @@ show_help() {
 # Main
 main() {
     echo "==========================================="
-    echo "  mdhavers Dependency Installer (Linux)   "
+    echo "  mdhavers Dependency Installer           "
     echo "==========================================="
     echo ""
 

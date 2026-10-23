@@ -1114,10 +1114,20 @@ fn cli_repl_readline_interrupt_error_path_is_covered() {
 
     // Run the REPL under a pseudo-tty so sending ^C triggers ReadlineError::Interrupted rather than
     // being interpreted as a literal input character.
-    let repl_cmd = format!("{} repl", mdhavers_bin().display());
+    // util-linux `script` takes `-c CMD FILE`; BSD/macOS `script` takes `FILE CMD ARGS...`
+    // (the old Linux-style args made macOS `script` exit at once, so the first write got BrokenPipe).
     let mut cmd = Command::new("script");
-    cmd.args(["-q", "-c", &repl_cmd, "/dev/null"])
-        .env("HOME", home)
+    #[cfg(target_os = "macos")]
+    cmd.arg("-q")
+        .arg("/dev/null")
+        .arg(mdhavers_bin())
+        .arg("repl");
+    #[cfg(not(target_os = "macos"))]
+    {
+        let repl_cmd = format!("{} repl", mdhavers_bin().display());
+        cmd.args(["-q", "-c", &repl_cmd, "/dev/null"]);
+    }
+    cmd.env("HOME", home)
         .env("NO_COLOR", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

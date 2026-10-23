@@ -1,4 +1,4 @@
-#![cfg(all(feature = "native", unix))]
+#![cfg(all(feature = "dtls", unix))]
 
 use mdhavers::{parse, Interpreter};
 use rcgen::generate_simple_self_signed;

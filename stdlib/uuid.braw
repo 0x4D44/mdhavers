@@ -229,7 +229,7 @@ dae slugify(text) {
 
     # Remove trailing dash
     gin len(result) > 0 an result[len(result) - 1] == "-" {
-        result = slice(result, 0, len(result) - 1)
+        result = scran(result, 0, len(result) - 1)
     }
 
     gie result

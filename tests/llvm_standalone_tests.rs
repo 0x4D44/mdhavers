@@ -48,11 +48,17 @@ fn verify_standalone(source: &str) -> Result<(), String> {
         .compile_to_native(&program, &exe_path, 2)
         .map_err(|e| format!("Compile error: {:?}", e))?;
 
-    // Run ldd on the executable
-    let output = Command::new("ldd")
+    // List shared-library dependencies: `ldd` on Linux, `otool -L` on macOS.
+    #[cfg(target_os = "macos")]
+    let (tool, tool_args): (&str, &[&str]) = ("otool", &["-L"]);
+    #[cfg(not(target_os = "macos"))]
+    let (tool, tool_args): (&str, &[&str]) = ("ldd", &[]);
+
+    let output = Command::new(tool)
+        .args(tool_args)
         .arg(&exe_path)
         .output()
-        .map_err(|e| format!("Failed to run ldd: {}", e))?;
+        .map_err(|e| format!("Failed to run {}: {}", tool, e))?;
 
     let ldd_output = String::from_utf8_lossy(&output.stdout);
 
@@ -63,7 +69,17 @@ fn verify_standalone(source: &str) -> Result<(), String> {
             continue;
         }
 
-        // Allowed dependencies: libc, ld-linux, linux-vdso, libm
+        // `otool -L` first line is "<path>:" naming the file itself.
+        #[cfg(target_os = "macos")]
+        if line.ends_with(':') {
+            continue;
+        }
+
+        // Allowed dependencies: libc, ld-linux, linux-vdso, libm (Linux);
+        // libSystem and libc++ system dylibs (macOS).
+        #[cfg(target_os = "macos")]
+        let allowed = ["/usr/lib/libSystem", "/usr/lib/libc++", "/usr/lib/libm."];
+        #[cfg(not(target_os = "macos"))]
         let allowed = ["libc.so", "ld-linux", "linux-vdso", "libm.so"];
 
         let is_allowed = allowed.iter().any(|lib| line.contains(lib));
