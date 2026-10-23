@@ -2,15 +2,45 @@ use crate::ast::{LogLevel, *};
 use crate::error::{HaversError, HaversResult};
 use crate::token::{Token, TokenKind};
 
+/// How deep statements and expressions may nest afore the parser gies up.
+/// Each nested statement, bracketed/sub-expression, prefix operator, chained
+/// assignment, ternary `ither` or `ither gin` counts as one level. The limit keeps
+/// the recursive-descent parser inside a 2 MB thread stack in debug builds, where
+/// a bracketed sub-expression level costs about 25 KB of stack (measured).
+pub const MAX_NESTING_DEPTH: usize = 64;
+
 /// The parser - turns tokens intae an AST
 pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
+    depth: usize,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Parser { tokens, current: 0 }
+        Parser {
+            tokens,
+            current: 0,
+            depth: 0,
+        }
+    }
+
+    /// Run `parse_fn` one nesting level deeper, failing cleanly (instead o'
+    /// overflowing the native stack) when the code is nested ower deep.
+    fn nested<T>(&mut self, parse_fn: fn(&mut Self) -> HaversResult<T>) -> HaversResult<T> {
+        if self.depth >= MAX_NESTING_DEPTH {
+            return Err(HaversError::ParseError {
+                message: format!(
+                    "Yer code's nested ower deep (mair than {} levels) - sort it intae wee functions",
+                    MAX_NESTING_DEPTH
+                ),
+                line: self.current_line(),
+            });
+        }
+        self.depth += 1;
+        let result = parse_fn(self);
+        self.depth -= 1;
+        result
     }
 
     /// Parse the tokens intae a program
@@ -30,6 +60,10 @@ impl Parser {
     // === Declaration parsing ===
 
     fn declaration(&mut self) -> HaversResult<Stmt> {
+        self.nested(Self::declaration_inner)
+    }
+
+    fn declaration_inner(&mut self) -> HaversResult<Stmt> {
         if self.check(&TokenKind::Ken) {
             self.var_declaration()
         } else if self.check(&TokenKind::Dae) {
@@ -130,8 +164,9 @@ impl Parser {
         let mut seen_default = false;
 
         if !self.check(&TokenKind::RightParen) {
+            let mut throwaways = 0;
             loop {
-                let param_name = self.expect_identifier("parameter name")?;
+                let param_name = self.expect_binder("parameter name", &mut throwaways)?;
 
                 // Check for default value: param = value
                 let default = if self.match_token(&TokenKind::Equals) {
@@ -308,7 +343,7 @@ impl Parser {
             self.skip_newlines();
             if self.check(&TokenKind::Gin) {
                 // else if
-                Some(Box::new(self.if_statement()?))
+                Some(Box::new(self.nested(Self::if_statement)?))
             } else {
                 Some(Box::new(self.block()?))
             }
@@ -343,7 +378,7 @@ impl Parser {
         let span = self.current_span();
         self.advance(); // consume 'fer'
 
-        let variable = self.expect_identifier("loop variable")?;
+        let variable = self.expect_binder("loop variable", &mut 0)?;
         self.expect(&TokenKind::In, "in")?;
         let iterable = self.expression()?;
         self.skip_newlines();
@@ -361,7 +396,12 @@ impl Parser {
         let span = self.current_span();
         self.advance(); // consume 'gie'
 
-        let value = if self.check(&TokenKind::Newline) || self.is_at_end() {
+        // A bare `gie` (nae value) ends at a newline, `;`, `}` or the end o' the file.
+        let value = if self.check(&TokenKind::Newline)
+            || self.check(&TokenKind::Semicolon)
+            || self.check(&TokenKind::RightBrace)
+            || self.is_at_end()
+        {
             None
         } else {
             Some(self.expression()?)
@@ -451,6 +491,10 @@ impl Parser {
             None
         };
 
+        // Without this, `mak_siccar x == 1 "msg"` quietly drapped the message
+        // intae a separate statement.
+        self.expect_statement_end()?;
+
         Ok(Stmt::Assert {
             condition,
             message,
@@ -530,18 +574,7 @@ impl Parser {
             TokenKind::Integer(n) => {
                 let n = *n;
                 self.advance();
-                if self.match_token(&TokenKind::DotDot) {
-                    let end = self.expression()?;
-                    Ok(Pattern::Range {
-                        start: Box::new(Expr::Literal {
-                            value: Literal::Integer(n),
-                            span: Span::new(token.line, token.column),
-                        }),
-                        end: Box::new(end),
-                    })
-                } else {
-                    Ok(Pattern::Literal(Literal::Integer(n)))
-                }
+                self.integer_pattern(n, Span::new(token.line, token.column))
             }
             TokenKind::Float(n) => {
                 let n = *n;
@@ -586,7 +619,7 @@ impl Parser {
                     TokenKind::Integer(n) => {
                         let n = -*n;
                         self.advance();
-                        Ok(Pattern::Literal(Literal::Integer(n)))
+                        self.integer_pattern(n, Span::new(token.line, token.column))
                     }
                     TokenKind::Float(n) => {
                         let n = -*n;
@@ -606,6 +639,22 @@ impl Parser {
                 message: format!("Expected pattern, got {}", token.kind),
                 line: token.line,
             }),
+        }
+    }
+
+    /// An integer pattern, or a range pattern `n..end` when `..` follows.
+    fn integer_pattern(&mut self, n: i64, span: Span) -> HaversResult<Pattern> {
+        if self.match_token(&TokenKind::DotDot) {
+            let end = self.expression()?;
+            Ok(Pattern::Range {
+                start: Box::new(Expr::Literal {
+                    value: Literal::Integer(n),
+                    span,
+                }),
+                end: Box::new(end),
+            })
+        } else {
+            Ok(Pattern::Literal(Literal::Integer(n)))
         }
     }
 
@@ -639,7 +688,7 @@ impl Parser {
     // === Expression parsing (precedence climbing) ===
 
     fn expression(&mut self) -> HaversResult<Expr> {
-        self.assignment()
+        self.nested(Self::assignment)
     }
 
     fn assignment(&mut self) -> HaversResult<Expr> {
@@ -647,7 +696,7 @@ impl Parser {
 
         if self.match_token(&TokenKind::Equals) {
             let span = self.current_span();
-            let value = self.assignment()?;
+            let value = self.nested(Self::assignment)?;
 
             match expr {
                 Expr::Variable { name, .. } => {
@@ -698,29 +747,8 @@ impl Parser {
         };
 
         if let Some(op) = compound_op {
-            let span = expr.span();
-            let value = self.assignment()?;
-
-            match expr {
-                Expr::Variable { name, .. } => {
-                    return Ok(Expr::Assign {
-                        name: name.clone(),
-                        value: Box::new(Expr::Binary {
-                            left: Box::new(Expr::Variable { name, span }),
-                            operator: op,
-                            right: Box::new(value),
-                            span,
-                        }),
-                        span,
-                    });
-                }
-                _ => {
-                    return Err(HaversError::ParseError {
-                        message: "Invalid compound assignment target".to_string(),
-                        line: span.line,
-                    });
-                }
-            }
+            let value = self.nested(Self::assignment)?;
+            return compound_assignment(expr, op, value);
         }
 
         Ok(expr)
@@ -765,7 +793,7 @@ impl Parser {
             self.expect(&TokenKind::Ither, "ither")?;
 
             // Parse the 'else' expression (falsy case)
-            let else_expr = self.ternary()?; // Right-associative
+            let else_expr = self.nested(Self::ternary)?; // Right-associative
 
             return Ok(Expr::Ternary {
                 condition: Box::new(condition),
@@ -847,7 +875,7 @@ impl Parser {
     }
 
     fn comparison(&mut self) -> HaversResult<Expr> {
-        let mut expr = self.term()?;
+        let mut expr = self.range()?;
 
         loop {
             let op = if self.match_token(&TokenKind::Less) {
@@ -866,7 +894,7 @@ impl Parser {
                 .previous()
                 .map(|t| Span::new(t.line, t.column))
                 .unwrap_or(self.current_span());
-            let right = self.term()?;
+            let right = self.range()?;
             expr = Expr::Binary {
                 left: Box::new(expr),
                 operator: op,
@@ -876,6 +904,30 @@ impl Parser {
         }
 
         Ok(expr)
+    }
+
+    /// Range: `start..end` / `start..=end`, binding looser than `+`/`-` (so
+    /// `x + 1..5` is `(x + 1)..5` and `-1..2` is `(-1)..2`) but tighter than
+    /// comparisons. Ranges dinnae chain.
+    fn range(&mut self) -> HaversResult<Expr> {
+        let start = self.term()?;
+
+        let inclusive = if self.match_token(&TokenKind::DotDotEquals) {
+            true
+        } else if self.match_token(&TokenKind::DotDot) {
+            false
+        } else {
+            return Ok(start);
+        };
+
+        let span = start.span();
+        let end = self.term()?;
+        Ok(Expr::Range {
+            start: Box::new(start),
+            end: Box::new(end),
+            inclusive,
+            span,
+        })
     }
 
     fn term(&mut self) -> HaversResult<Expr> {
@@ -940,7 +992,7 @@ impl Parser {
         if self.match_token(&TokenKind::Minus) {
             let t = self.previous().unwrap();
             let span = Span::new(t.line, t.column);
-            let operand = self.unary()?;
+            let operand = self.nested(Self::unary)?;
             return Ok(Expr::Unary {
                 operator: UnaryOp::Negate,
                 operand: Box::new(operand),
@@ -957,7 +1009,7 @@ impl Parser {
                 self.advance(); // consume nae
                 let t = self.previous().unwrap();
                 let span = Span::new(t.line, t.column);
-                let operand = self.unary()?;
+                let operand = self.nested(Self::unary)?;
                 return Ok(Expr::Unary {
                     operator: UnaryOp::Not,
                     operand: Box::new(operand),
@@ -970,7 +1022,7 @@ impl Parser {
         if self.match_token(&TokenKind::Bang) {
             let t = self.previous().unwrap();
             let span = Span::new(t.line, t.column);
-            let operand = self.unary()?;
+            let operand = self.nested(Self::unary)?;
             return Ok(Expr::Unary {
                 operator: UnaryOp::Not,
                 operand: Box::new(operand),
@@ -1022,82 +1074,7 @@ impl Parser {
                     span,
                 };
             } else if self.match_token(&TokenKind::LeftBracket) {
-                let span = self.current_span();
-
-                // Check fer slice syntax: [start:end:step], [:end], [start:], [::step], etc.
-                if self.check(&TokenKind::Colon) {
-                    // [:end] or [:] or [:end:step] or [::step]
-                    self.advance(); // consume the first colon
-
-                    let end =
-                        if self.check(&TokenKind::Colon) || self.check(&TokenKind::RightBracket) {
-                            None
-                        } else {
-                            Some(Box::new(self.expression()?))
-                        };
-
-                    // Check fer step
-                    let step = if self.match_token(&TokenKind::Colon) {
-                        if self.check(&TokenKind::RightBracket) {
-                            None
-                        } else {
-                            Some(Box::new(self.expression()?))
-                        }
-                    } else {
-                        None
-                    };
-
-                    self.expect(&TokenKind::RightBracket, "]")?;
-                    expr = Expr::Slice {
-                        object: Box::new(expr),
-                        start: None,
-                        end,
-                        step,
-                        span,
-                    };
-                } else {
-                    // Could be [index] or [start:end] or [start:] or [start:end:step]
-                    let first = self.expression()?;
-
-                    if self.match_token(&TokenKind::Colon) {
-                        // It's a slice: [start:end] or [start:] or [start:end:step] or [start::step]
-                        let end = if self.check(&TokenKind::Colon)
-                            || self.check(&TokenKind::RightBracket)
-                        {
-                            None
-                        } else {
-                            Some(Box::new(self.expression()?))
-                        };
-
-                        // Check fer step
-                        let step = if self.match_token(&TokenKind::Colon) {
-                            if self.check(&TokenKind::RightBracket) {
-                                None
-                            } else {
-                                Some(Box::new(self.expression()?))
-                            }
-                        } else {
-                            None
-                        };
-
-                        self.expect(&TokenKind::RightBracket, "]")?;
-                        expr = Expr::Slice {
-                            object: Box::new(expr),
-                            start: Some(Box::new(first)),
-                            end,
-                            step,
-                            span,
-                        };
-                    } else {
-                        // Regular index access
-                        self.expect(&TokenKind::RightBracket, "]")?;
-                        expr = Expr::Index {
-                            object: Box::new(expr),
-                            index: Box::new(first),
-                            span,
-                        };
-                    }
-                }
+                expr = self.index_or_slice(expr)?;
             } else {
                 break;
             }
@@ -1146,7 +1123,7 @@ impl Parser {
             TokenKind::Integer(n) => {
                 let n = *n;
                 self.advance();
-                self.maybe_range(Expr::Literal {
+                Ok(Expr::Literal {
                     value: Literal::Integer(n),
                     span,
                 })
@@ -1208,145 +1185,29 @@ impl Parser {
             TokenKind::Identifier(name) => {
                 let name = name.clone();
                 self.advance();
-                let expr = Expr::Variable { name, span };
-                self.maybe_range(expr)
+                Ok(Expr::Variable { name, span })
             }
             TokenKind::LeftParen => {
                 self.advance();
                 let expr = self.expression()?;
                 self.expect(&TokenKind::RightParen, ")")?;
-                // Check for range after grouping: (x+1)..10
-                self.maybe_range(Expr::Grouping {
+                Ok(Expr::Grouping {
                     expr: Box::new(expr),
                     span,
                 })
             }
             TokenKind::LeftBracket => {
                 self.advance();
-                let mut elements = Vec::new();
-                self.skip_newlines(); // Allow newline after [
-                if !self.check(&TokenKind::RightBracket) {
-                    loop {
-                        // Check for spread operator (skail = scatter)
-                        if self.match_token(&TokenKind::DotDotDot) {
-                            let spread_span = self.current_span();
-                            let expr = self.expression()?;
-                            elements.push(Expr::Spread {
-                                expr: Box::new(expr),
-                                span: spread_span,
-                            });
-                        } else {
-                            elements.push(self.expression()?);
-                        }
-                        self.skip_newlines(); // Allow newline after element
-                        if !self.match_token(&TokenKind::Comma) {
-                            break;
-                        }
-                        // Allow trailing comma: [1, 2, 3,]
-                        self.skip_newlines();
-                        if self.check(&TokenKind::RightBracket) {
-                            break;
-                        }
-                        self.skip_newlines(); // Allow newline after comma
-                    }
-                }
-                self.expect(&TokenKind::RightBracket, "]")?;
-                Ok(Expr::List { elements, span })
+                self.list_literal(span)
             }
             TokenKind::LeftBrace => {
                 self.advance(); // consume '{'
-                self.skip_newlines();
-
-                // Empty dict literal: {}
-                if self.check(&TokenKind::RightBrace) {
-                    self.advance(); // consume '}'
-                    return Ok(Expr::Dict {
-                        pairs: Vec::new(),
-                        span,
-                    });
-                }
-
-                // If it looks like a statement, parse as block expression.
-                // Otherwise, try dict-first and fall back to block expr if no ':' appears.
-                let checkpoint = self.current;
-                let key_attempt = self.expression();
-                let is_dict = key_attempt.is_ok() && self.check(&TokenKind::Colon);
-
-                if !is_dict {
-                    // Rewind and parse block expression statements until '}'
-                    self.current = checkpoint;
-                    let mut statements = Vec::new();
-                    self.skip_newlines();
-                    while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
-                        statements.push(self.declaration()?);
-                        self.skip_newlines();
-                    }
-                    self.expect(&TokenKind::RightBrace, "}")?;
-                    return Ok(Expr::BlockExpr { statements, span });
-                }
-
-                // Dict literal
-                let mut pairs = Vec::new();
-
-                // Safe because `is_dict` implies `key_attempt` is Ok and the current token is ':'
-                let first_key = key_attempt.expect("dict key already parsed");
-                self.advance(); // consume ':'
-                let first_value = self.expression()?;
-                pairs.push((first_key, first_value));
-
-                self.skip_newlines();
-                while self.match_token(&TokenKind::Comma) {
-                    self.skip_newlines();
-                    if self.check(&TokenKind::RightBrace) {
-                        break; // trailing comma
-                    }
-                    let key = self.expression()?;
-                    self.expect(&TokenKind::Colon, ":")?;
-                    let value = self.expression()?;
-                    pairs.push((key, value));
-                    self.skip_newlines();
-                }
-
-                self.expect(&TokenKind::RightBrace, "}")?;
-                Ok(Expr::Dict { pairs, span })
+                self.brace_expression(span)
             }
             // Lambda expressions: |x, y| x + y  or  |x, y| { statements... }
             TokenKind::Pipe => {
                 self.advance();
-                let mut params = Vec::new();
-                if !self.check(&TokenKind::Pipe) {
-                    loop {
-                        params.push(self.expect_identifier("parameter name")?);
-                        if !self.match_token(&TokenKind::Comma) {
-                            break;
-                        }
-                    }
-                }
-                self.expect(&TokenKind::Pipe, "|")?;
-                // Check for block body: |x, y| { ... }
-                let body = if self.check(&TokenKind::LeftBrace) {
-                    let brace_token = self.peek();
-                    let block_span = Span::new(brace_token.line, brace_token.column);
-                    self.advance(); // consume {
-                    self.skip_newlines();
-                    let mut statements = Vec::new();
-                    while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
-                        statements.push(self.declaration()?);
-                        self.skip_newlines();
-                    }
-                    self.expect(&TokenKind::RightBrace, "}")?;
-                    Expr::BlockExpr {
-                        statements,
-                        span: block_span,
-                    }
-                } else {
-                    self.expression()?
-                };
-                Ok(Expr::Lambda {
-                    params,
-                    body: Box::new(body),
-                    span,
-                })
+                self.lambda_expression(span)
             }
             _ => Err(HaversError::ParseError {
                 message: format!("Unexpected token: {}", token.kind),
@@ -1355,28 +1216,236 @@ impl Parser {
         }
     }
 
-    fn maybe_range(&mut self, start_expr: Expr) -> HaversResult<Expr> {
-        if self.match_token(&TokenKind::DotDotEquals) {
-            let span = start_expr.span();
-            let end = self.term()?;
-            Ok(Expr::Range {
-                start: Box::new(start_expr),
-                end: Box::new(end),
-                inclusive: true,
+    /// `object[...]`, wi' the cursor just past the `[`: an index or a slice.
+    /// Kept oot o' `call` sae the recursive path has a wee stack frame.
+    fn index_or_slice(&mut self, mut expr: Expr) -> HaversResult<Expr> {
+        let span = self.current_span();
+
+        // Check fer slice syntax: [start:end:step], [:end], [start:], [::step], etc.
+        if self.check(&TokenKind::Colon) {
+            // [:end] or [:] or [:end:step] or [::step]
+            self.advance(); // consume the first colon
+
+            let end = if self.check(&TokenKind::Colon) || self.check(&TokenKind::RightBracket) {
+                None
+            } else {
+                Some(Box::new(self.expression()?))
+            };
+
+            // Check fer step
+            let step = if self.match_token(&TokenKind::Colon) {
+                if self.check(&TokenKind::RightBracket) {
+                    None
+                } else {
+                    Some(Box::new(self.expression()?))
+                }
+            } else {
+                None
+            };
+
+            self.expect(&TokenKind::RightBracket, "]")?;
+            expr = Expr::Slice {
+                object: Box::new(expr),
+                start: None,
+                end,
+                step,
                 span,
-            })
-        } else if self.match_token(&TokenKind::DotDot) {
-            let span = start_expr.span();
-            let end = self.term()?;
-            Ok(Expr::Range {
-                start: Box::new(start_expr),
-                end: Box::new(end),
-                inclusive: false,
-                span,
-            })
+            };
         } else {
-            Ok(start_expr)
+            // Could be [index] or [start:end] or [start:] or [start:end:step]
+            let first = self.expression()?;
+
+            if self.match_token(&TokenKind::Colon) {
+                // It's a slice: [start:end] or [start:] or [start:end:step] or [start::step]
+                let end = if self.check(&TokenKind::Colon) || self.check(&TokenKind::RightBracket) {
+                    None
+                } else {
+                    Some(Box::new(self.expression()?))
+                };
+
+                // Check fer step
+                let step = if self.match_token(&TokenKind::Colon) {
+                    if self.check(&TokenKind::RightBracket) {
+                        None
+                    } else {
+                        Some(Box::new(self.expression()?))
+                    }
+                } else {
+                    None
+                };
+
+                self.expect(&TokenKind::RightBracket, "]")?;
+                expr = Expr::Slice {
+                    object: Box::new(expr),
+                    start: Some(Box::new(first)),
+                    end,
+                    step,
+                    span,
+                };
+            } else {
+                // Regular index access
+                self.expect(&TokenKind::RightBracket, "]")?;
+                expr = Expr::Index {
+                    object: Box::new(expr),
+                    index: Box::new(first),
+                    span,
+                };
+            }
         }
+        Ok(expr)
+    }
+
+    /// A list literal, wi' the cursor just past the `[`.
+    fn list_literal(&mut self, span: Span) -> HaversResult<Expr> {
+        let mut elements = Vec::new();
+        self.skip_newlines(); // Allow newline after [
+        if !self.check(&TokenKind::RightBracket) {
+            loop {
+                // Check for spread operator (skail = scatter)
+                if self.match_token(&TokenKind::DotDotDot) {
+                    let spread_span = self.current_span();
+                    let expr = self.expression()?;
+                    elements.push(Expr::Spread {
+                        expr: Box::new(expr),
+                        span: spread_span,
+                    });
+                } else {
+                    elements.push(self.expression()?);
+                }
+                self.skip_newlines(); // Allow newline after element
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
+                // Allow trailing comma: [1, 2, 3,]
+                self.skip_newlines();
+                if self.check(&TokenKind::RightBracket) {
+                    break;
+                }
+                self.skip_newlines(); // Allow newline after comma
+            }
+        }
+        self.expect(&TokenKind::RightBracket, "]")?;
+        Ok(Expr::List { elements, span })
+    }
+
+    /// A dict literal or block expression, wi' the cursor just past the `{`.
+    fn brace_expression(&mut self, span: Span) -> HaversResult<Expr> {
+        self.skip_newlines();
+
+        // Empty dict literal: {}
+        if self.check(&TokenKind::RightBrace) {
+            self.advance(); // consume '}'
+            return Ok(Expr::Dict {
+                pairs: Vec::new(),
+                span,
+            });
+        }
+
+        // Dict or block expression? Decide by lookahead (linear time,
+        // nae re-parsing): it's a dict if a ':' turns up on the first
+        // line, ootside any brackets.
+        if !self.brace_starts_dict() {
+            let mut statements = Vec::new();
+            while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+                statements.push(self.declaration()?);
+                self.skip_newlines();
+            }
+            self.expect(&TokenKind::RightBrace, "}")?;
+            return Ok(Expr::BlockExpr { statements, span });
+        }
+
+        // Dict literal
+        let mut pairs = Vec::new();
+
+        let first_key = self.expression()?;
+        self.expect(&TokenKind::Colon, ":")?;
+        let first_value = self.expression()?;
+        pairs.push((first_key, first_value));
+
+        self.skip_newlines();
+        while self.match_token(&TokenKind::Comma) {
+            self.skip_newlines();
+            if self.check(&TokenKind::RightBrace) {
+                break; // trailing comma
+            }
+            let key = self.expression()?;
+            self.expect(&TokenKind::Colon, ":")?;
+            let value = self.expression()?;
+            pairs.push((key, value));
+            self.skip_newlines();
+        }
+
+        self.expect(&TokenKind::RightBrace, "}")?;
+        Ok(Expr::Dict { pairs, span })
+    }
+
+    /// A lambda `|x, y| body`, wi' the cursor just past the first `|`.
+    fn lambda_expression(&mut self, span: Span) -> HaversResult<Expr> {
+        let mut params = Vec::new();
+        if !self.check(&TokenKind::Pipe) {
+            let mut throwaways = 0;
+            loop {
+                params.push(self.expect_binder("parameter name", &mut throwaways)?);
+                if !self.match_token(&TokenKind::Comma) {
+                    break;
+                }
+            }
+        }
+        self.expect(&TokenKind::Pipe, "|")?;
+        // Check for block body: |x, y| { ... }
+        let body = if self.check(&TokenKind::LeftBrace) {
+            let brace_token = self.peek();
+            let block_span = Span::new(brace_token.line, brace_token.column);
+            self.advance(); // consume {
+            self.skip_newlines();
+            let mut statements = Vec::new();
+            while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
+                statements.push(self.declaration()?);
+                self.skip_newlines();
+            }
+            self.expect(&TokenKind::RightBrace, "}")?;
+            Expr::BlockExpr {
+                statements,
+                span: block_span,
+            }
+        } else {
+            self.expression()?
+        };
+        Ok(Expr::Lambda {
+            params,
+            body: Box::new(body),
+            span,
+        })
+    }
+
+    /// Wi' the cursor just past a `{` (and any newlines) in expression position,
+    /// decide whether it opens a dict literal or a block expression. Scans ahead,
+    /// without consuming, tae the first `:`, `,`, `;`, newline or closing bracket
+    /// that isnae inside nested brackets: a `:` means dict, onything else a block.
+    /// Each token is looked at once per enclosing brace, so there's nae
+    /// exponential backtracking on nested braces.
+    fn brace_starts_dict(&self) -> bool {
+        let mut depth = 0usize;
+        for token in &self.tokens[self.current..] {
+            match token.kind {
+                TokenKind::LeftParen | TokenKind::LeftBracket | TokenKind::LeftBrace => {
+                    depth += 1;
+                }
+                TokenKind::RightParen | TokenKind::RightBracket | TokenKind::RightBrace => {
+                    if depth == 0 {
+                        return false;
+                    }
+                    depth -= 1;
+                }
+                TokenKind::Colon if depth == 0 => return true,
+                TokenKind::Comma | TokenKind::Semicolon | TokenKind::Newline if depth == 0 => {
+                    return false;
+                }
+                TokenKind::Eof => return false,
+                _ => {}
+            }
+        }
+        false
     }
 
     // === Helper methods ===
@@ -1451,6 +1520,17 @@ impl Parser {
         }
     }
 
+    /// Like `expect_identifier`, but also accepts `_` as a throwaway binder (loop
+    /// variables and parameters). Each `_` in the same list gets its ain name
+    /// (`_`, `__`, `___`, ...) so twa throwaway parameters never clash.
+    fn expect_binder(&mut self, context: &str, throwaways: &mut usize) -> HaversResult<String> {
+        if self.match_token(&TokenKind::Underscore) {
+            *throwaways += 1;
+            return Ok("_".repeat(*throwaways));
+        }
+        self.expect_identifier(context)
+    }
+
     fn expect_string(&mut self, context: &str) -> HaversResult<String> {
         let token = self.peek().clone();
         if let TokenKind::String(s) | TokenKind::SingleQuoteString(s) = &token.kind {
@@ -1480,7 +1560,8 @@ impl Parser {
             return Ok(());
         }
 
-        // Be lenient - if the next token starts a new statement, that's fine
+        // Be lenient - if the next token starts a new statement, that's fine.
+        // Every statement-startin' keyword is treated the same here.
         let next = &self.peek().kind;
         if matches!(
             next,
@@ -1496,6 +1577,10 @@ impl Parser {
                 | TokenKind::Kin
                 | TokenKind::Thing
                 | TokenKind::Fetch
+                | TokenKind::HaeABash
+                | TokenKind::Keek
+                | TokenKind::MakSiccar
+                | TokenKind::Hurl
                 | TokenKind::LogWhisper
                 | TokenKind::LogMutter
                 | TokenKind::LogBlether
@@ -1529,10 +1614,23 @@ impl Parser {
     fn parse_fstring(&mut self, content: &str, span: Span) -> HaversResult<Expr> {
         let mut parts = Vec::new();
         let mut current_text = String::new();
-        let mut chars = content.chars().peekable();
+        // Count the newlines consumed so far, so errors (and spans) inside a hole
+        // on a later line o' a multi-line f-string point at the richt line.
+        let newlines = std::cell::Cell::new(0usize);
+        let mut chars = content
+            .chars()
+            .inspect(|&c| {
+                if c == '\n' {
+                    newlines.set(newlines.get() + 1);
+                }
+            })
+            .peekable();
 
         while let Some(c) = chars.next() {
             if c == '{' {
+                // Newlines afore this hole (nothing efter the '{' has been read yet).
+                let hole_line = span.line + newlines.get();
+
                 // Check for escaped brace {{
                 if chars.peek() == Some(&'{') {
                     chars.next();
@@ -1549,11 +1647,28 @@ impl Parser {
                 // Extract expression inside {}
                 let mut expr_str = String::new();
                 let mut brace_depth = 1;
+                // Inside a quoted string literal in the hole ('"' or '\''): copied
+                // verbatim, and its braces dinnae count.
+                let mut in_quote: Option<char> = None;
+                // Inside an auld-style \"...\" string in the hole: braces dinnae count.
+                let mut in_escaped_quote = false;
                 while let Some(c) = chars.next() {
-                    if c == '{' {
+                    if let Some(quote) = in_quote {
+                        expr_str.push(c);
+                        if c == '\\' {
+                            if let Some(next) = chars.next() {
+                                expr_str.push(next);
+                            }
+                        } else if c == quote {
+                            in_quote = None;
+                        }
+                    } else if (c == '"' || c == '\'') && !in_escaped_quote {
+                        in_quote = Some(c);
+                        expr_str.push(c);
+                    } else if c == '{' && !in_escaped_quote {
                         brace_depth += 1;
                         expr_str.push(c);
-                    } else if c == '}' {
+                    } else if c == '}' && !in_escaped_quote {
                         brace_depth -= 1;
                         if brace_depth == 0 {
                             break;
@@ -1567,6 +1682,7 @@ impl Parser {
                                 '"' => {
                                     chars.next();
                                     expr_str.push('"');
+                                    in_escaped_quote = !in_escaped_quote;
                                 }
                                 '\\' => {
                                     chars.next();
@@ -1585,10 +1701,7 @@ impl Parser {
                     }
                 }
 
-                // Parse the expression
-                let expr_tokens = crate::lexer::lex(&expr_str)?;
-                let mut expr_parser = Parser::new(expr_tokens);
-                let expr = expr_parser.expression()?;
+                let expr = self.parse_fstring_hole(&expr_str, hole_line)?;
                 parts.push(FStringPart::Expr(Box::new(expr)));
             } else if c == '}' {
                 // Check for escaped brace }}
@@ -1610,6 +1723,159 @@ impl Parser {
         }
 
         Ok(Expr::FString { parts, span })
+    }
+
+    /// Parse the source inside ane f-string hole, which starts on `hole_line`.
+    /// The hole must haud exactly ane expression.
+    fn parse_fstring_hole(&self, source: &str, hole_line: usize) -> HaversResult<Expr> {
+        // The sub-lexer counts lines fae 1; shift them sae they match the file.
+        let line_shift = hole_line.saturating_sub(1);
+        let mut tokens =
+            crate::lexer::lex(source).map_err(|err| shift_lexer_error_line(err, line_shift))?;
+        for token in &mut tokens {
+            token.line += line_shift;
+        }
+
+        let mut hole_parser = Parser::new(tokens);
+        // Nesting inside a hole still counts toward the limit.
+        hole_parser.depth = self.depth;
+        hole_parser.skip_newlines();
+        let expr = hole_parser.expression()?;
+        hole_parser.skip_newlines();
+
+        if !hole_parser.is_at_end() {
+            let leftover = hole_parser.peek();
+            let message = if leftover.kind == TokenKind::Colon {
+                "F-string format specs like {x:>5} arenae supported - \
+                 use a function tae format the value"
+                    .to_string()
+            } else {
+                format!(
+                    "There's mair in this f-string {{...}} than ane expression - \
+                     didnae expect '{}'",
+                    leftover.kind
+                )
+            };
+            return Err(HaversError::ParseError {
+                message,
+                line: leftover.line,
+            });
+        }
+
+        Ok(expr)
+    }
+}
+
+/// Move a lexer error's line by `shift` (fer source lexed fae the middle o' a file).
+fn shift_lexer_error_line(err: HaversError, shift: usize) -> HaversError {
+    match err {
+        HaversError::UnkentToken {
+            lexeme,
+            line,
+            column,
+        } => HaversError::UnkentToken {
+            lexeme,
+            line: line + shift,
+            column,
+        },
+        HaversError::InvalidNumber { value, line } => HaversError::InvalidNumber {
+            value,
+            line: line + shift,
+        },
+        HaversError::UnterminatedString { line } => {
+            HaversError::UnterminatedString { line: line + shift }
+        }
+        other => other,
+    }
+}
+
+/// Desugar `target op= value` intae a plain assignment.
+fn compound_assignment(expr: Expr, op: BinaryOp, value: Expr) -> HaversResult<Expr> {
+    let span = expr.span();
+
+    // `target op= value` is desugared tae `target = target op value`, so the
+    // target's object (and index) expressions are evaluated twice. That's
+    // only allowed when they're simple, side-effect-free lookups.
+    match expr {
+        Expr::Variable { name, .. } => Ok(Expr::Assign {
+            name: name.clone(),
+            value: Box::new(Expr::Binary {
+                left: Box::new(Expr::Variable { name, span }),
+                operator: op,
+                right: Box::new(value),
+                span,
+            }),
+            span,
+        }),
+        Expr::Get {
+            object,
+            property,
+            span: get_span,
+        } if is_simple_lookup(&object) => {
+            let current = Expr::Get {
+                object: object.clone(),
+                property: property.clone(),
+                span: get_span,
+            };
+            Ok(Expr::Set {
+                object,
+                property,
+                value: Box::new(Expr::Binary {
+                    left: Box::new(current),
+                    operator: op,
+                    right: Box::new(value),
+                    span,
+                }),
+                span,
+            })
+        }
+        Expr::Index {
+            object,
+            index,
+            span: index_span,
+        } if is_simple_lookup(&object) && is_simple_lookup(&index) => {
+            let current = Expr::Index {
+                object: object.clone(),
+                index: index.clone(),
+                span: index_span,
+            };
+            Ok(Expr::IndexSet {
+                object,
+                index,
+                value: Box::new(Expr::Binary {
+                    left: Box::new(current),
+                    operator: op,
+                    right: Box::new(value),
+                    span,
+                }),
+                span,
+            })
+        }
+        Expr::Get { .. } | Expr::Index { .. } => Err(HaversError::ParseError {
+            message: "That compound assignment target's ower complicated - \
+                              pit the object (or index) in a variable first"
+                .to_string(),
+            line: span.line,
+        }),
+        _ => Err(HaversError::ParseError {
+            message: "Invalid compound assignment target".to_string(),
+            line: span.line,
+        }),
+    }
+}
+
+/// Is `expr` a plain lookup (variables, literals, `masel`, fields, indexes and
+/// arithmetic on them) that's safe tae evaluate twice? Used by the compound
+/// assignment desugaring, which reads the target and then writes it.
+fn is_simple_lookup(expr: &Expr) -> bool {
+    match expr {
+        Expr::Literal { .. } | Expr::Variable { .. } | Expr::Masel { .. } => true,
+        Expr::Grouping { expr, .. } => is_simple_lookup(expr),
+        Expr::Get { object, .. } => is_simple_lookup(object),
+        Expr::Index { object, index, .. } => is_simple_lookup(object) && is_simple_lookup(index),
+        Expr::Unary { operand, .. } => is_simple_lookup(operand),
+        Expr::Binary { left, right, .. } => is_simple_lookup(left) && is_simple_lookup(right),
+        _ => false,
     }
 }
 
@@ -2834,5 +3100,394 @@ mod tests {
     fn process_escapes_hex_valid_digits_for_coverage() {
         assert_eq!(process_escapes("\\x41"), "A");
         assert!(process_escapes("\\xZZ").contains("\\x"));
+    }
+
+    // ==================== Robustness (MDH-BUG-FLU-00014..00024) ====================
+
+    /// The initializer o' the first `ken` in `src`.
+    fn first_initializer(src: &str) -> Expr {
+        let program = parse(src).unwrap_or_else(|e| panic!("{src:?} should parse: {e}"));
+        match program.statements.into_iter().next() {
+            Some(Stmt::VarDecl {
+                initializer: Some(expr),
+                ..
+            }) => expr,
+            other => panic!("expected a ken wi' an initializer, got {other:?}"),
+        }
+    }
+
+    fn parse_error_message(src: &str) -> String {
+        match parse(src) {
+            Err(HaversError::ParseError { message, .. }) => message,
+            other => panic!("expected a ParseError for {src:?}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn range_binds_looser_than_addition() {
+        // x + 1..5 is (x + 1)..5, no' x + (1..5)
+        match first_initializer("ken r = x + 1..5") {
+            Expr::Range {
+                start,
+                end,
+                inclusive: false,
+                ..
+            } => {
+                assert!(matches!(
+                    *start,
+                    Expr::Binary {
+                        operator: BinaryOp::Add,
+                        ..
+                    }
+                ));
+                assert!(matches!(
+                    *end,
+                    Expr::Literal {
+                        value: Literal::Integer(5),
+                        ..
+                    }
+                ));
+            }
+            other => panic!("expected a range, got {other:?}"),
+        }
+        // The end is an additive expression an' aw: 0..n - 1 is 0..(n - 1)
+        match first_initializer("ken r = 0..n - 1") {
+            Expr::Range { end, .. } => assert!(matches!(
+                *end,
+                Expr::Binary {
+                    operator: BinaryOp::Subtract,
+                    ..
+                }
+            )),
+            other => panic!("expected a range, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn negative_range_start_is_negated_number_not_negated_range() {
+        match first_initializer("ken r = -1..2") {
+            Expr::Range { start, .. } => assert!(matches!(
+                *start,
+                Expr::Unary {
+                    operator: UnaryOp::Negate,
+                    ..
+                }
+            )),
+            other => panic!("expected a range, got {other:?}"),
+        }
+        match first_initializer("ken r = -3..=-1") {
+            Expr::Range {
+                start,
+                end,
+                inclusive: true,
+                ..
+            } => {
+                assert!(matches!(*start, Expr::Unary { .. }));
+                assert!(matches!(*end, Expr::Unary { .. }));
+            }
+            other => panic!("expected an inclusive range, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn range_binds_tighter_than_comparison_and_accepts_any_term() {
+        assert!(matches!(
+            first_initializer("ken b = 1..3 == r"),
+            Expr::Binary {
+                operator: BinaryOp::Equal,
+                ..
+            }
+        ));
+        // Floats, calls an' method results are allowed as bounds (the runtime decides).
+        assert!(matches!(
+            first_initializer("ken r = 1.5..len(xs)"),
+            Expr::Range { .. }
+        ));
+        assert!(matches!(
+            first_initializer("ken r = xs.start..xs.stop"),
+            Expr::Range { .. }
+        ));
+    }
+
+    #[test]
+    fn match_range_pattern_accepts_negative_start() {
+        let program = parse("keek x {\n  whan -5..0 -> blether \"neg\"\n  whan _ -> 1\n}").unwrap();
+        let arms = match &program.statements[0] {
+            Stmt::Match { arms, .. } => arms,
+            other => panic!("expected a match, got {other:?}"),
+        };
+        match &arms[0].pattern {
+            Pattern::Range { start, .. } => assert!(matches!(
+                **start,
+                Expr::Literal {
+                    value: Literal::Integer(-5),
+                    ..
+                }
+            )),
+            other => panic!("expected a range pattern, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn brace_in_expression_position_picks_dict_or_block_like_before() {
+        let dicts = [
+            "ken d = {a: 1}",
+            "ken d = {\"k\": 1, \"j\": 2}",
+            "ken d = {\n  \"k\": 1,\n  \"j\": [1,\n 2]\n}",
+            "ken d = {[1, 2][0]: 1}",
+            "ken d = {gin a than b ither c: 1}",
+        ];
+        for src in dicts {
+            assert!(
+                matches!(first_initializer(src), Expr::Dict { .. }),
+                "{src:?} should be a dict"
+            );
+        }
+        let blocks = [
+            "ken b = { a }",
+            "ken b = { ken y = 1 }",
+            "ken b = { xs[1:2] }",
+            "ken b = { f({k: 1}) }",
+            "ken b = {\n  gin a {\n    blether {k: 1}\n  }\n  2\n}",
+            "ken b = { 0 + { 0 + 1 } }",
+        ];
+        for src in blocks {
+            assert!(
+                matches!(first_initializer(src), Expr::BlockExpr { .. }),
+                "{src:?} should be a block"
+            );
+        }
+    }
+
+    #[test]
+    fn nested_braces_parse_in_linear_time() {
+        // 26 levels used tae take minutes (each level was parsed twice).
+        // (Each level is twa nesting levels, so 26 stays under the limit.)
+        let levels = 26;
+        let src = format!("ken a = {}1{}", "{0+".repeat(levels), "}".repeat(levels));
+        let started = std::time::Instant::now();
+        let program = parse(&src).unwrap();
+        assert_eq!(program.statements.len(), 1);
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "parse took {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn deep_nesting_is_a_parse_error_not_a_stack_overflow() {
+        let n = 100_000;
+        let cases = [
+            format!("ken a = {}1{}", "(".repeat(n), ")".repeat(n)),
+            format!("ken a = {}1{}", "[".repeat(n), "]".repeat(n)),
+            format!("ken a = {}1", "-".repeat(n)),
+            format!("ken a = {}1", "!".repeat(n)),
+            format!("{}{}", "{".repeat(n), "}".repeat(n)),
+            format!("ken a = {}1", "b = ".repeat(n)),
+            format!("ken a = {}1", "gin aye than 1 ither ".repeat(n)),
+            format!("gin aye {{ }}{}", " ither gin aye { }".repeat(n)),
+            format!("ken f = {}1", "|x| ".repeat(n)),
+        ];
+        for src in &cases {
+            let message = parse_error_message(src);
+            assert!(
+                message.contains("nested ower deep"),
+                "{}...: {message}",
+                &src[..20]
+            );
+        }
+    }
+
+    #[test]
+    fn nesting_just_under_the_limit_still_parses() {
+        // ken + its initializer use twa levels; each bracket adds ane.
+        let n = MAX_NESTING_DEPTH - 2;
+        let parens = format!("ken a = {}1{}", "(".repeat(n), ")".repeat(n));
+        assert!(parse(&parens).is_ok());
+        let calls = format!("ken a = {}1{}", "f(".repeat(n), ")".repeat(n));
+        assert!(parse(&calls).is_ok());
+        let too_deep = format!("ken a = {}1{}", "(".repeat(n + 1), ")".repeat(n + 1));
+        assert!(parse_error_message(&too_deep).contains("nested ower deep"));
+    }
+
+    #[test]
+    fn bare_gie_before_brace_or_semicolon_returns_naething() {
+        for src in [
+            "dae f() { gie }",
+            "dae f() { gie; }",
+            "dae f() { gie; blether 1 }",
+        ] {
+            let program = parse(src).unwrap_or_else(|e| panic!("{src:?}: {e}"));
+            match &program.statements[0] {
+                Stmt::Function { body, .. } => {
+                    assert!(
+                        matches!(body[0], Stmt::Return { value: None, .. }),
+                        "{src:?}"
+                    )
+                }
+                other => panic!("expected a function, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn mak_siccar_without_comma_is_a_parse_error() {
+        let err = parse("mak_siccar 1 == 2 \"this message is never attached\"").unwrap_err();
+        assert!(
+            matches!(err, HaversError::UnexpectedToken { line: 1, .. }),
+            "{err:?}"
+        );
+        // Still fine: wi' a comma, wi' a semicolon, or followed by another statement.
+        assert!(parse("mak_siccar x, \"msg\"").is_ok());
+        assert!(parse("mak_siccar x; blether 1").is_ok());
+        assert_eq!(
+            parse("mak_siccar x\nblether 1").unwrap().statements.len(),
+            2
+        );
+        // Every statement keyword may follow on the same line, as fer ither statements.
+        assert_eq!(parse("ken x = 1 mak_siccar x").unwrap().statements.len(), 2);
+        assert_eq!(parse("ken x = 1 hurl \"x\"").unwrap().statements.len(), 2);
+    }
+
+    #[test]
+    fn compound_assignment_on_fields_and_indexes() {
+        let program = parse("kin C { dae bump() { masel.n += 1 } }").unwrap();
+        let method_body = match &program.statements[0] {
+            Stmt::Class { methods, .. } => match &methods[0] {
+                Stmt::Function { body, .. } => body.clone(),
+                other => panic!("expected a method, got {other:?}"),
+            },
+            other => panic!("expected a class, got {other:?}"),
+        };
+        match &method_body[0] {
+            Stmt::Expression {
+                expr:
+                    Expr::Set {
+                        object,
+                        property,
+                        value,
+                        ..
+                    },
+                ..
+            } => {
+                assert!(matches!(**object, Expr::Masel { .. }));
+                assert_eq!(property, "n");
+                match &**value {
+                    Expr::Binary {
+                        left,
+                        operator: BinaryOp::Add,
+                        ..
+                    } => assert!(matches!(**left, Expr::Get { .. })),
+                    other => panic!("expected masel.n + 1, got {other:?}"),
+                }
+            }
+            other => panic!("expected a Set, got {other:?}"),
+        }
+
+        for (src, op) in [
+            ("xs[0] += 1", BinaryOp::Add),
+            ("xs[i + 1] -= 2", BinaryOp::Subtract),
+            ("d[\"k\"] *= 3", BinaryOp::Multiply),
+            ("grid[y][x] /= 2", BinaryOp::Divide),
+        ] {
+            let program = parse(src).unwrap_or_else(|e| panic!("{src:?}: {e}"));
+            match &program.statements[0] {
+                Stmt::Expression {
+                    expr: Expr::IndexSet { value, .. },
+                    ..
+                } => match &**value {
+                    Expr::Binary { left, operator, .. } => {
+                        assert!(matches!(**left, Expr::Index { .. }), "{src:?}");
+                        assert_eq!(
+                            std::mem::discriminant(operator),
+                            std::mem::discriminant(&op),
+                            "{src:?}"
+                        );
+                    }
+                    other => panic!("{src:?}: expected a binary value, got {other:?}"),
+                },
+                other => panic!("{src:?}: expected an IndexSet, got {other:?}"),
+            }
+        }
+        assert!(parse("obj.inner.count += 1").is_ok());
+    }
+
+    #[test]
+    fn compound_assignment_refuses_targets_that_would_run_twice() {
+        for src in ["f().n += 1", "xs[next()] += 1", "make()[0] -= 1"] {
+            assert!(
+                parse_error_message(src).contains("ower complicated"),
+                "{src:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn underscore_is_a_throwaway_binder() {
+        match &parse("fer _ in 0..3 { }").unwrap().statements[0] {
+            Stmt::For { variable, .. } => assert_eq!(variable, "_"),
+            other => panic!("expected a fer loop, got {other:?}"),
+        }
+        match first_initializer("ken f = |_, y, _| y") {
+            Expr::Lambda { params, .. } => assert_eq!(params, vec!["_", "y", "__"]),
+            other => panic!("expected a lambda, got {other:?}"),
+        }
+        match &parse("dae f(_, b, _) { gie b }").unwrap().statements[0] {
+            Stmt::Function { params, .. } => {
+                let names: Vec<&str> = params.iter().map(|p| p.name.as_str()).collect();
+                assert_eq!(names, vec!["_", "b", "__"]);
+            }
+            other => panic!("expected a function, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fstring_hole_must_hold_exactly_one_expression() {
+        let message = parse_error_message("ken a = 1\nken b = 2\nblether f\"{a b}\"");
+        assert!(message.contains("mair in this f-string"), "{message}");
+        let message = parse_error_message("ken x = 7\nblether f\"{x:>5}\"");
+        assert!(message.contains("format specs"), "{message}");
+        // Newlines roond the expression are fine.
+        assert!(parse("blether f\"{\n1 + 1\n}\"").is_ok());
+    }
+
+    #[test]
+    fn fstring_hole_errors_report_the_real_line() {
+        let err = parse("ken a = 1\nken b = 2\nblether f\"{a +}\"").unwrap_err();
+        assert_eq!(err.line(), Some(3), "{err:?}");
+        // A hole on the second line o' a multi-line f-string.
+        let err = parse("ken a = 1\nblether f\"one\ntwo {a b}\"").unwrap_err();
+        assert_eq!(err.line(), Some(3), "{err:?}");
+        // Lexer errors inside a hole are shifted an' aw.
+        let err = parse("\n\nblether f\"{a @ b}\"").unwrap_err();
+        assert!(
+            matches!(err, HaversError::UnkentToken { line: 3, .. }),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn fstring_holes_may_contain_string_literals() {
+        let cases = [
+            r#"blether f"Cities: {["Edinburgh", "Glasgow"]}""#,
+            r#"blether f"{"}"}""#,
+            r#"blether f"{ {"k": 1}["k"] }""#,
+            r#"blether f"{'single'} an' {"double"}""#,
+            r#"blether f"{f(\"}\")}""#,
+        ];
+        for src in cases {
+            let program = parse(src).unwrap_or_else(|e| panic!("{src:?}: {e}"));
+            match &program.statements[0] {
+                Stmt::Print {
+                    value: Expr::FString { parts, .. },
+                    ..
+                } => assert!(
+                    parts.iter().any(|p| matches!(p, FStringPart::Expr(_))),
+                    "{src:?}"
+                ),
+                other => panic!("{src:?}: expected blether f\"...\", got {other:?}"),
+            }
+        }
     }
 }

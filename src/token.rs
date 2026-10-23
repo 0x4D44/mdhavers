@@ -178,10 +178,9 @@ pub enum TokenKind {
     SingleQuoteString(String),
 
     // F-string (format string) with interpolation: f"Hello {name}!"
-    #[regex(r#"f"([^"\\]|\\.)*""#, |lex| {
-        let s = lex.slice();
-        Some(s[2..s.len()-1].to_string())  // Skip 'f"' and '"'
-    })]
+    // The body is scanned by hand so that string literals inside `{ }` holes
+    // (e.g. f"{["a", "b"]}") dinnae end the f-string early.
+    #[token("f\"", lex_fstring)]
     FString(String),
 
     // Identifiers
@@ -303,6 +302,58 @@ pub enum TokenKind {
 
     // End of file
     Eof,
+}
+
+/// Logos callback fer f-strings: `f"` has been matched, scan the rest o' the body.
+fn lex_fstring(lex: &mut logos::Lexer<TokenKind>) -> Option<String> {
+    let rest = lex.remainder();
+    let close = scan_fstring_body(rest)?;
+    let content = rest[..close].to_string();
+    lex.bump(close + 1); // the body plus its closing quote
+    Some(content)
+}
+
+/// Find the byte offset o' the closing `"` o' an f-string body (the text efter `f"`).
+///
+/// Ootside holes, `\x` is an escape, `{{` is a literal brace and `}` is plain text.
+/// Inside a `{ }` hole, braces nest and quoted string literals are skipped whole,
+/// so a `"` or `}` inside them disnae end the hole or the f-string.
+/// Returns `None` if the f-string is never closed.
+fn scan_fstring_body(body: &str) -> Option<usize> {
+    let bytes = body.as_bytes();
+    let mut depth = 0usize;
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => {
+                i += 2;
+                continue;
+            }
+            b'"' if depth == 0 => return Some(i),
+            b'{' if depth == 0 && bytes.get(i + 1) == Some(&b'{') => {
+                i += 2;
+                continue;
+            }
+            b'}' if depth == 0 => {}
+            b'{' => depth += 1,
+            b'}' => depth -= 1,
+            quote @ (b'"' | b'\'') if depth > 0 => {
+                // A string literal inside a hole: skip tae its closing quote.
+                i += 1;
+                loop {
+                    match bytes.get(i) {
+                        None => return None,
+                        Some(b'\\') => i += 2,
+                        Some(&c) if c == quote => break,
+                        Some(_) => i += 1,
+                    }
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
 }
 
 impl fmt::Display for TokenKind {
@@ -571,6 +622,56 @@ mod tests {
 
         let token2 = Token::new(TokenKind::Integer(42), "42".to_string(), 3, 10);
         assert_eq!(format!("{}", token2), "42 at line 3");
+    }
+
+    fn lex_kinds(source: &str) -> Vec<Result<TokenKind, ()>> {
+        TokenKind::lexer(source).collect()
+    }
+
+    #[test]
+    fn fstring_with_string_literal_in_hole_is_one_token() {
+        // README example: the inner quotes must not end the f-string (MDH-BUG-FLU-00022).
+        let kinds = lex_kinds(r#"f"Cities: {["Edinburgh", "Glasgow"]}""#);
+        assert_eq!(
+            kinds,
+            vec![Ok(TokenKind::FString(
+                r#"Cities: {["Edinburgh", "Glasgow"]}"#.to_string()
+            ))]
+        );
+    }
+
+    #[test]
+    fn fstring_scanner_handles_braces_quotes_and_escapes() {
+        // A '}' or '"' inside a quoted string in a hole doesnae close anything.
+        assert_eq!(scan_fstring_body(r#"{"}"}" x"#), Some(5));
+        assert_eq!(scan_fstring_body(r#"{'"'}" x"#), Some(5));
+        // Ootside holes an apostrophe is plain text.
+        assert_eq!(scan_fstring_body(r#"it's {x}" x"#), Some(8));
+        // Escaped braces and stray closing braces are plain text.
+        assert_eq!(scan_fstring_body(r#"{{}} }" x"#), Some(6));
+        // Nested braces (a dict) inside a hole.
+        assert_eq!(scan_fstring_body(r#"{ {1: "}"} }" x"#), Some(12));
+        // Escaped quote ootside and inside a hole (the auld \" style).
+        assert_eq!(scan_fstring_body(r#"a\"b{f(\"x\")}" x"#), Some(14));
+        // Unterminated bodies.
+        assert_eq!(scan_fstring_body("abc"), None);
+        assert_eq!(scan_fstring_body(r#"{"abc}"#), None);
+        assert_eq!(scan_fstring_body("abc\\"), None);
+        // Multi-byte characters are fine.
+        assert_eq!(scan_fstring_body("é {\"ü\"}\""), Some(9));
+    }
+
+    #[test]
+    fn fstring_followed_by_more_tokens_lexes_cleanly() {
+        let kinds = lex_kinds(r#"f"{a}" + "b""#);
+        assert_eq!(
+            kinds,
+            vec![
+                Ok(TokenKind::FString("{a}".to_string())),
+                Ok(TokenKind::Plus),
+                Ok(TokenKind::String("b".to_string())),
+            ]
+        );
     }
 
     #[cfg(coverage)]

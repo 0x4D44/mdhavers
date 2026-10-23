@@ -52,6 +52,20 @@ impl<'source> Lexer<'source> {
                     tokens.push(Token::new(kind, lexeme, token_line, token_column));
                 }
                 Err(_) => {
+                    // An all-digit lexeme only fails when it overflows an i64.
+                    if !lexeme.is_empty() && lexeme.bytes().all(|b| b.is_ascii_digit()) {
+                        return Err(HaversError::InvalidNumber {
+                            value: format!(
+                                "'{}' is ower muckle fer a whole number (column {})",
+                                lexeme, token_column
+                            ),
+                            line: token_line,
+                        });
+                    }
+                    // `f"` matched but the f-string body never closed.
+                    if lexeme == "f\"" {
+                        return Err(HaversError::UnterminatedString { line: token_line });
+                    }
                     return Err(HaversError::UnkentToken {
                         lexeme,
                         line: token_line,
@@ -246,6 +260,29 @@ greet(message)
             line: 1,
         };
         assert!(!is_unkent_token(&other, "@", 1, 5));
+    }
+
+    #[test]
+    fn test_integer_literal_overflow_is_invalid_number() {
+        // MDH-BUG-FLU-00020: i64::MAX + 1 used tae be reported as an unkent token.
+        let err = lex("ken big = 9223372036854775808").unwrap_err();
+        match err {
+            HaversError::InvalidNumber { value, line } => {
+                assert_eq!(line, 1);
+                assert!(value.contains("9223372036854775808"), "{value}");
+                assert!(value.contains("column 11"), "{value}");
+            }
+            other => panic!("expected InvalidNumber, got {other:?}"),
+        }
+        // i64::MAX itself is still fine.
+        let tokens = lex("9223372036854775807").unwrap();
+        assert_eq!(tokens[0].kind, TokenKind::Integer(i64::MAX));
+    }
+
+    #[test]
+    fn test_unterminated_fstring_is_unterminated_string() {
+        let err = lex("ken x = 1\nblether f\"abc {x}").unwrap_err();
+        assert_eq!(err, HaversError::UnterminatedString { line: 2 });
     }
 
     #[test]
