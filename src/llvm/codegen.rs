@@ -38,6 +38,17 @@ use crate::error::HaversError;
 
 use super::types::{MdhTypes, ValueTag};
 
+/// Hurled on i64 overflow (the interpreter's IntegerOverflow, without the line).
+/// Keep in step with MDH_INT_OVERFLOW_MSG in runtime/mdh_runtime.c.
+const INT_OVERFLOW_MSG: &str = "Wheesht! Yer number's too muckle - it's overflowed!";
+const DIV_BY_ZERO_MSG: &str = "Ye numpty! Tryin' tae divide by zero";
+/// Hurled when a string size computation would overflow or cannot be allocated.
+/// Keep in step with MDH_STRING_TOO_BIG_MSG in runtime/mdh_runtime.c.
+const STRING_TOO_BIG_MSG: &str = "Och! That string would be ower muckle tae fit in memory";
+/// Bytes reserved (16-byte aligned) per try site for the runtime's jmp_buf.
+/// runtime/mdh_runtime.c static-asserts `sizeof(jmp_buf) <= MDH_JMP_BUF_RESERVE`.
+const JMP_BUF_RESERVE: u32 = 512;
+
 // Coverage note: llvm-cov counts each `*_or_else(|| ...)` closure as a separate function.
 // In this file, those closures are effectively unreachable in normal compilation (they only
 // construct internal error messages like "<runtime call> returned void"), so they tank
@@ -62,6 +73,9 @@ impl<T> OptionCompileExt<T> for Option<T> {
 struct LoopContext<'ctx> {
     break_block: BasicBlock<'ctx>,
     continue_block: BasicBlock<'ctx>,
+    /// `CodeGen::try_depth` when the loop was entered: `brak`/`haud` pop the try
+    /// handlers pushed inside the loop body since then.
+    try_depth: u32,
 }
 
 /// Libc functions we use
@@ -475,6 +489,31 @@ pub enum VarType {
     Dict,
 }
 
+/// One binding (or use) of a name in a scope, for `CodeGen::unstable_vars_of`.
+#[derive(Debug, Clone, Copy)]
+struct ScopeBinding<'a> {
+    name: &'a str,
+    /// The bound value, when the binding's static type can be inferred from it.
+    value: Option<&'a Expr>,
+    kind: BindingKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BindingKind {
+    /// `ken`, parameters, loop/catch/pattern variables.
+    Decl,
+    /// `x = ...` (including assignments made from nested functions and lambdas).
+    Assign,
+    /// A read in this scope.
+    Read,
+    /// A read from a nested lambda: the variable is captured (boxed) when the lambda
+    /// is compiled, which shadow caches cannot survive.
+    CapturedRead,
+    /// A read from a nested function or method, which reads the global directly; a
+    /// string read there may be kept, so the in-place append must not own it.
+    GlobalRead,
+}
+
 #[derive(Debug)]
 struct ImportBindings<'ctx> {
     variables: HashSet<String>,
@@ -539,6 +578,14 @@ pub struct CodeGen<'ctx> {
 
     /// Inferred types for variables (for optimization)
     var_types: HashMap<String, VarType>,
+
+    /// Names in the scope being compiled whose static type differs between their
+    /// bindings (see `unstable_vars_of`); they are typed Unknown and get no shadows.
+    unstable_vars: HashSet<String>,
+
+    /// Set by an expression statement that is an assignment, and consumed by
+    /// `Expr::Assign`: the assigned value is discarded, so it cannot escape.
+    assign_value_unused: bool,
 
     /// Track which class a variable holds (for method dispatch)
     variable_class_types: HashMap<String, String>,
@@ -705,6 +752,8 @@ impl<'ctx> CodeGen<'ctx> {
             list_ptr_shadows: HashMap::new(),
             boxed_vars: HashSet::new(),
             var_types: HashMap::new(),
+            unstable_vars: HashSet::new(),
+            assign_value_unused: false,
             variable_class_types: HashMap::new(),
             functions: HashMap::new(),
             function_defaults: HashMap::new(),
@@ -4062,15 +4111,27 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
-        // Compile all statements
+        // Names whose static type changes between bindings get no shadow caches.
+        let bindings = Self::scope_bindings_of_stmts(&[], &program.statements);
+        self.unstable_vars = self.unstable_vars_of(&bindings);
+
+        // Compile all statements. A top-level `hurl` terminates the current block; later
+        // statements (which may still define functions and classes) go into a fresh,
+        // unreachable block rather than after the terminator.
         for stmt in &program.statements {
+            if self.current_block_terminated() {
+                let dead = self.context.append_basic_block(main_fn, "after_terminator");
+                self.builder.position_at_end(dead);
+            }
             self.compile_stmt(stmt)?;
         }
 
         // Return 0 from main
-        self.builder
-            .build_return(Some(&self.types.i32_type.const_int(0, false)))
-            .unwrap();
+        if !self.current_block_terminated() {
+            self.builder
+                .build_return(Some(&self.types.i32_type.const_int(0, false)))
+                .unwrap();
+        }
 
         Ok(())
     }
@@ -5050,6 +5111,390 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    /// Names bound in a scope whose static type is not the same at every binding
+    /// (`ken`, assignments, parameters, loop/catch/pattern variables, and assignments
+    /// made from nested functions, lambdas or methods). Such names are typed Unknown at
+    /// their declarations, so they never get int/string/list shadow caches: a shadow is
+    /// only valid while every value the name can hold has the type the shadow assumes
+    /// (MDH-BUG-FLU-00048). Parameters count as Unknown-typed bindings, so a `ken` or
+    /// assignment of a known type to a parameter makes it unstable too.
+    ///
+    /// Names read by a nested lambda are unstable too (the lambda boxes them when it
+    /// is compiled), as are String names read by a nested function or method (it may
+    /// keep the string, so the in-place append must never own that buffer).
+    fn unstable_vars_of(&mut self, bindings: &[ScopeBinding<'_>]) -> HashSet<String> {
+        let saved_var_types = std::mem::take(&mut self.var_types);
+        let mut unstable: HashSet<String> = bindings
+            .iter()
+            .filter(|b| b.kind == BindingKind::CapturedRead)
+            .map(|b| b.name.to_string())
+            .collect();
+        let globally_read: HashSet<&str> = bindings
+            .iter()
+            .filter(|b| b.kind == BindingKind::GlobalRead)
+            .map(|b| b.name)
+            .collect();
+        // Inference of a binding can depend on other names' types, so iterate until no
+        // more names become unstable (the set only grows, so this terminates).
+        loop {
+            self.var_types.clear();
+            let mut first_type: HashMap<&str, VarType> = HashMap::new();
+            let mut grew = false;
+            for binding in bindings {
+                if !matches!(binding.kind, BindingKind::Decl | BindingKind::Assign) {
+                    continue;
+                }
+                let ty = if unstable.contains(binding.name) {
+                    VarType::Unknown
+                } else {
+                    binding
+                        .value
+                        .map_or(VarType::Unknown, |e| self.infer_expr_type(e))
+                };
+                match first_type.get(binding.name).copied() {
+                    None => {
+                        first_type.insert(binding.name, ty);
+                        self.var_types.insert(binding.name.to_string(), ty);
+                    }
+                    Some(prev) if prev != ty => {
+                        if unstable.insert(binding.name.to_string()) {
+                            grew = true;
+                        }
+                        self.var_types
+                            .insert(binding.name.to_string(), VarType::Unknown);
+                    }
+                    Some(_) => {}
+                }
+            }
+            for (&name, &ty) in &first_type {
+                if ty == VarType::String
+                    && globally_read.contains(name)
+                    && unstable.insert(name.to_string())
+                {
+                    grew = true;
+                }
+            }
+            if !grew {
+                break;
+            }
+        }
+        self.var_types = saved_var_types;
+        unstable
+    }
+
+    /// Bindings of a statement-bodied scope; `unknown_decls` are its parameters/captures.
+    fn scope_bindings_of_stmts<'a>(
+        unknown_decls: &[&'a str],
+        body: &'a [Stmt],
+    ) -> Vec<ScopeBinding<'a>> {
+        let mut out: Vec<ScopeBinding<'a>> = unknown_decls
+            .iter()
+            .map(|&name| ScopeBinding {
+                name,
+                value: None,
+                kind: BindingKind::Decl,
+            })
+            .collect();
+        for stmt in body {
+            Self::collect_stmt_bindings(stmt, &mut out);
+        }
+        out
+    }
+
+    /// Bindings of an expression-bodied scope (a lambda).
+    fn scope_bindings_of_expr<'a>(
+        unknown_decls: &[&'a str],
+        body: &'a Expr,
+    ) -> Vec<ScopeBinding<'a>> {
+        let mut out = Self::scope_bindings_of_stmts(unknown_decls, &[]);
+        Self::collect_expr_bindings(body, &mut out);
+        out
+    }
+
+    /// A nested function/lambda/method that assigns or reads a name it does not declare
+    /// uses a variable of an enclosing scope (or a global) behind that scope's back:
+    /// record an assignment there as an Unknown-typed assignment, and a read as a
+    /// captured (lambda) or global (function/method) read.
+    fn push_nonlocal_uses<'a>(
+        nested: Vec<ScopeBinding<'a>>,
+        via_lambda: bool,
+        out: &mut Vec<ScopeBinding<'a>>,
+    ) {
+        let declared: HashSet<&str> = nested
+            .iter()
+            .filter(|b| b.kind == BindingKind::Decl)
+            .map(|b| b.name)
+            .collect();
+        for binding in nested {
+            if binding.kind == BindingKind::Decl || declared.contains(binding.name) {
+                continue;
+            }
+            let kind = match binding.kind {
+                BindingKind::Assign => BindingKind::Assign,
+                BindingKind::CapturedRead => BindingKind::CapturedRead,
+                _ if via_lambda => BindingKind::CapturedRead,
+                _ => BindingKind::GlobalRead,
+            };
+            out.push(ScopeBinding {
+                name: binding.name,
+                value: None,
+                kind,
+            });
+        }
+    }
+
+    fn collect_stmt_bindings<'a>(stmt: &'a Stmt, out: &mut Vec<ScopeBinding<'a>>) {
+        let unknown_decl = |name: &'a str| ScopeBinding {
+            name,
+            value: None,
+            kind: BindingKind::Decl,
+        };
+        match stmt {
+            Stmt::VarDecl {
+                name, initializer, ..
+            } => {
+                if let Some(init) = initializer {
+                    Self::collect_expr_bindings(init, out);
+                }
+                out.push(ScopeBinding {
+                    name,
+                    value: initializer.as_ref(),
+                    kind: BindingKind::Decl,
+                });
+            }
+            Stmt::Expression { expr, .. }
+            | Stmt::Print { value: expr, .. }
+            | Stmt::Hurl { message: expr, .. } => Self::collect_expr_bindings(expr, out),
+            Stmt::Block { statements, .. } => {
+                for s in statements {
+                    Self::collect_stmt_bindings(s, out);
+                }
+            }
+            Stmt::If {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                Self::collect_expr_bindings(condition, out);
+                Self::collect_stmt_bindings(then_branch, out);
+                if let Some(else_stmt) = else_branch {
+                    Self::collect_stmt_bindings(else_stmt, out);
+                }
+            }
+            Stmt::While {
+                condition, body, ..
+            } => {
+                Self::collect_expr_bindings(condition, out);
+                Self::collect_stmt_bindings(body, out);
+            }
+            Stmt::For {
+                variable,
+                iterable,
+                body,
+                ..
+            } => {
+                Self::collect_expr_bindings(iterable, out);
+                out.push(unknown_decl(variable));
+                Self::collect_stmt_bindings(body, out);
+            }
+            Stmt::Function {
+                name, params, body, ..
+            } => {
+                out.push(unknown_decl(name));
+                let param_names: Vec<&'a str> = params.iter().map(|p| p.name.as_str()).collect();
+                let nested = Self::scope_bindings_of_stmts(&param_names, body);
+                Self::push_nonlocal_uses(nested, false, out);
+            }
+            Stmt::Class { methods, .. } => {
+                for method in methods {
+                    if let Stmt::Function { params, body, .. } = method {
+                        let mut param_names: Vec<&'a str> = vec!["masel"];
+                        param_names.extend(params.iter().map(|p| p.name.as_str()));
+                        let nested = Self::scope_bindings_of_stmts(&param_names, body);
+                        Self::push_nonlocal_uses(nested, false, out);
+                    }
+                }
+            }
+            Stmt::Return { value, .. } => {
+                if let Some(v) = value {
+                    Self::collect_expr_bindings(v, out);
+                }
+            }
+            Stmt::Import { alias, .. } => {
+                if let Some(alias) = alias {
+                    out.push(unknown_decl(alias));
+                }
+            }
+            Stmt::TryCatch {
+                try_block,
+                error_name,
+                catch_block,
+                ..
+            } => {
+                Self::collect_stmt_bindings(try_block, out);
+                out.push(unknown_decl(error_name));
+                Self::collect_stmt_bindings(catch_block, out);
+            }
+            Stmt::Match { value, arms, .. } => {
+                Self::collect_expr_bindings(value, out);
+                for arm in arms {
+                    match &arm.pattern {
+                        Pattern::Identifier(name) => out.push(unknown_decl(name)),
+                        Pattern::Range { start, end } => {
+                            Self::collect_expr_bindings(start, out);
+                            Self::collect_expr_bindings(end, out);
+                        }
+                        Pattern::Literal(_) | Pattern::Wildcard => {}
+                    }
+                    Self::collect_stmt_bindings(&arm.body, out);
+                }
+            }
+            Stmt::Assert {
+                condition, message, ..
+            } => {
+                Self::collect_expr_bindings(condition, out);
+                if let Some(m) = message {
+                    Self::collect_expr_bindings(m, out);
+                }
+            }
+            Stmt::Destructure {
+                patterns, value, ..
+            } => {
+                Self::collect_expr_bindings(value, out);
+                for pattern in patterns {
+                    match pattern {
+                        DestructPattern::Variable(name) | DestructPattern::Rest(name) => {
+                            out.push(unknown_decl(name))
+                        }
+                        DestructPattern::Ignore => {}
+                    }
+                }
+            }
+            Stmt::Log {
+                message, extras, ..
+            } => {
+                Self::collect_expr_bindings(message, out);
+                for e in extras {
+                    Self::collect_expr_bindings(e, out);
+                }
+            }
+            Stmt::Break { .. } | Stmt::Continue { .. } | Stmt::Struct { .. } => {}
+        }
+    }
+
+    fn collect_expr_bindings<'a>(expr: &'a Expr, out: &mut Vec<ScopeBinding<'a>>) {
+        match expr {
+            Expr::Literal { .. } | Expr::Masel { .. } => {}
+            Expr::Variable { name, .. } => out.push(ScopeBinding {
+                name,
+                value: None,
+                kind: BindingKind::Read,
+            }),
+            Expr::Assign { name, value, .. } => {
+                Self::collect_expr_bindings(value, out);
+                out.push(ScopeBinding {
+                    name,
+                    value: Some(&**value),
+                    kind: BindingKind::Assign,
+                });
+            }
+            Expr::Binary { left, right, .. }
+            | Expr::Logical { left, right, .. }
+            | Expr::Pipe { left, right, .. }
+            | Expr::Index {
+                object: left,
+                index: right,
+                ..
+            }
+            | Expr::Range {
+                start: left,
+                end: right,
+                ..
+            } => {
+                Self::collect_expr_bindings(left, out);
+                Self::collect_expr_bindings(right, out);
+            }
+            Expr::Unary { operand: inner, .. }
+            | Expr::Get { object: inner, .. }
+            | Expr::Grouping { expr: inner, .. }
+            | Expr::Spread { expr: inner, .. }
+            | Expr::Input { prompt: inner, .. } => Self::collect_expr_bindings(inner, out),
+            Expr::Call {
+                callee, arguments, ..
+            } => {
+                Self::collect_expr_bindings(callee, out);
+                for a in arguments {
+                    Self::collect_expr_bindings(a, out);
+                }
+            }
+            Expr::Set { object, value, .. } => {
+                Self::collect_expr_bindings(object, out);
+                Self::collect_expr_bindings(value, out);
+            }
+            Expr::IndexSet {
+                object,
+                index,
+                value,
+                ..
+            } => {
+                Self::collect_expr_bindings(object, out);
+                Self::collect_expr_bindings(index, out);
+                Self::collect_expr_bindings(value, out);
+            }
+            Expr::Slice {
+                object,
+                start,
+                end,
+                step,
+                ..
+            } => {
+                Self::collect_expr_bindings(object, out);
+                for part in [start, end, step].into_iter().flatten() {
+                    Self::collect_expr_bindings(part, out);
+                }
+            }
+            Expr::List { elements, .. } => {
+                for e in elements {
+                    Self::collect_expr_bindings(e, out);
+                }
+            }
+            Expr::Dict { pairs, .. } => {
+                for (k, v) in pairs {
+                    Self::collect_expr_bindings(k, out);
+                    Self::collect_expr_bindings(v, out);
+                }
+            }
+            Expr::FString { parts, .. } => {
+                for part in parts {
+                    if let FStringPart::Expr(e) = part {
+                        Self::collect_expr_bindings(e, out);
+                    }
+                }
+            }
+            Expr::Ternary {
+                condition,
+                then_expr,
+                else_expr,
+                ..
+            } => {
+                Self::collect_expr_bindings(condition, out);
+                Self::collect_expr_bindings(then_expr, out);
+                Self::collect_expr_bindings(else_expr, out);
+            }
+            Expr::BlockExpr { statements, .. } => {
+                for s in statements {
+                    Self::collect_stmt_bindings(s, out);
+                }
+            }
+            Expr::Lambda { params, body, .. } => {
+                let param_names: Vec<&'a str> = params.iter().map(String::as_str).collect();
+                let nested = Self::scope_bindings_of_expr(&param_names, body);
+                Self::push_nonlocal_uses(nested, true, out);
+            }
+        }
+    }
+
     /// Infer the type of an expression for optimization purposes
     fn infer_expr_type(&self, expr: &Expr) -> VarType {
         match expr {
@@ -5074,9 +5519,14 @@ impl<'ctx> CodeGen<'ctx> {
                 BinaryOp::Add => {
                     let lt = self.infer_expr_type(left);
                     let rt = self.infer_expr_type(right);
+                    let numeric = |t: VarType| matches!(t, VarType::Int | VarType::Float);
                     if lt == VarType::Int && rt == VarType::Int {
                         VarType::Int
-                    } else if lt == VarType::Float || rt == VarType::Float {
+                    } else if (lt == VarType::Float || rt == VarType::Float)
+                        && numeric(lt)
+                        && numeric(rt)
+                    {
+                        // Only number + number is a float ("a" + 1.5 is a string).
                         VarType::Float
                     } else if lt == VarType::String && rt == VarType::String {
                         VarType::String
@@ -5087,9 +5537,13 @@ impl<'ctx> CodeGen<'ctx> {
                 BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo => {
                     let lt = self.infer_expr_type(left);
                     let rt = self.infer_expr_type(right);
+                    let numeric = |t: VarType| matches!(t, VarType::Int | VarType::Float);
                     if lt == VarType::Int && rt == VarType::Int {
                         VarType::Int
-                    } else if lt == VarType::Float || rt == VarType::Float {
+                    } else if (lt == VarType::Float || rt == VarType::Float)
+                        && numeric(lt)
+                        && numeric(rt)
+                    {
                         VarType::Float
                     } else {
                         VarType::Unknown
@@ -5104,6 +5558,10 @@ impl<'ctx> CodeGen<'ctx> {
             },
             Expr::List { .. } => VarType::List,
             Expr::Dict { .. } => VarType::Dict,
+            Expr::Unary {
+                operator: UnaryOp::Not,
+                ..
+            } => VarType::Bool,
             Expr::Unary { operand, .. } => self.infer_expr_type(operand),
             Expr::Grouping { expr, .. } => self.infer_expr_type(expr),
             _ => VarType::Unknown,
@@ -5122,7 +5580,9 @@ impl<'ctx> CodeGen<'ctx> {
 
             // Variable with int shadow
             Expr::Variable { name, .. } => {
-                if self.try_depth == 0 {
+                // A shadow only holds the variable's value while it is statically an Int
+                // (MDH-BUG-FLU-00048); otherwise it may hold another type's payload bits.
+                if self.try_depth == 0 && self.var_types.get(name) == Some(&VarType::Int) {
                     if let Some(&shadow) = self.int_shadows.get(name) {
                         let val = self
                             .builder
@@ -5165,18 +5625,12 @@ impl<'ctx> CodeGen<'ctx> {
 
                     if let (Some(l), Some(r)) = (left_i64, right_i64) {
                         let result = match operator {
-                            BinaryOp::Add => self.builder.build_int_add(l, r, "add_i64").unwrap(),
-                            BinaryOp::Subtract => {
-                                self.builder.build_int_sub(l, r, "sub_i64").unwrap()
-                            }
-                            BinaryOp::Multiply => {
-                                self.builder.build_int_mul(l, r, "mul_i64").unwrap()
-                            }
-                            BinaryOp::Divide => {
-                                self.builder.build_int_signed_div(l, r, "div_i64").unwrap()
-                            }
-                            BinaryOp::Modulo => {
-                                self.builder.build_int_signed_rem(l, r, "mod_i64").unwrap()
+                            BinaryOp::Add
+                            | BinaryOp::Subtract
+                            | BinaryOp::Multiply
+                            | BinaryOp::Divide
+                            | BinaryOp::Modulo => {
+                                self.build_checked_int_op(*operator, l, r, "int_op_i64")
                             }
                             _ => return None,
                         };
@@ -5190,6 +5644,134 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    /// Whether the builder's current block already ends in a terminator.
+    fn current_block_terminated(&self) -> bool {
+        self.builder
+            .get_insert_block()
+            .and_then(|b| b.get_terminator())
+            .is_some()
+    }
+
+    /// Pop `count` hae_a_bash handlers off the runtime try stack (used when `gie`, `brak`
+    /// or `haud` jumps out of try blocks without running their normal exit).
+    fn emit_try_pops(&mut self, count: u32) {
+        for _ in 0..count {
+            self.builder.build_call(self.libc.try_pop, &[], "").unwrap();
+        }
+    }
+
+    /// Branch to a block that hurls `msg` when `cond` is true; continue emitting on the
+    /// fall-through (false) path.
+    fn emit_hurl_if(&mut self, cond: IntValue<'ctx>, msg: &str, label: &str) {
+        let function = self.current_function.unwrap();
+        let fail_block = self
+            .context
+            .append_basic_block(function, &format!("{label}_fail"));
+        let ok_block = self
+            .context
+            .append_basic_block(function, &format!("{label}_ok"));
+        self.builder
+            .build_conditional_branch(cond, fail_block, ok_block)
+            .unwrap();
+
+        self.builder.position_at_end(fail_block);
+        let msg_val = self.compile_string_literal(msg);
+        self.builder
+            .build_call(self.libc.hurl, &[msg_val.into()], "")
+            .unwrap();
+        self.builder.build_unreachable().unwrap();
+
+        self.builder.position_at_end(ok_block);
+    }
+
+    /// `l op r` on raw i64 operands with the interpreter's checked semantics
+    /// (MDH-BUG-FLU-00050): add/sub/mul overflow and `i64::MIN / -1` (or `% -1`) hurl
+    /// the integer-overflow error; division or modulo by zero hurls as before.
+    fn build_checked_int_op(
+        &mut self,
+        op: BinaryOp,
+        l: IntValue<'ctx>,
+        r: IntValue<'ctx>,
+        name: &str,
+    ) -> IntValue<'ctx> {
+        let i64_type = self.types.i64_type;
+        match op {
+            BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply => {
+                let intrinsic_name = match op {
+                    BinaryOp::Add => "llvm.sadd.with.overflow.i64",
+                    BinaryOp::Subtract => "llvm.ssub.with.overflow.i64",
+                    _ => "llvm.smul.with.overflow.i64",
+                };
+                let intrinsic = match self.module.get_function(intrinsic_name) {
+                    Some(f) => f,
+                    None => {
+                        let ret_type = self.context.struct_type(
+                            &[i64_type.into(), self.context.bool_type().into()],
+                            false,
+                        );
+                        let fn_type = ret_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+                        self.module.add_function(intrinsic_name, fn_type, None)
+                    }
+                };
+                let pair = self
+                    .builder
+                    .build_call(
+                        intrinsic,
+                        &[l.into(), r.into()],
+                        &format!("{name}_ovf_pair"),
+                    )
+                    .unwrap()
+                    .try_as_basic_value()
+                    .left()
+                    .unwrap()
+                    .into_struct_value();
+                let value = self
+                    .builder
+                    .build_extract_value(pair, 0, name)
+                    .unwrap()
+                    .into_int_value();
+                let overflowed = self
+                    .builder
+                    .build_extract_value(pair, 1, &format!("{name}_overflowed"))
+                    .unwrap()
+                    .into_int_value();
+                self.emit_hurl_if(overflowed, INT_OVERFLOW_MSG, &format!("{name}_overflow"));
+                value
+            }
+            BinaryOp::Divide | BinaryOp::Modulo => {
+                let zero = i64_type.const_zero();
+                let is_zero = self
+                    .builder
+                    .build_int_compare(IntPredicate::EQ, r, zero, &format!("{name}_by_zero"))
+                    .unwrap();
+                self.emit_hurl_if(is_zero, DIV_BY_ZERO_MSG, &format!("{name}_zero"));
+
+                let min = i64_type.const_int(i64::MIN as u64, true);
+                let minus_one = i64_type.const_all_ones();
+                let l_is_min = self
+                    .builder
+                    .build_int_compare(IntPredicate::EQ, l, min, &format!("{name}_l_min"))
+                    .unwrap();
+                let r_is_minus_one = self
+                    .builder
+                    .build_int_compare(IntPredicate::EQ, r, minus_one, &format!("{name}_r_m1"))
+                    .unwrap();
+                let overflows = self
+                    .builder
+                    .build_and(l_is_min, r_is_minus_one, &format!("{name}_min_by_m1"))
+                    .unwrap();
+                self.emit_hurl_if(overflows, INT_OVERFLOW_MSG, &format!("{name}_overflow"));
+
+                if matches!(op, BinaryOp::Divide) {
+                    self.builder.build_int_signed_div(l, r, name).unwrap()
+                } else {
+                    self.builder.build_int_signed_rem(l, r, name).unwrap()
+                }
+            }
+            _ => unreachable!("build_checked_int_op called with a comparison operator"),
+        }
+    }
+
     /// Sync all int shadows back to their MdhValue counterparts
     /// Called at loop exit to ensure variables are up-to-date
     fn sync_all_shadows(&mut self) {
@@ -5197,6 +5779,10 @@ impl<'ctx> CodeGen<'ctx> {
         let shadow_names: Vec<String> = self.int_shadows.keys().cloned().collect();
 
         for name in shadow_names {
+            // Only a statically-Int variable's shadow holds its value (MDH-BUG-FLU-00048).
+            if self.var_types.get(&name) != Some(&VarType::Int) {
+                continue;
+            }
             if let (Some(&shadow), Some(&alloca)) =
                 (self.int_shadows.get(&name), self.variables.get(&name))
             {
@@ -5239,10 +5825,6 @@ impl<'ctx> CodeGen<'ctx> {
             .types
             .i8_type
             .const_int(ValueTag::Int.as_u8() as u64, false);
-        let bool_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::Bool.as_u8() as u64, false);
         let float_tag = self
             .types
             .i8_type
@@ -5256,7 +5838,8 @@ impl<'ctx> CodeGen<'ctx> {
             .i8_type
             .const_int(ValueTag::List.as_u8() as u64, false);
 
-        // Check if both are int-like (int or bool)
+        // Check if both are ints. Bools are not numbers here, as in the interpreter
+        // (`aye + 1` is a type error).
         let left_is_int = self
             .builder
             .build_int_compare(IntPredicate::EQ, left_tag, int_tag, "l_int")
@@ -5265,28 +5848,12 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::EQ, right_tag, int_tag, "r_int")
             .unwrap();
-        let left_is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, left_tag, bool_tag, "l_bool")
-            .unwrap();
-        let right_is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, right_tag, bool_tag, "r_bool")
-            .unwrap();
-        let left_is_intlike = self
-            .builder
-            .build_or(left_is_int, left_is_bool, "l_intlike")
-            .unwrap();
-        let right_is_intlike = self
-            .builder
-            .build_or(right_is_int, right_is_bool, "r_intlike")
-            .unwrap();
         let both_int = self
             .builder
-            .build_and(left_is_intlike, right_is_intlike, "both_intlike")
+            .build_and(left_is_int, right_is_int, "both_int")
             .unwrap();
 
-        // Check if either is float
+        // Float arithmetic needs one float and two numeric (int or float) operands.
         let left_is_float = self
             .builder
             .build_int_compare(IntPredicate::EQ, left_tag, float_tag, "l_float")
@@ -5295,9 +5862,25 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::EQ, right_tag, float_tag, "r_float")
             .unwrap();
+        let left_is_numeric = self
+            .builder
+            .build_or(left_is_int, left_is_float, "l_numeric")
+            .unwrap();
+        let right_is_numeric = self
+            .builder
+            .build_or(right_is_int, right_is_float, "r_numeric")
+            .unwrap();
+        let both_numeric = self
+            .builder
+            .build_and(left_is_numeric, right_is_numeric, "both_numeric")
+            .unwrap();
         let either_float = self
             .builder
             .build_or(left_is_float, right_is_float, "either_float")
+            .unwrap();
+        let either_float = self
+            .builder
+            .build_and(either_float, both_numeric, "float_add")
             .unwrap();
 
         // Check if either is a string (string concatenation coerces the other operand)
@@ -5354,10 +5937,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // int + int
         self.builder.position_at_end(int_int);
-        let int_sum = self
-            .builder
-            .build_int_add(left_data, right_data, "sum")
-            .unwrap();
+        let int_sum = self.build_checked_int_op(BinaryOp::Add, left_data, right_data, "sum");
         let int_result = self.make_int(int_sum);
         self.builder.build_unconditional_branch(merge).unwrap();
         let int_block = self.builder.get_insert_block().unwrap();
@@ -5573,10 +6153,6 @@ impl<'ctx> CodeGen<'ctx> {
             .types
             .i8_type
             .const_int(ValueTag::Int.as_u8() as u64, false);
-        let bool_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::Bool.as_u8() as u64, false);
         let float_tag = self
             .types
             .i8_type
@@ -5590,25 +6166,10 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::EQ, right_tag, int_tag, "r_int")
             .unwrap();
-        let left_is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, left_tag, bool_tag, "l_bool")
-            .unwrap();
-        let right_is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, right_tag, bool_tag, "r_bool")
-            .unwrap();
-        let left_is_intlike = self
-            .builder
-            .build_or(left_is_int, left_is_bool, "l_intlike")
-            .unwrap();
-        let right_is_intlike = self
-            .builder
-            .build_or(right_is_int, right_is_bool, "r_intlike")
-            .unwrap();
+        // Bools are not numbers (interpreter parity: `aye - 1` is a type error).
         let both_int = self
             .builder
-            .build_and(left_is_intlike, right_is_intlike, "both_intlike")
+            .build_and(left_is_int, right_is_int, "both_int")
             .unwrap();
         let left_is_float = self
             .builder
@@ -5620,11 +6181,11 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let left_is_numeric = self
             .builder
-            .build_or(left_is_intlike, left_is_float, "l_numeric")
+            .build_or(left_is_int, left_is_float, "l_numeric")
             .unwrap();
         let right_is_numeric = self
             .builder
-            .build_or(right_is_intlike, right_is_float, "r_numeric")
+            .build_or(right_is_int, right_is_float, "r_numeric")
             .unwrap();
         let both_numeric = self
             .builder
@@ -5642,10 +6203,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // int - int
         self.builder.position_at_end(int_int);
-        let int_diff = self
-            .builder
-            .build_int_sub(left_data, right_data, "diff")
-            .unwrap();
+        let int_diff = self.build_checked_int_op(BinaryOp::Subtract, left_data, right_data, "diff");
         let int_result = self.make_int(int_diff);
         self.builder.build_unconditional_branch(merge).unwrap();
         let int_block = self.builder.get_insert_block().unwrap();
@@ -5752,10 +6310,6 @@ impl<'ctx> CodeGen<'ctx> {
         let error_case = self.context.append_basic_block(function, "mul_error");
         let merge = self.context.append_basic_block(function, "mul_merge");
 
-        let bool_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::Bool.as_u8() as u64, false);
         let int_tag = self
             .types
             .i8_type
@@ -5777,14 +6331,6 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::EQ, right_tag, int_tag, "r_int")
             .unwrap();
-        let left_is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, left_tag, bool_tag, "l_bool")
-            .unwrap();
-        let right_is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, right_tag, bool_tag, "r_bool")
-            .unwrap();
         let left_is_float = self
             .builder
             .build_int_compare(IntPredicate::EQ, left_tag, float_tag, "lf")
@@ -5802,14 +6348,9 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_compare(IntPredicate::EQ, right_tag, string_tag, "r_str")
             .unwrap();
 
-        let left_is_intlike = self
-            .builder
-            .build_or(left_is_int, left_is_bool, "l_intlike")
-            .unwrap();
-        let right_is_intlike = self
-            .builder
-            .build_or(right_is_int, right_is_bool, "r_intlike")
-            .unwrap();
+        // Bools are not numbers (interpreter parity: `aye * 2` is a type error).
+        let left_is_intlike = left_is_int;
+        let right_is_intlike = right_is_int;
         let both_intlike = self
             .builder
             .build_and(left_is_intlike, right_is_intlike, "both_intlike")
@@ -5926,10 +6467,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // intlike * intlike
         self.builder.position_at_end(int_int);
-        let int_prod = self
-            .builder
-            .build_int_mul(left_data, right_data, "prod")
-            .unwrap();
+        let int_prod = self.build_checked_int_op(BinaryOp::Multiply, left_data, right_data, "prod");
         let int_result = self.make_int(int_prod);
         self.builder.build_unconditional_branch(merge).unwrap();
         let int_block = self.builder.get_insert_block().unwrap();
@@ -6041,10 +6579,6 @@ impl<'ctx> CodeGen<'ctx> {
             .types
             .i8_type
             .const_int(ValueTag::Int.as_u8() as u64, false);
-        let bool_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::Bool.as_u8() as u64, false);
         let float_tag = self
             .types
             .i8_type
@@ -6058,25 +6592,12 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::EQ, right_tag, int_tag, "r_int")
             .unwrap();
-        let left_is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, left_tag, bool_tag, "l_bool")
-            .unwrap();
-        let right_is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, right_tag, bool_tag, "r_bool")
-            .unwrap();
-        let left_is_intlike = self
-            .builder
-            .build_or(left_is_int, left_is_bool, "l_intlike")
-            .unwrap();
-        let right_is_intlike = self
-            .builder
-            .build_or(right_is_int, right_is_bool, "r_intlike")
-            .unwrap();
+        // Bools are not numbers (interpreter parity: `aye / 1` is a type error).
+        let left_is_intlike = left_is_int;
+        let right_is_intlike = right_is_int;
         let both_int = self
             .builder
-            .build_and(left_is_intlike, right_is_intlike, "both_intlike")
+            .build_and(left_is_intlike, right_is_intlike, "both_int")
             .unwrap();
         let left_is_float = self
             .builder
@@ -6164,10 +6685,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // int / int
         self.builder.position_at_end(int_int);
-        let int_quot = self
-            .builder
-            .build_int_signed_div(left_data, right_data, "quot")
-            .unwrap();
+        let int_quot = self.build_checked_int_op(BinaryOp::Divide, left_data, right_data, "quot");
         let int_result = self.make_int(int_quot);
         self.builder.build_unconditional_branch(merge).unwrap();
         let int_block = self.builder.get_insert_block().unwrap();
@@ -6276,10 +6794,6 @@ impl<'ctx> CodeGen<'ctx> {
         let error_block = self.context.append_basic_block(function, "mod_error");
         let merge_block = self.context.append_basic_block(function, "mod_merge");
 
-        let bool_tag = self
-            .types
-            .i8_type
-            .const_int(ValueTag::Bool.as_u8() as u64, false);
         let int_tag = self
             .types
             .i8_type
@@ -6297,14 +6811,6 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_compare(IntPredicate::EQ, right_tag, int_tag, "mod_r_int")
             .unwrap();
-        let left_is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, left_tag, bool_tag, "mod_l_bool")
-            .unwrap();
-        let right_is_bool = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, right_tag, bool_tag, "mod_r_bool")
-            .unwrap();
         let left_is_float = self
             .builder
             .build_int_compare(IntPredicate::EQ, left_tag, float_tag, "mod_l_float")
@@ -6314,17 +6820,10 @@ impl<'ctx> CodeGen<'ctx> {
             .build_int_compare(IntPredicate::EQ, right_tag, float_tag, "mod_r_float")
             .unwrap();
 
-        let left_is_intlike = self
-            .builder
-            .build_or(left_is_int, left_is_bool, "mod_l_intlike")
-            .unwrap();
-        let right_is_intlike = self
-            .builder
-            .build_or(right_is_int, right_is_bool, "mod_r_intlike")
-            .unwrap();
+        // Bools are not numbers (interpreter parity: `aye % 2` is a type error).
         let both_intlike = self
             .builder
-            .build_and(left_is_intlike, right_is_intlike, "mod_both_intlike")
+            .build_and(left_is_int, right_is_int, "mod_both_int")
             .unwrap();
         let both_float = self
             .builder
@@ -6340,32 +6839,9 @@ impl<'ctx> CodeGen<'ctx> {
             .build_conditional_branch(both_float, float_block, error_block)
             .unwrap();
 
-        // intlike % intlike (with modulo-by-zero check)
+        // int % int (modulo-by-zero and i64::MIN % -1 hurl)
         self.builder.position_at_end(int_block);
-        let zero = self.types.i64_type.const_int(0, false);
-        let is_zero = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, right_data, zero, "mod_r_is_zero")
-            .unwrap();
-        let ok_block = self.context.append_basic_block(function, "mod_int_ok");
-        let zero_block = self.context.append_basic_block(function, "mod_int_zero");
-        self.builder
-            .build_conditional_branch(is_zero, zero_block, ok_block)
-            .unwrap();
-
-        self.builder.position_at_end(zero_block);
-        let msg = self.compile_string_literal("Ye numpty! Tryin' tae divide by zero");
-        let _ = self
-            .builder
-            .build_call(self.libc.hurl, &[msg.into()], "mod_zero_hurl")
-            .unwrap();
-        self.builder.build_unreachable().unwrap();
-
-        self.builder.position_at_end(ok_block);
-        let rem = self
-            .builder
-            .build_int_signed_rem(left_data, right_data, "mod_rem")
-            .unwrap();
+        let rem = self.build_checked_int_op(BinaryOp::Modulo, left_data, right_data, "mod_rem");
         let int_result = self.make_int(rem);
         self.builder
             .build_unconditional_branch(merge_block)
@@ -7493,7 +7969,9 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Negate int
         self.builder.position_at_end(neg_int);
-        let neg_data = self.builder.build_int_neg(data, "neg").unwrap();
+        // `0 - data` with an overflow check: negating i64::MIN hurls, as in the interpreter.
+        let zero_i64 = self.types.i64_type.const_zero();
+        let neg_data = self.build_checked_int_op(BinaryOp::Subtract, zero_i64, data, "neg");
         let int_result = self.make_int(neg_data);
         self.builder.build_unconditional_branch(merge).unwrap();
         let int_block = self.builder.get_insert_block().unwrap();
@@ -11953,11 +12431,12 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(());
                 }
 
-                // Track the inferred type for optimization
-                let var_type = if let Some(init) = initializer {
-                    self.infer_expr_type(init)
-                } else {
-                    VarType::Unknown
+                // Track the inferred type for optimization. A name whose type differs
+                // between its bindings stays Unknown, so it never gets shadow caches
+                // (MDH-BUG-FLU-00048).
+                let var_type = match initializer {
+                    Some(init) if !self.unstable_vars.contains(name) => self.infer_expr_type(init),
+                    _ => VarType::Unknown,
                 };
                 self.var_types.insert(name.clone(), var_type);
 
@@ -12064,8 +12543,13 @@ impl<'ctx> CodeGen<'ctx> {
                         self.builder.build_store(shadow, int_val).unwrap();
 
                         // Skip MdhValue store in hot loop bodies (outer-loop sync will fix).
-                        // Inside try blocks we keep boxed values updated for catch handlers.
-                        if !self.in_loop_body || self.try_depth > 0 {
+                        // Inside try blocks we keep boxed values updated for catch handlers,
+                        // and globals are always stored (functions read them directly).
+                        let is_global_storage = self
+                            .variables
+                            .get(name)
+                            .is_some_and(|local| self.globals.get(name) == Some(local));
+                        if !self.in_loop_body || self.try_depth > 0 || is_global_storage {
                             // Ensure MdhValue alloca exists
                             let alloca = if let Some(&existing) = self.variables.get(name) {
                                 existing
@@ -12123,21 +12607,36 @@ impl<'ctx> CodeGen<'ctx> {
                 };
                 self.builder.build_store(alloca, value).unwrap();
 
-                // Create shadow if needed
-                if var_type == VarType::Int && !self.int_shadows.contains_key(name) {
-                    let shadow = self.create_entry_block_alloca_i64(&format!("{}_shadow", name));
+                // Create the int shadow if needed, and (re)initialise it on every
+                // declaration: a re-declaration must not leave a stale shadow behind.
+                if var_type == VarType::Int {
+                    let shadow = match self.int_shadows.get(name) {
+                        Some(&existing) => existing,
+                        None => {
+                            let s = self.create_entry_block_alloca_i64(&format!("{}_shadow", name));
+                            self.int_shadows.insert(name.clone(), s);
+                            s
+                        }
+                    };
                     let data = self.extract_data(value).unwrap();
                     self.builder.build_store(shadow, data).unwrap();
-                    self.int_shadows.insert(name.clone(), shadow);
                 }
 
-                // Create string length and capacity shadows if needed
-                if var_type == VarType::String && !self.string_len_shadows.contains_key(name) {
-                    let len_shadow =
-                        self.create_entry_block_alloca_i64(&format!("{}_strlen", name));
-                    let cap_shadow =
-                        self.create_entry_block_alloca_i64(&format!("{}_strcap", name));
-                    // Default: assume empty/externally-owned.
+                // Create string length and capacity shadows if needed, and (re)initialise
+                // them on every declaration.
+                if var_type == VarType::String {
+                    let (len_shadow, cap_shadow) = match (
+                        self.string_len_shadows.get(name).copied(),
+                        self.string_cap_shadows.get(name).copied(),
+                    ) {
+                        (Some(len), Some(cap)) => (len, cap),
+                        _ => (
+                            self.create_entry_block_alloca_i64(&format!("{}_strlen", name)),
+                            self.create_entry_block_alloca_i64(&format!("{}_strcap", name)),
+                        ),
+                    };
+                    // Capacity 0: the buffer is not owned by this variable (a literal or a
+                    // shared string), so the first in-place append must copy it.
                     let zero = self.types.i64_type.const_int(0, false);
                     self.builder.build_store(len_shadow, zero).unwrap();
                     self.builder.build_store(cap_shadow, zero).unwrap();
@@ -12181,7 +12680,11 @@ impl<'ctx> CodeGen<'ctx> {
             }
 
             Stmt::Expression { expr, .. } => {
-                self.compile_expr(expr)?;
+                // Lets `x = ...` know its value is discarded (see Expr::Assign).
+                self.assign_value_unused = matches!(expr, Expr::Assign { .. });
+                let result = self.compile_expr(expr);
+                self.assign_value_unused = false;
+                result?;
                 Ok(())
             }
 
@@ -12281,15 +12784,18 @@ impl<'ctx> CodeGen<'ctx> {
                 } else {
                     self.make_nil()
                 };
+                // Leaving the function: unregister every hae_a_bash handler this frame
+                // pushed, or a later hurl would longjmp into a dead frame (MDH-BUG-FLU-00049).
+                self.emit_try_pops(self.try_depth);
                 self.builder.build_return(Some(&ret_val)).unwrap();
                 Ok(())
             }
 
             Stmt::Break { .. } => {
                 if let Some(loop_ctx) = self.loop_stack.last() {
-                    self.builder
-                        .build_unconditional_branch(loop_ctx.break_block)
-                        .unwrap();
+                    let (target, loop_try_depth) = (loop_ctx.break_block, loop_ctx.try_depth);
+                    self.emit_try_pops(self.try_depth.saturating_sub(loop_try_depth));
+                    self.builder.build_unconditional_branch(target).unwrap();
                     Ok(())
                 } else {
                     Err(HaversError::CompileError("Break outside loop".to_string()))
@@ -12298,9 +12804,9 @@ impl<'ctx> CodeGen<'ctx> {
 
             Stmt::Continue { .. } => {
                 if let Some(loop_ctx) = self.loop_stack.last() {
-                    self.builder
-                        .build_unconditional_branch(loop_ctx.continue_block)
-                        .unwrap();
+                    let (target, loop_try_depth) = (loop_ctx.continue_block, loop_ctx.try_depth);
+                    self.emit_try_pops(self.try_depth.saturating_sub(loop_try_depth));
+                    self.builder.build_unconditional_branch(target).unwrap();
                     Ok(())
                 } else {
                     Err(HaversError::CompileError(
@@ -12590,6 +13096,14 @@ impl<'ctx> CodeGen<'ctx> {
                                 .into_int_value();
                             return Ok(self.make_int(int_val));
                         }
+                    }
+                    // Reading the string value may share its buffer (ken t = s, shove(xs, s),
+                    // f(s), ...). Give up ownership so the next in-place `s = s + "..."` copies
+                    // instead of mutating or reallocating a buffer someone else holds
+                    // (MDH-BUG-FLU-00048).
+                    if let Some(&cap_shadow) = self.string_cap_shadows.get(name) {
+                        let zero = self.types.i64_type.const_int(0, false);
+                        self.builder.build_store(cap_shadow, zero).unwrap();
                     }
                     let val = self
                         .builder
@@ -12993,6 +13507,9 @@ impl<'ctx> CodeGen<'ctx> {
             }
 
             Expr::Assign { name, value, .. } => {
+                // True only when this assignment is a whole expression statement; reset
+                // before compiling anything else so nested assignments never see it.
+                let assign_value_unused = std::mem::take(&mut self.assign_value_unused);
                 if self.import_alias_exports.contains_key(name) {
                     self.import_alias_exports.remove(name);
                     self.import_alias_bindings.remove(name);
@@ -13023,8 +13540,14 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(new_val);
                 }
 
-                // Try to use optimized int path if we have an int shadow
-                if let Some(&shadow) = self.int_shadows.get(name) {
+                // Try to use optimized int path if we have an int shadow. Shadows exist only
+                // for names whose every binding is statically Int (see unstable_vars_of).
+                let int_shadow = if self.var_types.get(name) == Some(&VarType::Int) {
+                    self.int_shadows.get(name).copied()
+                } else {
+                    None
+                };
+                if let Some(shadow) = int_shadow {
                     // Try to compile the value directly as i64
                     if let Some(int_val) = self.compile_int_expr(value) {
                         // Update the shadow with the new i64 value
@@ -13032,8 +13555,13 @@ impl<'ctx> CodeGen<'ctx> {
 
                         // Skip MdhValue store in hot loop bodies (will sync at loop exit).
                         // Note: inside try blocks we must keep the boxed value updated so the
-                        // catch handler can observe it after longjmp.
-                        if self.in_loop_body && self.try_depth == 0 {
+                        // catch handler can observe it after longjmp. Globals are always
+                        // stored: functions called from the loop read them directly.
+                        let is_global_storage = match self.variables.get(name) {
+                            Some(local) => self.globals.get(name) == Some(local),
+                            None => self.globals.contains_key(name),
+                        };
+                        if self.in_loop_body && self.try_depth == 0 && !is_global_storage {
                             let boxed = self.make_int(int_val);
                             return Ok(boxed);
                         }
@@ -13051,38 +13579,48 @@ impl<'ctx> CodeGen<'ctx> {
 
                 // Check for optimized self-concat pattern: s = s + "literal"
                 // This uses realloc for O(n) amortized instead of O(n²)
-                if let Some(&len_shadow) = self.string_len_shadows.get(name) {
-                    if let Some(&cap_shadow) = self.string_cap_shadows.get(name) {
-                        if let Expr::Binary {
-                            left,
-                            operator: BinaryOp::Add,
-                            right,
-                            ..
-                        } = value.as_ref()
-                        {
-                            // Check if left is the same variable and right is a literal
-                            let is_self_concat =
-                                if let Expr::Variable { name: lname, .. } = left.as_ref() {
-                                    lname == name
-                                } else {
-                                    false
-                                };
-                            let right_literal_len = if let Expr::Literal {
-                                value: Literal::String(s),
-                                ..
-                            } = right.as_ref()
-                            {
-                                Some(s.len())
+                // The in-place append owns and may realloc the buffer, so it is only used
+                // when the assignment's value is discarded (a statement): otherwise the
+                // result would alias a buffer the next append can move or free.
+                let string_shadows =
+                    if self.var_types.get(name) == Some(&VarType::String) && assign_value_unused {
+                        self.string_len_shadows
+                            .get(name)
+                            .copied()
+                            .zip(self.string_cap_shadows.get(name).copied())
+                    } else {
+                        None
+                    };
+                if let Some((len_shadow, cap_shadow)) = string_shadows {
+                    if let Expr::Binary {
+                        left,
+                        operator: BinaryOp::Add,
+                        right,
+                        ..
+                    } = value.as_ref()
+                    {
+                        // Check if left is the same variable and right is a literal
+                        let is_self_concat =
+                            if let Expr::Variable { name: lname, .. } = left.as_ref() {
+                                lname == name
                             } else {
-                                None
+                                false
                             };
-                            if is_self_concat {
-                                if let Some(rlen) = right_literal_len {
-                                    // OPTIMIZED PATH: s = s + "literal" with capacity-based growth
-                                    return self.compile_string_self_append(
-                                        name, len_shadow, cap_shadow, right, rlen,
-                                    );
-                                }
+                        let right_literal_len = if let Expr::Literal {
+                            value: Literal::String(s),
+                            ..
+                        } = right.as_ref()
+                        {
+                            Some(s.len())
+                        } else {
+                            None
+                        };
+                        if is_self_concat {
+                            if let Some(rlen) = right_literal_len {
+                                // OPTIMIZED PATH: s = s + "literal" with capacity-based growth
+                                return self.compile_string_self_append(
+                                    name, len_shadow, cap_shadow, right, rlen,
+                                );
                             }
                         }
                     }
@@ -13186,10 +13724,24 @@ impl<'ctx> CodeGen<'ctx> {
                     .or_else(|| self.globals.get(name).copied());
                 if let Some(alloca) = alloca {
                     self.builder.build_store(alloca, val).unwrap();
+                    // Every shadow of the name must follow the new value
+                    // (MDH-BUG-FLU-00048). Shadows only exist while the name's type is
+                    // stable, so the new value has the shadow's type.
                     // Update int shadow if we have one
                     if let Some(&shadow) = self.int_shadows.get(name) {
                         let data = self.extract_data(val).unwrap();
                         self.builder.build_store(shadow, data).unwrap();
+                    }
+                    // Refresh the cached raw list pointer.
+                    if let Some(&shadow) = self.list_ptr_shadows.get(name) {
+                        let data = self.extract_data(val).unwrap();
+                        self.builder.build_store(shadow, data).unwrap();
+                    }
+                    // The new string buffer is not owned by this variable: capacity 0 makes
+                    // the next in-place append copy it instead of writing into it.
+                    if let Some(&cap_shadow) = self.string_cap_shadows.get(name) {
+                        let zero = self.types.i64_type.const_int(0, false);
+                        self.builder.build_store(cap_shadow, zero).unwrap();
                     }
                     // Update string length shadow if we have one
                     if let Some(&len_shadow) = self.string_len_shadows.get(name) {
@@ -13788,69 +14340,15 @@ impl<'ctx> CodeGen<'ctx> {
             self.extract_data(right_val).unwrap()
         };
 
-        // Perform operation directly on i64
+        // Perform operation directly on i64. Overflow, `i64::MIN / -1` and division by
+        // zero hurl (catchable within hae_a_bash / gin_it_gangs_wrang) instead of
+        // wrapping or trapping.
         let result = match op {
-            BinaryOp::Add => self
-                .builder
-                .build_int_add(left_data, right_data, "add_fast")
-                .unwrap(),
-            BinaryOp::Subtract => self
-                .builder
-                .build_int_sub(left_data, right_data, "sub_fast")
-                .unwrap(),
-            BinaryOp::Multiply => self
-                .builder
-                .build_int_mul(left_data, right_data, "mul_fast")
-                .unwrap(),
-            BinaryOp::Divide | BinaryOp::Modulo => {
-                // Prevent SIGFPE traps and allow try/catch to handle the error.
-                let function = self.current_function.unwrap();
-                let ok_block = self.context.append_basic_block(function, "int_op_ok");
-                let zero_block = self.context.append_basic_block(function, "int_op_zero");
-                let merge_block = self.context.append_basic_block(function, "int_op_merge");
-
-                let zero = self.types.i64_type.const_int(0, false);
-                let is_zero = self
-                    .builder
-                    .build_int_compare(IntPredicate::EQ, right_data, zero, "int_op_is_zero")
-                    .unwrap();
-                self.builder
-                    .build_conditional_branch(is_zero, zero_block, ok_block)
-                    .unwrap();
-
-                // Div/mod by zero -> hurl (catchable within hae_a_bash / gin_it_gangs_wrang).
-                self.builder.position_at_end(zero_block);
-                let msg = self.compile_string_literal("Ye numpty! Tryin' tae divide by zero");
-                let _ = self
-                    .builder
-                    .build_call(self.libc.hurl, &[msg.into()], "int_op_hurl")
-                    .unwrap();
-                self.builder.build_unreachable().unwrap();
-
-                // OK path
-                self.builder.position_at_end(ok_block);
-                let ok_result = if matches!(op, BinaryOp::Divide) {
-                    self.builder
-                        .build_int_signed_div(left_data, right_data, "div_fast")
-                        .unwrap()
-                } else {
-                    self.builder
-                        .build_int_signed_rem(left_data, right_data, "mod_fast")
-                        .unwrap()
-                };
-                self.builder
-                    .build_unconditional_branch(merge_block)
-                    .unwrap();
-                let ok_end = self.builder.get_insert_block().unwrap();
-
-                self.builder.position_at_end(merge_block);
-                let phi = self
-                    .builder
-                    .build_phi(self.types.i64_type, "int_op_result")
-                    .unwrap();
-                phi.add_incoming(&[(&ok_result, ok_end)]);
-                phi.as_basic_value().into_int_value()
-            }
+            BinaryOp::Add
+            | BinaryOp::Subtract
+            | BinaryOp::Multiply
+            | BinaryOp::Divide
+            | BinaryOp::Modulo => self.build_checked_int_op(op, left_data, right_data, "int_fast"),
             _ => {
                 return Err(HaversError::CompileError(
                     "compile_binary_int_fast called with non-int op".to_string(),
@@ -26177,6 +26675,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.loop_stack.push(LoopContext {
             break_block: after_block,
             continue_block: loop_block,
+            try_depth: self.try_depth,
         });
 
         self.builder.build_unconditional_branch(loop_block).unwrap();
@@ -26331,6 +26830,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.loop_stack.push(LoopContext {
             break_block: after_block,
             continue_block: incr_block,
+            try_depth: self.try_depth,
         });
 
         self.builder.build_unconditional_branch(loop_block).unwrap();
@@ -26488,6 +26988,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.loop_stack.push(LoopContext {
             break_block: after_block,
             continue_block: incr_block,
+            try_depth: self.try_depth,
         });
 
         self.builder.build_unconditional_branch(loop_block).unwrap();
@@ -26589,6 +27090,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.loop_stack.push(LoopContext {
             break_block: after_block,
             continue_block: incr_block,
+            try_depth: self.try_depth,
         });
 
         self.builder.build_unconditional_branch(loop_block).unwrap();
@@ -26675,6 +27177,11 @@ impl<'ctx> CodeGen<'ctx> {
         let saved_boxed_vars = std::mem::take(&mut self.boxed_vars);
         let saved_masel = self.current_masel;
         let saved_in_user_function = self.in_user_function;
+        // try_depth / in_loop_body describe the frame being compiled; a nested function
+        // body starts outside any try block or loop of its own (MDH-BUG-FLU-00049).
+        let saved_try_depth = std::mem::replace(&mut self.try_depth, 0);
+        let saved_in_loop_body = std::mem::replace(&mut self.in_loop_body, false);
+        let saved_unstable_vars = std::mem::take(&mut self.unstable_vars);
 
         self.builder.position_at_end(entry);
         self.current_function = Some(function);
@@ -26785,25 +27292,15 @@ impl<'ctx> CodeGen<'ctx> {
         // Mark all captured locals/params as boxed in this scope (locals will be boxed at decl).
         self.boxed_vars.extend(captured_in_body);
 
-        // Create optimistic i64 shadows for non-boxed user parameters.
-        for param in params {
-            if self.boxed_vars.contains(&param.name) {
-                continue;
-            }
-            let shadow = self.create_entry_block_alloca_i64(&format!("{}_shadow", param.name));
-            let alloca = self.variables.get(&param.name).copied().unwrap();
-            let val = self
-                .builder
-                .build_load(
-                    self.types.value_type,
-                    alloca,
-                    &format!("{}_param", param.name),
-                )
-                .unwrap();
-            let data = self.extract_data(val).unwrap();
-            self.builder.build_store(shadow, data).unwrap();
-            self.int_shadows.insert(param.name.clone(), shadow);
-        }
+        // No shadows for parameters: their static type is Unknown, and a shadow holding
+        // another type's payload bits is unsound (MDH-BUG-FLU-00048).
+        let unknown_bindings: Vec<&str> = params
+            .iter()
+            .map(|p| p.name.as_str())
+            .chain(captures_for_this_fn.iter().map(String::as_str))
+            .collect();
+        let bindings = Self::scope_bindings_of_stmts(&unknown_bindings, body);
+        self.unstable_vars = self.unstable_vars_of(&bindings);
 
         // Compile body
         for stmt in body {
@@ -26841,6 +27338,9 @@ impl<'ctx> CodeGen<'ctx> {
         self.boxed_vars = saved_boxed_vars;
         self.in_user_function = saved_in_user_function;
         self.current_masel = saved_masel;
+        self.try_depth = saved_try_depth;
+        self.in_loop_body = saved_in_loop_body;
+        self.unstable_vars = saved_unstable_vars;
 
         // Restore the builder position to where it was before compiling this function
         if let Some(block) = saved_block {
@@ -30768,6 +31268,15 @@ impl<'ctx> CodeGen<'ctx> {
         let saved_boxed_vars = self.boxed_vars.clone();
         let saved_block = self.builder.get_insert_block();
         let saved_masel = self.current_masel;
+        let saved_try_depth = std::mem::replace(&mut self.try_depth, 0);
+        let saved_in_loop_body = std::mem::replace(&mut self.in_loop_body, false);
+        let unknown_bindings: Vec<&str> = params
+            .iter()
+            .map(String::as_str)
+            .chain(captures.iter().map(String::as_str))
+            .collect();
+        let bindings = Self::scope_bindings_of_expr(&unknown_bindings, body);
+        let saved_unstable_vars = std::mem::take(&mut self.unstable_vars);
 
         // Set up lambda function
         self.current_function = Some(lambda_fn);
@@ -30783,6 +31292,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.string_cap_shadows.clear();
         self.boxed_vars.clear();
         self.current_masel = None;
+        self.unstable_vars = self.unstable_vars_of(&bindings);
 
         // Bind captured variables (they come first in the parameter list)
         for (i, capture_name) in captures.iter().enumerate() {
@@ -30847,6 +31357,9 @@ impl<'ctx> CodeGen<'ctx> {
         self.string_cap_shadows = saved_string_cap_shadows;
         self.boxed_vars = saved_boxed_vars;
         self.current_masel = saved_masel;
+        self.try_depth = saved_try_depth;
+        self.in_loop_body = saved_in_loop_body;
+        self.unstable_vars = saved_unstable_vars;
         if let Some(block) = saved_block {
             self.builder.position_at_end(block);
         }
@@ -34412,6 +34925,9 @@ impl<'ctx> CodeGen<'ctx> {
         self.loop_stack = Vec::new();
         self.in_loop_body = false;
         self.try_depth = 0;
+        let bindings = Self::scope_bindings_of_stmts(&[], &program.statements);
+        let saved_unstable_vars = std::mem::take(&mut self.unstable_vars);
+        self.unstable_vars = self.unstable_vars_of(&bindings);
 
         for stmt in &program.statements {
             match stmt {
@@ -34525,6 +35041,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.loop_stack = saved_loop_stack;
         self.in_loop_body = saved_in_loop_body;
         self.try_depth = saved_try_depth;
+        self.unstable_vars = saved_unstable_vars;
         self.current_masel = saved_masel;
         self.current_class = saved_current_class;
         self.in_user_function = saved_in_user_function;
@@ -35250,21 +35767,36 @@ impl<'ctx> CodeGen<'ctx> {
         let catch_body = self.context.append_basic_block(function, "catch_body");
         let after_block = self.context.append_basic_block(function, "try_after");
 
+        // Inside a hot loop, int variables may live only in their shadows; write them back
+        // so code in the try body (which reads the boxed values) and the catch handler
+        // see current values.
+        if self.in_loop_body {
+            self.sync_all_shadows();
+        }
+
         // Allocate jmp_buf storage and register it with the runtime.
         // IMPORTANT: setjmp must occur in the same stack frame that remains active until longjmp.
-        let jmp_size = self
-            .builder
-            .build_call(self.libc.jmp_buf_size, &[], "jmp_buf_size")
-            .unwrap()
-            .try_as_basic_value()
-            .left()
-            .compile_ok_or("jmp_buf_size returned void")
-            .unwrap()
-            .into_int_value();
-        let jmp_buf = self
-            .builder
-            .build_array_alloca(self.context.i8_type(), jmp_size, "jmp_buf")
-            .unwrap();
+        // The buffer is a fixed-size slot in the function's entry block, so a try inside a
+        // loop reuses one slot instead of growing the stack every iteration
+        // (MDH-BUG-FLU-00049). The runtime static-asserts that jmp_buf fits.
+        let jmp_buf = {
+            let entry = function.get_first_basic_block().unwrap();
+            let entry_builder = self.context.create_builder();
+            match entry.get_first_instruction() {
+                Some(instr) => entry_builder.position_before(&instr),
+                None => entry_builder.position_at_end(entry),
+            }
+            let slot_type = self.context.i8_type().array_type(JMP_BUF_RESERVE);
+            let slot = entry_builder.build_alloca(slot_type, "jmp_buf").unwrap();
+            slot.as_instruction()
+                .expect("alloca is an instruction")
+                .set_alignment(16)
+                .expect("valid jmp_buf alignment");
+            let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+            self.builder
+                .build_pointer_cast(slot, i8_ptr_type, "jmp_buf_ptr")
+                .unwrap()
+        };
         self.builder
             .build_call(self.libc.try_push, &[jmp_buf.into()], "")
             .unwrap();
@@ -37456,6 +37988,13 @@ impl<'ctx> CodeGen<'ctx> {
         let old_boxed_vars = std::mem::take(&mut self.boxed_vars);
         let old_masel = self.current_masel;
         let old_in_user_function = self.in_user_function;
+        let old_try_depth = std::mem::replace(&mut self.try_depth, 0);
+        let old_in_loop_body = std::mem::replace(&mut self.in_loop_body, false);
+        let mut unknown_bindings: Vec<&str> = vec!["masel"];
+        unknown_bindings.extend(params.iter().map(|p| p.name.as_str()));
+        let bindings = Self::scope_bindings_of_stmts(&unknown_bindings, body);
+        let old_unstable_vars = std::mem::take(&mut self.unstable_vars);
+        self.unstable_vars = self.unstable_vars_of(&bindings);
 
         self.current_function = Some(function);
         self.in_user_function = true;
@@ -37585,6 +38124,9 @@ impl<'ctx> CodeGen<'ctx> {
         self.boxed_vars = old_boxed_vars;
         self.current_masel = old_masel;
         self.in_user_function = old_in_user_function;
+        self.try_depth = old_try_depth;
+        self.in_loop_body = old_in_loop_body;
+        self.unstable_vars = old_unstable_vars;
         self.nested_function_scopes.pop();
 
         Ok(())
@@ -38602,21 +39144,59 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_int_value();
 
-        // Calculate total size: str_len * count + 1
+        // Total size str_len * count + 1, checked (MDH-BUG-FLU-00052): an overflowing
+        // product, or one that leaves no room for the terminator, hurls instead of
+        // allocating a too-small buffer. `count` is positive here.
+        let i64_type = self.types.i64_type;
+        let umul = match self.module.get_function("llvm.umul.with.overflow.i64") {
+            Some(f) => f,
+            None => {
+                let ret_type = self
+                    .context
+                    .struct_type(&[i64_type.into(), self.context.bool_type().into()], false);
+                let fn_type = ret_type.fn_type(&[i64_type.into(), i64_type.into()], false);
+                self.module
+                    .add_function("llvm.umul.with.overflow.i64", fn_type, None)
+            }
+        };
+        let pair = self
+            .builder
+            .build_call(umul, &[str_len.into(), count.into()], "repeat_len_pair")
+            .unwrap()
+            .try_as_basic_value()
+            .left()
+            .unwrap()
+            .into_struct_value();
         let total_len = self
             .builder
-            .build_int_mul(str_len, count, "total_len")
-            .unwrap();
-        let total_size = self
+            .build_extract_value(pair, 0, "total_len")
+            .unwrap()
+            .into_int_value();
+        let mul_overflowed = self
             .builder
-            .build_int_add(
+            .build_extract_value(pair, 1, "repeat_len_overflowed")
+            .unwrap()
+            .into_int_value();
+        let too_long = self
+            .builder
+            .build_int_compare(
+                IntPredicate::UGE,
                 total_len,
-                self.types.i64_type.const_int(1, false),
-                "total_size",
+                i64_type.const_int(i64::MAX as u64, false),
+                "repeat_len_too_long",
             )
             .unwrap();
+        let too_big = self
+            .builder
+            .build_or(mul_overflowed, too_long, "repeat_too_big")
+            .unwrap();
+        self.emit_hurl_if(too_big, STRING_TOO_BIG_MSG, "repeat_size");
+        let total_size = self
+            .builder
+            .build_int_add(total_len, i64_type.const_int(1, false), "total_size")
+            .unwrap();
 
-        // Allocate result
+        // Allocate result; a failed allocation hurls too.
         let result_ptr = self
             .builder
             .build_call(self.libc.malloc, &[total_size.into()], "result_ptr")
@@ -38625,50 +39205,97 @@ impl<'ctx> CodeGen<'ctx> {
             .left()
             .unwrap()
             .into_pointer_value();
-
-        // Initialize result with null terminator
-        self.builder
-            .build_store(result_ptr, self.context.i8_type().const_int(0, false))
+        let alloc_failed = self
+            .builder
+            .build_is_null(result_ptr, "repeat_oom")
             .unwrap();
+        self.emit_hurl_if(alloc_failed, STRING_TOO_BIG_MSG, "repeat_alloc");
 
-        // Loop to concatenate
+        // Copy the string `count` times with memcpy (linear; strcat was quadratic).
         let function = self.current_function.unwrap();
         let loop_block = self.context.append_basic_block(function, "repeat_loop");
         let body_block = self.context.append_basic_block(function, "repeat_body");
         let end_block = self.context.append_basic_block(function, "repeat_end");
 
-        let counter_ptr = self.create_entry_block_alloca("repeat_i");
+        let counter_ptr = self.create_entry_block_alloca_i64("repeat_i");
         self.builder
-            .build_store(counter_ptr, self.types.i64_type.const_int(0, false))
+            .build_store(counter_ptr, i64_type.const_int(0, false))
             .unwrap();
+        let str_is_empty = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                str_len,
+                i64_type.const_int(0, false),
+                "repeat_str_empty",
+            )
+            .unwrap();
+        let loop_count = self
+            .builder
+            .build_select(
+                str_is_empty,
+                i64_type.const_int(0, false),
+                count,
+                "repeat_count",
+            )
+            .unwrap()
+            .into_int_value();
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
         self.builder.position_at_end(loop_block);
         let i = self
             .builder
-            .build_load(self.types.i64_type, counter_ptr, "i")
+            .build_load(i64_type, counter_ptr, "i")
             .unwrap()
             .into_int_value();
+        // An empty string repeats to "" without iterating `count` times.
         let cond = self
             .builder
-            .build_int_compare(IntPredicate::ULT, i, count, "cond")
+            .build_int_compare(IntPredicate::ULT, i, loop_count, "cond")
             .unwrap();
         self.builder
             .build_conditional_branch(cond, body_block, end_block)
             .unwrap();
 
         self.builder.position_at_end(body_block);
+        // i * str_len <= total_len, so the offset cannot overflow.
+        let offset = self
+            .builder
+            .build_int_mul(i, str_len, "repeat_offset")
+            .unwrap();
+        let dest = unsafe {
+            self.builder
+                .build_gep(self.context.i8_type(), result_ptr, &[offset], "repeat_dest")
+                .unwrap()
+        };
         self.builder
-            .build_call(self.libc.strcat, &[result_ptr.into(), str_ptr.into()], "")
+            .build_call(
+                self.libc.memcpy,
+                &[dest.into(), str_ptr.into(), str_len.into()],
+                "",
+            )
             .unwrap();
         let next_i = self
             .builder
-            .build_int_add(i, self.types.i64_type.const_int(1, false), "next_i")
+            .build_int_add(i, i64_type.const_int(1, false), "next_i")
             .unwrap();
         self.builder.build_store(counter_ptr, next_i).unwrap();
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
         self.builder.position_at_end(end_block);
+        let terminator_ptr = unsafe {
+            self.builder
+                .build_gep(
+                    self.context.i8_type(),
+                    result_ptr,
+                    &[total_len],
+                    "repeat_nul",
+                )
+                .unwrap()
+        };
+        self.builder
+            .build_store(terminator_ptr, self.context.i8_type().const_int(0, false))
+            .unwrap();
         self.make_string(result_ptr)
     }
 
@@ -44018,6 +44645,8 @@ dae f() { gie 32 }
 
         let shadow = codegen.create_entry_block_alloca_i64("x_shadow");
         codegen.int_shadows.insert("x".to_string(), shadow);
+        // Int shadows are only used for statically-Int variables.
+        codegen.var_types.insert("x".to_string(), VarType::Int);
 
         let expr = Expr::Assign {
             name: "x".to_string(),
@@ -46048,6 +46677,7 @@ dae f() { gie 32 }
         codegen.loop_stack.push(LoopContext {
             break_block,
             continue_block,
+            try_depth: 0,
         });
         let dict_val = codegen
             .compile_expr(&Expr::Dict {
@@ -46948,6 +47578,7 @@ dae f() { gie 32 }
         codegen.loop_stack.push(LoopContext {
             break_block,
             continue_block: cont_block,
+            try_depth: 0,
         });
 
         let span = Span::new(1, 1);

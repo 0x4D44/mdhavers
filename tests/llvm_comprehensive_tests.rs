@@ -66596,10 +66596,18 @@ mod bool_cov3 {
 
     #[test]
     fn test_bool_as_int() {
-        let code = r#"blether aye + 1"#;
+        // Bools are not numbers (interpreter parity, MDH-BUG-FLU-00050): `aye + 1` is a
+        // catchable type error, not 2.
+        let code = r#"
+hae_a_bash {
+    blether aye + 1
+} gin_it_gangs_wrang e {
+    blether "type error"
+}
+"#;
         let binding = run(code);
         let output = binding.trim();
-        assert_eq!(output, "2");
+        assert_eq!(output, "type error");
     }
 }
 

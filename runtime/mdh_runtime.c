@@ -276,10 +276,51 @@ MdhValue __mdh_make_list(int32_t capacity) {
 
 /* ========== Arithmetic Operations ========== */
 
+/* Integer overflow hurls, as in the interpreter (keep the text in step with
+ * INT_OVERFLOW_MSG in src/llvm/codegen.rs). */
+#define MDH_INT_OVERFLOW_MSG "Wheesht! Yer number's too muckle - it's overflowed!"
+
+static MdhValue __mdh_int_overflow(void) {
+    __mdh_hurl(__mdh_make_string(MDH_INT_OVERFLOW_MSG));
+    return __mdh_make_nil();
+}
+
+/* Keep the text in step with STRING_TOO_BIG_MSG in src/llvm/codegen.rs. */
+#define MDH_STRING_TOO_BIG_MSG "Och! That string would be ower muckle tae fit in memory"
+
+/* Allocate an out_len + 1 byte text buffer. Hurls (so never returns NULL) when the
+ * caller's size computation overflowed or the allocation fails. */
+static char *__mdh_alloc_text(int size_overflowed, size_t out_len) {
+    char *buf = NULL;
+    if (!size_overflowed && out_len < (size_t)INT64_MAX) {
+        buf = (char *)GC_malloc(out_len + 1);
+    }
+    if (!buf) {
+        __mdh_hurl(__mdh_make_string(MDH_STRING_TOO_BIG_MSG));
+    }
+    return buf;
+}
+
+/* s repeated n times (n > 0); hurls instead of overflowing the size computation. */
+static MdhValue __mdh_string_repeat_checked(const char *s, int64_t n) {
+    size_t len = strlen(s);
+    size_t total = 0;
+    if (len == 0) return __mdh_make_string("");
+    int overflowed = __builtin_mul_overflow(len, (uint64_t)n, &total);
+    char *result = __mdh_alloc_text(overflowed, total);
+    for (int64_t i = 0; i < n; i++) {
+        memcpy(result + (size_t)i * len, s, len);
+    }
+    result[total] = '\0';
+    return __mdh_string_from_buf(result);
+}
+
 MdhValue __mdh_add(MdhValue a, MdhValue b) {
     /* Integer + Integer */
     if (a.tag == MDH_TAG_INT && b.tag == MDH_TAG_INT) {
-        return __mdh_make_int(a.data + b.data);
+        int64_t r;
+        if (__builtin_add_overflow(a.data, b.data, &r)) return __mdh_int_overflow();
+        return __mdh_make_int(r);
     }
 
     /* Float operations */
@@ -301,7 +342,9 @@ MdhValue __mdh_add(MdhValue a, MdhValue b) {
 
 MdhValue __mdh_sub(MdhValue a, MdhValue b) {
     if (a.tag == MDH_TAG_INT && b.tag == MDH_TAG_INT) {
-        return __mdh_make_int(a.data - b.data);
+        int64_t r;
+        if (__builtin_sub_overflow(a.data, b.data, &r)) return __mdh_int_overflow();
+        return __mdh_make_int(r);
     }
 
     if (a.tag == MDH_TAG_FLOAT || b.tag == MDH_TAG_FLOAT) {
@@ -316,7 +359,9 @@ MdhValue __mdh_sub(MdhValue a, MdhValue b) {
 
 MdhValue __mdh_mul(MdhValue a, MdhValue b) {
     if (a.tag == MDH_TAG_INT && b.tag == MDH_TAG_INT) {
-        return __mdh_make_int(a.data * b.data);
+        int64_t r;
+        if (__builtin_mul_overflow(a.data, b.data, &r)) return __mdh_int_overflow();
+        return __mdh_make_int(r);
     }
 
     if (a.tag == MDH_TAG_FLOAT || b.tag == MDH_TAG_FLOAT) {
@@ -331,13 +376,7 @@ MdhValue __mdh_mul(MdhValue a, MdhValue b) {
         int64_t n = b.data;
         if (n <= 0) return __mdh_make_string("");
 
-        size_t len = strlen(s);
-        char *result = (char *)GC_malloc(len * n + 1);
-        result[0] = '\0';
-        for (int64_t i = 0; i < n; i++) {
-            strcat(result, s);
-        }
-        return __mdh_make_string(result);
+        return __mdh_string_repeat_checked(s, n);
     }
 
     __mdh_type_error("multiply", a.tag, b.tag);
@@ -350,6 +389,7 @@ MdhValue __mdh_div(MdhValue a, MdhValue b) {
             __mdh_hurl(__mdh_make_string("Ye numpty! Tryin' tae divide by zero"));
             return __mdh_make_nil();
         }
+        if (a.data == INT64_MIN && b.data == -1) return __mdh_int_overflow();
         return __mdh_make_int(a.data / b.data);
     }
 
@@ -373,6 +413,7 @@ MdhValue __mdh_mod(MdhValue a, MdhValue b) {
             __mdh_hurl(__mdh_make_string("Ye numpty! Tryin' tae divide by zero"));
             return __mdh_make_nil();
         }
+        if (a.data == INT64_MIN && b.data == -1) return __mdh_int_overflow();
         return __mdh_make_int(a.data % b.data);
     }
 
@@ -388,6 +429,7 @@ MdhValue __mdh_mod(MdhValue a, MdhValue b) {
 
 MdhValue __mdh_neg(MdhValue a) {
     if (a.tag == MDH_TAG_INT) {
+        if (a.data == INT64_MIN) return __mdh_int_overflow();
         return __mdh_make_int(-a.data);
     }
     if (a.tag == MDH_TAG_FLOAT) {
@@ -1149,18 +1191,19 @@ MdhValue __mdh_speir(MdhValue prompt) {
     }
     fflush(stdout);
 
-    /* Read line */
-    char buffer[1024];
-    if (fgets(buffer, sizeof(buffer), stdin) != NULL) {
-        /* Remove trailing newline */
-        size_t len = strlen(buffer);
-        if (len > 0 && buffer[len - 1] == '\n') {
-            buffer[len - 1] = '\0';
+    /* Read a whole line of any length, chunk by chunk (without the newline). */
+    MdhStrBuf sb;
+    __mdh_sb_init(&sb);
+    char chunk[1024];
+    while (fgets(chunk, sizeof(chunk), stdin) != NULL) {
+        size_t len = strlen(chunk);
+        if (len > 0 && chunk[len - 1] == '\n') {
+            __mdh_sb_append_n(&sb, chunk, len - 1);
+            break;
         }
-        return __mdh_make_string(buffer);
+        __mdh_sb_append_n(&sb, chunk, len);
     }
-
-    return __mdh_make_string("");
+    return __mdh_string_from_buf(sb.buf);
 }
 
 #ifndef _WIN32
@@ -1335,10 +1378,21 @@ void __mdh_list_push(MdhValue list, MdhValue value) {
 
     MdhList *l = __mdh_get_list(list);
 
-    /* Grow if needed */
+    /* Grow if needed. Lists from slices/copies can have capacity 0 (and items NULL),
+     * so doubling alone would never grow them. */
     if (l->length >= l->capacity) {
-        l->capacity *= 2;
-        l->items = (MdhValue *)GC_realloc(l->items, sizeof(MdhValue) * l->capacity);
+        int64_t new_cap = l->capacity > 0 ? l->capacity * 2 : 8;
+        if (new_cap <= l->length || (uint64_t)new_cap > SIZE_MAX / sizeof(MdhValue)) {
+            __mdh_hurl(__mdh_make_string("Och! This list's grown ower muckle"));
+            return;
+        }
+        MdhValue *grown = (MdhValue *)GC_realloc(l->items, sizeof(MdhValue) * (size_t)new_cap);
+        if (!grown) {
+            __mdh_hurl(__mdh_make_string("Och! This list's grown ower muckle"));
+            return;
+        }
+        l->items = grown;
+        l->capacity = new_cap;
     }
 
     l->items[l->length++] = value;
@@ -3195,8 +3249,10 @@ typedef struct {
     MdhValue func;
     MdhValue args;
     MdhValue result;
+    MdhValue error;           /* The worker's uncaught hurl, when failed */
     int done;
     int detached;
+    int failed;
 } MdhThread;
 
 typedef struct {
@@ -3227,44 +3283,100 @@ typedef struct {
 
 static int __mdh_gc_threads_ready = 0;
 
-static MdhThread *__mdh_thread_ptr(MdhValue v) {
+/* Native handles (thread/mutex/condvar/atomic/channel) are 1-based indices into this
+ * table, not raw pointers, so a forged or wrong-kind integer is rejected with a
+ * catchable error instead of being dereferenced (MDH-BUG-FLU-00054). The table is
+ * GC-allocated and reachable from a static root, so it keeps the handle objects alive. */
+typedef enum {
+    MDH_HANDLE_THREAD = 1,
+    MDH_HANDLE_MUTEX,
+    MDH_HANDLE_CONDVAR,
+    MDH_HANDLE_ATOMIC,
+    MDH_HANDLE_CHAN
+} MdhHandleKind;
+
+typedef struct {
+    void *ptr;
+    int kind;
+} MdhHandleSlot;
+
+static MdhHandleSlot *__mdh_handle_table = NULL;
+static int64_t __mdh_handle_len = 0;
+static int64_t __mdh_handle_cap = 0;
+static volatile char __mdh_handle_lock = 0;
+
+static void __mdh_handle_lock_acquire(void) {
+    while (__atomic_test_and_set(&__mdh_handle_lock, __ATOMIC_ACQUIRE)) {
+    }
+}
+
+static void __mdh_handle_lock_release(void) {
+    __atomic_clear(&__mdh_handle_lock, __ATOMIC_RELEASE);
+}
+
+static MdhValue __mdh_handle_new(MdhHandleKind kind, void *ptr) {
+    int64_t id = 0;
+    __mdh_handle_lock_acquire();
+    if (__mdh_handle_len == __mdh_handle_cap) {
+        int64_t new_cap = __mdh_handle_cap > 0 ? __mdh_handle_cap * 2 : 16;
+        MdhHandleSlot *grown =
+            (MdhHandleSlot *)GC_realloc(__mdh_handle_table, sizeof(MdhHandleSlot) * (size_t)new_cap);
+        if (grown) {
+            __mdh_handle_table = grown;
+            __mdh_handle_cap = new_cap;
+        }
+    }
+    if (__mdh_handle_len < __mdh_handle_cap) {
+        __mdh_handle_table[__mdh_handle_len].ptr = ptr;
+        __mdh_handle_table[__mdh_handle_len].kind = (int)kind;
+        id = ++__mdh_handle_len;
+    }
+    __mdh_handle_lock_release();
+    if (id == 0) {
+        __mdh_hurl(__mdh_make_string("Och! Ran oot o' room fer native handles"));
+        return __mdh_make_nil();
+    }
+    return __mdh_make_int(id);
+}
+
+static void *__mdh_handle_get(MdhValue v, MdhHandleKind kind, const char *what) {
     if (v.tag != MDH_TAG_INT) {
-        __mdh_type_error("thread", v.tag, 0);
+        __mdh_type_error(what, v.tag, 0);
         return NULL;
     }
-    return (MdhThread *)(intptr_t)v.data;
+    void *ptr = NULL;
+    __mdh_handle_lock_acquire();
+    if (v.data >= 1 && v.data <= __mdh_handle_len &&
+        __mdh_handle_table[v.data - 1].kind == (int)kind) {
+        ptr = __mdh_handle_table[v.data - 1].ptr;
+    }
+    __mdh_handle_lock_release();
+    if (!ptr) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "Unknown %s handle", what);
+        __mdh_hurl(__mdh_make_string(buf));
+    }
+    return ptr;
+}
+
+static MdhThread *__mdh_thread_ptr(MdhValue v) {
+    return (MdhThread *)__mdh_handle_get(v, MDH_HANDLE_THREAD, "thread");
 }
 
 static MdhMutex *__mdh_mutex_ptr(MdhValue v) {
-    if (v.tag != MDH_TAG_INT) {
-        __mdh_type_error("mutex", v.tag, 0);
-        return NULL;
-    }
-    return (MdhMutex *)(intptr_t)v.data;
+    return (MdhMutex *)__mdh_handle_get(v, MDH_HANDLE_MUTEX, "mutex");
 }
 
 static MdhCondvar *__mdh_condvar_ptr(MdhValue v) {
-    if (v.tag != MDH_TAG_INT) {
-        __mdh_type_error("condvar", v.tag, 0);
-        return NULL;
-    }
-    return (MdhCondvar *)(intptr_t)v.data;
+    return (MdhCondvar *)__mdh_handle_get(v, MDH_HANDLE_CONDVAR, "condvar");
 }
 
 static MdhAtomic *__mdh_atomic_ptr(MdhValue v) {
-    if (v.tag != MDH_TAG_INT) {
-        __mdh_type_error("atomic", v.tag, 0);
-        return NULL;
-    }
-    return (MdhAtomic *)(intptr_t)v.data;
+    return (MdhAtomic *)__mdh_handle_get(v, MDH_HANDLE_ATOMIC, "atomic");
 }
 
 static MdhChan *__mdh_chan_ptr(MdhValue v) {
-    if (v.tag != MDH_TAG_INT) {
-        __mdh_type_error("chan", v.tag, 0);
-        return NULL;
-    }
-    return (MdhChan *)(intptr_t)v.data;
+    return (MdhChan *)__mdh_handle_get(v, MDH_HANDLE_CHAN, "channel");
 }
 
 static MdhValue __mdh_call_with_list(MdhValue func_val, MdhValue args_list) {
@@ -3368,7 +3480,18 @@ static void *__mdh_thread_entry(void *arg) {
     if (GC_get_stack_base(&sb) == 0) {
         GC_register_my_thread(&sb);
     }
-    t->result = __mdh_call_with_list(t->func, t->args);
+    /* An uncaught hurl in the worker lands here (the try stack is per thread) and is
+     * re-raised by thread_join in the joining thread, instead of exiting the process. */
+    jmp_buf env;
+    __mdh_try_push(&env);
+    if (setjmp(env) == 0) {
+        t->result = __mdh_call_with_list(t->func, t->args);
+        __mdh_try_pop();
+    } else {
+        __mdh_try_pop();
+        t->error = __mdh_get_last_error();
+        t->failed = 1;
+    }
     t->done = 1;
     GC_unregister_my_thread();
     return NULL;
@@ -3392,7 +3515,7 @@ MdhValue __mdh_thread_spawn(MdhValue func, MdhValue args_list) {
         __mdh_hurl(__mdh_make_string("thread_spawn failed"));
         return __mdh_make_nil();
     }
-    return __mdh_make_int((int64_t)(intptr_t)t);
+    return __mdh_handle_new(MDH_HANDLE_THREAD, t);
 }
 
 MdhValue __mdh_thread_join(MdhValue thread_handle) {
@@ -3401,6 +3524,7 @@ MdhValue __mdh_thread_join(MdhValue thread_handle) {
 
     /* Already joined - return cached result */
     if (t->thread == NULL) {
+        if (t->failed && !t->detached) __mdh_hurl(t->error);
         return t->result;
     }
 
@@ -3411,6 +3535,8 @@ MdhValue __mdh_thread_join(MdhValue thread_handle) {
 
     mdh_thread_join(t->thread, NULL);
     t->thread = NULL;  /* Handle freed by mdh_thread_join */
+    /* Re-raise the worker's uncaught error in the joining thread. */
+    if (t->failed) __mdh_hurl(t->error);
     return t->result;
 }
 
@@ -3429,7 +3555,7 @@ MdhValue __mdh_thread_detach(MdhValue thread_handle) {
 MdhValue __mdh_mutex_new(void) {
     MdhMutex *m = (MdhMutex *)GC_malloc(sizeof(MdhMutex));
     m->mutex = mdh_mutex_create();
-    return __mdh_make_int((int64_t)(intptr_t)m);
+    return __mdh_handle_new(MDH_HANDLE_MUTEX, m);
 }
 
 MdhValue __mdh_mutex_lock(MdhValue mutex) {
@@ -3456,7 +3582,7 @@ MdhValue __mdh_mutex_try_lock(MdhValue mutex) {
 MdhValue __mdh_condvar_new(void) {
     MdhCondvar *c = (MdhCondvar *)GC_malloc(sizeof(MdhCondvar));
     c->cond = mdh_cond_create();
-    return __mdh_make_int((int64_t)(intptr_t)c);
+    return __mdh_handle_new(MDH_HANDLE_CONDVAR, c);
 }
 
 MdhValue __mdh_condvar_wait(MdhValue condvar, MdhValue mutex) {
@@ -3508,7 +3634,7 @@ MdhValue __mdh_atomic_new(MdhValue initial_int) {
     MdhAtomic *a = (MdhAtomic *)GC_malloc(sizeof(MdhAtomic));
     a->lock = mdh_mutex_create();
     a->value = val;
-    return __mdh_make_int((int64_t)(intptr_t)a);
+    return __mdh_handle_new(MDH_HANDLE_ATOMIC, a);
 }
 
 MdhValue __mdh_atomic_load(MdhValue atomic) {
@@ -3601,7 +3727,7 @@ MdhValue __mdh_chan_new(MdhValue capacity_int) {
         ch->cap = cap;
         ch->buf = (MdhValue *)GC_malloc(sizeof(MdhValue) * (size_t)cap);
     }
-    return __mdh_make_int((int64_t)(intptr_t)ch);
+    return __mdh_handle_new(MDH_HANDLE_CHAN, ch);
 }
 
 MdhValue __mdh_chan_send(MdhValue chan, MdhValue value) {
@@ -5118,10 +5244,10 @@ MdhValue __mdh_center(MdhValue str, MdhValue width_val) {
     size_t byte_len = strlen(s);
     int64_t total_pad = width - char_len;
     int64_t left_pad = total_pad / 2;
-    int64_t right_pad = total_pad - left_pad;
 
-    size_t out_len = (size_t)left_pad + byte_len + (size_t)right_pad;
-    char *buf = (char *)GC_malloc(out_len + 1);
+    size_t out_len = 0;
+    int overflowed = __builtin_add_overflow((size_t)total_pad, byte_len, &out_len);
+    char *buf = __mdh_alloc_text(overflowed, out_len);
     memset(buf, ' ', out_len);
     memcpy(buf + left_pad, s, byte_len);
     buf[out_len] = '\0';
@@ -5583,15 +5709,7 @@ MdhValue __mdh_repeat_say(MdhValue str, MdhValue count_val) {
     int64_t count = count_val.data;
     if (count <= 0) return __mdh_make_string("");
 
-    int64_t len = strlen(s);
-    int64_t total_len = len * count;
-
-    char *buf = (char *)GC_malloc(total_len + 1);
-    for (int64_t i = 0; i < count; i++) {
-        memcpy(buf + i * len, s, len);
-    }
-    buf[total_len] = '\0';
-    return __mdh_make_string(buf);
+    return __mdh_string_repeat_checked(s, count);
 }
 
 MdhValue __mdh_leftpad(MdhValue str, MdhValue width_val, MdhValue pad_val) {
@@ -5616,10 +5734,12 @@ MdhValue __mdh_leftpad(MdhValue str, MdhValue width_val, MdhValue pad_val) {
     }
 
     size_t byte_len = strlen(s);
-    size_t pad_bytes_len = (size_t)pad_chars * fill_len;
-    size_t out_len = pad_bytes_len + byte_len;
+    size_t pad_bytes_len = 0;
+    size_t out_len = 0;
+    int overflowed = __builtin_mul_overflow((size_t)pad_chars, fill_len, &pad_bytes_len) ||
+                     __builtin_add_overflow(pad_bytes_len, byte_len, &out_len);
 
-    char *buf = (char *)GC_malloc(out_len + 1);
+    char *buf = __mdh_alloc_text(overflowed, out_len);
     for (int64_t i = 0; i < pad_chars; i++) {
         memcpy(buf + (size_t)i * fill_len, fill_bytes, fill_len);
     }
@@ -5650,10 +5770,12 @@ MdhValue __mdh_rightpad(MdhValue str, MdhValue width_val, MdhValue pad_val) {
     }
 
     size_t byte_len = strlen(s);
-    size_t pad_bytes_len = (size_t)pad_chars * fill_len;
-    size_t out_len = byte_len + pad_bytes_len;
+    size_t pad_bytes_len = 0;
+    size_t out_len = 0;
+    int overflowed = __builtin_mul_overflow((size_t)pad_chars, fill_len, &pad_bytes_len) ||
+                     __builtin_add_overflow(byte_len, pad_bytes_len, &out_len);
 
-    char *buf = (char *)GC_malloc(out_len + 1);
+    char *buf = __mdh_alloc_text(overflowed, out_len);
     memcpy(buf, s, byte_len);
     for (int64_t i = 0; i < pad_chars; i++) {
         memcpy(buf + byte_len + (size_t)i * fill_len, fill_bytes, fill_len);
@@ -8702,9 +8824,12 @@ MdhValue __mdh_sporran_fill(MdhValue str, MdhValue width, MdhValue fill_char) {
     int64_t pad_chars = (int64_t)w - char_len;
     size_t left_chars = (size_t)pad_chars / 2;
     size_t right_chars = (size_t)pad_chars - left_chars;
-    size_t out_len = left_chars * fill_len + byte_len + right_chars * fill_len;
+    size_t pad_bytes = 0;
+    size_t out_len = 0;
+    int overflowed = __builtin_mul_overflow((size_t)pad_chars, fill_len, &pad_bytes) ||
+                     __builtin_add_overflow(pad_bytes, byte_len, &out_len);
 
-    char *out = (char *)GC_malloc(out_len + 1);
+    char *out = __mdh_alloc_text(overflowed, out_len);
     size_t pos = 0;
     for (size_t i = 0; i < left_chars; i++) {
         memcpy(out + pos, fill_bytes, fill_len);
@@ -9640,8 +9765,13 @@ MdhValue __mdh_tattie_scone(MdhValue str, MdhValue n) {
     }
     size_t slen = strlen(s);
     size_t sep_len = 3; /* " | " */
-    size_t out_len = (size_t)count * slen + (size_t)(count - 1) * sep_len;
-    char *out = (char *)GC_malloc(out_len + 1);
+    size_t items_len = 0;
+    size_t seps_len = 0;
+    size_t out_len = 0;
+    int overflowed = __builtin_mul_overflow((size_t)count, slen, &items_len) ||
+                     __builtin_mul_overflow((size_t)(count - 1), sep_len, &seps_len) ||
+                     __builtin_add_overflow(items_len, seps_len, &out_len);
+    char *out = __mdh_alloc_text(overflowed, out_len);
     size_t pos = 0;
     for (int64_t i = 0; i < count; i++) {
         if (i > 0) {
@@ -9737,18 +9867,36 @@ MdhValue __mdh_bampot_mode(MdhValue list) {
 
 /* ========== Exceptions (Try/Catch/Hurl) ========== */
 
-#define MDH_TRY_MAX_DEPTH 64
-static jmp_buf * __mdh_try_stack[MDH_TRY_MAX_DEPTH];
-static int __mdh_try_depth = 0;
-static MdhValue __mdh_last_error;
+/* Generated code reserves this many bytes (16-byte aligned) per try site in the
+ * function's entry block; keep in step with JMP_BUF_RESERVE in src/llvm/codegen.rs. */
+#define MDH_JMP_BUF_RESERVE 512
+_Static_assert(sizeof(jmp_buf) <= MDH_JMP_BUF_RESERVE,
+               "jmp_buf is bigger than the space the LLVM backend reserves for it");
+
+/* The handler stack is per thread, so a hurl on a worker thread can never longjmp
+ * into another thread's frames. It grows on demand: no silent depth limit. */
+static __thread jmp_buf **__mdh_try_stack = NULL;
+static __thread int64_t __mdh_try_depth = 0;
+static __thread int64_t __mdh_try_cap = 0;
+static __thread MdhValue __mdh_last_error;
 
 int64_t __mdh_jmp_buf_size(void) {
     return (int64_t)sizeof(jmp_buf);
 }
 
 void __mdh_try_push(void *env) {
-    if (__mdh_try_depth >= MDH_TRY_MAX_DEPTH) {
-        return;
+    if (__mdh_try_depth >= __mdh_try_cap) {
+        int64_t new_cap = __mdh_try_cap > 0 ? __mdh_try_cap * 2 : 64;
+        jmp_buf **grown = NULL;
+        if (new_cap > __mdh_try_cap && (uint64_t)new_cap <= SIZE_MAX / sizeof(jmp_buf *)) {
+            grown = (jmp_buf **)realloc(__mdh_try_stack, (size_t)new_cap * sizeof(jmp_buf *));
+        }
+        if (!grown) {
+            fprintf(stderr, "Och! Ran oot o' room fer nested hae_a_bash blocks\n");
+            exit(1);
+        }
+        __mdh_try_stack = grown;
+        __mdh_try_cap = new_cap;
     }
     __mdh_try_stack[__mdh_try_depth++] = (jmp_buf *)env;
 }
