@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00071 — Native: a user function named main breaks lookups of other functions
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-23T02:06:57Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T035055Z-62298b79
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00071-run-fix-20261023T035055Z-62298b79
-- **Owner base:** 8a6829261a996bee551fc4823a395e5b14186d08
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T03:50:55Z
-- **Owner until:** 2026-10-23T07:50:55Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T02:06:57Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-23T02:06:57Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T03:51:02Z, deltic:auto role=fix run=fix-20261023T035055Z-62298b79 branch=task/bug-MDH-BUG-FLU-00071-run-fix-20261023T035055Z-62298b79 code=6029d44 gate=manual)
 
 ## Observation
 
