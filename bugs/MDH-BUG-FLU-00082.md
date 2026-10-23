@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00082 — C runtime __mdh_replace computes the result size without overflow checks
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-23T03:06:28Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T035207Z-d349c40a
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00082-run-fix-20261023T035207Z-d349c40a
-- **Owner base:** 7fbd2a1f2be1d7fa700fa9f4b980224089bbfdc9
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T03:52:07Z
-- **Owner until:** 2026-10-23T07:52:07Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T03:06:28Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-23T03:06:28Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T03:52:14Z, deltic:auto role=fix run=fix-20261023T035207Z-d349c40a branch=task/bug-MDH-BUG-FLU-00082-run-fix-20261023T035207Z-d349c40a code=6029d44 gate=manual)
 
 ## Observation
 
