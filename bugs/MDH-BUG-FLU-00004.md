@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00004 — Unchecked integer maths in natives panics or silently wraps (abs, pooer, gcd, lcm, jammy)
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** High
 - **Area:** interpreter
 - **Raised:** 2026-10-22T23:24:06Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T014830Z-f8bfe59f
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00004-run-fix-20261023T014830Z-f8bfe59f
-- **Owner base:** 5a981ad15acd999c83e0bdcd2dccc6f35652bdfa
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T01:48:30Z
-- **Owner until:** 2026-10-23T05:48:30Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-22T23:24:06Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-22T23:24:06Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T01:48:36Z, deltic:auto role=fix run=fix-20261023T014830Z-f8bfe59f branch=task/bug-MDH-BUG-FLU-00004-run-fix-20261023T014830Z-f8bfe59f code=d84823a gate=manual)
 
 ## Observation
 
