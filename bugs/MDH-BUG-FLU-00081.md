@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00081 — Native: toss_in/heave_oot overwrite the storage of boxed variables
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-23T03:06:28Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261023T035143Z-f07eb672
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00081-run-fix-20261023T035143Z-f07eb672
-- **Owner base:** 235a458de45868c9298cf9e392041a4b298aefeb
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-23T03:51:43Z
-- **Owner until:** 2026-10-23T07:51:43Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T03:06:28Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-23T03:06:28Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-23T03:51:49Z, deltic:auto role=fix run=fix-20261023T035143Z-f07eb672 branch=task/bug-MDH-BUG-FLU-00081-run-fix-20261023T035143Z-f07eb672 code=6029d44 gate=manual)
 
 ## Observation
 
