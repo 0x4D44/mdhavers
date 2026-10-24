@@ -31,7 +31,7 @@ ken neg = -a
 ken t = gin aye than 1 ither 2
 ken blk = {
     ken z = 1
-    gie z
+    z
 }
 ken who = speir "who?"
 ken msg = f"hi {a}"
