@@ -85,6 +85,8 @@ MdhValue __mdh_mul(MdhValue a, MdhValue b);
 MdhValue __mdh_div(MdhValue a, MdhValue b);
 MdhValue __mdh_mod(MdhValue a, MdhValue b);
 MdhValue __mdh_neg(MdhValue a);
+/* Hurl the integer-overflow error with the running line (does not return). */
+void __mdh_int_overflow_error(void);
 
 /* ========== Comparison Operations ========== */
 

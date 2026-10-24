@@ -38,9 +38,6 @@ use crate::error::HaversError;
 
 use super::types::{MdhTypes, ValueTag};
 
-/// Hurled on i64 overflow (the interpreter's IntegerOverflow, without the line).
-/// Keep in step with MDH_INT_OVERFLOW_MSG in runtime/mdh_runtime.c.
-const INT_OVERFLOW_MSG: &str = "Wheesht! Yer number's too muckle - it's overflowed!";
 /// Hurled when a string size computation would overflow or cannot be allocated.
 /// Keep in step with MDH_STRING_TOO_BIG_MSG in runtime/mdh_runtime.c.
 const STRING_TOO_BIG_MSG: &str = "Och! That string would be ower muckle tae fit in memory";
@@ -587,6 +584,11 @@ pub struct CodeGen<'ctx> {
     /// so a body can use a global the file declares later (MDH-BUG-FLU-00072).
     forward_globals: HashMap<String, PointerValue<'ctx>>,
 
+    /// Per forward global read before its `ken` was compiled: a flag the `ken` sets, so
+    /// a body that runs earlier raises the interpreter's undefined-variable error
+    /// instead of reading naething (MDH-BUG-FLU-00095). Only forward reads check it.
+    forward_global_defined_flags: HashMap<String, GlobalValue<'ctx>>,
+
     /// Set by an expression statement that is an assignment, and consumed by
     /// `Expr::Assign`: the assigned value is discarded, so it cannot escape.
     assign_value_unused: bool,
@@ -765,6 +767,7 @@ impl<'ctx> CodeGen<'ctx> {
             var_types: HashMap::new(),
             unstable_vars: HashSet::new(),
             forward_globals: HashMap::new(),
+            forward_global_defined_flags: HashMap::new(),
             assign_value_unused: false,
             variable_class_types: HashMap::new(),
             functions: HashMap::new(),
@@ -855,11 +858,23 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Bind top-level variable `name` to its LLVM global and register it in `globals`.
+    /// Called where its `ken` runs, so this also marks a forward global defined.
     fn top_level_global(&mut self, name: &str) -> PointerValue<'ctx> {
         let global_ptr = self.global_symbol_ptr(name);
-        self.forward_globals.remove(name);
+        self.retire_forward_global(name);
         self.globals.insert(name.to_string(), global_ptr);
         global_ptr
+    }
+
+    /// `name`'s top-level `ken` is being compiled: later code sees it as an ordinary
+    /// global, and a body compiled earlier that reads it forward may now do so.
+    fn retire_forward_global(&mut self, name: &str) {
+        self.forward_globals.remove(name);
+        if let Some(flag) = self.forward_global_defined_flags.get(name).copied() {
+            if self.builder.get_insert_block().is_some() {
+                self.mark_global_defined_flag(flag);
+            }
+        }
     }
 
     /// A forward-declared global (see `forward_globals`), visible only outside main.
@@ -872,6 +887,34 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             self.forward_globals.get(name).copied()
         }
+    }
+
+    /// The visible forward global `name`, behind a runtime check that its `ken` has run:
+    /// before that, the interpreter raises "'name' hasnae been defined yet"
+    /// (MDH-BUG-FLU-00095). Ordinary global reads carry no such check.
+    fn guarded_forward_global(&mut self, name: &str) -> Option<PointerValue<'ctx>> {
+        let global = self.visible_forward_global(name)?;
+        let flag = match self.forward_global_defined_flags.get(name).copied() {
+            Some(flag) => flag,
+            None => {
+                let flag_name = format!("__mdh_fwd_defined__{name}");
+                let flag = match self.module.get_global(&flag_name) {
+                    Some(existing) => existing,
+                    None => {
+                        let flag = self
+                            .module
+                            .add_global(self.types.bool_type, None, &flag_name);
+                        flag.set_initializer(&self.types.bool_type.const_int(0, false));
+                        flag
+                    }
+                };
+                self.forward_global_defined_flags
+                    .insert(name.to_string(), flag);
+                flag
+            }
+        };
+        self.guard_global_defined_flag(Some(flag), name, "fwd_global_defined");
+        Some(global)
     }
 
     fn sanitize_symbol(input: &str) -> String {
@@ -5977,6 +6020,27 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(ok_block);
     }
 
+    /// Branch to a block that raises the interpreter's integer-overflow error (with the
+    /// running line, MDH-BUG-FLU-00093) when `cond` is true; continue emitting on the
+    /// fall-through path.
+    fn emit_int_overflow_if(&mut self, cond: IntValue<'ctx>, label: &str) {
+        let function = self.current_function.unwrap();
+        let fail_block = self
+            .context
+            .append_basic_block(function, &format!("{label}_fail"));
+        let ok_block = self
+            .context
+            .append_basic_block(function, &format!("{label}_ok"));
+        self.builder
+            .build_conditional_branch(cond, fail_block, ok_block)
+            .unwrap();
+        self.builder.position_at_end(fail_block);
+        let f = self.runtime_error_fn("__mdh_int_overflow_error", 0);
+        self.builder.build_call(f, &[], "").unwrap();
+        self.builder.build_unreachable().unwrap();
+        self.builder.position_at_end(ok_block);
+    }
+
     /// `l op r` on raw i64 operands with the interpreter's checked semantics
     /// (MDH-BUG-FLU-00050): add/sub/mul overflow and `i64::MIN / -1` (or `% -1`) hurl
     /// the integer-overflow error; division or modulo by zero hurls as before.
@@ -6028,7 +6092,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_extract_value(pair, 1, &format!("{name}_overflowed"))
                     .unwrap()
                     .into_int_value();
-                self.emit_hurl_if(overflowed, INT_OVERFLOW_MSG, &format!("{name}_overflow"));
+                self.emit_int_overflow_if(overflowed, &format!("{name}_overflow"));
                 value
             }
             BinaryOp::Divide | BinaryOp::Modulo => {
@@ -6053,7 +6117,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_and(l_is_min, r_is_minus_one, &format!("{name}_min_by_m1"))
                     .unwrap();
-                self.emit_hurl_if(overflows, INT_OVERFLOW_MSG, &format!("{name}_overflow"));
+                self.emit_int_overflow_if(overflows, &format!("{name}_overflow"));
 
                 if matches!(op, BinaryOp::Divide) {
                     self.builder.build_int_signed_div(l, r, name).unwrap()
@@ -7158,8 +7222,23 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let float_end = self.builder.get_insert_block().unwrap();
 
-        // type error
+        // type error, unless the divisor is an integer zero: the interpreter checks that
+        // before the operand types, so `1.5 % 0` divides by zero (MDH-BUG-FLU-00089).
         self.builder.position_at_end(error_block);
+        let right_is_zero = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                right_data,
+                self.types.i64_type.const_zero(),
+                "mod_r_zero",
+            )
+            .unwrap();
+        let right_is_int_zero = self
+            .builder
+            .build_and(right_is_int, right_is_zero, "mod_r_int_zero")
+            .unwrap();
+        self.emit_div_by_zero_if(right_is_int_zero, "mod_mixed_zero");
         let op = self
             .builder
             .build_global_string_ptr("modulo", "mod_op")
@@ -12705,10 +12784,10 @@ impl<'ctx> CodeGen<'ctx> {
                 // Reads/writes dereference/update element 0, enabling mutable captures.
                 if self.boxed_vars.contains(name) {
                     self.var_types.insert(name.clone(), VarType::Unknown);
-                    if !self.in_user_function
+                    let is_top_level = !self.in_user_function
                         && self.current_class.is_none()
-                        && self.loop_stack.is_empty()
-                    {
+                        && self.loop_stack.is_empty();
+                    if is_top_level {
                         self.forward_globals.remove(name);
                     }
 
@@ -12743,6 +12822,10 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
 
                     self.builder.build_store(alloca, cell).unwrap();
+                    if is_top_level {
+                        // The `ken` has run: forward reads compiled earlier may proceed.
+                        self.retire_forward_global(name);
+                    }
 
                     // Boxed values are incompatible with shadows.
                     self.int_shadows.remove(name);
@@ -13035,8 +13118,10 @@ impl<'ctx> CodeGen<'ctx> {
             } => self.compile_if(condition, then_branch, else_branch.as_deref()),
 
             Stmt::While {
-                condition, body, ..
-            } => self.compile_while(condition, body),
+                condition,
+                body,
+                span,
+            } => self.compile_while(condition, body, span.line),
 
             Stmt::For {
                 variable,
@@ -13828,7 +13913,7 @@ impl<'ctx> CodeGen<'ctx> {
                     // Built-in constant: TAU (2*PI)
                     let tau_val = self.context.f64_type().const_float(std::f64::consts::TAU);
                     Ok(self.make_float(tau_val))
-                } else if let Some(global) = self.visible_forward_global(name) {
+                } else if let Some(global) = self.guarded_forward_global(name) {
                     // A global the file declares further down (MDH-BUG-FLU-00072).
                     Ok(self
                         .builder
@@ -14052,13 +14137,18 @@ impl<'ctx> CodeGen<'ctx> {
 
                 // Fall back to standard path
                 let val = self.compile_expr(value)?;
-                // Look up variable location - check locals first, then globals
-                let alloca = self
+                // Look up variable location - check locals first, then globals. Assigning
+                // a forward global before its `ken` has run is undefined, as in the
+                // interpreter (MDH-BUG-FLU-00095).
+                let alloca = match self
                     .variables
                     .get(name)
                     .copied()
                     .or_else(|| self.globals.get(name).copied())
-                    .or_else(|| self.visible_forward_global(name));
+                {
+                    Some(alloca) => Some(alloca),
+                    None => self.guarded_forward_global(name),
+                };
                 if let Some(alloca) = alloca {
                     self.builder.build_store(alloca, val).unwrap();
                     // Every shadow of the name must follow the new value
@@ -26995,7 +27085,12 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
-    fn compile_while(&mut self, condition: &Expr, body: &Stmt) -> Result<(), HaversError> {
+    fn compile_while(
+        &mut self,
+        condition: &Expr,
+        body: &Stmt,
+        line: usize,
+    ) -> Result<(), HaversError> {
         let function = self.current_function.unwrap();
 
         let loop_block = self.context.append_basic_block(function, "loop");
@@ -27018,6 +27113,9 @@ impl<'ctx> CodeGen<'ctx> {
         self.in_loop_body = true;
 
         self.builder.position_at_end(loop_block);
+        // The body moved the error line on; an error in the condition belongs to the
+        // loop's own line (MDH-BUG-FLU-00090).
+        self.emit_set_current_line(line);
         // Optimization: try to compile condition directly to i1 without boxing
         let cond_bool = if let Some(direct) = self.compile_condition_direct(condition)? {
             direct
@@ -28993,308 +29091,39 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(result)
     }
 
-    /// Helper for dict indexing - searches for key and returns corresponding value
-    /// Dict layout: [i64 count][entry0][entry1]... where entry = [{i8,i64} key][{i8,i64} val]
+    /// Helper for dict indexing: the value stored under `key_val` in the dict whose handle
+    /// is `dict_data`. The runtime looks it up through the dict's hash index once the dict
+    /// has a few keys, instead of an inline linear scan (MDH-BUG-FLU-00091); a missing key
+    /// raises the interpreter's "hasnae been defined yet" error, as before.
     fn compile_dict_index(
         &mut self,
         dict_data: IntValue<'ctx>,
         key_val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
-        let function = self.current_function.unwrap();
-
-        // Dict values store a stable handle pointer to the payload pointer.
-        // Load payload pointer then proceed with payload layout decoding.
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let payload_data = self.load_kv_payload_ptr(dict_data, "dict_index");
-        let dict_ptr = self
-            .builder
-            .build_int_to_ptr(payload_data, i8_ptr_type, "dict_ptr")
-            .unwrap();
-
-        // Get dict count
-        let count_ptr = self
-            .builder
-            .build_pointer_cast(dict_ptr, i64_ptr_type, "count_ptr")
-            .unwrap();
-        let dict_count = self
-            .builder
-            .build_load(self.types.i64_type, count_ptr, "dict_count")
-            .unwrap()
-            .into_int_value();
-
-        // Extract key tag and data for comparison
-        let key_tag = self.extract_tag(key_val).unwrap();
-        let key_data = self.extract_data(key_val).unwrap();
-
-        // Allocate result pointer and found flag
-        let result_ptr = self
-            .builder
-            .build_alloca(self.types.value_type, "result_ptr")
-            .unwrap();
-        self.builder
-            .build_store(result_ptr, self.make_nil())
-            .unwrap();
-
-        let found_ptr = self
-            .builder
-            .build_alloca(self.context.bool_type(), "dict_key_found")
-            .unwrap();
-        self.builder
-            .build_store(found_ptr, self.context.bool_type().const_int(0, false))
-            .unwrap();
-
-        // Loop through entries to find matching key
-        let zero = self.types.i64_type.const_int(0, false);
-        let one = self.types.i64_type.const_int(1, false);
-        let header_size = self.types.i64_type.const_int(8, false); // sizeof(i64) for count
-        let entry_size = self.types.i64_type.const_int(32, false);
-        let value_offset_in_entry = self.types.i64_type.const_int(16, false);
-
-        let idx_ptr = self
-            .builder
-            .build_alloca(self.types.i64_type, "idx")
-            .unwrap();
-        self.builder.build_store(idx_ptr, zero).unwrap();
-
-        let loop_block = self
-            .context
-            .append_basic_block(function, "dict_lookup_loop");
-        let body_block = self
-            .context
-            .append_basic_block(function, "dict_lookup_body");
-        let found_block = self.context.append_basic_block(function, "dict_found");
-        let continue_block = self.context.append_basic_block(function, "dict_continue");
-        let done_block = self
-            .context
-            .append_basic_block(function, "dict_lookup_done");
-
-        self.builder.build_unconditional_branch(loop_block).unwrap();
-        self.builder.position_at_end(loop_block);
-
-        let idx = self
-            .builder
-            .build_load(self.types.i64_type, idx_ptr, "idx_val")
-            .unwrap()
-            .into_int_value();
-        let done_cond = self
-            .builder
-            .build_int_compare(IntPredicate::UGE, idx, dict_count, "done")
-            .unwrap();
-        self.builder
-            .build_conditional_branch(done_cond, done_block, body_block)
-            .unwrap();
-
-        self.builder.position_at_end(body_block);
-
-        // Get entry key from dict
-        let dict_entry_offset = self
-            .builder
-            .build_int_add(
-                header_size,
-                self.builder
-                    .build_int_mul(idx, entry_size, "entry_mul")
-                    .unwrap(),
-                "entry_offset",
-            )
-            .unwrap();
-        let dict_key_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.context.i8_type(),
-                    dict_ptr,
-                    &[dict_entry_offset],
-                    "dict_key_ptr",
-                )
-                .unwrap()
-        };
-        let key_value_ptr = self
-            .builder
-            .build_pointer_cast(
-                dict_key_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "key_value_ptr",
-            )
-            .unwrap();
-        let entry_key = self
-            .builder
-            .build_load(self.types.value_type, key_value_ptr, "entry_key")
-            .unwrap();
-
-        // Compare keys - check both tag and data match
-        let entry_key_tag = self.extract_tag(entry_key).unwrap();
-        let entry_key_data = self.extract_data(entry_key).unwrap();
-
-        let tags_match = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, key_tag, entry_key_tag, "tags_match")
-            .unwrap();
-
-        // For strings, compare by content (strcmp), not pointer equality.
-        //
-        // Important: only do this when tags match; otherwise we'd interpret non-string
-        // key data as a char pointer and could segfault (e.g. looking up "x" against
-        // an int key).
-        let string_tag = self
+        let dict_tag = self
             .types
             .i8_type
-            .const_int(ValueTag::String.as_u8() as u64, false);
-        let key_is_string = self
+            .const_int(ValueTag::Dict.as_u8() as u64, false);
+        let undef = self.types.value_type.get_undef();
+        let with_tag = self
             .builder
-            .build_int_compare(IntPredicate::EQ, key_tag, string_tag, "key_is_string")
+            .build_insert_value(undef, dict_tag, 0, "dict_index_tag")
             .unwrap();
-        let is_string = self
+        let dict_val = self
             .builder
-            .build_and(tags_match, key_is_string, "is_string_key")
-            .unwrap();
-
-        let data_match = self
-            .builder
-            .build_int_compare(IntPredicate::EQ, key_data, entry_key_data, "data_match")
-            .unwrap();
-
-        let eq_str_block = self.context.append_basic_block(function, "dict_key_eq_str");
-        let eq_other_block = self
-            .context
-            .append_basic_block(function, "dict_key_eq_other");
-        let eq_merge_block = self
-            .context
-            .append_basic_block(function, "dict_key_eq_merge");
-
+            .build_insert_value(with_tag, dict_data, 1, "dict_index_dict")
+            .unwrap()
+            .into_struct_value();
         self.builder
-            .build_conditional_branch(is_string, eq_str_block, eq_other_block)
-            .unwrap();
-
-        // String compare branch
-        self.builder.position_at_end(eq_str_block);
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let key_ptr = self
-            .builder
-            .build_int_to_ptr(key_data, i8_ptr_type, "key_ptr")
-            .unwrap();
-        let entry_key_ptr = self
-            .builder
-            .build_int_to_ptr(entry_key_data, i8_ptr_type, "entry_key_ptr")
-            .unwrap();
-        let cmp = self
-            .builder
             .build_call(
-                self.libc.strcmp,
-                &[key_ptr.into(), entry_key_ptr.into()],
-                "cmp",
+                self.libc.dict_get,
+                &[dict_val.into(), key_val.into()],
+                "dict_result",
             )
             .unwrap()
             .try_as_basic_value()
             .left()
-            .unwrap()
-            .into_int_value();
-        let str_eq = self
-            .builder
-            .build_int_compare(
-                IntPredicate::EQ,
-                cmp,
-                self.types.i32_type.const_int(0, false),
-                "str_eq",
-            )
-            .unwrap();
-        self.builder
-            .build_unconditional_branch(eq_merge_block)
-            .unwrap();
-        let eq_str_end = self.builder.get_insert_block().unwrap();
-
-        // Non-string branch
-        self.builder.position_at_end(eq_other_block);
-        self.builder
-            .build_unconditional_branch(eq_merge_block)
-            .unwrap();
-        let eq_other_end = self.builder.get_insert_block().unwrap();
-
-        // Merge data-equality result
-        self.builder.position_at_end(eq_merge_block);
-        let data_eq_phi = self
-            .builder
-            .build_phi(self.context.bool_type(), "key_data_eq")
-            .unwrap();
-        data_eq_phi.add_incoming(&[(&str_eq, eq_str_end), (&data_match, eq_other_end)]);
-        let data_eq = data_eq_phi.as_basic_value().into_int_value();
-
-        let keys_match = self
-            .builder
-            .build_and(tags_match, data_eq, "keys_match")
-            .unwrap();
-
-        self.builder
-            .build_conditional_branch(keys_match, found_block, continue_block)
-            .unwrap();
-
-        // Found - get the value
-        self.builder.position_at_end(found_block);
-        let dict_value_offset = self
-            .builder
-            .build_int_add(dict_entry_offset, value_offset_in_entry, "value_offset")
-            .unwrap();
-        let dict_value_ptr = unsafe {
-            self.builder
-                .build_gep(
-                    self.context.i8_type(),
-                    dict_ptr,
-                    &[dict_value_offset],
-                    "dict_value_ptr",
-                )
-                .unwrap()
-        };
-        let value_ptr = self
-            .builder
-            .build_pointer_cast(
-                dict_value_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
-                "value_ptr",
-            )
-            .unwrap();
-        let found_val = self
-            .builder
-            .build_load(self.types.value_type, value_ptr, "found_val")
-            .unwrap();
-        self.builder.build_store(result_ptr, found_val).unwrap();
-        self.builder
-            .build_store(found_ptr, self.context.bool_type().const_int(1, false))
-            .unwrap();
-        self.builder.build_unconditional_branch(done_block).unwrap();
-
-        // Continue loop
-        self.builder.position_at_end(continue_block);
-        let next_idx = self.builder.build_int_add(idx, one, "next_idx").unwrap();
-        self.builder.build_store(idx_ptr, next_idx).unwrap();
-        self.builder.build_unconditional_branch(loop_block).unwrap();
-
-        // Done - if missing, throw; otherwise return result (may be naething).
-        self.builder.position_at_end(done_block);
-        let found = self
-            .builder
-            .build_load(self.context.bool_type(), found_ptr, "dict_found")
-            .unwrap()
-            .into_int_value();
-
-        let ok_block = self.context.append_basic_block(function, "dict_lookup_ok");
-        let missing_block = self
-            .context
-            .append_basic_block(function, "dict_lookup_missing");
-        self.builder
-            .build_conditional_branch(found, ok_block, missing_block)
-            .unwrap();
-
-        self.builder.position_at_end(missing_block);
-        self.builder
-            .build_call(self.libc.key_not_found, &[key_val.into()], "")
-            .unwrap();
-        self.builder.build_unreachable().unwrap();
-
-        self.builder.position_at_end(ok_block);
-        let result = self
-            .builder
-            .build_load(self.types.value_type, result_ptr, "dict_result")
-            .unwrap();
-        Ok(result)
+            .compile_ok_or("dict_get returned void")
     }
 
     /// Compile an index set expression: list[index] = value or dict[key] = value

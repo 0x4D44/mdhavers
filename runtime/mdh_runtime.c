@@ -326,12 +326,26 @@ void __mdh_index_oob(int64_t index, int64_t size) {
 
 /* ========== Arithmetic Operations ========== */
 
-/* Integer overflow hurls, as in the interpreter (keep the text in step with
- * INT_OVERFLOW_MSG in src/llvm/codegen.rs). */
-#define MDH_INT_OVERFLOW_MSG "Wheesht! Yer number's too muckle - it's overflowed!"
+/* Integer overflow hurls the interpreter's IntegerOverflow text, whose line sits
+ * mid-message: "Wheesht! Yer number's too muckle at line N - it's overflowed!"
+ * (MDH-BUG-FLU-00093). Compiled code calls this too. */
+void __mdh_int_overflow_error(void) {
+    char buf[128];
+    if (__mdh_current_line > 0) {
+        snprintf(
+            buf,
+            sizeof(buf),
+            "Wheesht! Yer number's too muckle at line %lld - it's overflowed!",
+            (long long)__mdh_current_line
+        );
+    } else {
+        snprintf(buf, sizeof(buf), "Wheesht! Yer number's too muckle - it's overflowed!");
+    }
+    __mdh_hurl(__mdh_make_string(buf));
+}
 
 static MdhValue __mdh_int_overflow(void) {
-    __mdh_hurl(__mdh_make_string(MDH_INT_OVERFLOW_MSG));
+    __mdh_int_overflow_error();
     return __mdh_make_nil();
 }
 
@@ -458,19 +472,21 @@ MdhValue __mdh_div(MdhValue a, MdhValue b) {
 }
 
 MdhValue __mdh_mod(MdhValue a, MdhValue b) {
+    /* As the interpreter: an integer zero divisor is checked before the operand types,
+     * so `1.5 % 0` divides by zero (MDH-BUG-FLU-00089); only int % int and
+     * float % float are defined. */
+    if (b.tag == MDH_TAG_INT && b.data == 0) {
+        __mdh_div_by_zero();
+        return __mdh_make_nil();
+    }
+
     if (a.tag == MDH_TAG_INT && b.tag == MDH_TAG_INT) {
-        if (b.data == 0) {
-            __mdh_div_by_zero();
-            return __mdh_make_nil();
-        }
         if (a.data == INT64_MIN && b.data == -1) return __mdh_int_overflow();
         return __mdh_make_int(a.data % b.data);
     }
 
-    if (a.tag == MDH_TAG_FLOAT || b.tag == MDH_TAG_FLOAT) {
-        double af = (a.tag == MDH_TAG_FLOAT) ? __mdh_get_float(a) : (double)a.data;
-        double bf = (b.tag == MDH_TAG_FLOAT) ? __mdh_get_float(b) : (double)b.data;
-        return __mdh_make_float(fmod(af, bf));
+    if (a.tag == MDH_TAG_FLOAT && b.tag == MDH_TAG_FLOAT) {
+        return __mdh_make_float(fmod(__mdh_get_float(a), __mdh_get_float(b)));
     }
 
     __mdh_type_error("modulo", a.tag, b.tag);
@@ -4403,17 +4419,41 @@ MdhValue __mdh_dict_remove(MdhValue dict, MdhValue key) {
         return __mdh_empty_dict();
     }
 
-    MdhValue result = __mdh_empty_dict();
+    /* A new dict without `key`; the argument is left alone, as in the interpreter. Find
+     * the key through the hash index and copy the other entries in at most two blocks,
+     * instead of re-inserting (and re-hashing) them one by one (MDH-BUG-FLU-00091). */
     int64_t *dict_ptr = __mdh_kv_payload_ptr(dict);
     int64_t count = dict_ptr ? dict_ptr[0] : 0;
-    MdhValue *entries = dict_ptr ? (MdhValue *)(dict_ptr + 1) : NULL;
-    for (int64_t i = 0; i < count; i++) {
-        MdhValue entry_key = entries[i * 2];
-        MdhValue entry_val = entries[i * 2 + 1];
-        if (!__mdh_values_equal(entry_key, key)) {
-            result = __mdh_dict_set(result, entry_key, entry_val);
-        }
+    if (count == 0) {
+        return __mdh_empty_dict();
     }
+    int64_t found = __mdh_kv_find(dict, key);
+    int64_t new_count = found >= 0 ? count - 1 : count;
+    if (new_count == 0) {
+        return __mdh_empty_dict();
+    }
+    int64_t *payload = (int64_t *)GC_malloc((size_t)(8 + new_count * 32));
+    if (!payload) {
+        __mdh_hurl(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
+        return __mdh_empty_dict();
+    }
+    payload[0] = new_count;
+    MdhValue *src = (MdhValue *)(dict_ptr + 1);
+    MdhValue *dst = (MdhValue *)(payload + 1);
+    if (found < 0) {
+        memcpy(dst, src, (size_t)count * 2 * sizeof(MdhValue));
+    } else {
+        memcpy(dst, src, (size_t)found * 2 * sizeof(MdhValue));
+        memcpy(
+            dst + found * 2,
+            src + (found + 1) * 2,
+            (size_t)(count - found - 1) * 2 * sizeof(MdhValue)
+        );
+    }
+
+    MdhValue result;
+    result.tag = MDH_TAG_DICT;
+    result.data = (int64_t)(intptr_t)__mdh_kv_new_handle(payload);
     return result;
 }
 

@@ -1,6 +1,6 @@
 # integer_model.braw - i64 integers an' f64 floats (DEC F5): every backend
 # must agree on integer division, overflow, big products, mixing an' display.
-# SKIP_NATIVE: native's overflow error omits "at line N" (all else matches).
+# The overflow errors carry "at line N", natively too (MDH-BUG-FLU-00093).
 
 # Integer division truncates toward zero; % takes the dividend's sign
 ken a = 7
