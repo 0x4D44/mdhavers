@@ -21,6 +21,48 @@ const RUNTIME_BINDINGS: &[&str] = &[
     "ceil",
     "round",
     "sqrt",
+    // Maths builtins (core_runtime.js), matchin' the interpreter's (MDH-BUG-FLU-00100).
+    "pooer",
+    "pow",
+    "sin",
+    "cos",
+    "tan",
+    "asin",
+    "acos",
+    "atan",
+    "atan2",
+    "hypot",
+    "log",
+    "log10",
+    "log2",
+    "exp",
+    "degrees",
+    "radians",
+    "PI",
+    "E",
+    "TAU",
+    "pi",
+    "e",
+    "tau",
+    "sign",
+    "trunc",
+    "clamp",
+    "lerp",
+    "gcd",
+    "lcm",
+    "factorial",
+    "is_even",
+    "is_odd",
+    "is_prime",
+    "average",
+    "median",
+    "product",
+    "minaw",
+    "maxaw",
+    "range_o",
+    "random",
+    "random_int",
+    "random_choice",
     "split",
     "join",
     "contains",
@@ -1083,37 +1125,10 @@ impl Compiler {
 
         if include_tri {
             // tri module (three.js adapter with Scots naming)
-            self.emit_line("const __havers_tri_wrap = (obj) => {");
-            self.indent += 1;
-            self.emit_line("if (!obj || typeof obj !== 'object') return obj;");
-            self.emit_line("const bind = (alias, target) => {");
-            self.indent += 1;
-            self.emit_line(
-                "if (typeof obj[target] === 'function' && typeof obj[alias] !== 'function') {",
-            );
-            self.indent += 1;
-            self.emit_line("obj[alias] = obj[target].bind(obj);");
-            self.indent -= 1;
-            self.emit_line("}");
-            self.indent -= 1;
-            self.emit_line("};");
-            self.emit_line("bind('adde', 'add');");
-            self.emit_line("bind('remuiv', 'remove');");
-            self.emit_line("bind('cloan', 'clone');");
-            self.emit_line("bind('dyspos', 'dispose');");
-            self.emit_line("bind('luik_at', 'lookAt');");
-            self.emit_line("bind('set_sise', 'setSize');");
-            self.emit_line("bind('set_pixel_ratio', 'setPixelRatio');");
-            self.emit_line(
-                "if (typeof obj.setAnimationLoop === 'function' && typeof obj.loop !== 'function') {",
-            );
-            self.indent += 1;
-            self.emit_line("obj.loop = (fn) => obj.setAnimationLoop((t) => fn(t / 1000));");
-            self.indent -= 1;
-            self.emit_line("}");
-            self.emit_line("return obj;");
-            self.indent -= 1;
-            self.emit_line("};");
+            // three.js objects are handed oot through the interop Proxy (core_runtime.js),
+            // which turns integers intae numbers on every property write an' method
+            // call, an' carries the Scots method names (MDH-BUG-FLU-00097).
+            self.emit_line("const __havers_tri_wrap = __havers_core.foreign;");
             self.emit_line("");
             self.emit_line("const __havers_tri = (() => {");
             self.indent += 1;
@@ -1125,40 +1140,40 @@ impl Compiler {
             );
             self.emit_line("return {");
             self.indent += 1;
-            self.emit_line("Sicht: (...args) => __havers_tri_wrap(new THREE.Scene(...__havers_core.nums(args))),");
-            self.emit_line("Thing3D: (...args) => __havers_tri_wrap(new THREE.Object3D(...args)),");
-            self.emit_line("Clump: (...args) => __havers_tri_wrap(new THREE.Group(...__havers_core.nums(args))),");
-            self.emit_line("Mesch: (...args) => __havers_tri_wrap(new THREE.Mesh(...__havers_core.nums(args))),");
-            self.emit_line("Kamera: (...args) => __havers_tri_wrap(new THREE.Camera(...__havers_core.nums(args))),");
-            self.emit_line("PerspectivKamera: (...args) => __havers_tri_wrap(new THREE.PerspectiveCamera(...__havers_core.nums(args))),");
-            self.emit_line("OrthograffikKamera: (...args) => __havers_tri_wrap(new THREE.OrthographicCamera(...__havers_core.nums(args))),");
+            self.emit_line("Sicht: (...args) => __havers_tri_wrap(new THREE.Scene(...__havers_core.jsArgs(args))),");
+            self.emit_line("Thing3D: (...args) => __havers_tri_wrap(new THREE.Object3D(...__havers_core.jsArgs(args))),");
+            self.emit_line("Clump: (...args) => __havers_tri_wrap(new THREE.Group(...__havers_core.jsArgs(args))),");
+            self.emit_line("Mesch: (...args) => __havers_tri_wrap(new THREE.Mesh(...__havers_core.jsArgs(args))),");
+            self.emit_line("Kamera: (...args) => __havers_tri_wrap(new THREE.Camera(...__havers_core.jsArgs(args))),");
+            self.emit_line("PerspectivKamera: (...args) => __havers_tri_wrap(new THREE.PerspectiveCamera(...__havers_core.jsArgs(args))),");
+            self.emit_line("OrthograffikKamera: (...args) => __havers_tri_wrap(new THREE.OrthographicCamera(...__havers_core.jsArgs(args))),");
             self.emit_line(
-                "Geometrie: (...args) => __havers_tri_wrap(new THREE.BufferGeometry(...__havers_core.nums(args))),",
+                "Geometrie: (...args) => __havers_tri_wrap(new THREE.BufferGeometry(...__havers_core.jsArgs(args))),",
             );
             self.emit_line(
-                "BoxGeometrie: (...args) => __havers_tri_wrap(new THREE.BoxGeometry(...__havers_core.nums(args))),",
+                "BoxGeometrie: (...args) => __havers_tri_wrap(new THREE.BoxGeometry(...__havers_core.jsArgs(args))),",
             );
             self.emit_line(
-                "SpherGeometrie: (...args) => __havers_tri_wrap(new THREE.SphereGeometry(...__havers_core.nums(args))),",
+                "SpherGeometrie: (...args) => __havers_tri_wrap(new THREE.SphereGeometry(...__havers_core.jsArgs(args))),",
             );
             self.emit_line(
-                "Maiterial: (...args) => __havers_tri_wrap(new THREE.Material(...__havers_core.nums(args))),",
+                "Maiterial: (...args) => __havers_tri_wrap(new THREE.Material(...__havers_core.jsArgs(args))),",
             );
-            self.emit_line("MeshBasicMaiterial: (...args) => __havers_tri_wrap(new THREE.MeshBasicMaterial(...__havers_core.nums(args))),");
-            self.emit_line("MeshStandardMaiterial: (...args) => __havers_tri_wrap(new THREE.MeshStandardMaterial(...__havers_core.nums(args))),");
-            self.emit_line("Licht: (...args) => __havers_tri_wrap(new THREE.Light(...__havers_core.nums(args))),");
+            self.emit_line("MeshBasicMaiterial: (...args) => __havers_tri_wrap(new THREE.MeshBasicMaterial(...__havers_core.jsArgs(args))),");
+            self.emit_line("MeshStandardMaiterial: (...args) => __havers_tri_wrap(new THREE.MeshStandardMaterial(...__havers_core.jsArgs(args))),");
+            self.emit_line("Licht: (...args) => __havers_tri_wrap(new THREE.Light(...__havers_core.jsArgs(args))),");
             self.emit_line(
-                "AmbiantLicht: (...args) => __havers_tri_wrap(new THREE.AmbientLight(...__havers_core.nums(args))),",
+                "AmbiantLicht: (...args) => __havers_tri_wrap(new THREE.AmbientLight(...__havers_core.jsArgs(args))),",
             );
-            self.emit_line("DireksionalLicht: (...args) => __havers_tri_wrap(new THREE.DirectionalLight(...__havers_core.nums(args))),");
+            self.emit_line("DireksionalLicht: (...args) => __havers_tri_wrap(new THREE.DirectionalLight(...__havers_core.jsArgs(args))),");
             self.emit_line(
-                "PyntLicht: (...args) => __havers_tri_wrap(new THREE.PointLight(...__havers_core.nums(args))),",
+                "PyntLicht: (...args) => __havers_tri_wrap(new THREE.PointLight(...__havers_core.jsArgs(args))),",
             );
-            self.emit_line("Textur: (...args) => __havers_tri_wrap(new THREE.Texture(...__havers_core.nums(args))),");
+            self.emit_line("Textur: (...args) => __havers_tri_wrap(new THREE.Texture(...__havers_core.jsArgs(args))),");
             self.emit_line(
-                "Renderar: (...args) => __havers_tri_wrap(new THREE.WebGLRenderer(...__havers_core.nums(args))),",
+                "Renderar: (...args) => __havers_tri_wrap(new THREE.WebGLRenderer(...__havers_core.jsArgs(args))),",
             );
-            self.emit_line("Colour: (...args) => __havers_tri_wrap(new THREE.Color(...__havers_core.nums(args))),");
+            self.emit_line("Colour: (...args) => __havers_tri_wrap(new THREE.Color(...__havers_core.jsArgs(args))),");
             self.emit_line("DEG_TO_RAD: Math.PI / 180,");
             self.emit_line("RAD_TO_DEG: 180 / Math.PI,");
             self.indent -= 1;
@@ -1401,8 +1416,10 @@ impl Compiler {
                     let binding = alias.clone().unwrap_or_else(|| module_binding_name(path));
                     let (js, fresh) = self.declare(&binding);
                     let keyword = if fresh { "let " } else { "" };
+                    // A JS module crosses the interop boundary: integers passed
+                    // tae it become numbers (MDH-BUG-FLU-00097).
                     self.emit_line(&format!(
-                        "{}{} = require('{}');",
+                        "{}{} = __havers.foreign(require('{}'));",
                         keyword,
                         js,
                         js_escape(path)
@@ -1621,6 +1638,31 @@ impl Compiler {
         self.push_scope();
         self.fn_contexts.push(FnContext::default());
         let params_str = self.compile_params(params);
+        if let Some(sentinel) = self.current_fn().sentinel.clone() {
+            // A `gie` in a default value's block throws the sentinel while the
+            // parameters are bound, afore ony body `try` is entered. So bind them
+            // in an inner arrow (same scopin', same `this`) ca'd inside the
+            // `try` (MDH-BUG-FLU-00098).
+            let args = format!("{}_args", sentinel);
+            self.output.push_str(&format!("...{}) {{\n", args));
+            self.indent += 1;
+            self.emit_line(&format!("const {} = {{}};", sentinel));
+            self.emit_line("try {");
+            self.emit_line(&format!("return (({}) => {{", params_str));
+            self.indent += 1;
+            for stmt in body {
+                self.compile_stmt(stmt);
+            }
+            self.fn_contexts.pop();
+            self.indent -= 1;
+            self.emit_line(&format!("}})(...{});", args));
+            self.emit_line(&Self::block_return_catch(&sentinel));
+            self.indent -= 1;
+            self.emit_indent();
+            self.output.push('}');
+            self.pop_scope();
+            return;
+        }
         self.output.push_str(&params_str);
         self.output.push_str(") {\n");
         self.indent += 1;
@@ -2724,7 +2766,7 @@ kin Animal {
     #[test]
     fn test_import_with_alias() {
         let result = compile("fetch \"math\" tae m").unwrap();
-        assert!(result.contains("let m = require('math')"));
+        assert!(result.contains("let m = __havers.foreign(require('math'))"));
     }
 
     #[test]
@@ -2861,7 +2903,9 @@ kin C {
             compile("hae_a_bash { ken x = 1 } gin_it_gangs_wrang e { blether e }").unwrap();
         assert!(result.contains("try {"));
         assert!(result.contains("catch (__err)"));
-        assert!(result.contains("let e = __havers.caught(__err);"));
+        // `e` is also the maths builtin, so the catch binding shadows it under a fresh name.
+        assert!(result.contains("let e$1 = __havers.caught(__err);"));
+        assert!(result.contains("__havers.blether(e$1);"));
     }
 
     #[test]
@@ -3404,7 +3448,7 @@ ken s = f"price: $5"
         let result = compile("fetch \"x'); console.log('INJECTED'); ('\"").unwrap();
         assert!(result.contains(r#"require('x\'); console.log(\'INJECTED\'); (\'')"#));
         let result = compile("fetch \"lib/my-mod\"").unwrap();
-        assert!(result.contains("let my_mod = require('lib/my-mod');"));
+        assert!(result.contains("let my_mod = __havers.foreign(require('lib/my-mod'));"));
     }
 
     #[test]

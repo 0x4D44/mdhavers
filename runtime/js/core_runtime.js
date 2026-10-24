@@ -360,6 +360,56 @@ const __havers_core = (() => {
 
   const nativeOverflow = (what) => native(`Wheesht! Yer number's too muckle in ${what} - it's overflowed!`);
 
+  // A number as f64 (`n as f64` fer an integer), or the builtin's error.
+  const f64Of = (x, message) => {
+    if (typeof x === "number") return x;
+    if (typeof x === "bigint") return Number(x);
+    throw native(message);
+  };
+  // A one-number float function: sin, cos, log, ...
+  const floatFn = (name, f, message) => (x) => f(f64Of(x, message || `${name}() needs a number`));
+  // Rust's f64::max/min ignore a NaN operand.
+  const fmax = (a, b) => (Number.isNaN(a) ? b : Number.isNaN(b) ? a : Math.max(a, b));
+  const fmin = (a, b) => (Number.isNaN(a) ? b : Number.isNaN(b) ? a : Math.min(a, b));
+  // Rust's `f64::powi` (compiler-rt __powidf2): square-an'-multiply, so the
+  // rounding matches the interpreter's `pooer(float, int)`.
+  const powi = (a, b) => {
+    const recip = b < 0;
+    let n = recip ? -b : b;
+    let r = 1;
+    for (;;) {
+      if (n & 1) r *= a;
+      n = Math.trunc(n / 2);
+      if (n === 0) break;
+      a *= a;
+    }
+    return recip ? 1 / r : r;
+  };
+  // `float_pow_int` in the interpreter: powi fer an i32 exponent, else powf.
+  const floatPowInt = (base, exp) =>
+    exp >= -2147483648n && exp <= 2147483647n ? powi(base, Number(exp)) : Math.pow(base, Number(exp));
+  const gcdBig = (a, b) => {
+    a = a < 0n ? -a : a;
+    b = b < 0n ? -b : b;
+    while (b !== 0n) [a, b] = [b, a % b];
+    return a;
+  };
+  const numList = (arr, name) => {
+    if (!Array.isArray(arr)) throw native(`${name}() needs a list`);
+    return arr;
+  };
+  // Uniform in [0, 1), as the interpreter's havers_random_f64.
+  const random = () => Math.random();
+  const randomIntInclusive = (min, max) => {
+    const span = max - min + 1n;
+    // 53 random bits at a time, enough fer ony i64 span.
+    let r = 0n;
+    for (let bits = 0n; (1n << bits) < span; bits += 53n) {
+      r = (r << 53n) | BigInt(Math.floor(Math.random() * 2 ** 53));
+    }
+    return min + (r % span);
+  };
+
   const builtins = {
     len: (x) => {
       if (typeof x === "string") {
@@ -504,6 +554,207 @@ const __havers_core = (() => {
       }
       throw native("coont() expects a list or string");
     },
+
+    // ---------- maths, matchin' the interpreter's natives ----------
+    pooer: (base, exp) => {
+      const tb = typeof base;
+      const te = typeof exp;
+      if (tb === "bigint" && te === "bigint") {
+        if (exp < 0n) return floatPowInt(Number(base), exp);
+        if (base === 0n || base === 1n) return exp === 0n ? 1n : base;
+        if (base === -1n) return exp % 2n === 0n ? 1n : -1n;
+        // |base| >= 2 overflows an i64 lang afore exp reaches 64.
+        if (exp > 64n) throw nativeOverflow("pooer()");
+        const r = base ** exp;
+        if (r > I64_MAX || r < I64_MIN) throw nativeOverflow("pooer()");
+        return r;
+      }
+      if (tb === "number" && te === "bigint") return floatPowInt(base, exp);
+      if (tb === "number" && te === "number") return Math.pow(base, exp);
+      if (tb === "bigint" && te === "number") return Math.pow(Number(base), exp);
+      throw native("pooer() needs twa numbers");
+    },
+    pow: (base, exp) => Math.pow(f64Of(base, "pow() needs numbers"), f64Of(exp, "pow() needs numbers")),
+    sin: floatFn("sin", Math.sin),
+    cos: floatFn("cos", Math.cos),
+    tan: floatFn("tan", Math.tan),
+    asin: floatFn("asin", Math.asin),
+    acos: floatFn("acos", Math.acos),
+    atan: floatFn("atan", Math.atan),
+    atan2: (y, x) => Math.atan2(f64Of(y, "atan2() needs numbers"), f64Of(x, "atan2() needs numbers")),
+    hypot: (x, y) => Math.hypot(f64Of(x, "hypot() needs numbers"), f64Of(y, "hypot() needs numbers")),
+    log: floatFn("log", Math.log),
+    log10: floatFn("log10", Math.log10),
+    log2: floatFn("log2", Math.log2),
+    exp: floatFn("exp", Math.exp),
+    // Rust's to_degrees / to_radians multiply by the same constants.
+    degrees: floatFn("degrees", (f) => f * (180 / Math.PI)),
+    radians: floatFn("radians", (f) => f * (Math.PI / 180)),
+    PI: Math.PI,
+    E: Math.E,
+    TAU: 2 * Math.PI,
+    pi: () => Math.PI,
+    e: () => Math.E,
+    tau: () => 2 * Math.PI,
+    sign: (x) => {
+      const f = f64Of(x, "sign() needs a number");
+      return f > 0 ? 1n : f < 0 ? -1n : 0n;
+    },
+    trunc: (x) => {
+      if (typeof x === "bigint") return x;
+      if (typeof x === "number") return f64ToI64(Math.trunc(x));
+      throw native("trunc() needs a number");
+    },
+    clamp: (n, lo, hi) => {
+      if (typeof n === "bigint" && typeof lo === "bigint" && typeof hi === "bigint") {
+        const m = n > lo ? n : lo;
+        return m < hi ? m : hi;
+      }
+      if (typeof n === "number" && typeof lo === "number" && typeof hi === "number") return fmin(fmax(n, lo), hi);
+      throw native("clamp() needs three numbers o' the same type");
+    },
+    lerp: (a, b, t) => {
+      const fa = f64Of(a, "lerp() needs numbers");
+      const fb = f64Of(b, "lerp() needs numbers");
+      const ft = f64Of(t, "lerp() needs numbers");
+      return fa + (fb - fa) * ft;
+    },
+    gcd: (a, b) => {
+      if (typeof a !== "bigint" || typeof b !== "bigint") throw native("gcd() needs two integers");
+      const g = gcdBig(a, b);
+      if (g > I64_MAX) throw nativeOverflow("gcd()");
+      return g;
+    },
+    lcm: (a, b) => {
+      if (typeof a !== "bigint" || typeof b !== "bigint") throw native("lcm() needs two integers");
+      if (a === 0n || b === 0n) return 0n;
+      const l = ((a < 0n ? -a : a) / gcdBig(a, b)) * (b < 0n ? -b : b);
+      if (l > I64_MAX) throw nativeOverflow("lcm()");
+      return l;
+    },
+    factorial: (n) => {
+      if (typeof n !== "bigint") throw native("factorial() needs an integer");
+      if (n < 0n) throw native("Cannae calculate factorial o' negative number!");
+      if (n > 20n) throw native("Factorial too big! Max is 20");
+      let r = 1n;
+      for (let i = 2n; i <= n; i++) r *= i;
+      return r;
+    },
+    is_even: (n) => {
+      if (typeof n !== "bigint") throw native("is_even() needs an integer");
+      return n % 2n === 0n;
+    },
+    is_odd: (n) => {
+      if (typeof n !== "bigint") throw native("is_odd() needs an integer");
+      return n % 2n !== 0n;
+    },
+    is_prime: (n) => {
+      if (typeof n !== "bigint") throw native("is_prime() needs an integer");
+      if (n < 2n) return false;
+      if (n === 2n) return true;
+      if (n % 2n === 0n) return false;
+      const root = f64ToI64(Math.sqrt(Number(n)));
+      for (let i = 3n; i <= root; i += 2n) if (n % i === 0n) return false;
+      return true;
+    },
+    average: (arr) => {
+      const items = numList(arr, "average");
+      if (items.length === 0) throw native("Cannae calculate average o' empty list!");
+      let sum = 0;
+      for (const item of items) sum += f64Of(item, "average() needs a list o' numbers");
+      return sum / items.length;
+    },
+    median: (arr) => {
+      const items = numList(arr, "median");
+      if (items.length === 0) throw native("Cannae calculate median o' empty list!");
+      const ns = items.map((item) => {
+        const f = f64Of(item, "median() needs a list o' numbers");
+        if (typeof item === "number" && Number.isNaN(f)) throw native("median() cannae handle NaN");
+        return f;
+      });
+      ns.sort((a, b) => a - b);
+      const mid = Math.floor(ns.length / 2);
+      return ns.length % 2 === 0 ? (ns[mid - 1] + ns[mid]) / 2 : ns[mid];
+    },
+    // Exact integer product unless a float is present; a zero wins even past an overflow.
+    product: (arr) => {
+      const items = numList(arr, "product");
+      if (items.length === 0) return 1n;
+      let prod = 1;
+      let intProd = 1n;
+      let overflowed = false;
+      let isFloat = false;
+      let zero = false;
+      for (const item of items) {
+        if (typeof item === "bigint") {
+          prod *= Number(item);
+          if (item === 0n) zero = true;
+          if (!overflowed) {
+            intProd *= item;
+            if (intProd > I64_MAX || intProd < I64_MIN) overflowed = true;
+          }
+        } else if (typeof item === "number") {
+          prod *= item;
+          isFloat = true;
+        } else {
+          throw native("product() needs a list o' numbers");
+        }
+      }
+      if (isFloat) return prod;
+      if (zero) return 0n;
+      if (overflowed) throw nativeOverflow("product()");
+      return intProd;
+    },
+    minaw: (arr) => {
+      const items = numList(arr, "minaw");
+      if (items.length === 0) throw native("Cannae find minimum o' empty list!");
+      const bad = () => native("minaw() needs a list o' comparable numbers");
+      let best = items[0];
+      if (typeof best !== "bigint" && typeof best !== "number") throw bad();
+      for (let i = 1; i < items.length; i++) {
+        if (typeof items[i] !== typeof best) throw bad();
+        if (items[i] < best) best = items[i];
+      }
+      return best;
+    },
+    maxaw: (arr) => {
+      const items = numList(arr, "maxaw");
+      if (items.length === 0) throw native("Cannae find maximum o' empty list!");
+      const bad = () => native("maxaw() needs a list o' comparable numbers");
+      let best = items[0];
+      if (typeof best !== "bigint" && typeof best !== "number") throw bad();
+      for (let i = 1; i < items.length; i++) {
+        if (typeof items[i] !== typeof best) throw bad();
+        if (items[i] > best) best = items[i];
+      }
+      return best;
+    },
+    range_o: (arr) => {
+      const items = numList(arr, "range_o");
+      if (items.length === 0) throw native("Cannae get range o' empty list!");
+      let lo = Number.MAX_VALUE;
+      let hi = -Number.MAX_VALUE;
+      for (const item of items) {
+        const f = f64Of(item, "range_o() needs a list o' numbers");
+        if (f < lo) lo = f;
+        if (f > hi) hi = f;
+      }
+      return hi - lo;
+    },
+    random,
+    random_int: (min, max) => {
+      const lo = asInt(min);
+      const hi = asInt(max);
+      if (lo === null || hi === null) throw native("random_int() needs integer bounds");
+      if (lo > hi) throw native("random_int() min must be <= max");
+      return randomIntInclusive(lo, hi);
+    },
+    random_choice: (arr) => {
+      if (!Array.isArray(arr)) throw native("random_choice() needs a list");
+      if (arr.length === 0) return null;
+      return arr[Math.floor(Math.random() * arr.length)];
+    },
+
     noo: () => BigInt(Date.now()),
     tick: () => {
       if (typeof process !== "undefined" && process.hrtime && process.hrtime.bigint) {
@@ -520,6 +771,157 @@ const __havers_core = (() => {
   // JS libraries (the audio runtime, three.js) take plain numbers.
   const nums = (args) => args.map((a) => (typeof a === "bigint" ? Number(a) : a));
   const numArgs = (f) => (...args) => f(...nums(args));
+
+  // ---------- the JS interop boundary (tri / three.js, `fetch`ed JS modules) ----------
+  //
+  // A foreign JS object is handed tae mdhavers code wrapped in a Proxy. Every
+  // property write an' every method call through it turns mdhavers integers
+  // (BigInts) intae plain numbers, so `sun.position.x = 2` an'
+  // `kamera.luik_at(0, 0, 0)` reach three.js as numbers. Objects that come back
+  // are wrapped the same way. Numbers that come back are JS numbers, so they read
+  // as floats. Ordinary mdhavers values never pass through here, so plain
+  // mdhavers code pays naething fer it.
+  const proxyOf = new WeakMap(); // foreign object -> its proxy
+  const targetOf = new WeakMap(); // proxy -> foreign object
+  const callbacks = new WeakMap(); // mdhavers function -> its JS-facing wrapper
+  const classy = new WeakMap(); // function -> is it an ES `class`?
+  // Scots names fer three.js methods.
+  const ALIASES = {
+    __proto__: null,
+    adde: "add",
+    remuiv: "remove",
+    cloan: "clone",
+    dyspos: "dispose",
+    luik_at: "lookAt",
+    set_sise: "setSize",
+    set_pixel_ratio: "setPixelRatio",
+  };
+  // An mdhavers class, struct or instance o' one: never wrapped.
+  const isMdh = (v) => {
+    if (typeof v === "function") return v.__mdh_kin === true;
+    const proto = Object.getPrototypeOf(v);
+    return proto !== null && typeof proto.constructor === "function" && proto.constructor.__mdh_kin === true;
+  };
+  const isClass = (f) => {
+    let c = classy.get(f);
+    if (c === undefined) {
+      c = /^class\b/.test(Function.prototype.toString.call(f));
+      classy.set(f, c);
+    }
+    return c;
+  };
+
+  // mdhavers value -> JS value. Lists an' dicts holdin' integers are copied;
+  // onything wi'oot an integer in it is passed as itsel'.
+  const toJs = (v, seen) => {
+    switch (typeof v) {
+      case "bigint":
+        return Number(v);
+      case "function": {
+        const t = targetOf.get(v);
+        if (t !== undefined) return t;
+        if (isMdh(v)) return v;
+        let w = callbacks.get(v);
+        if (w === undefined) {
+          const fn = v;
+          w = function (...args) {
+            return toJs(fn.apply(this, args.map(fromJs)));
+          };
+          callbacks.set(v, w);
+        }
+        return w;
+      }
+      case "object": {
+        if (v === null) return v;
+        const t = targetOf.get(v);
+        if (t !== undefined) return t;
+        const list = Array.isArray(v);
+        if (!list && !isDict(v)) return v;
+        if (seen === undefined) seen = new Set();
+        if (seen.has(v)) return v;
+        seen.add(v);
+        let out = null;
+        for (const k of list ? v.keys() : Object.keys(v)) {
+          const c = toJs(v[k], seen);
+          if (c !== v[k]) {
+            if (out === null) out = list ? v.slice() : Object.assign(Object.create(Object.getPrototypeOf(v)), v);
+            out[k] = c;
+          }
+        }
+        seen.delete(v);
+        return out === null ? v : out;
+      }
+      default:
+        return v;
+    }
+  };
+  const jsArgs = (args) => args.map((a) => toJs(a));
+
+  // Ca' a foreign function wi' converted arguments; an ES class is constructed,
+  // as mdhavers ca's a class like a function.
+  const callForeign = (f, self, args) => {
+    const a = jsArgs(args);
+    return fromJs(isClass(f) ? Reflect.construct(f, a) : Reflect.apply(f, self, a));
+  };
+
+  const foreignHandler = {
+    get(t, k) {
+      let v = Reflect.get(t, k);
+      if (typeof k !== "string" || k === "constructor") return v;
+      if (v === undefined) {
+        const real = ALIASES[k];
+        if (real !== undefined && typeof t[real] === "function") {
+          v = t[real];
+        } else if (k === "loop" && typeof t.setAnimationLoop === "function") {
+          // tri's `renderar.loop(|dt| ...)`: dt in seconds.
+          return (fn) => fromJs(t.setAnimationLoop((ms) => fn(ms / 1000)));
+        }
+      }
+      if (v === null || (typeof v !== "object" && typeof v !== "function")) return v;
+      // A Proxy must hand back a frozen property's ain value.
+      const d = Object.getOwnPropertyDescriptor(t, k);
+      if (d !== undefined && !d.configurable && d.writable === false) return v;
+      if (typeof v === "function") return isMdh(v) ? v : boundForeign(v, t);
+      return fromJs(v);
+    },
+    set(t, k, v) {
+      return Reflect.set(t, k, toJs(v));
+    },
+    apply(t, self, args) {
+      const s = self !== null && self !== undefined ? targetOf.get(self) : undefined;
+      return callForeign(t, s === undefined ? self : s, args);
+    },
+    construct(t, args) {
+      return fromJs(Reflect.construct(t, jsArgs(args)));
+    },
+  };
+
+  // A foreign method read aff `self`: ca'd wi' `self` as `this` (so it can be
+  // passed aroond like a bound method), an' its ain properties (statics like
+  // `Buffer.alloc`) still reachable through the proxy.
+  const boundForeign = (f, self) => {
+    const p = new Proxy(f, {
+      __proto__: foreignHandler,
+      apply: (fn, _this, args) => callForeign(fn, self, args),
+    });
+    targetOf.set(p, f);
+    return p;
+  };
+
+  // Wrap a foreign JS object (or function) fer mdhavers code.
+  const foreign = (obj) => {
+    if (obj === null || (typeof obj !== "object" && typeof obj !== "function")) return obj;
+    if (targetOf.has(obj) || isMdh(obj)) return obj;
+    let p = proxyOf.get(obj);
+    if (p === undefined) {
+      p = new Proxy(obj, foreignHandler);
+      proxyOf.set(obj, p);
+      targetOf.set(p, obj);
+    }
+    return p;
+  };
+  // JS value -> mdhavers value: numbers stay JS numbers (floats); objects are wrapped.
+  const fromJs = (v) => foreign(v);
 
   // A `kin` (or `thing`) is a JS class wrapped so it can be ca'd wi'oot `new`,
   // just as the interpreter lets ye ca' a class like a function.
@@ -540,5 +942,6 @@ const __havers_core = (() => {
   return {
     show, truthy, eq, fail, typeName, add, sub, mul, div, mod, neg, lt, le, gt, ge,
     idx, setIdx, slice, rangeOf, inRange, iter, builtins, nums, numArgs, kin, hurl, caught, and, or,
+    foreign, jsArgs,
   };
 })();

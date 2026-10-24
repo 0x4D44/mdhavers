@@ -16,7 +16,6 @@ tests/golden/data_structures/list_builtins.braw # node exit 1: ReferenceError: t
 tests/golden/data_structures/set_membership_mismatch_int_vs_string.braw # node exit 1: ReferenceError: creel is not defined
 tests/golden/data_structures/set_typed_elements_int_vs_string.braw # node exit 1: ReferenceError: creel is not defined
 tests/golden/data_structures/wheesht_filters_falsy_list.braw # output mismatch
-tests/golden/edge_cases/average_median_parity_and_errors.braw # node exit 1: ReferenceError: average is not defined
 tests/golden/edge_cases/base_conversion_parity_and_errors.braw # node exit 1: ReferenceError: tae_binary is not defined
 tests/golden/edge_cases/birl_rotation_and_type_errors.braw # node exit 1: ReferenceError: birl is not defined
 tests/golden/edge_cases/bitwise_ops_shift_range_and_type_errors_parity.braw # node exit 1: ReferenceError: bit_an is not defined
@@ -34,10 +33,7 @@ tests/golden/edge_cases/heid_tail_bum_string_and_empty_list_parity.braw # node e
 tests/golden/edge_cases/is_digit_wheesht_aw_parity.braw # node exit 1: ReferenceError: is_digit is not defined
 tests/golden/edge_cases/lines_and_read_lines_parity.braw # node exit 1: ReferenceError: lines is not defined
 tests/golden/edge_cases/list_helpers_empty_list_returns_copy_parity.braw # node exit 1: ReferenceError: unique is not defined
-tests/golden/edge_cases/math_trig_pow_pooer_errors_parity.braw # node exit 1: ReferenceError: sin is not defined
 tests/golden/edge_cases/pad_empty_fill_defaults_to_space.braw # node exit 1: ReferenceError: replace is not defined
-tests/golden/edge_cases/product_numeric_type_parity.braw # node exit 1: ReferenceError: product is not defined
-tests/golden/edge_cases/radians_degrees_type_errors_parity.braw # node exit 1: ReferenceError: degrees is not defined
 tests/golden/edge_cases/repeat_type_errors_and_negative_caught.braw # node exit 1: ReferenceError: repeat is not defined
 tests/golden/edge_cases/replace_first_parity_empty_and_type_errors.braw # node exit 1: ReferenceError: replace_first is not defined
 tests/golden/edge_cases/roar_mutter_ascii_unicode_parity.braw # node exit 1: ReferenceError: roar is not defined
@@ -67,11 +63,9 @@ tests/golden/integration/brainfuck_interpreter_smoke.braw # node exit 1: Referen
 tests/golden/integration/expression_parser_evaluator_smoke.braw # node exit 1: ReferenceError: is_digit is not defined
 tests/golden/integration/json_parser_smoke.braw # node exit 1: ReferenceError: is_digit is not defined
 tests/golden/integration/showcase_blether_lisp.braw # node exit 1: ReferenceError: chars is not defined
-tests/golden/integration/showcase_raytracer_ascii.braw # node exit 1: ReferenceError: tan is not defined
 tests/golden/stdlib/datetime/datetime_functions.braw # node exit 1: ReferenceError: date_now is not defined
 tests/golden/stdlib/file_io/file_operations.braw # node exit 1: ReferenceError: path_join is not defined
 tests/golden/stdlib/json/json_functions.braw # node exit 1: ReferenceError: json_parse is not defined
-tests/golden/stdlib/math/math_functions.braw # node exit 1: ReferenceError: random is not defined
 tests/golden/stdlib/regex/regex_functions.braw # node exit 1: ReferenceError: regex_test is not defined
 tests/golden/stdlib/strings/string_functions.braw # node exit 1: ReferenceError: trim is not defined
 tests/golden/stdlib/system/system_functions.braw # node exit 1: ReferenceError: env_get is not defined

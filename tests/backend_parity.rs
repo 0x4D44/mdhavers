@@ -13,7 +13,13 @@ fn run_interpreter(source: &str) -> Result<String, String> {
 }
 
 fn run_js(source: &str) -> Result<String, String> {
+    run_js_with_prelude("", source)
+}
+
+/// Run the compiled program under node wi' `prelude` (plain JS) run first.
+fn run_js_with_prelude(prelude: &str, source: &str) -> Result<String, String> {
     let js = mdhavers::compile_to_js(source).map_err(|e| format!("{e}"))?;
+    let js = format!("{prelude}\n{js}");
     let dir = tempfile::tempdir().map_err(|e| e.to_string())?;
     let js_path = dir.path().join("parity.js");
     std::fs::write(&js_path, js).map_err(|e| e.to_string())?;
@@ -510,4 +516,209 @@ fn parity_js_gie_in_block_expression_returns_from_function_mdh_bug_flu_00094() {
             "42\nbottom",
         ),
     ]);
+}
+
+#[test]
+fn parity_js_gie_in_default_parameter_mdh_bug_flu_00098() {
+    if !node_available() {
+        return;
+    }
+    assert_js_parity(&[
+        (
+            "00098 gie in a default value's block returns frae the dae",
+            "dae f(a, b = {\n    gin a > 1 {\n        gie \"early\"\n    }\n    5\n}) {\n    gie b\n}\nblether f(0)\nblether f(2)\nblether f(2, 9)",
+            "5\nearly\n9",
+        ),
+        (
+            "00098 method default sees masel",
+            "kin K {\n    dae init(v) {\n        masel.v = v\n    }\n    dae pick(a = {\n        gin masel.v > 1 {\n            gie \"big\"\n        }\n        masel.v\n    }) {\n        gie a\n    }\n}\nblether K(5).pick()\nblether K(1).pick()",
+            "big\n1",
+        ),
+        (
+            "00098 recursion through the default",
+            "dae down(n, r = {\n    gin n == 0 {\n        gie \"bottom\"\n    }\n    down(n - 1)\n}) {\n    gie r\n}\nblether down(3)",
+            "bottom",
+        ),
+    ]);
+}
+
+const MATHS_SOURCE: &str = r#"blether sin(0)
+blether cos(0)
+blether whit_kind(cos(0))
+blether tan(0)
+blether round(degrees(radians(180)))
+blether atan2(1, 1) * 4 == PI
+blether asin(1) * 2 == PI
+blether acos(1)
+blether atan(0)
+blether pooer(2, 10)
+blether whit_kind(pooer(2, 10))
+blether pooer(2, -2)
+blether pooer(1.5, 2)
+blether pooer(1.1, 3)
+blether pow(2, 0.5)
+blether hypot(3, 4)
+blether log10(1000)
+blether log2(8)
+blether log(1)
+blether exp(0)
+blether sign(-7)
+blether sign(2.5)
+blether trunc(-2.7)
+blether clamp(15, 0, 10)
+blether clamp(0.5, 1.0, 3.0)
+blether lerp(0, 10, 0.25)
+blether gcd(12, -18)
+blether lcm(4, 6)
+blether factorial(20)
+blether is_even(4)
+blether is_odd(4)
+blether is_prime(97)
+blether is_prime(91)
+blether average([1, 2, 3, 4])
+blether median([3, 1, 2])
+blether median([1.0, 2.0, 3.0, 100.0])
+blether product([2, 3, 4])
+blether product([2, 3.0])
+blether minaw([3, 1, 2])
+blether maxaw([1.5, 0.5])
+blether range_o([1, 5, 3])
+blether TAU == 2 * PI
+blether pi() == PI
+blether e() == E
+blether tau() == TAU
+ken r = random_int(1, 6)
+blether r >= 1 an r <= 6
+blether whit_kind(random())
+blether random_choice([7])
+hae_a_bash {
+    blether sin(aye)
+} gin_it_gangs_wrang err {
+    blether err
+}
+hae_a_bash {
+    blether pooer(2, 63)
+} gin_it_gangs_wrang err {
+    blether err
+}
+hae_a_bash {
+    blether factorial(21)
+} gin_it_gangs_wrang err {
+    blether err
+}
+hae_a_bash {
+    blether clamp(1, 2.0, 3)
+} gin_it_gangs_wrang err {
+    blether err
+}
+hae_a_bash {
+    blether median([])
+} gin_it_gangs_wrang err {
+    blether err
+}
+hae_a_bash {
+    blether product([9223372036854775807, 2])
+} gin_it_gangs_wrang err {
+    blether err
+}"#;
+
+const MATHS_EXPECTED: &str = "0\n1\nfloat\n0\n180\naye\naye\n0\n0\n1024\ninteger\n0.25\n2.25\n\
+1.3310000000000004\n1.4142135623730951\n5\n3\n3\n0\n1\n-1\n1\n-2\n10\n1\n2.5\n6\n12\n\
+2432902008176640000\naye\nnae\naye\nnae\n2.5\n2\n2.5\n24\n6\n1\n1.5\n4\naye\naye\naye\naye\n\
+aye\nfloat\n7\n\
+Jings! Something went awfy wrang: sin() needs a number\n\
+Jings! Something went awfy wrang: Wheesht! Yer number's too muckle in pooer() - it's overflowed!\n\
+Jings! Something went awfy wrang: Factorial too big! Max is 20\n\
+Jings! Something went awfy wrang: clamp() needs three numbers o' the same type\n\
+Jings! Something went awfy wrang: Cannae calculate median o' empty list!\n\
+Jings! Something went awfy wrang: Wheesht! Yer number's too muckle in product() - it's overflowed!";
+
+#[test]
+fn parity_js_maths_builtins_mdh_bug_flu_00100() {
+    if !node_available() {
+        return;
+    }
+    assert_js_parity(&[("00100 maths builtins", MATHS_SOURCE, MATHS_EXPECTED)]);
+}
+
+/// A wee stand-in fer three.js: every numeric input must be a JS number, an'
+/// `add` only takes objects it made itsel' (no' a Proxy roond one).
+const FAKE_THREE: &str = r#"
+globalThis.THREE = (() => {
+  const made = new WeakSet();
+  const num = (v, what) => {
+    if (typeof v !== "number") throw new TypeError(what + " got a " + typeof v);
+    return v;
+  };
+  class Vector3 {
+    constructor() { this._x = 0; this._y = 0; this._z = 0; }
+    get x() { return this._x; } set x(v) { this._x = num(v, "x"); }
+    get y() { return this._y; } set y(v) { this._y = num(v, "y"); }
+    get z() { return this._z; } set z(v) { this._z = num(v, "z"); }
+    set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; }
+  }
+  class Object3D {
+    constructor() { made.add(this); this.position = new Vector3(); this.children = []; }
+    add(o) {
+      if (!made.has(o)) throw new TypeError("add got a stranger");
+      this.children.push(o);
+      return this;
+    }
+    lookAt(x, y, z) { num(x, "lookAt"); num(y, "lookAt"); num(z, "lookAt"); }
+  }
+  class Scene extends Object3D {}
+  class PerspectiveCamera extends Object3D {
+    constructor(fov, aspect, near, far) {
+      super();
+      num(fov, "fov"); num(aspect, "aspect"); num(near, "near"); num(far, "far");
+    }
+  }
+  class DirectionalLight extends Object3D {
+    constructor(colour, intensity) { super(); num(intensity, "intensity"); }
+  }
+  class WebGLRenderer {
+    constructor(opts) { num(opts.width, "width"); }
+    setAnimationLoop(f) { f(500); }
+  }
+  return { Scene, Object3D, PerspectiveCamera, DirectionalLight, WebGLRenderer };
+})();
+"#;
+
+#[test]
+fn js_tri_interop_passes_numbers_to_three_mdh_bug_flu_00097() {
+    if !node_available() {
+        return;
+    }
+    let source = r##"fetch "tri" tae tri
+ken sicht = tri.Sicht()
+ken kamera = tri.PerspectivKamera(75, 16 / 9, 1, 1000)
+ken sun = tri.DireksionalLicht("#ffffff", 1)
+sun.position.x = 2
+sun.position.y = 4
+sicht.adde(sun)
+kamera.luik_at(0, 0, 0)
+kamera.position.set(1, 2, 3)
+blether sun.position.x + sun.position.y
+blether whit_kind(sun.position.x)
+blether kamera.position.z
+blether len(sicht.children)
+ken renderar = tri.Renderar({"width": 800})
+renderar.loop(|dt| {
+    blether dt
+})
+"##;
+    let out = run_js_with_prelude(FAKE_THREE, source).unwrap_or_else(|e| panic!("js: {e}"));
+    // Numbers read back fae three.js are JS numbers, so they read as floats.
+    assert_eq!(out.trim(), "6\nfloat\n3\n1\n0.5");
+}
+
+#[test]
+fn js_fetched_module_receives_numbers_mdh_bug_flu_00097() {
+    if !node_available() {
+        return;
+    }
+    // Node's Buffer.alloc rejects a BigInt size.
+    let source = "fetch \"buffer\" tae b\nblether b.Buffer.alloc(3).length\n";
+    let out = run_js(source).unwrap_or_else(|e| panic!("js: {e}"));
+    assert_eq!(out.trim(), "3");
 }
