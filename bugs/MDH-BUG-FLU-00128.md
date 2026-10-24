@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00128 — Native: fer over a dict or creel iterates the handle as a list instead of raising
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-24T22:20:47Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261024T222513Z-7529395c
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00128-run-fix-20261024T222513Z-7529395c
-- **Owner base:** 018fac8b8120fa789d3f47b05129bb5c913d3e16
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-24T22:25:13Z
-- **Owner until:** 2026-10-25T02:25:13Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T22:20:47Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-24T22:20:47Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T22:42:33Z, deltic:auto role=fix run=fix-20261024T222513Z-7529395c branch=task/bug-MDH-BUG-FLU-00128-run-fix-20261024T222513Z-7529395c code=ad4c55f gate=manual)
 
 ## Observation
 
