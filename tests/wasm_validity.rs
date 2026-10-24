@@ -116,8 +116,10 @@ fn default_parameters_are_filled_in_at_the_call_site() {
 
 #[test]
 fn unknown_callee_is_a_clear_compile_error_naming_the_function() {
-    let message = compile_error("blether sieve([1, 2, 3], 0)\n");
-    assert!(message.contains("'sieve'"), "{message}");
+    // A higher-order builtin is kent now; a callback that isnae a function fails at run time.
+    let out = run_full("blether sieve([1, 2, 3], 0)\n");
+    let error = out.error.expect("calling 0 is a runtime error");
+    assert!(error.contains("'0' isnae a function"), "{error}");
     let message = compile_error("blether no_such_function(1)\n");
     assert!(message.contains("'no_such_function'"), "{message}");
 }
@@ -153,8 +155,9 @@ fn undeclared_names_are_compile_errors() {
     assert!(read.contains("'zzz'"), "{read}");
     let assign = compile_error("zzz = 1\n");
     assert!(assign.contains("'zzz'"), "{assign}");
-    let function_as_value = compile_error("dae f() {\n    gie 1\n}\nken g = f\nblether 1\n");
-    assert!(function_as_value.contains("'f'"), "{function_as_value}");
+    // A dae used as a value is fine now.
+    let function_as_value = run("dae f() {\n    gie 1\n}\nken g = f\nblether g()\n");
+    assert_eq!(function_as_value, "1\n");
 }
 
 #[test]
@@ -720,7 +723,8 @@ fn builtin_error_is_the_interpreters_message() {
 fn builtin_arity_and_higher_order_builtins_are_compile_errors() {
     let message = compile_error("blether len(1, 2)\n");
     assert!(message.contains("'len'"), "{message}");
-    let message = compile_error("blether gaun([1, 2], 0)\n");
+    // Higher-order builtins are kent now; their arity is still checked up front.
+    let message = compile_error("blether gaun([1, 2])\n");
     assert!(message.contains("'gaun'"), "{message}");
 }
 
@@ -1148,11 +1152,213 @@ hae_a_bash {
 #[test]
 fn unsupported_nodes_are_named_in_the_compile_error() {
     for (src, kind) in [
-        ("ken f = |x| x\n", "The Lambda expression"),
+        ("ken f = speir \"x\"\n", "The Input expression"),
         ("kin Foo {\n}\n", "The Class statement"),
         ("ken r = 1..3\n", "The Range expression"),
     ] {
         let err = compile_to_wat(src).expect_err(src).to_string();
         assert!(err.contains(kind), "{src}: {err}");
     }
+}
+
+// ---------------------------------------------------------------------------
+// function values, closures, higher-order builtins and pipes
+// (wrk_docs/2026.10.24 - DES - WASM function values and closures.md)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn daes_and_builtins_are_values_and_pipes_call_them() {
+    let src = r#"dae twice(x) {
+    gie x * 2
+}
+ken f = twice
+blether f(4)
+blether 5 |> twice
+blether "  hi  " |> wheesht |> upper
+ken l = len
+blether l([1, 2, 3])
+blether (twice)(6)
+blether 3 |> |n| n + 1
+blether f
+"#;
+    assert_parity(src, "8\n10\nHI\n3\n12\n4\n<dae twice>\n");
+}
+
+#[test]
+fn closures_share_mutable_variables_with_their_creator() {
+    let src = r#"ken x = 1
+ken bump = |y| {
+    x = x + y
+    gie x
+}
+blether bump(2)
+x = 10
+blether bump(1)
+blether x
+dae counter() {
+    ken n = 0
+    dae step() {
+        n = n + 1
+        gie n
+    }
+    gie step
+}
+ken c = counter()
+ken d = counter()
+c()
+c()
+blether c()
+blether d()
+dae make_adder(a) {
+    gie |b| |c| a + b + c
+}
+blether make_adder(1)(2)(3)
+"#;
+    assert_parity(src, "3\n11\n11\n3\n1\n6\n");
+}
+
+#[test]
+fn fer_closures_capture_each_iteration_decision_f3() {
+    let src = r#"ken fs = []
+fer i in 0..3 {
+    shove(fs, || i)
+    i = i * 10
+}
+blether gaun(fs, |f| f())
+ken ws = []
+ken k = 0
+whiles k < 3 {
+    ken snap = k
+    shove(ws, || snap)
+    k = k + 1
+}
+blether gaun(ws, |f| f())
+"#;
+    assert_parity(src, "[0, 10, 20]\n[0, 1, 2]\n");
+}
+
+#[test]
+fn nested_daes_recurse_and_shadow_top_level_daes() {
+    let src = r#"dae greet() {
+    gie "global"
+}
+dae outer(n) {
+    dae greet() {
+        gie "nested"
+    }
+    dae fact(x) {
+        gin x <= 1 {
+            gie 1
+        }
+        gie x * fact(x - 1)
+    }
+    blether greet()
+    gie fact(n)
+}
+blether outer(5)
+blether greet()
+"#;
+    assert_parity(src, "nested\n120\nglobal\n");
+}
+
+#[test]
+fn higher_order_builtins_match_the_interpreter() {
+    let src = r#"ken xs = [1, 2, 3, 4, 5]
+blether gaun(xs, |x| x * x)
+blether sieve(xs, |x| x % 2 == 0)
+blether tumble(xs, 100, |acc, x| acc - x)
+ken seen = []
+blether ilk(xs, |x| shove(seen, x + 1))
+blether seen
+blether hunt(xs, |x| x > 2)
+blether hunt(xs, |x| x > 9)
+blether ony(xs, |x| x > 4)
+blether ony([], |x| aye)
+blether aw(xs, |x| x > 0)
+blether aw(xs, |x| x > 1)
+blether grup_up(xs, |x| gin x % 2 == 0 than "even" ither "odd")
+blether pairt_by(xs, |x| x < 3)
+dae is_odd(x) {
+    gie x % 2 == 1
+}
+blether sieve(xs, is_odd)
+blether gaun(["a", "b"], upper)
+"#;
+    assert_parity(
+        src,
+        "[1, 4, 9, 16, 25]\n[2, 4]\n85\nnaething\n[2, 3, 4, 5, 6]\n3\nnaething\naye\nnae\naye\nnae\n\
+         {\"odd\": [1, 3, 5], \"even\": [2, 4]}\n[[1, 2], [3, 4, 5]]\n[1, 3, 5]\n[A, B]\n",
+    );
+}
+
+#[test]
+fn a_callback_error_unwinds_to_the_catch_and_frees_the_callback_scopes() {
+    let src = r#"ken xs = [1, 2, 0, 4]
+ken total = 0
+fer round in 0..200 {
+    hae_a_bash {
+        blether gaun(xs, |x| 10 / x)
+    } gin_it_gangs_wrang e {
+        total = total + 1
+    }
+}
+blether total
+ken safe = |x| {
+    hae_a_bash {
+        gie 10 / x
+    } gin_it_gangs_wrang e {
+        gie "oops"
+    }
+}
+blether gaun(xs, safe)
+"#;
+    let out = assert_parity(src, "200\n[10, 5, oops, 2]\n");
+    assert!(out.store_size < 200, "store kept {} slots", out.store_size);
+}
+
+#[test]
+fn a_callback_error_without_a_catch_is_a_runtime_error() {
+    let out = run_full("blether gaun([1, 0], |x| 1 / x)\nblether \"never\"\n");
+    let error = out.error.expect("division by zero");
+    assert!(error.contains("divide by zero"), "{error}");
+    assert_eq!(out.stdout, "");
+}
+
+#[test]
+fn calling_a_function_value_with_the_wrong_count_is_a_runtime_error() {
+    let out = run_full("ken f = |a, b| a + b\nblether f(1)\n");
+    let error = out.error.expect("arity error");
+    assert!(
+        error.contains("expects 2 arguments but ye gave it 1"),
+        "{error}"
+    );
+    let out = run_full("ken n = 3\nblether n(1)\n");
+    let error = out.error.expect("not callable");
+    assert!(error.contains("'3' isnae a function"), "{error}");
+}
+
+#[test]
+fn a_loop_making_closures_keeps_the_host_store_bounded() {
+    let out = run_full(
+        "ken total = 0\nfer i in 0..20000 {\n    ken add = |x| x + i\n    total = total + gaun([1, 2], add)[1]\n}\nblether total\n",
+    );
+    assert_eq!(out.error, None);
+    assert_eq!(out.stdout, "200030000\n");
+    assert!(
+        out.peak_store_size < 5000,
+        "store peaked at {}",
+        out.peak_store_size
+    );
+}
+
+#[test]
+fn a_dict_field_holding_a_function_can_be_called() {
+    let src = r#"dae make() {
+    gie {"f": |x| x + 1, "g": len}
+}
+ken d = make()
+blether d.f(4)
+blether d.g("abc")
+"#;
+    assert_parity(src, "5\n3\n");
 }

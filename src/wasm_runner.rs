@@ -9,7 +9,9 @@ use wasmtime::{Caller, Engine, FuncType, Linker, Memory, MemoryType, Module, Sto
 use crate::error::HaversError;
 use crate::interpreter::Interpreter;
 use crate::value::{DictValue, NativeFunction, SetValue, Value};
-use crate::wasm_compiler::{AUDIO_IMPORTS, MAX_BUILTIN_ARGS, RAISE_ASSERT, RAISE_HURL};
+use crate::wasm_compiler::{
+    AUDIO_IMPORTS, HOF_BUILTINS, MAX_BUILTIN_ARGS, RAISE_ASSERT, RAISE_HURL,
+};
 
 type Handle = i64;
 
@@ -26,6 +28,18 @@ enum HostValue {
     Set(DictEntries),
     NativeObject(TriObject),
     NativeCtor(String),
+    /// A guest function value: its `__mdh_fns` table slot, arity, captured cells (a
+    /// list, or nil) an' name.
+    Function {
+        index: u32,
+        arity: usize,
+        env: Handle,
+        name: String,
+    },
+    /// An interpreter builtin used as a value.
+    Builtin(String),
+    /// A variable shared between a function an' its closures.
+    Cell(Handle),
 }
 
 /// Dict entries in insertion order (like the interpreter's dicts).
@@ -55,6 +69,8 @@ enum ValueKey {
     Set(Handle),
     NativeObject(Handle),
     NativeCtor(Handle),
+    /// A function or builtin value, by identity.
+    Function(Handle),
 }
 
 #[derive(Debug, Clone)]
@@ -384,6 +400,8 @@ impl HostStore {
             HostValue::Set(_) => Some(ValueKey::Set(handle)),
             HostValue::NativeObject(_) => Some(ValueKey::NativeObject(handle)),
             HostValue::NativeCtor(_) => Some(ValueKey::NativeCtor(handle)),
+            HostValue::Function { .. } | HostValue::Builtin(_) => Some(ValueKey::Function(handle)),
+            HostValue::Cell(_) => None,
         }
     }
 
@@ -398,7 +416,10 @@ impl HostStore {
             Some(HostValue::Dict(map)) => !map.is_empty(),
             Some(HostValue::Set(members)) => !members.is_empty(),
             Some(HostValue::NativeObject(_)) => true,
-            Some(HostValue::NativeCtor(_)) => true,
+            Some(HostValue::NativeCtor(_))
+            | Some(HostValue::Function { .. })
+            | Some(HostValue::Builtin(_))
+            | Some(HostValue::Cell(_)) => true,
             None => false,
         }
     }
@@ -437,6 +458,9 @@ impl HostStore {
             }
             Some(HostValue::NativeObject(obj)) => format!("<native {}>", obj.kind),
             Some(HostValue::NativeCtor(kind)) => format!("<native dae tri.{}>", kind),
+            Some(HostValue::Function { name, .. }) => format!("<dae {}>", name),
+            Some(HostValue::Builtin(name)) => format!("<native dae {}>", name),
+            Some(HostValue::Cell(value)) => self.to_string(*value),
             None => "<invalid>".to_string(),
         }
     }
@@ -453,7 +477,8 @@ fn push_children(value: &HostValue, out: &mut Vec<Handle>) {
                     | ValueKey::Dict(h)
                     | ValueKey::Set(h)
                     | ValueKey::NativeObject(h)
-                    | ValueKey::NativeCtor(h) => out.push(*h),
+                    | ValueKey::NativeCtor(h)
+                    | ValueKey::Function(h) => out.push(*h),
                     _ => {}
                 }
                 out.push(*value);
@@ -461,6 +486,8 @@ fn push_children(value: &HostValue, out: &mut Vec<Handle>) {
         }
         HostValue::Set(members) => out.extend(members.iter().map(|(_, h)| *h)),
         HostValue::NativeObject(obj) => out.extend(obj.fields.values().copied()),
+        HostValue::Function { env, .. } => out.push(*env),
+        HostValue::Cell(value) => out.push(*value),
         _ => {}
     }
 }
@@ -556,7 +583,8 @@ impl ValueBridge {
             | ValueKey::Dict(h)
             | ValueKey::Set(h)
             | ValueKey::NativeObject(h)
-            | ValueKey::NativeCtor(h) => self.to_value(store, *h)?,
+            | ValueKey::NativeCtor(h)
+            | ValueKey::Function(h) => self.to_value(store, *h)?,
         })
     }
 
@@ -800,12 +828,338 @@ fn add_builtin_imports(linker: &mut Linker<HostState>, memory: Memory) -> Result
                     let name = read_memory_string(&caller, &memory, ptr, len);
                     let args: Vec<Handle> =
                         params[2..].iter().map(|v| v.i64().unwrap_or(0)).collect();
-                    let result = call_builtin(caller.data_mut(), &name, &args);
-                    results[0] = Val::I64(finish(&mut caller, result)?);
+                    results[0] = Val::I64(call_builtin_value(&mut caller, &name, &args, 0)?);
                     Ok(())
                 },
             )
             .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// A host error message, wi' the line when the guest passed one.
+fn host_error(message: String, line: i32) -> String {
+    if line > 0 {
+        type_error(message, line)
+    } else {
+        HaversError::InternalError(message).to_string()
+    }
+}
+
+/// Ca' a function value: a guest closure or dae (re-entrant, through the exported
+/// `__mdh_fns` table), a builtin, or a tri constructor. Errors go through `finish`, so
+/// inside a `hae_a_bash` they are left pending an' the result is nil.
+fn call_value(
+    caller: &mut Caller<'_, HostState>,
+    callee: Handle,
+    args: &[Handle],
+    line: i32,
+) -> wasmtime::Result<Handle> {
+    let value = caller.data().store.view(callee).map(Cow::into_owned);
+    let result = match value {
+        Some(HostValue::Function {
+            index,
+            arity,
+            env,
+            name,
+        }) => {
+            if args.len() == arity {
+                return call_guest(caller, index, env, args);
+            }
+            Err(HaversError::WrongArity {
+                name,
+                expected: arity,
+                got: args.len(),
+                line: line.max(0) as usize,
+            }
+            .to_string())
+        }
+        Some(HostValue::Builtin(name)) => return call_builtin_value(caller, &name, args, line),
+        _ => match tri_handle_call(caller.data_mut(), callee, "call", args) {
+            Some(handle) => Ok(handle),
+            None => Err(HaversError::NotCallable {
+                name: caller.data().store.to_string(callee),
+                line: line.max(0) as usize,
+            }
+            .to_string()),
+        },
+    };
+    finish(caller, result)
+}
+
+/// Run guest table entry `index` wi' its captured cells an' the arguments. The callee
+/// opens an' closes its ain host scopes on top o' the caller's (see the design doc,
+/// 2026.10.24 DES WASM function values), so handles the host holds stay safe.
+fn call_guest(
+    caller: &mut Caller<'_, HostState>,
+    index: u32,
+    env: Handle,
+    args: &[Handle],
+) -> wasmtime::Result<Handle> {
+    let func = caller
+        .get_export("__mdh_fns")
+        .and_then(|export| export.into_table())
+        .and_then(|table| table.get(&mut *caller, index))
+        .and_then(|entry| match entry {
+            Val::FuncRef(func) => func,
+            _ => None,
+        });
+    let Some(func) = func else {
+        return Err(trap(
+            caller.data_mut(),
+            "Och! That function value points naewhere in the WASM module".to_string(),
+        ));
+    };
+    let params: Vec<Val> = std::iter::once(env)
+        .chain(args.iter().copied())
+        .map(Val::I64)
+        .collect();
+    let mut results = [Val::I64(0)];
+    func.call(&mut *caller, &params, &mut results)?;
+    Ok(results[0].i64().unwrap_or(0))
+}
+
+/// A builtin ca'd by name: a higher-order one runs here, the rest through the bridge.
+fn call_builtin_value(
+    caller: &mut Caller<'_, HostState>,
+    name: &str,
+    args: &[Handle],
+    line: i32,
+) -> wasmtime::Result<Handle> {
+    if HOF_BUILTINS.iter().any(|(hof, _)| *hof == name) {
+        return call_hof(caller, name, args, line);
+    }
+    let result = call_builtin(caller.data_mut(), name, args);
+    finish(caller, result)
+}
+
+/// The higher-order builtins, as `Interpreter::call_builtin_hof` does them. Each
+/// callback's result is young in the caller's statement scope, which stays open while
+/// the host runs; after a callback leaves an error pending the host stops at once.
+fn call_hof(
+    caller: &mut Caller<'_, HostState>,
+    name: &str,
+    args: &[Handle],
+    line: i32,
+) -> wasmtime::Result<Handle> {
+    let arity = HOF_BUILTINS
+        .iter()
+        .find(|(hof, _)| *hof == name)
+        .map_or(2, |(_, arity)| *arity);
+    if args.len() != arity {
+        let message = HaversError::WrongArity {
+            name: name.to_string(),
+            expected: arity,
+            got: args.len(),
+            line: line.max(0) as usize,
+        }
+        .to_string();
+        return finish(caller, Err(message));
+    }
+    let items = match caller.data().store.get(args[0]) {
+        Some(HostValue::List(items)) => items.clone(),
+        _ => {
+            let message = format!("{}() expects a list as first argument", name);
+            return finish(caller, Err(host_error(message, line)));
+        }
+    };
+    let func = args[arity - 1];
+    let mut acc = args[1];
+    let mut kept = Vec::new();
+    let mut rest = Vec::new();
+    let mut groups: DictEntries = Vec::new();
+    for item in items {
+        let call_args = if name == "tumble" {
+            vec![acc, item]
+        } else {
+            vec![item]
+        };
+        let out = call_value(caller, func, &call_args, line)?;
+        let state = caller.data_mut();
+        if state.pending.is_some() {
+            return Ok(0);
+        }
+        let store = &mut state.store;
+        let truthy = store.is_truthy(out);
+        match name {
+            "gaun" => kept.push(out),
+            "sieve" | "pairt_by" if truthy => kept.push(item),
+            "pairt_by" => rest.push(item),
+            "tumble" => acc = out,
+            "hunt" if truthy => return Ok(item),
+            "ony" if truthy => return Ok(TRUE_HANDLE),
+            "aw" if !truthy => return Ok(FALSE_HANDLE),
+            "grup_up" => {
+                let key = store.key_for(out).unwrap_or(ValueKey::Nil);
+                match dict_get(&groups, &key) {
+                    Some(list) => {
+                        if let Some(HostValue::List(members)) = store.get_mut(list) {
+                            members.push(item);
+                        }
+                    }
+                    None => {
+                        let list = store.alloc(HostValue::List(vec![item]));
+                        groups.push((key, list));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let store = &mut caller.data_mut().store;
+    Ok(match name {
+        "gaun" | "sieve" => store.alloc(HostValue::List(kept)),
+        "tumble" => acc,
+        "ony" => FALSE_HANDLE,
+        "aw" => TRUE_HANDLE,
+        "grup_up" => store.alloc(HostValue::Dict(groups)),
+        "pairt_by" => {
+            let matches = store.alloc(HostValue::List(kept));
+            let others = store.alloc(HostValue::List(rest));
+            store.alloc(HostValue::List(vec![matches, others]))
+        }
+        _ => 0,
+    })
+}
+
+/// `obj.method(args)`: tri objects, or a dict field holdin' a function value.
+fn method_call(
+    caller: &mut Caller<'_, HostState>,
+    obj: Handle,
+    method: Handle,
+    args: &[Handle],
+) -> wasmtime::Result<Handle> {
+    let state = caller.data_mut();
+    let name = match state.store.get(method) {
+        Some(HostValue::String(name)) => name.clone(),
+        _ => return Ok(0),
+    };
+    if let Some(result) = tri_handle_call(state, obj, &name, args) {
+        return Ok(result);
+    }
+    let field = match state.store.get(obj) {
+        Some(HostValue::Dict(map)) => dict_get(map, &ValueKey::String(name)),
+        _ => None,
+    };
+    match field {
+        Some(f)
+            if matches!(
+                state.store.get(f),
+                Some(HostValue::Function { .. } | HostValue::Builtin(_))
+            ) =>
+        {
+            call_value(caller, f, args, 0)
+        }
+        _ => Ok(0),
+    }
+}
+
+/// Function values: `__mdh_make_fn`, `__mdh_make_builtin`, the cell imports,
+/// `__mdh_callN` an' `__mdh_method_callN`.
+fn add_function_imports(linker: &mut Linker<HostState>, memory: Memory) -> Result<(), String> {
+    let err = |e: wasmtime::Error| e.to_string();
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_make_fn",
+            move |mut caller: Caller<'_, HostState>,
+                  index: i32,
+                  arity: i32,
+                  env: i64,
+                  ptr: i32,
+                  len: i32|
+                  -> i64 {
+                let name = read_memory_string(&caller, &memory, ptr, len);
+                caller.data_mut().store.alloc(HostValue::Function {
+                    index: index.max(0) as u32,
+                    arity: arity.max(0) as usize,
+                    env,
+                    name,
+                })
+            },
+        )
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_make_builtin",
+            move |mut caller: Caller<'_, HostState>, ptr: i32, len: i32| -> i64 {
+                let name = read_memory_string(&caller, &memory, ptr, len);
+                caller.data_mut().store.alloc(HostValue::Builtin(name))
+            },
+        )
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_cell_new",
+            |mut caller: Caller<'_, HostState>, value: i64| -> i64 {
+                caller.data_mut().store.alloc(HostValue::Cell(value))
+            },
+        )
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_cell_get",
+            |caller: Caller<'_, HostState>, cell: i64| -> i64 {
+                match caller.data().store.get(cell) {
+                    Some(HostValue::Cell(value)) => *value,
+                    _ => 0,
+                }
+            },
+        )
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_cell_set",
+            |mut caller: Caller<'_, HostState>, cell: i64, value: i64| -> i64 {
+                // `get_mut` is the write barrier: an older cell may tak' a young value.
+                if let Some(HostValue::Cell(slot)) = caller.data_mut().store.get_mut(cell) {
+                    *slot = value;
+                }
+                value
+            },
+        )
+        .map_err(err)?;
+    for argc in 0..=MAX_BUILTIN_ARGS {
+        let params = std::iter::repeat_n(ValType::I64, argc + 1).chain([ValType::I32]);
+        let ty = FuncType::new(params, [ValType::I64]);
+        linker
+            .func_new(
+                "env",
+                &format!("__mdh_call{argc}"),
+                ty,
+                move |mut caller: Caller<'_, HostState>, params: &[Val], results: &mut [Val]| {
+                    let callee = params[0].i64().unwrap_or(0);
+                    let args: Vec<Handle> = params[1..=argc]
+                        .iter()
+                        .map(|v| v.i64().unwrap_or(0))
+                        .collect();
+                    let line = params[argc + 1].i32().unwrap_or(0);
+                    results[0] = Val::I64(call_value(&mut caller, callee, &args, line)?);
+                    Ok(())
+                },
+            )
+            .map_err(err)?;
+    }
+    for argc in 0..=8 {
+        let ty = FuncType::new(std::iter::repeat_n(ValType::I64, argc + 2), [ValType::I64]);
+        linker
+            .func_new(
+                "env",
+                &format!("__mdh_method_call{argc}"),
+                ty,
+                move |mut caller: Caller<'_, HostState>, params: &[Val], results: &mut [Val]| {
+                    let handles: Vec<Handle> =
+                        params.iter().map(|v| v.i64().unwrap_or(0)).collect();
+                    let result = method_call(&mut caller, handles[0], handles[1], &handles[2..])?;
+                    results[0] = Val::I64(result);
+                    Ok(())
+                },
+            )
+            .map_err(err)?;
     }
     Ok(())
 }
@@ -1800,6 +2154,9 @@ fn host_type_name(value: &HostValue) -> &'static str {
         HostValue::Dict(_) => "dict",
         HostValue::Set(_) => "creel",
         HostValue::NativeObject(_) | HostValue::NativeCtor(_) => "native",
+        HostValue::Function { .. } => "function",
+        HostValue::Builtin(_) => "native function",
+        HostValue::Cell(_) => "cell",
     }
 }
 
@@ -2466,232 +2823,7 @@ fn run_module(engine: &Engine, module: &Module, capture: bool) -> Result<WasmRun
         )
         .map_err(|e| e.to_string())?;
 
-    linker
-        .func_wrap(
-            "env",
-            "__mdh_method_call0",
-            move |mut caller: Caller<'_, HostState>, obj: i64, method: i64| -> i64 {
-                let state = caller.data_mut();
-                let name = match state.store.get(method) {
-                    Some(HostValue::String(name)) => name.clone(),
-                    _ => return 0,
-                };
-                if let Some(result) = tri_handle_call(state, obj, &name, &[]) {
-                    return result;
-                }
-                0
-            },
-        )
-        .map_err(|e| e.to_string())?;
-
-    linker
-        .func_wrap(
-            "env",
-            "__mdh_method_call1",
-            move |mut caller: Caller<'_, HostState>, obj: i64, method: i64, a0: i64| -> i64 {
-                let state = caller.data_mut();
-                let name = match state.store.get(method) {
-                    Some(HostValue::String(name)) => name.clone(),
-                    _ => return 0,
-                };
-                let args = [a0];
-                if let Some(result) = tri_handle_call(state, obj, &name, &args) {
-                    return result;
-                }
-                0
-            },
-        )
-        .map_err(|e| e.to_string())?;
-
-    linker
-        .func_wrap(
-            "env",
-            "__mdh_method_call2",
-            move |mut caller: Caller<'_, HostState>,
-                  obj: i64,
-                  method: i64,
-                  a0: i64,
-                  a1: i64|
-                  -> i64 {
-                let state = caller.data_mut();
-                let name = match state.store.get(method) {
-                    Some(HostValue::String(name)) => name.clone(),
-                    _ => return 0,
-                };
-                let args = [a0, a1];
-                if let Some(result) = tri_handle_call(state, obj, &name, &args) {
-                    return result;
-                }
-                0
-            },
-        )
-        .map_err(|e| e.to_string())?;
-
-    linker
-        .func_wrap(
-            "env",
-            "__mdh_method_call3",
-            move |mut caller: Caller<'_, HostState>,
-                  obj: i64,
-                  method: i64,
-                  a0: i64,
-                  a1: i64,
-                  a2: i64|
-                  -> i64 {
-                let state = caller.data_mut();
-                let name = match state.store.get(method) {
-                    Some(HostValue::String(name)) => name.clone(),
-                    _ => return 0,
-                };
-                let args = [a0, a1, a2];
-                if let Some(result) = tri_handle_call(state, obj, &name, &args) {
-                    return result;
-                }
-                0
-            },
-        )
-        .map_err(|e| e.to_string())?;
-
-    linker
-        .func_wrap(
-            "env",
-            "__mdh_method_call4",
-            move |mut caller: Caller<'_, HostState>,
-                  obj: i64,
-                  method: i64,
-                  a0: i64,
-                  a1: i64,
-                  a2: i64,
-                  a3: i64|
-                  -> i64 {
-                let state = caller.data_mut();
-                let name = match state.store.get(method) {
-                    Some(HostValue::String(name)) => name.clone(),
-                    _ => return 0,
-                };
-                let args = [a0, a1, a2, a3];
-                if let Some(result) = tri_handle_call(state, obj, &name, &args) {
-                    return result;
-                }
-                0
-            },
-        )
-        .map_err(|e| e.to_string())?;
-
-    linker
-        .func_wrap(
-            "env",
-            "__mdh_method_call5",
-            move |mut caller: Caller<'_, HostState>,
-                  obj: i64,
-                  method: i64,
-                  a0: i64,
-                  a1: i64,
-                  a2: i64,
-                  a3: i64,
-                  a4: i64|
-                  -> i64 {
-                let state = caller.data_mut();
-                let name = match state.store.get(method) {
-                    Some(HostValue::String(name)) => name.clone(),
-                    _ => return 0,
-                };
-                let args = [a0, a1, a2, a3, a4];
-                if let Some(result) = tri_handle_call(state, obj, &name, &args) {
-                    return result;
-                }
-                0
-            },
-        )
-        .map_err(|e| e.to_string())?;
-
-    linker
-        .func_wrap(
-            "env",
-            "__mdh_method_call6",
-            move |mut caller: Caller<'_, HostState>,
-                  obj: i64,
-                  method: i64,
-                  a0: i64,
-                  a1: i64,
-                  a2: i64,
-                  a3: i64,
-                  a4: i64,
-                  a5: i64|
-                  -> i64 {
-                let state = caller.data_mut();
-                let name = match state.store.get(method) {
-                    Some(HostValue::String(name)) => name.clone(),
-                    _ => return 0,
-                };
-                let args = [a0, a1, a2, a3, a4, a5];
-                if let Some(result) = tri_handle_call(state, obj, &name, &args) {
-                    return result;
-                }
-                0
-            },
-        )
-        .map_err(|e| e.to_string())?;
-
-    linker
-        .func_wrap(
-            "env",
-            "__mdh_method_call7",
-            move |mut caller: Caller<'_, HostState>,
-                  obj: i64,
-                  method: i64,
-                  a0: i64,
-                  a1: i64,
-                  a2: i64,
-                  a3: i64,
-                  a4: i64,
-                  a5: i64,
-                  a6: i64|
-                  -> i64 {
-                let state = caller.data_mut();
-                let name = match state.store.get(method) {
-                    Some(HostValue::String(name)) => name.clone(),
-                    _ => return 0,
-                };
-                let args = [a0, a1, a2, a3, a4, a5, a6];
-                if let Some(result) = tri_handle_call(state, obj, &name, &args) {
-                    return result;
-                }
-                0
-            },
-        )
-        .map_err(|e| e.to_string())?;
-
-    linker
-        .func_wrap(
-            "env",
-            "__mdh_method_call8",
-            move |mut caller: Caller<'_, HostState>,
-                  obj: i64,
-                  method: i64,
-                  a0: i64,
-                  a1: i64,
-                  a2: i64,
-                  a3: i64,
-                  a4: i64,
-                  a5: i64,
-                  a6: i64,
-                  a7: i64|
-                  -> i64 {
-                let state = caller.data_mut();
-                let name = match state.store.get(method) {
-                    Some(HostValue::String(name)) => name.clone(),
-                    _ => return 0,
-                };
-                let args = [a0, a1, a2, a3, a4, a5, a6, a7];
-                if let Some(result) = tri_handle_call(state, obj, &name, &args) {
-                    return result;
-                }
-                0
-            },
-        )
-        .map_err(|e| e.to_string())?;
-
+    add_function_imports(&mut linker, memory)?;
     add_builtin_imports(&mut linker, memory)?;
     add_statement_imports(&mut linker, memory)?;
 

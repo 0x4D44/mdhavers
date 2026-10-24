@@ -4,10 +4,7 @@
 # Grouped by cause, biggest group first.
 # Regenerate: MDH_WASM_PARITY_BLESS=1 cargo test --features wasm_runner --test wasm_golden_parity
 
-# == compile error: Och! Compilation went tits up: Dae _ isnae kent tae the WASM backend - higher-order builtins (gaun, (43) ==
-tests/golden/builtins/functional/gaun_map.braw
-tests/golden/builtins/functional/sieve_filter.braw
-tests/golden/builtins/functional/tumble_reduce.braw
+# == compile error: Och! Compilation went tits up: Dae _ isnae kent tae the WASM backend - higher-order builtins (gaun, (36) ==
 tests/golden/classes/basic/class_def.braw
 tests/golden/classes/basic/class_fields.braw
 tests/golden/classes/basic/class_methods.braw
@@ -37,51 +34,36 @@ tests/golden/classes/method_value_is_bound.braw
 tests/golden/classes/named_method_closure_defaults_reflect_masel_mutation.braw
 tests/golden/classes/operator_overloading_basic.braw
 tests/golden/classes/operator_overloading_non_var.braw
-tests/golden/functions/block_expression_value_is_last_expression.braw
-tests/golden/functions/closures_and_higher_order.braw
 tests/golden/functions/default_params_capture_and_param_refs_parity.braw
-tests/golden/functions/fer_closures_capture_each_iteration.braw
 tests/golden/functions/gie_in_block_expression_returns_from_function.braw
-tests/golden/functions/nested_nested_function_shadowing.braw
 tests/golden/integration/bank_account.braw
 tests/golden/integration/calculator.braw
 tests/golden/integration/showcase_bothy_adventure.braw
 tests/golden/integration/showcase_config_differ.braw
 tests/golden/integration/showcase_raytracer_ascii.braw
 
-# == compile error: Jings! Something went awfy wrang: The Lambda expression isnae supported in WASM yet! (7) ==
-tests/golden/data_structures/dict_callable_from_function.braw
-tests/golden/functions/builtin_len_shadowed_by_variable_binding.braw
-tests/golden/functions/closure_capture_sees_mutations.braw
-tests/golden/functions/function_name_shadowed_by_variable_function_value.braw
-tests/golden/functions/functions_basics.braw
-tests/golden/functions/lambdas/lambda_basic.braw
-tests/golden/functions/lambdas/lambda_hof.braw
-
-# == compile error: Och! Compilation went tits up: _ hasnae been declared - use ken tae declare it first (line N) (3) ==
+# == compile error: Och! Compilation went tits up: _ hasnae been declared - use ken tae declare it first (line N) (2) ==
 tests/golden/data_structures/collections_destructuring_spread.braw
-tests/golden/functions/advanced/closures.braw
 tests/golden/integration/showcase_muckle_numbers.braw
-
-# == compile error: Och! Compilation went tits up: Top-level variable _ cannae be used inside dae _ in WASM yet - pass i (2) ==
-tests/golden/functions/named_closure_mutation_and_default_eval.braw
-tests/golden/integration/showcase_blether_lisp.braw
 
 # == output mismatch (2) ==
 tests/golden/basics/operators/integer_model.braw
 tests/golden/basics/variables/shadowing.braw
 
+# == compile error: Jings! Something went awfy wrang: The BlockExpr expression isnae supported in WASM yet! (1) ==
+tests/golden/functions/block_expression_value_is_last_expression.braw
+
 # == compile error: Jings! Something went awfy wrang: The Class statement isnae supported in WASM yet! (1) ==
 tests/golden/classes/class_value_and_name_shadowing.braw
 
-# == compile error: Jings! Something went awfy wrang: The Pipe expression isnae supported in WASM yet! (1) ==
-tests/golden/basics/values_and_strings.braw
+# == compile error: Och! Compilation went tits up: Dae _ inside anither dae cannae hae default parameters in WASM yet (l (1) ==
+tests/golden/functions/named_closure_mutation_and_default_eval.braw
 
 # == compile error: Och! Compilation went tits up: The default fer _ in dae _ maun be a constant in WASM (line N) (1) ==
 tests/golden/functions/defaults_use_callee_closure_not_call_site_scope.braw
 
-# == compile error: Och! Compilation went tits up: _ is a dae - WASM cannae use daes as values yet, only call them (line (1) ==
-tests/golden/functions/nested_function_recursion_and_shadowing.braw
+# == compile error: Och! Compilation went tits up: Top-level variable _ cannae be used inside dae _ in WASM yet - pass i (1) ==
+tests/golden/integration/showcase_blether_lisp.braw
 
 # == runtime error: That (1) ==
 tests/golden/edge_cases/bytes_oob_and_slice_bounds_parity.braw
