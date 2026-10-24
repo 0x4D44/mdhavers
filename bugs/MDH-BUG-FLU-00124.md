@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00124 — WASM host may display creel string members without quotes (unverified)
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** wasm
 - **Raised:** 2026-10-24T05:07:06Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261024T052930Z-27a080f9
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00124-run-fix-20261024T052930Z-27a080f9
-- **Owner base:** 06978e5c44b260d0cd35930ac6a0d9054a75d2ab
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-24T05:29:30Z
-- **Owner until:** 2026-10-24T09:29:30Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T05:07:06Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-24T05:07:06Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T05:29:36Z, deltic:auto role=fix run=fix-20261024T052930Z-27a080f9 branch=task/bug-MDH-BUG-FLU-00124-run-fix-20261024T052930Z-27a080f9 code=06978e5 gate=manual)
 
 ## Observation
 
