@@ -6,15 +6,15 @@
 - **Area:** js
 - **Raised:** 2026-10-24T02:09:56Z
 - **Discovery source:** Agent
-- **Owner:** -
-- **Owner role:** -
-- **Owner run:** -
-- **Owner host:** -
-- **Owner branch:** -
-- **Owner base:** -
+- **Owner:** deltic:manual
+- **Owner role:** fix
+- **Owner run:** fix-20261024T022514Z-b664f533
+- **Owner host:** flux
+- **Owner branch:** task/bug-MDH-BUG-FLU-00104-run-fix-20261024T022514Z-b664f533
+- **Owner base:** 4f6426940a0f13c9785739a0ac03c858239c4582
 - **Owner fingerprint:** -
-- **Owner since:** -
-- **Owner until:** -
+- **Owner since:** 2026-10-24T02:25:14Z
+- **Owner until:** 2026-10-24T06:25:14Z
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
