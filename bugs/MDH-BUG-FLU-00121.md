@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00121 — WASM host store has no bytes value
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** wasm
 - **Raised:** 2026-10-24T04:08:13Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261024T050641Z-f6c686d0
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00121-run-fix-20261024T050641Z-f6c686d0
-- **Owner base:** 9d497ff20b9fb27f8dc9b6bc99550d1a6deca3b0
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-24T05:06:41Z
-- **Owner until:** 2026-10-24T09:06:41Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T04:08:13Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-24T04:08:13Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T05:06:47Z, deltic:auto role=fix run=fix-20261024T050641Z-f6c686d0 branch=task/bug-MDH-BUG-FLU-00121-run-fix-20261024T050641Z-f6c686d0 code=cce0f83 gate=manual)
 
 ## Observation
 
