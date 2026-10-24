@@ -477,6 +477,56 @@ const __havers_core = (() => {
   };
 
   const builtins = {
+    // Creels (sets): a JS Set keys BigInt/string/bool by value an' lists, dicts an' creels by
+    // identity, as the interpreter's `ValueKey` does. Display an' list order are sorted by `show`.
+    creel: (x) => {
+      if (Array.isArray(x)) return new Set(x.map((v) => (v === undefined ? null : v)));
+      if (x instanceof Set) return x;
+      throw native("creel() needs a list tae make a set fae");
+    },
+    empty_creel: () => new Set(),
+    toss_in: (s, x) => {
+      if (!(s instanceof Set)) throw native("toss_in() needs a creel (set)");
+      s.add(x === undefined ? null : x);
+      return s;
+    },
+    heave_oot: (s, x) => {
+      if (!(s instanceof Set)) throw native("heave_oot() needs a creel (set)");
+      s.delete(x === undefined ? null : x);
+      return s;
+    },
+    is_in_creel: (s, x) => {
+      if (!(s instanceof Set)) throw native("is_in_creel() needs a creel (set)");
+      return s.has(x === undefined ? null : x);
+    },
+    creels_thegither: (a, b) => {
+      if (!(a instanceof Set && b instanceof Set)) throw native("creels_thegither() needs two creels");
+      return new Set([...a, ...b]);
+    },
+    creels_baith: (a, b) => {
+      if (!(a instanceof Set && b instanceof Set)) throw native("creels_baith() needs two creels");
+      return new Set([...a].filter((v) => b.has(v)));
+    },
+    creels_differ: (a, b) => {
+      if (!(a instanceof Set && b instanceof Set)) throw native("creels_differ() needs two creels");
+      return new Set([...a].filter((v) => !b.has(v)));
+    },
+    creel_tae_list: (s) => {
+      if (!(s instanceof Set)) throw native("creel_tae_list() needs a creel");
+      return [...s].map((v) => [show(v), v]).sort((p, q) => (p[0] < q[0] ? -1 : p[0] > q[0] ? 1 : 0)).map((p) => p[1]);
+    },
+    is_subset: (a, b) => {
+      if (!(a instanceof Set && b instanceof Set)) throw native("is_subset() needs two creels");
+      return [...a].every((v) => b.has(v));
+    },
+    is_superset: (a, b) => {
+      if (!(a instanceof Set && b instanceof Set)) throw native("is_superset() needs two creels");
+      return [...b].every((v) => a.has(v));
+    },
+    is_disjoint: (a, b) => {
+      if (!(a instanceof Set && b instanceof Set)) throw native("is_disjoint() needs two creels");
+      return [...a].every((v) => !b.has(v));
+    },
     len: (x) => {
       if (typeof x === "string") {
         let n = 0;

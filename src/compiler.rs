@@ -5,6 +5,19 @@ use std::collections::{HashMap, HashSet};
 /// Runtime helpers bound as ordinary (shadowable) names at the top o' the user's block.
 const RUNTIME_BINDINGS: &[&str] = &[
     "len",
+    // Creel (set) builtins (core_runtime.js), matchin' the interpreter's (MDH-BUG-FLU-00104).
+    "creel",
+    "empty_creel",
+    "toss_in",
+    "heave_oot",
+    "is_in_creel",
+    "creels_thegither",
+    "creels_baith",
+    "creels_differ",
+    "creel_tae_list",
+    "is_subset",
+    "is_superset",
+    "is_disjoint",
     "whit_kind",
     "tae_string",
     "tae_int",

@@ -763,3 +763,27 @@ fn js_get_key_without_tty_returns_empty_string_mdh_bug_flu_00101() {
         run_js("ken k = get_key()\nblether \"[\" + k + \"]\"\nblether k == \"\"").expect("node");
     assert_eq!(out, "[]\naye");
 }
+
+#[test]
+fn parity_js_creel_builtins_mdh_bug_flu_00104() {
+    if !node_available() {
+        return;
+    }
+    assert_js_parity(&[
+        (
+            "00104 creel construction, display, membership, add and remove",
+            "ken s = creel([3, 1, 2, 2])\nblether s\nblether len(s)\nblether is_in_creel(s, 2)\nblether is_in_creel(s, \"2\")\ntoss_in(s, 5)\nheave_oot(s, 1)\nblether creel_tae_list(s)\nblether s",
+            "creel{\"1\", \"2\", \"3\"}\n3\naye\nnae\n[2, 3, 5]\ncreel{\"2\", \"3\", \"5\"}",
+        ),
+        (
+            "00104 creel set operations",
+            "ken a = creel([1, 2])\nken b = creel([2, 3])\nblether creels_thegither(a, b)\nblether creels_baith(a, b)\nblether creels_differ(a, b)\nblether is_subset(creel([1]), a)\nblether is_superset(creel([1]), a)\nblether is_disjoint(creel([1]), creel([2]))",
+            "creel{\"1\", \"2\", \"3\"}\ncreel{\"2\"}\ncreel{\"1\"}\naye\nnae\naye",
+        ),
+        (
+            "00104 creel equality, truthiness, aliasing and identity members",
+            "blether creel([1, 2]) == creel([2, 1])\nblether creel([1]) == creel([1, 2])\ngin empty_creel() { blether \"truthy\" } ither { blether \"falsy\" }\nken s = creel([1])\nken t = s\ntoss_in(t, 2)\nblether len(s)\nken l = [1]\nken c = creel([l])\nblether is_in_creel(c, l)\nblether is_in_creel(c, [1])",
+            "aye\nnae\nfalsy\n2\naye\nnae",
+        ),
+    ]);
+}
