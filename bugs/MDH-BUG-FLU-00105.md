@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00105 — interpreter_native_builtins_coverage dies with SIGTRAP on macOS in the default full build
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** tests
 - **Raised:** 2026-10-24T02:13:46Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261024T025822Z-0e25f899
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00105-run-fix-20261024T025822Z-0e25f899
-- **Owner base:** 1c57be611e76ab0c49cd655477580087b8601cbf
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-24T02:58:22Z
-- **Owner until:** 2026-10-24T06:58:22Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T02:13:46Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-24T02:13:46Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T02:58:28Z, deltic:auto role=fix run=fix-20261024T025822Z-0e25f899 branch=task/bug-MDH-BUG-FLU-00105-run-fix-20261024T025822Z-0e25f899 code=1c57be6 gate=manual)
 
 ## Observation
 
