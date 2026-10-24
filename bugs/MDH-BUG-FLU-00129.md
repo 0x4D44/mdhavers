@@ -6,15 +6,15 @@
 - **Area:** benchmarks
 - **Raised:** 2026-10-24T22:25:42Z
 - **Discovery source:** Agent
-- **Owner:** -
-- **Owner role:** -
-- **Owner run:** -
-- **Owner host:** -
-- **Owner branch:** -
-- **Owner base:** -
+- **Owner:** deltic:manual
+- **Owner role:** fix
+- **Owner run:** fix-20261024T224248Z-86473bee
+- **Owner host:** flux
+- **Owner branch:** task/bug-MDH-BUG-FLU-00129-run-fix-20261024T224248Z-86473bee
+- **Owner base:** 07b1df1114fdd53d7849ee49f27a21201972a434
 - **Owner fingerprint:** -
-- **Owner since:** -
-- **Owner until:** -
+- **Owner since:** 2026-10-24T22:42:48Z
+- **Owner until:** 2026-10-25T02:42:48Z
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
