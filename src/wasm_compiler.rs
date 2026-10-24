@@ -319,6 +319,17 @@ pub struct WasmCompiler {
     string_data: Vec<String>,
     /// User functions (name -> params), filled by `compile` so calls can fill in defaults.
     functions: HashMap<String, Vec<Param>>,
+    /// Host scopes open in the function being compiled (one per enclosing statement).
+    scope_depth: usize,
+    /// Each enclosing `whiles`, innermost last (fer brak/haud): its `scope_depth`, and
+    /// whether it sweeps its ain scope at iteration boundaries.
+    loop_depths: Vec<(usize, bool)>,
+    /// Bytes at the top o' memory the biggest function needs tae spill its locals.
+    max_root_bytes: usize,
+    /// The previous statement's `scope_next` already opened this statement's scope.
+    scope_preopened: bool,
+    /// Locals o' the current function that only ever hold numbers.
+    numeric_locals: HashSet<String>,
 }
 
 /// Linear memory the host gives a module (one 64KiB page); string data must fit inside it.
@@ -660,6 +671,7 @@ impl<'a> Validator<'a> {
 
 const TMP_LOGIC: &str = "__mdh$tmp0";
 const TMP_BUILD: &str = "__mdh$tmp1";
+const TMP_RET: &str = "__mdh$tmp2";
 
 impl Default for WasmCompiler {
     fn default() -> Self {
@@ -676,6 +688,11 @@ impl WasmCompiler {
             func_params: Vec::new(),
             string_data: Vec::new(),
             functions: HashMap::new(),
+            scope_depth: 0,
+            loop_depths: Vec::new(),
+            max_root_bytes: 0,
+            scope_preopened: false,
+            numeric_locals: HashSet::new(),
         }
     }
 
@@ -688,6 +705,7 @@ impl WasmCompiler {
         self.output.clear();
         self.indent = 0;
         self.string_data.clear();
+        self.max_root_bytes = 0;
         self.functions = program
             .statements
             .iter()
@@ -749,6 +767,21 @@ impl WasmCompiler {
         );
         self.emit_line("(import \"env\" \"__mdh_list_push\" (func $mdh_list_push (param i64 i64) (result i64)))");
         self.emit_line("(import \"env\" \"__mdh_make_dict\" (func $mdh_make_dict (result i64)))");
+        // Host store reclamation: every statement runs in a host scope, and on exit the
+        // function's locals (spilled tae the top o' memory) are the roots (MDH-BUG-FLU-00092).
+        self.emit_line("(import \"env\" \"__mdh_scope_enter\" (func $mdh_scope_enter))");
+        self.emit_line(
+            "(import \"env\" \"__mdh_scope_exit\" (func $mdh_scope_exit (param i32 i32 i32)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"__mdh_scope_next\" (func $mdh_scope_next (param i32 i32)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"__mdh_scope_collect_due\" (func $mdh_scope_collect_due (result i32)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"__mdh_scope_collect\" (func $mdh_scope_collect (param i32 i32)))",
+        );
         self.emit_line("(import \"env\" \"__mdh_dict_set\" (func $mdh_dict_set (param i64 i64 i64) (result i64)))");
         self.emit_line(
             "(import \"env\" \"__mdh_prop_get\" (func $mdh_prop_get (param i64 i64) (result i64)))",
@@ -807,10 +840,11 @@ impl WasmCompiler {
 
         // Add string data section if we have strings
         let string_bytes: usize = self.string_data.iter().map(|s| s.len() + 1).sum();
-        if string_bytes > WASM_MEMORY_BYTES {
+        if string_bytes + self.max_root_bytes > WASM_MEMORY_BYTES {
             return Err(HaversError::CompileError(format!(
                 "String data ({} bytes) is too muckle fer the {} byte WASM memory",
-                string_bytes, WASM_MEMORY_BYTES
+                string_bytes + self.max_root_bytes,
+                WASM_MEMORY_BYTES
             )));
         }
         if !self.string_data.is_empty() {
@@ -881,9 +915,9 @@ impl WasmCompiler {
             }
 
             // Compile body
-            for s in body {
-                self.compile_stmt(s)?;
-            }
+            let body: Vec<&Stmt> = body.iter().collect();
+            self.infer_numeric_locals(&body);
+            self.compile_stmts(&body)?;
 
             // Default return value
             self.emit_nil();
@@ -915,9 +949,8 @@ impl WasmCompiler {
         }
 
         // Compile statements
-        for stmt in stmts {
-            self.compile_stmt(stmt)?;
-        }
+        self.infer_numeric_locals(stmts);
+        self.compile_stmts(stmts)?;
 
         // Return nil
         self.emit_nil();
@@ -978,6 +1011,217 @@ impl WasmCompiler {
     fn ensure_temp_locals(&mut self) {
         self.ensure_temp_local(TMP_LOGIC);
         self.ensure_temp_local(TMP_BUILD);
+        self.ensure_temp_local(TMP_RET);
+        let root_bytes = 8 * (self.func_params.len() + self.local_vars.len());
+        self.max_root_bytes = self.max_root_bytes.max(root_bytes);
+        self.scope_depth = 0;
+        self.loop_depths.clear();
+        self.scope_preopened = false;
+    }
+
+    /// Close the innermost `pop` host scopes. Every local and parameter o' the current
+    /// function is spilled tae the top o' memory as the roots: anything allocated since
+    /// the outermost closed scope began, and no' reachable fae them, is freed.
+    /// Sound because the operand stack is empty at statement boundaries and older
+    /// frames only hold handles allocated before these scopes began.
+    fn emit_scope_exit(&mut self, pop: usize) {
+        if pop == 0 {
+            return;
+        }
+        let base = self.emit_root_spill();
+        self.emit_line(&format!("(i32.const {})", base));
+        self.emit_line(&format!(
+            "(i32.const {})",
+            self.func_params.len() + self.local_vars.len()
+        ));
+        self.emit_line(&format!("(i32.const {})", pop));
+        self.emit_line("(call $mdh_scope_exit)");
+    }
+
+    /// Store every parameter and local at the top o' memory; returns the base address.
+    fn emit_root_spill(&mut self) -> usize {
+        let roots: Vec<String> = self
+            .func_params
+            .iter()
+            .chain(self.local_vars.iter())
+            .cloned()
+            .collect();
+        let base = WASM_MEMORY_BYTES - 8 * roots.len();
+        for (i, name) in roots.iter().enumerate() {
+            self.emit_line(&format!("(i32.const {})", base + 8 * i));
+            self.emit_line(&format!("(local.get ${})", name));
+            self.emit_line("(i64.store)");
+        }
+        base
+    }
+
+    /// Close the current scope and open the next statement's in one host call.
+    fn emit_scope_next(&mut self) {
+        let base = self.emit_root_spill();
+        self.emit_line(&format!("(i32.const {})", base));
+        self.emit_line(&format!(
+            "(i32.const {})",
+            self.func_params.len() + self.local_vars.len()
+        ));
+        self.emit_line("(call $mdh_scope_next)");
+    }
+
+    /// Compile one statement (a block compiles its statements as a sequence).
+    fn compile_stmt(&mut self, stmt: &Stmt) -> HaversResult<()> {
+        self.compile_stmts(&[stmt])
+    }
+
+    /// Compile a statement sequence. Each statement that can allocate runs in its ain
+    /// host scope; between two such neighbours the exit and enter are one host call.
+    fn compile_stmts(&mut self, stmts: &[&Stmt]) -> HaversResult<()> {
+        fn flatten<'a>(stmts: &[&'a Stmt], out: &mut Vec<&'a Stmt>) {
+            for stmt in stmts {
+                match stmt {
+                    Stmt::Block { statements, .. } => {
+                        let inner: Vec<&Stmt> = statements.iter().collect();
+                        flatten(&inner, out);
+                    }
+                    _ => out.push(stmt),
+                }
+            }
+        }
+        let mut flat = Vec::new();
+        flatten(stmts, &mut flat);
+        for (i, stmt) in flat.iter().enumerate() {
+            if !self.stmt_needs_scope(stmt) {
+                self.compile_stmt_body(stmt)?;
+                continue;
+            }
+            if self.scope_preopened {
+                self.scope_preopened = false;
+            } else {
+                self.emit_line("(call $mdh_scope_enter)");
+            }
+            self.scope_depth += 1;
+            self.compile_stmt_body(stmt)?;
+            self.scope_depth -= 1;
+            // Return closes its scopes itself before branching.
+            if matches!(stmt, Stmt::Return { .. }) {
+                continue;
+            }
+            let next_scoped = flat
+                .get(i + 1)
+                .is_some_and(|next| self.stmt_needs_scope(next));
+            if next_scoped {
+                self.emit_scope_next();
+                self.scope_preopened = true;
+            } else {
+                self.emit_scope_exit(1);
+            }
+        }
+        Ok(())
+    }
+
+    /// Whether a statement needs its ain host scope. One that can only allocate wide
+    /// numbers (inline-range numbers never touch the store) runs in its parent's scope,
+    /// which reclaims those slots when it closes. Skipping a scope is always sound.
+    fn stmt_needs_scope(&self, stmt: &Stmt) -> bool {
+        match stmt {
+            Stmt::VarDecl { initializer, .. } => {
+                initializer.as_ref().is_some_and(|e| !self.expr_is_cheap(e))
+            }
+            Stmt::Expression { expr, .. } | Stmt::Print { value: expr, .. } => {
+                !self.expr_is_cheap(expr)
+            }
+            Stmt::Return { value, .. } => value.as_ref().is_some_and(|e| !self.expr_is_cheap(e)),
+            Stmt::If { condition, .. } => !self.expr_is_cheap(condition),
+            Stmt::Break { .. } | Stmt::Continue { .. } | Stmt::Block { .. } => false,
+            // A loop pays one scope per run, no' per iteration.
+            _ => true,
+        }
+    }
+
+    /// An expression that allocates nothing but (at most) wide numbers.
+    fn expr_is_cheap(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::Literal { value, .. } => !matches!(value, Literal::String(_)),
+            Expr::Variable { .. } => true,
+            Expr::Grouping { expr, .. } => self.expr_is_cheap(expr),
+            Expr::Assign { value, .. } => self.expr_is_cheap(value),
+            Expr::Unary {
+                operator: UnaryOp::Not,
+                operand,
+                ..
+            } => self.expr_is_cheap(operand),
+            Expr::Logical { left, right, .. } => {
+                self.expr_is_cheap(left) && self.expr_is_cheap(right)
+            }
+            Expr::Binary {
+                left,
+                operator,
+                right,
+                ..
+            } if is_comparison(operator) => self.expr_is_cheap(left) && self.expr_is_cheap(right),
+            _ => self.expr_is_numeric(expr, &self.numeric_locals),
+        }
+    }
+
+    /// An expression that always yields a number (or traps), given which locals only
+    /// ever hold numbers. Arithmetic on numbers never builds a string or container.
+    fn expr_is_numeric(&self, expr: &Expr, numeric: &HashSet<String>) -> bool {
+        match expr {
+            Expr::Literal { value, .. } => {
+                matches!(value, Literal::Integer(_) | Literal::Float(_))
+            }
+            Expr::Variable { name, .. } => numeric.contains(name),
+            Expr::Grouping { expr, .. } => self.expr_is_numeric(expr, numeric),
+            Expr::Assign { value, .. } => self.expr_is_numeric(value, numeric),
+            Expr::Unary {
+                operator: UnaryOp::Negate,
+                operand,
+                ..
+            } => self.expr_is_numeric(operand, numeric),
+            Expr::Binary {
+                left,
+                operator,
+                right,
+                ..
+            } => {
+                !is_comparison(operator)
+                    && self.expr_is_numeric(left, numeric)
+                    && self.expr_is_numeric(right, numeric)
+            }
+            _ => false,
+        }
+    }
+
+    /// The function's locals that only ever hold numbers: every assignment tae them
+    /// is a numeric expression (a fixed point, since they can feed each other).
+    /// Parameters are never included; an unassigned local is nil, and nil arithmetic
+    /// traps rather than allocating.
+    fn infer_numeric_locals(&mut self, stmts: &[&Stmt]) {
+        let mut assigns: Vec<(&str, Option<&Expr>)> = Vec::new();
+        for stmt in stmts {
+            collect_assignments_stmt(stmt, &mut assigns);
+        }
+        let mut numeric: HashSet<String> = self
+            .local_vars
+            .iter()
+            .filter(|name| !name.starts_with("__mdh$"))
+            .cloned()
+            .collect();
+        loop {
+            let demote: Vec<String> = assigns
+                .iter()
+                .filter(|(name, value)| {
+                    numeric.contains(*name)
+                        && !value.is_some_and(|v| self.expr_is_numeric(v, &numeric))
+                })
+                .map(|(name, _)| name.to_string())
+                .collect();
+            if demote.is_empty() {
+                break;
+            }
+            for name in demote {
+                numeric.remove(&name);
+            }
+        }
+        self.numeric_locals = numeric;
     }
 
     fn ensure_temp_local(&mut self, name: &str) {
@@ -1038,7 +1282,7 @@ impl WasmCompiler {
         Ok(())
     }
 
-    fn compile_stmt(&mut self, stmt: &Stmt) -> HaversResult<()> {
+    fn compile_stmt_body(&mut self, stmt: &Stmt) -> HaversResult<()> {
         match stmt {
             Stmt::VarDecl {
                 name, initializer, ..
@@ -1054,12 +1298,6 @@ impl WasmCompiler {
             Stmt::Expression { expr, .. } => {
                 self.compile_expr(expr)?;
                 self.emit_line("(drop)");
-            }
-
-            Stmt::Block { statements, .. } => {
-                for s in statements {
-                    self.compile_stmt(s)?;
-                }
             }
 
             Stmt::If {
@@ -1100,14 +1338,29 @@ impl WasmCompiler {
                 self.emit_line("(loop $continue");
                 self.indent += 1;
 
-                // Check condition
+                // Check condition, in its ain scope (if it can allocate) so its garbage
+                // is freed each time roond
+                let cond_scope = !self.expr_is_cheap(condition);
+                if cond_scope {
+                    self.emit_line("(call $mdh_scope_enter)");
+                }
                 self.compile_expr(condition)?;
                 self.emit_line("(call $mdh_truthy)");
+                if cond_scope {
+                    self.emit_scope_exit(1);
+                }
                 self.emit_line("(i32.eqz)");
                 self.emit_line("(br_if $break)");
 
-                // Body
+                // Body. A `whiles` always has its ain scope (see `stmt_needs_scope`), so
+                // at an iteration boundary that scope is the innermost one.
+                let collects = cond_scope || self.stmt_allocates(body);
+                self.loop_depths.push((self.scope_depth, collects));
                 self.compile_stmt(body)?;
+                if collects {
+                    self.emit_loop_collect();
+                }
+                self.loop_depths.pop();
 
                 // Loop back
                 self.emit_line("(br $continue)");
@@ -1124,6 +1377,9 @@ impl WasmCompiler {
                 } else {
                     self.emit_nil();
                 }
+                self.emit_line(&format!("(local.set ${})", TMP_RET));
+                self.emit_scope_exit(self.scope_depth);
+                self.emit_line(&format!("(local.get ${})", TMP_RET));
                 self.emit_line("(return)");
             }
 
@@ -1133,10 +1389,19 @@ impl WasmCompiler {
             }
 
             Stmt::Break { .. } => {
+                self.emit_loop_scope_exit();
                 self.emit_line("(br $break)");
             }
 
             Stmt::Continue { .. } => {
+                self.emit_loop_scope_exit();
+                if self
+                    .loop_depths
+                    .last()
+                    .is_some_and(|(_, collects)| *collects)
+                {
+                    self.emit_loop_collect();
+                }
                 self.emit_line("(br $continue)");
             }
 
@@ -1164,6 +1429,54 @@ impl WasmCompiler {
             }
         }
         Ok(())
+    }
+
+    /// Close every scope inside the innermost loop before brak/haud jumps oot o' them.
+    /// (`validate_program` has already rejected a brak/haud ootside a loop.)
+    fn emit_loop_scope_exit(&mut self) {
+        if let Some(&(loop_depth, _)) = self.loop_depths.last() {
+            self.emit_scope_exit(self.scope_depth - loop_depth);
+        }
+    }
+
+    /// At an iteration boundary, sweep the loop's scope in place when the host says
+    /// it has grown enough; values earlier iterations dropped are freed there.
+    fn emit_loop_collect(&mut self) {
+        self.emit_line("(call $mdh_scope_collect_due)");
+        self.emit_line("(if");
+        self.indent += 1;
+        self.emit_line("(then");
+        self.indent += 1;
+        let base = self.emit_root_spill();
+        self.emit_line(&format!("(i32.const {})", base));
+        self.emit_line(&format!(
+            "(i32.const {})",
+            self.func_params.len() + self.local_vars.len()
+        ));
+        self.emit_line("(call $mdh_scope_collect)");
+        self.indent -= 1;
+        self.emit_line(")");
+        self.indent -= 1;
+        self.emit_line(")");
+    }
+
+    /// Whether running a statement can allocate anything but wide numbers.
+    fn stmt_allocates(&self, stmt: &Stmt) -> bool {
+        match stmt {
+            Stmt::Block { statements, .. } => statements.iter().any(|s| self.stmt_allocates(s)),
+            Stmt::If {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                self.stmt_needs_scope(stmt)
+                    || self.stmt_allocates(then_branch)
+                    || else_branch
+                        .as_ref()
+                        .is_some_and(|eb| self.stmt_allocates(eb))
+            }
+            _ => self.stmt_needs_scope(stmt),
+        }
     }
 
     fn compile_expr(&mut self, expr: &Expr) -> HaversResult<()> {
@@ -1410,6 +1723,110 @@ impl WasmCompiler {
     fn emit_line(&mut self, s: &str) {
         self.emit(s);
         self.output.push('\n');
+    }
+}
+
+fn is_comparison(op: &BinaryOp) -> bool {
+    matches!(
+        op,
+        BinaryOp::Equal
+            | BinaryOp::NotEqual
+            | BinaryOp::Less
+            | BinaryOp::LessEqual
+            | BinaryOp::Greater
+            | BinaryOp::GreaterEqual
+    )
+}
+
+/// Every assignment in a statement: (local, value), `None` fer a non-numeric source.
+fn collect_assignments_stmt<'a>(stmt: &'a Stmt, out: &mut Vec<(&'a str, Option<&'a Expr>)>) {
+    match stmt {
+        Stmt::VarDecl {
+            name, initializer, ..
+        } => {
+            out.push((name, initializer.as_ref()));
+            if let Some(init) = initializer {
+                collect_assignments_expr(init, out);
+            }
+        }
+        Stmt::Expression { expr, .. } | Stmt::Print { value: expr, .. } => {
+            collect_assignments_expr(expr, out)
+        }
+        Stmt::Return {
+            value: Some(value), ..
+        } => collect_assignments_expr(value, out),
+        Stmt::Block { statements, .. } => {
+            for s in statements {
+                collect_assignments_stmt(s, out);
+            }
+        }
+        Stmt::If {
+            condition,
+            then_branch,
+            else_branch,
+            ..
+        } => {
+            collect_assignments_expr(condition, out);
+            collect_assignments_stmt(then_branch, out);
+            if let Some(eb) = else_branch {
+                collect_assignments_stmt(eb, out);
+            }
+        }
+        Stmt::While {
+            condition, body, ..
+        } => {
+            collect_assignments_expr(condition, out);
+            collect_assignments_stmt(body, out);
+        }
+        Stmt::For { variable, body, .. } => {
+            out.push((variable, None));
+            collect_assignments_stmt(body, out);
+        }
+        Stmt::Import {
+            alias: Some(name), ..
+        } => out.push((name, None)),
+        _ => {}
+    }
+}
+
+fn collect_assignments_expr<'a>(expr: &'a Expr, out: &mut Vec<(&'a str, Option<&'a Expr>)>) {
+    match expr {
+        Expr::Assign { name, value, .. } => {
+            out.push((name, Some(value)));
+            collect_assignments_expr(value, out);
+        }
+        Expr::Binary { left, right, .. } | Expr::Logical { left, right, .. } => {
+            collect_assignments_expr(left, out);
+            collect_assignments_expr(right, out);
+        }
+        Expr::Unary { operand, .. } => collect_assignments_expr(operand, out),
+        Expr::Grouping { expr, .. } => collect_assignments_expr(expr, out),
+        Expr::Call {
+            callee, arguments, ..
+        } => {
+            collect_assignments_expr(callee, out);
+            for arg in arguments {
+                collect_assignments_expr(arg, out);
+            }
+        }
+        Expr::Get { object, .. } => collect_assignments_expr(object, out),
+        Expr::Set { object, value, .. } => {
+            collect_assignments_expr(object, out);
+            collect_assignments_expr(value, out);
+        }
+        Expr::List { elements, .. } => {
+            for e in elements {
+                collect_assignments_expr(e, out);
+            }
+        }
+        Expr::Dict { pairs, .. } => {
+            for (k, v) in pairs {
+                collect_assignments_expr(k, out);
+                collect_assignments_expr(v, out);
+            }
+        }
+        // Anything else is rejected by the code generator.
+        _ => {}
     }
 }
 

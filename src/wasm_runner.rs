@@ -67,10 +67,44 @@ impl TriObject {
 #[derive(Debug)]
 struct HostStore {
     values: Vec<HostValue>,
+    /// Allocation sequence number of each slot (`FREED` once reclaimed). The fixed
+    /// nil/false/true slots are born at 0, so they are never young and never freed.
+    births: Vec<u64>,
+    /// Reclaimed slots, reused by `alloc` before the store grows.
+    free: Vec<usize>,
+    next_birth: u64,
+    /// Open host scopes (one per running guest statement), innermost last.
+    scopes: Vec<Scope>,
+    /// Slots allocated while a scope was open, in birth order: each scope's young
+    /// objects are the suffix from its `log_start`.
+    young: Vec<usize>,
     /// Out-of-range ints and floats, interned by value so repeats share one slot.
     wide_ints: HashMap<i64, Handle>,
     wide_floats: HashMap<u64, Handle>,
 }
+
+// Reclamation (MDH-BUG-FLU-00092). The compiler wraps every guest statement in a host
+// scope. When a scope closes, the guest hands over all the current function's locals as
+// roots; everything born since the scope opened that is not reachable from them, or from
+// an older object mutated during the scope (the `remembered` write barrier in `get_mut`),
+// is freed. Older frames cannot hold younger handles (a callee only passes back its
+// return value, which is a root), and the guest's operand stack is empty between
+// statements, so the roots are complete. Survivors stay young for the enclosing scope.
+// A loop's scope stays open for the whole loop, so survivors that later iterations drop
+// would pile up in it: at each iteration boundary (a safe point in the loop's own frame)
+// the guest asks `scope_collect_due` and, when the region has doubled, sweeps it in place.
+#[derive(Debug)]
+struct Scope {
+    mark: u64,
+    log_start: usize,
+    remembered: HashSet<usize>,
+    /// Region length (`young.len() - log_start`) after the last in-place sweep.
+    swept_len: usize,
+}
+
+const FREED: u64 = u64::MAX;
+/// A loop's region must exceed this many young slots before an in-place sweep.
+const COLLECT_FLOOR: usize = 256;
 
 // Handle layout. Plain heap handles are store indices (>= 0, far below FLOAT_TAG).
 // Ints in [-2^61, 2^61) live in the handle itself as a negative number (`n - INT_BIAS`).
@@ -92,6 +126,11 @@ impl HostStore {
                 HostValue::Bool(false),
                 HostValue::Bool(true),
             ],
+            births: vec![0; 3],
+            free: Vec::new(),
+            next_birth: 1,
+            scopes: Vec::new(),
+            young: Vec::new(),
             wide_ints: HashMap::new(),
             wide_floats: HashMap::new(),
         }
@@ -140,8 +179,24 @@ impl HostStore {
     }
 
     fn alloc(&mut self, value: HostValue) -> Handle {
-        self.values.push(value);
-        (self.values.len() - 1) as Handle
+        let birth = self.next_birth;
+        self.next_birth += 1;
+        let idx = match self.free.pop() {
+            Some(idx) => {
+                self.values[idx] = value;
+                self.births[idx] = birth;
+                idx
+            }
+            None => {
+                self.values.push(value);
+                self.births.push(birth);
+                self.values.len() - 1
+            }
+        };
+        if !self.scopes.is_empty() {
+            self.young.push(idx);
+        }
+        idx as Handle
     }
 
     fn get(&self, handle: Handle) -> Option<&HostValue> {
@@ -149,9 +204,164 @@ impl HostStore {
         self.values.get(idx)
     }
 
+    /// Mutable access is the write barrier: an object older than the innermost scope
+    /// may be about tae hold a young handle, so that scope remembers it as a root.
     fn get_mut(&mut self, handle: Handle) -> Option<&mut HostValue> {
         let idx = handle as usize;
+        let birth = *self.births.get(idx)?;
+        if let Some(top) = self.scopes.last_mut() {
+            if birth < top.mark {
+                top.remembered.insert(idx);
+            }
+        }
         self.values.get_mut(idx)
+    }
+
+    /// Slots currently holding a value (the leak regression guard).
+    fn live_count(&self) -> usize {
+        self.values.len() - self.free.len()
+    }
+
+    fn is_live(&self, handle: Handle) -> bool {
+        self.births
+            .get(handle as usize)
+            .is_some_and(|birth| *birth != FREED)
+    }
+
+    fn scope_enter(&mut self) {
+        self.scopes.push(Scope {
+            mark: self.next_birth,
+            log_start: self.young.len(),
+            remembered: HashSet::new(),
+            swept_len: 0,
+        });
+    }
+
+    /// Whether the innermost scope's region has grown enough (doubled since its last
+    /// sweep, and past a floor) tae be worth sweeping in place. Amortised linear.
+    fn scope_collect_due(&self) -> bool {
+        self.scopes.last().is_some_and(|top| {
+            let region = self.young.len() - top.log_start;
+            region > (2 * top.swept_len).max(COLLECT_FLOOR)
+        })
+    }
+
+    /// Sweep the innermost scope's region in place, keeping the scope open.
+    fn scope_collect(&mut self, roots: &[Handle]) {
+        let Some(top) = self.scopes.last_mut() else {
+            return;
+        };
+        let (mark, log_start) = (top.mark, top.log_start);
+        let remembered = std::mem::take(&mut top.remembered);
+        self.sweep(mark, log_start, roots, &remembered);
+        let region = self.young.len() - log_start;
+        if let Some(top) = self.scopes.last_mut() {
+            top.remembered = remembered;
+            top.swept_len = region;
+        }
+    }
+
+    /// Whether closing the innermost `pop` scopes has anything tae sweep (and so needs
+    /// the roots); most statements o' numeric work allocate nothing.
+    fn scope_exit_needs_roots(&self, pop: usize) -> bool {
+        match self.scopes.len().checked_sub(pop) {
+            Some(keep) if pop > 0 => self.young.len() > self.scopes[keep].log_start,
+            _ => false,
+        }
+    }
+
+    /// Close the innermost `pop` scopes and free their unreachable young objects.
+    fn scope_exit(&mut self, roots: &[Handle], pop: usize) -> Result<(), String> {
+        if pop == 0 || pop > self.scopes.len() {
+            return Err(format!(
+                "Host scope stack is in a fankle: cannae close {} o' {} scopes",
+                pop,
+                self.scopes.len()
+            ));
+        }
+        let keep = self.scopes.len() - pop;
+        let mut mark = 0;
+        let mut log_start = 0;
+        let mut remembered = HashSet::new();
+        for (i, scope) in self.scopes.drain(keep..).enumerate() {
+            if i == 0 {
+                mark = scope.mark;
+                log_start = scope.log_start;
+            }
+            remembered.extend(scope.remembered);
+        }
+
+        self.sweep(mark, log_start, roots, &remembered);
+
+        match self.scopes.last_mut() {
+            Some(parent) => {
+                for idx in remembered {
+                    if self.births[idx] < parent.mark {
+                        parent.remembered.insert(idx);
+                    }
+                }
+            }
+            // Nae scope left tae count anything as young.
+            None => self.young.clear(),
+        }
+        Ok(())
+    }
+
+    /// Free every object born at or after `mark` (the log suffix fae `log_start`) that
+    /// is unreachable fae the roots or fae the remembered older objects.
+    fn sweep(
+        &mut self,
+        mark: u64,
+        log_start: usize,
+        roots: &[Handle],
+        remembered: &HashSet<usize>,
+    ) {
+        if self.young.len() <= log_start {
+            return;
+        }
+        let mut live: HashSet<usize> = HashSet::new();
+        let mut work: Vec<Handle> = roots.to_vec();
+        for &idx in remembered {
+            push_children(&self.values[idx], &mut work);
+        }
+        while let Some(handle) = work.pop() {
+            if !(0..FLOAT_TAG).contains(&handle) {
+                continue;
+            }
+            let idx = handle as usize;
+            match self.births.get(idx) {
+                Some(&birth) if birth >= mark && birth != FREED => {}
+                _ => continue,
+            }
+            if live.insert(idx) {
+                push_children(&self.values[idx], &mut work);
+            }
+        }
+        let mut kept = log_start;
+        for i in log_start..self.young.len() {
+            let idx = self.young[i];
+            if live.contains(&idx) {
+                self.young[kept] = idx;
+                kept += 1;
+            } else {
+                self.release(idx);
+            }
+        }
+        self.young.truncate(kept);
+    }
+
+    fn release(&mut self, idx: usize) {
+        match std::mem::replace(&mut self.values[idx], HostValue::Nil) {
+            HostValue::Int(n) if self.wide_ints.get(&n) == Some(&(idx as Handle)) => {
+                self.wide_ints.remove(&n);
+            }
+            HostValue::Float(f) if self.wide_floats.get(&f.to_bits()) == Some(&(idx as Handle)) => {
+                self.wide_floats.remove(&f.to_bits());
+            }
+            _ => {}
+        }
+        self.births[idx] = FREED;
+        self.free.push(idx);
     }
 
     fn key_for(&self, handle: Handle) -> Option<ValueKey> {
@@ -213,6 +423,27 @@ impl HostStore {
             Some(HostValue::NativeCtor(kind)) => format!("<native dae tri.{}>", kind),
             None => "<invalid>".to_string(),
         }
+    }
+}
+
+/// Every handle a value holds (list items, dict keys and values, object fields).
+fn push_children(value: &HostValue, out: &mut Vec<Handle>) {
+    match value {
+        HostValue::List(items) => out.extend_from_slice(items),
+        HostValue::Dict(entries) => {
+            for (key, value) in entries {
+                match key {
+                    ValueKey::List(h)
+                    | ValueKey::Dict(h)
+                    | ValueKey::NativeObject(h)
+                    | ValueKey::NativeCtor(h) => out.push(*h),
+                    _ => {}
+                }
+                out.push(*value);
+            }
+        }
+        HostValue::NativeObject(obj) => out.extend(obj.fields.values().copied()),
+        _ => {}
     }
 }
 
@@ -910,6 +1141,8 @@ pub struct WasmRunOutput {
     pub error: Option<String>,
     /// Live slots in the host value store when the run ended (leak regression guard).
     pub store_size: usize,
+    /// The most slots ever live at once (freed slots are reused before the store grows).
+    pub peak_store_size: usize,
 }
 
 pub fn run_wasm_file(path: &Path) -> Result<(), String> {
@@ -939,6 +1172,62 @@ pub fn run_wat_captured(wat_text: &str) -> Result<WasmRunOutput, String> {
     let bytes = wat::parse_str(wat_text).map_err(|e| e.to_string())?;
     let module = Module::new(&engine, bytes).map_err(|e| e.to_string())?;
     run_module(&engine, &module, true)
+}
+
+/// Read `count` spilled root handles fae guest memory at `ptr`.
+fn read_roots(
+    caller: &mut Caller<'_, HostState>,
+    memory: Memory,
+    ptr: i32,
+    count: i32,
+) -> wasmtime::Result<Vec<Handle>> {
+    let mut roots = Vec::with_capacity(count.max(0) as usize);
+    let data = memory.data(&*caller);
+    for i in 0..count.max(0) as usize {
+        let start = ptr.max(0) as usize + 8 * i;
+        match data
+            .get(start..start + 8)
+            .and_then(|b| <[u8; 8]>::try_from(b).ok())
+        {
+            Some(b) => roots.push(i64::from_le_bytes(b)),
+            None => {
+                let state = caller.data_mut();
+                return Err(trap(
+                    state,
+                    "Scope roots lie ootside the WASM memory".to_string(),
+                ));
+            }
+        }
+    }
+    Ok(roots)
+}
+
+/// `__mdh_scope_exit`: close `pop` host scopes, reading the guest's spilled roots
+/// fae memory only when there is something young tae sweep.
+fn guest_scope_exit(
+    caller: &mut Caller<'_, HostState>,
+    memory: Memory,
+    ptr: i32,
+    count: i32,
+    pop: i32,
+) -> wasmtime::Result<()> {
+    let pop = pop.max(0) as usize;
+    if !caller.data().store.scope_exit_needs_roots(pop) {
+        // Nothing young tae sweep: just close the scopes (or report the fankle).
+        let state = caller.data_mut();
+        return state
+            .store
+            .scope_exit(&[], pop)
+            .map_err(|message| trap(state, message));
+    }
+    let roots = read_roots(caller, memory, ptr, count)?;
+    let state = caller.data_mut();
+    if let Err(message) = state.store.scope_exit(&roots, pop) {
+        return Err(trap(state, message));
+    }
+    let store = &state.store;
+    state.tri_modules.retain(|h| store.is_live(*h));
+    Ok(())
 }
 
 fn run_module(engine: &Engine, module: &Module, capture: bool) -> Result<WasmRunOutput, String> {
@@ -1141,6 +1430,73 @@ fn run_module(engine: &Engine, module: &Module, capture: bool) -> Result<WasmRun
             |mut caller: Caller<'_, HostState>| -> i64 {
                 let store = &mut caller.data_mut().store;
                 store.alloc(HostValue::Dict(Vec::new()))
+            },
+        )
+        .map_err(|e| e.to_string())?;
+
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_scope_enter",
+            |mut caller: Caller<'_, HostState>| {
+                caller.data_mut().store.scope_enter();
+            },
+        )
+        .map_err(|e| e.to_string())?;
+
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_scope_exit",
+            move |mut caller: Caller<'_, HostState>,
+                  ptr: i32,
+                  count: i32,
+                  pop: i32|
+                  -> wasmtime::Result<()> {
+                guest_scope_exit(&mut caller, memory, ptr, count, pop)
+            },
+        )
+        .map_err(|e| e.to_string())?;
+
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_scope_collect_due",
+            |caller: Caller<'_, HostState>| -> i32 {
+                i32::from(caller.data().store.scope_collect_due())
+            },
+        )
+        .map_err(|e| e.to_string())?;
+
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_scope_collect",
+            move |mut caller: Caller<'_, HostState>,
+                  ptr: i32,
+                  count: i32|
+                  -> wasmtime::Result<()> {
+                let roots = read_roots(&mut caller, memory, ptr, count)?;
+                let state = caller.data_mut();
+                state.store.scope_collect(&roots);
+                let store = &state.store;
+                state.tri_modules.retain(|h| store.is_live(*h));
+                Ok(())
+            },
+        )
+        .map_err(|e| e.to_string())?;
+
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_scope_next",
+            move |mut caller: Caller<'_, HostState>,
+                  ptr: i32,
+                  count: i32|
+                  -> wasmtime::Result<()> {
+                guest_scope_exit(&mut caller, memory, ptr, count, 1)?;
+                caller.data_mut().store.scope_enter();
+                Ok(())
             },
         )
         .map_err(|e| e.to_string())?;
@@ -1494,7 +1850,8 @@ fn run_module(engine: &Engine, module: &Module, capture: bool) -> Result<WasmRun
 
     let state = store.data_mut();
     let stdout = state.captured.take().unwrap_or_default();
-    let store_size = state.store.values.len();
+    let store_size = state.store.live_count();
+    let peak_store_size = state.store.values.len();
     let error = outcome.err().map(|e| {
         state
             .runtime_error
@@ -1505,6 +1862,7 @@ fn run_module(engine: &Engine, module: &Module, capture: bool) -> Result<WasmRun
         stdout,
         error,
         store_size,
+        peak_store_size,
     })
 }
 

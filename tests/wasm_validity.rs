@@ -542,3 +542,104 @@ fn inline_numbers_round_trip_at_the_edges() {
         "4611686018427387904\n-4611686018427387905\n9223372036854775807\naye\n0\n-5\n"
     );
 }
+
+// ---- MDH-BUG-FLU-00092: the host store frees what the guest can no longer reach ----
+
+#[test]
+fn long_string_building_loop_keeps_the_host_store_bounded() {
+    let out = run_full(
+        "ken i = 0\nken last = \"\"\nwhiles i < 20000 {\n    ken s = \"item \" + i\n    ken l = [s, i, {\"k\": s}]\n    last = s + \"!\"\n    i = i + 1\n}\nblether last\n",
+    );
+    assert_eq!(out.error, None);
+    assert_eq!(out.stdout, "item 19999!\n");
+    assert!(
+        out.peak_store_size < 1000,
+        "store peaked at {}",
+        out.peak_store_size
+    );
+}
+
+#[test]
+fn numeric_statements_skip_their_host_scopes() {
+    // Only the loop itself opens a scope; its numeric body and condition do not.
+    let wat = compile_to_wat(
+        "ken i = 0\nken f = 0.5\nwhiles i < 10 {\n    i = i + 1\n    f = f + 0.25\n}\nblether i\n",
+    )
+    .expect("compile_to_wat");
+    assert_eq!(wat.matches("(call $mdh_scope_enter)").count(), 1, "{wat}");
+    assert_eq!(wat.matches("(call $mdh_scope_next)").count(), 0, "{wat}");
+}
+
+#[test]
+fn a_local_that_can_hold_a_string_keeps_its_scopes() {
+    // `u` is assigned a string variable, so `u + t` can allocate and must be reclaimed
+    // each iteration rather than piling up in the loop's scope.
+    let out = run_full(
+        "ken t = \"ab\"\nken u = 0\nken i = 0\nwhiles i < 5000 {\n    u = t\n    u = u + t\n    i = i + 1\n}\nblether u\n",
+    );
+    assert_eq!(out.error, None);
+    assert_eq!(out.stdout, "abab\n");
+    assert!(
+        out.peak_store_size < 1000,
+        "store peaked at {}",
+        out.peak_store_size
+    );
+}
+
+#[test]
+fn reclamation_keeps_everything_still_reachable() {
+    // Return values fae nested scopes, brak/haud/gie leaving scopes early, young values
+    // stored intae an old dict (the write barrier), and wide ints re-interned after
+    // their slots were freed.
+    let src = "\
+dae build(n) {
+    ken acc = \"\"
+    ken j = 0
+    whiles aye {
+        j = j + 1
+        gin j > n {
+            brak
+        }
+        ken big = 4611686018427387000 + j
+        gin j % 2 == 0 {
+            haud
+        }
+        gin big > 0 {
+            acc = acc + \"x\" + j
+        }
+    }
+    gie acc
+}
+dae find(n) {
+    ken k = 0
+    whiles k < 100 {
+        gin k == n {
+            gie \"found \" + k
+        }
+        k = k + 1
+    }
+    gie \"nane\"
+}
+ken box = {\"v\": \"start\", \"l\": [1]}
+ken i = 0
+whiles i < 300 {
+    box.v = build(5) + find(3)
+    box.l = [box.v, [find(i)]]
+    i = i + 1
+}
+blether box.v
+blether box.l
+blether build(3) + \"/\" + find(200)
+";
+    let out = run_full(src);
+    assert_eq!(out.error, None);
+    assert_eq!(
+        out.stdout,
+        "x1x3x5found 3\n[x1x3x5found 3, [nane]]\nx1x3/nane\n"
+    );
+    assert!(
+        out.peak_store_size < 1000,
+        "store peaked at {}",
+        out.peak_store_size
+    );
+}
