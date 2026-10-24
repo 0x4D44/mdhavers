@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00099 — Five interpreter test_audio_* lib tests fail in the default full build (raylib audio stub)
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** audio
 - **Raised:** 2026-10-23T22:22:13Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261024T014845Z-02a6565f
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00099-run-fix-20261024T014845Z-02a6565f
-- **Owner base:** e3865f0d6c865cb0f9cc0e2b69a56f1e40785d83
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-24T01:48:45Z
-- **Owner until:** 2026-10-24T05:48:45Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T22:22:13Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-23T22:22:13Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T01:48:50Z, deltic:auto role=fix run=fix-20261024T014845Z-02a6565f branch=task/bug-MDH-BUG-FLU-00099-run-fix-20261024T014845Z-02a6565f code=e3865f0 gate=manual)
 
 ## Observation
 
