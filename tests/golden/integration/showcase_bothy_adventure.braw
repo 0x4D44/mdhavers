@@ -4,9 +4,6 @@
 # an empty dict as falsy, lambdas in a dispatch table, closures queued
 # per `fer` iteration, gie fae a block expression, hurl/hae_a_bash.
 #
-# SKIP_NATIVE: LLVM treats an empty list read straight fae an index as
-# truthy in a condition (`gin room["items"]` below; repro:
-# `ken d = {"l": []}` then `gin d["l"] { blether "wrang" }` prints "wrang").
 # JS: allowlisted in tests/js_parity_allowlist.txt - the JS runtime has nae
 # creel builtins (creel, toss_in, heave_oot, is_in_creel, creel_tae_list).
 # WASM cannae compile it yet (nae builtins or kin in the WAT backend).

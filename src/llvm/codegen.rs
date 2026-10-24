@@ -5257,103 +5257,13 @@ impl<'ctx> CodeGen<'ctx> {
                     Ok(None)
                 }
             }
-            // Index expression - optimize to only load data field (skip tag)
-            Expr::Index { object, index, .. } => {
-                // Check if we can use the fast path
-                let obj_type = self.infer_expr_type(object);
-                let idx_type = self.infer_expr_type(index);
-
-                if obj_type == VarType::List && idx_type == VarType::Int {
-                    // Ultra-fast path: directly load only the data field (8 bytes instead of 16)
-                    let list_data = if let Expr::Variable { name, .. } = object.as_ref() {
-                        if let Some(&shadow) = self.list_ptr_shadows.get(name) {
-                            self.builder
-                                .build_load(self.types.i64_type, shadow, "list_ptr_cond")
-                                .unwrap()
-                                .into_int_value()
-                        } else {
-                            let obj_val = self.compile_expr(object)?;
-                            self.extract_data(obj_val).unwrap()
-                        }
-                    } else {
-                        let obj_val = self.compile_expr(object)?;
-                        self.extract_data(obj_val).unwrap()
-                    };
-
-                    let idx_i64 = if let Some(i) = self.compile_int_expr(index) {
-                        i
-                    } else {
-                        let idx_val = self.compile_expr(index)?;
-                        self.extract_data(idx_val).unwrap()
-                    };
-
-                    // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
-                    // Access items pointer at offset 0, then index into items array
-                    let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
-                    let mdh_list_type = self.context.struct_type(
-                        &[
-                            value_ptr_type.into(),
-                            self.types.i64_type.into(),
-                            self.types.i64_type.into(),
-                        ],
-                        false,
-                    );
-                    let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
-                    let list_struct_ptr = self
-                        .builder
-                        .build_int_to_ptr(list_data, mdh_list_ptr_type, "list_struct_ptr_cond")
-                        .unwrap();
-
-                    // Get items pointer (at index 0)
-                    let items_ptr_ptr = self
-                        .builder
-                        .build_struct_gep(mdh_list_type, list_struct_ptr, 0, "items_ptr_ptr_cond")
-                        .unwrap();
-                    let items_ptr = self
-                        .builder
-                        .build_load(value_ptr_type, items_ptr_ptr, "items_ptr_cond")
-                        .unwrap()
-                        .into_pointer_value();
-
-                    // Access element at index
-                    let elem_ptr = unsafe {
-                        self.builder
-                            .build_gep(
-                                self.types.value_type,
-                                items_ptr,
-                                &[idx_i64],
-                                "elem_ptr_cond",
-                            )
-                            .unwrap()
-                    };
-
-                    // Load element and extract data field
-                    let elem_val = self
-                        .builder
-                        .build_load(self.types.value_type, elem_ptr, "elem_val_cond")
-                        .unwrap();
-                    let data = self
-                        .builder
-                        .build_extract_value(elem_val.into_struct_value(), 1, "data_cond")
-                        .unwrap()
-                        .into_int_value();
-                    let zero = self.types.i64_type.const_int(0, false);
-                    let result = self
-                        .builder
-                        .build_int_compare(IntPredicate::NE, data, zero, "truthy_cond")
-                        .unwrap();
-                    return Ok(Some(result));
-                }
-
-                // Fallback: full compile
+            // Index expression: the element can be any type, so it needs the full
+            // truthiness rule (empty list/dict/string are falsy). Testing only the
+            // data word made `gin d["l"]` truthy for an empty list (MDH-BUG-FLU-00102).
+            // compile_expr keeps the list/int fast path via compile_list_index_fast.
+            Expr::Index { .. } => {
                 let val = self.compile_expr(expr)?;
-                let data = self.extract_data(val).unwrap();
-                let zero = self.types.i64_type.const_int(0, false);
-                let result = self
-                    .builder
-                    .build_int_compare(IntPredicate::NE, data, zero, "index_truthy")
-                    .unwrap();
-                Ok(Some(result))
+                Ok(Some(self.is_truthy(val)))
             }
             // Handle logical expressions (and/or) with short-circuit evaluation
             Expr::Logical {
@@ -27783,6 +27693,8 @@ impl<'ctx> CodeGen<'ctx> {
             .collect();
         let bindings = Self::scope_bindings_of_stmts(&unknown_bindings, body);
         self.unstable_vars = self.unstable_vars_of(&bindings);
+        let param_names: Vec<&str> = params.iter().map(|p| p.name.as_str()).collect();
+        self.prebox_captured_names(&param_names, &bindings, body);
 
         // Compile body
         for stmt in body {
@@ -27833,6 +27745,115 @@ impl<'ctx> CodeGen<'ctx> {
         self.nested_function_scopes.pop();
 
         Ok(())
+    }
+
+    /// Box, once for the whole scope, every parameter and `ken` local that a lambda or
+    /// nested function in `body` captures. Must run in the entry block, before the body
+    /// is compiled. Boxing lazily where the lambda is compiled ran only on that branch's
+    /// path, yet marked the name boxed for the rest of the function, so a read on any
+    /// other path took the raw value for a cell (MDH-BUG-FLU-00103). Parameters are
+    /// boxed here; `ken` locals are marked and get their cell at the declaration. Names
+    /// also bound another way (loop, catch, match, destructure, import) are left to
+    /// those binders, which store raw values.
+    fn prebox_captured_names(
+        &mut self,
+        params: &[&str],
+        bindings: &[ScopeBinding<'_>],
+        body: &[Stmt],
+    ) {
+        let mut kens: HashSet<&str> = HashSet::new();
+        let mut others: HashSet<&str> = HashSet::new();
+        for stmt in body {
+            Self::collect_binder_names(stmt, &mut kens, &mut others);
+        }
+        let captured: std::collections::BTreeSet<&str> = bindings
+            .iter()
+            .filter(|b| matches!(b.kind, BindingKind::CapturedRead | BindingKind::GlobalRead))
+            .map(|b| b.name)
+            .collect();
+        for name in captured {
+            if name == "masel" || others.contains(name) || self.boxed_vars.contains(name) {
+                continue;
+            }
+            if params.contains(&name) {
+                let _ = self.ensure_boxed_variable(name);
+            } else if kens.contains(name)
+                && (self.variables.contains_key(name)
+                    || !(self.globals.contains_key(name)
+                        || self.forward_globals.contains_key(name)))
+            {
+                self.var_types.insert(name.to_string(), VarType::Unknown);
+                self.boxed_vars.insert(name.to_string());
+            }
+        }
+    }
+
+    /// Names a scope binds with `ken` (`kens`) and any other way (`others`), not
+    /// descending into nested functions or classes.
+    fn collect_binder_names<'a>(
+        stmt: &'a Stmt,
+        kens: &mut HashSet<&'a str>,
+        others: &mut HashSet<&'a str>,
+    ) {
+        match stmt {
+            Stmt::VarDecl { name, .. } => {
+                kens.insert(name);
+            }
+            Stmt::Block { statements, .. } => {
+                for s in statements {
+                    Self::collect_binder_names(s, kens, others);
+                }
+            }
+            Stmt::If {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                Self::collect_binder_names(then_branch, kens, others);
+                if let Some(e) = else_branch {
+                    Self::collect_binder_names(e, kens, others);
+                }
+            }
+            Stmt::While { body, .. } => Self::collect_binder_names(body, kens, others),
+            Stmt::For { variable, body, .. } => {
+                others.insert(variable);
+                Self::collect_binder_names(body, kens, others);
+            }
+            Stmt::TryCatch {
+                try_block,
+                error_name,
+                catch_block,
+                ..
+            } => {
+                others.insert(error_name);
+                Self::collect_binder_names(try_block, kens, others);
+                Self::collect_binder_names(catch_block, kens, others);
+            }
+            Stmt::Match { arms, .. } => {
+                for arm in arms {
+                    if let Pattern::Identifier(name) = &arm.pattern {
+                        others.insert(name);
+                    }
+                    Self::collect_binder_names(&arm.body, kens, others);
+                }
+            }
+            Stmt::Destructure { patterns, .. } => {
+                for pattern in patterns {
+                    if let DestructPattern::Variable(name) | DestructPattern::Rest(name) = pattern {
+                        others.insert(name);
+                    }
+                }
+            }
+            Stmt::Import { alias, .. } => {
+                if let Some(alias) = alias {
+                    others.insert(alias);
+                }
+            }
+            Stmt::Function { name, .. } | Stmt::Class { name, .. } | Stmt::Struct { name, .. } => {
+                others.insert(name);
+            }
+            _ => {}
+        }
     }
 
     /// Predeclare local bindings in a function body so nested-function capture discovery
@@ -31538,6 +31559,12 @@ impl<'ctx> CodeGen<'ctx> {
             self.builder.build_store(alloca, param_val).unwrap();
             self.variables.insert(param_name.clone(), alloca);
         }
+        let param_names: Vec<&str> = params.iter().map(String::as_str).collect();
+        let body_stmts: &[Stmt] = match body {
+            Expr::BlockExpr { statements, .. } => statements,
+            _ => &[],
+        };
+        self.prebox_captured_names(&param_names, &bindings, body_stmts);
 
         // Compile the lambda body
         // A block body may `gie`; otherwise the lambda returns the block's value, its
@@ -38337,6 +38364,8 @@ impl<'ctx> CodeGen<'ctx> {
         }
         // Mark all captured locals/params as boxed in this scope (locals will be boxed at decl).
         self.boxed_vars.extend(captured_in_body);
+        let param_names: Vec<&str> = params.iter().map(|p| p.name.as_str()).collect();
+        self.prebox_captured_names(&param_names, &bindings, body);
 
         // Compile method body
         for stmt in body {

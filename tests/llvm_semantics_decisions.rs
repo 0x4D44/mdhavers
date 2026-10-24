@@ -394,3 +394,139 @@ blether malloc
         );
     }
 }
+
+// ---------- MDH-BUG-FLU-00102: an indexed value in a condition uses full truthiness ----------
+
+#[test]
+fn indexed_condition_uses_full_truthiness() {
+    let out = run_ok(
+        r#"
+dae t(c) { gin c { gie "aye" } gie "nae" }
+ken d = {"l": [], "m": {}, "s": "", "z": 0, "n": naething, "b": nae, "f": [1], "g": {"k": 1}, "t": "x"}
+gin d["l"] { blether "l aye" } ither { blether "l nae" }
+gin d["m"] { blether "m aye" } ither { blether "m nae" }
+gin d["s"] { blether "s aye" } ither { blether "s nae" }
+gin d["z"] { blether "z aye" } ither { blether "z nae" }
+gin d["n"] { blether "n aye" } ither { blether "n nae" }
+gin d["b"] { blether "b aye" } ither { blether "b nae" }
+gin d["f"] { blether "f aye" } ither { blether "f nae" }
+gin d["g"] { blether "g aye" } ither { blether "g nae" }
+gin d["t"] { blether "t aye" } ither { blether "t nae" }
+ken xs = [[], {}, "", [0]]
+gin xs[0] { blether "x0 aye" } ither { blether "x0 nae" }
+gin xs[1] { blether "x1 aye" } ither { blether "x1 nae" }
+gin xs[2] { blether "x2 aye" } ither { blether "x2 nae" }
+gin xs[3] { blether "x3 aye" } ither { blether "x3 nae" }
+ken nest = {"a": {"b": []}, "c": [[[]]]}
+gin nest["a"]["b"] { blether "ab aye" } ither { blether "ab nae" }
+gin nest["c"][0][0] { blether "c00 aye" } ither { blether "c00 nae" }
+gin nest["c"][0] { blether "c0 aye" } ither { blether "c0 nae" }
+gin d["l"] or d["s"] { blether "or aye" } ither { blether "or nae" }
+gin d["f"] an d["m"] { blether "an aye" } ither { blether "an nae" }
+dae pick(ys, i) {
+    gin ys[i] { gie "aye" }
+    gie "nae"
+}
+blether pick([[]], 0)
+blether pick([[1]], 0)
+ken q = [[1], [2], [], [3]]
+ken i = 0
+whiles q[i] { i = i + 1 }
+blether i
+blether t(d["l"])
+"#,
+    );
+    assert_eq!(
+        out,
+        vec![
+            "l nae", "m nae", "s nae", "z nae", "n nae", "b nae", "f aye", "g aye", "t aye",
+            "x0 nae", "x1 nae", "x2 nae", "x3 aye", "ab nae", "c00 nae", "c0 aye", "or nae",
+            "an nae", "nae", "aye", "2", "nae",
+        ]
+    );
+}
+
+// ---------- MDH-BUG-FLU-00103: a capture on one branch boxes for the whole function ----------
+
+#[test]
+fn capture_on_one_branch_is_sound_on_every_path() {
+    let out = run_ok(
+        r#"
+dae f(v) {
+    gin v == 0 {
+        gie gaun(["a"], |key| v)
+    }
+    gie v
+}
+blether f(5)
+blether f(0)
+dae g(v) {
+    ken w = v * 2
+    gin v > 100 {
+        gie gaun([1], |k| w + k)
+    }
+    gie w
+}
+blether g(3)
+blether g(200)
+dae h(v) {
+    ken out = 0
+    gin v == 0 {
+        out = 1
+    } ither {
+        ken fs = gaun([1, 2], |k| k + v)
+        out = fs[1]
+    }
+    gie out + v
+}
+blether h(0)
+blether h(4)
+dae k(v) {
+    ken w = v + 1
+    gin v == 0 {
+        blether "zero"
+    } ither {
+        ken fs = gaun([1], |q| q + w)
+        blether fs[0]
+    }
+    gie w
+}
+blether k(0)
+blether k(5)
+dae loopy(v) {
+    ken total = 0
+    ken i = 0
+    whiles i < 3 {
+        ken fs = gaun([1], |n| n + v)
+        total = total + fs[0]
+        i = i + 1
+    }
+    gie total + v
+}
+blether loopy(2)
+ken lam = |v| {
+    gin v == 0 { gie gaun([1], |n| v) }
+    v + 1
+}
+blether lam(4)
+blether lam(0)
+kin Bx {
+    dae init() {}
+    dae pick(v) {
+        gin v == 0 { gie gaun([1], |n| v) }
+        gie v
+    }
+}
+ken b = Bx()
+blether b.pick(7)
+blether b.pick(0)
+"#,
+    );
+    assert_eq!(
+        out,
+        vec![
+            "5", "[0]", "6", "[401]", "1", "10", "zero", "1", "7", "6", "11", "5", "[0]", "7",
+            "[0]",
+        ]
+    );
+}

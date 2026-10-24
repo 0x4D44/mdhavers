@@ -4,11 +4,6 @@
 # empty dict as "nae changes", fresh per-iteration closures, gie fae a
 # block expression, exact integers past 2^53 an' a caught overflow.
 #
-# SKIP_NATIVE: the LLVM binary segfaults. A lambda that captures a
-# parameter inside a gin branch boxes the variable only on that branch,
-# but later code reads it as boxed on every path (`inline` below; repro:
-# `dae f(v) { gin v == 0 { gie gaun(["a"], |k| v) } gie v }` then
-# `blether f(5)` crashes).
 # WASM cannae compile it yet (nae builtins or kin in the WAT backend).
 
 # ============================================================
