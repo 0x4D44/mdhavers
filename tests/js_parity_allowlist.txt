@@ -10,24 +10,19 @@ tests/golden/classes/operator_overloading_basic.braw # node exit 1: Error: That'
 tests/golden/classes/operator_overloading_non_var.braw # node exit 1: Error: That's pure mince! Type error at line 25: Cannae add instance an' instance
 tests/golden/edge_cases/birl_rotation_and_type_errors.braw # node exit 1: ReferenceError: birl is not defined
 tests/golden/edge_cases/bytes_oob_and_slice_bounds_parity.braw # node exit 1: ReferenceError: bytes is not defined
-tests/golden/edge_cases/case_charclass_title_whitespace_parity.braw # output mismatch
 tests/golden/edge_cases/chynge_and_replace_parity.braw # node exit 1: ReferenceError: chynge is not defined
 tests/golden/edge_cases/date_parse_trailing_whitespace_rejected.braw # node exit 1: ReferenceError: date_parse is not defined
-tests/golden/edge_cases/heid_tail_bum_string_and_empty_list_parity.braw # output mismatch
 tests/golden/edge_cases/is_digit_wheesht_aw_parity.braw # node exit 1: ReferenceError: wheesht_aw is not defined
 tests/golden/edge_cases/lines_and_read_lines_parity.braw # node exit 1: ReferenceError: read_lines is not defined
 tests/golden/edge_cases/roar_mutter_ascii_unicode_parity.braw # node exit 1: ReferenceError: roar is not defined
-tests/golden/edge_cases/split_empty_delimiter_returns_whole_string.braw # output mismatch
 tests/golden/edge_cases/sporran_fill_negative_width_no_hang.braw # node exit 1: ReferenceError: sporran_fill is not defined
 tests/golden/edge_cases/tattie_scone_negative_no_hang.braw # node exit 1: ReferenceError: tattie_scone is not defined
 tests/golden/edge_cases/unicode_blooter_codepoints.braw # node exit 1: ReferenceError: blooter is not defined
 tests/golden/edge_cases/unicode_clarty_dreich_parity.braw # node exit 1: ReferenceError: clarty is not defined
 tests/golden/edge_cases/unicode_len_and_padding_codepoints.braw # node exit 1: ReferenceError: sporran_fill is not defined
-tests/golden/edge_cases/unicode_reverse_and_type_error.braw # output mismatch
 tests/golden/edge_cases/unicode_search_indices_codepoints.braw # node exit 1: ReferenceError: haggis_hunt is not defined
 tests/golden/edge_cases/unicode_string_utils_parity.braw # node exit 1: ReferenceError: banter is not defined
 tests/golden/edge_cases/unicode_trim_and_wheesht_ascii_whitespace.braw # node exit 1: ReferenceError: wheesht_aw is not defined
-tests/golden/edge_cases/upper_lower_wheesht_type_error_caught.braw # output mismatch
 tests/golden/functions/default_params_capture_and_param_refs_parity.braw # node exit 1: TypeError: Cannot read properties of undefined (reading 'v')
 tests/golden/stdlib/datetime/datetime_functions.braw # node exit 1: ReferenceError: date_now is not defined
 tests/golden/stdlib/file_io/file_operations.braw # node exit 1: ReferenceError: path_join is not defined

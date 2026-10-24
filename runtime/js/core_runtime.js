@@ -932,6 +932,55 @@ const __havers_core = (() => {
     },
     json_stringify: (x) => toJson(x, []),
 
+    // ---------- Strings by code point, like Rust's `chars()` (MDH-BUG-FLU-00116) ----------
+    // upper/lower mirror `to_ascii_uppercase`: only a-z/A-Z change, so ß and é stay put.
+    upper: (s) => {
+      if (typeof s !== "string") throw native("upper() expects a string");
+      return s.replace(/[a-z]+/g, (m) => m.toUpperCase());
+    },
+    lower: (s) => {
+      if (typeof s !== "string") throw native("lower() expects a string");
+      return s.replace(/[A-Z]+/g, (m) => m.toLowerCase());
+    },
+    heid: (x) => {
+      if (Array.isArray(x)) {
+        if (x.length === 0) throw native("Cannae get heid o' empty list!");
+        return x[0];
+      }
+      if (typeof x === "string") {
+        if (x === "") throw native("Cannae get heid o' empty string!");
+        return cps(x)[0];
+      }
+      throw native("heid() expects a list or string");
+    },
+    tail: (x) => {
+      if (Array.isArray(x)) return x.slice(1);
+      if (typeof x === "string") return cps(x).slice(1).join("");
+      throw native("tail() expects a list or string");
+    },
+    bum: (x) => {
+      if (Array.isArray(x)) {
+        if (x.length === 0) throw native("Cannae get bum o' empty list!");
+        return x[x.length - 1];
+      }
+      if (typeof x === "string") {
+        if (x === "") throw native("Cannae get bum o' empty string!");
+        const a = cps(x);
+        return a[a.length - 1];
+      }
+      throw native("bum() expects a list or string");
+    },
+    reverse: (x) => {
+      if (Array.isArray(x)) return [...x].reverse();
+      if (typeof x === "string") return cps(x).reverse().join("");
+      throw native("reverse() expects a list or string");
+    },
+    // An empty separator gies back the whole string as one item, like the interpreter.
+    split: (s, d) => {
+      if (typeof s !== "string" || typeof d !== "string") throw native("split() expects two strings");
+      return d === "" ? [s] : s.split(d);
+    },
+
     // ---------- Strings (MDH-BUG-FLU-00114) ----------
     chars: (s) => cps(needStr(s, "chars() needs a string")),
     char_at: (s, i) => {
@@ -1552,6 +1601,8 @@ const __havers_core = (() => {
       }
       if (typeof x === "string") {
         if (typeof item !== "string") throw native("coont() on string needs a string tae count");
+        // Rust's `matches("")` hits before each code point an' at the end.
+        if (item === "") return BigInt(cps(x).length + 1);
         return BigInt(x.split(item).length - 1);
       }
       throw native("coont() expects a list or string");

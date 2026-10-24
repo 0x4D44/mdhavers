@@ -1637,3 +1637,41 @@ Jings! Something went awfy wrang: Assertion failed: x should not equal x"####,
         ),
     ]);
 }
+
+#[test]
+fn parity_js_unicode_string_builtins_mdh_bug_flu_00116() {
+    if !node_available() {
+        return;
+    }
+    assert_js_parity(&[(
+        "00116 upper/lower/heid/tail/bum/reverse/split work by code point, ASCII-only case",
+        r####"dae tryit(f) {
+    hae_a_bash {
+        blether f()
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+}
+blether upper("straße café ÿ abc")
+blether lower("STRASSE ÉCOLE ABC")
+blether heid("😀ab")
+blether heid("éx")
+blether tail("😀ab")
+blether tail("éx")
+blether bum("ab😀")
+blether bum("xé")
+blether reverse("a😀b")
+blether reverse("ßé")
+blether split("a😀b", "")
+blether split("", "")
+blether split("a😀b😀c", "😀")
+blether coont("a😀b", "")
+blether coont("a😀b😀", "😀")
+tryit(|| heid(""))
+tryit(|| bum(""))
+tryit(|| upper(5))
+tryit(|| split("a", 1))
+blether len(tail("😀"))"####,
+        "STRAßE CAFé ÿ ABC\nstrasse École abc\n😀\ne\nab\ńx\n😀\ń\nb😀a\ńeß\n[a😀b]\n[]\n[a, b, c]\n4\n2\nJings! Something went awfy wrang: Cannae get heid o' empty string!\nJings! Something went awfy wrang: Cannae get bum o' empty string!\nJings! Something went awfy wrang: upper() expects a string\nJings! Something went awfy wrang: split() expects two strings\n0",
+    )]);
+}

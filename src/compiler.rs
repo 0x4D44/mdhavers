@@ -1003,9 +1003,6 @@ impl Compiler {
         // keys, values, items an' the dict helpers live in core_runtime.js,
         // which keeps dict keys typed (MDH-BUG-FLU-00109).
 
-        // split function
-        self.emit_line("split: (str, delim) => str.split(delim),");
-
         // join function
         self.emit_line("join: (arr, delim) => arr.map(__havers_core.show).join(delim),");
 
@@ -1022,15 +1019,6 @@ impl Compiler {
         );
         self.emit_line("if (typeof container === 'object') return item in container;");
         self.emit_line("return false;");
-        self.indent -= 1;
-        self.emit_line("},");
-
-        // reverse function
-        self.emit_line("reverse: (x) => {");
-        self.indent += 1;
-        self.emit_line("if (typeof x === 'string') return x.split('').reverse().join('');");
-        self.emit_line("if (Array.isArray(x)) return [...x].reverse();");
-        self.emit_line("throw new Error('reverse() expects a list or string');");
         self.indent -= 1;
         self.emit_line("},");
 
@@ -1105,44 +1093,7 @@ impl Compiler {
 
         // Scots-flavored functions
 
-        // heid - first element
-        self.emit_line("heid: (x) => {");
-        self.indent += 1;
-        self.emit_line("if (typeof x === 'string' || Array.isArray(x)) {");
-        self.indent += 1;
-        self.emit_line(
-            "if (x.length === 0) throw new Error('Cannae get heid o\\' an empty list!');",
-        );
-        self.emit_line("return x[0];");
-        self.indent -= 1;
-        self.emit_line("}");
-        self.emit_line("throw new Error('heid() expects a list or string');");
-        self.indent -= 1;
-        self.emit_line("},");
-
-        // tail - all but first
-        self.emit_line("tail: (x) => {");
-        self.indent += 1;
-        self.emit_line("if (typeof x === 'string') return x.slice(1);");
-        self.emit_line("if (Array.isArray(x)) return x.slice(1);");
-        self.emit_line("throw new Error('tail() expects a list or string');");
-        self.indent -= 1;
-        self.emit_line("},");
-
-        // bum - last element
-        self.emit_line("bum: (x) => {");
-        self.indent += 1;
-        self.emit_line("if (typeof x === 'string' || Array.isArray(x)) {");
-        self.indent += 1;
-        self.emit_line(
-            "if (x.length === 0) throw new Error('Cannae get bum o\\' an empty list!');",
-        );
-        self.emit_line("return x[x.length - 1];");
-        self.indent -= 1;
-        self.emit_line("}");
-        self.emit_line("throw new Error('bum() expects a list or string');");
-        self.indent -= 1;
-        self.emit_line("},");
+        // heid, tail, bum, upper, lower, split an' reverse live in core_runtime.js (code points, MDH-BUG-FLU-00116).
 
         // slap - concatenate
         self.emit_line("slap: (a, b) => {");
@@ -1163,12 +1114,6 @@ impl Compiler {
         self.emit_line("throw new Error('Jings! Something went awfy wrang: wheesht() expects a string or list');");
         self.indent -= 1;
         self.emit_line("},");
-
-        // upper - uppercase
-        self.emit_line("upper: (str) => String(str).toUpperCase(),");
-
-        // lower - lowercase
-        self.emit_line("lower: (str) => String(str).toLowerCase(),");
 
         // shuffle - randomly shuffle
         self.emit_line("shuffle: (arr) => {");
