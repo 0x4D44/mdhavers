@@ -137,7 +137,6 @@ typedef struct {
 
 static const char *__mdh_type_name(MdhValue v);
 static int64_t *__mdh_kv_payload_ptr(MdhValue v);
-static void __mdh_kv_set_payload_ptr(MdhValue v, int64_t *payload);
 static int64_t __mdh_kv_find(MdhValue kv, MdhValue key);
 
 /* ========== Native Object Support ========== */
@@ -280,8 +279,27 @@ MdhValue __mdh_make_list(int32_t capacity) {
 /* Source line of the statement being run. Compiled code stores it at the start of
  * every statement (and restores the caller's line when a function returns), so
  * runtime-raised errors can carry the interpreter's " at line N" (MDH-BUG-FLU-00086).
- * 0 = unknown. */
+ * 0 = unknown.
+ *
+ * The global is shared by every thread, so once a thread has been spawned errors read
+ * the raising thread's own line instead (MDH-BUG-FLU-00090): while
+ * __mdh_line_threaded is set, compiled code calls __mdh_note_line(<statement line>)
+ * before each call into the runtime, the only calls that can raise. Until then that
+ * costs a load and an untaken branch per runtime call, and nothing per statement. */
 int64_t __mdh_current_line = 0;
+int32_t __mdh_line_threaded = 0;
+static __thread int64_t __mdh_thread_line = 0;
+
+void __mdh_note_line(int64_t line) {
+    if (line > 0) {
+        __mdh_thread_line = line;
+    }
+}
+
+/* The line of the statement the calling thread is running (0 = unknown). */
+static int64_t __mdh_err_line(void) {
+    return __mdh_line_threaded ? __mdh_thread_line : __mdh_current_line;
+}
 
 #define MDH_DIV_BY_ZERO_MSG "Ye numpty! Tryin' tae divide by zero"
 
@@ -289,13 +307,13 @@ static char *__mdh_alloc_text(int size_overflowed, size_t out_len);
 
 /* Hurl `text`, with " at line N" appended when the current line is known. */
 static void __mdh_hurl_text_at_line(const char *text) {
-    if (__mdh_current_line <= 0) {
+    int64_t line = __mdh_err_line();
+    if (line <= 0) {
         __mdh_hurl(__mdh_make_string(text));
         return;
     }
     char suffix[40];
-    int suffix_len =
-        snprintf(suffix, sizeof(suffix), " at line %lld", (long long)__mdh_current_line);
+    int suffix_len = snprintf(suffix, sizeof(suffix), " at line %lld", (long long)line);
     size_t text_len = strlen(text);
     size_t total = 0;
     int overflowed =
@@ -331,12 +349,13 @@ void __mdh_index_oob(int64_t index, int64_t size) {
  * (MDH-BUG-FLU-00093). Compiled code calls this too. */
 void __mdh_int_overflow_error(void) {
     char buf[128];
-    if (__mdh_current_line > 0) {
+    int64_t line = __mdh_err_line();
+    if (line > 0) {
         snprintf(
             buf,
             sizeof(buf),
             "Wheesht! Yer number's too muckle at line %lld - it's overflowed!",
-            (long long)__mdh_current_line
+            (long long)line
         );
     } else {
         snprintf(buf, sizeof(buf), "Wheesht! Yer number's too muckle - it's overflowed!");
@@ -879,12 +898,13 @@ void __mdh_type_error(const char *op, uint8_t got1, uint8_t got2) {
             snprintf(msg, sizeof(msg), "Cannae negate a %s", l);
         }
         if (msg[0] != '\0') {
-            if (__mdh_current_line > 0) {
+            int64_t line = __mdh_err_line();
+            if (line > 0) {
                 snprintf(
                     buf,
                     sizeof(buf),
                     "That's pure mince! Type error at line %lld: %s",
-                    (long long)__mdh_current_line,
+                    (long long)line,
                     msg
                 );
             } else {
@@ -3643,6 +3663,7 @@ typedef struct {
     MdhValue args;
     MdhValue result;
     MdhValue error;           /* The worker's uncaught hurl, when failed */
+    int64_t line;             /* The spawning statement's line: the worker's first line */
     int done;
     int detached;
     int failed;
@@ -3869,6 +3890,8 @@ static MdhValue __mdh_call_with_list(MdhValue func_val, MdhValue args_list) {
 
 static void *__mdh_thread_entry(void *arg) {
     MdhThread *t = (MdhThread *)arg;
+    /* The worker's line starts as the spawning statement's (MDH-BUG-FLU-00090). */
+    __mdh_thread_line = t->line;
     GC_stack_base sb;
     if (GC_get_stack_base(&sb) == 0) {
         GC_register_my_thread(&sb);
@@ -3902,7 +3925,13 @@ MdhValue __mdh_thread_spawn(MdhValue func, MdhValue args_list) {
     t->result = __mdh_make_nil();
     t->done = 0;
     t->detached = 0;
-
+    /* From the first spawn on, errors read each thread's noted line. Set once, before the
+     * first worker exists; the spawning thread's line so far is the shared one. */
+    if (!__mdh_line_threaded) {
+        __mdh_thread_line = __mdh_current_line;
+        __mdh_line_threaded = 1;
+    }
+    t->line = __mdh_thread_line;
     t->thread = mdh_thread_create(__mdh_thread_entry, t);
     if (t->thread == NULL) {
         __mdh_hurl(__mdh_make_string("thread_spawn failed"));
@@ -4216,24 +4245,89 @@ MdhValue __mdh_chan_is_closed(MdhValue chan) {
      [0] payload pointer
      [1] payload capacity in entries (0 = unknown: exactly `count` entries were allocated)
      [2] MdhKvIndex * hash index over the keys (NULL = none built yet)
+     [3] dead entries: removed in place and left as tombstones (MDH-BUG-FLU-00091)
    Inserts grow the payload by doubling and find keys through the hash index, so they are
-   amortised O(1) instead of copying the whole payload and scanning every key. */
-#define MDH_KV_HANDLE_WORDS 3
+   amortised O(1) instead of copying the whole payload and scanning every key.
+   Removal (heave_oot) finds the key through the index and turns its entry into a tombstone
+   (key tag MDH_KV_DEAD_TAG), so it is O(1) too; `count` is then the live entries and the
+   payload's used entries are count + dead. More than half dead compacts the payload, keeping
+   insertion order. Every reader that walks the entries goes through __mdh_kv_payload_ptr,
+   which compacts first, so it only ever sees `count` live entries; the in-place operations
+   (find, append, remove, get, set) use __mdh_kv_payload_raw and know about tombstones.
+   Compiled code reads only `count` (len, truthiness, is_toom), which stays the live count. */
+#define MDH_KV_HANDLE_WORDS 4
+#define MDH_KV_DEAD_TAG 0xFF
 
 static const int64_t MDH_CREEL_SENTINEL = INT64_C(0x4d4448435245454c); /* "MDHCREEL" */
 
-static int64_t *__mdh_kv_payload_ptr(MdhValue v) {
+#define MDH_DICT_TOO_BIG_MSG "Och! That dictionary would be ower muckle tae fit in memory"
+
+/* The payload as stored, tombstones and all. */
+static int64_t *__mdh_kv_payload_raw(MdhValue v) {
     intptr_t *handle = (intptr_t *)(intptr_t)v.data;
     if (!handle) return NULL;
     return (int64_t *)(intptr_t)handle[0];
 }
 
-static void __mdh_kv_set_payload_ptr(MdhValue v, int64_t *payload) {
+/* Tombstoned entries in the payload (0 = it is dense). */
+static int64_t __mdh_kv_dead(MdhValue v) {
     intptr_t *handle = (intptr_t *)(intptr_t)v.data;
-    if (!handle) return;
+    return handle ? (int64_t)handle[3] : 0;
+}
+
+/* Rewrite the payload without its tombstones, in insertion order. A fresh payload, so a
+   reader still holding the old one is left alone. */
+static void __mdh_kv_compact(MdhValue v) {
+    intptr_t *handle = (intptr_t *)(intptr_t)v.data;
+    int64_t *old = (int64_t *)(intptr_t)handle[0];
+    int64_t live = old ? old[0] : 0;
+    int64_t used = live + (int64_t)handle[3];
+    int64_t cap = live < 4 ? 4 : live;
+    if (cap > (INT64_MAX - 8) / 32) {
+        __mdh_hurl(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
+        return;
+    }
+    int64_t *payload = (int64_t *)GC_malloc((size_t)(8 + cap * 32));
+    if (!payload) {
+        __mdh_hurl(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
+        return;
+    }
+    payload[0] = live;
+    /* An empty creel is told from an empty dict by this marker (see __mdh_empty_creel). */
+    payload[1] = (live == 0 && v.tag == MDH_TAG_SET) ? MDH_CREEL_SENTINEL : 0;
+    MdhValue *src = old ? (MdhValue *)(old + 1) : NULL;
+    MdhValue *dst = (MdhValue *)(payload + 1);
+    int64_t j = 0;
+    for (int64_t i = 0; i < used; i++) {
+        if (src[i * 2].tag == MDH_KV_DEAD_TAG) {
+            continue;
+        }
+        dst[j * 2] = src[i * 2];
+        dst[j * 2 + 1] = src[i * 2 + 1];
+        j++;
+    }
     handle[0] = (intptr_t)payload;
-    handle[1] = 0; /* capacity unknown: exactly count entries */
-    handle[2] = 0; /* keys may have changed: drop the index */
+    handle[1] = (intptr_t)cap;
+    handle[2] = 0; /* entry positions moved: rebuild the index on the next lookup */
+    handle[3] = 0;
+}
+
+/* The payload for walking its entries: compacted first, so it holds exactly `count` live
+   entries. */
+static int64_t *__mdh_kv_payload_ptr(MdhValue v) {
+    intptr_t *handle = (intptr_t *)(intptr_t)v.data;
+    if (!handle) return NULL;
+    if (handle[3] != 0) {
+        __mdh_kv_compact(v);
+    }
+    return (int64_t *)(intptr_t)handle[0];
+}
+
+/* For the Rust runtime, which walks dict payloads itself (JSON). */
+void __mdh_kv_densify(MdhValue v) {
+    if ((v.tag == MDH_TAG_DICT || v.tag == MDH_TAG_SET) && v.data != 0) {
+        (void)__mdh_kv_payload_ptr(v);
+    }
 }
 
 static intptr_t *__mdh_kv_new_handle(int64_t *payload) {
@@ -4241,6 +4335,7 @@ static intptr_t *__mdh_kv_new_handle(int64_t *payload) {
     handle[0] = (intptr_t)payload;
     handle[1] = 0;
     handle[2] = 0;
+    handle[3] = 0;
     return handle;
 }
 
@@ -4299,17 +4394,16 @@ static bool __mdh_values_equal(MdhValue a, MdhValue b) {
 }
 
 /* Hash index over a dict/creel payload's keys: open addressing, slots hold entry index + 1
-   (0 = empty). Valid only while the payload still holds `count` entries. */
+   (0 = empty). Valid only while the payload still uses `count` entries (live + dead). A
+   removed entry's slot stays: its tombstone key matches nothing, so probes pass over it. */
 typedef struct {
-    int64_t count; /* payload count the index covers */
+    int64_t count; /* used payload entries the index covers */
     int64_t mask;  /* slot count - 1 (slot count is a power of two) */
     int64_t *slots;
 } MdhKvIndex;
 
 /* Below this many keys a linear scan is as quick as hashing. */
 #define MDH_KV_INDEX_MIN 8
-
-#define MDH_DICT_TOO_BIG_MSG "Och! That dictionary would be ower muckle tae fit in memory"
 
 /* Must agree with __mdh_values_equal: strings hash their text, everything else its bits. */
 static uint64_t __mdh_kv_hash(MdhValue key) {
@@ -4340,8 +4434,9 @@ static void __mdh_kv_index_put(MdhKvIndex *idx, MdhValue *entries, int64_t entry
     idx->slots[i] = entry + 1;
 }
 
-/* Index the first `count` entries, with room for `room` keys at load <= 1/2.
-   Returns NULL (callers fall back to a scan) if the table cannot be allocated. */
+/* Index the first `count` used entries (skipping tombstones), with room for `room` keys
+   at load <= 1/2. Returns NULL (callers fall back to a scan) if the table cannot be
+   allocated. */
 static MdhKvIndex *__mdh_kv_index_build(MdhValue *entries, int64_t count, int64_t room) {
     int64_t slots = 16;
     while (slots < room * 2) {
@@ -4360,29 +4455,32 @@ static MdhKvIndex *__mdh_kv_index_build(MdhValue *entries, int64_t count, int64_
     idx->mask = slots - 1;
     idx->slots = table;
     for (int64_t e = 0; e < count; e++) {
-        __mdh_kv_index_put(idx, entries, e);
+        if (entries[e * 2].tag != MDH_KV_DEAD_TAG) {
+            __mdh_kv_index_put(idx, entries, e);
+        }
     }
     return idx;
 }
 
-/* Entry index of `key` in a dict/creel, or -1. Builds and uses the hash index once the
-   payload is big enough for a scan to hurt. */
+/* Entry index of `key` in a dict/creel's raw payload, or -1. Builds and uses the hash
+   index once the payload is big enough for a scan to hurt. Tombstones never match: their
+   tag is no value's tag. */
 static int64_t __mdh_kv_find(MdhValue kv, MdhValue key) {
-    int64_t *payload = __mdh_kv_payload_ptr(kv);
-    int64_t count = payload ? payload[0] : 0;
+    int64_t *payload = __mdh_kv_payload_raw(kv);
+    int64_t used = payload ? payload[0] + __mdh_kv_dead(kv) : 0;
     MdhValue *entries = payload ? (MdhValue *)(payload + 1) : NULL;
     intptr_t *handle = (intptr_t *)(intptr_t)kv.data;
 
     MdhKvIndex *idx = NULL;
-    if (count >= MDH_KV_INDEX_MIN) {
+    if (used >= MDH_KV_INDEX_MIN) {
         idx = (MdhKvIndex *)(intptr_t)handle[2];
-        if (!idx || idx->count != count) {
-            idx = __mdh_kv_index_build(entries, count, count);
+        if (!idx || idx->count != used) {
+            idx = __mdh_kv_index_build(entries, used, used);
             handle[2] = (intptr_t)idx;
         }
     }
     if (!idx) {
-        for (int64_t i = 0; i < count; i++) {
+        for (int64_t i = 0; i < used; i++) {
             if (__mdh_values_equal(entries[i * 2], key)) {
                 return i;
             }
@@ -4406,27 +4504,28 @@ static int64_t __mdh_kv_find(MdhValue kv, MdhValue key) {
    alive: a loop iterating the dict may still hold it. */
 static void __mdh_kv_append(MdhValue kv, MdhValue key, MdhValue value) {
     intptr_t *handle = (intptr_t *)(intptr_t)kv.data;
-    int64_t *payload = __mdh_kv_payload_ptr(kv);
+    int64_t *payload = __mdh_kv_payload_raw(kv);
     int64_t count = payload ? payload[0] : 0;
+    int64_t used = count + __mdh_kv_dead(kv);
     int64_t cap = (int64_t)handle[1];
-    if (cap < count) {
-        cap = count;
+    if (cap < used) {
+        cap = used;
     }
 
-    if (count + 1 > cap) {
-        if (count > (INT64_MAX - 8) / 64) {
+    if (used + 1 > cap) {
+        if (used > (INT64_MAX - 8) / 64) {
             __mdh_hurl(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
             return;
         }
-        int64_t new_cap = count < 4 ? 8 : count * 2;
+        int64_t new_cap = used < 4 ? 8 : used * 2;
         int64_t *grown = (int64_t *)GC_malloc((size_t)(8 + new_cap * 32));
         if (!grown) {
             __mdh_hurl(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
             return;
         }
         grown[0] = count;
-        if (count > 0) {
-            memcpy(grown + 1, payload + 1, (size_t)count * 32);
+        if (used > 0) {
+            memcpy(grown + 1, payload + 1, (size_t)used * 32);
         }
         payload = grown;
         handle[0] = (intptr_t)payload;
@@ -4434,20 +4533,41 @@ static void __mdh_kv_append(MdhValue kv, MdhValue key, MdhValue value) {
     }
 
     MdhValue *entries = (MdhValue *)(payload + 1);
-    entries[count * 2] = key;
-    entries[count * 2 + 1] = value;
+    entries[used * 2] = key;
+    entries[used * 2 + 1] = value;
     payload[0] = count + 1;
 
     MdhKvIndex *idx = (MdhKvIndex *)(intptr_t)handle[2];
-    if (idx && idx->count == count) {
-        if ((count + 1) * 2 > idx->mask + 1) {
-            idx = __mdh_kv_index_build(entries, count + 1, (count + 1) * 2);
+    if (idx && idx->count == used) {
+        if ((used + 1) * 2 > idx->mask + 1) {
+            idx = __mdh_kv_index_build(entries, used + 1, (used + 1) * 2);
             handle[2] = (intptr_t)idx;
         } else {
-            __mdh_kv_index_put(idx, entries, count);
-            idx->count = count + 1;
+            __mdh_kv_index_put(idx, entries, used);
+            idx->count = used + 1;
         }
     }
+}
+
+/* Remove `key` in place: its entry becomes a tombstone and the index keeps pointing at it.
+   Compacts once more than half the used entries are dead. Returns whether it was there. */
+static bool __mdh_kv_remove(MdhValue kv, MdhValue key) {
+    int64_t found = __mdh_kv_find(kv, key);
+    if (found < 0) {
+        return false;
+    }
+    intptr_t *handle = (intptr_t *)(intptr_t)kv.data;
+    int64_t *payload = __mdh_kv_payload_raw(kv);
+    MdhValue *entries = (MdhValue *)(payload + 1);
+    entries[found * 2].tag = MDH_KV_DEAD_TAG;
+    entries[found * 2].data = 0;
+    entries[found * 2 + 1] = __mdh_make_nil();
+    payload[0] -= 1;
+    handle[3] += 1;
+    if ((int64_t)handle[3] > payload[0]) {
+        __mdh_kv_compact(kv);
+    }
+    return true;
 }
 
 MdhValue __mdh_dict_contains(MdhValue dict, MdhValue key) {
@@ -4509,7 +4629,7 @@ MdhValue __mdh_dict_set(MdhValue dict, MdhValue key, MdhValue value) {
     int64_t found = __mdh_kv_find(dict, key);
     if (found >= 0) {
         /* Update existing entry in place */
-        MdhValue *entries = (MdhValue *)(__mdh_kv_payload_ptr(dict) + 1);
+        MdhValue *entries = (MdhValue *)(__mdh_kv_payload_raw(dict) + 1);
         entries[found * 2 + 1] = value;
         return dict;
     }
@@ -4526,7 +4646,7 @@ MdhValue __mdh_dict_get(MdhValue dict, MdhValue key) {
 
     int64_t found = __mdh_kv_find(dict, key);
     if (found >= 0) {
-        MdhValue *entries = (MdhValue *)(__mdh_kv_payload_ptr(dict) + 1);
+        MdhValue *entries = (MdhValue *)(__mdh_kv_payload_raw(dict) + 1);
         return entries[found * 2 + 1];
     }
     __mdh_key_not_found(key);
@@ -4543,7 +4663,7 @@ MdhValue __mdh_dict_get_default(MdhValue dict, MdhValue key, MdhValue default_va
 
     int64_t found = __mdh_kv_find(dict, key);
     if (found >= 0) {
-        MdhValue *entries = (MdhValue *)(__mdh_kv_payload_ptr(dict) + 1);
+        MdhValue *entries = (MdhValue *)(__mdh_kv_payload_raw(dict) + 1);
         return entries[found * 2 + 1];
     }
     return default_val;
@@ -4687,45 +4807,8 @@ MdhValue __mdh_heave_oot(MdhValue dict, MdhValue item) {
         return __mdh_empty_creel();
     }
 
-    int64_t *old_ptr = __mdh_kv_payload_ptr(dict);
-    int64_t count = old_ptr ? old_ptr[0] : 0;
-    MdhValue *entries = old_ptr ? (MdhValue *)(old_ptr + 1) : NULL;
-
-    /* Find the item */
-    int64_t found_idx = -1;
-    for (int64_t i = 0; i < count; i++) {
-        MdhValue entry_key = entries[i * 2];
-        if (__mdh_values_equal(entry_key, item)) {
-            found_idx = i;
-            break;
-        }
-    }
-
-    if (found_idx < 0) {
-        /* Not found, return unchanged */
-        return dict;
-    }
-
-    /* Remove entry: reallocate without it */
-    int64_t new_count = count - 1;
-    size_t new_size = (new_count == 0) ? 16 : (8 + new_count * 32);
-    int64_t *new_ptr = (int64_t *)GC_malloc(new_size);
-
-    *new_ptr = new_count;
-    if (new_count == 0) {
-        new_ptr[1] = MDH_CREEL_SENTINEL;
-    }
-    MdhValue *new_entries = (MdhValue *)(new_ptr + 1);
-    int64_t j = 0;
-    for (int64_t i = 0; i < count; i++) {
-        if (i != found_idx) {
-            new_entries[j * 2] = entries[i * 2];
-            new_entries[j * 2 + 1] = entries[i * 2 + 1];
-            j++;
-        }
-    }
-
-    __mdh_kv_set_payload_ptr(dict, new_ptr);
+    /* In place, as the interpreter: a tombstone, not a copy (MDH-BUG-FLU-00091). */
+    (void)__mdh_kv_remove(dict, item);
     return dict;
 }
 

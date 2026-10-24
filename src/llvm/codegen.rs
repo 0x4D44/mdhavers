@@ -559,6 +559,10 @@ pub struct CodeGen<'ctx> {
     /// Current function being compiled
     current_function: Option<FunctionValue<'ctx>>,
 
+    /// Per function, the i64 alloca its statements also store their line to (see
+    /// `line_slot`); `emit_thread_line_notes` reads it before runtime calls.
+    line_slots: HashMap<FunctionValue<'ctx>, PointerValue<'ctx>>,
+
     /// Variable storage (name -> alloca pointer)
     variables: HashMap<String, PointerValue<'ctx>>,
 
@@ -775,6 +779,7 @@ impl<'ctx> CodeGen<'ctx> {
             types,
             libc,
             current_function: None,
+            line_slots: HashMap::new(),
             variables: HashMap::new(),
             globals: HashMap::new(),
             int_shadows: HashMap::new(),
@@ -4206,9 +4211,37 @@ impl<'ctx> CodeGen<'ctx> {
         global.as_pointer_value()
     }
 
+    /// The per-function i64 slot each statement also stores its line to (created, holding 0,
+    /// on first use). Optimised builds promote it to registers, so the stores cost nothing;
+    /// `emit_thread_line_notes` reads it where a runtime call needs the statement's line.
+    fn line_slot(&mut self, function: FunctionValue<'ctx>) -> PointerValue<'ctx> {
+        if let Some(&slot) = self.line_slots.get(&function) {
+            return slot;
+        }
+        let entry = function
+            .get_first_basic_block()
+            .expect("a function with statements has an entry block");
+        let builder = self.context.create_builder();
+        match entry.get_first_instruction() {
+            Some(instr) => builder.position_before(&instr),
+            None => builder.position_at_end(entry),
+        }
+        let slot = builder
+            .build_alloca(self.types.i64_type, "line_slot")
+            .unwrap();
+        builder
+            .build_store(slot, self.types.i64_type.const_zero())
+            .unwrap();
+        self.line_slots.insert(function, slot);
+        slot
+    }
+
     /// Record the running statement's line for runtime-raised errors.
     fn emit_set_current_line(&mut self, line: usize) {
-        if line == 0 || self.current_function.is_none() {
+        let Some(function) = self.current_function else {
+            return;
+        };
+        if line == 0 {
             return;
         }
         let Some(block) = self.builder.get_insert_block() else {
@@ -4217,10 +4250,213 @@ impl<'ctx> CodeGen<'ctx> {
         if block.get_terminator().is_some() {
             return;
         }
+        let line = self.types.i64_type.const_int(line as u64, false);
         let ptr = self.current_line_global();
-        self.builder
-            .build_store(ptr, self.types.i64_type.const_int(line as u64, false))
-            .unwrap();
+        self.builder.build_store(ptr, line).unwrap();
+        let slot = self.line_slot(function);
+        self.builder.build_store(slot, line).unwrap();
+    }
+
+    /// Per-thread error lines (MDH-BUG-FLU-00090). Statements store their line to the
+    /// shared global `__mdh_current_line`, and runtime errors read it while the program
+    /// has one thread. Once a thread has been spawned (`__mdh_line_threaded` is set),
+    /// errors read the raising thread's own line, which compiled code notes before each
+    /// call that can raise, i.e. each call into the runtime:
+    ///
+    ///   if (__mdh_line_threaded) __mdh_note_line(<this statement's line>);
+    ///
+    /// Single-threaded code pays one load and an untaken branch per runtime call, and
+    /// nothing per statement or per user-function call.
+    fn emit_thread_line_notes(&mut self) {
+        use inkwell::llvm_sys::core::{
+            LLVMGetCalledValue, LLVMGetNumSuccessors, LLVMGetSuccessor, LLVMGetValueName2,
+            LLVMSetSuccessor,
+        };
+        use inkwell::values::{AsValueRef, InstructionOpcode, InstructionValue};
+
+        if self.line_slots.is_empty() {
+            return;
+        }
+        let saved_block = self.builder.get_insert_block();
+        let flag = match self.module.get_global("__mdh_line_threaded") {
+            Some(g) => g,
+            None => {
+                let g = self
+                    .module
+                    .add_global(self.types.i32_type, None, "__mdh_line_threaded");
+                g.set_linkage(Linkage::External);
+                g
+            }
+        }
+        .as_pointer_value();
+        let note_fn = match self.module.get_function("__mdh_note_line") {
+            Some(f) => f,
+            None => self.module.add_function(
+                "__mdh_note_line",
+                self.context
+                    .void_type()
+                    .fn_type(&[self.types.i64_type.into()], false),
+                Some(Linkage::External),
+            ),
+        };
+
+        // Runtime entry points that never raise a line-bearing error, or take the line.
+        const NO_NOTE: &[&str] = &[
+            "__mdh_note_line",
+            "__mdh_try_push",
+            "__mdh_try_pop",
+            "__mdh_get_last_error",
+            "__mdh_jmp_buf_size",
+            "__mdh_hurl_at",
+            "__mdh_set_args",
+        ];
+        let is_runtime_call = |module: &Module<'ctx>, call: InstructionValue<'ctx>| -> bool {
+            let callee = unsafe { LLVMGetCalledValue(call.as_value_ref()) };
+            if callee.is_null() {
+                return false;
+            }
+            let mut len = 0usize;
+            let name_ptr = unsafe { LLVMGetValueName2(callee, &mut len) };
+            if name_ptr.is_null() || len == 0 {
+                return false;
+            }
+            let bytes = unsafe { std::slice::from_raw_parts(name_ptr as *const u8, len) };
+            let Ok(name) = std::str::from_utf8(bytes) else {
+                return false;
+            };
+            if !name.starts_with("__mdh_") || NO_NOTE.contains(&name) {
+                return false;
+            }
+            // Declarations only: compiled user functions have bodies.
+            module
+                .get_function(name)
+                .is_some_and(|f| f.count_basic_blocks() == 0)
+        };
+
+        let slots: Vec<_> = self.line_slots.drain().collect();
+        for (function, slot) in slots {
+            // Gather the entry block's allocas at its top, so a split there leaves them
+            // all in the new entry block, where mem2reg can still promote them.
+            if let Some(entry) = function.get_first_basic_block() {
+                let mut first_other = None;
+                let mut late_allocas = Vec::new();
+                let mut instr = entry.get_first_instruction();
+                while let Some(current) = instr {
+                    instr = current.get_next_instruction();
+                    if current.get_opcode() != InstructionOpcode::Alloca {
+                        first_other.get_or_insert(current);
+                    } else if first_other.is_some() {
+                        late_allocas.push(current);
+                    }
+                }
+                if let Some(first_other) = first_other {
+                    for alloca in late_allocas {
+                        alloca.remove_from_basic_block();
+                        self.builder.position_before(&first_other);
+                        self.builder.insert_instruction(&alloca, None);
+                    }
+                }
+            }
+
+            // Predecessor terminators of each block, taken once from the unsplit CFG.
+            let mut preds: HashMap<BasicBlock<'ctx>, Vec<InstructionValue<'ctx>>> = HashMap::new();
+            let mut sites: Vec<(BasicBlock<'ctx>, Vec<InstructionValue<'ctx>>)> = Vec::new();
+            let by_ptr: HashMap<_, _> = function
+                .get_basic_blocks()
+                .into_iter()
+                .map(|b| (b.as_mut_ptr(), b))
+                .collect();
+            for block in function.get_basic_blocks() {
+                if let Some(term) = block.get_terminator() {
+                    let n = unsafe { LLVMGetNumSuccessors(term.as_value_ref()) };
+                    for k in 0..n {
+                        let succ = unsafe { LLVMGetSuccessor(term.as_value_ref(), k) };
+                        if let Some(&succ) = by_ptr.get(&succ) {
+                            let entry = preds.entry(succ).or_default();
+                            if !entry.contains(&term) {
+                                entry.push(term);
+                            }
+                        }
+                    }
+                }
+                let mut calls = Vec::new();
+                let mut instr = block.get_first_instruction();
+                while let Some(current) = instr {
+                    instr = current.get_next_instruction();
+                    if current.get_opcode() == InstructionOpcode::Call
+                        && is_runtime_call(&self.module, current)
+                    {
+                        calls.push(current);
+                    }
+                }
+                if !calls.is_empty() {
+                    sites.push((block, calls));
+                }
+            }
+
+            for (block, calls) in sites {
+                let mut block_preds = preds.remove(&block).unwrap_or_default();
+                for call in calls {
+                    // Move everything before `call` into a new head block that the
+                    // predecessors now enter; `block` keeps the call, the rest and its
+                    // terminator, so successors' phis are untouched.
+                    let head = self.context.prepend_basic_block(block, "line_note_head");
+                    let note = self.context.insert_basic_block_after(head, "line_note");
+                    for term in &block_preds {
+                        let n = unsafe { LLVMGetNumSuccessors(term.as_value_ref()) };
+                        for k in 0..n {
+                            let succ = unsafe { LLVMGetSuccessor(term.as_value_ref(), k) };
+                            if succ == block.as_mut_ptr() {
+                                unsafe {
+                                    LLVMSetSuccessor(term.as_value_ref(), k, head.as_mut_ptr())
+                                };
+                            }
+                        }
+                    }
+                    self.builder.position_at_end(head);
+                    let mut instr = block.get_first_instruction();
+                    while let Some(current) = instr {
+                        if current == call {
+                            break;
+                        }
+                        instr = current.get_next_instruction();
+                        current.remove_from_basic_block();
+                        self.builder.insert_instruction(&current, None);
+                    }
+                    let line = self
+                        .builder
+                        .build_load(self.types.i64_type, slot, "note_line")
+                        .unwrap();
+                    let threaded = self
+                        .builder
+                        .build_load(self.types.i32_type, flag, "line_threaded")
+                        .unwrap()
+                        .into_int_value();
+                    let is_threaded = self
+                        .builder
+                        .build_int_compare(
+                            IntPredicate::NE,
+                            threaded,
+                            self.types.i32_type.const_zero(),
+                            "is_threaded",
+                        )
+                        .unwrap();
+                    let head_term = self
+                        .builder
+                        .build_conditional_branch(is_threaded, note, block)
+                        .unwrap();
+                    self.builder.position_at_end(note);
+                    self.builder
+                        .build_call(note_fn, &[line.into()], "")
+                        .unwrap();
+                    let note_term = self.builder.build_unconditional_branch(block).unwrap();
+                    block_preds = vec![head_term, note_term];
+                }
+            }
+        }
+        if let Some(block) = saved_block {
+            self.builder.position_at_end(block);
+        }
     }
 
     /// A user function runs statements that move `__mdh_current_line`; put the caller's
@@ -4388,6 +4624,9 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Every function and lambda is now known: give the late dispatchers their bodies.
         self.emit_late_call_dispatchers()?;
+
+        // Last: every function body is complete, so its blocks can be split.
+        self.emit_thread_line_notes();
 
         Ok(())
     }
@@ -28808,9 +29047,10 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         // Dict values store a stable handle pointer to the payload pointer. The handle is
-        // [payload, capacity, key index] (MDH_KV_HANDLE_WORDS in runtime/mdh_runtime.c);
-        // a literal's payload is exactly `count` entries, so capacity and index start at 0.
-        let handle_size = self.types.i64_type.const_int(24, false);
+        // [payload, capacity, key index, dead entries] (MDH_KV_HANDLE_WORDS in
+        // runtime/mdh_runtime.c); a literal's payload is exactly `count` live entries, so
+        // capacity, index and dead count start at 0.
+        let handle_size = self.types.i64_type.const_int(32, false);
         let handle_ptr = self
             .builder
             .build_call(self.libc.malloc, &[handle_size.into()], "dict_handle_alloc")
@@ -28832,7 +29072,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_store(handle_i64_ptr, payload_int)
             .unwrap();
         let zero = self.types.i64_type.const_int(0, false);
-        for word in 1..3u64 {
+        for word in 1..4u64 {
             let slot = unsafe {
                 self.builder
                     .build_gep(

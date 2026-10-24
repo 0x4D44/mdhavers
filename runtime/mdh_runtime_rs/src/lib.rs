@@ -85,6 +85,7 @@ extern "C" {
     fn __mdh_dict_set(dict: MdhValue, key: MdhValue, value: MdhValue) -> MdhValue;
     fn __mdh_dict_get_default(dict: MdhValue, key: MdhValue, default_val: MdhValue) -> MdhValue;
     fn __mdh_to_string(value: MdhValue) -> MdhValue;
+    fn __mdh_kv_densify(value: MdhValue);
 }
 
 fn cstring_lossy(s: &str) -> CString {
@@ -788,6 +789,9 @@ unsafe fn mdh_value_to_json(value: MdhValue, pretty: bool, indent: usize) -> Str
             if handle_ptr.is_null() {
                 return "{}".to_string();
             }
+            // Drop any removed (tombstoned) entries first, so the payload holds exactly
+            // `count` live entries (MDH-BUG-FLU-00091).
+            __mdh_kv_densify(value);
             let payload_ptr = *handle_ptr as *const i64;
             if payload_ptr.is_null() {
                 return "{}".to_string();

@@ -557,3 +557,188 @@ hae_a_bash {
         ]
     );
 }
+
+// ---------- MDH-BUG-FLU-00091: heave_oot leaves tombstones no reader sees ----------
+
+#[test]
+fn creel_removals_are_invisible_to_every_reader() {
+    // Ten keys, so lookups go through the hash index. heave_oot tombstones in place; len,
+    // listing, display, membership, equality, the set operations and truthiness must all
+    // see only the live keys, and a removed key can come back.
+    let out = run_ok(
+        r#"
+ken c = creel(["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"])
+heave_oot(c, "c")
+heave_oot(c, "zz")
+blether len(c)
+blether creel_tae_list(c)
+blether c
+blether is_in_creel(c, "c")
+blether is_in_creel(c, "d")
+toss_in(c, "c")
+blether len(c)
+blether is_in_creel(c, "c")
+ken fresh = creel(["j", "i", "h", "g", "f", "e", "d", "c", "b", "a"])
+blether c == fresh
+heave_oot(c, "a")
+blether c == fresh
+blether fresh == c
+blether creels_thegither(c, creel(["a"])) == fresh
+blether creel_tae_list(creels_baith(c, creel(["a", "b", "zz"])))
+blether creel_tae_list(creels_differ(c, creel(["b", "j"])))
+fer k in ["b", "c", "d", "e", "f", "g", "h", "i", "j"] {
+    heave_oot(c, k)
+}
+blether len(c)
+blether c
+gin c {
+    blether "full"
+} ither {
+    blether "toom"
+}
+toss_in(c, "q")
+blether creel_tae_list(c)
+"#,
+    );
+    // The interpreter prints the same.
+    assert_eq!(
+        out,
+        vec![
+            "9",
+            "[a, b, d, e, f, g, h, i, j]",
+            "creel{\"a\", \"b\", \"d\", \"e\", \"f\", \"g\", \"h\", \"i\", \"j\"}",
+            "nae",
+            "aye",
+            "10",
+            "aye",
+            "aye",
+            "nae",
+            "nae",
+            "aye",
+            "[b]",
+            "[c, d, e, f, g, h, i]",
+            "0",
+            "creel{}",
+            "toom",
+            "[q]",
+        ]
+    );
+}
+
+#[test]
+fn a_hundred_thousand_creel_removals_run_in_linear_time() {
+    // A copy per heave_oot is quadratic: about 25 s for this on a 2026 Mac. Tombstones
+    // make it milliseconds. The churn loop keeps 1000 live keys while 100000 pass
+    // through, so the payload compacts again and again.
+    let run = compile_and_run_within(
+        r#"
+ken n = 100000
+ken c = empty_creel()
+fer i in 0..n {
+    toss_in(c, i)
+}
+fer i in 0..n {
+    heave_oot(c, i)
+}
+blether len(c)
+blether c
+ken w = empty_creel()
+fer i in 0..n {
+    toss_in(w, i)
+    gin i >= 1000 {
+        heave_oot(w, i - 1000)
+    }
+}
+blether len(w)
+blether is_in_creel(w, n - 1001)
+blether is_in_creel(w, n - 1000)
+"#,
+        Duration::from_secs(10),
+    );
+    assert_eq!(
+        run.code,
+        Some(0),
+        "after {:?}: stderr={:?}",
+        run.elapsed,
+        run.stderr
+    );
+    assert_eq!(
+        run.stdout.trim().lines().collect::<Vec<_>>(),
+        vec!["0", "creel{}", "1000", "nae", "aye"]
+    );
+}
+
+// ---------- MDH-BUG-FLU-00090: each thread's errors report its own line ----------
+
+#[test]
+fn worker_thread_error_reports_its_own_line_while_main_runs_on() {
+    // The worker starts line 4, says so on `ready` and blocks inside the same statement
+    // until main, having run lines 9 to 15 meanwhile, sends the index. One line shared by
+    // every thread would report main's line instead of the worker's.
+    let out = run_ok(
+        r#"
+dae worker(ready, c) {
+    ken l = [1]
+    gie l[[chan_send(ready, 1), chan_recv(c)][1]]
+}
+ken ready = chan_new(0)
+ken c = chan_new(0)
+ken t = thread_spawn(worker, [ready, c])
+chan_recv(ready)
+ken a = 1
+ken b = a + 1
+blether b
+chan_send(c, 5)
+hae_a_bash {
+    thread_join(t)
+} gin_it_gangs_wrang e {
+    blether e
+}
+"#,
+    );
+    assert_eq!(
+        out,
+        vec![
+            "2",
+            "Hoachin'! Index 5 is oot o' bounds (size is 1) at line 4"
+        ]
+    );
+}
+
+#[test]
+fn main_thread_error_keeps_its_line_while_a_worker_runs_statements() {
+    // Main starts line 16, lets the worker go and blocks inside the same statement; the
+    // worker runs lines 4 to 7, sends the index back and waits on line 8 (so it cannot
+    // return and put back the line it started with) while main raises.
+    let out = run_ok(
+        r#"
+dae worker(go, back) {
+    chan_recv(go)
+    ken x = 1
+    ken y = x + 1
+    ken z = y * 3
+    chan_send(back, z)
+    chan_recv(go)
+    gie z
+}
+ken go = chan_new(0)
+ken back = chan_new(0)
+ken t = thread_spawn(worker, [go, back])
+ken l = [1, 2]
+hae_a_bash {
+    blether l[[chan_send(go, 1), chan_recv(back)][1]]
+} gin_it_gangs_wrang e {
+    blether e
+}
+chan_send(go, 2)
+blether thread_join(t)
+"#,
+    );
+    assert_eq!(
+        out,
+        vec![
+            "Hoachin'! Index 6 is oot o' bounds (size is 2) at line 16",
+            "6",
+        ]
+    );
+}
