@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00125 — WASM: forward-global reads, block ken over globals, non-constant dae defaults
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** wasm
 - **Raised:** 2026-10-24T05:29:44Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261024T061442Z-c872c15f
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00125-run-fix-20261024T061442Z-c872c15f
-- **Owner base:** aa9172941601aa0de5cd07d557c252d95dd8f5dc
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-24T06:14:42Z
-- **Owner until:** 2026-10-24T10:14:42Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T05:29:44Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-24T05:29:44Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T06:14:48Z, deltic:auto role=fix run=fix-20261024T061442Z-c872c15f branch=task/bug-MDH-BUG-FLU-00125-run-fix-20261024T061442Z-c872c15f code=c436abd gate=manual)
 
 ## Observation
 
