@@ -890,3 +890,97 @@ fn parity_js_predicates_use_mdhavers_truthiness_mdh_bug_flu_00110() {
         ),
     ]);
 }
+
+#[test]
+fn parity_js_missing_builtins_mdh_bug_flu_00113() {
+    if !node_available() {
+        return;
+    }
+    assert_js_parity(&[
+        (
+            "00113 ilk, grup_up and pairt_by",
+            r#"dae p(x) { blether x * 10 }
+blether ilk([1, 2], p)
+blether grup_up([1, 2, 3, 4], |x| x % 2)
+blether grup_up(["a", "bb", "c"], len)
+blether pairt_by([1, 2, 3, 4], |x| x > 2)
+blether pairt_by([{}, [1]], |x| x)"#,
+            "10\n20\nnaething\n{\"1\": [1, 3], \"0\": [2, 4]}\n{\"1\": [a, c], \"2\": [bb]}\n[[3, 4], [1, 2]]\n[[[1]], [{}]]",
+        ),
+        (
+            "00113 dict_get, dict_has, dict_remove, dict_invert and fae_pairs use typed keys",
+            r#"ken d = {"a": 1, 2: "two"}
+blether dict_get(d, "a", 0)
+blether dict_get(d, "zz", 0)
+blether dict_get(d, 2, 0)
+blether dict_get(d, "2", 0)
+blether dict_has(d, 2)
+blether dict_has(d, 2.0)
+blether dict_remove(d, "a")
+blether d
+blether dict_invert({"a": 1, "b": 1, "c": 2})
+blether dict_invert({1: "x"})
+blether fae_pairs([["a", 1], [2, 3], [9], "no"])"#,
+            "1\n0\ntwo\n0\naye\nnae\n{\"2\": two}\n{\"a\": 1, \"2\": two}\n{\"1\": b, \"2\": c}\n{\"x\": 1}\n{\"a\": 1, \"2\": 3}",
+        ),
+        (
+            "00113 higher-order builtins raise the interpreter's errors",
+            r#"hae_a_bash {
+    sieve(1, |x| x)
+} gin_it_gangs_wrang e {
+    blether e
+}
+hae_a_bash {
+    gaun([1], 5)
+} gin_it_gangs_wrang e {
+    blether e
+}
+hae_a_bash {
+    tumble("s", 0, |a, x| a)
+} gin_it_gangs_wrang e {
+    blether e
+}
+hae_a_bash {
+    grup_up(1, len)
+} gin_it_gangs_wrang e {
+    blether e
+}
+hae_a_bash {
+    ilk([1], naething)
+} gin_it_gangs_wrang e {
+    blether e
+}
+blether ony([], 5)"#,
+            "That's pure mince! Type error at line 2: sieve() expects a list as first argument\nWhit's aw this aboot? '5' isnae a function at line 7\nThat's pure mince! Type error at line 12: tumble() expects a list as first argument\nThat's pure mince! Type error at line 17: grup_up() expects a list as first argument\nWhit's aw this aboot? 'naething' isnae a function at line 22\nnae",
+        ),
+        (
+            "00113 dict builtins raise the interpreter's errors",
+            r#"hae_a_bash {
+    dict_get(1, 2, 3)
+} gin_it_gangs_wrang e {
+    blether e
+}
+hae_a_bash {
+    dict_has([], 1)
+} gin_it_gangs_wrang e {
+    blether e
+}
+hae_a_bash {
+    dict_remove("x", 1)
+} gin_it_gangs_wrang e {
+    blether e
+}
+hae_a_bash {
+    dict_invert(1)
+} gin_it_gangs_wrang e {
+    blether e
+}
+hae_a_bash {
+    fae_pairs(1)
+} gin_it_gangs_wrang e {
+    blether e
+}"#,
+            "Jings! Something went awfy wrang: dict_get() needs a dictionary\nJings! Something went awfy wrang: dict_has() needs a dictionary\nJings! Something went awfy wrang: dict_remove() needs a dictionary\nJings! Something went awfy wrang: dict_invert() needs a dictionary\nJings! Something went awfy wrang: fae_pairs() needs a list o' pairs",
+        ),
+    ]);
+}

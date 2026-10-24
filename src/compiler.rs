@@ -2,6 +2,11 @@ use crate::ast::*;
 use crate::error::{HaversError, HaversResult};
 use std::collections::{HashMap, HashSet};
 
+/// Higher-order builtins whose calls pass their line tae `__havers.hof` (MDH-BUG-FLU-00113).
+const HOF_BUILTINS: &[&str] = &[
+    "gaun", "sieve", "tumble", "ilk", "hunt", "ony", "aw", "grup_up", "pairt_by",
+];
+
 /// Runtime helpers bound as ordinary (shadowable) names at the top o' the user's block.
 const RUNTIME_BINDINGS: &[&str] = &[
     "len",
@@ -121,6 +126,15 @@ const RUNTIME_BINDINGS: &[&str] = &[
     "aw",
     "ony",
     "hunt",
+    // Higher-order and dict builtins (core_runtime.js), matchin' the interpreter's (MDH-BUG-FLU-00113).
+    "ilk",
+    "grup_up",
+    "pairt_by",
+    "dict_get",
+    "dict_has",
+    "dict_remove",
+    "dict_invert",
+    "fae_pairs",
     "soond_stairt",
     "soond_steek",
     "soond_wheesht",
@@ -1095,20 +1109,6 @@ impl Compiler {
         self.indent -= 1;
         self.emit_line("},");
 
-        // Higher-order functions
-        self.emit_line("// Higher-order functions");
-        // The function gets only the item (an' the accumulator), as in the
-        // interpreter, an' a predicate's result is judged by mdhavers
-        // truthiness, so {} an' [] are falsy (MDH-BUG-FLU-00110).
-        self.emit_line("gaun: (arr, fn) => arr.map((x) => fn(x)),");
-        self.emit_line("sieve: (arr, fn) => arr.filter((x) => __havers_core.truthy(fn(x))),");
-        self.emit_line("tumble: (arr, init, fn) => arr.reduce((acc, x) => fn(acc, x), init),");
-        self.emit_line("aw: (arr, fn) => arr.every((x) => __havers_core.truthy(fn(x))),");
-        self.emit_line("ony: (arr, fn) => arr.some((x) => __havers_core.truthy(fn(x))),");
-        self.emit_line(
-            "hunt: (arr, fn) => { for (const x of arr) if (__havers_core.truthy(fn(x))) return x; return null; },",
-        );
-
         // Audio functions
         self.emit_line("// Audio functions");
         self.emit_line("soond_stairt: __havers_audio.soond_stairt,");
@@ -2022,7 +2022,9 @@ impl Compiler {
             }
 
             Expr::Call {
-                callee, arguments, ..
+                callee,
+                arguments,
+                span,
             } => {
                 // A `kin`/`thing` name that is never rebound is constructed directly.
                 // Ony ither callee is called plainly: classes are wrapped by
@@ -2033,15 +2035,29 @@ impl Compiler {
                     }
                 }
 
-                self.compile_expr(callee);
-                self.output.push('(');
+                // A higher-order builtin gets its call line via `hof`, fer the interpreter's error text.
+                let hof_line = match &**callee {
+                    Expr::Variable { name, .. } if HOF_BUILTINS.contains(&name.as_str()) => {
+                        Some(span.line)
+                    }
+                    _ => None,
+                };
+                if let Some(line) = hof_line {
+                    self.output.push_str(&format!("__havers.hof({}, ", line));
+                    self.compile_expr(callee);
+                    self.output.push_str(", [");
+                } else {
+                    self.compile_expr(callee);
+                    self.output.push('(');
+                }
                 for (i, arg) in arguments.iter().enumerate() {
                     if i > 0 {
                         self.output.push_str(", ");
                     }
                     self.compile_expr(arg);
                 }
-                self.output.push(')');
+                self.output
+                    .push_str(if hof_line.is_some() { "])" } else { ")" });
             }
 
             Expr::Get {

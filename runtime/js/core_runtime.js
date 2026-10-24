@@ -579,6 +579,27 @@ const __havers_core = (() => {
     return '"' + show(x).replace(/"/g, '\\"') + '"';
   };
 
+  // The source line o' the latest higher-order call, set by `hof` (the compiler wraps such calls).
+  let hofLineNo = 0;
+  const hof = (line, f, args) => {
+    hofLineNo = line;
+    return f(...args);
+  };
+  // The list argument, or the interpreter's TypeError. Reads the line at entry, before callbacks run.
+  const hofList = (name, l) => {
+    const line = hofLineNo;
+    if (!Array.isArray(l)) throw typeError(`${name}() expects a list as first argument`, line);
+    hofLine = line;
+    return l;
+  };
+  const hofCall = (f) => {
+    if (typeof f === "function") return f;
+    return () => {
+      throw fail(`Whit's aw this aboot? '${show(f)}' isnae a function at line ${hofLine}`);
+    };
+  };
+  let hofLine = 0;
+
   const builtins = {
     // Dicts: keys come back wi' their ain types (see `dkey`).
     keys: (d) => {
@@ -599,6 +620,74 @@ const __havers_core = (() => {
       return Object.assign({}, a, b);
     },
     json_stringify: (x) => toJson(x, []),
+
+    // Dict helpers (MDH-BUG-FLU-00113); keys go through `dkey`, as in the interpreter's `DictValue`.
+    dict_get: (d, k, dflt) => {
+      if (!isDict(d)) throw native("dict_get() needs a dictionary");
+      const p = dkey(k);
+      return Object.prototype.hasOwnProperty.call(d, p) ? d[p] : dflt;
+    },
+    dict_has: (d, k) => {
+      if (!isDict(d)) throw native("dict_has() needs a dictionary");
+      return Object.prototype.hasOwnProperty.call(d, dkey(k));
+    },
+    // Returns a new dict; the original is left alone.
+    dict_remove: (d, k) => {
+      if (!isDict(d)) throw native("dict_remove() needs a dictionary");
+      const out = Object.assign({}, d);
+      delete out[dkey(k)];
+      return out;
+    },
+    dict_invert: (d) => {
+      if (!isDict(d)) throw native("dict_invert() needs a dictionary");
+      const out = {};
+      for (const p of Object.keys(d)) out[dkey(d[p])] = undkey(p);
+      return out;
+    },
+    fae_pairs: (l) => {
+      if (!Array.isArray(l)) throw native("fae_pairs() needs a list o' pairs");
+      const out = {};
+      for (const pair of l) if (Array.isArray(pair) && pair.length >= 2) out[dkey(pair[0])] = pair[1];
+      return out;
+    },
+
+    // Higher-order builtins. The function gets only the item (an' the accumulator), and a
+    // predicate's result is judged by `truthy`. A non-list or non-function raises the
+    // interpreter's error; the line comes fae the call site via `hof`.
+    gaun: (l, f) => hofList("gaun", l).map((x) => hofCall(f)(x)),
+    sieve: (l, f) => hofList("sieve", l).filter((x) => truthy(hofCall(f)(x))),
+    tumble: (l, init, f) => hofList("tumble", l).reduce((acc, x) => hofCall(f)(acc, x), init),
+    ilk: (l, f) => {
+      for (const x of hofList("ilk", l)) hofCall(f)(x);
+      return null;
+    },
+    hunt: (l, f) => {
+      for (const x of hofList("hunt", l)) if (truthy(hofCall(f)(x))) return x;
+      return null;
+    },
+    ony: (l, f) => {
+      for (const x of hofList("ony", l)) if (truthy(hofCall(f)(x))) return true;
+      return false;
+    },
+    aw: (l, f) => {
+      for (const x of hofList("aw", l)) if (!truthy(hofCall(f)(x))) return false;
+      return true;
+    },
+    grup_up: (l, f) => {
+      const out = {};
+      for (const x of hofList("grup_up", l)) {
+        const p = dkey(hofCall(f)(x));
+        if (Object.prototype.hasOwnProperty.call(out, p)) out[p].push(x);
+        else out[p] = [x];
+      }
+      return out;
+    },
+    pairt_by: (l, f) => {
+      const yes = [];
+      const no = [];
+      for (const x of hofList("pairt_by", l)) (truthy(hofCall(f)(x)) ? yes : no).push(x);
+      return [yes, no];
+    },
 
     // Creels (sets): a JS Set keys BigInt/string/bool by value an' lists, dicts an' creels by
     // identity, as the interpreter's `ValueKey` does. Display an' list order are sorted by `show`.
@@ -1190,7 +1279,7 @@ const __havers_core = (() => {
   const or = (l, r) => (truthy(l) ? l : r());
 
   return {
-    show, truthy, eq, fail, typeName, isDict, dkey, add, sub, mul, div, mod, neg, lt, le, gt, ge,
+    show, truthy, eq, fail, typeName, isDict, dkey, hof, add, sub, mul, div, mod, neg, lt, le, gt, ge,
     idx, setIdx, slice, rangeOf, inRange, iter, builtins, nums, numArgs, kin, hurl, caught, and, or,
     foreign, jsArgs,
   };
