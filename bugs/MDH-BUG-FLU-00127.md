@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00127 — WASM builtin bridge cannot carry function values (dict of lambdas to contains)
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** wasm
 - **Raised:** 2026-10-24T06:14:54Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261024T064147Z-a4a054ee
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00127-run-fix-20261024T064147Z-a4a054ee
-- **Owner base:** dae3c18aa4b79dbe1a03ad034f2578844891997c
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-24T06:41:47Z
-- **Owner until:** 2026-10-24T10:41:47Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T06:14:54Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-24T06:14:54Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T06:41:54Z, deltic:auto role=fix run=fix-20261024T064147Z-a4a054ee branch=task/bug-MDH-BUG-FLU-00127-run-fix-20261024T064147Z-a4a054ee code=dae3c18 gate=manual)
 
 ## Observation
 
