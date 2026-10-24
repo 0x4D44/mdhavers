@@ -138,9 +138,9 @@ fn wrong_argument_count_is_a_compile_error() {
 }
 
 #[test]
-fn non_constant_default_is_a_compile_error() {
-    let message = compile_error("ken base = 1\ndae f(a, b = base) {\n    gie a\n}\nblether f(1)\n");
-    assert!(message.contains("constant"), "{message}");
+fn non_constant_default_is_evaluated_in_the_callee() {
+    let source = "ken base = 1\ndae f(a, b = base) {\n    gie b\n}\nblether f(1)\n";
+    assert_eq!(run(source), "1\n");
 }
 
 #[test]
@@ -1696,4 +1696,260 @@ blether total
 fn creel_display_quotes_every_member() {
     let src = "ken c = creel([\"1\", 2, \"b\"])\nblether c\nblether [creel([])]\n";
     assert_parity(src, "creel{\"1\", \"2\", \"b\"}\n[creel{}]\n");
+}
+
+// ---------------------------------------------------------------------------
+// residual divergences (MDH-BUG-FLU-00125, MDH-BUG-FLU-00123)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn dae_defaults_are_evaluated_in_the_callee() {
+    let src = r#"ken base = 10
+dae f(a, b = a + base, c = [a]) {
+    gie [a, b, c]
+}
+blether f(1)
+blether f(1, 2)
+blether f(1, 2, 3)
+base = 20
+blether f(1)
+ken g = f
+blether g(2)
+blether gaun([1, 2], f)
+dae outer(x) {
+    dae inner(a, b = x * 2) {
+        gie a + b
+    }
+    x = x + 1
+    gie inner
+}
+ken h = outer(5)
+blether h(1)
+blether h(1, 1)
+hae_a_bash {
+    g()
+} gin_it_gangs_wrang e {
+    blether e
+}
+hae_a_bash {
+    h(1, 2, 3)
+} gin_it_gangs_wrang e {
+    blether e
+}
+"#;
+    let want = interpreted(src);
+    assert!(
+        want.starts_with(
+            "[1, 11, [1]]\n[1, 2, [1]]\n[1, 2, 3]\n[1, 21, [1]]\n[2, 22, [2]]\n\
+             [[1, 21, [1]], [2, 22, [2]]]\n13\n2\n"
+        ),
+        "{want}"
+    );
+    assert!(
+        want.contains("Function 'f' expects 1 tae 3 arguments but ye gave it 0"),
+        "{want}"
+    );
+    assert_parity(src, &want);
+}
+
+#[test]
+fn a_global_used_before_its_ken_is_the_interpreters_error() {
+    let src = r#"dae show() {
+    gie later
+}
+hae_a_bash {
+    blether show()
+} gin_it_gangs_wrang e {
+    blether e
+}
+dae bump() {
+    later = 1
+}
+hae_a_bash {
+    bump()
+} gin_it_gangs_wrang e {
+    blether e
+}
+ken later = 5
+blether show()
+"#;
+    assert_parity(
+        src,
+        "Awa' an bile yer heid! 'later' hasnae been defined yet at line 2\n\
+         Awa' an bile yer heid! 'later' hasnae been defined yet at line 10\n5\n",
+    );
+    let out = run_full("dae f() {\n    gie x\n}\nblether f()\nken x = 1\n");
+    let error = out.error.expect("read before ken");
+    assert!(
+        error.contains("'x' hasnae been defined yet at line 2"),
+        "{error}"
+    );
+}
+
+#[test]
+fn block_bindings_shadow_without_touching_the_outer_binding() {
+    let src = r#"ken x = 10
+ken i = "outer"
+dae show() {
+    gie [x, i]
+}
+gin aye {
+    ken x = 20
+    blether x
+    blether show()
+}
+fer i in 0..2 {
+    blether show()
+}
+blether x
+blether i
+dae f(n) {
+    ken total = n
+    gin n > 0 {
+        ken total = 99
+        total = total + 1
+    }
+    fer n in [7] {
+        blether n
+    }
+    gie [n, total]
+}
+blether f(1)
+ken y = 1
+gin aye {
+    ken y = y + 1
+    blether y
+}
+blether y
+"#;
+    assert_parity(
+        src,
+        "20\n[10, outer]\n[10, outer]\n[10, outer]\n10\nouter\n7\n[1, 1]\n2\n1\n",
+    );
+}
+
+#[test]
+fn a_second_ken_in_the_same_scope_rebinds_the_shared_cell() {
+    let src = r#"ken n = 1
+ken get = || n
+ken n = 2
+blether get()
+dae f() {
+    ken v = "a"
+    ken read = || v
+    ken v = "b"
+    gie read()
+}
+blether f()
+fer k in [1, 2] {
+    ken w = k
+    ken rw = || w
+    ken w = w * 10
+    blether rw()
+}
+"#;
+    assert_parity(src, "2\nb\n10\n20\n");
+}
+
+#[test]
+fn a_kin_inside_a_dae_captures_its_variables() {
+    // The method envs live only in the class (an' a bound method): the churn reuses
+    // their slots if `push_children` misses them.
+    let src = r#"dae make(start) {
+    ken step = 2
+    kin Counter {
+        dae init() {
+            masel.n = start
+        }
+        dae next() {
+            masel.n = masel.n + step
+            gie masel.n
+        }
+        dae twin() {
+            gie Counter()
+        }
+    }
+    step = 3
+    gie Counter()
+}
+ken c = make(10)
+ken nx = c.next
+fer j in 0..3000 {
+    ken junk = [j, [j]]
+}
+blether c.next()
+blether nx()
+blether c.twin().next()
+blether c
+"#;
+    assert_parity(src, "13\n16\n13\n<Counter instance>\n");
+}
+
+#[test]
+fn an_error_after_an_operator_overload_names_the_statement_line() {
+    let src = r#"kin V {
+    dae init(x) {
+        masel.x = x
+    }
+    dae __pit_thegither__(o) {
+        ken t = 1
+        gie V(masel.x + o.x)
+    }
+    dae __same_as__(o) {
+        ken t = 2
+        gie masel.x == o.x
+    }
+}
+ken a = V(1)
+ken z = [a + a, a == a, 1 / 0]
+"#;
+    let error = run_full(src).error.expect("division by zero");
+    assert!(
+        error.contains("Tryin' tae divide by zero at line 15"),
+        "{error}"
+    );
+}
+
+#[test]
+fn destructuring_matches_the_interpreter() {
+    let src = r#"ken [a, _, ...mid, z] = [1, 2, 3, 4, 5]
+blether [a, mid, z]
+ken [p, q] = "hi"
+blether q + p
+ken [...all] = []
+blether all
+hae_a_bash {
+    ken [m, n, o] = [1]
+} gin_it_gangs_wrang e {
+    blether e
+}
+hae_a_bash {
+    ken [m] = 5
+} gin_it_gangs_wrang e {
+    blether e
+}
+"#;
+    let want = interpreted(src);
+    assert!(want.starts_with("[1, [3, 4], 5]\nih\n[]\n"), "{want}");
+    assert_parity(src, &want);
+}
+
+#[test]
+fn block_expressions_free_their_garbage_and_keep_their_value() {
+    let src = r#"ken out = []
+fer i in 0..3000 {
+    shove(out, [i, {
+        ken t = [i, "x" + i]
+        t[1]
+    }])
+}
+blether len(out)
+blether out[2999]
+"#;
+    let out = assert_parity(src, "3000\n[2999, x2999]\n");
+    assert!(
+        out.peak_store_size < 20000,
+        "store peaked at {}",
+        out.peak_store_size
+    );
 }

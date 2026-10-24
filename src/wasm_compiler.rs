@@ -140,8 +140,14 @@ fn method_params(params: &[Param]) -> Vec<String> {
         .collect()
 }
 
-/// A method's body wi' its default expressions in front, fer the name scans: a default
-/// is evaluated in the callee, so the names it uses are the method's ain.
+/// How many arguments a call must pass (the interpreter's `min_arity`). A function wi'
+/// fewer than all its parameters required takes the argument count as a hidden last one.
+fn required_params(params: &[Param]) -> usize {
+    params.iter().filter(|p| p.default.is_none()).count()
+}
+
+/// A dae's or method's body wi' its default expressions in front, fer the name scans: a
+/// default is evaluated in the callee, so the names it uses are the callee's ain.
 fn method_scan_body(params: &[Param], body: &[Stmt], span: Span) -> Vec<Stmt> {
     params
         .iter()
@@ -199,7 +205,8 @@ impl NameScan {
             | Stmt::Expression { expr: e, .. }
             | Stmt::Print { value: e, .. }
             | Stmt::Return { value: Some(e), .. }
-            | Stmt::Hurl { message: e, .. } => self.expr(e),
+            | Stmt::Hurl { message: e, .. }
+            | Stmt::Destructure { value: e, .. } => self.expr(e),
             Stmt::Block { statements, .. } => statements.iter().for_each(|s| self.stmt(s)),
             Stmt::If {
                 condition,
@@ -250,9 +257,11 @@ impl NameScan {
                     self.expr(m);
                 }
             }
-            Stmt::Function { params, body, .. } => {
+            Stmt::Function {
+                params, body, span, ..
+            } => {
                 let names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
-                self.closure(&names, body);
+                self.closure(&names, &method_scan_body(params, body, *span));
             }
             Stmt::Class { methods, .. } => {
                 for method in methods {
@@ -278,85 +287,105 @@ impl NameScan {
             }
             Expr::Lambda { params, body, span } => self.closure(params, &lambda_body(body, *span)),
             Expr::BlockExpr { statements, .. } => statements.iter().for_each(|s| self.stmt(s)),
-            Expr::Binary { left, right, .. }
-            | Expr::Logical { left, right, .. }
-            | Expr::Pipe { left, right, .. }
-            | Expr::Range {
-                start: left,
-                end: right,
-                ..
-            } => {
-                self.expr(left);
-                self.expr(right);
-            }
-            Expr::Unary { operand: e, .. }
-            | Expr::Grouping { expr: e, .. }
-            | Expr::Get { object: e, .. }
-            | Expr::Spread { expr: e, .. }
-            | Expr::Input { prompt: e, .. } => self.expr(e),
-            Expr::Call {
-                callee, arguments, ..
-            } => {
-                self.expr(callee);
-                arguments.iter().for_each(|a| self.expr(a));
-            }
-            Expr::Set { object, value, .. } => {
-                self.expr(object);
-                self.expr(value);
-            }
-            Expr::Index { object, index, .. } => {
-                self.expr(object);
-                self.expr(index);
-            }
-            Expr::IndexSet {
-                object,
-                index,
-                value,
-                ..
-            } => {
-                self.expr(object);
-                self.expr(index);
-                self.expr(value);
-            }
-            Expr::Slice {
-                object,
-                start,
-                end,
-                step,
-                ..
-            } => {
-                self.expr(object);
-                for part in [start, end, step].into_iter().flatten() {
-                    self.expr(part);
-                }
-            }
-            Expr::List { elements, .. } => elements.iter().for_each(|e| self.expr(e)),
-            Expr::Dict { pairs, .. } => {
-                for (k, v) in pairs {
-                    self.expr(k);
-                    self.expr(v);
-                }
-            }
-            Expr::FString { parts, .. } => {
-                for part in parts {
-                    if let FStringPart::Expr(e) = part {
-                        self.expr(e);
-                    }
-                }
-            }
-            Expr::Ternary {
-                condition,
-                then_expr,
-                else_expr,
-                ..
-            } => {
-                self.expr(condition);
-                self.expr(then_expr);
-                self.expr(else_expr);
-            }
             Expr::Masel { .. } => self.add("masel"),
-            Expr::Literal { .. } => {}
+            _ => expr_children(expr).into_iter().for_each(|e| self.expr(e)),
         }
+    }
+}
+
+/// The sub-expressions an expression evaluates itsel', in evaluation order (a lambda's
+/// or a block expression's body is no' among them).
+fn expr_children(expr: &Expr) -> Vec<&Expr> {
+    match expr {
+        Expr::Literal { .. }
+        | Expr::Variable { .. }
+        | Expr::Masel { .. }
+        | Expr::Lambda { .. }
+        | Expr::BlockExpr { .. } => Vec::new(),
+        Expr::Assign { value: e, .. }
+        | Expr::Unary { operand: e, .. }
+        | Expr::Grouping { expr: e, .. }
+        | Expr::Get { object: e, .. }
+        | Expr::Spread { expr: e, .. }
+        | Expr::Input { prompt: e, .. } => vec![e],
+        Expr::Binary { left, right, .. }
+        | Expr::Logical { left, right, .. }
+        | Expr::Pipe { left, right, .. }
+        | Expr::Range {
+            start: left,
+            end: right,
+            ..
+        } => vec![left, right],
+        Expr::Call {
+            callee, arguments, ..
+        } => std::iter::once(&**callee).chain(arguments).collect(),
+        Expr::Set { object, value, .. } => vec![object, value],
+        Expr::Index { object, index, .. } => vec![object, index],
+        Expr::IndexSet {
+            object,
+            index,
+            value,
+            ..
+        } => vec![object, index, value],
+        Expr::Slice {
+            object,
+            start,
+            end,
+            step,
+            ..
+        } => std::iter::once(&**object)
+            .chain([start, end, step].into_iter().flatten().map(|e| &**e))
+            .collect(),
+        Expr::List { elements, .. } => elements.iter().collect(),
+        Expr::Dict { pairs, .. } => pairs.iter().flat_map(|(k, v)| [k, v]).collect(),
+        Expr::FString { parts, .. } => parts
+            .iter()
+            .filter_map(|part| match part {
+                FStringPart::Expr(e) => Some(&**e),
+                FStringPart::Text(_) => None,
+            })
+            .collect(),
+        Expr::Ternary {
+            condition,
+            then_expr,
+            else_expr,
+            ..
+        } => vec![condition, then_expr, else_expr],
+    }
+}
+
+/// The expressions a statement evaluates itsel' (no' those o' its nested statements).
+fn stmt_exprs(stmt: &Stmt) -> Vec<&Expr> {
+    match stmt {
+        Stmt::VarDecl {
+            initializer: Some(e),
+            ..
+        }
+        | Stmt::Expression { expr: e, .. }
+        | Stmt::Print { value: e, .. }
+        | Stmt::Return { value: Some(e), .. }
+        | Stmt::Hurl { message: e, .. }
+        | Stmt::If { condition: e, .. }
+        | Stmt::While { condition: e, .. }
+        | Stmt::For { iterable: e, .. }
+        | Stmt::Destructure { value: e, .. } => vec![e],
+        Stmt::Match { value, arms, .. } => {
+            let mut out = vec![value];
+            for arm in arms {
+                if let Pattern::Range { start, end, .. } = &arm.pattern {
+                    out.push(start);
+                    out.push(end);
+                }
+            }
+            out
+        }
+        Stmt::Assert {
+            condition, message, ..
+        } => std::iter::once(condition).chain(message).collect(),
+        Stmt::Log {
+            message, extras, ..
+        } => std::iter::once(message).chain(extras).collect(),
+        _ => Vec::new(),
     }
 }
 
@@ -682,6 +711,17 @@ pub struct WasmCompiler {
     /// Top-level variables a dae or method uses: each is a host cell whose handle
     /// lives in the guest global `$g$name` (see `program_globals`).
     globals: BTreeSet<String>,
+    /// Block scoping o' the function being compiled (see `resolve_scopes`): each binding
+    /// site's local, an' whether it rebinds one already bound in the same scope.
+    binds: HashMap<(usize, usize), (String, bool)>,
+    /// A name read or assigned where a block binding shadows it: that binding's local.
+    uses: HashMap<usize, String>,
+    /// Each closure's free names that are bound where it is made, an' their locals.
+    captures: HashMap<usize, HashMap<String, String>>,
+    /// The locals made fer block bindings that shadow a name: (name, local).
+    renamed: Vec<(String, String)>,
+    /// The scopes open while resolving, innermost last: name -> (local, surely bound).
+    res_scopes: Vec<HashMap<String, (String, bool)>>,
 }
 
 /// Linear memory the host gives a module (one 64KiB page); string data must fit inside it.
@@ -700,24 +740,6 @@ fn function_id(name: &str) -> String {
 
 fn compile_err(line: usize, message: String) -> HaversError {
     HaversError::CompileError(format!("{} (line {})", message, line))
-}
-
-/// Is this expression safe tae copy intae a caller as a parameter default?
-/// Defaults are compiled at the call site, so they maunnae touch variables or calls.
-fn is_const_default(expr: &Expr) -> bool {
-    match expr {
-        Expr::Literal { .. } => true,
-        Expr::Grouping { expr, .. } => is_const_default(expr),
-        Expr::Unary { operand, .. } => is_const_default(operand),
-        Expr::Binary { left, right, .. } | Expr::Logical { left, right, .. } => {
-            is_const_default(left) && is_const_default(right)
-        }
-        Expr::List { elements, .. } => elements.iter().all(is_const_default),
-        Expr::Dict { pairs, .. } => pairs
-            .iter()
-            .all(|(k, v)| is_const_default(k) && is_const_default(v)),
-        _ => false,
-    }
 }
 
 /// Every name a function body (or the top level) declares as a WASM local.
@@ -755,8 +777,13 @@ fn program_globals(program: &Program) -> BTreeSet<String> {
     };
     for stmt in &program.statements {
         match stmt {
-            Stmt::Function { params, body, .. } => {
-                add_free(params.iter().map(|p| p.name.clone()).collect(), body);
+            Stmt::Function {
+                params, body, span, ..
+            } => {
+                add_free(
+                    params.iter().map(|p| p.name.clone()).collect(),
+                    &method_scan_body(params, body, *span),
+                );
             }
             Stmt::Class { methods, .. } => {
                 for method in methods {
@@ -837,6 +864,10 @@ fn validate_program(program: &Program) -> HaversResult<()> {
             validator.scope = declared_names(&param_names, body.iter());
             validator.scope.extend(top_level_vars.iter().cloned());
             validator.loop_depth = 0;
+            // Defaults are evaluated in the callee, so they see what its body sees.
+            for default in params.iter().filter_map(|p| p.default.as_ref()) {
+                validator.expr(default)?;
+            }
             validator.stmts(body)?;
         }
     }
@@ -927,10 +958,13 @@ impl<'a> Validator<'a> {
                 }
             }
             Stmt::Hurl { message, .. } => self.expr(message)?,
-            Stmt::Function { params, body, .. } => {
+            Stmt::Function {
+                params, body, span, ..
+            } => {
                 let names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
-                self.closure(&names, body)?;
+                self.closure(&names, &method_scan_body(params, body, *span))?;
             }
+            Stmt::Destructure { value, .. } => self.expr(value)?,
             Stmt::Class {
                 superclass,
                 methods,
@@ -1070,6 +1104,8 @@ impl<'a> Validator<'a> {
             Expr::Lambda { params, body, span } => {
                 self.closure(params, &lambda_body(body, *span))?;
             }
+            // Its names are among the function's (see `collect_locals_stmt`).
+            Expr::BlockExpr { statements, .. } => self.stmts(statements)?,
             Expr::Pipe { left, right, span } => {
                 self.expr(&Expr::Call {
                     callee: right.clone(),
@@ -1130,28 +1166,14 @@ impl<'a> Validator<'a> {
                     ),
                 ));
             }
-            for param in &params[argc..] {
-                match &param.default {
-                    None => {
-                        return Err(compile_err(
-                            line,
-                            format!(
-                                "Dae '{}' needs the argument '{}' but wis gien only {}",
-                                name, param.name, argc
-                            ),
-                        ));
-                    }
-                    Some(default) if !is_const_default(default) => {
-                        return Err(compile_err(
-                            line,
-                            format!(
-                                "The default fer '{}' in dae '{}' maun be a constant in WASM",
-                                param.name, name
-                            ),
-                        ));
-                    }
-                    Some(_) => {}
-                }
+            if let Some(param) = params[argc..].iter().find(|p| p.default.is_none()) {
+                return Err(compile_err(
+                    line,
+                    format!(
+                        "Dae '{}' needs the argument '{}' but wis gien only {}",
+                        name, param.name, argc
+                    ),
+                ));
             }
             return Ok(());
         }
@@ -1209,6 +1231,11 @@ const ENV_PARAM: &str = "__mdh$env";
 /// A method's hidden last parameter: how many arguments the caller passed (an int handle).
 const ARGC_PARAM: &str = "__mdh$argc";
 
+/// What a global's cell holds until its `ken` runs: a handle that is never a value
+/// (above every store index, below the inline floats). `__mdh_global_get` an'
+/// `__mdh_global_set` raise the interpreter's "hasnae been defined" error on it.
+pub const UNSET_GLOBAL: i64 = (1 << 62) - 1;
+
 /// The host handle o' a small integer (`wasm_runner` keeps ints in the handle as `n - 2^62`).
 fn int_handle(n: i64) -> i64 {
     n - (1 << 62)
@@ -1248,6 +1275,11 @@ impl WasmCompiler {
             dae_values: Vec::new(),
             call_arities: BTreeSet::new(),
             globals: BTreeSet::new(),
+            binds: HashMap::new(),
+            uses: HashMap::new(),
+            captures: HashMap::new(),
+            renamed: Vec::new(),
+            res_scopes: Vec::new(),
         }
     }
 
@@ -1391,14 +1423,18 @@ impl WasmCompiler {
         );
         self.emit_line("(import \"env\" \"__mdh_match_range\" (func $mdh_match_range (param i64 i64 i64 i32) (result i32)))");
         // Function values: closures, cells an' calls (the host dispatches on the callee).
-        self.emit_line("(import \"env\" \"__mdh_make_fn\" (func $mdh_make_fn (param i32 i32 i64 i32 i32) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_make_fn\" (func $mdh_make_fn (param i32 i32 i32 i64 i32 i32) (result i64)))");
         self.emit_line("(import \"env\" \"__mdh_make_builtin\" (func $mdh_make_builtin (param i32 i32) (result i64)))");
         self.emit_line(
             "(import \"env\" \"__mdh_cell_new\" (func $mdh_cell_new (param i64) (result i64)))",
         );
         // Classes: a class value, then each method's table slot an' arity.
         self.emit_line("(import \"env\" \"__mdh_make_class\" (func $mdh_make_class (param i64 i32 i32 i32 i32 i32) (result i64)))");
-        self.emit_line("(import \"env\" \"__mdh_class_method\" (func $mdh_class_method (param i64 i32 i32 i32 i32 i32) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_class_method\" (func $mdh_class_method (param i64 i32 i32 i32 i32 i32 i64) (result i64)))");
+        // A top-level variable's cell, checked fer a read or write before its `ken`.
+        self.emit_line("(import \"env\" \"__mdh_global_get\" (func $mdh_global_get (param i64 i32 i32) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_global_set\" (func $mdh_global_set (param i64 i64 i32 i32) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_destructure\" (func $mdh_destructure (param i64 i32 i32 i32) (result i64)))");
         self.emit_line(
             "(import \"env\" \"__mdh_cell_get\" (func $mdh_cell_get (param i64) (result i64)))",
         );
@@ -1525,8 +1561,21 @@ impl WasmCompiler {
             name, params, body, ..
         } = stmt
         {
-            let params: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
-            self.emit_function(&function_id(name), false, &params, &[], body, None)?;
+            let mut names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
+            // Defaults are evaluated in the callee; the caller passes the argument count.
+            let defaults: Option<Vec<Option<Expr>>> = (required_params(params) < params.len())
+                .then(|| {
+                    names.push(ARGC_PARAM.to_string());
+                    params.iter().map(|p| p.default.clone()).collect()
+                });
+            self.emit_function(
+                &function_id(name),
+                false,
+                &names,
+                &[],
+                body,
+                defaults.as_deref(),
+            )?;
         }
         Ok(())
     }
@@ -1558,10 +1607,8 @@ impl WasmCompiler {
         self.emit_line(&format!("(func ${} {}(result i64)", id, param_types));
         self.indent += 1;
 
-        for name in free {
-            self.add_local(name);
-        }
-        self.collect_locals(body);
+        let body: Vec<&Stmt> = body.iter().collect();
+        self.resolve_scopes(free, &body);
         self.ensure_temp_locals();
         let local_decls: Vec<String> = self
             .local_vars
@@ -1573,10 +1620,10 @@ impl WasmCompiler {
             self.emit_line(&decl);
         }
 
-        let body: Vec<&Stmt> = body.iter().collect();
         self.setup_cells(&body, free);
+        self.emit_unpack_env(free);
         if let Some(defaults) = defaults {
-            self.emit_method_defaults(params, defaults)?;
+            self.emit_defaults(params, free, defaults)?;
         }
         self.emit_prologue(free);
         self.compile_stmts(&body)?;
@@ -1604,15 +1651,19 @@ impl WasmCompiler {
         Ok(())
     }
 
-    /// A method's defaults, run in the callee like the interpreter's `bind_params`: the
-    /// host passes the argument count (an int handle) last, an' nil fer each missing one.
-    /// This runs before captured parameters are boxed, so names read their raw locals.
-    fn emit_method_defaults(
+    /// A dae's or method's defaults, run in the callee like the interpreter's
+    /// `bind_params`: the caller passes the argument count (an int handle) last, an' nil
+    /// fer each missing one. This runs efter the captured cells are unpacked but before
+    /// captured parameters are boxed, so a parameter reads its raw local.
+    fn emit_defaults(
         &mut self,
         params: &[String],
+        free: &[String],
         defaults: &[Option<Expr>],
     ) -> HaversResult<()> {
-        let cells = std::mem::take(&mut self.cells);
+        let cells = std::mem::replace(&mut self.cells, free.iter().cloned().collect());
+        // The user parameters come efter `masel` in a method, an' the count is last.
+        let first = params.len() - 1 - defaults.len();
         let mut result = Ok(());
         for (i, default) in defaults.iter().enumerate() {
             let Some(expr) = default else { continue };
@@ -1627,8 +1678,7 @@ impl WasmCompiler {
             if result.is_err() {
                 break;
             }
-            // User parameter i comes after `masel`.
-            self.emit_line(&format!("(local.set ${})", params[i + 1]));
+            self.emit_line(&format!("(local.set ${})", params[first + i]));
             self.indent -= 1;
             self.emit_line(")");
             self.indent -= 1;
@@ -1646,27 +1696,38 @@ impl WasmCompiler {
             scan.stmt(stmt);
         }
         self.cells = free.iter().cloned().collect();
-        for name in scan.captured {
-            if self.is_local_or_param(&name) {
-                self.cells.insert(name);
+        for name in &scan.captured {
+            if self.is_local_or_param(name) {
+                self.cells.insert(name.clone());
+            }
+        }
+        // A block binding o' a captured name is a cell too.
+        for (name, id) in &self.renamed {
+            if scan.captured.contains(name) {
+                self.cells.insert(id.clone());
             }
         }
         self.infer_numeric_locals(body);
         let cells = std::mem::take(&mut self.cells);
-        self.numeric_locals.retain(|name| !cells.contains(name));
+        self.numeric_locals
+            .retain(|name| !cells.contains(name) && !scan.captured.contains(name));
         self.cells = cells;
     }
 
-    /// Function entry: unpack the captured cells, box captured parameters, an' start a
-    /// local that shadows a dae or builtin as that dae or builtin (the interpreter sees
-    /// the global until the `ken` rebinds the name).
-    fn emit_prologue(&mut self, free: &[String]) {
+    /// Function entry: unpack the captured cells fae the closure's env list.
+    fn emit_unpack_env(&mut self, free: &[String]) {
         for (i, name) in free.iter().enumerate() {
             self.emit_line(&format!("(local.get ${})", ENV_PARAM));
             self.emit_line(&format!("(i64.const {})", i));
             self.emit_line("(call $mdh_list_item)");
             self.emit_line(&format!("(local.set ${})", name));
         }
+    }
+
+    /// Function entry, efter the defaults: box captured parameters, an' start a local
+    /// that shadows a dae or builtin as that dae or builtin (the interpreter sees the
+    /// global until the `ken` rebinds the name).
+    fn emit_prologue(&mut self, free: &[String]) {
         let params: Vec<String> = self
             .func_params
             .iter()
@@ -1707,6 +1768,27 @@ impl WasmCompiler {
         self.emit_line(&format!("(local.set ${})", name));
     }
 
+    /// Bind the value on the stack at binding site `index` o' `stmt` (see
+    /// `resolve_scopes`): a block binding that shadows a name has its ain local, an' a
+    /// second binding in the same scope rebinds the cell closures already share.
+    fn emit_bind_at(&mut self, stmt: &Stmt, index: usize, name: &str) {
+        let key = (stmt as *const Stmt as usize, index);
+        let (id, rebind) = self
+            .binds
+            .get(&key)
+            .cloned()
+            .unwrap_or_else(|| (name.to_string(), false));
+        if rebind && self.cells.contains(&id) && !self.is_global(&id) {
+            self.emit_line(&format!("(local.set ${})", TMP_GLOBAL));
+            self.emit_line(&format!("(local.get ${})", id));
+            self.emit_line(&format!("(local.get ${})", TMP_GLOBAL));
+            self.emit_line("(call $mdh_cell_set)");
+            self.emit_line("(drop)");
+        } else {
+            self.emit_bind(&id);
+        }
+    }
+
     /// Push a variable's value: a local (through its cell), a dae or a builtin.
     fn emit_name_get(&mut self, name: &str) {
         if self.is_local_or_param(name) {
@@ -1715,11 +1797,20 @@ impl WasmCompiler {
                 self.emit_line("(call $mdh_cell_get)");
             }
         } else if self.is_global(name) {
+            // Read before its `ken` has run, a global is an error (as in the interpreter).
             self.emit_line(&format!("(global.get $g${})", name));
-            self.emit_line("(call $mdh_cell_get)");
+            self.emit_name_ptr(name);
+            self.emit_fallible_call("mdh_global_get");
         } else {
             self.emit_global_value(name);
         }
+    }
+
+    /// A name's bytes in the data section, as (offset, length) on the stack.
+    fn emit_name_ptr(&mut self, name: &str) {
+        let offset = self.intern_string(name);
+        self.emit_line(&format!("(i32.const {})", offset));
+        self.emit_line(&format!("(i32.const {})", name.len()));
     }
 
     /// A top-level variable seen through its cell (a local o' the same name shadows it).
@@ -1731,6 +1822,7 @@ impl WasmCompiler {
     fn emit_global_value(&mut self, name: &str) {
         if let Some(params) = self.functions.get(name) {
             let arity = params.len();
+            let required = required_params(params);
             let slot = match self.dae_values.iter().find(|(n, _)| n == name) {
                 Some((_, slot)) => *slot,
                 None => {
@@ -1740,51 +1832,93 @@ impl WasmCompiler {
                     slot
                 }
             };
-            self.emit_make_fn(slot, arity, &[], name);
+            self.emit_make_fn(slot, arity, required, &[], name);
         } else {
-            let offset = self.intern_string(name);
-            self.emit_line(&format!("(i32.const {})", offset));
-            self.emit_line(&format!("(i32.const {})", name.len()));
+            self.emit_name_ptr(name);
             self.emit_line("(call $mdh_make_builtin)");
         }
     }
 
-    /// Make a function value fer table slot `slot`, capturin' the `free` cells.
-    fn emit_make_fn(&mut self, slot: usize, arity: usize, free: &[String], name: &str) {
+    /// Make a function value fer table slot `slot`, capturin' the `free` cells. A
+    /// function wi' fewer `required` parameters than its `arity` takes the argument
+    /// count last, an' fills in its ain defaults.
+    fn emit_make_fn(
+        &mut self,
+        slot: usize,
+        arity: usize,
+        required: usize,
+        free: &[String],
+        name: &str,
+    ) {
         self.emit_line(&format!("(i32.const {})", slot));
         self.emit_line(&format!("(i32.const {})", arity));
-        if free.is_empty() {
-            self.emit_nil();
-        } else {
-            self.emit_line(&format!("(i32.const {})", free.len()));
-            self.emit_line("(call $mdh_make_list)");
-            for cell in free {
-                self.emit_line(&format!("(local.get ${})", cell));
-                self.emit_line("(call $mdh_list_push)");
-            }
-        }
+        self.emit_line(&format!("(i32.const {})", required));
+        self.emit_env_list(free);
         let offset = self.intern_string(name);
         self.emit_line(&format!("(i32.const {})", offset));
         self.emit_line(&format!("(i32.const {})", name.len()));
         self.emit_line("(call $mdh_make_fn)");
     }
 
-    /// A lambda or nested dae: queue its body as a function an' make the value here.
-    fn emit_closure(&mut self, name: &str, params: &[String], body: Vec<Stmt>) {
-        let free: Vec<String> = closure_free(params, &body)
+    /// A closure's env: a list o' the cells it captures, or nil when it captures nane.
+    fn emit_env_list(&mut self, cells: &[String]) {
+        if cells.is_empty() {
+            self.emit_nil();
+            return;
+        }
+        self.emit_line(&format!("(i32.const {})", cells.len()));
+        self.emit_line("(call $mdh_make_list)");
+        for cell in cells {
+            self.emit_line(&format!("(local.get ${})", cell));
+            self.emit_line("(call $mdh_list_push)");
+        }
+    }
+
+    /// The free names o' a closure (`scan` is its body, defaults included) that are
+    /// locals here, an' the local each is bound tae where the closure (node `key`) is made.
+    fn closure_cells(&self, key: usize, params: &[String], scan: &[Stmt]) -> Vec<(String, String)> {
+        let bound = self.captures.get(&key);
+        closure_free(params, scan)
             .into_iter()
-            .filter(|n| self.is_local_or_param(n))
-            .collect();
+            .filter_map(|name| {
+                let id = bound
+                    .and_then(|b| b.get(&name))
+                    .cloned()
+                    .unwrap_or_else(|| name.clone());
+                self.is_local_or_param(&id).then_some((name, id))
+            })
+            .collect()
+    }
+
+    /// A lambda or nested dae (node `key`): queue its body as a function an' make the
+    /// value here. A nested dae wi' defaults takes the argument count last.
+    fn emit_closure(
+        &mut self,
+        key: usize,
+        name: &str,
+        params: &[Param],
+        scan: &[Stmt],
+        body: Vec<Stmt>,
+    ) {
+        let names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
+        let (free, cells): (Vec<String>, Vec<String>) =
+            self.closure_cells(key, &names, scan).into_iter().unzip();
         let slot = self.fn_table.len();
         let id = format!("__mdh$fn{}", slot);
         self.fn_table.push(id.clone());
-        self.emit_make_fn(slot, params.len(), &free, name);
+        let required = required_params(params);
+        self.emit_make_fn(slot, params.len(), required, &cells, name);
+        let mut fn_params = names;
+        let defaults = (required < params.len()).then(|| {
+            fn_params.push(ARGC_PARAM.to_string());
+            params.iter().map(|p| p.default.clone()).collect()
+        });
         self.pending.push(PendingClosure {
             id,
-            params: params.to_vec(),
+            params: fn_params,
             free,
             body,
-            defaults: None,
+            defaults,
         });
     }
 
@@ -1792,7 +1926,9 @@ impl WasmCompiler {
     /// table the host ca's function values through.
     fn emit_function_table(&mut self) {
         for (name, _) in self.dae_values.clone() {
-            let arity = self.functions[&name].len();
+            let params = &self.functions[&name];
+            // A dae wi' defaults takes the argument count as well.
+            let arity = params.len() + usize::from(required_params(params) < params.len());
             let params: String = (0..arity)
                 .map(|i| format!("(param $a{} i64) ", i))
                 .collect();
@@ -1831,14 +1967,8 @@ impl WasmCompiler {
         self.emit_line("(func $main (result i64)");
         self.indent += 1;
 
-        // Collect all locals; a global is never a local o' `$main`.
-        for stmt in stmts {
-            self.collect_locals_stmt(stmt);
-        }
-        let globals = std::mem::take(&mut self.globals);
-        self.local_vars.retain(|name| !globals.contains(name));
-        self.globals = globals;
-
+        // Collect all locals; a global bound at the top level is never a local o' `$main`.
+        self.resolve_scopes(&[], stmts);
         self.ensure_temp_locals();
 
         // Declare locals
@@ -1858,7 +1988,7 @@ impl WasmCompiler {
             if self.functions.contains_key(&name) || builtin_arity(&name).is_some() {
                 self.emit_global_value(&name);
             } else {
-                self.emit_nil();
+                self.emit_line(&format!("(i64.const {})", UNSET_GLOBAL));
             }
             self.emit_line("(call $mdh_cell_new)");
             self.emit_line(&format!("(global.set $g${})", name));
@@ -1877,14 +2007,242 @@ impl WasmCompiler {
         Ok(())
     }
 
-    fn collect_locals(&mut self, body: &[Stmt]) {
+    /// Work oot the function's locals wi' the interpreter's block scoping: a `ken` (or a
+    /// `fer` variable) in a block that reuses a name seen ootside it binds a fresh local,
+    /// so the ootside binding is untouched; a second `ken` in the same scope rebinds the
+    /// first (closures made in between see the new value). Fills `binds`, `uses` an'
+    /// `captures`, keyed by node address, fer the code generator.
+    fn resolve_scopes(&mut self, free: &[String], body: &[&Stmt]) {
+        self.binds.clear();
+        self.uses.clear();
+        self.captures.clear();
+        self.renamed.clear();
+        for name in free {
+            self.add_local(name);
+        }
+        let top = self
+            .func_params
+            .iter()
+            .chain(free)
+            .map(|name| (name.clone(), (name.clone(), true)))
+            .collect();
+        self.res_scopes = vec![top];
         for stmt in body {
-            self.collect_locals_stmt(stmt);
+            self.resolve_stmt(stmt);
+        }
+        self.res_scopes.clear();
+    }
+
+    fn resolve_stmt(&mut self, stmt: &Stmt) {
+        let key = stmt as *const Stmt as usize;
+        for expr in stmt_exprs(stmt) {
+            self.resolve_expr(expr);
+        }
+        match stmt {
+            Stmt::VarDecl { name, .. } => self.resolve_bind((key, 0), name, true),
+            Stmt::Block { statements, .. } => self.resolve_block(statements),
+            Stmt::If {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                self.resolve_stmt(then_branch);
+                if let Some(eb) = else_branch {
+                    self.resolve_stmt(eb);
+                }
+            }
+            Stmt::While { body, .. } => self.resolve_stmt(body),
+            // Each iteration's scope holds the variable, an' the body block shares it.
+            Stmt::For { variable, body, .. } => {
+                self.add_for_locals(stmt);
+                self.res_scopes.push(HashMap::new());
+                self.resolve_bind((key, 0), variable, true);
+                match body.as_ref() {
+                    Stmt::Block { statements, .. } => {
+                        statements.iter().for_each(|s| self.resolve_stmt(s))
+                    }
+                    other => self.resolve_stmt(other),
+                }
+                self.res_scopes.pop();
+            }
+            // The catch name an' a keek binding go in the enclosing scope, as in the
+            // interpreter, but only maybe (so a later `ken` there makes a fresh cell).
+            Stmt::TryCatch {
+                try_block,
+                error_name,
+                catch_block,
+                ..
+            } => {
+                self.resolve_stmt(try_block);
+                self.resolve_bind((key, 0), error_name, false);
+                self.resolve_stmt(catch_block);
+            }
+            Stmt::Match { arms, .. } => {
+                let id = self.hidden_id(stmt);
+                self.add_local(&format!("__mdh$keek{}", id));
+                for (i, arm) in arms.iter().enumerate() {
+                    if let Pattern::Identifier(name) = &arm.pattern {
+                        self.resolve_bind((key, i), name, false);
+                    }
+                    self.resolve_stmt(&arm.body);
+                }
+            }
+            // Bound first, so a recursive dae (or a method naming its class) sees itsel'.
+            Stmt::Function {
+                name,
+                params,
+                body,
+                span,
+            } => {
+                self.resolve_bind((key, 0), name, true);
+                let names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
+                self.resolve_captures(key, &names, &method_scan_body(params, body, *span));
+            }
+            Stmt::Class { name, methods, .. } => {
+                self.resolve_bind((key, 0), name, true);
+                for method in methods {
+                    if let Stmt::Function {
+                        params, body, span, ..
+                    } = method
+                    {
+                        let scan_body = method_scan_body(params, body, *span);
+                        let method_key = method as *const Stmt as usize;
+                        self.resolve_captures(method_key, &method_params(params), &scan_body);
+                    }
+                }
+            }
+            Stmt::Import {
+                alias: Some(name), ..
+            } => self.resolve_bind((key, 0), name, true),
+            Stmt::Destructure { patterns, .. } => {
+                for (i, pattern) in patterns.iter().enumerate() {
+                    if let DestructPattern::Variable(name) | DestructPattern::Rest(name) = pattern {
+                        self.resolve_bind((key, i), name, true);
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
+    fn resolve_expr(&mut self, expr: &Expr) {
+        let key = expr as *const Expr as usize;
+        match expr {
+            Expr::Variable { name, .. } => self.resolve_use(key, name),
+            Expr::Assign { name, value, .. } => {
+                self.resolve_expr(value);
+                self.resolve_use(key, name);
+            }
+            Expr::Lambda { params, body, span } => {
+                self.resolve_captures(key, params, &lambda_body(body, *span));
+            }
+            Expr::BlockExpr { statements, .. } => self.resolve_block(statements),
+            _ => {
+                for child in expr_children(expr) {
+                    self.resolve_expr(child);
+                }
+            }
+        }
+    }
+
+    fn resolve_block(&mut self, statements: &[Stmt]) {
+        self.res_scopes.push(HashMap::new());
+        statements.iter().for_each(|s| self.resolve_stmt(s));
+        self.res_scopes.pop();
+    }
+
+    fn resolve_lookup(&self, name: &str) -> Option<String> {
+        self.res_scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name).map(|(id, _)| id.clone()))
+    }
+
+    fn resolve_use(&mut self, key: usize, name: &str) {
+        if let Some(id) = self.resolve_lookup(name) {
+            if id != name {
+                self.uses.insert(key, id);
+            }
+        }
+    }
+
+    fn resolve_captures(&mut self, key: usize, params: &[String], body: &[Stmt]) {
+        let bound = closure_free(params, body)
+            .into_iter()
+            .filter_map(|name| self.resolve_lookup(&name).map(|id| (name, id)))
+            .collect();
+        self.captures.insert(key, bound);
+    }
+
+    /// Bind `name` in the innermost scope. `surely` is false fer a binding that only
+    /// happens on some paths (a catch name, a keek arm).
+    fn resolve_bind(&mut self, key: (usize, usize), name: &str, surely: bool) {
+        let nested = self.res_scopes.len() > 1;
+        let current = self.res_scopes.last().and_then(|s| s.get(name)).cloned();
+        let visible = self.res_scopes.iter().any(|s| s.contains_key(name))
+            || self.globals.contains(name)
+            || self.functions.contains_key(name)
+            || builtin_arity(name).is_some();
+        let (id, rebind) = match &current {
+            Some((id, bound)) => (id.clone(), *bound && surely),
+            None if nested && visible => {
+                let id = format!("{}$s{}", name, self.renamed.len());
+                self.add_local(&id);
+                self.renamed.push((name.to_string(), id.clone()));
+                (id, false)
+            }
+            None => {
+                // A global bound at the top level o' `$main` lives in its cell.
+                if self.in_function || !self.globals.contains(name) {
+                    self.add_local(name);
+                }
+                (name.to_string(), false)
+            }
+        };
+        let bound = surely || current.is_some_and(|(_, bound)| bound);
+        if let Some(scope) = self.res_scopes.last_mut() {
+            scope.insert(name.to_string(), (id.clone(), bound));
+        }
+        self.binds.insert(key, (id, rebind));
+    }
+
+    /// The local a binding site binds (its name unless a block shadows it).
+    fn bind_id(&self, key: (usize, usize), name: &str) -> String {
+        self.binds
+            .get(&key)
+            .map_or_else(|| name.to_string(), |(id, _)| id.clone())
+    }
+
+    /// The local (or global, dae or builtin name) a variable expression refers tae.
+    fn use_id(&self, expr: &Expr, name: &str) -> String {
+        self.uses
+            .get(&(expr as *const Expr as usize))
+            .cloned()
+            .unwrap_or_else(|| name.to_string())
+    }
+
+    /// The snapshot (or range bounds) an' the raw counter an' end o' a `fer`.
+    fn add_for_locals(&mut self, stmt: &Stmt) {
+        let id = self.hidden_id(stmt);
+        self.add_local(&format!("__mdh$for{}", id));
+        self.add_local(&format!("__mdh$for{}b", id));
+        self.raw_locals.push(format!("__mdh$for{}i", id));
+        self.raw_locals.push(format!("__mdh$for{}n", id));
+    }
+
     fn collect_locals_stmt(&mut self, stmt: &Stmt) {
+        // A block expression's statements run in this function too.
+        for expr in stmt_exprs(stmt) {
+            self.collect_block_expr_locals(expr);
+        }
         match stmt {
+            Stmt::Destructure { patterns, .. } => {
+                for pattern in patterns {
+                    if let DestructPattern::Variable(name) | DestructPattern::Rest(name) = pattern {
+                        self.add_local(name);
+                    }
+                }
+            }
             Stmt::VarDecl { name, .. } => self.add_local(name),
             Stmt::Block { statements, .. } => {
                 for s in statements {
@@ -1906,12 +2264,7 @@ impl WasmCompiler {
             }
             Stmt::For { variable, body, .. } => {
                 self.add_local(variable);
-                // The snapshot (or range bounds) an' the raw counter an' end.
-                let id = self.hidden_id(stmt);
-                self.add_local(&format!("__mdh$for{}", id));
-                self.add_local(&format!("__mdh$for{}b", id));
-                self.raw_locals.push(format!("__mdh$for{}i", id));
-                self.raw_locals.push(format!("__mdh$for{}n", id));
+                self.add_for_locals(stmt);
                 self.collect_locals_stmt(body);
             }
             Stmt::TryCatch {
@@ -1941,6 +2294,15 @@ impl WasmCompiler {
             Stmt::Function { name, .. } => self.add_local(name),
             Stmt::Class { name, .. } => self.add_local(name),
             _ => {}
+        }
+    }
+
+    fn collect_block_expr_locals(&mut self, expr: &Expr) {
+        if let Expr::BlockExpr { statements, .. } = expr {
+            statements.iter().for_each(|s| self.collect_locals_stmt(s));
+        }
+        for child in expr_children(expr) {
+            self.collect_block_expr_locals(child);
         }
     }
 
@@ -2082,7 +2444,8 @@ impl WasmCompiler {
             Stmt::VarDecl {
                 name, initializer, ..
             } => {
-                self.cells.contains(name)
+                self.cells
+                    .contains(&self.bind_id((stmt as *const Stmt as usize, 0), name))
                     || initializer.as_ref().is_some_and(|e| !self.expr_is_cheap(e))
             }
             Stmt::Expression { expr, .. } | Stmt::Print { value: expr, .. } => {
@@ -2273,7 +2636,7 @@ impl WasmCompiler {
                 } else {
                     self.emit_nil();
                 }
-                self.emit_bind(name);
+                self.emit_bind_at(stmt, 0, name);
             }
 
             Stmt::Function {
@@ -2284,28 +2647,25 @@ impl WasmCompiler {
             } => {
                 // A nested dae is a named closure; a recursive one captures its ain cell,
                 // so the cell is made first an' filled once the closure exists.
-                if params.iter().any(|p| p.default.is_some()) {
-                    return Err(compile_err(
-                        span.line,
-                        format!(
-                            "Dae '{}' inside anither dae cannae hae default parameters in WASM yet",
-                            name
-                        ),
-                    ));
-                }
-                let names: Vec<String> = params.iter().map(|p| p.name.clone()).collect();
-                if self.cells.contains(name) {
+                let key = stmt as *const Stmt as usize;
+                let scan = method_scan_body(params, body, *span);
+                let id = self.bind_id((key, 0), name);
+                if self.cells.contains(&id) {
                     self.emit_nil();
-                    self.emit_bind(name);
-                    self.emit_line(&format!("(local.get ${})", name));
-                    self.emit_closure(name, &names, body.clone());
+                    self.emit_bind_at(stmt, 0, name);
+                    self.emit_line(&format!("(local.get ${})", id));
+                    self.emit_closure(key, name, params, &scan, body.clone());
                     self.emit_line("(call $mdh_cell_set)");
                     self.emit_line("(drop)");
                 } else {
-                    self.emit_closure(name, &names, body.clone());
-                    self.emit_bind(name);
+                    self.emit_closure(key, name, params, &scan, body.clone());
+                    self.emit_bind_at(stmt, 0, name);
                 }
             }
+
+            Stmt::Destructure {
+                patterns, value, ..
+            } => self.compile_destructure(stmt, patterns, value)?,
 
             Stmt::Expression { expr, .. } => {
                 self.compile_expr(expr)?;
@@ -2360,7 +2720,11 @@ impl WasmCompiler {
                 if cond_scope {
                     self.emit_line("(call $mdh_scope_enter)");
                 }
-                self.compile_expr(condition)?;
+                // Counted, so a `gie` in a block expression here closes it too.
+                self.scope_depth += usize::from(cond_scope);
+                let cond = self.compile_expr(condition);
+                self.scope_depth -= usize::from(cond_scope);
+                cond?;
                 self.emit_line("(call $mdh_truthy)");
                 if cond_scope {
                     self.emit_scope_exit(1);
@@ -2436,7 +2800,7 @@ impl WasmCompiler {
                     )
                 })?;
                 self.emit_line("(call $mdh_tri_module)");
-                self.emit_bind(alias_name);
+                self.emit_bind_at(stmt, 0, alias_name);
             }
 
             Stmt::TryCatch {
@@ -2470,7 +2834,7 @@ impl WasmCompiler {
                     self.func_params.len() + self.local_vars.len()
                 ));
                 self.emit_line("(call $mdh_try_catch)");
-                self.emit_bind(error_name);
+                self.emit_bind_at(stmt, 0, error_name);
                 self.compile_stmt(catch_block)?;
                 self.indent -= 1;
                 self.emit_line(")");
@@ -2531,7 +2895,7 @@ impl WasmCompiler {
                 superclass,
                 methods,
                 span,
-            } if !self.in_function => self.compile_class(name, superclass, methods, span.line)?,
+            } => self.compile_class(stmt, name, superclass, methods, span.line)?,
 
             _ => {
                 // Unsupported statement type
@@ -2546,14 +2910,23 @@ impl WasmCompiler {
 
     /// `kin Name fae Parent { dae .. }`: a host class value whose methods are guest
     /// functions in the `__mdh_fns` table, each taking `masel` first an' the argument
-    /// count last (see the WASM classes design doc).
+    /// count last (see the WASM classes design doc). A class made inside a function
+    /// gives each method the cells it captures, like a closure's env.
     fn compile_class(
         &mut self,
+        stmt: &Stmt,
         name: &str,
         superclass: &Option<String>,
         methods: &[Stmt],
         line: usize,
     ) -> HaversResult<()> {
+        // A method that names its ain class captures the class's cell: make it first.
+        let class_id = self.bind_id((stmt as *const Stmt as usize, 0), name);
+        let cell_first = self.cells.contains(&class_id);
+        if cell_first {
+            self.emit_nil();
+            self.emit_bind_at(stmt, 0, name);
+        }
         match superclass {
             Some(parent) => self.emit_name_get(parent),
             None => self.emit_nil(),
@@ -2570,7 +2943,7 @@ impl WasmCompiler {
                 name: method_name,
                 params,
                 body,
-                ..
+                span,
             } = method
             else {
                 continue;
@@ -2578,25 +2951,65 @@ impl WasmCompiler {
             let slot = self.fn_table.len();
             let id = format!("__mdh$fn{}", slot);
             self.fn_table.push(id.clone());
-            let offset = self.intern_string(method_name);
-            self.emit_line(&format!("(i32.const {})", offset));
-            self.emit_line(&format!("(i32.const {})", method_name.len()));
+            self.emit_name_ptr(method_name);
             self.emit_line(&format!("(i32.const {})", slot));
             self.emit_line(&format!("(i32.const {})", params.len()));
-            let required = params.iter().filter(|p| p.default.is_none()).count();
-            self.emit_line(&format!("(i32.const {})", required));
-            self.emit_line("(call $mdh_class_method)");
+            self.emit_line(&format!("(i32.const {})", required_params(params)));
             let mut names = method_params(params);
+            let scan = method_scan_body(params, body, *span);
+            let (free, cells): (Vec<String>, Vec<String>) = self
+                .closure_cells(method as *const Stmt as usize, &names, &scan)
+                .into_iter()
+                .unzip();
+            self.emit_env_list(&cells);
+            self.emit_line("(call $mdh_class_method)");
             names.push(ARGC_PARAM.to_string());
             self.pending.push(PendingClosure {
                 id,
                 params: names,
-                free: Vec::new(),
+                free,
                 body: body.clone(),
                 defaults: Some(params.iter().map(|p| p.default.clone()).collect()),
             });
         }
-        self.emit_bind(name);
+        if cell_first {
+            self.emit_line(&format!("(local.set ${})", TMP_GLOBAL));
+            self.emit_line(&format!("(local.get ${})", class_id));
+            self.emit_line(&format!("(local.get ${})", TMP_GLOBAL));
+            self.emit_line("(call $mdh_cell_set)");
+            self.emit_line("(drop)");
+        } else {
+            self.emit_bind_at(stmt, 0, name);
+        }
+        Ok(())
+    }
+
+    /// `ken [a, _, ...rest, z] = value`: the host checks the value (a list or string) an'
+    /// hands back one item per pattern, a rest pattern's list in its place; then each
+    /// name is bound in order.
+    fn compile_destructure(
+        &mut self,
+        stmt: &Stmt,
+        patterns: &[DestructPattern],
+        value: &Expr,
+    ) -> HaversResult<()> {
+        let rest = patterns
+            .iter()
+            .position(|p| matches!(p, DestructPattern::Rest(_)));
+        self.compile_expr(value)?;
+        self.emit_line(&format!("(i32.const {})", patterns.len()));
+        self.emit_line(&format!("(i32.const {})", rest.map_or(-1, |r| r as i64)));
+        self.emit_line(&format!("(i32.const {})", stmt.span().line));
+        self.emit_fallible_call("mdh_destructure");
+        self.emit_line(&format!("(local.set ${})", TMP_BUILD));
+        for (i, pattern) in patterns.iter().enumerate() {
+            if let DestructPattern::Variable(name) | DestructPattern::Rest(name) = pattern {
+                self.emit_line(&format!("(local.get ${})", TMP_BUILD));
+                self.emit_line(&format!("(i64.const {})", i));
+                self.emit_line("(call $mdh_list_item)");
+                self.emit_bind_at(stmt, i, name);
+            }
+        }
         Ok(())
     }
 
@@ -2670,12 +3083,13 @@ impl WasmCompiler {
             self.emit_line("(call $mdh_list_item)");
         }
         // A captured loop variable gets a fresh cell each iteration (DEC F3).
-        self.emit_bind(variable);
+        self.emit_bind_at(stmt, 0, variable);
 
         // `haud` branches tae the end o' this block, then the counter steps on.
         self.emit_line("(block $continue");
         self.indent += 1;
-        let collects = self.stmt_allocates(body) || self.cells.contains(variable);
+        let var_id = self.bind_id((stmt as *const Stmt as usize, 0), variable);
+        let collects = self.stmt_allocates(body) || self.cells.contains(&var_id);
         self.loop_depths
             .push((self.scope_depth, collects, self.try_labels.len()));
         let result = self.compile_stmt(body);
@@ -2719,7 +3133,7 @@ impl WasmCompiler {
         let end = self.next_label("keekend");
         self.emit_line(&format!("(block ${}", end));
         self.indent += 1;
-        for arm in arms {
+        for (i, arm) in arms.iter().enumerate() {
             let next = self.next_label("arm");
             self.emit_line(&format!("(block ${}", next));
             self.indent += 1;
@@ -2734,7 +3148,7 @@ impl WasmCompiler {
                 }
                 Pattern::Identifier(name) => {
                     self.emit_line(&format!("(local.get ${})", subject));
-                    self.emit_bind(name);
+                    self.emit_bind_at(stmt, i, name);
                 }
                 Pattern::Wildcard => {}
                 Pattern::Range {
@@ -2846,38 +3260,70 @@ impl WasmCompiler {
         match expr {
             Expr::Literal { value, .. } => self.compile_literal(value),
 
-            Expr::Variable { name, .. } => self.emit_name_get(name),
+            Expr::Variable { name, .. } => {
+                let id = self.use_id(expr, name);
+                self.emit_name_get(&id);
+            }
 
             // `masel` is a method's first parameter (validated tae be in scope).
             Expr::Masel { .. } => self.emit_name_get("masel"),
 
             Expr::Assign { name, value, .. } => {
-                if self.is_global(name) {
-                    self.emit_line(&format!("(global.get $g${})", name));
+                let id = self.use_id(expr, name);
+                if self.is_global(&id) {
+                    // Assigned before its `ken` has run, a global is an error.
+                    self.emit_line(&format!("(global.get $g${})", id));
                     self.compile_expr(value)?;
-                    self.emit_line("(call $mdh_cell_set)");
-                } else if self.cells.contains(name) {
-                    self.emit_line(&format!("(local.get ${})", name));
+                    self.emit_name_ptr(&id);
+                    self.emit_fallible_call("mdh_global_set");
+                } else if self.cells.contains(&id) {
+                    self.emit_line(&format!("(local.get ${})", id));
                     self.compile_expr(value)?;
                     self.emit_line("(call $mdh_cell_set)");
                 } else {
                     self.compile_expr(value)?;
-                    self.emit_line(&format!("(local.tee ${})", name));
+                    self.emit_line(&format!("(local.tee ${})", id));
                 }
             }
 
             Expr::Lambda { params, body, span } => {
-                self.emit_closure("<lambda>", params, lambda_body(body, *span));
+                let params: Vec<Param> = params
+                    .iter()
+                    .map(|name| Param {
+                        name: name.clone(),
+                        default: None,
+                    })
+                    .collect();
+                let body = lambda_body(body, *span);
+                let key = expr as *const Expr as usize;
+                self.emit_closure(key, "<lambda>", &params, &body, body.clone());
             }
 
             // `x |> f` is `f(x)`.
             Expr::Pipe { left, right, span } => {
-                let call = Expr::Call {
-                    callee: right.clone(),
-                    arguments: vec![(**left).clone()],
-                    span: *span,
+                self.compile_call(right, std::slice::from_ref(&**left), span.line)?;
+            }
+
+            // A block's last expression is its value (DEC 64); its bindings are its ain.
+            Expr::BlockExpr { statements, .. } => {
+                let (body, value) = match statements.split_last() {
+                    Some((Stmt::Expression { expr: last, .. }, rest)) => (rest, Some(last)),
+                    _ => (statements.as_slice(), None),
                 };
-                self.compile_expr(&call)?;
+                let body: Vec<&Stmt> = body.iter().collect();
+                self.compile_stmts(&body)?;
+                match value {
+                    Some(last) => {
+                        let line = last.span().line;
+                        let outer = std::mem::replace(&mut self.stmt_line, line);
+                        self.emit_set_line(line);
+                        let result = self.compile_expr(last);
+                        self.stmt_line = outer;
+                        result?;
+                    }
+                    None => self.emit_nil(),
+                }
+                self.emit_restore_line();
             }
 
             Expr::Binary {
@@ -2960,94 +3406,7 @@ impl WasmCompiler {
                 callee,
                 arguments,
                 span,
-            } => {
-                if let Expr::Get {
-                    object, property, ..
-                } = callee.as_ref()
-                {
-                    self.compile_expr(object)?;
-                    self.emit_string_handle(property);
-                    for arg in arguments {
-                        self.compile_expr(arg)?;
-                    }
-                    let argc = arguments.len();
-                    let call_name = match argc {
-                        0 => "$mdh_method_call0",
-                        1 => "$mdh_method_call1",
-                        2 => "$mdh_method_call2",
-                        3 => "$mdh_method_call3",
-                        4 => "$mdh_method_call4",
-                        5 => "$mdh_method_call5",
-                        6 => "$mdh_method_call6",
-                        7 => "$mdh_method_call7",
-                        8 => "$mdh_method_call8",
-                        _ => {
-                            return Err(HaversError::InternalError(
-                                "Method call arity too large for WASM backend (max 8)".to_string(),
-                            ));
-                        }
-                    };
-                    self.emit_line(&format!("(call {})", call_name));
-                    // A method or a callable field can raise.
-                    self.emit_error_check();
-                    self.emit_restore_line();
-                } else if let Expr::Variable { name, .. } = callee.as_ref() {
-                    if self.is_local_or_param(name)
-                        || self.is_global(name)
-                        || (is_hof(name) && !self.functions.contains_key(name))
-                    {
-                        // A higher-order builtin is ca'd as a builtin value, wi' the line.
-                        self.emit_value_call(callee, arguments, span.line)?;
-                    } else if !self.functions.contains_key(name)
-                        && !AUDIO_IMPORTS.iter().any(|(import, _)| import == name)
-                        && builtin_arity(name).is_some()
-                    {
-                        // Interpreter builtin: the host runs it on borrowed arguments
-                        // an' hands back a fresh handle in the current scope.
-                        let offset = self.intern_string(name);
-                        self.emit_line(&format!("(i32.const {})", offset));
-                        self.emit_line(&format!("(i32.const {})", name.len()));
-                        for arg in arguments {
-                            self.compile_expr(arg)?;
-                        }
-                        self.emit_fallible_call(&format!("mdh_builtin{}", arguments.len()));
-                    } else {
-                        // Direct function call (compiled function)
-                        for arg in arguments {
-                            self.compile_expr(arg)?;
-                        }
-                        // Fill in any omitted trailing parameters from their defaults.
-                        if let Some(params) = self.functions.get(name).cloned() {
-                            if arguments.len() > params.len() {
-                                return Err(HaversError::CompileError(format!(
-                                    "Dae '{}' tak's at maist {} argument(s) but wis gien {}",
-                                    name,
-                                    params.len(),
-                                    arguments.len()
-                                )));
-                            }
-                            for param in &params[arguments.len()..] {
-                                match &param.default {
-                                    Some(default) => self.compile_expr(default)?,
-                                    None => {
-                                        return Err(HaversError::CompileError(format!(
-                                            "Dae '{}' needs the argument '{}'",
-                                            name, param.name
-                                        )));
-                                    }
-                                }
-                            }
-                        }
-                        self.emit_fallible_call(&function_id(name));
-                        // The callee left its ain line in the global.
-                        if self.stmt_line > 0 {
-                            self.emit_set_line(self.stmt_line);
-                        }
-                    }
-                } else {
-                    self.emit_value_call(callee, arguments, span.line)?;
-                }
-            }
+            } => self.compile_call(callee, arguments, span.line)?,
 
             Expr::Get {
                 object, property, ..
@@ -3198,6 +3557,105 @@ impl WasmCompiler {
                     expr_kind(expr)
                 )));
             }
+        }
+        Ok(())
+    }
+
+    /// `callee(arguments)`: a method call, a direct ca' o' a top-level dae or builtin,
+    /// or a value call through the host.
+    fn compile_call(&mut self, callee: &Expr, arguments: &[Expr], line: usize) -> HaversResult<()> {
+        if let Expr::Get {
+            object, property, ..
+        } = callee
+        {
+            self.compile_expr(object)?;
+            self.emit_string_handle(property);
+            for arg in arguments {
+                self.compile_expr(arg)?;
+            }
+            let argc = arguments.len();
+            let call_name = match argc {
+                0 => "$mdh_method_call0",
+                1 => "$mdh_method_call1",
+                2 => "$mdh_method_call2",
+                3 => "$mdh_method_call3",
+                4 => "$mdh_method_call4",
+                5 => "$mdh_method_call5",
+                6 => "$mdh_method_call6",
+                7 => "$mdh_method_call7",
+                8 => "$mdh_method_call8",
+                _ => {
+                    return Err(HaversError::InternalError(
+                        "Method call arity too large for WASM backend (max 8)".to_string(),
+                    ));
+                }
+            };
+            self.emit_line(&format!("(call {})", call_name));
+            // A method or a callable field can raise.
+            self.emit_error_check();
+            self.emit_restore_line();
+        } else if let Expr::Variable { name, .. } = callee {
+            let id = self.use_id(callee, name);
+            if self.is_local_or_param(&id)
+                || self.is_global(&id)
+                || (is_hof(name) && !self.functions.contains_key(name))
+            {
+                // A higher-order builtin is ca'd as a builtin value, wi' the line.
+                self.emit_value_call(callee, arguments, line)?;
+            } else if !self.functions.contains_key(name)
+                && !AUDIO_IMPORTS.iter().any(|(import, _)| import == name)
+                && builtin_arity(name).is_some()
+            {
+                // Interpreter builtin: the host runs it on borrowed arguments
+                // an' hands back a fresh handle in the current scope.
+                let offset = self.intern_string(name);
+                self.emit_line(&format!("(i32.const {})", offset));
+                self.emit_line(&format!("(i32.const {})", name.len()));
+                for arg in arguments {
+                    self.compile_expr(arg)?;
+                }
+                self.emit_fallible_call(&format!("mdh_builtin{}", arguments.len()));
+            } else {
+                // Direct function call (compiled function)
+                for arg in arguments {
+                    self.compile_expr(arg)?;
+                }
+                // A dae wi' defaults fills them in itsel': pass nil fer each omitted
+                // parameter an' the argument count.
+                if let Some(params) = self.functions.get(name).cloned() {
+                    if arguments.len() > params.len() {
+                        return Err(HaversError::CompileError(format!(
+                            "Dae '{}' tak's at maist {} argument(s) but wis gien {}",
+                            name,
+                            params.len(),
+                            arguments.len()
+                        )));
+                    }
+                    if let Some(param) = params[arguments.len()..]
+                        .iter()
+                        .find(|p| p.default.is_none())
+                    {
+                        return Err(HaversError::CompileError(format!(
+                            "Dae '{}' needs the argument '{}'",
+                            name, param.name
+                        )));
+                    }
+                    if required_params(&params) < params.len() {
+                        for _ in arguments.len()..params.len() {
+                            self.emit_nil();
+                        }
+                        let argc = int_handle(arguments.len() as i64);
+                        self.emit_line(&format!("(i64.const {})", argc));
+                    }
+                }
+                self.emit_fallible_call(&function_id(name));
+                // The callee left its ain line in the global.
+                if self.stmt_line > 0 {
+                    self.emit_set_line(self.stmt_line);
+                }
+            }
+        } else {
+            self.emit_value_call(callee, arguments, line)?;
         }
         Ok(())
     }
@@ -5006,9 +5464,13 @@ dae f() {
     }
 
     #[test]
-    fn default_parameters_are_compiled_at_the_call_site() {
+    fn default_parameters_are_filled_in_by_the_callee() {
         let wat = compile_to_wat("dae add(a, b = 2) { gie a + b }\nblether add(40)").unwrap();
+        // The callee takes the argument count an' evaluates the default itsel'.
+        assert!(wat.contains("(param $__mdh$argc i64)"), "{wat}");
         assert!(wat.contains("(i64.const 2)"), "{wat}");
+        let call = format!("(i64.const {})\n", int_handle(1));
+        assert!(wat.contains(&call), "{wat}");
         assert!(wat.contains("(call $add)"), "{wat}");
     }
 

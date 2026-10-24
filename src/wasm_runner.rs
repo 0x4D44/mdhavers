@@ -10,7 +10,7 @@ use crate::error::HaversError;
 use crate::interpreter::Interpreter;
 use crate::value::{DictValue, HaversClass, HaversInstance, NativeFunction, SetValue, Value};
 use crate::wasm_compiler::{
-    AUDIO_IMPORTS, HOF_BUILTINS, MAX_BUILTIN_ARGS, RAISE_ASSERT, RAISE_HURL,
+    AUDIO_IMPORTS, HOF_BUILTINS, MAX_BUILTIN_ARGS, RAISE_ASSERT, RAISE_HURL, UNSET_GLOBAL,
 };
 
 type Handle = i64;
@@ -30,11 +30,13 @@ enum HostValue {
     Bytes(Vec<u8>),
     NativeObject(TriObject),
     NativeCtor(String),
-    /// A guest function value: its `__mdh_fns` table slot, arity, captured cells (a
-    /// list, or nil) an' name.
+    /// A guest function value: its `__mdh_fns` table slot, arity, how many arguments
+    /// are required (fewer than `arity` when it has defaults: it then takes nil fer each
+    /// missing one an' the argument count last), captured cells (a list, or nil) an' name.
     Function {
         index: u32,
         arity: usize,
+        required: usize,
         env: Handle,
         name: String,
     },
@@ -61,12 +63,14 @@ enum HostValue {
 }
 
 /// A class method: a guest function in `__mdh_fns` taking `(env, masel, params.., argc)`.
+/// `env` is the list o' cells it captures (a class made inside a function), or nil.
 #[derive(Debug, Clone)]
 struct Method {
     name: String,
     index: u32,
     params: usize,
     required: usize,
+    env: Handle,
 }
 
 /// Dict entries in insertion order (like the interpreter's dicts).
@@ -573,12 +577,20 @@ fn push_children(value: &HostValue, out: &mut Vec<Handle>) {
         HostValue::NativeObject(obj) => out.extend(obj.fields.values().copied()),
         HostValue::Function { env, .. } => out.push(*env),
         HostValue::Cell(value) => out.push(*value),
-        HostValue::Class { parent, .. } => out.push(*parent),
+        HostValue::Class {
+            parent, methods, ..
+        } => {
+            out.push(*parent);
+            out.extend(methods.iter().map(|m| m.env));
+        }
         HostValue::Instance { class, fields } => {
             out.push(*class);
             out.extend(fields.iter().map(|(_, h)| *h));
         }
-        HostValue::Bound { recv, .. } => out.push(*recv),
+        HostValue::Bound { recv, method } => {
+            out.push(*recv);
+            out.push(method.env);
+        }
         _ => {}
     }
 }
@@ -1010,9 +1022,14 @@ fn call_value(
         Some(HostValue::Function {
             index,
             arity,
+            required,
             env,
             name,
         }) => {
+            if required < arity {
+                let shape = (index, env, None);
+                return call_with_defaults(caller, shape, &name, arity, required, args, line);
+            }
             if args.len() == arity {
                 return call_guest(caller, index, env, args);
             }
@@ -1059,8 +1076,7 @@ fn construct(
     Ok(instance)
 }
 
-/// Run a method on `recv`: the interpreter's arity check (defaults allowed), then the
-/// guest function wi' nil fer each missing argument an' the count last.
+/// Run a method on `recv` (see `call_with_defaults`).
 fn call_method(
     caller: &mut Caller<'_, HostState>,
     recv: Handle,
@@ -1068,14 +1084,40 @@ fn call_method(
     args: &[Handle],
     line: i32,
 ) -> wasmtime::Result<Handle> {
+    let shape = (method.index, method.env, Some(recv));
+    call_with_defaults(
+        caller,
+        shape,
+        &method.name,
+        method.params,
+        method.required,
+        args,
+        line,
+    )
+}
+
+/// Ca' a guest function that fills in its ain defaults, as the interpreter binds
+/// parameters: its arity check (defaults allowed), then the function (`shape` is its
+/// table slot, env an' a method's `masel`) wi' nil fer each missing argument an' the
+/// count last.
+fn call_with_defaults(
+    caller: &mut Caller<'_, HostState>,
+    shape: (u32, Handle, Option<Handle>),
+    name: &str,
+    params: usize,
+    required: usize,
+    args: &[Handle],
+    line: i32,
+) -> wasmtime::Result<Handle> {
+    let (index, env, recv) = shape;
     let got = args.len();
-    if got < method.required || got > method.params {
+    if got < required || got > params {
         let line = if line > 0 { line } else { guest_line(caller) };
         let line = line.max(0) as usize;
-        let message = if method.required == method.params {
+        let message = if required == params {
             HaversError::WrongArity {
-                name: method.name.clone(),
-                expected: method.params,
+                name: name.to_string(),
+                expected: params,
                 got,
                 line,
             }
@@ -1083,7 +1125,7 @@ fn call_method(
             HaversError::TypeError {
                 message: format!(
                     "Function '{}' expects {} tae {} arguments but ye gave it {}",
-                    method.name, method.required, method.params, got
+                    name, required, params, got
                 ),
                 line,
             }
@@ -1091,12 +1133,12 @@ fn call_method(
         return finish(caller, Err(message.to_string()));
     }
     let argc = caller.data_mut().store.int_handle(got as i64);
-    let mut params = Vec::with_capacity(method.params + 2);
-    params.push(recv);
-    params.extend_from_slice(args);
-    params.resize(method.params + 1, 0);
-    params.push(argc);
-    call_guest(caller, method.index, 0, &params)
+    let mut call_args = Vec::with_capacity(params + 2);
+    call_args.extend(recv);
+    call_args.extend_from_slice(args);
+    call_args.resize(params + usize::from(recv.is_some()), 0);
+    call_args.push(argc);
+    call_guest(caller, index, env, &call_args)
 }
 
 /// `a op b` on an instance whose class overloads `op` (`__pit_thegither__`, ...): the
@@ -1331,6 +1373,7 @@ fn add_function_imports(linker: &mut Linker<HostState>, memory: Memory) -> Resul
             move |mut caller: Caller<'_, HostState>,
                   index: i32,
                   arity: i32,
+                  required: i32,
                   env: i64,
                   ptr: i32,
                   len: i32|
@@ -1339,6 +1382,7 @@ fn add_function_imports(linker: &mut Linker<HostState>, memory: Memory) -> Resul
                 caller.data_mut().store.alloc(HostValue::Function {
                     index: index.max(0) as u32,
                     arity: arity.max(0) as usize,
+                    required: required.max(0) as usize,
                     env,
                     name,
                 })
@@ -1389,6 +1433,76 @@ fn add_function_imports(linker: &mut Linker<HostState>, memory: Memory) -> Resul
             },
         )
         .map_err(err)?;
+    // A global read or assigned before its `ken` has run is the interpreter's
+    // "hasnae been defined" error; otherwise these are `cell_get` an' `cell_set`.
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_global_get",
+            move |mut caller: Caller<'_, HostState>,
+                  cell: i64,
+                  ptr: i32,
+                  len: i32|
+                  -> wasmtime::Result<i64> {
+                let value = match caller.data().store.get(cell) {
+                    Some(HostValue::Cell(value)) => *value,
+                    _ => 0,
+                };
+                let result = if value == UNSET_GLOBAL {
+                    let name = read_memory_string(&caller, &memory, ptr, len);
+                    Err(undefined(name, guest_line(&mut caller)))
+                } else {
+                    Ok(value)
+                };
+                finish(&mut caller, result)
+            },
+        )
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_global_set",
+            move |mut caller: Caller<'_, HostState>,
+                  cell: i64,
+                  value: i64,
+                  ptr: i32,
+                  len: i32|
+                  -> wasmtime::Result<i64> {
+                let unset = matches!(
+                    caller.data().store.get(cell),
+                    Some(HostValue::Cell(old)) if *old == UNSET_GLOBAL
+                );
+                let result = if unset {
+                    let name = read_memory_string(&caller, &memory, ptr, len);
+                    Err(undefined(name, guest_line(&mut caller)))
+                } else {
+                    // `get_mut` is the write barrier, as in `__mdh_cell_set`.
+                    if let Some(HostValue::Cell(slot)) = caller.data_mut().store.get_mut(cell) {
+                        *slot = value;
+                    }
+                    Ok(value)
+                };
+                finish(&mut caller, result)
+            },
+        )
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_destructure",
+            |mut caller: Caller<'_, HostState>,
+             value: i64,
+             count: i32,
+             rest: i32,
+             line: i32|
+             -> wasmtime::Result<i64> {
+                let store = &mut caller.data_mut().store;
+                let rest = usize::try_from(rest).ok();
+                let result = destructure(store, value, count.max(0) as usize, rest, line);
+                finish(&mut caller, result)
+            },
+        )
+        .map_err(err)?;
     linker
         .func_wrap(
             "env",
@@ -1429,7 +1543,8 @@ fn add_function_imports(linker: &mut Linker<HostState>, memory: Memory) -> Resul
                   len: i32,
                   index: i32,
                   params: i32,
-                  required: i32|
+                  required: i32,
+                  env: i64|
                   -> i64 {
                 let name = read_memory_string(&caller, &memory, ptr, len);
                 let method = Method {
@@ -1437,6 +1552,7 @@ fn add_function_imports(linker: &mut Linker<HostState>, memory: Memory) -> Resul
                     index: index.max(0) as u32,
                     params: params.max(0) as usize,
                     required: required.max(0) as usize,
+                    env,
                 };
                 // The class is brand new (this statement made it), but go through the barrier.
                 if let Some(HostValue::Class { methods, .. }) =
@@ -1531,6 +1647,49 @@ fn char_handles(store: &mut HostStore, s: &str) -> Vec<Handle> {
     s.chars()
         .map(|c| alloc_string(store, c.to_string()))
         .collect()
+}
+
+/// `ken [a, _, ...rest, z] = value` like the interpreter's `exec_destructure`: a list o'
+/// `count` items, one per pattern, the one at `rest` (if ony) a list o' the middle.
+fn destructure(
+    store: &mut HostStore,
+    value: Handle,
+    count: usize,
+    rest: Option<usize>,
+    line: i32,
+) -> Result<Handle, String> {
+    let items = match host_view(store, value)? {
+        HostValue::List(items) => items,
+        HostValue::String(s) => char_handles(store, &s),
+        other => {
+            let message = format!(
+                "Ye can only destructure lists and strings, no' {}",
+                host_type_name(&other)
+            );
+            return Err(type_error(message, line));
+        }
+    };
+    let before = rest.unwrap_or(count);
+    let after = rest.map_or(0, |r| count - r - 1);
+    if items.len() < before + after {
+        let message = format!(
+            "Cannae destructure: need at least {} elements but got {}",
+            before + after,
+            items.len()
+        );
+        return Err(type_error(message, line));
+    }
+    let out: Vec<Handle> = (0..count)
+        .map(|i| match rest {
+            Some(r) if i == r => {
+                let middle = items[before..items.len() - after].to_vec();
+                store.alloc(HostValue::List(middle))
+            }
+            Some(r) if i > r => items[items.len() - (count - i)],
+            _ => items[i],
+        })
+        .collect();
+    Ok(store.alloc(HostValue::List(out)))
 }
 
 /// `object[index]` like the interpreter's `eval_index`. A list or dict hands back the
