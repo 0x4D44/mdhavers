@@ -18,7 +18,7 @@ static EMBEDDED_GC_STUB: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/gc_st
 
 use inkwell::context::Context;
 use inkwell::module::Module;
-use inkwell::passes::PassManager;
+use inkwell::passes::PassBuilderOptions;
 use inkwell::targets::{
     CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine,
 };
@@ -611,7 +611,7 @@ impl LLVMCompiler {
         }
 
         // Run optimization passes
-        self.run_optimization_passes(codegen.get_module())?;
+        self.run_optimization_passes(codegen.get_module(), &target_machine)?;
 
         if let Some(status) = status.as_mut() {
             status.update("Writing object file", StatusColor::Yellow);
@@ -672,7 +672,11 @@ impl LLVMCompiler {
     }
 
     /// Run LLVM optimization passes
-    fn run_optimization_passes(&self, module: &Module) -> Result<(), HaversError> {
+    fn run_optimization_passes(
+        &self,
+        module: &Module,
+        target_machine: &TargetMachine,
+    ) -> Result<(), HaversError> {
         #[cfg(coverage)]
         if coverage_inject::should_fail(coverage_inject::FailPoint::RunOptimizationPasses) {
             return Err(HaversError::CompileError(
@@ -688,69 +692,34 @@ impl LLVMCompiler {
             )));
         }
 
-        let opt_level = self.opt_level;
-
-        // Create function pass manager
-        let fpm: PassManager<inkwell::values::FunctionValue> = PassManager::create(module);
-
-        // Add passes based on optimization level
-        match opt_level {
+        // New pass manager: LLVM's standard pipeline for each level. Unlike the old
+        // function-only legacy list, this includes module passes (inlining, IPO).
+        let pipeline = match self.opt_level {
             OptimizationLevel::None => return Ok(()),
-            OptimizationLevel::Less => {
-                // -O1: Basic optimizations
-                fpm.add_instruction_combining_pass();
-                fpm.add_reassociate_pass();
-                fpm.add_gvn_pass();
-                fpm.add_cfg_simplification_pass();
-                fpm.add_basic_alias_analysis_pass();
-                fpm.add_promote_memory_to_register_pass();
-            }
-            OptimizationLevel::Default => {
-                // -O2: Standard optimizations
-                fpm.add_instruction_combining_pass();
-                fpm.add_reassociate_pass();
-                fpm.add_gvn_pass();
-                fpm.add_cfg_simplification_pass();
-                fpm.add_basic_alias_analysis_pass();
-                fpm.add_promote_memory_to_register_pass();
-                fpm.add_instruction_combining_pass();
-                fpm.add_tail_call_elimination_pass();
-                fpm.add_dead_store_elimination_pass();
-                fpm.add_loop_unroll_pass();
-                fpm.add_licm_pass();
-            }
-            OptimizationLevel::Aggressive => {
-                // -O3: Aggressive optimizations
-                fpm.add_instruction_combining_pass();
-                fpm.add_reassociate_pass();
-                fpm.add_gvn_pass();
-                fpm.add_cfg_simplification_pass();
-                fpm.add_basic_alias_analysis_pass();
-                fpm.add_promote_memory_to_register_pass();
-                fpm.add_instruction_combining_pass();
-                fpm.add_tail_call_elimination_pass();
-                fpm.add_dead_store_elimination_pass();
-                fpm.add_loop_unroll_pass();
-                fpm.add_licm_pass();
-                fpm.add_aggressive_dce_pass();
-                fpm.add_scalarizer_pass();
-                fpm.add_merged_load_store_motion_pass();
-                fpm.add_ind_var_simplify_pass();
-                fpm.add_loop_vectorize_pass();
-                fpm.add_slp_vectorize_pass();
-            }
-        }
+            OptimizationLevel::Less => "default<O1>",
+            OptimizationLevel::Default => "default<O2>",
+            OptimizationLevel::Aggressive => "default<O3>",
+        };
 
-        fpm.initialize();
+        // Tune as clang does: unroll and vectorise from -O2 up.
+        let at_least_o2 = matches!(
+            self.opt_level,
+            OptimizationLevel::Default | OptimizationLevel::Aggressive
+        );
+        let options = PassBuilderOptions::create();
+        options.set_loop_unrolling(at_least_o2);
+        options.set_loop_vectorization(at_least_o2);
+        options.set_loop_interleaving(at_least_o2);
+        options.set_loop_slp_vectorization(at_least_o2);
 
-        // Run on all functions
-        for func in module.get_functions() {
-            fpm.run_on(&func);
-        }
-
-        fpm.finalize();
-
-        Ok(())
+        module
+            .run_passes(pipeline, target_machine, options)
+            .map_err(|e| {
+                HaversError::CompileError(format!(
+                    "LLVM optimisation passes failed: {}",
+                    e.to_string()
+                ))
+            })
     }
 }
 
@@ -1097,7 +1066,10 @@ mod tests {
         context.append_basic_block(func, "entry");
 
         let compiler = LLVMCompiler::new();
-        let err = compiler.run_optimization_passes(&module).unwrap_err();
+        let machine = test_target_machine(compiler.opt_level);
+        let err = compiler
+            .run_optimization_passes(&module, &machine)
+            .unwrap_err();
         assert!(err.to_string().contains("Module verification failed"));
     }
 
@@ -1113,20 +1085,69 @@ mod tests {
     }
 
     #[test]
-    fn run_optimization_passes_covers_less_and_aggressive_levels_for_coverage() {
-        let program = parse("ken x = 1\nx").unwrap();
-        let context = Context::create();
-        let mut codegen = CodeGen::new(&context, "opt_levels");
-        codegen.compile(&program).unwrap();
+    fn run_optimization_passes_covers_every_level_for_coverage() {
+        for level in 0..=3u8 {
+            let program = parse("ken x = 1\nx").unwrap();
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "opt_levels");
+            codegen.compile(&program).unwrap();
 
-        let less = LLVMCompiler::new().with_optimization(1);
-        less.run_optimization_passes(codegen.get_module())
-            .expect("less passes");
+            let compiler = LLVMCompiler::new().with_optimization(level);
+            let machine = test_target_machine(compiler.opt_level);
+            compiler
+                .run_optimization_passes(codegen.get_module(), &machine)
+                .unwrap_or_else(|e| panic!("-O{level} passes: {e}"));
+            codegen
+                .get_module()
+                .verify()
+                .unwrap_or_else(|e| panic!("-O{level} left an invalid module: {e}"));
+        }
+    }
 
-        let aggressive = LLVMCompiler::new().with_optimization(3);
-        aggressive
-            .run_optimization_passes(codegen.get_module())
-            .expect("aggressive passes");
+    #[test]
+    fn run_optimization_passes_runs_module_passes_from_o1_up() {
+        // The new-PM pipelines include the inliner and global DCE, so a small internal
+        // helper is inlined into its only caller and then deleted. -O0 leaves it alone.
+        for level in 0..=3u8 {
+            let context = Context::create();
+            let module = context.create_module("inline_probe");
+            let i64_ty = context.i64_type();
+            let fn_ty = i64_ty.fn_type(&[], false);
+            let builder = context.create_builder();
+
+            let helper =
+                module.add_function("helper", fn_ty, Some(inkwell::module::Linkage::Internal));
+            builder.position_at_end(context.append_basic_block(helper, "entry"));
+            builder
+                .build_return(Some(&i64_ty.const_int(42, false)))
+                .unwrap();
+
+            let entry = module.add_function("entry", fn_ty, None);
+            builder.position_at_end(context.append_basic_block(entry, "entry"));
+            let call = builder.build_call(helper, &[], "v").unwrap();
+            let value = call.try_as_basic_value().left().unwrap();
+            builder.build_return(Some(&value)).unwrap();
+
+            let compiler = LLVMCompiler::new().with_optimization(level);
+            let machine = test_target_machine(compiler.opt_level);
+            compiler
+                .run_optimization_passes(&module, &machine)
+                .expect("passes");
+
+            let helper_kept = module.get_function("helper").is_some();
+            assert_eq!(
+                helper_kept,
+                level == 0,
+                "-O{level}: helper kept = {helper_kept}"
+            );
+        }
+    }
+
+    fn test_target_machine(level: OptimizationLevel) -> TargetMachine {
+        initialize_native_target().unwrap();
+        let triple = TargetMachine::get_default_triple();
+        let target = target_from_triple(&triple).unwrap();
+        create_target_machine(&target, &triple, level).unwrap()
     }
 
     #[cfg(coverage)]
