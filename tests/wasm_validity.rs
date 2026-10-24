@@ -729,3 +729,55 @@ fn user_function_shadows_a_builtin() {
     let src = "dae len(x) {\n    gie 99\n}\nblether len([1])\n";
     assert_eq!(run(src), "99\n");
 }
+
+// MDH-BUG-FLU-00117: a builtin call must not convert or scan the whole argument when
+// it only needs its size, or the loop below is quadratic.
+#[test]
+fn len_in_a_loop_over_a_big_list_is_not_quadratic() {
+    let source = "ken xs = []\nken i = 0\nwhiles i < 20000 { shove(xs, i)\ni = i + 1 }\n\
+                  ken total = 0\nken j = 0\nwhiles j < 20000 { total = total + len(xs)\nj = j + 1 }\n\
+                  blether total\n";
+    let start = std::time::Instant::now();
+    assert_eq!(run(source), "400000000\n");
+    assert!(
+        start.elapsed() < Duration::from_secs(20),
+        "len(xs) loop took {:?}",
+        start.elapsed()
+    );
+}
+
+#[test]
+fn len_and_bum_shortcuts_match_the_interpreter() {
+    let source = "blether len([1, 2, 3])\nblether len({\"a\": 1})\nblether len(\"héllo\")\n\
+                  blether len(creel([1, 2, 2]))\nblether bum([4, 5, 6])\nblether len(\"\")\n";
+    assert_eq!(run(source), "3\n1\n5\n2\n6\n0\n");
+    let out = run_full("blether bum([])\n");
+    assert!(
+        out.error.is_some(),
+        "bum of an empty list must still be an error"
+    );
+}
+
+// MDH-BUG-FLU-00119: the host store holds creels.
+#[test]
+fn creels_returned_by_builtins_live_in_the_host_store() {
+    let source = "ken s = creel([3, 1, 2, 3])\nblether s\nblether len(s)\n\
+                  blether is_in_creel(s, 2)\nblether is_in_creel(s, 9)\n\
+                  blether creel([1, 2]) == creel([2, 1])\nblether creel([1]) == creel([2])\n\
+                  blether [creel([1])] == [creel([1])]\n\
+                  gin creel([]) { blether \"truthy\" } ither { blether \"falsy\" }\n";
+    assert_eq!(
+        run(source),
+        "creel{1, 2, 3}\n3\naye\nnae\naye\nnae\naye\nfalsy\n"
+    );
+}
+
+#[test]
+fn creels_survive_reclamation_in_loops() {
+    let source = "ken i = 0\nken n = 0\nwhiles i < 3000 { ken s = creel([i, i + 1])\n\
+                  n = n + len(s)\ni = i + 1 }\nblether n\n";
+    let out = run_full(source);
+    assert_eq!(out.error, None);
+    assert_eq!(out.stdout, "6000\n");
+    assert!(out.peak_store_size < 2000, "peak {}", out.peak_store_size);
+}

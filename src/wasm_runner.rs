@@ -8,7 +8,7 @@ use wasmtime::{Caller, Engine, FuncType, Linker, Memory, MemoryType, Module, Sto
 
 use crate::error::HaversError;
 use crate::interpreter::Interpreter;
-use crate::value::{DictValue, NativeFunction, Value};
+use crate::value::{DictValue, NativeFunction, SetValue, Value};
 use crate::wasm_compiler::{AUDIO_IMPORTS, MAX_BUILTIN_ARGS};
 
 type Handle = i64;
@@ -22,6 +22,8 @@ enum HostValue {
     String(String),
     List(Vec<Handle>),
     Dict(DictEntries),
+    /// A creel: each member's identity key and its handle (like dict entries, minus values).
+    Set(DictEntries),
     NativeObject(TriObject),
     NativeCtor(String),
 }
@@ -50,6 +52,7 @@ enum ValueKey {
     String(String),
     List(Handle),
     Dict(Handle),
+    Set(Handle),
     NativeObject(Handle),
     NativeCtor(Handle),
 }
@@ -378,6 +381,7 @@ impl HostStore {
             HostValue::String(s) => Some(ValueKey::String(s.clone())),
             HostValue::List(_) => Some(ValueKey::List(handle)),
             HostValue::Dict(_) => Some(ValueKey::Dict(handle)),
+            HostValue::Set(_) => Some(ValueKey::Set(handle)),
             HostValue::NativeObject(_) => Some(ValueKey::NativeObject(handle)),
             HostValue::NativeCtor(_) => Some(ValueKey::NativeCtor(handle)),
         }
@@ -392,6 +396,7 @@ impl HostStore {
             Some(HostValue::String(s)) => !s.is_empty(),
             Some(HostValue::List(items)) => !items.is_empty(),
             Some(HostValue::Dict(map)) => !map.is_empty(),
+            Some(HostValue::Set(members)) => !members.is_empty(),
             Some(HostValue::NativeObject(_)) => true,
             Some(HostValue::NativeCtor(_)) => true,
             None => false,
@@ -424,6 +429,12 @@ impl HostStore {
                 }
                 format!("{{{}}}", parts.join(", "))
             }
+            Some(HostValue::Set(members)) => {
+                let mut parts: Vec<String> =
+                    members.iter().map(|(_, h)| self.to_string(*h)).collect();
+                parts.sort();
+                format!("creel{{{}}}", parts.join(", "))
+            }
             Some(HostValue::NativeObject(obj)) => format!("<native {}>", obj.kind),
             Some(HostValue::NativeCtor(kind)) => format!("<native dae tri.{}>", kind),
             None => "<invalid>".to_string(),
@@ -440,6 +451,7 @@ fn push_children(value: &HostValue, out: &mut Vec<Handle>) {
                 match key {
                     ValueKey::List(h)
                     | ValueKey::Dict(h)
+                    | ValueKey::Set(h)
                     | ValueKey::NativeObject(h)
                     | ValueKey::NativeCtor(h) => out.push(*h),
                     _ => {}
@@ -447,6 +459,7 @@ fn push_children(value: &HostValue, out: &mut Vec<Handle>) {
                 out.push(*value);
             }
         }
+        HostValue::Set(members) => out.extend(members.iter().map(|(_, h)| *h)),
         HostValue::NativeObject(obj) => out.extend(obj.fields.values().copied()),
         _ => {}
     }
@@ -457,6 +470,7 @@ fn container_ptr(value: &Value) -> Option<usize> {
     match value {
         Value::List(rc) => Some(Rc::as_ptr(rc) as *const () as usize),
         Value::Dict(rc) => Some(Rc::as_ptr(rc) as *const () as usize),
+        Value::Set(rc) => Some(Rc::as_ptr(rc) as *const () as usize),
         _ => None,
     }
 }
@@ -514,6 +528,16 @@ impl ValueBridge {
                 }
                 Ok(value)
             }
+            HostValue::Set(members) => {
+                let rc = Rc::new(RefCell::new(SetValue::new()));
+                let value = Value::Set(rc.clone());
+                self.remember(handle, &value);
+                for (_, item) in members {
+                    let item = self.to_value(store, *item)?;
+                    rc.borrow_mut().insert(item);
+                }
+                Ok(value)
+            }
             other => Err(format!(
                 "That's pure mince! Type error: a {} cannae be passed tae a builtin in WASM yet",
                 host_type_name(other)
@@ -530,6 +554,7 @@ impl ValueBridge {
             ValueKey::String(s) => Value::String(s.clone()),
             ValueKey::List(h)
             | ValueKey::Dict(h)
+            | ValueKey::Set(h)
             | ValueKey::NativeObject(h)
             | ValueKey::NativeCtor(h) => self.to_value(store, *h)?,
         })
@@ -547,7 +572,7 @@ impl ValueBridge {
             Value::Integer(n) => Ok(alloc_int(store, *n)),
             Value::Float(f) => Ok(alloc_float(store, *f)),
             Value::String(s) => Ok(alloc_string(store, s.clone())),
-            Value::List(_) | Value::Dict(_) => {
+            Value::List(_) | Value::Dict(_) | Value::Set(_) => {
                 let handle = store.alloc(HostValue::List(Vec::new()));
                 if let Some(ptr) = container_ptr(value) {
                     self.by_ptr.insert(ptr, handle);
@@ -580,6 +605,15 @@ impl ValueBridge {
                     entries.push((key, self.to_handle(store, item)?));
                 }
                 HostValue::Dict(entries)
+            }
+            Value::Set(rc) => {
+                let mut members = Vec::new();
+                for item in rc.borrow().iter() {
+                    let item = self.to_handle(store, item)?;
+                    let key = store.key_for(item).ok_or_else(|| ERR_INVALID.to_string())?;
+                    dict_put(&mut members, key, item);
+                }
+                HostValue::Set(members)
             }
             _ => return Err(ERR_INVALID.to_string()),
         };
@@ -642,7 +676,9 @@ impl ValueBridge {
 
     fn same_key(&self, store: &HostStore, key: &ValueKey, value: &Value) -> bool {
         match (key, value) {
-            (ValueKey::List(h) | ValueKey::Dict(h), _) => self.same_slot(store, *h, value),
+            (ValueKey::List(h) | ValueKey::Dict(h) | ValueKey::Set(h), _) => {
+                self.same_slot(store, *h, value)
+            }
             (ValueKey::Nil, Value::Nil) => true,
             (ValueKey::Bool(a), Value::Bool(b)) => a == b,
             (ValueKey::Int(a), Value::Integer(b)) => a == b,
@@ -653,9 +689,65 @@ impl ValueBridge {
     }
 }
 
+/// Natives that never change their arguments, so a call needs nae write-back scan.
+/// Keep this list explicit: a native missing fae it is merely slower, never wrong.
+const READ_ONLY_NATIVES: &[&str] = &[
+    "len",
+    "keys",
+    "values",
+    "heid",
+    "tail",
+    "bum",
+    "contains",
+    "is_in_creel",
+];
+
+/// An inline scalar handle (nil, a bool, or an int/float held in the handle itself).
+fn is_inline_scalar(handle: Handle) -> bool {
+    !(3..FLOAT_TAG).contains(&handle)
+}
+
+/// `len`, `bum` an' `shove` answered straight fae the store, so a loop over a big list
+/// isnae quadratic. `None` means "no shortcut": the native runs (an' reports ony error).
+fn builtin_shortcut(store: &mut HostStore, name: &str, args: &[Handle]) -> Option<Handle> {
+    if let ("shove", [list, item]) = (name, args) {
+        // `get_mut` is the reclamation write barrier, as for ony other mutation.
+        if let Some(HostValue::List(items)) = store.get_mut(*list) {
+            items.push(*item);
+            return Some(0);
+        }
+        return None;
+    }
+    let [arg] = args else { return None };
+    let count = match (name, store.view(*arg)?.as_ref()) {
+        ("len", HostValue::List(items)) => items.len(),
+        ("len", HostValue::Dict(entries) | HostValue::Set(entries)) => entries.len(),
+        ("len", HostValue::String(text)) => text.chars().count(),
+        ("bum", HostValue::List(items)) => return items.last().copied(),
+        _ => return None,
+    };
+    Some(alloc_int(store, count as i64))
+}
+
 /// Run one o' the interpreter's natives on borrowed argument handles; the result is a
-/// fresh handle in the current scope (or a passed-in container's ain handle).
+/// fresh handle in the current scope (or a passed-in container's ain handle). Anything
+/// the native writes tae stdout joins the runner's capture, in order.
 fn call_builtin(state: &mut HostState, name: &str, args: &[Handle]) -> Result<Handle, String> {
+    crate::logging::begin_stdout_capture();
+    let result = call_builtin_inner(state, name, args);
+    let printed = crate::logging::end_stdout_capture();
+    match state.captured.as_mut() {
+        Some(buffer) => buffer.push_str(&printed),
+        None => print!("{}", printed),
+    }
+    result
+}
+
+fn call_builtin_inner(
+    state: &mut HostState,
+    name: &str,
+    args: &[Handle],
+) -> Result<Handle, String> {
     let natives = state
         .natives
         .get_or_insert_with(Interpreter::native_builtins);
@@ -674,13 +766,19 @@ fn call_builtin(state: &mut HostState, name: &str, args: &[Handle]) -> Result<Ha
         ));
     }
     let store = &mut state.store;
+    if let Some(handle) = builtin_shortcut(store, name, args) {
+        return Ok(handle);
+    }
     let mut bridge = ValueBridge::default();
     let mut values = Vec::with_capacity(args.len());
     for arg in args {
         values.push(bridge.to_value(store, *arg)?);
     }
     let result = (native.func)(values).map_err(|m| HaversError::InternalError(m).to_string())?;
-    bridge.write_back(store)?;
+    // Scalar arguments and read-only natives cannae change a host container.
+    if !args.iter().all(|a| is_inline_scalar(*a)) && !READ_ONLY_NATIVES.contains(&name) {
+        bridge.write_back(store)?;
+    }
     bridge.to_handle(store, &result)
 }
 
@@ -1201,6 +1299,7 @@ fn host_type_name(value: &HostValue) -> &'static str {
         HostValue::String(_) => "string",
         HostValue::List(_) => "list",
         HostValue::Dict(_) => "dict",
+        HostValue::Set(_) => "creel",
         HostValue::NativeObject(_) | HostValue::NativeCtor(_) => "native",
     }
 }
@@ -1365,6 +1464,7 @@ fn eq_values_on_path(
         (left.as_deref(), right.as_deref()),
         (Some(HostValue::List(_)), Some(HostValue::List(_)))
             | (Some(HostValue::Dict(_)), Some(HostValue::Dict(_)))
+            | (Some(HostValue::Set(_)), Some(HostValue::Set(_)))
     );
     if containers {
         if a == b || path.contains(&(a, b)) {
@@ -1383,6 +1483,10 @@ fn eq_values_on_path(
                     && x.iter().all(|(key, p)| {
                         dict_get(y, key).is_some_and(|q| eq_values_on_path(store, *p, q, path))
                     })
+            }
+            // Creels compare by their members (decision F1).
+            (Some(HostValue::Set(x)), Some(HostValue::Set(y))) => {
+                x.len() == y.len() && x.iter().all(|(key, _)| dict_get(y, key).is_some())
             }
             _ => false,
         };
@@ -2194,5 +2298,35 @@ mod tests {
         assert!(arith(&mut store, ArithOp::Sub, seven, text)
             .unwrap_err()
             .contains("Cannae subtract"));
+    }
+
+    // MDH-BUG-FLU-00118: a native's stdout line joins the runner's capture.
+    #[test]
+    fn a_native_that_writes_stdout_joins_the_captured_output() {
+        let mut state = HostState::new(true);
+        let chatter = NativeFunction::new("chatter", 0, |_args| {
+            crate::logging::stdout_line("hullo fae a native");
+            Ok(Value::Nil)
+        });
+        let mut natives = HashMap::new();
+        natives.insert("chatter".to_string(), Rc::new(chatter));
+        state.natives = Some(natives);
+        state.captured.as_mut().unwrap().push_str("before\n");
+        call_builtin(&mut state, "chatter", &[]).unwrap();
+        assert_eq!(
+            state.captured.as_deref(),
+            Some("before\nhullo fae a native\n")
+        );
+    }
+
+    #[test]
+    fn shove_shortcut_pushes_on_the_host_list() {
+        let mut state = HostState::new(true);
+        let list = state.store.alloc(HostValue::List(Vec::new()));
+        call_builtin(&mut state, "shove", &[list, 5 - INT_BIAS]).unwrap();
+        assert!(matches!(
+            state.store.get(list),
+            Some(HostValue::List(items)) if items == &[5 - INT_BIAS]
+        ));
     }
 }

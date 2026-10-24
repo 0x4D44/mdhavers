@@ -161,11 +161,6 @@ tests/golden/integration/showcase_config_differ.braw
 tests/golden/integration/showcase_muckle_numbers.braw
 tests/golden/integration/showcase_raytracer_ascii.braw
 
-# == runtime error: That (3) ==
-tests/golden/data_structures/creel_structural_equality.braw
-tests/golden/data_structures/set_membership_mismatch_int_vs_string.braw
-tests/golden/data_structures/set_typed_elements_int_vs_string.braw
-
 # == compile error: Och! Compilation went tits up: Top-level variable _ cannae be used inside dae _ in WASM yet - pass i (2) ==
 tests/golden/functions/named_closure_mutation_and_default_eval.braw
 tests/golden/integration/showcase_blether_lisp.braw

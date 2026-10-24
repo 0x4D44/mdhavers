@@ -202,9 +202,7 @@ impl LoggerCore {
                 LogSink::Stderr => {
                     eprintln!("{}", formatted);
                 }
-                LogSink::Stdout => {
-                    println!("{}", formatted);
-                }
+                LogSink::Stdout => stdout_line(&formatted),
                 LogSink::File { path, append, file } => {
                     if file.is_none() {
                         let mut opts = OpenOptions::new();
@@ -429,6 +427,37 @@ impl NativeObject for LogSpanHandle {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
+}
+
+thread_local! {
+    /// While `Some`, lines meant for stdout are collected here instead (the WASM runner
+    /// installs it around a builtin call so its output joins the runner's capture).
+    static STDOUT_CAPTURE: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+/// Write one line tae stdout, or tae the active capture buffer.
+pub fn stdout_line(line: &str) {
+    let captured = STDOUT_CAPTURE.with(|cell| match cell.borrow_mut().as_mut() {
+        Some(buffer) => {
+            buffer.push_str(line);
+            buffer.push('\n');
+            true
+        }
+        None => false,
+    });
+    if !captured {
+        println!("{}", line);
+    }
+}
+
+/// Start collecting stdout lines on this thread (replaces any earlier buffer).
+pub fn begin_stdout_capture() {
+    STDOUT_CAPTURE.with(|cell| *cell.borrow_mut() = Some(String::new()));
+}
+
+/// Stop collecting and hand back what was collected.
+pub fn end_stdout_capture() -> String {
+    STDOUT_CAPTURE.with(|cell| cell.borrow_mut().take().unwrap_or_default())
 }
 
 thread_local! {
