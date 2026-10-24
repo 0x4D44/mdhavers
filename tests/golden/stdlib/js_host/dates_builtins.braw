@@ -1,0 +1,41 @@
+# dates_builtins.braw - date/time builtins that dinnae depend on the local timezone (MDH-BUG-FLU-00114)
+# SKIP_NATIVE - dates are exercised through the interpreter and JS backends
+
+# date_parse reads UTC; date_add and date_diff are plain seconds sums
+blether date_parse("2020-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+blether date_parse("2021-01-05 15:04", "%Y-%m-%d %H:%M")
+blether date_parse("Jan 5 2021 3:04 PM", "%b %d %Y %I:%M %p")
+blether date_parse("12/31/99 23:59:58", "%m/%d/%y %T")
+blether date_add(1000, 2, "hours")
+blether date_add(1000, -1, "days")
+blether date_add(0, 1, "weeks")
+blether date_diff(1000, 1060, "milliseconds")
+blether date_diff(0, 172800, "days")
+blether date_diff(0, -90, "minutes")
+
+# date_format round trips through the local timezone, so the output is zone-free
+ken ts = date_parse("2021-03-04 05:06:07", "%Y-%m-%d %H:%M:%S")
+blether date_format(ts, "%Y") == date_format(date_add(ts, 0, "seconds"), "%Y")
+blether len(date_format(ts, "%Y-%m-%d %H:%M:%S"))
+blether date_format(0, "%%|%Y")[0]
+
+hae_a_bash {
+    date_parse("2021-02-30 00:00:00", "%Y-%m-%d %H:%M:%S")
+} gin_it_gangs_wrang err {
+    blether "caught_bad_day"
+}
+hae_a_bash {
+    date_parse("2021-02-03", "%Y-%m-%d")
+} gin_it_gangs_wrang err {
+    blether "caught_no_time"
+}
+hae_a_bash {
+    date_add(0, 1, "fortnights")
+} gin_it_gangs_wrang err {
+    blether err
+}
+hae_a_bash {
+    date_diff(0, 1, "fortnights")
+} gin_it_gangs_wrang err {
+    blether err
+}

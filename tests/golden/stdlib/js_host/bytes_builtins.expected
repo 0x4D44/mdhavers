@@ -1,0 +1,19 @@
+bytes[3]
+bytes
+3
+3
+513
+nae
+aye
+6
+12
+1757653356
+108
+255
+4294967295
+0
+2
+falsy
+Jings! Something went awfy wrang: bytes_read_u16be() out o' bounds
+Jings! Something went awfy wrang: bytes_write_u16be() value out o' range
+Jings! Something went awfy wrang: bytes_len() expects bytes

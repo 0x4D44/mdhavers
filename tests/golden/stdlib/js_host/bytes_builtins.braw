@@ -1,0 +1,49 @@
+# bytes_builtins.braw - the bytes builtins behave the same on every backend (MDH-BUG-FLU-00114)
+# SKIP_NATIVE - bytes is exercised through the interpreter and JS backends
+
+ken b = bytes(3)
+bytes_set(b, 0, 1)
+bytes_write_u16be(b, 1, 513)
+blether b
+blether whit_kind(b)
+blether len(b)
+blether bytes_len(b)
+blether bytes_read_u16be(b, 1)
+blether b == bytes(3)
+blether b == b
+
+ken c = bytes_from_string("héllo")
+blether bytes_len(c)
+bytes_append(c, c)
+blether bytes_len(c)
+blether bytes_read_u32be(c, 0)
+blether bytes_get(bytes_slice(c, -2, 99), 0)
+
+ken w = bytes(4)
+bytes_write_u32be(w, 0, 4294967295)
+blether bytes_get(w, 3)
+blether bytes_read_u32be(w, 0)
+blether bytes_len(bytes(-5))
+blether bytes_len(bytes_from_string(42))
+
+gin bytes(0) {
+    blether "truthy"
+} ither {
+    blether "falsy"
+}
+
+hae_a_bash {
+    bytes_read_u16be(b, 2)
+} gin_it_gangs_wrang err {
+    blether err
+}
+hae_a_bash {
+    bytes_write_u16be(b, 0, 70000)
+} gin_it_gangs_wrang err {
+    blether err
+}
+hae_a_bash {
+    bytes_len("nae bytes")
+} gin_it_gangs_wrang err {
+    blether err
+}

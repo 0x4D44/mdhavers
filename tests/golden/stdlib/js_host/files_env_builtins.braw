@@ -1,0 +1,45 @@
+# files_env_builtins.braw - file I/O and environment builtins (Node on JS) (MDH-BUG-FLU-00114)
+# SKIP_NATIVE - files are exercised through the interpreter and JS backends
+
+# A fresh directory per run, so parallel test runs (interpreter and node) never collide.
+ken dir = "target/mdh_js_host_" + tae_string(random_int(0, 1000000000)) + "_" + tae_string(timestamp_millis())
+make_dir(path_join(dir, "sub"))
+blether is_dir(dir)
+ken f = path_join(dir, "t.txt")
+scrieve(f, "x\ny")
+scrieve_append(f, 42)
+append_file(f, "\nz\n")
+blether read_file(f)
+blether read_lines(f)
+blether file_size(f)
+blether file_exists(f)
+blether sort(list_dir(dir))
+file_delete(f)
+blether file_exists(f)
+
+hae_a_bash {
+    read_file(f)
+} gin_it_gangs_wrang err {
+    blether "caught_read_missing"
+}
+hae_a_bash {
+    file_size(f)
+} gin_it_gangs_wrang err {
+    blether "caught_size_missing"
+}
+hae_a_bash {
+    list_dir(f)
+} gin_it_gangs_wrang err {
+    blether "caught_list_missing"
+}
+
+blether path_join("a", "b")
+blether path_join("a/", "b")
+blether path_join("a", "/b")
+
+env_set("MDH_JS_HOST_TEST", "braw")
+blether env_get("MDH_JS_HOST_TEST")
+blether env_all()["MDH_JS_HOST_TEST"]
+blether env_get("MDH_JS_HOST_NOPE_XYZ")
+blether len(cwd()) > 0
+blether len(args()) >= 1

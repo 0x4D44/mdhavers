@@ -1,0 +1,31 @@
+# regex_builtins.braw - regex builtins: groups, byte offsets, empty matches (MDH-BUG-FLU-00114)
+# SKIP_NATIVE - regex is exercised through the interpreter and JS backends
+
+blether regex_match("héllo wörld", "w.r")
+blether regex_match_all("a1b22c333", "[0-9]+")
+blether regex_match_all("baaab", "a*")
+blether regex_replace("john smith", "(?P<first>\\w+) (\\w+)", "$2, ${first}")
+blether regex_replace("john smith", "(\\w+) (\\w+)", "$$ $2 $1x")
+blether regex_replace_first("a-b-c", "-", "+")
+blether regex_split("abc", "")
+blether regex_split("a, b;c", "[,;]\\s*")
+blether regex_test("Hello", "(?i)^hello$")
+blether regex_test("line1\nline2", "^line2")
+blether regex_test("a.b", "a\\.b")
+blether regex_test("a\nb", "a.b")
+
+hae_a_bash {
+    regex_test("a", "(")
+} gin_it_gangs_wrang err {
+    blether "caught_bad_pattern"
+}
+hae_a_bash {
+    regex_test("a", "(?=a)")
+} gin_it_gangs_wrang err {
+    blether "caught_lookaround"
+}
+hae_a_bash {
+    regex_test(1, "a")
+} gin_it_gangs_wrang err {
+    blether err
+}

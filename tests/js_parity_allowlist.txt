@@ -2,10 +2,4 @@
 # Checked by tests/js_golden_parity.rs. This list may only shrink: fix a case,
 # then delete its line (the test fails while a listed case passes).
 # Regenerate: MDH_JS_PARITY_BLESS=1 cargo test --test js_golden_parity
-tests/golden/edge_cases/bytes_oob_and_slice_bounds_parity.braw # node exit 1: ReferenceError: bytes is not defined
-tests/golden/edge_cases/date_parse_trailing_whitespace_rejected.braw # node exit 1: ReferenceError: date_parse is not defined
-tests/golden/edge_cases/lines_and_read_lines_parity.braw # node exit 1: ReferenceError: read_lines is not defined
-tests/golden/stdlib/datetime/datetime_functions.braw # node exit 1: ReferenceError: date_now is not defined
-tests/golden/stdlib/file_io/file_operations.braw # node exit 1: ReferenceError: path_join is not defined
-tests/golden/stdlib/regex/regex_functions.braw # node exit 1: ReferenceError: regex_test is not defined
-tests/golden/stdlib/system/system_functions.braw # node exit 1: ReferenceError: env_get is not defined
+tests/golden/stdlib/system/system_functions.braw # uses shell()/shell_status(), which are interpreter-only by decision (MDH-BUG-FLU-00114)

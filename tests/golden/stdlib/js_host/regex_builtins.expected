@@ -1,0 +1,15 @@
+{"match": wör, "start": 7, "end": 11}
+[{"match": 1, "start": 1, "end": 2}, {"match": 22, "start": 3, "end": 5}, {"match": 333, "start": 6, "end": 9}]
+[{"match": , "start": 0, "end": 0}, {"match": aaa, "start": 1, "end": 4}, {"match": , "start": 5, "end": 5}]
+smith, john
+$ smith 
+a+b-c
+[, a, b, c, ]
+[a, b, c]
+aye
+nae
+aye
+nae
+caught_bad_pattern
+caught_lookaround
+Jings! Something went awfy wrang: regex_test() needs a string

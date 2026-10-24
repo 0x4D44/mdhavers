@@ -10,6 +10,14 @@
 const __havers_core = (() => {
   const isKin = (x) => typeof x === "function" && x.__mdh_kin === true;
 
+  // A byte buffer (the interpreter's `Value::Bytes`). It wraps a Uint8Array so that
+  // `bytes_append` can grow it in place: the wrapper keeps its identity, `a` is swapped.
+  class MdhBytes {
+    constructor(a) {
+      this.a = a;
+    }
+  }
+
   const I64_MIN = -(2n ** 63n);
   const I64_MAX = 2n ** 63n - 1n;
 
@@ -90,6 +98,7 @@ const __havers_core = (() => {
     if (typeof x === "number") return showNumber(x);
     if (typeof x === "string") return x;
     if (Array.isArray(x)) return "[" + x.map(show).join(", ") + "]";
+    if (x instanceof MdhBytes) return "bytes[" + x.a.length + "]";
     if (x instanceof Set) {
       const items = [...x].map(show).sort();
       return "creel{" + items.map((s) => '"' + s + '"').join(", ") + "}";
@@ -118,6 +127,7 @@ const __havers_core = (() => {
     if (x === null || x === undefined || x === false || x === 0n || x === 0 || x === "") return false;
     if (Array.isArray(x)) return x.length > 0;
     if (x instanceof Set) return x.size > 0;
+    if (x instanceof MdhBytes) return x.a.length > 0;
     if (isDict(x)) return Object.keys(x).length > 0;
     return true;
   };
@@ -139,6 +149,11 @@ const __havers_core = (() => {
   const eq = (a, b, path) => {
     if (a === undefined) a = null;
     if (b === undefined) b = null;
+    if (a instanceof MdhBytes && b instanceof MdhBytes) {
+      if (a.a.length !== b.a.length) return false;
+      for (let i = 0; i < a.a.length; i++) if (a.a[i] !== b.a[i]) return false;
+      return true;
+    }
     if (a instanceof Set && b instanceof Set) {
       if (a.size !== b.size) return false;
       for (const item of a) if (!b.has(item)) return false;
@@ -180,6 +195,7 @@ const __havers_core = (() => {
     if (typeof x === "string") return "string";
     if (Array.isArray(x)) return "list";
     if (x instanceof Set) return "creel";
+    if (x instanceof MdhBytes) return "bytes";
     if (typeof x === "function") return isKin(x) ? (x.__mdh_struct ? "struct" : "class") : "function";
     const ctor = Object.getPrototypeOf(x) === null ? null : x.constructor;
     if (ctor && ctor !== Object && !ctor.__mdh_struct) return "instance";
@@ -920,7 +936,737 @@ const __havers_core = (() => {
     return '"' + show(x).replace(/"/g, '\\"') + '"';
   };
 
+  // ---------- bytes, date/time, regex, file an' environment builtins (MDH-BUG-FLU-00114) ----------
+  //
+  // Bytes, dates an' regexes work on every host; files an' the environment need Node
+  // (`require('fs')`, `process`) an' say so plainly in a browser. Sockets, TLS, threads,
+  // event loops an' the shell are interpreter/native-only: see `noJs` below.
+
+  const intArg = (v, msg) => {
+    if (typeof v === "bigint") return v;
+    if (typeof v === "number") return f64ToI64(v);
+    throw native(msg);
+  };
+  const needBytes = (v, msg) => {
+    if (!(v instanceof MdhBytes)) throw native(msg);
+    return v;
+  };
+  const clampBig = (n, lo, hi) => (n < lo ? lo : n > hi ? hi : n);
+
+  // ----- dates (timestamps are whole seconds; date_now/date_format/date_add use local time) -----
+  const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const pad = (n, w, c) => String(Math.abs(n)).padStart(w, c === undefined ? "0" : c);
+  const dateOf = (ts, what) => {
+    const ms = Number(ts) * 1000;
+    const d = new Date(ms);
+    if (Number.isNaN(d.getTime())) throw native(`${what}: Invalid timestamp`);
+    return d;
+  };
+  const tzName = (d) => {
+    try {
+      const part = new Intl.DateTimeFormat("en-US", { timeZoneName: "short" })
+        .formatToParts(d)
+        .find((p) => p.type === "timeZoneName");
+      return part ? part.value : "";
+    } catch (_e) {
+      return "";
+    }
+  };
+  const tzOffset = (d, colon) => {
+    const off = -d.getTimezoneOffset();
+    const sign = off < 0 ? "-" : "+";
+    const a = Math.abs(off);
+    return sign + pad(Math.floor(a / 60), 2) + (colon ? ":" : "") + pad(a % 60, 2);
+  };
+  // strftime, as chrono's `format` does it (the common specifiers).
+  const strftime = (d, fmt) => {
+    const yday = Math.floor((Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) - Date.UTC(d.getFullYear(), 0, 1)) / 86400000) + 1;
+    const wday = d.getDay();
+    const h12 = d.getHours() % 12 === 0 ? 12 : d.getHours() % 12;
+    let out = "";
+    for (let i = 0; i < fmt.length; i++) {
+      const c = fmt[i];
+      if (c !== "%") {
+        out += c;
+        continue;
+      }
+      i++;
+      let flag = "";
+      if ("-_0^#".includes(fmt[i])) flag = fmt[i++];
+      let colon = false;
+      if (fmt[i] === ":") {
+        colon = true;
+        i++;
+      }
+      let digits = "";
+      while (fmt[i] >= "0" && fmt[i] <= "9") digits += fmt[i++];
+      const sp = fmt[i];
+      const num = (n, w, def) => {
+        const padc = flag === "-" ? "" : flag === "_" ? " " : flag === "0" ? "0" : def;
+        return padc === "" ? String(n) : pad(n, w, padc);
+      };
+      const txt = (s) => (flag === "^" ? s.toUpperCase() : s);
+      switch (sp) {
+        case "Y": out += d.getFullYear() < 0 ? "-" + pad(d.getFullYear(), 4) : num(d.getFullYear(), 4, "0"); break;
+        case "C": out += num(Math.floor(d.getFullYear() / 100), 2, "0"); break;
+        case "y": out += num(((d.getFullYear() % 100) + 100) % 100, 2, "0"); break;
+        case "m": out += num(d.getMonth() + 1, 2, "0"); break;
+        case "b": case "h": out += txt(MONTH_NAMES[d.getMonth()].slice(0, 3)); break;
+        case "B": out += txt(MONTH_NAMES[d.getMonth()]); break;
+        case "d": out += num(d.getDate(), 2, "0"); break;
+        case "e": out += num(d.getDate(), 2, " "); break;
+        case "a": out += txt(DAY_NAMES[wday].slice(0, 3)); break;
+        case "A": out += txt(DAY_NAMES[wday]); break;
+        case "w": out += String(wday); break;
+        case "u": out += String(wday === 0 ? 7 : wday); break;
+        case "j": out += num(yday, 3, "0"); break;
+        case "U": out += num(Math.floor((yday - 1 + 7 - wday) / 7), 2, "0"); break;
+        case "W": out += num(Math.floor((yday - 1 + 7 - ((wday + 6) % 7)) / 7), 2, "0"); break;
+        case "H": out += num(d.getHours(), 2, "0"); break;
+        case "k": out += num(d.getHours(), 2, " "); break;
+        case "I": out += num(h12, 2, "0"); break;
+        case "l": out += num(h12, 2, " "); break;
+        case "M": out += num(d.getMinutes(), 2, "0"); break;
+        case "S": out += num(d.getSeconds(), 2, "0"); break;
+        case "f": out += "0".repeat(digits === "" ? 9 : Number(digits)); break;
+        case "p": out += d.getHours() < 12 ? "AM" : "PM"; break;
+        case "P": out += d.getHours() < 12 ? "am" : "pm"; break;
+        case "z": out += tzOffset(d, colon); break;
+        case "Z": out += tzName(d); break;
+        case "s": out += String(Math.floor(d.getTime() / 1000)); break;
+        case "T": case "X": out += strftime(d, "%H:%M:%S"); break;
+        case "R": out += strftime(d, "%H:%M"); break;
+        case "r": out += strftime(d, "%I:%M:%S %p"); break;
+        case "F": out += strftime(d, "%Y-%m-%d"); break;
+        case "D": case "x": out += strftime(d, "%m/%d/%y"); break;
+        case "c": out += strftime(d, "%a %b %e %T %Y"); break;
+        case "v": out += strftime(d, "%e-%b-%Y"); break;
+        case "t": out += "\t"; break;
+        case "n": out += "\n"; break;
+        case "%": out += "%"; break;
+        default: throw native(`date_format() doesnae ken the format '%${sp === undefined ? "" : sp}'`);
+      }
+    }
+    return out;
+  };
+  // strptime into a UTC timestamp, as `NaiveDateTime::parse_from_str` does: a date an' an hour
+  // an' minute are needed, the seconds default tae 0, an' leftover input is an error.
+  const parseDate = (text, fmt) => {
+    const bad = (why) => native(`Couldnae parse date '${text}': ${why}`);
+    const expanded = fmt
+      .replace(/%T/g, "%H:%M:%S").replace(/%F/g, "%Y-%m-%d").replace(/%D|%x/g, "%m/%d/%y")
+      .replace(/%R/g, "%H:%M").replace(/%r/g, "%I:%M:%S %p").replace(/%X/g, "%H:%M:%S")
+      .replace(/%c/g, "%a %b %e %H:%M:%S %Y").replace(/%v/g, "%e-%b-%Y");
+    const st = {};
+    let pos = 0;
+    const num = (min, max) => {
+      const m = new RegExp(`^[0-9]{${min},${max}}`).exec(text.slice(pos));
+      if (!m) throw bad(pos >= text.length ? "premature end of input" : "input contains invalid characters");
+      pos += m[0].length;
+      return Number(m[0]);
+    };
+    const name = (names) => {
+      const rest = text.slice(pos).toLowerCase();
+      for (let k = 0; k < names.length; k++) {
+        const full = names[k].toLowerCase();
+        if (rest.startsWith(full)) { pos += full.length; return k; }
+      }
+      for (let k = 0; k < names.length; k++) {
+        const short = names[k].slice(0, 3).toLowerCase();
+        if (rest.startsWith(short)) { pos += 3; return k; }
+      }
+      throw bad(pos >= text.length ? "premature end of input" : "input contains invalid characters");
+    };
+    for (let i = 0; i < expanded.length; i++) {
+      const c = expanded[i];
+      if (/\s/.test(c)) {
+        while (pos < text.length && /\s/.test(text[pos])) pos++;
+        continue;
+      }
+      if (c !== "%") {
+        if (pos >= text.length) throw bad("premature end of input");
+        if (text[pos] !== c) throw bad("input contains invalid characters");
+        pos++;
+        continue;
+      }
+      i++;
+      while ("-_0^#:".includes(expanded[i])) i++;
+      const sp = expanded[i];
+      const skipSp = () => { while (text[pos] === " ") pos++; };
+      switch (sp) {
+        case "Y": {
+          const m = /^[+-]?[0-9]{1,4}/.exec(text.slice(pos));
+          if (!m) throw bad(pos >= text.length ? "premature end of input" : "input contains invalid characters");
+          pos += m[0].length;
+          st.Y = Number(m[0]);
+          break;
+        }
+        case "y": { const v = num(1, 2); st.Y = v < 69 ? 2000 + v : 1900 + v; break; }
+        case "m": st.m = num(1, 2); break;
+        case "d": st.d = num(1, 2); break;
+        case "e": skipSp(); st.d = num(1, 2); break;
+        case "H": st.H = num(1, 2); break;
+        case "k": skipSp(); st.H = num(1, 2); break;
+        case "I": st.I = num(1, 2); break;
+        case "l": skipSp(); st.I = num(1, 2); break;
+        case "M": st.M = num(1, 2); break;
+        case "S": st.S = num(1, 2); break;
+        case "j": st.j = num(1, 3); break;
+        case "f": num(1, 9); break;
+        case "b": case "h": case "B": st.m = name(MONTH_NAMES) + 1; break;
+        case "a": case "A": name(DAY_NAMES); break;
+        case "p": case "P": {
+          const w = text.slice(pos, pos + 2).toLowerCase();
+          if (w !== "am" && w !== "pm") throw bad(pos >= text.length ? "premature end of input" : "input contains invalid characters");
+          pos += 2;
+          st.p = w;
+          break;
+        }
+        case "z": {
+          const m = /^([+-][0-9]{2}:?[0-9]{2}|Z)/.exec(text.slice(pos));
+          if (!m) throw bad(pos >= text.length ? "premature end of input" : "input contains invalid characters");
+          pos += m[0].length;
+          break;
+        }
+        case "Z": {
+          const m = /^[A-Za-z]+/.exec(text.slice(pos));
+          if (!m) throw bad(pos >= text.length ? "premature end of input" : "input contains invalid characters");
+          pos += m[0].length;
+          break;
+        }
+        case "s": {
+          const m = /^-?[0-9]+/.exec(text.slice(pos));
+          if (!m) throw bad(pos >= text.length ? "premature end of input" : "input contains invalid characters");
+          pos += m[0].length;
+          st.s = BigInt(m[0]);
+          break;
+        }
+        case "t": case "n": while (pos < text.length && /\s/.test(text[pos])) pos++; break;
+        case "%":
+          if (text[pos] !== "%") throw bad("input contains invalid characters");
+          pos++;
+          break;
+        default:
+          throw native(`date_parse() doesnae ken the format '%${sp === undefined ? "" : sp}'`);
+      }
+    }
+    if (pos < text.length) throw bad("trailing input");
+    if (st.s !== undefined) return st.s;
+    let hour = st.H;
+    if (st.I !== undefined) {
+      if (st.I < 1 || st.I > 12) throw bad("input is out of range");
+      hour = (st.I % 12) + (st.p === "pm" ? 12 : 0);
+    } else if (st.p !== undefined && hour !== undefined) {
+      if (hour < 1 || hour > 12) throw bad("input is out of range");
+      hour = (hour % 12) + (st.p === "pm" ? 12 : 0);
+    }
+    if (st.Y === undefined || hour === undefined || st.M === undefined) throw bad("not enough input");
+    let month = st.m;
+    let day = st.d;
+    if (month === undefined || day === undefined) {
+      if (st.j === undefined) throw bad("not enough input");
+      month = 1;
+      day = st.j;
+    }
+    const sec = st.S === undefined ? 0 : st.S;
+    if (month < 1 || month > 12 || day < 1 || hour > 23 || st.M > 59 || sec > 59) throw bad("input is out of range");
+    const dt = new Date(0);
+    dt.setUTCFullYear(st.Y, month - 1, day);
+    dt.setUTCHours(hour, st.M, sec, 0);
+    if (st.j === undefined && dt.getUTCDate() !== day) throw bad("input is out of range");
+    return BigInt(Math.floor(dt.getTime() / 1000));
+  };
+  const UNIT_SECS = { seconds: 1n, minutes: 60n, hours: 3600n, days: 86400n, weeks: 604800n };
+  const monoStart = typeof performance !== "undefined" ? performance.now() : Date.now();
+  const monoNow = () => (typeof performance !== "undefined" ? performance.now() : Date.now()) - monoStart;
+
+  // ----- regexes: Rust `regex` syntax translated tae a JS RegExp (always Unicode mode) -----
+  const W_ITEMS = "\\p{Alphabetic}\\p{M}\\p{Nd}\\p{Pc}\\u200c\\u200d";
+  const JS_SYNTAX = "^$\\.*+?()[]{}|/";
+  const rxBad = (pattern, why) => native(`Invalid regex '${pattern}': ${why}`);
+  const rxSource = (pattern) => {
+    let flags = "";
+    let i = 0;
+    for (;;) {
+      const m = /^\(\?([a-zA-Z]+)\)/.exec(pattern.slice(i));
+      if (!m) break;
+      for (const f of m[1]) {
+        if (f === "u") continue;
+        if (f !== "i" && f !== "m" && f !== "s") throw rxBad(pattern, `the flag '${f}' isnae supported in JS`);
+        if (!flags.includes(f)) flags += f;
+      }
+      i += m[0].length;
+    }
+    let out = "";
+    let inClass = false;
+    while (i < pattern.length) {
+      const c = pattern[i];
+      if (c === "\\") {
+        const n = pattern[i + 1];
+        if (n === undefined) throw rxBad(pattern, "incomplete escape sequence, reached end of pattern prematurely");
+        i += 2;
+        if (n === "A" && !inClass) out += "(?<![\\s\\S])";
+        else if (n === "z" && !inClass) out += "(?![\\s\\S])";
+        else if (n === "d") out += "\\p{Nd}";
+        else if (n === "D") out += "\\P{Nd}";
+        else if (n === "w") out += inClass ? W_ITEMS : "[" + W_ITEMS + "]";
+        else if (n === "W") out += inClass ? "\\W" : "[^" + W_ITEMS + "]";
+        else if (n >= "1" && n <= "9" && !inClass) throw rxBad(pattern, "backreferences are not supported");
+        else if ((n === "p" || n === "P") && pattern[i] !== "{" && i < pattern.length) out += "\\" + n + "{" + pattern[i++] + "}";
+        else if (n === "x" && pattern[i] === "{") { out += "\\u{"; i++; }
+        else if (/[!-\/:-@\[-`{-~]/.test(n) && !JS_SYNTAX.includes(n) && !(n === "-" && inClass)) out += n;
+        else out += "\\" + n;
+        continue;
+      }
+      if (inClass) {
+        if (c === "]") inClass = false;
+        out += c === "[" ? "\\[" : c;
+        i++;
+        continue;
+      }
+      if (c === "[") {
+        inClass = true;
+        out += "[";
+        i++;
+        if (pattern[i] === "^") { out += "^"; i++; }
+        if (pattern[i] === "]") { out += "\\]"; i++; }
+        continue;
+      }
+      if (c === ".") { out += flags.includes("s") ? "." : "[^\\n]"; i++; continue; }
+      if (c === "(") {
+        if (pattern.startsWith("(?P<", i)) { out += "(?<"; i += 4; continue; }
+        if (/^\(\?(=|!|<=|<!)/.test(pattern.slice(i))) throw rxBad(pattern, "look-around, including look-ahead and look-behind, is not supported");
+        if (pattern.startsWith("(?P=", i)) throw rxBad(pattern, "backreferences are not supported");
+      }
+      out += c;
+      i++;
+    }
+    return { source: out, flags };
+  };
+  const rxCache = new Map();
+  const rxFor = (pattern, global) => {
+    const key = (global ? "g" : "n") + pattern;
+    let re = rxCache.get(key);
+    if (re === undefined) {
+      const { source, flags } = rxSource(pattern);
+      try {
+        re = new RegExp(source, flags + "u" + (global ? "g" : ""));
+      } catch (e) {
+        throw rxBad(pattern, e.message);
+      }
+      rxCache.set(key, re);
+    }
+    re.lastIndex = 0;
+    return re;
+  };
+  // Every match, as Rust's `find_iter` sees them: an empty match right at the end o' the
+  // match before it is skipped (JS reports it).
+  const rxMatches = (text, re) => {
+    const out = [];
+    let lastEnd = -1;
+    for (const m of text.matchAll(re)) {
+      if (m[0] === "" && m.index === lastEnd) continue;
+      out.push(m);
+      lastEnd = m.index + m[0].length;
+    }
+    return out;
+  };
+  // UTF-8 byte offset o' UTF-16 index `i` (the interpreter reports byte offsets).
+  const byteOff = (text, i) => (/^[\x00-\x7f]*$/.test(text) ? i : utf8Len(text.slice(0, i)));
+  const matchDict = (text, m) => ({
+    match: m[0],
+    start: BigInt(byteOff(text, m.index)),
+    end: BigInt(byteOff(text, m.index + m[0].length)),
+  });
+  // Rust's replacement syntax: $1, $name, ${name}, $$.
+  const rxExpand = (rep, m) => {
+    let out = "";
+    for (let i = 0; i < rep.length; i++) {
+      const c = rep[i];
+      if (c !== "$") { out += c; continue; }
+      if (rep[i + 1] === "$") { out += "$"; i++; continue; }
+      let name;
+      if (rep[i + 1] === "{") {
+        const end = rep.indexOf("}", i + 2);
+        if (end < 0) { out += c; continue; }
+        name = rep.slice(i + 2, end);
+        i = end;
+      } else {
+        const t = /^[0-9A-Za-z_]+/.exec(rep.slice(i + 1));
+        if (!t) { out += c; continue; }
+        name = t[0];
+        i += name.length;
+      }
+      const v = /^[0-9]+$/.test(name) ? m[Number(name)] : m.groups && m.groups[name];
+      out += v === undefined ? "" : v;
+    }
+    return out;
+  };
+  const rxArgs = (fname, text, pattern) => {
+    needStr(text, `${fname}() needs a string`);
+    needStr(pattern, `${fname}() needs a pattern string`);
+  };
+  const rxReplace = (fname, text, pattern, rep, all) => {
+    rxArgs(fname, text, pattern);
+    needStr(rep, `${fname}() needs a replacement string`);
+    const re = rxFor(pattern, true);
+    let out = "";
+    let last = 0;
+    for (const m of rxMatches(text, re)) {
+      out += text.slice(last, m.index) + rxExpand(rep, m);
+      last = m.index + m[0].length;
+      if (!all) break;
+    }
+    return out + text.slice(last);
+  };
+
+  // ----- files an' environment (Node only) -----
+  const isNode = () => typeof process !== "undefined" && process.versions != null && process.versions.node != null && typeof require === "function";
+  const needNode = (fname, what) => {
+    if (!isNode()) throw native(`${fname}() needs Node fer ${what} - there's nae such thing in a browser, pal`);
+  };
+  const OS_ERRORS = {
+    ENOENT: "No such file or directory", EACCES: "Permission denied", EEXIST: "File exists",
+    EISDIR: "Is a directory", ENOTDIR: "Not a directory", ENOTEMPTY: "Directory not empty",
+    EPERM: "Operation not permitted", EINVAL: "Invalid argument",
+  };
+  const osMsg = (e) => {
+    const text = OS_ERRORS[e && e.code];
+    if (text === undefined) return e && e.message ? e.message : String(e);
+    return typeof e.errno === "number" ? `${text} (os error ${Math.abs(e.errno)})` : text;
+  };
+  const fsCall = (fname, wrap, f) => {
+    needNode(fname, "the file system");
+    try {
+      return f(require("fs"));
+    } catch (e) {
+      throw native(wrap(osMsg(e)));
+    }
+  };
+  const needPath = (v, msg) => needStr(v, msg);
+  const readText = (fname, p) =>
+    fsCall(fname, (m) => `Couldnae read '${p}': ${m}`, (fs) => {
+      const buf = fs.readFileSync(p);
+      try {
+        return new TextDecoder("utf-8", { fatal: true }).decode(buf);
+      } catch (_e) {
+        throw Object.assign(new Error("stream did not contain valid UTF-8"), {});
+      }
+    });
+  const envName = (fname, v) => needStr(v, `${fname}() needs a variable name string`);
+
+  // Builtins the JS runtime doesnae have: sockets, TLS/DTLS/SRTP, event loops, threads an' the shell.
+  const NO_JS = [
+    "socket_udp", "socket_tcp", "socket_bind", "socket_connect", "socket_listen", "socket_accept",
+    "socket_set_nonblocking", "socket_set_reuseaddr", "socket_set_reuseport", "socket_set_ttl",
+    "socket_set_nodelay", "socket_set_rcvbuf", "socket_set_sndbuf", "socket_close",
+    "udp_send_to", "udp_recv_from", "tcp_send", "tcp_recv", "dns_lookup", "dns_srv", "dns_naptr",
+    "tls_client_new", "tls_connect", "tls_send", "tls_recv", "tls_close",
+    "dtls_server_new", "dtls_handshake", "srtp_create", "srtp_protect", "srtp_unprotect",
+    "event_loop_new", "event_loop_stop", "event_watch_read", "event_watch_write", "event_unwatch",
+    "event_loop_poll", "timer_after", "timer_every", "timer_cancel",
+    "thread_spawn", "thread_join", "thread_detach",
+    "mutex_new", "mutex_lock", "mutex_unlock", "mutex_try_lock",
+    "condvar_new", "condvar_wait", "condvar_timed_wait", "condvar_signal", "condvar_broadcast",
+    "atomic_new", "atomic_load", "atomic_store", "atomic_add", "atomic_cas",
+    "chan_new", "chan_send", "chan_recv", "chan_try_recv", "chan_close", "chan_is_closed",
+    "shell", "shell_status",
+  ];
+  const noJsBuiltins = {};
+  for (const name of NO_JS) {
+    noJsBuiltins[name] = () => {
+      throw native(`${name}() isnae available in JS - it's fer the interpreter an' native builds only`);
+    };
+  }
+
+  const hostBuiltins = {
+    ...noJsBuiltins,
+
+    // ----- bytes -----
+    bytes: (n) => {
+      if (typeof n !== "bigint" && typeof n !== "number") throw native("bytes() expects an integer size");
+      let size = typeof n === "bigint" ? n : f64ToI64(n);
+      if (size < 0n) size = 0n;
+      allocCheck(1, size, "bytes()");
+      return new MdhBytes(new Uint8Array(Number(size)));
+    },
+    bytes_from_string: (s) => new MdhBytes(new TextEncoder().encode(typeof s === "string" ? s : show(s))),
+    bytes_len: (b) => BigInt(needBytes(b, "bytes_len() expects bytes").a.length),
+    bytes_slice: (b, start, end) => {
+      needBytes(b, "bytes_slice() expects bytes");
+      if (typeof start !== "bigint") throw native("bytes_slice() expects integer start");
+      if (typeof end !== "bigint") throw native("bytes_slice() expects integer end");
+      const len = BigInt(b.a.length);
+      let s = start < 0n ? start + len : start;
+      let e = end < 0n ? end + len : end;
+      s = clampBig(s, 0n, len);
+      e = clampBig(e, 0n, len);
+      if (e < s) e = s;
+      return new MdhBytes(b.a.slice(Number(s), Number(e)));
+    },
+    bytes_get: (b, i) => {
+      needBytes(b, "bytes_get() expects bytes");
+      if (typeof i !== "bigint") throw native("bytes_get() expects integer index");
+      const len = BigInt(b.a.length);
+      const j = i < 0n ? i + len : i;
+      if (j < 0n || j >= len) throw native("bytes_get() index oot o' bounds");
+      return BigInt(b.a[Number(j)]);
+    },
+    bytes_set: (b, i, v) => {
+      needBytes(b, "bytes_set() expects bytes");
+      if (typeof i !== "bigint") throw native("bytes_set() expects integer index");
+      const val = intArg(v, "bytes_set() expects integer value");
+      if (val < 0n || val > 255n) throw native("bytes_set() value must be between 0 and 255");
+      const len = BigInt(b.a.length);
+      const j = i < 0n ? i + len : i;
+      if (j < 0n || j >= len) throw native("bytes_set() index oot o' bounds");
+      b.a[Number(j)] = Number(val);
+      return b;
+    },
+    bytes_append: (b, other) => {
+      needBytes(b, "bytes_append() expects bytes");
+      needBytes(other, "bytes_append() expects bytes");
+      const total = b.a.length + other.a.length;
+      allocCheck(1, BigInt(total), "bytes_append()");
+      const joined = new Uint8Array(total);
+      joined.set(b.a, 0);
+      joined.set(other.a, b.a.length); // `other` may be `b` itsel': its old buffer is still intact here
+      b.a = joined;
+      return b;
+    },
+    bytes_read_u16be: (b, off) => {
+      needBytes(b, "bytes_read_u16be() expects bytes");
+      if (typeof off !== "bigint") throw native("bytes_read_u16be() expects integer offset");
+      if (off < 0n || off + 2n > BigInt(b.a.length)) throw native("bytes_read_u16be() out o' bounds");
+      const o = Number(off);
+      return BigInt((b.a[o] << 8) | b.a[o + 1]);
+    },
+    bytes_read_u32be: (b, off) => {
+      needBytes(b, "bytes_read_u32be() expects bytes");
+      if (typeof off !== "bigint") throw native("bytes_read_u32be() expects integer offset");
+      if (off < 0n || off + 4n > BigInt(b.a.length)) throw native("bytes_read_u32be() out o' bounds");
+      const o = Number(off);
+      return BigInt(((b.a[o] * 0x1000000) + ((b.a[o + 1] << 16) | (b.a[o + 2] << 8) | b.a[o + 3])));
+    },
+    bytes_write_u16be: (b, off, v) => {
+      needBytes(b, "bytes_write_u16be() expects bytes");
+      if (typeof off !== "bigint") throw native("bytes_write_u16be() expects integer offset");
+      const val = intArg(v, "bytes_write_u16be() expects integer value");
+      if (val < 0n || val > 0xffffn) throw native("bytes_write_u16be() value out o' range");
+      if (off < 0n || off + 2n > BigInt(b.a.length)) throw native("bytes_write_u16be() out o' bounds");
+      const o = Number(off);
+      const n = Number(val);
+      b.a[o] = (n >> 8) & 0xff;
+      b.a[o + 1] = n & 0xff;
+      return b;
+    },
+    bytes_write_u32be: (b, off, v) => {
+      needBytes(b, "bytes_write_u32be() expects bytes");
+      if (typeof off !== "bigint") throw native("bytes_write_u32be() expects integer offset");
+      const val = intArg(v, "bytes_write_u32be() expects integer value");
+      if (val < 0n || val > 0xffffffffn) throw native("bytes_write_u32be() value out o' range");
+      if (off < 0n || off + 4n > BigInt(b.a.length)) throw native("bytes_write_u32be() out o' bounds");
+      const o = Number(off);
+      const n = Number(val);
+      b.a[o] = Math.floor(n / 0x1000000) & 0xff;
+      b.a[o + 1] = (n >>> 16) & 0xff;
+      b.a[o + 2] = (n >>> 8) & 0xff;
+      b.a[o + 3] = n & 0xff;
+      return b;
+    },
+
+    // ----- dates -----
+    date_now: () => {
+      const d = new Date();
+      return {
+        year: BigInt(d.getFullYear()),
+        month: BigInt(d.getMonth() + 1),
+        day: BigInt(d.getDate()),
+        hour: BigInt(d.getHours()),
+        minute: BigInt(d.getMinutes()),
+        second: BigInt(d.getSeconds()),
+        weekday: BigInt((d.getDay() + 6) % 7),
+      };
+    },
+    date_format: (ts, fmt) => {
+      if (typeof ts !== "bigint" && typeof ts !== "number") throw native("date_format() needs a timestamp");
+      needStr(fmt, "date_format() needs a format string");
+      return strftime(dateOf(intArg(ts), "date_format()"), fmt);
+    },
+    date_parse: (text, fmt) => {
+      needStr(text, "date_parse() needs a date string");
+      needStr(fmt, "date_parse() needs a format string");
+      return parseDate(text, fmt);
+    },
+    date_add: (ts, amount, unit) => {
+      if (typeof ts !== "bigint" && typeof ts !== "number") throw native("date_add() needs a timestamp");
+      if (typeof amount !== "bigint" && typeof amount !== "number") throw native("date_add() needs an amount");
+      needStr(unit, "date_add() needs a unit string");
+      const t = intArg(ts);
+      dateOf(t, "date_add()");
+      const secs = UNIT_SECS[unit];
+      if (secs === undefined || !Object.prototype.hasOwnProperty.call(UNIT_SECS, unit)) throw native(`Unknown time unit: ${unit}`);
+      return t + intArg(amount) * secs;
+    },
+    date_diff: (a, b, unit) => {
+      if ((typeof a !== "bigint" && typeof a !== "number") || (typeof b !== "bigint" && typeof b !== "number")) throw native("date_diff() needs timestamps");
+      needStr(unit, "date_diff() needs a unit string");
+      const diff = intArg(b) - intArg(a);
+      switch (unit) {
+        case "milliseconds": return diff * 1000n;
+        case "seconds": return diff;
+        case "minutes": return diff / 60n;
+        case "hours": return diff / 3600n;
+        case "days": return diff / 86400n;
+        case "weeks": return diff / 604800n;
+        default: throw native(`Unknown time unit: ${unit}`);
+      }
+    },
+    timestamp: () => BigInt(Math.floor(Date.now() / 1000)),
+    timestamp_millis: () => BigInt(Date.now()),
+    the_noo: () => BigInt(Math.floor(Date.now() / 1000)),
+    mono_ms: () => BigInt(Math.floor(monoNow())),
+    mono_ns: () => BigInt(Math.floor(monoNow() * 1e6)),
+
+    // ----- regexes -----
+    regex_test: (text, pattern) => {
+      rxArgs("regex_test", text, pattern);
+      return rxFor(pattern, false).test(text);
+    },
+    regex_match: (text, pattern) => {
+      rxArgs("regex_match", text, pattern);
+      const m = rxFor(pattern, false).exec(text);
+      return m === null ? null : matchDict(text, m);
+    },
+    regex_match_all: (text, pattern) => {
+      rxArgs("regex_match_all", text, pattern);
+      return rxMatches(text, rxFor(pattern, true)).map((m) => matchDict(text, m));
+    },
+    regex_replace: (text, pattern, rep) => rxReplace("regex_replace", text, pattern, rep, true),
+    regex_replace_first: (text, pattern, rep) => rxReplace("regex_replace_first", text, pattern, rep, false),
+    regex_split: (text, pattern) => {
+      rxArgs("regex_split", text, pattern);
+      const parts = [];
+      let last = 0;
+      for (const m of rxMatches(text, rxFor(pattern, true))) {
+        parts.push(text.slice(last, m.index));
+        last = m.index + m[0].length;
+      }
+      parts.push(text.slice(last));
+      return parts;
+    },
+
+    // ----- files (Node) -----
+    scrieve: (p, content) => {
+      needPath(p, "scrieve() needs a file path string");
+      fsCall("scrieve", (m) => `Couldnae open '${p}' fer writin': ${m}`, (fs) => fs.writeFileSync(p, show(content)));
+      return null;
+    },
+    scrieve_append: (p, content) => {
+      needPath(p, "scrieve_append() needs a file path string");
+      fsCall("scrieve_append", (m) => `Couldnae open '${p}' fer appendin': ${m}`, (fs) => fs.appendFileSync(p, show(content)));
+      return null;
+    },
+    append_file: (p, content) => {
+      needPath(p, "append_file() needs a file path string");
+      fsCall("append_file", (m) => `Couldnae open '${p}' fer appendin': ${m}`, (fs) => fs.appendFileSync(p, show(content)));
+      return null;
+    },
+    read_file: (p) => {
+      needPath(p, "read_file() needs a file path string");
+      return readText("read_file", p);
+    },
+    read_lines: (p) => {
+      needPath(p, "read_lines() needs a file path string");
+      return builtins.lines(readText("read_lines", p));
+    },
+    file_exists: (p) => {
+      needPath(p, "file_exists() needs a file path string");
+      needNode("file_exists", "the file system");
+      return require("fs").existsSync(p);
+    },
+    file_delete: (p) => {
+      needPath(p, "file_delete() needs a file path string");
+      fsCall("file_delete", (m) => `Couldnae delete '${p}': ${m}`, (fs) => fs.unlinkSync(p));
+      return null;
+    },
+    list_dir: (p) => {
+      needPath(p, "list_dir() needs a directory path string");
+      return fsCall("list_dir", (m) => `Couldnae read directory '${p}': ${m}`, (fs) => fs.readdirSync(p));
+    },
+    make_dir: (p) => {
+      needPath(p, "make_dir() needs a directory path string");
+      fsCall("make_dir", (m) => `Couldnae create directory '${p}': ${m}`, (fs) => fs.mkdirSync(p, { recursive: true }));
+      return null;
+    },
+    is_dir: (p) => {
+      needPath(p, "is_dir() needs a path string");
+      needNode("is_dir", "the file system");
+      try {
+        return require("fs").statSync(p).isDirectory();
+      } catch (_e) {
+        return false;
+      }
+    },
+    file_size: (p) => {
+      needPath(p, "file_size() needs a file path string");
+      return fsCall("file_size", (m) => `Couldnae get file info fer '${p}': ${m}`, (fs) => BigInt(fs.statSync(p).size));
+    },
+    // Rust's `Path::join`: an absolute second part replaces the first; there is nae normalising.
+    path_join: (a, b) => {
+      if (typeof a !== "string" || typeof b !== "string") throw native("path_join() needs strings");
+      const sep = isNode() ? require("path").sep : "/";
+      const abs = isNode() ? require("path").isAbsolute(b) : b.startsWith("/");
+      if (abs || a === "") return b;
+      return a.endsWith("/") || (sep !== "/" && a.endsWith(sep)) ? a + b : a + sep + b;
+    },
+
+    // ----- environment (Node) -----
+    env_get: (name) => {
+      envName("env_get", name);
+      needNode("env_get", "environment variables");
+      const v = process.env[name];
+      return v === undefined ? null : v;
+    },
+    env_set: (name, value) => {
+      envName("env_set", name);
+      needNode("env_set", "environment variables");
+      process.env[name] = typeof value === "string" ? value : show(value);
+      return null;
+    },
+    env_all: () => {
+      needNode("env_all", "environment variables");
+      const d = {};
+      for (const [k, v] of Object.entries(process.env)) d[dkey(k)] = v;
+      return d;
+    },
+    cwd: () => {
+      needNode("cwd", "the working directory");
+      return process.cwd();
+    },
+    chdir: (p) => {
+      needStr(p, "chdir() needs a path string");
+      needNode("chdir", "the working directory");
+      try {
+        process.chdir(p);
+      } catch (e) {
+        throw native(`Couldnae change tae directory '${p}': ${osMsg(e)}`);
+      }
+      return null;
+    },
+    args: () => {
+      needNode("args", "command line arguments");
+      return process.argv.slice(1);
+    },
+    exit: (code) => {
+      needNode("exit", "leavin' the program");
+      process.exit(typeof code === "bigint" ? Number(code) : typeof code === "number" ? Math.trunc(code) : 0);
+    },
+  };
+
   const builtins = {
+    ...hostBuiltins,
     // Dicts: keys come back wi' their ain types (see `dkey`).
     keys: (d) => {
       if (!isDict(d)) throw native("keys() expects a dict");
@@ -1621,6 +2367,7 @@ const __havers_core = (() => {
       }
       if (Array.isArray(x)) return BigInt(x.length);
       if (x instanceof Set) return BigInt(x.size);
+      if (x instanceof MdhBytes) return BigInt(x.a.length);
       if (x !== null && typeof x === "object") return BigInt(Object.keys(x).length);
       throw native("len() expects a string, list, dict, creel, or bytes");
     },
