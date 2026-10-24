@@ -685,7 +685,16 @@ const __havers_core = (() => {
     allocCheck(utf8Len(fill), pad, `${name}()`);
     return pad;
   };
-  const replaceAllCp = (s, from, to) => {
+  // Fisher-Yates over code points, like the interpreter's `havers_shuffle`.
+  const shuffleCps = (s) => {
+    const a = cps(s);
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a.join("");
+  };
+  const replaceAllCp =(s, from, to) => {
     if (from === "") return to + cps(s).map((c) => c + to).join("");
     return s.split(from).join(to);
   };
@@ -1192,6 +1201,148 @@ const __havers_core = (() => {
       const no = [];
       for (const x of l) (tests[pred](x) ? yes : no).push(x);
       return [yes, no];
+    },
+
+    // ---------- Scots string an' list fun (MDH-BUG-FLU-00114) ----------
+    // ASCII-only case, like Rust's `to_ascii_uppercase`; the shuffles are by code point.
+    roar: (s) => {
+      if (typeof s !== "string") throw native("roar() expects a string");
+      return s.replace(/[a-z]/g, (c) => c.toUpperCase()) + "!";
+    },
+    mutter: (s) => {
+      if (typeof s !== "string") throw native("mutter() expects a string");
+      return "..." + s.replace(/[A-Z]/g, (c) => c.toLowerCase()) + "...";
+    },
+    blooter: (s) => {
+      if (typeof s !== "string") throw native("blooter() expects a string");
+      return shuffleCps(s);
+    },
+    stooshie: (s) => {
+      if (typeof s !== "string") throw native("stooshie needs a string");
+      return shuffleCps(s);
+    },
+    wheesht_aw: (s) => {
+      if (typeof s !== "string") throw native("wheesht_aw() needs a string");
+      return s.split(/[ \t\n\r]/).filter((p) => p !== "").join(" ");
+    },
+    // A list wi' a repeat, or a string wi' a repeated character.
+    clarty: (x) => {
+      if (Array.isArray(x)) {
+        for (let i = 0; i < x.length; i++) {
+          for (let j = 0; j < i; j++) if (eq(x[j], x[i])) return true;
+        }
+        return false;
+      }
+      if (typeof x === "string") {
+        const a = cps(x);
+        return new Set(a).size !== a.length;
+      }
+      throw native("clarty() needs a list or string");
+    },
+    dreich: (s) => {
+      if (typeof s !== "string") throw native("dreich() needs a string");
+      const a = cps(s);
+      return a.every((c) => c === a[0]);
+    },
+    geggie: (s) => {
+      if (typeof s !== "string") throw native("geggie() needs a string");
+      const a = cps(s);
+      return a.length === 0 ? "" : a[0] + a[a.length - 1];
+    },
+    banter: (a, b) => {
+      if (typeof a !== "string" || typeof b !== "string") throw native("banter() needs two strings");
+      const x = cps(a);
+      const y = cps(b);
+      let out = "";
+      for (let i = 0; i < Math.max(x.length, y.length); i++) out += (x[i] ?? "") + (y[i] ?? "");
+      return out;
+    },
+    skelp: (s, n) => {
+      if (typeof s !== "string") throw native("skelp() needs a string and size");
+      const size = asInt(n);
+      if (size === null) throw native("skelp() needs integer size");
+      if (size <= 0n) throw native("skelp() size must be positive");
+      return chunkList(cps(s), clampCount(size, Number.MAX_SAFE_INTEGER)).map((c) => c.join(""));
+    },
+    // Fewer than two non-whitespace bytes (UTF-8, so one wide character is enough) is havers.
+    haverin: (x) => {
+      if (typeof x === "string") return utf8Len(x.replace(/[ \t\n\f\r]/g, "")) < 2;
+      if (x === null || x === undefined) return true;
+      if (Array.isArray(x)) return x.length === 0;
+      return false;
+    },
+    glaikit: (x) => {
+      if (x === null || x === undefined) return true;
+      if (typeof x === "bigint") return x === 0n;
+      if (typeof x === "number") return x === 0;
+      if (typeof x === "string") return /^[ \t\n\f\r]*$/.test(x);
+      if (Array.isArray(x)) return x.length === 0;
+      if (isDict(x)) return Object.keys(x).length === 0;
+      return false;
+    },
+    haggis_hunt: (s, needle) => {
+      if (typeof s !== "string") throw native("haggis_hunt needs a string tae search");
+      if (typeof needle !== "string") throw native("haggis_hunt needs a string tae find");
+      if (needle === "") return [];
+      const out = [];
+      for (let i = s.indexOf(needle); i >= 0; i = s.indexOf(needle, i + needle.length)) out.push(BigInt(cpIndex(s, i)));
+      return out;
+    },
+    sporran_fill: (s, width, fill) => {
+      if (typeof s !== "string") throw native("sporran_fill needs a string");
+      if (typeof width !== "bigint") throw native("sporran_fill needs a width");
+      if (typeof fill !== "string") throw native("sporran_fill needs a fill character");
+      const f = cps(fill)[0] ?? " ";
+      const len = BigInt(cps(s).length);
+      if (width <= len) return s;
+      const pad = width - len;
+      allocCheck(utf8Len(f), pad, "sporran_fill");
+      const left = pad / 2n;
+      return f.repeat(Number(left)) + s + f.repeat(Number(pad - left));
+    },
+    tattie_scone: (s, n) => {
+      if (typeof s !== "string") throw native("tattie_scone needs a string");
+      if (typeof n !== "bigint") throw native("tattie_scone needs a number");
+      if (n <= 0n) return "";
+      allocCheck(utf8Len(s) + 3, n, "tattie_scone");
+      return Array(Number(n)).fill(s).join(" | ");
+    },
+    birl: (l, n) => {
+      if (!Array.isArray(l)) throw native("birl needs a list");
+      if (typeof n !== "bigint") throw native("birl needs a rotation count");
+      if (l.length === 0) return [];
+      const len = BigInt(l.length);
+      const k = Number(((n % len) + len) % len);
+      return [...l.slice(k), ...l.slice(0, k)];
+    },
+    // Insert a value at an index (a copy); a negative index counts frae the end.
+    chynge: (l, i, v) => {
+      if (!Array.isArray(l)) throw native("chynge() needs a list");
+      const n = asInt(i);
+      if (n === null) throw native("chynge() needs an integer index");
+      const len = BigInt(l.length);
+      // Rust's `(len + idx) as usize` wraps a too-negative index tae a huge one.
+      const at = n < 0n ? BigInt.asUintN(64, len + n) : n;
+      if (at > len) throw native(`Index ${at} oot o' bounds fer list o' length ${len}`);
+      const out = [...l];
+      out.splice(Number(at), 0, v);
+      return out;
+    },
+    clype: (x) => {
+      const t = typeName(x);
+      let info = t;
+      if (Array.isArray(x)) info = `list wi' ${x.length} items`;
+      else if (isDict(x)) info = `dict wi' ${Object.keys(x).length} entries`;
+      else if (x instanceof Set) info = `creel wi' ${x.size} items`;
+      else if (typeof x === "string") info = `string o' ${cps(x).length} characters`;
+      else if (typeof x === "bigint") info = `integer: ${x}`;
+      else if (typeof x === "number") info = `float: ${showNumber(x)}`;
+      else if (typeof x === "boolean") info = `boolean: ${x ? "aye" : "nae"}`;
+      else if (x === null || x === undefined) info = "naething";
+      else if (isKin(x)) info = `class '${x.name}'`;
+      else if (typeof x === "function") info = `function '${x.name}'`;
+      else if (t === "instance") info = `instance o' '${x.constructor.name}'`;
+      return `[${t}] ${info}`;
     },
 
     // ---------- Lists (MDH-BUG-FLU-00114) ----------
@@ -1989,6 +2140,60 @@ const __havers_core = (() => {
 
   // A `kin` (or `thing`) is a JS class wrapped so it can be ca'd wi'oot `new`,
   // just as the interpreter lets ye ca' a class like a function.
+  // ---------- class instances: operator overloading an' property access ----------
+  //
+  // An instance o' a `kin` whose class has the named method (the interpreter's
+  // `operator_overload`): the method, or undefined.
+  const overload = (a, name) => {
+    if (a === null || typeof a !== "object") return undefined;
+    const ctor = a.constructor;
+    if (!ctor || ctor.__mdh_kin !== true || ctor.__mdh_struct) return undefined;
+    const m = Object.getPrototypeOf(a)[name];
+    return typeof m === "function" ? m : undefined;
+  };
+  // A binary operator helper that first tries the left instance's overload.
+  const overloadable = (name, f) => (a, b, line) => {
+    const m = overload(a, name);
+    return m === undefined ? f(a, b, line) : m.call(a, b);
+  };
+  const eqOp = (a, b) => {
+    const m = overload(a, "__same_as__");
+    return m === undefined ? eq(a, b) : m.call(a, b);
+  };
+  const neOp = (a, b) => {
+    const m = overload(a, "__differs_fae__");
+    return m === undefined ? !eq(a, b) : m.call(a, b);
+  };
+  // `obj.prop` no' in call position. On an instance an own field beats a method,
+  // a method comes back bound tae the instance, an' a missing name is an error
+  // (as in the interpreter's `eval_get`). Ony ither value is read plain.
+  const getProp = (o, p, line) => {
+    if (o === null || typeof o !== "object") return o[p];
+    const v = o[p];
+    if (v !== undefined && typeof v !== "function") return v;
+    const ctor = o.constructor;
+    if (!ctor || ctor.__mdh_kin !== true || ctor.__mdh_struct) return v;
+    if (Object.prototype.hasOwnProperty.call(o, p)) return v;
+    if (typeof v === "function" && p !== "constructor") return v.bind(o);
+    throw fail(`Awa' an bile yer heid! '${p}' hasnae been defined yet at line ${line}`);
+  };
+
+  // `obj.name(args)`. On an instance the class's method beats an own field o' the
+  // same name (the interpreter's `call_instance_method`), a field is the fallback,
+  // an' a missing name is an error. Ony ither receiver is called plainly.
+  const callM = (o, p, line, ...args) => {
+    if (o !== null && typeof o === "object") {
+      const ctor = o.constructor;
+      if (ctor && ctor.__mdh_kin === true && !ctor.__mdh_struct) {
+        const m = Object.getPrototypeOf(o)[p];
+        if (typeof m === "function" && p !== "constructor") return m.apply(o, args);
+        if (Object.prototype.hasOwnProperty.call(o, p)) return o[p](...args);
+        throw fail(`Awa' an bile yer heid! '${p}' hasnae been defined yet at line ${line}`);
+      }
+    }
+    return o[p](...args);
+  };
+
   const kin = (cls, isStruct) => {
     cls.__mdh_kin = true;
     if (isStruct) cls.__mdh_struct = true;
@@ -2004,7 +2209,17 @@ const __havers_core = (() => {
   const or = (l, r) => (truthy(l) ? l : r());
 
   return {
-    show, truthy, eq, fail, typeName, isDict, dkey, hof, add, sub, mul, div, mod, neg, lt, le, gt, ge,
+    show, truthy, eq, fail, typeName, isDict, dkey, hof, neg,
+    add: overloadable("__pit_thegither__", add),
+    sub: overloadable("__tak_awa__", sub),
+    mul: overloadable("__times__", mul),
+    div: overloadable("__pairt__", div),
+    mod: overloadable("__lave__", mod),
+    lt: overloadable("__wee_er__", lt),
+    le: overloadable("__wee_er_or_same__", le),
+    gt: overloadable("__muckle_er__", gt),
+    ge: overloadable("__muckle_er_or_same__", ge),
+    eqOp, neOp, getProp, callM,
     idx, setIdx, slice, rangeOf, inRange, iter, builtins, nums, numArgs, kin, hurl, caught, and, or,
     foreign, jsArgs,
   };

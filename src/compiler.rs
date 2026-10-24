@@ -211,6 +211,25 @@ const RUNTIME_BINDINGS: &[&str] = &[
     "assert",
     "assert_equal",
     "assert_nae_equal",
+    // Scots string an' list builtins (core_runtime.js), matchin' the interpreter's (MDH-BUG-FLU-00114).
+    "roar",
+    "mutter",
+    "blooter",
+    "stooshie",
+    "wheesht_aw",
+    "clarty",
+    "dreich",
+    "geggie",
+    "banter",
+    "skelp",
+    "haverin",
+    "glaikit",
+    "haggis_hunt",
+    "sporran_fill",
+    "tattie_scone",
+    "birl",
+    "chynge",
+    "clype",
     "soond_stairt",
     "soond_steek",
     "soond_wheesht",
@@ -459,6 +478,13 @@ pub struct Compiler {
     indent: usize,
     output: String,
     match_counter: usize,
+    /// How many method bodies we're inside: a nested function sees `masel` through `__masel`.
+    method_depth: usize,
+    /// Set just afore a class method is compiled, so its body binds `__masel`.
+    compiling_method: bool,
+    /// Plain function declarations entered inside the current method body: each has its
+    /// ain `this`, so `masel` is read through `__masel` there.
+    nested_fn_depth: usize,
     /// mdhavers name -> JS name fer each enclosing JS block, innermost last.
     scopes: Vec<HashMap<String, String>>,
     /// Counter fer renamin' bindings that shadow an outer name.
@@ -487,6 +513,9 @@ impl Compiler {
             indent: 0,
             output: String::new(),
             match_counter: 0,
+            method_depth: 0,
+            compiling_method: false,
+            nested_fn_depth: 0,
             scopes: vec![HashMap::new()],
             rename_counter: 0,
             static_classes: HashSet::new(),
@@ -1425,6 +1454,8 @@ impl Compiler {
                     self.emit_line("}");
                 }
 
+                let outer_method_depth = std::mem::take(&mut self.method_depth);
+                let outer_nested_fn_depth = std::mem::take(&mut self.nested_fn_depth);
                 for method in methods {
                     if let Stmt::Function {
                         name: method_name,
@@ -1435,10 +1466,13 @@ impl Compiler {
                     {
                         self.emit_indent();
                         self.output.push_str(&format!("{}(", method_name));
+                        self.compiling_method = true;
                         self.compile_callable(params, body);
                         self.output.push('\n');
                     }
                 }
+                self.method_depth = outer_method_depth;
+                self.nested_fn_depth = outer_nested_fn_depth;
 
                 self.indent -= 1;
                 self.emit_line("});");
@@ -1699,7 +1733,17 @@ impl Compiler {
     fn compile_callable(&mut self, params: &[Param], body: &[Stmt]) {
         self.push_scope();
         self.fn_contexts.push(FnContext::default());
+        let is_method = std::mem::take(&mut self.compiling_method);
+        // A function declared inside a method has its ain `this`: its defaults an' body
+        // read the method's `masel` through `__masel`.
+        let is_nested = !is_method && self.method_depth > 0;
+        if is_nested {
+            self.nested_fn_depth += 1;
+        }
         let params_str = self.compile_params(params);
+        if is_method {
+            self.method_depth += 1;
+        }
         if let Some(sentinel) = self.current_fn().sentinel.clone() {
             // A `gie` in a default value's block throws the sentinel while the
             // parameters are bound, afore ony body `try` is entered. So bind them
@@ -1708,6 +1752,9 @@ impl Compiler {
             let args = format!("{}_args", sentinel);
             self.output.push_str(&format!("...{}) {{\n", args));
             self.indent += 1;
+            if is_method {
+                self.emit_line("const __masel = this;");
+            }
             self.emit_line(&format!("const {} = {{}};", sentinel));
             self.emit_line("try {");
             self.emit_line(&format!("return (({}) => {{", params_str));
@@ -1722,12 +1769,22 @@ impl Compiler {
             self.indent -= 1;
             self.emit_indent();
             self.output.push('}');
+            if is_method {
+                self.method_depth -= 1;
+            }
+            if is_nested {
+                self.nested_fn_depth -= 1;
+            }
             self.pop_scope();
             return;
         }
         self.output.push_str(&params_str);
         self.output.push_str(") {\n");
         self.indent += 1;
+        if is_method {
+            // A nested function declaration has its ain `this`: it reads `masel` here.
+            self.emit_line("const __masel = this;");
+        }
         let body_start = self.output.len();
         for stmt in body {
             self.compile_stmt(stmt);
@@ -1742,6 +1799,12 @@ impl Compiler {
         self.indent -= 1;
         self.emit_indent();
         self.output.push('}');
+        if is_method {
+            self.method_depth -= 1;
+        }
+        if is_nested {
+            self.nested_fn_depth -= 1;
+        }
         self.pop_scope();
     }
 
@@ -1965,14 +2028,13 @@ impl Compiler {
                     BinaryOp::Equal | BinaryOp::NotEqual
                         if !(is_scalar_literal(left) || is_scalar_literal(right)) =>
                     {
-                        let negate = matches!(operator, BinaryOp::NotEqual);
-                        if negate {
-                            self.output.push_str("(!");
-                        }
-                        self.compile_binary_helper("__havers.eq", left, right, None);
-                        if negate {
-                            self.output.push(')');
-                        }
+                        // An instance on the left may overload `==` / `!=`.
+                        let helper = if matches!(operator, BinaryOp::NotEqual) {
+                            "__havers.neOp"
+                        } else {
+                            "__havers.eqOp"
+                        };
+                        self.compile_binary_helper(helper, left, right, None);
                     }
                     // `==` against a string or bool literal: JS `===` agrees.
                     BinaryOp::Equal | BinaryOp::NotEqual => {
@@ -2067,6 +2129,24 @@ impl Compiler {
                     self.output.push_str(&format!("__havers.hof({}, ", line));
                     self.compile_expr(callee);
                     self.output.push_str(", [");
+                } else if let Expr::Get {
+                    object,
+                    property,
+                    span: get_span,
+                } = &**callee
+                {
+                    // A method call prefers the class's method tae an own field o' the
+                    // same name (the runtime's callM), nae binding needed.
+                    self.output.push_str("__havers.callM(");
+                    self.compile_expr(object);
+                    self.output
+                        .push_str(&format!(", {}, {}", js_string(property), get_span.line));
+                    for arg in arguments {
+                        self.output.push_str(", ");
+                        self.compile_expr(arg);
+                    }
+                    self.output.push(')');
+                    return;
                 } else {
                     self.compile_expr(callee);
                     self.output.push('(');
@@ -2082,11 +2162,16 @@ impl Compiler {
             }
 
             Expr::Get {
-                object, property, ..
+                object,
+                property,
+                span,
             } => {
-                self.compile_receiver(object);
-                self.output.push('.');
-                self.output.push_str(property);
+                // A method value is bound tae its instance, an own field beats a
+                // method, an' a missing field is an error (the runtime's getProp).
+                self.output.push_str("__havers.getProp(");
+                self.compile_expr(object);
+                self.output
+                    .push_str(&format!(", {}, {})", js_string(property), span.line));
             }
 
             Expr::Set {
@@ -2236,7 +2321,11 @@ impl Compiler {
             }
 
             Expr::Masel { .. } => {
-                self.output.push_str("this");
+                self.output.push_str(if self.nested_fn_depth > 0 {
+                    "__masel"
+                } else {
+                    "this"
+                });
             }
 
             Expr::Input { prompt, .. } => {
@@ -3623,15 +3712,15 @@ blether Square(3)"#,
             compile("ken xs = []\ngin xs { blether 1 }\nblether xs == [1]\nblether 1 == 1")
                 .unwrap();
         assert!(result.contains("if (__havers.truthy(xs))"));
-        assert!(result.contains("__havers.eq(xs, [1n])"));
-        assert!(result.contains("__havers.eq(1n, 1n)"));
+        assert!(result.contains("__havers.eqOp(xs, [1n])"));
+        assert!(result.contains("__havers.eqOp(1n, 1n)"));
     }
 
     #[test]
     fn test_numeric_literal_receiver_is_parenthesised() {
         let result = compile("blether 123[0:1]\nblether 1.5.x").unwrap();
         assert!(result.contains("__havers.slice(123n, 0n, 1n, null, 1)"));
-        assert!(result.contains("(1.5).x"));
+        assert!(result.contains("__havers.getProp(1.5, \"x\", 2)"));
     }
 
     #[test]

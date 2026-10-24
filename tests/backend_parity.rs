@@ -1675,3 +1675,163 @@ blether len(tail("😀"))"####,
         "STRAßE CAFé ÿ ABC\nstrasse École abc\n😀\ne\nab\ńx\n😀\ń\nb😀a\ńeß\n[a😀b]\n[]\n[a, b, c]\n4\n2\nJings! Something went awfy wrang: Cannae get heid o' empty string!\nJings! Something went awfy wrang: Cannae get bum o' empty string!\nJings! Something went awfy wrang: upper() expects a string\nJings! Something went awfy wrang: split() expects two strings\n0",
     )]);
 }
+
+#[test]
+fn parity_js_scots_builtins_and_class_semantics_residual_gaps() {
+    if !node_available() {
+        return;
+    }
+    assert_js_parity(&[
+        (
+            "scots string/list builtins: roar..chynge, clype, errors",
+            r####"dae tryit(f) {
+    hae_a_bash {
+        blether f()
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+}
+blether roar("abcß")
+blether mutter("ABCÜ")
+tryit(|| roar(1))
+tryit(|| mutter(1))
+blether wheesht_aw(" a  b\t\nc ")
+tryit(|| wheesht_aw(1))
+blether clarty([1, 2, 1])
+blether clarty([1, 2, 3])
+blether clarty("abca")
+blether clarty("")
+tryit(|| clarty(5))
+blether dreich("aaa")
+blether dreich("")
+blether dreich("ab")
+tryit(|| dreich(1))
+blether geggie("")
+blether geggie("x")
+blether geggie("😀ab")
+tryit(|| geggie(1))
+blether banter("abc", "x")
+blether banter("", "😀😀")
+tryit(|| banter(1, "a"))
+blether skelp("abcde", 2)
+blether skelp("", 3)
+tryit(|| skelp("a", 0))
+tryit(|| skelp("a", "b"))
+blether haverin("")
+blether haverin(" a ")
+blether haverin("ab")
+blether haverin("😀")
+blether haverin(naething)
+blether haverin([])
+blether haverin([1])
+blether haverin(5)
+blether glaikit(naething)
+blether glaikit(0)
+blether glaikit(0.0)
+blether glaikit(1)
+blether glaikit("")
+blether glaikit(" \t")
+blether glaikit("a")
+blether glaikit([])
+blether glaikit({})
+blether glaikit({"a": 1})
+blether haggis_hunt("aaaa", "aa")
+blether haggis_hunt("a😀b😀", "😀")
+tryit(|| haggis_hunt(1, "a"))
+tryit(|| haggis_hunt("a", 1))
+blether sporran_fill("ab", 5, "*")
+blether sporran_fill("ab", 6, "😀")
+tryit(|| sporran_fill(1, 5, "*"))
+tryit(|| sporran_fill("a", "x", "*"))
+tryit(|| sporran_fill("a", 5, 1))
+tryit(|| sporran_fill("a", 9999999999999, "*"))
+blether tattie_scone("ab", 1)
+blether tattie_scone("ab", 2)
+tryit(|| tattie_scone(1, 2))
+tryit(|| tattie_scone("a", "b"))
+tryit(|| tattie_scone("a", 9999999999999))
+blether birl([1, 2, 3], 4)
+blether birl([1, 2, 3], -4)
+blether birl([], 3)
+tryit(|| birl([1], 1.5))
+blether chynge([1, 2, 3], 3, 9)
+blether chynge([1, 2, 3], -3, 9)
+blether chynge([1, 2, 3], 1.9, 9)
+tryit(|| chynge([1, 2, 3], 4, 9))
+tryit(|| chynge([1, 2, 3], -4, 9))
+tryit(|| chynge(5, 0, 9))
+blether clype([1, 2])
+blether clype({"a": 1})
+blether clype(5)
+blether clype(2.5)
+blether clype(aye)
+blether clype(naething)
+blether clype("héllo")
+blether clype(creel([1]))
+blether len(stooshie("a😀bc"))
+tryit(|| blooter(1))
+tryit(|| stooshie(1))"####,
+            "ABCß!\n...abcÜ...\nJings! Something went awfy wrang: roar() expects a string\nJings! Something went awfy wrang: mutter() expects a string\na b c\nJings! Something went awfy wrang: wheesht_aw() needs a string\naye\nnae\naye\nnae\nJings! Something went awfy wrang: clarty() needs a list or string\naye\naye\nnae\nJings! Something went awfy wrang: dreich() needs a string\n\nxx\n😀b\nJings! Something went awfy wrang: geggie() needs a string\naxbc\n😀😀\nJings! Something went awfy wrang: banter() needs two strings\n[ab, cd, e]\n[]\nJings! Something went awfy wrang: skelp() size must be positive\nJings! Something went awfy wrang: skelp() needs integer size\naye\naye\nnae\nnae\naye\naye\nnae\nnae\naye\naye\naye\nnae\naye\naye\nnae\naye\naye\nnae\n[0, 2]\n[1, 3]\nJings! Something went awfy wrang: haggis_hunt needs a string tae search\nJings! Something went awfy wrang: haggis_hunt needs a string tae find\n*ab**\n😀😀ab😀😀\nJings! Something went awfy wrang: sporran_fill needs a string\nJings! Something went awfy wrang: sporran_fill needs a width\nJings! Something went awfy wrang: sporran_fill needs a fill character\nJings! Something went awfy wrang: sporran_fill wid be ower muckle (9999999999998 is mair than the 1073741824 limit), ya greedy gannet!\nab\nab | ab\nJings! Something went awfy wrang: tattie_scone needs a string\nJings! Something went awfy wrang: tattie_scone needs a number\nJings! Something went awfy wrang: tattie_scone wid be ower muckle (39999999999996 is mair than the 1073741824 limit), ya greedy gannet!\n[2, 3, 1]\n[3, 1, 2]\n[]\nJings! Something went awfy wrang: birl needs a rotation count\n[1, 2, 3, 9]\n[9, 1, 2, 3]\n[1, 9, 2, 3]\nJings! Something went awfy wrang: Index 4 oot o' bounds fer list o' length 3\nJings! Something went awfy wrang: Index 18446744073709551615 oot o' bounds fer list o' length 3\nJings! Something went awfy wrang: chynge() needs a list\n[list] list wi' 2 items\n[dict] dict wi' 1 entries\n[integer] integer: 5\n[float] float: 2.5\n[bool] boolean: aye\n[naething] naething\n[string] string o' 5 characters\n[creel] creel wi' 1 items\n4\nJings! Something went awfy wrang: blooter() expects a string\nJings! Something went awfy wrang: stooshie needs a string",
+        ),
+        (
+            "class instances: operator overloads, bound method values, own field vs method, masel in nested dae, missing field",
+            r####"dae tryit(f) {
+    hae_a_bash {
+        blether f()
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+}
+kin V {
+    dae init(n) { masel.n = n }
+    dae __pit_thegither__(o) { gie V(masel.n + o.n) }
+    dae __tak_awa__(o) { gie masel.n - o.n }
+    dae __times__(o) { gie masel.n * o.n }
+    dae __pairt__(o) { gie masel.n / o.n }
+    dae __lave__(o) { gie masel.n % o.n }
+    dae __same_as__(o) { gie masel.n == o.n }
+    dae __differs_fae__(o) { gie "differs" }
+    dae __wee_er__(o) { gie masel.n < o.n }
+    dae __wee_er_or_same__(o) { gie masel.n <= o.n }
+    dae __muckle_er__(o) { gie masel.n > o.n }
+    dae __muckle_er_or_same__(o) { gie masel.n >= o.n }
+    dae show() { gie masel.n }
+    dae later(k = masel.n) {
+        dae inner(a = masel.n) { gie a + k }
+        gie inner
+    }
+}
+ken a = V(6)
+ken b = V(3)
+blether (a + b).show()
+blether a - b
+blether a * b
+blether a / b
+blether a % b
+blether a == b
+blether a != b
+blether a < b
+blether a <= b
+blether a > b
+blether a >= b
+ken f = a.later()
+blether f()
+a.n = 10
+blether f()
+blether f(1)
+ken g = a.show
+a.n = 11
+blether g()
+tryit(|| a.nope)
+tryit(|| a.nope())
+kin P {
+    dae init() { masel.go = |x| x + 100 }
+    dae go(x) { gie x + 1 }
+}
+blether P().go(1)
+ken h = P().go
+blether h(1)"####,
+            "9\n3\n18\n2\n0\nnae\ndiffers\nnae\nnae\naye\naye\n12\n16\n7\n11\nAwa' an bile yer heid! 'nope' hasnae been defined yet at line 48\nAwa' an bile yer heid! 'nope' hasnae been defined yet at line 49\n2\n101",
+        ),
+    ]);
+}
