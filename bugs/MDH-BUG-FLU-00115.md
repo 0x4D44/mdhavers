@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00115 — stdlib prelude pad_left/pad_right shadow the native builtins with a stricter, different signature
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** interpreter
 - **Raised:** 2026-10-24T03:17:12Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261024T213341Z-cebe72f1
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00115-run-fix-20261024T213341Z-cebe72f1
-- **Owner base:** aade7cd397c51481ad75e9804b8f1968562ab322
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-24T21:33:41Z
-- **Owner until:** 2026-10-25T01:33:41Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T03:17:12Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-24T03:17:12Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T21:56:47Z, deltic:auto role=fix run=fix-20261024T213341Z-cebe72f1 branch=task/bug-MDH-BUG-FLU-00115-run-fix-20261024T213341Z-cebe72f1 code=f207ce5 gate=manual)
 
 ## Observation
 
