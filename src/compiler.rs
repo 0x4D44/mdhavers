@@ -473,6 +473,11 @@ fn is_scalar_literal(expr: &Expr) -> bool {
     }
 }
 
+/// An operand that is statically a string or bool, never an instance.
+fn is_primitive_operand(expr: &Expr) -> bool {
+    is_scalar_literal(expr) || is_string_literal(expr)
+}
+
 /// Compiler - transpiles mdhavers tae JavaScript
 pub struct Compiler {
     indent: usize,
@@ -2026,9 +2031,10 @@ impl Compiler {
                         self.compile_binary_helper(helper, left, right, line);
                     }
                     BinaryOp::Equal | BinaryOp::NotEqual
-                        if !(is_scalar_literal(left) || is_scalar_literal(right)) =>
+                        if !(is_primitive_operand(left) && is_primitive_operand(right)) =>
                     {
-                        // An instance on the left may overload `==` / `!=`.
+                        // An instance on either side may overload `==` / `!=`, so only a
+                        // comparison o' two known primitives keeps the raw `===`.
                         let helper = if matches!(operator, BinaryOp::NotEqual) {
                             "__havers.neOp"
                         } else {
@@ -2036,7 +2042,7 @@ impl Compiler {
                         };
                         self.compile_binary_helper(helper, left, right, None);
                     }
-                    // `==` against a string or bool literal: JS `===` agrees.
+                    // Both sides are string or bool literals: JS `===` agrees.
                     BinaryOp::Equal | BinaryOp::NotEqual => {
                         self.output.push('(');
                         self.compile_expr(left);
@@ -3714,6 +3720,16 @@ blether Square(3)"#,
         assert!(result.contains("if (__havers.truthy(xs))"));
         assert!(result.contains("__havers.eqOp(xs, [1n])"));
         assert!(result.contains("__havers.eqOp(1n, 1n)"));
+    }
+
+    #[test]
+    fn test_literal_equality_routes_through_overload_helpers_mdh_bug_flu_00126() {
+        let result = compile("ken x = 1\nblether x == \"a\"\nblether aye != x").unwrap();
+        assert!(result.contains("__havers.eqOp(x, \"a\")"));
+        assert!(result.contains("__havers.neOp(true, x)"));
+        let both = compile("blether \"a\" == \"b\"\nblether aye != nae").unwrap();
+        assert!(both.contains("(\"a\" === \"b\")"));
+        assert!(both.contains("(true !== false)"));
     }
 
     #[test]

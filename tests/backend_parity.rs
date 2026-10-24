@@ -1835,3 +1835,25 @@ blether h(1)"####,
         ),
     ]);
 }
+
+#[test]
+fn js_instance_equality_overload_runs_against_literals_mdh_bug_flu_00126() {
+    if !node_available() {
+        return;
+    }
+    let source = r#"kin W {
+    dae __same_as__(o) { gie "same-called" }
+    dae __differs_fae__(o) { gie "differs-called" }
+}
+ken w = W()
+blether w == "a"
+blether w != "a"
+blether w == aye
+blether w != nae
+blether "a" == "a"
+blether aye != nae
+"#;
+    let interp = run_interpreter(source).unwrap();
+    assert_eq!(interp.lines().next(), Some("same-called"));
+    assert_eq!(run_js(source).unwrap().trim_end(), interp.trim_end());
+}
