@@ -235,10 +235,9 @@ blether f()
 
 #[test]
 fn gie_in_a_top_level_block_is_return_outside_function() {
-    let program = parse("blether { gie 7 }\n").expect("parse");
-    let err = LLVMCompiler::new()
-        .compile_to_ir(&program)
-        .expect_err("a top-level gie has nae function to leave");
+    // Since MDH-BUG-FLU-00094 the parser rejects this before codegen, so no
+    // backend (native included) ever sees a top-level block gie.
+    let err = parse("blether { gie 7 }\n").expect_err("a top-level gie has nae function to leave");
     assert!(
         matches!(
             err,
