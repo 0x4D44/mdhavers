@@ -1,10 +1,15 @@
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::rc::Rc;
 
-use wasmtime::{Caller, Engine, Linker, Memory, MemoryType, Module, Store};
+use wasmtime::{Caller, Engine, FuncType, Linker, Memory, MemoryType, Module, Store, Val, ValType};
 
-use crate::wasm_compiler::AUDIO_IMPORTS;
+use crate::error::HaversError;
+use crate::interpreter::Interpreter;
+use crate::value::{DictValue, NativeFunction, Value};
+use crate::wasm_compiler::{AUDIO_IMPORTS, MAX_BUILTIN_ARGS};
 
 type Handle = i64;
 
@@ -447,10 +452,272 @@ fn push_children(value: &HostValue, out: &mut Vec<Handle>) {
     }
 }
 
+/// The Rc address o' a list or dict, its identity across a builtin call.
+fn container_ptr(value: &Value) -> Option<usize> {
+    match value {
+        Value::List(rc) => Some(Rc::as_ptr(rc) as *const () as usize),
+        Value::Dict(rc) => Some(Rc::as_ptr(rc) as *const () as usize),
+        _ => None,
+    }
+}
+
+const ERR_INVALID: &str = "That's pure mince! Type error: invalid value";
+
+/// Converts handles tae interpreter `Value`s an' back fer one builtin call. Each host
+/// list or dict becomes one shared `Value` (so aliasing an' cycles survive), an' comes
+/// back as its ain handle. Arguments are borrowed: after the call, ony container the
+/// builtin changed is written back through `get_mut`, the reclamation write barrier.
+#[derive(Default)]
+struct ValueBridge {
+    by_handle: HashMap<Handle, Value>,
+    by_ptr: HashMap<usize, Handle>,
+}
+
+impl ValueBridge {
+    fn remember(&mut self, handle: Handle, value: &Value) {
+        if let Some(ptr) = container_ptr(value) {
+            self.by_ptr.insert(ptr, handle);
+        }
+        self.by_handle.insert(handle, value.clone());
+    }
+
+    fn to_value(&mut self, store: &HostStore, handle: Handle) -> Result<Value, String> {
+        if let Some(value) = self.by_handle.get(&handle) {
+            return Ok(value.clone());
+        }
+        let viewed = store.view(handle).ok_or_else(|| ERR_INVALID.to_string())?;
+        match viewed.as_ref() {
+            HostValue::Nil => Ok(Value::Nil),
+            HostValue::Bool(b) => Ok(Value::Bool(*b)),
+            HostValue::Int(n) => Ok(Value::Integer(*n)),
+            HostValue::Float(f) => Ok(Value::Float(*f)),
+            HostValue::String(s) => Ok(Value::String(s.clone())),
+            HostValue::List(items) => {
+                let rc = Rc::new(RefCell::new(Vec::with_capacity(items.len())));
+                let value = Value::List(rc.clone());
+                self.remember(handle, &value);
+                let mut out = Vec::with_capacity(items.len());
+                for item in items {
+                    out.push(self.to_value(store, *item)?);
+                }
+                *rc.borrow_mut() = out;
+                Ok(value)
+            }
+            HostValue::Dict(entries) => {
+                let rc = Rc::new(RefCell::new(DictValue::new()));
+                let value = Value::Dict(rc.clone());
+                self.remember(handle, &value);
+                for (key, item) in entries {
+                    let key = self.key_to_value(store, key)?;
+                    let item = self.to_value(store, *item)?;
+                    rc.borrow_mut().set(key, item);
+                }
+                Ok(value)
+            }
+            other => Err(format!(
+                "That's pure mince! Type error: a {} cannae be passed tae a builtin in WASM yet",
+                host_type_name(other)
+            )),
+        }
+    }
+
+    fn key_to_value(&mut self, store: &HostStore, key: &ValueKey) -> Result<Value, String> {
+        Ok(match key {
+            ValueKey::Nil => Value::Nil,
+            ValueKey::Bool(b) => Value::Bool(*b),
+            ValueKey::Int(n) => Value::Integer(*n),
+            ValueKey::Float(bits) => Value::Float(f64::from_bits(*bits)),
+            ValueKey::String(s) => Value::String(s.clone()),
+            ValueKey::List(h)
+            | ValueKey::Dict(h)
+            | ValueKey::NativeObject(h)
+            | ValueKey::NativeCtor(h) => self.to_value(store, *h)?,
+        })
+    }
+
+    /// A value fae the builtin as a handle: a container that wis passed in keeps its
+    /// handle, anything else is a fresh allocation in the current scope.
+    fn to_handle(&mut self, store: &mut HostStore, value: &Value) -> Result<Handle, String> {
+        if let Some(handle) = container_ptr(value).and_then(|ptr| self.by_ptr.get(&ptr)) {
+            return Ok(*handle);
+        }
+        match value {
+            Value::Nil => Ok(0),
+            Value::Bool(b) => Ok(alloc_bool(store, *b)),
+            Value::Integer(n) => Ok(alloc_int(store, *n)),
+            Value::Float(f) => Ok(alloc_float(store, *f)),
+            Value::String(s) => Ok(alloc_string(store, s.clone())),
+            Value::List(_) | Value::Dict(_) => {
+                let handle = store.alloc(HostValue::List(Vec::new()));
+                if let Some(ptr) = container_ptr(value) {
+                    self.by_ptr.insert(ptr, handle);
+                }
+                self.fill(store, handle, value)?;
+                Ok(handle)
+            }
+            other => Err(format!(
+                "That's pure mince! Type error: WASM cannae haud a {} yet",
+                other.type_name()
+            )),
+        }
+    }
+
+    /// Set a host container's contents fae a list or dict `Value`.
+    fn fill(&mut self, store: &mut HostStore, handle: Handle, value: &Value) -> Result<(), String> {
+        let contents = match value {
+            Value::List(rc) => {
+                let mut items = Vec::new();
+                for item in rc.borrow().iter() {
+                    items.push(self.to_handle(store, item)?);
+                }
+                HostValue::List(items)
+            }
+            Value::Dict(rc) => {
+                let mut entries = Vec::new();
+                for (key, item) in rc.borrow().iter() {
+                    let key = self.to_handle(store, key)?;
+                    let key = store.key_for(key).ok_or_else(|| ERR_INVALID.to_string())?;
+                    entries.push((key, self.to_handle(store, item)?));
+                }
+                HostValue::Dict(entries)
+            }
+            _ => return Err(ERR_INVALID.to_string()),
+        };
+        if let Some(slot) = store.get_mut(handle) {
+            *slot = contents;
+        }
+        Ok(())
+    }
+
+    /// Write back every argument container the builtin changed (`shove`, `yank`, ...).
+    fn write_back(&mut self, store: &mut HostStore) -> Result<(), String> {
+        let passed: Vec<(Handle, Value)> = self
+            .by_handle
+            .iter()
+            .map(|(h, v)| (*h, v.clone()))
+            .collect();
+        for (handle, value) in passed {
+            if !self.unchanged(store, handle, &value) {
+                self.fill(store, handle, &value)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn unchanged(&self, store: &HostStore, handle: Handle, value: &Value) -> bool {
+        match (store.get(handle), value) {
+            (Some(HostValue::List(items)), Value::List(rc)) => {
+                let now = rc.borrow();
+                items.len() == now.len()
+                    && items
+                        .iter()
+                        .zip(now.iter())
+                        .all(|(h, v)| self.same_slot(store, *h, v))
+            }
+            (Some(HostValue::Dict(entries)), Value::Dict(rc)) => {
+                let now = rc.borrow();
+                entries.len() == now.len()
+                    && entries.iter().zip(now.iter()).all(|((key, h), (k, v))| {
+                        self.same_key(store, key, k) && self.same_slot(store, *h, v)
+                    })
+            }
+            _ => false,
+        }
+    }
+
+    /// A container slot must still hold the very container passed in; a scalar, an equal one.
+    fn same_slot(&self, store: &HostStore, handle: Handle, value: &Value) -> bool {
+        if let Some(ptr) = container_ptr(value) {
+            return self.by_ptr.get(&ptr) == Some(&handle);
+        }
+        match (store.view(handle).as_deref(), value) {
+            (Some(HostValue::Nil), Value::Nil) => true,
+            (Some(HostValue::Bool(a)), Value::Bool(b)) => a == b,
+            (Some(HostValue::Int(a)), Value::Integer(b)) => a == b,
+            (Some(HostValue::Float(a)), Value::Float(b)) => a.to_bits() == b.to_bits(),
+            (Some(HostValue::String(a)), Value::String(b)) => a == b,
+            _ => false,
+        }
+    }
+
+    fn same_key(&self, store: &HostStore, key: &ValueKey, value: &Value) -> bool {
+        match (key, value) {
+            (ValueKey::List(h) | ValueKey::Dict(h), _) => self.same_slot(store, *h, value),
+            (ValueKey::Nil, Value::Nil) => true,
+            (ValueKey::Bool(a), Value::Bool(b)) => a == b,
+            (ValueKey::Int(a), Value::Integer(b)) => a == b,
+            (ValueKey::Float(a), Value::Float(b)) => *a == b.to_bits(),
+            (ValueKey::String(a), Value::String(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+/// Run one o' the interpreter's natives on borrowed argument handles; the result is a
+/// fresh handle in the current scope (or a passed-in container's ain handle).
+fn call_builtin(state: &mut HostState, name: &str, args: &[Handle]) -> Result<Handle, String> {
+    let natives = state
+        .natives
+        .get_or_insert_with(Interpreter::native_builtins);
+    let native = natives.get(name).cloned().ok_or_else(|| {
+        format!(
+            "Whit's aw this aboot? '{}' isnae a builtin the WASM host kens",
+            name
+        )
+    })?;
+    if native.arity != usize::MAX && args.len() != native.arity {
+        return Err(format!(
+            "Yer bum's oot the windae! Function '{}' expects {} arguments but ye gave it {}",
+            name,
+            native.arity,
+            args.len()
+        ));
+    }
+    let store = &mut state.store;
+    let mut bridge = ValueBridge::default();
+    let mut values = Vec::with_capacity(args.len());
+    for arg in args {
+        values.push(bridge.to_value(store, *arg)?);
+    }
+    let result = (native.func)(values).map_err(|m| HaversError::InternalError(m).to_string())?;
+    bridge.write_back(store)?;
+    bridge.to_handle(store, &result)
+}
+
+/// `__mdh_builtin0` ..= `__mdh_builtin{MAX_BUILTIN_ARGS}`: (name_ptr, name_len, args...) -> handle.
+fn add_builtin_imports(linker: &mut Linker<HostState>, memory: Memory) -> Result<(), String> {
+    for argc in 0..=MAX_BUILTIN_ARGS {
+        let params = [ValType::I32, ValType::I32]
+            .into_iter()
+            .chain(std::iter::repeat(ValType::I64).take(argc));
+        let ty = FuncType::new(params, [ValType::I64]);
+        linker
+            .func_new(
+                "env",
+                &format!("__mdh_builtin{argc}"),
+                ty,
+                move |mut caller: Caller<'_, HostState>, params: &[Val], results: &mut [Val]| {
+                    let ptr = params[0].i32().unwrap_or(0);
+                    let len = params[1].i32().unwrap_or(0);
+                    let name = read_memory_string(&caller, &memory, ptr, len);
+                    let args: Vec<Handle> =
+                        params[2..].iter().map(|v| v.i64().unwrap_or(0)).collect();
+                    let result = call_builtin(caller.data_mut(), &name, &args);
+                    results[0] = Val::I64(finish(&mut caller, result)?);
+                    Ok(())
+                },
+            )
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[derive(Debug)]
 struct HostState {
     store: HostStore,
     tri_modules: HashSet<Handle>,
+    /// The interpreter's natives, built on the first builtin call.
+    natives: Option<HashMap<String, Rc<NativeFunction>>>,
     /// `Some` when stdout is being captured (tests) instead of printed.
     captured: Option<String>,
     /// The message of the runtime error that trapped the module, if any.
@@ -462,6 +729,7 @@ impl HostState {
         HostState {
             store: HostStore::new(),
             tri_modules: HashSet::new(),
+            natives: None,
             captured: if capture { Some(String::new()) } else { None },
             runtime_error: None,
         }
@@ -1820,6 +2088,8 @@ fn run_module(engine: &Engine, module: &Module, capture: bool) -> Result<WasmRun
             },
         )
         .map_err(|e| e.to_string())?;
+
+    add_builtin_imports(&mut linker, memory)?;
 
     // Audio stubs come from the compiler's own import table so the two cannot drift.
     for (name, arity) in AUDIO_IMPORTS {

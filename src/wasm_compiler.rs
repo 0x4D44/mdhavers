@@ -11,6 +11,7 @@
 
 use crate::ast::*;
 use crate::error::{HaversError, HaversResult};
+use crate::interpreter::Interpreter;
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 /// Audio host imports: (name, arity). Every argument and the result is an i64 handle.
@@ -75,10 +76,37 @@ fn audio_import_line(name: &str, arity: usize) -> String {
     format!("(import \"env\" \"{name}\" (func ${name}{params} (result i64)))")
 }
 
+/// Most arguments a builtin call can pass through `__mdh_builtinN`.
+pub const MAX_BUILTIN_ARGS: usize = 16;
+
+thread_local! {
+    /// Name -> arity o' the interpreter's first-order natives (`usize::MAX` = variadic).
+    static BUILTIN_ARITIES: HashMap<String, usize> = Interpreter::native_builtins()
+        .into_iter()
+        .map(|(name, native)| (name, native.arity))
+        .collect();
+}
+
+/// The arity o' an interpreter builtin the WASM host can call, if `name` is one.
+fn builtin_arity(name: &str) -> Option<usize> {
+    BUILTIN_ARITIES.with(|arities| arities.get(name).copied())
+}
+
+/// Builtin calls go through `__mdh_builtinN(name_ptr, name_len, a1..aN) -> handle`: the
+/// host looks the name up in the interpreter's natives an' runs the very same code.
+fn builtin_import_line(argc: usize) -> String {
+    format!(
+        "(import \"env\" \"__mdh_builtin{argc}\" (func $mdh_builtin{argc} (param i32 i32{}) (result i64)))",
+        " i64".repeat(argc)
+    )
+}
+
 #[derive(Debug, Default)]
 struct WasmImportRequirements {
     needs_tri_module: bool,
     audio_imports: BTreeSet<String>,
+    /// Argument counts o' the builtin calls, one `__mdh_builtinN` import each.
+    builtin_arities: BTreeSet<usize>,
 }
 
 impl WasmImportRequirements {
@@ -218,6 +246,12 @@ impl WasmImportRequirements {
             } => {
                 if let Expr::Variable { name, .. } = callee.as_ref() {
                     self.add_audio_import(name, defined_functions);
+                    if !defined_functions.contains(name.as_str())
+                        && !self.audio_imports.contains(name.as_str())
+                        && builtin_arity(name).is_some()
+                    {
+                        self.builtin_arities.insert(arguments.len());
+                    }
                 }
                 self.scan_expr(callee, defined_functions);
                 for arg in arguments {
@@ -659,10 +693,28 @@ impl<'a> Validator<'a> {
             }
             return Ok(());
         }
+        if let Some(arity) = builtin_arity(name) {
+            if (arity != usize::MAX && argc != arity) || argc > MAX_BUILTIN_ARGS {
+                return Err(compile_err(
+                    line,
+                    format!(
+                        "Dae '{}' tak's {} argument(s) but wis gien {}",
+                        name,
+                        if arity == usize::MAX {
+                            format!("at maist {}", MAX_BUILTIN_ARGS)
+                        } else {
+                            arity.to_string()
+                        },
+                        argc
+                    ),
+                ));
+            }
+            return Ok(());
+        }
         Err(compile_err(
             line,
             format!(
-                "Dae '{}' isnae kent tae the WASM backend - builtin functions arenae supported in WASM yet",
+                "Dae '{}' isnae kent tae the WASM backend - higher-order builtins (gaun, sieve, ...) an' prelude daes arenae supported in WASM yet",
                 name
             ),
         ))
@@ -800,6 +852,10 @@ impl WasmCompiler {
             self.emit_line(
                 "(import \"env\" \"__mdh_tri_module\" (func $mdh_tri_module (result i64)))",
             );
+        }
+
+        for argc in &import_requirements.builtin_arities {
+            self.emit_line(&builtin_import_line(*argc));
         }
 
         if !import_requirements.audio_imports.is_empty() {
@@ -1619,6 +1675,19 @@ impl WasmCompiler {
                 } else if let Expr::Variable { name, .. } = callee.as_ref() {
                     if self.is_local_or_param(name) {
                         self.emit_value_call(callee, arguments)?;
+                    } else if !self.functions.contains_key(name)
+                        && !AUDIO_IMPORTS.iter().any(|(import, _)| import == name)
+                        && builtin_arity(name).is_some()
+                    {
+                        // Interpreter builtin: the host runs it on borrowed arguments
+                        // an' hands back a fresh handle in the current scope.
+                        let offset = self.intern_string(name);
+                        self.emit_line(&format!("(i32.const {})", offset));
+                        self.emit_line(&format!("(i32.const {})", name.len()));
+                        for arg in arguments {
+                            self.compile_expr(arg)?;
+                        }
+                        self.emit_line(&format!("(call $mdh_builtin{})", arguments.len()));
                     } else {
                         // Direct function call (compiled function)
                         for arg in arguments {
@@ -3355,7 +3424,12 @@ dae f() {
     #[test]
     fn validation_rejects_calls_and_names_the_backend_cannot_resolve() {
         for (source, needle) in [
-            ("blether len([1])", "'len'"),
+            ("blether gaun([1], 0)", "'gaun'"),
+            ("blether len([1], 2)", "tak's 1 argument(s)"),
+            (
+                "blether center(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)",
+                "tak's at maist 16 argument(s)",
+            ),
             ("dae f(a) { gie a }\nf()", "'a'"),
             ("dae f(a) { gie a }\nf(1, 2)", "'f'"),
             ("ken x = 1\ndae f() { gie x }", "'x'"),
@@ -3371,6 +3445,19 @@ dae f() {
                 other => panic!("{source}: expected CompileError, got {other:?}"),
             }
         }
+    }
+
+    #[test]
+    fn builtin_calls_import_one_host_function_per_argument_count() {
+        assert_eq!(
+            builtin_import_line(2),
+            "(import \"env\" \"__mdh_builtin2\" (func $mdh_builtin2 (param i32 i32 i64 i64) (result i64)))"
+        );
+        let wat =
+            compile_to_wat("blether len([1])\nblether len(\"ab\")\nblether upper(\"a\")").unwrap();
+        assert_eq!(wat.matches("\"__mdh_builtin1\"").count(), 1, "{wat}");
+        assert_eq!(wat.matches("(call $mdh_builtin1)").count(), 3, "{wat}");
+        assert!(!wat.contains("__mdh_builtin0"), "{wat}");
     }
 
     #[test]

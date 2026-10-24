@@ -2911,6 +2911,22 @@ impl Interpreter {
         self.prelude_loaded
     }
 
+    /// The first-order native builtins by name. The WASM host calls these very
+    /// implementations, so the backends cannae drift apart. Higher-order ones (gaun,
+    /// sieve, ...) are left oot: they need the interpreter tae ca' their function argument.
+    pub fn native_builtins() -> HashMap<String, Rc<NativeFunction>> {
+        let globals = Rc::new(RefCell::new(Environment::new()));
+        Self::define_natives(&globals);
+        let exports = globals.borrow().get_exports();
+        exports
+            .into_iter()
+            .filter_map(|(name, value)| match value.as_native_function() {
+                Some(native) if !native.higher_order => Some((name, native)),
+                _ => None,
+            })
+            .collect()
+    }
+
     fn define_natives(globals: &Rc<RefCell<Environment>>) {
         // get_key - read a single key press (raw input)
         // Not reliably testable under source-based coverage (non-TTY), so exclude from coverage builds.

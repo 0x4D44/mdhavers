@@ -116,8 +116,8 @@ fn default_parameters_are_filled_in_at_the_call_site() {
 
 #[test]
 fn unknown_callee_is_a_clear_compile_error_naming_the_function() {
-    let message = compile_error("blether len([1, 2, 3])\n");
-    assert!(message.contains("'len'"), "{message}");
+    let message = compile_error("blether sieve([1, 2, 3], 0)\n");
+    assert!(message.contains("'sieve'"), "{message}");
     let message = compile_error("blether no_such_function(1)\n");
     assert!(message.contains("'no_such_function'"), "{message}");
 }
@@ -642,4 +642,90 @@ blether build(3) + \"/\" + find(200)
         "store peaked at {}",
         out.peak_store_size
     );
+}
+
+// ---------------------------------------------------------------------------
+// Builtins run the interpreter's ain natives through `__mdh_builtinN` host imports
+// ---------------------------------------------------------------------------
+
+#[test]
+fn builtins_run_the_interpreters_natives() {
+    let src = "\
+ken d = {\"a\": 1, \"b\": [2]}
+blether len([1, 2, 3])
+blether len(\"hello\")
+blether upper(\"braw\")
+blether keys(d)
+blether tae_string(42) + \"!\"
+blether tae_string(d)
+";
+    assert_eq!(
+        run(src),
+        "3\n5\nBRAW\n[a, b]\n42!\n{\"a\": 1, \"b\": [2]}\n"
+    );
+}
+
+#[test]
+fn shove_mutates_the_callers_list_through_the_write_barrier() {
+    // The list is older than every loop scope, so the young items shoved intae it
+    // survive only if the write-back goes through `get_mut`. An alias sees the change.
+    let src = "\
+ken xs = []
+ken alias = xs
+ken i = 0
+whiles i < 2000 {
+    shove(xs, [i, tae_string(i) + \"!\"])
+    i = i + 1
+}
+blether len(alias)
+blether yank(xs)
+blether len(xs)
+blether heid(xs)
+";
+    let out = run_full(src);
+    assert_eq!(out.error, None, "stdout: {}", out.stdout);
+    assert_eq!(out.stdout, "2000\n[1999, 1999!]\n1999\n[0, 0!]\n");
+}
+
+#[test]
+fn builtin_results_are_reclaimed_like_any_young_value() {
+    let src = "\
+ken i = 0
+ken last = \"\"
+whiles i < 20000 {
+    last = upper(tae_string(i) + \"x\")
+    i = i + 1
+}
+blether last
+";
+    let out = run_full(src);
+    assert_eq!(out.error, None);
+    assert_eq!(out.stdout, "19999X\n");
+    assert!(
+        out.peak_store_size < 1000,
+        "store peaked at {}",
+        out.peak_store_size
+    );
+}
+
+#[test]
+fn builtin_error_is_the_interpreters_message() {
+    let out = run_full("blether \"afore\"\nblether upper(5)\nblether \"efter\"\n");
+    assert_eq!(out.stdout, "afore\n");
+    let err = out.error.expect("upper(5) should fail");
+    assert!(err.contains("upper() expects a string"), "{err}");
+}
+
+#[test]
+fn builtin_arity_and_higher_order_builtins_are_compile_errors() {
+    let message = compile_error("blether len(1, 2)\n");
+    assert!(message.contains("'len'"), "{message}");
+    let message = compile_error("blether gaun([1, 2], 0)\n");
+    assert!(message.contains("'gaun'"), "{message}");
+}
+
+#[test]
+fn user_function_shadows_a_builtin() {
+    let src = "dae len(x) {\n    gie 99\n}\nblether len([1])\n";
+    assert_eq!(run(src), "99\n");
 }
