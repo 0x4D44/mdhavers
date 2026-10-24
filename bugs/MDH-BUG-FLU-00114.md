@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00114 — JS runtime lacks most interpreter builtins (about 240 names by a regex scan)
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** js
 - **Raised:** 2026-10-24T03:01:40Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261024T213341Z-379570d4
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00114-run-fix-20261024T213341Z-379570d4
-- **Owner base:** aade7cd397c51481ad75e9804b8f1968562ab322
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-24T21:33:41Z
-- **Owner until:** 2026-10-25T01:33:41Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T03:01:40Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-24T03:01:40Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T22:08:28Z, deltic:auto role=fix run=fix-20261024T213341Z-379570d4 branch=task/bug-MDH-BUG-FLU-00114-run-fix-20261024T213341Z-379570d4 code=380bacf gate=manual)
 
 ## Observation
 
