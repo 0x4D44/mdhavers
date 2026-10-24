@@ -27473,11 +27473,52 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         let for_string_block = self.context.append_basic_block(function, "for_string");
+        let for_check_list_block = self.context.append_basic_block(function, "for_check_list");
         let for_list_block = self.context.append_basic_block(function, "for_list");
+        let for_error_block = self
+            .context
+            .append_basic_block(function, "for_not_iterable");
         let after_block = self.context.append_basic_block(function, "for_after");
 
         self.builder
-            .build_conditional_branch(is_string, for_string_block, for_list_block)
+            .build_conditional_branch(is_string, for_string_block, for_check_list_block)
+            .unwrap();
+
+        // Only lists and strings iterate, as in the interpreter: anything else (a dict, a
+        // creel, a number, ...) is "Cannae iterate ower a <type>" (MDH-BUG-FLU-00128),
+        // not a walk over its handle as if it were a list.
+        self.builder.position_at_end(for_check_list_block);
+        let list_tag = self
+            .context
+            .i8_type()
+            .const_int(ValueTag::List.as_u8() as u64, false);
+        let is_list = self
+            .builder
+            .build_int_compare(IntPredicate::EQ, iter_tag, list_tag, "is_list")
+            .unwrap();
+        self.builder
+            .build_conditional_branch(is_list, for_list_block, for_error_block)
+            .unwrap();
+
+        self.builder.position_at_end(for_error_block);
+        let op = self
+            .builder
+            .build_global_string_ptr("iterate", "iterate_op")
+            .unwrap();
+        let zero_tag = self.types.i8_type.const_int(0, false);
+        self.builder
+            .build_call(
+                self.libc.type_error,
+                &[
+                    op.as_pointer_value().into(),
+                    iter_tag.into(),
+                    zero_tag.into(),
+                ],
+                "",
+            )
+            .unwrap();
+        self.builder
+            .build_unconditional_branch(after_block)
             .unwrap();
 
         // String iteration

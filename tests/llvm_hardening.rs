@@ -668,6 +668,83 @@ blether is_in_creel(w, n - 1000)
     );
 }
 
+// ---------- MDH-BUG-FLU-00128: fer over a dict or creel is a type error ----------
+
+#[test]
+fn fer_over_a_dict_or_creel_raises_the_interpreters_type_error() {
+    // Only lists and strings iterate. The creel's third loop runs after removals, so its
+    // payload holds tombstones; strings and lists still iterate.
+    let out = run_ok(
+        r#"
+ken d = {"a": 1, "b": 2}
+hae_a_bash {
+    fer k in d {
+        blether k
+    }
+} gin_it_gangs_wrang e {
+    blether e
+}
+ken c = creel(["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"])
+hae_a_bash {
+    fer k in c {
+        blether k
+    }
+} gin_it_gangs_wrang e {
+    blether e
+}
+heave_oot(c, "b")
+heave_oot(c, "e")
+hae_a_bash {
+    fer k in c {
+        blether k
+    }
+} gin_it_gangs_wrang e {
+    blether e
+}
+fer ch in "ab" {
+    blether ch
+}
+fer x in [1, 2] {
+    blether x
+}
+"#,
+    );
+    // The interpreter prints the same.
+    assert_eq!(
+        out,
+        vec![
+            "That's pure mince! Type error at line 4: Cannae iterate ower a dict",
+            "That's pure mince! Type error at line 12: Cannae iterate ower a creel",
+            "That's pure mince! Type error at line 21: Cannae iterate ower a creel",
+            "a",
+            "b",
+            "1",
+            "2",
+        ]
+    );
+}
+
+#[test]
+fn uncaught_fer_over_a_dict_exits_with_the_type_error() {
+    let run = compile_and_run(
+        r#"
+ken d = {"a": 1}
+fer k in d {
+    blether k
+}
+blether "after"
+"#,
+    );
+    assert_ne!(run.code, Some(0));
+    assert_eq!(run.stdout.trim(), "");
+    assert!(
+        run.stderr
+            .contains("That's pure mince! Type error at line 3: Cannae iterate ower a dict"),
+        "stderr={:?}",
+        run.stderr
+    );
+}
+
 // ---------- MDH-BUG-FLU-00090: each thread's errors report its own line ----------
 
 #[test]

@@ -896,6 +896,9 @@ void __mdh_type_error(const char *op, uint8_t got1, uint8_t got2) {
             snprintf(msg, sizeof(msg), "Cannae compare %s wi' %s", l, r);
         } else if (strcmp(op, "negate") == 0) {
             snprintf(msg, sizeof(msg), "Cannae negate a %s", l);
+        } else if (strcmp(op, "iterate") == 0) {
+            /* `fer` over anything but a list or string (MDH-BUG-FLU-00128). */
+            snprintf(msg, sizeof(msg), "Cannae iterate ower a %s", l);
         }
         if (msg[0] != '\0') {
             int64_t line = __mdh_err_line();
