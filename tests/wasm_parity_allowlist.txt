@@ -3,6 +3,3 @@
 # then delete its line (the test fails while a listed case passes).
 # Grouped by cause, biggest group first.
 # Regenerate: MDH_WASM_PARITY_BLESS=1 cargo test --features wasm_runner --test wasm_golden_parity
-
-# == output mismatch (1) ==
-tests/golden/integration/showcase_bothy_adventure.braw

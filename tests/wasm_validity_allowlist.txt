@@ -2,4 +2,3 @@
 # Format: `path | reason` (path relative to the repo root). The test fails if an entry
 # starts passing (remove it) or no longer exists. Phase 2 fills this from observed runs.
 tests/golden/data_structures/dicts/dict_assign.braw | SKIP_INTERPRETER: the .expected shows sorted keys, but WASM (like the interpreter) keeps insertion order
-tests/golden/integration/showcase_bothy_adventure.braw | a dict holding lambdas is passed tae the builtin contains(); the builtin bridge cannae carry a function value yet

@@ -6,9 +6,11 @@ use std::rc::Rc;
 
 use wasmtime::{Caller, Engine, FuncType, Linker, Memory, MemoryType, Module, Store, Val, ValType};
 
-use crate::error::HaversError;
+use crate::error::{HaversError, HaversResult};
 use crate::interpreter::Interpreter;
-use crate::value::{DictValue, HaversClass, HaversInstance, NativeFunction, SetValue, Value};
+use crate::value::{
+    DictValue, HaversClass, HaversInstance, NativeFunction, NativeObject, SetValue, Value,
+};
 use crate::wasm_compiler::{
     AUDIO_IMPORTS, HOF_BUILTINS, MAX_BUILTIN_ARGS, RAISE_ASSERT, RAISE_HURL, UNSET_GLOBAL,
 };
@@ -603,6 +605,7 @@ fn container_ptr(value: &Value) -> Option<usize> {
         Value::Set(rc) => Some(Rc::as_ptr(rc) as *const () as usize),
         Value::Bytes(rc) => Some(Rc::as_ptr(rc) as *const () as usize),
         Value::Instance(rc) => Some(Rc::as_ptr(rc) as *const () as usize),
+        Value::NativeObject(rc) => Some(Rc::as_ptr(rc) as *const () as usize),
         _ => None,
     }
 }
@@ -682,10 +685,18 @@ impl ValueBridge {
                 self.remember(handle, &value);
                 Ok(value)
             }
-            other => Err(format!(
-                "That's pure mince! Type error: a {} cannae be passed tae a builtin in WASM yet",
-                host_type_name(other)
-            )),
+            HostValue::Cell(_) => Err(ERR_INVALID.to_string()),
+            // A function, builtin, class, bound method or tri value rides through as an
+            // opaque `HostOpaque`, an' `to_handle` gies back its ain handle.
+            other => {
+                let value = Value::NativeObject(Rc::new(HostOpaque {
+                    handle,
+                    kind: host_type_name(other),
+                    shown: store.to_string(handle),
+                }));
+                self.remember(handle, &value);
+                Ok(value)
+            }
         }
     }
 
@@ -727,6 +738,13 @@ impl ValueBridge {
                 self.fill(store, handle, value)?;
                 Ok(handle)
             }
+            Value::NativeObject(obj) => match obj.as_any().downcast_ref::<HostOpaque>() {
+                Some(opaque) => Ok(opaque.handle),
+                None => Err(format!(
+                    "That's pure mince! Type error: WASM cannae haud a {} yet",
+                    obj.type_name()
+                )),
+            },
             other => Err(format!(
                 "That's pure mince! Type error: WASM cannae haud a {} yet",
                 other.type_name()
@@ -804,8 +822,9 @@ impl ValueBridge {
                     })
             }
             (Some(HostValue::Bytes(held)), Value::Bytes(rc)) => *held == *rc.borrow(),
-            // A builtin cannae change an instance's fields.
+            // A builtin cannae change an instance's fields, nor a carried host value.
             (Some(HostValue::Instance { .. }), Value::Instance(_)) => true,
+            (Some(_), Value::NativeObject(_)) => true,
             _ => false,
         }
     }
@@ -827,9 +846,17 @@ impl ValueBridge {
 
     fn same_key(&self, store: &HostStore, key: &ValueKey, value: &Value) -> bool {
         match (key, value) {
-            (ValueKey::List(h) | ValueKey::Dict(h) | ValueKey::Set(h) | ValueKey::Bytes(h), _) => {
-                self.same_slot(store, *h, value)
-            }
+            (
+                ValueKey::List(h)
+                | ValueKey::Dict(h)
+                | ValueKey::Set(h)
+                | ValueKey::Bytes(h)
+                | ValueKey::NativeObject(h)
+                | ValueKey::NativeCtor(h)
+                | ValueKey::Function(h)
+                | ValueKey::Object(h),
+                _,
+            ) => self.same_slot(store, *h, value),
             (ValueKey::Nil, Value::Nil) => true,
             (ValueKey::Bool(a), Value::Bool(b)) => a == b,
             (ValueKey::Int(a), Value::Integer(b)) => a == b,
@@ -837,6 +864,55 @@ impl ValueBridge {
             (ValueKey::String(a), Value::String(b)) => a == b,
             _ => false,
         }
+    }
+}
+
+/// A host value wi' nae interpreter twin (a function, closure, builtin, class, bound
+/// method or tri value), carried through one builtin call by its handle. Natives may
+/// move, compare an' show it; it comes back as the very same handle. It is no' a store
+/// root: it lives only while the call does, an' the arguments that reach it are rooted.
+#[derive(Debug)]
+struct HostOpaque {
+    handle: Handle,
+    kind: &'static str,
+    shown: String,
+}
+
+impl HostOpaque {
+    fn refuse(&self, what: &str) -> HaversError {
+        HaversError::TypeError {
+            message: format!(
+                "a builtin cannae {} a WASM {} ({})",
+                what, self.kind, self.shown
+            ),
+            line: 0,
+        }
+    }
+}
+
+impl NativeObject for HostOpaque {
+    fn type_name(&self) -> &str {
+        self.kind
+    }
+
+    fn get(&self, _prop: &str) -> HaversResult<Value> {
+        Err(self.refuse("look intae"))
+    }
+
+    fn set(&self, _prop: &str, _value: Value) -> HaversResult<Value> {
+        Err(self.refuse("chynge"))
+    }
+
+    fn call(&self, _method: &str, _args: Vec<Value>) -> HaversResult<Value> {
+        Err(self.refuse("ca'"))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn to_string(&self) -> String {
+        self.shown.clone()
     }
 }
 
@@ -3495,6 +3571,85 @@ mod tests {
             state.captured.as_deref(),
             Some("before\nhullo fae a native\n")
         );
+    }
+
+    fn guest_fn(store: &mut HostStore, name: &str) -> Handle {
+        store.alloc(HostValue::Function {
+            index: 0,
+            arity: 0,
+            required: 0,
+            env: 0,
+            name: name.to_string(),
+        })
+    }
+
+    // MDH-BUG-FLU-00127: a dict o' lambdas goes through a builtin, an' its function
+    // values come back as the very same handles.
+    #[test]
+    fn function_values_round_trip_through_the_builtin_bridge() {
+        let mut state = HostState::new(true);
+        let go = guest_fn(&mut state.store, "go");
+        let look = state.store.alloc(HostValue::Builtin("len".to_string()));
+        let key = alloc_string(&mut state.store, "go".to_string());
+        let dict = state.store.alloc(HostValue::Dict(vec![
+            (ValueKey::String("go".to_string()), go),
+            (ValueKey::String("look".to_string()), look),
+        ]));
+        let found = call_builtin(&mut state, "contains", &[dict, key], 0).unwrap();
+        assert!(matches!(
+            state.store.get(found),
+            Some(HostValue::Bool(true))
+        ));
+        let values = call_builtin(&mut state, "values", &[dict], 0).unwrap();
+        assert!(matches!(
+            state.store.get(values),
+            Some(HostValue::List(items)) if items == &[go, look]
+        ));
+        let kind = call_builtin(&mut state, "whit_kind", &[go], 0).unwrap();
+        assert_eq!(state.store.to_string(kind), "function");
+        let shown = call_builtin(&mut state, "tae_string", &[look], 0).unwrap();
+        assert_eq!(state.store.to_string(shown), "<native dae len>");
+    }
+
+    // The write-back o' a mutated container puts the identical function handles back.
+    #[test]
+    fn write_back_restores_function_handles() {
+        let mut state = HostState::new(true);
+        let a = guest_fn(&mut state.store, "a");
+        let b = guest_fn(&mut state.store, "b");
+        let list = state.store.alloc(HostValue::List(vec![a, b, a]));
+        let popped = call_builtin(&mut state, "yank", &[list], 0).unwrap();
+        assert_eq!(popped, a);
+        assert!(matches!(
+            state.store.get(list),
+            Some(HostValue::List(items)) if items == &[a, b]
+        ));
+        let reversed = call_builtin(&mut state, "reverse", &[list], 0).unwrap();
+        assert!(matches!(
+            state.store.get(reversed),
+            Some(HostValue::List(items)) if items == &[b, a]
+        ));
+        let fn_key = state
+            .store
+            .alloc(HostValue::Dict(vec![(ValueKey::Function(a), b)]));
+        let keys = call_builtin(&mut state, "keys", &[fn_key], 0).unwrap();
+        assert!(matches!(
+            state.store.get(keys),
+            Some(HostValue::List(items)) if items == &[a]
+        ));
+    }
+
+    // A native that tries tae ca' a carried host value gets a clear error.
+    #[test]
+    fn a_carried_host_value_cannot_be_called_by_a_native() {
+        let opaque = HostOpaque {
+            handle: 7,
+            kind: "function",
+            shown: "<dae go>".to_string(),
+        };
+        let err = opaque.call("call", Vec::new()).unwrap_err().to_string();
+        assert!(err.contains("cannae ca'"), "{err}");
+        assert_eq!(opaque.to_string(), "<dae go>");
     }
 
     #[test]
