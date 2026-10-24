@@ -1,5 +1,10 @@
 # Lessons learnt
 
+- src/parser.rs:return_statement - a change to what the parser accepts breaks inline .braw in any test file; grep
+  every tests/*.rs (llvm_*, *_coverage*, wasm_*) for the construct, or run the full suite, before landing. Two trunk
+  breaks on 2026-10-24 came from top-level `{ gie .. }` sources in native and WASM tests no golden run touched.
+- tests/*_parity_allowlist.txt - the JS and WASM golden harnesses fail when an allowlisted golden starts passing, so a
+  lane that fixes a builtin must rebase onto the latest goldens and prune the list before landing (2026-10-24).
 - git:squash - never squash a lane with `git reset --soft origin/master` after a fetch: if origin moved, the commit
   silently reverts every file other lanes landed meanwhile. Use `git reset --soft $(git merge-base HEAD origin/master)`,
   then check `git diff --stat origin/master` lists only your files. Three lanes slipped this way on 2026-10-23 (all caught).
