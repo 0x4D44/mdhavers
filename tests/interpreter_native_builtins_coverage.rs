@@ -35,6 +35,9 @@ fn interpreter_calls_all_native_builtins_for_coverage() {
     };
 
     let temp = tempfile::tempdir().unwrap();
+    // Natives such as `scrieve_append` write to relative paths; keep them out of the repo root.
+    // This binary holds a single test, so changing the process cwd cannot race another test.
+    std::env::set_current_dir(temp.path()).unwrap();
     let temp_file = temp.path().join("mdh_native_cov.txt");
     std::fs::write(&temp_file, "hello\nworld\n").unwrap();
     let temp_path = temp_file.to_string_lossy().to_string();
@@ -94,6 +97,12 @@ fn interpreter_calls_all_native_builtins_for_coverage() {
             continue;
         };
         if skip.contains(&name.as_str()) {
+            continue;
+        }
+        // raylib must start on the main thread on macOS, but cargo test runs tests on a worker
+        // thread, so `screen_open` aborts the process with SIGTRAP there. Other platforms still
+        // exercise it.
+        if cfg!(target_os = "macos") && name == "screen_open" {
             continue;
         }
 
