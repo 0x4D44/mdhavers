@@ -250,23 +250,7 @@ dae repeat_say(s, n) {
     gie result
 }
 
-# Pad string on left to width
-dae pad_left(s, width, fill) {
-    ken padding = width - len(s)
-    gin padding <= 0 {
-        gie s
-    }
-    gie repeat_say(fill, padding) + s
-}
-
-# Pad string on right to width
-dae pad_right(s, width, fill) {
-    ken padding = width - len(s)
-    gin padding <= 0 {
-        gie s
-    }
-    gie s + repeat_say(fill, padding)
-}
+# pad_left and pad_right are native builtins (2 or 3 args, pad defaults to a space)
 
 # Center string in width
 dae centre(s, width, fill) {

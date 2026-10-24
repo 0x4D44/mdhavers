@@ -110,6 +110,9 @@ pub enum HaversError {
     #[error("Ye've fair scunnered it! Return statement ootside a function at line {line}")]
     ReturnOutsideFunction { line: usize },
 
+    #[error("Haud yer horses! '{keyword}' cannae jump oot a block expression at line {line} - it's no a loop")]
+    LoopJumpInBlockExpr { keyword: String, line: usize },
+
     #[error("Haud on! Cannae iterate over a {type_name} at line {line} - need a list or range")]
     NotIterable { type_name: String, line: usize },
 
@@ -195,6 +198,7 @@ impl HaversError {
             HaversError::InvalidOperation { line, .. } => Some(*line),
             HaversError::AssertionFailed { line, .. } => Some(*line),
             HaversError::ReturnOutsideFunction { line } => Some(*line),
+            HaversError::LoopJumpInBlockExpr { line, .. } => Some(*line),
             HaversError::NotIterable { line, .. } => Some(*line),
             HaversError::PatternError { line, .. } => Some(*line),
             HaversError::IntegerOverflow { line } => Some(*line),
@@ -289,6 +293,9 @@ impl HaversError {
             }
             HaversError::ReturnOutsideFunction { line: 0 } => {
                 HaversError::ReturnOutsideFunction { line }
+            }
+            HaversError::LoopJumpInBlockExpr { keyword, line: 0 } => {
+                HaversError::LoopJumpInBlockExpr { keyword, line }
             }
             HaversError::NotIterable { type_name, line: 0 } => {
                 HaversError::NotIterable { type_name, line }
@@ -657,6 +664,9 @@ pub fn get_error_suggestion(error: &HaversError) -> Option<&'static str> {
         HaversError::ReturnOutsideFunction { .. } => {
             Some("💡 'gie' only works inside functions! Define a function wi' 'dae name() { }'")
         }
+        HaversError::LoopJumpInBlockExpr { .. } => Some(
+            "💡 'brak' and 'haud' need a 'whiles' or 'fer' loop - pit the loop inside the block, or tak the jump oot o' it!",
+        ),
         _ => None,
     }
 }
@@ -991,6 +1001,14 @@ mod tests {
         let err = HaversError::ReturnOutsideFunction { line: 1 };
         let suggestion = get_error_suggestion(&err);
         assert!(suggestion.is_some());
+
+        // Test loop jump in a block expression
+        let err = HaversError::LoopJumpInBlockExpr {
+            keyword: "brak".to_string(),
+            line: 1,
+        };
+        assert!(get_error_suggestion(&err).is_some());
+        assert_eq!(err.line(), Some(1));
 
         // Test wrong arity - no args expected
         let err = HaversError::WrongArity {

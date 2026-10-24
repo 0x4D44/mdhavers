@@ -17,6 +17,9 @@ pub struct Parser {
     /// How many function bodies (`dae`, methods, lambdas) enclose the
     /// cursor; `gie` at zero is an error.
     function_depth: usize,
+    /// True when the nearest enclosing loop-or-block-expression is a block
+    /// expression, where `brak`/`haud` are an error.
+    in_block_expr: bool,
 }
 
 impl Parser {
@@ -26,6 +29,7 @@ impl Parser {
             current: 0,
             depth: 0,
             function_depth: 0,
+            in_block_expr: false,
         }
     }
 
@@ -35,8 +39,18 @@ impl Parser {
         parse_fn: impl FnOnce(&mut Self) -> HaversResult<T>,
     ) -> HaversResult<T> {
         self.function_depth += 1;
+        let saved = std::mem::replace(&mut self.in_block_expr, false);
         let result = parse_fn(self);
+        self.in_block_expr = saved;
         self.function_depth -= 1;
+        result
+    }
+
+    /// Parse a loop body, where `brak`/`haud` are allowed again.
+    fn loop_body(&mut self) -> HaversResult<Stmt> {
+        let saved = std::mem::replace(&mut self.in_block_expr, false);
+        let result = self.block();
+        self.in_block_expr = saved;
         result
     }
 
@@ -384,7 +398,7 @@ impl Parser {
 
         let condition = self.expression()?;
         self.skip_newlines();
-        let body = Box::new(self.block()?);
+        let body = Box::new(self.loop_body()?);
 
         Ok(Stmt::While {
             condition,
@@ -401,7 +415,7 @@ impl Parser {
         self.expect(&TokenKind::In, "in")?;
         let iterable = self.expression()?;
         self.skip_newlines();
-        let body = Box::new(self.block()?);
+        let body = Box::new(self.loop_body()?);
 
         Ok(Stmt::For {
             variable,
@@ -447,6 +461,12 @@ impl Parser {
 
     fn break_statement(&mut self) -> HaversResult<Stmt> {
         let span = self.current_span();
+        if self.in_block_expr {
+            return Err(HaversError::LoopJumpInBlockExpr {
+                keyword: "brak".to_string(),
+                line: span.line,
+            });
+        }
         self.advance(); // consume 'brak'
         self.expect_statement_end()?;
         Ok(Stmt::Break { span })
@@ -454,6 +474,12 @@ impl Parser {
 
     fn continue_statement(&mut self) -> HaversResult<Stmt> {
         let span = self.current_span();
+        if self.in_block_expr {
+            return Err(HaversError::LoopJumpInBlockExpr {
+                keyword: "haud".to_string(),
+                line: span.line,
+            });
+        }
         self.advance(); // consume 'haud'
         self.expect_statement_end()?;
         Ok(Stmt::Continue { span })
@@ -1395,11 +1421,19 @@ impl Parser {
         if !self.brace_starts_dict() {
             // A `gie` in a block expression returns frae the enclosing
             // function (DEC row 64), so it needs one.
+            let saved = std::mem::replace(&mut self.in_block_expr, true);
             let mut statements = Vec::new();
             while !self.check(&TokenKind::RightBrace) && !self.is_at_end() {
-                statements.push(self.declaration()?);
+                match self.declaration() {
+                    Ok(stmt) => statements.push(stmt),
+                    Err(e) => {
+                        self.in_block_expr = saved;
+                        return Err(e);
+                    }
+                }
                 self.skip_newlines();
             }
+            self.in_block_expr = saved;
             self.expect(&TokenKind::RightBrace, "}")?;
             return Ok(Expr::BlockExpr { statements, span });
         }
@@ -3062,6 +3096,37 @@ keek x {
             parse("gie"),
             Err(HaversError::ReturnOutsideFunction { line: 1 })
         ));
+    }
+
+    #[test]
+    fn test_brak_haud_in_block_expression_is_a_parse_error() {
+        for (src, kw) in [
+            (
+                "fer x in [1, 2, 3] { ken y = { gin x == 2 { brak }\n x }\n blether y }",
+                "brak",
+            ),
+            ("whiles aye { ken y = { haud\n 1 }\n blether y }", "haud"),
+            ("ken y = { brak\n 1 }", "brak"),
+        ] {
+            match parse(src) {
+                Err(HaversError::LoopJumpInBlockExpr { keyword, .. }) => assert_eq!(keyword, kw),
+                other => panic!("expected LoopJumpInBlockExpr for {src}: {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_brak_haud_allowed_in_loops_near_block_expressions() {
+        // A loop inside the block expression may still jump.
+        assert!(parse("ken y = { fer i in 0..3 { brak }\n 5 }").is_ok());
+        assert!(parse("ken y = { whiles aye { haud }\n 5 }").is_ok());
+        // Ordinary loop bodies (incl. nested statement blocks) are unaffected.
+        assert!(parse("fer x in [1, 2] { gin x == 1 { brak } }").is_ok());
+        // The context is restored after a block expression ends.
+        assert!(parse("fer x in [1] { ken y = { 1 }\n brak }").is_ok());
+        // A function body inside a block expression resets the context (as before).
+        assert!(parse("ken y = { dae f() { brak }\n 1 }").is_ok());
+        assert!(parse("ken y = { ken f = |a| { brak }\n 1 }").is_ok());
     }
 
     #[test]

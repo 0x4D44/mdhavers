@@ -1253,3 +1253,23 @@ fn cli_repl_readline_interrupt_error_path_is_covered() {
         "stdout missing interrupted message:\n{stdout}"
     );
 }
+
+#[test]
+fn cli_prelude_does_not_shadow_native_pad_builtins() {
+    // MDH-BUG-FLU-00115: the prelude used to define 3-arg-only pad_left/pad_right.
+    let dir = tempdir().unwrap();
+    let prog = dir.path().join("pad.braw");
+    write_file(
+        &prog,
+        "blether \"[\" + pad_right(\"ab\", 5) + \"]\"\n\
+         blether \"[\" + pad_right(\"ab\", 5, \"*\") + \"]\"\n\
+         blether \"[\" + pad_left(\"ab\", 5) + \"]\"\n\
+         blether \"[\" + pad_left(\"ab\", 5, \"0\") + \"]\"\n",
+    );
+    // Run from the repo root so the real stdlib/prelude.braw is the one loaded.
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let (code, out, err) =
+        run_mdhavers_in_dir(&["run", prog.to_str().unwrap()], None, dir.path(), &root);
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(out, "[ab   ]\n[ab***]\n[   ab]\n[000ab]\n");
+}

@@ -267,3 +267,18 @@ x /= 4
     .expect("compound assignment ops should parse");
     assert!(!program.statements.is_empty());
 }
+
+#[test]
+fn brak_in_block_expression_is_rejected_before_any_backend() {
+    // MDH-BUG-FLU-00108: the JS compiler used to emit a broken `break` here.
+    let src = "fer x in [1, 2, 3] { ken y = { gin x == 2 { brak }\n x }\n blether y }";
+    assert!(matches!(
+        parse(src),
+        Err(HaversError::LoopJumpInBlockExpr { .. })
+    ));
+    assert!(matches!(
+        mdhavers::compile_to_js(src),
+        Err(HaversError::LoopJumpInBlockExpr { .. })
+    ));
+    assert!(mdhavers::compile_to_js("ken y = { fer i in 0..3 { brak }\n 5 }").is_ok());
+}
