@@ -508,24 +508,168 @@ MdhValue __mdh_neg(MdhValue a) {
 
 /* ========== Comparison Operations ========== */
 
-/* The (left, right) container pairs being compared right now, innermost first. */
-typedef struct MdhEqPath {
-    int64_t a;
-    int64_t b;
-    const struct MdhEqPath *outer;
-} MdhEqPath;
+/* Structural equality walks nested containers with an explicit work stack, not the C
+   stack, so lists and dicts nested hundreds of thousands deep compare without a crash,
+   like the interpreter's iterative containers_equal (MDH-BUG-FLU-00111).
 
-static bool __mdh_eq_in(MdhValue a, MdhValue b, const MdhEqPath *path);
+   The frames on the stack are the (left, right) container pairs being compared right
+   now. Meeting a pair that is already on that path means the comparison has come full
+   circle without finding a difference, so that pair counts as equal: cyclic lists and
+   dicts compare in finite time. A shallow path is searched directly; once it gets deep,
+   a hash set of the pairs on it keeps each check constant-time. */
 
-bool __mdh_eq(MdhValue a, MdhValue b) {
-    return __mdh_eq_in(a, b, NULL);
+typedef struct {
+    MdhValue a;
+    MdhValue b;
+    int64_t next; /* next element (list) or entry (dict/set) to compare */
+    int64_t count;
+} MdhEqFrame;
+
+#define MDH_EQ_INLINE_FRAMES 32
+#define MDH_EQ_SCAN_LIMIT 32
+
+typedef struct {
+    MdhEqFrame inline_frames[MDH_EQ_INLINE_FRAMES];
+    MdhEqFrame *frames;
+    int64_t depth;
+    int64_t cap;
+    /* Pairs on the path, once it is deeper than MDH_EQ_SCAN_LIMIT: open addressing,
+       linear probing; a slot is free when its `a` is 0 (container payloads are never
+       null pointers here). */
+    int64_t (*set)[2];
+    int64_t set_mask;
+    int64_t set_count;
+} MdhEqWalk;
+
+static void __mdh_eq_oom(void) {
+    fprintf(stderr, "Och! Ran oot o' room comparin' nested containers\n");
+    exit(1);
 }
 
-/* Equality of two values while `path` is being compared. Meeting a container pair that
-   is already on the path means the comparison has come full circle without finding a
-   difference, so that pair counts as equal; cyclic lists and dicts compare in finite
-   time, like the interpreter's containers_equal. */
-static bool __mdh_eq_in(MdhValue a, MdhValue b, const MdhEqPath *path) {
+static uint64_t __mdh_eq_pair_hash(int64_t a, int64_t b) {
+    uint64_t h = (uint64_t)a * 0x9E3779B97F4A7C15ULL;
+    h ^= (uint64_t)b + 0x632BE59BD9B4E019ULL + (h << 6) + (h >> 2);
+    h ^= h >> 31;
+    h *= 0xBF58476D1CE4E5B9ULL;
+    h ^= h >> 29;
+    return h;
+}
+
+static void __mdh_eq_set_put(MdhEqWalk *w, int64_t a, int64_t b) {
+    uint64_t i = __mdh_eq_pair_hash(a, b) & (uint64_t)w->set_mask;
+    while (w->set[i][0] != 0) {
+        i = (i + 1) & (uint64_t)w->set_mask;
+    }
+    w->set[i][0] = a;
+    w->set[i][1] = b;
+    w->set_count++;
+}
+
+static void __mdh_eq_set_grow(MdhEqWalk *w, int64_t need) {
+    int64_t cap = w->set ? (w->set_mask + 1) : 0;
+    if (need * 2 <= cap) return;
+    int64_t new_cap = cap ? cap : 64;
+    while (need * 2 > new_cap) {
+        if (new_cap > INT64_MAX / 2) __mdh_eq_oom();
+        new_cap *= 2;
+    }
+    if ((uint64_t)new_cap > SIZE_MAX / sizeof(int64_t[2])) __mdh_eq_oom();
+    int64_t (*old)[2] = w->set;
+    int64_t old_cap = cap;
+    w->set = (int64_t (*)[2])calloc((size_t)new_cap, sizeof(int64_t[2]));
+    if (!w->set) __mdh_eq_oom();
+    w->set_mask = new_cap - 1;
+    w->set_count = 0;
+    if (old) {
+        for (int64_t i = 0; i < old_cap; i++) {
+            if (old[i][0] != 0) __mdh_eq_set_put(w, old[i][0], old[i][1]);
+        }
+        free(old);
+    } else {
+        /* First use: the set takes over from the direct scan of the path. */
+        for (int64_t d = 0; d < w->depth; d++) {
+            __mdh_eq_set_put(w, w->frames[d].a.data, w->frames[d].b.data);
+        }
+    }
+}
+
+/* Remove a pair (backward-shift deletion keeps linear probing correct). */
+static void __mdh_eq_set_remove(MdhEqWalk *w, int64_t a, int64_t b) {
+    uint64_t mask = (uint64_t)w->set_mask;
+    uint64_t i = __mdh_eq_pair_hash(a, b) & mask;
+    while (w->set[i][0] != a || w->set[i][1] != b) {
+        if (w->set[i][0] == 0) return;
+        i = (i + 1) & mask;
+    }
+    uint64_t hole = i;
+    for (;;) {
+        i = (i + 1) & mask;
+        if (w->set[i][0] == 0) break;
+        uint64_t home = __mdh_eq_pair_hash(w->set[i][0], w->set[i][1]) & mask;
+        /* Move the entry into the hole unless its home lies cyclically in (hole, i]. */
+        bool stays = (hole <= i) ? (home > hole && home <= i) : (home > hole || home <= i);
+        if (!stays) {
+            w->set[hole][0] = w->set[i][0];
+            w->set[hole][1] = w->set[i][1];
+            hole = i;
+        }
+    }
+    w->set[hole][0] = 0;
+    w->set[hole][1] = 0;
+    w->set_count--;
+}
+
+static bool __mdh_eq_on_path(const MdhEqWalk *w, int64_t a, int64_t b) {
+    if (!w->set) {
+        for (int64_t d = 0; d < w->depth; d++) {
+            if (w->frames[d].a.data == a && w->frames[d].b.data == b) return true;
+        }
+        return false;
+    }
+    uint64_t i = __mdh_eq_pair_hash(a, b) & (uint64_t)w->set_mask;
+    while (w->set[i][0] != 0) {
+        if (w->set[i][0] == a && w->set[i][1] == b) return true;
+        i = (i + 1) & (uint64_t)w->set_mask;
+    }
+    return false;
+}
+
+static void __mdh_eq_push(MdhEqWalk *w, MdhValue a, MdhValue b, int64_t count) {
+    if (w->depth >= w->cap) {
+        int64_t new_cap = w->cap * 2;
+        if (new_cap <= w->cap || (uint64_t)new_cap > SIZE_MAX / sizeof(MdhEqFrame)) {
+            __mdh_eq_oom();
+        }
+        MdhEqFrame *grown;
+        if (w->frames == w->inline_frames) {
+            grown = (MdhEqFrame *)malloc((size_t)new_cap * sizeof(MdhEqFrame));
+            if (grown) memcpy(grown, w->inline_frames, sizeof(w->inline_frames));
+        } else {
+            grown = (MdhEqFrame *)realloc(w->frames, (size_t)new_cap * sizeof(MdhEqFrame));
+        }
+        if (!grown) __mdh_eq_oom();
+        w->frames = grown;
+        w->cap = new_cap;
+    }
+    if (w->set || w->depth + 1 > MDH_EQ_SCAN_LIMIT) {
+        __mdh_eq_set_grow(w, w->depth + 1);
+        __mdh_eq_set_put(w, a.data, b.data);
+    }
+    MdhEqFrame *f = &w->frames[w->depth++];
+    f->a = a;
+    f->b = b;
+    f->next = 0;
+    f->count = count;
+}
+
+static void __mdh_eq_pop(MdhEqWalk *w) {
+    MdhEqFrame *f = &w->frames[--w->depth];
+    if (w->set) __mdh_eq_set_remove(w, f->a.data, f->b.data);
+}
+
+/* Compare one pair. Scalars and bytes are settled here; a container pair whose shape
+   matches is pushed for its elements to be compared, unless it is already on the path. */
+static bool __mdh_eq_step(MdhEqWalk *w, MdhValue a, MdhValue b) {
     if (a.tag != b.tag) {
         /* Allow int/float comparison */
         if ((a.tag == MDH_TAG_INT && b.tag == MDH_TAG_FLOAT) ||
@@ -552,15 +696,8 @@ static bool __mdh_eq_in(MdhValue a, MdhValue b, const MdhEqPath *path) {
             MdhList *lb = __mdh_get_list(b);
             if (!la || !lb) return la == lb;
             if (la->length != lb->length) return false;
-            for (const MdhEqPath *p = path; p; p = p->outer) {
-                if (p->a == a.data && p->b == b.data) return true;
-            }
-            MdhEqPath here = { a.data, b.data, path };
-            for (int64_t i = 0; i < la->length; i++) {
-                if (!__mdh_eq_in(la->items[i], lb->items[i], &here)) {
-                    return false;
-                }
-            }
+            if (la->length == 0 || __mdh_eq_on_path(w, a.data, b.data)) return true;
+            __mdh_eq_push(w, a, b, la->length);
             return true;
         }
         case MDH_TAG_BYTES: {
@@ -580,25 +717,53 @@ static bool __mdh_eq_in(MdhValue a, MdhValue b, const MdhEqPath *path) {
             int64_t ca = pa ? pa[0] : 0;
             int64_t cb = pb ? pb[0] : 0;
             if (ca != cb) return false;
-            MdhValue *ea = pa ? (MdhValue *)(pa + 1) : NULL;
-            MdhValue *eb = pb ? (MdhValue *)(pb + 1) : NULL;
-            for (const MdhEqPath *p = path; p; p = p->outer) {
-                if (p->a == a.data && p->b == b.data) return true;
-            }
-            MdhEqPath here = { a.data, b.data, path };
-            for (int64_t i = 0; i < ca; i++) {
-                int64_t j = __mdh_kv_find(b, ea[i * 2]);
-                if (j < 0) return false;
-                if (a.tag == MDH_TAG_DICT && !__mdh_eq_in(ea[i * 2 + 1], eb[j * 2 + 1], &here)) {
-                    return false;
-                }
-            }
+            if (ca == 0 || __mdh_eq_on_path(w, a.data, b.data)) return true;
+            __mdh_eq_push(w, a, b, ca);
             return true;
         }
         default:
             /* Reference equality for complex types */
             return a.data == b.data;
     }
+}
+
+bool __mdh_eq(MdhValue a, MdhValue b) {
+    MdhEqWalk w;
+    w.frames = w.inline_frames;
+    w.depth = 0;
+    w.cap = MDH_EQ_INLINE_FRAMES;
+    w.set = NULL;
+    w.set_mask = 0;
+    w.set_count = 0;
+
+    bool equal = __mdh_eq_step(&w, a, b);
+    while (equal && w.depth > 0) {
+        MdhEqFrame *f = &w.frames[w.depth - 1];
+        if (f->next >= f->count) {
+            __mdh_eq_pop(&w);
+            continue;
+        }
+        int64_t i = f->next++;
+        MdhValue fa = f->a;
+        MdhValue fb = f->b;
+        if (fa.tag == MDH_TAG_LIST) {
+            /* `f` may move when the step pushes, so read everything first. */
+            equal = __mdh_eq_step(&w, __mdh_get_list(fa)->items[i], __mdh_get_list(fb)->items[i]);
+        } else {
+            MdhValue *ea = (MdhValue *)(__mdh_kv_payload_ptr(fa) + 1);
+            int64_t j = __mdh_kv_find(fb, ea[i * 2]);
+            if (j < 0) {
+                equal = false;
+            } else if (fa.tag == MDH_TAG_DICT) {
+                MdhValue *eb = (MdhValue *)(__mdh_kv_payload_ptr(fb) + 1);
+                equal = __mdh_eq_step(&w, ea[i * 2 + 1], eb[j * 2 + 1]);
+            }
+        }
+    }
+
+    if (w.frames != w.inline_frames) free(w.frames);
+    free(w.set);
+    return equal;
 }
 
 bool __mdh_ne(MdhValue a, MdhValue b) {

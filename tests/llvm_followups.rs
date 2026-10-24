@@ -2,7 +2,8 @@
 //! Native-backend follow-ups: function values bound late (MDH-BUG-FLU-00070), a user
 //! function called `main` (00071), caught hurl text (00073), float printing (00074),
 //! the build run hint (00076), creel updates on boxed variables (00081) and checked
-//! `replace` sizes (00082).
+//! `replace` sizes (00082), the scope of a fer loop variable (00107) and captures of a
+//! `dae` nested in a block (00112) and deep structural equality (00111).
 
 use std::process::{Command, Stdio};
 
@@ -249,4 +250,187 @@ fn build_run_hint_does_not_prefix_absolute_paths() {
         "stdout={stdout:?}"
     );
     assert!(!stdout.contains(".//"), "stdout={stdout:?}");
+}
+
+// ---------- MDH-BUG-FLU-00107: a fer loop variable ends with its loop ----------
+
+#[test]
+fn fer_loop_variable_does_not_outlive_its_loop() {
+    let out = run_ok(
+        r#"
+dae over_list() {
+  ken x = 10
+  fer x in [1, 2] { }
+  gie x
+}
+dae over_string() {
+  ken c = "keep"
+  fer c in "ab" { }
+  gie c
+}
+blether over_list()
+blether over_string()
+ken i = 99
+fer i in 0..3 {}
+blether i
+"#,
+    );
+    assert_eq!(out, vec!["10", "keep", "99"]);
+}
+
+#[test]
+fn nested_same_name_loops_leave_the_outer_loop_variable_to_closures() {
+    let out = run_ok(
+        r#"
+dae g() {
+  ken fs = []
+  fer i in 0..2 {
+    fer i in 5..6 { }
+    shove(fs, || i)
+  }
+  gie [fs[0](), fs[1]()]
+}
+blether g()
+"#,
+    );
+    assert_eq!(out, vec!["[0, 1]"]);
+}
+
+#[test]
+fn shadowing_fer_loop_keeps_the_outer_variables_state() {
+    let out = run_ok(
+        r#"
+dae in_a_while() {
+  ken x = 5
+  ken total = 0
+  ken j = 0
+  whiles j < 2 {
+    fer x in [100, 200] { total = total + x }
+    x = x + 1
+    j = j + 1
+  }
+  gie [x, total]
+}
+dae captured_outside() {
+  ken x = 1
+  ken g = || x
+  fer x in [7, 8] { }
+  x = 42
+  gie g()
+}
+blether in_a_while()
+blether captured_outside()
+"#,
+    );
+    assert_eq!(out, vec!["[7, 600]", "42"]);
+}
+
+// ---------- MDH-BUG-FLU-00112: a dae nested in a block captures like any other ----------
+
+#[test]
+fn dae_in_a_gin_block_captures_the_enclosing_parameter() {
+    let out = run_ok(
+        r#"
+dae outer(v) {
+  gin v > 0 {
+    dae inner() { gie v * 10 }
+    gie inner()
+  }
+  gie v
+}
+blether outer(3)
+blether outer(-1)
+"#,
+    );
+    assert_eq!(out, vec!["30", "-1"]);
+}
+
+#[test]
+fn dae_in_loop_bodies_captures_parameters_and_loop_variables() {
+    let out = run_ok(
+        r#"
+dae h(base) {
+  ken out = []
+  fer i in 0..3 {
+    dae add() { gie base + i }
+    shove(out, add())
+  }
+  fer s in ["a", "b"] {
+    dae tag() { gie s + base }
+    shove(out, tag())
+  }
+  fer c in "xy" {
+    dae dub() { gie c + c }
+    shove(out, dub())
+  }
+  gie out
+}
+blether h(10)
+"#,
+    );
+    assert_eq!(out, vec!["[10, 11, 12, a10, b10, xx, yy]"]);
+}
+
+#[test]
+fn same_named_dae_in_each_branch_and_recursive_block_dae() {
+    let out = run_ok(
+        r#"
+dae k(v) {
+  gin v > 0 {
+    dae pick() { gie "pos " + v }
+    gie pick()
+  } ither {
+    dae pick() { gie "neg " + v }
+    gie pick()
+  }
+}
+dae m(n) {
+  gin n > 0 {
+    dae fact(x) { gin x <= 1 { gie n } gie x * fact(x - 1) }
+    gie fact(4)
+  }
+  gie 0
+}
+blether k(2)
+blether k(-2)
+blether m(1)
+"#,
+    );
+    assert_eq!(out, vec!["pos 2", "neg -2", "24"]);
+}
+
+// ---------- MDH-BUG-FLU-00111: equality does not recurse on the C stack ----------
+
+#[test]
+fn deeply_nested_containers_compare_without_overflowing_the_stack() {
+    let out = run_ok(
+        r#"
+ken a = [1]
+ken b = [1]
+ken c = [2]
+ken d = {"k": 1}
+ken e = {"k": 1}
+fer i in 0..200000 {
+  a = [a]
+  b = [b]
+  c = [c]
+  d = {"k": d}
+  e = {"k": e}
+}
+blether a == b
+blether a == c
+blether a != c
+blether d == e
+ken p = [1]
+ken q = [1]
+fer i in 0..100 {
+  p = [p, 1]
+  q = [q, 1]
+}
+shove(p, p)
+shove(q, q)
+blether p == q
+"#,
+    );
+    assert_eq!(out, vec!["aye", "nae", "aye", "aye", "aye"]);
 }

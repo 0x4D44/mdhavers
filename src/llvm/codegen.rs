@@ -510,6 +510,20 @@ enum BindingKind {
     GlobalRead,
 }
 
+/// Everything codegen knows about one name, saved around a `fer` loop whose variable
+/// hides an outer binding (see `CodeGen::save_name_state`).
+struct NameState<'ctx> {
+    variable: Option<PointerValue<'ctx>>,
+    var_type: Option<VarType>,
+    boxed: bool,
+    unstable: bool,
+    int_shadow: Option<PointerValue<'ctx>>,
+    list_ptr_shadow: Option<PointerValue<'ctx>>,
+    string_len_shadow: Option<PointerValue<'ctx>>,
+    string_cap_shadow: Option<PointerValue<'ctx>>,
+    class_type: Option<String>,
+}
+
 #[derive(Debug)]
 struct ImportBindings<'ctx> {
     variables: HashSet<String>,
@@ -614,6 +628,10 @@ pub struct CodeGen<'ctx> {
     /// This is used to implement lexical scoping for nested functions so that multiple
     /// nested functions with the same source name in different scopes do not collide.
     nested_function_scopes: Vec<HashMap<String, String>>,
+
+    /// Symbols of the `dae`s nested in blocks of the function being compiled, keyed by
+    /// their definition statement (see `predeclare_nested_functions`).
+    block_function_symbols: HashMap<*const Stmt, String>,
 
     /// Counter for generating unique nested function symbols.
     nested_function_counter: u32,
@@ -775,6 +793,7 @@ impl<'ctx> CodeGen<'ctx> {
             function_captures: HashMap::new(),
             function_param_names: HashMap::new(),
             nested_function_scopes: Vec::new(),
+            block_function_symbols: HashMap::new(),
             nested_function_counter: 0,
             function_defined_flags: HashMap::new(),
             loop_stack: Vec::new(),
@@ -13043,7 +13062,18 @@ impl<'ctx> CodeGen<'ctx> {
             Stmt::Function {
                 name, params, body, ..
             } => {
-                let func_name = if self.in_user_function {
+                let block_symbol = self
+                    .block_function_symbols
+                    .get(&(stmt as *const Stmt))
+                    .cloned();
+                let func_name = if let Some(internal) = block_symbol {
+                    // A `dae` in a block: its name means this function from here on
+                    // (MDH-BUG-FLU-00112).
+                    if let Some(scope) = self.nested_function_scopes.last_mut() {
+                        scope.insert(name.clone(), internal.clone());
+                    }
+                    internal
+                } else if self.in_user_function {
                     match self.resolve_scoped_function_name(name) {
                         Some(internal) => internal.to_string(),
                         None => name.clone(),
@@ -27093,18 +27123,68 @@ impl<'ctx> CodeGen<'ctx> {
                 b.name == variable
                     && matches!(b.kind, BindingKind::CapturedRead | BindingKind::GlobalRead)
             });
+        // The loop variable is a new binding: nothing an outer binding of the same name
+        // knew (shadow slots, static type, class) applies to it (MDH-BUG-FLU-00107).
+        self.int_shadows.remove(variable);
+        self.list_ptr_shadows.remove(variable);
+        self.string_len_shadows.remove(variable);
+        self.string_cap_shadows.remove(variable);
+        self.variable_class_types.remove(variable);
         if captured {
-            self.int_shadows.remove(variable);
-            self.list_ptr_shadows.remove(variable);
-            self.string_len_shadows.remove(variable);
-            self.string_cap_shadows.remove(variable);
             self.var_types
                 .insert(variable.to_string(), VarType::Unknown);
             self.boxed_vars.insert(variable.to_string());
         } else {
+            self.var_types.remove(variable);
             self.boxed_vars.remove(variable);
         }
         captured
+    }
+
+    /// Snapshot every per-name piece of codegen state for `name`, so a `fer` loop can
+    /// put back the outer binding its loop variable hides (MDH-BUG-FLU-00107).
+    fn save_name_state(&self, name: &str) -> NameState<'ctx> {
+        NameState {
+            variable: self.variables.get(name).copied(),
+            var_type: self.var_types.get(name).copied(),
+            boxed: self.boxed_vars.contains(name),
+            unstable: self.unstable_vars.contains(name),
+            int_shadow: self.int_shadows.get(name).copied(),
+            list_ptr_shadow: self.list_ptr_shadows.get(name).copied(),
+            string_len_shadow: self.string_len_shadows.get(name).copied(),
+            string_cap_shadow: self.string_cap_shadows.get(name).copied(),
+            class_type: self.variable_class_types.get(name).cloned(),
+        }
+    }
+
+    /// Put back the state `save_name_state` took, dropping whatever the loop bound.
+    fn restore_name_state(&mut self, name: &str, saved: NameState<'ctx>) {
+        fn put<V>(map: &mut HashMap<String, V>, name: &str, value: Option<V>) {
+            match value {
+                Some(v) => {
+                    map.insert(name.to_string(), v);
+                }
+                None => {
+                    map.remove(name);
+                }
+            }
+        }
+        fn put_flag(set: &mut HashSet<String>, name: &str, present: bool) {
+            if present {
+                set.insert(name.to_string());
+            } else {
+                set.remove(name);
+            }
+        }
+        put(&mut self.variables, name, saved.variable);
+        put(&mut self.var_types, name, saved.var_type);
+        put_flag(&mut self.boxed_vars, name, saved.boxed);
+        put_flag(&mut self.unstable_vars, name, saved.unstable);
+        put(&mut self.int_shadows, name, saved.int_shadow);
+        put(&mut self.list_ptr_shadows, name, saved.list_ptr_shadow);
+        put(&mut self.string_len_shadows, name, saved.string_len_shadow);
+        put(&mut self.string_cap_shadows, name, saved.string_cap_shadow);
+        put(&mut self.variable_class_types, name, saved.class_type);
     }
 
     /// Bind the loop variable for one iteration (see `begin_loop_var`).
@@ -27201,6 +27281,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // Create loop variable (holds single-char string)
+        let saved_name = self.save_name_state(variable);
         let boxed = self.begin_loop_var(variable, body);
         let var_alloca = self.create_entry_block_alloca(variable);
         self.variables.insert(variable.to_string(), var_alloca);
@@ -27310,6 +27391,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
         self.loop_stack.pop();
+        self.restore_name_state(variable, saved_name);
         Ok(())
     }
 
@@ -27360,6 +27442,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Create loop variable
+        let saved_name = self.save_name_state(variable);
         let boxed = self.begin_loop_var(variable, body);
         let var_alloca = self.create_entry_block_alloca(variable);
         self.variables.insert(variable.to_string(), var_alloca);
@@ -27439,6 +27522,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
         self.loop_stack.pop();
+        self.restore_name_state(variable, saved_name);
         Ok(())
     }
 
@@ -27459,6 +27543,7 @@ impl<'ctx> CodeGen<'ctx> {
         let end_data = self.coerce_i64(end_val, "range");
 
         // Create loop variable
+        let saved_name = self.save_name_state(variable);
         let boxed = self.begin_loop_var(variable, body);
         let var_alloca = self.create_entry_block_alloca(variable);
         let start_mdh = self.make_int(start_data);
@@ -27540,6 +27625,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
         self.loop_stack.pop();
+        self.restore_name_state(variable, saved_name);
         self.builder.position_at_end(after_block);
         Ok(())
     }
@@ -27574,6 +27660,7 @@ impl<'ctx> CodeGen<'ctx> {
         let saved_try_depth = std::mem::replace(&mut self.try_depth, 0);
         let saved_in_loop_body = std::mem::replace(&mut self.in_loop_body, false);
         let saved_unstable_vars = std::mem::take(&mut self.unstable_vars);
+        let saved_block_functions = std::mem::take(&mut self.block_function_symbols);
 
         self.builder.position_at_end(entry);
         self.current_function = Some(function);
@@ -27626,54 +27713,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Pre-declare any nested functions in this body
         // IMPORTANT: This must happen AFTER parameters are added to self.variables
         // so that find_free_variables_in_body can see them as capturable
-        let mut captured_in_body: HashSet<String> = HashSet::new();
-        for stmt in body {
-            if let Stmt::Function {
-                name: nested_name,
-                params: nested_params,
-                body: nested_body,
-                ..
-            } = stmt
-            {
-                let already_scoped = self
-                    .nested_function_scopes
-                    .last()
-                    .is_some_and(|scope| scope.contains_key(nested_name));
-                if already_scoped {
-                    continue;
-                }
-
-                let scoped_name = self.next_nested_function_symbol(nested_name);
-                let scope = self
-                    .nested_function_scopes
-                    .last_mut()
-                    .expect("nested function scope missing");
-                scope.insert(nested_name.clone(), scoped_name.clone());
-
-                // Find free variables in the nested function
-                let mut captures = self.find_free_variables_in_body(nested_body, nested_params);
-                if self.body_uses_masel(nested_body) || self.params_use_masel(nested_params) {
-                    captures.push("masel".to_string());
-                    captures.sort();
-                    captures.dedup();
-                }
-                captured_in_body.extend(captures.iter().filter(|c| c.as_str() != "masel").cloned());
-
-                self.declare_function_with_captures(&scoped_name, nested_params.len(), &captures);
-
-                let defaults: Vec<Option<Expr>> =
-                    nested_params.iter().map(|p| p.default.clone()).collect();
-                if defaults.iter().any(|d| d.is_some()) {
-                    self.function_defaults.insert(scoped_name.clone(), defaults);
-                } else {
-                    self.function_defaults.remove(&scoped_name);
-                }
-                self.function_param_names.insert(
-                    scoped_name.clone(),
-                    nested_params.iter().map(|p| p.name.clone()).collect(),
-                );
-            }
-        }
+        let captured_in_body = self.predeclare_nested_functions(body);
 
         // Box user parameters that are captured by nested functions.
         for param in params {
@@ -27736,6 +27776,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.try_depth = saved_try_depth;
         self.in_loop_body = saved_in_loop_body;
         self.unstable_vars = saved_unstable_vars;
+        self.block_function_symbols = saved_block_functions;
 
         // Restore the builder position to where it was before compiling this function
         if let Some(block) = saved_block {
@@ -27861,6 +27902,124 @@ impl<'ctx> CodeGen<'ctx> {
     ///
     /// This is conservative (function-scoped) and intentionally does not recurse into
     /// nested function bodies.
+    /// Declare, with their captures, the functions nested in a function or method
+    /// body, before the body is compiled, so captured parameters and locals can be
+    /// boxed up front. Returns the names those functions capture (bar `masel`).
+    ///
+    /// A `dae` at the top of the body is bound by name for the whole body. One inside
+    /// a block (a `gin` branch, a loop body, a `hae_a_bash`, a `keek` arm) is bound by
+    /// its statement and enters the name scope only when its definition is compiled,
+    /// so two blocks can each define their own function of the same name
+    /// (MDH-BUG-FLU-00112).
+    fn predeclare_nested_functions(&mut self, body: &[Stmt]) -> HashSet<String> {
+        let mut nested: Vec<(&Stmt, bool)> = Vec::new();
+        for stmt in body {
+            if matches!(stmt, Stmt::Function { .. }) {
+                nested.push((stmt, true));
+            } else {
+                Self::collect_block_functions(stmt, &mut nested);
+            }
+        }
+
+        let mut captured_in_body: HashSet<String> = HashSet::new();
+        for (stmt, top_of_body) in nested {
+            let Stmt::Function {
+                name: nested_name,
+                params: nested_params,
+                body: nested_body,
+                ..
+            } = stmt
+            else {
+                continue;
+            };
+            if top_of_body {
+                let already_scoped = self
+                    .nested_function_scopes
+                    .last()
+                    .is_some_and(|scope| scope.contains_key(nested_name));
+                if already_scoped {
+                    continue;
+                }
+            }
+
+            let scoped_name = self.next_nested_function_symbol(nested_name);
+            if top_of_body {
+                let scope = self
+                    .nested_function_scopes
+                    .last_mut()
+                    .expect("nested function scope missing");
+                scope.insert(nested_name.clone(), scoped_name.clone());
+            } else {
+                self.block_function_symbols
+                    .insert(stmt as *const Stmt, scoped_name.clone());
+            }
+
+            // Find free variables in the nested function
+            let mut captures = self.find_free_variables_in_body(nested_body, nested_params);
+            if self.body_uses_masel(nested_body) || self.params_use_masel(nested_params) {
+                captures.push("masel".to_string());
+                captures.sort();
+                captures.dedup();
+            }
+            captured_in_body.extend(captures.iter().filter(|c| c.as_str() != "masel").cloned());
+
+            self.declare_function_with_captures(&scoped_name, nested_params.len(), &captures);
+
+            let defaults: Vec<Option<Expr>> =
+                nested_params.iter().map(|p| p.default.clone()).collect();
+            if defaults.iter().any(|d| d.is_some()) {
+                self.function_defaults.insert(scoped_name.clone(), defaults);
+            } else {
+                self.function_defaults.remove(&scoped_name);
+            }
+            self.function_param_names.insert(
+                scoped_name.clone(),
+                nested_params.iter().map(|p| p.name.clone()).collect(),
+            );
+        }
+        captured_in_body
+    }
+
+    /// Every `dae` inside `stmt`'s nested blocks, without entering function or class
+    /// bodies (they are scopes of their own).
+    fn collect_block_functions<'a>(stmt: &'a Stmt, out: &mut Vec<(&'a Stmt, bool)>) {
+        match stmt {
+            Stmt::Function { .. } => out.push((stmt, false)),
+            Stmt::Block { statements, .. } => {
+                for s in statements {
+                    Self::collect_block_functions(s, out);
+                }
+            }
+            Stmt::If {
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                Self::collect_block_functions(then_branch, out);
+                if let Some(e) = else_branch {
+                    Self::collect_block_functions(e, out);
+                }
+            }
+            Stmt::While { body, .. } | Stmt::For { body, .. } => {
+                Self::collect_block_functions(body, out);
+            }
+            Stmt::TryCatch {
+                try_block,
+                catch_block,
+                ..
+            } => {
+                Self::collect_block_functions(try_block, out);
+                Self::collect_block_functions(catch_block, out);
+            }
+            Stmt::Match { arms, .. } => {
+                for arm in arms {
+                    Self::collect_block_functions(&arm.body, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn predeclare_locals_for_capture(&mut self, body: &[Stmt]) {
         for stmt in body {
             self.predeclare_locals_stmt(stmt);
@@ -38269,6 +38428,7 @@ impl<'ctx> CodeGen<'ctx> {
         unknown_bindings.extend(params.iter().map(|p| p.name.as_str()));
         let bindings = Self::scope_bindings_of_stmts(&unknown_bindings, body);
         let old_unstable_vars = std::mem::take(&mut self.unstable_vars);
+        let old_block_functions = std::mem::take(&mut self.block_function_symbols);
         self.unstable_vars = self.unstable_vars_of(&bindings);
 
         self.current_function = Some(function);
@@ -38308,53 +38468,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.predeclare_locals_for_capture(body);
 
         // Pre-declare any nested functions in this body with captures.
-        let mut captured_in_body: HashSet<String> = HashSet::new();
-        for stmt in body {
-            if let Stmt::Function {
-                name: nested_name,
-                params: nested_params,
-                body: nested_body,
-                ..
-            } = stmt
-            {
-                let already_scoped = self
-                    .nested_function_scopes
-                    .last()
-                    .is_some_and(|scope| scope.contains_key(nested_name));
-                if already_scoped {
-                    continue;
-                }
-
-                let scoped_name = self.next_nested_function_symbol(nested_name);
-                let scope = self
-                    .nested_function_scopes
-                    .last_mut()
-                    .expect("nested function scope missing");
-                scope.insert(nested_name.clone(), scoped_name.clone());
-
-                let mut captures = self.find_free_variables_in_body(nested_body, nested_params);
-                if self.body_uses_masel(nested_body) || self.params_use_masel(nested_params) {
-                    captures.push("masel".to_string());
-                    captures.sort();
-                    captures.dedup();
-                }
-                captured_in_body.extend(captures.iter().filter(|c| c.as_str() != "masel").cloned());
-
-                self.declare_function_with_captures(&scoped_name, nested_params.len(), &captures);
-
-                let defaults: Vec<Option<Expr>> =
-                    nested_params.iter().map(|p| p.default.clone()).collect();
-                if defaults.iter().any(|d| d.is_some()) {
-                    self.function_defaults.insert(scoped_name.clone(), defaults);
-                } else {
-                    self.function_defaults.remove(&scoped_name);
-                }
-                self.function_param_names.insert(
-                    scoped_name.clone(),
-                    nested_params.iter().map(|p| p.name.clone()).collect(),
-                );
-            }
-        }
+        let captured_in_body = self.predeclare_nested_functions(body);
 
         // Box method parameters captured by nested functions.
         for param in params {
@@ -38405,6 +38519,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.try_depth = old_try_depth;
         self.in_loop_body = old_in_loop_body;
         self.unstable_vars = old_unstable_vars;
+        self.block_function_symbols = old_block_functions;
         self.nested_function_scopes.pop();
 
         Ok(())
