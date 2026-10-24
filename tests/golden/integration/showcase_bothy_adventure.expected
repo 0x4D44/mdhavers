@@ -1,0 +1,117 @@
+== The parser at work ==
+'N' means {"verb": go, "noun": north}
+'Get the Key' means {"verb": tak, "noun": key}
+'n' an' 'go north' are the same command: aye
+'tak key' an' 'tak lamp' are the same command: nae
+
+== The Bothy at Glen Haar ==
+
+> look
+[The Drove Road]
+A muddy track winds through the heather. A bothy squats tae the north; a loch glints tae the east.
+Ye see: map
+Exits: east, north
+
+> status
+Naething's been done in the glen yet.
+
+> Get the MAP
+Ye tak the map.
+
+> e
+[Loch Haar]
+Black water laps at the stanes. The wind is fair snell.
+Ye see: key
+Exits: west
+
+> take key
+Ye tak the key.
+
+> go west
+[The Drove Road]
+Exits: east, north
+
+> dance a reel
+Ah dinnae ken how tae 'dance'.
+
+> n
+[The Bothy]
+A stane bothy wi' a cauld hearth. A ladder climbs tae a loft, an' there's a hatch in the flair.
+Ye see: matches
+Exits: down, south, up
+
+> down
+The hatch is locked ticht.
+
+> tak matches
+Ye tak the matches.
+
+> u
+[The Loft]
+Dusty rafters an' auld sacks. Somebody's left their gear.
+Ye see: lamp, sack
+Exits: down
+
+> grab lamp
+Ye tak the lamp.
+
+> tak sack
+The sack is fu' o' tatties. Ye leave it be.
+
+> d
+[The Bothy]
+Exits: down, south, up
+
+> use key
+The key turns wi' a skreich. The hatch is open.
+
+> d
+[The Cellar]
+It's pit-mirk. Ye cannae see a thing.
+
+> tak quaich
+Ye're fummlin' aboot in the dark.
+
+> use matches
+Ye licht the lamp. The matches are aw done.
+
+> look
+[The Cellar]
+A wee stane cellar. In the corner, on a barrel, sits a siller quaich.
+Ye see: quaich
+Exits: up
+
+> tak quaich
+Ye tak the quaich.
+
+> tak haggis
+There's nae haggis here.
+
+> inventory
+Ye're cairryin': KEY, LAMP, MAP, QUAICH
+
+> drop map
+Ye drap the map.
+
+> 
+Eh? Say something.
+
+> status
+  hatch: open
+  lamp: lit
+
+> up
+[The Bothy]
+Exits: down, south, up
+
+> s
+[The Drove Road]
+Exits: east, north
+Ye step oot ontae the drove road wi' the siller quaich. Slainte!
+
+== The reckoning ==
+Commands played: 27 o' 27; moves: 8
+Rooms visited: 5 o' 5
+Pack holds exactly the key, lamp an' quaich: aye
+Rooms wi' something left in them: [cellar, loft]
+The day went as planned: aye

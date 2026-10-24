@@ -1,0 +1,74 @@
+
+== Factorials ==
+ 1! =                         1
+ 5! =                       120
+10! =                 3,628,800
+15! =         1,307,674,368,000
+17! =       355,687,428,096,000
+18! =     6,402,373,705,728,000
+19! =   121,645,100,408,832,000
+20! = 2,432,902,008,176,640,000
+21! bursts: Wheesht! Yer number's too muckle at line 117 - it's overflowed!
+The biggest factorial that fits is 20!
+
+== Fibonacci ==
+93 Fibonacci numbers fit; the last is F(92) = 7,540,113,804,746,346,429
+First past 2^53: F(79) = 14,472,334,024,676,221
+  an' it's odd, exactly: aye
+  F(79) + 1 = 14472334024676222
+Cassini holds fer n = 1..47; at n = 48: Wheesht! Yer number's too muckle at line 160 - it's overflowed!
+
+== Highest powers in 64 bits ==
+ 2^62 = 4,611,686,018,427,387,904
+ 3^39 = 4,052,555,153,018,976,267
+ 4^31 = 4,611,686,018,427,387,904
+ 5^27 = 7,450,580,596,923,828,125
+ 6^24 = 4,738,381,338,321,616,896
+ 7^22 = 3,909,821,048,582,988,049
+ 8^20 = 1,152,921,504,606,846,976
+ 9^19 = 1,350,851,717,672,992,089
+10^18 = 1,000,000,000,000,000,000
+
+== Collatz records under 1000 ==
+    1 takes   0 steps, peaking at 1
+    2 takes   1 steps, peaking at 2
+    3 takes   7 steps, peaking at 16
+    6 takes   8 steps, peaking at 16
+    7 takes  16 steps, peaking at 52
+    9 takes  19 steps, peaking at 52
+   18 takes  20 steps, peaking at 52
+   25 takes  23 steps, peaking at 88
+   27 takes 111 steps, peaking at 9,232
+   54 takes 112 steps, peaking at 9,232
+   73 takes 115 steps, peaking at 9,232
+   97 takes 118 steps, peaking at 9,232
+  129 takes 121 steps, peaking at 9,232
+  171 takes 124 steps, peaking at 9,232
+  231 takes 127 steps, peaking at 9,232
+  313 takes 130 steps, peaking at 9,232
+  327 takes 143 steps, peaking at 9,232
+  649 takes 144 steps, peaking at 9,232
+  703 takes 170 steps, peaking at 250,504
+  871 takes 178 steps, peaking at 190,996
+20 records; the champion is 871
+Re-running the champion gies the same dict: aye
+
+== Sieve o' Eratosthenes ==
+168 primes under 1000
+Under 60: 2 3 5 7 11 13 17 19 23 29 31 37 41 43 47 53 59
+35 twin-prime pairs; the widest gap is 887 -> 907
+Sum o' aw primes under 1000: 76127
+
+== Mersenne primes by Lucas-Lehmer ==
+2^p - 1 is prime fer p in [2, 3, 5, 7, 13, 17, 19, 31, 61]
+2^61 - 1 = 2,305,843,009,213,693,951 - prime, an' proved
+2^64 - 1 cannae even be built: Wheesht! Yer number's too muckle at line 315 - it's overflowed!
+
+== Summary ==
+-- Muckle Numbers --
+  biggest factorial     : 20!
+  last Fibonacci        : F(92)
+  Collatz champion      : 871
+  primes under 1000     : 168
+  Mersenne primes found : 9
+Aw the sums match the textbooks: aye

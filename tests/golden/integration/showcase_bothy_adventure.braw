@@ -1,0 +1,339 @@
+# Golden test: the Bothy at Glen Haar showcase (a copy o' the adventure
+# fae examples/showcases/bothy_adventure/bothy_adventure.braw) playing its
+# scripted walk. Rooms as dicts, a creel pack, dict an' creel equality,
+# an empty dict as falsy, lambdas in a dispatch table, closures queued
+# per `fer` iteration, gie fae a block expression, hurl/hae_a_bash.
+#
+# SKIP_NATIVE: LLVM treats an empty list read straight fae an index as
+# truthy in a condition (`gin room["items"]` below; repro:
+# `ken d = {"l": []}` then `gin d["l"] { blether "wrang" }` prints "wrang").
+# JS: allowlisted in tests/js_parity_allowlist.txt - the JS runtime has nae
+# creel builtins (creel, toss_in, heave_oot, is_in_creel, creel_tae_list).
+# WASM cannae compile it yet (nae builtins or kin in the WAT backend).
+
+# ============================================================
+#  The Bothy at Glen Haar - a wee text adventure in mdhavers
+#
+#  A complete adventure engine: rooms are dicts, yer pack is a
+#  creel, a parser tidies whit ye type (synonyms, filler words,
+#  bare directions), verbs are lambdas in a dispatch table, an'
+#  mistakes are hurled an' caught wi' guid Scots complaints.
+#
+#  There's nae keyboard here: the engine plays a scripted walk
+#  through the glen, queued up as closures, one per command.
+#
+#  Run it:
+#      mdhavers run bothy_adventure.braw
+# ============================================================
+
+# ------------------------------------------------------------
+#  The glen: every room is a dict
+# ------------------------------------------------------------
+dae make_world() {
+    gie {
+        "road": {
+            "name": "The Drove Road",
+            "desc": "A muddy track winds through the heather. A bothy squats tae the north; a loch glints tae the east.",
+            "exits": {"north": "bothy", "east": "loch"},
+            "items": ["map"]
+        },
+        "loch": {
+            "name": "Loch Haar",
+            "desc": "Black water laps at the stanes. The wind is fair snell.",
+            "exits": {"west": "road"},
+            "items": ["key"]
+        },
+        "bothy": {
+            "name": "The Bothy",
+            "desc": "A stane bothy wi' a cauld hearth. A ladder climbs tae a loft, an' there's a hatch in the flair.",
+            "exits": {"south": "road", "up": "loft", "down": "cellar"},
+            "items": ["matches"]
+        },
+        "loft": {
+            "name": "The Loft",
+            "desc": "Dusty rafters an' auld sacks. Somebody's left their gear.",
+            "exits": {"down": "bothy"},
+            "items": ["lamp", "sack"]
+        },
+        "cellar": {
+            "name": "The Cellar",
+            "desc": "A wee stane cellar. In the corner, on a barrel, sits a siller quaich.",
+            "exits": {"up": "bothy"},
+            "items": ["quaich"],
+            "dark": aye
+        }
+    }
+}
+
+# Hurled messages carry a "~" so we can strip ony prefix the host adds.
+dae grumble(msg) {
+    hurl "~" + msg
+}
+
+dae clean_error(err) {
+    ken parts = split(tae_string(err), "~")
+    gie parts[len(parts) - 1]
+}
+
+# ------------------------------------------------------------
+#  The parser: "Get the KEY" -> {"verb": "tak", "noun": "key"}
+# ------------------------------------------------------------
+kin Parser {
+    dae init() {
+        masel.fillers = ["the", "a", "an", "tae", "at", "wi", "some"]
+        masel.synonyms = {
+            "n": "north", "s": "south", "e": "east", "w": "west",
+            "u": "up", "d": "down",
+            "get": "tak", "take": "tak", "grab": "tak", "lift": "tak",
+            "drop": "drap", "l": "look", "i": "inventory", "inv": "inventory"
+        }
+        masel.directions = ["north", "south", "east", "west", "up", "down"]
+    }
+
+    dae canon(word) {
+        gin contains(masel.synonyms, word) {
+            gie masel.synonyms[word]
+        }
+        gie word
+    }
+
+    dae parse(line) {
+        ken words = sieve(split(lower(wheesht(line)), " "), |w| w != "" an nae contains(masel.fillers, w))
+        ken words = gaun(words, |w| masel.canon(w))
+        gin len(words) == 0 {
+            gie {"verb": "", "noun": ""}
+        }
+        # A bare direction means "go"
+        gin contains(masel.directions, words[0]) {
+            gie {"verb": "go", "noun": words[0]}
+        }
+        ken noun = {
+            gin len(words) < 2 {
+                gie {"verb": words[0], "noun": ""}
+            }
+            join(tail(words), " ")
+        }
+        gie {"verb": words[0], "noun": noun}
+    }
+}
+
+# ------------------------------------------------------------
+#  The game
+# ------------------------------------------------------------
+kin Game {
+    dae init(world) {
+        masel.rooms = world
+        masel.here = "road"
+        masel.pack = creel([])
+        masel.visited = creel([])
+        masel.flags = {}
+        masel.moves = 0
+        masel.over = nae
+        masel.parser = Parser()
+        masel.verbs = {
+            "look": |g, noun| g.look(aye),
+            "go": |g, noun| g.go(noun),
+            "tak": |g, noun| g.tak(noun),
+            "drap": |g, noun| g.drap(noun),
+            "use": |g, noun| g.use(noun),
+            "inventory": |g, noun| g.inventory(),
+            "status": |g, noun| g.status()
+        }
+    }
+
+    dae room() {
+        gie masel.rooms[masel.here]
+    }
+
+    dae can_see() {
+        ken room = masel.room()
+        gin contains(room, "dark") an nae contains(masel.flags, "lamp") {
+            gie nae
+        }
+        gie aye
+    }
+
+    dae look(full) {
+        ken room = masel.room()
+        blether f"[{room["name"]}]"
+        gin nae masel.can_see() {
+            blether "It's pit-mirk. Ye cannae see a thing."
+            gie naething
+        }
+        gin full or nae is_in_creel(masel.visited, masel.here) {
+            blether room["desc"]
+        }
+        gin room["items"] {
+            blether f"Ye see: {join(room["items"], ", ")}"
+        }
+        ken exit_text = {
+            ken names = sort(keys(room["exits"]))
+            join(names, ", ")
+        }
+        blether f"Exits: {exit_text}"
+        toss_in(masel.visited, masel.here)
+    }
+
+    dae go(direction) {
+        gin direction == "" {
+            grumble("Go whaur? Gie us a direction.")
+        }
+        ken exits = masel.room()["exits"]
+        gin nae contains(exits, direction) {
+            grumble(f"Ye cannae gang {direction} fae here.")
+        }
+        ken target = exits[direction]
+        gin target == "cellar" an nae contains(masel.flags, "hatch") {
+            grumble("The hatch is locked ticht.")
+        }
+        masel.here = target
+        masel.moves = masel.moves + 1
+        masel.look(nae)
+    }
+
+    dae tak(noun) {
+        gin nae masel.can_see() {
+            grumble("Ye're fummlin' aboot in the dark.")
+        }
+        ken room = masel.room()
+        gin nae contains(room["items"], noun) {
+            grumble(f"There's nae {noun} here.")
+        }
+        gin noun == "sack" {
+            grumble("The sack is fu' o' tatties. Ye leave it be.")
+        }
+        room["items"] = sieve(room["items"], |it| it != noun)
+        toss_in(masel.pack, noun)
+        blether f"Ye tak the {noun}."
+    }
+
+    dae drap(noun) {
+        gin nae is_in_creel(masel.pack, noun) {
+            grumble(f"Ye've nae {noun} tae drap.")
+        }
+        heave_oot(masel.pack, noun)
+        shove(masel.room()["items"], noun)
+        blether f"Ye drap the {noun}."
+    }
+
+    dae use(noun) {
+        gin nae is_in_creel(masel.pack, noun) {
+            grumble(f"Ye've nae {noun}.")
+        }
+        gin noun == "key" {
+            gin masel.here != "bothy" {
+                grumble("There's naething here tae unlock.")
+            }
+            masel.flags["hatch"] = "open"
+            blether "The key turns wi' a skreich. The hatch is open."
+            gie naething
+        }
+        gin noun == "matches" {
+            gin nae is_in_creel(masel.pack, "lamp") {
+                grumble("Ye strike a match, it splutters oot. Ye need something tae licht.")
+            }
+            masel.flags["lamp"] = "lit"
+            heave_oot(masel.pack, "matches")
+            blether "Ye licht the lamp. The matches are aw done."
+            gie naething
+        }
+        grumble(f"Ye cannae think how tae use the {noun}.")
+    }
+
+    dae inventory() {
+        gin len(masel.pack) == 0 {
+            blether "Yer pack is toom."
+            gie naething
+        }
+        ken names = gaun(creel_tae_list(masel.pack), |it| upper(it))
+        blether f"Ye're cairryin': {join(names, ", ")}"
+    }
+
+    dae status() {
+        # An empty dict is falsy
+        gin nae masel.flags {
+            blether "Naething's been done in the glen yet."
+            gie naething
+        }
+        fer k in sort(keys(masel.flags)) {
+            blether f"  {k}: {masel.flags[k]}"
+        }
+    }
+
+    dae run(line) {
+        blether ""
+        blether f"> {line}"
+        ken cmd = masel.parser.parse(line)
+        gin cmd == {"verb": "", "noun": ""} {
+            blether "Eh? Say something."
+            gie naething
+        }
+        hae_a_bash {
+            gin nae contains(masel.verbs, cmd["verb"]) {
+                grumble(f"Ah dinnae ken how tae '{cmd["verb"]}'.")
+            }
+            ken verb = masel.verbs[cmd["verb"]]
+            verb(masel, cmd["noun"])
+        } gin_it_gangs_wrang err {
+            blether clean_error(err)
+        }
+        masel.check_win()
+    }
+
+    dae check_win() {
+        gin masel.here == "road" an is_in_creel(masel.pack, "quaich") {
+            blether "Ye step oot ontae the drove road wi' the siller quaich. Slainte!"
+            masel.over = aye
+        }
+    }
+}
+
+# ------------------------------------------------------------
+#  The scripted walk
+# ------------------------------------------------------------
+ken SCRIPT = [
+    "look", "status", "Get the MAP", "e", "take key", "go west",
+    "dance a reel", "n", "down", "tak matches", "u", "grab lamp",
+    "tak sack", "d", "use key", "d", "tak quaich", "use matches",
+    "look", "tak quaich", "tak haggis", "inventory", "drop map",
+    "", "status", "up", "s"
+]
+
+ken parser = Parser()
+blether "== The parser at work =="
+blether f"'N' means {parser.parse("N")}"
+blether f"'Get the Key' means {parser.parse("Get the Key")}"
+blether f"'n' an' 'go north' are the same command: {parser.parse("n") == parser.parse("go north")}"
+blether f"'tak key' an' 'tak lamp' are the same command: {parser.parse("tak key") == parser.parse("tak lamp")}"
+
+# Queue each command as a closure; each `fer` iteration has its ain `line`
+ken game = Game(make_world())
+ken queue = []
+fer line in SCRIPT {
+    shove(queue, || game.run(line))
+}
+
+blether ""
+blether "== The Bothy at Glen Haar =="
+ken played = 0
+fer step in queue {
+    gin game.over {
+        brak
+    }
+    step()
+    played = played + 1
+}
+
+# ------------------------------------------------------------
+#  The final reckoning
+# ------------------------------------------------------------
+blether ""
+blether "== The reckoning =="
+blether f"Commands played: {played} o' {len(SCRIPT)}; moves: {game.moves}"
+blether f"Rooms visited: {len(game.visited)} o' {len(keys(game.rooms))}"
+blether f"Pack holds exactly the key, lamp an' quaich: {game.pack == creel(["quaich", "lamp", "key"])}"
+ken left_behind = sieve(sort(keys(game.rooms)), |id| len(game.rooms[id]["items"]) > 0)
+blether f"Rooms wi' something left in them: {left_behind}"
+ken final = {"won": game.over, "where": game.here, "flags": game.flags}
+ken hoped = {"where": "road", "won": aye, "flags": {"lamp": "lit", "hatch": "open"}}
+blether f"The day went as planned: {final == hoped}"

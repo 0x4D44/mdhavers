@@ -63,6 +63,7 @@ tests/golden/integration/brainfuck_interpreter_smoke.braw # node exit 1: Referen
 tests/golden/integration/expression_parser_evaluator_smoke.braw # node exit 1: ReferenceError: is_digit is not defined
 tests/golden/integration/json_parser_smoke.braw # node exit 1: ReferenceError: is_digit is not defined
 tests/golden/integration/showcase_blether_lisp.braw # node exit 1: ReferenceError: chars is not defined
+tests/golden/integration/showcase_bothy_adventure.braw # node exit 1: ReferenceError: creel is not defined
 tests/golden/stdlib/datetime/datetime_functions.braw # node exit 1: ReferenceError: date_now is not defined
 tests/golden/stdlib/file_io/file_operations.braw # node exit 1: ReferenceError: path_join is not defined
 tests/golden/stdlib/json/json_functions.braw # node exit 1: ReferenceError: json_parse is not defined

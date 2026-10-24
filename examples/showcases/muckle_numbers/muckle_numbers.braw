@@ -1,0 +1,361 @@
+# ============================================================
+#  Muckle Numbers - an exact-integer toolkit in mdhavers
+#
+#  An mdhavers integer is an exact 64-bit integer on every
+#  backend: nae rounding past 2^53, an' a Scots error ye can
+#  catch when a sum gets ower muckle. This programme pushes
+#  that model as far as it will go:
+#    - factorials right up tae 20!, an' the 21! that bursts
+#    - Fibonacci past 2^53, checked wi' Cassini's identity
+#    - the highest power o' each base that fits in 64 bits
+#    - Collatz records, a Sieve o' Eratosthenes, twin primes
+#    - a Lucas-Lehmer test that proves 2^61 - 1 is prime
+#
+#  Run it:
+#      mdhavers run muckle_numbers.braw
+# ============================================================
+
+ken TWO_53 = 9007199254740992
+
+# ------------------------------------------------------------
+#  Wee formatting helpers
+# ------------------------------------------------------------
+dae pad_left(text, width) {
+    ken s = tae_string(text)
+    whiles len(s) < width {
+        s = " " + s
+    }
+    gie s
+}
+
+dae pad_right(text, width) {
+    ken s = tae_string(text)
+    whiles len(s) < width {
+        s = s + " "
+    }
+    gie s
+}
+
+# 1234567 -> "1,234,567"
+dae group_digits(n) {
+    ken s = tae_string(n)
+    ken stop = 0
+    ken sign = ""
+    gin s[0] == "-" {
+        stop = 1
+        sign = "-"
+    }
+    ken out = ""
+    ken count = 0
+    ken i = len(s) - 1
+    whiles i >= stop {
+        gin count > 0 an count % 3 == 0 {
+            out = "," + out
+        }
+        out = s[i] + out
+        count = count + 1
+        i = i - 1
+    }
+    gie sign + out
+}
+
+dae heading(title) {
+    blether ""
+    blether f"== {title} =="
+}
+
+# A ledger o' labelled results, printed as a tidy table.
+kin Ledger {
+    dae init(title) {
+        masel.title = title
+        masel.rows = []
+    }
+
+    dae note(label, value) {
+        shove(masel.rows, [label, value])
+    }
+
+    dae show() {
+        ken width = tumble(masel.rows, 0, |w, row| max(w, len(row[0])))
+        blether f"-- {masel.title} --"
+        fer row in masel.rows {
+            blether f"  {pad_right(row[0], width)} : {row[1]}"
+        }
+    }
+}
+
+# Index o' the first item that passes the test, or -1.
+# The `gie` inside the block expression returns frae the dae.
+dae first_index_where(xs, test) {
+    fer i in 0..len(xs) {
+        ken seen = {
+            gin test(xs[i]) {
+                gie i
+            }
+            nae
+        }
+    }
+    gie -1
+}
+
+# ------------------------------------------------------------
+#  1. Factorials until the 64 bits burst
+# ------------------------------------------------------------
+dae factorial_table() {
+    ken fact = 1
+    ken n = 1
+    whiles aye {
+        hae_a_bash {
+            fact = fact * n
+        } gin_it_gangs_wrang err {
+            blether f"{pad_left(n, 2)}! bursts: {err}"
+            gie n - 1
+        }
+        gin n == 1 or n % 5 == 0 or n >= 17 {
+            blether f"{pad_left(n, 2)}! = {pad_left(group_digits(fact), 25)}"
+        }
+        n = n + 1
+    }
+}
+
+heading("Factorials")
+ken biggest_factorial = factorial_table()
+blether f"The biggest factorial that fits is {biggest_factorial}!"
+
+# ------------------------------------------------------------
+#  2. Fibonacci past 2^53
+# ------------------------------------------------------------
+dae fibonacci_until_burst() {
+    ken fibs = [0, 1]
+    whiles aye {
+        ken n = len(fibs)
+        ken next = 0
+        hae_a_bash {
+            next = fibs[n - 1] + fibs[n - 2]
+        } gin_it_gangs_wrang err {
+            gie fibs
+        }
+        shove(fibs, next)
+    }
+}
+
+# Cassini: F(n-1) * F(n+1) - F(n)^2 == (-1)^n. The products need
+# every bit o' the 64, so floats would get this wrang lang afore.
+dae cassini_check(fibs) {
+    ken n = 1
+    whiles n < len(fibs) - 1 {
+        ken want = 1
+        gin n % 2 == 1 {
+            want = -1
+        }
+        hae_a_bash {
+            ken got = fibs[n - 1] * fibs[n + 1] - fibs[n] * fibs[n]
+            gin got != want {
+                gie f"Cassini fails at n = {n}!"
+            }
+        } gin_it_gangs_wrang err {
+            gie f"Cassini holds fer n = 1..{n - 1}; at n = {n}: {err}"
+        }
+        n = n + 1
+    }
+    gie f"Cassini holds fer n = 1..{n - 1}"
+}
+
+heading("Fibonacci")
+ken fibs = fibonacci_until_burst()
+ken last_fib = len(fibs) - 1
+blether f"{len(fibs)} Fibonacci numbers fit; the last is F({last_fib}) = {group_digits(fibs[last_fib])}"
+ken past = first_index_where(fibs, |f| f > TWO_53)
+blether f"First past 2^53: F({past}) = {group_digits(fibs[past])}"
+blether f"  an' it's odd, exactly: {fibs[past] % 2 == 1}"
+blether f"  F({past}) + 1 = {fibs[past] + 1}"
+blether cassini_check(fibs)
+
+# ------------------------------------------------------------
+#  3. How high can each base climb?  (fresh closure per base)
+# ------------------------------------------------------------
+dae highest_power(base) {
+    ken p = 1
+    ken e = 0
+    whiles aye {
+        hae_a_bash {
+            p = p * base
+        } gin_it_gangs_wrang err {
+            gie [base, e, p]
+        }
+        e = e + 1
+    }
+}
+
+heading("Highest powers in 64 bits")
+ken climbers = []
+fer b in 2..=10 {
+    # Each `fer` iteration has its ain `b`, so each closure keeps its ain base
+    shove(climbers, || highest_power(b))
+}
+fer climb in climbers {
+    ken [base, e, p] = climb()
+    blether f"{pad_left(base, 2)}^{pad_right(e, 2)} = {pad_left(group_digits(p), 25)}"
+}
+
+# ------------------------------------------------------------
+#  4. Collatz records under 1000
+# ------------------------------------------------------------
+dae collatz(start) {
+    ken n = start
+    ken steps = 0
+    ken peak = start
+    whiles n != 1 {
+        gin n % 2 == 0 {
+            n = n / 2
+        } ither {
+            n = 3 * n + 1
+        }
+        gin n > peak {
+            peak = n
+        }
+        steps = steps + 1
+    }
+    gie {"start": start, "steps": steps, "peak": peak}
+}
+
+heading("Collatz records under 1000")
+ken best = {}
+ken records = 0
+fer start in 1..1000 {
+    ken run = collatz(start)
+    # An empty dict is falsy, so the first run is aye a record
+    gin nae best or run["steps"] > best["steps"] {
+        best = run
+        records = records + 1
+        blether f"  {pad_left(start, 3)} takes {pad_left(run["steps"], 3)} steps, peaking at {group_digits(run["peak"])}"
+    }
+}
+blether f"{records} records; the champion is {best["start"]}"
+blether f"Re-running the champion gies the same dict: {collatz(best["start"]) == best}"
+
+# ------------------------------------------------------------
+#  5. Sieve o' Eratosthenes
+# ------------------------------------------------------------
+dae sieve_primes(limit) {
+    ken marks = []
+    fer i in 0..limit {
+        shove(marks, aye)
+    }
+    marks[0] = nae
+    marks[1] = nae
+    ken p = 2
+    whiles p * p < limit {
+        gin marks[p] {
+            ken m = p * p
+            whiles m < limit {
+                marks[m] = nae
+                m = m + p
+            }
+        }
+        p = p + 1
+    }
+    ken primes = []
+    fer i in 0..limit {
+        gin marks[i] {
+            shove(primes, i)
+        }
+    }
+    gie primes
+}
+
+heading("Sieve o' Eratosthenes")
+ken primes = sieve_primes(1000)
+blether f"{len(primes)} primes under 1000"
+ken wee_primes = sieve(primes, |p| p < 60)
+blether f"Under 60: {join(gaun(wee_primes, |p| tae_string(p)), " ")}"
+ken twins = 0
+ken widest = [0, 0]
+fer i in 0..(len(primes) - 1) {
+    ken gap = primes[i + 1] - primes[i]
+    gin gap == 2 {
+        twins = twins + 1
+    }
+    gin gap > widest[1] - widest[0] {
+        widest = [primes[i], primes[i + 1]]
+    }
+}
+blether f"{twins} twin-prime pairs; the widest gap is {widest[0]} -> {widest[1]}"
+blether f"Sum o' aw primes under 1000: {sumaw(primes)}"
+
+# ------------------------------------------------------------
+#  6. Lucas-Lehmer: which 2^p - 1 are prime?
+# ------------------------------------------------------------
+# (a * b) % m wi'oot ever forming a * b, so 61-bit numbers stay in range
+dae mulmod(a, b, m) {
+    ken result = 0
+    ken x = a % m
+    ken y = b
+    whiles y > 0 {
+        gin y % 2 == 1 {
+            result = (result + x) % m
+        }
+        x = (x + x) % m
+        y = y / 2
+    }
+    gie result
+}
+
+dae mersenne(p) {
+    ken m = 1
+    fer i in 0..p {
+        m = m * 2
+    }
+    gie m - 1
+}
+
+dae lucas_lehmer(p) {
+    gin p == 2 {
+        gie aye
+    }
+    ken m = mersenne(p)
+    ken s = 4
+    fer i in 0..(p - 2) {
+        s = (mulmod(s, s, m) + m - 2) % m
+    }
+    gie s == 0
+}
+
+heading("Mersenne primes by Lucas-Lehmer")
+ken exponents = sieve(primes, |p| p <= 61)
+ken mersennes = sieve(exponents, |p| lucas_lehmer(p))
+blether f"2^p - 1 is prime fer p in {mersennes}"
+blether f"2^61 - 1 = {group_digits(mersenne(61))} - prime, an' proved"
+hae_a_bash {
+    blether mersenne(64)
+} gin_it_gangs_wrang err {
+    blether f"2^64 - 1 cannae even be built: {err}"
+}
+
+# ------------------------------------------------------------
+#  7. The summary, checked against the textbooks
+# ------------------------------------------------------------
+heading("Summary")
+ken ledger = Ledger("Muckle Numbers")
+ledger.note("biggest factorial", f"{biggest_factorial}!")
+ledger.note("last Fibonacci", f"F({last_fib})")
+ledger.note("Collatz champion", best["start"])
+ledger.note("primes under 1000", len(primes))
+ledger.note("Mersenne primes found", len(mersennes))
+ledger.show()
+
+ken found = {
+    "factorial": biggest_factorial,
+    "fibonacci": last_fib,
+    "collatz": best["start"],
+    "primes": len(primes),
+    "mersenne": mersennes
+}
+ken textbook = {
+    "primes": 168,
+    "mersenne": [2, 3, 5, 7, 13, 17, 19, 31, 61],
+    "collatz": 871,
+    "fibonacci": 92,
+    "factorial": 20
+}
+blether f"Aw the sums match the textbooks: {found == textbook}"

@@ -1145,6 +1145,9 @@ See the `examples/` directory for sample programs:
 - `examples/showcases/soond_showcase.braw` - Audio and music showcase
 - `examples/showcases/sip_rtp_echo.braw` - SIP/RTP echo demo
 - `examples/showcases/tri_showcase/tri_showcase.braw` - 3D scene demo
+- `examples/showcases/muckle_numbers/muckle_numbers.braw` - Exact 64-bit integers: factorials, Fibonacci, primes, Lucas-Lehmer
+- `examples/showcases/bothy_adventure/bothy_adventure.braw` - Scripted text adventure: dict rooms, creel pack, parser
+- `examples/showcases/config_differ/config_differ.braw` - Pretty-printer, structural diff and patcher for nested dicts
 
 ### Library Modules (importable, not standalone)
 

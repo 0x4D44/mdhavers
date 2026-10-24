@@ -1,0 +1,63 @@
+== Pretty-printed (width 40) ==
+{
+  "contact": {
+    "phone": "01234 567890",
+    "warden": "Tam"
+  },
+  "limits": {
+    "guests": 6,
+    "max_bytes": 9007199254740993,
+    "quota": 4611686018427387904
+  },
+  "name": "glen-haar-bothy",
+  "notes": {},
+  "open": aye,
+  "owners": ["morag", "hamish"],
+  "rooms": [
+    {"beds": 4, "id": "loft"},
+    {"beds": 0, "id": "cellar"}
+  ],
+  "version": [1, 4, 2]
+}
+
+== The same, squeezed tae width 24 ==
+[
+    {
+        "beds": 6,
+        "id": "loft"
+    }
+]
+
+== Diffs ==
+-- old against itsel --
+  nae differences: the whole value matched in one look
+-- old against a deep copy --
+  nae differences: the whole value matched in one look
+-- old against new --
+  ~ limits.max_bytes: 9007199254740993 -> 9007199254740992
+  ~ limits.quota: 4611686018427387904 -> 9223372036854775807
+  + notes.midges = "fierce"
+  ~ open: aye -> nae
+  + owners[2] = "eilidh"
+  ~ rooms[0].beds: 4 -> 6
+  - rooms[1] (was {"beds": 0, "id": "cellar"})
+  ~ version[1]: 4 -> 5
+  ~ version[2]: 2 -> 0
+  + stove = naething
+  {"added": 3, "changed": 6, "removed": 1}; matching subtrees skipped: 1
+-- a bare number --
+  ~ (top): 41 -> 42
+  {"changed": 1}; matching subtrees skipped: 0
+
+== Patchin' ==
+patch(old, diff(old, new)) == new: aye
+an' the old config is untouched: aye
+re-diffin' the patched copy finds: {}
+
+== Required fields ==
+  old: missing [stove]
+  new: missing []
+
+== Totting up the limits ==
+  old: 4620693217682128903
+  new: Wheesht! Yer number's too muckle at line 323 - it's overflowed!

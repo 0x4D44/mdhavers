@@ -1,0 +1,384 @@
+# ============================================================
+#  Config Differ - pretty-print, diff an' patch nested data
+#
+#  A wee toolkit fer nested dicts an' lists:
+#    - a pretty-printer that lays oot ony value, keys sorted,
+#      short lists kept on one line
+#    - a structural diff that walks two values side by side,
+#      skipping whole subtrees that are == (dicts compare by
+#      their contents, so this is one check)
+#    - a patcher that replays the diff on a copy o' the old
+#      value, an' proves the result == the new one
+#    - exact 64-bit integers: a change o' 1 past 2^53 is still
+#      seen, an' a total that overflows is caught
+#
+#  Run it:
+#      mdhavers run config_differ.braw
+# ============================================================
+
+dae is_container(v) {
+    ken k = whit_kind(v)
+    gie k == "dict" or k == "list"
+}
+
+dae quote(s) {
+    gie '"' + s + '"'
+}
+
+# One value as a single line o' text
+dae inline(v) {
+    ken k = whit_kind(v)
+    gin k == "string" {
+        gie quote(v)
+    }
+    gin k == "list" {
+        gie "[" + join(gaun(v, |x| inline(x)), ", ") + "]"
+    }
+    gin k == "dict" {
+        ken parts = gaun(sort(keys(v)), |key| quote(key) + ": " + inline(v[key]))
+        gie "{" + join(parts, ", ") + "}"
+    }
+    gie tae_string(v)
+}
+
+dae spaces(n) {
+    ken s = ""
+    fer i in 0..n {
+        s = s + " "
+    }
+    gie s
+}
+
+# ------------------------------------------------------------
+#  The pretty-printer
+# ------------------------------------------------------------
+kin Printer {
+    dae init(indent, width) {
+        masel.indent = indent
+        masel.width = width
+    }
+
+    # Lines fer `v`, the first one prefixed wi' `lead`, the rest indented by `depth`
+    dae lines(v, lead, depth) {
+        ken pad = spaces(depth * masel.indent)
+        ken flat = inline(v)
+        # Short values, an' empty containers, stay on one line
+        ken fits = {
+            gin nae is_container(v) or nae v {
+                gie [pad + lead + flat]
+            }
+            len(pad) + len(lead) + len(flat) <= masel.width
+        }
+        gin fits {
+            gie [pad + lead + flat]
+        }
+        ken out = []
+        gin whit_kind(v) == "list" {
+            shove(out, pad + lead + "[")
+            fer i in 0..len(v) {
+                ken sub = masel.lines(v[i], "", depth + 1)
+                masel.finish(out, sub, i == len(v) - 1)
+            }
+            shove(out, pad + "]")
+        } ither {
+            shove(out, pad + lead + "{")
+            ken ks = sort(keys(v))
+            fer i in 0..len(ks) {
+                ken sub = masel.lines(v[ks[i]], quote(ks[i]) + ": ", depth + 1)
+                masel.finish(out, sub, i == len(ks) - 1)
+            }
+            shove(out, pad + "}")
+        }
+        gie out
+    }
+
+    # Append a child's lines, wi' a comma efter aw but the last child
+    dae finish(out, sub, last) {
+        fer j in 0..len(sub) {
+            gin j == len(sub) - 1 an nae last {
+                shove(out, sub[j] + ",")
+            } ither {
+                shove(out, sub[j])
+            }
+        }
+    }
+
+    dae show(v) {
+        fer line in masel.lines(v, "", 0) {
+            blether line
+        }
+    }
+}
+
+# ------------------------------------------------------------
+#  The differ
+# ------------------------------------------------------------
+dae path_text(path) {
+    gin len(path) == 0 {
+        gie "(top)"
+    }
+    ken out = ""
+    fer step in path {
+        gin whit_kind(step) == "integer" {
+            out = out + f"[{step}]"
+        } ither gin out == "" {
+            out = step
+        } ither {
+            out = out + "." + step
+        }
+    }
+    gie out
+}
+
+kin Differ {
+    dae init() {
+        masel.changes = []
+        masel.skipped = 0
+    }
+
+    dae walk(a, b, path) {
+        # Structural equality: one == skips a whole matching subtree
+        gin a == b {
+            gin is_container(a) {
+                masel.skipped = masel.skipped + 1
+            }
+            gie naething
+        }
+        ken ka = whit_kind(a)
+        gin ka != whit_kind(b) or nae is_container(a) {
+            shove(masel.changes, {"op": "~", "path": path, "old": a, "new": b})
+            gie naething
+        }
+        gin ka == "dict" {
+            ken all = sort(keys(a))
+            fer key in sort(keys(b)) {
+                gin nae contains(a, key) {
+                    shove(all, key)
+                }
+            }
+            fer key in all {
+                ken here = [...path, key]
+                gin nae contains(b, key) {
+                    shove(masel.changes, {"op": "-", "path": here, "old": a[key]})
+                } ither gin nae contains(a, key) {
+                    shove(masel.changes, {"op": "+", "path": here, "new": b[key]})
+                } ither {
+                    masel.walk(a[key], b[key], here)
+                }
+            }
+            gie naething
+        }
+        # Lists: pair up by index, then report the tail
+        ken common = min(len(a), len(b))
+        fer i in 0..common {
+            masel.walk(a[i], b[i], [...path, i])
+        }
+        fer i in common..len(a) {
+            shove(masel.changes, {"op": "-", "path": [...path, i], "old": a[i]})
+        }
+        fer i in common..len(b) {
+            shove(masel.changes, {"op": "+", "path": [...path, i], "new": b[i]})
+        }
+    }
+}
+
+dae diff(a, b) {
+    ken d = Differ()
+    d.walk(a, b, [])
+    gie d
+}
+
+dae describe(change) {
+    ken where = path_text(change["path"])
+    ken op = change["op"]
+    gin op == "+" {
+        gie f"+ {where} = {inline(change["new"])}"
+    }
+    gin op == "-" {
+        gie f"- {where} (was {inline(change["old"])})"
+    }
+    gie f"~ {where}: {inline(change["old"])} -> {inline(change["new"])}"
+}
+
+# Coont the changes by kind; kinds wi' nane are left oot,
+# so "nae changes at aw" is an empty dict, which is falsy.
+dae tally(changes) {
+    ken names = {"+": "added", "-": "removed", "~": "changed"}
+    ken counts = {}
+    fer c in changes {
+        ken name = names[c["op"]]
+        gin contains(counts, name) {
+            counts[name] = counts[name] + 1
+        } ither {
+            counts[name] = 1
+        }
+    }
+    gie counts
+}
+
+dae report(title, a, b) {
+    blether f"-- {title} --"
+    ken d = diff(a, b)
+    ken counts = tally(d.changes)
+    gin nae counts {
+        blether "  nae differences: the whole value matched in one look"
+        gie d
+    }
+    fer c in d.changes {
+        blether "  " + describe(c)
+    }
+    blether f"  {inline(counts)}; matching subtrees skipped: {d.skipped}"
+    gie d
+}
+
+# ------------------------------------------------------------
+#  The patcher
+# ------------------------------------------------------------
+dae deep_copy(v) {
+    ken k = whit_kind(v)
+    gin k == "list" {
+        gie gaun(v, |x| deep_copy(x))
+    }
+    gin k == "dict" {
+        ken out = {}
+        fer key in keys(v) {
+            out[key] = deep_copy(v[key])
+        }
+        gie out
+    }
+    gie v
+}
+
+dae patch(base, changes) {
+    ken root = deep_copy(base)
+    ken trimmed = []
+    fer c in changes {
+        ken path = c["path"]
+        gin len(path) == 0 {
+            gie deep_copy(c["new"])
+        }
+        ken parent = root
+        fer i in 0..(len(path) - 1) {
+            parent = parent[path[i]]
+        }
+        ken last = path[len(path) - 1]
+        ken op = c["op"]
+        gin op == "~" {
+            parent[last] = deep_copy(c["new"])
+        } ither gin op == "+" an whit_kind(parent) == "list" {
+            shove(parent, deep_copy(c["new"]))
+        } ither gin op == "+" {
+            parent[last] = deep_copy(c["new"])
+        } ither gin whit_kind(parent) == "list" {
+            # Removals fae a list are aye a tail, so drap fae the end
+            shove(trimmed, parent)
+        } ither {
+            # Nae dict delete builtin is portable, so rebuild wi'oot the key
+            ken kept = {}
+            fer key in keys(parent) {
+                gin key != last {
+                    kept[key] = parent[key]
+                }
+            }
+            gin len(path) == 1 {
+                root = kept
+            } ither {
+                ken grand = root
+                fer i in 0..(len(path) - 2) {
+                    grand = grand[path[i]]
+                }
+                grand[path[len(path) - 2]] = kept
+            }
+        }
+    }
+    fer xs in trimmed {
+        yank(xs)
+    }
+    gie root
+}
+
+# Add up every integer in a value; overflow is hurled an' caught by the caller
+dae tot(v) {
+    ken k = whit_kind(v)
+    gin k == "integer" {
+        gie v
+    }
+    gin k == "list" {
+        gie tumble(v, 0, |acc, x| acc + tot(x))
+    }
+    gin k == "dict" {
+        gie tumble(values(v), 0, |acc, x| acc + tot(x))
+    }
+    gie 0
+}
+
+# ------------------------------------------------------------
+#  The data: twa versions o' a bothy's booking config
+# ------------------------------------------------------------
+ken old_cfg = {
+    "name": "glen-haar-bothy",
+    "version": [1, 4, 2],
+    "owners": ["morag", "hamish"],
+    "open": aye,
+    "limits": {"max_bytes": 9007199254740993, "guests": 6, "quota": 4611686018427387904},
+    "rooms": [{"id": "loft", "beds": 4}, {"id": "cellar", "beds": 0}],
+    "contact": {"warden": "Tam", "phone": "01234 567890"},
+    "notes": {}
+}
+
+ken new_cfg = {
+    "name": "glen-haar-bothy",
+    "version": [1, 5, 0],
+    "owners": ["morag", "hamish", "eilidh"],
+    "open": nae,
+    "limits": {"max_bytes": 9007199254740992, "guests": 6, "quota": 9223372036854775807},
+    "rooms": [{"id": "loft", "beds": 6}],
+    "contact": {"phone": "01234 567890", "warden": "Tam"},
+    "notes": {"midges": "fierce"},
+    "stove": naething
+}
+
+blether "== Pretty-printed (width 40) =="
+ken printer = Printer(2, 40)
+printer.show(old_cfg)
+
+blether ""
+blether "== The same, squeezed tae width 24 =="
+Printer(4, 24).show(new_cfg["rooms"])
+
+blether ""
+blether "== Diffs =="
+report("old against itsel", old_cfg, old_cfg)
+report("old against a deep copy", old_cfg, deep_copy(old_cfg))
+ken d = report("old against new", old_cfg, new_cfg)
+report("a bare number", 41, 42)
+
+blether ""
+blether "== Patchin' =="
+ken patched = patch(old_cfg, d.changes)
+blether f"patch(old, diff(old, new)) == new: {patched == new_cfg}"
+blether f"an' the old config is untouched: {old_cfg["version"] == [1, 4, 2] an len(old_cfg["rooms"]) == 2}"
+blether f"re-diffin' the patched copy finds: {inline(tally(diff(patched, new_cfg).changes))}"
+
+blether ""
+blether "== Required fields =="
+# One check per field; each closure keeps its ain `field`
+ken checks = []
+fer field in ["name", "owners", "stove", "contact"] {
+    shove(checks, |cfg| [field, contains(cfg, field)])
+}
+fer cfg_name in ["old", "new"] {
+    ken cfg = {"old": old_cfg, "new": new_cfg}[cfg_name]
+    ken missing = gaun(sieve(gaun(checks, |check| check(cfg)), |r| nae r[1]), |r| r[0])
+    blether f"  {cfg_name}: missing {missing}"
+}
+
+blether ""
+blether "== Totting up the limits =="
+fer pair in [["old", old_cfg], ["new", new_cfg]] {
+    hae_a_bash {
+        blether f"  {pair[0]}: {tot(pair[1]["limits"])}"
+    } gin_it_gangs_wrang err {
+        blether f"  {pair[0]}: {err}"
+    }
+}
