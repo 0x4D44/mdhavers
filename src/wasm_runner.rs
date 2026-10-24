@@ -8,7 +8,7 @@ use wasmtime::{Caller, Engine, FuncType, Linker, Memory, MemoryType, Module, Sto
 
 use crate::error::HaversError;
 use crate::interpreter::Interpreter;
-use crate::value::{DictValue, NativeFunction, SetValue, Value};
+use crate::value::{DictValue, HaversClass, HaversInstance, NativeFunction, SetValue, Value};
 use crate::wasm_compiler::{
     AUDIO_IMPORTS, HOF_BUILTINS, MAX_BUILTIN_ARGS, RAISE_ASSERT, RAISE_HURL,
 };
@@ -42,6 +42,31 @@ enum HostValue {
     Builtin(String),
     /// A variable shared between a function an' its closures.
     Cell(Handle),
+    /// A `kin`: its parent class (nil fer nane) an' its ain methods.
+    Class {
+        name: String,
+        parent: Handle,
+        methods: Vec<Method>,
+    },
+    /// An instance: its class an' its fields in the order they were first set.
+    Instance {
+        class: Handle,
+        fields: Vec<(String, Handle)>,
+    },
+    /// `obj.method` as a value: the method wi' `masel` bound tae `recv`.
+    Bound {
+        recv: Handle,
+        method: Method,
+    },
+}
+
+/// A class method: a guest function in `__mdh_fns` taking `(env, masel, params.., argc)`.
+#[derive(Debug, Clone)]
+struct Method {
+    name: String,
+    index: u32,
+    params: usize,
+    required: usize,
 }
 
 /// Dict entries in insertion order (like the interpreter's dicts).
@@ -74,6 +99,8 @@ enum ValueKey {
     NativeCtor(Handle),
     /// A function or builtin value, by identity.
     Function(Handle),
+    /// An instance or a class, by identity.
+    Object(Handle),
 }
 
 #[derive(Debug, Clone)]
@@ -404,7 +431,10 @@ impl HostStore {
             HostValue::Bytes(_) => Some(ValueKey::Bytes(handle)),
             HostValue::NativeObject(_) => Some(ValueKey::NativeObject(handle)),
             HostValue::NativeCtor(_) => Some(ValueKey::NativeCtor(handle)),
-            HostValue::Function { .. } | HostValue::Builtin(_) => Some(ValueKey::Function(handle)),
+            HostValue::Function { .. } | HostValue::Builtin(_) | HostValue::Bound { .. } => {
+                Some(ValueKey::Function(handle))
+            }
+            HostValue::Class { .. } | HostValue::Instance { .. } => Some(ValueKey::Object(handle)),
             HostValue::Cell(_) => None,
         }
     }
@@ -424,9 +454,37 @@ impl HostStore {
             Some(HostValue::NativeCtor(_))
             | Some(HostValue::Function { .. })
             | Some(HostValue::Builtin(_))
-            | Some(HostValue::Cell(_)) => true,
+            | Some(HostValue::Cell(_))
+            | Some(HostValue::Class { .. })
+            | Some(HostValue::Instance { .. })
+            | Some(HostValue::Bound { .. }) => true,
             None => false,
         }
+    }
+
+    fn class_name(&self, class: Handle) -> String {
+        match self.get(class) {
+            Some(HostValue::Class { name, .. }) => name.clone(),
+            _ => String::new(),
+        }
+    }
+
+    /// A method by name on a class or its ancestors (the interpreter's `find_method`).
+    fn find_method(&self, class: Handle, name: &str) -> Option<Method> {
+        let mut current = class;
+        while let Some(HostValue::Class {
+            parent, methods, ..
+        }) = self.get(current)
+        {
+            if let Some(method) = methods.iter().find(|m| m.name == name) {
+                return Some(method.clone());
+            }
+            if *parent == current {
+                return None;
+            }
+            current = *parent;
+        }
+        None
     }
 
     fn to_string(&self, handle: Handle) -> String {
@@ -460,7 +518,8 @@ impl HostStore {
                         | ValueKey::Bytes(h)
                         | ValueKey::NativeObject(h)
                         | ValueKey::NativeCtor(h)
-                        | ValueKey::Function(h) => self.to_string(*h),
+                        | ValueKey::Function(h)
+                        | ValueKey::Object(h) => self.to_string(*h),
                     };
                     parts.push(format!("\"{}\": {}", key_str, self.to_string(*value)));
                 }
@@ -470,7 +529,9 @@ impl HostStore {
                 let mut parts: Vec<String> =
                     members.iter().map(|(_, h)| self.to_string(*h)).collect();
                 parts.sort();
-                format!("creel{{{}}}", parts.join(", "))
+                // The interpreter quotes every member (MDH-BUG-FLU-00124).
+                let quoted: Vec<String> = parts.iter().map(|p| format!("\"{}\"", p)).collect();
+                format!("creel{{{}}}", quoted.join(", "))
             }
             Some(HostValue::Bytes(bytes)) => format!("bytes[{}]", bytes.len()),
             Some(HostValue::NativeObject(obj)) => format!("<native {}>", obj.kind),
@@ -478,6 +539,11 @@ impl HostStore {
             Some(HostValue::Function { name, .. }) => format!("<dae {}>", name),
             Some(HostValue::Builtin(name)) => format!("<native dae {}>", name),
             Some(HostValue::Cell(value)) => self.to_string(*value),
+            Some(HostValue::Class { name, .. }) => format!("<kin {}>", name),
+            Some(HostValue::Instance { class, .. }) => {
+                format!("<{} instance>", self.class_name(*class))
+            }
+            Some(HostValue::Bound { method, .. }) => format!("<dae {}>", method.name),
             None => "<invalid>".to_string(),
         }
     }
@@ -496,7 +562,8 @@ fn push_children(value: &HostValue, out: &mut Vec<Handle>) {
                     | ValueKey::Bytes(h)
                     | ValueKey::NativeObject(h)
                     | ValueKey::NativeCtor(h)
-                    | ValueKey::Function(h) => out.push(*h),
+                    | ValueKey::Function(h)
+                    | ValueKey::Object(h) => out.push(*h),
                     _ => {}
                 }
                 out.push(*value);
@@ -506,6 +573,12 @@ fn push_children(value: &HostValue, out: &mut Vec<Handle>) {
         HostValue::NativeObject(obj) => out.extend(obj.fields.values().copied()),
         HostValue::Function { env, .. } => out.push(*env),
         HostValue::Cell(value) => out.push(*value),
+        HostValue::Class { parent, .. } => out.push(*parent),
+        HostValue::Instance { class, fields } => {
+            out.push(*class);
+            out.extend(fields.iter().map(|(_, h)| *h));
+        }
+        HostValue::Bound { recv, .. } => out.push(*recv),
         _ => {}
     }
 }
@@ -517,6 +590,7 @@ fn container_ptr(value: &Value) -> Option<usize> {
         Value::Dict(rc) => Some(Rc::as_ptr(rc) as *const () as usize),
         Value::Set(rc) => Some(Rc::as_ptr(rc) as *const () as usize),
         Value::Bytes(rc) => Some(Rc::as_ptr(rc) as *const () as usize),
+        Value::Instance(rc) => Some(Rc::as_ptr(rc) as *const () as usize),
         _ => None,
     }
 }
@@ -589,6 +663,13 @@ impl ValueBridge {
                 self.remember(handle, &value);
                 Ok(value)
             }
+            // A builtin sees a name-only instance (`tae_string`, `whit_kind`, equality).
+            HostValue::Instance { class, .. } => {
+                let class = Rc::new(HaversClass::new(store.class_name(*class), None));
+                let value = Value::Instance(Rc::new(RefCell::new(HaversInstance::new(class))));
+                self.remember(handle, &value);
+                Ok(value)
+            }
             other => Err(format!(
                 "That's pure mince! Type error: a {} cannae be passed tae a builtin in WASM yet",
                 host_type_name(other)
@@ -609,7 +690,8 @@ impl ValueBridge {
             | ValueKey::Bytes(h)
             | ValueKey::NativeObject(h)
             | ValueKey::NativeCtor(h)
-            | ValueKey::Function(h) => self.to_value(store, *h)?,
+            | ValueKey::Function(h)
+            | ValueKey::Object(h) => self.to_value(store, *h)?,
         })
     }
 
@@ -710,6 +792,8 @@ impl ValueBridge {
                     })
             }
             (Some(HostValue::Bytes(held)), Value::Bytes(rc)) => *held == *rc.borrow(),
+            // A builtin cannae change an instance's fields.
+            (Some(HostValue::Instance { .. }), Value::Instance(_)) => true,
             _ => false,
         }
     }
@@ -941,6 +1025,10 @@ fn call_value(
             .to_string())
         }
         Some(HostValue::Builtin(name)) => return call_builtin_value(caller, &name, args, line),
+        Some(HostValue::Class { .. }) => return construct(caller, callee, args, line),
+        Some(HostValue::Bound { recv, method }) => {
+            return call_method(caller, recv, &method, args, line)
+        }
         _ => match tri_handle_call(caller.data_mut(), callee, "call", args) {
             Some(handle) => Ok(handle),
             None => Err(HaversError::NotCallable {
@@ -951,6 +1039,95 @@ fn call_value(
         },
     };
     finish(caller, result)
+}
+
+/// Ca'in a class makes an instance an' runs its `init` (if ony) wi' `masel` bound.
+fn construct(
+    caller: &mut Caller<'_, HostState>,
+    class: Handle,
+    args: &[Handle],
+    line: i32,
+) -> wasmtime::Result<Handle> {
+    let store = &mut caller.data_mut().store;
+    let instance = store.alloc(HostValue::Instance {
+        class,
+        fields: Vec::new(),
+    });
+    if let Some(init) = store.find_method(class, "init") {
+        call_method(caller, instance, &init, args, line)?;
+    }
+    Ok(instance)
+}
+
+/// Run a method on `recv`: the interpreter's arity check (defaults allowed), then the
+/// guest function wi' nil fer each missing argument an' the count last.
+fn call_method(
+    caller: &mut Caller<'_, HostState>,
+    recv: Handle,
+    method: &Method,
+    args: &[Handle],
+    line: i32,
+) -> wasmtime::Result<Handle> {
+    let got = args.len();
+    if got < method.required || got > method.params {
+        let line = if line > 0 { line } else { guest_line(caller) };
+        let line = line.max(0) as usize;
+        let message = if method.required == method.params {
+            HaversError::WrongArity {
+                name: method.name.clone(),
+                expected: method.params,
+                got,
+                line,
+            }
+        } else {
+            HaversError::TypeError {
+                message: format!(
+                    "Function '{}' expects {} tae {} arguments but ye gave it {}",
+                    method.name, method.required, method.params, got
+                ),
+                line,
+            }
+        };
+        return finish(caller, Err(message.to_string()));
+    }
+    let argc = caller.data_mut().store.int_handle(got as i64);
+    let mut params = Vec::with_capacity(method.params + 2);
+    params.push(recv);
+    params.extend_from_slice(args);
+    params.resize(method.params + 1, 0);
+    params.push(argc);
+    call_guest(caller, method.index, 0, &params)
+}
+
+/// `a op b` on an instance whose class overloads `op` (`__pit_thegither__`, ...): the
+/// method's result, as the interpreter's `eval_binary` gies it.
+fn operator_overload(
+    caller: &mut Caller<'_, HostState>,
+    import: &str,
+    a: Handle,
+    b: Handle,
+) -> wasmtime::Result<Option<Handle>> {
+    let Some(HostValue::Instance { class, .. }) = caller.data().store.get(a) else {
+        return Ok(None);
+    };
+    let method_name = match import {
+        "__mdh_add" => "__pit_thegither__",
+        "__mdh_sub" => "__tak_awa__",
+        "__mdh_mul" => "__times__",
+        "__mdh_div" => "__pairt__",
+        "__mdh_mod" => "__lave__",
+        "__mdh_eq" => "__same_as__",
+        "__mdh_ne" => "__differs_fae__",
+        "__mdh_lt" => "__wee_er__",
+        "__mdh_le" => "__wee_er_or_same__",
+        "__mdh_gt" => "__muckle_er__",
+        "__mdh_ge" => "__muckle_er_or_same__",
+        _ => return Ok(None),
+    };
+    match caller.data().store.find_method(*class, method_name) {
+        Some(method) => call_method(caller, a, &method, &[b], 0).map(Some),
+        None => Ok(None),
+    }
 }
 
 /// Run guest table entry `index` wi' its captured cells an' the arguments. The callee
@@ -1112,6 +1289,20 @@ fn method_call(
     if let Some(result) = tri_handle_call(state, obj, &name, args) {
         return Ok(result);
     }
+    if let Some(HostValue::Instance { class, fields }) = state.store.get(obj) {
+        // A method (bound tae `masel`) wins ower a callable field, as in the interpreter.
+        let field = fields.iter().find(|(f, _)| *f == name).map(|(_, h)| *h);
+        if let Some(method) = state.store.find_method(*class, &name) {
+            return call_method(caller, obj, &method, args, 0);
+        }
+        return match field {
+            Some(f) => call_value(caller, f, args, 0),
+            None => {
+                let line = guest_line(caller);
+                finish(caller, Err(undefined(name, line)))
+            }
+        };
+    }
     let field = match state.store.get(obj) {
         Some(HostValue::Dict(map)) => dict_get(map, &ValueKey::String(name)),
         _ => None,
@@ -1198,6 +1389,66 @@ fn add_function_imports(linker: &mut Linker<HostState>, memory: Memory) -> Resul
             },
         )
         .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_make_class",
+            move |mut caller: Caller<'_, HostState>,
+                  parent: i64,
+                  ptr: i32,
+                  len: i32,
+                  parent_ptr: i32,
+                  parent_len: i32,
+                  line: i32|
+                  -> wasmtime::Result<i64> {
+                let name = read_memory_string(&caller, &memory, ptr, len);
+                let store = &mut caller.data_mut().store;
+                let result = if parent == 0
+                    || matches!(store.get(parent), Some(HostValue::Class { .. }))
+                {
+                    Ok(store.alloc(HostValue::Class {
+                        name,
+                        parent,
+                        methods: Vec::new(),
+                    }))
+                } else {
+                    let parent_name = read_memory_string(&caller, &memory, parent_ptr, parent_len);
+                    Err(type_error(format!("{} isnae a class", parent_name), line))
+                };
+                finish(&mut caller, result)
+            },
+        )
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_class_method",
+            move |mut caller: Caller<'_, HostState>,
+                  class: i64,
+                  ptr: i32,
+                  len: i32,
+                  index: i32,
+                  params: i32,
+                  required: i32|
+                  -> i64 {
+                let name = read_memory_string(&caller, &memory, ptr, len);
+                let method = Method {
+                    name,
+                    index: index.max(0) as u32,
+                    params: params.max(0) as usize,
+                    required: required.max(0) as usize,
+                };
+                // The class is brand new (this statement made it), but go through the barrier.
+                if let Some(HostValue::Class { methods, .. }) =
+                    caller.data_mut().store.get_mut(class)
+                {
+                    methods.retain(|m| m.name != method.name);
+                    methods.push(method);
+                }
+                class
+            },
+        )
+        .map_err(err)?;
     for argc in 0..=MAX_BUILTIN_ARGS {
         let params = std::iter::repeat_n(ValType::I64, argc + 1).chain([ValType::I32]);
         let ty = FuncType::new(params, [ValType::I64]);
@@ -1237,6 +1488,26 @@ fn add_function_imports(linker: &mut Linker<HostState>, memory: Memory) -> Resul
             .map_err(err)?;
     }
     Ok(())
+}
+
+/// The interpreter's error fer a missing field or method.
+fn undefined(name: String, line: i32) -> String {
+    let line = line.max(0) as usize;
+    HaversError::UndefinedVariable { name, line }.to_string()
+}
+
+/// `obj.name` on an instance: a field, else a method bound tae it, else `Err(())` (missing).
+fn instance_get(store: &mut HostStore, obj: Handle, name: &str) -> Option<Result<Handle, ()>> {
+    let Some(HostValue::Instance { class, fields }) = store.get(obj) else {
+        return None;
+    };
+    if let Some((_, value)) = fields.iter().find(|(f, _)| f == name) {
+        return Some(Ok(*value));
+    }
+    Some(match store.find_method(*class, name) {
+        Some(method) => Ok(store.alloc(HostValue::Bound { recv: obj, method })),
+        None => Err(()),
+    })
 }
 
 fn type_error(message: String, line: i32) -> String {
@@ -2159,6 +2430,9 @@ fn add_arith(
                   a: i64,
                   b: i64|
                   -> Result<i64, wasmtime::Error> {
+                if let Some(result) = operator_overload(&mut caller, name, a, b)? {
+                    return Ok(result);
+                }
                 let result = arith(&mut caller.data_mut().store, op, a, b);
                 let result = match result {
                     Err(message) => Err(locate_error(message, guest_line(&mut caller))),
@@ -2184,6 +2458,9 @@ fn add_cmp(
                   a: i64,
                   b: i64|
                   -> Result<i64, wasmtime::Error> {
+                if let Some(result) = operator_overload(&mut caller, name, a, b)? {
+                    return Ok(result);
+                }
                 let store = &mut caller.data_mut().store;
                 let result = op(store, a, b).map(|v| alloc_bool(store, v));
                 let result = match result {
@@ -2241,6 +2518,9 @@ fn host_type_name(value: &HostValue) -> &'static str {
         HostValue::Function { .. } => "function",
         HostValue::Builtin(_) => "native function",
         HostValue::Cell(_) => "cell",
+        HostValue::Class { .. } => "class",
+        HostValue::Instance { .. } => "instance",
+        HostValue::Bound { .. } => "function",
     }
 }
 
@@ -2541,6 +2821,32 @@ fn guest_scope_exit(
     let store = &state.store;
     state.tri_modules.retain(|h| store.is_live(*h));
     Ok(())
+}
+
+/// `obj.prop` on a dict, a tri object or the tri module (nil when absent).
+fn prop_get(state: &mut HostState, obj: Handle, prop: Handle) -> Handle {
+    if state.tri_modules.contains(&obj) {
+        if let Some(ValueKey::String(key)) = state.store.key_for(prop) {
+            if let Some(kind) = tri_constructor_kind(&key) {
+                return alloc_tri_ctor(&mut state.store, kind);
+            }
+        }
+    }
+    match state.store.get(obj) {
+        Some(HostValue::Dict(map)) => {
+            if let Some(ValueKey::String(key)) = state.store.key_for(prop) {
+                return dict_get(map, &ValueKey::String(key)).unwrap_or(0);
+            }
+            0
+        }
+        Some(HostValue::NativeObject(native)) => {
+            if let Some(ValueKey::String(key)) = state.store.key_for(prop) {
+                return native.fields.get(&key).copied().unwrap_or(0);
+            }
+            0
+        }
+        _ => 0,
+    }
 }
 
 fn run_module(engine: &Engine, module: &Module, capture: bool) -> Result<WasmRunOutput, String> {
@@ -2855,34 +3161,21 @@ fn run_module(engine: &Engine, module: &Module, capture: bool) -> Result<WasmRun
         .func_wrap(
             "env",
             "__mdh_prop_get",
-            |mut caller: Caller<'_, HostState>, obj: i64, prop: i64| -> i64 {
+            |mut caller: Caller<'_, HostState>, obj: i64, prop: i64| -> wasmtime::Result<i64> {
                 let state = caller.data_mut();
-                if state.tri_modules.contains(&obj) {
-                    if let Some(ValueKey::String(key)) = state.store.key_for(prop) {
-                        if let Some(kind) = tri_constructor_kind(&key) {
-                            return alloc_tri_ctor(&mut state.store, kind);
-                        }
+                if let Some(ValueKey::String(key)) = state.store.key_for(prop) {
+                    if let Some(result) = instance_get(&mut state.store, obj, &key) {
+                        let result = match result {
+                            Ok(handle) => Ok(handle),
+                            Err(()) => Err(undefined(key, guest_line(&mut caller))),
+                        };
+                        return finish(&mut caller, result);
                     }
                 }
-                match state.store.get(obj) {
-                    Some(HostValue::Dict(map)) => {
-                        if let Some(ValueKey::String(key)) = state.store.key_for(prop) {
-                            return dict_get(map, &ValueKey::String(key)).unwrap_or(0);
-                        }
-                        0
-                    }
-                    Some(HostValue::NativeObject(native)) => {
-                        if let Some(ValueKey::String(key)) = state.store.key_for(prop) {
-                            return native.fields.get(&key).copied().unwrap_or(0);
-                        }
-                        0
-                    }
-                    _ => 0,
-                }
+                Ok(prop_get(state, obj, prop))
             },
         )
         .map_err(|e| e.to_string())?;
-
     linker
         .func_wrap(
             "env",
@@ -2899,6 +3192,15 @@ fn run_module(engine: &Engine, module: &Module, capture: bool) -> Result<WasmRun
                     Some(HostValue::NativeObject(native)) => {
                         if let Some(ValueKey::String(key)) = prop_key {
                             native.fields.insert(key, value);
+                        }
+                    }
+                    // `get_mut` above is the write barrier fer the field's new value.
+                    Some(HostValue::Instance { fields, .. }) => {
+                        if let Some(ValueKey::String(key)) = prop_key {
+                            match fields.iter_mut().find(|(f, _)| *f == key) {
+                                Some(slot) => slot.1 = value,
+                                None => fields.push((key, value)),
+                            }
                         }
                     }
                     _ => {}

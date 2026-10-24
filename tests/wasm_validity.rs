@@ -144,9 +144,11 @@ fn non_constant_default_is_a_compile_error() {
 }
 
 #[test]
-fn top_level_variable_used_inside_function_is_a_compile_error() {
-    let message = compile_error("ken limit = 10\ndae f() {\n    gie limit\n}\nblether f()\n");
-    assert!(message.contains("'limit'"), "{message}");
+fn top_level_variable_used_inside_function_reads_the_global() {
+    assert_eq!(
+        run("ken limit = 10\ndae f() {\n    gie limit\n}\nblether f()\n"),
+        "10\n"
+    );
 }
 
 #[test]
@@ -772,7 +774,7 @@ fn creels_returned_by_builtins_live_in_the_host_store() {
                   gin creel([]) { blether \"truthy\" } ither { blether \"falsy\" }\n";
     assert_eq!(
         run(source),
-        "creel{1, 2, 3}\n3\naye\nnae\naye\nnae\naye\nfalsy\n"
+        "creel{\"1\", \"2\", \"3\"}\n3\naye\nnae\naye\nnae\naye\nfalsy\n"
     );
 }
 
@@ -1153,7 +1155,7 @@ hae_a_bash {
 fn unsupported_nodes_are_named_in_the_compile_error() {
     for (src, kind) in [
         ("ken f = speir \"x\"\n", "The Input expression"),
-        ("kin Foo {\n}\n", "The Class statement"),
+        ("thing P { x }\n", "The Struct statement"),
         ("ken r = 1..3\n", "The Range expression"),
     ] {
         let err = compile_to_wat(src).expect_err(src).to_string();
@@ -1447,4 +1449,251 @@ gin bytes(0) { blether "full" } ither { blether "empty" }
 gin b { blether "full" } ither { blether "empty" }
 "#;
     assert_parity(src, &interpreted(src));
+}
+
+// ---- Top-level variables used inside daes: one host cell per global ----
+
+#[test]
+fn daes_read_and_write_top_level_variables() {
+    let src = r#"ken limit = 10
+ken count = 0
+ken items = []
+dae bump(n) {
+    count = count + n
+    shove(items, n)
+    gie limit + count
+}
+dae shadow(limit) {
+    ken count = 99
+    gie limit + count
+}
+blether bump(1)
+limit = 100
+blether bump(2)
+ken limit = 1000
+blether bump(3)
+blether shadow(1)
+blether count
+blether items
+ken peek = || count + limit
+count = 5
+blether peek()
+"#;
+    assert_parity(src, "11\n103\n1006\n100\n6\n[1, 2, 3]\n1005\n");
+}
+
+#[test]
+fn a_global_keeps_a_container_built_inside_a_dae() {
+    // The value is born in the dae's scopes; only the cell's write barrier keeps it.
+    let src = r#"ken keep = naething
+dae build(n) {
+    ken inner = [n, "kept " + n]
+    keep = {"k": inner, "n": [n, n]}
+}
+build(7)
+fer i in 0..3000 {
+    ken junk = ["junk", i, [i]]
+}
+blether keep
+dae churn() {
+    fer i in 0..3000 {
+        keep = [i, "x" + i]
+    }
+}
+churn()
+blether keep
+"#;
+    let out = assert_parity(src, "{\"k\": [7, kept 7], \"n\": [7, 7]}\n[2999, x2999]\n");
+    assert!(
+        out.peak_store_size < 2000,
+        "store peaked at {}",
+        out.peak_store_size
+    );
+}
+
+// ---- Classes: instances in the host store, methods as guest functions ----
+
+const ACCOUNT_CLASSES: &str = r#"ken bonus = 10
+kin Account {
+    dae init(owner, balance = bonus) {
+        masel.owner = owner
+        masel.balance = balance
+        masel.log = []
+    }
+    dae deposit(amount, note = "dep " + masel.owner) {
+        masel.balance = masel.balance + amount
+        shove(masel.log, note)
+        gie masel
+    }
+    dae __pit_thegither__(other) {
+        gie Account(masel.owner + "&" + other.owner, masel.balance + other.balance)
+    }
+    dae __same_as__(other) {
+        gie masel.balance == other.balance
+    }
+    dae __wee_er__(other) {
+        gie masel.balance < other.balance
+    }
+}
+kin Savings fae Account {
+    dae deposit(amount) {
+        gie masel.add_interest(amount * 2)
+    }
+    dae add_interest(amount, rate = 1) {
+        masel.balance = masel.balance + amount * rate
+        gie masel
+    }
+}
+dae open(name) {
+    gie Account(name)
+}
+"#;
+
+#[test]
+fn classes_construct_dispatch_inherit_and_display_like_the_interpreter() {
+    let src = format!(
+        "{ACCOUNT_CLASSES}{}",
+        r#"ken a = open("Ada")
+ken b = Account("Bob", 5)
+a.deposit(3).deposit(4, "fower")
+blether a.balance
+blether a.log
+blether b.log
+ken s = Savings("Sal")
+s.deposit(5)
+blether s.balance
+ken dep = b.deposit
+dep(1)
+blether b.balance
+blether dep
+blether a
+blether Account
+blether [a, s]
+blether tae_string(s)
+ken c = a + b
+blether c.owner
+blether c.balance
+blether a == b
+blether a == a
+blether b < a
+blether a != b
+ken d = {"acct": a}
+d.acct.balance = 99
+blether a.balance
+blether gaun(["x", "y"], Account)[1].owner
+blether whit_kind(a)
+ken make = || |x| x + 1
+kin Box {
+    dae init() { masel.f = |x| x + 100 }
+    dae f(x) { gie x + 1 }
+    dae getter() { gie || masel.f(1) }
+}
+blether Box().f(3)
+ken f = Box().f
+blether f(3)
+blether Box().getter()()
+"#
+    );
+    assert_parity(
+        &src,
+        "17\n[dep Ada, fower]\n[]\n20\n6\n<dae deposit>\n<Account instance>\n<kin Account>\n\
+         [<Account instance>, <Savings instance>]\n<Savings instance>\nAda&Bob\n23\nnae\naye\naye\naye\n\
+         99\ny\ninstance\n4\n103\n2\n",
+    );
+}
+
+#[test]
+fn class_errors_are_catchable_and_match_the_interpreter() {
+    let src = format!(
+        "{ACCOUNT_CLASSES}{}",
+        r#"ken a = Account("Ada")
+hae_a_bash {
+    blether a.nope
+} gin_it_gangs_wrang err {
+    blether "caught nope: " + err
+}
+hae_a_bash {
+    a.deposit()
+} gin_it_gangs_wrang err {
+    blether "caught deposit: " + err
+}
+hae_a_bash {
+    blether a.missing_method(1)
+} gin_it_gangs_wrang err {
+    blether "caught missing: " + err
+}
+blether a.balance
+"#
+    );
+    let want = interpreted(&src);
+    assert!(
+        want.contains("caught nope: Awa' an bile yer heid! 'nope' hasnae been defined yet at line"),
+        "{want}"
+    );
+    assert!(
+        want.contains("caught deposit: That's pure mince! Type error at line"),
+        "{want}"
+    );
+    assert!(
+        want.ends_with("hasnae been defined yet at line 47\n10\n"),
+        "{want}"
+    );
+    assert_parity(&src, &want);
+    let out = run_full(&format!(
+        "{ACCOUNT_CLASSES}Savings(\"S\").add_interest(1, 2, 3)\n"
+    ));
+    let error = out.error.expect("arity error");
+    assert!(
+        error.contains("Function 'add_interest' expects 1 tae 2 arguments but ye gave it 3"),
+        "{error}"
+    );
+    let out = run_full("ken x = 3\nkin B fae x {\n    dae init() {}\n}\n");
+    let error = out.error.expect("parent is no' a class");
+    assert!(error.contains("x isnae a class"), "{error}");
+    let message = compile_error("dae f() {\n    gie masel\n}\nblether f()\n");
+    assert!(message.contains("'masel'"), "{message}");
+}
+
+#[test]
+fn instance_fields_survive_store_churn_and_loops_stay_bounded() {
+    // The fields are born in `init`'s scopes; only the instance (remembered by the
+    // write barrier, then traced through `push_children`) keeps them.
+    let src = r#"kin Box {
+    dae init(n) {
+        masel.items = [n, "item " + n]
+        masel.meta = {"n": [n, n]}
+    }
+    dae show() {
+        gie masel.items
+    }
+}
+ken boxes = []
+fer i in 0..50 {
+    shove(boxes, Box(i))
+}
+fer j in 0..3000 {
+    ken junk = ["junk", j, [j]]
+}
+blether boxes[7].show()
+blether boxes[49].meta
+ken total = 0
+fer i in 0..20000 {
+    ken b = Box(i)
+    total = total + b.items[0]
+}
+blether total
+"#;
+    let out = assert_parity(src, "[7, item 7]\n{\"n\": [49, 49]}\n199990000\n");
+    assert!(
+        out.peak_store_size < 5000,
+        "store peaked at {}",
+        out.peak_store_size
+    );
+}
+
+// MDH-BUG-FLU-00124: creel members print quoted, as the interpreter shows them.
+#[test]
+fn creel_display_quotes_every_member() {
+    let src = "ken c = creel([\"1\", 2, \"b\"])\nblether c\nblether [creel([])]\n";
+    assert_parity(src, "creel{\"1\", \"2\", \"b\"}\n[creel{}]\n");
 }
