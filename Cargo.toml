@@ -1,6 +1,6 @@
 [package]
 name = "mdhavers"
-version = "0.3.42"
+version = "0.3.43"
 edition = "2021"
 description = "A Scots programming language - pure havers, but working havers!"
 authors = ["Arthur"]
