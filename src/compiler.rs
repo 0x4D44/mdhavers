@@ -26,6 +26,10 @@ const RUNTIME_BINDINGS: &[&str] = &[
     "yank",
     "keys",
     "values",
+    // Dict builtins wi' typed keys (core_runtime.js, MDH-BUG-FLU-00109).
+    "items",
+    "dict_merge",
+    "json_stringify",
     "range",
     "abs",
     "min",
@@ -311,6 +315,15 @@ fn is_bool_expr(expr: &Expr) -> bool {
         Expr::Grouping { expr, .. } => is_bool_expr(expr),
         _ => false,
     }
+}
+
+/// Whether a string dict key is its ain JS property name; mirrors `plainKey`
+/// in runtime/js/core_runtime.js. Array-index names (JS reorders them),
+/// `__proto__` an' names startin' wi' NUL are encoded by `__havers.dkey`.
+fn is_plain_dict_key(s: &str) -> bool {
+    let index_like =
+        !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()) && (s == "0" || !s.starts_with('0'));
+    !(index_like || s.starts_with('\0') || s == "__proto__")
 }
 
 fn is_number_literal(expr: &Expr) -> bool {
@@ -897,11 +910,8 @@ impl Compiler {
         self.indent -= 1;
         self.emit_line("},");
 
-        // keys function
-        self.emit_line("keys: (obj) => Object.keys(obj),");
-
-        // values function
-        self.emit_line("values: (obj) => Object.values(obj),");
+        // keys, values, items an' the dict helpers live in core_runtime.js,
+        // which keeps dict keys typed (MDH-BUG-FLU-00109).
 
         // split function
         self.emit_line("split: (str, delim) => str.split(delim),");
@@ -916,6 +926,9 @@ impl Compiler {
         // Lists find items by ==, so a list or dict member matches structurally.
         self.emit_line(
             "if (Array.isArray(container)) return container.some((x) => __havers_core.eq(x, item));",
+        );
+        self.emit_line(
+            "if (__havers_core.isDict(container)) return Object.prototype.hasOwnProperty.call(container, __havers_core.dkey(item));",
         );
         self.emit_line("if (typeof container === 'object') return item in container;");
         self.emit_line("return false;");
@@ -1050,8 +1063,16 @@ impl Compiler {
         self.indent -= 1;
         self.emit_line("},");
 
-        // wheesht - trim whitespace
-        self.emit_line("wheesht: (str) => String(str).trim(),");
+        // wheesht - trim ASCII whitespace aff a string, or drop the falsy items o' a list
+        self.emit_line("wheesht: (x) => {");
+        self.indent += 1;
+        self.emit_line(
+            "if (typeof x === 'string') return x.replace(/^[ \\t\\n\\r]+|[ \\t\\n\\r]+$/g, '');",
+        );
+        self.emit_line("if (Array.isArray(x)) return x.filter(__havers_core.truthy);");
+        self.emit_line("throw new Error('Jings! Something went awfy wrang: wheesht() expects a string or list');");
+        self.indent -= 1;
+        self.emit_line("},");
 
         // upper - uppercase
         self.emit_line("upper: (str) => String(str).toUpperCase(),");
@@ -1076,12 +1097,17 @@ impl Compiler {
 
         // Higher-order functions
         self.emit_line("// Higher-order functions");
-        self.emit_line("gaun: (arr, fn) => arr.map(fn),");
-        self.emit_line("sieve: (arr, fn) => arr.filter(fn),");
-        self.emit_line("tumble: (arr, init, fn) => arr.reduce(fn, init),");
-        self.emit_line("aw: (arr, fn) => arr.every(fn),");
-        self.emit_line("ony: (arr, fn) => arr.some(fn),");
-        self.emit_line("hunt: (arr, fn) => arr.find(fn),");
+        // The function gets only the item (an' the accumulator), as in the
+        // interpreter, an' a predicate's result is judged by mdhavers
+        // truthiness, so {} an' [] are falsy (MDH-BUG-FLU-00110).
+        self.emit_line("gaun: (arr, fn) => arr.map((x) => fn(x)),");
+        self.emit_line("sieve: (arr, fn) => arr.filter((x) => __havers_core.truthy(fn(x))),");
+        self.emit_line("tumble: (arr, init, fn) => arr.reduce((acc, x) => fn(acc, x), init),");
+        self.emit_line("aw: (arr, fn) => arr.every((x) => __havers_core.truthy(fn(x))),");
+        self.emit_line("ony: (arr, fn) => arr.some((x) => __havers_core.truthy(fn(x))),");
+        self.emit_line(
+            "hunt: (arr, fn) => { for (const x of arr) if (__havers_core.truthy(fn(x))) return x; return null; },",
+        );
 
         // Audio functions
         self.emit_line("// Audio functions");
@@ -2104,15 +2130,17 @@ impl Compiler {
                         self.output.push_str(", ");
                     }
                     match key {
+                        // A string the runtime keeps as its ain property name.
                         Expr::Literal {
                             value: Literal::String(s),
                             ..
-                        } => self.output.push_str(&js_string(s)),
-                        // Keys are expressions: `{k: 1}` uses the value o' k.
+                        } if is_plain_dict_key(s) => self.output.push_str(&js_string(s)),
+                        // Keys are expressions: `{k: 1}` uses the value o' k, typed
+                        // by the runtime's key encodin' (MDH-BUG-FLU-00109).
                         _ => {
-                            self.output.push('[');
+                            self.output.push_str("[__havers.dkey(");
                             self.compile_expr(key);
-                            self.output.push(']');
+                            self.output.push_str(")]");
                         }
                     }
                     self.output.push_str(": ");
@@ -3489,7 +3517,8 @@ f"C:\\users\\{who}""#,
     fn test_user_code_shadows_runtime_helpers() {
         let result = compile("dae len(x) { gie 99 }\nken max = 5").unwrap();
         // Helpers are bound wi' `let` inside the user block, never as module-level consts
-        assert!(result.contains("let { len, whit_kind,"));
+        assert!(result.contains("let { len, creel,"));
+        assert!(result.contains(" whit_kind, "));
         assert!(!result.contains("const { len"));
         assert!(result.contains("len = function len(x) {"));
         assert!(result.contains("\n  max = 5n;"));
@@ -3538,7 +3567,17 @@ blether Square(3)"#,
     #[test]
     fn test_dict_literal_keys_are_expressions() {
         let result = compile("ken k = \"colour\"\nken d = {k: 1, \"a\": 2}").unwrap();
-        assert!(result.contains("{[k]: 1n, \"a\": 2n}"));
+        assert!(result.contains("{[__havers.dkey(k)]: 1n, \"a\": 2n}"));
+    }
+
+    #[test]
+    fn test_dict_literal_encodes_keys_js_would_reorder() {
+        let result = compile("ken d = {\"b\": 1, \"1\": 2, \"__proto__\": 3, \"01\": 4}").unwrap();
+        assert!(result.contains(
+            "{\"b\": 1n, [__havers.dkey(\"1\")]: 2n, [__havers.dkey(\"__proto__\")]: 3n, \"01\": 4n}"
+        ));
+        assert!(is_plain_dict_key("") && is_plain_dict_key("-1") && is_plain_dict_key("1.5"));
+        assert!(!is_plain_dict_key("0") && !is_plain_dict_key("\0x"));
     }
 
     #[test]

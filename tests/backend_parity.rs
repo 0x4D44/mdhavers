@@ -787,3 +787,106 @@ fn parity_js_creel_builtins_mdh_bug_flu_00104() {
         ),
     ]);
 }
+
+#[test]
+fn parity_js_typed_dict_keys_mdh_bug_flu_00109() {
+    if !node_available() {
+        return;
+    }
+    let mixed = "ken m = {\"b\": 1, 2: \"two\", \"1\": \"str\", 1: \"int\", 1.5: \"flt\", 1.0: \"one\", aye: \"yes\", naething: \"nil\"}\n";
+    let source = |body: &str| format!("{mixed}{body}");
+    let display = source("blether m\nblether len(m)");
+    let listing = source(
+        "blether keys(m)\nblether gaun(keys(m), whit_kind)\nblether values(m)\nblether items(m)",
+    );
+    let lookup = source("blether m[1]\nblether m[\"1\"]\nblether m[1.0]\nblether m[aye]\nblether m[naething]\nblether contains(m, 1)\nblether contains(m, \"2\")");
+    let update = source("m[2] = \"deux\"\nm[\"2\"] = \"string two\"\nblether m\nblether len(m)");
+    let fer =
+        source("hae_a_bash { fer k in m { blether k } } gin_it_gangs_wrang err { blether err }");
+    assert_js_parity(&[
+        (
+            "00109 integer keys index lists and stay integers",
+            "ken d = {0: \"a\"}\nken xs = [10]\nfer k in keys(d) { blether xs[k] }\nfer k in keys(d) { blether whit_kind(k) }\nfer k in keys(d) { blether k + 1 }",
+            "10\ninteger\n1",
+        ),
+        (
+            "00109 int, float, numeric-string, bool and naething keys display in insertion order",
+            &display,
+            "{\"b\": 1, \"2\": two, \"1\": str, \"1\": int, \"1.5\": flt, \"1\": one, \"aye\": yes, \"naething\": nil}\n8",
+        ),
+        (
+            "00109 keys, values and items keep key types",
+            &listing,
+            "[b, 2, 1, 1, 1.5, 1, aye, naething]\n[string, integer, string, integer, float, float, bool, naething]\n[1, two, str, int, flt, one, yes, nil]\n[[b, 1], [2, two], [1, str], [1, int], [1.5, flt], [1, one], [aye, yes], [naething, nil]]",
+        ),
+        (
+            "00109 lookup and contains are typed",
+            &lookup,
+            "int\nstr\none\nyes\nnil\naye\nnae",
+        ),
+        (
+            "00109 index assignment is typed and appends new keys last",
+            &update,
+            "{\"b\": 1, \"2\": deux, \"1\": str, \"1\": int, \"1.5\": flt, \"1\": one, \"aye\": yes, \"naething\": nil, \"2\": string two}\n9",
+        ),
+        (
+            "00109 fer ower a dict is an error",
+            &fer,
+            "That's pure mince! Type error at line 2: Cannae iterate ower a dict",
+        ),
+        (
+            "00109 == compares typed keys",
+            "blether {1: \"a\"} == {1: \"a\"}\nblether {1: \"a\"} == {\"1\": \"a\"}\nblether {1: \"a\"} == {1.0: \"a\"}",
+            "aye\nnae\nnae",
+        ),
+        (
+            "00109 dict_merge keeps typed keys and first positions",
+            "blether dict_merge({1: \"a\", \"x\": 1}, {\"1\": \"b\", 1: \"c\"})",
+            "{\"1\": c, \"x\": 1, \"1\": b}",
+        ),
+        (
+            "00109 json_stringify writes non-string keys as their text",
+            "blether json_stringify({1: \"a\", \"b\": [1, 2.5], \"c\": {2: naething}})\nblether json_stringify({aye: 1.0, \"q\\\"\": \"x\\ny\"})",
+            "{\"1\": \"a\", \"b\": [1, 2.5], \"c\": {\"2\": null}}\n{\"aye\": 1, \"q\\\"\": \"x\\ny\"}",
+        ),
+        (
+            "00109 special string keys are ordinary keys",
+            "ken e = {\"__proto__\": 1, \"0\": 2, \"\": 3}\ne[\"__proto__\"] = 4\nblether e\nblether keys(e)\nblether gaun(keys(e), whit_kind)",
+            "{\"__proto__\": 4, \"0\": 2, \"\": 3}\n[__proto__, 0, ]\n[string, string, string]",
+        ),
+        (
+            "00109 list and dict keys are keyed by identity",
+            "ken l = [1]\nken d = {}\nd[l] = \"list\"\nblether d[l]\nblether contains(d, [1])\nblether whit_kind(keys(d)[0])",
+            "list\nnae\nlist",
+        ),
+    ]);
+}
+
+#[test]
+fn parity_js_predicates_use_mdhavers_truthiness_mdh_bug_flu_00110() {
+    if !node_available() {
+        return;
+    }
+    assert_js_parity(&[
+        (
+            "00110 sieve keeps only truthy results",
+            "blether len(sieve([{}, {\"a\": 1}, []], |d| d))\nblether sieve([0, 1, \"\", \"x\", [], [2], naething, {}, 0.0], |v| v)",
+            "1\n[1, x, [2]]",
+        ),
+        (
+            "00110 aw, ony and hunt judge empty containers falsy",
+            "blether aw([1, [], 2], |v| v)\nblether aw([1, [1], {\"a\": 1}], |v| v)\nblether ony([{}, [], \"\", 0], |v| v)\nblether ony([{}, [5]], |v| v)\nblether hunt([[], {}, [3]], |v| v)\nblether hunt([[], {}], |v| v)",
+            "nae\naye\nnae\naye\n[3]\nnaething",
+        ),
+        (
+            "00110 wheesht drops falsy list items and trims ASCII whitespace",
+            "blether wheesht([0, 1, \"\", \"x\", [], [2], naething, aye, nae, {}])\nblether \"[\" + wheesht(\"  hi \\t\") + \"]\"",
+            "[1, x, [2], aye]\n[hi]",
+        ),
+        (
+            "00110 callbacks get only the item, as in the interpreter",
+            "dae f(x, extra = 5) { gie x + extra }\nblether gaun([1, 2], f)\nblether sieve([1, 2], |x| x > 1)\nblether tumble([1, 2, 3], 0, |a, x| a + x)",
+            "[6, 7]\n[2]\n6",
+        ),
+    ]);
+}

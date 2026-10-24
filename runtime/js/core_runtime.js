@@ -30,6 +30,57 @@ const __havers_core = (() => {
     return sign + digits + "0".repeat(exp - (digits.length - 1));
   };
 
+  // ---------- dict keys ----------
+  //
+  // A dict is a plain JS object, but its keys are typed like the interpreter's
+  // `ValueKey`: 1, 1.0, "1" an' aye are fower different keys. A string key is
+  // its ain property name, so `d.name`, logging fields an' three.js options see
+  // plain names. Every ither key is encoded as "\0" + a tag + its text, an' so
+  // is a string that JS would reorder (an array index like "1") or that is
+  // special ("__proto__", or one startin' wi' "\0"). Nae encoded name is an
+  // array index, so a dict keeps its insertion order. A list, dict, creel or
+  // function key is keyed by identity through a registry, as in the interpreter.
+  const refIds = new WeakMap(); // object key -> its id
+  const refKeys = new Map(); // id -> object key
+  const plainKey = (s) => !(/^(0|[1-9]\d*)$/.test(s) || s.charCodeAt(0) === 0 || s === "__proto__");
+  const dkey = (k) => {
+    switch (typeof k) {
+      case "string":
+        return plainKey(k) ? k : "\0s" + k;
+      case "bigint":
+        return "\0i" + String(k);
+      case "number":
+        return "\0f" + (Object.is(k, -0) ? "-0" : String(k));
+      case "boolean":
+        return k ? "\0b1" : "\0b0";
+      case "undefined":
+        return "\0n";
+      default: {
+        if (k === null) return "\0n";
+        let id = refIds.get(k);
+        if (id === undefined) {
+          id = refKeys.size;
+          refIds.set(k, id);
+          refKeys.set(id, k);
+        }
+        return "\0r" + id;
+      }
+    }
+  };
+  const undkey = (p) => {
+    if (p.charCodeAt(0) !== 0) return p;
+    const body = p.slice(2);
+    switch (p[1]) {
+      case "s": return body;
+      case "i": return BigInt(body);
+      case "f": return Number(body);
+      case "b": return body === "1";
+      case "n": return null;
+      default: return refKeys.get(Number(body));
+    }
+  };
+  const dictKeys = (d) => Object.keys(d).map(undkey);
+
   // Mirrors `impl Display for Value`.
   const show = (x) => {
     if (x === null || x === undefined) return "naething";
@@ -50,7 +101,7 @@ const __havers_core = (() => {
     if (typeof x === "object") {
       const ctor = Object.getPrototypeOf(x) === null ? null : x.constructor;
       if (ctor && ctor !== Object && !ctor.__mdh_struct) return "<" + ctor.name + " instance>";
-      return "{" + Object.keys(x).map((k) => '"' + k + '": ' + show(x[k])).join(", ") + "}";
+      return "{" + Object.keys(x).map((k) => '"' + show(undkey(k)) + '": ' + show(x[k])).join(", ") + "}";
     }
     return String(x);
   };
@@ -269,11 +320,12 @@ const __havers_core = (() => {
       if (j < 0 || j >= items.length) throw oob(i, items.length, line);
       return items[j];
     }
-    if (o !== null && typeof o === "object" && Object.getPrototypeOf(o) === Object.prototype) {
-      if (!Object.prototype.hasOwnProperty.call(o, i)) {
+    if (isDict(o)) {
+      const k = dkey(i);
+      if (!Object.prototype.hasOwnProperty.call(o, k)) {
         throw fail(`Awa' an bile yer heid! '${show(i)}' hasnae been defined yet at line ${line}`);
       }
-      return o[i];
+      return o[k];
     }
     return o[i];
   };
@@ -289,7 +341,7 @@ const __havers_core = (() => {
       return v;
     }
     if (typeof o === "string") throw typeError(`Cannae set index on a string wi' a ${typeName(i)}`, line);
-    o[i] = v;
+    o[isDict(o) ? dkey(i) : i] = v;
     return v;
   };
 
@@ -476,7 +528,78 @@ const __havers_core = (() => {
     return nodeKey();
   };
 
+  // ---------- JSON, as `value_to_json` in the interpreter ----------
+
+  const MAX_JSON_DEPTH = 512;
+  // Rust's `char::is_control` is the Cc category: U+0000-001F an' U+007F-009F.
+  const jsonEscape = (s) => {
+    let out = '"';
+    for (const c of s) {
+      if (c === '"') out += '\\"';
+      else if (c === "\\") out += "\\\\";
+      else if (c === "\n") out += "\\n";
+      else if (c === "\t") out += "\\t";
+      else if (c === "\r") out += "\\r";
+      else if (/[\x00-\x1f\x7f-\x9f]/.test(c)) out += "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0");
+      else out += c;
+    }
+    return out + '"';
+  };
+  const jsonEnter = (x, open) => {
+    if (open.includes(x)) {
+      throw native("Cannae write JSON fer a list or dict that contains itsel - it wid gang roond forever!");
+    }
+    if (open.length >= MAX_JSON_DEPTH) {
+      throw native(`JSON's nested ower deep (mair than ${MAX_JSON_DEPTH} levels) - ah'm no' diggin' that far!`);
+    }
+    open.push(x);
+  };
+  const toJson = (x, open) => {
+    if (x === null || x === undefined) return "null";
+    if (x === true) return "true";
+    if (x === false) return "false";
+    if (typeof x === "bigint") return String(x);
+    if (typeof x === "number") return Number.isFinite(x) ? showNumber(x) : "null";
+    if (typeof x === "string") return jsonEscape(x);
+    if (Array.isArray(x)) {
+      jsonEnter(x, open);
+      const items = x.map((v) => toJson(v, open));
+      open.pop();
+      return "[" + items.join(", ") + "]";
+    }
+    if (isDict(x)) {
+      jsonEnter(x, open);
+      const pairs = Object.keys(x).map((p) => {
+        const k = undkey(p);
+        return jsonEscape(typeof k === "string" ? k : show(k)) + ": " + toJson(x[p], open);
+      });
+      open.pop();
+      return "{" + pairs.join(", ") + "}";
+    }
+    return '"' + show(x).replace(/"/g, '\\"') + '"';
+  };
+
   const builtins = {
+    // Dicts: keys come back wi' their ain types (see `dkey`).
+    keys: (d) => {
+      if (!isDict(d)) throw native("keys() expects a dict");
+      return dictKeys(d);
+    },
+    values: (d) => {
+      if (!isDict(d)) throw native("values() expects a dict");
+      return Object.values(d);
+    },
+    items: (d) => {
+      if (!isDict(d)) throw native("items() needs a dictionary");
+      return Object.keys(d).map((p) => [undkey(p), d[p]]);
+    },
+    // The second dict's values win; a key keeps its first place.
+    dict_merge: (a, b) => {
+      if (!isDict(a) || !isDict(b)) throw native("dict_merge() needs two dictionaries");
+      return Object.assign({}, a, b);
+    },
+    json_stringify: (x) => toJson(x, []),
+
     // Creels (sets): a JS Set keys BigInt/string/bool by value an' lists, dicts an' creels by
     // identity, as the interpreter's `ValueKey` does. Display an' list order are sorted by `show`.
     creel: (x) => {
@@ -1067,7 +1190,7 @@ const __havers_core = (() => {
   const or = (l, r) => (truthy(l) ? l : r());
 
   return {
-    show, truthy, eq, fail, typeName, add, sub, mul, div, mod, neg, lt, le, gt, ge,
+    show, truthy, eq, fail, typeName, isDict, dkey, add, sub, mul, div, mod, neg, lt, le, gt, ge,
     idx, setIdx, slice, rangeOf, inRange, iter, builtins, nums, numArgs, kin, hurl, caught, and, or,
     foreign, jsArgs,
   };
