@@ -2,6 +2,4 @@
 # Format: `path | reason` (path relative to the repo root). The test fails if an entry
 # starts passing (remove it) or no longer exists. Phase 2 fills this from observed runs.
 tests/golden/basics/variables/shadowing.braw | WASM locals are function-wide, so a block-scoped `ken x` shadow overwrites the outer x (no block scoping in the WAT backend)
-tests/golden/basics/operators/integer_model.braw | host arithmetic errors carry nae line number, so the caught overflow messages lack "at line N"
 tests/golden/data_structures/dicts/dict_assign.braw | SKIP_INTERPRETER: the .expected shows sorted keys, but WASM (like the interpreter) keeps insertion order
-tests/golden/edge_cases/bytes_oob_and_slice_bounds_parity.braw | the host store has nae bytes value, so a builtin returning bytes traps

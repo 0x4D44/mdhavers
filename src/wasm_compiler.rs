@@ -639,6 +639,11 @@ pub struct WasmCompiler {
     dae_values: Vec<(String, usize)>,
     /// Argument counts o' the value calls, one `__mdh_callN` import each.
     call_arities: BTreeSet<usize>,
+    /// The source line the guest global `$mdh_line` is known tae hold (0 when unknown),
+    /// so a statement only sets it when the line changes (MDH-BUG-FLU-00120).
+    cur_line: usize,
+    /// The line o' the statement being compiled, restored in the global efter a call.
+    stmt_line: usize,
 }
 
 /// Linear memory the host gives a module (one 64KiB page); string data must fit inside it.
@@ -1133,6 +1138,8 @@ impl WasmCompiler {
             loop_depths: Vec::new(),
             max_root_bytes: 0,
             scope_preopened: false,
+            cur_line: 0,
+            stmt_line: 0,
             numeric_locals: HashSet::new(),
             raw_locals: Vec::new(),
             hidden_ids: HashMap::new(),
@@ -1360,6 +1367,8 @@ impl WasmCompiler {
         // Export the main function
         self.emit_line("");
         self.emit_line("(export \"main\" (func $main))");
+        // The line o' the running statement, read by the host when it raises an error.
+        self.emit_line("(global $mdh_line (export \"__mdh_line\") (mut i32) (i32.const 0))");
 
         // Add string data section if we have strings
         let string_bytes: usize = self.string_data.iter().map(|s| s.len() + 1).sum();
@@ -1846,6 +1855,8 @@ impl WasmCompiler {
         }
         let mut flat = Vec::new();
         flatten(stmts, &mut flat);
+        // A block can be entered by a jump, so the global's line isnae known here.
+        self.cur_line = 0;
         for (i, stmt) in flat.iter().enumerate() {
             if !self.stmt_needs_scope(stmt) {
                 self.compile_stmt_body(stmt)?;
@@ -1873,6 +1884,7 @@ impl WasmCompiler {
                 self.emit_scope_exit(1);
             }
         }
+        self.cur_line = 0;
         Ok(())
     }
 
@@ -2041,6 +2053,22 @@ impl WasmCompiler {
     }
 
     fn compile_stmt_body(&mut self, stmt: &Stmt) -> HaversResult<()> {
+        let line = stmt.span().line;
+        let saved_line = std::mem::replace(&mut self.stmt_line, line);
+        if line > 0 && line != self.cur_line {
+            self.emit_set_line(line);
+        }
+        let result = self.compile_stmt_body_inner(stmt);
+        self.stmt_line = saved_line;
+        result
+    }
+
+    fn emit_set_line(&mut self, line: usize) {
+        self.emit_line(&format!("(global.set $mdh_line (i32.const {}))", line));
+        self.cur_line = line;
+    }
+
+    fn compile_stmt_body_inner(&mut self, stmt: &Stmt) -> HaversResult<()> {
         match stmt {
             Stmt::VarDecl {
                 name, initializer, ..
@@ -2126,6 +2154,10 @@ impl WasmCompiler {
                 self.indent += 1;
                 self.emit_line("(loop $continue");
                 self.indent += 1;
+                // The condition runs again efter the body, so name its line each time.
+                if self.stmt_line > 0 {
+                    self.emit_set_line(self.stmt_line);
+                }
 
                 // Check condition, in its ain scope (if it can allocate) so its garbage
                 // is freed each time roond
@@ -2737,6 +2769,10 @@ impl WasmCompiler {
                             }
                         }
                         self.emit_fallible_call(&function_id(name));
+                        // The callee left its ain line in the global.
+                        if self.stmt_line > 0 {
+                            self.emit_set_line(self.stmt_line);
+                        }
                     }
                 } else {
                     self.emit_value_call(callee, arguments, span.line)?;

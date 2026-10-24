@@ -514,7 +514,7 @@ fn ordering_comparisons_on_mismatched_types_raise_the_interpreter_type_error() {
             .error
             .unwrap_or_else(|| panic!("{src:?}: expected an error"));
         assert!(
-            err.contains(&format!("Type error: {want}")),
+            err.contains(&format!("Type error at line 1: {want}")),
             "{src:?}: got {err}"
         );
     }
@@ -1361,4 +1361,90 @@ blether d.f(4)
 blether d.g("abc")
 "#;
     assert_parity(src, "5\n3\n");
+}
+
+// MDH-BUG-FLU-00122: a dict shows its keys as the interpreter does, whatever their type.
+#[test]
+fn dict_display_matches_the_interpreter_for_every_key_type() {
+    let src = r#"ken d = {}
+d[1] = "int"
+d[2.5] = "float"
+d[aye] = "bool"
+d[nae] = "bool2"
+d[naething] = "nil"
+d["s"] = "str"
+ken k = [1, 2]
+d[k] = "list"
+dae f() { gie 1 }
+d[f] = "fn"
+blether d
+blether grup_up([1, 2], |x| x % 2)
+"#;
+    assert_parity(src, &interpreted(src));
+}
+
+// MDH-BUG-FLU-00120: host-raised errors name the line, in blocks, loops and callees.
+#[test]
+fn host_errors_carry_the_statement_line() {
+    let src = r#"ken max = 9223372036854775807
+dae boom(n) {
+    ken pad = 1
+
+    gie n + 9223372036854775807
+}
+hae_a_bash {
+    blether boom(1) + 1
+} gin_it_gangs_wrang e {
+    blether e
+}
+ken i = 0
+whiles i < 2 {
+    i = i + 1
+    hae_a_bash {
+        blether 1 / 0
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+}
+hae_a_bash {
+    blether 1 < "a"
+} gin_it_gangs_wrang e {
+    blether e
+}
+hae_a_bash {
+    blether "a" - 1
+} gin_it_gangs_wrang e {
+    blether e
+}
+hae_a_bash {
+    ken r = gaun([1], |x| x)
+    blether max * 2
+} gin_it_gangs_wrang e {
+    blether e
+}
+"#;
+    let expected = interpreted(src);
+    assert!(expected.contains("at line 5"), "{expected}");
+    assert_parity(src, &expected);
+}
+
+// MDH-BUG-FLU-00121: bytes live in the host store and round-trip through builtins.
+#[test]
+fn bytes_round_trip_through_the_host_store() {
+    let src = r#"ken b = bytes(3)
+bytes_set(b, 0, 7)
+bytes_set(b, 2, 9)
+blether b
+blether bytes_get(b, 2)
+blether bytes_len(bytes_slice(b, 1, 3))
+ken c = bytes(3)
+bytes_set(c, 0, 7)
+bytes_set(c, 2, 9)
+blether b == c
+blether b == bytes(3)
+blether [b, c]
+gin bytes(0) { blether "full" } ither { blether "empty" }
+gin b { blether "full" } ither { blether "empty" }
+"#;
+    assert_parity(src, &interpreted(src));
 }

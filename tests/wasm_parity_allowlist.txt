@@ -46,10 +46,6 @@ tests/golden/integration/showcase_raytracer_ascii.braw
 tests/golden/data_structures/collections_destructuring_spread.braw
 tests/golden/integration/showcase_muckle_numbers.braw
 
-# == output mismatch (2) ==
-tests/golden/basics/operators/integer_model.braw
-tests/golden/basics/variables/shadowing.braw
-
 # == compile error: Jings! Something went awfy wrang: The BlockExpr expression isnae supported in WASM yet! (1) ==
 tests/golden/functions/block_expression_value_is_last_expression.braw
 
@@ -65,5 +61,5 @@ tests/golden/functions/defaults_use_callee_closure_not_call_site_scope.braw
 # == compile error: Och! Compilation went tits up: Top-level variable _ cannae be used inside dae _ in WASM yet - pass i (1) ==
 tests/golden/integration/showcase_blether_lisp.braw
 
-# == runtime error: That (1) ==
-tests/golden/edge_cases/bytes_oob_and_slice_bounds_parity.braw
+# == output mismatch (1) ==
+tests/golden/basics/variables/shadowing.braw

@@ -26,6 +26,8 @@ enum HostValue {
     Dict(DictEntries),
     /// A creel: each member's identity key and its handle (like dict entries, minus values).
     Set(DictEntries),
+    /// A byte buffer (`bytes_new` an' friends), copied tae an' fae the interpreter's.
+    Bytes(Vec<u8>),
     NativeObject(TriObject),
     NativeCtor(String),
     /// A guest function value: its `__mdh_fns` table slot, arity, captured cells (a
@@ -67,6 +69,7 @@ enum ValueKey {
     List(Handle),
     Dict(Handle),
     Set(Handle),
+    Bytes(Handle),
     NativeObject(Handle),
     NativeCtor(Handle),
     /// A function or builtin value, by identity.
@@ -398,6 +401,7 @@ impl HostStore {
             HostValue::List(_) => Some(ValueKey::List(handle)),
             HostValue::Dict(_) => Some(ValueKey::Dict(handle)),
             HostValue::Set(_) => Some(ValueKey::Set(handle)),
+            HostValue::Bytes(_) => Some(ValueKey::Bytes(handle)),
             HostValue::NativeObject(_) => Some(ValueKey::NativeObject(handle)),
             HostValue::NativeCtor(_) => Some(ValueKey::NativeCtor(handle)),
             HostValue::Function { .. } | HostValue::Builtin(_) => Some(ValueKey::Function(handle)),
@@ -415,6 +419,7 @@ impl HostStore {
             Some(HostValue::List(items)) => !items.is_empty(),
             Some(HostValue::Dict(map)) => !map.is_empty(),
             Some(HostValue::Set(members)) => !members.is_empty(),
+            Some(HostValue::Bytes(bytes)) => !bytes.is_empty(),
             Some(HostValue::NativeObject(_)) => true,
             Some(HostValue::NativeCtor(_))
             | Some(HostValue::Function { .. })
@@ -443,8 +448,19 @@ impl HostStore {
                 let mut parts = Vec::new();
                 for (key, value) in map {
                     let key_str = match key {
+                        ValueKey::Nil => "naething".to_string(),
+                        ValueKey::Bool(true) => "aye".to_string(),
+                        ValueKey::Bool(false) => "nae".to_string(),
+                        ValueKey::Int(n) => n.to_string(),
+                        ValueKey::Float(bits) => f64::from_bits(*bits).to_string(),
                         ValueKey::String(s) => s.clone(),
-                        _ => format!("{:?}", key),
+                        ValueKey::List(h)
+                        | ValueKey::Dict(h)
+                        | ValueKey::Set(h)
+                        | ValueKey::Bytes(h)
+                        | ValueKey::NativeObject(h)
+                        | ValueKey::NativeCtor(h)
+                        | ValueKey::Function(h) => self.to_string(*h),
                     };
                     parts.push(format!("\"{}\": {}", key_str, self.to_string(*value)));
                 }
@@ -456,6 +472,7 @@ impl HostStore {
                 parts.sort();
                 format!("creel{{{}}}", parts.join(", "))
             }
+            Some(HostValue::Bytes(bytes)) => format!("bytes[{}]", bytes.len()),
             Some(HostValue::NativeObject(obj)) => format!("<native {}>", obj.kind),
             Some(HostValue::NativeCtor(kind)) => format!("<native dae tri.{}>", kind),
             Some(HostValue::Function { name, .. }) => format!("<dae {}>", name),
@@ -476,6 +493,7 @@ fn push_children(value: &HostValue, out: &mut Vec<Handle>) {
                     ValueKey::List(h)
                     | ValueKey::Dict(h)
                     | ValueKey::Set(h)
+                    | ValueKey::Bytes(h)
                     | ValueKey::NativeObject(h)
                     | ValueKey::NativeCtor(h)
                     | ValueKey::Function(h) => out.push(*h),
@@ -498,6 +516,7 @@ fn container_ptr(value: &Value) -> Option<usize> {
         Value::List(rc) => Some(Rc::as_ptr(rc) as *const () as usize),
         Value::Dict(rc) => Some(Rc::as_ptr(rc) as *const () as usize),
         Value::Set(rc) => Some(Rc::as_ptr(rc) as *const () as usize),
+        Value::Bytes(rc) => Some(Rc::as_ptr(rc) as *const () as usize),
         _ => None,
     }
 }
@@ -565,6 +584,11 @@ impl ValueBridge {
                 }
                 Ok(value)
             }
+            HostValue::Bytes(bytes) => {
+                let value = Value::Bytes(Rc::new(RefCell::new(bytes.clone())));
+                self.remember(handle, &value);
+                Ok(value)
+            }
             other => Err(format!(
                 "That's pure mince! Type error: a {} cannae be passed tae a builtin in WASM yet",
                 host_type_name(other)
@@ -582,6 +606,7 @@ impl ValueBridge {
             ValueKey::List(h)
             | ValueKey::Dict(h)
             | ValueKey::Set(h)
+            | ValueKey::Bytes(h)
             | ValueKey::NativeObject(h)
             | ValueKey::NativeCtor(h)
             | ValueKey::Function(h) => self.to_value(store, *h)?,
@@ -600,7 +625,7 @@ impl ValueBridge {
             Value::Integer(n) => Ok(alloc_int(store, *n)),
             Value::Float(f) => Ok(alloc_float(store, *f)),
             Value::String(s) => Ok(alloc_string(store, s.clone())),
-            Value::List(_) | Value::Dict(_) | Value::Set(_) => {
+            Value::List(_) | Value::Dict(_) | Value::Set(_) | Value::Bytes(_) => {
                 let handle = store.alloc(HostValue::List(Vec::new()));
                 if let Some(ptr) = container_ptr(value) {
                     self.by_ptr.insert(ptr, handle);
@@ -643,6 +668,7 @@ impl ValueBridge {
                 }
                 HostValue::Set(members)
             }
+            Value::Bytes(rc) => HostValue::Bytes(rc.borrow().clone()),
             _ => return Err(ERR_INVALID.to_string()),
         };
         if let Some(slot) = store.get_mut(handle) {
@@ -683,6 +709,7 @@ impl ValueBridge {
                         self.same_key(store, key, k) && self.same_slot(store, *h, v)
                     })
             }
+            (Some(HostValue::Bytes(held)), Value::Bytes(rc)) => *held == *rc.borrow(),
             _ => false,
         }
     }
@@ -704,7 +731,7 @@ impl ValueBridge {
 
     fn same_key(&self, store: &HostStore, key: &ValueKey, value: &Value) -> bool {
         match (key, value) {
-            (ValueKey::List(h) | ValueKey::Dict(h) | ValueKey::Set(h), _) => {
+            (ValueKey::List(h) | ValueKey::Dict(h) | ValueKey::Set(h) | ValueKey::Bytes(h), _) => {
                 self.same_slot(store, *h, value)
             }
             (ValueKey::Nil, Value::Nil) => true,
@@ -760,9 +787,14 @@ fn builtin_shortcut(store: &mut HostStore, name: &str, args: &[Handle]) -> Optio
 /// Run one o' the interpreter's natives on borrowed argument handles; the result is a
 /// fresh handle in the current scope (or a passed-in container's ain handle). Anything
 /// the native writes tae stdout joins the runner's capture, in order.
-fn call_builtin(state: &mut HostState, name: &str, args: &[Handle]) -> Result<Handle, String> {
+fn call_builtin(
+    state: &mut HostState,
+    name: &str,
+    args: &[Handle],
+    line: i32,
+) -> Result<Handle, String> {
     crate::logging::begin_stdout_capture();
-    let result = call_builtin_inner(state, name, args);
+    let result = call_builtin_inner(state, name, args, line);
     let printed = crate::logging::end_stdout_capture();
     match state.captured.as_mut() {
         Some(buffer) => buffer.push_str(&printed),
@@ -775,6 +807,7 @@ fn call_builtin_inner(
     state: &mut HostState,
     name: &str,
     args: &[Handle],
+    line: i32,
 ) -> Result<Handle, String> {
     let natives = state
         .natives
@@ -786,12 +819,13 @@ fn call_builtin_inner(
         )
     })?;
     if native.arity != usize::MAX && args.len() != native.arity {
-        return Err(format!(
-            "Yer bum's oot the windae! Function '{}' expects {} arguments but ye gave it {}",
-            name,
-            native.arity,
-            args.len()
-        ));
+        return Err(HaversError::WrongArity {
+            name: name.to_string(),
+            expected: native.arity,
+            got: args.len(),
+            line: line.max(0) as usize,
+        }
+        .to_string());
     }
     let store = &mut state.store;
     if let Some(handle) = builtin_shortcut(store, name, args) {
@@ -828,7 +862,8 @@ fn add_builtin_imports(linker: &mut Linker<HostState>, memory: Memory) -> Result
                     let name = read_memory_string(&caller, &memory, ptr, len);
                     let args: Vec<Handle> =
                         params[2..].iter().map(|v| v.i64().unwrap_or(0)).collect();
-                    results[0] = Val::I64(call_builtin_value(&mut caller, &name, &args, 0)?);
+                    let line = guest_line(&mut caller);
+                    results[0] = Val::I64(call_builtin_value(&mut caller, &name, &args, line)?);
                     Ok(())
                 },
             )
@@ -836,6 +871,37 @@ fn add_builtin_imports(linker: &mut Linker<HostState>, memory: Memory) -> Result
     }
     Ok(())
 }
+
+/// The line o' the statement the guest is running: its exported `__mdh_line` global
+/// (0 if the module has nane). Read only when the host raises an error.
+fn guest_line(caller: &mut Caller<'_, HostState>) -> i32 {
+    caller
+        .get_export("__mdh_line")
+        .and_then(|export| export.into_global())
+        .and_then(|global| global.get(&mut *caller).i32())
+        .unwrap_or(0)
+}
+
+/// Put "at line N" intae a line-less host error, as the interpreter's errors have it.
+/// Messages that already name a line, or ony ither text, pass through unchanged.
+fn locate_error(message: String, line: i32) -> String {
+    if line <= 0 {
+        return message;
+    }
+    let at = line as usize;
+    if message == ERR_OVERFLOW {
+        return HaversError::IntegerOverflow { line: at }.to_string();
+    }
+    if message == ERR_DIV_ZERO {
+        return HaversError::DivisionByZero { line: at }.to_string();
+    }
+    match message.strip_prefix(TYPE_ERROR_PREFIX) {
+        Some(rest) => type_error(rest.to_string(), line),
+        None => message,
+    }
+}
+
+const TYPE_ERROR_PREFIX: &str = "That's pure mince! Type error: ";
 
 /// A host error message, wi' the line when the guest passed one.
 fn host_error(message: String, line: i32) -> String {
@@ -915,7 +981,16 @@ fn call_guest(
         .map(Val::I64)
         .collect();
     let mut results = [Val::I64(0)];
-    func.call(&mut *caller, &params, &mut results)?;
+    // The callee moves the guest's line; put it back so a later host error is located.
+    let line = guest_line(caller);
+    let called = func.call(&mut *caller, &params, &mut results);
+    if let Some(global) = caller
+        .get_export("__mdh_line")
+        .and_then(|export| export.into_global())
+    {
+        let _ = global.set(&mut *caller, Val::I32(line));
+    }
+    called?;
     Ok(results[0].i64().unwrap_or(0))
 }
 
@@ -929,7 +1004,7 @@ fn call_builtin_value(
     if HOF_BUILTINS.iter().any(|(hof, _)| *hof == name) {
         return call_hof(caller, name, args, line);
     }
-    let result = call_builtin(caller.data_mut(), name, args);
+    let result = call_builtin(caller.data_mut(), name, args, line);
     finish(caller, result)
 }
 
@@ -2085,6 +2160,10 @@ fn add_arith(
                   b: i64|
                   -> Result<i64, wasmtime::Error> {
                 let result = arith(&mut caller.data_mut().store, op, a, b);
+                let result = match result {
+                    Err(message) => Err(locate_error(message, guest_line(&mut caller))),
+                    ok => ok,
+                };
                 finish(&mut caller, result)
             },
         )
@@ -2107,6 +2186,10 @@ fn add_cmp(
                   -> Result<i64, wasmtime::Error> {
                 let store = &mut caller.data_mut().store;
                 let result = op(store, a, b).map(|v| alloc_bool(store, v));
+                let result = match result {
+                    Err(message) => Err(locate_error(message, guest_line(&mut caller))),
+                    ok => ok,
+                };
                 finish(&mut caller, result)
             },
         )
@@ -2153,6 +2236,7 @@ fn host_type_name(value: &HostValue) -> &'static str {
         HostValue::List(_) => "list",
         HostValue::Dict(_) => "dict",
         HostValue::Set(_) => "creel",
+        HostValue::Bytes(_) => "bytes",
         HostValue::NativeObject(_) | HostValue::NativeCtor(_) => "native",
         HostValue::Function { .. } => "function",
         HostValue::Builtin(_) => "native function",
@@ -2357,6 +2441,7 @@ fn eq_values_on_path(
         (Some(HostValue::Int(x)), Some(HostValue::Float(y))) => (*x as f64) == *y,
         (Some(HostValue::Float(x)), Some(HostValue::Int(y))) => *x == (*y as f64),
         (Some(HostValue::String(x)), Some(HostValue::String(y))) => x == y,
+        (Some(HostValue::Bytes(x)), Some(HostValue::Bytes(y))) => x == y,
         _ => a == b,
     }
 }
@@ -2944,7 +3029,7 @@ mod tests {
         natives.insert("chatter".to_string(), Rc::new(chatter));
         state.natives = Some(natives);
         state.captured.as_mut().unwrap().push_str("before\n");
-        call_builtin(&mut state, "chatter", &[]).unwrap();
+        call_builtin(&mut state, "chatter", &[], 0).unwrap();
         assert_eq!(
             state.captured.as_deref(),
             Some("before\nhullo fae a native\n")
@@ -2955,7 +3040,7 @@ mod tests {
     fn shove_shortcut_pushes_on_the_host_list() {
         let mut state = HostState::new(true);
         let list = state.store.alloc(HostValue::List(Vec::new()));
-        call_builtin(&mut state, "shove", &[list, 5 - INT_BIAS]).unwrap();
+        call_builtin(&mut state, "shove", &[list, 5 - INT_BIAS], 0).unwrap();
         assert!(matches!(
             state.store.get(list),
             Some(HostValue::List(items)) if items == &[5 - INT_BIAS]
