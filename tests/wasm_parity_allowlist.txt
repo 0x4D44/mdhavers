@@ -4,118 +4,6 @@
 # Grouped by cause, biggest group first.
 # Regenerate: MDH_WASM_PARITY_BLESS=1 cargo test --features wasm_runner --test wasm_golden_parity
 
-# == compile error: Jings! Something went awfy wrang: This statement type isnae supported in WASM yet! (59) ==
-tests/golden/basics/operators/integer_model.braw
-tests/golden/classes/class_value_and_name_shadowing.braw
-tests/golden/classes/instance_missing_field_throws.braw
-tests/golden/control_flow/for_break_continue.braw
-tests/golden/control_flow/loops/for_list.braw
-tests/golden/control_flow/loops/for_range.braw
-tests/golden/control_flow/loops/for_string.braw
-tests/golden/control_flow/match/match_basic.braw
-tests/golden/control_flow/match/match_wildcard.braw
-tests/golden/control_flow/match_basic.braw
-tests/golden/control_flow/match_more_patterns.braw
-tests/golden/data_structures/dict_missing_mixed_key_caught.braw
-tests/golden/data_structures/ranges/range_basic.braw
-tests/golden/data_structures/ranges_and_slices.braw
-tests/golden/edge_cases/abs_type_errors_and_float_parity.braw
-tests/golden/edge_cases/add_type_error_list_int.braw
-tests/golden/edge_cases/average_median_parity_and_errors.braw
-tests/golden/edge_cases/base_conversion_parity_and_errors.braw
-tests/golden/edge_cases/bitwise_ops_shift_range_and_type_errors_parity.braw
-tests/golden/edge_cases/bytes_oob_and_slice_bounds_parity.braw
-tests/golden/edge_cases/case_charclass_title_whitespace_parity.braw
-tests/golden/edge_cases/ceilidh_interleave_parity.braw
-tests/golden/edge_cases/coont_type_errors_caught.braw
-tests/golden/edge_cases/date_parse_trailing_whitespace_rejected.braw
-tests/golden/edge_cases/dict_aliasing_and_nested_updates.braw
-tests/golden/edge_cases/fankle_interleave_parity.braw
-tests/golden/edge_cases/floor_ceil_round_sqrt_parity.braw
-tests/golden/edge_cases/heid_tail_bum_string_and_empty_list_parity.braw
-tests/golden/edge_cases/index_non_int.braw
-tests/golden/edge_cases/index_of_type_errors_caught.braw
-tests/golden/edge_cases/index_out_of_bounds.braw
-tests/golden/edge_cases/index_set_non_int.braw
-tests/golden/edge_cases/is_digit_wheesht_aw_parity.braw
-tests/golden/edge_cases/mak_siccar_is_catchable.braw
-tests/golden/edge_cases/math_trig_pow_pooer_errors_parity.braw
-tests/golden/edge_cases/minaw_maxaw_singleton_type_check_parity.braw
-tests/golden/edge_cases/modulo_by_zero.braw
-tests/golden/edge_cases/product_error_handling_parity.braw
-tests/golden/edge_cases/radians_degrees_type_errors_parity.braw
-tests/golden/edge_cases/repeat_type_errors_and_negative_caught.braw
-tests/golden/edge_cases/replace_first_parity_empty_and_type_errors.braw
-tests/golden/edge_cases/roar_mutter_ascii_unicode_parity.braw
-tests/golden/edge_cases/set_aliasing_and_nested_updates.braw
-tests/golden/edge_cases/shuffle_type_error_parity.braw
-tests/golden/edge_cases/slice_non_int_indices.braw
-tests/golden/edge_cases/slice_step_zero.braw
-tests/golden/edge_cases/slice_wrong_object_type.braw
-tests/golden/edge_cases/starts_ends_wi_type_error_caught.braw
-tests/golden/edge_cases/string_builtins_type_errors_caught.braw
-tests/golden/edge_cases/string_repeat_negative.braw
-tests/golden/edge_cases/subtract_type_error_strings.braw
-tests/golden/edge_cases/sumaw_type_errors_and_float_parity.braw
-tests/golden/edge_cases/tak_drap_negative_and_float_n_parity.braw
-tests/golden/edge_cases/try_catch_basic.braw
-tests/golden/edge_cases/unary_negate_type_error_bool.braw
-tests/golden/edge_cases/unicode_reverse_and_type_error.braw
-tests/golden/edge_cases/upper_lower_wheesht_type_error_caught.braw
-tests/golden/edge_cases/yank_empty_list_and_type_errors_caught.braw
-tests/golden/stdlib/hurl/hurl_basic.braw
-
-# == compile error: Jings! Something went awfy wrang: This expression type isnae supported in WASM yet! (49) ==
-tests/golden/algorithms/data/find_max.braw
-tests/golden/algorithms/data/reverse_list.braw
-tests/golden/algorithms/data/sum_list.braw
-tests/golden/algorithms/math/primes_sieve.braw
-tests/golden/algorithms/sorting/bubblesort.braw
-tests/golden/basics/literals/fstrings.braw
-tests/golden/basics/values_and_strings.braw
-tests/golden/control_flow/conditionals/ternary.braw
-tests/golden/data_structures/dict_callable_from_function.braw
-tests/golden/data_structures/dict_index_set_typed_keys_int_vs_string.braw
-tests/golden/data_structures/dict_structural_equality.braw
-tests/golden/data_structures/dict_structural_equality_cyclic.braw
-tests/golden/data_structures/dict_typed_keys_int_vs_string.braw
-tests/golden/data_structures/dicts/dict_access.braw
-tests/golden/data_structures/empty_dict_is_falsy.braw
-tests/golden/data_structures/list_builtins.braw
-tests/golden/data_structures/lists/list_assign.braw
-tests/golden/data_structures/lists/list_index.braw
-tests/golden/data_structures/lists/list_nested.braw
-tests/golden/data_structures/lists/list_spread.braw
-tests/golden/data_structures/slice_out_of_range.braw
-tests/golden/edge_cases/birl_rotation_and_type_errors.braw
-tests/golden/edge_cases/center_fill_and_negative_width.braw
-tests/golden/edge_cases/chynge_and_replace_parity.braw
-tests/golden/edge_cases/flatten_and_zip_up_parity.braw
-tests/golden/edge_cases/index_set_out_of_bounds.braw
-tests/golden/edge_cases/lists/single_element.braw
-tests/golden/edge_cases/scran_negative_and_float_indices_parity.braw
-tests/golden/edge_cases/sort_mixed_types_parity_and_errors.braw
-tests/golden/edge_cases/sporran_fill_negative_width_no_hang.braw
-tests/golden/edge_cases/tattie_scone_negative_no_hang.braw
-tests/golden/edge_cases/unicode_index_and_chars.braw
-tests/golden/edge_cases/unicode_indices_o_codepoints.braw
-tests/golden/edge_cases/unicode_search_indices_codepoints.braw
-tests/golden/edge_cases/unicode_strip_left_right_codepoints.braw
-tests/golden/edge_cases/unicode_substring_and_slices.braw
-tests/golden/edge_cases/unique_list_value_equality_parity.braw
-tests/golden/functions/builtin_len_shadowed_by_variable_binding.braw
-tests/golden/functions/closure_capture_sees_mutations.braw
-tests/golden/functions/function_name_shadowed_by_variable_function_value.braw
-tests/golden/functions/functions_basics.braw
-tests/golden/functions/lambdas/lambda_basic.braw
-tests/golden/functions/lambdas/lambda_hof.braw
-tests/golden/integration/brainfuck_interpreter_smoke.braw
-tests/golden/integration/expression_parser_evaluator_smoke.braw
-tests/golden/integration/json_parser_smoke.braw
-tests/golden/stdlib/datetime/datetime_functions.braw
-tests/golden/stdlib/json/json_functions.braw
-tests/golden/stdlib/regex/regex_functions.braw
-
 # == compile error: Och! Compilation went tits up: Dae _ isnae kent tae the WASM backend - higher-order builtins (gaun, (43) ==
 tests/golden/builtins/functional/gaun_map.braw
 tests/golden/builtins/functional/sieve_filter.braw
@@ -136,6 +24,7 @@ tests/golden/classes/instance_aliasing_through_dict.braw
 tests/golden/classes/instance_aliasing_through_list.braw
 tests/golden/classes/instance_field_aliasing_after_set.braw
 tests/golden/classes/instance_field_set_outside_method.braw
+tests/golden/classes/instance_missing_field_throws.braw
 tests/golden/classes/instance_set_field_on_other_in_method.braw
 tests/golden/classes/instance_to_string.braw
 tests/golden/classes/masel_dynamic_dispatch_overrides.braw
@@ -158,16 +47,35 @@ tests/golden/integration/bank_account.braw
 tests/golden/integration/calculator.braw
 tests/golden/integration/showcase_bothy_adventure.braw
 tests/golden/integration/showcase_config_differ.braw
-tests/golden/integration/showcase_muckle_numbers.braw
 tests/golden/integration/showcase_raytracer_ascii.braw
+
+# == compile error: Jings! Something went awfy wrang: The Lambda expression isnae supported in WASM yet! (7) ==
+tests/golden/data_structures/dict_callable_from_function.braw
+tests/golden/functions/builtin_len_shadowed_by_variable_binding.braw
+tests/golden/functions/closure_capture_sees_mutations.braw
+tests/golden/functions/function_name_shadowed_by_variable_function_value.braw
+tests/golden/functions/functions_basics.braw
+tests/golden/functions/lambdas/lambda_basic.braw
+tests/golden/functions/lambdas/lambda_hof.braw
+
+# == compile error: Och! Compilation went tits up: _ hasnae been declared - use ken tae declare it first (line N) (3) ==
+tests/golden/data_structures/collections_destructuring_spread.braw
+tests/golden/functions/advanced/closures.braw
+tests/golden/integration/showcase_muckle_numbers.braw
 
 # == compile error: Och! Compilation went tits up: Top-level variable _ cannae be used inside dae _ in WASM yet - pass i (2) ==
 tests/golden/functions/named_closure_mutation_and_default_eval.braw
 tests/golden/integration/showcase_blether_lisp.braw
 
-# == compile error: Och! Compilation went tits up: _ hasnae been declared - use ken tae declare it first (line N) (2) ==
-tests/golden/data_structures/collections_destructuring_spread.braw
-tests/golden/functions/advanced/closures.braw
+# == output mismatch (2) ==
+tests/golden/basics/operators/integer_model.braw
+tests/golden/basics/variables/shadowing.braw
+
+# == compile error: Jings! Something went awfy wrang: The Class statement isnae supported in WASM yet! (1) ==
+tests/golden/classes/class_value_and_name_shadowing.braw
+
+# == compile error: Jings! Something went awfy wrang: The Pipe expression isnae supported in WASM yet! (1) ==
+tests/golden/basics/values_and_strings.braw
 
 # == compile error: Och! Compilation went tits up: The default fer _ in dae _ maun be a constant in WASM (line N) (1) ==
 tests/golden/functions/defaults_use_callee_closure_not_call_site_scope.braw
@@ -175,5 +83,5 @@ tests/golden/functions/defaults_use_callee_closure_not_call_site_scope.braw
 # == compile error: Och! Compilation went tits up: _ is a dae - WASM cannae use daes as values yet, only call them (line (1) ==
 tests/golden/functions/nested_function_recursion_and_shadowing.braw
 
-# == output mismatch (1) ==
-tests/golden/basics/variables/shadowing.braw
+# == runtime error: That (1) ==
+tests/golden/edge_cases/bytes_oob_and_slice_bounds_parity.braw

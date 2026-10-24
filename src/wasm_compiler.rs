@@ -355,9 +355,22 @@ pub struct WasmCompiler {
     functions: HashMap<String, Vec<Param>>,
     /// Host scopes open in the function being compiled (one per enclosing statement).
     scope_depth: usize,
-    /// Each enclosing `whiles`, innermost last (fer brak/haud): its `scope_depth`, and
-    /// whether it sweeps its ain scope at iteration boundaries.
-    loop_depths: Vec<(usize, bool)>,
+    /// Each enclosing loop, innermost last (fer brak/haud): its `scope_depth`, whether
+    /// it sweeps its ain scope at iteration boundaries, an' the `try_labels` depth.
+    loop_depths: Vec<(usize, bool, usize)>,
+    /// Raw i64 locals (loop counters) that never hold a handle, so are never roots.
+    raw_locals: Vec<String>,
+    /// Hidden-local number o' each `fer`/`keek` statement, keyed by its address.
+    hidden_ids: HashMap<usize, usize>,
+    /// The program has a `hae_a_bash`, so every fallible call is followed by a check
+    /// o' the host's pending error.
+    error_checks: bool,
+    /// Compiling a user function (no' `$main`): an error unwinds by returning.
+    in_function: bool,
+    /// Labels o' the `hae_a_bash` bodies enclosing the code being compiled, innermost last.
+    try_labels: Vec<String>,
+    /// Counter fer unique block labels.
+    label_count: usize,
     /// Bytes at the top o' memory the biggest function needs tae spill its locals.
     max_root_bytes: usize,
     /// The previous statement's `scope_next` already opened this statement's scope.
@@ -539,6 +552,40 @@ impl<'a> Validator<'a> {
                 }
             }
             Stmt::Print { value, .. } => self.expr(value)?,
+            Stmt::For { iterable, body, .. } => {
+                self.expr(iterable)?;
+                self.loop_depth += 1;
+                let result = self.stmt(body);
+                self.loop_depth -= 1;
+                result?;
+            }
+            Stmt::TryCatch {
+                try_block,
+                catch_block,
+                ..
+            } => {
+                self.stmt(try_block)?;
+                self.stmt(catch_block)?;
+            }
+            Stmt::Match { value, arms, .. } => {
+                self.expr(value)?;
+                for arm in arms {
+                    if let Pattern::Range { start, end, .. } = &arm.pattern {
+                        self.expr(start)?;
+                        self.expr(end)?;
+                    }
+                    self.stmt(&arm.body)?;
+                }
+            }
+            Stmt::Assert {
+                condition, message, ..
+            } => {
+                self.expr(condition)?;
+                if let Some(message) = message {
+                    self.expr(message)?;
+                }
+            }
+            Stmt::Hurl { message, .. } => self.expr(message)?,
             Stmt::Break { span } => {
                 if self.loop_depth == 0 {
                     return Err(compile_err(
@@ -606,6 +653,54 @@ impl<'a> Validator<'a> {
                 for arg in arguments {
                     self.expr(arg)?;
                 }
+            }
+            Expr::Index { object, index, .. } => {
+                self.expr(object)?;
+                self.expr(index)?;
+            }
+            Expr::IndexSet {
+                object,
+                index,
+                value,
+                ..
+            } => {
+                self.expr(object)?;
+                self.expr(index)?;
+                self.expr(value)?;
+            }
+            Expr::Slice {
+                object,
+                start,
+                end,
+                step,
+                ..
+            } => {
+                self.expr(object)?;
+                for part in [start, end, step].into_iter().flatten() {
+                    self.expr(part)?;
+                }
+            }
+            Expr::FString { parts, .. } => {
+                for part in parts {
+                    if let FStringPart::Expr(expr) = part {
+                        self.expr(expr)?;
+                    }
+                }
+            }
+            Expr::Ternary {
+                condition,
+                then_expr,
+                else_expr,
+                ..
+            } => {
+                self.expr(condition)?;
+                self.expr(then_expr)?;
+                self.expr(else_expr)?;
+            }
+            Expr::Spread { expr, .. } => self.expr(expr)?,
+            Expr::Range { start, end, .. } => {
+                self.expr(start)?;
+                self.expr(end)?;
             }
             // Anything else is reported by the code generator as unsupported.
             _ => {}
@@ -721,6 +816,11 @@ impl<'a> Validator<'a> {
     }
 }
 
+/// `__mdh_raise` codes: which o' the interpreter's errors tae build.
+pub const RAISE_HURL: i32 = 0;
+pub const RAISE_ASSERT: i32 = 1;
+pub const RAISE_NO_MATCH: i32 = 2;
+
 const TMP_LOGIC: &str = "__mdh$tmp0";
 const TMP_BUILD: &str = "__mdh$tmp1";
 const TMP_RET: &str = "__mdh$tmp2";
@@ -745,6 +845,12 @@ impl WasmCompiler {
             max_root_bytes: 0,
             scope_preopened: false,
             numeric_locals: HashSet::new(),
+            raw_locals: Vec::new(),
+            hidden_ids: HashMap::new(),
+            error_checks: false,
+            in_function: false,
+            try_labels: Vec::new(),
+            label_count: 0,
         }
     }
 
@@ -758,6 +864,9 @@ impl WasmCompiler {
         self.indent = 0;
         self.string_data.clear();
         self.max_root_bytes = 0;
+        self.hidden_ids.clear();
+        self.label_count = 0;
+        self.error_checks = program.statements.iter().any(stmt_has_try);
         self.functions = program
             .statements
             .iter()
@@ -848,6 +957,35 @@ impl WasmCompiler {
         self.emit_line("(import \"env\" \"__mdh_method_call6\" (func $mdh_method_call6 (param i64 i64 i64 i64 i64 i64 i64 i64) (result i64)))");
         self.emit_line("(import \"env\" \"__mdh_method_call7\" (func $mdh_method_call7 (param i64 i64 i64 i64 i64 i64 i64 i64 i64) (result i64)))");
         self.emit_line("(import \"env\" \"__mdh_method_call8\" (func $mdh_method_call8 (param i64 i64 i64 i64 i64 i64 i64 i64 i64 i64) (result i64)))");
+        // Error handling: inside a `hae_a_bash` a failing host call records a pending
+        // error instead o' trapping, an' the guest unwinds tae the catch.
+        self.emit_line("(import \"env\" \"__mdh_pending\" (func $mdh_pending (result i32)))");
+        self.emit_line("(import \"env\" \"__mdh_try_enter\" (func $mdh_try_enter))");
+        self.emit_line("(import \"env\" \"__mdh_try_pop\" (func $mdh_try_pop (param i32)))");
+        self.emit_line("(import \"env\" \"__mdh_try_catch\" (func $mdh_try_catch (param i32 i32) (result i64)))");
+        self.emit_line(
+            "(import \"env\" \"__mdh_raise\" (func $mdh_raise (param i32 i64 i32) (result i64)))",
+        );
+        // Indexing, slicing an' iteration.
+        self.emit_line(
+            "(import \"env\" \"__mdh_index\" (func $mdh_index (param i64 i64 i32) (result i64)))",
+        );
+        self.emit_line("(import \"env\" \"__mdh_index_set\" (func $mdh_index_set (param i64 i64 i64 i32) (result i64)))");
+        self.emit_line("(import \"env\" \"__mdh_slice\" (func $mdh_slice (param i64 i64 i64 i64 i32 i32) (result i64)))");
+        self.emit_line(
+            "(import \"env\" \"__mdh_iter_items\" (func $mdh_iter_items (param i64 i32) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"__mdh_list_len\" (func $mdh_list_len (param i64) (result i64)))",
+        );
+        self.emit_line(
+            "(import \"env\" \"__mdh_list_item\" (func $mdh_list_item (param i64 i64) (result i64)))",
+        );
+        self.emit_line("(import \"env\" \"__mdh_list_extend\" (func $mdh_list_extend (param i64 i64 i32) (result i64)))");
+        self.emit_line(
+            "(import \"env\" \"__mdh_range_int\" (func $mdh_range_int (param i64 i64 i32) (result i64)))",
+        );
+        self.emit_line("(import \"env\" \"__mdh_match_range\" (func $mdh_match_range (param i64 i64 i64 i32) (result i32)))");
         if import_requirements.needs_tri_module {
             self.emit_line(
                 "(import \"env\" \"__mdh_tri_module\" (func $mdh_tri_module (result i64)))",
@@ -938,7 +1076,9 @@ impl WasmCompiler {
         } = stmt
         {
             self.local_vars.clear();
+            self.raw_locals.clear();
             self.func_params.clear();
+            self.in_function = true;
 
             // Build parameter list
             let mut param_types = String::new();
@@ -964,6 +1104,7 @@ impl WasmCompiler {
             let local_decls: Vec<String> = self
                 .local_vars
                 .iter()
+                .chain(self.raw_locals.iter())
                 .map(|var| format!("(local ${} i64)", var))
                 .collect();
             for decl in local_decls {
@@ -987,7 +1128,9 @@ impl WasmCompiler {
 
     fn compile_main(&mut self, stmts: &[&Stmt]) -> HaversResult<()> {
         self.local_vars.clear();
+        self.raw_locals.clear();
         self.func_params.clear();
+        self.in_function = false;
 
         self.emit_line("(func $main (result i64)");
         self.indent += 1;
@@ -1000,7 +1143,13 @@ impl WasmCompiler {
         self.ensure_temp_locals();
 
         // Declare locals
-        for var in &self.local_vars.clone() {
+        let decls: Vec<String> = self
+            .local_vars
+            .iter()
+            .chain(self.raw_locals.iter())
+            .cloned()
+            .collect();
+        for var in &decls {
             self.emit_line(&format!("(local ${} i64)", var));
         }
 
@@ -1024,11 +1173,7 @@ impl WasmCompiler {
 
     fn collect_locals_stmt(&mut self, stmt: &Stmt) {
         match stmt {
-            Stmt::VarDecl { name, .. } => {
-                if !self.func_params.contains(name) && !self.local_vars.contains(name) {
-                    self.local_vars.push(name.clone());
-                }
-            }
+            Stmt::VarDecl { name, .. } => self.add_local(name),
             Stmt::Block { statements, .. } => {
                 for s in statements {
                     self.collect_locals_stmt(s);
@@ -1048,20 +1193,56 @@ impl WasmCompiler {
                 self.collect_locals_stmt(body);
             }
             Stmt::For { variable, body, .. } => {
-                if !self.func_params.contains(variable) && !self.local_vars.contains(variable) {
-                    self.local_vars.push(variable.clone());
-                }
+                self.add_local(variable);
+                // The snapshot (or range bounds) an' the raw counter an' end.
+                let id = self.hidden_id(stmt);
+                self.add_local(&format!("__mdh$for{}", id));
+                self.add_local(&format!("__mdh$for{}b", id));
+                self.raw_locals.push(format!("__mdh$for{}i", id));
+                self.raw_locals.push(format!("__mdh$for{}n", id));
                 self.collect_locals_stmt(body);
+            }
+            Stmt::TryCatch {
+                try_block,
+                error_name,
+                catch_block,
+                ..
+            } => {
+                self.collect_locals_stmt(try_block);
+                self.add_local(error_name);
+                self.collect_locals_stmt(catch_block);
+            }
+            Stmt::Match { arms, .. } => {
+                let id = self.hidden_id(stmt);
+                self.add_local(&format!("__mdh$keek{}", id));
+                for arm in arms {
+                    if let Pattern::Identifier(name) = &arm.pattern {
+                        self.add_local(name);
+                    }
+                    self.collect_locals_stmt(&arm.body);
+                }
             }
             Stmt::Import {
                 alias: Some(name), ..
-            } => {
-                if !self.func_params.contains(name) && !self.local_vars.contains(name) {
-                    self.local_vars.push(name.clone());
-                }
-            }
+            } => self.add_local(name),
             _ => {}
         }
+    }
+
+    fn add_local(&mut self, name: &str) {
+        if !self.func_params.iter().any(|p| p == name) && !self.local_vars.iter().any(|v| v == name)
+        {
+            self.local_vars.push(name.to_string());
+        }
+    }
+
+    /// The hidden-local number o' a `fer` or `keek` statement (stable fer its address).
+    fn hidden_id(&mut self, stmt: &Stmt) -> usize {
+        let next = self.hidden_ids.len();
+        *self
+            .hidden_ids
+            .entry(stmt as *const Stmt as usize)
+            .or_insert(next)
     }
 
     fn ensure_temp_locals(&mut self) {
@@ -1072,6 +1253,7 @@ impl WasmCompiler {
         self.max_root_bytes = self.max_root_bytes.max(root_bytes);
         self.scope_depth = 0;
         self.loop_depths.clear();
+        self.try_labels.clear();
         self.scope_preopened = false;
     }
 
@@ -1411,7 +1593,8 @@ impl WasmCompiler {
                 // Body. A `whiles` always has its ain scope (see `stmt_needs_scope`), so
                 // at an iteration boundary that scope is the innermost one.
                 let collects = cond_scope || self.stmt_allocates(body);
-                self.loop_depths.push((self.scope_depth, collects));
+                self.loop_depths
+                    .push((self.scope_depth, collects, self.try_labels.len()));
                 self.compile_stmt(body)?;
                 if collects {
                     self.emit_loop_collect();
@@ -1434,6 +1617,7 @@ impl WasmCompiler {
                     self.emit_nil();
                 }
                 self.emit_line(&format!("(local.set ${})", TMP_RET));
+                self.emit_try_pop(self.try_labels.len());
                 self.emit_scope_exit(self.scope_depth);
                 self.emit_line(&format!("(local.get ${})", TMP_RET));
                 self.emit_line("(return)");
@@ -1454,7 +1638,7 @@ impl WasmCompiler {
                 if self
                     .loop_depths
                     .last()
-                    .is_some_and(|(_, collects)| *collects)
+                    .is_some_and(|(_, collects, _)| *collects)
                 {
                     self.emit_loop_collect();
                 }
@@ -1477,21 +1661,302 @@ impl WasmCompiler {
                 self.emit_line(&format!("(local.set ${})", alias_name));
             }
 
+            Stmt::TryCatch {
+                try_block,
+                error_name,
+                catch_block,
+                ..
+            } => {
+                // The host records the scope depth; an error anywhere in the body (or a
+                // dae it calls) leaves a pending error, an' the guest branches tae the
+                // catch, where the host closes the scopes the unwind skipped.
+                let body_label = self.next_label("try");
+                let end_label = self.next_label("tryend");
+                self.emit_line("(call $mdh_try_enter)");
+                self.emit_line(&format!("(block ${}", end_label));
+                self.indent += 1;
+                self.emit_line(&format!("(block ${}", body_label));
+                self.indent += 1;
+                self.try_labels.push(body_label);
+                let body = self.compile_stmt(try_block);
+                self.try_labels.pop();
+                body?;
+                self.emit_try_pop(1);
+                self.emit_line(&format!("(br ${})", end_label));
+                self.indent -= 1;
+                self.emit_line(")");
+                let base = self.emit_root_spill();
+                self.emit_line(&format!("(i32.const {})", base));
+                self.emit_line(&format!(
+                    "(i32.const {})",
+                    self.func_params.len() + self.local_vars.len()
+                ));
+                self.emit_line("(call $mdh_try_catch)");
+                self.emit_line(&format!("(local.set ${})", error_name));
+                self.compile_stmt(catch_block)?;
+                self.indent -= 1;
+                self.emit_line(")");
+            }
+
+            Stmt::Hurl { message, span } => {
+                self.emit_line(&format!("(i32.const {})", RAISE_HURL));
+                self.compile_expr(message)?;
+                self.emit_line(&format!("(i32.const {})", span.line));
+                self.emit_fallible_call("mdh_raise");
+                self.emit_line("(drop)");
+            }
+
+            Stmt::Assert {
+                condition,
+                message,
+                span,
+            } => {
+                self.compile_expr(condition)?;
+                self.emit_line("(call $mdh_truthy)");
+                self.emit_line("(i32.eqz)");
+                self.emit_line("(if");
+                self.indent += 1;
+                self.emit_line("(then");
+                self.indent += 1;
+                match message {
+                    Some(msg) => {
+                        self.emit_line(&format!("(i32.const {})", RAISE_ASSERT));
+                        self.compile_expr(msg)?;
+                    }
+                    None => {
+                        self.emit_line(&format!("(i32.const {})", RAISE_ASSERT));
+                        self.emit_string_handle("Assertion failed");
+                    }
+                }
+                self.emit_line(&format!("(i32.const {})", span.line));
+                self.emit_fallible_call("mdh_raise");
+                self.emit_line("(drop)");
+                self.indent -= 1;
+                self.emit_line(")");
+                self.indent -= 1;
+                self.emit_line(")");
+            }
+
+            Stmt::For {
+                variable,
+                iterable,
+                body,
+                span,
+            } => self.compile_for(stmt, variable, iterable, body, span.line)?,
+
+            Stmt::Match { value, arms, span } => {
+                self.compile_match(stmt, value, arms, span.line)?;
+            }
+
             _ => {
                 // Unsupported statement type
-                return Err(HaversError::InternalError(
-                    "This statement type isnae supported in WASM yet!".to_string(),
-                ));
+                return Err(HaversError::InternalError(format!(
+                    "The {} statement isnae supported in WASM yet!",
+                    stmt_kind(stmt)
+                )));
             }
         }
         Ok(())
     }
 
+    /// `fer variable in iterable`. A range literal counts in raw locals; anything else
+    /// is snapshotted first (like the interpreter), so the body cannae disturb it.
+    fn compile_for(
+        &mut self,
+        stmt: &Stmt,
+        variable: &str,
+        iterable: &Expr,
+        body: &Stmt,
+        line: usize,
+    ) -> HaversResult<()> {
+        let id = self.hidden_id(stmt);
+        let items = format!("__mdh$for{}", id);
+        let bound = format!("__mdh$for{}b", id);
+        let idx = format!("__mdh$for{}i", id);
+        let end = format!("__mdh$for{}n", id);
+        let inclusive = match iterable {
+            Expr::Range {
+                start,
+                end: stop,
+                inclusive,
+                span,
+            } => {
+                self.compile_expr(start)?;
+                self.emit_line(&format!("(local.set ${})", items));
+                self.compile_expr(stop)?;
+                self.emit_line(&format!("(local.set ${})", bound));
+                for (value, other, raw) in [(&items, &bound, &idx), (&bound, &items, &end)] {
+                    self.emit_line(&format!("(local.get ${})", value));
+                    self.emit_line(&format!("(local.get ${})", other));
+                    self.emit_line(&format!("(i32.const {})", span.line));
+                    self.emit_fallible_call("mdh_range_int");
+                    self.emit_line(&format!("(local.set ${})", raw));
+                }
+                Some(*inclusive)
+            }
+            _ => {
+                self.compile_expr(iterable)?;
+                self.emit_line(&format!("(i32.const {})", line));
+                self.emit_fallible_call("mdh_iter_items");
+                self.emit_line(&format!("(local.tee ${})", items));
+                self.emit_line("(call $mdh_list_len)");
+                self.emit_line(&format!("(local.set ${})", end));
+                self.emit_line("(i64.const 0)");
+                self.emit_line(&format!("(local.set ${})", idx));
+                None
+            }
+        };
+
+        let top = self.next_label("fortop");
+        self.emit_line("(block $break");
+        self.indent += 1;
+        self.emit_line(&format!("(loop ${}", top));
+        self.indent += 1;
+        self.emit_line(&format!("(local.get ${})", idx));
+        self.emit_line(&format!("(local.get ${})", end));
+        self.emit_line(if inclusive == Some(true) {
+            "(i64.gt_s)"
+        } else {
+            "(i64.ge_s)"
+        });
+        self.emit_line("(br_if $break)");
+        if inclusive.is_some() {
+            self.emit_line(&format!("(local.get ${})", idx));
+            self.emit_line("(call $mdh_make_int)");
+        } else {
+            self.emit_line(&format!("(local.get ${})", items));
+            self.emit_line(&format!("(local.get ${})", idx));
+            self.emit_line("(call $mdh_list_item)");
+        }
+        self.emit_line(&format!("(local.set ${})", variable));
+
+        // `haud` branches tae the end o' this block, then the counter steps on.
+        self.emit_line("(block $continue");
+        self.indent += 1;
+        let collects = self.stmt_allocates(body);
+        self.loop_depths
+            .push((self.scope_depth, collects, self.try_labels.len()));
+        let result = self.compile_stmt(body);
+        self.loop_depths.pop();
+        result?;
+        self.indent -= 1;
+        self.emit_line(")");
+        if collects {
+            self.emit_loop_collect();
+        }
+        if inclusive == Some(true) {
+            // Stop at the end itself, so `..=` the biggest integer never overflows.
+            self.emit_line(&format!("(local.get ${})", idx));
+            self.emit_line(&format!("(local.get ${})", end));
+            self.emit_line("(i64.eq)");
+            self.emit_line("(br_if $break)");
+        }
+        self.emit_line(&format!("(local.get ${})", idx));
+        self.emit_line("(i64.const 1)");
+        self.emit_line("(i64.add)");
+        self.emit_line(&format!("(local.set ${})", idx));
+        self.emit_line(&format!("(br ${})", top));
+        self.indent -= 1;
+        self.emit_line(")");
+        self.indent -= 1;
+        self.emit_line(")");
+        Ok(())
+    }
+
+    /// `keek value { pattern -> body ... }`: the first matching arm runs; nane is an error.
+    fn compile_match(
+        &mut self,
+        stmt: &Stmt,
+        value: &Expr,
+        arms: &[MatchArm],
+        line: usize,
+    ) -> HaversResult<()> {
+        let subject = format!("__mdh$keek{}", self.hidden_id(stmt));
+        self.compile_expr(value)?;
+        self.emit_line(&format!("(local.set ${})", subject));
+        let end = self.next_label("keekend");
+        self.emit_line(&format!("(block ${}", end));
+        self.indent += 1;
+        for arm in arms {
+            let next = self.next_label("arm");
+            self.emit_line(&format!("(block ${}", next));
+            self.indent += 1;
+            match &arm.pattern {
+                Pattern::Literal(lit) => {
+                    self.emit_line(&format!("(local.get ${})", subject));
+                    self.compile_literal(lit);
+                    self.emit_line("(call $mdh_eq)");
+                    self.emit_line("(call $mdh_truthy)");
+                    self.emit_line("(i32.eqz)");
+                    self.emit_line(&format!("(br_if ${})", next));
+                }
+                Pattern::Identifier(name) => {
+                    self.emit_line(&format!("(local.get ${})", subject));
+                    self.emit_line(&format!("(local.set ${})", name));
+                }
+                Pattern::Wildcard => {}
+                Pattern::Range {
+                    start,
+                    end: stop,
+                    inclusive,
+                } => {
+                    self.emit_line(&format!("(local.get ${})", subject));
+                    self.compile_expr(start)?;
+                    self.compile_expr(stop)?;
+                    self.emit_line(&format!("(i32.const {})", i32::from(*inclusive)));
+                    self.emit_line("(call $mdh_match_range)");
+                    self.emit_line("(i32.eqz)");
+                    self.emit_line(&format!("(br_if ${})", next));
+                }
+            }
+            self.compile_stmt(&arm.body)?;
+            self.emit_line(&format!("(br ${})", end));
+            self.indent -= 1;
+            self.emit_line(")");
+        }
+        self.emit_line(&format!("(i32.const {})", RAISE_NO_MATCH));
+        self.emit_line(&format!("(local.get ${})", subject));
+        self.emit_line(&format!("(i32.const {})", line));
+        self.emit_fallible_call("mdh_raise");
+        self.emit_line("(drop)");
+        self.indent -= 1;
+        self.emit_line(")");
+        Ok(())
+    }
+
+    fn compile_literal(&mut self, value: &Literal) {
+        match value {
+            Literal::Integer(n) => {
+                self.emit_line(&format!("(i64.const {})", n));
+                self.emit_line("(call $mdh_make_int)");
+            }
+            Literal::Float(f) => {
+                self.emit_line(&format!("(f64.const {})", f));
+                self.emit_line("(call $mdh_make_float)");
+            }
+            Literal::Bool(b) => {
+                self.emit_line(&format!("(i32.const {})", if *b { 1 } else { 0 }));
+                self.emit_line("(call $mdh_make_bool)");
+            }
+            Literal::Nil => self.emit_nil(),
+            Literal::String(s) => self.emit_string_handle(s),
+        }
+    }
+
     /// Close every scope inside the innermost loop before brak/haud jumps oot o' them.
     /// (`validate_program` has already rejected a brak/haud ootside a loop.)
     fn emit_loop_scope_exit(&mut self) {
-        if let Some(&(loop_depth, _)) = self.loop_depths.last() {
+        if let Some(&(loop_depth, _, try_depth)) = self.loop_depths.last() {
+            self.emit_try_pop(self.try_labels.len() - try_depth);
             self.emit_scope_exit(self.scope_depth - loop_depth);
+        }
+    }
+
+    /// Leave `n` enclosing `hae_a_bash` bodies withoot an error (brak, haud, gie).
+    fn emit_try_pop(&mut self, n: usize) {
+        if n > 0 {
+            self.emit_line(&format!("(i32.const {})", n));
+            self.emit_line("(call $mdh_try_pop)");
         }
     }
 
@@ -1537,26 +2002,7 @@ impl WasmCompiler {
 
     fn compile_expr(&mut self, expr: &Expr) -> HaversResult<()> {
         match expr {
-            Expr::Literal { value, .. } => match value {
-                Literal::Integer(n) => {
-                    self.emit_line(&format!("(i64.const {})", n));
-                    self.emit_line("(call $mdh_make_int)");
-                }
-                Literal::Float(f) => {
-                    self.emit_line(&format!("(f64.const {})", f));
-                    self.emit_line("(call $mdh_make_float)");
-                }
-                Literal::Bool(b) => {
-                    self.emit_line(&format!("(i32.const {})", if *b { 1 } else { 0 }));
-                    self.emit_line("(call $mdh_make_bool)");
-                }
-                Literal::Nil => {
-                    self.emit_nil();
-                }
-                Literal::String(s) => {
-                    self.emit_string_handle(s);
-                }
-            },
+            Expr::Literal { value, .. } => self.compile_literal(value),
 
             Expr::Variable { name, .. } => {
                 self.emit_line(&format!("(local.get ${})", name));
@@ -1577,17 +2023,17 @@ impl WasmCompiler {
                 self.compile_expr(right)?;
 
                 match operator {
-                    BinaryOp::Add => self.emit_line("(call $mdh_add)"),
-                    BinaryOp::Subtract => self.emit_line("(call $mdh_sub)"),
-                    BinaryOp::Multiply => self.emit_line("(call $mdh_mul)"),
-                    BinaryOp::Divide => self.emit_line("(call $mdh_div)"),
-                    BinaryOp::Modulo => self.emit_line("(call $mdh_mod)"),
+                    BinaryOp::Add => self.emit_fallible_call("mdh_add"),
+                    BinaryOp::Subtract => self.emit_fallible_call("mdh_sub"),
+                    BinaryOp::Multiply => self.emit_fallible_call("mdh_mul"),
+                    BinaryOp::Divide => self.emit_fallible_call("mdh_div"),
+                    BinaryOp::Modulo => self.emit_fallible_call("mdh_mod"),
                     BinaryOp::Equal => self.emit_line("(call $mdh_eq)"),
                     BinaryOp::NotEqual => self.emit_line("(call $mdh_ne)"),
-                    BinaryOp::Less => self.emit_line("(call $mdh_lt)"),
-                    BinaryOp::LessEqual => self.emit_line("(call $mdh_le)"),
-                    BinaryOp::Greater => self.emit_line("(call $mdh_gt)"),
-                    BinaryOp::GreaterEqual => self.emit_line("(call $mdh_ge)"),
+                    BinaryOp::Less => self.emit_fallible_call("mdh_lt"),
+                    BinaryOp::LessEqual => self.emit_fallible_call("mdh_le"),
+                    BinaryOp::Greater => self.emit_fallible_call("mdh_gt"),
+                    BinaryOp::GreaterEqual => self.emit_fallible_call("mdh_ge"),
                 }
             }
 
@@ -1596,7 +2042,7 @@ impl WasmCompiler {
             } => match operator {
                 UnaryOp::Negate => {
                     self.compile_expr(operand)?;
-                    self.emit_line("(call $mdh_neg)");
+                    self.emit_fallible_call("mdh_neg");
                 }
                 UnaryOp::Not => {
                     self.compile_expr(operand)?;
@@ -1687,7 +2133,7 @@ impl WasmCompiler {
                         for arg in arguments {
                             self.compile_expr(arg)?;
                         }
-                        self.emit_line(&format!("(call $mdh_builtin{})", arguments.len()));
+                        self.emit_fallible_call(&format!("mdh_builtin{}", arguments.len()));
                     } else {
                         // Direct function call (compiled function)
                         for arg in arguments {
@@ -1715,7 +2161,7 @@ impl WasmCompiler {
                                 }
                             }
                         }
-                        self.emit_line(&format!("(call ${})", function_id(name)));
+                        self.emit_fallible_call(&function_id(name));
                     }
                 } else {
                     return Err(HaversError::InternalError(
@@ -1751,8 +2197,15 @@ impl WasmCompiler {
                 self.emit_line(&format!("(local.set ${})", TMP_BUILD));
                 for elem in elements {
                     self.emit_line(&format!("(local.get ${})", TMP_BUILD));
-                    self.compile_expr(elem)?;
-                    self.emit_line("(call $mdh_list_push)");
+                    if let Expr::Spread { expr, span } = elem {
+                        // `...xs` skails a list's items (or a string's characters) in.
+                        self.compile_expr(expr)?;
+                        self.emit_line(&format!("(i32.const {})", span.line));
+                        self.emit_fallible_call("mdh_list_extend");
+                    } else {
+                        self.compile_expr(elem)?;
+                        self.emit_line("(call $mdh_list_push)");
+                    }
                     self.emit_line(&format!("(local.set ${})", TMP_BUILD));
                 }
                 self.emit_line(&format!("(local.get ${})", TMP_BUILD));
@@ -1775,13 +2228,125 @@ impl WasmCompiler {
                 self.compile_expr(expr)?;
             }
 
+            Expr::Index {
+                object,
+                index,
+                span,
+            } => {
+                self.compile_expr(object)?;
+                self.compile_expr(index)?;
+                self.emit_line(&format!("(i32.const {})", span.line));
+                self.emit_fallible_call("mdh_index");
+            }
+
+            Expr::IndexSet {
+                object,
+                index,
+                value,
+                span,
+            } => {
+                // The host writes through the barrier, so an older container
+                // keeps the new (young) value alive.
+                self.compile_expr(object)?;
+                self.compile_expr(index)?;
+                self.compile_expr(value)?;
+                self.emit_line(&format!("(i32.const {})", span.line));
+                self.emit_fallible_call("mdh_index_set");
+            }
+
+            Expr::Slice {
+                object,
+                start,
+                end,
+                step,
+                span,
+            } => {
+                self.compile_expr(object)?;
+                let mut present = 0;
+                for (bit, part) in [start, end, step].into_iter().enumerate() {
+                    match part {
+                        Some(part) => {
+                            self.compile_expr(part)?;
+                            present |= 1 << bit;
+                        }
+                        None => self.emit_nil(),
+                    }
+                }
+                self.emit_line(&format!("(i32.const {})", present));
+                self.emit_line(&format!("(i32.const {})", span.line));
+                self.emit_fallible_call("mdh_slice");
+            }
+
+            Expr::FString { parts, .. } => {
+                // "" + part + part ...: string addition formats each part like `blether`.
+                self.emit_string_handle("");
+                for part in parts {
+                    match part {
+                        FStringPart::Text(text) => self.emit_string_handle(text),
+                        FStringPart::Expr(expr) => self.compile_expr(expr)?,
+                    }
+                    self.emit_fallible_call("mdh_add");
+                }
+            }
+
+            Expr::Ternary {
+                condition,
+                then_expr,
+                else_expr,
+                ..
+            } => {
+                self.compile_expr(condition)?;
+                self.emit_line("(call $mdh_truthy)");
+                self.emit_line("(if (result i64)");
+                self.indent += 1;
+                self.emit_line("(then");
+                self.indent += 1;
+                self.compile_expr(then_expr)?;
+                self.indent -= 1;
+                self.emit_line(")");
+                self.emit_line("(else");
+                self.indent += 1;
+                self.compile_expr(else_expr)?;
+                self.indent -= 1;
+                self.emit_line(")");
+                self.indent -= 1;
+                self.emit_line(")");
+            }
+
             _ => {
-                return Err(HaversError::InternalError(
-                    "This expression type isnae supported in WASM yet!".to_string(),
-                ));
+                return Err(HaversError::InternalError(format!(
+                    "The {} expression isnae supported in WASM yet!",
+                    expr_kind(expr)
+                )));
             }
         }
         Ok(())
+    }
+
+    /// Call `$func`, then (in a program wi' a `hae_a_bash`) unwind if it left a
+    /// pending error: tae the innermost catch, or oot o' the function.
+    fn emit_fallible_call(&mut self, func: &str) {
+        self.emit_line(&format!("(call ${})", func));
+        self.emit_error_check();
+    }
+
+    fn emit_error_check(&mut self) {
+        if !self.error_checks {
+            return;
+        }
+        // Scopes left open by the unwind are closed by the host at the catch.
+        let unwind = match self.try_labels.last() {
+            Some(label) => format!("(br ${})", label),
+            None if self.in_function => "(return (i64.const 0))".to_string(),
+            // At the top level ootside a catch naething is pending: errors trap.
+            None => return,
+        };
+        self.emit_line(&format!("(if (call $mdh_pending) (then {}))", unwind));
+    }
+
+    fn next_label(&mut self, kind: &str) -> String {
+        self.label_count += 1;
+        format!("{}{}", kind, self.label_count)
     }
 
     fn emit(&mut self, s: &str) {
@@ -1792,6 +2357,62 @@ impl WasmCompiler {
     fn emit_line(&mut self, s: &str) {
         self.emit(s);
         self.output.push('\n');
+    }
+}
+
+/// The AST name o' a statement, sae an unsupported one can be named in the error.
+fn stmt_kind(stmt: &Stmt) -> &'static str {
+    match stmt {
+        Stmt::VarDecl { .. } => "VarDecl",
+        Stmt::Expression { .. } => "Expression",
+        Stmt::Block { .. } => "Block",
+        Stmt::If { .. } => "If",
+        Stmt::While { .. } => "While",
+        Stmt::For { .. } => "For",
+        Stmt::Function { .. } => "Function",
+        Stmt::Return { .. } => "Return",
+        Stmt::Print { .. } => "Print",
+        Stmt::Break { .. } => "Break",
+        Stmt::Continue { .. } => "Continue",
+        Stmt::Class { .. } => "Class",
+        Stmt::Struct { .. } => "Struct",
+        Stmt::Import { .. } => "Import",
+        Stmt::TryCatch { .. } => "TryCatch",
+        Stmt::Match { .. } => "Match",
+        Stmt::Assert { .. } => "Assert",
+        Stmt::Destructure { .. } => "Destructure",
+        Stmt::Log { .. } => "Log",
+        Stmt::Hurl { .. } => "Hurl",
+    }
+}
+
+/// The AST name o' an expression, sae an unsupported one can be named in the error.
+fn expr_kind(expr: &Expr) -> &'static str {
+    match expr {
+        Expr::Literal { .. } => "Literal",
+        Expr::Variable { .. } => "Variable",
+        Expr::Assign { .. } => "Assign",
+        Expr::Binary { .. } => "Binary",
+        Expr::Unary { .. } => "Unary",
+        Expr::Logical { .. } => "Logical",
+        Expr::Call { .. } => "Call",
+        Expr::Get { .. } => "Get",
+        Expr::Set { .. } => "Set",
+        Expr::Index { .. } => "Index",
+        Expr::IndexSet { .. } => "IndexSet",
+        Expr::Slice { .. } => "Slice",
+        Expr::List { .. } => "List",
+        Expr::Dict { .. } => "Dict",
+        Expr::Range { .. } => "Range",
+        Expr::Grouping { .. } => "Grouping",
+        Expr::Lambda { .. } => "Lambda",
+        Expr::BlockExpr { .. } => "BlockExpr",
+        Expr::Masel { .. } => "Masel",
+        Expr::Input { .. } => "Input",
+        Expr::FString { .. } => "FString",
+        Expr::Spread { .. } => "Spread",
+        Expr::Pipe { .. } => "Pipe",
+        Expr::Ternary { .. } => "Ternary",
     }
 }
 
@@ -1847,14 +2468,67 @@ fn collect_assignments_stmt<'a>(stmt: &'a Stmt, out: &mut Vec<(&'a str, Option<&
             collect_assignments_expr(condition, out);
             collect_assignments_stmt(body, out);
         }
-        Stmt::For { variable, body, .. } => {
+        Stmt::For {
+            variable,
+            iterable,
+            body,
+            ..
+        } => {
             out.push((variable, None));
+            collect_assignments_expr(iterable, out);
             collect_assignments_stmt(body, out);
         }
+        Stmt::TryCatch {
+            try_block,
+            error_name,
+            catch_block,
+            ..
+        } => {
+            collect_assignments_stmt(try_block, out);
+            out.push((error_name, None));
+            collect_assignments_stmt(catch_block, out);
+        }
+        Stmt::Match { value, arms, .. } => {
+            collect_assignments_expr(value, out);
+            for arm in arms {
+                if let Pattern::Identifier(name) = &arm.pattern {
+                    out.push((name, None));
+                }
+                collect_assignments_stmt(&arm.body, out);
+            }
+        }
+        Stmt::Assert {
+            condition, message, ..
+        } => {
+            collect_assignments_expr(condition, out);
+            if let Some(message) = message {
+                collect_assignments_expr(message, out);
+            }
+        }
+        Stmt::Hurl { message, .. } => collect_assignments_expr(message, out),
         Stmt::Import {
             alias: Some(name), ..
         } => out.push((name, None)),
         _ => {}
+    }
+}
+
+/// Whether a statement (or one nested in it, function bodies included) is a `hae_a_bash`.
+fn stmt_has_try(stmt: &Stmt) -> bool {
+    match stmt {
+        Stmt::TryCatch { .. } => true,
+        Stmt::Block { statements, .. }
+        | Stmt::Function {
+            body: statements, ..
+        } => statements.iter().any(stmt_has_try),
+        Stmt::If {
+            then_branch,
+            else_branch,
+            ..
+        } => stmt_has_try(then_branch) || else_branch.as_deref().is_some_and(stmt_has_try),
+        Stmt::While { body, .. } | Stmt::For { body, .. } => stmt_has_try(body),
+        Stmt::Match { arms, .. } => arms.iter().any(|arm| stmt_has_try(&arm.body)),
+        _ => false,
     }
 }
 
@@ -1893,6 +2567,54 @@ fn collect_assignments_expr<'a>(expr: &'a Expr, out: &mut Vec<(&'a str, Option<&
                 collect_assignments_expr(k, out);
                 collect_assignments_expr(v, out);
             }
+        }
+        Expr::Index { object, index, .. } => {
+            collect_assignments_expr(object, out);
+            collect_assignments_expr(index, out);
+        }
+        Expr::IndexSet {
+            object,
+            index,
+            value,
+            ..
+        } => {
+            collect_assignments_expr(object, out);
+            collect_assignments_expr(index, out);
+            collect_assignments_expr(value, out);
+        }
+        Expr::Slice {
+            object,
+            start,
+            end,
+            step,
+            ..
+        } => {
+            collect_assignments_expr(object, out);
+            for part in [start, end, step].into_iter().flatten() {
+                collect_assignments_expr(part, out);
+            }
+        }
+        Expr::FString { parts, .. } => {
+            for part in parts {
+                if let FStringPart::Expr(expr) = part {
+                    collect_assignments_expr(expr, out);
+                }
+            }
+        }
+        Expr::Ternary {
+            condition,
+            then_expr,
+            else_expr,
+            ..
+        } => {
+            collect_assignments_expr(condition, out);
+            collect_assignments_expr(then_expr, out);
+            collect_assignments_expr(else_expr, out);
+        }
+        Expr::Spread { expr, .. } => collect_assignments_expr(expr, out),
+        Expr::Range { start, end, .. } => {
+            collect_assignments_expr(start, out);
+            collect_assignments_expr(end, out);
         }
         // Anything else is rejected by the code generator.
         _ => {}
@@ -2316,9 +3038,10 @@ mod tests {
                 blether i
             }
         "#;
-        let result = compile_to_wat(source);
-        // For loops may not be supported in WASM yet
-        assert!(result.is_err());
+        let result = compile_to_wat(source).unwrap();
+        // A range literal counts in raw locals: nae list is built.
+        assert!(result.contains("(loop $fortop"));
+        assert!(result.contains("(call $mdh_range_int)"));
     }
 
     #[test]
@@ -2663,7 +3386,9 @@ mod tests {
     fn test_unsupported_statement_wasm_returns_error() {
         let source = r#"kin Foo { }"#;
         let err = compile_to_wat(source).unwrap_err();
-        assert!(err.to_string().contains("statement type isnae supported"));
+        assert!(err
+            .to_string()
+            .contains("The Class statement isnae supported"));
     }
 
     #[test]
@@ -2688,21 +3413,24 @@ mod tests {
 
     #[test]
     fn test_unsupported_expr_wasm_returns_error() {
-        let source = "ken x = [1, 2][0]";
+        let source = "ken x = |a| a";
         let err = compile_to_wat(source).unwrap_err();
-        assert!(err.to_string().contains("expression type isnae supported"));
+        assert!(err
+            .to_string()
+            .contains("The Lambda expression isnae supported"));
     }
 
     #[test]
     fn test_unsupported_expr_inside_function_wasm_returns_error() {
         let source = r#"
 dae f() {
-    ken xs = [1, 2]
-    xs[0]
+    ken g = |a| a
 }
 "#;
         let err = compile_to_wat(source).unwrap_err();
-        assert!(err.to_string().contains("expression type isnae supported"));
+        assert!(err
+            .to_string()
+            .contains("The Lambda expression isnae supported"));
     }
 
     #[test]

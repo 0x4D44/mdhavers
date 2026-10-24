@@ -781,3 +781,378 @@ fn creels_survive_reclamation_in_loops() {
     assert_eq!(out.stdout, "6000\n");
     assert!(out.peak_store_size < 2000, "peak {}", out.peak_store_size);
 }
+
+// ---------------------------------------------------------------------------
+// hae_a_bash, hurl, mak_siccar, fer, keek, indexing, slices, f-strings,
+// ternaries an' list spreads
+// ---------------------------------------------------------------------------
+
+/// The interpreter's output fer a program (on a big stack, like the CLI).
+fn interpreted(source: &str) -> String {
+    let source = source.to_string();
+    let lines = thread::Builder::new()
+        .stack_size(512 * 1024 * 1024)
+        .spawn(move || mdhavers::run_with_output(&source).map(|(_, out)| out))
+        .expect("spawn")
+        .join()
+        .expect("interpreter panicked")
+        .expect("interpreter error");
+    lines.iter().map(|l| format!("{l}\n")).collect()
+}
+
+/// Run under WASM; the output must be the interpreter's an' `want`. Returns the run.
+fn assert_parity(source: &str, want: &str) -> mdhavers::wasm_runner::WasmRunOutput {
+    let out = run_full(source);
+    assert_eq!(out.error, None, "stdout: {}", out.stdout);
+    assert_eq!(
+        out.stdout,
+        interpreted(source),
+        "WASM differs fae the interpreter"
+    );
+    assert_eq!(out.stdout, want);
+    out
+}
+
+#[test]
+fn try_catch_binds_the_error_and_unwinds_brak_haud_gie_and_nesting() {
+    let src = r#"dae safe_div(a, b) {
+    hae_a_bash {
+        gie a / b
+    } gin_it_gangs_wrang e {
+        gie "oops"
+    }
+}
+blether safe_div(6, 3)
+blether safe_div(1, 0)
+ken n = 0
+whiles aye {
+    n = n + 1
+    hae_a_bash {
+        gin n == 3 {
+            brak
+        }
+        gin n == 1 {
+            haud
+        }
+        blether n
+    } gin_it_gangs_wrang e {
+        blether "nae"
+    }
+}
+hae_a_bash {
+    hurl "boom"
+} gin_it_gangs_wrang e {
+    blether e
+}
+hae_a_bash {
+    mak_siccar 1 == 2, "sums"
+} gin_it_gangs_wrang e {
+    blether e
+}
+hae_a_bash {
+    hae_a_bash {
+        blether [1][5]
+    } gin_it_gangs_wrang inner {
+        blether "inner: " + inner
+        hurl "again"
+    }
+} gin_it_gangs_wrang outer {
+    blether "outer: " + outer
+}
+blether safe_div(8, 2)
+"#;
+    assert_parity(
+        src,
+        "2\noops\n2\nHurled at line 26: boom\nMak siccar failed at line 31! sums\n\
+         inner: Hoachin'! Index 5 is oot o' bounds (size is 1) at line 37\n\
+         outer: Hurled at line 40: again\n4\n",
+    );
+    // Every `hae_a_bash` left (by brak, haud, gie or a catch) was closed: an error
+    // ootside them still stops the program.
+    let out = run_full(&format!("{src}blether 1 / 0\nblether \"efter\"\n"));
+    assert!(out.stdout.ends_with("again\n4\n"), "{}", out.stdout);
+    assert!(
+        out.error
+            .as_deref()
+            .is_some_and(|e| e.contains("divide by zero")),
+        "{:?}",
+        out.error
+    );
+}
+
+#[test]
+fn try_catch_frees_the_scopes_an_unwind_abandons() {
+    // The error is raised six calls deep; each call's scopes are left open by the
+    // unwind an' closed by the host at the catch, keeping only what is still reachable.
+    let src = r#"dae deep(n) {
+    ken junk = [n, "x" + n]
+    gin n == 0 {
+        gie 1 / 0
+    }
+    gie deep(n - 1) + 1
+}
+ken box = {"v": naething}
+ken caught = 0
+ken i = 0
+whiles i < 2000 {
+    hae_a_bash {
+        box.v = [i, [i * 2]]
+        ken r = deep(5)
+        blether "unreachable"
+    } gin_it_gangs_wrang e {
+        caught = caught + 1
+    }
+    i = i + 1
+}
+blether caught
+blether box.v
+"#;
+    let out = assert_parity(src, "2000\n[1999, [3998]]\n");
+    assert!(out.peak_store_size < 1000, "peak {}", out.peak_store_size);
+}
+
+#[test]
+fn hurl_and_mak_siccar_outside_a_catch_stop_the_program() {
+    let out = run_full("blether 1\nhurl \"crivvens\"\nblether 2\n");
+    assert_eq!(out.stdout, "1\n");
+    assert_eq!(out.error.as_deref(), Some("Hurled at line 2: crivvens"));
+    let out = run_full("mak_siccar 1 > 2\nblether 2\n");
+    assert_eq!(
+        out.error.as_deref(),
+        Some("Mak siccar failed at line 1! Assertion failed")
+    );
+}
+
+#[test]
+fn fer_loops_walk_ranges_lists_and_strings() {
+    let src = r#"ken total = 0
+fer i in 1..=4 {
+    total = total + i
+}
+blether total
+ken xs = [1, 2, 3]
+fer x in xs {
+    shove(xs, x * 10)
+    gin x == 2 {
+        haud
+    }
+    blether x
+}
+blether xs
+fer c in "abc" {
+    gin c == "c" {
+        brak
+    }
+    blether c
+}
+fer i in 0..2 {
+    fer j in 0..2 {
+        blether i * 10 + j
+    }
+}
+dae count_to(n) {
+    ken out = []
+    fer i in 0..n {
+        gin i == 3 {
+            gie out
+        }
+        shove(out, i)
+    }
+    gie out
+}
+blether count_to(2)
+blether count_to(9)
+fer i in 5..2 {
+    blether "never"
+}
+"#;
+    assert_parity(
+        src,
+        "10\n1\n3\n[1, 2, 3, 10, 20, 30]\na\nb\n0\n1\n10\n11\n[0, 1]\n[0, 1, 2]\n",
+    );
+}
+
+#[test]
+fn fer_loop_over_an_unwalkable_value_is_the_interpreters_error() {
+    let src = "hae_a_bash {\n    fer x in 5 {\n        blether x\n    }\n} \
+               gin_it_gangs_wrang e {\n    blether e\n}\n";
+    assert_parity(
+        src,
+        "That's pure mince! Type error at line 2: Cannae iterate ower a integer\n",
+    );
+}
+
+#[test]
+fn fer_loop_garbage_is_swept_each_iteration() {
+    let src =
+        "ken last = naething\nfer i in 0..20000 {\n    last = [i, \"s\" + i]\n}\nblether last\n";
+    let out = run_full(src);
+    assert_eq!(out.error, None);
+    assert_eq!(out.stdout, interpreted(src));
+    assert!(out.peak_store_size < 1000, "peak {}", out.peak_store_size);
+}
+
+#[test]
+fn keek_matches_literals_ranges_bindings_and_wildcards() {
+    let src = r#"dae describe(v) {
+    ken out = ""
+    keek v {
+        whan 1 -> { out = "one" }
+        whan "hi" -> { out = "greeting" }
+        whan 2..5 -> { out = "small" }
+        whan naething -> { out = "nowt" }
+        whan other -> { out = "other " + other }
+    }
+    gie out
+}
+blether describe(1)
+blether describe("hi")
+blether describe(4)
+blether describe(5)
+blether describe(naething)
+keek 7 {
+    whan _ -> { blether "wild" }
+}
+hae_a_bash {
+    keek 3 {
+        whan 1 -> { blether "no" }
+    }
+} gin_it_gangs_wrang e {
+    blether e
+}
+"#;
+    assert_parity(
+        src,
+        "one\ngreeting\nsmall\nother 5\nnowt\nwild\n\
+         That's pure mince! Type error at line 21: Nae match found fer 3\n",
+    );
+}
+
+#[test]
+fn indexing_reads_and_writes_like_the_interpreter() {
+    let src = r#"ken xs = [10, 20, [30]]
+ken d = {"a": 1}
+blether xs[0]
+blether xs[-1]
+blether "braw"[1]
+blether "braw"[-1]
+blether d["a"]
+ken inner = xs[2]
+inner[0] = 99
+blether xs
+xs[-3] = 7
+d["b"] = [1]
+d["b"][0] = 2
+blether xs
+blether d
+fer probe in [5, -9] {
+    hae_a_bash {
+        blether xs[probe]
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+}
+hae_a_bash {
+    blether d["zz"]
+} gin_it_gangs_wrang e {
+    blether e
+}
+hae_a_bash {
+    blether xs[1.5]
+} gin_it_gangs_wrang e {
+    blether e
+}
+hae_a_bash {
+    ken s = "abc"
+    s[0] = "z"
+} gin_it_gangs_wrang e {
+    blether e
+}
+"#;
+    assert_parity(
+        src,
+        "10\n[30]\nr\nw\n1\n[10, 20, [99]]\n[7, 20, [99]]\n{\"a\": 1, \"b\": [2]}\n\
+         Hoachin'! Index 5 is oot o' bounds (size is 3) at line 18\n\
+         Hoachin'! Index -9 is oot o' bounds (size is 3) at line 18\n\
+         Awa' an bile yer heid! 'zz' hasnae been defined yet at line 24\n\
+         That's pure mince! Type error at line 29: Cannae index a list wi' a float\n\
+         That's pure mince! Type error at line 35: Cannae set index on a string wi' a integer\n",
+    );
+}
+
+#[test]
+fn index_set_keeps_young_values_in_old_containers_alive() {
+    // The list an' dict are older than every loop scope; the young values stored in
+    // them survive the sweeps only through the write barrier.
+    let src = r#"ken xs = [0, 0, 0]
+ken d = {}
+fer i in 0..3000 {
+    xs[i % 3] = [i, "v" + i]
+    d["k" + (i % 2)] = "w" + i
+}
+blether xs
+blether d
+"#;
+    let out = run_full(src);
+    assert_eq!(out.error, None);
+    assert_eq!(out.stdout, interpreted(src));
+    assert!(out.stdout.starts_with("[[2997, "), "{}", out.stdout);
+    assert!(out.peak_store_size < 1000, "peak {}", out.peak_store_size);
+}
+
+#[test]
+fn slices_fstrings_ternaries_and_spreads_match_the_interpreter() {
+    let src = r#"ken xs = [0, 1, 2, 3, 4, 5]
+blether xs[1:4]
+blether xs[:2]
+blether xs[4:]
+blether xs[::2]
+blether xs[::-1]
+blether xs[-2:]
+blether "bonnie"[1:3]
+blether "bonnie"[::-1]
+ken name = "Morag"
+ken n = 3
+blether f"{name} has {n * 2} sheep"
+blether f"{xs[0]}-{xs[1]}"
+blether gin n > 2 than "many" ither "few"
+blether [...xs[:2], 9, ...[7]]
+blether [..."ab"][1]
+blether xs[1:5:2]
+hae_a_bash {
+    blether xs[::0]
+} gin_it_gangs_wrang e {
+    blether e
+}
+hae_a_bash {
+    blether 5[1:2]
+} gin_it_gangs_wrang e {
+    blether e
+}
+hae_a_bash {
+    blether [...5]
+} gin_it_gangs_wrang e {
+    blether e
+}
+"#;
+    assert_parity(
+        src,
+        "[1, 2, 3]\n[0, 1]\n[4, 5]\n[0, 2, 4]\n[5, 4, 3, 2, 1, 0]\n[4, 5]\non\neinnob\n\
+         Morag has 6 sheep\n0-1\nmany\n[0, 1, 9, 7]\nb\n[1, 3]\n\
+         That's pure mince! Type error at line 19: Slice step cannae be zero, ya dafty!\n\
+         That's pure mince! Type error at line 24: Cannae slice a integer, ya numpty!\n\
+         That's pure mince! Type error at line 29: Cannae skail (spread) somethin' that isnae a list or string!\n",
+    );
+}
+
+#[test]
+fn unsupported_nodes_are_named_in_the_compile_error() {
+    for (src, kind) in [
+        ("ken f = |x| x\n", "The Lambda expression"),
+        ("kin Foo {\n}\n", "The Class statement"),
+        ("ken r = 1..3\n", "The Range expression"),
+    ] {
+        let err = compile_to_wat(src).expect_err(src).to_string();
+        assert!(err.contains(kind), "{src}: {err}");
+    }
+}

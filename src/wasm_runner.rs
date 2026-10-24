@@ -9,7 +9,7 @@ use wasmtime::{Caller, Engine, FuncType, Linker, Memory, MemoryType, Module, Sto
 use crate::error::HaversError;
 use crate::interpreter::Interpreter;
 use crate::value::{DictValue, NativeFunction, SetValue, Value};
-use crate::wasm_compiler::{AUDIO_IMPORTS, MAX_BUILTIN_ARGS};
+use crate::wasm_compiler::{AUDIO_IMPORTS, MAX_BUILTIN_ARGS, RAISE_ASSERT, RAISE_HURL};
 
 type Handle = i64;
 
@@ -810,6 +810,488 @@ fn add_builtin_imports(linker: &mut Linker<HostState>, memory: Memory) -> Result
     Ok(())
 }
 
+fn type_error(message: String, line: i32) -> String {
+    HaversError::TypeError {
+        message,
+        line: line.max(0) as usize,
+    }
+    .to_string()
+}
+
+/// The value behind a handle, owned (so the store can be changed afterwards).
+fn host_view(store: &HostStore, handle: Handle) -> Result<HostValue, String> {
+    store
+        .view(handle)
+        .map(Cow::into_owned)
+        .ok_or_else(|| ERR_INVALID.to_string())
+}
+
+/// A string's characters as fresh one-character strings.
+fn char_handles(store: &mut HostStore, s: &str) -> Vec<Handle> {
+    s.chars()
+        .map(|c| alloc_string(store, c.to_string()))
+        .collect()
+}
+
+/// `object[index]` like the interpreter's `eval_index`. A list or dict hands back the
+/// item's ain handle (aliasing survives); a string's character is fresh.
+fn index_get(store: &mut HostStore, obj: Handle, idx: Handle, line: i32) -> Result<Handle, String> {
+    let line_no = line.max(0) as usize;
+    match (host_view(store, obj)?, host_view(store, idx)?) {
+        (HostValue::List(items), HostValue::Int(i)) => {
+            let at = if i < 0 { items.len() as i64 + i } else { i };
+            usize::try_from(at)
+                .ok()
+                .and_then(|at| items.get(at).copied())
+                .ok_or_else(|| {
+                    HaversError::IndexOutOfBounds {
+                        index: i,
+                        size: items.len(),
+                        line: line_no,
+                    }
+                    .to_string()
+                })
+        }
+        (HostValue::String(s), HostValue::Int(i)) => {
+            let char_len = s.chars().count();
+            let at = if i < 0 { char_len as i64 + i } else { i };
+            if at < 0 || at as usize >= char_len {
+                return Err(HaversError::IndexOutOfBounds {
+                    index: i,
+                    size: char_len,
+                    line: line_no,
+                }
+                .to_string());
+            }
+            let c = s.chars().nth(at as usize).unwrap_or_default();
+            Ok(alloc_string(store, c.to_string()))
+        }
+        (HostValue::Dict(entries), _) => store
+            .key_for(idx)
+            .and_then(|key| dict_get(&entries, &key))
+            .ok_or_else(|| {
+                HaversError::UndefinedVariable {
+                    name: store.to_string(idx),
+                    line: line_no,
+                }
+                .to_string()
+            }),
+        (o, i) => Err(type_error(
+            format!(
+                "Cannae index a {} wi' a {}",
+                host_type_name(&o),
+                host_type_name(&i)
+            ),
+            line,
+        )),
+    }
+}
+
+/// `object[index] = value` like the interpreter's `eval_index_set`. The container is
+/// changed through `get_mut`, the write barrier, so an older one keeps `value` alive.
+fn index_set(
+    store: &mut HostStore,
+    obj: Handle,
+    idx: Handle,
+    value: Handle,
+    line: i32,
+) -> Result<Handle, String> {
+    match (host_view(store, obj)?, host_view(store, idx)?) {
+        (HostValue::List(items), HostValue::Int(i)) => {
+            let at = if i < 0 { items.len() as i64 + i } else { i };
+            if at < 0 || at as usize >= items.len() {
+                return Err(HaversError::IndexOutOfBounds {
+                    index: i,
+                    size: items.len(),
+                    line: line.max(0) as usize,
+                }
+                .to_string());
+            }
+            if let Some(HostValue::List(items)) = store.get_mut(obj) {
+                items[at as usize] = value;
+            }
+            Ok(value)
+        }
+        (HostValue::Dict(_), _) => {
+            let key = store.key_for(idx).ok_or_else(|| ERR_INVALID.to_string())?;
+            if let Some(HostValue::Dict(entries)) = store.get_mut(obj) {
+                dict_put(entries, key, value);
+            }
+            Ok(value)
+        }
+        (o, i) => Err(type_error(
+            format!(
+                "Cannae set index on a {} wi' a {}",
+                host_type_name(&o),
+                host_type_name(&i)
+            ),
+            line,
+        )),
+    }
+}
+
+/// The positions `[start:end:step]` picks fae a sequence o' `len` items, exactly as
+/// the interpreter's `eval_slice` walks them.
+fn slice_positions(len: usize, start: Option<i64>, end: Option<i64>, step: i64) -> Vec<usize> {
+    let n = len as i64;
+    let (start, end) = if step > 0 {
+        (start.unwrap_or(0), end.unwrap_or(n))
+    } else {
+        (start.unwrap_or(-1), end.unwrap_or(-(n + 1)))
+    };
+    let start = if start < 0 {
+        (n + start).max(0)
+    } else {
+        start.min(n)
+    };
+    let end = if end < 0 {
+        (n + end).max(-1)
+    } else {
+        end.min(n)
+    };
+    let mut out = Vec::new();
+    let mut i = start;
+    while (step > 0 && i < end) || (step < 0 && i > end) {
+        if (i as usize) < len {
+            out.push(i as usize);
+        }
+        match i.checked_add(step) {
+            Some(next) => i = next,
+            None => break,
+        }
+    }
+    out
+}
+
+/// `object[start:end:step]`; bit 0/1/2 o' `present` says which parts were written.
+fn slice(
+    store: &mut HostStore,
+    obj: Handle,
+    parts: [Handle; 3],
+    present: i32,
+    line: i32,
+) -> Result<Handle, String> {
+    let mut bounds = [None; 3];
+    for (bit, (handle, name)) in parts.iter().zip(["start", "end", "step"]).enumerate() {
+        if present & (1 << bit) == 0 {
+            continue;
+        }
+        match host_view(store, *handle)? {
+            HostValue::Int(i) => bounds[bit] = Some(i),
+            _ => {
+                return Err(type_error(
+                    format!("Slice {} must be an integer", name),
+                    line,
+                ))
+            }
+        }
+    }
+    let step = bounds[2].unwrap_or(1);
+    if step == 0 {
+        return Err(type_error(
+            "Slice step cannae be zero, ya dafty!".to_string(),
+            line,
+        ));
+    }
+    let value = match host_view(store, obj)? {
+        HostValue::List(items) => HostValue::List(
+            slice_positions(items.len(), bounds[0], bounds[1], step)
+                .into_iter()
+                .map(|i| items[i])
+                .collect(),
+        ),
+        HostValue::String(s) => {
+            let chars: Vec<char> = s.chars().collect();
+            HostValue::String(
+                slice_positions(chars.len(), bounds[0], bounds[1], step)
+                    .into_iter()
+                    .map(|i| chars[i])
+                    .collect(),
+            )
+        }
+        other => {
+            return Err(type_error(
+                format!("Cannae slice a {}, ya numpty!", host_type_name(&other)),
+                line,
+            ))
+        }
+    };
+    Ok(store.alloc(value))
+}
+
+/// A `fer` loop's snapshot o' what it walks: a fresh list o' the items (or characters).
+fn iter_items(store: &mut HostStore, value: Handle, line: i32) -> Result<Handle, String> {
+    let items = match host_view(store, value)? {
+        HostValue::List(items) => items,
+        HostValue::String(s) => char_handles(store, &s),
+        other => {
+            return Err(type_error(
+                format!("Cannae iterate ower a {}", host_type_name(&other)),
+                line,
+            ))
+        }
+    };
+    Ok(store.alloc(HostValue::List(items)))
+}
+
+/// `...value` intae the list being built.
+fn list_extend(
+    store: &mut HostStore,
+    list: Handle,
+    value: Handle,
+    line: i32,
+) -> Result<Handle, String> {
+    let extra = match host_view(store, value)? {
+        HostValue::List(items) => items,
+        HostValue::String(s) => char_handles(store, &s),
+        _ => {
+            return Err(type_error(
+                "Cannae skail (spread) somethin' that isnae a list or string!".to_string(),
+                line,
+            ))
+        }
+    };
+    if let Some(HostValue::List(items)) = store.get_mut(list) {
+        items.extend(extra);
+    }
+    Ok(list)
+}
+
+/// A number as an integer the way `Value::as_integer` does it (floats truncate).
+fn as_integer(store: &HostStore, handle: Handle) -> Option<i64> {
+    match store.view(handle).as_deref() {
+        Some(HostValue::Int(n)) => Some(*n),
+        Some(HostValue::Float(f)) => Some(*f as i64),
+        _ => None,
+    }
+}
+
+/// An error the guest raises itself (`__mdh_raise`), as the interpreter words it.
+fn raise_message(store: &HostStore, code: i32, value: Handle, line: i32) -> String {
+    let message = store.to_string(value);
+    let line = line.max(0) as usize;
+    match code {
+        RAISE_HURL => HaversError::UserError { message, line },
+        RAISE_ASSERT => HaversError::AssertionFailed { message, line },
+        _ => HaversError::TypeError {
+            message: format!("Nae match found fer {}", message),
+            line,
+        },
+    }
+    .to_string()
+}
+
+/// Host imports fer `hae_a_bash`, `hurl`, `mak_siccar`, `keek`, indexing, slicing an' `fer`.
+fn add_statement_imports(linker: &mut Linker<HostState>, memory: Memory) -> Result<(), String> {
+    let err = |e: wasmtime::Error| e.to_string();
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_pending",
+            |caller: Caller<'_, HostState>| -> i32 { i32::from(caller.data().pending.is_some()) },
+        )
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_try_enter",
+            |mut caller: Caller<'_, HostState>| {
+                let state = caller.data_mut();
+                let depth = state.store.scopes.len();
+                state.try_frames.push(depth);
+            },
+        )
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_try_pop",
+            |mut caller: Caller<'_, HostState>, n: i32| {
+                let frames = &mut caller.data_mut().try_frames;
+                frames.truncate(frames.len().saturating_sub(n.max(0) as usize));
+            },
+        )
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_try_catch",
+            move |mut caller: Caller<'_, HostState>,
+                  ptr: i32,
+                  count: i32|
+                  -> wasmtime::Result<i64> {
+                // Close the scopes the unwind skipped (this frame's and any callee's),
+                // keepin' what the catching function's locals still reach.
+                let depth = caller.data_mut().try_frames.pop().unwrap_or(0);
+                let open = caller.data().store.scopes.len();
+                if open > depth {
+                    guest_scope_exit(&mut caller, memory, ptr, count, (open - depth) as i32)?;
+                }
+                let state = caller.data_mut();
+                let message = state.pending.take().unwrap_or_default();
+                Ok(alloc_string(&mut state.store, message))
+            },
+        )
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_raise",
+            |mut caller: Caller<'_, HostState>,
+             code: i32,
+             value: i64,
+             line: i32|
+             -> wasmtime::Result<i64> {
+                let message = raise_message(&caller.data().store, code, value, line);
+                finish(&mut caller, Err(message))
+            },
+        )
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_index",
+            |mut caller: Caller<'_, HostState>,
+             obj: i64,
+             idx: i64,
+             line: i32|
+             -> wasmtime::Result<i64> {
+                let result = index_get(&mut caller.data_mut().store, obj, idx, line);
+                finish(&mut caller, result)
+            },
+        )
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_index_set",
+            |mut caller: Caller<'_, HostState>,
+             obj: i64,
+             idx: i64,
+             value: i64,
+             line: i32|
+             -> wasmtime::Result<i64> {
+                let result = index_set(&mut caller.data_mut().store, obj, idx, value, line);
+                finish(&mut caller, result)
+            },
+        )
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_slice",
+            |mut caller: Caller<'_, HostState>,
+             obj: i64,
+             start: i64,
+             end: i64,
+             step: i64,
+             present: i32,
+             line: i32|
+             -> wasmtime::Result<i64> {
+                let store = &mut caller.data_mut().store;
+                let result = slice(store, obj, [start, end, step], present, line);
+                finish(&mut caller, result)
+            },
+        )
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_iter_items",
+            |mut caller: Caller<'_, HostState>, value: i64, line: i32| -> wasmtime::Result<i64> {
+                let result = iter_items(&mut caller.data_mut().store, value, line);
+                finish(&mut caller, result)
+            },
+        )
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_list_len",
+            |caller: Caller<'_, HostState>, list: i64| -> i64 {
+                match caller.data().store.get(list) {
+                    Some(HostValue::List(items)) => items.len() as i64,
+                    _ => 0,
+                }
+            },
+        )
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_list_item",
+            |caller: Caller<'_, HostState>, list: i64, i: i64| -> i64 {
+                match caller.data().store.get(list) {
+                    Some(HostValue::List(items)) => usize::try_from(i)
+                        .ok()
+                        .and_then(|i| items.get(i).copied())
+                        .unwrap_or(0),
+                    _ => 0,
+                }
+            },
+        )
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_list_extend",
+            |mut caller: Caller<'_, HostState>,
+             list: i64,
+             value: i64,
+             line: i32|
+             -> wasmtime::Result<i64> {
+                let result = list_extend(&mut caller.data_mut().store, list, value, line);
+                finish(&mut caller, result)
+            },
+        )
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_range_int",
+            |mut caller: Caller<'_, HostState>,
+             value: i64,
+             other: i64,
+             line: i32|
+             -> wasmtime::Result<i64> {
+                let store = &caller.data().store;
+                let result = match (as_integer(store, value), as_integer(store, other)) {
+                    (Some(n), Some(_)) => Ok(n),
+                    _ => Err(type_error(
+                        "Range bounds must be integers".to_string(),
+                        line,
+                    )),
+                };
+                finish(&mut caller, result)
+            },
+        )
+        .map_err(err)?;
+    linker
+        .func_wrap(
+            "env",
+            "__mdh_match_range",
+            |caller: Caller<'_, HostState>,
+             value: i64,
+             start: i64,
+             end: i64,
+             inclusive: i32|
+             -> i32 {
+                let store = &caller.data().store;
+                let Some(HostValue::Int(n)) = store.view(value).as_deref().cloned() else {
+                    return 0;
+                };
+                match (as_integer(store, start), as_integer(store, end)) {
+                    (Some(s), Some(e)) => {
+                        i32::from(n >= s && if inclusive != 0 { n <= e } else { n < e })
+                    }
+                    _ => 0,
+                }
+            },
+        )
+        .map_err(err)?;
+    Ok(())
+}
+
 #[derive(Debug)]
 struct HostState {
     store: HostStore,
@@ -820,6 +1302,10 @@ struct HostState {
     captured: Option<String>,
     /// The message of the runtime error that trapped the module, if any.
     runtime_error: Option<String>,
+    /// Open `hae_a_bash` bodies, innermost last: the host scope depth at entry.
+    try_frames: Vec<usize>,
+    /// An error raised inside a `hae_a_bash`, waiting fer the guest tae unwind tae it.
+    pending: Option<String>,
 }
 
 impl HostState {
@@ -830,6 +1316,8 @@ impl HostState {
             natives: None,
             captured: if capture { Some(String::new()) } else { None },
             runtime_error: None,
+            try_frames: Vec::new(),
+            pending: None,
         }
     }
 }
@@ -840,11 +1328,22 @@ fn trap(state: &mut HostState, message: String) -> wasmtime::Error {
     wasmtime::Error::msg(message)
 }
 
+/// A host call's result fer the guest. Inside a `hae_a_bash` an error is left pending
+/// (the guest checks `__mdh_pending` straight after an' unwinds tae the catch) and the
+/// call returns nil; ootside one it traps.
 fn finish(
     caller: &mut Caller<'_, HostState>,
     result: Result<Handle, String>,
 ) -> Result<i64, wasmtime::Error> {
-    result.map_err(|message| trap(caller.data_mut(), message))
+    let state = caller.data_mut();
+    match result {
+        Ok(handle) => Ok(handle),
+        Err(message) if !state.try_frames.is_empty() => {
+            state.pending.get_or_insert(message);
+            Ok(0)
+        }
+        Err(message) => Err(trap(state, message)),
+    }
 }
 
 fn read_memory_string(caller: &Caller<'_, HostState>, mem: &Memory, ptr: i32, len: i32) -> String {
@@ -2194,6 +2693,7 @@ fn run_module(engine: &Engine, module: &Module, capture: bool) -> Result<WasmRun
         .map_err(|e| e.to_string())?;
 
     add_builtin_imports(&mut linker, memory)?;
+    add_statement_imports(&mut linker, memory)?;
 
     // Audio stubs come from the compiler's own import table so the two cannot drift.
     for (name, arity) in AUDIO_IMPORTS {
