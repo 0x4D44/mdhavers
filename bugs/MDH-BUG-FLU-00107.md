@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00107 — Native: fer loop variable leaks past the loop and hides the outer binding
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** High
 - **Area:** native
 - **Raised:** 2026-10-24T02:38:48Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261024T030402Z-267f96e5
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00107-run-fix-20261024T030402Z-267f96e5
-- **Owner base:** efb4bb2055d43e04f02c4d8dccd9ef268d86d9ef
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-24T03:04:02Z
-- **Owner until:** 2026-10-24T07:04:02Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T02:38:48Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-24T02:38:48Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T03:04:07Z, deltic:auto role=fix run=fix-20261024T030402Z-267f96e5 branch=task/bug-MDH-BUG-FLU-00107-run-fix-20261024T030402Z-267f96e5 code=efb4bb2 gate=manual)
 
 ## Observation
 
