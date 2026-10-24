@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00092 — WASM host store never frees strings, lists or dicts
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** wasm
 - **Raised:** 2026-10-23T04:31:22Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261024T021815Z-ec3adc88
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00092-run-fix-20261024T021815Z-ec3adc88
-- **Owner base:** c6b0df3b5dd115d4e461b161da95adc857cc773d
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-24T02:18:15Z
-- **Owner until:** 2026-10-24T06:18:15Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T04:31:22Z, raised via `deltic bugs new` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-23T04:31:22Z, raised via `deltic bugs new` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T02:18:21Z, deltic:auto role=fix run=fix-20261024T021815Z-ec3adc88 branch=task/bug-MDH-BUG-FLU-00092-run-fix-20261024T021815Z-ec3adc88 code=c6b0df3 gate=manual)
 
 ## Observation
 
