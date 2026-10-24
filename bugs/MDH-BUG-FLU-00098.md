@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00098 — JS: gie in a block expression inside a default parameter escapes uncaught
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** js
 - **Raised:** 2026-10-23T22:22:08Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261024T013820Z-57948697
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00098-run-fix-20261024T013820Z-57948697
-- **Owner base:** 9a5187774f637684a41071a0c13ab36adca48355
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-24T01:38:20Z
-- **Owner until:** 2026-10-24T05:38:20Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T22:22:08Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-23T22:22:08Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T01:38:25Z, deltic:auto role=fix run=fix-20261024T013820Z-57948697 branch=task/bug-MDH-BUG-FLU-00098-run-fix-20261024T013820Z-57948697 code=50f0079 gate=manual)
 
 ## Observation
 
