@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00112 — Native: a dae nested inside a gin block cannot capture its enclosing function's parameter
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-24T02:39:09Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261024T030413Z-e8a85c1e
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00112-run-fix-20261024T030413Z-e8a85c1e
-- **Owner base:** 13d555b2fb3a3825c4ed002d875ea43947350e38
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-24T03:04:13Z
-- **Owner until:** 2026-10-24T07:04:13Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T02:39:09Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-24T02:39:09Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T03:04:18Z, deltic:auto role=fix run=fix-20261024T030413Z-e8a85c1e branch=task/bug-MDH-BUG-FLU-00112-run-fix-20261024T030413Z-e8a85c1e code=efb4bb2 gate=manual)
 
 ## Observation
 
