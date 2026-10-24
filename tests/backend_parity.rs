@@ -722,3 +722,44 @@ fn js_fetched_module_receives_numbers_mdh_bug_flu_00097() {
     let out = run_js(source).unwrap_or_else(|e| panic!("js: {e}"));
     assert_eq!(out.trim(), "3");
 }
+
+const SNOOZE_SOURCE: &str = r#"
+ken start = noo()
+snooze(60)
+ken gone = noo() - start
+blether gone >= 55
+blether snooze(0)
+hae_a_bash {
+    snooze(-1)
+} gin_it_gangs_wrang err {
+    blether err
+}
+hae_a_bash {
+    snooze("soon")
+} gin_it_gangs_wrang err {
+    blether err
+}
+"#;
+
+#[test]
+fn parity_js_snooze_mdh_bug_flu_00101() {
+    if !node_available() {
+        return;
+    }
+    let interp = run_interpreter(SNOOZE_SOURCE).expect("interpreter");
+    let js = run_js(SNOOZE_SOURCE).expect("node");
+    assert_eq!(interp, js, "snooze: JS differs from the interpreter");
+    assert!(interp.starts_with("aye\nnaething\n"), "got {interp:?}");
+}
+
+/// Wi' nae TTY (stdin is null under `Command::output`) the JS `get_key` has nae
+/// key tae give, so it returns the empty string rather than blockin' or throwin'.
+#[test]
+fn js_get_key_without_tty_returns_empty_string_mdh_bug_flu_00101() {
+    if !node_available() {
+        return;
+    }
+    let out =
+        run_js("ken k = get_key()\nblether \"[\" + k + \"]\"\nblether k == \"\"").expect("node");
+    assert_eq!(out, "[]\naye");
+}

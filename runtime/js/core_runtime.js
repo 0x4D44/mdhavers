@@ -410,6 +410,72 @@ const __havers_core = (() => {
     return min + (r % span);
   };
 
+  // Blockin' sleep. Node waits on a SharedArrayBuffer (nae busy loop); a browser's
+  // main thread cannae Atomics.wait, so it spins like `bide` does.
+  const sleepSync = (ms) => {
+    if (ms <= 0) return;
+    try {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+    } catch (_) {
+      const end = Date.now() + ms;
+      while (Date.now() < end) {}
+    }
+  };
+
+  // get_key: a keydown buffer in the browser, a raw-mode stdin read in node.
+  const keyBuffer = [];
+  let keyListening = false;
+  const keyName = (k) => {
+    switch (k) {
+      case "ArrowLeft": return "Left";
+      case "ArrowRight": return "Right";
+      case "ArrowUp": return "Up";
+      case "ArrowDown": return "Down";
+      case "Enter": return "\n";
+      case "Escape": return "\x1b";
+      case "Backspace": return "\x08";
+      default: return Array.from(k).length === 1 ? k : "";
+    }
+  };
+  const nodeKey = () => {
+    if (typeof process === "undefined" || !process.stdin || !process.stdin.isTTY) return "";
+    if (typeof require !== "function") return "";
+    let s = "";
+    try {
+      const buf = Buffer.alloc(8);
+      process.stdin.setRawMode(true);
+      try {
+        s = buf.toString("utf8", 0, require("fs").readSync(0, buf, 0, buf.length, null));
+      } finally {
+        process.stdin.setRawMode(false);
+      }
+    } catch (_) {
+      return "";
+    }
+    if (s === "\x03") process.exit(130);
+    if (s === "\x1b[A") return "Up";
+    if (s === "\x1b[B") return "Down";
+    if (s === "\x1b[C") return "Right";
+    if (s === "\x1b[D") return "Left";
+    if (s === "\r" || s === "\n") return "\n";
+    if (s === "\x7f" || s === "\b") return "\x08";
+    if (s === "\x1b") return "\x1b";
+    return Array.from(s).length === 1 ? s : "";
+  };
+  const readKey = () => {
+    if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+      if (!keyListening) {
+        keyListening = true;
+        document.addEventListener("keydown", (e) => {
+          keyBuffer.push(keyName(e.key));
+          if (keyBuffer.length > 64) keyBuffer.shift();
+        });
+      }
+      return keyBuffer.length > 0 ? keyBuffer.shift() : "";
+    }
+    return nodeKey();
+  };
+
   const builtins = {
     len: (x) => {
       if (typeof x === "string") {
@@ -766,6 +832,17 @@ const __havers_core = (() => {
       const end = Date.now() + Number(ms);
       while (Date.now() < end) {} // Busy wait (sync)
     },
+    // snooze(ms): the interpreter's blockin' sleep (an integer, or a float it truncates).
+    snooze: (ms) => {
+      const n = asInt(ms);
+      if (n === null) throw native("snooze() needs an integer (milliseconds)");
+      if (n < 0n) throw native("Cannae snooze fer negative time, ya daftie!");
+      sleepSync(Number(n));
+      return null;
+    },
+    // get_key(): the next key as a string ("" when nane is waitin'), named like the
+    // interpreter's: a character, "\n", "\x1b", "\x08", or Left/Right/Up/Down.
+    get_key: () => readKey(),
   };
 
   // JS libraries (the audio runtime, three.js) take plain numbers.

@@ -247,6 +247,31 @@ pub fn register_builtin_functions(globals: &Rc<RefCell<crate::value::Environment
         );
     }
 
+    // The stub never allocates real handles: loading a readable file yields
+    // STUB_HANDLE, and anything else is rejected like miniaudio rejects it.
+    const STUB_HANDLE: i64 = -1;
+
+    fn check_loadable(path: &Value, name: &str, what: &str) -> Result<(), String> {
+        match path {
+            Value::String(p) => {
+                if std::path::Path::new(p.as_str()).is_file() {
+                    Ok(())
+                } else {
+                    Err(format!("Cannae lade the {}", what))
+                }
+            }
+            _ => Err(format!("{} needs a string path", name)),
+        }
+    }
+
+    fn check_stub_handle(handle: &Value, name: &str) -> Result<(), String> {
+        match handle {
+            Value::Integer(STUB_HANDLE) => Ok(()),
+            Value::Integer(i) if *i >= 0 => Err("Thon handle isnae guid".to_string()),
+            _ => Err(format!("{} needs a guid handle", name)),
+        }
+    }
+
     // Audio engine functions (stubs for now - raylib audio is initialized with graphics)
     define_native(globals, "soond_stairt", 0, |_args| {
         // raylib audio is initialized with InitAudioDevice() or automatically with InitWindow
@@ -258,127 +283,88 @@ pub fn register_builtin_functions(globals: &Rc<RefCell<crate::value::Environment
         Ok(Value::Nil)
     });
 
-    define_native(globals, "soond_wheesht", 1, |_args| {
+    define_native(globals, "soond_wheesht", 1, |args| {
+        if !matches!(args[0], Value::Bool(_)) {
+            return Err("soond_wheesht needs aye or nae".to_string());
+        }
         Ok(Value::Nil)
     });
 
-    define_native(globals, "soond_luid", 1, |_args| {
-        Ok(Value::Nil)
-    });
+    define_native(globals, "soond_luid", 1, |_args| Ok(Value::Nil));
 
-    define_native(globals, "soond_hou_luid", 0, |_args| {
-        Ok(Value::Float(1.0))
-    });
+    define_native(globals, "soond_hou_luid", 0, |_args| Ok(Value::Float(1.0)));
 
-    define_native(globals, "soond_haud_gang", 0, |_args| {
-        Ok(Value::Nil)
-    });
+    define_native(globals, "soond_haud_gang", 0, |_args| Ok(Value::Nil));
 
     // Sound functions (stubs)
-    define_native(globals, "soond_lade", 1, |_args| {
-        Ok(Value::Integer(-1))
+    define_native(globals, "soond_lade", 1, |args| {
+        check_loadable(&args[0], "soond_lade", "soond")?;
+        Ok(Value::Integer(STUB_HANDLE))
     });
 
-    define_native(globals, "soond_spiel", 1, |_args| {
+    define_native(globals, "soond_spiel", 1, |args| {
+        check_stub_handle(&args[0], "soond_spiel")?;
         Ok(Value::Nil)
     });
 
-    define_native(globals, "soond_haud", 1, |_args| {
-        Ok(Value::Nil)
-    });
+    define_native(globals, "soond_haud", 1, |_args| Ok(Value::Nil));
 
-    define_native(globals, "soond_gae_on", 1, |_args| {
-        Ok(Value::Nil)
-    });
+    define_native(globals, "soond_gae_on", 1, |_args| Ok(Value::Nil));
 
-    define_native(globals, "soond_stap", 1, |_args| {
-        Ok(Value::Nil)
-    });
+    define_native(globals, "soond_stap", 1, |_args| Ok(Value::Nil));
 
-    define_native(globals, "soond_unlade", 1, |_args| {
-        Ok(Value::Nil)
-    });
+    define_native(globals, "soond_unlade", 1, |_args| Ok(Value::Nil));
 
     define_native(globals, "soond_is_spielin", 1, |_args| {
         Ok(Value::Bool(false))
     });
 
-    define_native(globals, "soond_pit_luid", 2, |_args| {
-        Ok(Value::Nil)
-    });
+    define_native(globals, "soond_pit_luid", 2, |_args| Ok(Value::Nil));
 
-    define_native(globals, "soond_pit_pan", 2, |_args| {
-        Ok(Value::Nil)
-    });
+    define_native(globals, "soond_pit_pan", 2, |_args| Ok(Value::Nil));
 
-    define_native(globals, "soond_pit_tune", 2, |_args| {
-        Ok(Value::Nil)
-    });
+    define_native(globals, "soond_pit_tune", 2, |_args| Ok(Value::Nil));
 
-    define_native(globals, "soond_pit_rin_roond", 2, |_args| {
-        Ok(Value::Nil)
-    });
+    define_native(globals, "soond_pit_rin_roond", 2, |_args| Ok(Value::Nil));
 
-    define_native(globals, "soond_ready", 1, |_args| {
-        Ok(Value::Bool(false))
-    });
+    define_native(globals, "soond_ready", 1, |_args| Ok(Value::Bool(false)));
 
     // Music functions (stubs)
-    define_native(globals, "muisic_lade", 1, |_args| {
-        Ok(Value::Integer(-1))
+    define_native(globals, "muisic_lade", 1, |args| {
+        check_loadable(&args[0], "muisic_lade", "muisic")?;
+        Ok(Value::Integer(STUB_HANDLE))
     });
 
-    define_native(globals, "muisic_spiel", 1, |_args| {
+    define_native(globals, "muisic_spiel", 1, |args| {
+        check_stub_handle(&args[0], "muisic_spiel")?;
         Ok(Value::Nil)
     });
 
-    define_native(globals, "muisic_haud", 1, |_args| {
-        Ok(Value::Nil)
-    });
+    define_native(globals, "muisic_haud", 1, |_args| Ok(Value::Nil));
 
-    define_native(globals, "muisic_gae_on", 1, |_args| {
-        Ok(Value::Nil)
-    });
+    define_native(globals, "muisic_gae_on", 1, |_args| Ok(Value::Nil));
 
-    define_native(globals, "muisic_stap", 1, |_args| {
-        Ok(Value::Nil)
-    });
+    define_native(globals, "muisic_stap", 1, |_args| Ok(Value::Nil));
 
-    define_native(globals, "muisic_unlade", 1, |_args| {
-        Ok(Value::Nil)
-    });
+    define_native(globals, "muisic_unlade", 1, |_args| Ok(Value::Nil));
 
     define_native(globals, "muisic_is_spielin", 1, |_args| {
         Ok(Value::Bool(false))
     });
 
-    define_native(globals, "muisic_loup", 2, |_args| {
-        Ok(Value::Nil)
-    });
+    define_native(globals, "muisic_loup", 2, |_args| Ok(Value::Nil));
 
-    define_native(globals, "muisic_hou_lang", 1, |_args| {
-        Ok(Value::Float(0.0))
-    });
+    define_native(globals, "muisic_hou_lang", 1, |_args| Ok(Value::Float(0.0)));
 
-    define_native(globals, "muisic_whaur", 1, |_args| {
-        Ok(Value::Float(0.0))
-    });
+    define_native(globals, "muisic_whaur", 1, |_args| Ok(Value::Float(0.0)));
 
-    define_native(globals, "muisic_pit_luid", 2, |_args| {
-        Ok(Value::Nil)
-    });
+    define_native(globals, "muisic_pit_luid", 2, |_args| Ok(Value::Nil));
 
-    define_native(globals, "muisic_pit_pan", 2, |_args| {
-        Ok(Value::Nil)
-    });
+    define_native(globals, "muisic_pit_pan", 2, |_args| Ok(Value::Nil));
 
-    define_native(globals, "muisic_pit_tune", 2, |_args| {
-        Ok(Value::Nil)
-    });
+    define_native(globals, "muisic_pit_tune", 2, |_args| Ok(Value::Nil));
 
-    define_native(globals, "muisic_pit_rin_roond", 2, |_args| {
-        Ok(Value::Nil)
-    });
+    define_native(globals, "muisic_pit_rin_roond", 2, |_args| Ok(Value::Nil));
 }
 
 #[cfg(test)]

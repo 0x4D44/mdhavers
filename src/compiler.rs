@@ -96,6 +96,8 @@ const RUNTIME_BINDINGS: &[&str] = &[
     "noo",
     "tick",
     "bide",
+    "snooze",
+    "get_key",
     "gaun",
     "sieve",
     "tumble",
