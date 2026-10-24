@@ -1,6 +1,6 @@
 # MDH-BUG-FLU-00096 — dae body implicit value: interpreter returns last expression, JS and WASM return naething
 
-- **State:** Open
+- **State:** Closed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** interpreter
@@ -19,7 +19,8 @@
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-23T21:37:23Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **Resolution:** by-design
+- **State history:** Open (2026-10-23T21:37:23Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Closed (2026-10-24T21:33:15Z, deltic:manual host=flux verdict=close resolution=by-design)
 
 ## Observation
 
@@ -33,3 +34,7 @@ Evidence fingerprint: `manual:v1:dae-body-implicit-value-interpreter-returns-las
 <unfixed — raised only>
 
 ## Notes
+
+### Close note (2026-10-24T21:33:15Z, deltic:manual host=flux verdict=close resolution=by-design)
+
+Close reason: Arthur decided 2026-10-24 (DEC doc, round 2): a dae body keeps explicit gie; without gie it returns naething. Only blocks and lambdas yield their last expression.
