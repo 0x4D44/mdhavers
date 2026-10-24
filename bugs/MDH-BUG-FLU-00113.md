@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00113 — JS runtime lacks ilk, grup_up, pairt_by and dict_get/has/remove/invert/fae_pairs builtins
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** js
 - **Raised:** 2026-10-24T02:53:39Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261024T030129Z-8660f402
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00113-run-fix-20261024T030129Z-8660f402
-- **Owner base:** b4201879b35301b37853bb4639eb5d61901414a4
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-24T03:01:29Z
-- **Owner until:** 2026-10-24T07:01:29Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-24T02:53:39Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-24T02:53:39Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-24T03:01:35Z, deltic:auto role=fix run=fix-20261024T030129Z-8660f402 branch=task/bug-MDH-BUG-FLU-00113-run-fix-20261024T030129Z-8660f402 code=b420187 gate=manual)
 
 ## Observation
 
