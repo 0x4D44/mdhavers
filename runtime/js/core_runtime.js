@@ -600,6 +600,317 @@ const __havers_core = (() => {
   };
   let hofLine = 0;
 
+  // ---------- pure string, list, bit, JSON an' assertion builtins (MDH-BUG-FLU-00114) ----------
+  //
+  // Strings are walked by code point, as Rust's `chars()` does, no' by UTF-16 unit. Case an'
+  // character-class tests are ASCII-only, as the interpreter's are.
+  const MAX_BUILT_SIZE = 1073741824n;
+  const U64_MAX = 2n ** 64n - 1n;
+  const cps = (s) => Array.from(s);
+  const utf8Len = (s) => new TextEncoder().encode(s).length;
+  // Mirrors `checked_alloc_size`: `unit * count` bytes must stay within the build limit.
+  const allocCheck = (unit, count, what) => {
+    const size = BigInt(unit) * count;
+    if (size > U64_MAX) {
+      throw native(`${what} wid be ower muckle (bigger than the ${MAX_BUILT_SIZE} limit), ya greedy gannet!`);
+    }
+    if (size > MAX_BUILT_SIZE) {
+      throw native(`${what} wid be ower muckle (${size} is mair than the ${MAX_BUILT_SIZE} limit), ya greedy gannet!`);
+    }
+  };
+  // Rust's `char::is_whitespace` (Unicode White_Space); JS's `\s` differs at U+0085 an' U+FEFF.
+  const isRustWs = (c) => {
+    const n = c.codePointAt(0);
+    return (n >= 9 && n <= 13) || n === 32 || n === 0x85 || n === 0xa0 || n === 0x1680 ||
+      (n >= 0x2000 && n <= 0x200a) || n === 0x2028 || n === 0x2029 || n === 0x202f || n === 0x205f || n === 0x3000;
+  };
+  const isMdhWs = (c) => c === " " || c === "\t" || c === "\n" || c === "\r";
+  const trimStart = (s, pred) => {
+    const a = cps(s);
+    let i = 0;
+    while (i < a.length && pred(a[i])) i++;
+    return a.slice(i).join("");
+  };
+  const trimEnd = (s, pred) => {
+    const a = cps(s);
+    let i = a.length;
+    while (i > 0 && pred(a[i - 1])) i--;
+    return a.slice(0, i).join("");
+  };
+  // Code points before UTF-16 offset `i`.
+  const cpIndex = (s, i) => cps(s.slice(0, i)).length;
+  const isLowerA = (c) => c >= "a" && c <= "z";
+  const isUpperA = (c) => c >= "A" && c <= "Z";
+  const allAscii = (s, pred) => s.length > 0 && Array.from(s).every(pred);
+  const swapAscii = (c) => (isUpperA(c) ? c.toLowerCase() : isLowerA(c) ? c.toUpperCase() : c);
+  const needStr = (v, msg) => {
+    if (typeof v !== "string") throw native(msg);
+    return v;
+  };
+  const needList = (v, msg) => {
+    if (!Array.isArray(v)) throw native(msg);
+    return v;
+  };
+  // `usize` view o' a clamped-at-zero i64 count, capped at `max` (all that can matter).
+  const clampCount = (n, max) => Number(n < 0n ? 0n : n > BigInt(max) ? BigInt(max) : n);
+  const chunkList = (l, size) => {
+    const out = [];
+    for (let i = 0; i < l.length; i += size) out.push(l.slice(i, i + size));
+    return out;
+  };
+  const interleaveLists = (a, b) => {
+    const out = [];
+    const n = Math.max(a.length, b.length);
+    for (let i = 0; i < n; i++) {
+      if (i < a.length) out.push(a[i]);
+      if (i < b.length) out.push(b[i]);
+    }
+    return out;
+  };
+  const padArgs = (name, args) => {
+    if (args.length < 2 || args.length > 3) throw native(`${name}() expects 2-3 arguments`);
+    const bad = `${name}() needs (string, width, pad_char)`;
+    if (typeof args[0] !== "string" || typeof args[1] !== "bigint") throw native(bad);
+    let fill = " ";
+    if (args.length === 3) {
+      if (typeof args[2] !== "string") throw native(bad);
+      fill = cps(args[2])[0] ?? " ";
+    }
+    return [args[0], args[1], fill];
+  };
+  const padCount = (name, s, width, fill) => {
+    const len = BigInt(cps(s).length);
+    if (width <= len) return 0n;
+    const pad = width - len;
+    allocCheck(utf8Len(fill), pad, `${name}()`);
+    return pad;
+  };
+  const replaceAllCp = (s, from, to) => {
+    if (from === "") return to + cps(s).map((c) => c + to).join("");
+    return s.split(from).join(to);
+  };
+  // Rust `i64::from_str_radix`: an optional sign, then digits o' the radix; null if invalid or oot o' range.
+  const parseRadix = (str, radix) => {
+    const m = /^([+-]?)([0-9a-zA-Z]+)$/.exec(str);
+    if (m === null) return null;
+    let n = 0n;
+    const r = BigInt(radix);
+    for (const c of m[2]) {
+      const d = parseInt(c, 36);
+      if (d >= radix) return null;
+      n = n * r + BigInt(d);
+    }
+    if (m[1] === "-") n = -n;
+    return n < I64_MIN || n > I64_MAX ? null : n;
+  };
+  const stripPrefix = (s, p) => {
+    while (s.startsWith(p)) s = s.slice(p.length);
+    return s;
+  };
+  const asUnsigned = (n) => BigInt.asUintN(64, n);
+  const needInts = (name, a, b) => {
+    if (typeof a !== "bigint" || typeof b !== "bigint") throw native(`${name}() needs two integers`);
+  };
+  const shiftArgs = (name, a, b) => {
+    needInts(name, a, b);
+    if (b < 0n || b > 63n) throw native("Shift amount must be 0-63, ya numpty!");
+    return Number(b);
+  };
+  // The interpreter's `uniq` compares the values' Debug text: so an integer an' a float differ, an'
+  // lists, dicts an' instances match by content. Build an equivalent key (a container met again
+  // while it is open is elided, as Debug does).
+  const debugKey = (x, open) => {
+    if (x === null || x === undefined) return "N";
+    if (typeof x === "bigint") return "I" + x;
+    if (typeof x === "number") return "F" + (Object.is(x, -0) ? "-0" : String(x));
+    if (typeof x === "string") return "S" + JSON.stringify(x);
+    if (typeof x === "boolean") return x ? "Bt" : "Bf";
+    if (typeof x === "function") return dkey(x);
+    if (open.includes(x)) return "...";
+    open.push(x);
+    let out;
+    if (Array.isArray(x)) {
+      out = "L[" + x.map((v) => debugKey(v, open)).join(",") + "]";
+    } else if (x instanceof Set) {
+      out = "C[" + [...x].map((v) => debugKey(v, open)).sort().join(",") + "]";
+    } else if (isDict(x)) {
+      out = "D{" + Object.keys(x).map((p) => debugKey(undkey(p), open) + ":" + debugKey(x[p], open)).join(",") + "}";
+    } else {
+      const ctor = Object.getPrototypeOf(x) === null ? null : x.constructor;
+      out = "O" + (ctor ? ctor.name : "") + "{" + Object.keys(x).map((k) => k + ":" + debugKey(x[k], open)).join(",") + "}";
+    }
+    open.pop();
+    return out;
+  };
+
+  // ---------- JSON parse an' pretty-print (src/interpreter.rs parse_json_value) ----------
+  const parseJson = (src) => {
+    const s = trimStart(trimEnd(src, isRustWs), isRustWs);
+    if (s === "") throw native("Empty JSON string");
+    const ch = cps(s);
+    let pos = 0;
+    const skipWs = () => {
+      while (pos < ch.length && isRustWs(ch[pos])) pos++;
+    };
+    const tooDeep = () => native(`JSON's nested ower deep (mair than ${MAX_JSON_DEPTH} levels) - ah'm no' diggin' that far!`);
+    const parseString = () => {
+      pos++;
+      let out = "";
+      while (pos < ch.length) {
+        const c = ch[pos];
+        if (c === '"') {
+          pos++;
+          return out;
+        }
+        if (c === "\\") {
+          pos++;
+          if (pos >= ch.length) throw native("Unterminated string escape");
+          const e = ch[pos];
+          if (e === "n") out += "\n";
+          else if (e === "t") out += "\t";
+          else if (e === "r") out += "\r";
+          else if (e === "u") {
+            if (pos + 4 >= ch.length) throw native("Invalid unicode escape");
+            const hex = ch.slice(pos + 1, pos + 5).join("");
+            // Rust's from_str_radix takes a leading '+'; a surrogate is silently dropped.
+            if (/^\+?[0-9a-fA-F]+$/.test(hex)) {
+              const code = parseInt(hex, 16);
+              if (code < 0xd800 || code > 0xdfff) out += String.fromCodePoint(code);
+            }
+            pos += 4;
+          } else out += e;
+        } else out += c;
+        pos++;
+      }
+      throw native("Unterminated JSON string");
+    };
+    const parseNumber = () => {
+      const start = pos;
+      let dot = false;
+      let exp = false;
+      if (ch[pos] === "-") pos++;
+      while (pos < ch.length) {
+        const c = ch[pos];
+        if (c >= "0" && c <= "9") pos++;
+        else if (c === "." && !dot && !exp) {
+          dot = true;
+          pos++;
+        } else if ((c === "e" || c === "E") && !exp) {
+          exp = true;
+          pos++;
+          if (pos < ch.length && (ch[pos] === "+" || ch[pos] === "-")) pos++;
+        } else break;
+      }
+      const text = ch.slice(start, pos).join("");
+      if (dot || exp) {
+        if (!/^-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(text)) throw native(`Invalid number: ${text}`);
+        return Number(text);
+      }
+      if (/^-?\d+$/.test(text)) {
+        const n = BigInt(text);
+        return n < I64_MIN || n > I64_MAX ? Number(text) : n;
+      }
+      throw native(`Invalid integer: ${text}`);
+    };
+    const literal = (word, value) => {
+      if (ch.slice(pos, pos + word.length).join("") === word) {
+        pos += word.length;
+        return value;
+      }
+      throw native(`Invalid JSON value '${word}'`);
+    };
+    const parseValue = (depth) => {
+      skipWs();
+      if (pos >= ch.length) throw native("Unexpected end of JSON");
+      const c = ch[pos];
+      if ((c === "{" || c === "[") && depth >= MAX_JSON_DEPTH) throw tooDeep();
+      if (c === "{") {
+        pos++;
+        skipWs();
+        const obj = {};
+        if (pos < ch.length && ch[pos] === "}") {
+          pos++;
+          return obj;
+        }
+        for (;;) {
+          skipWs();
+          if (pos >= ch.length || ch[pos] !== '"') throw native("Expected string key in JSON object");
+          const key = parseString();
+          skipWs();
+          if (pos >= ch.length || ch[pos] !== ":") throw native("Expected ':' in JSON object");
+          pos++;
+          obj[dkey(key)] = parseValue(depth + 1);
+          skipWs();
+          if (pos >= ch.length) throw native("Unterminated JSON object");
+          if (ch[pos] === "}") {
+            pos++;
+            break;
+          }
+          if (ch[pos] !== ",") throw native(`Expected '}' or ',' in JSON object, got '${ch[pos]}'`);
+          pos++;
+        }
+        return obj;
+      }
+      if (c === "[") {
+        pos++;
+        skipWs();
+        const list = [];
+        if (pos < ch.length && ch[pos] === "]") {
+          pos++;
+          return list;
+        }
+        for (;;) {
+          list.push(parseValue(depth + 1));
+          skipWs();
+          if (pos >= ch.length) throw native("Unterminated JSON array");
+          if (ch[pos] === "]") {
+            pos++;
+            break;
+          }
+          if (ch[pos] !== ",") throw native(`Expected ']' or ',' in JSON array, got '${ch[pos]}'`);
+          pos++;
+        }
+        return list;
+      }
+      if (c === '"') return parseString();
+      if (c === "t") return literal("true", true);
+      if (c === "f") return literal("false", false);
+      if (c === "n") return literal("null", null);
+      if (c === "-" || (c >= "0" && c <= "9")) return parseNumber();
+      throw native(`Unexpected character '${c}' in JSON`);
+    };
+    return parseValue(0);
+  };
+  const toJsonPretty = (x, indent, open) => {
+    if (x === null || x === undefined) return "null";
+    if (x === true) return "true";
+    if (x === false) return "false";
+    if (typeof x === "bigint") return String(x);
+    if (typeof x === "number") return Number.isFinite(x) ? showNumber(x) : "null";
+    if (typeof x === "string") return jsonEscape(x);
+    const ws = "  ".repeat(indent);
+    const inner = "  ".repeat(indent + 1);
+    if (Array.isArray(x)) {
+      if (x.length === 0) return "[]";
+      jsonEnter(x, open);
+      const items = x.map((v) => inner + toJsonPretty(v, indent + 1, open));
+      open.pop();
+      return "[\n" + items.join(",\n") + "\n" + ws + "]";
+    }
+    if (isDict(x)) {
+      const keys = Object.keys(x);
+      if (keys.length === 0) return "{}";
+      jsonEnter(x, open);
+      const pairs = keys.map((p) => {
+        const k = undkey(p);
+        return inner + jsonEscape(typeof k === "string" ? k : show(k)) + ": " + toJsonPretty(x[p], indent + 1, open);
+      });
+      open.pop();
+      return "{\n" + pairs.join(",\n") + "\n" + ws + "}";
+    }
+    return '"' + show(x).replace(/"/g, '\\"') + '"';
+  };
+
   const builtins = {
     // Dicts: keys come back wi' their ain types (see `dkey`).
     keys: (d) => {
@@ -620,6 +931,369 @@ const __havers_core = (() => {
       return Object.assign({}, a, b);
     },
     json_stringify: (x) => toJson(x, []),
+
+    // ---------- Strings (MDH-BUG-FLU-00114) ----------
+    chars: (s) => cps(needStr(s, "chars() needs a string")),
+    char_at: (s, i) => {
+      needStr(s, "char_at() needs a string");
+      let idx = asInt(i);
+      if (idx === null) throw native("char_at() needs an integer index");
+      const a = cps(s);
+      const len = BigInt(a.length);
+      if (idx < 0n) idx += len;
+      if (idx < 0n || idx >= len) throw native(`Index ${idx} oot o' bounds fer string o' length ${len}`);
+      return a[Number(idx)];
+    },
+    ord: (s) => {
+      needStr(s, "ord() needs a string");
+      if (s === "") throw native("Cannae get ord o' empty string!");
+      return BigInt(s.codePointAt(0));
+    },
+    chr: (n) => {
+      if (typeof n !== "bigint") throw native("chr() needs an integer");
+      if (n < 0n || n > 0x10ffffn) throw native(`chr() needs a valid Unicode codepoint (0 to 1114111), got ${n}`);
+      if (n >= 0xd800n && n <= 0xdfffn) throw native(`Invalid Unicode codepoint: ${n}`);
+      return String.fromCodePoint(Number(n));
+    },
+    trim: (s) => trimEnd(trimStart(needStr(s, "trim() needs a string"), isMdhWs), isMdhWs),
+    trim_start: (s) => trimStart(needStr(s, "trim_start() needs a string"), isMdhWs),
+    trim_end: (s) => trimEnd(needStr(s, "trim_end() needs a string"), isMdhWs),
+    strip_left: (s, chars) => {
+      if (typeof s !== "string" || typeof chars !== "string") throw native("strip_left() needs two strings");
+      const set = cps(chars);
+      return trimStart(s, (c) => set.includes(c));
+    },
+    strip_right: (s, chars) => {
+      if (typeof s !== "string" || typeof chars !== "string") throw native("strip_right() needs two strings");
+      const set = cps(chars);
+      return trimEnd(s, (c) => set.includes(c));
+    },
+    words: (s) => needStr(s, "words() needs a string").split(/[ \t\n\r]/).filter((w) => w !== ""),
+    // Rust's `lines()`: split on "\n", drop a "\r" before it, an' no empty last line.
+    lines: (s) => {
+      const parts = needStr(s, "lines() needs a string").split("\n");
+      const last = parts.pop();
+      const out = parts.map((p) => (p.endsWith("\r") ? p.slice(0, -1) : p));
+      if (last !== "") out.push(last);
+      return out;
+    },
+    title: (s) => {
+      needStr(s, "title() needs a string");
+      let out = "";
+      let fresh = true;
+      for (const c of s) {
+        if (isMdhWs(c)) {
+          fresh = true;
+          out += c;
+        } else if (c < "\x80") {
+          out += fresh ? c.toUpperCase() : c.toLowerCase();
+          fresh = false;
+        } else {
+          out += c;
+          fresh = false;
+        }
+      }
+      return out;
+    },
+    capitalize: (s) => {
+      needStr(s, "capitalize() needs a string");
+      return s === "" ? "" : (s[0] < "\x80" ? s[0].toUpperCase() : s[0]) + s.slice(1);
+    },
+    swapcase: (s) => Array.from(needStr(s, "swapcase() needs a string"), swapAscii).join(""),
+    center: (...args) => {
+      if (args.length < 2 || args.length > 3) throw native("center() expects 2-3 arguments");
+      const s = needStr(args[0], "center() needs a string");
+      if (typeof args[1] !== "bigint") throw native("center() needs a width");
+      let fill = " ";
+      if (args.length === 3) fill = cps(needStr(args[2], "center() needs a fill character"))[0] ?? " ";
+      const pad = padCount("center", s, args[1], fill);
+      if (pad === 0n) return s;
+      const left = pad / 2n;
+      return fill.repeat(Number(left)) + s + fill.repeat(Number(pad - left));
+    },
+    pad_left: (...args) => {
+      const [s, width, fill] = padArgs("pad_left", args);
+      return fill.repeat(Number(padCount("pad_left", s, width, fill))) + s;
+    },
+    pad_right: (...args) => {
+      const [s, width, fill] = padArgs("pad_right", args);
+      return s + fill.repeat(Number(padCount("pad_right", s, width, fill)));
+    },
+    repeat: (s, n) => {
+      if (typeof s !== "string" || typeof n !== "bigint") throw native("repeat() needs a string and an integer");
+      if (n < 0n) throw native("Cannae repeat a negative number o' times!");
+      allocCheck(utf8Len(s), n, "repeat()");
+      return s === "" ? "" : s.repeat(Number(n));
+    },
+    replace: (s, from, to) => {
+      if (typeof s !== "string" || typeof from !== "string" || typeof to !== "string") throw native("replace() needs three strings");
+      return replaceAllCp(s, from, to);
+    },
+    replace_first: (s, from, to) => {
+      if (typeof s !== "string" || typeof from !== "string" || typeof to !== "string") throw native("replace_first() needs three strings");
+      if (from === "") return to + s;
+      const i = s.indexOf(from);
+      return i < 0 ? s : s.slice(0, i) + to + s.slice(i + from.length);
+    },
+    starts_with: (s, p) => {
+      if (typeof s !== "string" || typeof p !== "string") throw native("starts_with() needs two strings");
+      return s.startsWith(p);
+    },
+    starts_wi: (s, p) => {
+      if (typeof s !== "string" || typeof p !== "string") throw native("starts_wi() needs two strings");
+      return s.startsWith(p);
+    },
+    ends_with: (s, p) => {
+      if (typeof s !== "string" || typeof p !== "string") throw native("ends_with() needs two strings");
+      return s.endsWith(p);
+    },
+    ends_wi: (s, p) => {
+      if (typeof s !== "string" || typeof p !== "string") throw native("ends_wi() needs two strings");
+      return s.endsWith(p);
+    },
+    index_of: (x, needle) => {
+      if (typeof x === "string" && typeof needle === "string") {
+        const i = x.indexOf(needle);
+        return i < 0 ? -1n : BigInt(cpIndex(x, i));
+      }
+      if (Array.isArray(x)) return BigInt(x.findIndex((v) => eq(v, needle)));
+      throw native("index_of() needs a string/list and a value");
+    },
+    last_index_of: (s, needle) => {
+      if (typeof s !== "string" || typeof needle !== "string") throw native("last_index_of() needs two strings");
+      const i = s.lastIndexOf(needle);
+      return i < 0 ? -1n : BigInt(cpIndex(s, i));
+    },
+    indices_o: (x, needle) => {
+      if (Array.isArray(x)) {
+        const out = [];
+        x.forEach((v, i) => {
+          if (eq(v, needle)) out.push(BigInt(i));
+        });
+        return out;
+      }
+      if (typeof x === "string") {
+        if (typeof needle !== "string") throw native("indices_o() on string needs a string needle");
+        if (needle === "") throw native("Cannae search fer an empty string, ya numpty!");
+        const out = [];
+        // Rust's `match_indices` skips overlaps: resume after each match.
+        for (let i = x.indexOf(needle); i >= 0; i = x.indexOf(needle, i + needle.length)) out.push(BigInt(cpIndex(x, i)));
+        return out;
+      }
+      throw native("indices_o() needs a list or string");
+    },
+    substring: (s, a, b) => {
+      needStr(s, "substring() needs a string");
+      let start = asInt(a);
+      let end = asInt(b);
+      if (start === null || end === null) throw native("substring() needs integer indices");
+      const chars = cps(s);
+      const len = BigInt(chars.length);
+      if (start < 0n) start += len;
+      if (end < 0n) end += len;
+      start = start < 0n ? 0n : start > len ? len : start;
+      end = end < 0n ? 0n : end > len ? len : end;
+      if (end < start) end = start;
+      return chars.slice(Number(start), Number(end)).join("");
+    },
+    substr_between: (s, start, end) => {
+      if (typeof s !== "string" || typeof start !== "string" || typeof end !== "string") throw native("substr_between() needs three strings");
+      const i = s.indexOf(start);
+      if (i >= 0) {
+        const after = i + start.length;
+        const j = s.indexOf(end, after);
+        if (j >= 0) return s.slice(after, j);
+      }
+      return null;
+    },
+    is_alpha: (s) => allAscii(needStr(s, "is_alpha() needs a string"), (c) => isLowerA(c) || isUpperA(c)),
+    is_digit: (s) => allAscii(needStr(s, "is_digit() needs a string"), (c) => c >= "0" && c <= "9"),
+    is_space: (s) => allAscii(needStr(s, "is_space() needs a string"), isMdhWs),
+    is_upper: (s) => {
+      needStr(s, "is_upper() needs a string");
+      return /[A-Z]/.test(s) && !/[a-z]/.test(s);
+    },
+    is_lower: (s) => {
+      needStr(s, "is_lower() needs a string");
+      return /[a-z]/.test(s) && !/[A-Z]/.test(s);
+    },
+    is_blank: (s) => /^[ \t\n\f\r]*$/.test(needStr(s, "is_blank() needs a string")),
+    is_empty: (x) => {
+      if (typeof x === "string" || Array.isArray(x)) return x.length === 0;
+      if (isDict(x)) return Object.keys(x).length === 0;
+      throw native("is_empty() needs a string, list, or dict");
+    },
+    // Splits a list by a named predicate: [matching, rest].
+    split_by: (l, pred) => {
+      if (!Array.isArray(l) || typeof pred !== "string") throw native("split_by() needs a list and a predicate string");
+      const tests = {
+        even: (x) => typeof x === "bigint" && x % 2n === 0n,
+        odd: (x) => typeof x === "bigint" && x % 2n !== 0n,
+        positive: (x) => (typeof x === "bigint" && x > 0n) || (typeof x === "number" && x > 0),
+        negative: (x) => (typeof x === "bigint" && x < 0n) || (typeof x === "number" && x < 0),
+        truthy: (x) => truthy(x),
+        nil: (x) => x === null || x === undefined,
+        string: (x) => typeof x === "string",
+        number: (x) => typeof x === "bigint" || typeof x === "number",
+      };
+      if (!Object.prototype.hasOwnProperty.call(tests, pred)) {
+        throw native(`Unknown predicate '${pred}'. Try: even, odd, positive, negative, truthy, nil, string, number`);
+      }
+      const yes = [];
+      const no = [];
+      for (const x of l) (tests[pred](x) ? yes : no).push(x);
+      return [yes, no];
+    },
+
+    // ---------- Lists (MDH-BUG-FLU-00114) ----------
+    zip: (a, b) => {
+      if (!Array.isArray(a) || !Array.isArray(b)) throw native("zip() needs two lists");
+      return a.slice(0, Math.min(a.length, b.length)).map((x, i) => [x, b[i]]);
+    },
+    enumerate: (l) => needList(l, "enumerate() needs a list").map((v, i) => [BigInt(i), v]),
+    flatten: (l) => {
+      const out = [];
+      for (const x of needList(l, "flatten() needs a list")) {
+        if (Array.isArray(x)) out.push(...x);
+        else out.push(x);
+      }
+      return out;
+    },
+    uniq: (l) => {
+      const seen = new Set();
+      const out = [];
+      for (const x of needList(l, "uniq() needs a list")) {
+        const k = debugKey(x, []);
+        if (!seen.has(k)) {
+          seen.add(k);
+          out.push(x);
+        }
+      }
+      return out;
+    },
+    unique: (l) => {
+      const out = [];
+      for (const x of needList(l, "unique() needs a list")) if (!out.some((y) => eq(x, y))) out.push(x);
+      return out;
+    },
+    chunks: (l, n) => {
+      needList(l, "chunks() needs a list");
+      const size = asInt(n);
+      if (size === null) throw native("chunks() needs an integer size");
+      if (size <= 0n) throw native("chunks() size must be positive");
+      return chunkList(l, clampCount(size, Math.max(l.length, 1)));
+    },
+    grup: (l, n) => {
+      if (!Array.isArray(l) || typeof n !== "bigint") throw native("grup() needs a list and an integer");
+      if (n <= 0n) throw native("grup() needs a positive chunk size");
+      return chunkList(l, clampCount(n, Math.max(l.length, 1)));
+    },
+    pair_up: (l) => chunkList(needList(l, "pair_up() needs a list"), 2),
+    interleave: (a, b) => {
+      if (!Array.isArray(a) || !Array.isArray(b)) throw native("interleave() needs two lists");
+      return interleaveLists(a, b);
+    },
+    fankle: (a, b) => {
+      if (!Array.isArray(a) || !Array.isArray(b)) throw native("fankle() needs two lists");
+      return interleaveLists(a, b);
+    },
+    ceilidh: (a, b) => {
+      if (!Array.isArray(a) || !Array.isArray(b)) throw native("ceilidh needs two lists");
+      return interleaveLists(a, b);
+    },
+    tak: (l, n) => {
+      const count = Array.isArray(l) ? asInt(n) : null;
+      if (count === null) throw native("tak() needs a list and an integer");
+      return l.slice(0, clampCount(count, l.length));
+    },
+    drap: (l, n) => {
+      const count = Array.isArray(l) ? asInt(n) : null;
+      if (count === null) throw native("drap() needs a list and an integer");
+      return l.slice(clampCount(count, l.length));
+    },
+    // Groups runs o' consecutive equal elements (compared with the run's first).
+    grup_runs: (l) => {
+      const out = [];
+      let cur = [];
+      for (const x of needList(l, "grup_runs() needs a list")) {
+        if (cur.length === 0 || eq(cur[0], x)) cur.push(x);
+        else {
+          out.push(cur);
+          cur = [x];
+        }
+      }
+      if (cur.length > 0) out.push(cur);
+      return out;
+    },
+
+    // ---------- Conversion an' bits (MDH-BUG-FLU-00114) ----------
+    tae_bool: (x) => truthy(x),
+    tae_binary: (n) => {
+      if (typeof n !== "bigint") throw native("tae_binary() needs an integer");
+      return asUnsigned(n).toString(2);
+    },
+    tae_hex: (n) => {
+      if (typeof n !== "bigint") throw native("tae_hex() needs an integer");
+      return asUnsigned(n).toString(16);
+    },
+    tae_octal: (n) => {
+      if (typeof n !== "bigint") throw native("tae_octal() needs an integer");
+      return asUnsigned(n).toString(8);
+    },
+    fae_binary: (s) => {
+      if (typeof s !== "string") throw native("fae_binary() needs a string");
+      const n = parseRadix(stripPrefix(s, "0b"), 2);
+      if (n === null) throw native(`Cannae parse '${s}' as binary`);
+      return n;
+    },
+    fae_hex: (s) => {
+      if (typeof s !== "string") throw native("fae_hex() needs a string");
+      const n = parseRadix(stripPrefix(s, "0x"), 16);
+      if (n === null) throw native(`Cannae parse '${s}' as hex`);
+      return n;
+    },
+    bit_an: (a, b) => {
+      needInts("bit_an", a, b);
+      return a & b;
+    },
+    bit_or: (a, b) => {
+      needInts("bit_or", a, b);
+      return a | b;
+    },
+    bit_xor: (a, b) => {
+      needInts("bit_xor", a, b);
+      return a ^ b;
+    },
+    bit_nae: (n) => {
+      if (typeof n !== "bigint") throw native("bit_nae() needs an integer");
+      return ~n;
+    },
+    bit_shove_left: (a, b) => BigInt.asIntN(64, a << BigInt(shiftArgs("bit_shove_left", a, b))),
+    bit_shove_right: (a, b) => a >> BigInt(shiftArgs("bit_shove_right", a, b)),
+    bit_coont: (n) => {
+      if (typeof n !== "bigint") throw native("bit_coont() needs an integer");
+      return BigInt(asUnsigned(n).toString(2).replace(/0/g, "").length);
+    },
+
+    // ---------- JSON an' assertions (MDH-BUG-FLU-00114) ----------
+    json_parse: (s) => {
+      if (typeof s !== "string") throw native("json_parse() expects a string, ya numpty!");
+      return parseJson(s);
+    },
+    json_pretty: (x) => toJsonPretty(x, 0, []),
+    json_stringify_pretty: (x) => toJsonPretty(x, 0, []),
+    assert: (cond, msg) => {
+      if (!truthy(cond)) throw native(`Assertion failed: ${show(msg)}`);
+      return true;
+    },
+    assert_equal: (a, b) => {
+      if (!eq(a, b)) throw native(`Assertion failed: expected ${show(a)} but got ${show(b)}`);
+      return true;
+    },
+    assert_nae_equal: (a, b) => {
+      if (eq(a, b)) throw native(`Assertion failed: ${show(a)} should not equal ${show(b)}`);
+      return true;
+    },
 
     // Dict helpers (MDH-BUG-FLU-00113); keys go through `dkey`, as in the interpreter's `DictValue`.
     dict_get: (d, k, dflt) => {

@@ -984,3 +984,656 @@ hae_a_bash {
         ),
     ]);
 }
+
+#[test]
+fn parity_js_pure_builtins_mdh_bug_flu_00114() {
+    if !node_available() {
+        return;
+    }
+    assert_js_parity(&[
+        (
+            "00114 string builtins match the interpreter by code point and error text",
+            r####"dae tryit(f) {
+    hae_a_bash {
+        blether f()
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+}
+blether chars("a😀b")
+blether char_at("a😀b", 1)
+blether char_at("a😀b", -1)
+blether char_at("abc", 1.9)
+tryit(|| char_at("abc", 3))
+tryit(|| char_at("abc", -4))
+tryit(|| char_at(5, 0))
+tryit(|| char_at("abc", "x"))
+blether ord("😀")
+blether chr(128512)
+blether chr(65)
+tryit(|| ord(""))
+tryit(|| chr(55296))
+tryit(|| chr(1114112))
+tryit(|| chr(65.0))
+tryit(|| chr("a"))
+blether "[" + trim("  \t hi \n ") + "]"
+blether "[" + trim_start("  hi  ") + "]"
+blether "[" + trim_end("  hi  ") + "]"
+blether "[" + strip_left("xxyhixy", "xy") + "]"
+blether "[" + strip_right("xxyhixy", "xy") + "]"
+blether words("  a  b\tc\nd  ")
+blether lines("a\nb\r\nc\n")
+blether len(lines("a\r")[0])
+blether lines("\n\nx")
+blether lines("")
+blether title("hello wORLD  éa x")
+blether capitalize("éa")
+blether capitalize("abc")
+blether swapcase("aBc é1")
+blether "[" + center("ab", 7) + "]"
+blether "[" + center("ab", 7, "*") + "]"
+blether "[" + center("ab", 1) + "]"
+blether "[" + pad_left("ab", 5, " ") + "]"
+blether "[" + pad_left("ab", 5, "😀") + "]"
+blether "[" + pad_right("ab", 5, "-") + "]"
+blether "[" + pad_right("ab", 5, "") + "]"
+tryit(|| pad_right("ab", 5, 1))
+tryit(|| center("ab", 5.0))
+tryit(|| pad_left(1, 2))
+blether repeat("ab", 3)
+blether repeat("😀", 2)
+tryit(|| repeat("ab", -1))
+tryit(|| repeat("ab", 1.5))
+tryit(|| repeat("ab", 2000000000))
+blether replace("a-b-c", "-", "+")
+blether replace("a😀b", "", "_")
+blether replace_first("a-b-c", "-", "+")
+blether replace_first("abc", "", "_")
+tryit(|| replace("a", "b", 1))
+blether starts_with("hello", "he")
+blether starts_wi("hello", "lo")
+blether ends_with("hello", "lo")
+blether ends_wi("hello", "he")
+tryit(|| starts_with("a", 1))
+blether index_of("a😀bc", "c")
+blether index_of("abc", "z")
+blether index_of([1, 2, [3]], [3])
+blether index_of([1, 2], 2.0)
+blether last_index_of("a😀bab", "b")
+blether last_index_of("abc", "")
+blether indices_o("a😀aa😀a", "a")
+blether indices_o("aaaa", "aa")
+blether indices_o([1, 2, 1, 1.0], 1)
+tryit(|| indices_o("abc", ""))
+tryit(|| indices_o("abc", 1))
+tryit(|| indices_o(5, 1))
+blether substring("a😀bcd", 1, 3)
+blether substring("abcd", -3, -1)
+blether substring("abcd", 3, 1)
+blether substring("abcd", -10, 99)
+blether substring("abcd", 1.7, 3.2)
+tryit(|| substring("abc", "a", 2))
+blether substr_between("a[bc]d", "[", "]")
+blether substr_between("a[bcd", "[", "]")
+blether substr_between("aé[x]", "[", "]")
+blether is_alpha("abC")
+blether is_alpha("ab1")
+blether is_alpha("")
+blether is_alpha("é")
+blether is_digit("123")
+blether is_digit("")
+blether is_space(" \t\n")
+blether is_space("")
+blether is_upper("AB1")
+blether is_upper("1")
+blether is_upper("Ab")
+blether is_lower("ab1")
+blether is_lower("aB")
+blether is_blank("")
+blether is_blank("  \t")
+blether is_blank("a")
+blether is_empty("")
+blether is_empty([])
+blether is_empty({})
+blether is_empty([1])
+tryit(|| is_empty(5))
+tryit(|| is_alpha(5))
+tryit(|| words(5))
+tryit(|| trim(5))
+blether split_by([1, 2, 3, -3, 2.5, "a", naething, 0], "even")
+blether split_by([1, 2, 3, -3, 2.5, "a", naething, 0], "odd")
+blether split_by([1, 2, 3, -3, 2.5, "a", naething, 0], "positive")
+blether split_by([1, 2, 3, -3, 2.5, "a", naething, 0], "negative")
+blether split_by([1, 2, 3, -3, 2.5, "a", naething, 0, []], "truthy")
+blether split_by([1, 2, 3, -3, 2.5, "a", naething, 0], "nil")
+blether split_by([1, 2, 3, -3, 2.5, "a", naething, 0], "string")
+blether split_by([1, 2, 3, -3, 2.5, "a", naething, 0], "number")
+tryit(|| split_by([1], "wat"))
+tryit(|| split_by([1], 5))"####,
+            r####"[a, 😀, b]
+😀
+b
+b
+Jings! Something went awfy wrang: Index 3 oot o' bounds fer string o' length 3
+Jings! Something went awfy wrang: Index -1 oot o' bounds fer string o' length 3
+Jings! Something went awfy wrang: char_at() needs a string
+Jings! Something went awfy wrang: char_at() needs an integer index
+128512
+😀
+A
+Jings! Something went awfy wrang: Cannae get ord o' empty string!
+Jings! Something went awfy wrang: Invalid Unicode codepoint: 55296
+Jings! Something went awfy wrang: chr() needs a valid Unicode codepoint (0 to 1114111), got 1114112
+Jings! Something went awfy wrang: chr() needs an integer
+Jings! Something went awfy wrang: chr() needs an integer
+[hi]
+[hi  ]
+[  hi]
+[hixy]
+[xxyhi]
+[a, b, c, d]
+[a, b, c]
+2
+[, , x]
+[]
+Hello World  éa X
+éa
+Abc
+AbC é1
+[  ab   ]
+[**ab***]
+[ab]
+[   ab]
+[😀😀😀ab]
+[ab---]
+[ab   ]
+Jings! Something went awfy wrang: pad_right() needs (string, width, pad_char)
+Jings! Something went awfy wrang: center() needs a width
+Jings! Something went awfy wrang: pad_left() needs (string, width, pad_char)
+ababab
+😀😀
+Jings! Something went awfy wrang: Cannae repeat a negative number o' times!
+Jings! Something went awfy wrang: repeat() needs a string and an integer
+Jings! Something went awfy wrang: repeat() wid be ower muckle (4000000000 is mair than the 1073741824 limit), ya greedy gannet!
+a+b+c
+_a_😀_b_
+a+b-c
+_abc
+Jings! Something went awfy wrang: replace() needs three strings
+aye
+nae
+aye
+nae
+Jings! Something went awfy wrang: starts_with() needs two strings
+3
+-1
+2
+1
+4
+3
+[0, 2, 3, 5]
+[0, 2]
+[0, 2, 3]
+Jings! Something went awfy wrang: Cannae search fer an empty string, ya numpty!
+Jings! Something went awfy wrang: indices_o() on string needs a string needle
+Jings! Something went awfy wrang: indices_o() needs a list or string
+😀b
+bc
+
+abcd
+bc
+Jings! Something went awfy wrang: substring() needs integer indices
+bc
+naething
+x
+aye
+nae
+nae
+nae
+aye
+nae
+aye
+nae
+aye
+nae
+nae
+aye
+nae
+aye
+aye
+nae
+aye
+aye
+aye
+nae
+Jings! Something went awfy wrang: is_empty() needs a string, list, or dict
+Jings! Something went awfy wrang: is_alpha() needs a string
+Jings! Something went awfy wrang: words() needs a string
+Jings! Something went awfy wrang: trim() needs a string
+[[2, 0], [1, 3, -3, 2.5, a, naething]]
+[[1, 3, -3], [2, 2.5, a, naething, 0]]
+[[1, 2, 3, 2.5], [-3, a, naething, 0]]
+[[-3], [1, 2, 3, 2.5, a, naething, 0]]
+[[1, 2, 3, -3, 2.5, a], [naething, 0, []]]
+[[naething], [1, 2, 3, -3, 2.5, a, 0]]
+[[a], [1, 2, 3, -3, 2.5, naething, 0]]
+[[1, 2, 3, -3, 2.5, 0], [a, naething]]
+Jings! Something went awfy wrang: Unknown predicate 'wat'. Try: even, odd, positive, negative, truthy, nil, string, number
+Jings! Something went awfy wrang: split_by() needs a list and a predicate string"####,
+        ),
+        (
+            "00114 list builtins and tae_bool match the interpreter",
+            r####"dae tryit(f) {
+    hae_a_bash {
+        blether f()
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+}
+blether zip([1, 2, 3], ["a", "b"])
+blether zip([], [1])
+tryit(|| zip([1], 2))
+blether enumerate(["x", "y"])
+tryit(|| enumerate("x"))
+blether flatten([1, [2, 3], [[4]], []])
+tryit(|| flatten(1))
+blether uniq([1, 1.0, "1", 1, [1], [1], {"a": 1}, {"a": 1}, naething, naething, aye, 1.0, 0.0])
+blether uniq([[1, 2], [1, 2.0], [1, 2]])
+tryit(|| uniq(1))
+blether unique([1, 1.0, "1", 1, [1], [1.0], {"a": 1}, {"a": 1.0}, naething, naething])
+tryit(|| unique("a"))
+blether chunks([1, 2, 3, 4, 5], 2)
+blether chunks([1, 2, 3], 10)
+blether chunks([], 3)
+blether chunks([1, 2, 3], 2.9)
+tryit(|| chunks([1], 0))
+tryit(|| chunks([1], "a"))
+tryit(|| chunks(1, 2))
+blether grup([1, 2, 3, 4, 5], 2)
+blether grup([1, 2, 3], 9223372036854775807)
+tryit(|| grup([1], 0))
+tryit(|| grup([1], 1.0))
+tryit(|| grup(1, 1))
+blether pair_up([1, 2, 3, 4, 5])
+blether pair_up([])
+tryit(|| pair_up(1))
+blether interleave([1, 2, 3], ["a"])
+blether fankle([1], ["a", "b", "c"])
+blether ceilidh([1, 2], ["a", "b"])
+blether ceilidh([], [])
+tryit(|| interleave(1, [2]))
+tryit(|| fankle([1], 2))
+tryit(|| ceilidh(1, 2))
+blether tak([1, 2, 3], 2)
+blether tak([1, 2, 3], -1)
+blether tak([1, 2, 3], 99)
+blether tak([1, 2, 3], 1.9)
+blether tak([1, 2, 3], 9223372036854775807)
+blether drap([1, 2, 3], 2)
+blether drap([1, 2, 3], -5)
+blether drap([1, 2, 3], 99)
+blether drap([1, 2, 3], 1.5)
+tryit(|| tak(1, 2))
+tryit(|| tak([1], "a"))
+tryit(|| drap("ab", 1))
+blether grup_runs([1, 1, 2, 2.0, 1, 3])
+blether grup_runs([])
+blether grup_runs([[1], [1], [2]])
+tryit(|| grup_runs(1))
+blether indices_o([1, 2, 1], 1)
+blether tae_bool(0)
+blether tae_bool([])
+blether tae_bool("a")
+blether tae_bool(naething)
+blether tae_bool(0.0)"####,
+            r####"[[1, a], [2, b]]
+[]
+Jings! Something went awfy wrang: zip() needs two lists
+[[0, x], [1, y]]
+Jings! Something went awfy wrang: enumerate() needs a list
+[1, 2, 3, [4]]
+Jings! Something went awfy wrang: flatten() needs a list
+[1, 1, 1, [1], {"a": 1}, naething, aye, 0]
+[[1, 2], [1, 2]]
+Jings! Something went awfy wrang: uniq() needs a list
+[1, 1, [1], {"a": 1}, naething]
+Jings! Something went awfy wrang: unique() needs a list
+[[1, 2], [3, 4], [5]]
+[[1, 2, 3]]
+[]
+[[1, 2], [3]]
+Jings! Something went awfy wrang: chunks() size must be positive
+Jings! Something went awfy wrang: chunks() needs an integer size
+Jings! Something went awfy wrang: chunks() needs a list
+[[1, 2], [3, 4], [5]]
+[[1, 2, 3]]
+Jings! Something went awfy wrang: grup() needs a positive chunk size
+Jings! Something went awfy wrang: grup() needs a list and an integer
+Jings! Something went awfy wrang: grup() needs a list and an integer
+[[1, 2], [3, 4], [5]]
+[]
+Jings! Something went awfy wrang: pair_up() needs a list
+[1, a, 2, 3]
+[1, a, b, c]
+[1, a, 2, b]
+[]
+Jings! Something went awfy wrang: interleave() needs two lists
+Jings! Something went awfy wrang: fankle() needs two lists
+Jings! Something went awfy wrang: ceilidh needs two lists
+[1, 2]
+[]
+[1, 2, 3]
+[1]
+[1, 2, 3]
+[3]
+[1, 2, 3]
+[]
+[2, 3]
+Jings! Something went awfy wrang: tak() needs a list and an integer
+Jings! Something went awfy wrang: tak() needs a list and an integer
+Jings! Something went awfy wrang: drap() needs a list and an integer
+[[1, 1], [2, 2], [1], [3]]
+[]
+[[[1], [1]], [[2]]]
+Jings! Something went awfy wrang: grup_runs() needs a list
+[0, 2]
+nae
+nae
+aye
+nae
+nae"####,
+        ),
+        (
+            "00114 conversion and bit builtins match the interpreter on i64 edges",
+            r####"dae tryit(f) {
+    hae_a_bash {
+        blether f()
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+}
+blether tae_binary(10)
+blether tae_binary(0)
+blether tae_binary(-1)
+blether tae_hex(255)
+blether tae_hex(-255)
+blether tae_hex(-9223372036854775807 - 1)
+blether tae_octal(64)
+blether tae_octal(-8)
+tryit(|| tae_binary(1.5))
+tryit(|| tae_hex("a"))
+tryit(|| tae_octal(naething))
+blether fae_binary("1010")
+blether fae_binary("0b11")
+blether fae_binary("0b0b11")
+blether fae_binary("-101")
+blether fae_binary("+11")
+tryit(|| fae_binary("102"))
+tryit(|| fae_binary(""))
+tryit(|| fae_binary("0b"))
+tryit(|| fae_binary("-0b1"))
+tryit(|| fae_binary(repeat("1", 64)))
+tryit(|| fae_binary(5))
+blether fae_hex("ff")
+blether fae_hex("0xFF")
+blether fae_hex("-ff")
+blether fae_hex("7fffffffffffffff")
+blether fae_hex("0b1")
+tryit(|| fae_hex("8000000000000000"))
+tryit(|| fae_hex("xyz"))
+tryit(|| fae_hex("1_0"))
+tryit(|| fae_hex(1))
+blether bit_an(12, 10)
+blether bit_or(12, 10)
+blether bit_xor(12, 10)
+blether bit_an(-1, 255)
+blether bit_or(-8, 3)
+blether bit_xor(-1, 5)
+blether bit_nae(0)
+blether bit_nae(-1)
+blether bit_nae(9223372036854775807)
+blether bit_shove_left(1, 4)
+blether bit_shove_left(1, 62)
+blether bit_shove_left(1, 63)
+blether bit_shove_left(3, 63)
+blether bit_shove_left(-1, 60)
+blether bit_shove_right(256, 4)
+blether bit_shove_right(-256, 4)
+blether bit_shove_right(-1, 63)
+tryit(|| bit_shove_left(1, 64))
+tryit(|| bit_shove_right(1, -1))
+tryit(|| bit_an(1.0, 1))
+tryit(|| bit_or("a", 1))
+tryit(|| bit_xor(1, naething))
+tryit(|| bit_nae(1.5))
+tryit(|| bit_shove_left(1.0, 1))
+blether bit_coont(255)
+blether bit_coont(0)
+blether bit_coont(-1)
+blether bit_coont(-9223372036854775807 - 1)
+tryit(|| bit_coont("a"))"####,
+            r####"1010
+0
+1111111111111111111111111111111111111111111111111111111111111111
+ff
+ffffffffffffff01
+8000000000000000
+100
+1777777777777777777770
+Jings! Something went awfy wrang: tae_binary() needs an integer
+Jings! Something went awfy wrang: tae_hex() needs an integer
+Jings! Something went awfy wrang: tae_octal() needs an integer
+10
+3
+3
+-5
+3
+Jings! Something went awfy wrang: Cannae parse '102' as binary
+Jings! Something went awfy wrang: Cannae parse '' as binary
+Jings! Something went awfy wrang: Cannae parse '0b' as binary
+Jings! Something went awfy wrang: Cannae parse '-0b1' as binary
+Jings! Something went awfy wrang: Cannae parse '1111111111111111111111111111111111111111111111111111111111111111' as binary
+Jings! Something went awfy wrang: fae_binary() needs a string
+255
+255
+-255
+9223372036854775807
+177
+Jings! Something went awfy wrang: Cannae parse '8000000000000000' as hex
+Jings! Something went awfy wrang: Cannae parse 'xyz' as hex
+Jings! Something went awfy wrang: Cannae parse '1_0' as hex
+Jings! Something went awfy wrang: fae_hex() needs a string
+8
+14
+6
+255
+-5
+-6
+-1
+0
+-9223372036854775808
+16
+4611686018427387904
+-9223372036854775808
+-9223372036854775808
+-1152921504606846976
+16
+-16
+-1
+Jings! Something went awfy wrang: Shift amount must be 0-63, ya numpty!
+Jings! Something went awfy wrang: Shift amount must be 0-63, ya numpty!
+Jings! Something went awfy wrang: bit_an() needs two integers
+Jings! Something went awfy wrang: bit_or() needs two integers
+Jings! Something went awfy wrang: bit_xor() needs two integers
+Jings! Something went awfy wrang: bit_nae() needs an integer
+Jings! Something went awfy wrang: bit_shove_left() needs two integers
+8
+0
+64
+1
+Jings! Something went awfy wrang: bit_coont() needs an integer"####,
+        ),
+        (
+            "00114 json_parse, json_pretty and assertions match the interpreter",
+            r####"dae tryit(f) {
+    hae_a_bash {
+        blether f()
+    } gin_it_gangs_wrang e {
+        blether e
+    }
+}
+blether json_parse("  [1, 2.5, -3, 1e2, 1E-2, true, false, null, \"hi\"]  ")
+blether json_parse("{\"a\": 1, \"b\": [1, {\"c\": null}], \"a\": 2, \"1\": \"one\"}")
+blether json_parse("{}")
+blether json_parse("[]")
+blether json_parse("12345678901234567890")
+blether json_parse("9223372036854775807")
+blether json_parse("-9223372036854775808")
+blether json_parse("-0")
+blether json_parse("1 2")
+blether json_parse("1.")
+blether json_parse("\"a\\n\\t\\\"\\\\\\/b\\u0041\\u00e9\\ud83d\\q\"")
+blether json_parse("\"😀 é\"")
+blether json_parse("1e999")
+blether json_parse("1.5e+3")
+blether whit_kind(json_parse("1"))
+blether whit_kind(json_parse("1.0"))
+blether whit_kind(json_parse("1e2"))
+tryit(|| json_parse(""))
+tryit(|| json_parse("   "))
+tryit(|| json_parse("["))
+tryit(|| json_parse("[1"))
+tryit(|| json_parse("[1 2]"))
+tryit(|| json_parse("{\"a\" 1}"))
+tryit(|| json_parse("{\"a\": 1"))
+tryit(|| json_parse("{a: 1}"))
+tryit(|| json_parse("{\"a\": 1 \"b\": 2}"))
+tryit(|| json_parse("tru"))
+tryit(|| json_parse("fals"))
+tryit(|| json_parse("nul"))
+tryit(|| json_parse("?"))
+tryit(|| json_parse("-"))
+tryit(|| json_parse("-e5"))
+tryit(|| json_parse("1e"))
+tryit(|| json_parse("1.5e+"))
+tryit(|| json_parse("\"abc"))
+tryit(|| json_parse("\"abc\\"))
+tryit(|| json_parse("\"\\u00\""))
+tryit(|| json_parse(5))
+tryit(|| json_parse(repeat("[", 600) + repeat("]", 600)))
+blether len(json_parse(repeat("[", 512) + repeat("]", 512)))
+blether json_pretty([1, [2, {"a": [], "b": {}}], "x"])
+blether json_pretty({"a": 1, 2: 3.5, "c": [naething, aye, nae]})
+blether json_pretty([])
+blether json_pretty({})
+blether json_pretty("q\"uote\n")
+blether json_pretty(1.0)
+blether json_pretty(naething)
+blether json_stringify_pretty({"k": [1, 2]})
+ken cyc = [1]
+shove(cyc, cyc)
+tryit(|| json_pretty(cyc))
+tryit(|| json_stringify_pretty(cyc))
+tryit(|| assert(aye, "fine"))
+blether assert(1, "fine")
+tryit(|| assert(nae, "it broke"))
+tryit(|| assert(0, 42))
+tryit(|| assert([], [1, "a"]))
+blether assert_equal(1, 1.0)
+blether assert_equal([1, {"a": 2}], [1, {"a": 2}])
+tryit(|| assert_equal(1, 2))
+tryit(|| assert_equal("a", "b"))
+tryit(|| assert_equal([1], [2]))
+blether assert_nae_equal(1, 2)
+tryit(|| assert_nae_equal(1, 1.0))
+tryit(|| assert_nae_equal("x", "x"))"####,
+            r####"[1, 2.5, -3, 100, 0.01, aye, nae, naething, hi]
+{"a": 2, "b": [1, {"c": naething}], "1": one}
+{}
+[]
+12345678901234567000
+9223372036854775807
+-9223372036854775808
+0
+1
+1
+a
+	"\/bAéq
+😀 é
+inf
+1500
+integer
+float
+float
+Jings! Something went awfy wrang: Empty JSON string
+Jings! Something went awfy wrang: Empty JSON string
+Jings! Something went awfy wrang: Unexpected end of JSON
+Jings! Something went awfy wrang: Unterminated JSON array
+Jings! Something went awfy wrang: Expected ']' or ',' in JSON array, got '2'
+Jings! Something went awfy wrang: Expected ':' in JSON object
+Jings! Something went awfy wrang: Unterminated JSON object
+Jings! Something went awfy wrang: Expected string key in JSON object
+Jings! Something went awfy wrang: Expected '}' or ',' in JSON object, got '"'
+Jings! Something went awfy wrang: Invalid JSON value 'true'
+Jings! Something went awfy wrang: Invalid JSON value 'false'
+Jings! Something went awfy wrang: Invalid JSON value 'null'
+Jings! Something went awfy wrang: Unexpected character '?' in JSON
+Jings! Something went awfy wrang: Invalid integer: -
+Jings! Something went awfy wrang: Invalid number: -e5
+Jings! Something went awfy wrang: Invalid number: 1e
+Jings! Something went awfy wrang: Invalid number: 1.5e+
+Jings! Something went awfy wrang: Unterminated JSON string
+Jings! Something went awfy wrang: Unterminated string escape
+Jings! Something went awfy wrang: Invalid unicode escape
+Jings! Something went awfy wrang: json_parse() expects a string, ya numpty!
+Jings! Something went awfy wrang: JSON's nested ower deep (mair than 512 levels) - ah'm no' diggin' that far!
+1
+[
+  1,
+  [
+    2,
+    {
+      "a": [],
+      "b": {}
+    }
+  ],
+  "x"
+]
+{
+  "a": 1,
+  "2": 3.5,
+  "c": [
+    null,
+    true,
+    false
+  ]
+}
+[]
+{}
+"q\"uote\n"
+1
+null
+{
+  "k": [
+    1,
+    2
+  ]
+}
+Jings! Something went awfy wrang: Cannae write JSON fer a list or dict that contains itsel - it wid gang roond forever!
+Jings! Something went awfy wrang: Cannae write JSON fer a list or dict that contains itsel - it wid gang roond forever!
+aye
+aye
+Jings! Something went awfy wrang: Assertion failed: it broke
+Jings! Something went awfy wrang: Assertion failed: 42
+Jings! Something went awfy wrang: Assertion failed: [1, a]
+aye
+aye
+Jings! Something went awfy wrang: Assertion failed: expected 1 but got 2
+Jings! Something went awfy wrang: Assertion failed: expected a but got b
+Jings! Something went awfy wrang: Assertion failed: expected [1] but got [2]
+aye
+Jings! Something went awfy wrang: Assertion failed: 1 should not equal 1
+Jings! Something went awfy wrang: Assertion failed: x should not equal x"####,
+        ),
+    ]);
+}
