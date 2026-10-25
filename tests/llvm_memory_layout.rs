@@ -1,8 +1,9 @@
 #![cfg(feature = "llvm")]
 //! Native backend: memory-layout prerequisites for reference counting (stage R0 of
 //! `wrk_docs/2026.10.23 - DES - LLVM 18-19 upgrade and reference counting.md`, 3.8).
-//! R0.1 one allocator.
+//! R0.1 one allocator, R0.2 stable instance identity.
 
+use std::fmt::Write as _;
 use std::process::{Command, Stdio};
 
 use mdhavers::{parse, LLVMCompiler};
@@ -74,4 +75,53 @@ blether len(u) + len(cs) + len(parts) + len(ys) + len(zs) + d["k"] + f(1) + m()
         assert!(ir.contains(alloc), "expected a call to {alloc}");
     }
     assert_eq!(run_ok(src), vec!["24"]);
+}
+
+// ---------- R0.2: an instance keeps its identity while it grows ----------
+
+#[test]
+fn instance_stays_one_object_while_fields_are_added() {
+    // The instance is reachable from a list, a dict, a closure and a second variable.
+    // Adding many fields (through masel and from outside) must not split it into copies.
+    let mut src = String::from(
+        r#"
+kin Bag {
+    dae init() { masel.n = 0 }
+    dae add(v) {
+        masel.n = masel.n + v
+        gie masel
+    }
+}
+ken b = Bag()
+ken alias = b
+ken xs = [b]
+ken d = {"b": b}
+ken peek = || b.n
+"#,
+    );
+    for i in 0..40 {
+        writeln!(src, "b.f{i} = {i}").unwrap();
+        writeln!(src, "xs[0].add(1)").unwrap();
+    }
+    src.push_str(
+        r#"
+alias.extra = "late"
+blether b.n
+blether alias.n
+blether xs[0].n
+blether d["b"].n
+blether peek()
+blether xs[0].f39
+blether d["b"].f0 + d["b"].f39
+blether b.extra
+blether xs[0].extra
+blether d["b"].add(2).n
+blether b.n
+"#,
+    );
+    let out = run_ok(&src);
+    assert_eq!(
+        out,
+        vec!["40", "40", "40", "40", "40", "39", "39", "late", "late", "42", "42"]
+    );
 }

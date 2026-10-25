@@ -5034,6 +5034,9 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Create an instance value: {tag=9, data=handle_ptr as i64}
     /// Instance values store a stable handle pointer (i8**) that points at the instance data.
+    /// The handle is the instance object (`ObjKind::Instance`, fixed size, never moves); the
+    /// data is a buffer the handle owns, and only the buffer is reallocated as fields are
+    /// added. So every reference to an instance is the same object for its whole life.
     ///
     /// Instance data memory layout: [i64 class_name_ptr][i64 field_count][field_entry0][field_entry1]...
     /// where field_entry = [{i8,i64} key (string)][{i8,i64} value]
