@@ -31757,10 +31757,23 @@ impl<'ctx> CodeGen<'ctx> {
                     self.collect_free_vars_stmt(&arm.body, &mut arm_bound, free);
                 }
             }
-            Stmt::Function { name, .. } => {
-                // Nested function - add name to bound, but don't recurse into body
-                // (nested function has its own scope)
+            Stmt::Function {
+                name, params, body, ..
+            } => {
+                // A nested function binds its name here. Its body is a scope of its own,
+                // but what it reads from further out must reach it through this scope,
+                // so those reads are free here too (MDH-BUG-FLU-00135).
                 bound.insert(name.clone());
+                let mut inner_bound = bound.clone();
+                inner_bound.extend(params.iter().map(|p| p.name.clone()));
+                for param in params {
+                    if let Some(default_expr) = &param.default {
+                        self.collect_free_vars(default_expr, &inner_bound, free);
+                    }
+                }
+                for s in body {
+                    self.collect_free_vars_stmt(s, &mut inner_bound, free);
+                }
             }
             Stmt::TryCatch {
                 try_block,
@@ -31971,6 +31984,20 @@ impl<'ctx> CodeGen<'ctx> {
             Expr::BlockExpr { statements, .. } => statements,
             _ => &[],
         };
+        // A lambda body is a function frame: its `ken`s are locals, and a `dae` in it
+        // is declared with its captures up front, as in `compile_function`
+        // (MDH-BUG-FLU-00135).
+        let saved_in_user_function = std::mem::replace(&mut self.in_user_function, true);
+        let saved_block_functions = std::mem::take(&mut self.block_function_symbols);
+        self.nested_function_scopes.push(HashMap::new());
+        self.predeclare_locals_for_capture(body_stmts);
+        let captured_in_body = self.predeclare_nested_functions(body_stmts);
+        for param in params {
+            if captured_in_body.contains(param) {
+                let _ = self.ensure_boxed_variable(param);
+            }
+        }
+        self.boxed_vars.extend(captured_in_body);
         self.prebox_captured_names(&param_names, &bindings, body_stmts);
 
         // Compile the lambda body
@@ -31991,6 +32018,9 @@ impl<'ctx> CodeGen<'ctx> {
             let result = self.compile_expr(body)?;
             self.builder.build_return(Some(&result)).unwrap();
         }
+        self.nested_function_scopes.pop();
+        self.block_function_symbols = saved_block_functions;
+        self.in_user_function = saved_in_user_function;
 
         // Restore state
         self.current_function = saved_function;

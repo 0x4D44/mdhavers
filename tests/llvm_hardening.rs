@@ -846,3 +846,53 @@ blether chunks([1, 2, 3], 3)
         ]
     );
 }
+
+// ---------- MDH-BUG-FLU-00135: a dae nested in a lambda reads the lambda's scope ----------
+
+#[test]
+fn dae_nested_in_a_lambda_reads_the_lambdas_scope() {
+    let out = run_ok(
+        r#"
+ken f1 = |p| { ken out = p + 1  dae inner() { gie out }  gie out }
+blether f1(5)
+ken f2 = |p| { ken out = p + 1  dae inner() { gie out }  gie inner() }
+blether f2(5)
+ken f3 = |p| { dae inner() { gie p * 2 }  gie inner() }
+blether f3(5)
+dae outerfn() {
+    ken z = 7
+    ken f = |p| { dae inner() { gie z + p }  gie inner() }
+    gie f(1)
+}
+blether outerfn()
+ken g = 40
+ken f4 = |p| { dae inner() { gie g + p }  gie inner() }
+blether f4(2)
+ken f5 = |p| {
+    ken out = p + 1
+    dae inner(q) {
+        ken k = |x| x + out + q + p
+        gie k(100)
+    }
+    gie inner(10)
+}
+blether f5(5)
+dae mk() {
+    ken base = 3
+    ken f6 = |p| { ken c = 0  dae bump() { c = c + base + p  gie c }  bump()  gie bump() }
+    gie f6(1)
+}
+blether mk()
+dae a() {
+    ken z = 9
+    dae b() {
+        dae c() { gie z + 1 }
+        gie c()
+    }
+    gie b()
+}
+blether a()
+"#,
+    );
+    assert_eq!(out, vec!["6", "6", "10", "8", "42", "121", "8", "10"]);
+}
