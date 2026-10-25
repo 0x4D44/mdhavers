@@ -126,6 +126,37 @@ static const char *__mdh_type_name(MdhValue v);
 static int64_t *__mdh_kv_payload_ptr(MdhValue v);
 static int64_t __mdh_kv_find(MdhValue kv, MdhValue key);
 
+/* ========== Reference counting conventions (stage R1) ==========
+ *
+ * As mdh_runtime.h says: arguments are borrowed, results owned (+1). A store of a value
+ * into memory that outlives the call (a list item, a dict entry, a thread, a channel, a
+ * table, a global) holds one reference: it retains a borrowed value, or takes over a +1
+ * the storing code made itself (a fresh object, or what compiled code returned), which
+ * is what the `_owned` helpers below are for. An overwrite stores the new value first
+ * and releases the old one after. A value removed and handed back to the caller keeps
+ * the container's reference (it becomes the caller's +1). */
+
+/* Push a value whose reference the caller hands over. Also used by the Rust runtime. */
+void __mdh_list_push_owned(MdhValue list, MdhValue value);
+/* dict[key] = value, taking over the caller's references to both. Also used by Rust. */
+MdhValue __mdh_dict_set_owned(MdhValue dict, MdhValue key, MdhValue value);
+/* Hurl a message the caller hands over (__mdh_last_error takes its reference). */
+static void __mdh_hurl_owned(MdhValue msg);
+
+/* `v` retained: a borrowed value handed to an `_owned` helper. */
+static MdhValue __mdh_retained(MdhValue v) {
+    __mdh_retain(v);
+    return v;
+}
+
+/* dict[name] (borrowed, as __mdh_dict_get) with a key made from `name` and dropped. */
+static MdhValue __mdh_dict_get_named(MdhValue dict, const char *name) {
+    MdhValue key = __mdh_make_string(name);
+    MdhValue v = __mdh_dict_get(dict, key);
+    __mdh_release(key);
+    return v;
+}
+
 /* ========== Native Object Support ========== */
 
 typedef enum {
@@ -296,7 +327,7 @@ static char *__mdh_alloc_text(int size_overflowed, size_t out_len);
 static void __mdh_hurl_text_at_line(const char *text) {
     int64_t line = __mdh_err_line();
     if (line <= 0) {
-        __mdh_hurl(__mdh_make_string(text));
+        __mdh_hurl_owned(__mdh_make_string(text));
         return;
     }
     char suffix[40];
@@ -308,7 +339,7 @@ static void __mdh_hurl_text_at_line(const char *text) {
     char *buf = __mdh_alloc_text(overflowed, total);
     memcpy(buf, text, text_len);
     memcpy(buf + text_len, suffix, (size_t)suffix_len + 1);
-    __mdh_hurl(__mdh_make_string(buf));
+    __mdh_hurl_owned(__mdh_string_from_buf(buf));
 }
 
 /* Division or remainder by zero, as the interpreter words it. */
@@ -347,7 +378,7 @@ void __mdh_int_overflow_error(void) {
     } else {
         snprintf(buf, sizeof(buf), "Wheesht! Yer number's too muckle - it's overflowed!");
     }
-    __mdh_hurl(__mdh_make_string(buf));
+    __mdh_hurl_owned(__mdh_make_string(buf));
 }
 
 static MdhValue __mdh_int_overflow(void) {
@@ -366,7 +397,7 @@ static char *__mdh_alloc_text(int size_overflowed, size_t out_len) {
         buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, out_len + 1);
     }
     if (!buf) {
-        __mdh_hurl(__mdh_make_string(MDH_STRING_TOO_BIG_MSG));
+        __mdh_hurl_owned(__mdh_make_string(MDH_STRING_TOO_BIG_MSG));
     }
     return buf;
 }
@@ -900,7 +931,7 @@ void __mdh_type_error(const char *op, uint8_t got1, uint8_t got2) {
             } else {
                 snprintf(buf, sizeof(buf), "That's pure mince! Type error: %s", msg);
             }
-            __mdh_hurl(__mdh_make_string(buf));
+            __mdh_hurl_owned(__mdh_make_string(buf));
             return;
         }
     }
@@ -926,7 +957,7 @@ void __mdh_type_error(const char *op, uint8_t got1, uint8_t got2) {
         snprintf(buf, sizeof(buf), "Och! Type error in '%s'", op);
     }
 
-    __mdh_hurl(__mdh_make_string(buf));
+    __mdh_hurl_owned(__mdh_make_string(buf));
 }
 
 MdhValue __mdh_type_of(MdhValue a) {
@@ -1027,34 +1058,34 @@ static MdhNativeObject *__mdh_tri_object_new(const char *kind) {
     obj->ctor_kind = NULL;
     obj->fields = __mdh_empty_dict();
 
-    obj->fields = __mdh_dict_set(
+    obj->fields = __mdh_dict_set_owned(
         obj->fields,
         __mdh_make_string("type"),
         __mdh_make_string(kind ? kind : "")
     );
 
     if (__mdh_tri_has_transform(kind)) {
-        obj->fields = __mdh_dict_set(
+        obj->fields = __mdh_dict_set_owned(
             obj->fields,
             __mdh_make_string("position"),
             __mdh_tri_make_vec3("Vec3", 0.0, 0.0, 0.0)
         );
-        obj->fields = __mdh_dict_set(
+        obj->fields = __mdh_dict_set_owned(
             obj->fields,
             __mdh_make_string("rotation"),
             __mdh_tri_make_vec3("Euler", 0.0, 0.0, 0.0)
         );
-        obj->fields = __mdh_dict_set(
+        obj->fields = __mdh_dict_set_owned(
             obj->fields,
             __mdh_make_string("scale"),
             __mdh_tri_make_vec3("Vec3", 1.0, 1.0, 1.0)
         );
-        obj->fields = __mdh_dict_set(
+        obj->fields = __mdh_dict_set_owned(
             obj->fields,
             __mdh_make_string("children"),
             __mdh_make_list(0)
         );
-        obj->fields = __mdh_dict_set(
+        obj->fields = __mdh_dict_set_owned(
             obj->fields,
             __mdh_make_string("parent"),
             __mdh_make_nil()
@@ -1066,9 +1097,9 @@ static MdhNativeObject *__mdh_tri_object_new(const char *kind) {
 
 static MdhValue __mdh_tri_make_vec3(const char *kind, double x, double y, double z) {
     MdhNativeObject *obj = __mdh_tri_object_new(kind);
-    obj->fields = __mdh_dict_set(obj->fields, __mdh_make_string("x"), __mdh_make_float(x));
-    obj->fields = __mdh_dict_set(obj->fields, __mdh_make_string("y"), __mdh_make_float(y));
-    obj->fields = __mdh_dict_set(obj->fields, __mdh_make_string("z"), __mdh_make_float(z));
+    obj->fields = __mdh_dict_set_owned(obj->fields, __mdh_make_string("x"), __mdh_make_float(x));
+    obj->fields = __mdh_dict_set_owned(obj->fields, __mdh_make_string("y"), __mdh_make_float(y));
+    obj->fields = __mdh_dict_set_owned(obj->fields, __mdh_make_string("z"), __mdh_make_float(z));
     return __mdh_make_native(obj);
 }
 
@@ -1085,7 +1116,7 @@ static void __mdh_tri_set_arg(
     if (args && index < argc) {
         value = args[index];
     }
-    obj->fields = __mdh_dict_set(obj->fields, __mdh_make_string(name), value);
+    obj->fields = __mdh_dict_set_owned(obj->fields, __mdh_make_string(name), __mdh_retained(value));
 }
 
 static void __mdh_tri_apply_constructor_args(
@@ -1149,16 +1180,19 @@ static void __mdh_tri_add_children(MdhNativeObject *obj, int argc, MdhValue *arg
     if (children.tag != MDH_TAG_LIST) {
         children = __mdh_make_list(0);
         obj->fields = __mdh_dict_set(obj->fields, key, children);
+        __mdh_release(children); /* the fields dict holds it now */
     }
     for (int i = 0; i < argc; i++) {
         __mdh_list_push(children, args[i]);
     }
+    __mdh_release(key);
 }
 
 static void __mdh_tri_remove_children(MdhNativeObject *obj, int argc, MdhValue *args) {
     if (!obj || argc <= 0) return;
     MdhValue key = __mdh_make_string("children");
     MdhValue children = __mdh_dict_get_default(obj->fields, key, __mdh_make_nil());
+    __mdh_release(key);
     if (children.tag != MDH_TAG_LIST) return;
     MdhList *list = __mdh_get_list(children);
     if (!list) return;
@@ -1175,6 +1209,8 @@ static void __mdh_tri_remove_children(MdhNativeObject *obj, int argc, MdhValue *
         }
         if (!remove) {
             list->items[write++] = item;
+        } else {
+            __mdh_release(item); /* unlinked: its slot is overwritten or cut off below */
         }
     }
     list->length = write;
@@ -1290,7 +1326,7 @@ MdhValue __mdh_native_set(MdhValue obj, MdhValue key, MdhValue value) {
         prop ? prop : "",
         target
     );
-    __mdh_hurl(__mdh_make_string(buf));
+    __mdh_hurl_owned(__mdh_make_string(buf));
     return __mdh_make_nil();
 }
 
@@ -1367,64 +1403,64 @@ static MdhValue __mdh_native_call_internal(MdhValue obj, MdhValue method, int ar
         }
         if (strcmp(name, "luik_at") == 0 || strcmp(name, "lookAt") == 0) {
             if (argc > 0) {
-                native->fields = __mdh_dict_set(
+                native->fields = __mdh_dict_set_owned(
                     native->fields,
                     __mdh_make_string("lookAtTarget"),
-                    args[0]
+                    __mdh_retained(args[0])
                 );
             }
             return __mdh_make_nil();
         }
         if (strcmp(name, "set_sise") == 0 || strcmp(name, "setSize") == 0) {
             if (argc > 0) {
-                native->fields = __mdh_dict_set(
+                native->fields = __mdh_dict_set_owned(
                     native->fields,
                     __mdh_make_string("width"),
-                    args[0]
+                    __mdh_retained(args[0])
                 );
             }
             if (argc > 1) {
-                native->fields = __mdh_dict_set(
+                native->fields = __mdh_dict_set_owned(
                     native->fields,
                     __mdh_make_string("height"),
-                    args[1]
+                    __mdh_retained(args[1])
                 );
             }
             return __mdh_make_nil();
         }
         if (strcmp(name, "set_pixel_ratio") == 0 || strcmp(name, "setPixelRatio") == 0) {
             if (argc > 0) {
-                native->fields = __mdh_dict_set(
+                native->fields = __mdh_dict_set_owned(
                     native->fields,
                     __mdh_make_string("pixelRatio"),
-                    args[0]
+                    __mdh_retained(args[0])
                 );
             }
             return __mdh_make_nil();
         }
         if (strcmp(name, "render") == 0) {
             if (argc > 0) {
-                native->fields = __mdh_dict_set(
+                native->fields = __mdh_dict_set_owned(
                     native->fields,
                     __mdh_make_string("scene"),
-                    args[0]
+                    __mdh_retained(args[0])
                 );
             }
             if (argc > 1) {
-                native->fields = __mdh_dict_set(
+                native->fields = __mdh_dict_set_owned(
                     native->fields,
                     __mdh_make_string("camera"),
-                    args[1]
+                    __mdh_retained(args[1])
                 );
             }
             return __mdh_make_nil();
         }
         if (strcmp(name, "loop") == 0) {
             if (argc > 0) {
-                native->fields = __mdh_dict_set(
+                native->fields = __mdh_dict_set_owned(
                     native->fields,
                     __mdh_make_string("loopFn"),
-                    args[0]
+                    __mdh_retained(args[0])
                 );
             }
             return __mdh_make_nil();
@@ -1504,6 +1540,7 @@ MdhValue __mdh_tri_module(void) {
 void __mdh_blether(MdhValue a) {
     MdhValue s = __mdh_to_string(a);
     printf("%s\n", __mdh_get_string(s));
+    __mdh_release(s);
 }
 
 MdhValue __mdh_speir(MdhValue prompt) {
@@ -1693,10 +1730,16 @@ void __mdh_list_set(MdhValue list, int64_t index, MdhValue value) {
         return;
     }
 
-    l->items[pos] = value;
+    MdhValue old = l->items[pos];
+    l->items[pos] = __mdh_retained(value);
+    __mdh_release(old);
 }
 
 void __mdh_list_push(MdhValue list, MdhValue value) {
+    __mdh_list_push_owned(list, __mdh_retained(value));
+}
+
+void __mdh_list_push_owned(MdhValue list, MdhValue value) {
     if (list.tag != MDH_TAG_LIST) {
         __mdh_type_error("shove", list.tag, 0);
         return;
@@ -1709,12 +1752,12 @@ void __mdh_list_push(MdhValue list, MdhValue value) {
     if (l->length >= l->capacity) {
         int64_t new_cap = l->capacity > 0 ? l->capacity * 2 : 8;
         if (new_cap <= l->length || (uint64_t)new_cap > SIZE_MAX / sizeof(MdhValue)) {
-            __mdh_hurl(__mdh_make_string("Och! This list's grown ower muckle"));
+            __mdh_hurl_owned(__mdh_make_string("Och! This list's grown ower muckle"));
             return;
         }
         MdhValue *grown = (MdhValue *)__mdh_buf_realloc(l->items, sizeof(MdhValue) * (size_t)new_cap);
         if (!grown) {
-            __mdh_hurl(__mdh_make_string("Och! This list's grown ower muckle"));
+            __mdh_hurl_owned(__mdh_make_string("Och! This list's grown ower muckle"));
             return;
         }
         l->items = grown;
@@ -1732,10 +1775,11 @@ MdhValue __mdh_list_pop(MdhValue list) {
 
     MdhList *l = __mdh_get_list(list);
     if (l->length == 0) {
-        __mdh_hurl(__mdh_make_string("Cannae yank fae an empty list!"));
+        __mdh_hurl_owned(__mdh_make_string("Cannae yank fae an empty list!"));
         return __mdh_make_nil();
     }
 
+    /* The list's reference goes to the caller. */
     return l->items[--l->length];
 }
 
@@ -1981,12 +2025,11 @@ static void __mdh_value_to_string_sb(MdhStrBuf *out, MdhValue v) {
             __mdh_sb_append(out, "creel{");
             if (count > 0) {
                 const char **items = (const char **)__mdh_buf_alloc(sizeof(char *) * (size_t)count);
+                /* The key texts, owned until they have been written out. */
+                MdhValue *texts = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * (size_t)count);
                 for (int64_t i = 0; i < count; i++) {
-                    MdhValue k = entries[i * 2];
-                    MdhValue ks = (k.tag == MDH_TAG_STRING)
-                                      ? k
-                                      : __mdh_to_string(k);
-                    items[i] = __mdh_get_string(ks);
+                    texts[i] = __mdh_to_string(entries[i * 2]);
+                    items[i] = __mdh_get_string(texts[i]);
                 }
                 qsort(items, (size_t)count, sizeof(char *), __mdh_cmp_cstr);
                 for (int64_t i = 0; i < count; i++) {
@@ -1996,6 +2039,9 @@ static void __mdh_value_to_string_sb(MdhStrBuf *out, MdhValue v) {
                     __mdh_sb_append_char(out, '"');
                     __mdh_sb_append(out, items[i]);
                     __mdh_sb_append_char(out, '"');
+                }
+                for (int64_t i = 0; i < count; i++) {
+                    __mdh_release(texts[i]);
                 }
             }
             __mdh_sb_append_char(out, '}');
@@ -2069,7 +2115,7 @@ static void __mdh_value_to_string_sb(MdhStrBuf *out, MdhValue v) {
 
 MdhValue __mdh_to_string(MdhValue a) {
     if (a.tag == MDH_TAG_STRING) {
-        return a;
+        return __mdh_retained(a); /* the result is the caller's, like a fresh one */
     }
 
     MdhStrBuf sb;
@@ -2094,7 +2140,7 @@ MdhValue __mdh_to_int(MdhValue a) {
             if (*s != '\0' && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r' || *s == '\v' || *s == '\f')) {
                 char buf[256];
                 snprintf(buf, sizeof(buf), "Cannae turn '%s' intae an integer", s);
-                __mdh_hurl(__mdh_make_string(buf));
+                __mdh_hurl_owned(__mdh_make_string(buf));
                 return __mdh_make_int(0);
             }
             errno = 0;
@@ -2103,7 +2149,7 @@ MdhValue __mdh_to_int(MdhValue a) {
             if (errno == ERANGE || end == s || (end && *end != '\0')) {
                 char buf[256];
                 snprintf(buf, sizeof(buf), "Cannae turn '%s' intae an integer", s);
-                __mdh_hurl(__mdh_make_string(buf));
+                __mdh_hurl_owned(__mdh_make_string(buf));
                 return __mdh_make_int(0);
             }
             return __mdh_make_int((int64_t)val);
@@ -2117,7 +2163,7 @@ MdhValue __mdh_to_int(MdhValue a) {
                 "Cannae turn %s intae an integer",
                 t ? t : "that"
             );
-            __mdh_hurl(__mdh_make_string(buf));
+            __mdh_hurl_owned(__mdh_make_string(buf));
             return __mdh_make_int(0);
     }
 }
@@ -2136,7 +2182,7 @@ MdhValue __mdh_to_float(MdhValue a) {
             if (*s != '\0' && (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r' || *s == '\v' || *s == '\f')) {
                 char buf[256];
                 snprintf(buf, sizeof(buf), "Cannae turn '%s' intae a float", s);
-                __mdh_hurl(__mdh_make_string(buf));
+                __mdh_hurl_owned(__mdh_make_string(buf));
                 return __mdh_make_float(0.0);
             }
             errno = 0;
@@ -2145,7 +2191,7 @@ MdhValue __mdh_to_float(MdhValue a) {
             if (errno == ERANGE || end == s || (end && *end != '\0')) {
                 char buf[256];
                 snprintf(buf, sizeof(buf), "Cannae turn '%s' intae a float", s);
-                __mdh_hurl(__mdh_make_string(buf));
+                __mdh_hurl_owned(__mdh_make_string(buf));
                 return __mdh_make_float(0.0);
             }
             return __mdh_make_float(val);
@@ -2159,7 +2205,7 @@ MdhValue __mdh_to_float(MdhValue a) {
                 "Cannae turn %s intae a float",
                 t ? t : "that"
             );
-            __mdh_hurl(__mdh_make_string(buf));
+            __mdh_hurl_owned(__mdh_make_string(buf));
             return __mdh_make_float(0.0);
     }
 }
@@ -2206,7 +2252,7 @@ MdhValue __mdh_bytes_new(MdhValue size_val) {
 }
 
 MdhValue __mdh_bytes_from_string(MdhValue s) {
-    MdhValue str_val = s.tag == MDH_TAG_STRING ? s : __mdh_to_string(s);
+    MdhValue str_val = __mdh_to_string(s);
     const char *str = __mdh_get_string(str_val);
     size_t len = str ? strlen(str) : 0;
 
@@ -2219,6 +2265,7 @@ MdhValue __mdh_bytes_from_string(MdhValue s) {
     } else {
         bytes->data = NULL;
     }
+    __mdh_release(str_val);
 
     return (MdhValue){ .tag = MDH_TAG_BYTES, .data = (int64_t)(intptr_t)bytes };
 }
@@ -2278,7 +2325,7 @@ MdhValue __mdh_bytes_get(MdhValue bytes_val, MdhValue index_val) {
     if (idx < 0) idx += len;
 
     if (idx < 0 || idx >= len) {
-        __mdh_hurl(__mdh_make_string("bytes_get() index oot o' bounds"));
+        __mdh_hurl_owned(__mdh_make_string("bytes_get() index oot o' bounds"));
         return __mdh_make_int(0);
     }
 
@@ -2304,7 +2351,7 @@ MdhValue __mdh_bytes_set(MdhValue bytes_val, MdhValue index_val, MdhValue value_
                     ? value_val.data
                     : (int64_t)__mdh_get_float(value_val);
     if (v < 0 || v > 255) {
-        __mdh_hurl(__mdh_make_string("bytes_set value must be between 0 and 255"));
+        __mdh_hurl_owned(__mdh_make_string("bytes_set value must be between 0 and 255"));
         return bytes_val;
     }
 
@@ -2314,7 +2361,7 @@ MdhValue __mdh_bytes_set(MdhValue bytes_val, MdhValue index_val, MdhValue value_
     if (idx < 0) idx += len;
 
     if (idx < 0 || idx >= len) {
-        __mdh_hurl(__mdh_make_string("bytes_set() index oot o' bounds"));
+        __mdh_hurl_owned(__mdh_make_string("bytes_set() index oot o' bounds"));
         return bytes_val;
     }
 
@@ -2352,7 +2399,7 @@ MdhValue __mdh_bytes_read_u16be(MdhValue bytes_val, MdhValue offset_val) {
     int64_t len = bytes ? bytes->length : 0;
     int64_t off = offset_val.data;
     if (off < 0 || off + 2 > len) {
-        __mdh_hurl(__mdh_make_string("bytes_read_u16be out of bounds"));
+        __mdh_hurl_owned(__mdh_make_string("bytes_read_u16be out of bounds"));
         return __mdh_make_int(0);
     }
     uint16_t val = ((uint16_t)bytes->data[off] << 8) |
@@ -2369,7 +2416,7 @@ MdhValue __mdh_bytes_read_u32be(MdhValue bytes_val, MdhValue offset_val) {
     int64_t len = bytes ? bytes->length : 0;
     int64_t off = offset_val.data;
     if (off < 0 || off + 4 > len) {
-        __mdh_hurl(__mdh_make_string("bytes_read_u32be out of bounds"));
+        __mdh_hurl_owned(__mdh_make_string("bytes_read_u32be out of bounds"));
         return __mdh_make_int(0);
     }
     uint32_t val = ((uint32_t)bytes->data[off] << 24) |
@@ -2392,7 +2439,7 @@ MdhValue __mdh_bytes_write_u16be(MdhValue bytes_val, MdhValue offset_val, MdhVal
                     ? value_val.data
                     : (int64_t)__mdh_get_float(value_val);
     if (v < 0 || v > 0xFFFF) {
-        __mdh_hurl(__mdh_make_string("bytes_write_u16be value out of range"));
+        __mdh_hurl_owned(__mdh_make_string("bytes_write_u16be value out of range"));
         return bytes_val;
     }
 
@@ -2400,7 +2447,7 @@ MdhValue __mdh_bytes_write_u16be(MdhValue bytes_val, MdhValue offset_val, MdhVal
     int64_t len = bytes ? bytes->length : 0;
     int64_t off = offset_val.data;
     if (off < 0 || off + 2 > len) {
-        __mdh_hurl(__mdh_make_string("bytes_write_u16be out of bounds"));
+        __mdh_hurl_owned(__mdh_make_string("bytes_write_u16be out of bounds"));
         return bytes_val;
     }
 
@@ -2422,7 +2469,7 @@ MdhValue __mdh_bytes_write_u32be(MdhValue bytes_val, MdhValue offset_val, MdhVal
                     ? value_val.data
                     : (int64_t)__mdh_get_float(value_val);
     if (v < 0 || v > 0xFFFFFFFFLL) {
-        __mdh_hurl(__mdh_make_string("bytes_write_u32be value out of range"));
+        __mdh_hurl_owned(__mdh_make_string("bytes_write_u32be value out of range"));
         return bytes_val;
     }
 
@@ -2430,7 +2477,7 @@ MdhValue __mdh_bytes_write_u32be(MdhValue bytes_val, MdhValue offset_val, MdhVal
     int64_t len = bytes ? bytes->length : 0;
     int64_t off = offset_val.data;
     if (off < 0 || off + 4 > len) {
-        __mdh_hurl(__mdh_make_string("bytes_write_u32be out of bounds"));
+        __mdh_hurl_owned(__mdh_make_string("bytes_write_u32be out of bounds"));
         return bytes_val;
     }
 
@@ -2471,14 +2518,14 @@ MdhValue __mdh_random(int64_t min, int64_t max) {
 MdhValue __mdh_jammy(MdhValue min, MdhValue max) {
     if ((min.tag != MDH_TAG_INT && min.tag != MDH_TAG_FLOAT) ||
         (max.tag != MDH_TAG_INT && max.tag != MDH_TAG_FLOAT)) {
-        __mdh_hurl(__mdh_make_string("jammy() needs integer bounds"));
+        __mdh_hurl_owned(__mdh_make_string("jammy() needs integer bounds"));
         return __mdh_make_int(0);
     }
 
     int64_t min_i = (min.tag == MDH_TAG_FLOAT) ? (int64_t)__mdh_get_float(min) : min.data;
     int64_t max_i = (max.tag == MDH_TAG_FLOAT) ? (int64_t)__mdh_get_float(max) : max.data;
     if (min_i >= max_i) {
-        __mdh_hurl(__mdh_make_string("jammy() needs min < max, ya numpty!"));
+        __mdh_hurl_owned(__mdh_make_string("jammy() needs min < max, ya numpty!"));
         return __mdh_make_int(0);
     }
 
@@ -2488,14 +2535,14 @@ MdhValue __mdh_jammy(MdhValue min, MdhValue max) {
 MdhValue __mdh_random_int(MdhValue min, MdhValue max) {
     if ((min.tag != MDH_TAG_INT && min.tag != MDH_TAG_FLOAT) ||
         (max.tag != MDH_TAG_INT && max.tag != MDH_TAG_FLOAT)) {
-        __mdh_hurl(__mdh_make_string("random_int() needs integer bounds"));
+        __mdh_hurl_owned(__mdh_make_string("random_int() needs integer bounds"));
         return __mdh_make_int(0);
     }
 
     int64_t min_i = (min.tag == MDH_TAG_FLOAT) ? (int64_t)__mdh_get_float(min) : min.data;
     int64_t max_i = (max.tag == MDH_TAG_FLOAT) ? (int64_t)__mdh_get_float(max) : max.data;
     if (min_i > max_i) {
-        __mdh_hurl(__mdh_make_string("random_int() min must be <= max"));
+        __mdh_hurl_owned(__mdh_make_string("random_int() min must be <= max"));
         return __mdh_make_int(0);
     }
 
@@ -2543,18 +2590,29 @@ MdhValue __mdh_mono_ns(void) {
 
 /* ========== Network (Sockets + DNS) ========== */
 
+/* {ok: aye, value: value}. Takes over the caller's reference to `value` (every caller
+ * passes an immediate or a value it just made). */
 static MdhValue __mdh_result_ok(MdhValue value) {
     MdhValue dict = __mdh_empty_dict();
-    dict = __mdh_dict_set(dict, __mdh_make_string("ok"), __mdh_make_bool(true));
-    dict = __mdh_dict_set(dict, __mdh_make_string("value"), value);
+    dict = __mdh_dict_set_owned(dict, __mdh_make_string("ok"), __mdh_make_bool(true));
+    dict = __mdh_dict_set_owned(dict, __mdh_make_string("value"), value);
     return dict;
 }
 
 static MdhValue __mdh_result_err(const char *msg, int code) {
     MdhValue dict = __mdh_empty_dict();
-    dict = __mdh_dict_set(dict, __mdh_make_string("ok"), __mdh_make_bool(false));
-    dict = __mdh_dict_set(dict, __mdh_make_string("error"), __mdh_make_string(msg ? msg : ""));
-    dict = __mdh_dict_set(dict, __mdh_make_string("code"), __mdh_make_int(code));
+    dict = __mdh_dict_set_owned(dict, __mdh_make_string("ok"), __mdh_make_bool(false));
+    dict = __mdh_dict_set_owned(dict, __mdh_make_string("error"), __mdh_make_string(msg ? msg : ""));
+    dict = __mdh_dict_set_owned(dict, __mdh_make_string("code"), __mdh_make_int(code));
+    return dict;
+}
+
+/* The error result of a failed Rust call. `msg` points into r.error, which (with
+ * r.value) is the caller's and is dropped once the message has been copied. */
+static MdhValue __mdh_result_err_rs(const char *msg, MdhRsResult r) {
+    MdhValue dict = __mdh_result_err(msg, -1);
+    __mdh_release(r.error);
+    __mdh_release(r.value);
     return dict;
 }
 
@@ -2587,7 +2645,7 @@ static bool __mdh_port_value(MdhValue port, int *out_port) {
         return false;
     }
     if (p < 0 || p > 65535) {
-        __mdh_hurl(__mdh_make_string("Port must be between 0 and 65535"));
+        __mdh_hurl_owned(__mdh_make_string("Port must be between 0 and 65535"));
         return false;
     }
     *out_port = (int)p;
@@ -2635,8 +2693,8 @@ static MdhValue __mdh_addr_dict(const struct sockaddr_in *addr) {
     int port = ntohs(addr->sin_port);
 
     MdhValue dict = __mdh_empty_dict();
-    dict = __mdh_dict_set(dict, __mdh_make_string("host"), __mdh_make_string(host ? host : ""));
-    dict = __mdh_dict_set(dict, __mdh_make_string("port"), __mdh_make_int(port));
+    dict = __mdh_dict_set_owned(dict, __mdh_make_string("host"), __mdh_make_string(host ? host : ""));
+    dict = __mdh_dict_set_owned(dict, __mdh_make_string("port"), __mdh_make_int(port));
     return dict;
 }
 
@@ -2743,8 +2801,8 @@ MdhValue __mdh_socket_accept(MdhValue sock) {
 
     MdhValue addr_dict = __mdh_addr_dict(&addr);
     MdhValue info = __mdh_empty_dict();
-    info = __mdh_dict_set(info, __mdh_make_string("sock"), __mdh_make_int(new_fd));
-    info = __mdh_dict_set(info, __mdh_make_string("addr"), addr_dict);
+    info = __mdh_dict_set_owned(info, __mdh_make_string("sock"), __mdh_make_int(new_fd));
+    info = __mdh_dict_set_owned(info, __mdh_make_string("addr"), addr_dict);
     return __mdh_result_ok(info);
 }
 
@@ -2808,7 +2866,7 @@ MdhValue __mdh_socket_set_ttl(MdhValue sock, MdhValue ttl_val) {
         return __mdh_result_err("Invalid ttl", -1);
     }
     if (ttl < 0 || ttl > 255) {
-        __mdh_hurl(__mdh_make_string("socket_set_ttl expects 0..255"));
+        __mdh_hurl_owned(__mdh_make_string("socket_set_ttl expects 0..255"));
         return __mdh_result_err("Invalid ttl", -1);
     }
 #ifdef IP_TTL
@@ -2849,7 +2907,7 @@ MdhValue __mdh_socket_set_rcvbuf(MdhValue sock, MdhValue bytes_val) {
         return __mdh_result_err("Invalid rcvbuf size", -1);
     }
     if (bytes < 0 || bytes > INT_MAX) {
-        __mdh_hurl(__mdh_make_string("socket_set_rcvbuf expects a non-negative size"));
+        __mdh_hurl_owned(__mdh_make_string("socket_set_rcvbuf expects a non-negative size"));
         return __mdh_result_err("Invalid rcvbuf size", -1);
     }
     int buf = (int)bytes;
@@ -2869,7 +2927,7 @@ MdhValue __mdh_socket_set_sndbuf(MdhValue sock, MdhValue bytes_val) {
         return __mdh_result_err("Invalid sndbuf size", -1);
     }
     if (bytes < 0 || bytes > INT_MAX) {
-        __mdh_hurl(__mdh_make_string("socket_set_sndbuf expects a non-negative size"));
+        __mdh_hurl_owned(__mdh_make_string("socket_set_sndbuf expects a non-negative size"));
         return __mdh_result_err("Invalid sndbuf size", -1);
     }
     int buf = (int)bytes;
@@ -2947,14 +3005,15 @@ MdhValue __mdh_udp_recv_from(MdhValue sock, MdhValue max_len_val) {
     socklen_t addr_len = sizeof(addr);
     ssize_t n = recvfrom(fd, bytes->data, (size_t)max_len, 0, (struct sockaddr *)&addr, &addr_len);
     if (n < 0) {
+        __mdh_release(bytes_val);
         return __mdh_result_errno("udp_recv_from");
     }
     bytes->length = (int64_t)n;
 
     MdhValue addr_dict = __mdh_addr_dict(&addr);
     MdhValue info = __mdh_empty_dict();
-    info = __mdh_dict_set(info, __mdh_make_string("buf"), bytes_val);
-    info = __mdh_dict_set(info, __mdh_make_string("addr"), addr_dict);
+    info = __mdh_dict_set_owned(info, __mdh_make_string("buf"), bytes_val);
+    info = __mdh_dict_set_owned(info, __mdh_make_string("addr"), addr_dict);
     return __mdh_result_ok(info);
 }
 
@@ -2996,6 +3055,7 @@ MdhValue __mdh_tcp_recv(MdhValue sock, MdhValue max_len_val) {
     }
     ssize_t n = recv(fd, bytes->data, (size_t)max_len, 0);
     if (n < 0) {
+        __mdh_release(bytes_val);
         return __mdh_result_errno("tcp_recv");
     }
     bytes->length = (int64_t)n;
@@ -3035,7 +3095,7 @@ MdhValue __mdh_dns_lookup(MdhValue host) {
             ip = inet_ntop(AF_INET6, &addr6->sin6_addr, host_buf, sizeof(host_buf));
         }
         if (ip) {
-            __mdh_list_push(list, __mdh_make_string(ip));
+            __mdh_list_push_owned(list, __mdh_make_string(ip));
         }
     }
     freeaddrinfo(res);
@@ -3054,7 +3114,7 @@ MdhValue __mdh_dns_srv(MdhValue service, MdhValue domain) {
         if (!msg || msg[0] == '\0') {
             msg = "dns_srv failed";
         }
-        return __mdh_result_err(msg, -1);
+        return __mdh_result_err_rs(msg, r);
     }
     return __mdh_result_ok(r.value);
 }
@@ -3071,7 +3131,7 @@ MdhValue __mdh_dns_naptr(MdhValue domain) {
         if (!msg || msg[0] == '\0') {
             msg = "dns_naptr failed";
         }
-        return __mdh_result_err(msg, -1);
+        return __mdh_result_err_rs(msg, r);
     }
     return __mdh_result_ok(r.value);
 }
@@ -3085,7 +3145,7 @@ MdhValue __mdh_tls_client_new(MdhValue config) {
         if (!msg || msg[0] == '\0') {
             msg = "tls_client_new failed";
         }
-        return __mdh_result_err(msg, -1);
+        return __mdh_result_err_rs(msg, r);
     }
     return __mdh_result_ok(r.value);
 }
@@ -3112,7 +3172,7 @@ MdhValue __mdh_tls_connect(MdhValue tls, MdhValue sock) {
             msg = "tls_connect failed";
         }
         mdh_socket_close(dup_fd);
-        return __mdh_result_err(msg, -1);
+        return __mdh_result_err_rs(msg, r);
     }
     return __mdh_result_ok(r.value);
 }
@@ -3132,7 +3192,7 @@ MdhValue __mdh_tls_send(MdhValue tls, MdhValue buf) {
         if (!msg || msg[0] == '\0') {
             msg = "tls_send failed";
         }
-        return __mdh_result_err(msg, -1);
+        return __mdh_result_err_rs(msg, r);
     }
     return __mdh_result_ok(r.value);
 }
@@ -3152,7 +3212,7 @@ MdhValue __mdh_tls_recv(MdhValue tls, MdhValue max_len) {
         if (!msg || msg[0] == '\0') {
             msg = "tls_recv failed";
         }
-        return __mdh_result_err(msg, -1);
+        return __mdh_result_err_rs(msg, r);
     }
     return __mdh_result_ok(r.value);
 }
@@ -3168,7 +3228,7 @@ MdhValue __mdh_tls_close(MdhValue tls) {
         if (!msg || msg[0] == '\0') {
             msg = "tls_close failed";
         }
-        return __mdh_result_err(msg, -1);
+        return __mdh_result_err_rs(msg, r);
     }
     return __mdh_result_ok(r.value);
 }
@@ -3180,7 +3240,7 @@ MdhValue __mdh_dtls_server_new(MdhValue config) {
         if (!msg || msg[0] == '\0') {
             msg = "dtls_server_new failed";
         }
-        return __mdh_result_err(msg, -1);
+        return __mdh_result_err_rs(msg, r);
     }
     return __mdh_result_ok(r.value);
 }
@@ -3208,7 +3268,7 @@ MdhValue __mdh_dtls_handshake(MdhValue dtls, MdhValue sock) {
         }
         /* dup_fd is owned (and already closed) by __mdh_rs_dtls_handshake on
          * every path; closing it here again could hit a reused fd number. */
-        return __mdh_result_err(msg, -1);
+        return __mdh_result_err_rs(msg, r);
     }
     return __mdh_result_ok(r.value);
 }
@@ -3220,7 +3280,7 @@ MdhValue __mdh_srtp_create(MdhValue keys) {
         if (!msg || msg[0] == '\0') {
             msg = "srtp_create failed";
         }
-        return __mdh_result_err(msg, -1);
+        return __mdh_result_err_rs(msg, r);
     }
     return __mdh_result_ok(r.value);
 }
@@ -3240,7 +3300,7 @@ MdhValue __mdh_srtp_protect(MdhValue srtp, MdhValue rtp_packet) {
         if (!msg || msg[0] == '\0') {
             msg = "srtp_protect failed";
         }
-        return __mdh_result_err(msg, -1);
+        return __mdh_result_err_rs(msg, r);
     }
     return __mdh_result_ok(r.value);
 }
@@ -3260,7 +3320,7 @@ MdhValue __mdh_srtp_unprotect(MdhValue srtp, MdhValue rtp_packet) {
         if (!msg || msg[0] == '\0') {
             msg = "srtp_unprotect failed";
         }
-        return __mdh_result_err(msg, -1);
+        return __mdh_result_err_rs(msg, r);
     }
     return __mdh_result_ok(r.value);
 }
@@ -3355,21 +3415,22 @@ static MdhEventLoop *__mdh_loop_get(MdhValue handle) {
             return __mdh_loop_registry.loops[i];
         }
     }
-    __mdh_hurl(__mdh_make_string("Unknown event loop handle"));
+    __mdh_hurl_owned(__mdh_make_string("Unknown event loop handle"));
     return NULL;
 }
 
+/* `cb` is borrowed (it stays in the loop's tables). */
 static MdhValue __mdh_make_event(const char *kind, int64_t sock, int64_t timer_id, MdhValue cb) {
     MdhValue ev = __mdh_empty_dict();
-    ev = __mdh_dict_set(ev, __mdh_make_string("kind"), __mdh_make_string(kind ? kind : ""));
+    ev = __mdh_dict_set_owned(ev, __mdh_make_string("kind"), __mdh_make_string(kind ? kind : ""));
     if (sock >= 0) {
-        ev = __mdh_dict_set(ev, __mdh_make_string("sock"), __mdh_make_int(sock));
+        ev = __mdh_dict_set_owned(ev, __mdh_make_string("sock"), __mdh_make_int(sock));
     }
     if (timer_id >= 0) {
-        ev = __mdh_dict_set(ev, __mdh_make_string("id"), __mdh_make_int(timer_id));
+        ev = __mdh_dict_set_owned(ev, __mdh_make_string("id"), __mdh_make_int(timer_id));
     }
     if (cb.tag != MDH_TAG_NIL) {
-        ev = __mdh_dict_set(ev, __mdh_make_string("callback"), cb);
+        ev = __mdh_dict_set_owned(ev, __mdh_make_string("callback"), __mdh_retained(cb));
     }
     return ev;
 }
@@ -3394,18 +3455,20 @@ MdhValue __mdh_event_watch_read(MdhValue loop_val, MdhValue sock, MdhValue callb
     if (!loop) return __mdh_make_nil();
     int fd = __mdh_sock_fd(sock);
     if (fd < 0) {
-        __mdh_hurl(__mdh_make_string("Invalid socket for event_watch_read"));
+        __mdh_hurl_owned(__mdh_make_string("Invalid socket for event_watch_read"));
         return __mdh_make_nil();
     }
     for (int64_t i = 0; i < loop->watch_len; i++) {
         if (loop->watches[i].fd == fd) {
-            loop->watches[i].read_cb = callback;
+            MdhValue old = loop->watches[i].read_cb;
+            loop->watches[i].read_cb = __mdh_retained(callback);
+            __mdh_release(old);
             return __mdh_make_nil();
         }
     }
     __mdh_loop_ensure_watch_cap(loop, loop->watch_len + 1);
     loop->watches[loop->watch_len].fd = fd;
-    loop->watches[loop->watch_len].read_cb = callback;
+    loop->watches[loop->watch_len].read_cb = __mdh_retained(callback);
     loop->watches[loop->watch_len].write_cb = __mdh_make_nil();
     loop->watch_len++;
     return __mdh_make_nil();
@@ -3416,19 +3479,21 @@ MdhValue __mdh_event_watch_write(MdhValue loop_val, MdhValue sock, MdhValue call
     if (!loop) return __mdh_make_nil();
     int fd = __mdh_sock_fd(sock);
     if (fd < 0) {
-        __mdh_hurl(__mdh_make_string("Invalid socket for event_watch_write"));
+        __mdh_hurl_owned(__mdh_make_string("Invalid socket for event_watch_write"));
         return __mdh_make_nil();
     }
     for (int64_t i = 0; i < loop->watch_len; i++) {
         if (loop->watches[i].fd == fd) {
-            loop->watches[i].write_cb = callback;
+            MdhValue old = loop->watches[i].write_cb;
+            loop->watches[i].write_cb = __mdh_retained(callback);
+            __mdh_release(old);
             return __mdh_make_nil();
         }
     }
     __mdh_loop_ensure_watch_cap(loop, loop->watch_len + 1);
     loop->watches[loop->watch_len].fd = fd;
     loop->watches[loop->watch_len].read_cb = __mdh_make_nil();
-    loop->watches[loop->watch_len].write_cb = callback;
+    loop->watches[loop->watch_len].write_cb = __mdh_retained(callback);
     loop->watch_len++;
     return __mdh_make_nil();
 }
@@ -3438,13 +3503,16 @@ MdhValue __mdh_event_unwatch(MdhValue loop_val, MdhValue sock) {
     if (!loop) return __mdh_make_bool(false);
     int fd = __mdh_sock_fd(sock);
     if (fd < 0) {
-        __mdh_hurl(__mdh_make_string("Invalid socket for event_unwatch"));
+        __mdh_hurl_owned(__mdh_make_string("Invalid socket for event_unwatch"));
         return __mdh_make_bool(false);
     }
     for (int64_t i = 0; i < loop->watch_len; i++) {
         if (loop->watches[i].fd == fd) {
+            MdhWatch removed = loop->watches[i];
             loop->watches[i] = loop->watches[loop->watch_len - 1];
             loop->watch_len--;
+            __mdh_release(removed.read_cb);
+            __mdh_release(removed.write_cb);
             return __mdh_make_bool(true);
         }
     }
@@ -3458,7 +3526,7 @@ MdhValue __mdh_event_loop_poll(MdhValue loop_val, MdhValue timeout_val) {
     if (loop->stopped) {
         MdhValue events = __mdh_make_list(1);
         MdhValue ev = __mdh_make_event("stop", -1, -1, __mdh_make_nil());
-        __mdh_list_push(events, ev);
+        __mdh_list_push_owned(events, ev);
         return events;
     }
 
@@ -3520,7 +3588,7 @@ MdhValue __mdh_event_loop_poll(MdhValue loop_val, MdhValue timeout_val) {
     if (poll_timeout != 0 || nfds > 0) {
         int rc = poll(fds, (nfds_t)nfds, poll_timeout);
         if (rc < 0 && errno != EINTR) {
-            __mdh_hurl(__mdh_make_string("event_loop_poll failed"));
+            __mdh_hurl_owned(__mdh_make_string("event_loop_poll failed"));
         }
     }
 
@@ -3529,11 +3597,11 @@ MdhValue __mdh_event_loop_poll(MdhValue loop_val, MdhValue timeout_val) {
         for (int64_t i = 0; i < nfds; i++) {
             if ((fds[i].revents & POLLIN) && loop->watches[i].read_cb.tag != MDH_TAG_NIL) {
                 MdhValue ev = __mdh_make_event("read", loop->watches[i].fd, -1, loop->watches[i].read_cb);
-                __mdh_list_push(events, ev);
+                __mdh_list_push_owned(events, ev);
             }
             if ((fds[i].revents & POLLOUT) && loop->watches[i].write_cb.tag != MDH_TAG_NIL) {
                 MdhValue ev = __mdh_make_event("write", loop->watches[i].fd, -1, loop->watches[i].write_cb);
-                __mdh_list_push(events, ev);
+                __mdh_list_push_owned(events, ev);
             }
         }
     }
@@ -3544,7 +3612,7 @@ MdhValue __mdh_event_loop_poll(MdhValue loop_val, MdhValue timeout_val) {
         if (t->cancelled) continue;
         if (t->next_fire_ms <= now) {
             MdhValue ev = __mdh_make_event("timer", -1, t->id, t->callback);
-            __mdh_list_push(events, ev);
+            __mdh_list_push_owned(events, ev);
             if (t->interval_ms > 0) {
                 while (t->next_fire_ms <= now) {
                     t->next_fire_ms += t->interval_ms;
@@ -3563,6 +3631,9 @@ MdhValue __mdh_event_loop_poll(MdhValue loop_val, MdhValue timeout_val) {
                     loop->timers[write] = loop->timers[i];
                 }
                 write++;
+            } else {
+                /* Dropped from the table (slot i is only overwritten later, by a kept timer). */
+                __mdh_release(loop->timers[i].callback);
             }
         }
         loop->timer_len = write;
@@ -3579,7 +3650,7 @@ MdhValue __mdh_timer_after(MdhValue loop_val, MdhValue ms_val, MdhValue callback
         return __mdh_make_nil();
     }
     if (ms < 0) {
-        __mdh_hurl(__mdh_make_string("timer_after expects a non-negative delay"));
+        __mdh_hurl_owned(__mdh_make_string("timer_after expects a non-negative delay"));
         return __mdh_make_nil();
     }
     __mdh_loop_ensure_timer_cap(loop, loop->timer_len + 1);
@@ -3589,7 +3660,7 @@ MdhValue __mdh_timer_after(MdhValue loop_val, MdhValue ms_val, MdhValue callback
     t.id = id;
     t.next_fire_ms = now + ms;
     t.interval_ms = 0;
-    t.callback = callback;
+    t.callback = __mdh_retained(callback);
     t.cancelled = 0;
     loop->timers[loop->timer_len++] = t;
     return __mdh_make_int(id);
@@ -3603,7 +3674,7 @@ MdhValue __mdh_timer_every(MdhValue loop_val, MdhValue ms_val, MdhValue callback
         return __mdh_make_nil();
     }
     if (ms <= 0) {
-        __mdh_hurl(__mdh_make_string("timer_every expects a positive interval"));
+        __mdh_hurl_owned(__mdh_make_string("timer_every expects a positive interval"));
         return __mdh_make_nil();
     }
     __mdh_loop_ensure_timer_cap(loop, loop->timer_len + 1);
@@ -3613,7 +3684,7 @@ MdhValue __mdh_timer_every(MdhValue loop_val, MdhValue ms_val, MdhValue callback
     t.id = id;
     t.next_fire_ms = now + ms;
     t.interval_ms = ms;
-    t.callback = callback;
+    t.callback = __mdh_retained(callback);
     t.cancelled = 0;
     loop->timers[loop->timer_len++] = t;
     return __mdh_make_int(id);
@@ -3736,7 +3807,7 @@ static MdhValue __mdh_handle_new(MdhHandleKind kind, void *ptr) {
     }
     __mdh_handle_lock_release();
     if (id == 0) {
-        __mdh_hurl(__mdh_make_string("Och! Ran oot o' room fer native handles"));
+        __mdh_hurl_owned(__mdh_make_string("Och! Ran oot o' room fer native handles"));
         return __mdh_make_nil();
     }
     return __mdh_make_int(id);
@@ -3757,7 +3828,7 @@ static void *__mdh_handle_get(MdhValue v, MdhHandleKind kind, const char *what) 
     if (!ptr) {
         char buf[64];
         snprintf(buf, sizeof(buf), "Unknown %s handle", what);
-        __mdh_hurl(__mdh_make_string(buf));
+        __mdh_hurl_owned(__mdh_make_string(buf));
     }
     return ptr;
 }
@@ -3807,18 +3878,18 @@ static MdhValue __mdh_call_with_list(MdhValue func_val, MdhValue args_list) {
         int64_t *header = (int64_t *)base;
         int64_t len = header[1];
         if (len <= 0) {
-            __mdh_hurl(__mdh_make_string("Invalid closure"));
+            __mdh_hurl_owned(__mdh_make_string("Invalid closure"));
             return __mdh_make_nil();
         }
         MdhValue *elems = (MdhValue *)(base + 16);
         fn_val = elems[0];
         int64_t captures = len - 1;
         if (captures > 3) {
-            __mdh_hurl(__mdh_make_string("Closure captures > 3 not supported in threads"));
+            __mdh_hurl_owned(__mdh_make_string("Closure captures > 3 not supported in threads"));
             return __mdh_make_nil();
         }
         if (captures + argc > 6) {
-            __mdh_hurl(__mdh_make_string("Too many arguments for thread spawn"));
+            __mdh_hurl_owned(__mdh_make_string("Too many arguments for thread spawn"));
             return __mdh_make_nil();
         }
         for (int64_t i = 0; i < captures; i++) {
@@ -3830,7 +3901,7 @@ static MdhValue __mdh_call_with_list(MdhValue func_val, MdhValue args_list) {
         total_args = captures + argc;
     } else if (func_val.tag == MDH_TAG_FUNCTION) {
         if (argc > 6) {
-            __mdh_hurl(__mdh_make_string("Too many arguments for thread spawn"));
+            __mdh_hurl_owned(__mdh_make_string("Too many arguments for thread spawn"));
             return __mdh_make_nil();
         }
         for (int64_t i = 0; i < argc; i++) {
@@ -3872,7 +3943,7 @@ static MdhValue __mdh_call_with_list(MdhValue func_val, MdhValue args_list) {
                 call_args[5]
             );
         default:
-            __mdh_hurl(__mdh_make_string("Too many arguments for thread spawn"));
+            __mdh_hurl_owned(__mdh_make_string("Too many arguments for thread spawn"));
             return __mdh_make_nil();
     }
 }
@@ -3886,11 +3957,12 @@ static void *__mdh_thread_entry(void *arg) {
     jmp_buf env;
     __mdh_try_push(&env);
     if (setjmp(env) == 0) {
+        /* Compiled code returns +1: the thread keeps that reference. */
         t->result = __mdh_call_with_list(t->func, t->args);
         __mdh_try_pop();
     } else {
         __mdh_try_pop();
-        t->error = __mdh_get_last_error();
+        t->error = __mdh_retained(__mdh_get_last_error());
         t->failed = 1;
     }
     t->done = 1;
@@ -3900,8 +3972,8 @@ static void *__mdh_thread_entry(void *arg) {
 MdhValue __mdh_thread_spawn(MdhValue func, MdhValue args_list) {
     MdhThread *t = (MdhThread *)__mdh_buf_alloc(sizeof(MdhThread));
     memset(t, 0, sizeof(MdhThread));
-    t->func = func;
-    t->args = args_list;
+    t->func = __mdh_retained(func);
+    t->args = __mdh_retained(args_list);
     t->result = __mdh_make_nil();
     t->done = 0;
     t->detached = 0;
@@ -3914,7 +3986,7 @@ MdhValue __mdh_thread_spawn(MdhValue func, MdhValue args_list) {
     t->line = __mdh_thread_line;
     t->thread = mdh_thread_create(__mdh_thread_entry, t);
     if (t->thread == NULL) {
-        __mdh_hurl(__mdh_make_string("thread_spawn failed"));
+        __mdh_hurl_owned(__mdh_make_string("thread_spawn failed"));
         return __mdh_make_nil();
     }
     return __mdh_handle_new(MDH_HANDLE_THREAD, t);
@@ -3931,7 +4003,7 @@ MdhValue __mdh_thread_join(MdhValue thread_handle) {
     }
 
     if (t->detached) {
-        __mdh_hurl(__mdh_make_string("Cannot join detached thread"));
+        __mdh_hurl_owned(__mdh_make_string("Cannot join detached thread"));
         return __mdh_make_nil();
     }
 
@@ -4004,7 +4076,7 @@ MdhValue __mdh_condvar_timed_wait(MdhValue condvar, MdhValue mutex, MdhValue tim
         return __mdh_make_bool(false);
     }
     if (ms < 0) {
-        __mdh_hurl(__mdh_make_string("condvar_timed_wait expects non-negative timeout"));
+        __mdh_hurl_owned(__mdh_make_string("condvar_timed_wait expects non-negative timeout"));
         return __mdh_make_bool(false);
     }
     /* Platform layer takes relative timeout in nanoseconds */
@@ -4112,7 +4184,7 @@ MdhValue __mdh_chan_new(MdhValue capacity_int) {
         return __mdh_make_nil();
     }
     if (cap < 0) {
-        __mdh_hurl(__mdh_make_string("chan_new expects non-negative capacity"));
+        __mdh_hurl_owned(__mdh_make_string("chan_new expects non-negative capacity"));
         return __mdh_make_nil();
     }
     MdhChan *ch = (MdhChan *)__mdh_buf_alloc(sizeof(MdhChan));
@@ -4151,7 +4223,7 @@ MdhValue __mdh_chan_send(MdhValue chan, MdhValue value) {
             __mdh_chan_grow(ch, ch->cap * 2);
         }
     }
-    ch->buf[ch->tail] = value;
+    ch->buf[ch->tail] = __mdh_retained(value);
     ch->tail = (ch->tail + 1) % ch->cap;
     ch->count++;
     mdh_cond_signal(ch->not_empty);
@@ -4170,7 +4242,7 @@ MdhValue __mdh_chan_recv(MdhValue chan) {
         mdh_mutex_unlock(ch->lock);
         return __mdh_make_nil();
     }
-    MdhValue v = ch->buf[ch->head];
+    MdhValue v = ch->buf[ch->head]; /* the channel's reference goes to the caller */
     ch->head = (ch->head + 1) % ch->cap;
     ch->count--;
     if (!ch->unbounded) {
@@ -4188,7 +4260,7 @@ MdhValue __mdh_chan_try_recv(MdhValue chan) {
         mdh_mutex_unlock(ch->lock);
         return __mdh_make_nil();
     }
-    MdhValue v = ch->buf[ch->head];
+    MdhValue v = ch->buf[ch->head]; /* the channel's reference goes to the caller */
     ch->head = (ch->head + 1) % ch->cap;
     ch->count--;
     if (!ch->unbounded) {
@@ -4264,12 +4336,12 @@ static void __mdh_kv_compact(MdhValue v) {
     int64_t used = live + (int64_t)handle[3];
     int64_t cap = live < 4 ? 4 : live;
     if (cap > (INT64_MAX - 8) / 32) {
-        __mdh_hurl(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
+        __mdh_hurl_owned(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
         return;
     }
     int64_t *payload = (int64_t *)__mdh_buf_alloc((size_t)(8 + cap * 32));
     if (!payload) {
-        __mdh_hurl(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
+        __mdh_hurl_owned(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
         return;
     }
     payload[0] = live;
@@ -4307,6 +4379,60 @@ static int64_t *__mdh_kv_payload_ptr(MdhValue v) {
 void __mdh_kv_densify(MdhValue v) {
     if ((v.tag == MDH_TAG_DICT || v.tag == MDH_TAG_SET) && v.data != 0) {
         (void)__mdh_kv_payload_ptr(v);
+    }
+}
+
+/* ========== Reference counting hooks (see gc_stub.c) ========== */
+
+int64_t __mdh_rc_line(void) {
+    return __mdh_err_line();
+}
+
+/* Every MdhValue an object directly holds, for the release of a dead object's children.
+ * Layouts: MdhList; the dict/creel handle above (live entries only, tombstones skipped);
+ * closures and bound methods [cap][len][values...] (codegen's compile_lambda and
+ * friends); the instance handle -> [class name][field count][key, value]... (codegen's
+ * make_instance). Strings, bytes and native objects hold no counted values. */
+void __mdh_rc_children(uint32_t kind, void *payload, MdhRcVisit visit, void *ctx) {
+    switch (kind) {
+        case MDH_KIND_LIST: {
+            MdhList *list = (MdhList *)payload;
+            for (int64_t i = 0; i < list->length; i++) visit(list->items[i], ctx);
+            return;
+        }
+        case MDH_KIND_KV: {
+            intptr_t *handle = (intptr_t *)payload;
+            int64_t *kv = (int64_t *)(intptr_t)handle[0];
+            if (!kv) return;
+            int64_t used = kv[0] + (int64_t)handle[3];
+            MdhValue *entries = (MdhValue *)(kv + 1);
+            for (int64_t i = 0; i < used; i++) {
+                if (entries[i * 2].tag == MDH_KV_DEAD_TAG) continue;
+                visit(entries[i * 2], ctx);
+                visit(entries[i * 2 + 1], ctx);
+            }
+            return;
+        }
+        case MDH_KIND_CLOSURE:
+        case MDH_KIND_BOUND_METHOD: {
+            int64_t len = ((int64_t *)payload)[1];
+            MdhValue *values = (MdhValue *)((char *)payload + 16);
+            for (int64_t i = 0; i < len; i++) visit(values[i], ctx);
+            return;
+        }
+        case MDH_KIND_INSTANCE: {
+            int64_t *data = (int64_t *)(intptr_t)((intptr_t *)payload)[0];
+            if (!data) return;
+            int64_t fields = data[1];
+            MdhValue *entries = (MdhValue *)(data + 2);
+            for (int64_t i = 0; i < fields; i++) {
+                visit(entries[i * 2], ctx);
+                visit(entries[i * 2 + 1], ctx);
+            }
+            return;
+        }
+        default:
+            return;
     }
 }
 
@@ -4481,7 +4607,8 @@ static int64_t __mdh_kv_find(MdhValue kv, MdhValue key) {
 
 /* Append an entry whose key the caller has checked is absent. Grows the payload by
    doubling (amortised O(1)) and keeps the hash index in step. The old payload is left
-   alive: a loop iterating the dict may still hold it. */
+   alive: a loop iterating the dict may still hold it. The entry holds a reference to its
+   key and one to its value (a creel stores its item in both, so it holds two). */
 static void __mdh_kv_append(MdhValue kv, MdhValue key, MdhValue value) {
     intptr_t *handle = (intptr_t *)(intptr_t)kv.data;
     int64_t *payload = __mdh_kv_payload_raw(kv);
@@ -4494,13 +4621,13 @@ static void __mdh_kv_append(MdhValue kv, MdhValue key, MdhValue value) {
 
     if (used + 1 > cap) {
         if (used > (INT64_MAX - 8) / 64) {
-            __mdh_hurl(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
+            __mdh_hurl_owned(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
             return;
         }
         int64_t new_cap = used < 4 ? 8 : used * 2;
         int64_t *grown = (int64_t *)__mdh_buf_alloc((size_t)(8 + new_cap * 32));
         if (!grown) {
-            __mdh_hurl(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
+            __mdh_hurl_owned(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
             return;
         }
         grown[0] = count;
@@ -4513,8 +4640,8 @@ static void __mdh_kv_append(MdhValue kv, MdhValue key, MdhValue value) {
     }
 
     MdhValue *entries = (MdhValue *)(payload + 1);
-    entries[used * 2] = key;
-    entries[used * 2 + 1] = value;
+    entries[used * 2] = __mdh_retained(key);
+    entries[used * 2 + 1] = __mdh_retained(value);
     payload[0] = count + 1;
 
     MdhKvIndex *idx = (MdhKvIndex *)(intptr_t)handle[2];
@@ -4539,6 +4666,8 @@ static bool __mdh_kv_remove(MdhValue kv, MdhValue key) {
     intptr_t *handle = (intptr_t *)(intptr_t)kv.data;
     int64_t *payload = __mdh_kv_payload_raw(kv);
     MdhValue *entries = (MdhValue *)(payload + 1);
+    MdhValue old_key = entries[found * 2];
+    MdhValue old_value = entries[found * 2 + 1];
     entries[found * 2].tag = MDH_KV_DEAD_TAG;
     entries[found * 2].data = 0;
     entries[found * 2 + 1] = __mdh_make_nil();
@@ -4547,6 +4676,9 @@ static bool __mdh_kv_remove(MdhValue kv, MdhValue key) {
     if ((int64_t)handle[3] > payload[0]) {
         __mdh_kv_compact(kv);
     }
+    /* Unlinked and discarded: drop the entry's references. */
+    __mdh_release(old_key);
+    __mdh_release(old_value);
     return true;
 }
 
@@ -4608,13 +4740,22 @@ MdhValue __mdh_dict_set(MdhValue dict, MdhValue key, MdhValue value) {
 
     int64_t found = __mdh_kv_find(dict, key);
     if (found >= 0) {
-        /* Update existing entry in place */
+        /* Update existing entry in place (the entry keeps its own key) */
         MdhValue *entries = (MdhValue *)(__mdh_kv_payload_raw(dict) + 1);
-        entries[found * 2 + 1] = value;
+        MdhValue old = entries[found * 2 + 1];
+        entries[found * 2 + 1] = __mdh_retained(value);
+        __mdh_release(old);
         return dict;
     }
 
     __mdh_kv_append(dict, key, value);
+    return dict;
+}
+
+MdhValue __mdh_dict_set_owned(MdhValue dict, MdhValue key, MdhValue value) {
+    dict = __mdh_dict_set(dict, key, value);
+    __mdh_release(key);
+    __mdh_release(value);
     return dict;
 }
 
@@ -4699,7 +4840,7 @@ MdhValue __mdh_dict_remove(MdhValue dict, MdhValue key) {
     }
     int64_t *payload = (int64_t *)__mdh_buf_alloc((size_t)(8 + new_count * 32));
     if (!payload) {
-        __mdh_hurl(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
+        __mdh_hurl_owned(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
         return __mdh_empty_dict();
     }
     payload[0] = new_count;
@@ -4714,6 +4855,10 @@ MdhValue __mdh_dict_remove(MdhValue dict, MdhValue key) {
             src + (found + 1) * 2,
             (size_t)(count - found - 1) * 2 * sizeof(MdhValue)
         );
+    }
+    /* The new dict holds its own reference to every key and value it copied. */
+    for (int64_t i = 0; i < new_count * 2; i++) {
+        __mdh_retain(dst[i]);
     }
 
     MdhValue result;
@@ -4864,7 +5009,7 @@ MdhValue __mdh_lines(MdhValue path) {
             char *line = (char *)__mdh_buf_alloc(len + 1);
             memcpy(line, start, len);
             line[len] = '\0';
-            __mdh_list_push(result, __mdh_make_string(line));
+            __mdh_list_push_owned(result, __mdh_make_string(line));
             start = p + 1;
         }
         p++;
@@ -4875,7 +5020,7 @@ MdhValue __mdh_lines(MdhValue path) {
         char *line = (char *)__mdh_buf_alloc(len + 1);
         memcpy(line, start, len);
         line[len] = '\0';
-        __mdh_list_push(result, __mdh_make_string(line));
+        __mdh_list_push_owned(result, __mdh_make_string(line));
     }
     return result;
 }
@@ -4898,7 +5043,7 @@ MdhValue __mdh_words(MdhValue str) {
                 char *word = (char *)__mdh_buf_alloc(len + 1);
                 memcpy(word, start, len);
                 word[len] = '\0';
-                __mdh_list_push(result, __mdh_make_string(word));
+                __mdh_list_push_owned(result, __mdh_make_string(word));
                 start = NULL;
             }
             if (*p == '\0') break;
@@ -5063,8 +5208,15 @@ MdhValue __mdh_log_enabled(MdhValue level, MdhValue target) {
     return __mdh_make_bool(__mdh_log_enabled_raw(lvl, tgt));
 }
 
+/* The global callback holds a reference: store the new one, then drop the old. */
+static void __mdh_log_store_callback(MdhValue func) {
+    MdhValue old = __mdh_log_callback;
+    __mdh_log_callback = __mdh_retained(func);
+    __mdh_release(old);
+}
+
 MdhValue __mdh_log_set_callback(MdhValue func) {
-    __mdh_log_callback = func;
+    __mdh_log_store_callback(func);
     return __mdh_make_nil();
 }
 
@@ -5090,7 +5242,7 @@ static char *__mdh_span_path_string(void) {
     for (size_t i = 0; i < __mdh_span_stack.len; i++) {
         MdhNativeObject *obj = __mdh_span_stack.items[i];
         if (!obj) continue;
-        MdhValue name_val = __mdh_dict_get(obj->fields, __mdh_make_string("name"));
+        MdhValue name_val = __mdh_dict_get_named(obj->fields, "name");
         if (name_val.tag == MDH_TAG_STRING) {
             if (i > 0) {
                 __mdh_sb_append_char(&sb, '>');
@@ -5167,27 +5319,27 @@ MdhValue __mdh_log_event(
         }
     }
 
-    MdhValue fields_str = __mdh_make_string("");
-    if (fields_val.tag == MDH_TAG_DICT) {
-        fields_str = __mdh_to_string(fields_val);
-    }
+    MdhValue fields_str = fields_val.tag == MDH_TAG_DICT ? __mdh_to_string(fields_val)
+                                                         : __mdh_make_string("");
 
     char *span_path = __mdh_span_path_string();
 
     if (__mdh_log_format == 1) {
         MdhValue record = __mdh_empty_dict();
-        record = __mdh_dict_set(record, __mdh_make_string("level"), __mdh_make_string(lvl_name));
-        record = __mdh_dict_set(record, __mdh_make_string("message"), msg_str);
-        record = __mdh_dict_set(record, __mdh_make_string("target"), __mdh_make_string(tgt));
-        record = __mdh_dict_set(record, __mdh_make_string("file"), __mdh_make_string(file_c));
-        record = __mdh_dict_set(record, __mdh_make_string("line"), __mdh_make_int(line_n));
-        record = __mdh_dict_set(record, __mdh_make_string("fields"), fields_val);
-        record = __mdh_dict_set(record, __mdh_make_string("span"), __mdh_make_string(span_path));
+        record = __mdh_dict_set_owned(record, __mdh_make_string("level"), __mdh_make_string(lvl_name));
+        record = __mdh_dict_set_owned(record, __mdh_make_string("message"), __mdh_retained(msg_str));
+        record = __mdh_dict_set_owned(record, __mdh_make_string("target"), __mdh_make_string(tgt));
+        record = __mdh_dict_set_owned(record, __mdh_make_string("file"), __mdh_make_string(file_c));
+        record = __mdh_dict_set_owned(record, __mdh_make_string("line"), __mdh_make_int(line_n));
+        record = __mdh_dict_set_owned(record, __mdh_make_string("fields"), __mdh_retained(fields_val));
+        record = __mdh_dict_set_owned(record, __mdh_make_string("span"), __mdh_make_string(span_path));
         MdhValue json = __mdh_json_stringify(record);
         const char *json_c = __mdh_get_string(json);
         if (__mdh_log_sink_stderr) fprintf(stderr, "%s\n", json_c);
         if (__mdh_log_sink_stdout) printf("%s\n", json_c);
         if (__mdh_log_sink_file && __mdh_log_file) fprintf(__mdh_log_file, "%s\n", json_c);
+        __mdh_release(json);
+        __mdh_release(record);
     } else {
         char buf[1024];
         if (__mdh_log_format == 2) {
@@ -5231,18 +5383,26 @@ MdhValue __mdh_log_event(
 
     if (__mdh_log_callback.tag != MDH_TAG_NIL) {
         MdhValue record = __mdh_empty_dict();
-        record = __mdh_dict_set(record, __mdh_make_string("level"), __mdh_make_int(lvl));
-        record = __mdh_dict_set(record, __mdh_make_string("message"), msg_str);
-        record = __mdh_dict_set(record, __mdh_make_string("target"), __mdh_make_string(tgt));
-        record = __mdh_dict_set(record, __mdh_make_string("file"), __mdh_make_string(file_c));
-        record = __mdh_dict_set(record, __mdh_make_string("line"), __mdh_make_int(line_n));
-        record = __mdh_dict_set(record, __mdh_make_string("fields"), fields_val);
-        record = __mdh_dict_set(record, __mdh_make_string("span"), __mdh_make_string(span_path));
+        record = __mdh_dict_set_owned(record, __mdh_make_string("level"), __mdh_make_int(lvl));
+        record = __mdh_dict_set_owned(record, __mdh_make_string("message"), __mdh_retained(msg_str));
+        record = __mdh_dict_set_owned(record, __mdh_make_string("target"), __mdh_make_string(tgt));
+        record = __mdh_dict_set_owned(record, __mdh_make_string("file"), __mdh_make_string(file_c));
+        record = __mdh_dict_set_owned(record, __mdh_make_string("line"), __mdh_make_int(line_n));
+        record = __mdh_dict_set_owned(record, __mdh_make_string("fields"), __mdh_retained(fields_val));
+        record = __mdh_dict_set_owned(record, __mdh_make_string("span"), __mdh_make_string(span_path));
         MdhValue args = __mdh_make_list(1);
-        __mdh_list_push(args, record);
-        __mdh_call_with_list(__mdh_log_callback, args);
+        __mdh_list_push_owned(args, record);
+        /* Held across the call: the callback may replace itself (log_set_callback). */
+        MdhValue callback = __mdh_retained(__mdh_log_callback);
+        MdhValue result = __mdh_call_with_list(callback, args);
+        __mdh_release(result);
+        __mdh_release(callback);
+        __mdh_release(args);
     }
 
+    __mdh_release(msg_str);
+    __mdh_release(fields_str);
+    __mdh_release(__mdh_string_from_buf(span_path));
     return __mdh_make_nil();
 }
 
@@ -5256,16 +5416,16 @@ MdhValue __mdh_log_span_begin(MdhValue name, MdhValue level, MdhValue fields, Md
     obj->type_name = "log_span";
     obj->ctor_kind = NULL;
     obj->fields = __mdh_empty_dict();
-    obj->fields = __mdh_dict_set(obj->fields, __mdh_make_string("name"), name);
-    obj->fields = __mdh_dict_set(obj->fields, __mdh_make_string("target"),
-        target.tag == MDH_TAG_STRING ? target : __mdh_make_string(""));
+    obj->fields = __mdh_dict_set_owned(obj->fields, __mdh_make_string("name"), __mdh_retained(name));
+    obj->fields = __mdh_dict_set_owned(obj->fields, __mdh_make_string("target"),
+        target.tag == MDH_TAG_STRING ? __mdh_retained(target) : __mdh_make_string(""));
     int lvl = 3;
     __mdh_log_parse_level_val(level, &lvl);
-    obj->fields = __mdh_dict_set(obj->fields, __mdh_make_string("level"), __mdh_make_int(lvl));
+    obj->fields = __mdh_dict_set_owned(obj->fields, __mdh_make_string("level"), __mdh_make_int(lvl));
     if (fields.tag == MDH_TAG_DICT) {
-        obj->fields = __mdh_dict_set(obj->fields, __mdh_make_string("fields"), fields);
+        obj->fields = __mdh_dict_set_owned(obj->fields, __mdh_make_string("fields"), __mdh_retained(fields));
     }
-    obj->fields = __mdh_dict_set(obj->fields, __mdh_make_string("__span_id"), __mdh_make_int((int64_t)__mdh_next_span_id()));
+    obj->fields = __mdh_dict_set_owned(obj->fields, __mdh_make_string("__span_id"), __mdh_make_int((int64_t)__mdh_next_span_id()));
     return __mdh_make_native(obj);
 }
 
@@ -5287,7 +5447,7 @@ MdhValue __mdh_log_span_exit(MdhValue span) {
     }
     MdhNativeObject *top = __mdh_span_stack_pop();
     if (top != obj) {
-        __mdh_hurl(__mdh_make_string("log_span_exit() got a mismatched span"));
+        __mdh_hurl_owned(__mdh_make_string("log_span_exit() got a mismatched span"));
     }
     return __mdh_make_nil();
 }
@@ -5301,7 +5461,8 @@ MdhValue __mdh_log_span_current(void) {
 MdhValue __mdh_log_span_in(MdhValue span, MdhValue func) {
     __mdh_log_span_enter(span);
     MdhValue args = __mdh_make_list(0);
-    MdhValue result = __mdh_call_with_list(func, args);
+    MdhValue result = __mdh_call_with_list(func, args); /* +1 from compiled code */
+    __mdh_release(args);
     __mdh_log_span_exit(span);
     return result;
 }
@@ -5315,14 +5476,14 @@ MdhValue __mdh_log_init(MdhValue config) {
         __mdh_log_sink_stderr = 1;
         __mdh_log_sink_stdout = 0;
         __mdh_log_sink_file = 0;
-        __mdh_log_callback = __mdh_make_nil();
+        __mdh_log_store_callback(__mdh_make_nil());
         return __mdh_make_nil();
     }
     if (config.tag != MDH_TAG_DICT) {
         __mdh_type_error("log_init", config.tag, 0);
         return __mdh_make_nil();
     }
-    MdhValue level = __mdh_dict_get(config, __mdh_make_string("level"));
+    MdhValue level = __mdh_dict_get_named(config, "level");
     if (level.tag != MDH_TAG_NIL) {
         if (level.tag == MDH_TAG_INT) {
             __mdh_log_level = (int)level.data;
@@ -5330,32 +5491,32 @@ MdhValue __mdh_log_init(MdhValue config) {
             __mdh_log_level = __mdh_log_parse_level_str(__mdh_get_string(level));
         }
     }
-    MdhValue filter = __mdh_dict_get(config, __mdh_make_string("filter"));
+    MdhValue filter = __mdh_dict_get_named(config, "filter");
     if (filter.tag == MDH_TAG_STRING) {
         __mdh_log_set_filter(filter);
     }
-    MdhValue format = __mdh_dict_get(config, __mdh_make_string("format"));
+    MdhValue format = __mdh_dict_get_named(config, "format");
     if (format.tag == MDH_TAG_STRING) {
         const char *fmt = __mdh_get_string(format);
         if (strcmp(fmt, "json") == 0) __mdh_log_format = 1;
         else if (strcmp(fmt, "compact") == 0) __mdh_log_format = 2;
         else __mdh_log_format = 0;
     }
-    MdhValue timestamps = __mdh_dict_get(config, __mdh_make_string("timestamps"));
+    MdhValue timestamps = __mdh_dict_get_named(config, "timestamps");
     if (timestamps.tag == MDH_TAG_BOOL) {
         __mdh_log_timestamps = timestamps.data ? 1 : 0;
     }
-    MdhValue sinks = __mdh_dict_get(config, __mdh_make_string("sinks"));
+    MdhValue sinks = __mdh_dict_get_named(config, "sinks");
     if (sinks.tag == MDH_TAG_LIST) {
         __mdh_log_sink_stderr = 0;
         __mdh_log_sink_stdout = 0;
         __mdh_log_sink_file = 0;
-        __mdh_log_callback = __mdh_make_nil();
+        __mdh_log_store_callback(__mdh_make_nil());
         MdhList *list = __mdh_get_list(sinks);
         for (int64_t i = 0; list && i < list->length; i++) {
             MdhValue spec = list->items[i];
             if (spec.tag != MDH_TAG_DICT) continue;
-            MdhValue kind = __mdh_dict_get(spec, __mdh_make_string("kind"));
+            MdhValue kind = __mdh_dict_get_named(spec, "kind");
             if (kind.tag != MDH_TAG_STRING) continue;
             const char *k = __mdh_get_string(kind);
             if (strcmp(k, "stderr") == 0) {
@@ -5363,7 +5524,7 @@ MdhValue __mdh_log_init(MdhValue config) {
             } else if (strcmp(k, "stdout") == 0) {
                 __mdh_log_sink_stdout = 1;
             } else if (strcmp(k, "file") == 0) {
-                MdhValue path = __mdh_dict_get(spec, __mdh_make_string("path"));
+                MdhValue path = __mdh_dict_get_named(spec, "path");
                 if (path.tag == MDH_TAG_STRING) {
                     const char *p = __mdh_get_string(path);
                     __mdh_log_file = fopen(p, "a");
@@ -5372,8 +5533,8 @@ MdhValue __mdh_log_init(MdhValue config) {
                     }
                 }
             } else if (strcmp(k, "callback") == 0) {
-                MdhValue fn = __mdh_dict_get(spec, __mdh_make_string("fn"));
-                __mdh_log_callback = fn;
+                MdhValue fn = __mdh_dict_get_named(spec, "fn");
+                __mdh_log_store_callback(fn);
             }
         }
         if (!__mdh_log_sink_stderr && !__mdh_log_sink_stdout && !__mdh_log_sink_file) {
@@ -5418,6 +5579,7 @@ MdhValue __mdh_och(MdhValue msg) {
     memcpy(out, prefix, plen);
     memcpy(out + plen, m, mlen);
     out[plen + mlen] = '\0';
+    __mdh_release(s);
     return __mdh_string_from_buf(out);
 }
 
@@ -5431,6 +5593,7 @@ MdhValue __mdh_help_ma_boab(MdhValue msg) {
     memcpy(out, prefix, plen);
     memcpy(out + plen, m, mlen);
     out[plen + mlen] = '\0';
+    __mdh_release(s);
     return __mdh_string_from_buf(out);
 }
 
@@ -5500,9 +5663,9 @@ MdhValue __mdh_wee(MdhValue a, MdhValue b) {
     if (a.tag == MDH_TAG_FLOAT || b.tag == MDH_TAG_FLOAT) {
         double af = (a.tag == MDH_TAG_FLOAT) ? __mdh_get_float(a) : (double)a.data;
         double bf = (b.tag == MDH_TAG_FLOAT) ? __mdh_get_float(b) : (double)b.data;
-        return af < bf ? a : b;
+        return __mdh_retained(af < bf ? a : b); /* the other may not be a number */
     }
-    return a;
+    return __mdh_retained(a);
 }
 
 MdhValue __mdh_tak(MdhValue list, MdhValue n) {
@@ -5539,7 +5702,7 @@ MdhValue __mdh_pair_up(MdhValue list1, MdhValue list2) {
         MdhValue pair = __mdh_make_list(2);
         __mdh_list_push(pair, l1->items[i]);
         __mdh_list_push(pair, l2->items[i]);
-        __mdh_list_push(result, pair);
+        __mdh_list_push_owned(result, pair);
     }
     return result;
 }
@@ -5547,7 +5710,7 @@ MdhValue __mdh_pair_up(MdhValue list1, MdhValue list2) {
 MdhValue __mdh_tae_binary(MdhValue n) {
     /* Convert integer to binary string (match Rust's `format!("{:b}", i64)` semantics). */
     if (n.tag != MDH_TAG_INT) {
-        __mdh_hurl(__mdh_make_string("tae_binary() needs an integer"));
+        __mdh_hurl_owned(__mdh_make_string("tae_binary() needs an integer"));
         return __mdh_make_string("0");
     }
 
@@ -5571,13 +5734,13 @@ MdhValue __mdh_tae_binary(MdhValue n) {
 MdhValue __mdh_fae_binary(MdhValue str) {
     /* Parse binary string to integer (match interpreter `i64::from_str_radix(.., 2)`). */
     if (str.tag != MDH_TAG_STRING) {
-        __mdh_hurl(__mdh_make_string("fae_binary() needs a string"));
+        __mdh_hurl_owned(__mdh_make_string("fae_binary() needs a string"));
         return __mdh_make_int(0);
     }
 
     const char *orig = __mdh_get_string(str);
     if (!orig) {
-        __mdh_hurl(__mdh_make_string("fae_binary() needs a string"));
+        __mdh_hurl_owned(__mdh_make_string("fae_binary() needs a string"));
         return __mdh_make_int(0);
     }
 
@@ -5589,7 +5752,7 @@ MdhValue __mdh_fae_binary(MdhValue str) {
     if (*s == '\0') {
         char buf[256];
         snprintf(buf, sizeof(buf), "Cannae parse '%s' as binary", orig);
-        __mdh_hurl(__mdh_make_string(buf));
+        __mdh_hurl_owned(__mdh_make_string(buf));
         return __mdh_make_int(0);
     }
 
@@ -5599,14 +5762,14 @@ MdhValue __mdh_fae_binary(MdhValue str) {
         if (c != '0' && c != '1') {
             char buf[256];
             snprintf(buf, sizeof(buf), "Cannae parse '%s' as binary", orig);
-            __mdh_hurl(__mdh_make_string(buf));
+            __mdh_hurl_owned(__mdh_make_string(buf));
             return __mdh_make_int(0);
         }
         int digit = c - '0';
         if (result > (INT64_MAX - digit) / 2) {
             char buf[256];
             snprintf(buf, sizeof(buf), "Cannae parse '%s' as binary", orig);
-            __mdh_hurl(__mdh_make_string(buf));
+            __mdh_hurl_owned(__mdh_make_string(buf));
             return __mdh_make_int(0);
         }
         result = result * 2 + digit;
@@ -5618,13 +5781,13 @@ MdhValue __mdh_fae_binary(MdhValue str) {
 MdhValue __mdh_fae_hex(MdhValue str) {
     /* Parse hex string to integer (match interpreter `i64::from_str_radix(.., 16)`). */
     if (str.tag != MDH_TAG_STRING) {
-        __mdh_hurl(__mdh_make_string("fae_hex() needs a string"));
+        __mdh_hurl_owned(__mdh_make_string("fae_hex() needs a string"));
         return __mdh_make_int(0);
     }
 
     const char *orig = __mdh_get_string(str);
     if (!orig) {
-        __mdh_hurl(__mdh_make_string("fae_hex() needs a string"));
+        __mdh_hurl_owned(__mdh_make_string("fae_hex() needs a string"));
         return __mdh_make_int(0);
     }
 
@@ -5636,7 +5799,7 @@ MdhValue __mdh_fae_hex(MdhValue str) {
     if (*s == '\0') {
         char buf[256];
         snprintf(buf, sizeof(buf), "Cannae parse '%s' as hex", orig);
-        __mdh_hurl(__mdh_make_string(buf));
+        __mdh_hurl_owned(__mdh_make_string(buf));
         return __mdh_make_int(0);
     }
 
@@ -5654,13 +5817,13 @@ MdhValue __mdh_fae_hex(MdhValue str) {
         if (digit < 0) {
             char buf[256];
             snprintf(buf, sizeof(buf), "Cannae parse '%s' as hex", orig);
-            __mdh_hurl(__mdh_make_string(buf));
+            __mdh_hurl_owned(__mdh_make_string(buf));
             return __mdh_make_int(0);
         }
         if (result > (INT64_MAX - digit) / 16) {
             char buf[256];
             snprintf(buf, sizeof(buf), "Cannae parse '%s' as hex", orig);
-            __mdh_hurl(__mdh_make_string(buf));
+            __mdh_hurl_owned(__mdh_make_string(buf));
             return __mdh_make_int(0);
         }
         result = result * 16 + digit;
@@ -5672,11 +5835,11 @@ MdhValue __mdh_fae_hex(MdhValue str) {
 MdhValue __mdh_ltrim(MdhValue str) {
     /* Trim leading whitespace from string */
     if (str.tag != MDH_TAG_STRING) {
-        return str;
+        return __mdh_retained(str);
     }
 
     const char *s = __mdh_get_string(str);
-    if (!s || *s == '\0') return str;
+    if (!s || *s == '\0') return __mdh_retained(str);
 
     int64_t len = strlen(s);
     int64_t start = 0;
@@ -5685,7 +5848,7 @@ MdhValue __mdh_ltrim(MdhValue str) {
         start++;
     }
 
-    if (start == 0) return str;  /* No leading whitespace */
+    if (start == 0) return __mdh_retained(str);  /* No leading whitespace */
     if (start == len) return __mdh_make_string("");  /* All whitespace */
 
     return __mdh_make_string(s + start);
@@ -5694,11 +5857,11 @@ MdhValue __mdh_ltrim(MdhValue str) {
 MdhValue __mdh_rtrim(MdhValue str) {
     /* Trim trailing whitespace from string */
     if (str.tag != MDH_TAG_STRING) {
-        return str;
+        return __mdh_retained(str);
     }
 
     const char *s = __mdh_get_string(str);
-    if (!s || *s == '\0') return str;
+    if (!s || *s == '\0') return __mdh_retained(str);
 
     int64_t len = strlen(s);
     int64_t end = len;
@@ -5707,7 +5870,7 @@ MdhValue __mdh_rtrim(MdhValue str) {
         end--;
     }
 
-    if (end == len) return str;  /* No trailing whitespace */
+    if (end == len) return __mdh_retained(str);  /* No trailing whitespace */
     if (end == 0) return __mdh_make_string("");  /* All whitespace */
 
     char *buf = (char *)__mdh_buf_alloc(end + 1);
@@ -5741,7 +5904,7 @@ MdhValue __mdh_title_case(MdhValue str) {
     }
 
     const char *s = __mdh_get_string(str);
-    if (!s || *s == '\0') return str;
+    if (!s || *s == '\0') return __mdh_retained(str);
 
     int64_t len = strlen(s);
     char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, len + 1);
@@ -5774,7 +5937,7 @@ MdhValue __mdh_title_case(MdhValue str) {
 MdhValue __mdh_tae_hex(MdhValue num) {
     /* Convert integer to hex string (match Rust's `format!("{:x}", i64)` semantics). */
     if (num.tag != MDH_TAG_INT) {
-        __mdh_hurl(__mdh_make_string("tae_hex() needs an integer"));
+        __mdh_hurl_owned(__mdh_make_string("tae_hex() needs an integer"));
         return __mdh_make_string("0");
     }
     unsigned long long u = (unsigned long long)(uint64_t)num.data;
@@ -5786,7 +5949,7 @@ MdhValue __mdh_tae_hex(MdhValue num) {
 MdhValue __mdh_tae_octal(MdhValue num) {
     /* Convert integer to octal string (match Rust's `format!("{:o}", i64)` semantics). */
     if (num.tag != MDH_TAG_INT) {
-        __mdh_hurl(__mdh_make_string("tae_octal() needs an integer"));
+        __mdh_hurl_owned(__mdh_make_string("tae_octal() needs an integer"));
         return __mdh_make_string("0");
     }
     unsigned long long u = (unsigned long long)(uint64_t)num.data;
@@ -5798,16 +5961,16 @@ MdhValue __mdh_tae_octal(MdhValue num) {
 MdhValue __mdh_center(MdhValue str, MdhValue width_val) {
     /* Center string in given width */
     if (str.tag != MDH_TAG_STRING || width_val.tag != MDH_TAG_INT) {
-        return str;
+        return __mdh_retained(str);
     }
     const char *s = __mdh_get_string(str);
     if (!s) return __mdh_make_string("");
 
     int64_t width = width_val.data;
-    if (width <= 0) return str;
+    if (width <= 0) return __mdh_retained(str);
     int64_t char_len = __mdh_utf8_count_codepoints((const unsigned char *)s);
 
-    if (char_len >= width) return str;
+    if (char_len >= width) return __mdh_retained(str);
 
     size_t byte_len = strlen(s);
     int64_t total_pad = width - char_len;
@@ -5819,7 +5982,7 @@ MdhValue __mdh_center(MdhValue str, MdhValue width_val) {
     memset(buf, ' ', out_len);
     memcpy(buf + left_pad, s, byte_len);
     buf[out_len] = '\0';
-    return __mdh_make_string(buf);
+    return __mdh_string_from_buf(buf);
 }
 
 static bool __mdh_utf8_decode_one(const unsigned char *s, uint32_t *code_out, size_t *consumed_out) {
@@ -5878,7 +6041,7 @@ static int64_t __mdh_utf8_count_codepoints(const unsigned char *s) {
         uint32_t code = 0;
         size_t consumed = 0;
         if (!__mdh_utf8_decode_one(p, &code, &consumed)) {
-            __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+            __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
             return 0;
         }
         (void)code;
@@ -5897,7 +6060,7 @@ static int64_t __mdh_utf8_count_prefix(const unsigned char *s, int64_t byte_len)
         uint32_t code = 0;
         size_t consumed = 0;
         if (!__mdh_utf8_decode_one(p, &code, &consumed)) {
-            __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+            __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
             return 0;
         }
         (void)code;
@@ -5928,7 +6091,7 @@ static bool __mdh_utf8_first_codepoint_bytes(MdhValue str, const unsigned char *
     uint32_t code = 0;
     size_t consumed = 0;
     if (!__mdh_utf8_decode_one((const unsigned char *)s, &code, &consumed)) {
-        __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+        __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
         return false;
     }
     (void)code;
@@ -5940,7 +6103,7 @@ static bool __mdh_utf8_first_codepoint_bytes(MdhValue str, const unsigned char *
 
 static MdhValue __mdh_utf8_string_from_codepoint(uint32_t code) {
     if (code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF)) {
-        __mdh_hurl(__mdh_make_string("Invalid Unicode codepoint"));
+        __mdh_hurl_owned(__mdh_make_string("Invalid Unicode codepoint"));
         return __mdh_make_string("");
     }
 
@@ -5981,7 +6144,7 @@ MdhValue __mdh_ord(MdhValue str) {
 
     const unsigned char *s = (const unsigned char *)__mdh_get_string(str);
     if (!s || s[0] == '\0') {
-        __mdh_hurl(__mdh_make_string("Cannae get ord o' empty string!"));
+        __mdh_hurl_owned(__mdh_make_string("Cannae get ord o' empty string!"));
         return __mdh_make_int(0);
     }
 
@@ -5993,7 +6156,7 @@ MdhValue __mdh_ord(MdhValue str) {
     }
 
 invalid_utf8:
-    __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+    __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
     return __mdh_make_int(0);
 }
 
@@ -6012,13 +6175,13 @@ MdhValue __mdh_chr(MdhValue num) {
             "chr() needs a valid Unicode codepoint (0 to 1114111), got %lld",
             (long long)n
         );
-        __mdh_hurl(__mdh_make_string(buf));
+        __mdh_hurl_owned(__mdh_make_string(buf));
         return __mdh_make_string("");
     }
     if (n >= 0xD800 && n <= 0xDFFF) {
         char buf[128];
         snprintf(buf, sizeof(buf), "Invalid Unicode codepoint: %lld", (long long)n);
-        __mdh_hurl(__mdh_make_string(buf));
+        __mdh_hurl_owned(__mdh_make_string(buf));
         return __mdh_make_string("");
     }
 
@@ -6066,7 +6229,7 @@ oob:
     return __mdh_make_string("");
 
 invalid_utf8:
-    __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+    __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
     return __mdh_make_string("");
 }
 
@@ -6085,13 +6248,13 @@ MdhValue __mdh_chars(MdhValue str) {
         uint32_t code = 0;
         size_t consumed = 0;
         if (!__mdh_utf8_decode_one(p, &code, &consumed)) goto invalid_utf8;
-        __mdh_list_push(out, __mdh_utf8_string_from_codepoint(code));
+        __mdh_list_push_owned(out, __mdh_utf8_string_from_codepoint(code));
         p += consumed;
     }
     return out;
 
 invalid_utf8:
-    __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+    __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
     return __mdh_make_list(0);
 }
 
@@ -6158,7 +6321,7 @@ MdhValue __mdh_substring(MdhValue str, MdhValue start_val, MdhValue end_val) {
     return __mdh_string_from_buf(out);
 
 invalid_utf8:
-    __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+    __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
     return __mdh_make_string("");
 }
 
@@ -6174,12 +6337,12 @@ MdhValue __mdh_slice_string(MdhValue str, MdhValue start_opt, MdhValue end_opt, 
     } else if (step_opt.tag == MDH_TAG_INT) {
         step = step_opt.data;
     } else {
-        __mdh_hurl(__mdh_make_string("Slice step must be an integer"));
+        __mdh_hurl_owned(__mdh_make_string("Slice step must be an integer"));
         return __mdh_make_string("");
     }
 
     if (step == 0) {
-        __mdh_hurl(__mdh_make_string("Slice step cannae be zero, ya dafty!"));
+        __mdh_hurl_owned(__mdh_make_string("Slice step cannae be zero, ya dafty!"));
         return __mdh_make_string("");
     }
 
@@ -6262,7 +6425,7 @@ MdhValue __mdh_slice_string(MdhValue str, MdhValue start_opt, MdhValue end_opt, 
     return __mdh_string_from_buf(sb.buf);
 
 invalid_utf8:
-    __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+    __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
     return __mdh_make_string("");
 }
 
@@ -6283,16 +6446,16 @@ MdhValue __mdh_repeat_say(MdhValue str, MdhValue count_val) {
 MdhValue __mdh_leftpad(MdhValue str, MdhValue width_val, MdhValue pad_val) {
     /* Left pad string to width with pad char */
     if (str.tag != MDH_TAG_STRING || width_val.tag != MDH_TAG_INT) {
-        return str;
+        return __mdh_retained(str);
     }
     const char *s = __mdh_get_string(str);
     if (!s) return __mdh_make_string("");
 
     int64_t width = width_val.data;
-    if (width <= 0) return str;
+    if (width <= 0) return __mdh_retained(str);
     int64_t char_len = __mdh_utf8_count_codepoints((const unsigned char *)s);
 
-    if (char_len >= width) return str;
+    if (char_len >= width) return __mdh_retained(str);
 
     int64_t pad_chars = width - char_len;
     const unsigned char *fill_bytes = NULL;
@@ -6313,22 +6476,22 @@ MdhValue __mdh_leftpad(MdhValue str, MdhValue width_val, MdhValue pad_val) {
     }
     memcpy(buf + pad_bytes_len, s, byte_len);
     buf[out_len] = '\0';
-    return __mdh_make_string(buf);
+    return __mdh_string_from_buf(buf);
 }
 
 MdhValue __mdh_rightpad(MdhValue str, MdhValue width_val, MdhValue pad_val) {
     /* Right pad string to width with pad char */
     if (str.tag != MDH_TAG_STRING || width_val.tag != MDH_TAG_INT) {
-        return str;
+        return __mdh_retained(str);
     }
     const char *s = __mdh_get_string(str);
     if (!s) return __mdh_make_string("");
 
     int64_t width = width_val.data;
-    if (width <= 0) return str;
+    if (width <= 0) return __mdh_retained(str);
     int64_t char_len = __mdh_utf8_count_codepoints((const unsigned char *)s);
 
-    if (char_len >= width) return str;
+    if (char_len >= width) return __mdh_retained(str);
 
     int64_t pad_chars = width - char_len;
     const unsigned char *fill_bytes = NULL;
@@ -6349,7 +6512,7 @@ MdhValue __mdh_rightpad(MdhValue str, MdhValue width_val, MdhValue pad_val) {
         memcpy(buf + byte_len + (size_t)i * fill_len, fill_bytes, fill_len);
     }
     buf[out_len] = '\0';
-    return __mdh_make_string(buf);
+    return __mdh_string_from_buf(buf);
 }
 
 MdhValue __mdh_list_index(MdhValue list, MdhValue val) {
@@ -6388,7 +6551,7 @@ MdhValue __mdh_count_val(MdhValue list, MdhValue val) {
 MdhValue __mdh_list_copy(MdhValue list) {
     /* Create a shallow copy of list */
     if (list.tag != MDH_TAG_LIST) {
-        return list;
+        return __mdh_retained(list);
     }
     MdhList *src = (MdhList *)(intptr_t)list.data;
     MdhList *dst = (MdhList *)__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList));
@@ -6396,7 +6559,7 @@ MdhValue __mdh_list_copy(MdhValue list) {
     dst->capacity = src->length;
     dst->items = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * src->length);
     for (int64_t i = 0; i < src->length; i++) {
-        dst->items[i] = src->items[i];
+        dst->items[i] = __mdh_retained(src->items[i]);
     }
     MdhValue result;
     result.tag = MDH_TAG_LIST;
@@ -6410,7 +6573,12 @@ MdhValue __mdh_list_clear(MdhValue list) {
         return list;
     }
     MdhList *l = (MdhList *)(intptr_t)list.data;
+    int64_t old_len = l->length;
     l->length = 0;
+    /* Unlinked and discarded. */
+    for (int64_t i = 0; i < old_len; i++) {
+        __mdh_release(l->items[i]);
+    }
     return list;
 }
 
@@ -6468,7 +6636,7 @@ MdhValue __mdh_last_index_of(MdhValue str, MdhValue substr) {
 MdhValue __mdh_replace_first(MdhValue str, MdhValue old_sub, MdhValue new_sub) {
     /* Replace first occurrence of old_sub with new_sub */
     if (str.tag != MDH_TAG_STRING || old_sub.tag != MDH_TAG_STRING || new_sub.tag != MDH_TAG_STRING) {
-        __mdh_hurl(__mdh_make_string("replace_first() needs three strings"));
+        __mdh_hurl_owned(__mdh_make_string("replace_first() needs three strings"));
         return __mdh_make_string("");
     }
     const char *s = __mdh_get_string(str);
@@ -6489,11 +6657,11 @@ MdhValue __mdh_replace_first(MdhValue str, MdhValue old_sub, MdhValue new_sub) {
         buf[result_len] = '\0';
         return __mdh_string_from_buf(buf);
     }
-    if (old_len > s_len) return str;
+    if (old_len > s_len) return __mdh_retained(str);
 
     /* Find first occurrence */
     const char *pos = strstr(s, old_s);
-    if (!pos) return str;
+    if (!pos) return __mdh_retained(str);
 
     size_t idx = (size_t)(pos - s);
     size_t result_len = s_len - old_len + new_len;
@@ -6510,7 +6678,7 @@ MdhValue __mdh_replace_first(MdhValue str, MdhValue old_sub, MdhValue new_sub) {
 MdhValue __mdh_replace(MdhValue str, MdhValue old_sub, MdhValue new_sub) {
     /* Replace all occurrences of old_sub with new_sub */
     if (str.tag != MDH_TAG_STRING || old_sub.tag != MDH_TAG_STRING || new_sub.tag != MDH_TAG_STRING) {
-        __mdh_hurl(__mdh_make_string("replace() needs three strings"));
+        __mdh_hurl_owned(__mdh_make_string("replace() needs three strings"));
         return __mdh_make_string("");
     }
 
@@ -6557,7 +6725,7 @@ MdhValue __mdh_replace(MdhValue str, MdhValue old_sub, MdhValue new_sub) {
         return __mdh_string_from_buf(result);
 
     invalid_utf8:
-        __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+        __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
         return __mdh_make_string("");
     }
 
@@ -6568,7 +6736,7 @@ MdhValue __mdh_replace(MdhValue str, MdhValue old_sub, MdhValue new_sub) {
         count++;
         p += old_len;
     }
-    if (count == 0) return str;
+    if (count == 0) return __mdh_retained(str);
 
     /* Allocate result: s_len - count * old_len + count * new_len. The matches lie inside
      * s, so count * old_len <= s_len; the growth term is checked (MDH-BUG-FLU-00082). */
@@ -6596,7 +6764,7 @@ MdhValue __mdh_replace(MdhValue str, MdhValue old_sub, MdhValue new_sub) {
 MdhValue __mdh_unique(MdhValue list) {
     /* Remove duplicates from list */
     if (list.tag != MDH_TAG_LIST) {
-        __mdh_hurl(__mdh_make_string("unique() needs a list"));
+        __mdh_hurl_owned(__mdh_make_string("unique() needs a list"));
         return __mdh_make_list(0);
     }
     MdhList *src = (MdhList *)(intptr_t)list.data;
@@ -6620,7 +6788,7 @@ MdhValue __mdh_unique(MdhValue list) {
             }
         }
         if (!found) {
-            dst->items[dst->length++] = item;
+            dst->items[dst->length++] = __mdh_retained(item);
         }
     }
 
@@ -6633,13 +6801,13 @@ MdhValue __mdh_unique(MdhValue list) {
 MdhValue __mdh_average(MdhValue list) {
     /* Compute average of numeric list */
     if (list.tag != MDH_TAG_LIST) {
-        __mdh_hurl(__mdh_make_string("average() needs a list"));
+        __mdh_hurl_owned(__mdh_make_string("average() needs a list"));
         return __mdh_make_float(0.0);
     }
 
     MdhList *l = __mdh_get_list(list);
     if (l->length == 0) {
-        __mdh_hurl(__mdh_make_string("Cannae calculate average o' empty list!"));
+        __mdh_hurl_owned(__mdh_make_string("Cannae calculate average o' empty list!"));
         return __mdh_make_float(0.0);
     }
 
@@ -6651,7 +6819,7 @@ MdhValue __mdh_average(MdhValue list) {
         } else if (item.tag == MDH_TAG_FLOAT) {
             sum += __mdh_get_float(item);
         } else {
-            __mdh_hurl(__mdh_make_string("average() needs a list o' numbers"));
+            __mdh_hurl_owned(__mdh_make_string("average() needs a list o' numbers"));
             return __mdh_make_float(0.0);
         }
     }
@@ -6661,6 +6829,7 @@ MdhValue __mdh_average(MdhValue list) {
 typedef struct {
     MdhValue value;
     const char *key_str;
+    MdhValue key_text; /* owns key_str's chars until the sort is done */
 } MdhCreelSortItem;
 
 static int __mdh_creel_sort_cmp(const void *a, const void *b) {
@@ -6693,12 +6862,14 @@ MdhValue __mdh_creel_tae_list(MdhValue dict) {
         const char *key_str = key_str_val.tag == MDH_TAG_STRING ? __mdh_get_string(key_str_val) : "";
         items[i].value = key;
         items[i].key_str = key_str;
+        items[i].key_text = key_str_val;
     }
     qsort(items, (size_t)count, sizeof(MdhCreelSortItem), __mdh_creel_sort_cmp);
 
     MdhValue result = __mdh_make_list((int32_t)count);
     for (int64_t i = 0; i < count; i++) {
         __mdh_list_push(result, items[i].value);
+        __mdh_release(items[i].key_text);
     }
     return result;
 }
@@ -6869,7 +7040,7 @@ MdhValue __mdh_stacktrace(void) {
 MdhValue __mdh_chynge(MdhValue list, MdhValue index, MdhValue value) {
     /* List insert (Scots: change) */
     if (list.tag != MDH_TAG_LIST) {
-        __mdh_hurl(__mdh_make_string("chynge() needs a list"));
+        __mdh_hurl_owned(__mdh_make_string("chynge() needs a list"));
         return __mdh_make_list(0);
     }
 
@@ -6879,7 +7050,7 @@ MdhValue __mdh_chynge(MdhValue list, MdhValue index, MdhValue value) {
     } else if (index.tag == MDH_TAG_FLOAT) {
         idx = __mdh_double_to_i64_saturating(__mdh_get_float(index));
     } else {
-        __mdh_hurl(__mdh_make_string("chynge() needs an integer index"));
+        __mdh_hurl_owned(__mdh_make_string("chynge() needs an integer index"));
         return __mdh_make_list(0);
     }
 
@@ -6891,7 +7062,7 @@ MdhValue __mdh_chynge(MdhValue list, MdhValue index, MdhValue value) {
     if (idx < 0 || idx > len) {
         char msg[128];
         snprintf(msg, sizeof(msg), "Index %lld oot o' bounds fer list o' length %lld", (long long)idx, (long long)len);
-        __mdh_hurl(__mdh_make_string(msg));
+        __mdh_hurl_owned(__mdh_make_string(msg));
         return __mdh_make_list(0);
     }
 
@@ -6916,9 +7087,9 @@ MdhValue __mdh_muckle(MdhValue a, MdhValue b) {
     if (a.tag == MDH_TAG_FLOAT || b.tag == MDH_TAG_FLOAT) {
         double af = (a.tag == MDH_TAG_FLOAT) ? __mdh_get_float(a) : (double)a.data;
         double bf = (b.tag == MDH_TAG_FLOAT) ? __mdh_get_float(b) : (double)b.data;
-        return af > bf ? a : b;
+        return __mdh_retained(af > bf ? a : b); /* the other may not be a number */
     }
-    return a;
+    return __mdh_retained(a);
 }
 
 static int __mdh_compare_doubles(const void *a, const void *b) {
@@ -6932,13 +7103,13 @@ static int __mdh_compare_doubles(const void *a, const void *b) {
 MdhValue __mdh_median(MdhValue list) {
     /* Compute median of numeric list */
     if (list.tag != MDH_TAG_LIST) {
-        __mdh_hurl(__mdh_make_string("median() needs a list"));
+        __mdh_hurl_owned(__mdh_make_string("median() needs a list"));
         return __mdh_make_float(0.0);
     }
 
     MdhList *l = __mdh_get_list(list);
     if (l->length == 0) {
-        __mdh_hurl(__mdh_make_string("Cannae calculate median o' empty list!"));
+        __mdh_hurl_owned(__mdh_make_string("Cannae calculate median o' empty list!"));
         return __mdh_make_float(0.0);
     }
 
@@ -6951,12 +7122,12 @@ MdhValue __mdh_median(MdhValue list) {
         } else if (item.tag == MDH_TAG_FLOAT) {
             double v = __mdh_get_float(item);
             if (isnan(v)) {
-                __mdh_hurl(__mdh_make_string("median() cannae handle NaN"));
+                __mdh_hurl_owned(__mdh_make_string("median() cannae handle NaN"));
                 return __mdh_make_float(0.0);
             }
             nums[i] = v;
         } else {
-            __mdh_hurl(__mdh_make_string("median() needs a list o' numbers"));
+            __mdh_hurl_owned(__mdh_make_string("median() needs a list o' numbers"));
             return __mdh_make_float(0.0);
         }
     }
@@ -6973,25 +7144,25 @@ MdhValue __mdh_median(MdhValue list) {
 /* list_min - minimum value in a list */
 MdhValue __mdh_list_min(MdhValue list) {
     if (list.tag != MDH_TAG_LIST) {
-        __mdh_hurl(__mdh_make_string("minaw() needs a list"));
+        __mdh_hurl_owned(__mdh_make_string("minaw() needs a list"));
         return __mdh_make_nil();
     }
     MdhList *l = __mdh_get_list(list);
     if (l->length == 0) {
-        __mdh_hurl(__mdh_make_string("Cannae find minimum o' empty list!"));
+        __mdh_hurl_owned(__mdh_make_string("Cannae find minimum o' empty list!"));
         return __mdh_make_nil();
     }
 
     MdhValue min_val = l->items[0];
     if (min_val.tag != MDH_TAG_INT && min_val.tag != MDH_TAG_FLOAT) {
-        __mdh_hurl(__mdh_make_string("minaw() needs a list o' comparable numbers"));
+        __mdh_hurl_owned(__mdh_make_string("minaw() needs a list o' comparable numbers"));
         return __mdh_make_nil();
     }
 
     for (int64_t i = 1; i < l->length; i++) {
         MdhValue item = l->items[i];
         if (item.tag != min_val.tag) {
-            __mdh_hurl(__mdh_make_string("minaw() needs a list o' comparable numbers"));
+            __mdh_hurl_owned(__mdh_make_string("minaw() needs a list o' comparable numbers"));
             return __mdh_make_nil();
         }
         if (min_val.tag == MDH_TAG_INT) {
@@ -7012,25 +7183,25 @@ MdhValue __mdh_list_min(MdhValue list) {
 /* list_max - maximum value in a list */
 MdhValue __mdh_list_max(MdhValue list) {
     if (list.tag != MDH_TAG_LIST) {
-        __mdh_hurl(__mdh_make_string("maxaw() needs a list"));
+        __mdh_hurl_owned(__mdh_make_string("maxaw() needs a list"));
         return __mdh_make_nil();
     }
     MdhList *l = __mdh_get_list(list);
     if (l->length == 0) {
-        __mdh_hurl(__mdh_make_string("Cannae find maximum o' empty list!"));
+        __mdh_hurl_owned(__mdh_make_string("Cannae find maximum o' empty list!"));
         return __mdh_make_nil();
     }
 
     MdhValue max_val = l->items[0];
     if (max_val.tag != MDH_TAG_INT && max_val.tag != MDH_TAG_FLOAT) {
-        __mdh_hurl(__mdh_make_string("maxaw() needs a list o' comparable numbers"));
+        __mdh_hurl_owned(__mdh_make_string("maxaw() needs a list o' comparable numbers"));
         return __mdh_make_nil();
     }
 
     for (int64_t i = 1; i < l->length; i++) {
         MdhValue item = l->items[i];
         if (item.tag != max_val.tag) {
-            __mdh_hurl(__mdh_make_string("maxaw() needs a list o' comparable numbers"));
+            __mdh_hurl_owned(__mdh_make_string("maxaw() needs a list o' comparable numbers"));
             return __mdh_make_nil();
         }
         if (max_val.tag == MDH_TAG_INT) {
@@ -7131,7 +7302,7 @@ static int __mdh_sort_items_cmp(const void *a, const void *b) {
 /* list_sort - return a sorted copy of the list */
 MdhValue __mdh_list_sort(MdhValue list) {
     if (list.tag != MDH_TAG_LIST) {
-        __mdh_hurl(__mdh_make_string("sort() expects a list"));
+        __mdh_hurl_owned(__mdh_make_string("sort() expects a list"));
         return __mdh_make_list(0);
     }
     MdhList *l = __mdh_get_list(list);
@@ -7143,7 +7314,7 @@ MdhValue __mdh_list_sort(MdhValue list) {
     result->length = l->length;
     result->items = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * l->length);
     for (int64_t i = 0; i < l->length; i++) {
-        result->items[i] = l->items[i];
+        result->items[i] = __mdh_retained(l->items[i]);
     }
 
     /* Total order shared with the interpreter; the index tie-break keeps it stable. */
@@ -7166,7 +7337,7 @@ MdhValue __mdh_list_sort(MdhValue list) {
 /* list_uniq - return a list with duplicates removed (preserving order) */
 MdhValue __mdh_list_uniq(MdhValue list) {
     if (list.tag != MDH_TAG_LIST) {
-        __mdh_hurl(__mdh_make_string("uniq() needs a list"));
+        __mdh_hurl_owned(__mdh_make_string("uniq() needs a list"));
         return __mdh_make_list(0);
     }
     MdhList *l = __mdh_get_list(list);
@@ -7188,7 +7359,7 @@ MdhValue __mdh_list_uniq(MdhValue list) {
             }
         }
         if (!found) {
-            result->items[result->length++] = l->items[i];
+            result->items[result->length++] = __mdh_retained(l->items[i]);
         }
     }
 
@@ -7227,7 +7398,7 @@ MdhValue __mdh_range(int64_t start, int64_t end, int64_t step) {
 /* list_slice - return a slice of the list [start, end) */
 MdhValue __mdh_list_slice(MdhValue list, int64_t start, int64_t end) {
     if (list.tag != MDH_TAG_LIST) {
-        return list;
+        return __mdh_retained(list);
     }
     MdhList *l = __mdh_get_list(list);
 
@@ -7251,7 +7422,7 @@ MdhValue __mdh_list_slice(MdhValue list, int64_t start, int64_t end) {
     result->length = new_len;
     result->items = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * new_len);
     for (int64_t i = 0; i < new_len; i++) {
-        result->items[i] = l->items[start + i];
+        result->items[i] = __mdh_retained(l->items[start + i]);
     }
 
     return (MdhValue){ .tag = MDH_TAG_LIST, .data = (int64_t)(intptr_t)result };
@@ -7274,7 +7445,7 @@ MdhValue __mdh_is_space(MdhValue str) {
 
 MdhValue __mdh_is_digit(MdhValue str) {
     if (str.tag != MDH_TAG_STRING) {
-        __mdh_hurl(__mdh_make_string("is_digit() needs a string"));
+        __mdh_hurl_owned(__mdh_make_string("is_digit() needs a string"));
         return __mdh_make_bool(false);
     }
     const char *s = __mdh_get_string(str);
@@ -7291,7 +7462,7 @@ MdhValue __mdh_is_digit(MdhValue str) {
 MdhValue __mdh_wheesht_aw(MdhValue str) {
     /* Collapse whitespace, trim leading/trailing. */
     if (str.tag != MDH_TAG_STRING) {
-        __mdh_hurl(__mdh_make_string("wheesht_aw() needs a string"));
+        __mdh_hurl_owned(__mdh_make_string("wheesht_aw() needs a string"));
         return __mdh_make_string("");
     }
     const char *s = __mdh_get_string(str);
@@ -7328,13 +7499,14 @@ MdhValue __mdh_bonnie(MdhValue val) {
     memcpy(out + plen, m, mlen);
     memcpy(out + plen + mlen, suffix, slen);
     out[plen + mlen + slen] = '\0';
+    __mdh_release(s);
     return __mdh_string_from_buf(out);
 }
 
 MdhValue __mdh_shuffle(MdhValue list) {
     /* Shuffle list (deck) - returns shuffled copy */
     if (list.tag != MDH_TAG_LIST) {
-        __mdh_hurl(__mdh_make_string("shuffle() expects a list"));
+        __mdh_hurl_owned(__mdh_make_string("shuffle() expects a list"));
         return __mdh_make_list(0);
     }
 
@@ -7452,13 +7624,15 @@ MdhValue __mdh_ends_with(MdhValue str, MdhValue suffix) {
 void __mdh_set_args(int32_t argc, char **argv) {
     __mdh_argc = argc;
     __mdh_argv = argv;
+    /* Compiled main calls this first, so it is also where reference counting starts. */
+    __mdh_rc_init();
 }
 
 MdhValue __mdh_args(void) {
     MdhValue result = __mdh_make_list(__mdh_argc);
     for (int32_t i = 0; i < __mdh_argc; i++) {
         const char *s = (__mdh_argv && __mdh_argv[i]) ? __mdh_argv[i] : "";
-        __mdh_list_push(result, __mdh_make_string(s));
+        __mdh_list_push_owned(result, __mdh_make_string(s));
     }
     return result;
 }
@@ -7482,7 +7656,7 @@ MdhValue __mdh_chdir(MdhValue path) {
     if (chdir(p) != 0) {
         char buf[512];
         snprintf(buf, sizeof(buf), "Couldnae change tae directory '%s': %s", p, strerror(errno));
-        __mdh_hurl(__mdh_make_string(buf));
+        __mdh_hurl_owned(__mdh_make_string(buf));
     }
     return __mdh_make_nil();
 }
@@ -7509,6 +7683,7 @@ MdhValue __mdh_env_set(MdhValue key, MdhValue value) {
     const char *k = __mdh_get_string(key);
     const char *v = __mdh_get_string(value_str);
     (void)setenv(k, v, 1);
+    __mdh_release(value_str);
     return __mdh_make_nil();
 }
 
@@ -7533,7 +7708,7 @@ MdhValue __mdh_env_all(void) {
 
         MdhValue k = __mdh_string_from_buf(kbuf);
         MdhValue v = __mdh_make_string(eq + 1);
-        dict = __mdh_dict_set(dict, k, v);
+        dict = __mdh_dict_set_owned(dict, k, v);
     }
 
     return dict;
@@ -7629,7 +7804,7 @@ MdhValue __mdh_shell(MdhValue cmd) {
 
     int out_fd = mkstemp(out_template);
     if (out_fd < 0) {
-        __mdh_hurl(__mdh_make_string("Shell command failed"));
+        __mdh_hurl_owned(__mdh_make_string("Shell command failed"));
         return __mdh_make_nil();
     }
     close(out_fd);
@@ -7637,7 +7812,7 @@ MdhValue __mdh_shell(MdhValue cmd) {
     int err_fd = mkstemp(err_template);
     if (err_fd < 0) {
         mdh_unlink(out_template);
-        __mdh_hurl(__mdh_make_string("Shell command failed"));
+        __mdh_hurl_owned(__mdh_make_string("Shell command failed"));
         return __mdh_make_nil();
     }
     close(err_fd);
@@ -7667,7 +7842,7 @@ MdhValue __mdh_shell(MdhValue cmd) {
     if (!fp) {
         mdh_unlink(out_template);
         mdh_unlink(err_template);
-        __mdh_hurl(__mdh_make_string("Shell command failed"));
+        __mdh_hurl_owned(__mdh_make_string("Shell command failed"));
         return __mdh_make_nil();
     }
 
@@ -7713,7 +7888,7 @@ MdhValue __mdh_file_size(MdhValue path) {
     if (stat(p, &st) != 0) {
         char buf[512];
         snprintf(buf, sizeof(buf), "Couldnae get file info fer '%s': %s", p, strerror(errno));
-        __mdh_hurl(__mdh_make_string(buf));
+        __mdh_hurl_owned(__mdh_make_string(buf));
         return __mdh_make_int(0);
     }
     return __mdh_make_int((int64_t)st.st_size);
@@ -7728,7 +7903,7 @@ MdhValue __mdh_file_delete(MdhValue path) {
     if (mdh_unlink(p) != 0) {
         char buf[512];
         snprintf(buf, sizeof(buf), "Couldnae delete '%s': %s", p, strerror(errno));
-        __mdh_hurl(__mdh_make_string(buf));
+        __mdh_hurl_owned(__mdh_make_string(buf));
     }
     return __mdh_make_nil();
 }
@@ -7743,7 +7918,7 @@ MdhValue __mdh_list_dir(MdhValue path) {
     if (!dir) {
         char buf[512];
         snprintf(buf, sizeof(buf), "Couldnae read directory '%s': %s", p, strerror(errno));
-        __mdh_hurl(__mdh_make_string(buf));
+        __mdh_hurl_owned(__mdh_make_string(buf));
         return __mdh_make_list(0);
     }
 
@@ -7754,7 +7929,7 @@ MdhValue __mdh_list_dir(MdhValue path) {
         if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) {
             continue;
         }
-        __mdh_list_push(result, __mdh_make_string(name));
+        __mdh_list_push_owned(result, __mdh_make_string(name));
     }
 
     mdh_closedir(dir);
@@ -7803,7 +7978,7 @@ MdhValue __mdh_make_dir(MdhValue path) {
     if (__mdh_mkdir_p(p) != 0) {
         char buf[512];
         snprintf(buf, sizeof(buf), "Couldnae create directory '%s': %s", p, strerror(errno));
-        __mdh_hurl(__mdh_make_string(buf));
+        __mdh_hurl_owned(__mdh_make_string(buf));
     }
     return __mdh_make_nil();
 }
@@ -7828,14 +8003,14 @@ MdhValue __mdh_scrieve_append(MdhValue path, MdhValue content) {
     }
 
     const char *p = __mdh_get_string(path);
-    MdhValue content_str = content.tag == MDH_TAG_STRING ? content : __mdh_to_string(content);
+    MdhValue content_str = __mdh_to_string(content);
     const char *c = __mdh_get_string(content_str);
 
     FILE *f = fopen(p, "ab");
     if (!f) {
         char buf[512];
         snprintf(buf, sizeof(buf), "Couldnae open '%s' fer appendin': %s", p, strerror(errno));
-        __mdh_hurl(__mdh_make_string(buf));
+        __mdh_hurl_owned(__mdh_make_string(buf));
         return __mdh_make_nil();
     }
 
@@ -7844,6 +8019,7 @@ MdhValue __mdh_scrieve_append(MdhValue path, MdhValue content) {
     }
 
     fclose(f);
+    __mdh_release(content_str);
     return __mdh_make_nil();
 }
 
@@ -7857,13 +8033,13 @@ MdhValue __mdh_date_now(void) {
     int64_t weekday = (tm_now.tm_wday + 6) % 7; /* Monday=0 */
 
     MdhValue dict = __mdh_empty_dict();
-    dict = __mdh_dict_set(dict, __mdh_make_string("year"), __mdh_make_int((int64_t)tm_now.tm_year + 1900));
-    dict = __mdh_dict_set(dict, __mdh_make_string("month"), __mdh_make_int((int64_t)tm_now.tm_mon + 1));
-    dict = __mdh_dict_set(dict, __mdh_make_string("day"), __mdh_make_int((int64_t)tm_now.tm_mday));
-    dict = __mdh_dict_set(dict, __mdh_make_string("hour"), __mdh_make_int((int64_t)tm_now.tm_hour));
-    dict = __mdh_dict_set(dict, __mdh_make_string("minute"), __mdh_make_int((int64_t)tm_now.tm_min));
-    dict = __mdh_dict_set(dict, __mdh_make_string("second"), __mdh_make_int((int64_t)tm_now.tm_sec));
-    dict = __mdh_dict_set(dict, __mdh_make_string("weekday"), __mdh_make_int(weekday));
+    dict = __mdh_dict_set_owned(dict, __mdh_make_string("year"), __mdh_make_int((int64_t)tm_now.tm_year + 1900));
+    dict = __mdh_dict_set_owned(dict, __mdh_make_string("month"), __mdh_make_int((int64_t)tm_now.tm_mon + 1));
+    dict = __mdh_dict_set_owned(dict, __mdh_make_string("day"), __mdh_make_int((int64_t)tm_now.tm_mday));
+    dict = __mdh_dict_set_owned(dict, __mdh_make_string("hour"), __mdh_make_int((int64_t)tm_now.tm_hour));
+    dict = __mdh_dict_set_owned(dict, __mdh_make_string("minute"), __mdh_make_int((int64_t)tm_now.tm_min));
+    dict = __mdh_dict_set_owned(dict, __mdh_make_string("second"), __mdh_make_int((int64_t)tm_now.tm_sec));
+    dict = __mdh_dict_set_owned(dict, __mdh_make_string("weekday"), __mdh_make_int(weekday));
     return dict;
 }
 
@@ -7887,7 +8063,7 @@ MdhValue __mdh_date_format(MdhValue timestamp_secs, MdhValue format) {
         out = strftime(buf, cap, fmt, &tm_val);
     }
     if (out == 0) {
-        __mdh_hurl(__mdh_make_string("Couldnae format date"));
+        __mdh_hurl_owned(__mdh_make_string("Couldnae format date"));
         return __mdh_make_string("");
     }
 
@@ -7908,17 +8084,17 @@ MdhValue __mdh_date_parse(MdhValue date_str, MdhValue format) {
 
     char *end = strptime(s, fmt, &tm_val);
     if (!end) {
-        __mdh_hurl(__mdh_make_string("Couldnae parse date"));
+        __mdh_hurl_owned(__mdh_make_string("Couldnae parse date"));
         return __mdh_make_int(0);
     }
     if (*end) {
-        __mdh_hurl(__mdh_make_string("Couldnae parse date (trailing text)"));
+        __mdh_hurl_owned(__mdh_make_string("Couldnae parse date (trailing text)"));
         return __mdh_make_int(0);
     }
 
     time_t t = timegm(&tm_val);
     if (t == (time_t)-1) {
-        __mdh_hurl(__mdh_make_string("Couldnae parse date (invalid timestamp)"));
+        __mdh_hurl_owned(__mdh_make_string("Couldnae parse date (invalid timestamp)"));
         return __mdh_make_int(0);
     }
 
@@ -7955,7 +8131,7 @@ MdhValue __mdh_date_add(MdhValue timestamp_secs, MdhValue amount, MdhValue unit)
     const char *u = __mdh_get_string(unit);
     int64_t mul = __mdh_unit_seconds(u);
     if (mul == 0) {
-        __mdh_hurl(__mdh_make_string("Unknown time unit"));
+        __mdh_hurl_owned(__mdh_make_string("Unknown time unit"));
         return __mdh_make_int(0);
     }
     return __mdh_make_int(timestamp_secs.data + amount.data * mul);
@@ -7973,7 +8149,7 @@ MdhValue __mdh_date_diff(MdhValue ts1, MdhValue ts2, MdhValue unit) {
     }
     int64_t div = __mdh_unit_seconds(u);
     if (div == 0) {
-        __mdh_hurl(__mdh_make_string("Unknown time unit"));
+        __mdh_hurl_owned(__mdh_make_string("Unknown time unit"));
         return __mdh_make_int(0);
     }
     return __mdh_make_int(diff_secs / div);
@@ -8075,7 +8251,7 @@ static void __mdh_regex_compile_or_hurl(regex_t *re, const char *pattern) {
     if (rc != 0) {
         char err[256];
         regerror(rc, re, err, sizeof(err));
-        __mdh_hurl(__mdh_make_string(err));
+        __mdh_hurl_owned(__mdh_make_string(err));
     }
 }
 
@@ -8148,7 +8324,7 @@ MdhValue __mdh_regex_match_all(MdhValue text, MdhValue pattern) {
         }
         int64_t start = (int64_t)offset + (int64_t)m.rm_so;
         int64_t end = (int64_t)offset + (int64_t)m.rm_eo;
-        __mdh_list_push(result, __mdh_regex_match_dict(s, start, end));
+        __mdh_list_push_owned(result, __mdh_regex_match_dict(s, start, end));
 
         size_t adv = (size_t)m.rm_eo;
         if (adv == 0) {
@@ -8267,7 +8443,7 @@ MdhValue __mdh_regex_split(MdhValue text, MdhValue pattern) {
         char *seg = (char *)__mdh_obj_alloc(MDH_KIND_STRING, seg_len + 1);
         memcpy(seg, s + offset, seg_len);
         seg[seg_len] = '\0';
-        __mdh_list_push(result, __mdh_string_from_buf(seg));
+        __mdh_list_push_owned(result, __mdh_string_from_buf(seg));
 
         if (match_end == offset) {
             offset += 1;
@@ -8282,7 +8458,7 @@ MdhValue __mdh_regex_split(MdhValue text, MdhValue pattern) {
         char *seg = (char *)__mdh_obj_alloc(MDH_KIND_STRING, seg_len + 1);
         memcpy(seg, s + offset, seg_len);
         seg[seg_len] = '\0';
-        __mdh_list_push(result, __mdh_string_from_buf(seg));
+        __mdh_list_push_owned(result, __mdh_string_from_buf(seg));
     }
 
     regfree(&re);
@@ -8301,7 +8477,7 @@ MdhValue __mdh_regex_test(MdhValue text, MdhValue pattern) {
 
     MdhRsResult r = __mdh_rs_regex_test(text, pattern);
     if (!r.ok) {
-        __mdh_hurl(r.error);
+        __mdh_hurl_owned(r.error);
         return __mdh_make_bool(false);
     }
     return r.value;
@@ -8315,7 +8491,7 @@ MdhValue __mdh_regex_match(MdhValue text, MdhValue pattern) {
 
     MdhRsResult r = __mdh_rs_regex_match(text, pattern);
     if (!r.ok) {
-        __mdh_hurl(r.error);
+        __mdh_hurl_owned(r.error);
         return __mdh_make_nil();
     }
     return r.value;
@@ -8329,7 +8505,7 @@ MdhValue __mdh_regex_match_all(MdhValue text, MdhValue pattern) {
 
     MdhRsResult r = __mdh_rs_regex_match_all(text, pattern);
     if (!r.ok) {
-        __mdh_hurl(r.error);
+        __mdh_hurl_owned(r.error);
         return __mdh_make_list(0);
     }
     return r.value;
@@ -8339,12 +8515,12 @@ MdhValue __mdh_regex_replace(MdhValue text, MdhValue pattern, MdhValue replaceme
     if (text.tag != MDH_TAG_STRING || pattern.tag != MDH_TAG_STRING || replacement.tag != MDH_TAG_STRING) {
         uint8_t got2 = pattern.tag != MDH_TAG_STRING ? pattern.tag : replacement.tag;
         __mdh_type_error("regex_replace", text.tag, got2);
-        return text.tag == MDH_TAG_STRING ? text : __mdh_make_string("");
+        return text.tag == MDH_TAG_STRING ? __mdh_retained(text) : __mdh_make_string("");
     }
 
     MdhRsResult r = __mdh_rs_regex_replace(text, pattern, replacement);
     if (!r.ok) {
-        __mdh_hurl(r.error);
+        __mdh_hurl_owned(r.error);
         return __mdh_make_string("");
     }
     return r.value;
@@ -8354,12 +8530,12 @@ MdhValue __mdh_regex_replace_first(MdhValue text, MdhValue pattern, MdhValue rep
     if (text.tag != MDH_TAG_STRING || pattern.tag != MDH_TAG_STRING || replacement.tag != MDH_TAG_STRING) {
         uint8_t got2 = pattern.tag != MDH_TAG_STRING ? pattern.tag : replacement.tag;
         __mdh_type_error("regex_replace_first", text.tag, got2);
-        return text.tag == MDH_TAG_STRING ? text : __mdh_make_string("");
+        return text.tag == MDH_TAG_STRING ? __mdh_retained(text) : __mdh_make_string("");
     }
 
     MdhRsResult r = __mdh_rs_regex_replace_first(text, pattern, replacement);
     if (!r.ok) {
-        __mdh_hurl(r.error);
+        __mdh_hurl_owned(r.error);
         return __mdh_make_string("");
     }
     return r.value;
@@ -8373,7 +8549,7 @@ MdhValue __mdh_regex_split(MdhValue text, MdhValue pattern) {
 
     MdhRsResult r = __mdh_rs_regex_split(text, pattern);
     if (!r.ok) {
-        __mdh_hurl(r.error);
+        __mdh_hurl_owned(r.error);
         return __mdh_make_list(0);
     }
     return r.value;
@@ -8424,7 +8600,7 @@ static MdhValue __mdh_json_parse_value(const char **p);
 
 static MdhValue __mdh_json_parse_string(const char **p) {
     if (**p != '\"') {
-        __mdh_hurl(__mdh_make_string("Expected JSON string"));
+        __mdh_hurl_owned(__mdh_make_string("Expected JSON string"));
         return __mdh_make_string("");
     }
 
@@ -8441,7 +8617,7 @@ static MdhValue __mdh_json_parse_string(const char **p) {
         if (c == '\\') {
             (*p)++;
             if (!**p) {
-                __mdh_hurl(__mdh_make_string("Unterminated string escape"));
+                __mdh_hurl_owned(__mdh_make_string("Unterminated string escape"));
                 return __mdh_make_string("");
             }
             char e = **p;
@@ -8472,7 +8648,7 @@ static MdhValue __mdh_json_parse_string(const char **p) {
                     break;
                 case 'u': {
                     if (!(*p)[1] || !(*p)[2] || !(*p)[3] || !(*p)[4]) {
-                        __mdh_hurl(__mdh_make_string("Invalid unicode escape"));
+                        __mdh_hurl_owned(__mdh_make_string("Invalid unicode escape"));
                         return __mdh_make_string("");
                     }
                     int h1 = __mdh_hex_val((*p)[1]);
@@ -8480,7 +8656,7 @@ static MdhValue __mdh_json_parse_string(const char **p) {
                     int h3 = __mdh_hex_val((*p)[3]);
                     int h4 = __mdh_hex_val((*p)[4]);
                     if (h1 < 0 || h2 < 0 || h3 < 0 || h4 < 0) {
-                        __mdh_hurl(__mdh_make_string("Invalid unicode escape"));
+                        __mdh_hurl_owned(__mdh_make_string("Invalid unicode escape"));
                         return __mdh_make_string("");
                     }
                     uint32_t code = (uint32_t)((h1 << 12) | (h2 << 8) | (h3 << 4) | h4);
@@ -8498,7 +8674,7 @@ static MdhValue __mdh_json_parse_string(const char **p) {
         (*p)++;
     }
 
-    __mdh_hurl(__mdh_make_string("Unterminated JSON string"));
+    __mdh_hurl_owned(__mdh_make_string("Unterminated JSON string"));
     return __mdh_make_string("");
 }
 
@@ -8507,7 +8683,7 @@ static MdhValue __mdh_json_parse_number(const char **p) {
     char *endptr = NULL;
     double d = strtod(start, &endptr);
     if (endptr == start) {
-        __mdh_hurl(__mdh_make_string("Invalid JSON number"));
+        __mdh_hurl_owned(__mdh_make_string("Invalid JSON number"));
         return __mdh_make_int(0);
     }
 
@@ -8548,7 +8724,7 @@ static MdhValue __mdh_json_parse_array(const char **p) {
             break;
         }
         if (**p != ',') {
-            __mdh_hurl(__mdh_make_string("Expected ']' or ',' in JSON array"));
+            __mdh_hurl_owned(__mdh_make_string("Expected ']' or ',' in JSON array"));
             return __mdh_make_list(0);
         }
         (*p)++;
@@ -8570,13 +8746,13 @@ static MdhValue __mdh_json_parse_object(const char **p) {
     for (;;) {
         __mdh_json_skip_ws(p);
         if (**p != '\"') {
-            __mdh_hurl(__mdh_make_string("Expected string key in JSON object"));
+            __mdh_hurl_owned(__mdh_make_string("Expected string key in JSON object"));
             return __mdh_empty_dict();
         }
         MdhValue key = __mdh_json_parse_string(p);
         __mdh_json_skip_ws(p);
         if (**p != ':') {
-            __mdh_hurl(__mdh_make_string("Expected ':' in JSON object"));
+            __mdh_hurl_owned(__mdh_make_string("Expected ':' in JSON object"));
             return __mdh_empty_dict();
         }
         (*p)++;
@@ -8589,7 +8765,7 @@ static MdhValue __mdh_json_parse_object(const char **p) {
             break;
         }
         if (**p != ',') {
-            __mdh_hurl(__mdh_make_string("Expected '}' or ',' in JSON object"));
+            __mdh_hurl_owned(__mdh_make_string("Expected '}' or ',' in JSON object"));
             return __mdh_empty_dict();
         }
         (*p)++;
@@ -8601,7 +8777,7 @@ static MdhValue __mdh_json_parse_object(const char **p) {
 static MdhValue __mdh_json_parse_value(const char **p) {
     __mdh_json_skip_ws(p);
     if (!**p) {
-        __mdh_hurl(__mdh_make_string("Unexpected end of JSON"));
+        __mdh_hurl_owned(__mdh_make_string("Unexpected end of JSON"));
         return __mdh_make_nil();
     }
 
@@ -8638,7 +8814,7 @@ static MdhValue __mdh_json_parse_value(const char **p) {
         return __mdh_json_parse_number(p);
     }
 
-    __mdh_hurl(__mdh_make_string("Invalid JSON value"));
+    __mdh_hurl_owned(__mdh_make_string("Invalid JSON value"));
     return __mdh_make_nil();
 }
 
@@ -8652,7 +8828,7 @@ MdhValue __mdh_json_parse(MdhValue json_str) {
     MdhValue v = __mdh_json_parse_value(&p);
     __mdh_json_skip_ws(&p);
     if (*p != '\0') {
-        __mdh_hurl(__mdh_make_string("Trailing characters after JSON value"));
+        __mdh_hurl_owned(__mdh_make_string("Trailing characters after JSON value"));
         return __mdh_make_nil();
     }
     return v;
@@ -8848,7 +9024,7 @@ MdhValue __mdh_json_parse(MdhValue json_str) {
 
     MdhRsResult r = __mdh_rs_json_parse(json_str);
     if (!r.ok) {
-        __mdh_hurl(r.error);
+        __mdh_hurl_owned(r.error);
         return __mdh_make_nil();
     }
     return r.value;
@@ -8857,7 +9033,7 @@ MdhValue __mdh_json_parse(MdhValue json_str) {
 MdhValue __mdh_json_stringify(MdhValue value) {
     MdhRsResult r = __mdh_rs_json_stringify(value);
     if (!r.ok) {
-        __mdh_hurl(r.error);
+        __mdh_hurl_owned(r.error);
         return __mdh_make_string("");
     }
     return r.value;
@@ -8866,7 +9042,7 @@ MdhValue __mdh_json_stringify(MdhValue value) {
 MdhValue __mdh_json_pretty(MdhValue value) {
     MdhRsResult r = __mdh_rs_json_pretty(value);
     if (!r.ok) {
-        __mdh_hurl(r.error);
+        __mdh_hurl_owned(r.error);
         return __mdh_make_string("");
     }
     return r.value;
@@ -8930,7 +9106,7 @@ MdhValue __mdh_is_a(MdhValue value, MdhValue type_name) {
 
 MdhValue __mdh_wrang_sort(MdhValue value, MdhValue type_name) {
     if (type_name.tag != MDH_TAG_STRING) {
-        __mdh_hurl(__mdh_make_string("Second arg must be a type name string"));
+        __mdh_hurl_owned(__mdh_make_string("Second arg must be a type name string"));
         return __mdh_make_bool(1);
     }
 
@@ -8941,6 +9117,7 @@ MdhValue __mdh_wrang_sort(MdhValue value, MdhValue type_name) {
     if (actual_str && expected_str) {
         wrong = strcmp(actual_str, expected_str) != 0;
     }
+    __mdh_release(actual);
     return __mdh_make_bool(wrong);
 }
 
@@ -8989,7 +9166,7 @@ MdhValue __mdh_indices_o(MdhValue container, MdhValue needle) {
 
         size_t need_len = strlen(need);
         if (need_len == 0) {
-            __mdh_hurl(__mdh_make_string("Cannae search fer an empty string, ya numpty!"));
+            __mdh_hurl_owned(__mdh_make_string("Cannae search fer an empty string, ya numpty!"));
             return __mdh_make_list(0);
         }
 
@@ -9019,7 +9196,7 @@ MdhValue __mdh_chunks(MdhValue list, MdhValue size) {
     }
     int64_t n = size.data;
     if (n <= 0) {
-        __mdh_hurl(__mdh_make_string("chunks() size must be positive"));
+        __mdh_hurl_owned(__mdh_make_string("chunks() size must be positive"));
         return __mdh_make_list(0);
     }
 
@@ -9035,7 +9212,7 @@ MdhValue __mdh_chunks(MdhValue list, MdhValue size) {
         for (int64_t j = i; j < end; j++) {
             __mdh_list_push(chunk, src->items[j]);
         }
-        __mdh_list_push(out, chunk);
+        __mdh_list_push_owned(out, chunk);
         i = end;
     }
     return out;
@@ -9051,7 +9228,7 @@ MdhValue __mdh_grup(MdhValue list, MdhValue size) {
         return __mdh_make_list(0);
     }
     if (size.data <= 0) {
-        __mdh_hurl(__mdh_make_string("grup() needs a positive chunk size"));
+        __mdh_hurl_owned(__mdh_make_string("grup() needs a positive chunk size"));
         return __mdh_make_list(0);
     }
     return __mdh_chunks(list, size);
@@ -9069,7 +9246,7 @@ MdhValue __mdh_window(MdhValue str, MdhValue size) {
 
     int64_t n = size.data;
     if (n <= 0) {
-        __mdh_hurl(__mdh_make_string("window() size must be positive"));
+        __mdh_hurl_owned(__mdh_make_string("window() size must be positive"));
         return __mdh_make_list(0);
     }
 
@@ -9085,7 +9262,7 @@ MdhValue __mdh_window(MdhValue str, MdhValue size) {
         char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, (size_t)n + 1);
         memcpy(buf, s + i, (size_t)n);
         buf[n] = '\0';
-        __mdh_list_push(out, __mdh_string_from_buf(buf));
+        __mdh_list_push_owned(out, __mdh_string_from_buf(buf));
     }
     return out;
 }
@@ -9134,7 +9311,7 @@ MdhValue __mdh_pair_adjacent(MdhValue list) {
         for (int64_t j = i; j < end; j++) {
             __mdh_list_push(pair, src->items[j]);
         }
-        __mdh_list_push(out, pair);
+        __mdh_list_push_owned(out, pair);
     }
     return out;
 }
@@ -9148,7 +9325,7 @@ MdhValue __mdh_skelp(MdhValue str, MdhValue size) {
     const unsigned char *s = (const unsigned char *)__mdh_get_string(str);
     int64_t n = size.data;
     if (n <= 0) {
-        __mdh_hurl(__mdh_make_string("skelp() size must be positive"));
+        __mdh_hurl_owned(__mdh_make_string("skelp() size must be positive"));
         return __mdh_make_list(0);
     }
     if (!s || s[0] == '\0') {
@@ -9169,7 +9346,7 @@ MdhValue __mdh_skelp(MdhValue str, MdhValue size) {
         uint32_t code = 0;
         size_t consumed = 0;
         if (!__mdh_utf8_decode_one(p, &code, &consumed)) {
-            __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+            __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
             return __mdh_make_list(0);
         }
         (void)code;
@@ -9181,7 +9358,7 @@ MdhValue __mdh_skelp(MdhValue str, MdhValue size) {
             char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, seg_bytes_len + 1);
             memcpy(buf, seg_start, seg_bytes_len);
             buf[seg_bytes_len] = '\0';
-            __mdh_list_push(out, __mdh_string_from_buf(buf));
+            __mdh_list_push_owned(out, __mdh_string_from_buf(buf));
             seg_start = p;
             seg_bytes_len = 0;
             seg_chars = 0;
@@ -9191,7 +9368,7 @@ MdhValue __mdh_skelp(MdhValue str, MdhValue size) {
         char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, seg_bytes_len + 1);
         memcpy(buf, seg_start, seg_bytes_len);
         buf[seg_bytes_len] = '\0';
-        __mdh_list_push(out, __mdh_string_from_buf(buf));
+        __mdh_list_push_owned(out, __mdh_string_from_buf(buf));
     }
     return out;
 }
@@ -9205,16 +9382,16 @@ MdhValue __mdh_strip_left(MdhValue str, MdhValue chars) {
     const char *s = __mdh_get_string(str);
     const char *set = __mdh_get_string(chars);
     if (!set || set[0] == '\0') {
-        return str;
+        return __mdh_retained(str);
     }
     if (!s || s[0] == '\0') {
-        return str;
+        return __mdh_retained(str);
     }
 
     const unsigned char *set_bytes = (const unsigned char *)set;
     int64_t set_len = __mdh_utf8_count_codepoints(set_bytes);
     if (set_len <= 0) {
-        return str;
+        return __mdh_retained(str);
     }
 
     uint32_t *set_codes = (uint32_t *)__mdh_buf_alloc(sizeof(uint32_t) * (size_t)set_len);
@@ -9224,7 +9401,7 @@ MdhValue __mdh_strip_left(MdhValue str, MdhValue chars) {
         uint32_t code = 0;
         size_t consumed = 0;
         if (!__mdh_utf8_decode_one(sp, &code, &consumed)) {
-            __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+            __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
             return __mdh_make_string("");
         }
         set_codes[set_i++] = code;
@@ -9238,7 +9415,7 @@ MdhValue __mdh_strip_left(MdhValue str, MdhValue chars) {
         uint32_t code = 0;
         size_t consumed = 0;
         if (!__mdh_utf8_decode_one(p, &code, &consumed)) {
-            __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+            __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
             return __mdh_make_string("");
         }
         bool in_set = false;
@@ -9252,7 +9429,7 @@ MdhValue __mdh_strip_left(MdhValue str, MdhValue chars) {
         p += consumed;
     }
     if (p == start_ptr) {
-        return str;
+        return __mdh_retained(str);
     }
 
     size_t out_len = strlen((const char *)p);
@@ -9270,16 +9447,16 @@ MdhValue __mdh_strip_right(MdhValue str, MdhValue chars) {
     const char *s = __mdh_get_string(str);
     const char *set = __mdh_get_string(chars);
     if (!set || set[0] == '\0') {
-        return str;
+        return __mdh_retained(str);
     }
     if (!s || s[0] == '\0') {
-        return str;
+        return __mdh_retained(str);
     }
 
     const unsigned char *set_bytes = (const unsigned char *)set;
     int64_t set_len = __mdh_utf8_count_codepoints(set_bytes);
     if (set_len <= 0) {
-        return str;
+        return __mdh_retained(str);
     }
 
     uint32_t *set_codes = (uint32_t *)__mdh_buf_alloc(sizeof(uint32_t) * (size_t)set_len);
@@ -9289,7 +9466,7 @@ MdhValue __mdh_strip_right(MdhValue str, MdhValue chars) {
         uint32_t code = 0;
         size_t consumed = 0;
         if (!__mdh_utf8_decode_one(sp, &code, &consumed)) {
-            __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+            __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
             return __mdh_make_string("");
         }
         set_codes[set_i++] = code;
@@ -9300,7 +9477,7 @@ MdhValue __mdh_strip_right(MdhValue str, MdhValue chars) {
     const unsigned char *sb = (const unsigned char *)s;
     int64_t char_len = __mdh_utf8_count_codepoints(sb);
     if (char_len <= 0) {
-        return str;
+        return __mdh_retained(str);
     }
 
     const unsigned char **starts =
@@ -9313,7 +9490,7 @@ MdhValue __mdh_strip_right(MdhValue str, MdhValue chars) {
         uint32_t code = 0;
         size_t consumed = 0;
         if (!__mdh_utf8_decode_one(p, &code, &consumed)) {
-            __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+            __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
             return __mdh_make_string("");
         }
         starts[idx] = p;
@@ -9337,7 +9514,7 @@ MdhValue __mdh_strip_right(MdhValue str, MdhValue chars) {
         end_idx--;
     }
     if (end_idx == char_len) {
-        return str;
+        return __mdh_retained(str);
     }
 
     const unsigned char *end_ptr = (end_idx == 0) ? sb : starts[end_idx];
@@ -9380,7 +9557,7 @@ MdhValue __mdh_sporran_fill(MdhValue str, MdhValue width, MdhValue fill_char) {
     const char *s = __mdh_get_string(str);
     int64_t w_i = width.data;
     if (w_i <= 0) {
-        return str;
+        return __mdh_retained(str);
     }
     size_t w = (size_t)w_i;
     int64_t char_len = __mdh_utf8_count_codepoints((const unsigned char *)s);
@@ -9392,7 +9569,7 @@ MdhValue __mdh_sporran_fill(MdhValue str, MdhValue width, MdhValue fill_char) {
     }
 
     if ((size_t)char_len >= w) {
-        return str;
+        return __mdh_retained(str);
     }
 
     size_t byte_len = strlen(s);
@@ -9426,7 +9603,7 @@ MdhValue __mdh_scottify(MdhValue str) {
         return __mdh_make_string("");
     }
 
-    MdhValue out = str;
+    MdhValue out = __mdh_retained(str); /* owned: each pass replaces it with a +1 */
     const char *pairs[][2] = {
         {"yes", "aye"},
         {"Yes", "Aye"},
@@ -9459,7 +9636,13 @@ MdhValue __mdh_scottify(MdhValue str) {
     };
 
     for (size_t i = 0; i < sizeof(pairs) / sizeof(pairs[0]); i++) {
-        out = __mdh_replace(out, __mdh_make_string(pairs[i][0]), __mdh_make_string(pairs[i][1]));
+        MdhValue from = __mdh_make_string(pairs[i][0]);
+        MdhValue to = __mdh_make_string(pairs[i][1]);
+        MdhValue next = __mdh_replace(out, from, to);
+        __mdh_release(from);
+        __mdh_release(to);
+        __mdh_release(out);
+        out = next;
     }
     return out;
 }
@@ -9500,7 +9683,7 @@ MdhValue __mdh_blooter(MdhValue str) {
     const unsigned char *sb = (const unsigned char *)s;
     int64_t char_len = __mdh_utf8_count_codepoints(sb);
     if (char_len <= 1) {
-        return str;
+        return __mdh_retained(str);
     }
 
     const unsigned char **starts =
@@ -9513,7 +9696,7 @@ MdhValue __mdh_blooter(MdhValue str) {
         uint32_t code = 0;
         size_t consumed = 0;
         if (!__mdh_utf8_decode_one(p, &code, &consumed)) {
-            __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+            __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
             return __mdh_make_string("");
         }
         (void)code;
@@ -9563,7 +9746,7 @@ MdhValue __mdh_dreich(MdhValue str) {
     uint32_t first_code = 0;
     size_t first_len = 0;
     if (!__mdh_utf8_decode_one(s, &first_code, &first_len)) {
-        __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+        __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
         return __mdh_make_bool(false);
     }
 
@@ -9572,7 +9755,7 @@ MdhValue __mdh_dreich(MdhValue str) {
         uint32_t code = 0;
         size_t consumed = 0;
         if (!__mdh_utf8_decode_one(p, &code, &consumed)) {
-            __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+            __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
             return __mdh_make_bool(false);
         }
         if (code != first_code) {
@@ -9596,7 +9779,7 @@ MdhValue __mdh_geggie(MdhValue str) {
     uint32_t first_code = 0;
     size_t first_len = 0;
     if (!__mdh_utf8_decode_one(s, &first_code, &first_len)) {
-        __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+        __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
         return __mdh_make_string("");
     }
     (void)first_code;
@@ -9608,7 +9791,7 @@ MdhValue __mdh_geggie(MdhValue str) {
         uint32_t code = 0;
         size_t consumed = 0;
         if (!__mdh_utf8_decode_one(p, &code, &consumed)) {
-            __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+            __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
             return __mdh_make_string("");
         }
         (void)code;
@@ -9634,6 +9817,7 @@ MdhValue __mdh_jings(MdhValue msg) {
     memcpy(out, prefix, plen);
     memcpy(out + plen, m, mlen);
     out[plen + mlen] = '\0';
+    __mdh_release(s);
     return __mdh_string_from_buf(out);
 }
 
@@ -9647,6 +9831,7 @@ MdhValue __mdh_crivvens(MdhValue msg) {
     memcpy(out, prefix, plen);
     memcpy(out + plen, m, mlen);
     out[plen + mlen] = '\0';
+    __mdh_release(s);
     return __mdh_string_from_buf(out);
 }
 
@@ -9754,7 +9939,7 @@ MdhValue __mdh_clarty(MdhValue val) {
             uint32_t code = 0;
             size_t consumed = 0;
             if (!__mdh_utf8_decode_one(p, &code, &consumed)) {
-                __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+                __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
                 return __mdh_make_bool(false);
             }
             for (int64_t i = 0; i < seen_len; i++) {
@@ -9912,7 +10097,7 @@ MdhValue __mdh_banter(MdhValue a, MdhValue b) {
             uint32_t code = 0;
             size_t consumed = 0;
             if (!__mdh_utf8_decode_one(p1, &code, &consumed)) {
-                __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+                __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
                 return __mdh_make_string("");
             }
             (void)code;
@@ -9924,7 +10109,7 @@ MdhValue __mdh_banter(MdhValue a, MdhValue b) {
             uint32_t code = 0;
             size_t consumed = 0;
             if (!__mdh_utf8_decode_one(p2, &code, &consumed)) {
-                __mdh_hurl(__mdh_make_string("Invalid UTF-8 in string"));
+                __mdh_hurl_owned(__mdh_make_string("Invalid UTF-8 in string"));
                 return __mdh_make_string("");
             }
             (void)code;
@@ -10134,7 +10319,7 @@ MdhValue __mdh_stoater(MdhValue list) {
     }
     MdhList *l = __mdh_get_list(list);
     if (!l || l->length == 0) {
-        __mdh_hurl(__mdh_make_string("Cannae find a stoater in an empty list!"));
+        __mdh_hurl_owned(__mdh_make_string("Cannae find a stoater in an empty list!"));
         return __mdh_make_nil();
     }
     MdhValue best = l->items[0];
@@ -10156,7 +10341,7 @@ MdhValue __mdh_stoater(MdhValue list) {
             }
         }
     }
-    return best;
+    return __mdh_retained(best);
 }
 
 MdhValue __mdh_dicht(MdhValue list, MdhValue index) {
@@ -10182,7 +10367,7 @@ MdhValue __mdh_dicht(MdhValue list, MdhValue index) {
     if (idx < 0 || idx >= len) {
         char msg[128];
         snprintf(msg, sizeof(msg), "Index %lld oot o' bounds fer list o' length %lld", (long long)idx, (long long)len);
-        __mdh_hurl(__mdh_make_string(msg));
+        __mdh_hurl_owned(__mdh_make_string(msg));
         return __mdh_make_list(0);
     }
 
@@ -10248,7 +10433,7 @@ MdhValue __mdh_split_by(MdhValue list, MdhValue pred) {
         } else if (strcmp(p, "number") == 0) {
             is_match = (item.tag == MDH_TAG_INT || item.tag == MDH_TAG_FLOAT);
         } else {
-            __mdh_hurl(__mdh_make_string("Unknown predicate. Try: even, odd, positive, negative, truthy, nil, string, number"));
+            __mdh_hurl_owned(__mdh_make_string("Unknown predicate. Try: even, odd, positive, negative, truthy, nil, string, number"));
             return __mdh_make_list(0);
         }
 
@@ -10260,8 +10445,8 @@ MdhValue __mdh_split_by(MdhValue list, MdhValue pred) {
     }
 
     MdhValue result = __mdh_make_list(2);
-    __mdh_list_push(result, truthy);
-    __mdh_list_push(result, falsy);
+    __mdh_list_push_owned(result, truthy);
+    __mdh_list_push_owned(result, falsy);
     return result;
 }
 
@@ -10287,13 +10472,13 @@ MdhValue __mdh_grup_runs(MdhValue list) {
         if (__mdh_eq(first, item)) {
             __mdh_list_push(current_group, item);
         } else {
-            __mdh_list_push(result, current_group);
+            __mdh_list_push_owned(result, current_group);
             current_group = __mdh_make_list(4);
             first = item;
             __mdh_list_push(current_group, item);
         }
     }
-    __mdh_list_push(result, current_group);
+    __mdh_list_push_owned(result, current_group);
     return result;
 }
 
@@ -10305,7 +10490,7 @@ MdhValue __mdh_range_o(MdhValue list) {
     MdhList *src = __mdh_get_list(list);
     int64_t len = src ? src->length : 0;
     if (len == 0) {
-        __mdh_hurl(__mdh_make_string("Cannae get range o' empty list!"));
+        __mdh_hurl_owned(__mdh_make_string("Cannae get range o' empty list!"));
         return __mdh_make_float(0.0);
     }
 
@@ -10395,7 +10580,7 @@ MdhValue __mdh_blether_format(MdhValue template, MdhValue dict) {
         return __mdh_make_string("");
     }
 
-    MdhValue result = template;
+    MdhValue result = __mdh_retained(template); /* owned: each pass replaces it with a +1 */
     int64_t *dict_ptr = __mdh_kv_payload_ptr(dict);
     int64_t count = dict_ptr ? dict_ptr[0] : 0;
     MdhValue *entries = dict_ptr ? (MdhValue *)(dict_ptr + 1) : NULL;
@@ -10403,7 +10588,7 @@ MdhValue __mdh_blether_format(MdhValue template, MdhValue dict) {
         MdhValue key = entries[i * 2];
         MdhValue val = entries[i * 2 + 1];
 
-        MdhValue key_s = (key.tag == MDH_TAG_STRING) ? key : __mdh_to_string(key);
+        MdhValue key_s = __mdh_to_string(key);
         const char *k = __mdh_get_string(key_s);
         size_t klen = strlen(k);
         char *ph = (char *)__mdh_obj_alloc(MDH_KIND_STRING, klen + 3);
@@ -10411,10 +10596,15 @@ MdhValue __mdh_blether_format(MdhValue template, MdhValue dict) {
         memcpy(ph + 1, k, klen);
         ph[1 + klen] = '}';
         ph[2 + klen] = '\0';
+        __mdh_release(key_s);
 
         MdhValue placeholder = __mdh_string_from_buf(ph);
         MdhValue repl = __mdh_to_string(val);
-        result = __mdh_replace(result, placeholder, repl);
+        MdhValue next = __mdh_replace(result, placeholder, repl);
+        __mdh_release(placeholder);
+        __mdh_release(repl);
+        __mdh_release(result);
+        result = next;
     }
     return result;
 }
@@ -10426,8 +10616,10 @@ MdhValue __mdh_bampot_mode(MdhValue list) {
     }
 
     MdhValue tmp = __mdh_list_copy(list);
-    tmp = __mdh_shuffle(tmp);
-    tmp = __mdh_shuffle(tmp);
+    MdhValue shuffled = __mdh_shuffle(tmp);
+    __mdh_release(tmp);
+    tmp = __mdh_shuffle(shuffled);
+    __mdh_release(shuffled);
 
     MdhList *l = __mdh_get_list(tmp);
     if (l && l->length > 1) {
@@ -10486,8 +10678,12 @@ MdhValue __mdh_get_last_error(void) {
     return __mdh_last_error;
 }
 
-void __mdh_hurl(MdhValue msg) {
+/* __mdh_last_error holds one reference to the value it keeps: the new one is stored
+ * before the old one is released (a re-hurl of the caught error keeps it alive). */
+static void __mdh_hurl_owned(MdhValue msg) {
+    MdhValue old = __mdh_last_error;
     __mdh_last_error = msg;
+    __mdh_release(old);
     if (__mdh_try_depth > 0) {
         jmp_buf *envp = __mdh_try_stack[__mdh_try_depth - 1];
         longjmp(*envp, 1);
@@ -10496,6 +10692,11 @@ void __mdh_hurl(MdhValue msg) {
     MdhValue s = __mdh_to_string(msg);
     fprintf(stderr, "%s\n", __mdh_get_string(s));
     exit(1);
+}
+
+/* `msg` is borrowed: the last error takes a reference of its own. */
+void __mdh_hurl(MdhValue msg) {
+    __mdh_hurl_owned(__mdh_retained(msg));
 }
 
 /* A user `hurl msg`: the interpreter's UserError text is "Hurled at line N: <msg>",
@@ -10514,5 +10715,5 @@ void __mdh_hurl_at(MdhValue msg, int64_t line) {
     char *buf = __mdh_alloc_text(overflowed, total);
     memcpy(buf, prefix, (size_t)prefix_len);
     memcpy(buf + prefix_len, text, text_len + 1);
-    __mdh_hurl(__mdh_make_string(buf));
+    __mdh_hurl_owned(__mdh_string_from_buf(buf));
 }

@@ -97,19 +97,33 @@ typedef enum {
 } MdhObjKind;
 
 /* The object header (DES F6 3.2) sits immediately before the payload that an
- * MdhValue's data points at, so data is unchanged. So far only static objects carry
- * one: string literals and class-name strings are emitted as constant globals
- * { MdhObjHeader, chars } with MDH_OBJ_IMMORTAL set, which reference counting must
- * never write. Heap objects get their header when counting starts (stage R1).
- * Must match OBJ_HEADER_SIZE / OBJ_FLAG_IMMORTAL / IMMORTAL_REFCOUNT in src/llvm/types.rs. */
+ * MdhValue's data points at, so data is unchanged. __mdh_obj_alloc puts one on every
+ * heap object (refcount 1). String literals and class-name strings are constant globals
+ * { MdhObjHeader, chars } with MDH_OBJ_IMMORTAL set, which reference counting never
+ * writes. `flags` carries MDH_OBJ_MAGIC in its high half, so a heap-tagged value that
+ * points at memory without a header (static or interior data) is caught, not misread.
+ * Must match OBJ_HEADER_SIZE / OBJ_FLAG_* / IMMORTAL_REFCOUNT in src/llvm/types.rs. */
 typedef struct {
-    int64_t refcount;
-    uint32_t kind; /* MdhObjKind */
+    int64_t refcount; /* the count; the line it died at once MDH_OBJ_DEAD is set */
+    uint32_t kind;    /* MdhObjKind */
     uint32_t flags;
 } MdhObjHeader;
 
 #define MDH_OBJ_IMMORTAL 0x1u
+#define MDH_OBJ_DEAD 0x2u
+#define MDH_OBJ_MAGIC 0x4D440000u
+#define MDH_OBJ_MAGIC_MASK 0xFFFF0000u
 #define MDH_REFCOUNT_IMMORTAL (INT64_MAX / 2)
+
+/* Tags whose data points at a counted object: string, list, dict, instance, creel,
+ * closure (and bound method), bytes. Must match RC_HEAP_TAG_MASK in src/llvm/types.rs. */
+#define MDH_RC_TAG_MASK 0x3A70u
+#define MDH_RC_HEAP_TAG(tag) ((tag) < 16 && ((MDH_RC_TAG_MASK >> (tag)) & 1u))
+
+/* Kinds counted by default (bit 1 << MdhObjKind); see __mdh_rc_kinds in gc_stub.c. */
+#ifndef MDH_RC_DEFAULT_KINDS
+#define MDH_RC_DEFAULT_KINDS (1u << MDH_KIND_STRING)
+#endif
 
 void *__mdh_obj_alloc(uint32_t kind, size_t size);
 void *__mdh_obj_realloc(void *obj, size_t size);
@@ -120,6 +134,35 @@ char *__mdh_buf_strdup(const char *s);
 /* Allocations made so far of a kind (MDH_KIND_BUFFER counts buffers), or -1 when the
  * runtime was built without MDH_ALLOC_STATS. */
 int64_t __mdh_alloc_count(uint32_t kind);
+
+/* ========== Reference counting (stage R1: DEAD marking, no frees) ==========
+ *
+ * Arguments are borrowed and results owned (+1), the Python C-API convention (DES F6
+ * 3.3). A function that keeps an argument retains it. Reaching zero releases the
+ * object's children and marks it DEAD; touching a DEAD object aborts. */
+void __mdh_retain(MdhValue v);
+void __mdh_release(MdhValue v);
+/* What compiled code calls once its inline tag test found a heap tag. */
+void __mdh_rc_retain_obj(int64_t data);
+void __mdh_rc_release_obj(int64_t data);
+/* Store a value the caller owns (+1) without another retain (mdh_runtime.c). */
+void __mdh_list_push_owned(MdhValue list, MdhValue value);
+MdhValue __mdh_dict_set_owned(MdhValue dict, MdhValue key, MdhValue value);
+/* Abort if `v` is a DEAD object (`op` names the access in the message). */
+void __mdh_rc_check(MdhValue v, const char *op);
+/* Objects of `kind` allocated and not yet dead. */
+int64_t __mdh_rc_live(uint32_t kind);
+/* Turn counting on (MDH_RC_KINDS, else MDH_RC_DEFAULT_KINDS): called first thing by a
+ * program compiled with counting (MDH_RC=1); without it nothing is counted. */
+void __mdh_rc_enable(void);
+/* Read MDH_RC_REPORT; called once at program start. */
+void __mdh_rc_init(void);
+extern uint32_t __mdh_rc_kinds;
+/* Hooks the allocator needs from the runtime (mdh_runtime.c): call `visit` once per
+ * MdhValue the object directly holds, and the current mdhavers line. */
+typedef void (*MdhRcVisit)(MdhValue child, void *ctx);
+void __mdh_rc_children(uint32_t kind, void *payload, MdhRcVisit visit, void *ctx);
+int64_t __mdh_rc_line(void);
 
 /* ========== Value Creation ========== */
 

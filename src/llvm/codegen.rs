@@ -36,8 +36,11 @@ use crate::ast::{
 };
 use crate::error::HaversError;
 
+mod rc;
+
 use super::types::{
-    MdhTypes, ObjKind, ValueTag, IMMORTAL_REFCOUNT, OBJ_FLAG_IMMORTAL, OBJ_HEADER_SIZE,
+    MdhTypes, ObjKind, ValueTag, IMMORTAL_REFCOUNT, OBJ_FLAG_IMMORTAL, OBJ_FLAG_MAGIC,
+    OBJ_HEADER_SIZE,
 };
 
 /// Hurled when a string size computation would overflow or cannot be allocated.
@@ -74,6 +77,9 @@ struct LoopContext<'ctx> {
     /// `CodeGen::try_depth` when the loop was entered: `brak`/`haud` pop the try
     /// handlers pushed inside the loop body since then.
     try_depth: u32,
+    /// The temp-scope depth when the loop was entered: `brak`/`haud` release the temps
+    /// of the statements inside the body (see `codegen/rc.rs`).
+    rc_scope_depth: usize,
 }
 
 /// Libc functions we use
@@ -85,6 +91,12 @@ struct LibcFunctions<'ctx> {
     obj_alloc: FunctionValue<'ctx>,
     obj_realloc: FunctionValue<'ctx>,
     obj_strdup: FunctionValue<'ctx>,
+    // Reference counting (runtime/gc_stub.c): retain/release of an object's data (after
+    // the inline tag test) and of a whole value (tag tested in C).
+    rc_retain_obj: FunctionValue<'ctx>,
+    rc_release_obj: FunctionValue<'ctx>,
+    rc_retain: FunctionValue<'ctx>,
+    rc_release: FunctionValue<'ctx>,
     buf_alloc: FunctionValue<'ctx>,
     buf_realloc: FunctionValue<'ctx>,
     strlen: FunctionValue<'ctx>,
@@ -737,6 +749,20 @@ pub struct CodeGen<'ctx> {
     fmt_false: inkwell::values::GlobalValue<'ctx>,
     fmt_nil: inkwell::values::GlobalValue<'ctx>,
     fmt_newline: inkwell::values::GlobalValue<'ctx>,
+
+    /// Reference counting (see `codegen/rc.rs`): on unless a test turns it off.
+    rc_enabled: bool,
+    /// Temp scopes of the function being compiled.
+    rc_state: rc::RcFnState<'ctx>,
+    /// Per function (in first-registration order), the slots its epilogue releases.
+    rc_fn_slots: Vec<(FunctionValue<'ctx>, Vec<PointerValue<'ctx>>)>,
+    rc_fn_index: HashMap<FunctionValue<'ctx>, usize>,
+    /// Values whose fresh +1 a holder has already taken (by LLVM value address).
+    rc_taken: HashSet<usize>,
+    /// Compiled functions that return an owned (+1) value.
+    rc_owned_return_fns: HashSet<FunctionValue<'ctx>>,
+    /// Per function, its statement temp slots (pinned at a try like the variables).
+    rc_temp_pins: HashMap<FunctionValue<'ctx>, Vec<PointerValue<'ctx>>>,
 }
 
 #[derive(Debug)]
@@ -750,6 +776,12 @@ impl From<BoxVariableError> for HaversError {
 
 impl<'ctx> CodeGen<'ctx> {
     pub fn new(context: &'ctx Context, module_name: &str) -> Self {
+        Self::new_with_refcounting(context, module_name, false)
+    }
+
+    /// `new`, with reference counting (stage R1, see `codegen/rc.rs`) on or off. Off, the
+    /// emitted IR is exactly what it was before reference counting existed.
+    pub fn new_with_refcounting(context: &'ctx Context, module_name: &str, rc: bool) -> Self {
         let module = context.create_module(module_name);
 
         // Set target triple and data layout for x86_64 Linux
@@ -771,12 +803,12 @@ impl<'ctx> CodeGen<'ctx> {
         let libc = Self::declare_libc_functions(&module, context, &types);
 
         // Create format strings
-        let fmt_int = Self::create_global_string(&module, context, "%lld", "fmt_int");
-        let fmt_string = Self::create_global_string(&module, context, "%s", "fmt_string");
-        let fmt_true = Self::create_global_string(&module, context, "aye", "fmt_true");
-        let fmt_false = Self::create_global_string(&module, context, "nae", "fmt_false");
-        let fmt_nil = Self::create_global_string(&module, context, "naething", "fmt_nil");
-        let fmt_newline = Self::create_global_string(&module, context, "\n", "fmt_newline");
+        let fmt_int = Self::create_global_string(&module, context, rc, "%lld", "fmt_int");
+        let fmt_string = Self::create_global_string(&module, context, rc, "%s", "fmt_string");
+        let fmt_true = Self::create_global_string(&module, context, rc, "aye", "fmt_true");
+        let fmt_false = Self::create_global_string(&module, context, rc, "nae", "fmt_false");
+        let fmt_nil = Self::create_global_string(&module, context, rc, "naething", "fmt_nil");
+        let fmt_newline = Self::create_global_string(&module, context, rc, "\n", "fmt_newline");
 
         CodeGen {
             context,
@@ -842,6 +874,13 @@ impl<'ctx> CodeGen<'ctx> {
             fmt_false,
             fmt_nil,
             fmt_newline,
+            rc_enabled: rc,
+            rc_state: rc::RcFnState::default(),
+            rc_fn_slots: Vec::new(),
+            rc_fn_index: HashMap::new(),
+            rc_taken: HashSet::new(),
+            rc_owned_return_fns: HashSet::new(),
+            rc_temp_pins: HashMap::new(),
         }
     }
 
@@ -1849,6 +1888,19 @@ impl<'ctx> CodeGen<'ctx> {
         );
         // __mdh_obj_strdup(const char*) -> char* (a new string object)
         let obj_strdup = declare_alloc("__mdh_obj_strdup", i8_ptr.fn_type(&[i8_ptr.into()], false));
+        // Reference counting: __mdh_rc_retain_obj / __mdh_rc_release_obj (int64_t data) and
+        // __mdh_retain / __mdh_release (MdhValue). They never unwind (release never hurls).
+        let rc_obj_type = void_type.fn_type(&[i64_type.into()], false);
+        let rc_value_type = void_type.fn_type(&[types.value_type.into()], false);
+        let declare_rc = |name: &str, fn_type: inkwell::types::FunctionType<'ctx>| {
+            let f = module.add_function(name, fn_type, Some(Linkage::External));
+            f.add_attribute(AttributeLoc::Function, nounwind);
+            f
+        };
+        let rc_retain_obj = declare_rc("__mdh_rc_retain_obj", rc_obj_type);
+        let rc_release_obj = declare_rc("__mdh_rc_release_obj", rc_obj_type);
+        let rc_retain = declare_rc("__mdh_retain", rc_value_type);
+        let rc_release = declare_rc("__mdh_release", rc_value_type);
         // __mdh_buf_alloc(size_t) -> void*
         let buf_alloc = declare_alloc("__mdh_buf_alloc", i8_ptr.fn_type(&[i64_type.into()], false));
         // __mdh_buf_realloc(void*, size_t) -> void*
@@ -3778,6 +3830,10 @@ impl<'ctx> CodeGen<'ctx> {
             obj_alloc,
             obj_realloc,
             obj_strdup,
+            rc_retain_obj,
+            rc_release_obj,
+            rc_retain,
+            rc_release,
             buf_alloc,
             buf_realloc,
             strlen,
@@ -4154,6 +4210,7 @@ impl<'ctx> CodeGen<'ctx> {
     fn create_global_string(
         module: &Module<'ctx>,
         context: &'ctx Context,
+        rc: bool,
         s: &str,
         name: &str,
     ) -> inkwell::values::GlobalValue<'ctx> {
@@ -4165,7 +4222,16 @@ impl<'ctx> CodeGen<'ctx> {
                     .const_int(IMMORTAL_REFCOUNT, false)
                     .into(),
                 i32_type.const_int(ObjKind::String as u64, false).into(),
-                i32_type.const_int(OBJ_FLAG_IMMORTAL, false).into(),
+                i32_type
+                    .const_int(
+                        if rc {
+                            OBJ_FLAG_MAGIC | OBJ_FLAG_IMMORTAL
+                        } else {
+                            OBJ_FLAG_IMMORTAL
+                        },
+                        false,
+                    )
+                    .into(),
                 context.const_string(s.as_bytes(), true).into(),
             ],
             false,
@@ -4198,7 +4264,8 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// An immortal static string (see `create_global_string`); returns its chars pointer.
     fn immortal_str(&self, s: &str, name: &str) -> PointerValue<'ctx> {
-        let global = Self::create_global_string(&self.module, self.context, s, name);
+        let global =
+            Self::create_global_string(&self.module, self.context, self.rc_enabled, s, name);
         self.get_string_ptr(global)
     }
 
@@ -4360,6 +4427,11 @@ impl<'ctx> CodeGen<'ctx> {
             "__mdh_jmp_buf_size",
             "__mdh_hurl_at",
             "__mdh_set_args",
+            // Reference counting: never raises (a DEAD object aborts, naming the lines).
+            "__mdh_rc_retain_obj",
+            "__mdh_rc_release_obj",
+            "__mdh_retain",
+            "__mdh_release",
         ];
         let is_runtime_call = |module: &Module<'ctx>, call: InstructionValue<'ctx>| -> bool {
             let callee = unsafe { LLVMGetCalledValue(call.as_value_ref()) };
@@ -4580,6 +4652,8 @@ impl<'ctx> CodeGen<'ctx> {
         let entry = self.context.append_basic_block(main_fn, "entry");
         self.builder.position_at_end(entry);
         self.current_function = Some(main_fn);
+        let _main_rc = self.rc_enter_function(None);
+        self.rc_emit_enable();
 
         // Pass argv into the runtime so args() can work.
         let argc = main_fn.get_nth_param(0).unwrap().into_int_value();
@@ -4612,7 +4686,7 @@ impl<'ctx> CodeGen<'ctx> {
                 if name == "__current_suite" {
                     let empty_ptr = self.immortal_str("", "__current_suite_empty");
                     let empty = self.make_string(empty_ptr);
-                    self.builder.build_store(global_ptr, empty).unwrap();
+                    self.store_slot(global_ptr, empty);
                 }
             }
         }
@@ -4672,8 +4746,14 @@ impl<'ctx> CodeGen<'ctx> {
         // Every function and lambda is now known: give the late dispatchers their bodies.
         self.emit_late_call_dispatchers()?;
 
+        // Every function body is complete: route its returns through an epilogue that
+        // releases its slots (and, in main, the user globals).
+        let globals = self.rc_user_globals();
+        self.rc_emit_epilogues(&globals);
+
         // Last: every function body is complete, so its blocks can be split.
         self.emit_thread_line_notes();
+        self.rc_drop_unused_declarations();
 
         Ok(())
     }
@@ -4729,7 +4809,13 @@ impl<'ctx> CodeGen<'ctx> {
             let args: Vec<BasicValueEnum<'ctx>> = (1..=argc)
                 .map(|i| dispatcher.get_nth_param(i as u32).unwrap())
                 .collect();
-            match self.call_function_value(callee, &args) {
+            let saved_rc = self.rc_enter_function(Some(dispatcher));
+            let dispatched = self.call_function_value(callee, &args);
+            if let Ok(value) = dispatched {
+                self.rc_return_value(value);
+            }
+            self.rc_leave_function(saved_rc);
+            match dispatched {
                 Ok(value) => {
                     self.builder.build_return(Some(&value)).unwrap();
                     dispatcher.set_linkage(Linkage::Internal);
@@ -9305,7 +9391,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Store the boxed cell back into the variable.
-        self.builder.build_store(alloca, cell).unwrap();
+        self.store_slot(alloca, cell);
 
         // Drop any shadow optimizations; boxed values are not compatible with them.
         self.int_shadows.remove(name);
@@ -9335,7 +9421,7 @@ impl<'ctx> CodeGen<'ctx> {
         let cell_data = self.extract_data(cell).unwrap();
         let zero = self.types.i64_type.const_int(0, false);
         let elem_ptr = self.get_list_element_ptr(cell_data, zero).unwrap();
-        self.builder.build_store(elem_ptr, value).unwrap();
+        self.store_slot(elem_ptr, value);
     }
 
     /// After `toss_in`/`heave_oot`, write the resulting creel back to the variable that
@@ -9359,7 +9445,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .unwrap();
             self.box_set(cell, result);
         } else {
-            self.builder.build_store(ptr, result).unwrap();
+            self.store_slot(ptr, result);
         }
     }
 
@@ -10520,7 +10606,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_ptr_to_int(new_list_ptr, self.types.i64_type, "new_data")
             .unwrap();
         let dst_ptr = self.get_list_element_ptr(new_list_data, i).unwrap();
-        self.builder.build_store(dst_ptr, elem).unwrap();
+        self.store_new_element(dst_ptr, elem);
 
         // i++
         let next_i = self.builder.build_int_add(i, one, "next_i").unwrap();
@@ -10586,7 +10672,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_ptr_to_int(new_list_ptr, self.types.i64_type, "new_data")
             .unwrap();
         let dst_ptr = self.get_list_element_ptr(new_list_data, i).unwrap();
-        self.builder.build_store(dst_ptr, elem).unwrap();
+        self.store_new_element(dst_ptr, elem);
 
         let one = self.types.i64_type.const_int(1, false);
         let next_i = self.builder.build_int_add(i, one, "next_i").unwrap();
@@ -10705,7 +10791,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(self.types.value_type, src_ptr, "elem")
             .unwrap();
         let dst_ptr = self.get_list_element_ptr(new_list_data, i).unwrap();
-        self.builder.build_store(dst_ptr, elem).unwrap();
+        self.store_new_element(dst_ptr, elem);
         let next_i = self.builder.build_int_add(i, one, "next_i").unwrap();
         self.builder.build_store(i_ptr, next_i).unwrap();
         self.builder.build_unconditional_branch(loop1).unwrap();
@@ -10741,7 +10827,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let dst_idx = self.builder.build_int_add(a_len, i2, "dst_idx").unwrap();
         let dst_ptr2 = self.get_list_element_ptr(new_list_data, dst_idx).unwrap();
-        self.builder.build_store(dst_ptr2, elem2).unwrap();
+        self.store_new_element(dst_ptr2, elem2);
         let next_i2 = self.builder.build_int_add(i2, one, "next_i2").unwrap();
         self.builder.build_store(i_ptr, next_i2).unwrap();
         self.builder.build_unconditional_branch(loop2).unwrap();
@@ -11101,7 +11187,7 @@ impl<'ctx> CodeGen<'ctx> {
         let dst_ptr = self
             .get_list_element_ptr(new_list_data, list_dst_idx)
             .unwrap();
-        self.builder.build_store(dst_ptr, elem).unwrap();
+        self.store_new_element(dst_ptr, elem);
 
         let list_next_i = self
             .builder
@@ -12990,7 +13076,16 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ========== Statement Compilation ==========
 
+    /// Compile a statement in its own temp scope: the owned results of its expressions
+    /// are released when it ends (see `codegen/rc.rs`).
     fn compile_stmt(&mut self, stmt: &Stmt) -> Result<(), HaversError> {
+        self.rc_scope_open();
+        let result = self.compile_stmt_inner(stmt);
+        self.rc_scope_close();
+        result
+    }
+
+    fn compile_stmt_inner(&mut self, stmt: &Stmt) -> Result<(), HaversError> {
         if !matches!(
             stmt,
             Stmt::Function { .. } | Stmt::Class { .. } | Stmt::Struct { .. } | Stmt::Block { .. }
@@ -13042,7 +13137,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.list_push, &[cell.into(), init_val.into()], "")
                         .unwrap();
 
-                    self.builder.build_store(alloca, cell).unwrap();
+                    self.store_slot_inline(alloca, cell);
                     if is_top_level {
                         // The `ken` has run: forward reads compiled earlier may proceed.
                         self.retire_forward_global(name);
@@ -13144,7 +13239,7 @@ impl<'ctx> CodeGen<'ctx> {
                         self.variables.insert(name.clone(), a);
                         a
                     };
-                    self.builder.build_store(alloca, value).unwrap();
+                    self.store_slot_inline(alloca, value);
                     return Ok(());
                 }
 
@@ -13227,7 +13322,7 @@ impl<'ctx> CodeGen<'ctx> {
                     self.variables.insert(name.clone(), a);
                     a
                 };
-                self.builder.build_store(alloca, value).unwrap();
+                self.store_slot_inline(alloca, value);
 
                 // Create the int shadow if needed, and (re)initialise it on every
                 // declaration: a re-declaration must not leave a stale shadow behind.
@@ -13427,6 +13522,8 @@ impl<'ctx> CodeGen<'ctx> {
                 } else {
                     self.make_nil()
                 };
+                // The caller gets its own reference; the epilogue releases this frame's.
+                self.rc_return_value(ret_val);
                 // Leaving the function: unregister every hae_a_bash handler this frame
                 // pushed, or a later hurl would longjmp into a dead frame (MDH-BUG-FLU-00049).
                 self.emit_try_pops(self.try_depth);
@@ -13437,6 +13534,8 @@ impl<'ctx> CodeGen<'ctx> {
             Stmt::Break { .. } => {
                 if let Some(loop_ctx) = self.loop_stack.last() {
                     let (target, loop_try_depth) = (loop_ctx.break_block, loop_ctx.try_depth);
+                    let rc_depth = loop_ctx.rc_scope_depth;
+                    self.rc_release_scopes_from(rc_depth);
                     self.emit_try_pops(self.try_depth.saturating_sub(loop_try_depth));
                     self.builder.build_unconditional_branch(target).unwrap();
                     Ok(())
@@ -13448,6 +13547,8 @@ impl<'ctx> CodeGen<'ctx> {
             Stmt::Continue { .. } => {
                 if let Some(loop_ctx) = self.loop_stack.last() {
                     let (target, loop_try_depth) = (loop_ctx.continue_block, loop_ctx.try_depth);
+                    let rc_depth = loop_ctx.rc_scope_depth;
+                    self.rc_release_scopes_from(rc_depth);
                     self.emit_try_pops(self.try_depth.saturating_sub(loop_try_depth));
                     self.builder.build_unconditional_branch(target).unwrap();
                     Ok(())
@@ -13707,7 +13808,22 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ========== Expression Compilation ==========
 
+    /// Compile an expression to an owned value: the result's reference is held by a temp
+    /// of the current temp scope (see `codegen/rc.rs`), so callers may use it until the
+    /// statement ends, and must take their own reference to keep it.
     fn compile_expr(&mut self, expr: &Expr) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let borrowable = self.rc_borrowable_slot(expr);
+        let value = self.compile_expr_inner(expr)?;
+        if let Some(slot) = borrowable {
+            if self.rc_borrowed_read(slot, value) {
+                return Ok(value);
+            }
+        }
+        self.rc_own_temp(value);
+        Ok(value)
+    }
+
+    fn compile_expr_inner(&mut self, expr: &Expr) -> Result<BasicValueEnum<'ctx>, HaversError> {
         match expr {
             Expr::Literal { value, .. } => Ok(self.compile_literal(value)),
 
@@ -13870,7 +13986,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 .unwrap()
                         };
                         let elem0_val_ptr = elem0_ptr;
-                        self.builder.build_store(elem0_val_ptr, fn_val).unwrap();
+                        self.store_new_element(elem0_val_ptr, fn_val.into());
 
                         // Store captured boxes
                         for (i, cap_name) in captures.iter().enumerate() {
@@ -13908,7 +14024,7 @@ impl<'ctx> CodeGen<'ctx> {
                                     .unwrap()
                             };
                             let elem_val_ptr = elem_ptr;
-                            self.builder.build_store(elem_val_ptr, cap_val).unwrap();
+                            self.store_new_element(elem_val_ptr, cap_val);
                         }
 
                         // Return closure as Closure value (tag=Closure)
@@ -14027,7 +14143,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 .unwrap()
                         };
                         let elem0_val_ptr = elem0_ptr;
-                        self.builder.build_store(elem0_val_ptr, fn_val).unwrap();
+                        self.store_new_element(elem0_val_ptr, fn_val.into());
 
                         // Store captured boxes
                         for (i, cap_name) in captures.iter().enumerate() {
@@ -14065,7 +14181,7 @@ impl<'ctx> CodeGen<'ctx> {
                                     .unwrap()
                             };
                             let elem_val_ptr = elem_ptr;
-                            self.builder.build_store(elem_val_ptr, cap_val).unwrap();
+                            self.store_new_element(elem_val_ptr, cap_val);
                         }
 
                         // Return closure as Closure value (tag=Closure)
@@ -14347,7 +14463,7 @@ impl<'ctx> CodeGen<'ctx> {
                     None => self.guarded_forward_global(name),
                 };
                 if let Some(alloca) = alloca {
-                    self.builder.build_store(alloca, val).unwrap();
+                    self.store_slot_inline(alloca, val);
                     // Every shadow of the name must follow the new value
                     // (MDH-BUG-FLU-00048). Shadows only exist while the name's type is
                     // stable, so the new value has the shadow's type.
@@ -14842,7 +14958,7 @@ impl<'ctx> CodeGen<'ctx> {
                     if call_args.len() < expected_param_count {
                         let saved_masel = self.current_masel;
                         let masel_alloca =
-                            self.create_entry_block_alloca(&format!("__op_masel_{idx}"));
+                            self.create_entry_block_alloca_raw(&format!("__op_masel_{idx}"));
                         self.builder.build_store(masel_alloca, left_val).unwrap();
                         self.current_masel = Some(masel_alloca);
 
@@ -15190,6 +15306,18 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(buf_ptr_alloca, current_ptr)
             .unwrap();
+        // Set when the old string is copied into a new object: the variable then holds
+        // the copy, so its reference to the old string is released after the store.
+        let copied_alloca = self.rc_enabled.then(|| {
+            let a = self
+                .builder
+                .build_alloca(self.types.bool_type, "old_copied")
+                .unwrap();
+            self.builder
+                .build_store(a, self.types.bool_type.const_int(0, false))
+                .unwrap();
+            a
+        });
 
         // Check if we need to grow: new_len + 1 > capacity?
         let needs_grow = self
@@ -15273,6 +15401,11 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_store(buf_ptr_alloca, malloc_result)
             .unwrap();
+        if let Some(a) = copied_alloca {
+            self.builder
+                .build_store(a, self.types.bool_type.const_int(1, false))
+                .unwrap();
+        }
         self.builder.build_unconditional_branch(after_grow).unwrap();
 
         // REALLOC PATH: extend existing buffer
@@ -15332,9 +15465,25 @@ impl<'ctx> CodeGen<'ctx> {
         // Update length shadow
         self.builder.build_store(len_shadow, new_len).unwrap();
 
-        // Create new MdhValue with the buffer pointer and store it back
+        // Create new MdhValue with the buffer pointer and store it back. The variable's
+        // one reference moves to the grown or copied string (a copy is fresh, +1).
         let result = self.make_string(final_buf);
+        if copied_alloca.is_some() {
+            self.rc_note_write(var_alloca);
+        }
         self.builder.build_store(var_alloca, result).unwrap();
+        if let Some(a) = copied_alloca {
+            let copied = self
+                .builder
+                .build_load(self.types.bool_type, a, "old_was_copied")
+                .unwrap()
+                .into_int_value();
+            let dropped = self
+                .builder
+                .build_select(copied, current_val, self.make_nil(), "old_dropped")
+                .unwrap();
+            self.rc_release(dropped);
+        }
 
         Ok(result)
     }
@@ -18894,6 +19043,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let global = Self::create_global_string(
                         &self.module,
                         self.context,
+                        self.rc_enabled,
                         "Och, something went wrang!",
                         "scots_err_msg",
                     );
@@ -19467,6 +19617,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let global = Self::create_global_string(
                         &self.module,
                         self.context,
+                        self.rc_enabled,
                         "",
                         "current_suite_default",
                     );
@@ -22776,7 +22927,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_gep(self.types.value_type, new_items_val, &[dst_idx], "dst_ptr")
                             .unwrap()
                     };
-                    self.builder.build_store(dst_ptr, src_val).unwrap();
+                    self.store_new_element(dst_ptr, src_val);
                     // Increment both
                     let next_j = self
                         .builder
@@ -22810,7 +22961,7 @@ impl<'ctx> CodeGen<'ctx> {
                             )
                             .unwrap()
                     };
-                    self.builder.build_store(dst_ptr2, elem).unwrap();
+                    self.store_new_element(dst_ptr2, elem);
                     let next_dst2 = self
                         .builder
                         .build_int_add(
@@ -24736,7 +24887,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .basic()
                         .unwrap();
 
-                    let idx_ptr = self.create_entry_block_alloca("enum_i");
+                    let idx_ptr = self.create_entry_block_alloca_raw("enum_i");
                     let zero = self.types.i64_type.const_int(0, false);
                     let one = self.types.i64_type.const_int(1, false);
                     self.builder.build_store(idx_ptr, zero).unwrap();
@@ -25473,12 +25624,12 @@ impl<'ctx> CodeGen<'ctx> {
                     let pair_data = self.extract_data(pair_val).unwrap();
 
                     let pair_elem0_ptr = self.get_list_element_ptr(pair_data, zero).unwrap();
-                    self.builder.build_store(pair_elem0_ptr, elem1).unwrap();
+                    self.store_new_element(pair_elem0_ptr, elem1);
                     let pair_elem1_ptr = self.get_list_element_ptr(pair_data, one).unwrap();
-                    self.builder.build_store(pair_elem1_ptr, elem2).unwrap();
+                    self.store_new_element(pair_elem1_ptr, elem2);
 
                     let dst_ptr = self.get_list_element_ptr(result_data, i).unwrap();
-                    self.builder.build_store(dst_ptr, pair_val).unwrap();
+                    self.store_new_element(dst_ptr, pair_val);
 
                     let next_i = self.builder.build_int_add(i, one, "next_i").unwrap();
                     self.builder.build_store(idx, next_i).unwrap();
@@ -25702,7 +25853,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_gep(self.types.value_type, items_ptr, &[i], "elem")
                             .unwrap()
                     };
-                    self.builder.build_store(elem_ptr, value).unwrap();
+                    self.store_new_element(elem_ptr, value);
 
                     let next_i = self.builder.build_int_add(i, one, "next_i").unwrap();
                     self.builder.build_store(i_ptr, next_i).unwrap();
@@ -27298,6 +27449,7 @@ impl<'ctx> CodeGen<'ctx> {
         let after_block = self.context.append_basic_block(function, "after");
 
         self.loop_stack.push(LoopContext {
+            rc_scope_depth: self.rc_scope_depth(),
             break_block: after_block,
             continue_block: loop_block,
             try_depth: self.try_depth,
@@ -27455,7 +27607,7 @@ impl<'ctx> CodeGen<'ctx> {
         boxed: bool,
     ) {
         if !boxed {
-            self.builder.build_store(alloca, value).unwrap();
+            self.store_slot(alloca, value);
             return;
         }
         let one_i32 = self.context.i32_type().const_int(1, false);
@@ -27470,7 +27622,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_call(self.libc.list_push, &[cell.into(), value.into()], "")
             .unwrap();
-        self.builder.build_store(alloca, cell).unwrap();
+        self.store_slot(alloca, cell);
     }
 
     fn compile_for_iterable(
@@ -27600,6 +27752,7 @@ impl<'ctx> CodeGen<'ctx> {
         let incr_block = self.context.append_basic_block(function, "for_str_incr");
 
         self.loop_stack.push(LoopContext {
+            rc_scope_depth: self.rc_scope_depth(),
             break_block: after_block,
             continue_block: incr_block,
             try_depth: self.try_depth,
@@ -27765,6 +27918,7 @@ impl<'ctx> CodeGen<'ctx> {
         let incr_block = self.context.append_basic_block(function, "for_lst_incr");
 
         self.loop_stack.push(LoopContext {
+            rc_scope_depth: self.rc_scope_depth(),
             break_block: after_block,
             continue_block: incr_block,
             try_depth: self.try_depth,
@@ -27870,6 +28024,7 @@ impl<'ctx> CodeGen<'ctx> {
         let after_block = self.context.append_basic_block(function, "for_after");
 
         self.loop_stack.push(LoopContext {
+            rc_scope_depth: self.rc_scope_depth(),
             break_block: after_block,
             continue_block: incr_block,
             try_depth: self.try_depth,
@@ -27969,6 +28124,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(entry);
         self.current_function = Some(function);
+        let saved_rc = self.rc_enter_function(Some(function));
         self.in_user_function = true;
         // Avoid leaking an outer method's `masel` into a nested function body; captured `masel`
         // will explicitly set this when present.
@@ -27990,7 +28146,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .get_nth_param(i as u32)
                 .expect("Missing captured param");
             let alloca = self.create_entry_block_alloca(capture_name);
-            self.builder.build_store(alloca, param_val).unwrap();
+            self.store_param(alloca, param_val);
             self.variables.insert(capture_name.clone(), alloca);
             self.var_types
                 .insert(capture_name.clone(), VarType::Unknown);
@@ -28007,7 +28163,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .get_nth_param((capture_count + i) as u32)
                 .compile_ok_or("Missing parameter")?;
             let alloca = self.create_entry_block_alloca(&param.name);
-            self.builder.build_store(alloca, param_val).unwrap();
+            self.store_param(alloca, param_val);
             self.variables.insert(param.name.clone(), alloca);
             self.var_types.insert(param.name.clone(), VarType::Unknown);
         }
@@ -28066,6 +28222,7 @@ impl<'ctx> CodeGen<'ctx> {
             self.builder.build_return(Some(&self.make_nil())).unwrap();
         }
         self.restore_current_line_on_return(function);
+        self.rc_leave_function(saved_rc);
 
         // Restore state - all shadow maps to prevent cross-function leakage
         self.current_function = saved_function;
@@ -28446,7 +28603,42 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(phi.as_basic_value())
     }
 
-    fn create_entry_block_alloca(&self, name: &str) -> PointerValue<'ctx> {
+    /// An `MdhValue` slot in the entry block, initialised to nil there and owned: it holds
+    /// one reference, every store goes through `store_slot`, and the function epilogue
+    /// releases it (see `codegen/rc.rs`).
+    fn create_entry_block_alloca(&mut self, name: &str) -> PointerValue<'ctx> {
+        let function = self.current_function.unwrap();
+        let entry = function.get_first_basic_block().unwrap();
+
+        let builder = self.context.create_builder();
+        match entry.get_first_instruction() {
+            Some(instr) => builder.position_before(&instr),
+            None => builder.position_at_end(entry),
+        }
+
+        let slot = builder.build_alloca(self.types.value_type, name).unwrap();
+        if self.rc_enabled {
+            builder.build_store(slot, self.make_nil()).unwrap();
+            self.rc_register_slot(slot);
+        }
+        slot
+    }
+
+    /// A parameter slot of a lambda or method: an owned entry slot with reference counting
+    /// on, else an alloca where the prologue is being built (as before counting existed).
+    fn rc_param_slot(&mut self, name: &str) -> PointerValue<'ctx> {
+        if self.rc_enabled {
+            self.create_entry_block_alloca(name)
+        } else {
+            self.builder
+                .build_alloca(self.types.value_type, name)
+                .unwrap()
+        }
+    }
+
+    /// An uninitialised value-sized entry alloca that holds no reference of its own
+    /// (scratch, or a slot whose lifetime `codegen/rc.rs` manages).
+    fn create_entry_block_alloca_raw(&self, name: &str) -> PointerValue<'ctx> {
         let function = self.current_function.unwrap();
         let entry = function.get_first_basic_block().unwrap();
 
@@ -28578,7 +28770,7 @@ impl<'ctx> CodeGen<'ctx> {
             };
 
             // Store the element
-            self.builder.build_store(elem_ptr, compiled).unwrap();
+            self.store_new_element(elem_ptr, compiled);
         }
 
         // Return the list as a tagged value
@@ -28785,7 +28977,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_gep(self.types.value_type, elements_ptr, &[dest_idx], "dest_ptr")
                             .unwrap()
                     };
-                    self.builder.build_store(dest_ptr, src_elem).unwrap();
+                    self.store_new_element(dest_ptr, src_elem);
                     // Increment both counters
                     let one = self.types.i64_type.const_int(1, false);
                     let next_i = self.builder.build_int_add(loop_i, one, "next_i").unwrap();
@@ -28913,7 +29105,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_gep(self.types.value_type, elements_ptr, &[dest_idx], "dest_ptr")
                             .unwrap()
                     };
-                    self.builder.build_store(dest_ptr, char_str_val).unwrap();
+                    self.store_new_element(dest_ptr, char_str_val);
 
                     // Increment counters
                     let one = self.types.i64_type.const_int(1, false);
@@ -28948,7 +29140,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_gep(self.types.value_type, elements_ptr, &[dest_idx], "dest_ptr")
                         .unwrap()
                 };
-                self.builder.build_store(dest_ptr, compiled).unwrap();
+                self.store_new_element(dest_ptr, compiled);
                 // Increment index
                 let one = self.types.i64_type.const_int(1, false);
                 let next_idx = self
@@ -29047,7 +29239,7 @@ impl<'ctx> CodeGen<'ctx> {
 
             // Store key at entry start
             let key_ptr = entry_ptr;
-            self.builder.build_store(key_ptr, compiled_key).unwrap();
+            self.store_new_element(key_ptr, compiled_key);
 
             // Store value at entry start + 16 bytes
             let value_offset = self.types.i64_type.const_int(16, false);
@@ -29062,6 +29254,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .unwrap()
             };
             let val_typed_ptr = val_ptr;
+            self.rc_take(compiled_val);
             self.builder
                 .build_store(val_typed_ptr, compiled_val)
                 .unwrap();
@@ -29641,7 +29834,7 @@ impl<'ctx> CodeGen<'ctx> {
         match object {
             Expr::Variable { name, .. } => {
                 if let Some(&ptr) = self.variables.get(name) {
-                    self.builder.build_store(ptr, dict_result).unwrap();
+                    self.store_slot(ptr, dict_result);
                 }
             }
             Expr::Get {
@@ -29793,7 +29986,7 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         // Store the new value at that location
-        self.builder.build_store(elem_ptr, new_val).unwrap();
+        self.store_slot(elem_ptr, new_val);
 
         self.builder
             .build_unconditional_branch(merge_block)
@@ -29862,7 +30055,7 @@ impl<'ctx> CodeGen<'ctx> {
         // For other expressions we can't store back - the update is lost.
         if let Expr::Variable { name, .. } = object {
             if let Some(&ptr) = self.variables.get(name) {
-                self.builder.build_store(ptr, dict_result).unwrap();
+                self.store_slot(ptr, dict_result);
             }
         }
 
@@ -30007,7 +30200,7 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         // Store the new value at that location
-        self.builder.build_store(elem_ptr, new_val).unwrap();
+        self.store_slot(elem_ptr, new_val);
 
         // Return the value that was set
         Ok(new_val)
@@ -30612,6 +30805,7 @@ impl<'ctx> CodeGen<'ctx> {
                 )
                 .unwrap()
         };
+        self.rc_take(sc_token_value);
         self.builder
             .build_store(sc_elem_ptr, sc_token_value)
             .unwrap();
@@ -30720,6 +30914,7 @@ impl<'ctx> CodeGen<'ctx> {
                 )
                 .unwrap()
         };
+        self.rc_take(sc_final_value);
         self.builder
             .build_store(sc_final_elem, sc_final_value)
             .unwrap();
@@ -31938,6 +32133,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.current_function = Some(lambda_fn);
         let entry = self.context.append_basic_block(lambda_fn, "entry");
         self.builder.position_at_end(entry);
+        let saved_rc = self.rc_enter_function(Some(lambda_fn));
 
         // Clear state for the lambda's scope
         self.variables.clear();
@@ -31952,12 +32148,9 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Bind captured variables (they come first in the parameter list)
         for (i, capture_name) in captures.iter().enumerate() {
-            let alloca = self
-                .builder
-                .build_alloca(self.types.value_type, capture_name)
-                .unwrap();
+            let alloca = self.rc_param_slot(capture_name);
             let param_val = lambda_fn.get_nth_param(i as u32).unwrap();
-            self.builder.build_store(alloca, param_val).unwrap();
+            self.store_param(alloca, param_val);
             self.variables.insert(capture_name.clone(), alloca);
 
             // If this is the captured 'masel', set current_masel so Expr::Masel works
@@ -31971,12 +32164,9 @@ impl<'ctx> CodeGen<'ctx> {
         // Create allocas for regular parameters (after captures)
         let capture_count = captures.len();
         for (i, param_name) in params.iter().enumerate() {
-            let alloca = self
-                .builder
-                .build_alloca(self.types.value_type, param_name)
-                .unwrap();
+            let alloca = self.rc_param_slot(param_name);
             let param_val = lambda_fn.get_nth_param((capture_count + i) as u32).unwrap();
-            self.builder.build_store(alloca, param_val).unwrap();
+            self.store_param(alloca, param_val);
             self.variables.insert(param_name.clone(), alloca);
         }
         let param_names: Vec<&str> = params.iter().map(String::as_str).collect();
@@ -32012,15 +32202,18 @@ impl<'ctx> CodeGen<'ctx> {
                 .get_terminator()
                 .is_none()
             {
+                self.rc_return_value(value);
                 self.builder.build_return(Some(&value)).unwrap();
             }
         } else {
             let result = self.compile_expr(body)?;
+            self.rc_return_value(result);
             self.builder.build_return(Some(&result)).unwrap();
         }
         self.nested_function_scopes.pop();
         self.block_function_symbols = saved_block_functions;
         self.in_user_function = saved_in_user_function;
+        self.rc_leave_function(saved_rc);
 
         // Restore state
         self.current_function = saved_function;
@@ -32126,7 +32319,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .unwrap()
             };
             let elem0_val_ptr = elem0_ptr;
-            self.builder.build_store(elem0_val_ptr, fn_val).unwrap();
+            self.store_new_element(elem0_val_ptr, fn_val.into());
 
             // Store captured values
             for (i, capture_alloca) in capture_allocas.iter().enumerate() {
@@ -32150,7 +32343,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap()
                 };
                 let elem_val_ptr = elem_ptr;
-                self.builder.build_store(elem_val_ptr, capture_val).unwrap();
+                self.store_new_element(elem_val_ptr, capture_val);
             }
 
             // Return closure as Closure value (tag=Closure)
@@ -32319,8 +32512,8 @@ impl<'ctx> CodeGen<'ctx> {
                     if is_method {
                         // Bind a temporary `masel` so defaults that reference it can compile.
                         let val = args.first().copied().unwrap_or_else(|| self.make_nil());
-                        let tmp =
-                            self.create_entry_block_alloca(&format!("__fnval_call_masel_{idx}"));
+                        let tmp = self
+                            .create_entry_block_alloca_raw(&format!("__fnval_call_masel_{idx}"));
                         self.builder.build_store(tmp, val).unwrap();
                         self.current_masel = Some(tmp);
                     }
@@ -32343,7 +32536,7 @@ impl<'ctx> CodeGen<'ctx> {
                         for user_idx in 0..provided_user_count {
                             let param_name = param_names[user_idx].clone();
                             let arg_val = args[user_idx + arg_offset];
-                            let alloca = self.create_entry_block_alloca(&format!(
+                            let alloca = self.create_entry_block_alloca_raw(&format!(
                                 "__fnval_default_bind_{idx}_{user_idx}_{param_name}"
                             ));
                             self.builder.build_store(alloca, arg_val).unwrap();
@@ -32368,7 +32561,7 @@ impl<'ctx> CodeGen<'ctx> {
                             call_args.push(val.into());
 
                             let param_name = param_names[user_idx].clone();
-                            let alloca = self.create_entry_block_alloca(&format!(
+                            let alloca = self.create_entry_block_alloca_raw(&format!(
                                 "__fnval_default_bind_{idx}_{user_idx}_{param_name}"
                             ));
                             self.builder.build_store(alloca, val).unwrap();
@@ -32791,8 +32984,8 @@ impl<'ctx> CodeGen<'ctx> {
                     let mut saved_boxed: Vec<(String, bool)> = Vec::new();
 
                     for (i, cap_name) in captures.iter().enumerate() {
-                        let cap_alloca =
-                            self.create_entry_block_alloca(&format!("__callcap_{idx}_{cap_name}"));
+                        let cap_alloca = self
+                            .create_entry_block_alloca_raw(&format!("__callcap_{idx}_{cap_name}"));
                         self.builder.build_store(cap_alloca, cap_vals[i]).unwrap();
                         self.variables.insert(cap_name.clone(), cap_alloca);
 
@@ -32813,7 +33006,7 @@ impl<'ctx> CodeGen<'ctx> {
                             for user_idx in 0..provided_user_count.min(param_names.len()) {
                                 let param_name = param_names[user_idx].clone();
                                 let arg_val = args[user_idx];
-                                let alloca = self.create_entry_block_alloca(&format!(
+                                let alloca = self.create_entry_block_alloca_raw(&format!(
                                     "__callparam_{idx}_{user_idx}_{param_name}"
                                 ));
                                 self.builder.build_store(alloca, arg_val).unwrap();
@@ -32837,7 +33030,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 .and_then(|names| names.get(user_idx))
                                 .cloned()
                             {
-                                let alloca = self.create_entry_block_alloca(&format!(
+                                let alloca = self.create_entry_block_alloca_raw(&format!(
                                     "__callparam_{idx}_{user_idx}_{param_name}"
                                 ));
                                 self.builder.build_store(alloca, val).unwrap();
@@ -33085,7 +33278,7 @@ impl<'ctx> CodeGen<'ctx> {
                 )
                 .unwrap()
         };
-        self.builder.build_store(new_elem_ptr, mapped).unwrap();
+        self.store_new_element(new_elem_ptr, mapped);
 
         // Increment index
         let next_idx = self.builder.build_int_add(idx, one, "next_idx").unwrap();
@@ -35193,6 +35386,9 @@ impl<'ctx> CodeGen<'ctx> {
                     self.inline_tae_string(val)
                 }
             };
+            // The pieces and partial results are temporaries of this statement.
+            self.rc_own_temp(result);
+            self.rc_own_temp(part_val);
             // Concatenate using inline_add (handles string + string)
             result = self.inline_add(result, part_val);
         }
@@ -35221,7 +35417,7 @@ impl<'ctx> CodeGen<'ctx> {
                 // Create a temporary variable for the parameter
                 let param_name = &params[0];
                 let alloca = self.create_entry_block_alloca(param_name);
-                self.builder.build_store(alloca, left_val).unwrap();
+                self.store_slot(alloca, left_val);
                 let old_var = self.variables.insert(param_name.clone(), alloca);
 
                 let result = self.compile_expr(body)?;
@@ -35241,7 +35437,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let tmp_name = format!("__pipe_tmp_{}", self.pipe_tmp_counter);
                 self.pipe_tmp_counter += 1;
 
-                let tmp_alloca = self.create_entry_block_alloca(&tmp_name);
+                let tmp_alloca = self.create_entry_block_alloca_raw(&tmp_name);
                 self.builder.build_store(tmp_alloca, left_val).unwrap();
                 let old_var = self.variables.insert(tmp_name.clone(), tmp_alloca);
 
@@ -35274,7 +35470,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let tmp_name = format!("__pipe_tmp_{}", self.pipe_tmp_counter);
                 self.pipe_tmp_counter += 1;
 
-                let tmp_alloca = self.create_entry_block_alloca(&tmp_name);
+                let tmp_alloca = self.create_entry_block_alloca_raw(&tmp_name);
                 self.builder.build_store(tmp_alloca, left_val).unwrap();
                 let old_var = self.variables.insert(tmp_name.clone(), tmp_alloca);
 
@@ -35383,7 +35579,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.import_alias_bindings.insert(name.to_string(), alloca);
 
-        self.builder.build_store(alloca, value).unwrap();
+        self.store_slot(alloca, value);
     }
 
     fn declare_module_init(
@@ -35572,6 +35768,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(entry);
         self.current_function = Some(init_fn);
+        let saved_rc = self.rc_enter_function(None);
         self.in_user_function = true;
         self.current_masel = None;
         self.current_class = None;
@@ -35654,7 +35851,7 @@ impl<'ctx> CodeGen<'ctx> {
 
                     if let Some(init) = initializer {
                         let value = self.compile_expr(init)?;
-                        self.builder.build_store(global_ptr, value).unwrap();
+                        self.store_slot(global_ptr, value);
                     }
                 }
 
@@ -35682,6 +35879,7 @@ impl<'ctx> CodeGen<'ctx> {
         if !terminated {
             self.builder.build_return(Some(&self.make_nil())).unwrap();
         }
+        self.rc_leave_function(saved_rc);
 
         self.current_function = saved_function;
         self.variables = saved_variables;
@@ -36295,7 +36493,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let arg_idx = capture_count + user_idx;
                     let arg_val = BasicValueEnum::try_from(compiled_args[arg_idx]).unwrap();
 
-                    let alloca = self.create_entry_block_alloca(&format!(
+                    let alloca = self.create_entry_block_alloca_raw(&format!(
                         "__default_bind_{func_name}_{user_idx}_{param_name}"
                     ));
                     self.builder.build_store(alloca, arg_val).unwrap();
@@ -36316,7 +36514,7 @@ impl<'ctx> CodeGen<'ctx> {
                     compiled_args.push(val.into());
 
                     let param_name = param_names[user_idx].clone();
-                    let alloca = self.create_entry_block_alloca(&format!(
+                    let alloca = self.create_entry_block_alloca_raw(&format!(
                         "__default_bind_{func_name}_{user_idx}_{param_name}"
                     ));
                     self.builder.build_store(alloca, val).unwrap();
@@ -36439,11 +36637,19 @@ impl<'ctx> CodeGen<'ctx> {
                 }
             }
         }
+        // Sorted, so the emitted IR does not follow HashMap order (MDH-BUG-FLU-00130).
+        slots.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
+        let mut slots: Vec<PointerValue<'ctx>> = slots.into_iter().map(|(_, _, p)| p).collect();
+        // Reference-counting temp slots too: the epilogue releases what they hold, so a
+        // longjmp must not leave a register copy behind (in registration order).
+        for slot in self.rc_slots_of(function) {
+            if !slots.contains(&slot) {
+                slots.push(slot);
+            }
+        }
         if slots.is_empty() {
             return;
         }
-        // Sorted, so the emitted IR does not follow HashMap order (MDH-BUG-FLU-00130).
-        slots.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
         let ptr_type = self.context.ptr_type(AddressSpace::default());
         let asm_type = self.types.void_type.fn_type(&[ptr_type.into()], false);
         let asm = self.context.create_inline_asm(
@@ -36457,7 +36663,7 @@ impl<'ctx> CodeGen<'ctx> {
         );
         let builder = self.context.create_builder();
         builder.position_before(&at);
-        for (_, _, ptr) in slots {
+        for ptr in slots {
             builder
                 .build_indirect_call(asm_type, asm, &[ptr.into()], "")
                 .unwrap();
@@ -36591,7 +36797,7 @@ impl<'ctx> CodeGen<'ctx> {
             .basic()
             .compile_ok_or("get_last_error returned void")
             .unwrap();
-        self.builder.build_store(error_alloca, err_val).unwrap();
+        self.store_slot(error_alloca, err_val);
         self.variables.insert(error_name.to_string(), error_alloca);
 
         if let Stmt::Block { statements, .. } = catch_block {
@@ -36686,7 +36892,7 @@ impl<'ctx> CodeGen<'ctx> {
             // Bind pattern variables if needed
             if let Pattern::Identifier(name) = &arm.pattern {
                 let alloca = self.create_entry_block_alloca(name);
-                self.builder.build_store(alloca, match_val).unwrap();
+                self.store_slot(alloca, match_val);
                 self.variables.insert(name.clone(), alloca);
             }
 
@@ -36952,13 +37158,13 @@ impl<'ctx> CodeGen<'ctx> {
                             .unwrap();
                         let elem = self.compile_list_index_dynamic(items_ptr, actual_index);
                         let alloca = self.create_entry_block_alloca(name);
-                        self.builder.build_store(alloca, elem).unwrap();
+                        self.store_slot(alloca, elem);
                         self.variables.insert(name.clone(), alloca);
                     } else {
                         // Normal forward indexing
                         let elem = self.compile_list_index_ptr(items_ptr, index);
                         let alloca = self.create_entry_block_alloca(name);
-                        self.builder.build_store(alloca, elem).unwrap();
+                        self.store_slot(alloca, elem);
                         self.variables.insert(name.clone(), alloca);
                         index += 1;
                     }
@@ -36982,7 +37188,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let rest_list =
                         self.compile_list_slice_dynamic(items_ptr, start_idx, slice_end);
                     let alloca = self.create_entry_block_alloca(name);
-                    self.builder.build_store(alloca, rest_list).unwrap();
+                    self.store_slot(alloca, rest_list);
                     self.variables.insert(name.clone(), alloca);
                 }
             }
@@ -37199,6 +37405,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         self.builder.position_at_end(entry);
         self.current_function = Some(function);
+        // Returns the dict empty_dict made (+1); dict_set updates it in place.
+        let saved_rc = self.rc_enter_function(Some(function));
         self.in_user_function = true;
 
         // Clear scope state for the constructor
@@ -37241,6 +37449,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         self.builder.build_return(Some(&dict_val)).unwrap();
+        self.rc_leave_function(saved_rc);
 
         // Restore state
         self.current_function = saved_function;
@@ -37545,7 +37754,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap()
                 };
                 let elem0_val_ptr = elem0_ptr;
-                self.builder.build_store(elem0_val_ptr, fn_val).unwrap();
+                self.store_new_element(elem0_val_ptr, fn_val.into());
 
                 let elem1_ptr = unsafe {
                     self.builder
@@ -37561,7 +37770,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap()
                 };
                 let elem1_val_ptr = elem1_ptr;
-                self.builder.build_store(elem1_val_ptr, obj_val).unwrap();
+                self.store_new_element(elem1_val_ptr, obj_val);
 
                 let list_ptr_int = self
                     .builder
@@ -37725,13 +37934,13 @@ impl<'ctx> CodeGen<'ctx> {
 
         if let Expr::Variable { name, .. } = object {
             if let Some(&ptr) = self.variables.get(name) {
-                self.builder.build_store(ptr, dict_res).unwrap();
+                self.store_slot(ptr, dict_res);
             } else {
                 let &ptr = self
                     .globals
                     .get(name)
                     .expect("global variable pointer missing");
-                self.builder.build_store(ptr, dict_res).unwrap();
+                self.store_slot(ptr, dict_res);
             }
         }
 
@@ -38338,7 +38547,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .unwrap()
         };
         let value_typed_ptr = value_ptr;
-        self.builder.build_store(value_typed_ptr, value).unwrap();
+        self.store_slot(value_typed_ptr, value);
         self.builder
             .build_store(found_flag, self.types.bool_type.const_int(1, false))
             .unwrap();
@@ -38439,6 +38648,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_pointer_value();
         let key_val = self.make_string(key_str);
+        self.rc_take(key_val);
         self.builder
             .build_store(new_key_typed_ptr, key_val)
             .unwrap();
@@ -38459,6 +38669,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .unwrap()
         };
         let new_value_typed_ptr = new_value_ptr;
+        self.rc_take(value);
         self.builder
             .build_store(new_value_typed_ptr, value)
             .unwrap();
@@ -38612,14 +38823,12 @@ impl<'ctx> CodeGen<'ctx> {
         // Create entry block
         let entry = self.context.append_basic_block(function, "entry");
         self.builder.position_at_end(entry);
+        let saved_rc = self.rc_enter_function(Some(function));
 
         // First parameter is masel - allocate and store it
-        let masel_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "masel")
-            .unwrap();
+        let masel_alloca = self.rc_param_slot("masel");
         let masel_param = function.get_nth_param(0).unwrap();
-        self.builder.build_store(masel_alloca, masel_param).unwrap();
+        self.store_param(masel_alloca, masel_param);
         self.current_masel = Some(masel_alloca);
         self.variables.insert("masel".to_string(), masel_alloca);
         self.var_types.insert("masel".to_string(), VarType::Unknown);
@@ -38627,11 +38836,8 @@ impl<'ctx> CodeGen<'ctx> {
         // Bind remaining parameters
         for (i, param) in params.iter().enumerate() {
             let param_val = function.get_nth_param((i + 1) as u32).unwrap();
-            let alloca = self
-                .builder
-                .build_alloca(self.types.value_type, &param.name)
-                .unwrap();
-            self.builder.build_store(alloca, param_val).unwrap();
+            let alloca = self.rc_param_slot(&param.name);
+            self.store_param(alloca, param_val);
             self.variables.insert(param.name.clone(), alloca);
             self.var_types.insert(param.name.clone(), VarType::Unknown);
         }
@@ -38674,9 +38880,11 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_load(self.types.value_type, masel_alloca, "return_masel")
                 .unwrap();
+            self.rc_return_value(masel_val);
             self.builder.build_return(Some(&masel_val)).unwrap();
         }
         self.restore_current_line_on_return(function);
+        self.rc_leave_function(saved_rc);
 
         // Restore state - IMPORTANT: restore ALL shadow maps to prevent cross-method leakage
         self.current_function = old_function;
@@ -38812,8 +39020,9 @@ impl<'ctx> CodeGen<'ctx> {
                 // Fill in default parameter values if fewer args provided than expected
                 if call_args.len() < expected_param_count {
                     let saved_masel = self.current_masel;
-                    let masel_alloca = self
-                        .create_entry_block_alloca(&format!("__initcall_masel_{current_class}"));
+                    let masel_alloca = self.create_entry_block_alloca_raw(&format!(
+                        "__initcall_masel_{current_class}"
+                    ));
                     self.builder.build_store(masel_alloca, instance).unwrap();
                     self.current_masel = Some(masel_alloca);
 
@@ -38834,7 +39043,7 @@ impl<'ctx> CodeGen<'ctx> {
                             let param_name = param_names[user_idx].clone();
                             let arg_val = arg_vals[user_idx];
 
-                            let alloca = self.create_entry_block_alloca(&format!(
+                            let alloca = self.create_entry_block_alloca_raw(&format!(
                                 "__init_default_bind_{current_class}_{user_idx}_{param_name}"
                             ));
                             self.builder.build_store(alloca, arg_val).unwrap();
@@ -38855,7 +39064,7 @@ impl<'ctx> CodeGen<'ctx> {
                             call_args.push(val.into());
 
                             let param_name = param_names[user_idx].clone();
-                            let alloca = self.create_entry_block_alloca(&format!(
+                            let alloca = self.create_entry_block_alloca_raw(&format!(
                                 "__init_default_bind_{current_class}_{user_idx}_{param_name}"
                             ));
                             self.builder.build_store(alloca, val).unwrap();
@@ -38905,6 +39114,11 @@ impl<'ctx> CodeGen<'ctx> {
                     .basic()
                     .compile_ok_or("init returned void")
                     .unwrap();
+                // The value is init's result (+1, normally masel); drop the reference the
+                // allocation was born with.
+                if self.rc_take(instance) {
+                    self.rc_release(instance);
+                }
                 return Ok(init_result);
             }
 
@@ -39252,8 +39466,8 @@ impl<'ctx> CodeGen<'ctx> {
                     let expected_param_count = method_func.count_params() as usize;
                     if call_args.len() < expected_param_count {
                         let saved_masel = self.current_masel;
-                        let masel_alloca =
-                            self.create_entry_block_alloca(&format!("__methodcall_masel_{idx}"));
+                        let masel_alloca = self
+                            .create_entry_block_alloca_raw(&format!("__methodcall_masel_{idx}"));
                         self.builder.build_store(masel_alloca, instance).unwrap();
                         self.current_masel = Some(masel_alloca);
 
@@ -39273,7 +39487,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 let param_name = param_names[user_idx].clone();
                                 let arg_val = arg_vals[user_idx];
 
-                                let alloca = self.create_entry_block_alloca(&format!(
+                                let alloca = self.create_entry_block_alloca_raw(&format!(
                                     "__method_default_bind_{idx}_{user_idx}_{param_name}"
                                 ));
                                 self.builder.build_store(alloca, arg_val).unwrap();
@@ -39295,7 +39509,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 call_args.push(val.into());
 
                                 let param_name = param_names[user_idx].clone();
-                                let alloca = self.create_entry_block_alloca(&format!(
+                                let alloca = self.create_entry_block_alloca_raw(&format!(
                                     "__method_default_bind_{idx}_{user_idx}_{param_name}"
                                 ));
                                 self.builder.build_store(alloca, val).unwrap();
@@ -39396,8 +39610,8 @@ impl<'ctx> CodeGen<'ctx> {
         let expected_param_count = method_func.count_params() as usize;
         if call_args.len() < expected_param_count {
             let saved_masel = self.current_masel;
-            let masel_alloca =
-                self.create_entry_block_alloca(&format!("__methodcall_masel_direct_{method_name}"));
+            let masel_alloca = self
+                .create_entry_block_alloca_raw(&format!("__methodcall_masel_direct_{method_name}"));
             self.builder.build_store(masel_alloca, instance).unwrap();
             self.current_masel = Some(masel_alloca);
 
@@ -39417,7 +39631,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let param_name = param_names[user_idx].clone();
                     let arg_val = arg_vals[user_idx];
 
-                    let alloca = self.create_entry_block_alloca(&format!(
+                    let alloca = self.create_entry_block_alloca_raw(&format!(
                         "__method_default_bind_{method_name}_{user_idx}_{param_name}"
                     ));
                     self.builder.build_store(alloca, arg_val).unwrap();
@@ -39438,7 +39652,7 @@ impl<'ctx> CodeGen<'ctx> {
                     call_args.push(val.into());
 
                     let param_name = param_names[user_idx].clone();
-                    let alloca = self.create_entry_block_alloca(&format!(
+                    let alloca = self.create_entry_block_alloca_raw(&format!(
                         "__method_default_bind_{method_name}_{user_idx}_{param_name}"
                     ));
                     self.builder.build_store(alloca, val).unwrap();
@@ -42299,7 +42513,7 @@ impl<'ctx> CodeGen<'ctx> {
                 )
                 .unwrap()
         };
-        // Copy 16 bytes for the MdhValue
+        // Copy 16 bytes for the MdhValue; the new list holds its own reference.
         self.builder
             .build_call(
                 self.libc.memcpy,
@@ -42307,6 +42521,13 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .unwrap();
+        if self.rc_enabled {
+            let copied = self
+                .builder
+                .build_load(self.types.value_type, dst_elem, "slice_copied")
+                .unwrap();
+            self.rc_retain(copied);
+        }
 
         let list_i_next = self
             .builder
@@ -42593,7 +42814,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         let function = self.current_function.unwrap();
-        let idx_ptr = self.create_entry_block_alloca("ceilidh_i");
+        let idx_ptr = self.create_entry_block_alloca_raw("ceilidh_i");
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
         self.builder.build_store(idx_ptr, zero).unwrap();
@@ -42879,6 +43100,7 @@ impl<'ctx> CodeGen<'ctx> {
         let global = Self::create_global_string(
             &self.module,
             self.context,
+            self.rc_enabled,
             s,
             &format!("str.literal.{}", self.lambda_counter),
         );
@@ -47079,6 +47301,7 @@ dae f() { gie 32 }
         let class_global = CodeGen::create_global_string(
             &codegen.module,
             &context,
+            false,
             "C",
             "coverage_class_C_predecl",
         );

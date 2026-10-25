@@ -5,19 +5,22 @@ use std::os::raw::c_char;
 use std::os::unix::io::FromRawFd;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use regex::Regex;
-use serde_json::Value as JsonValue;
-use rustls::client::{ServerCertVerified, ServerCertVerifier};
-use rustls::{Certificate, ClientConfig, ClientConnection, PrivateKey, RootCertStore, ServerConfig, ServerConnection, ServerName, StreamOwned, OwnedTrustAnchor};
-use rustls_pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
 use libsrtp::{MasterKey, ProtectionProfile, RecvSession, SendSession, StreamConfig};
 use openssl::pkcs12::Pkcs12;
 use openssl::pkey::PKey;
 use openssl::x509::X509;
-use udp_dtls::{DtlsAcceptor, DtlsConnector, Identity, SrtpProfile, UdpChannel};
+use regex::Regex;
+use rustls::client::{ServerCertVerified, ServerCertVerifier};
+use rustls::{
+    Certificate, ClientConfig, ClientConnection, OwnedTrustAnchor, PrivateKey, RootCertStore,
+    ServerConfig, ServerConnection, ServerName, StreamOwned,
+};
+use rustls_pemfile::{certs, pkcs8_private_keys, rsa_private_keys};
+use serde_json::Value as JsonValue;
 use trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
 use trust_dns_resolver::proto::rr::{RData, RecordType};
 use trust_dns_resolver::Resolver;
+use udp_dtls::{DtlsAcceptor, DtlsConnector, Identity, SrtpProfile, UdpChannel};
 
 #[cfg(feature = "audio")]
 mod audio;
@@ -79,13 +82,16 @@ extern "C" {
     fn __mdh_make_string(value: *const c_char) -> MdhValue;
     fn __mdh_hurl(value: MdhValue);
     fn __mdh_make_list(capacity: i32) -> MdhValue;
-    fn __mdh_list_push(list: MdhValue, value: MdhValue);
+    // Every value this file stores is one it has just made, so it hands its reference
+    // over: push/set_owned take the caller's +1 (reference counting, mdh_runtime.c).
+    fn __mdh_list_push_owned(list: MdhValue, value: MdhValue);
     fn __mdh_bytes_new(size: MdhValue) -> MdhValue;
     fn __mdh_empty_dict() -> MdhValue;
-    fn __mdh_dict_set(dict: MdhValue, key: MdhValue, value: MdhValue) -> MdhValue;
+    fn __mdh_dict_set_owned(dict: MdhValue, key: MdhValue, value: MdhValue) -> MdhValue;
     fn __mdh_dict_get_default(dict: MdhValue, key: MdhValue, default_val: MdhValue) -> MdhValue;
     fn __mdh_to_string(value: MdhValue) -> MdhValue;
     fn __mdh_kv_densify(value: MdhValue);
+    fn __mdh_release(value: MdhValue);
 }
 
 fn cstring_lossy(s: &str) -> CString {
@@ -126,7 +132,18 @@ pub(crate) unsafe fn mdh_make_string_from_rust(s: &str) -> MdhValue {
 
 unsafe fn mdh_value_to_string(value: MdhValue) -> String {
     let s_val = __mdh_to_string(value);
-    mdh_string_to_rust(s_val)
+    let s = mdh_string_to_rust(s_val);
+    __mdh_release(s_val);
+    s
+}
+
+/// `dict[key]` or nil, borrowed (as __mdh_dict_get_default); the key made for the lookup
+/// is dropped.
+pub(crate) unsafe fn mdh_dict_get_named(dict: MdhValue, key: &str) -> MdhValue {
+    let key_val = mdh_make_string_from_rust(key);
+    let val = __mdh_dict_get_default(dict, key_val, __mdh_make_nil());
+    __mdh_release(key_val);
+    val
 }
 
 pub(crate) unsafe fn mdh_float_value(value: MdhValue) -> f64 {
@@ -160,17 +177,21 @@ unsafe fn mdh_make_bytes_from_vec(data: &[u8]) -> MdhValue {
 }
 
 unsafe fn mdh_dict_get_string(dict: MdhValue, key: &str) -> Option<String> {
-    let val = __mdh_dict_get_default(dict, mdh_make_string_from_rust(key), __mdh_make_nil());
+    let val = mdh_dict_get_named(dict, key);
     if val.tag == MDH_TAG_STRING {
         let s = mdh_string_to_rust(val);
-        if s.is_empty() { None } else { Some(s) }
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
     } else {
         None
     }
 }
 
 unsafe fn mdh_dict_get_bool(dict: MdhValue, key: &str) -> Option<bool> {
-    let val = __mdh_dict_get_default(dict, mdh_make_string_from_rust(key), __mdh_make_nil());
+    let val = mdh_dict_get_named(dict, key);
     if val.tag == MDH_TAG_BOOL {
         Some(val.data != 0)
     } else {
@@ -179,12 +200,12 @@ unsafe fn mdh_dict_get_bool(dict: MdhValue, key: &str) -> Option<bool> {
 }
 
 unsafe fn mdh_dict_get_bytes(dict: MdhValue, key: &str) -> Option<Vec<u8>> {
-    let val = __mdh_dict_get_default(dict, mdh_make_string_from_rust(key), __mdh_make_nil());
+    let val = mdh_dict_get_named(dict, key);
     mdh_bytes_to_vec(val)
 }
 
 unsafe fn mdh_dict_get_u16(dict: MdhValue, key: &str) -> Option<u16> {
-    let val = __mdh_dict_get_default(dict, mdh_make_string_from_rust(key), __mdh_make_nil());
+    let val = mdh_dict_get_named(dict, key);
     if val.tag == MDH_TAG_INT {
         if val.data >= 0 && val.data <= u16::MAX as i64 {
             Some(val.data as u16)
@@ -245,10 +266,12 @@ struct TlsRegistry {
 static TLS_REGISTRY: OnceLock<Mutex<TlsRegistry>> = OnceLock::new();
 
 fn tls_registry() -> &'static Mutex<TlsRegistry> {
-    TLS_REGISTRY.get_or_init(|| Mutex::new(TlsRegistry {
-        next_id: 1,
-        sessions: HashMap::new(),
-    }))
+    TLS_REGISTRY.get_or_init(|| {
+        Mutex::new(TlsRegistry {
+            next_id: 1,
+            sessions: HashMap::new(),
+        })
+    })
 }
 
 fn tls_register(session: TlsSession) -> i64 {
@@ -286,10 +309,12 @@ struct SrtpRegistry {
 static SRTP_REGISTRY: OnceLock<Mutex<SrtpRegistry>> = OnceLock::new();
 
 fn srtp_registry() -> &'static Mutex<SrtpRegistry> {
-    SRTP_REGISTRY.get_or_init(|| Mutex::new(SrtpRegistry {
-        next_id: 1,
-        sessions: HashMap::new(),
-    }))
+    SRTP_REGISTRY.get_or_init(|| {
+        Mutex::new(SrtpRegistry {
+            next_id: 1,
+            sessions: HashMap::new(),
+        })
+    })
 }
 
 fn srtp_register(session: SrtpSession) -> i64 {
@@ -330,10 +355,12 @@ struct DtlsRegistry {
 static DTLS_REGISTRY: OnceLock<Mutex<DtlsRegistry>> = OnceLock::new();
 
 fn dtls_registry() -> &'static Mutex<DtlsRegistry> {
-    DTLS_REGISTRY.get_or_init(|| Mutex::new(DtlsRegistry {
-        next_id: 1,
-        configs: HashMap::new(),
-    }))
+    DTLS_REGISTRY.get_or_init(|| {
+        Mutex::new(DtlsRegistry {
+            next_id: 1,
+            configs: HashMap::new(),
+        })
+    })
 }
 
 fn dtls_register(config: DtlsConfigData) -> i64 {
@@ -384,11 +411,7 @@ fn tls_config_from_value(config: MdhValue) -> Result<TlsConfigData, String> {
             return Err("tls_client_new expects a config dict".to_string());
         }
 
-        let mode_val = __mdh_dict_get_default(
-            config,
-            mdh_make_string_from_rust("mode"),
-            __mdh_make_nil(),
-        );
+        let mode_val = mdh_dict_get_named(config, "mode");
         let mode = if mode_val.tag == MDH_TAG_STRING {
             let m = mdh_string_to_rust(mode_val).to_lowercase();
             if m == "server" {
@@ -400,57 +423,53 @@ fn tls_config_from_value(config: MdhValue) -> Result<TlsConfigData, String> {
             TlsMode::Client
         };
 
-        let server_name_val = __mdh_dict_get_default(
-            config,
-            mdh_make_string_from_rust("server_name"),
-            __mdh_make_nil(),
-        );
+        let server_name_val = mdh_dict_get_named(config, "server_name");
         let server_name = if server_name_val.tag == MDH_TAG_STRING {
             let s = mdh_string_to_rust(server_name_val);
-            if s.is_empty() { "localhost".to_string() } else { s }
+            if s.is_empty() {
+                "localhost".to_string()
+            } else {
+                s
+            }
         } else {
             "localhost".to_string()
         };
 
-        let insecure_val = __mdh_dict_get_default(
-            config,
-            mdh_make_string_from_rust("insecure"),
-            __mdh_make_nil(),
-        );
+        let insecure_val = mdh_dict_get_named(config, "insecure");
         let insecure = insecure_val.tag == MDH_TAG_BOOL && insecure_val.data != 0;
 
-        let ca_pem_val = __mdh_dict_get_default(
-            config,
-            mdh_make_string_from_rust("ca_pem"),
-            __mdh_make_nil(),
-        );
+        let ca_pem_val = mdh_dict_get_named(config, "ca_pem");
         let ca_pem = if ca_pem_val.tag == MDH_TAG_STRING {
             let s = mdh_string_to_rust(ca_pem_val);
-            if s.is_empty() { None } else { Some(s) }
+            if s.is_empty() {
+                None
+            } else {
+                Some(s)
+            }
         } else {
             None
         };
 
-        let cert_pem_val = __mdh_dict_get_default(
-            config,
-            mdh_make_string_from_rust("cert_pem"),
-            __mdh_make_nil(),
-        );
+        let cert_pem_val = mdh_dict_get_named(config, "cert_pem");
         let cert_pem = if cert_pem_val.tag == MDH_TAG_STRING {
             let s = mdh_string_to_rust(cert_pem_val);
-            if s.is_empty() { None } else { Some(s) }
+            if s.is_empty() {
+                None
+            } else {
+                Some(s)
+            }
         } else {
             None
         };
 
-        let key_pem_val = __mdh_dict_get_default(
-            config,
-            mdh_make_string_from_rust("key_pem"),
-            __mdh_make_nil(),
-        );
+        let key_pem_val = mdh_dict_get_named(config, "key_pem");
         let key_pem = if key_pem_val.tag == MDH_TAG_STRING {
             let s = mdh_string_to_rust(key_pem_val);
-            if s.is_empty() { None } else { Some(s) }
+            if s.is_empty() {
+                None
+            } else {
+                Some(s)
+            }
         } else {
             None
         };
@@ -500,10 +519,7 @@ fn build_client_config(cfg: &TlsConfigData) -> Result<Arc<ClientConfig>, String>
 }
 
 fn build_server_config(cfg: &TlsConfigData) -> Result<Arc<ServerConfig>, String> {
-    let cert_pem = cfg
-        .cert_pem
-        .as_ref()
-        .ok_or("Server cert_pem is required")?;
+    let cert_pem = cfg.cert_pem.as_ref().ok_or("Server cert_pem is required")?;
     let key_pem = cfg.key_pem.as_ref().ok_or("Server key_pem is required")?;
 
     let mut cert_reader = std::io::Cursor::new(cert_pem.as_bytes());
@@ -511,11 +527,12 @@ fn build_server_config(cfg: &TlsConfigData) -> Result<Arc<ServerConfig>, String>
     let certs = certs.into_iter().map(Certificate).collect::<Vec<_>>();
 
     let mut key_reader = std::io::Cursor::new(key_pem.as_bytes());
-    let mut keys = pkcs8_private_keys(&mut key_reader)
-        .map_err(|e| format!("Invalid server key: {}", e))?;
+    let mut keys =
+        pkcs8_private_keys(&mut key_reader).map_err(|e| format!("Invalid server key: {}", e))?;
     if keys.is_empty() {
         let mut key_reader = std::io::Cursor::new(key_pem.as_bytes());
-        keys = rsa_private_keys(&mut key_reader).map_err(|e| format!("Invalid server key: {}", e))?;
+        keys =
+            rsa_private_keys(&mut key_reader).map_err(|e| format!("Invalid server key: {}", e))?;
     }
     let key = keys
         .into_iter()
@@ -594,8 +611,8 @@ fn dtls_config_from_value(config: MdhValue) -> Result<DtlsConfigData, String> {
             TlsMode::Server
         };
 
-        let server_name = mdh_dict_get_string(config, "server_name")
-            .unwrap_or_else(|| "localhost".to_string());
+        let server_name =
+            mdh_dict_get_string(config, "server_name").unwrap_or_else(|| "localhost".to_string());
         let insecure = mdh_dict_get_bool(config, "insecure").unwrap_or(false);
 
         let ca_pem = mdh_dict_get_string(config, "ca_pem");
@@ -605,11 +622,7 @@ fn dtls_config_from_value(config: MdhValue) -> Result<DtlsConfigData, String> {
         let remote_host = mdh_dict_get_string(config, "remote_host");
         let remote_port = mdh_dict_get_u16(config, "remote_port");
 
-        let profiles_val = __mdh_dict_get_default(
-            config,
-            mdh_make_string_from_rust("srtp_profiles"),
-            __mdh_make_nil(),
-        );
+        let profiles_val = mdh_dict_get_named(config, "srtp_profiles");
         let mut profiles = Vec::new();
         if profiles_val.tag == MDH_TAG_LIST {
             let list_ptr = profiles_val.data as *const MdhList;
@@ -858,7 +871,7 @@ fn json_to_mdh(value: &JsonValue) -> Result<MdhValue, String> {
                 let list = __mdh_make_list(items.len() as i32);
                 for item in items {
                     let v = json_to_mdh(item)?;
-                    __mdh_list_push(list, v);
+                    __mdh_list_push_owned(list, v);
                 }
                 Ok(list)
             }
@@ -867,7 +880,7 @@ fn json_to_mdh(value: &JsonValue) -> Result<MdhValue, String> {
                 for (k, v) in map.iter() {
                     let key = mdh_make_string_from_rust(k);
                     let val = json_to_mdh(v)?;
-                    dict = __mdh_dict_set(dict, key, val);
+                    dict = __mdh_dict_set_owned(dict, key, val);
                 }
                 Ok(dict)
             }
@@ -956,17 +969,17 @@ pub extern "C" fn __mdh_rs_regex_match(text: MdhValue, pattern: MdhValue) -> Mdh
 
         if let Some(m) = re.find(&text_s) {
             let mut dict = __mdh_empty_dict();
-            dict = __mdh_dict_set(
+            dict = __mdh_dict_set_owned(
                 dict,
                 mdh_make_string_from_rust("match"),
                 mdh_make_string_from_rust(m.as_str()),
             );
-            dict = __mdh_dict_set(
+            dict = __mdh_dict_set_owned(
                 dict,
                 mdh_make_string_from_rust("start"),
                 __mdh_make_int(m.start() as i64),
             );
-            dict = __mdh_dict_set(
+            dict = __mdh_dict_set_owned(
                 dict,
                 mdh_make_string_from_rust("end"),
                 __mdh_make_int(m.end() as i64),
@@ -998,22 +1011,22 @@ pub extern "C" fn __mdh_rs_regex_match_all(text: MdhValue, pattern: MdhValue) ->
         let result = __mdh_make_list(8);
         for m in re.find_iter(&text_s) {
             let mut dict = __mdh_empty_dict();
-            dict = __mdh_dict_set(
+            dict = __mdh_dict_set_owned(
                 dict,
                 mdh_make_string_from_rust("match"),
                 mdh_make_string_from_rust(m.as_str()),
             );
-            dict = __mdh_dict_set(
+            dict = __mdh_dict_set_owned(
                 dict,
                 mdh_make_string_from_rust("start"),
                 __mdh_make_int(m.start() as i64),
             );
-            dict = __mdh_dict_set(
+            dict = __mdh_dict_set_owned(
                 dict,
                 mdh_make_string_from_rust("end"),
                 __mdh_make_int(m.end() as i64),
             );
-            __mdh_list_push(result, dict);
+            __mdh_list_push_owned(result, dict);
         }
         mdh_ok(result)
     }) {
@@ -1029,7 +1042,10 @@ pub extern "C" fn __mdh_rs_regex_replace(
     replacement: MdhValue,
 ) -> MdhRsResult {
     match std::panic::catch_unwind(|| unsafe {
-        if text.tag != MDH_TAG_STRING || pattern.tag != MDH_TAG_STRING || replacement.tag != MDH_TAG_STRING {
+        if text.tag != MDH_TAG_STRING
+            || pattern.tag != MDH_TAG_STRING
+            || replacement.tag != MDH_TAG_STRING
+        {
             return mdh_err("regex_replace expects strings");
         }
 
@@ -1056,7 +1072,10 @@ pub extern "C" fn __mdh_rs_regex_replace_first(
     replacement: MdhValue,
 ) -> MdhRsResult {
     match std::panic::catch_unwind(|| unsafe {
-        if text.tag != MDH_TAG_STRING || pattern.tag != MDH_TAG_STRING || replacement.tag != MDH_TAG_STRING {
+        if text.tag != MDH_TAG_STRING
+            || pattern.tag != MDH_TAG_STRING
+            || replacement.tag != MDH_TAG_STRING
+        {
             return mdh_err("regex_replace_first expects strings");
         }
 
@@ -1092,7 +1111,7 @@ pub extern "C" fn __mdh_rs_regex_split(text: MdhValue, pattern: MdhValue) -> Mdh
 
         let result = __mdh_make_list(8);
         for part in re.split(&text_s) {
-            __mdh_list_push(result, mdh_make_string_from_rust(part));
+            __mdh_list_push_owned(result, mdh_make_string_from_rust(part));
         }
         mdh_ok(result)
     }) {
@@ -1128,27 +1147,27 @@ pub extern "C" fn __mdh_rs_dns_srv(service: MdhValue, domain: MdhValue) -> MdhRs
         for rdata in lookup.iter() {
             if let RData::SRV(srv) = rdata {
                 let mut dict = __mdh_empty_dict();
-                dict = __mdh_dict_set(
+                dict = __mdh_dict_set_owned(
                     dict,
                     mdh_make_string_from_rust("priority"),
                     __mdh_make_int(srv.priority() as i64),
                 );
-                dict = __mdh_dict_set(
+                dict = __mdh_dict_set_owned(
                     dict,
                     mdh_make_string_from_rust("weight"),
                     __mdh_make_int(srv.weight() as i64),
                 );
-                dict = __mdh_dict_set(
+                dict = __mdh_dict_set_owned(
                     dict,
                     mdh_make_string_from_rust("port"),
                     __mdh_make_int(srv.port() as i64),
                 );
-                dict = __mdh_dict_set(
+                dict = __mdh_dict_set_owned(
                     dict,
                     mdh_make_string_from_rust("target"),
                     mdh_make_string_from_rust(&srv.target().to_string()),
                 );
-                __mdh_list_push(list, dict);
+                __mdh_list_push_owned(list, dict);
             }
         }
         mdh_ok(list)
@@ -1177,37 +1196,37 @@ pub extern "C" fn __mdh_rs_dns_naptr(domain: MdhValue) -> MdhRsResult {
         for rdata in lookup.iter() {
             if let RData::NAPTR(naptr) = rdata {
                 let mut dict = __mdh_empty_dict();
-                dict = __mdh_dict_set(
+                dict = __mdh_dict_set_owned(
                     dict,
                     mdh_make_string_from_rust("order"),
                     __mdh_make_int(naptr.order() as i64),
                 );
-                dict = __mdh_dict_set(
+                dict = __mdh_dict_set_owned(
                     dict,
                     mdh_make_string_from_rust("preference"),
                     __mdh_make_int(naptr.preference() as i64),
                 );
-                dict = __mdh_dict_set(
+                dict = __mdh_dict_set_owned(
                     dict,
                     mdh_make_string_from_rust("flags"),
                     mdh_make_string_from_rust(String::from_utf8_lossy(naptr.flags()).as_ref()),
                 );
-                dict = __mdh_dict_set(
+                dict = __mdh_dict_set_owned(
                     dict,
                     mdh_make_string_from_rust("service"),
                     mdh_make_string_from_rust(String::from_utf8_lossy(naptr.services()).as_ref()),
                 );
-                dict = __mdh_dict_set(
+                dict = __mdh_dict_set_owned(
                     dict,
                     mdh_make_string_from_rust("regexp"),
                     mdh_make_string_from_rust(String::from_utf8_lossy(naptr.regexp()).as_ref()),
                 );
-                dict = __mdh_dict_set(
+                dict = __mdh_dict_set_owned(
                     dict,
                     mdh_make_string_from_rust("replacement"),
                     mdh_make_string_from_rust(&naptr.replacement().to_string()),
                 );
-                __mdh_list_push(list, dict);
+                __mdh_list_push_owned(list, dict);
             }
         }
         mdh_ok(list)
@@ -1301,8 +1320,7 @@ pub extern "C" fn __mdh_rs_tls_connect(tls: MdhValue, sock: MdhValue) -> MdhRsRe
                         .as_ref()
                         .ok_or("Missing server config")?
                         .clone();
-                    let mut conn =
-                        ServerConnection::new(config).map_err(|e| e.to_string())?;
+                    let mut conn = ServerConnection::new(config).map_err(|e| e.to_string())?;
                     while conn.is_handshaking() {
                         conn.complete_io(&mut stream)
                             .map_err(|e| format!("TLS handshake failed: {}", e))?;
@@ -1455,7 +1473,11 @@ pub extern "C" fn __mdh_rs_srtp_create(config: MdhValue) -> MdhRsResult {
         let server_salt = mdh_dict_get_bytes(config, "server_salt");
 
         if send_key.is_none() || send_salt.is_none() || recv_key.is_none() || recv_salt.is_none() {
-            if client_key.is_some() && client_salt.is_some() && server_key.is_some() && server_salt.is_some() {
+            if client_key.is_some()
+                && client_salt.is_some()
+                && server_key.is_some()
+                && server_salt.is_some()
+            {
                 let is_client = role.to_lowercase() != "server";
                 if is_client {
                     send_key = client_key.clone();
@@ -1572,7 +1594,8 @@ pub extern "C" fn __mdh_rs_srtp_unprotect(ctx: MdhValue, packet: MdhValue) -> Md
 }
 
 fn identity_from_pem(cert_pem: &str, key_pem: &str) -> Result<Identity, String> {
-    let cert = X509::from_pem(cert_pem.as_bytes()).map_err(|e| format!("Invalid cert PEM: {}", e))?;
+    let cert =
+        X509::from_pem(cert_pem.as_bytes()).map_err(|e| format!("Invalid cert PEM: {}", e))?;
     let key = PKey::private_key_from_pem(key_pem.as_bytes())
         .map_err(|e| format!("Invalid key PEM: {}", e))?;
     let mut builder = Pkcs12::builder();
@@ -1580,7 +1603,9 @@ fn identity_from_pem(cert_pem: &str, key_pem: &str) -> Result<Identity, String> 
     let pkcs12 = builder
         .build2("")
         .map_err(|e| format!("PKCS12 build failed: {}", e))?;
-    let der = pkcs12.to_der().map_err(|e| format!("PKCS12 serialize failed: {}", e))?;
+    let der = pkcs12
+        .to_der()
+        .map_err(|e| format!("PKCS12 serialize failed: {}", e))?;
     Identity::from_pkcs12(&der, "").map_err(|e| format!("Identity parse failed: {}", e))
 }
 
@@ -1725,13 +1750,41 @@ pub extern "C" fn __mdh_rs_dtls_handshake(dtls: MdhValue, sock: MdhValue) -> Mdh
         let server_salt = &material[(2 * key_len + salt_len)..(2 * key_len + 2 * salt_len)];
 
         let mut dict = __mdh_empty_dict();
-        dict = __mdh_dict_set(dict, mdh_make_string_from_rust("profile"), mdh_make_string_from_rust(&profile.to_string()));
-        dict = __mdh_dict_set(dict, mdh_make_string_from_rust("client_key"), mdh_make_bytes_from_vec(client_key));
-        dict = __mdh_dict_set(dict, mdh_make_string_from_rust("client_salt"), mdh_make_bytes_from_vec(client_salt));
-        dict = __mdh_dict_set(dict, mdh_make_string_from_rust("server_key"), mdh_make_bytes_from_vec(server_key));
-        dict = __mdh_dict_set(dict, mdh_make_string_from_rust("server_salt"), mdh_make_bytes_from_vec(server_salt));
-        dict = __mdh_dict_set(dict, mdh_make_string_from_rust("key_len"), __mdh_make_int(key_len as i64));
-        dict = __mdh_dict_set(dict, mdh_make_string_from_rust("salt_len"), __mdh_make_int(salt_len as i64));
+        dict = __mdh_dict_set_owned(
+            dict,
+            mdh_make_string_from_rust("profile"),
+            mdh_make_string_from_rust(&profile.to_string()),
+        );
+        dict = __mdh_dict_set_owned(
+            dict,
+            mdh_make_string_from_rust("client_key"),
+            mdh_make_bytes_from_vec(client_key),
+        );
+        dict = __mdh_dict_set_owned(
+            dict,
+            mdh_make_string_from_rust("client_salt"),
+            mdh_make_bytes_from_vec(client_salt),
+        );
+        dict = __mdh_dict_set_owned(
+            dict,
+            mdh_make_string_from_rust("server_key"),
+            mdh_make_bytes_from_vec(server_key),
+        );
+        dict = __mdh_dict_set_owned(
+            dict,
+            mdh_make_string_from_rust("server_salt"),
+            mdh_make_bytes_from_vec(server_salt),
+        );
+        dict = __mdh_dict_set_owned(
+            dict,
+            mdh_make_string_from_rust("key_len"),
+            __mdh_make_int(key_len as i64),
+        );
+        dict = __mdh_dict_set_owned(
+            dict,
+            mdh_make_string_from_rust("salt_len"),
+            __mdh_make_int(salt_len as i64),
+        );
 
         mdh_ok(dict)
     }) {

@@ -466,7 +466,7 @@ fn link_native_executable_from_object(
         link_args.push("-Wl,--end-group");
     }
     link_args.extend(["-lm", "-pthread"]); // libm for floor, ceil, etc.
-    // Apple clang rejects -static-libgcc (there is no libgcc on Darwin).
+                                           // Apple clang rejects -static-libgcc (there is no libgcc on Darwin).
     if !cfg!(target_os = "macos") {
         link_args.push("-static-libgcc");
     }
@@ -503,13 +503,24 @@ fn link_native_executable_from_object(
 pub struct LLVMCompiler {
     // Configuration options
     opt_level: OptimizationLevel,
+    /// Reference counting (stage R1: counts with DEAD marking, no frees). Off by default:
+    /// counts are not yet atomic and a counting bug aborts. `MDH_RC=1` in the compiler's
+    /// environment turns it on.
+    refcounting: bool,
 }
 
 impl LLVMCompiler {
     pub fn new() -> Self {
         LLVMCompiler {
             opt_level: OptimizationLevel::Default,
+            refcounting: std::env::var("MDH_RC").is_ok_and(|v| v == "1"),
         }
+    }
+
+    /// Turn reference counting on or off, whatever `MDH_RC` says.
+    pub fn with_refcounting(mut self, on: bool) -> Self {
+        self.refcounting = on;
+        self
     }
 
     /// Set optimization level (0-3)
@@ -526,7 +537,8 @@ impl LLVMCompiler {
     /// Compile to LLVM IR (text format)
     pub fn compile_to_ir(&self, program: &Program) -> Result<String, HaversError> {
         let context = Context::create();
-        let mut codegen = CodeGen::new(&context, "mdhavers_module");
+        let mut codegen =
+            CodeGen::new_with_refcounting(&context, "mdhavers_module", self.refcounting);
 
         codegen.compile(program)?;
 
@@ -565,7 +577,8 @@ impl LLVMCompiler {
         }
 
         let context = Context::create();
-        let mut codegen = CodeGen::new(&context, "mdhavers_module");
+        let mut codegen =
+            CodeGen::new_with_refcounting(&context, "mdhavers_module", self.refcounting);
         if let Some(path) = source_path {
             codegen.set_source_path(path);
         }
@@ -657,7 +670,9 @@ impl LLVMCompiler {
 
         // First compile to object file
         let obj_path = output_path.with_extension("o");
-        let compiler = LLVMCompiler::new().with_optimization(opt_level);
+        let compiler = LLVMCompiler::new()
+            .with_optimization(opt_level)
+            .with_refcounting(self.refcounting);
         if let Err(err) = compiler.compile_to_object_with_source_status(
             program,
             &obj_path,

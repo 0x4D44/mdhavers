@@ -54,8 +54,8 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_bit_or", "bb", Ret::None),
     ("__mdh_bit_xor", "bb", Ret::None),
     ("__mdh_blether", "b", Ret::None),
-    ("__mdh_blether_format", "bb", Ret::Arg), // returns template when nothing replaced
-    ("__mdh_blooter", "b", Ret::Arg),         // returns str unchanged when <=1 char
+    ("__mdh_blether_format", "bb", Ret::Fresh), // R1: +1 on every path
+    ("__mdh_blooter", "b", Ret::Fresh),         // R1: +1 on every path
     ("__mdh_bonnie", "b", Ret::Fresh),
     ("__mdh_braw", "b", Ret::None),
     ("__mdh_braw_date", "b", Ret::Fresh),
@@ -75,13 +75,13 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_bytes_write_u16be", "mbb", Ret::Arg), // returns bytes arg; mutated in place
     ("__mdh_bytes_write_u32be", "mbb", Ret::Arg), // returns bytes arg; mutated in place
     ("__mdh_capitalize", "b", Ret::Fresh),
-    ("__mdh_center", "bb", Ret::Arg), // returns str unchanged when already wide enough
+    ("__mdh_center", "bb", Ret::Fresh), // R1: +1 on every path
     ("__mdh_chan_close", "b", Ret::None),
     ("__mdh_chan_is_closed", "b", Ret::None),
     ("__mdh_chan_new", "b", Ret::None),
-    ("__mdh_chan_recv", "b", Ret::Stored), // slot in ring buffer is not cleared after recv
-    ("__mdh_chan_send", "bs", Ret::None),  // value stored in channel buffer
-    ("__mdh_chan_try_recv", "b", Ret::Stored), // slot in ring buffer is not cleared after recv
+    ("__mdh_chan_recv", "b", Ret::Fresh), // R1: +1 on every path
+    ("__mdh_chan_send", "bs", Ret::None), // value stored in channel buffer
+    ("__mdh_chan_try_recv", "b", Ret::Fresh), // R1: +1 on every path
     ("__mdh_char_at", "bb", Ret::Fresh),
     ("__mdh_chars", "b", Ret::Fresh),
     ("__mdh_chdir", "b", Ret::None),
@@ -191,20 +191,20 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_json_stringify", "b", Ret::Fresh),
     ("__mdh_key_not_found", "b", Ret::None), // hurls fresh message; key only read
     ("__mdh_last_index_of", "bb", Ret::None),
-    ("__mdh_leftpad", "bbb", Ret::Arg), // returns str unchanged if no padding needed
+    ("__mdh_leftpad", "bbb", Ret::Fresh), // R1: +1 on every path
     ("__mdh_lines", "b", Ret::Fresh),
     ("__mdh_list_clear", "m", Ret::Arg), // returns the same list
     ("__mdh_list_contains", "bb", Ret::None),
-    ("__mdh_list_copy", "b", Ret::Arg), // returns arg if not a list; else shares elements of arg 1
+    ("__mdh_list_copy", "b", Ret::Fresh), // R1: +1 on every path
     ("__mdh_list_dir", "b", Ret::Fresh),
     ("__mdh_list_index", "bb", Ret::None),
     ("__mdh_list_index_of", "bb", Ret::None),
     ("__mdh_list_max", "b", Ret::None), // returns an element, but only Int/Float (immediate)
     ("__mdh_list_min", "b", Ret::None), // returns an element, but only Int/Float (immediate)
     ("__mdh_list_push", "ms", Ret::None),
-    ("__mdh_list_slice", "b--", Ret::Arg), // returns arg if not a list; else shares elements of arg 1
-    ("__mdh_list_sort", "b", Ret::Fresh),  // shares elements of arg 1
-    ("__mdh_list_uniq", "b", Ret::Fresh),  // shares elements of arg 1
+    ("__mdh_list_slice", "b--", Ret::Fresh), // R1: +1 on every path
+    ("__mdh_list_sort", "b", Ret::Fresh),    // shares elements of arg 1
+    ("__mdh_list_uniq", "b", Ret::Fresh),    // shares elements of arg 1
     ("__mdh_log_enabled", "bb", Ret::None),
     ("__mdh_log_event", "bbbbbb", Ret::None), // msg/fields go in transient record passed to callback
     ("__mdh_log_get_filter", "", Ret::Fresh),
@@ -214,8 +214,8 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_log_span_current", "", Ret::Stored), // native span object held by thread-local span stack
     ("__mdh_log_span_enter", "s", Ret::None),    // span pointer pushed on thread-local span stack
     ("__mdh_log_span_exit", "b", Ret::None),     // pops span stack
-    ("__mdh_log_span_in", "bb", Ret::Stored),    // returns result of user func
-    ("__mdh_ltrim", "b", Ret::Arg),              // returns str if nothing to trim; else fresh copy
+    ("__mdh_log_span_in", "bb", Ret::Fresh),     // R1: +1 on every path
+    ("__mdh_ltrim", "b", Ret::Fresh),            // R1: +1 on every path
     ("__mdh_make_creel", "b", Ret::Fresh),       // shares elements of arg 1 (inserted as set keys)
     ("__mdh_make_dir", "b", Ret::None),
     ("__mdh_make_list", "-", Ret::Fresh),
@@ -235,12 +235,12 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_midi_whaur", "b", Ret::None),  // handle is an int
     ("__mdh_mono_ms", "", Ret::None),
     ("__mdh_mono_ns", "", Ret::None),
-    ("__mdh_muckle", "bb", Ret::Arg),
+    ("__mdh_muckle", "bb", Ret::Fresh), // R1: +1 on every path
     ("__mdh_muisic_gae_on", "b", Ret::None), // handle is an int
-    ("__mdh_muisic_haud", "b", Ret::None),   // handle is an int
+    ("__mdh_muisic_haud", "b", Ret::None), // handle is an int
     ("__mdh_muisic_hou_lang", "b", Ret::None), // handle is an int
     ("__mdh_muisic_is_spielin", "b", Ret::None), // handle is an int
-    ("__mdh_muisic_lade", "b", Ret::None),   // path copied to Rust String
+    ("__mdh_muisic_lade", "b", Ret::None), // path copied to Rust String
     ("__mdh_muisic_loup", "bb", Ret::None),
     ("__mdh_muisic_pit_luid", "bb", Ret::None),
     ("__mdh_muisic_pit_pan", "bb", Ret::None),
@@ -282,20 +282,27 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_random_int", "bb", Ret::None),
     ("__mdh_range", "---", Ret::Fresh),
     ("__mdh_range_o", "b", Ret::None),
+    // Reference counting (runtime/gc_stub.c): turned on by main's prologue (MDH_RC=1), then
+    // the object's data after the inline tag test.
+    ("__mdh_rc_enable", "", Ret::None),
+    ("__mdh_rc_release_obj", "-", Ret::None),
+    ("__mdh_rc_retain_obj", "-", Ret::None),
     ("__mdh_redd_up", "b", Ret::Fresh), // shares elements of arg 1
     ("__mdh_regex_match", "bb", Ret::Fresh),
     ("__mdh_regex_match_all", "bb", Ret::Fresh),
-    ("__mdh_regex_replace", "bbb", Ret::Arg), // returns text on type error
-    ("__mdh_regex_replace_first", "bbb", Ret::Arg), // returns text on type error
+    ("__mdh_regex_replace", "bbb", Ret::Fresh), // R1: +1 on every path
+    ("__mdh_regex_replace_first", "bbb", Ret::Fresh), // R1: +1 on every path
     ("__mdh_regex_split", "bb", Ret::Fresh),
     ("__mdh_regex_test", "bb", Ret::None),
+    ("__mdh_release", "b", Ret::None),
     ("__mdh_repeat_say", "bb", Ret::Fresh),
-    ("__mdh_replace", "bbb", Ret::Arg), // returns str when no match
-    ("__mdh_replace_first", "bbb", Ret::Arg), // returns str when no match
+    ("__mdh_replace", "bbb", Ret::Fresh), // R1: +1 on every path
+    ("__mdh_replace_first", "bbb", Ret::Fresh), // R1: +1 on every path
+    ("__mdh_retain", "b", Ret::None),
     ("__mdh_reverse_str", "b", Ret::Fresh),
-    ("__mdh_rightpad", "bbb", Ret::Arg), // returns str when already wide enough
-    ("__mdh_rtrim", "b", Ret::Arg),      // returns str when nothing to trim
-    ("__mdh_scottify", "b", Ret::Arg),   // returns str when no replacement applies
+    ("__mdh_rightpad", "bbb", Ret::Fresh), // R1: +1 on every path
+    ("__mdh_rtrim", "b", Ret::Fresh),      // R1: +1 on every path
+    ("__mdh_scottify", "b", Ret::Fresh),   // R1: +1 on every path
     ("__mdh_scrieve", "bb", Ret::None),
     ("__mdh_scrieve_append", "bb", Ret::None),
     ("__mdh_scunner", "b", Ret::None),
@@ -345,18 +352,18 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_soond_wheesht", "b", Ret::None),
     ("__mdh_speir", "b", Ret::Fresh),
     ("__mdh_split_by", "bb", Ret::Fresh), // shares elements of arg 1
-    ("__mdh_sporran_fill", "bbb", Ret::Arg), // returns str when already wide enough
+    ("__mdh_sporran_fill", "bbb", Ret::Fresh), // R1: +1 on every path
     ("__mdh_srtp_create", "b", Ret::Fresh), // result dict
     ("__mdh_srtp_protect", "bb", Ret::Fresh), // result dict
     ("__mdh_srtp_unprotect", "bb", Ret::Fresh), // result dict
     ("__mdh_stacktrace", "", Ret::Fresh),
     ("__mdh_starts_with", "bb", Ret::None),
-    ("__mdh_stoater", "b", Ret::Stored), // returns a list element
-    ("__mdh_stooshie", "b", Ret::Arg),   // blooter: returns str when <=1 char
+    ("__mdh_stoater", "b", Ret::Fresh),  // R1: +1 on every path
+    ("__mdh_stooshie", "b", Ret::Fresh), // R1: +1 on every path
     ("__mdh_str_index_of", "bb", Ret::None),
     ("__mdh_str_len", "b", Ret::None),
-    ("__mdh_strip_left", "bb", Ret::Arg), // returns str when nothing stripped
-    ("__mdh_strip_right", "bb", Ret::Arg), // returns str when nothing stripped
+    ("__mdh_strip_left", "bb", Ret::Fresh), // R1: +1 on every path
+    ("__mdh_strip_right", "bb", Ret::Fresh), // R1: +1 on every path
     ("__mdh_substring", "bbb", Ret::Fresh),
     ("__mdh_swapcase", "b", Ret::Fresh),
     ("__mdh_tae_binary", "b", Ret::Fresh),
@@ -374,7 +381,7 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_timer_after", "bbs", Ret::None), // callback kept in MdhTimer; returns timer id
     ("__mdh_timer_cancel", "bb", Ret::None),
     ("__mdh_timer_every", "bbs", Ret::None), // callback kept in MdhTimer; returns timer id
-    ("__mdh_title_case", "b", Ret::Arg),     // returns str when empty
+    ("__mdh_title_case", "b", Ret::Fresh),   // R1: +1 on every path
     ("__mdh_tls_client_new", "b", Ret::Fresh), // result dict; config copied into Rust
     ("__mdh_tls_close", "b", Ret::Fresh),    // result dict
     ("__mdh_tls_connect", "bb", Ret::Fresh), // result dict
@@ -382,8 +389,8 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_tls_send", "bb", Ret::Fresh),    // result dict
     ("__mdh_to_float", "b", Ret::None),
     ("__mdh_to_int", "b", Ret::None),
-    ("__mdh_to_string", "b", Ret::Arg), // returns a when already a string
-    ("__mdh_toss_in", "ms", Ret::Arg),  // returns the set it was given
+    ("__mdh_to_string", "b", Ret::Fresh), // R1: +1 on every path
+    ("__mdh_toss_in", "ms", Ret::Arg),    // returns the set it was given
     ("__mdh_tri_module", "", Ret::Stored), // cached static module native object
     ("__mdh_try_pop", "", Ret::None),
     ("__mdh_try_push", "-", Ret::None), // keeps jmp_buf pointer, not an MdhValue
@@ -392,7 +399,7 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_udp_recv_from", "bb", Ret::Fresh), // result dict
     ("__mdh_udp_send_to", "bbbb", Ret::Fresh), // result dict
     ("__mdh_unique", "b", Ret::Fresh),         // shares elements of arg 1
-    ("__mdh_wee", "bb", Ret::Arg),             // returns a or b
+    ("__mdh_wee", "bb", Ret::Fresh),           // R1: +1 on every path
     ("__mdh_wheesht_aw", "b", Ret::Fresh),
     ("__mdh_window", "bb", Ret::Fresh),
     ("__mdh_words", "b", Ret::Fresh),
@@ -429,7 +436,8 @@ blether f([1, 2], 1)
     /// parameter count.
     fn declared_runtime_symbols() -> Vec<(String, u32)> {
         let context = Context::create();
-        let mut codegen = CodeGen::new(&context, "ownership_table");
+        // With reference counting on, so its declarations are kept and listed too.
+        let mut codegen = CodeGen::new_with_refcounting(&context, "ownership_table", true);
         let program = crate::parse(LAZY_DECLS).expect("parse");
         codegen.compile(&program).expect("compile");
         let mut out: Vec<(String, u32)> = codegen
@@ -500,7 +508,7 @@ blether f([1, 2], 1)
         let defined = |name: &str| {
             let call = format!(" {name}(");
             let ptr_call = format!("*{name}("); // `void *__mdh_buf_alloc(`
-            // A C definition starts in column 0 and is not a prototype.
+                                                // A C definition starts in column 0 and is not a prototype.
             let in_c = c_runtime.lines().any(|line| {
                 !line.starts_with([' ', '\t', '#', '/', '*'])
                     && (line.contains(&call) || line.contains(&ptr_call))
