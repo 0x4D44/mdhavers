@@ -46437,6 +46437,8 @@ dae f() { gie 32 }
 
         let shadow = codegen.create_entry_block_alloca_i64("n_shadow");
         codegen.int_shadows.insert("n".to_string(), shadow);
+        let alloca = codegen.create_entry_block_alloca("n");
+        codegen.variables.insert("n".to_string(), alloca);
         codegen.in_loop_body = true;
         codegen.try_depth = 0;
 
@@ -46451,8 +46453,6 @@ dae f() { gie 32 }
         };
         let _ = codegen.compile_expr(&expr).expect("compile assign");
 
-        let alloca = codegen.create_entry_block_alloca("n");
-        codegen.variables.insert("n".to_string(), alloca);
         codegen.try_depth = 1;
         let expr = Expr::Assign {
             name: "n".to_string(),

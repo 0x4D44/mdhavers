@@ -807,11 +807,14 @@ fn llvm_codegen_more_inline_builtins_and_class_paths_are_exercised_for_unit_cove
     // plus class/method compilation paths that depend on nested captures.
     compile_to_ir_for_unit_coverage(
         r#"
-ken bx = {
-    ken y = 1
-    gie y
+dae blockish() {
+    ken bx = {
+        ken y = 1
+        gie y
+    }
+    gie bx
 }
-blether bx
+blether blockish()
 
 blether find([1, 2, 3], |x| x == 2)
 blether sample([1, 2, 3], 2)
