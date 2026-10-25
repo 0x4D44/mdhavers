@@ -81,11 +81,20 @@ fn main() {
             format!("lib{stem}.a")
         }
     };
-    for (stem, embedded) in [("mdh_runtime", "mdh_runtime_c.a"), ("gc_stub", "gc_stub_c.a")] {
+    for (stem, embedded) in [
+        ("mdh_runtime", "mdh_runtime_c.a"),
+        ("gc_stub", "gc_stub_c.a"),
+    ] {
         let built = out_dir.join(archive_name(stem));
         let dest = out_dir.join(embedded);
-        fs::copy(&built, &dest)
-            .unwrap_or_else(|e| panic!("Failed to copy {} to {}: {}", built.display(), dest.display(), e));
+        fs::copy(&built, &dest).unwrap_or_else(|e| {
+            panic!(
+                "Failed to copy {} to {}: {}",
+                built.display(),
+                dest.display(),
+                e
+            )
+        });
     }
 
     // Build Rust runtime helpers (JSON + regex) as a staticlib.
@@ -139,8 +148,17 @@ fn main() {
         ("libmdh_runtime_rs.a", "mdh_runtime_rs.a")
     };
 
-    let built_lib = runtime_target_dir.join(&target).join(&profile).join(lib_name);
+    let built_lib = runtime_target_dir
+        .join(&target)
+        .join(&profile)
+        .join(lib_name);
     let out_path = out_dir.join(out_name);
-    fs::copy(&built_lib, &out_path)
-        .unwrap_or_else(|e| panic!("Failed to copy {} to {}: {}", built_lib.display(), out_path.display(), e));
+    fs::copy(&built_lib, &out_path).unwrap_or_else(|e| {
+        panic!(
+            "Failed to copy {} to {}: {}",
+            built_lib.display(),
+            out_path.display(),
+            e
+        )
+    });
 }

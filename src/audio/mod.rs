@@ -106,7 +106,8 @@ pub(crate) const OUTPUT_SAMPLE_RATE: u32 = 44_100;
 pub(crate) const OUTPUT_CHANNELS: u32 = 2;
 
 #[cfg(not(any(feature = "audio", feature = "graphics")))]
-const ERR_NO_AUDIO: &str = "Soond isnae available - build wi' --features audio or --features graphics";
+const ERR_NO_AUDIO: &str =
+    "Soond isnae available - build wi' --features audio or --features graphics";
 
 // ============================================================================
 // Public API: register_audio_functions

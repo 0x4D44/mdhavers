@@ -336,7 +336,9 @@ fn seek_midi(entry: &mut MidiEntry, seconds: f64) {
         } else {
             remaining
         };
-        entry.sequencer.render(&mut left[..chunk], &mut right[..chunk]);
+        entry
+            .sequencer
+            .render(&mut left[..chunk], &mut right[..chunk]);
         remaining -= chunk;
     }
 }
@@ -415,8 +417,7 @@ pub fn register_midi_functions(globals: &Rc<RefCell<crate::value::Environment>>)
 
         let mut midi_file =
             File::open(&midi_path).map_err(|_| "Cannae open the midi file".to_string())?;
-        let midi =
-            MidiFile::new(&mut midi_file).map_err(|_| "Cannae read the midi".to_string())?;
+        let midi = MidiFile::new(&mut midi_file).map_err(|_| "Cannae read the midi".to_string())?;
         let midi = Arc::new(midi);
 
         let settings = SynthesizerSettings::new(OUTPUT_SAMPLE_RATE as i32);
@@ -444,7 +445,9 @@ pub fn register_midi_functions(globals: &Rc<RefCell<crate::value::Environment>>)
     define_native(globals, "midi_spiel", 1, |args| {
         let handle = as_handle(&args[0], "midi_spiel")?;
         with_midi_state(|state| {
-            let entry = state.get_mut(handle).ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
+            let entry = state
+                .get_mut(handle)
+                .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
             if entry.state == PlayState::Stopped {
                 entry.sequencer.play(&entry.midi, entry.looped);
             }
@@ -457,7 +460,9 @@ pub fn register_midi_functions(globals: &Rc<RefCell<crate::value::Environment>>)
     define_native(globals, "midi_haud", 1, |args| {
         let handle = as_handle(&args[0], "midi_haud")?;
         with_midi_state(|state| {
-            let entry = state.get_mut(handle).ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
+            let entry = state
+                .get_mut(handle)
+                .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
             if entry.state == PlayState::Playing {
                 entry.state = PlayState::Paused;
             }
@@ -469,7 +474,9 @@ pub fn register_midi_functions(globals: &Rc<RefCell<crate::value::Environment>>)
     define_native(globals, "midi_gae_on", 1, |args| {
         let handle = as_handle(&args[0], "midi_gae_on")?;
         with_midi_state(|state| {
-            let entry = state.get_mut(handle).ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
+            let entry = state
+                .get_mut(handle)
+                .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
             if entry.state == PlayState::Paused {
                 entry.state = PlayState::Playing;
             }
@@ -481,7 +488,9 @@ pub fn register_midi_functions(globals: &Rc<RefCell<crate::value::Environment>>)
     define_native(globals, "midi_stap", 1, |args| {
         let handle = as_handle(&args[0], "midi_stap")?;
         with_midi_state(|state| {
-            let entry = state.get_mut(handle).ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
+            let entry = state
+                .get_mut(handle)
+                .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
             entry.sequencer.stop();
             entry.state = PlayState::Stopped;
             Ok(Value::Nil)
@@ -499,7 +508,9 @@ pub fn register_midi_functions(globals: &Rc<RefCell<crate::value::Environment>>)
     define_native(globals, "midi_is_spielin", 1, |args| {
         let handle = as_handle(&args[0], "midi_is_spielin")?;
         with_midi_state(|state| {
-            let entry = state.get(handle).ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
+            let entry = state
+                .get(handle)
+                .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
             Ok(Value::Bool(entry.state == PlayState::Playing))
         })
     });
@@ -509,7 +520,9 @@ pub fn register_midi_functions(globals: &Rc<RefCell<crate::value::Environment>>)
         let handle = as_handle(&args[0], "midi_loup")?;
         let pos = as_number(&args[1], "midi_loup")?;
         with_midi_state(|state| {
-            let entry = state.get_mut(handle).ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
+            let entry = state
+                .get_mut(handle)
+                .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
             seek_midi(entry, pos);
             Ok(Value::Nil)
         })
@@ -519,7 +532,9 @@ pub fn register_midi_functions(globals: &Rc<RefCell<crate::value::Environment>>)
     define_native(globals, "midi_hou_lang", 1, |args| {
         let handle = as_handle(&args[0], "midi_hou_lang")?;
         with_midi_state(|state| {
-            let entry = state.get(handle).ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
+            let entry = state
+                .get(handle)
+                .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
             Ok(Value::Float(entry.midi.get_length()))
         })
     });
@@ -528,7 +543,9 @@ pub fn register_midi_functions(globals: &Rc<RefCell<crate::value::Environment>>)
     define_native(globals, "midi_whaur", 1, |args| {
         let handle = as_handle(&args[0], "midi_whaur")?;
         with_midi_state(|state| {
-            let entry = state.get(handle).ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
+            let entry = state
+                .get(handle)
+                .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
             Ok(Value::Float(entry.sequencer.get_position()))
         })
     });
@@ -538,7 +555,9 @@ pub fn register_midi_functions(globals: &Rc<RefCell<crate::value::Environment>>)
         let handle = as_handle(&args[0], "midi_pit_luid")?;
         let value = as_number(&args[1], "midi_pit_luid")? as f32;
         with_midi_state(|state| {
-            let entry = state.get_mut(handle).ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
+            let entry = state
+                .get_mut(handle)
+                .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
             entry.volume = value.clamp(0.0, 1.0);
             Ok(Value::Nil)
         })
@@ -549,7 +568,9 @@ pub fn register_midi_functions(globals: &Rc<RefCell<crate::value::Environment>>)
         let handle = as_handle(&args[0], "midi_pit_pan")?;
         let pan = as_number(&args[1], "midi_pit_pan")? as f32;
         with_midi_state(|state| {
-            let entry = state.get_mut(handle).ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
+            let entry = state
+                .get_mut(handle)
+                .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
             entry.pan = pan.clamp(-1.0, 1.0);
             Ok(Value::Nil)
         })
@@ -560,7 +581,9 @@ pub fn register_midi_functions(globals: &Rc<RefCell<crate::value::Environment>>)
         let handle = as_handle(&args[0], "midi_pit_rin_roond")?;
         let looped = as_bool(&args[1], "midi_pit_rin_roond")?;
         with_midi_state(|state| {
-            let entry = state.get_mut(handle).ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
+            let entry = state
+                .get_mut(handle)
+                .ok_or_else(|| ERR_BAD_HANDLE.to_string())?;
             entry.looped = looped;
             Ok(Value::Nil)
         })
