@@ -350,8 +350,10 @@ These functions have distinctly Scottish names and personality!
 thread arguments, channel messages, globals and captured variables. Shared mutable
 containers need a mutex: a list, dict, creel or instance that one thread changes while
 another uses it must be locked (`mutex_lock`/`mutex_unlock`) around every access, in every
-thread. The same goes for a global or captured variable that one thread reassigns while
-another reads it. Without the lock, natively compiled programs can corrupt memory.
+thread. Without the lock, natively compiled programs can corrupt memory. A global or
+captured variable that one thread reassigns while another reads it needs no mutex for
+safety: each read sees either the old value or the new one. Use a mutex or an atomic
+when threads must agree on an order (a counter that several threads bump, say).
 
 ## TLS / DTLS / SRTP
 
