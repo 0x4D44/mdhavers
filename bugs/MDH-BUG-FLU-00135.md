@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00135 — Native: a dae nested in a lambda body cannot read the lambda's locals
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-25T02:34:36Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261025T023534Z-b8acd3fc
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00135-run-fix-20261025T023534Z-b8acd3fc
-- **Owner base:** ba5a3d69cf2edd9b01c8bce71aae78eccd0bb798
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-25T02:35:34Z
-- **Owner until:** 2026-10-25T06:35:34Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T02:34:36Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-25T02:34:36Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T03:00:50Z, deltic:auto role=fix run=fix-20261025T023534Z-b8acd3fc branch=task/bug-MDH-BUG-FLU-00135-run-fix-20261025T023534Z-b8acd3fc code=d6b6308 gate=manual)
 
 ## Observation
 
