@@ -50,6 +50,10 @@ const STRING_TOO_BIG_MSG: &str = "Och! That string would be ower muckle tae fit 
 /// runtime/mdh_runtime.c static-asserts `sizeof(jmp_buf) <= MDH_JMP_BUF_RESERVE`.
 const JMP_BUF_RESERVE: u32 = 512;
 
+/// Above this many functions plus classes, calls through a function value use the
+/// shared per-arity dispatcher instead of an inline dispatch chain (MDH-BUG-FLU-00157).
+const INLINE_CALL_DISPATCH_LIMIT: usize = 24;
+
 // Coverage note: llvm-cov counts each `*_or_else(|| ...)` closure as a separate function.
 // In this file, those closures are effectively unreachable in normal compilation (they only
 // construct internal error messages like "<runtime call> returned void"), so they tank
@@ -32504,6 +32508,26 @@ impl<'ctx> CodeGen<'ctx> {
         args: &[BasicValueEnum<'ctx>],
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let function = self.current_function.unwrap();
+
+        // Inlining a dispatch chain over every function, closure and class at each call
+        // site makes the IR grow with (call sites x functions): a 300-line program with
+        // ~140 functions came to 640k lines of IR (MDH-BUG-FLU-00157). Past a threshold,
+        // share one dispatcher per arg count; it is the same dispatch, emitted once.
+        if !self.in_late_dispatch
+            && self.functions.len() + self.classes.len() > INLINE_CALL_DISPATCH_LIMIT
+        {
+            let dispatcher = self.late_call_dispatcher(args.len());
+            let mut late_args: Vec<BasicMetadataValueEnum> = Vec::with_capacity(args.len() + 1);
+            late_args.push(func_val.into());
+            late_args.extend(args.iter().map(|a| BasicMetadataValueEnum::from(*a)));
+            return Ok(self
+                .builder
+                .build_call(dispatcher, &late_args, "shared_call")
+                .unwrap()
+                .try_as_basic_value()
+                .basic()
+                .unwrap());
+        }
 
         let mut method_fn_names: HashSet<String> = HashSet::new();
         for (class_name, methods) in &self.class_methods {
