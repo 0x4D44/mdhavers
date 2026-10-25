@@ -60,7 +60,7 @@ apply(7)
 "#;
     let wat_param = mdhavers::compile_to_wat(wasm_param_call).expect("param call wat");
     assert!(wat_param.contains("(module"));
-    assert!(wat_param.contains("(call $mdh_method_call1)"));
+    assert!(wat_param.contains("(call $mdh_call1)"));
 
     {
         use mdhavers::ast::{Expr, Literal, Param, Program, Span, Stmt};
@@ -92,7 +92,7 @@ apply(7)
         let wat_manual = wasm_compiler
             .compile(&program)
             .expect("manual wasm compile");
-        assert!(wat_manual.contains("(call $mdh_method_call1)"));
+        assert!(wat_manual.contains("(call $mdh_call1)"));
     }
 
     // Cover WasmCompiler::default() in the dependency crate instance.

@@ -5,11 +5,14 @@ use mdhavers::{parse, LLVMCompiler};
 #[test]
 fn llvm_codegen_instantiations_are_exercised_in_dependency_crate_instance() {
     let source = r#"
-ken bx = {
-    ken y = 1
-    gie y
+dae blockish() {
+    ken bx = {
+        ken y = 1
+        gie y
+    }
+    gie bx
 }
-blether bx
+blether blockish()
 
 blether find([1, 2, 3], |x| x == 2)
 blether sample([1, 2, 3], 2)

@@ -1,5 +1,6 @@
 #![cfg(coverage)]
 
+use mdhavers::ast::{Expr, Program, Span, Stmt};
 use mdhavers::{parse, Interpreter};
 
 fn interpret_ok(source: &str) -> Vec<String> {
@@ -42,9 +43,8 @@ blether clype(C())
         r#"blether json_stringify("\\\\")"#,
         r#"blether json_stringify("a\\nb\\t")"#,
         r#"blether json_stringify("a\\rb")"#,
-        // BlockExpr catching break/continue (shouldn't happen, but it is handled)
-        r#"blether { brak }"#,
-        r#"blether { haud }"#,
+        // (BlockExpr catching break/continue is covered below via hand-built AST: the
+        // parser now rejects `brak`/`haud` in a block expression.)
         // String repetition supports both `"s" * n` and `n * "s"`; cover both match-arm variants.
         r#"
 blether 2 * "ab"
@@ -88,12 +88,13 @@ blether f()
         r#"blether maxaw([1.0, 2.5, 0.1])"#,
         // sort float NaN compare fallback (partial_cmp returns None)
         r#"blether sort([sqrt(-1), 1.0])"#,
-        // call_function_with_env nil-binding branch (class init is called without arity checks).
+        // Class init with a spare parameter. (Init arity is now checked before binding, so the
+        // old missing-argument nil-binding path is no longer reachable from source.)
         r#"
 kin C {
     dae init(a, b) { masel.a = a }
 }
-ken c = C(1)
+ken c = C(1, 2)
 blether c.a
 "#,
         // JSON empty container fast-paths
@@ -116,6 +117,24 @@ blether c.a
     ] {
         let out = interpret_ok(src);
         assert!(!out.is_empty(), "expected some output for:\n{src}");
+    }
+
+    // BlockExpr catching break/continue (the parser rejects these, but the interpreter
+    // still handles them for hand-built ASTs).
+    for jump in [|span| Stmt::Break { span }, |span| Stmt::Continue { span }] {
+        let span = Span::new(1, 1);
+        let program = Program::new(vec![Stmt::Print {
+            value: Expr::BlockExpr {
+                statements: vec![jump(span)],
+                span,
+            },
+            span,
+        }]);
+        let mut interp = Interpreter::new();
+        interp
+            .interpret(&program)
+            .unwrap_or_else(|e| panic!("interpret failed for hand-built block jump: {e:?}"));
+        assert!(!interp.get_output().is_empty());
     }
 
     // Interpreter error paths (evaluate/execute).

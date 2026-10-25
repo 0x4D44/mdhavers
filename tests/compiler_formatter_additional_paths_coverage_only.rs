@@ -58,13 +58,16 @@ ken m = arr[1:3:2]
 
 ken n = f"hi`there"
 
-ken o = { ken x = 1
-          gie x }
+dae wrap() {
+    ken o = { ken x = 1
+              gie x }
+    gie o
+}
 "#;
 
     let output = compile(source).unwrap();
     assert!(output.contains("new Foo("));
-    assert!(output.contains("obj.method("));
+    assert!(output.contains("__havers.callM(obj, \"method\""));
     assert!(output.contains("__havers.slice(arr, 1n, 3n, null, 39)"));
     assert!(output.contains("__havers.slice(arr, null, 3n, null, 40)"));
     assert!(output.contains("__havers.slice(arr, 1n, 3n, 2n, 41)"));
