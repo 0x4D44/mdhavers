@@ -6066,6 +6066,23 @@ impl Interpreter {
             ))),
         );
 
+        // backside_forrit - reverse a list or string (Scots: "back-side forward"),
+        // matching the native backend (MDH-BUG-FLU-00147)
+        globals.borrow_mut().define(
+            "backside_forrit".to_string(),
+            Value::NativeFunction(Rc::new(NativeFunction::new("backside_forrit", 1, |args| {
+                match &args[0] {
+                    Value::List(list) => {
+                        let mut reversed = list.borrow().clone();
+                        reversed.reverse();
+                        Ok(Value::List(Rc::new(RefCell::new(reversed))))
+                    }
+                    Value::String(s) => Ok(Value::String(s.chars().rev().collect())),
+                    _ => Err("backside_forrit() expects a list or string".to_string()),
+                }
+            }))),
+        );
+
         // slap - append lists together (like a friendly slap on the back!)
         globals.borrow_mut().define(
             "slap".to_string(),

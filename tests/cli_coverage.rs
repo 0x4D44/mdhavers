@@ -1275,6 +1275,43 @@ fn cli_prelude_does_not_shadow_native_pad_builtins() {
 }
 
 #[test]
+fn cli_prelude_does_not_shadow_native_builtins() {
+    // MDH-BUG-FLU-00147: the prelude used to redefine average, median, flatten,
+    // unique, ony, the_noo and backside_forrit, so `mdhavers run` disagreed with
+    // the library interpreter. Native builtins win.
+    let dir = tempdir().unwrap();
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let run_src = |name: &str, src: &str| {
+        let prog = dir.path().join(name);
+        write_file(&prog, src);
+        run_mdhavers_in_dir(&["run", prog.to_str().unwrap()], None, dir.path(), &root)
+    };
+
+    let (code, out, err) = run_src(
+        "ok.braw",
+        "blether backside_forrit(\"abc\")\n\
+         blether backside_forrit([1, 2, 3])\n\
+         blether whit_kind(the_noo())\n\
+         blether flatten([[1, 2], [3], 4])\n\
+         blether unique([1, 1, 2])\n\
+         blether ony([1, 2, 3], |x| x > 2)\n\
+         blether average([2, 4])\n\
+         blether median([3, 1, 2])\n",
+    );
+    assert_eq!(code, 0, "stderr: {err}");
+    assert_eq!(
+        out,
+        "cba\n[3, 2, 1]\ninteger\n[1, 2, 3, 4]\n[1, 2]\naye\n3\n2\n"
+    );
+
+    // Native average/median of an empty list raise (the prelude gave 0 / naething).
+    let (code, _out, err) = run_src("avg.braw", "blether average([])\n");
+    assert_ne!(code, 0, "average([]) should raise; stderr: {err}");
+    let (code, _out, err) = run_src("med.braw", "blether median([])\n");
+    assert_ne!(code, 0, "median([]) should raise; stderr: {err}");
+}
+
+#[test]
 fn cli_speir_at_end_of_input_is_naething_but_blank_line_is_empty() {
     // MDH-BUG-FLU-00136: EOF must be distinguishable from an empty line.
     let dir = tempdir().unwrap();

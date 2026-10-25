@@ -127,17 +127,6 @@ dae drap_while(list, pred) {
     gie result
 }
 
-# Reverse a list
-dae backside_forrit(list) {
-    ken result = []
-    ken i = len(list) - 1
-    whiles i >= 0 {
-        shove(result, list[i])
-        i = i - 1
-    }
-    gie result
-}
-
 # Count elements matching predicate (coont_gin = count if)
 # Note: built-in coont(list, value) counts exact matches
 dae coont_gin(list, pred) {
@@ -148,16 +137,6 @@ dae coont_gin(list, pred) {
         }
     }
     gie total
-}
-
-# Check if any element matches
-dae ony(list, pred) {
-    fer item in list {
-        gin pred(item) {
-            gie aye
-        }
-    }
-    gie nae
 }
 
 # Check if all elements match
@@ -190,21 +169,6 @@ dae fin_index(list, pred) {
         i = i + 1
     }
     gie -1
-}
-
-# Flatten a list of lists by one level
-dae flatten(list) {
-    ken result = []
-    fer item in list {
-        gin whit_kind(item) == "list" {
-            fer inner in item {
-                shove(result, inner)
-            }
-        } ither {
-            shove(result, item)
-        }
-    }
-    gie result
 }
 
 # Zip two lists together
@@ -470,23 +434,6 @@ dae pure_dead_brilliant(whit) {
 # Math Helpers
 # ===============================================================
 
-# Calculate average of a list
-dae average(list) {
-    gin len(list) == 0 { gie 0 }
-    gie sumaw(list) / len(list)
-}
-
-# Get median of a list
-dae median(list) {
-    gin len(list) == 0 { gie naething }
-    ken sorted = sort(list)
-    ken mid = len(sorted) / 2
-    gin len(sorted) % 2 == 0 {
-        gie (sorted[mid - 1] + sorted[mid]) / 2
-    }
-    gie sorted[mid]
-}
-
 # Get the mode (most common value) - returns the first if ties
 dae mode(list) {
     gin len(list) == 0 { gie naething }
@@ -547,19 +494,6 @@ dae group_by(list, key_fn) {
     gie groups
 }
 
-# Remove duplicates from list
-dae unique(list) {
-    ken seen = creel([])
-    ken result = []
-    fer item in list {
-        gin nae is_in_creel(seen, item) {
-            toss_in(seen, item)
-            shove(result, item)
-        }
-    }
-    gie result
-}
-
 # ===============================================================
 # Scots Proverbs and Wisdom
 # ===============================================================
@@ -574,13 +508,6 @@ dae scots_wisdom() {
 # ===============================================================
 # Date/Time Functions (Scots Style!)
 # ===============================================================
-
-# Get formatted timestamp as string
-dae the_noo() {
-    ken ms = noo()
-    ken secs = ms / 1000
-    gie f"timestamp: {secs} seconds since 1970"
-}
 
 # ===============================================================
 # Scottish Greetings and Phrases
