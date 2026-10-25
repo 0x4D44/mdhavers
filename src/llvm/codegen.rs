@@ -36,7 +36,7 @@ use crate::ast::{
 };
 use crate::error::HaversError;
 
-use super::types::{MdhTypes, ValueTag};
+use super::types::{MdhTypes, ObjKind, ValueTag};
 
 /// Hurled when a string size computation would overflow or cannot be allocated.
 /// Keep in step with MDH_STRING_TOO_BIG_MSG in runtime/mdh_runtime.c.
@@ -78,8 +78,13 @@ struct LoopContext<'ctx> {
 #[allow(dead_code)]
 struct LibcFunctions<'ctx> {
     printf: FunctionValue<'ctx>,
-    malloc: FunctionValue<'ctx>,
-    realloc: FunctionValue<'ctx>,
+    // The single allocator (runtime/gc_stub.c; see "Allocation" in mdh_runtime.h).
+    // Objects are what a value's data points at; buffers are owned by one object.
+    obj_alloc: FunctionValue<'ctx>,
+    obj_realloc: FunctionValue<'ctx>,
+    obj_strdup: FunctionValue<'ctx>,
+    buf_alloc: FunctionValue<'ctx>,
+    buf_realloc: FunctionValue<'ctx>,
     strlen: FunctionValue<'ctx>,
     strcpy: FunctionValue<'ctx>,
     strcat: FunctionValue<'ctx>,
@@ -96,8 +101,6 @@ struct LibcFunctions<'ctx> {
     nanosleep: FunctionValue<'ctx>,
     // Phase 7: I/O functions
     fgets: FunctionValue<'ctx>,
-    // Extra: string operations
-    strdup: FunctionValue<'ctx>,
     // Extra: random/time
     rand: FunctionValue<'ctx>,
     srand: FunctionValue<'ctx>,
@@ -1819,13 +1822,37 @@ impl<'ctx> CodeGen<'ctx> {
         let printf_type = i32_type.fn_type(&[i8_ptr.into()], true);
         let printf = module.add_function("printf", printf_type, Some(Linkage::External));
 
-        // malloc(size_t) -> void*
-        let malloc_type = i8_ptr.fn_type(&[i64_type.into()], false);
-        let malloc = module.add_function("malloc", malloc_type, Some(Linkage::External));
-
-        // realloc(void*, size_t) -> void*
-        let realloc_type = i8_ptr.fn_type(&[i8_ptr.into(), i64_type.into()], false);
-        let realloc = module.add_function("realloc", realloc_type, Some(Linkage::External));
+        // The single allocator. Fresh allocations alias nothing, as malloc's do, so the
+        // optimizer keeps treating them like malloc results.
+        let noalias =
+            context.create_enum_attribute(Attribute::get_named_enum_kind_id("noalias"), 0);
+        let nounwind =
+            context.create_enum_attribute(Attribute::get_named_enum_kind_id("nounwind"), 0);
+        let declare_alloc = |name: &str, fn_type: inkwell::types::FunctionType<'ctx>| {
+            let f = module.add_function(name, fn_type, Some(Linkage::External));
+            f.add_attribute(AttributeLoc::Return, noalias);
+            f.add_attribute(AttributeLoc::Function, nounwind);
+            f
+        };
+        // __mdh_obj_alloc(uint32_t kind, size_t size) -> void*
+        let obj_alloc = declare_alloc(
+            "__mdh_obj_alloc",
+            i8_ptr.fn_type(&[i32_type.into(), i64_type.into()], false),
+        );
+        // __mdh_obj_realloc(void*, size_t) -> void* (string payloads grown in place)
+        let obj_realloc = declare_alloc(
+            "__mdh_obj_realloc",
+            i8_ptr.fn_type(&[i8_ptr.into(), i64_type.into()], false),
+        );
+        // __mdh_obj_strdup(const char*) -> char* (a new string object)
+        let obj_strdup = declare_alloc("__mdh_obj_strdup", i8_ptr.fn_type(&[i8_ptr.into()], false));
+        // __mdh_buf_alloc(size_t) -> void*
+        let buf_alloc = declare_alloc("__mdh_buf_alloc", i8_ptr.fn_type(&[i64_type.into()], false));
+        // __mdh_buf_realloc(void*, size_t) -> void*
+        let buf_realloc = declare_alloc(
+            "__mdh_buf_realloc",
+            i8_ptr.fn_type(&[i8_ptr.into(), i64_type.into()], false),
+        );
 
         // strlen(const char*) -> size_t
         let strlen_type = i64_type.fn_type(&[i8_ptr.into()], false);
@@ -1885,10 +1912,6 @@ impl<'ctx> CodeGen<'ctx> {
         // fgets(char* buf, int size, FILE* stream) -> char*
         let fgets_type = i8_ptr.fn_type(&[i8_ptr.into(), i32_type.into(), i8_ptr.into()], false);
         let fgets = module.add_function("fgets", fgets_type, Some(Linkage::External));
-
-        // strdup(const char*) -> char* (allocates a copy)
-        let strdup_type = i8_ptr.fn_type(&[i8_ptr.into()], false);
-        let strdup = module.add_function("strdup", strdup_type, Some(Linkage::External));
 
         // rand() -> int
         let rand_type = i32_type.fn_type(&[], false);
@@ -3749,8 +3772,11 @@ impl<'ctx> CodeGen<'ctx> {
 
         LibcFunctions {
             printf,
-            malloc,
-            realloc,
+            obj_alloc,
+            obj_realloc,
+            obj_strdup,
+            buf_alloc,
+            buf_realloc,
             strlen,
             strcpy,
             strcat,
@@ -3765,7 +3791,6 @@ impl<'ctx> CodeGen<'ctx> {
             clock_gettime,
             nanosleep,
             fgets,
-            strdup,
             rand,
             srand,
             time,
@@ -4911,6 +4936,11 @@ impl<'ctx> CodeGen<'ctx> {
         let v2 = self.builder.build_insert_value(v1, data, 1, "v2").unwrap();
 
         v2.into_struct_value().into()
+    }
+
+    /// The `kind` argument of `__mdh_obj_alloc`.
+    fn obj_kind(&self, kind: ObjKind) -> IntValue<'ctx> {
+        self.types.i32_type.const_int(kind as u64, false)
     }
 
     /// Create a string value: {tag=4, data=ptr as i64}
@@ -6563,7 +6593,11 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let new_str = self
             .builder
-            .build_call(self.libc.malloc, &[alloc_size.into()], "new_str")
+            .build_call(
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::String).into(), alloc_size.into()],
+                "new_str",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -8808,7 +8842,11 @@ impl<'ctx> CodeGen<'ctx> {
         let buf_size = self.types.i64_type.const_int(32, false);
         let int_buf = self
             .builder
-            .build_call(self.libc.malloc, &[buf_size.into()], "int_buf")
+            .build_call(
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::String).into(), buf_size.into()],
+                "int_buf",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -10747,7 +10785,11 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let new_str = self
             .builder
-            .build_call(self.libc.malloc, &[alloc_size.into()], "slap_new_str")
+            .build_call(
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::String).into(), alloc_size.into()],
+                "slap_new_str",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -11938,7 +11980,11 @@ impl<'ctx> CodeGen<'ctx> {
         let buf_size = self.builder.build_int_add(len, one, "buf_size").unwrap();
         let result_buf = self
             .builder
-            .build_call(self.libc.malloc, &[buf_size.into()], "upper_buf")
+            .build_call(
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::String).into(), buf_size.into()],
+                "upper_buf",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -12058,7 +12104,11 @@ impl<'ctx> CodeGen<'ctx> {
         let buf_size = self.builder.build_int_add(len, one, "buf_size").unwrap();
         let result_buf = self
             .builder
-            .build_call(self.libc.malloc, &[buf_size.into()], "lower_buf")
+            .build_call(
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::String).into(), buf_size.into()],
+                "lower_buf",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -12791,7 +12841,11 @@ impl<'ctx> CodeGen<'ctx> {
 
         let result_buf = self
             .builder
-            .build_call(self.libc.malloc, &[buf_size.into()], "trim_buf")
+            .build_call(
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::String).into(), buf_size.into()],
+                "trim_buf",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -13762,7 +13816,11 @@ impl<'ctx> CodeGen<'ctx> {
                         let size_val = self.types.i64_type.const_int(total_size, false);
                         let list_ptr = self
                             .builder
-                            .build_call(self.libc.malloc, &[size_val.into()], "closure_ptr")
+                            .build_call(
+                                self.libc.obj_alloc,
+                                &[self.obj_kind(ObjKind::Closure).into(), size_val.into()],
+                                "closure_ptr",
+                            )
                             .unwrap()
                             .try_as_basic_value()
                             .basic()
@@ -13915,7 +13973,11 @@ impl<'ctx> CodeGen<'ctx> {
                         let size_val = self.types.i64_type.const_int(total_size, false);
                         let list_ptr = self
                             .builder
-                            .build_call(self.libc.malloc, &[size_val.into()], "closure_ptr")
+                            .build_call(
+                                self.libc.obj_alloc,
+                                &[self.obj_kind(ObjKind::Closure).into(), size_val.into()],
+                                "closure_ptr",
+                            )
                             .unwrap()
                             .try_as_basic_value()
                             .basic()
@@ -14994,7 +15056,11 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let new_str = self
             .builder
-            .build_call(self.libc.malloc, &[alloc_size.into()], "new_str_fast")
+            .build_call(
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::String).into(), alloc_size.into()],
+                "new_str_fast",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -15172,7 +15238,11 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(malloc_block);
         let malloc_result = self
             .builder
-            .build_call(self.libc.malloc, &[new_cap.into()], "new_buf")
+            .build_call(
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::String).into(), new_cap.into()],
+                "new_buf",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -15196,7 +15266,7 @@ impl<'ctx> CodeGen<'ctx> {
         let realloc_result = self
             .builder
             .build_call(
-                self.libc.realloc,
+                self.libc.obj_realloc,
                 &[current_ptr.into(), new_cap.into()],
                 "grown_buf",
             )
@@ -22501,7 +22571,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let list_struct_size = self.types.i64_type.const_int(24, false);
                     let new_struct = self
                         .builder
-                        .build_call(self.libc.malloc, &[list_struct_size.into()], "flat_struct")
+                        .build_call(
+                            self.libc.obj_alloc,
+                            &[self.obj_kind(ObjKind::List).into(), list_struct_size.into()],
+                            "flat_struct",
+                        )
                         .unwrap()
                         .try_as_basic_value()
                         .basic()
@@ -22517,7 +22591,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     let new_items = self
                         .builder
-                        .build_call(self.libc.malloc, &[items_size.into()], "flat_items")
+                        .build_call(self.libc.buf_alloc, &[items_size.into()], "flat_items")
                         .unwrap()
                         .try_as_basic_value()
                         .basic()
@@ -25196,7 +25270,7 @@ impl<'ctx> CodeGen<'ctx> {
                     // may overwrite in place: the value owns a copy.
                     let env_copy = self
                         .builder
-                        .build_call(self.libc.strdup, &[env_ptr.into()], "env_copy")
+                        .build_call(self.libc.obj_strdup, &[env_ptr.into()], "env_copy")
                         .unwrap()
                         .try_as_basic_value()
                         .basic()
@@ -25786,7 +25860,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let buf_size = self.types.i64_type.const_int(2, false);
                     let buf = self
                         .builder
-                        .build_call(self.libc.malloc, &[buf_size.into()], "char_buf")
+                        .build_call(
+                            self.libc.obj_alloc,
+                            &[self.obj_kind(ObjKind::String).into(), buf_size.into()],
+                            "char_buf",
+                        )
                         .unwrap()
                         .try_as_basic_value()
                         .basic()
@@ -27547,7 +27625,11 @@ impl<'ctx> CodeGen<'ctx> {
         let two = self.types.i64_type.const_int(2, false);
         let char_str_ptr = self
             .builder
-            .build_call(self.libc.malloc, &[two.into()], "char_str")
+            .build_call(
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::String).into(), two.into()],
+                "char_str",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -28396,7 +28478,11 @@ impl<'ctx> CodeGen<'ctx> {
         let list_struct_size = self.types.i64_type.const_int(24, false);
         let list_ptr = self
             .builder
-            .build_call(self.libc.malloc, &[list_struct_size.into()], "list_struct")
+            .build_call(
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::List).into(), list_struct_size.into()],
+                "list_struct",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -28412,7 +28498,7 @@ impl<'ctx> CodeGen<'ctx> {
             .const_int(initial_capacity as u64 * value_size, false);
         let items_ptr = self
             .builder
-            .build_call(self.libc.malloc, &[items_size.into()], "list_items")
+            .build_call(self.libc.buf_alloc, &[items_size.into()], "list_items")
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -28500,8 +28586,8 @@ impl<'ctx> CodeGen<'ctx> {
         let list_ptr = self
             .builder
             .build_call(
-                self.libc.malloc,
-                &[list_struct_size.into()],
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::List).into(), list_struct_size.into()],
                 "spread_list_struct",
             )
             .unwrap()
@@ -28518,7 +28604,11 @@ impl<'ctx> CodeGen<'ctx> {
             .const_int(initial_capacity as u64 * value_size, false);
         let items_ptr = self
             .builder
-            .build_call(self.libc.malloc, &[items_size.into()], "spread_list_items")
+            .build_call(
+                self.libc.buf_alloc,
+                &[items_size.into()],
+                "spread_list_items",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -28770,7 +28860,11 @@ impl<'ctx> CodeGen<'ctx> {
                     let two = self.types.i64_type.const_int(2, false);
                     let char_str_ptr = self
                         .builder
-                        .build_call(self.libc.malloc, &[two.into()], "char_str")
+                        .build_call(
+                            self.libc.obj_alloc,
+                            &[self.obj_kind(ObjKind::String).into(), two.into()],
+                            "char_str",
+                        )
                         .unwrap()
                         .try_as_basic_value()
                         .basic()
@@ -28888,7 +28982,7 @@ impl<'ctx> CodeGen<'ctx> {
         let size_val = self.types.i64_type.const_int(total_size, false);
         let raw_ptr = self
             .builder
-            .build_call(self.libc.malloc, &[size_val.into()], "dict_alloc")
+            .build_call(self.libc.buf_alloc, &[size_val.into()], "dict_alloc")
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -28966,7 +29060,11 @@ impl<'ctx> CodeGen<'ctx> {
         let handle_size = self.types.i64_type.const_int(32, false);
         let handle_ptr = self
             .builder
-            .build_call(self.libc.malloc, &[handle_size.into()], "dict_handle_alloc")
+            .build_call(
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::Kv).into(), handle_size.into()],
+                "dict_handle_alloc",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -30436,7 +30534,11 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let sc_token_ptr = self
             .builder
-            .build_call(self.libc.malloc, &[sc_token_size.into()], "sc_token_ptr")
+            .build_call(
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::String).into(), sc_token_size.into()],
+                "sc_token_ptr",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -30536,7 +30638,11 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let sc_final_ptr = self
             .builder
-            .build_call(self.libc.malloc, &[sc_final_size.into()], "sc_final_ptr")
+            .build_call(
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::String).into(), sc_final_size.into()],
+                "sc_final_ptr",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -30725,7 +30831,14 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let token_ptr = self
             .builder
-            .build_call(self.libc.malloc, &[token_alloc_size.into()], "token_ptr")
+            .build_call(
+                self.libc.obj_alloc,
+                &[
+                    self.obj_kind(ObjKind::String).into(),
+                    token_alloc_size.into(),
+                ],
+                "token_ptr",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -30785,7 +30898,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Duplicate the rest of the string
         let rest_copy = self
             .builder
-            .build_call(self.libc.strdup, &[rest_ptr.into()], "rest_copy")
+            .build_call(self.libc.obj_strdup, &[rest_ptr.into()], "rest_copy")
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -31048,7 +31161,11 @@ impl<'ctx> CodeGen<'ctx> {
 
         let result_buf = self
             .builder
-            .build_call(self.libc.malloc, &[alloc_size.into()], "result_buf")
+            .build_call(
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::String).into(), alloc_size.into()],
+                "result_buf",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -31927,7 +32044,11 @@ impl<'ctx> CodeGen<'ctx> {
             let size_val = self.types.i64_type.const_int(total_size, false);
             let list_ptr = self
                 .builder
-                .build_call(self.libc.malloc, &[size_val.into()], "closure_ptr")
+                .build_call(
+                    self.libc.obj_alloc,
+                    &[self.obj_kind(ObjKind::Closure).into(), size_val.into()],
+                    "closure_ptr",
+                )
                 .unwrap()
                 .try_as_basic_value()
                 .basic()
@@ -32793,7 +32914,11 @@ impl<'ctx> CodeGen<'ctx> {
         let struct_size = self.types.i64_type.const_int(24, false);
         let new_list_ptr = self
             .builder
-            .build_call(self.libc.malloc, &[struct_size.into()], "new_list_struct")
+            .build_call(
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::List).into(), struct_size.into()],
+                "new_list_struct",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -32808,7 +32933,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let new_items_ptr = self
             .builder
-            .build_call(self.libc.malloc, &[items_size.into()], "new_items")
+            .build_call(self.libc.buf_alloc, &[items_size.into()], "new_items")
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -36888,8 +37013,8 @@ impl<'ctx> CodeGen<'ctx> {
         let new_list_struct = self
             .builder
             .build_call(
-                self.libc.malloc,
-                &[list_struct_size.into()],
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::List).into(), list_struct_size.into()],
                 "new_list_struct",
             )
             .unwrap()
@@ -36906,7 +37031,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let new_items = self
             .builder
-            .build_call(self.libc.malloc, &[data_size.into()], "new_items")
+            .build_call(self.libc.buf_alloc, &[data_size.into()], "new_items")
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -37353,7 +37478,11 @@ impl<'ctx> CodeGen<'ctx> {
                 let size_val = self.types.i64_type.const_int(total_size, false);
                 let list_ptr = self
                     .builder
-                    .build_call(self.libc.malloc, &[size_val.into()], "bound_method_ptr")
+                    .build_call(
+                        self.libc.obj_alloc,
+                        &[self.obj_kind(ObjKind::BoundMethod).into(), size_val.into()],
+                        "bound_method_ptr",
+                    )
                     .unwrap()
                     .try_as_basic_value()
                     .basic()
@@ -38214,7 +38343,7 @@ impl<'ctx> CodeGen<'ctx> {
         let new_ptr = self
             .builder
             .build_call(
-                self.libc.realloc,
+                self.libc.buf_realloc,
                 &[instance_ptr.into(), new_size.into()],
                 "new_instance",
             )
@@ -38270,7 +38399,7 @@ impl<'ctx> CodeGen<'ctx> {
         let key_str = self
             .builder
             .build_call(
-                self.libc.strdup,
+                self.libc.obj_strdup,
                 &[field_name_global.as_pointer_value().into()],
                 "key_str_dup",
             )
@@ -38568,7 +38697,7 @@ impl<'ctx> CodeGen<'ctx> {
         let header_size = self.types.i64_type.const_int(16, false); // class_name_ptr + field_count
         let instance_ptr = self
             .builder
-            .build_call(self.libc.malloc, &[header_size.into()], "instance_alloc")
+            .build_call(self.libc.buf_alloc, &[header_size.into()], "instance_alloc")
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -38620,8 +38749,8 @@ impl<'ctx> CodeGen<'ctx> {
         let handle_ptr = self
             .builder
             .build_call(
-                self.libc.malloc,
-                &[handle_size.into()],
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::Instance).into(), handle_size.into()],
                 "instance_handle_alloc",
             )
             .unwrap()
@@ -39582,7 +39711,11 @@ impl<'ctx> CodeGen<'ctx> {
         // Allocate result; a failed allocation hurls too.
         let result_ptr = self
             .builder
-            .build_call(self.libc.malloc, &[total_size.into()], "result_ptr")
+            .build_call(
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::String).into(), total_size.into()],
+                "result_ptr",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -40102,7 +40235,11 @@ impl<'ctx> CodeGen<'ctx> {
 
         let buf = self
             .builder
-            .build_call(self.libc.malloc, &[buf_size.into()], "sb_buf")
+            .build_call(
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::String).into(), buf_size.into()],
+                "sb_buf",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -41751,7 +41888,11 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let new_str = self
             .builder
-            .build_call(self.libc.malloc, &[alloc_size.into()], "new_str")
+            .build_call(
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::String).into(), alloc_size.into()],
+                "new_str",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -41891,7 +42032,11 @@ impl<'ctx> CodeGen<'ctx> {
         let str_alloc = self.builder.build_int_add(count, one, "str_alloc").unwrap();
         let new_str2 = self
             .builder
-            .build_call(self.libc.malloc, &[str_alloc.into()], "new_str_loop")
+            .build_call(
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::String).into(), str_alloc.into()],
+                "new_str_loop",
+            )
             .unwrap()
             .try_as_basic_value()
             .basic()
@@ -42001,8 +42146,8 @@ impl<'ctx> CodeGen<'ctx> {
         let new_list_struct = self
             .builder
             .build_call(
-                self.libc.malloc,
-                &[list_struct_size.into()],
+                self.libc.obj_alloc,
+                &[self.obj_kind(ObjKind::List).into(), list_struct_size.into()],
                 "new_list_struct",
             )
             .unwrap()
@@ -42019,7 +42164,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let new_items = self
             .builder
-            .build_call(self.libc.malloc, &[items_size.into()], "new_items")
+            .build_call(self.libc.buf_alloc, &[items_size.into()], "new_items")
             .unwrap()
             .try_as_basic_value()
             .basic()

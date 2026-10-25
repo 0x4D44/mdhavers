@@ -208,13 +208,21 @@ unsafe fn native_ctor_kind(ptr: *mut MdhNativeObject) -> String {
 }
 
 unsafe fn new_native_object(kind: i32, type_name: &str, ctor_kind: Option<&str>) -> *mut MdhNativeObject {
-    let obj = Box::new(MdhNativeObject {
+    // Native objects are mdhavers heap objects: allocate them through the runtime's
+    // single allocator (runtime/gc_stub.c), not the Rust heap.
+    let obj = MdhNativeObject {
         kind,
         type_name: leak_cstring(type_name),
         ctor_kind: ctor_kind.map(leak_cstring).unwrap_or(std::ptr::null()),
         fields: __mdh_empty_dict(),
-    });
-    Box::into_raw(obj)
+    };
+    let ptr = __mdh_obj_alloc(MDH_KIND_NATIVE, std::mem::size_of::<MdhNativeObject>())
+        as *mut MdhNativeObject;
+    if ptr.is_null() {
+        std::alloc::handle_alloc_error(std::alloc::Layout::new::<MdhNativeObject>());
+    }
+    ptr.write(obj);
+    ptr
 }
 
 unsafe fn register_object(ptr: *mut MdhNativeObject, obj: TriObject) {
@@ -1614,7 +1622,11 @@ pub unsafe extern "C" fn __mdh_tri_rs_call(
     }
 }
 
+/// `MDH_KIND_NATIVE` in runtime/mdh_runtime.h.
+const MDH_KIND_NATIVE: u32 = 8;
+
 extern "C" {
+    fn __mdh_obj_alloc(kind: u32, size: usize) -> *mut std::ffi::c_void;
     fn __mdh_make_nil() -> MdhValue;
     fn __mdh_make_int(value: i64) -> MdhValue;
     fn __mdh_make_float(value: f64) -> MdhValue;

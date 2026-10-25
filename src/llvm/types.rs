@@ -32,6 +32,20 @@ impl ValueTag {
     }
 }
 
+/// Heap object kinds passed to `__mdh_obj_alloc` - must match runtime/mdh_runtime.h MdhObjKind
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum ObjKind {
+    String = 1,
+    /// Lists, including capture cells
+    List = 2,
+    /// Dict and creel handles
+    Kv = 3,
+    Closure = 4,
+    Instance = 5,
+    BoundMethod = 7,
+}
+
 /// LLVM types used throughout codegen
 pub struct MdhTypes<'ctx> {
     /// The main MdhValue struct type: { i8 tag, i64 data }

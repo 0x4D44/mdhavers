@@ -73,19 +73,6 @@ static int mdh_clock_gettime_realtime(struct timespec *ts) {
 #define mkstemp mdh_mkstemp
 #endif
 
-/* Boehm GC - declared as extern */
-extern void GC_init(void);
-extern void *GC_malloc(size_t size);
-extern void *GC_realloc(void *ptr, size_t size);
-extern char *GC_strdup(const char *s);
-typedef struct GC_stack_base {
-    void *mem_base;
-} GC_stack_base;
-extern int GC_register_my_thread(const GC_stack_base *sb);
-extern int GC_unregister_my_thread(void);
-extern int GC_get_stack_base(GC_stack_base *sb);
-extern void GC_allow_register_threads(void);
-
 typedef struct {
     uint8_t ok;
     MdhValue value;
@@ -176,14 +163,14 @@ static MdhValue __mdh_native_call_internal(MdhValue obj, MdhValue method, int ar
 static void __mdh_sb_init(MdhStrBuf *sb) {
     sb->cap = 128;
     sb->len = 0;
-    sb->buf = (char *)GC_malloc(sb->cap);
+    sb->buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, sb->cap);
     sb->buf[0] = '\0';
 }
 
 static void __mdh_sb_reserve(MdhStrBuf *sb, size_t extra) {
     while (sb->len + extra + 1 > sb->cap) {
         sb->cap *= 2;
-        sb->buf = (char *)GC_realloc(sb->buf, sb->cap);
+        sb->buf = (char *)__mdh_obj_realloc(sb->buf, sb->cap);
     }
 }
 
@@ -256,7 +243,7 @@ MdhValue __mdh_make_string(const char *value) {
     v.tag = MDH_TAG_STRING;
 
     /* Store char* directly (matches LLVM backend convention) */
-    char *s = GC_strdup(value);
+    char *s = __mdh_obj_strdup(value);
     v.data = (int64_t)(intptr_t)s;
     return v;
 }
@@ -265,10 +252,10 @@ MdhValue __mdh_make_list(int32_t capacity) {
     MdhValue v;
     v.tag = MDH_TAG_LIST;
 
-    MdhList *list = (MdhList *)GC_malloc(sizeof(MdhList));
+    MdhList *list = (MdhList *)__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList));
     list->length = 0;
     list->capacity = capacity > 0 ? capacity : 8;
-    list->items = (MdhValue *)GC_malloc(sizeof(MdhValue) * list->capacity);
+    list->items = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * list->capacity);
 
     v.data = (int64_t)(intptr_t)list;
     return v;
@@ -376,7 +363,7 @@ static MdhValue __mdh_int_overflow(void) {
 static char *__mdh_alloc_text(int size_overflowed, size_t out_len) {
     char *buf = NULL;
     if (!size_overflowed && out_len < (size_t)INT64_MAX) {
-        buf = (char *)GC_malloc(out_len + 1);
+        buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, out_len + 1);
     }
     if (!buf) {
         __mdh_hurl(__mdh_make_string(MDH_STRING_TOO_BIG_MSG));
@@ -1034,7 +1021,7 @@ static int __mdh_tri_has_transform(const char *kind) {
 }
 
 static MdhNativeObject *__mdh_tri_object_new(const char *kind) {
-    MdhNativeObject *obj = (MdhNativeObject *)GC_malloc(sizeof(MdhNativeObject));
+    MdhNativeObject *obj = (MdhNativeObject *)__mdh_obj_alloc(MDH_KIND_NATIVE, sizeof(MdhNativeObject));
     obj->kind = MDH_NATIVE_TRI_OBJECT;
     obj->type_name = kind;
     obj->ctor_kind = NULL;
@@ -1195,7 +1182,7 @@ static void __mdh_tri_remove_children(MdhNativeObject *obj, int argc, MdhValue *
 
 static MdhValue __mdh_tri_clone_object(MdhNativeObject *obj) {
     if (!obj) return __mdh_make_nil();
-    MdhNativeObject *clone = (MdhNativeObject *)GC_malloc(sizeof(MdhNativeObject));
+    MdhNativeObject *clone = (MdhNativeObject *)__mdh_obj_alloc(MDH_KIND_NATIVE, sizeof(MdhNativeObject));
     clone->kind = MDH_NATIVE_TRI_OBJECT;
     clone->type_name = obj->type_name;
     clone->ctor_kind = NULL;
@@ -1210,7 +1197,7 @@ static MdhValue __mdh_tri_make_object(const char *kind, int argc, MdhValue *args
 }
 
 static MdhValue __mdh_tri_make_ctor(const char *kind) {
-    MdhNativeObject *obj = (MdhNativeObject *)GC_malloc(sizeof(MdhNativeObject));
+    MdhNativeObject *obj = (MdhNativeObject *)__mdh_obj_alloc(MDH_KIND_NATIVE, sizeof(MdhNativeObject));
     obj->kind = MDH_NATIVE_TRI_CTOR;
     obj->type_name = "native function";
     obj->ctor_kind = kind;
@@ -1500,7 +1487,7 @@ MdhValue __mdh_tri_module(void) {
     static int initialized = 0;
     static MdhValue module;
     if (!initialized) {
-        MdhNativeObject *obj = (MdhNativeObject *)GC_malloc(sizeof(MdhNativeObject));
+        MdhNativeObject *obj = (MdhNativeObject *)__mdh_obj_alloc(MDH_KIND_NATIVE, sizeof(MdhNativeObject));
         obj->kind = MDH_NATIVE_TRI_MODULE;
         obj->type_name = "tri.module";
         obj->ctor_kind = NULL;
@@ -1725,7 +1712,7 @@ void __mdh_list_push(MdhValue list, MdhValue value) {
             __mdh_hurl(__mdh_make_string("Och! This list's grown ower muckle"));
             return;
         }
-        MdhValue *grown = (MdhValue *)GC_realloc(l->items, sizeof(MdhValue) * (size_t)new_cap);
+        MdhValue *grown = (MdhValue *)__mdh_buf_realloc(l->items, sizeof(MdhValue) * (size_t)new_cap);
         if (!grown) {
             __mdh_hurl(__mdh_make_string("Och! This list's grown ower muckle"));
             return;
@@ -1844,7 +1831,7 @@ MdhValue __mdh_str_concat(MdhValue a, MdhValue b) {
     size_t len_a = strlen(sa);
     size_t len_b = strlen(sb);
 
-    char *result = (char *)GC_malloc(len_a + len_b + 1);
+    char *result = (char *)__mdh_buf_alloc(len_a + len_b + 1);
     strcpy(result, sa);
     strcat(result, sb);
 
@@ -1993,7 +1980,7 @@ static void __mdh_value_to_string_sb(MdhStrBuf *out, MdhValue v) {
 
             __mdh_sb_append(out, "creel{");
             if (count > 0) {
-                const char **items = (const char **)GC_malloc(sizeof(char *) * (size_t)count);
+                const char **items = (const char **)__mdh_buf_alloc(sizeof(char *) * (size_t)count);
                 for (int64_t i = 0; i < count; i++) {
                     MdhValue k = entries[i * 2];
                     MdhValue ks = (k.tag == MDH_TAG_STRING)
@@ -2188,7 +2175,7 @@ static void __mdh_bytes_ensure_capacity(MdhBytes *bytes, int64_t needed) {
     while (new_cap < needed) {
         new_cap *= 2;
     }
-    bytes->data = (uint8_t *)GC_realloc(bytes->data, (size_t)new_cap);
+    bytes->data = (uint8_t *)__mdh_buf_realloc(bytes->data, (size_t)new_cap);
     bytes->capacity = new_cap;
 }
 
@@ -2205,11 +2192,11 @@ MdhValue __mdh_bytes_new(MdhValue size_val) {
 
     if (size < 0) size = 0;
 
-    MdhBytes *bytes = (MdhBytes *)GC_malloc(sizeof(MdhBytes));
+    MdhBytes *bytes = (MdhBytes *)__mdh_obj_alloc(MDH_KIND_BYTES, sizeof(MdhBytes));
     bytes->length = size;
     bytes->capacity = size > 0 ? size : 0;
     if (bytes->capacity > 0) {
-        bytes->data = (uint8_t *)GC_malloc((size_t)bytes->capacity);
+        bytes->data = (uint8_t *)__mdh_buf_alloc((size_t)bytes->capacity);
         memset(bytes->data, 0, (size_t)bytes->capacity);
     } else {
         bytes->data = NULL;
@@ -2223,11 +2210,11 @@ MdhValue __mdh_bytes_from_string(MdhValue s) {
     const char *str = __mdh_get_string(str_val);
     size_t len = str ? strlen(str) : 0;
 
-    MdhBytes *bytes = (MdhBytes *)GC_malloc(sizeof(MdhBytes));
+    MdhBytes *bytes = (MdhBytes *)__mdh_obj_alloc(MDH_KIND_BYTES, sizeof(MdhBytes));
     bytes->length = (int64_t)len;
     bytes->capacity = (int64_t)len;
     if (len > 0) {
-        bytes->data = (uint8_t *)GC_malloc(len);
+        bytes->data = (uint8_t *)__mdh_buf_alloc(len);
         memcpy(bytes->data, str, len);
     } else {
         bytes->data = NULL;
@@ -3322,7 +3309,7 @@ static void __mdh_loop_ensure_watch_cap(MdhEventLoop *loop, int64_t needed) {
     if (loop->watch_cap >= needed) return;
     int64_t new_cap = loop->watch_cap > 0 ? loop->watch_cap * 2 : 8;
     while (new_cap < needed) new_cap *= 2;
-    loop->watches = (MdhWatch *)GC_realloc(loop->watches, sizeof(MdhWatch) * (size_t)new_cap);
+    loop->watches = (MdhWatch *)__mdh_buf_realloc(loop->watches, sizeof(MdhWatch) * (size_t)new_cap);
     loop->watch_cap = new_cap;
 }
 
@@ -3330,20 +3317,20 @@ static void __mdh_loop_ensure_timer_cap(MdhEventLoop *loop, int64_t needed) {
     if (loop->timer_cap >= needed) return;
     int64_t new_cap = loop->timer_cap > 0 ? loop->timer_cap * 2 : 8;
     while (new_cap < needed) new_cap *= 2;
-    loop->timers = (MdhTimer *)GC_realloc(loop->timers, sizeof(MdhTimer) * (size_t)new_cap);
+    loop->timers = (MdhTimer *)__mdh_buf_realloc(loop->timers, sizeof(MdhTimer) * (size_t)new_cap);
     loop->timer_cap = new_cap;
 }
 
 static int64_t __mdh_loop_register(MdhEventLoop *loop) {
     if (__mdh_loop_registry.cap == 0) {
         __mdh_loop_registry.cap = 8;
-        __mdh_loop_registry.ids = (int64_t *)GC_malloc(sizeof(int64_t) * 8);
-        __mdh_loop_registry.loops = (MdhEventLoop **)GC_malloc(sizeof(MdhEventLoop *) * 8);
+        __mdh_loop_registry.ids = (int64_t *)__mdh_buf_alloc(sizeof(int64_t) * 8);
+        __mdh_loop_registry.loops = (MdhEventLoop **)__mdh_buf_alloc(sizeof(MdhEventLoop *) * 8);
     } else if (__mdh_loop_registry.len >= __mdh_loop_registry.cap) {
         int64_t new_cap = __mdh_loop_registry.cap * 2;
         __mdh_loop_registry.ids =
-            (int64_t *)GC_realloc(__mdh_loop_registry.ids, sizeof(int64_t) * (size_t)new_cap);
-        __mdh_loop_registry.loops = (MdhEventLoop **)GC_realloc(
+            (int64_t *)__mdh_buf_realloc(__mdh_loop_registry.ids, sizeof(int64_t) * (size_t)new_cap);
+        __mdh_loop_registry.loops = (MdhEventLoop **)__mdh_buf_realloc(
             __mdh_loop_registry.loops,
             sizeof(MdhEventLoop *) * (size_t)new_cap
         );
@@ -3387,7 +3374,7 @@ static MdhValue __mdh_make_event(const char *kind, int64_t sock, int64_t timer_i
 }
 
 MdhValue __mdh_event_loop_new(void) {
-    MdhEventLoop *loop = (MdhEventLoop *)GC_malloc(sizeof(MdhEventLoop));
+    MdhEventLoop *loop = (MdhEventLoop *)__mdh_buf_alloc(sizeof(MdhEventLoop));
     memset(loop, 0, sizeof(MdhEventLoop));
     loop->next_timer_id = 1;
     int64_t id = __mdh_loop_register(loop);
@@ -3515,7 +3502,7 @@ MdhValue __mdh_event_loop_poll(MdhValue loop_val, MdhValue timeout_val) {
     int64_t nfds = loop->watch_len;
     struct pollfd *fds = NULL;
     if (nfds > 0) {
-        fds = (struct pollfd *)GC_malloc(sizeof(struct pollfd) * (size_t)nfds);
+        fds = (struct pollfd *)__mdh_buf_alloc(sizeof(struct pollfd) * (size_t)nfds);
         for (int64_t i = 0; i < nfds; i++) {
             fds[i].fd = loop->watches[i].fd;
             fds[i].events = 0;
@@ -3698,8 +3685,6 @@ typedef struct {
     int unbounded;
 } MdhChan;
 
-static int __mdh_gc_threads_ready = 0;
-
 /* Native handles (thread/mutex/condvar/atomic/channel) are 1-based indices into this
  * table, not raw pointers, so a forged or wrong-kind integer is rejected with a
  * catchable error instead of being dereferenced (MDH-BUG-FLU-00054). The table is
@@ -3737,7 +3722,7 @@ static MdhValue __mdh_handle_new(MdhHandleKind kind, void *ptr) {
     if (__mdh_handle_len == __mdh_handle_cap) {
         int64_t new_cap = __mdh_handle_cap > 0 ? __mdh_handle_cap * 2 : 16;
         MdhHandleSlot *grown =
-            (MdhHandleSlot *)GC_realloc(__mdh_handle_table, sizeof(MdhHandleSlot) * (size_t)new_cap);
+            (MdhHandleSlot *)__mdh_buf_realloc(__mdh_handle_table, sizeof(MdhHandleSlot) * (size_t)new_cap);
         if (grown) {
             __mdh_handle_table = grown;
             __mdh_handle_cap = new_cap;
@@ -3895,10 +3880,6 @@ static void *__mdh_thread_entry(void *arg) {
     MdhThread *t = (MdhThread *)arg;
     /* The worker's line starts as the spawning statement's (MDH-BUG-FLU-00090). */
     __mdh_thread_line = t->line;
-    GC_stack_base sb;
-    if (GC_get_stack_base(&sb) == 0) {
-        GC_register_my_thread(&sb);
-    }
     /* An uncaught hurl in the worker lands here (the try stack is per thread) and is
      * re-raised by thread_join in the joining thread, instead of exiting the process. */
     jmp_buf env;
@@ -3912,16 +3893,11 @@ static void *__mdh_thread_entry(void *arg) {
         t->failed = 1;
     }
     t->done = 1;
-    GC_unregister_my_thread();
     return NULL;
 }
 
 MdhValue __mdh_thread_spawn(MdhValue func, MdhValue args_list) {
-    if (!__mdh_gc_threads_ready) {
-        GC_allow_register_threads();
-        __mdh_gc_threads_ready = 1;
-    }
-    MdhThread *t = (MdhThread *)GC_malloc(sizeof(MdhThread));
+    MdhThread *t = (MdhThread *)__mdh_buf_alloc(sizeof(MdhThread));
     memset(t, 0, sizeof(MdhThread));
     t->func = func;
     t->args = args_list;
@@ -3978,7 +3954,7 @@ MdhValue __mdh_thread_detach(MdhValue thread_handle) {
 }
 
 MdhValue __mdh_mutex_new(void) {
-    MdhMutex *m = (MdhMutex *)GC_malloc(sizeof(MdhMutex));
+    MdhMutex *m = (MdhMutex *)__mdh_buf_alloc(sizeof(MdhMutex));
     m->mutex = mdh_mutex_create();
     return __mdh_handle_new(MDH_HANDLE_MUTEX, m);
 }
@@ -4005,7 +3981,7 @@ MdhValue __mdh_mutex_try_lock(MdhValue mutex) {
 }
 
 MdhValue __mdh_condvar_new(void) {
-    MdhCondvar *c = (MdhCondvar *)GC_malloc(sizeof(MdhCondvar));
+    MdhCondvar *c = (MdhCondvar *)__mdh_buf_alloc(sizeof(MdhCondvar));
     c->cond = mdh_cond_create();
     return __mdh_handle_new(MDH_HANDLE_CONDVAR, c);
 }
@@ -4056,7 +4032,7 @@ MdhValue __mdh_atomic_new(MdhValue initial_int) {
     if (!__mdh_int_value("atomic_new", initial_int, &val)) {
         return __mdh_make_nil();
     }
-    MdhAtomic *a = (MdhAtomic *)GC_malloc(sizeof(MdhAtomic));
+    MdhAtomic *a = (MdhAtomic *)__mdh_buf_alloc(sizeof(MdhAtomic));
     a->lock = mdh_mutex_create();
     a->value = val;
     return __mdh_handle_new(MDH_HANDLE_ATOMIC, a);
@@ -4119,7 +4095,7 @@ MdhValue __mdh_atomic_cas(MdhValue atomic, MdhValue expected, MdhValue desired) 
 }
 
 static void __mdh_chan_grow(MdhChan *ch, int64_t new_cap) {
-    MdhValue *new_buf = (MdhValue *)GC_malloc(sizeof(MdhValue) * (size_t)new_cap);
+    MdhValue *new_buf = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * (size_t)new_cap);
     for (int64_t i = 0; i < ch->count; i++) {
         new_buf[i] = ch->buf[(ch->head + i) % ch->cap];
     }
@@ -4138,7 +4114,7 @@ MdhValue __mdh_chan_new(MdhValue capacity_int) {
         __mdh_hurl(__mdh_make_string("chan_new expects non-negative capacity"));
         return __mdh_make_nil();
     }
-    MdhChan *ch = (MdhChan *)GC_malloc(sizeof(MdhChan));
+    MdhChan *ch = (MdhChan *)__mdh_buf_alloc(sizeof(MdhChan));
     memset(ch, 0, sizeof(MdhChan));
     ch->lock = mdh_mutex_create();
     ch->not_empty = mdh_cond_create();
@@ -4150,7 +4126,7 @@ MdhValue __mdh_chan_new(MdhValue capacity_int) {
     } else {
         ch->unbounded = 0;
         ch->cap = cap;
-        ch->buf = (MdhValue *)GC_malloc(sizeof(MdhValue) * (size_t)cap);
+        ch->buf = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * (size_t)cap);
     }
     return __mdh_handle_new(MDH_HANDLE_CHAN, ch);
 }
@@ -4169,7 +4145,7 @@ MdhValue __mdh_chan_send(MdhValue chan, MdhValue value) {
     if (ch->unbounded) {
         if (ch->cap == 0) {
             ch->cap = 16;
-            ch->buf = (MdhValue *)GC_malloc(sizeof(MdhValue) * 16);
+            ch->buf = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * 16);
         } else if (ch->count >= ch->cap) {
             __mdh_chan_grow(ch, ch->cap * 2);
         }
@@ -4290,7 +4266,7 @@ static void __mdh_kv_compact(MdhValue v) {
         __mdh_hurl(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
         return;
     }
-    int64_t *payload = (int64_t *)GC_malloc((size_t)(8 + cap * 32));
+    int64_t *payload = (int64_t *)__mdh_buf_alloc((size_t)(8 + cap * 32));
     if (!payload) {
         __mdh_hurl(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
         return;
@@ -4334,7 +4310,7 @@ void __mdh_kv_densify(MdhValue v) {
 }
 
 static intptr_t *__mdh_kv_new_handle(int64_t *payload) {
-    intptr_t *handle = (intptr_t *)GC_malloc(MDH_KV_HANDLE_WORDS * sizeof(intptr_t));
+    intptr_t *handle = (intptr_t *)__mdh_obj_alloc(MDH_KIND_KV, MDH_KV_HANDLE_WORDS * sizeof(intptr_t));
     handle[0] = (intptr_t)payload;
     handle[1] = 0;
     handle[2] = 0;
@@ -4344,7 +4320,7 @@ static intptr_t *__mdh_kv_new_handle(int64_t *payload) {
 
 MdhValue __mdh_empty_dict(void) {
     /* Allocate 16 bytes so empty dicts/creels can be disambiguated safely. */
-    int64_t *payload = (int64_t *)GC_malloc(16);
+    int64_t *payload = (int64_t *)__mdh_buf_alloc(16);
     payload[0] = 0; /* count = 0 */
     payload[1] = 0; /* marker */
 
@@ -4358,7 +4334,7 @@ MdhValue __mdh_empty_dict(void) {
 
 MdhValue __mdh_empty_creel(void) {
     /* Allocate 16 bytes so empty dicts/creels can be disambiguated safely. */
-    int64_t *payload = (int64_t *)GC_malloc(16);
+    int64_t *payload = (int64_t *)__mdh_buf_alloc(16);
     payload[0] = 0; /* count = 0 */
     payload[1] = MDH_CREEL_SENTINEL; /* marker */
 
@@ -4448,8 +4424,8 @@ static MdhKvIndex *__mdh_kv_index_build(MdhValue *entries, int64_t count, int64_
         }
         slots *= 2;
     }
-    MdhKvIndex *idx = (MdhKvIndex *)GC_malloc(sizeof(MdhKvIndex));
-    int64_t *table = (int64_t *)GC_malloc((size_t)slots * sizeof(int64_t));
+    MdhKvIndex *idx = (MdhKvIndex *)__mdh_buf_alloc(sizeof(MdhKvIndex));
+    int64_t *table = (int64_t *)__mdh_buf_alloc((size_t)slots * sizeof(int64_t));
     if (!idx || !table) {
         return NULL;
     }
@@ -4521,7 +4497,7 @@ static void __mdh_kv_append(MdhValue kv, MdhValue key, MdhValue value) {
             return;
         }
         int64_t new_cap = used < 4 ? 8 : used * 2;
-        int64_t *grown = (int64_t *)GC_malloc((size_t)(8 + new_cap * 32));
+        int64_t *grown = (int64_t *)__mdh_buf_alloc((size_t)(8 + new_cap * 32));
         if (!grown) {
             __mdh_hurl(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
             return;
@@ -4720,7 +4696,7 @@ MdhValue __mdh_dict_remove(MdhValue dict, MdhValue key) {
     if (new_count == 0) {
         return __mdh_empty_dict();
     }
-    int64_t *payload = (int64_t *)GC_malloc((size_t)(8 + new_count * 32));
+    int64_t *payload = (int64_t *)__mdh_buf_alloc((size_t)(8 + new_count * 32));
     if (!payload) {
         __mdh_hurl(__mdh_make_string(MDH_DICT_TOO_BIG_MSG));
         return __mdh_empty_dict();
@@ -4838,7 +4814,7 @@ MdhValue __mdh_slurp(MdhValue path) {
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
     fseek(f, 0, SEEK_SET);
-    char *buf = (char *)GC_malloc(size + 1);
+    char *buf = (char *)__mdh_buf_alloc(size + 1);
     if (size > 0) {
         size_t read_count = fread(buf, 1, size, f);
         buf[read_count] = '\0';
@@ -4884,7 +4860,7 @@ MdhValue __mdh_lines(MdhValue path) {
             if (len > 0 && p > start && p[-1] == '\r') {
                 len--;
             }
-            char *line = (char *)GC_malloc(len + 1);
+            char *line = (char *)__mdh_buf_alloc(len + 1);
             memcpy(line, start, len);
             line[len] = '\0';
             __mdh_list_push(result, __mdh_make_string(line));
@@ -4895,7 +4871,7 @@ MdhValue __mdh_lines(MdhValue path) {
     /* Handle last line without newline (do not strip lone '\r'). */
     if (start != p) {
         size_t len = (size_t)(p - start);
-        char *line = (char *)GC_malloc(len + 1);
+        char *line = (char *)__mdh_buf_alloc(len + 1);
         memcpy(line, start, len);
         line[len] = '\0';
         __mdh_list_push(result, __mdh_make_string(line));
@@ -4918,7 +4894,7 @@ MdhValue __mdh_words(MdhValue str) {
             if (start != NULL) {
                 /* End of word */
                 size_t len = p - start;
-                char *word = (char *)GC_malloc(len + 1);
+                char *word = (char *)__mdh_buf_alloc(len + 1);
                 memcpy(word, start, len);
                 word[len] = '\0';
                 __mdh_list_push(result, __mdh_make_string(word));
@@ -4973,11 +4949,11 @@ static uint64_t __mdh_next_span_id(void) {
 static void __mdh_span_stack_push(MdhNativeObject *span) {
     if (!__mdh_span_stack.items) {
         __mdh_span_stack.cap = 8;
-        __mdh_span_stack.items = (MdhNativeObject **)GC_malloc(sizeof(MdhNativeObject *) * __mdh_span_stack.cap);
+        __mdh_span_stack.items = (MdhNativeObject **)__mdh_buf_alloc(sizeof(MdhNativeObject *) * __mdh_span_stack.cap);
     }
     if (__mdh_span_stack.len >= __mdh_span_stack.cap) {
         size_t new_cap = __mdh_span_stack.cap * 2;
-        MdhNativeObject **next = (MdhNativeObject **)GC_malloc(sizeof(MdhNativeObject *) * new_cap);
+        MdhNativeObject **next = (MdhNativeObject **)__mdh_buf_alloc(sizeof(MdhNativeObject *) * new_cap);
         memcpy(next, __mdh_span_stack.items, sizeof(MdhNativeObject *) * __mdh_span_stack.len);
         __mdh_span_stack.items = next;
         __mdh_span_stack.cap = new_cap;
@@ -5059,7 +5035,7 @@ MdhValue __mdh_log_set_filter(MdhValue spec) {
     if (spec.tag == MDH_TAG_STRING) {
         const char *s = __mdh_get_string(spec);
         size_t len = strlen(s);
-        char *buf = (char *)GC_malloc(len + 1);
+        char *buf = (char *)__mdh_buf_alloc(len + 1);
         memcpy(buf, s, len);
         buf[len] = '\0';
         __mdh_log_filter = buf;
@@ -5274,7 +5250,7 @@ MdhValue __mdh_log_span_begin(MdhValue name, MdhValue level, MdhValue fields, Md
         __mdh_type_error("log_span", name.tag, 0);
         return __mdh_make_nil();
     }
-    MdhNativeObject *obj = (MdhNativeObject *)GC_malloc(sizeof(MdhNativeObject));
+    MdhNativeObject *obj = (MdhNativeObject *)__mdh_obj_alloc(MDH_KIND_NATIVE, sizeof(MdhNativeObject));
     obj->kind = MDH_NATIVE_LOG_SPAN;
     obj->type_name = "log_span";
     obj->ctor_kind = NULL;
@@ -5437,7 +5413,7 @@ MdhValue __mdh_och(MdhValue msg) {
     const char *prefix = "Och! ";
     size_t plen = strlen(prefix);
     size_t mlen = strlen(m);
-    char *out = (char *)GC_malloc(plen + mlen + 1);
+    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, plen + mlen + 1);
     memcpy(out, prefix, plen);
     memcpy(out + plen, m, mlen);
     out[plen + mlen] = '\0';
@@ -5450,7 +5426,7 @@ MdhValue __mdh_help_ma_boab(MdhValue msg) {
     const char *prefix = "Help ma boab! ";
     size_t plen = strlen(prefix);
     size_t mlen = strlen(m);
-    char *out = (char *)GC_malloc(plen + mlen + 1);
+    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, plen + mlen + 1);
     memcpy(out, prefix, plen);
     memcpy(out + plen, m, mlen);
     out[plen + mlen] = '\0';
@@ -5733,7 +5709,7 @@ MdhValue __mdh_rtrim(MdhValue str) {
     if (end == len) return str;  /* No trailing whitespace */
     if (end == 0) return __mdh_make_string("");  /* All whitespace */
 
-    char *buf = (char *)GC_malloc(end + 1);
+    char *buf = (char *)__mdh_buf_alloc(end + 1);
     memcpy(buf, s, end);
     buf[end] = '\0';
     return __mdh_make_string(buf);
@@ -5767,7 +5743,7 @@ MdhValue __mdh_title_case(MdhValue str) {
     if (!s || *s == '\0') return str;
 
     int64_t len = strlen(s);
-    char *buf = (char *)GC_malloc(len + 1);
+    char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, len + 1);
 
     bool new_word = true;
     for (int64_t i = 0; i < len; i++) {
@@ -5990,7 +5966,7 @@ static MdhValue __mdh_utf8_string_from_codepoint(uint32_t code) {
         len = 4;
     }
 
-    char *out = (char *)GC_malloc(len + 1);
+    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, len + 1);
     memcpy(out, tmp, len);
     out[len] = '\0';
     return __mdh_string_from_buf(out);
@@ -6175,7 +6151,7 @@ MdhValue __mdh_substring(MdhValue str, MdhValue start_val, MdhValue end_val) {
     end_ptr = p;
 
     size_t out_len = (size_t)(end_ptr - start_ptr);
-    char *out = (char *)GC_malloc(out_len + 1);
+    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, out_len + 1);
     memcpy(out, start_ptr, out_len);
     out[out_len] = '\0';
     return __mdh_string_from_buf(out);
@@ -6222,8 +6198,8 @@ MdhValue __mdh_slice_string(MdhValue str, MdhValue start_opt, MdhValue end_opt, 
     }
 
     // Materialize per-codepoint byte slices (ptr + byte length).
-    const unsigned char **ptrs = (const unsigned char **)GC_malloc(sizeof(unsigned char *) * (size_t)char_len);
-    size_t *lens = (size_t *)GC_malloc(sizeof(size_t) * (size_t)char_len);
+    const unsigned char **ptrs = (const unsigned char **)__mdh_buf_alloc(sizeof(unsigned char *) * (size_t)char_len);
+    size_t *lens = (size_t *)__mdh_buf_alloc(sizeof(size_t) * (size_t)char_len);
     p = s;
     for (int64_t i = 0; i < char_len; i++) {
         uint32_t code = 0;
@@ -6414,10 +6390,10 @@ MdhValue __mdh_list_copy(MdhValue list) {
         return list;
     }
     MdhList *src = (MdhList *)(intptr_t)list.data;
-    MdhList *dst = (MdhList *)GC_malloc(sizeof(MdhList));
+    MdhList *dst = (MdhList *)__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList));
     dst->length = src->length;
     dst->capacity = src->length;
-    dst->items = (MdhValue *)GC_malloc(sizeof(MdhValue) * src->length);
+    dst->items = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * src->length);
     for (int64_t i = 0; i < src->length; i++) {
         dst->items[i] = src->items[i];
     }
@@ -6506,7 +6482,7 @@ MdhValue __mdh_replace_first(MdhValue str, MdhValue old_sub, MdhValue new_sub) {
     /* Rust's String::replacen inserts at the start for empty patterns (count=1). */
     if (old_len == 0) {
         size_t result_len = s_len + new_len;
-        char *buf = (char *)GC_malloc(result_len + 1);
+        char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, result_len + 1);
         memcpy(buf, new_s, new_len);
         memcpy(buf + new_len, s, s_len);
         buf[result_len] = '\0';
@@ -6520,7 +6496,7 @@ MdhValue __mdh_replace_first(MdhValue str, MdhValue old_sub, MdhValue new_sub) {
 
     size_t idx = (size_t)(pos - s);
     size_t result_len = s_len - old_len + new_len;
-    char *buf = (char *)GC_malloc(result_len + 1);
+    char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, result_len + 1);
 
     memcpy(buf, s, idx);
     memcpy(buf + idx, new_s, new_len);
@@ -6626,10 +6602,10 @@ MdhValue __mdh_unique(MdhValue list) {
     if (src->length == 0) return __mdh_make_list(0);
 
     /* Create result list with same capacity */
-    MdhList *dst = (MdhList *)GC_malloc(sizeof(MdhList));
+    MdhList *dst = (MdhList *)__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList));
     dst->length = 0;
     dst->capacity = src->length;
-    dst->items = (MdhValue *)GC_malloc(sizeof(MdhValue) * src->length);
+    dst->items = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * src->length);
 
     /* Add items that aren't already in result */
     for (int64_t i = 0; i < src->length; i++) {
@@ -6709,7 +6685,7 @@ MdhValue __mdh_creel_tae_list(MdhValue dict) {
         return __mdh_make_list(0);
     }
 
-    MdhCreelSortItem *items = (MdhCreelSortItem *)GC_malloc(sizeof(MdhCreelSortItem) * (size_t)count);
+    MdhCreelSortItem *items = (MdhCreelSortItem *)__mdh_buf_alloc(sizeof(MdhCreelSortItem) * (size_t)count);
     for (int64_t i = 0; i < count; i++) {
         MdhValue key = entries[i * 2];
         MdhValue key_str_val = __mdh_to_string(key);
@@ -6966,7 +6942,7 @@ MdhValue __mdh_median(MdhValue list) {
     }
 
     size_t n = (size_t)l->length;
-    double *nums = (double *)GC_malloc(sizeof(double) * n);
+    double *nums = (double *)__mdh_buf_alloc(sizeof(double) * n);
     for (size_t i = 0; i < n; i++) {
         MdhValue item = l->items[(int64_t)i];
         if (item.tag == MDH_TAG_INT) {
@@ -7161,10 +7137,10 @@ MdhValue __mdh_list_sort(MdhValue list) {
     if (l->length == 0) return __mdh_make_list(0);
 
     /* Create a copy of the list */
-    MdhList *result = (MdhList *)GC_malloc(sizeof(MdhList));
+    MdhList *result = (MdhList *)__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList));
     result->capacity = l->length;
     result->length = l->length;
-    result->items = (MdhValue *)GC_malloc(sizeof(MdhValue) * l->length);
+    result->items = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * l->length);
     for (int64_t i = 0; i < l->length; i++) {
         result->items[i] = l->items[i];
     }
@@ -7172,7 +7148,7 @@ MdhValue __mdh_list_sort(MdhValue list) {
     /* Total order shared with the interpreter; the index tie-break keeps it stable. */
     if (result->length > 1) {
         int64_t n = result->length;
-        MdhSortItem *items = (MdhSortItem *)GC_malloc(sizeof(MdhSortItem) * (size_t)n);
+        MdhSortItem *items = (MdhSortItem *)__mdh_buf_alloc(sizeof(MdhSortItem) * (size_t)n);
         for (int64_t i = 0; i < n; i++) {
             items[i].value = result->items[i];
             items[i].index = i;
@@ -7196,10 +7172,10 @@ MdhValue __mdh_list_uniq(MdhValue list) {
     if (l->length == 0) return __mdh_make_list(0);
 
     /* Create new list */
-    MdhList *result = (MdhList *)GC_malloc(sizeof(MdhList));
+    MdhList *result = (MdhList *)__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList));
     result->capacity = l->length;
     result->length = 0;
-    result->items = (MdhValue *)GC_malloc(sizeof(MdhValue) * l->length);
+    result->items = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * l->length);
 
     /* Add each element only if not already in result */
     for (int64_t i = 0; i < l->length; i++) {
@@ -7232,10 +7208,10 @@ MdhValue __mdh_range(int64_t start, int64_t end, int64_t step) {
     if (length < 0) length = 0;
 
     /* Create list */
-    MdhList *result = (MdhList *)GC_malloc(sizeof(MdhList));
+    MdhList *result = (MdhList *)__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList));
     result->capacity = length > 0 ? length : 1;
     result->length = length;
-    result->items = (MdhValue *)GC_malloc(sizeof(MdhValue) * result->capacity);
+    result->items = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * result->capacity);
 
     /* Fill list */
     int64_t val = start;
@@ -7261,7 +7237,7 @@ MdhValue __mdh_list_slice(MdhValue list, int64_t start, int64_t end) {
     if (end > l->length) end = l->length;
     if (start >= end || start >= l->length) {
         /* Return empty list */
-        MdhList *result = (MdhList *)GC_malloc(sizeof(MdhList));
+        MdhList *result = (MdhList *)__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList));
         result->capacity = 0;
         result->length = 0;
         result->items = NULL;
@@ -7269,10 +7245,10 @@ MdhValue __mdh_list_slice(MdhValue list, int64_t start, int64_t end) {
     }
 
     int64_t new_len = end - start;
-    MdhList *result = (MdhList *)GC_malloc(sizeof(MdhList));
+    MdhList *result = (MdhList *)__mdh_obj_alloc(MDH_KIND_LIST, sizeof(MdhList));
     result->capacity = new_len;
     result->length = new_len;
-    result->items = (MdhValue *)GC_malloc(sizeof(MdhValue) * new_len);
+    result->items = (MdhValue *)__mdh_buf_alloc(sizeof(MdhValue) * new_len);
     for (int64_t i = 0; i < new_len; i++) {
         result->items[i] = l->items[start + i];
     }
@@ -7319,7 +7295,7 @@ MdhValue __mdh_wheesht_aw(MdhValue str) {
     }
     const char *s = __mdh_get_string(str);
     size_t len = strlen(s);
-    char *result = (char *)GC_malloc(len + 1);
+    char *result = (char *)__mdh_obj_alloc(MDH_KIND_STRING, len + 1);
     size_t out_len = 0;
 
     bool in_space = true; /* treat leading whitespace as "in space" */
@@ -7346,7 +7322,7 @@ MdhValue __mdh_bonnie(MdhValue val) {
     size_t plen = strlen(prefix);
     size_t mlen = strlen(m);
     size_t slen = strlen(suffix);
-    char *out = (char *)GC_malloc(plen + mlen + slen + 1);
+    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, plen + mlen + slen + 1);
     memcpy(out, prefix, plen);
     memcpy(out + plen, m, mlen);
     memcpy(out + plen + mlen, suffix, slen);
@@ -7550,7 +7526,7 @@ MdhValue __mdh_env_all(void) {
             continue;
         }
         size_t klen = (size_t)(eq - entry);
-        char *kbuf = (char *)GC_malloc(klen + 1);
+        char *kbuf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, klen + 1);
         memcpy(kbuf, entry, klen);
         kbuf[klen] = '\0';
 
@@ -7583,7 +7559,7 @@ MdhValue __mdh_path_join(MdhValue a, MdhValue b) {
     }
 
     int need_slash = pa[la - 1] != '/';
-    char *out = (char *)GC_malloc(la + (size_t)need_slash + lb + 1);
+    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, la + (size_t)need_slash + lb + 1);
 
     memcpy(out, pa, la);
     size_t pos = la;
@@ -7607,7 +7583,7 @@ static char *__mdh_shell_quote_single(const char *s) {
 
     /* Surround with single quotes and escape internal single quotes as: '\'' */
     size_t out_len = 2 + len + quotes * 3;
-    char *out = (char *)GC_malloc(out_len + 1);
+    char *out = (char *)__mdh_buf_alloc(out_len + 1);
 
     size_t j = 0;
     out[j++] = '\'';
@@ -7636,7 +7612,7 @@ static char *__mdh_build_shell_command(const char *cmd, bool redirect_stderr) {
     const char *redir = redirect_stderr ? " 2>&1" : "";
 
     size_t needed = strlen(shell) + strlen(" -c ") + strlen(quoted) + strlen(redir) + 1;
-    char *full = (char *)GC_malloc(needed);
+    char *full = (char *)__mdh_buf_alloc(needed);
     snprintf(full, needed, "%s -c %s%s", shell, quoted, redir);
     return full;
 }
@@ -7670,7 +7646,7 @@ MdhValue __mdh_shell(MdhValue cmd) {
     char *err_q = __mdh_shell_quote_single(err_template);
 
     size_t script_len = strlen(cmd_str) + strlen(out_q) * 4 + strlen(err_q) * 3 + 128;
-    char *script = (char *)GC_malloc(script_len);
+    char *script = (char *)__mdh_buf_alloc(script_len);
     snprintf(
         script,
         script_len,
@@ -7789,7 +7765,7 @@ static int __mdh_mkdir_p(const char *path) {
         return -1;
     }
 
-    char *tmp = GC_strdup(path);
+    char *tmp = __mdh_buf_strdup(path);
     size_t len = strlen(tmp);
     if (len == 0) {
         return -1;
@@ -7902,11 +7878,11 @@ MdhValue __mdh_date_format(MdhValue timestamp_secs, MdhValue format) {
 
     const char *fmt = __mdh_get_string(format);
     size_t cap = 128;
-    char *buf = (char *)GC_malloc(cap);
+    char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, cap);
     size_t out = strftime(buf, cap, fmt, &tm_val);
     while (out == 0 && cap < 8192) {
         cap *= 2;
-        buf = (char *)GC_realloc(buf, cap);
+        buf = (char *)__mdh_obj_realloc(buf, cap);
         out = strftime(buf, cap, fmt, &tm_val);
     }
     if (out == 0) {
@@ -8106,7 +8082,7 @@ static MdhValue __mdh_regex_match_dict(const char *text, int64_t start, int64_t 
     MdhValue dict = __mdh_empty_dict();
 
     size_t len = (size_t)(end - start);
-    char *m = (char *)GC_malloc(len + 1);
+    char *m = (char *)__mdh_obj_alloc(MDH_KIND_STRING, len + 1);
     memcpy(m, text + start, len);
     m[len] = '\0';
 
@@ -8287,7 +8263,7 @@ MdhValue __mdh_regex_split(MdhValue text, MdhValue pattern) {
         size_t match_end = offset + (size_t)m.rm_eo;
 
         size_t seg_len = match_start - offset;
-        char *seg = (char *)GC_malloc(seg_len + 1);
+        char *seg = (char *)__mdh_obj_alloc(MDH_KIND_STRING, seg_len + 1);
         memcpy(seg, s + offset, seg_len);
         seg[seg_len] = '\0';
         __mdh_list_push(result, __mdh_string_from_buf(seg));
@@ -8302,7 +8278,7 @@ MdhValue __mdh_regex_split(MdhValue text, MdhValue pattern) {
     /* trailing segment */
     if (offset <= slen) {
         size_t seg_len = slen - offset;
-        char *seg = (char *)GC_malloc(seg_len + 1);
+        char *seg = (char *)__mdh_obj_alloc(MDH_KIND_STRING, seg_len + 1);
         memcpy(seg, s + offset, seg_len);
         seg[seg_len] = '\0';
         __mdh_list_push(result, __mdh_string_from_buf(seg));
@@ -9106,7 +9082,7 @@ MdhValue __mdh_window(MdhValue str, MdhValue size) {
     int64_t out_len = len - n + 1;
     MdhValue out = __mdh_make_list((int32_t)out_len);
     for (int64_t i = 0; i <= len - n; i++) {
-        char *buf = (char *)GC_malloc((size_t)n + 1);
+        char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, (size_t)n + 1);
         memcpy(buf, s + i, (size_t)n);
         buf[n] = '\0';
         __mdh_list_push(out, __mdh_string_from_buf(buf));
@@ -9202,7 +9178,7 @@ MdhValue __mdh_skelp(MdhValue str, MdhValue size) {
         p += consumed;
 
         if (seg_chars == n) {
-            char *buf = (char *)GC_malloc(seg_bytes_len + 1);
+            char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, seg_bytes_len + 1);
             memcpy(buf, seg_start, seg_bytes_len);
             buf[seg_bytes_len] = '\0';
             __mdh_list_push(out, __mdh_string_from_buf(buf));
@@ -9212,7 +9188,7 @@ MdhValue __mdh_skelp(MdhValue str, MdhValue size) {
         }
     }
     if (seg_bytes_len > 0) {
-        char *buf = (char *)GC_malloc(seg_bytes_len + 1);
+        char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, seg_bytes_len + 1);
         memcpy(buf, seg_start, seg_bytes_len);
         buf[seg_bytes_len] = '\0';
         __mdh_list_push(out, __mdh_string_from_buf(buf));
@@ -9241,7 +9217,7 @@ MdhValue __mdh_strip_left(MdhValue str, MdhValue chars) {
         return str;
     }
 
-    uint32_t *set_codes = (uint32_t *)GC_malloc(sizeof(uint32_t) * (size_t)set_len);
+    uint32_t *set_codes = (uint32_t *)__mdh_buf_alloc(sizeof(uint32_t) * (size_t)set_len);
     int64_t set_i = 0;
     const unsigned char *sp = set_bytes;
     while (*sp) {
@@ -9280,7 +9256,7 @@ MdhValue __mdh_strip_left(MdhValue str, MdhValue chars) {
     }
 
     size_t out_len = strlen((const char *)p);
-    char *buf = (char *)GC_malloc(out_len + 1);
+    char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, out_len + 1);
     memcpy(buf, p, out_len + 1);
     return __mdh_string_from_buf(buf);
 }
@@ -9306,7 +9282,7 @@ MdhValue __mdh_strip_right(MdhValue str, MdhValue chars) {
         return str;
     }
 
-    uint32_t *set_codes = (uint32_t *)GC_malloc(sizeof(uint32_t) * (size_t)set_len);
+    uint32_t *set_codes = (uint32_t *)__mdh_buf_alloc(sizeof(uint32_t) * (size_t)set_len);
     int64_t set_i = 0;
     const unsigned char *sp = set_bytes;
     while (*sp) {
@@ -9328,8 +9304,8 @@ MdhValue __mdh_strip_right(MdhValue str, MdhValue chars) {
     }
 
     const unsigned char **starts =
-        (const unsigned char **)GC_malloc(sizeof(unsigned char *) * (size_t)char_len);
-    uint32_t *codes = (uint32_t *)GC_malloc(sizeof(uint32_t) * (size_t)char_len);
+        (const unsigned char **)__mdh_buf_alloc(sizeof(unsigned char *) * (size_t)char_len);
+    uint32_t *codes = (uint32_t *)__mdh_buf_alloc(sizeof(uint32_t) * (size_t)char_len);
 
     int64_t idx = 0;
     const unsigned char *p = sb;
@@ -9366,7 +9342,7 @@ MdhValue __mdh_strip_right(MdhValue str, MdhValue chars) {
 
     const unsigned char *end_ptr = (end_idx == 0) ? sb : starts[end_idx];
     size_t out_len = (size_t)(end_ptr - sb);
-    char *buf = (char *)GC_malloc(out_len + 1);
+    char *buf = (char *)__mdh_obj_alloc(MDH_KIND_STRING, out_len + 1);
     memcpy(buf, sb, out_len);
     buf[out_len] = '\0';
     return __mdh_string_from_buf(buf);
@@ -9380,7 +9356,7 @@ MdhValue __mdh_swapcase(MdhValue str) {
 
     const char *s = __mdh_get_string(str);
     size_t len = strlen(s);
-    char *out = (char *)GC_malloc(len + 1);
+    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, len + 1);
     for (size_t i = 0; i < len; i++) {
         unsigned char c = (unsigned char)s[i];
         if (c >= 'A' && c <= 'Z') {
@@ -9495,7 +9471,7 @@ MdhValue __mdh_mutter(MdhValue str) {
     }
     const char *s = __mdh_get_string(str);
     size_t len = strlen(s);
-    char *out = (char *)GC_malloc(len + 7);
+    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, len + 7);
     memcpy(out, "...", 3);
     for (size_t i = 0; i < len; i++) {
         unsigned char c = (unsigned char)s[i];
@@ -9528,8 +9504,8 @@ MdhValue __mdh_blooter(MdhValue str) {
     }
 
     const unsigned char **starts =
-        (const unsigned char **)GC_malloc(sizeof(unsigned char *) * (size_t)char_len);
-    size_t *lens = (size_t *)GC_malloc(sizeof(size_t) * (size_t)char_len);
+        (const unsigned char **)__mdh_buf_alloc(sizeof(unsigned char *) * (size_t)char_len);
+    size_t *lens = (size_t *)__mdh_buf_alloc(sizeof(size_t) * (size_t)char_len);
 
     int64_t idx = 0;
     const unsigned char *p = sb;
@@ -9560,7 +9536,7 @@ MdhValue __mdh_blooter(MdhValue str) {
     }
 
     size_t byte_len = (size_t)(p - sb);
-    char *out = (char *)GC_malloc(byte_len + 1);
+    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, byte_len + 1);
     size_t pos = 0;
     for (int64_t i = 0; i < char_len; i++) {
         memcpy(out + pos, starts[i], lens[i]);
@@ -9641,7 +9617,7 @@ MdhValue __mdh_geggie(MdhValue str) {
         p += consumed;
     }
 
-    char *out = (char *)GC_malloc(first_len + last_len + 1);
+    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, first_len + last_len + 1);
     memcpy(out, s, first_len);
     memcpy(out + first_len, last_ptr, last_len);
     out[first_len + last_len] = '\0';
@@ -9654,7 +9630,7 @@ MdhValue __mdh_jings(MdhValue msg) {
     const char *prefix = "Jings! ";
     size_t plen = strlen(prefix);
     size_t mlen = strlen(m);
-    char *out = (char *)GC_malloc(plen + mlen + 1);
+    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, plen + mlen + 1);
     memcpy(out, prefix, plen);
     memcpy(out + plen, m, mlen);
     out[plen + mlen] = '\0';
@@ -9667,7 +9643,7 @@ MdhValue __mdh_crivvens(MdhValue msg) {
     const char *prefix = "Crivvens! ";
     size_t plen = strlen(prefix);
     size_t mlen = strlen(m);
-    char *out = (char *)GC_malloc(plen + mlen + 1);
+    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, plen + mlen + 1);
     memcpy(out, prefix, plen);
     memcpy(out + plen, m, mlen);
     out[plen + mlen] = '\0';
@@ -9770,7 +9746,7 @@ MdhValue __mdh_clarty(MdhValue val) {
             return __mdh_make_bool(false);
         }
 
-        uint32_t *seen = (uint32_t *)GC_malloc(sizeof(uint32_t) * (size_t)char_len);
+        uint32_t *seen = (uint32_t *)__mdh_buf_alloc(sizeof(uint32_t) * (size_t)char_len);
         int64_t seen_len = 0;
 
         const unsigned char *p = s;
@@ -9926,7 +9902,7 @@ MdhValue __mdh_banter(MdhValue a, MdhValue b) {
 
     size_t n1 = strlen((const char *)s1);
     size_t n2 = strlen((const char *)s2);
-    char *out = (char *)GC_malloc(n1 + n2 + 1);
+    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, n1 + n2 + 1);
     size_t pos = 0;
 
     const unsigned char *p1 = s1;
@@ -9971,7 +9947,7 @@ MdhValue __mdh_capitalize(MdhValue str) {
     if (len == 0) {
         return __mdh_make_string("");
     }
-    char *out = (char *)GC_malloc(len + 1);
+    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, len + 1);
     memcpy(out, s, len + 1);
     unsigned char c = (unsigned char)out[0];
     if (c >= 'a' && c <= 'z') {
@@ -10081,7 +10057,7 @@ MdhValue __mdh_scunner_check(MdhValue val, MdhValue expected_type) {
     size_t elen = strlen(expected);
     size_t mlen = strlen(mid);
     size_t alen = strlen(actual);
-    char *out = (char *)GC_malloc(plen + elen + mlen + alen + 1);
+    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, plen + elen + mlen + alen + 1);
     memcpy(out, prefix, plen);
     memcpy(out + plen, expected, elen);
     memcpy(out + plen + elen, mid, mlen);
@@ -10141,7 +10117,7 @@ MdhValue __mdh_clype(MdhValue val) {
 
     size_t tlen = strlen(t);
     size_t ilen = strlen(info);
-    char *out = (char *)GC_malloc(tlen + ilen + 5);
+    char *out = (char *)__mdh_obj_alloc(MDH_KIND_STRING, tlen + ilen + 5);
     out[0] = '[';
     memcpy(out + 1, t, tlen);
     out[1 + tlen] = ']';
@@ -10430,7 +10406,7 @@ MdhValue __mdh_blether_format(MdhValue template, MdhValue dict) {
         MdhValue key_s = (key.tag == MDH_TAG_STRING) ? key : __mdh_to_string(key);
         const char *k = __mdh_get_string(key_s);
         size_t klen = strlen(k);
-        char *ph = (char *)GC_malloc(klen + 3);
+        char *ph = (char *)__mdh_obj_alloc(MDH_KIND_STRING, klen + 3);
         ph[0] = '{';
         memcpy(ph + 1, k, klen);
         ph[1 + klen] = '}';

@@ -60,6 +60,9 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_braw", "b", Ret::None),
     ("__mdh_braw_date", "b", Ret::Fresh),
     ("__mdh_braw_time", "", Ret::Fresh),
+    // The single allocator (runtime/gc_stub.c): raw memory, no MdhValue in or out.
+    ("__mdh_buf_alloc", "-", Ret::None),
+    ("__mdh_buf_realloc", "--", Ret::None),
     ("__mdh_bytes_append", "mb", Ret::Arg), // returns bytes arg; bytes mutated in place
     ("__mdh_bytes_from_string", "b", Ret::Fresh),
     ("__mdh_bytes_get", "bb", Ret::None),
@@ -265,6 +268,11 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_native_set", "mbs", Ret::Stored), // returns value arg; key copied to Rust string (graphics3d)
     ("__mdh_note_line", "-", Ret::None),
     ("__mdh_numpty_check", "b", Ret::Fresh),
+    // The single allocator: a raw object payload the caller wraps in a value (the
+    // caller's +1 once R1 counts).
+    ("__mdh_obj_alloc", "--", Ret::None),
+    ("__mdh_obj_realloc", "--", Ret::None),
+    ("__mdh_obj_strdup", "-", Ret::None),
     ("__mdh_och", "b", Ret::Fresh),
     ("__mdh_ord", "b", Ret::None),
     ("__mdh_pair_adjacent", "b", Ret::Fresh), // shares elements of arg 1
@@ -480,7 +488,10 @@ blether f([1, 2], 1)
 
     #[test]
     fn every_entry_is_defined_by_a_runtime() {
-        let c_runtime = include_str!("../../runtime/mdh_runtime.c");
+        let c_runtime = concat!(
+            include_str!("../../runtime/mdh_runtime.c"),
+            include_str!("../../runtime/gc_stub.c")
+        );
         let rust_runtime = [
             include_str!("../../runtime/mdh_runtime_rs/src/lib.rs"),
             include_str!("../../runtime/mdh_runtime_rs/src/tri_runtime.rs"),
@@ -488,10 +499,11 @@ blether f([1, 2], 1)
         ];
         let defined = |name: &str| {
             let call = format!(" {name}(");
+            let ptr_call = format!("*{name}("); // `void *__mdh_buf_alloc(`
             // A C definition starts in column 0 and is not a prototype.
             let in_c = c_runtime.lines().any(|line| {
                 !line.starts_with([' ', '\t', '#', '/', '*'])
-                    && line.contains(&call)
+                    && (line.contains(&call) || line.contains(&ptr_call))
                     && !line.trim_end().ends_with(';')
             });
             let fn_def = format!("fn {name}(");

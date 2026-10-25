@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 /* Value type tags - must match src/llvm/types.rs */
 typedef enum {
@@ -67,6 +68,43 @@ struct MdhBytes {
     int64_t length;
     int64_t capacity;
 };
+
+/* ========== Allocation ==========
+ *
+ * The single allocator (runtime/gc_stub.c). Every heap allocation made by compiled code
+ * and by the runtimes goes through these, so reference counting can later add its
+ * header in one place. Nothing is freed yet.
+ *
+ * - An object is what an MdhValue's data points at (a string's chars, an MdhList, a
+ *   dict/creel handle, a closure block, an instance handle, ...). Allocate it with
+ *   __mdh_obj_alloc and the kind it is. Only string payloads grow in place, with
+ *   __mdh_obj_realloc (string builders, in-place append).
+ * - A buffer is memory owned by exactly one object or by the runtime itself (list items,
+ *   dict payloads, instance field storage, scratch). It is never a value's data.
+ *
+ * Kinds must match `ObjKind` in src/llvm/types.rs. */
+typedef enum {
+    MDH_KIND_BUFFER = 0, /* not an object; used only for allocation statistics */
+    MDH_KIND_STRING = 1,
+    MDH_KIND_LIST = 2, /* also capture cells */
+    MDH_KIND_KV = 3,   /* dict and creel handles */
+    MDH_KIND_CLOSURE = 4,
+    MDH_KIND_INSTANCE = 5,
+    MDH_KIND_BYTES = 6,
+    MDH_KIND_BOUND_METHOD = 7,
+    MDH_KIND_NATIVE = 8,
+    MDH_KIND_COUNT = 9,
+} MdhObjKind;
+
+void *__mdh_obj_alloc(uint32_t kind, size_t size);
+void *__mdh_obj_realloc(void *obj, size_t size);
+char *__mdh_obj_strdup(const char *s);
+void *__mdh_buf_alloc(size_t size);
+void *__mdh_buf_realloc(void *buf, size_t size);
+char *__mdh_buf_strdup(const char *s);
+/* Allocations made so far of a kind (MDH_KIND_BUFFER counts buffers), or -1 when the
+ * runtime was built without MDH_ALLOC_STATS. */
+int64_t __mdh_alloc_count(uint32_t kind);
 
 /* ========== Value Creation ========== */
 
