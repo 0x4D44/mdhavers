@@ -1602,19 +1602,22 @@ pub extern "C" fn __mdh_rs_dtls_server_new(config: MdhValue) -> MdhRsResult {
 #[no_mangle]
 pub extern "C" fn __mdh_rs_dtls_handshake(dtls: MdhValue, sock: MdhValue) -> MdhRsResult {
     match std::panic::catch_unwind(|| unsafe {
-        if dtls.tag != MDH_TAG_INT || dtls.data <= 0 {
-            return mdh_err("dtls_handshake expects DTLS handle");
-        }
+        // Ownership: the caller passes a dup'd fd that this function owns from
+        // here on. Wrap it first so it is closed (dropped) on EVERY return path;
+        // the C caller must never close it after the call.
         if sock.tag != MDH_TAG_INT {
             return mdh_err("dtls_handshake expects socket fd");
+        }
+        let fd = sock.data as i32;
+        let socket = std::net::UdpSocket::from_raw_fd(fd);
+        if dtls.tag != MDH_TAG_INT || dtls.data <= 0 {
+            return mdh_err("dtls_handshake expects DTLS handle");
         }
         let cfg = match dtls_get(dtls.data) {
             Ok(cfg) => cfg,
             Err(e) => return mdh_err(&e),
         };
 
-        let fd = sock.data as i32;
-        let socket = std::net::UdpSocket::from_raw_fd(fd);
         if let Err(e) = socket.set_nonblocking(false) {
             return mdh_err(&format!("DTLS socket setup failed: {}", e));
         }

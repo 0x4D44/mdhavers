@@ -3206,7 +3206,8 @@ MdhValue __mdh_dtls_handshake(MdhValue dtls, MdhValue sock) {
         if (!msg || msg[0] == '\0') {
             msg = "dtls_handshake failed";
         }
-        mdh_socket_close(dup_fd);
+        /* dup_fd is owned (and already closed) by __mdh_rs_dtls_handshake on
+         * every path; closing it here again could hit a reused fd number. */
         return __mdh_result_err(msg, -1);
     }
     return __mdh_result_ok(r.value);
@@ -9024,19 +9025,18 @@ MdhValue __mdh_chunks(MdhValue list, MdhValue size) {
 
     MdhList *src = __mdh_get_list(list);
     int64_t len = src ? src->length : 0;
-    int64_t out_cap = (len + n - 1) / n;
+    /* Overflow-free: len and n are int64, n may be near INT64_MAX. */
+    int64_t out_cap = len / n + ((len % n) != 0 ? 1 : 0);
     MdhValue out = __mdh_make_list((int32_t)out_cap);
 
-    for (int64_t i = 0; i < len; i += n) {
-        int64_t end = i + n;
-        if (end > len) {
-            end = len;
-        }
+    for (int64_t i = 0; i < len;) {
+        int64_t end = (n > len - i) ? len : i + n;
         MdhValue chunk = __mdh_make_list((int32_t)(end - i));
         for (int64_t j = i; j < end; j++) {
             __mdh_list_push(chunk, src->items[j]);
         }
         __mdh_list_push(out, chunk);
+        i = end;
     }
     return out;
 }

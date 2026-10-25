@@ -819,3 +819,30 @@ blether thread_join(t)
         ]
     );
 }
+
+// ---------- MDH-BUG-FLU-00132: chunks() with a huge size must not overflow ----------
+
+#[test]
+fn chunks_with_a_huge_size_does_not_overflow() {
+    let out = run_ok(
+        r#"
+blether chunks([1, 2, 3], 9223372036854775807)
+blether chunks([1, 2, 3], 9223372036854775806)
+blether chunks([1, 2, 3, 4, 5], 2)
+blether chunks([1, 2, 3, 4], 2)
+blether chunks([], 3)
+blether chunks([1, 2, 3], 3)
+"#,
+    );
+    assert_eq!(
+        out,
+        vec![
+            "[[1, 2, 3]]",
+            "[[1, 2, 3]]",
+            "[[1, 2], [3, 4], [5]]",
+            "[[1, 2], [3, 4]]",
+            "[]",
+            "[[1, 2, 3]]",
+        ]
+    );
+}
