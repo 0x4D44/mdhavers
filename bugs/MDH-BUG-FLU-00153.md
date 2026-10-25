@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00153 — Coverage-cfg lib unit tests fail to compile: LoopContext literals miss rc_scope_depth
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** llvm
 - **Raised:** 2026-10-25T22:15:58Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261025T223241Z-49b8e1e9
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00153-run-fix-20261025T223241Z-49b8e1e9
-- **Owner base:** 1c4b934f5362918e79fd63662d71b0bfcf870eed
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-25T22:32:41Z
-- **Owner until:** 2026-10-26T02:32:41Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T22:15:58Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-25T22:15:58Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T23:21:11Z, deltic:auto role=fix run=fix-20261025T223241Z-49b8e1e9 branch=task/bug-MDH-BUG-FLU-00153-run-fix-20261025T223241Z-49b8e1e9 code=f5d5a24 gate=manual)
 
 ## Observation
 
