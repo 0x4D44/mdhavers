@@ -11,6 +11,7 @@ use std::process::{Command, Output, Stdio};
 use tempfile::{tempdir, TempDir};
 
 const DRIVER: &str = r#"
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,6 +20,8 @@ const DRIVER: &str = r#"
 
 int64_t test_line = 7;
 int64_t __mdh_rc_line(void) { return test_line; }
+/* thread_spawn sets this before its first thread; from then on counts are atomic. */
+int32_t __mdh_line_threaded = 0;
 
 void __mdh_rc_children(uint32_t kind, void *payload, MdhRcVisit visit, void *ctx) {
     if (kind != MDH_KIND_LIST) return;
@@ -47,6 +50,18 @@ static MdhValue list_of(int64_t n, MdhValue *items) {
 
 static int64_t count_of(MdhValue v) {
     return ((MdhObjHeader *)((char *)(intptr_t)v.data - 16))->refcount;
+}
+
+/* Each thread takes and drops references to the same objects, as threads sharing a
+ * string and a list do. */
+static MdhValue shared_str, shared_list;
+static void *hammer(void *arg) {
+    (void)arg;
+    for (int k = 0; k < 1000000; k++) {
+        __mdh_retain(shared_str); __mdh_retain(shared_list);
+        __mdh_release(shared_list); __mdh_release(shared_str);
+    }
+    return NULL;
 }
 
 int main(int argc, char **argv) {
@@ -164,6 +179,22 @@ int main(int argc, char **argv) {
                peak_kb < 64 * 1024);
         return 0;
     }
+    if (strcmp(mode, "threads") == 0) {
+        shared_str = str("shared");
+        MdhValue items[1] = { shared_str };
+        __mdh_retain(shared_str);
+        shared_list = list_of(1, items);
+        __mdh_line_threaded = 1; /* what thread_spawn does before creating its first thread */
+        pthread_t t[4];
+        for (int k = 0; k < 4; k++) pthread_create(&t[k], NULL, hammer, NULL);
+        for (int k = 0; k < 4; k++) pthread_join(t[k], NULL);
+        printf("string %lld list %lld\n", (long long)count_of(shared_str), (long long)count_of(shared_list));
+        __mdh_release(shared_str);
+        __mdh_release(shared_list);
+        printf("live %lld %lld\n", (long long)__mdh_rc_live(MDH_KIND_STRING),
+               (long long)__mdh_rc_live(MDH_KIND_LIST));
+        return 0;
+    }
     if (strcmp(mode, "report") == 0) {
         MdhValue keep = str("kept");
         MdhValue gone = str("gone");
@@ -193,6 +224,7 @@ fn build_driver(kinds: &str) -> Driver {
         .arg(root.join("runtime"))
         .arg(root.join("runtime/gc_stub.c"))
         .arg(&driver_c)
+        .arg("-pthread")
         .arg("-o")
         .arg(&exe)
         .status()
@@ -297,6 +329,17 @@ fn releasing_a_million_deep_nest_does_not_recurse() {
     let out = run(&d, "deep", FREE_ALL);
     assert!(out.status.success(), "{}", stderr(&out));
     assert_eq!(stdout(&out), "live 0 0 freed 1 1000000\n");
+}
+
+#[test]
+fn counts_are_atomic_once_threads_exist() {
+    // Four threads each take and drop a reference to one string and one list a million times
+    // (stage R3). With plain counts, lost updates leave a wrong count or kill the shared
+    // objects early (MDH_RC_NOFREE=1 then aborts on the next touch instead of crashing).
+    let d = build_driver(ALL);
+    let out = run(&d, "threads", NOFREE);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(stdout(&out), "string 2 list 1\nlive 0 0\n");
 }
 
 #[test]

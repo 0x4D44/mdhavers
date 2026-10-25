@@ -124,13 +124,14 @@ void *__mdh_obj_realloc(void *obj, size_t size) {
     }
     /* Growing in place is only legal for an object nobody else holds (DES F6 3.7):
      * realloc may move it, leaving any other holder pointing at freed memory. */
-    if (h->kind < MDH_KIND_COUNT && (__mdh_rc_kinds & (1u << h->kind)) && h->refcount != 1) {
+    int64_t count = __atomic_load_n(&h->refcount, __ATOMIC_ACQUIRE);
+    if (h->kind < MDH_KIND_COUNT && (__mdh_rc_kinds & (1u << h->kind)) && count != 1) {
         fprintf(
             stderr,
             "mdhavers rc: realloc o' a shared %s object %p (count %lld), at line %lld\n",
             __mdh_rc_kind_name(h->kind),
             obj,
-            (long long)h->refcount,
+            (long long)count,
             (long long)__mdh_rc_line()
         );
         fflush(stderr);
@@ -229,6 +230,28 @@ void __mdh_rc_init(void) {
     }
 }
 
+/* Counts are plain until the program spawns its first thread and atomic from then on
+ * (DES F6 3.5, stage R3). __mdh_thread_spawn sets __mdh_line_threaded before it creates
+ * the thread, and never clears it, so thread creation orders every plain update before
+ * the first atomic one. Retain is relaxed (taking a reference needs one already held);
+ * release is acq_rel, so whatever a thread did with an object happens before the thread
+ * that drops the last reference releases its children and frees it. */
+static inline void __mdh_rc_inc(MdhObjHeader *h) {
+    if (__builtin_expect(__mdh_line_threaded != 0, 0)) {
+        __atomic_fetch_add(&h->refcount, 1, __ATOMIC_RELAXED);
+    } else {
+        h->refcount++;
+    }
+}
+
+/* Drop one reference; true when it was the last one. */
+static inline int __mdh_rc_dec(MdhObjHeader *h) {
+    if (__builtin_expect(__mdh_line_threaded != 0, 0)) {
+        return __atomic_sub_fetch(&h->refcount, 1, __ATOMIC_ACQ_REL) == 0;
+    }
+    return --h->refcount == 0;
+}
+
 /* The header of a counted object, or NULL when retain/release must leave it alone
  * (immortal, or a kind not counted). Aborts on a DEAD object or a missing header. */
 static MdhObjHeader *__mdh_rc_counted(const char *op, int64_t data) {
@@ -247,7 +270,7 @@ static MdhObjHeader *__mdh_rc_counted(const char *op, int64_t data) {
 
 void __mdh_rc_retain_obj(int64_t data) {
     MdhObjHeader *h = __mdh_rc_counted("retain", data);
-    if (h) h->refcount++;
+    if (h) __mdh_rc_inc(h);
 }
 
 /* Objects that reached zero and still have to release their children. An explicit work
@@ -283,7 +306,7 @@ static void __mdh_rc_work_push(MdhRcWork *w, MdhObjHeader *h) {
 static void __mdh_rc_drop_child(MdhValue child, void *ctx) {
     if (!MDH_RC_HEAP_TAG(child.tag)) return;
     MdhObjHeader *h = __mdh_rc_counted("release", child.data);
-    if (h && --h->refcount == 0) __mdh_rc_work_push((MdhRcWork *)ctx, h);
+    if (h && __mdh_rc_dec(h)) __mdh_rc_work_push((MdhRcWork *)ctx, h);
 }
 
 /* `h` reached zero: release what it holds, then free it (and anything that reaches zero
@@ -315,7 +338,7 @@ static void __mdh_rc_kill(MdhObjHeader *h) {
 
 void __mdh_rc_release_obj(int64_t data) {
     MdhObjHeader *h = __mdh_rc_counted("release", data);
-    if (h && --h->refcount == 0) __mdh_rc_kill(h);
+    if (h && __mdh_rc_dec(h)) __mdh_rc_kill(h);
 }
 
 void __mdh_retain(MdhValue v) {

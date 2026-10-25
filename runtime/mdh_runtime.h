@@ -178,6 +178,9 @@ typedef void (*MdhRcVisit)(MdhValue child, void *ctx);
 void __mdh_rc_children(uint32_t kind, void *payload, MdhRcVisit visit, void *ctx);
 void __mdh_rc_free_buffers(uint32_t kind, void *payload);
 int64_t __mdh_rc_line(void);
+/* Set (never cleared) by thread_spawn before the first thread exists (mdh_runtime.c);
+ * from then on counts are updated atomically. */
+extern int32_t __mdh_line_threaded;
 
 /* ========== Value Creation ========== */
 

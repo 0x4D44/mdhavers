@@ -303,7 +303,8 @@ MdhValue __mdh_make_list(int32_t capacity) {
  * the raising thread's own line instead (MDH-BUG-FLU-00090): while
  * __mdh_line_threaded is set, compiled code calls __mdh_note_line(<statement line>)
  * before each call into the runtime, the only calls that can raise. Until then that
- * costs a load and an untaken branch per runtime call, and nothing per statement. */
+ * costs a load and an untaken branch per runtime call, and nothing per statement.
+ * Reference counts switch to atomic updates on the same flag (gc_stub.c, stage R3). */
 int64_t __mdh_current_line = 0;
 int32_t __mdh_line_threaded = 0;
 static __thread int64_t __mdh_thread_line = 0;
