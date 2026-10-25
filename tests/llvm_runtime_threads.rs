@@ -52,3 +52,101 @@ blether atomic_load(a)
     .expect("compile/run failed");
     assert_eq!(out.trim(), "1");
 }
+
+/// Compile `source` with reference counting on (MDH_RC=1) and run it `runs` times with
+/// `envs`, returning each run's stdout.
+fn compile_rc_and_run(source: &str, runs: usize, envs: &[(&str, &str)]) -> Vec<String> {
+    let program = parse(source).expect("parse");
+    let dir = tempdir().expect("temp dir");
+    let exe_path = dir.path().join("thread_rc_test_exe");
+    LLVMCompiler::new()
+        .with_refcounting(true)
+        .compile_to_native(&program, &exe_path, 2)
+        .expect("compile");
+    (0..runs)
+        .map(|_| {
+            let output = Command::new(&exe_path)
+                .envs(envs.iter().copied())
+                .stdin(std::process::Stdio::null())
+                .output()
+                .expect("run executable");
+            assert!(
+                output.status.success(),
+                "exit {:?}, stderr: {}",
+                output.status.code(),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            String::from_utf8_lossy(&output.stdout).to_string()
+        })
+        .collect()
+}
+
+/// Stage R3: counts go atomic at the first thread_spawn. Six threads take and drop
+/// references to the same strings, list, dict and closure, and push to one list under a
+/// mutex. With plain counts, lost updates kill shared objects early, which
+/// MDH_RC_NOFREE=1 turns into an abort on the next touch.
+#[test]
+fn llvm_threads_share_counted_values_under_refcounting() {
+    let source = r#"
+# Several threads share strings, a list, a dict, a closure and a channel under MDH_RC=1.
+# Shared containers are only mutated under the mutex.
+ken base = 5
+ken bump = |x| x + base
+ken greet = f"hullo-{base}"
+
+dae worker(id, ctx, n) {
+    ken shared = ctx[0]
+    ken table = ctx[1]
+    ken f = ctx[2]
+    ken m = ctx[3]
+    ken out = ctx[4]
+    ken ch = ctx[5]
+    ken total = 0
+    fer i in 0..n {
+        ken s = shared[i % 4]
+        ken w = greet + s
+        total = total + len(w)
+        ken v = table["b"]
+        total = total + len(v) + len(table)
+        total = total + f(i % 3)
+        ken pair = [s, v, w]
+        total = total + len(pair)
+        gin i % 500 == 0 {
+            mutex_lock(m)
+            shove(out, w)
+            mutex_unlock(m)
+        }
+    }
+    chan_send(ch, greet + f"-{id}")
+    gie total
+}
+
+ken shared = []
+fer i in 0..4 {
+    shove(shared, f"item{i}")
+}
+ken table = {"a": [1, 2], "b": [shared[0], shared[1], 3]}
+ken m = mutex_new()
+ken out = []
+ken ch = chan_new(16)
+ken n = 20000
+ken handles = []
+fer t in 0..6 {
+    shove(handles, thread_spawn(worker, [t, [shared, table, bump, m, out, ch], n]))
+}
+ken total = 0
+fer h in handles {
+    total = total + thread_join(h)
+}
+ken got = 0
+whiles aye {
+    ken v = chan_try_recv(ch)
+    gin v == naething { brak }
+    got = got + len(v)
+}
+blether f"total={total} out={len(out)} got={got} shared={shared[3]}"
+"#;
+    for out in compile_rc_and_run(source, 3, &[("MDH_RC_NOFREE", "1")]) {
+        assert_eq!(out.trim(), "total=3119994 out=240 got=54 shared=item3");
+    }
+}
