@@ -11,7 +11,7 @@ fn get_native(env: &Rc<RefCell<Environment>>, name: &str) -> Rc<NativeFunction> 
         .get(name)
         .unwrap_or_else(|| panic!("missing stub {name}"));
     match value {
-        Value::NativeFunction(func) => func,
+        Value::NativeFunction(ref func) => func.clone(),
         other => panic!("expected native function for {name}, got {other:?}"),
     }
 }

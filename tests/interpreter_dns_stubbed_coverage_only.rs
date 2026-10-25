@@ -103,7 +103,7 @@ ken r = dns_srv("_sip._udp", "example.com")
 r["error"]
 "#,
     );
-    let Value::String(msg) = value else {
+    let Value::String(ref msg) = value else {
         panic!("expected error string, got {value:?}");
     };
     assert!(
@@ -122,7 +122,7 @@ ken r = dns_srv("_sip._udp", "example.com")
 r["error"]
 "#,
     );
-    let Value::String(msg) = value else {
+    let Value::String(ref msg) = value else {
         panic!("expected error string, got {value:?}");
     };
     assert!(

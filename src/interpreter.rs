@@ -16334,7 +16334,7 @@ blether r["error"]
         let mut natives: Vec<_> = exports
             .into_iter()
             .filter_map(|(name, value)| match value {
-                Value::NativeFunction(f) => Some((name, f)),
+                Value::NativeFunction(ref f) => Some((name, f.clone())),
                 _ => None,
             })
             .collect();
@@ -23598,7 +23598,7 @@ soond_steek()
         globals
             .borrow()
             .get(name)
-            .unwrap()
+            .unwrap_or_else(|| panic!("missing global {name}"))
             .as_native_function()
             .expect("expected native function")
     }
@@ -24484,7 +24484,7 @@ blether log_span_in(s, f)
         use std::panic::{catch_unwind, AssertUnwindSafe};
 
         fn ok_int(value: Value) -> i64 {
-            let Value::Dict(d) = value else {
+            let Value::Dict(ref d) = value else {
                 panic!("expected result dict");
             };
             let dict = d.borrow();
@@ -24505,17 +24505,17 @@ blether log_span_in(s, f)
         }
 
         fn expect_string(value: Value) -> String {
-            let Value::String(s) = value else {
+            let Value::String(ref s) = value else {
                 panic!("expected string");
             };
-            s
+            s.clone()
         }
 
         fn expect_list(value: Value) -> Rc<RefCell<Vec<Value>>> {
-            let Value::List(list) = value else {
+            let Value::List(ref list) = value else {
                 panic!("expected list");
             };
-            list
+            list.clone()
         }
 
         // Cover the panic branches in the small helpers above.
@@ -24556,16 +24556,21 @@ blether log_span_in(s, f)
         let tls_cfg = tls_config_from_value(&Value::Dict(Rc::new(RefCell::new(tls_dict)))).unwrap();
         assert!(tls_cfg.ca_pem.is_none());
 
-        // dtls_config_from_value: cover mode default + ca_pem filter closures.
-        let mut dtls_dict = DictValue::new();
-        dtls_dict.set(
-            Value::String("ca_pem".to_string()),
-            Value::String("x".to_string()),
-        );
-        let dtls_cfg =
-            dtls_config_from_value(&Value::Dict(Rc::new(RefCell::new(dtls_dict)))).unwrap();
-        assert!(std::mem::discriminant(&dtls_cfg.mode) == std::mem::discriminant(&TlsMode::Server));
-        assert_eq!(dtls_cfg.ca_pem.as_deref(), Some("x"));
+        #[cfg(feature = "dtls")]
+        {
+            // dtls_config_from_value: cover mode default + ca_pem filter closures.
+            let mut dtls_dict = DictValue::new();
+            dtls_dict.set(
+                Value::String("ca_pem".to_string()),
+                Value::String("x".to_string()),
+            );
+            let dtls_cfg =
+                dtls_config_from_value(&Value::Dict(Rc::new(RefCell::new(dtls_dict)))).unwrap();
+            assert!(
+                std::mem::discriminant(&dtls_cfg.mode) == std::mem::discriminant(&TlsMode::Server)
+            );
+            assert_eq!(dtls_cfg.ca_pem.as_deref(), Some("x"));
+        }
 
         // build_client_config: cover cert parser map_err closure.
         let bad_cert =
@@ -24635,11 +24640,14 @@ blether log_span_in(s, f)
         let err = build_server_config(&cfg).unwrap_err();
         assert!(err.contains("Invalid server TLS config"));
 
-        // identity_from_pem: cover invalid cert/key map_err closures.
-        let err = identity_from_pem("nope", "nope").err().unwrap();
-        assert!(err.contains("Invalid cert PEM"));
-        let err = identity_from_pem(&cert_pem, "nope").err().unwrap();
-        assert!(err.contains("Invalid key PEM"));
+        #[cfg(feature = "dtls")]
+        {
+            // identity_from_pem: cover invalid cert/key map_err closures.
+            let err = identity_from_pem("nope", "nope").err().unwrap();
+            assert!(err.contains("Invalid cert PEM"));
+            let err = identity_from_pem(&cert_pem, "nope").err().unwrap();
+            assert!(err.contains("Invalid key PEM"));
+        }
 
         // addr_dict is a small helper, but counts for instantiation coverage.
         let addr = addr_dict("::1".to_string(), 443);
@@ -24874,10 +24882,13 @@ d.nope
             libc::close(fds[1]);
         }
 
-        // srtp_create: cover profile default unwrap_or_else closure.
-        let srtp_create = native_from_globals(&globals, "srtp_create");
-        let _ =
-            (srtp_create.func)(vec![Value::Dict(Rc::new(RefCell::new(DictValue::new())))]).unwrap();
+        // srtp_create (dtls-only): cover profile default unwrap_or_else closure.
+        #[cfg(feature = "dtls")]
+        {
+            let srtp_create = native_from_globals(&globals, "srtp_create");
+            let _ = (srtp_create.func)(vec![Value::Dict(Rc::new(RefCell::new(DictValue::new())))])
+                .unwrap();
+        }
 
         // log_set_filter: cover map_err closure on invalid spec.
         let log_set_filter = native_from_globals(&globals, "log_set_filter");

@@ -4884,21 +4884,14 @@ dae f() {
                 span,
             },
         ];
-        let emit_value_call: fn(&mut WasmCompiler, &Expr, &[Expr]) -> HaversResult<()> =
+        let emit_value_call: fn(&mut WasmCompiler, &Expr, &[Expr], usize) -> HaversResult<()> =
             WasmCompiler::emit_value_call;
-        emit_value_call(&mut compiler, &callee, &args).expect("emit_value_call");
+        emit_value_call(&mut compiler, &callee, &args, 1).expect("emit_value_call");
 
         // Create an expression type that is known to be unsupported by the WASM backend.
         // This lets us exercise a bunch of `?` error-propagation regions deterministically.
-        let bad_expr = Expr::Index {
-            object: Box::new(Expr::List {
-                elements: vec![Expr::Literal {
-                    value: Literal::Integer(1),
-                    span,
-                }],
-                span,
-            }),
-            index: Box::new(Expr::Literal {
+        let bad_expr = Expr::Input {
+            prompt: Box::new(Expr::Literal {
                 value: Literal::Integer(0),
                 span,
             }),
@@ -4906,8 +4899,8 @@ dae f() {
         };
 
         // emit_value_call: error branches (callee + arg compilation).
-        assert!(emit_value_call(&mut compiler, &bad_expr, &[]).is_err());
-        assert!(emit_value_call(&mut compiler, &callee, &[bad_expr.clone()]).is_err());
+        assert!(emit_value_call(&mut compiler, &bad_expr, &[], 1).is_err());
+        assert!(emit_value_call(&mut compiler, &callee, &[bad_expr.clone()], 1).is_err());
 
         // collect_locals_stmt: cover the "already present" branches (no push).
         compiler.func_params = vec!["p".to_string()];

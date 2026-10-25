@@ -14,7 +14,7 @@ fn interpreter_native_functions_are_invoked_for_instantiation_coverage() {
     let mut natives: Vec<_> = exports
         .into_iter()
         .filter_map(|(name, value)| match value {
-            Value::NativeFunction(f) => Some((name, f)),
+            Value::NativeFunction(ref f) => Some((name, f.clone())),
             _ => None,
         })
         .collect();

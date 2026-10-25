@@ -6,7 +6,7 @@ use mdhavers::Value;
 #[test]
 fn tri_module_and_object_are_exercised_for_instantiation_coverage() {
     let module_val = tri::tri_module_value();
-    let Value::NativeObject(module) = module_val else {
+    let Value::NativeObject(ref module) = module_val else {
         panic!("expected tri module native object");
     };
 
@@ -22,7 +22,7 @@ fn tri_module_and_object_are_exercised_for_instantiation_coverage() {
         .as_native_function()
         .expect("expected tri constructor");
     let obj_val = (ctor.func)(Vec::new()).unwrap();
-    let Value::NativeObject(obj) = obj_val else {
+    let Value::NativeObject(ref obj) = obj_val else {
         panic!("expected tri object");
     };
 
@@ -47,7 +47,7 @@ fn tri_module_and_object_are_exercised_for_instantiation_coverage() {
     let mesch_val = module
         .call("Mesch", vec![Value::Integer(10), Value::Integer(11)])
         .unwrap();
-    let Value::NativeObject(mesch) = mesch_val else {
+    let Value::NativeObject(ref mesch) = mesch_val else {
         panic!("expected tri object from module.call");
     };
     assert_eq!(mesch.type_name(), "Mesch");
