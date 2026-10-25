@@ -1751,7 +1751,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_call(func, args, name)
             .map_err(Self::llvm_compile_error)
-            .and_then(|call| call.try_as_basic_value().left().compile_ok_or(void_msg))
+            .and_then(|call| call.try_as_basic_value().basic().compile_ok_or(void_msg))
     }
 
     fn compile_metadata_args(
@@ -4910,7 +4910,7 @@ impl<'ctx> CodeGen<'ctx> {
             .const_int(ValueTag::Float.as_u8() as u64, false);
         let data = self
             .builder
-            .build_bitcast(val, self.types.i64_type, "float_bits")
+            .build_bit_cast(val, self.types.i64_type, "float_bits")
             .unwrap();
 
         let undef = self.types.value_type.get_undef();
@@ -5122,7 +5122,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(float_block);
         let float_val = self
             .builder
-            .build_bitcast(data, self.types.f64_type, "as_float")
+            .build_bit_cast(data, self.types.f64_type, "as_float")
             .unwrap()
             .into_float_value();
         let float_i64 = self
@@ -5275,7 +5275,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(float_block);
         let float_val = self
             .builder
-            .build_bitcast(data, self.types.f64_type, "truthy_f")
+            .build_bit_cast(data, self.types.f64_type, "truthy_f")
             .unwrap()
             .into_float_value();
         let zero_f = self.types.f64_type.const_float(0.0);
@@ -5333,7 +5333,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.bytes_len, &[val.into()], "bytes_len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("bytes_len returned void")
             .unwrap()
             .into_int_value();
@@ -6247,7 +6247,7 @@ impl<'ctx> CodeGen<'ctx> {
                     )
                     .unwrap()
                     .try_as_basic_value()
-                    .left()
+                    .basic()
                     .unwrap()
                     .into_struct_value();
                 let value = self
@@ -6476,7 +6476,7 @@ impl<'ctx> CodeGen<'ctx> {
                 left_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(left_data, self.types.f64_type, "lf")
+                        .build_bit_cast(left_data, self.types.f64_type, "lf")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -6495,7 +6495,7 @@ impl<'ctx> CodeGen<'ctx> {
                 right_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(right_data, self.types.f64_type, "rf")
+                        .build_bit_cast(right_data, self.types.f64_type, "rf")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -6547,7 +6547,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[left_ptr.into()], "llen")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
         let right_len = self
@@ -6555,7 +6555,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[right_ptr.into()], "rlen")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
 
@@ -6574,7 +6574,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[alloc_size.into()], "new_str")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -6741,7 +6741,7 @@ impl<'ctx> CodeGen<'ctx> {
                 left_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(left_data, self.types.f64_type, "lf")
+                        .build_bit_cast(left_data, self.types.f64_type, "lf")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -6760,7 +6760,7 @@ impl<'ctx> CodeGen<'ctx> {
                 right_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(right_data, self.types.f64_type, "rf")
+                        .build_bit_cast(right_data, self.types.f64_type, "rf")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -7005,7 +7005,7 @@ impl<'ctx> CodeGen<'ctx> {
                 left_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(left_data, self.types.f64_type, "lf")
+                        .build_bit_cast(left_data, self.types.f64_type, "lf")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -7024,7 +7024,7 @@ impl<'ctx> CodeGen<'ctx> {
                 right_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(right_data, self.types.f64_type, "rf")
+                        .build_bit_cast(right_data, self.types.f64_type, "rf")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -7149,7 +7149,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
         let right_f_bits = self
             .builder
-            .build_bitcast(right_data, self.types.f64_type, "div_r_float_bits")
+            .build_bit_cast(right_data, self.types.f64_type, "div_r_float_bits")
             .unwrap()
             .into_float_value();
         let right_zero_f = self.types.f64_type.const_float(0.0);
@@ -7226,7 +7226,7 @@ impl<'ctx> CodeGen<'ctx> {
                 left_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(left_data, self.types.f64_type, "lf")
+                        .build_bit_cast(left_data, self.types.f64_type, "lf")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -7245,7 +7245,7 @@ impl<'ctx> CodeGen<'ctx> {
                 right_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(right_data, self.types.f64_type, "rf")
+                        .build_bit_cast(right_data, self.types.f64_type, "rf")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -7372,12 +7372,12 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(float_block);
         let left_f = self
             .builder
-            .build_bitcast(left_data, self.types.f64_type, "mod_lf")
+            .build_bit_cast(left_data, self.types.f64_type, "mod_lf")
             .unwrap()
             .into_float_value();
         let right_f = self
             .builder
-            .build_bitcast(right_data, self.types.f64_type, "mod_rf")
+            .build_bit_cast(right_data, self.types.f64_type, "mod_rf")
             .unwrap()
             .into_float_value();
         let float_rem = self
@@ -7445,7 +7445,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.eq, &[left.into(), right.into()], "eq")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("__mdh_eq returned void")
             .unwrap()
             .into_int_value();
@@ -7595,7 +7595,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
         let zero_i32 = self.types.i32_type.const_int(0, false);
@@ -7636,7 +7636,7 @@ impl<'ctx> CodeGen<'ctx> {
                 left_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(left_data, self.types.f64_type, "lf")
+                        .build_bit_cast(left_data, self.types.f64_type, "lf")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -7655,7 +7655,7 @@ impl<'ctx> CodeGen<'ctx> {
                 right_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(right_data, self.types.f64_type, "rf")
+                        .build_bit_cast(right_data, self.types.f64_type, "rf")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -7833,7 +7833,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
         let zero_i32 = self.types.i32_type.const_int(0, false);
@@ -7873,7 +7873,7 @@ impl<'ctx> CodeGen<'ctx> {
                 left_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(left_data, self.types.f64_type, "lf")
+                        .build_bit_cast(left_data, self.types.f64_type, "lf")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -7892,7 +7892,7 @@ impl<'ctx> CodeGen<'ctx> {
                 right_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(right_data, self.types.f64_type, "rf")
+                        .build_bit_cast(right_data, self.types.f64_type, "rf")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -8070,7 +8070,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
         let zero_i32 = self.types.i32_type.const_int(0, false);
@@ -8110,7 +8110,7 @@ impl<'ctx> CodeGen<'ctx> {
                 left_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(left_data, self.types.f64_type, "lf")
+                        .build_bit_cast(left_data, self.types.f64_type, "lf")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -8129,7 +8129,7 @@ impl<'ctx> CodeGen<'ctx> {
                 right_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(right_data, self.types.f64_type, "rf")
+                        .build_bit_cast(right_data, self.types.f64_type, "rf")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -8307,7 +8307,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
         let zero_i32 = self.types.i32_type.const_int(0, false);
@@ -8347,7 +8347,7 @@ impl<'ctx> CodeGen<'ctx> {
                 left_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(left_data, self.types.f64_type, "lf")
+                        .build_bit_cast(left_data, self.types.f64_type, "lf")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -8366,7 +8366,7 @@ impl<'ctx> CodeGen<'ctx> {
                 right_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(right_data, self.types.f64_type, "rf")
+                        .build_bit_cast(right_data, self.types.f64_type, "rf")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -8436,7 +8436,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.eq, &[left.into(), right.into()], "eq_raw")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("__mdh_eq returned void")
             .unwrap()
             .into_int_value();
@@ -8525,7 +8525,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(neg_float);
         let float_val = self
             .builder
-            .build_bitcast(data, self.types.f64_type, "f")
+            .build_bit_cast(data, self.types.f64_type, "f")
             .unwrap()
             .into_float_value();
         let neg_float_val = self.builder.build_float_neg(float_val, "fneg").unwrap();
@@ -8662,7 +8662,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.to_string, &[val.into()], "float_str")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("to_string returned void")
             .unwrap();
         let float_str_data = self.extract_data(float_str).unwrap();
@@ -8823,7 +8823,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[buf_size.into()], "int_buf")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
         let int_fmt = self
@@ -8853,7 +8853,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.to_string, &[val.into()], "float_to_string")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("to_string returned void")
             .unwrap();
         self.builder.build_unconditional_branch(str_merge).unwrap();
@@ -8872,7 +8872,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.to_string, &[val.into()], "to_string")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("to_string returned void")
             .unwrap();
         self.builder.build_unconditional_branch(str_merge).unwrap();
@@ -8906,7 +8906,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.to_int, &[val.into()], "to_int")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("to_int returned void")
             .unwrap();
 
@@ -8923,7 +8923,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.to_float, &[val.into()], "to_float")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("to_float returned void")
             .unwrap();
 
@@ -8969,7 +8969,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.mdh_str_len, &[val.into()], "len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
         let string_result = self.make_int(len);
@@ -9037,7 +9037,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.bytes_len, &[val.into()], "bytes_len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
         let bytes_result = self.make_int(bytes_len);
@@ -9255,7 +9255,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.make_list, &[one_i32.into()], "box_cell")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("make_list returned void")
             .unwrap();
 
@@ -9374,7 +9374,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(float_block);
         let float_val = self
             .builder
-            .build_bitcast(data, self.context.f64_type(), "abs_float_val")
+            .build_bit_cast(data, self.context.f64_type(), "abs_float_val")
             .unwrap()
             .into_float_value();
         let neg = self.builder.build_float_neg(float_val, "abs_neg").unwrap();
@@ -9542,12 +9542,12 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(float_block);
         let a_f = self
             .builder
-            .build_bitcast(a_data, self.types.f64_type, "min_a_f")
+            .build_bit_cast(a_data, self.types.f64_type, "min_a_f")
             .unwrap()
             .into_float_value();
         let b_f = self
             .builder
-            .build_bitcast(b_data, self.types.f64_type, "min_b_f")
+            .build_bit_cast(b_data, self.types.f64_type, "min_b_f")
             .unwrap()
             .into_float_value();
         let is_less_f = self
@@ -9680,12 +9680,12 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(float_block);
         let a_f = self
             .builder
-            .build_bitcast(a_data, self.types.f64_type, "max_a_f")
+            .build_bit_cast(a_data, self.types.f64_type, "max_a_f")
             .unwrap()
             .into_float_value();
         let b_f = self
             .builder
-            .build_bitcast(b_data, self.types.f64_type, "max_b_f")
+            .build_bit_cast(b_data, self.types.f64_type, "max_b_f")
             .unwrap()
             .into_float_value();
         let is_greater_f = self
@@ -9767,7 +9767,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(float_block);
         let float_val = self
             .builder
-            .build_bitcast(data, self.types.f64_type, "floor_as_float")
+            .build_bit_cast(data, self.types.f64_type, "floor_as_float")
             .unwrap()
             .into_float_value();
         let floor_fn = self.get_or_create_intrinsic(
@@ -9780,7 +9780,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(floor_fn, &[float_val.into()], "floored")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_float_value();
         let int_val = self
@@ -9871,7 +9871,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(float_block);
         let float_val = self
             .builder
-            .build_bitcast(data, self.types.f64_type, "ceil_as_float")
+            .build_bit_cast(data, self.types.f64_type, "ceil_as_float")
             .unwrap()
             .into_float_value();
         let ceil_fn = self.get_or_create_intrinsic(
@@ -9884,7 +9884,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(ceil_fn, &[float_val.into()], "ceiled")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_float_value();
         let int_val = self
@@ -9975,7 +9975,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(float_block);
         let float_val = self
             .builder
-            .build_bitcast(data, self.types.f64_type, "round_as_float")
+            .build_bit_cast(data, self.types.f64_type, "round_as_float")
             .unwrap()
             .into_float_value();
         let round_fn = self.get_or_create_intrinsic(
@@ -9988,7 +9988,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(round_fn, &[float_val.into()], "rounded")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_float_value();
         let int_val = self
@@ -10080,7 +10080,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(float_block);
         let float_val = self
             .builder
-            .build_bitcast(data, self.types.f64_type, "sqrt_as_float")
+            .build_bit_cast(data, self.types.f64_type, "sqrt_as_float")
             .unwrap()
             .into_float_value();
         let sqrt_fn = self.get_or_create_intrinsic(
@@ -10093,7 +10093,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(sqrt_fn, &[float_val.into()], "sqrt_float_result")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_float_value();
         let float_result = self.make_float(sqrt_float);
@@ -10126,7 +10126,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(sqrt_fn, &[int_as_float.into()], "sqrt_int_result")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_float_value();
         let int_result = self.make_float(sqrt_int);
@@ -10246,7 +10246,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.make_list, &[cap_i32.into()], "alloc_list")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("make_list returned void")
             .unwrap();
 
@@ -10740,7 +10740,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[left_ptr.into()], "slap_llen")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
         let right_len = self
@@ -10748,7 +10748,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[right_ptr.into()], "slap_rlen")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
 
@@ -10766,7 +10766,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[alloc_size.into()], "slap_new_str")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -10879,7 +10879,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("make_list returned void")
             .unwrap();
 
@@ -11267,7 +11267,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_float_value();
         let elem_f = self
             .builder
-            .build_bitcast(elem_data, self.types.f64_type, "elem_f")
+            .build_bit_cast(elem_data, self.types.f64_type, "elem_f")
             .unwrap()
             .into_float_value();
         let new_sum_f = self
@@ -11438,7 +11438,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.make_list, &[cap_i32.into()], "wheesht_result")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("make_list returned void")
             .unwrap();
 
@@ -11660,7 +11660,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(has_float_ptr, true_i1).unwrap();
         let elem_f = self
             .builder
-            .build_bitcast(elem_data, self.types.f64_type, "product_elem_f")
+            .build_bit_cast(elem_data, self.types.f64_type, "product_elem_f")
             .unwrap()
             .into_float_value();
         let prod_f = self
@@ -11921,7 +11921,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("contains returned void")
             .unwrap();
         Ok(result)
@@ -11945,7 +11945,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[str_ptr.into()], "len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
 
@@ -11957,7 +11957,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[buf_size.into()], "upper_buf")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -12066,7 +12066,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[str_ptr.into()], "len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
 
@@ -12077,7 +12077,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[buf_size.into()], "lower_buf")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -12185,7 +12185,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[str_ptr.into()], "len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
 
@@ -12603,7 +12603,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[str_ptr.into()], "len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
 
@@ -12810,7 +12810,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[buf_size.into()], "trim_buf")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -12863,7 +12863,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[sub_ptr.into()], "sub_len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
 
@@ -12893,7 +12893,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strstr, &[pos.into(), sub_ptr.into()], "found")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
         let null = i8_ptr_type.const_null();
@@ -12981,7 +12981,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.make_list, &[one_i32.into()], "box_cell")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("make_list returned void")
                         .unwrap();
 
@@ -13236,7 +13236,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_call(self.libc.strlen, &[str_ptr.into()], "init_strlen")
                             .unwrap()
                             .try_as_basic_value()
-                            .left()
+                            .basic()
                             .unwrap()
                             .into_int_value();
                         self.builder.build_store(len_shadow, len).unwrap();
@@ -13454,7 +13454,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.tri_module, &[], "tri_module")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("tri_module returned void")
                         .unwrap();
                     self.store_import_alias(alias_name, tri_val);
@@ -13781,7 +13781,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_call(self.libc.malloc, &[size_val.into()], "closure_ptr")
                             .unwrap()
                             .try_as_basic_value()
-                            .left()
+                            .basic()
                             .unwrap()
                             .into_pointer_value();
 
@@ -13955,7 +13955,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_call(self.libc.malloc, &[size_val.into()], "closure_ptr")
                             .unwrap()
                             .try_as_basic_value()
-                            .left()
+                            .basic()
                             .unwrap()
                             .into_pointer_value();
 
@@ -14368,7 +14368,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 .build_call(self.libc.strlen, &[str_ptr.into()], "new_strlen")
                                 .unwrap()
                                 .try_as_basic_value()
-                                .left()
+                                .basic()
                                 .unwrap()
                                 .into_int_value();
                             self.builder.build_store(len_shadow, len).unwrap();
@@ -14450,7 +14450,7 @@ impl<'ctx> CodeGen<'ctx> {
                     )
                     .unwrap()
                     .try_as_basic_value()
-                    .left()
+                    .basic()
                     .compile_ok_or("range returned void")
                     .unwrap();
 
@@ -14478,7 +14478,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_call(self.libc.speir, &[prompt_val.into()], "input_result")
                     .unwrap()
                     .try_as_basic_value()
-                    .left()
+                    .basic()
                     .expect("speir call returned void");
                 Ok(result)
             }
@@ -14863,7 +14863,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(*method_func, &call_args, "op_overload_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .unwrap_or(self.make_nil());
                     self.builder
                         .build_unconditional_branch(merge_block)
@@ -15000,7 +15000,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_call(self.libc.strlen, &[left_ptr.into()], "llen_fast")
                     .unwrap()
                     .try_as_basic_value()
-                    .left()
+                    .basic()
                     .unwrap()
                     .into_int_value()
             }
@@ -15015,7 +15015,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_call(self.libc.strlen, &[left_ptr.into()], "llen_fast")
                 .unwrap()
                 .try_as_basic_value()
-                .left()
+                .basic()
                 .unwrap()
                 .into_int_value()
         };
@@ -15038,7 +15038,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_call(self.libc.strlen, &[right_ptr.into()], "rlen_fast")
                     .unwrap()
                     .try_as_basic_value()
-                    .left()
+                    .basic()
                     .unwrap()
                     .into_int_value()
             }
@@ -15047,7 +15047,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_call(self.libc.strlen, &[right_ptr.into()], "rlen_fast")
                 .unwrap()
                 .try_as_basic_value()
-                .left()
+                .basic()
                 .unwrap()
                 .into_int_value()
         };
@@ -15067,7 +15067,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[alloc_size.into()], "new_str_fast")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -15245,7 +15245,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[new_cap.into()], "new_buf")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
         // Copy old content
@@ -15272,7 +15272,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
         self.builder
@@ -16796,7 +16796,7 @@ impl<'ctx> CodeGen<'ctx> {
                             x_is_float,
                             BasicValueEnum::FloatValue(
                                 self.builder
-                                    .build_bitcast(x_data, f64_type, "x_as_float")
+                                    .build_bit_cast(x_data, f64_type, "x_as_float")
                                     .unwrap()
                                     .into_float_value(),
                             ),
@@ -16815,7 +16815,7 @@ impl<'ctx> CodeGen<'ctx> {
                             y_is_float,
                             BasicValueEnum::FloatValue(
                                 self.builder
-                                    .build_bitcast(y_data, f64_type, "y_as_float")
+                                    .build_bit_cast(y_data, f64_type, "y_as_float")
                                     .unwrap()
                                     .into_float_value(),
                             ),
@@ -16843,7 +16843,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(sqrt_fn, &[sum.into()], "hypot_sqrt")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .unwrap()
                         .into_float_value();
 
@@ -17134,7 +17134,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.mdh_str_len, &[obj_arg.into()], "tail_str_len")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .unwrap()
                         .into_int_value();
                     let one = self.types.i64_type.const_int(1, false);
@@ -17414,7 +17414,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_call(self.libc.strlen, &[str_ptr.into()], "scran_str_len")
                             .unwrap()
                             .try_as_basic_value()
-                            .left()
+                            .basic()
                             .unwrap()
                             .into_int_value();
 
@@ -18642,7 +18642,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_call(self.libc.list_min, &[list_val.into()], "list_min_result")
                             .unwrap()
                             .try_as_basic_value()
-                            .left()
+                            .basic()
                             .compile_ok_or("list_min returned void")
                             .unwrap();
                         return Ok(result);
@@ -18655,7 +18655,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_call(self.libc.wee, &[a.into(), b.into()], "wee_result")
                             .unwrap()
                             .try_as_basic_value()
-                            .left()
+                            .basic()
                             .compile_ok_or("wee returned void")
                             .unwrap();
                         return Ok(result);
@@ -18704,7 +18704,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("tak returned void")
                         .unwrap();
                     self.builder
@@ -18787,7 +18787,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("chynge returned void")
                         .unwrap();
                     return Ok(result);
@@ -18810,7 +18810,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("replace returned void")
                         .unwrap();
                     return Ok(result);
@@ -18838,7 +18838,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("assert returned void")
                         .unwrap();
                     let one = self.types.i64_type.const_int(1, false);
@@ -18856,7 +18856,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.skip, &[reason.into()], "skip_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("skip returned void")
                         .unwrap();
                     return Ok(result);
@@ -18867,7 +18867,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.stacktrace, &[], "stacktrace_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("stacktrace returned void")
                         .unwrap();
                     return Ok(result);
@@ -19479,7 +19479,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.list_max, &[list.into()], "maxaw_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("list_max returned void")
                         .unwrap();
                     return Ok(result);
@@ -19521,7 +19521,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.is_muckle, &[val.into()], "is_muckle_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("is_muckle returned void")
                         .unwrap();
                     return Ok(result);
@@ -19538,7 +19538,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.capitalize, &[s.into()], "capitalize_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("capitalize returned void")
                         .unwrap();
                     return Ok(result);
@@ -19670,7 +19670,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.help_ma_boab, &[msg.into()], "help_ma_boab_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("help_ma_boab returned void")
                         .unwrap();
                     return Ok(result);
@@ -19688,7 +19688,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.banter, &[a.into(), b.into()], "banter_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("banter returned void")
                         .unwrap();
                     return Ok(result);
@@ -19705,7 +19705,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.clype, &[val.into()], "clype_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("clype returned void")
                         .unwrap();
                     return Ok(result);
@@ -19951,7 +19951,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.ltrim, &[arg.into()], "ltrim_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("ltrim returned void")
                         .unwrap();
                     return Ok(result);
@@ -19969,7 +19969,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.rtrim, &[arg.into()], "rtrim_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("rtrim returned void")
                         .unwrap();
                     return Ok(result);
@@ -20048,7 +20048,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("count_val returned void")
                         .unwrap();
                     self.builder
@@ -20140,7 +20140,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.type_of, &[arg.into()], "type_of_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("type_of returned void")
                         .unwrap();
                     return Ok(result);
@@ -20166,7 +20166,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("range returned void")
                         .unwrap();
                     return Ok(result);
@@ -20199,7 +20199,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.mono_ms, &[], "mono_ms")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("mono_ms returned void")
                         .unwrap();
                     return Ok(result);
@@ -20215,7 +20215,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.mono_ns, &[], "mono_ns")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("mono_ns returned void")
                         .unwrap();
                     return Ok(result);
@@ -20310,7 +20310,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let data = self.extract_data(ms_val).unwrap();
                     let float_val = self
                         .builder
-                        .build_bitcast(data, self.types.f64_type, "bide_float")
+                        .build_bit_cast(data, self.types.f64_type, "bide_float")
                         .unwrap()
                         .into_float_value();
                     let zero_f = self.types.f64_type.const_float(0.0);
@@ -20408,7 +20408,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.list_sort, &[list_arg.into()], "sort_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("list_sort returned void")
                         .unwrap();
                     return Ok(result);
@@ -20845,7 +20845,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("random_int returned void")
                         .unwrap();
                     return Ok(result);
@@ -20874,7 +20874,7 @@ impl<'ctx> CodeGen<'ctx> {
                             )
                             .unwrap()
                             .try_as_basic_value()
-                            .left()
+                            .basic()
                             .compile_ok_or("random_int returned void")
                             .unwrap();
                         return Ok(result);
@@ -20891,7 +20891,7 @@ impl<'ctx> CodeGen<'ctx> {
                             )
                             .unwrap()
                             .try_as_basic_value()
-                            .left()
+                            .basic()
                             .compile_ok_or("random_int returned void")
                             .unwrap();
                         return Ok(result);
@@ -21282,7 +21282,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("repeat_say returned void")
                         .unwrap();
                     self.builder
@@ -21840,7 +21840,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.make_creel, &[arg.into()], "creel_set")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("make_creel returned void")
                         .unwrap();
                     let from_list_end = self.builder.get_insert_block().unwrap();
@@ -21913,7 +21913,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.list_uniq, &[list_arg.into()], "uniq_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("list_uniq returned void")
                         .unwrap();
                     return Ok(result);
@@ -22280,7 +22280,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("pad returned void")
                         .unwrap();
                     self.builder
@@ -22350,7 +22350,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.braw, &[val.into()], "braw_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("braw returned void")
                         .unwrap();
                     return Ok(result);
@@ -22366,7 +22366,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.haver, &[], "haver_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("haver returned void")
                         .unwrap();
                     return Ok(result);
@@ -22383,7 +22383,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.haverin, &[val.into()], "haverin_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("haverin returned void")
                         .unwrap();
                     return Ok(result);
@@ -22470,7 +22470,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.range_o, &[list.into()], "range_o_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("range_o returned void")
                         .unwrap();
                     return Ok(result);
@@ -22574,7 +22574,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.malloc, &[list_struct_size.into()], "flat_struct")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .unwrap()
                         .into_pointer_value();
                     let items_size = self
@@ -22590,7 +22590,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.malloc, &[items_size.into()], "flat_items")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .unwrap()
                         .into_pointer_value();
 
@@ -22874,7 +22874,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("json_parse returned void")
                         .unwrap();
                     return Ok(result);
@@ -22895,7 +22895,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("json_stringify returned void")
                         .unwrap();
                     return Ok(result);
@@ -22912,7 +22912,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.json_pretty, &[value.into()], "json_pretty_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("json_pretty returned void")
                         .unwrap();
                     return Ok(result);
@@ -22941,7 +22941,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.title_case, &[arg.into()], "title_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("title_case returned void")
                         .unwrap();
                     return Ok(result);
@@ -23135,7 +23135,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.skelp, &[s.into(), size.into()], "skelp_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("skelp returned void")
                         .unwrap();
                     return Ok(result);
@@ -23680,7 +23680,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.strlen, &[str_ptr.into()], "is_toom_strlen")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .unwrap()
                         .into_int_value();
                     let zero_i64 = self.types.i64_type.const_int(0, false);
@@ -23927,7 +23927,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.glaikit, &[val.into()], "glaikit_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("glaikit returned void")
                         .unwrap();
                     return Ok(result);
@@ -23945,7 +23945,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.tae_hex, &[arg.into()], "tae_hex_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("tae_hex returned void")
                         .unwrap();
                     return Ok(result);
@@ -24026,7 +24026,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("list_slice returned void")
                         .unwrap();
                     self.builder
@@ -24228,7 +24228,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.scottify, &[arg.into()], "scottify_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("scottify returned void")
                         .unwrap();
                     return Ok(result);
@@ -24255,7 +24255,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("wrang_sort returned void")
                         .unwrap();
                     return Ok(result);
@@ -24273,7 +24273,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.tae_octal, &[arg.into()], "tae_octal_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("tae_octal returned void")
                         .unwrap();
                     return Ok(result);
@@ -24319,7 +24319,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.reverse_str, &[arg.into()], "reverse_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("reverse_str returned void")
                         .unwrap();
                     return Ok(result);
@@ -24350,7 +24350,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("tattie_scone returned void")
                         .unwrap();
                     return Ok(result);
@@ -24368,7 +24368,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.fae_binary, &[arg.into()], "fae_binary_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("fae_binary returned void")
                         .unwrap();
                     return Ok(result);
@@ -24386,7 +24386,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.fae_hex, &[arg.into()], "fae_hex_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("fae_hex returned void")
                         .unwrap();
                     return Ok(result);
@@ -24436,7 +24436,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("haggis_hunt returned void")
                         .unwrap();
                     return Ok(result);
@@ -24458,7 +24458,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("dict_merge returned void")
                         .unwrap();
                     return Ok(result);
@@ -24504,7 +24504,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("creels_baith returned void")
                         .unwrap();
                     return Ok(result);
@@ -24526,7 +24526,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("creels_differ returned void")
                         .unwrap();
                     return Ok(result);
@@ -24548,7 +24548,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("is_subset returned void")
                         .unwrap();
                     return Ok(result);
@@ -24570,7 +24570,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("is_superset returned void")
                         .unwrap();
                     return Ok(result);
@@ -24592,7 +24592,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("is_disjoint returned void")
                         .unwrap();
                     return Ok(result);
@@ -24619,7 +24619,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("dict_get_default returned void")
                         .unwrap();
                     return Ok(result);
@@ -24657,7 +24657,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.crabbit, &[val.into()], "crabbit_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("crabbit returned void")
                         .unwrap();
                     return Ok(result);
@@ -24680,7 +24680,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("sporran_fill returned void")
                         .unwrap();
                     return Ok(result);
@@ -24727,7 +24727,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.make_list, &[cap_i32.into()], "enum_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .unwrap();
 
                     let idx_ptr = self.create_entry_block_alloca("enum_i");
@@ -24768,7 +24768,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.make_list, &[two_i32.into()], "enum_pair")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .unwrap();
                     let idx_val = self.make_int(i);
                     self.builder
@@ -24825,7 +24825,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.eq, &[a.into(), b.into()], "assert_equal_cmp")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("__mdh_eq returned void")
                         .unwrap()
                         .into_int_value();
@@ -24854,7 +24854,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.stoater, &[list.into()], "stoater_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("stoater returned void")
                         .unwrap();
                     return Ok(result);
@@ -24871,7 +24871,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.gallus, &[val.into()], "gallus_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("gallus returned void")
                         .unwrap();
                     return Ok(result);
@@ -24888,7 +24888,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.scunner, &[val.into()], "scunner_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("scunner returned void")
                         .unwrap();
                     return Ok(result);
@@ -24910,7 +24910,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("scunner_check returned void")
                         .unwrap();
                     return Ok(result);
@@ -24932,7 +24932,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("dict_remove returned void")
                         .unwrap();
                     return Ok(result);
@@ -24959,7 +24959,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.clarty, &[val.into()], "clarty_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("clarty returned void")
                         .unwrap();
                     return Ok(result);
@@ -24989,7 +24989,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.drookit, &[list.into()], "drookit_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("drookit returned void")
                         .unwrap();
                     return Ok(result);
@@ -25010,7 +25010,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("dict_invert returned void")
                         .unwrap();
                     return Ok(result);
@@ -25038,7 +25038,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.bampot_mode, &[list.into()], "bampot_mode_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("bampot_mode returned void")
                         .unwrap();
                     return Ok(result);
@@ -25055,7 +25055,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.redd_up, &[list.into()], "redd_up_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("redd_up returned void")
                         .unwrap();
                     return Ok(result);
@@ -25212,7 +25212,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.args, &[], "runtime_args_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("runtime_args returned void")
                         .unwrap();
                     return Ok(result);
@@ -25229,7 +25229,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.env_get, &[key.into()], "runtime_env_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("runtime_env returned void")
                         .unwrap();
                     return Ok(result);
@@ -25253,7 +25253,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.getenv, &[key_ptr.into()], "env_ptr")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("getenv returned void")
                         .unwrap()
                         .into_pointer_value();
@@ -25323,7 +25323,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.cwd, &[], "runtime_cwd_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("runtime_cwd returned void")
                         .unwrap();
                     return Ok(result);
@@ -25503,7 +25503,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("split_by returned void")
                         .unwrap();
                     return Ok(result);
@@ -25529,7 +25529,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.unique, &[arg.into()], "unique_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("unique returned void")
                         .unwrap();
                     return Ok(result);
@@ -25556,7 +25556,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("window returned void")
                         .unwrap();
                     return Ok(result);
@@ -25583,7 +25583,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("chunks returned void")
                         .unwrap();
                     return Ok(result);
@@ -25706,7 +25706,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.grup_runs, &[list.into()], "grup_runs_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("grup_runs returned void")
                         .unwrap();
                     return Ok(result);
@@ -25730,7 +25730,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("pair_up returned void")
                         .unwrap();
                     return Ok(result);
@@ -25794,7 +25794,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.fae_pairs, &[pairs.into()], "fae_pairs_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("fae_pairs returned void")
                         .unwrap();
                     return Ok(result);
@@ -25812,7 +25812,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.is_blank, &[s.into()], "is_blank_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("is_blank returned void")
                         .unwrap();
                     return Ok(result);
@@ -25860,7 +25860,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.malloc, &[buf_size.into()], "char_buf")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .unwrap()
                         .into_pointer_value();
                     // Store character
@@ -25905,7 +25905,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.words, &[str_arg.into()], "words_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("words returned void")
                         .unwrap();
                     return Ok(result);
@@ -25963,7 +25963,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("sporran_fill returned void")
                         .unwrap();
                     return Ok(result);
@@ -25986,7 +25986,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("repeat_say returned void")
                         .unwrap();
                     return Ok(result);
@@ -26015,7 +26015,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("leftpad returned void")
                         .unwrap();
                     return Ok(result);
@@ -26044,7 +26044,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("rightpad returned void")
                         .unwrap();
                     return Ok(result);
@@ -26407,7 +26407,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.is_function, &[arg.into()], "is_function_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("is_function returned void")
                         .unwrap();
                     return Ok(result);
@@ -26424,7 +26424,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.swapcase, &[arg.into()], "swapcase_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("swapcase returned void")
                         .unwrap();
                     return Ok(result);
@@ -26452,7 +26452,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("last_index_of returned void")
                         .unwrap();
                     return Ok(result);
@@ -26482,7 +26482,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("list_index returned void")
                         .unwrap();
                     return Ok(result);
@@ -26505,7 +26505,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("count_val returned void")
                         .unwrap();
                     return Ok(result);
@@ -26523,7 +26523,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.list_clear, &[arg.into()], "clear_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("list_clear returned void")
                         .unwrap();
                     return Ok(result);
@@ -26541,7 +26541,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.list_copy, &[arg.into()], "copy_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("list_copy returned void")
                         .unwrap();
                     return Ok(result);
@@ -26619,7 +26619,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("strip_left returned void")
                         .unwrap();
                     return Ok(result);
@@ -26641,7 +26641,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("strip_right returned void")
                         .unwrap();
                     return Ok(result);
@@ -26681,7 +26681,7 @@ impl<'ctx> CodeGen<'ctx> {
                             )
                             .unwrap()
                             .try_as_basic_value()
-                            .left()
+                            .basic()
                             .compile_ok_or("replace_first returned void")
                             .unwrap();
                         out = next;
@@ -26708,7 +26708,7 @@ impl<'ctx> CodeGen<'ctx> {
                         )
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("replace_first returned void")
                         .unwrap();
                     return Ok(result);
@@ -26760,17 +26760,17 @@ impl<'ctx> CodeGen<'ctx> {
                     self.builder.position_at_end(float_block);
                     let a_f = self
                         .builder
-                        .build_bitcast(a_data, self.types.f64_type, "a_f")
+                        .build_bit_cast(a_data, self.types.f64_type, "a_f")
                         .unwrap()
                         .into_float_value();
                     let b_f = self
                         .builder
-                        .build_bitcast(b_data, self.types.f64_type, "b_f")
+                        .build_bit_cast(b_data, self.types.f64_type, "b_f")
                         .unwrap()
                         .into_float_value();
                     let t_f = self
                         .builder
-                        .build_bitcast(t_data, self.types.f64_type, "t_f")
+                        .build_bit_cast(t_data, self.types.f64_type, "t_f")
                         .unwrap()
                         .into_float_value();
                     let diff_f = self.builder.build_float_sub(b_f, a_f, "diff_f").unwrap();
@@ -27010,7 +27010,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.eq, &[a.into(), b.into()], "assert_nae_equal_cmp")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .compile_ok_or("__mdh_eq returned void")
                         .unwrap()
                         .into_int_value();
@@ -27443,7 +27443,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.make_list, &[one_i32.into()], "loop_var_cell")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("make_list returned void")
             .unwrap();
         self.builder
@@ -27556,7 +27556,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[str_ptr.into()], "str_len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
 
@@ -27621,7 +27621,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[two.into()], "char_str")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
         self.builder.build_store(char_str_ptr, char_val).unwrap();
@@ -28470,7 +28470,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[list_struct_size.into()], "list_struct")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("malloc returned void")
             .unwrap()
             .into_pointer_value();
@@ -28486,7 +28486,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[items_size.into()], "list_items")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("malloc returned void")
             .unwrap()
             .into_pointer_value();
@@ -28596,7 +28596,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("malloc returned void")
             .unwrap()
             .into_pointer_value();
@@ -28611,7 +28611,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[items_size.into()], "spread_list_items")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("malloc returned void")
             .unwrap()
             .into_pointer_value();
@@ -28823,7 +28823,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.strlen, &[str_ptr.into()], "str_len")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .unwrap()
                         .into_int_value();
 
@@ -28879,7 +28879,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(self.libc.malloc, &[two.into()], "char_str")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .unwrap()
                         .into_pointer_value();
                     self.builder.build_store(char_str_ptr, char_val).unwrap();
@@ -28981,7 +28981,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_call(self.libc.empty_dict, &[], "empty_dict_literal")
                 .unwrap()
                 .try_as_basic_value()
-                .left()
+                .basic()
                 .compile_ok_or("empty_dict returned void");
         }
 
@@ -28997,7 +28997,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[size_val.into()], "dict_alloc")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("malloc returned void")
             .unwrap()
             .into_pointer_value();
@@ -29097,7 +29097,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[handle_size.into()], "dict_handle_alloc")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("malloc returned void")
             .unwrap()
             .into_pointer_value();
@@ -29583,7 +29583,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("dict_get returned void")
     }
 
@@ -29652,7 +29652,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("dict_set returned void")
             .unwrap();
 
@@ -29873,7 +29873,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("dict_set returned void")
             .unwrap();
 
@@ -30328,7 +30328,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[delim_ptr.into()], "delim_len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
 
@@ -30338,7 +30338,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[str_ptr.into()], "str_len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
 
@@ -30602,7 +30602,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[sc_token_size.into()], "sc_token_ptr")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -30702,7 +30702,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[sc_final_size.into()], "sc_final_ptr")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -30782,7 +30782,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.make_list, &[one_i32.into()], "empty_delim_list")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("make_list returned void")
             .unwrap();
         // Push the original string as the only element.
@@ -30808,7 +30808,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.make_list, &[cap_i32.into()], "split_list")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("make_list returned void")
             .unwrap();
 
@@ -30849,7 +30849,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -30891,7 +30891,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[token_alloc_size.into()], "token_ptr")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -30951,7 +30951,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strdup, &[rest_ptr.into()], "rest_copy")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -31023,7 +31023,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[delim_ptr.into()], "delim_len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
 
@@ -31156,7 +31156,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[elem_str_ptr.into()], "elem_len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
 
@@ -31214,7 +31214,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[alloc_size.into()], "result_buf")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -31280,7 +31280,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[elem_str_ptr2.into()], "elem_len2")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
 
@@ -32091,7 +32091,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_call(self.libc.malloc, &[size_val.into()], "closure_ptr")
                 .unwrap()
                 .try_as_basic_value()
-                .left()
+                .basic()
                 .unwrap()
                 .into_pointer_value();
 
@@ -32443,7 +32443,7 @@ impl<'ctx> CodeGen<'ctx> {
                 }
 
                 let call_site = self.builder.build_call(target, &call_args, "call").unwrap();
-                let result = call_site.try_as_basic_value().left().unwrap();
+                let result = call_site.try_as_basic_value().basic().unwrap();
 
                 self.builder
                     .build_unconditional_branch(merge_block)
@@ -32657,7 +32657,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_call(dispatcher, &late_args, "late_call")
                 .unwrap()
                 .try_as_basic_value()
-                .left()
+                .basic()
                 .unwrap();
             self.builder
                 .build_unconditional_branch(merge_block)
@@ -32907,7 +32907,7 @@ impl<'ctx> CodeGen<'ctx> {
                 call_args.resize(expected_total_param_count, self.make_nil().into());
 
                 let call_site = self.builder.build_call(target, &call_args, "call").unwrap();
-                let result = call_site.try_as_basic_value().left().unwrap();
+                let result = call_site.try_as_basic_value().basic().unwrap();
                 self.builder
                     .build_unconditional_branch(merge_block)
                     .unwrap();
@@ -32996,7 +32996,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[struct_size.into()], "new_list_struct")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -33011,7 +33011,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[items_size.into()], "new_items")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -33271,7 +33271,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.make_list, &[len_i32.into()], "new_list")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap();
 
         // Store function and new list for use in loop
@@ -33451,7 +33451,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.make_list, &[len_i32.into()], "pairt_truthy")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("make_list returned void")
             .unwrap();
         let falsy_list = self
@@ -33459,7 +33459,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.make_list, &[len_i32.into()], "pairt_falsy")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("make_list returned void")
             .unwrap();
 
@@ -33579,7 +33579,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.make_list, &[two.into()], "pairt_pair_list")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("make_list returned void")
             .unwrap();
         let truthy_val = self
@@ -33669,7 +33669,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.empty_dict, &[], "grup_up_dict")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("empty_dict returned void")
             .unwrap();
         let dict_alloca = self
@@ -33747,7 +33747,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("dict_contains returned void")
             .unwrap();
         let has_key = self.is_truthy(contains);
@@ -33765,7 +33765,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("dict_get returned void")
             .unwrap();
         self.builder
@@ -33780,7 +33780,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.make_list, &[cap.into()], "grup_up_new_list")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("make_list returned void")
             .unwrap();
         self.builder
@@ -33795,7 +33795,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("dict_set returned void")
             .unwrap();
         self.builder.build_store(dict_alloca, new_dict).unwrap();
@@ -34865,7 +34865,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.make_list, &[len_i32.into()], "new_list")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap();
 
         // Store function and new list for use in loop
@@ -35156,7 +35156,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.dict_keys, &[dict_val.into()], "keys_result")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("dict_keys returned void")
             .unwrap();
         Ok(result)
@@ -35173,7 +35173,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.dict_values, &[dict_val.into()], "values_result")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("dict_values returned void")
             .unwrap();
         Ok(result)
@@ -35380,7 +35380,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.empty_dict, &[], "module_dict")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("empty_dict returned void")
             .unwrap();
 
@@ -35400,7 +35400,7 @@ impl<'ctx> CodeGen<'ctx> {
                 )
                 .unwrap()
                 .try_as_basic_value()
-                .left()
+                .basic()
                 .compile_ok_or("dict_set returned void")
                 .unwrap();
         }
@@ -36409,7 +36409,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         call_site.set_tail_call(true);
 
-        Ok(call_site.try_as_basic_value().left().unwrap())
+        Ok(call_site.try_as_basic_value().basic().unwrap())
     }
 
     /// Compile assert statement: mak_siccar condition, "message"
@@ -36509,7 +36509,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.setjmp, &[jmp_buf.into()], "try_status")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("setjmp returned void")
             .unwrap()
             .into_int_value();
@@ -36572,7 +36572,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.get_last_error, &[], "last_error")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("get_last_error returned void")
             .unwrap();
         self.builder.build_store(error_alloca, err_val).unwrap();
@@ -36808,7 +36808,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap();
         self.builder
             .build_unconditional_branch(merge_block)
@@ -37047,7 +37047,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -37062,7 +37062,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[data_size.into()], "new_items")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -37230,7 +37230,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.empty_dict, &[], "struct_empty_dict")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("empty_dict returned void")
             .unwrap();
 
@@ -37249,7 +37249,7 @@ impl<'ctx> CodeGen<'ctx> {
                 )
                 .unwrap()
                 .try_as_basic_value()
-                .left()
+                .basic()
                 .compile_ok_or("dict_set returned void")
                 .unwrap();
         }
@@ -37322,7 +37322,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("dict_get returned void")
             .unwrap();
         self.builder
@@ -37356,7 +37356,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("native_get returned void")
             .unwrap();
         self.builder
@@ -37536,7 +37536,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_call(self.libc.malloc, &[size_val.into()], "bound_method_ptr")
                     .unwrap()
                     .try_as_basic_value()
-                    .left()
+                    .basic()
                     .unwrap()
                     .into_pointer_value();
 
@@ -37757,7 +37757,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("dict_set returned void")
             .unwrap();
 
@@ -37804,7 +37804,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("native_set returned void")
             .unwrap();
         self.builder
@@ -38043,7 +38043,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -38072,7 +38072,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
         let entry_key_len = self
@@ -38080,7 +38080,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[entry_key_str.into()], "key_len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
         let len_eq = self
@@ -38351,7 +38351,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -38378,7 +38378,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
         let entry_key_len = self
@@ -38386,7 +38386,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[entry_key_str.into()], "key_len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
         let len_eq = self
@@ -38467,7 +38467,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
         // Update the handle so all aliases see the (potentially moved) instance data.
@@ -38533,7 +38533,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
         let key_val = self.make_string(key_str);
@@ -38835,7 +38835,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[header_size.into()], "instance_alloc")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("malloc returned void")
             .unwrap()
             .into_pointer_value();
@@ -38899,7 +38899,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("malloc returned void")
             .unwrap()
             .into_pointer_value();
@@ -39030,7 +39030,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_call(init_func, &call_args, "init_result")
                     .unwrap()
                     .try_as_basic_value()
-                    .left()
+                    .basic()
                     .compile_ok_or("init returned void")
                     .unwrap();
                 return Ok(init_result);
@@ -39075,7 +39075,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(func, &call_args, "native_call")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("native_call returned void")
             .unwrap();
         Ok(result)
@@ -39205,7 +39205,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("dict_get returned void")
             .unwrap();
         let dict_res = self.call_function_value(callable, &arg_vals)?;
@@ -39478,7 +39478,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .build_call(*method_func, &call_args, "method_dyn_result")
                         .unwrap()
                         .try_as_basic_value()
-                        .left()
+                        .basic()
                         .unwrap_or(self.make_nil());
                     self.builder
                         .build_unconditional_branch(merge_block)
@@ -39622,7 +39622,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(method_func, &call_args, "method_result")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap_or(self.make_nil());
 
         Ok(result)
@@ -39644,7 +39644,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("jammy returned void")
             .unwrap()
     }
@@ -39681,7 +39681,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(get_key_fn, &[], "key_result")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("__mdh_get_key returned void")
             .unwrap();
 
@@ -39700,7 +39700,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(term_width_fn, &[], "term_width_result")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("__mdh_term_width returned void")
             .unwrap();
 
@@ -39719,7 +39719,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(term_height_fn, &[], "term_height_result")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("__mdh_term_height returned void")
             .unwrap();
 
@@ -39740,7 +39740,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.ord, &[val.into()], "ord")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("ord returned void")
             .unwrap();
 
@@ -39757,7 +39757,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.chr, &[val.into()], "chr")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("chr returned void")
             .unwrap();
 
@@ -39814,7 +39814,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[str_ptr.into()], "str_len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
 
@@ -39838,7 +39838,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(umul, &[str_len.into(), count.into()], "repeat_len_pair")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_struct_value();
         let total_len = self
@@ -39876,7 +39876,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[total_size.into()], "result_ptr")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
         let alloc_failed = self
@@ -40030,7 +40030,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap();
         self.builder
             .build_unconditional_branch(merge_block)
@@ -40090,7 +40090,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("str_index_of returned void")
             .unwrap();
         self.builder
@@ -40302,7 +40302,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[start_ptr.into()], "sb_start_len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
 
@@ -40315,7 +40315,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -40355,7 +40355,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
         let end_is_null = self
@@ -40396,7 +40396,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[buf_size.into()], "sb_buf")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -40458,7 +40458,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[prefix_ptr.into()], "prefix_len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
 
@@ -40486,7 +40486,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
 
@@ -40528,7 +40528,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[str_ptr.into()], "str_len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
         let suffix_len = self
@@ -40536,7 +40536,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[suffix_ptr.into()], "suffix_len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
 
@@ -40578,7 +40578,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
 
@@ -40667,7 +40667,7 @@ impl<'ctx> CodeGen<'ctx> {
                 is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(data, f64_type, "as_float")
+                        .build_bit_cast(data, f64_type, "as_float")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -40698,7 +40698,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_float_value();
 
@@ -40796,7 +40796,7 @@ impl<'ctx> CodeGen<'ctx> {
                 base_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(base_data, f64_type, "base_as_float")
+                        .build_bit_cast(base_data, f64_type, "base_as_float")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -40815,7 +40815,7 @@ impl<'ctx> CodeGen<'ctx> {
                 exp_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(exp_data, f64_type, "exp_as_float")
+                        .build_bit_cast(exp_data, f64_type, "exp_as_float")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -40841,7 +40841,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(pow_fn, &[base_float.into(), exp_float.into()], "pow_result")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_float_value();
 
@@ -40938,7 +40938,7 @@ impl<'ctx> CodeGen<'ctx> {
                 y_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(y_data, f64_type, "y_as_float")
+                        .build_bit_cast(y_data, f64_type, "y_as_float")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -40957,7 +40957,7 @@ impl<'ctx> CodeGen<'ctx> {
                 x_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(x_data, f64_type, "x_as_float")
+                        .build_bit_cast(x_data, f64_type, "x_as_float")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -40983,7 +40983,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(atan2_fn, &[y_float.into(), x_float.into()], "atan2_result")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_float_value();
 
@@ -41097,7 +41097,7 @@ impl<'ctx> CodeGen<'ctx> {
                 base_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(base_data, f64_type, "pooer_base_as_float")
+                        .build_bit_cast(base_data, f64_type, "pooer_base_as_float")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -41116,7 +41116,7 @@ impl<'ctx> CodeGen<'ctx> {
                 exp_is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(exp_data, f64_type, "pooer_exp_as_float")
+                        .build_bit_cast(exp_data, f64_type, "pooer_exp_as_float")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -41140,7 +41140,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(pow_fn, &[base_f.into(), exp_f.into()], "pooer_pow")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_float_value();
         let float_pow_val = self.make_float(float_pow);
@@ -41182,7 +41182,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(pow_fn, &[base_f.into(), exp_f.into()], "pooer_neg_pow")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_float_value();
         let neg_val = self.make_float(neg_pow);
@@ -41450,7 +41450,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("list_slice returned void")
             .unwrap();
         self.builder
@@ -41474,7 +41474,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_call(self.libc.strlen, &[str_ptr.into()], "slice_str_len")
                 .unwrap()
                 .try_as_basic_value()
-                .left()
+                .basic()
                 .unwrap()
                 .into_int_value();
             self.make_int(str_len)
@@ -41823,7 +41823,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.strlen, &[str_ptr.into()], "str_len")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_int_value();
         self.builder.build_unconditional_branch(after_len).unwrap();
@@ -42048,7 +42048,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[alloc_size.into()], "new_str")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
         self.builder
@@ -42089,7 +42089,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap();
         self.builder
             .build_unconditional_branch(memcpy_merge)
@@ -42188,7 +42188,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[str_alloc.into()], "new_str_loop")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -42301,7 +42301,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -42316,7 +42316,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.malloc, &[items_size.into()], "new_items")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap()
             .into_pointer_value();
 
@@ -42550,7 +42550,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap();
         let idx = self.extract_data(rand_val).unwrap();
         let elem = self.compile_list_index(list_data, idx);
@@ -42605,7 +42605,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap();
         self.builder
             .build_unconditional_branch(merge_block)
@@ -42650,7 +42650,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap();
         self.builder
             .build_unconditional_branch(merge_block)
@@ -42668,7 +42668,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap();
         let part2 = self
             .builder
@@ -42679,7 +42679,7 @@ impl<'ctx> CodeGen<'ctx> {
             )
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .unwrap();
         let rotated = self.inline_slap(part1, part2);
         self.builder
@@ -42724,7 +42724,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_call(self.libc.make_list, &[cap_i32.into()], "ceilidh_result")
             .unwrap()
             .try_as_basic_value()
-            .left()
+            .basic()
             .compile_ok_or("make_list returned void")
             .unwrap();
 
@@ -42864,7 +42864,7 @@ impl<'ctx> CodeGen<'ctx> {
                 is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(data, f64_type, "deg_as_float")
+                        .build_bit_cast(data, f64_type, "deg_as_float")
                         .unwrap()
                         .into_float_value(),
                 ),
@@ -42961,7 +42961,7 @@ impl<'ctx> CodeGen<'ctx> {
                 is_float,
                 BasicValueEnum::FloatValue(
                     self.builder
-                        .build_bitcast(data, f64_type, "rad_as_float")
+                        .build_bit_cast(data, f64_type, "rad_as_float")
                         .unwrap()
                         .into_float_value(),
                 ),

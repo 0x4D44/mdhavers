@@ -1125,7 +1125,7 @@ mod tests {
             let entry = module.add_function("entry", fn_ty, None);
             builder.position_at_end(context.append_basic_block(entry, "entry"));
             let call = builder.build_call(helper, &[], "v").unwrap();
-            let value = call.try_as_basic_value().left().unwrap();
+            let value = call.try_as_basic_value().basic().unwrap();
             builder.build_return(Some(&value)).unwrap();
 
             let compiler = LLVMCompiler::new().with_optimization(level);
