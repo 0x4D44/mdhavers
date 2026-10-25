@@ -2578,14 +2578,25 @@ MdhValue __mdh_round(MdhValue a) {
 
 /* ========== Timing ========== */
 
-MdhValue __mdh_mono_ms(void) {
+/* The interpreter counts from the first mono_ms/mono_ns call; so do we. */
+static uint64_t __mdh_mono_start_ns = 0;
+static int __mdh_mono_started = 0;
+
+static uint64_t __mdh_mono_since_start_ns(void) {
     uint64_t ns = mdh_time_monotonic_ns();
-    return __mdh_make_int((int64_t)(ns / 1000000ULL));
+    if (!__mdh_mono_started) {
+        __mdh_mono_started = 1;
+        __mdh_mono_start_ns = ns;
+    }
+    return ns - __mdh_mono_start_ns;
+}
+
+MdhValue __mdh_mono_ms(void) {
+    return __mdh_make_int((int64_t)(__mdh_mono_since_start_ns() / 1000000ULL));
 }
 
 MdhValue __mdh_mono_ns(void) {
-    uint64_t ns = mdh_time_monotonic_ns();
-    return __mdh_make_int((int64_t)ns);
+    return __mdh_make_int((int64_t)__mdh_mono_since_start_ns());
 }
 
 /* ========== Network (Sockets + DNS) ========== */
@@ -5057,15 +5068,22 @@ MdhValue __mdh_words(MdhValue str) {
 
 /* ========== Logging/Debug ========== */
 
-static int __mdh_log_level = 2;  /* Default: INFO */
+static int __mdh_log_level = 3;  /* Default: blether, as the interpreter */
 
+static int __mdh_log_parse_level_val(MdhValue level, int *out);
+
+/* The interpreter answers with the level's lowercase name. */
 MdhValue __mdh_get_log_level(void) {
-    return __mdh_make_int(__mdh_log_level);
+    static const char *names[] = {"wheesht", "roar", "holler", "blether", "mutter", "whisper"};
+    int lvl = __mdh_log_level;
+    if (lvl < 0 || lvl > 5) lvl = 3;
+    return __mdh_make_string(names[lvl]);
 }
 
 MdhValue __mdh_set_log_level(MdhValue level) {
-    if (level.tag == MDH_TAG_INT) {
-        __mdh_log_level = (int)level.data;
+    int parsed = 0;
+    if (__mdh_log_parse_level_val(level, &parsed)) {
+        __mdh_log_level = parsed;
     }
     return __mdh_make_nil();
 }
@@ -5469,7 +5487,7 @@ MdhValue __mdh_log_span_in(MdhValue span, MdhValue func) {
 
 MdhValue __mdh_log_init(MdhValue config) {
     if (config.tag == MDH_TAG_NIL) {
-        __mdh_log_level = 2;
+        __mdh_log_level = 3;
         __mdh_log_filter = NULL;
         __mdh_log_format = 0;
         __mdh_log_timestamps = 1;

@@ -4648,28 +4648,43 @@ impl<'ctx> CodeGen<'ctx> {
         "dinnae_fash",
         "drap_while",
         "efter",
+        "fin",
+        "fin_index",
+        "first",
         "group_by",
         "hauf_by",
         "ilka",
+        "inspect",
+        "is_baw",
         "is_braw",
+        "is_hale_nummer",
+        "last",
         "mak_siccar_that",
         "make_range",
         "make_range_step",
         "mode",
+        "mony",
+        "muckle",
         "nae_that",
         "needsae_be_toom",
         "ordinal",
         "pure_dead_brilliant",
+        "repeat_say",
         "same",
         "scots_exclaim",
         "scots_farewell",
+        "scots_miles_tae_km",
         "scots_number",
+        "scots_pints_tae_litres",
         "spy",
+        "stanes_tae_kg",
         "swatch",
         "tak_time",
         "tak_while",
         "transform_an_combine",
+        "wee",
         "wheech",
+        "zip_up",
     ];
 
     /// The prelude definitions `program` needs but does not define itself (transitively).
@@ -35201,33 +35216,12 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_pointer_value();
 
-        // Create new result list with same capacity
-        let len_i32 = self
-            .builder
-            .build_int_cast(list_len, self.context.i32_type(), "len_i32")
-            .unwrap();
-        let new_list_val = self
-            .builder
-            .build_call(self.libc.make_list, &[len_i32.into()], "new_list")
-            .unwrap()
-            .try_as_basic_value()
-            .basic()
-            .unwrap();
-
-        // Store function and new list for use in loop
+        // Store the function for use in loop
         let func_alloca = self
             .builder
             .build_alloca(self.types.value_type, "func_alloca")
             .unwrap();
         self.builder.build_store(func_alloca, func_val).unwrap();
-
-        let result_alloca = self
-            .builder
-            .build_alloca(self.types.value_type, "result_alloca")
-            .unwrap();
-        self.builder
-            .build_store(result_alloca, new_list_val)
-            .unwrap();
 
         let zero = self.types.i64_type.const_int(0, false);
         let one = self.types.i64_type.const_int(1, false);
@@ -35275,21 +35269,9 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_load(self.types.value_type, func_alloca, "func")
             .unwrap();
-        let mapped_val = self.call_function_value(func, &[elem_val]).unwrap();
-
-        // Push mapped value to result list
-        let result_list = self
-            .builder
-            .build_load(self.types.value_type, result_alloca, "result_list")
-            .unwrap();
-        self.builder
-            .build_call(
-                self.libc.list_push,
-                &[result_list.into(), mapped_val.into()],
-                "",
-            )
-            .unwrap();
-        self.rc_consume_fresh(mapped_val);
+        let called_val = self.call_function_value(func, &[elem_val]).unwrap();
+        // for-each discards what the callback returns.
+        self.rc_consume_fresh(called_val);
 
         // Increment and continue
         let next_idx = self.builder.build_int_add(idx, one, "next_idx").unwrap();
@@ -35297,14 +35279,8 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unconditional_branch(loop_block).unwrap();
 
         self.builder.position_at_end(done_block);
-        // Return the result list
-        let final_result = self
-            .builder
-            .build_load(self.types.value_type, result_alloca, "final_result")
-            .unwrap();
-        // make_list's reference moves to the caller.
-        self.rc_mark_owned(final_result);
-        Ok(final_result)
+        // The interpreter's ilk returns naething.
+        Ok(self.make_nil())
     }
 
     /// ilkane(list, fn) - call fn(item, idx) for each element
@@ -43171,11 +43147,12 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_float_value();
 
-        // radians = degrees * PI / 180
-        let pi = f64_type.const_float(std::f64::consts::PI);
-        let c180 = f64_type.const_float(180.0);
-        let temp = self.builder.build_float_mul(deg, pi, "temp").unwrap();
-        let result = self.builder.build_float_div(temp, c180, "radians").unwrap();
+        // radians = degrees * (PI / 180), the same rounding as f64::to_radians
+        let rads_per_deg = f64_type.const_float(std::f64::consts::PI / 180.0);
+        let result = self
+            .builder
+            .build_float_mul(deg, rads_per_deg, "radians")
+            .unwrap();
 
         let numeric_result = self.make_float(result);
         self.builder
@@ -43268,11 +43245,12 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_float_value();
 
-        // degrees = radians * 180 / PI
-        let pi = f64_type.const_float(std::f64::consts::PI);
-        let c180 = f64_type.const_float(180.0);
-        let temp = self.builder.build_float_mul(rad, c180, "temp").unwrap();
-        let result = self.builder.build_float_div(temp, pi, "degrees").unwrap();
+        // degrees = radians * (180 / PI), the same rounding as f64::to_degrees
+        let degs_per_rad = f64_type.const_float(180.0 / std::f64::consts::PI);
+        let result = self
+            .builder
+            .build_float_mul(rad, degs_per_rad, "degrees")
+            .unwrap();
 
         let numeric_result = self.make_float(result);
         self.builder

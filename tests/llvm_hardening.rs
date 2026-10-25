@@ -1063,3 +1063,71 @@ fn user_definition_shadows_a_compiled_in_prelude_function() {
     let source = "dae same(x) {\n    gie 42\n}\nblether same(1)\n";
     assert_eq!(run_ok(source), vec!["42"]);
 }
+
+// ---------- Native builtins that disagreed with the interpreter ----------
+// These stdlib/prelude.braw functions had inline native versions that differed from the
+// prelude on edge inputs; the prelude definition is now compiled in instead.
+
+#[test]
+fn prelude_overridden_builtins_match_the_interpreter() {
+    let source = r#"blether first("abc")
+blether last("abc")
+blether first([7, 8])
+blether wee("a-b-c", "-")
+blether muckle("hello", "l")
+blether zip_up("hello", "l")
+blether repeat_say(5, 3)
+blether is_baw([])
+blether is_hale_nummer(2.5)
+blether scots_miles_tae_km(10)
+blether scots_pints_tae_litres(4)
+blether stanes_tae_kg(2)
+blether inspect([1, 2])
+"#;
+    assert_eq!(
+        run_ok(source),
+        vec![
+            "a",
+            "c",
+            "7",
+            "-",
+            "l",
+            "[[h, l]]",
+            "555",
+            "aye",
+            "aye",
+            "18",
+            "6.8",
+            "12.7",
+            "<list> [1, 2]",
+            "[1, 2]",
+        ]
+    );
+}
+
+#[test]
+fn ilk_is_for_each_and_returns_naething() {
+    let source = "ken total = [0]\nken r = ilk([1, 2, 3], |x| x + 1)\nblether r\nilk([1, 2, 3], |x| shove(total, x))\nblether len(total)\n";
+    assert_eq!(run_ok(source), vec!["naething", "4"]);
+}
+
+#[test]
+fn radians_and_degrees_round_like_the_interpreter() {
+    let source = "blether radians(-3)\nblether degrees(1)\n";
+    assert_eq!(
+        run_ok(source),
+        vec!["-0.05235987755982989", "57.29577951308232"]
+    );
+}
+
+#[test]
+fn log_level_getter_and_setter_match_the_interpreter() {
+    let source = "blether get_log_level()\nset_log_level(\"mutter\")\nblether get_log_level()\nset_log_level(1)\nblether get_log_level()\n";
+    assert_eq!(run_ok(source), vec!["blether", "mutter", "roar"]);
+}
+
+#[test]
+fn mono_clock_counts_from_its_first_call() {
+    let source = "blether mono_ms() < 1000\nblether mono_ns() < 1000000000\n";
+    assert_eq!(run_ok(source), vec!["aye", "aye"]);
+}
