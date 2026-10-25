@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00144 — Native accepts wrong-type arguments that the interpreter rejects, for about 25 builtins
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-25T08:13:30Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261025T081928Z-4caa481f
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00144-run-fix-20261025T081928Z-4caa481f
-- **Owner base:** c149176f45c35e9263239f7fe701407d0c4cc731
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-25T08:19:28Z
-- **Owner until:** 2026-10-25T12:19:28Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T08:13:30Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-25T08:13:30Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T09:08:04Z, deltic:auto role=fix run=fix-20261025T081928Z-4caa481f branch=task/bug-MDH-BUG-FLU-00144-run-fix-20261025T081928Z-4caa481f code=1a64677 gate=manual)
 
 ## Observation
 
