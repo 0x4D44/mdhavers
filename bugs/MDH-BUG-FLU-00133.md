@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00133 — Native -O1+: writes in a hae_a_bash body are lost when the body hurls
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** High
 - **Area:** native
 - **Raised:** 2026-10-25T01:32:39Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261025T013248Z-1d712276
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00133-run-fix-20261025T013248Z-1d712276
-- **Owner base:** 405c62dd4c9ba9f1948025cd7734c48274bb5725
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-25T01:32:48Z
-- **Owner until:** 2026-10-25T05:32:48Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T01:32:39Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-25T01:32:39Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T01:38:53Z, deltic:auto role=fix run=fix-20261025T013248Z-1d712276 branch=task/bug-MDH-BUG-FLU-00133-run-fix-20261025T013248Z-1d712276 code=015f5a4 gate=manual)
 
 ## Observation
 
