@@ -311,6 +311,73 @@ blether got["m"]
 }
 
 #[test]
+fn instances_and_their_fields_die_with_their_last_holder() {
+    // Instances counted: a chain of nodes, methods that return masel, inheritance,
+    // instances held by dicts and lists, and a field store that drops the old one.
+    // Default kinds: no MDH_RC_KINDS, so this also checks the default counts them.
+    let src = r#"
+kin Node {
+    dae init(name, nxt) {
+        masel.name = name
+        masel.nxt = nxt
+        masel.tags = []
+    }
+    dae tag(t) {
+        shove(masel.tags, t)
+        gie masel
+    }
+    dae rename(n) {
+        masel.name = n + "!"
+        gie masel
+    }
+    dae describe() {
+        gie masel.name + tae_string(len(masel.tags))
+    }
+}
+kin Leaf fae Node {
+    dae init(name) {
+        masel.name = name
+        masel.nxt = naething
+        masel.tags = ["leaf" + ""]
+    }
+}
+ken head = naething
+ken i = 0
+whiles i < 20 {
+    head = Node("n" + tae_string(i), head)
+    i = i + 1
+}
+ken walk = head
+ken count = 0
+whiles walk != naething {
+    count = count + 1
+    walk = walk.nxt
+}
+blether count
+blether head.tag("a" + "").tag("b" + "").rename("top").describe()
+ken second = head.nxt
+head = naething
+blether second.name
+ken lf = Leaf("leafy" + "")
+blether lf.describe()
+ken holder = {"obj": Node("held" + "", lf), "list": [Leaf("l2" + "")]}
+lf = naething
+blether holder["obj"].nxt.describe()
+blether holder["list"][0].describe()
+holder["obj"].nxt = Node("swapped" + "", naething)
+blether holder["obj"].nxt.name
+holder = naething
+"#;
+    let run = run_native(src, &[("MDH_RC_REPORT", "1")]);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert_eq!(run.stdout, "20\ntop!2\nn18\nleafy1\nleafy1\nl21\nswapped\n");
+    assert_eq!(reported_live(&run.stderr, "string"), 0, "{}", run.stderr);
+    assert_eq!(reported_live(&run.stderr, "list"), 0, "{}", run.stderr);
+    assert_eq!(reported_live(&run.stderr, "dict"), 0, "{}", run.stderr);
+    assert_eq!(reported_live(&run.stderr, "instance"), 0, "{}", run.stderr);
+}
+
+#[test]
 fn counting_stays_off_unless_compiled_in() {
     // Off by default (counts are not atomic yet): the runtime counts nothing, even when
     // MDH_RC_KINDS asks it to.
