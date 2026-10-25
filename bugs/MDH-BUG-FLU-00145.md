@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00145 — Native has about 410 builtin names the interpreter lacks, many with placeholder bodies
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-25T08:13:34Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261025T223241Z-2be50da0
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00145-run-fix-20261025T223241Z-2be50da0
-- **Owner base:** 1c4b934f5362918e79fd63662d71b0bfcf870eed
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-25T22:32:41Z
-- **Owner until:** 2026-10-26T02:32:41Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T08:13:34Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-25T08:13:34Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T23:21:06Z, deltic:auto role=fix run=fix-20261025T223241Z-2be50da0 branch=task/bug-MDH-BUG-FLU-00145-run-fix-20261025T223241Z-2be50da0 code=e820711 gate=manual)
 
 ## Observation
 
