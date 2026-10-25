@@ -1726,10 +1726,7 @@ impl<'ctx> CodeGen<'ctx> {
         let panic_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let _ = self.get_or_create_intrinsic(
                 "__coverage_bad_intrinsic",
-                self.context
-                    .i8_type()
-                    .ptr_type(AddressSpace::default())
-                    .into(),
+                self.context.ptr_type(AddressSpace::default()).into(),
                 &[],
             );
         }));
@@ -1812,7 +1809,7 @@ impl<'ctx> CodeGen<'ctx> {
         context: &'ctx Context,
         types: &MdhTypes<'ctx>,
     ) -> LibcFunctions<'ctx> {
-        let i8_ptr = context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr = context.ptr_type(AddressSpace::default());
         let i8_type = context.i8_type();
         let i32_type = context.i32_type();
         let i64_type = context.i64_type();
@@ -2856,7 +2853,7 @@ impl<'ctx> CodeGen<'ctx> {
         let words = module.add_function("__mdh_words", words_type, Some(Linkage::External));
 
         // Environment/system functions
-        let i8_ptr_ptr = i8_ptr.ptr_type(AddressSpace::default());
+        let i8_ptr_ptr = context.ptr_type(AddressSpace::default());
 
         // __mdh_set_args(argc, argv) -> void
         let set_args_type = void_type.fn_type(&[i32_type.into(), i8_ptr_ptr.into()], false);
@@ -3440,7 +3437,7 @@ impl<'ctx> CodeGen<'ctx> {
             module.add_function("__mdh_stacktrace", stacktrace_type, Some(Linkage::External));
 
         // Exceptions (try/catch/hurl)
-        let i8_ptr_type = context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_type = context.ptr_type(AddressSpace::default());
 
         // __mdh_jmp_buf_size() -> i64
         let jmp_buf_size_type = types.i64_type.fn_type(&[], false);
@@ -4145,7 +4142,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder
             .build_pointer_cast(
                 global.as_pointer_value(),
-                self.context.i8_type().ptr_type(AddressSpace::default()),
+                self.context.ptr_type(AddressSpace::default()),
                 "str_ptr",
             )
             .unwrap()
@@ -4520,8 +4517,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         // Create main function (accept argc/argv to support args()).
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i8_ptr_ptr = i8_ptr.ptr_type(AddressSpace::default());
+        let i8_ptr_ptr = self.context.ptr_type(AddressSpace::default());
         let main_fn_type = self
             .types
             .i32_type
@@ -5060,7 +5056,7 @@ impl<'ctx> CodeGen<'ctx> {
     /// Dict/Set values store a stable handle pointer to their payload pointer.
     /// Load and return the payload pointer as an i64.
     fn load_kv_payload_ptr(&self, handle_data: IntValue<'ctx>, name: &str) -> IntValue<'ctx> {
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
         let handle_ptr = self
             .builder
             .build_int_to_ptr(handle_data, i64_ptr_type, &format!("{name}_handle_ptr"))
@@ -5239,7 +5235,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         let zero_i64 = self.types.i64_type.const_int(0, false);
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
 
         // nil -> false
         self.builder.position_at_end(nil_block);
@@ -5348,7 +5344,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // dict or set -> truthy if non-empty
         self.builder.position_at_end(set_block);
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
         let payload_data = self.load_kv_payload_ptr(data, "truthy_set");
         let set_ptr = self
             .builder
@@ -6528,7 +6524,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_to_ptr(
                 left_str_data,
-                self.context.i8_type().ptr_type(AddressSpace::default()),
+                self.context.ptr_type(AddressSpace::default()),
                 "lstr",
             )
             .unwrap();
@@ -6536,7 +6532,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_to_ptr(
                 right_str_data,
-                self.context.i8_type().ptr_type(AddressSpace::default()),
+                self.context.ptr_type(AddressSpace::default()),
                 "rstr",
             )
             .unwrap();
@@ -7577,7 +7573,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // string compare (strcmp < 0)
         self.builder.position_at_end(str_block);
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
         let left_str = self
             .builder
             .build_int_to_ptr(left_data, i8_ptr_type, "left_str")
@@ -7815,7 +7811,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // string compare (strcmp <= 0)
         self.builder.position_at_end(str_block);
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
         let left_str = self
             .builder
             .build_int_to_ptr(left_data, i8_ptr_type, "left_str")
@@ -8052,7 +8048,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // string compare (strcmp > 0)
         self.builder.position_at_end(str_block);
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
         let left_str = self
             .builder
             .build_int_to_ptr(left_data, i8_ptr_type, "left_str")
@@ -8289,7 +8285,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // string compare (strcmp >= 0)
         self.builder.position_at_end(str_block);
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
         let left_str = self
             .builder
             .build_int_to_ptr(left_data, i8_ptr_type, "left_str")
@@ -8670,7 +8666,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_to_ptr(
                 float_str_data,
-                self.context.i8_type().ptr_type(AddressSpace::default()),
+                self.context.ptr_type(AddressSpace::default()),
                 "float_str_ptr",
             )
             .unwrap();
@@ -8689,11 +8685,7 @@ impl<'ctx> CodeGen<'ctx> {
         let str_fmt = self.get_string_ptr(self.fmt_string);
         let str_ptr = self
             .builder
-            .build_int_to_ptr(
-                data,
-                self.context.i8_type().ptr_type(AddressSpace::default()),
-                "str",
-            )
+            .build_int_to_ptr(data, self.context.ptr_type(AddressSpace::default()), "str")
             .unwrap();
         self.builder
             .build_call(self.libc.printf, &[str_fmt.into(), str_ptr.into()], "")
@@ -8992,7 +8984,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // List -> read length from `MdhList.length` (i64 index 1 after items pointer).
         self.builder.position_at_end(len_list);
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
         let header_ptr = self
             .builder
             .build_int_to_ptr(data, i64_ptr_type, "header_ptr")
@@ -9073,7 +9065,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Dict/Set -> read count from offset 0
         // Layout: [count: i64][entry0][entry1]...
         self.builder.position_at_end(len_dict);
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
         let payload_data = self.load_kv_payload_ptr(data, "len_dict_or_set");
         let dict_ptr = self
             .builder
@@ -10172,7 +10164,7 @@ impl<'ctx> CodeGen<'ctx> {
         index: IntValue<'ctx>,
     ) -> Result<PointerValue<'ctx>, HaversError> {
         // Convert data to pointer to MdhList struct
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
         let list_ptr = self
             .builder
             .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr")
@@ -10186,7 +10178,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // Convert items pointer to MdhValue pointer
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let items_ptr = self
             .builder
             .build_int_to_ptr(items_ptr_as_i64, value_ptr_type, "items_ptr")
@@ -10205,7 +10197,7 @@ impl<'ctx> CodeGen<'ctx> {
     /// MdhList struct layout: { MdhValue *items; int64_t length; int64_t capacity; }
     fn get_list_length(&self, list_data: IntValue<'ctx>) -> Result<IntValue<'ctx>, HaversError> {
         // Convert data to pointer to MdhList struct
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
         let list_ptr = self
             .builder
             .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr")
@@ -10251,8 +10243,8 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         let list_data = self.extract_data(list_val).unwrap();
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr = self.types.i64_type.ptr_type(AddressSpace::default());
+        let i8_ptr = self.context.ptr_type(AddressSpace::default());
+        let i64_ptr = self.context.ptr_type(AddressSpace::default());
         let list_ptr = self
             .builder
             .build_int_to_ptr(list_data, i8_ptr, "alloc_list_ptr")
@@ -10344,7 +10336,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap();
 
         // Decrement length in place - length is at offset 1 in MdhList struct.
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
         let list_ptr = self
             .builder
             .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr")
@@ -10722,7 +10714,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_to_ptr(
                 a_data,
-                self.context.i8_type().ptr_type(AddressSpace::default()),
+                self.context.ptr_type(AddressSpace::default()),
                 "slap_lstr",
             )
             .unwrap();
@@ -10730,7 +10722,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_int_to_ptr(
                 b_data,
-                self.context.i8_type().ptr_type(AddressSpace::default()),
+                self.context.ptr_type(AddressSpace::default()),
                 "slap_rstr",
             )
             .unwrap();
@@ -11933,7 +11925,7 @@ impl<'ctx> CodeGen<'ctx> {
         val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let str_data = self.extract_data(val).unwrap();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
         let str_ptr = self
             .builder
             .build_int_to_ptr(str_data, i8_ptr_type, "str_ptr")
@@ -12055,7 +12047,7 @@ impl<'ctx> CodeGen<'ctx> {
         val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let str_data = self.extract_data(val).unwrap();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
         let str_ptr = self
             .builder
             .build_int_to_ptr(str_data, i8_ptr_type, "str_ptr")
@@ -12174,7 +12166,7 @@ impl<'ctx> CodeGen<'ctx> {
         class: CharClass,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let str_data = self.extract_data(val).unwrap();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
         let str_ptr = self
             .builder
             .build_int_to_ptr(str_data, i8_ptr_type, "str_ptr")
@@ -12592,7 +12584,7 @@ impl<'ctx> CodeGen<'ctx> {
         val: BasicValueEnum<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let str_data = self.extract_data(val).unwrap();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
         let str_ptr = self
             .builder
             .build_int_to_ptr(str_data, i8_ptr_type, "str_ptr")
@@ -12847,7 +12839,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let str_data = self.extract_data(str_val).unwrap();
         let sub_data = self.extract_data(sub_val).unwrap();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
 
         let str_ptr = self
             .builder
@@ -13226,7 +13218,7 @@ impl<'ctx> CodeGen<'ctx> {
                     } else {
                         // Runtime string - compute with strlen.
                         let data = self.extract_data(value).unwrap();
-                        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+                        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
                         let str_ptr = self
                             .builder
                             .build_int_to_ptr(data, i8_ptr_type, "str_for_len")
@@ -13786,10 +13778,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_pointer_value();
 
                         // Store capacity and length in header
-                        let i64_ptr_type = self
-                            .types
-                            .i64_type
-                            .ptr_type(inkwell::AddressSpace::default());
+                        let i64_ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
                         let header_ptr = self
                             .builder
                             .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
@@ -13824,7 +13813,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_pointer_cast(
                                 elem0_ptr,
-                                self.types.value_type.ptr_type(AddressSpace::default()),
+                                self.context.ptr_type(AddressSpace::default()),
                                 "elem0_val_ptr",
                             )
                             .unwrap();
@@ -13869,7 +13858,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 .builder
                                 .build_pointer_cast(
                                     elem_ptr,
-                                    self.types.value_type.ptr_type(AddressSpace::default()),
+                                    self.context.ptr_type(AddressSpace::default()),
                                     &format!("elem{}_val_ptr", i + 1),
                                 )
                                 .unwrap();
@@ -13960,10 +13949,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .into_pointer_value();
 
                         // Store capacity and length in header
-                        let i64_ptr_type = self
-                            .types
-                            .i64_type
-                            .ptr_type(inkwell::AddressSpace::default());
+                        let i64_ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
                         let header_ptr = self
                             .builder
                             .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
@@ -13998,7 +13984,7 @@ impl<'ctx> CodeGen<'ctx> {
                             .builder
                             .build_pointer_cast(
                                 elem0_ptr,
-                                self.types.value_type.ptr_type(AddressSpace::default()),
+                                self.context.ptr_type(AddressSpace::default()),
                                 "elem0_val_ptr",
                             )
                             .unwrap();
@@ -14043,7 +14029,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 .builder
                                 .build_pointer_cast(
                                     elem_ptr,
-                                    self.types.value_type.ptr_type(AddressSpace::default()),
+                                    self.context.ptr_type(AddressSpace::default()),
                                     &format!("elem{}_val_ptr", i + 1),
                                 )
                                 .unwrap();
@@ -14357,8 +14343,7 @@ impl<'ctx> CodeGen<'ctx> {
                         } else {
                             // Compute length with strlen
                             let data = self.extract_data(val).unwrap();
-                            let i8_ptr_type =
-                                self.context.i8_type().ptr_type(AddressSpace::default());
+                            let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
                             let str_ptr = self
                                 .builder
                                 .build_int_to_ptr(data, i8_ptr_type, "str_for_len")
@@ -14759,8 +14744,8 @@ impl<'ctx> CodeGen<'ctx> {
 
                 // Load instance.class_name_ptr (stored as i64 at offset 0 in the instance data).
                 let instance_data = self.extract_data(left_val).unwrap();
-                let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-                let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+                let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
+                let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
                 let instance_handle = self
                     .builder
                     .build_int_to_ptr(instance_data, i8_ptr_type, "inst_handle")
@@ -14769,7 +14754,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_pointer_cast(
                         instance_handle,
-                        i8_ptr_type.ptr_type(AddressSpace::default()),
+                        self.context.ptr_type(AddressSpace::default()),
                         "inst_handle_typed",
                     )
                     .unwrap();
@@ -14978,7 +14963,7 @@ impl<'ctx> CodeGen<'ctx> {
         let left_data = self.extract_data(left_val).unwrap();
         let right_data = self.extract_data(right_val).unwrap();
 
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
         let left_ptr = self
             .builder
             .build_int_to_ptr(left_data, i8_ptr_type, "lstr_fast")
@@ -15119,7 +15104,7 @@ impl<'ctx> CodeGen<'ctx> {
         right_len: usize,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         let function = self.current_function.unwrap();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
         let right_len_const = self.types.i64_type.const_int(right_len as u64, false);
 
         // Compile the right side string (the literal)
@@ -17404,7 +17389,7 @@ impl<'ctx> CodeGen<'ctx> {
                         // ===== String: return last character (or empty string) =====
                         self.builder.position_at_end(str_block);
                         let str_data = self.extract_data(obj_arg).unwrap();
-                        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+                        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
                         let str_ptr = self
                             .builder
                             .build_int_to_ptr(str_data, i8_ptr_type, "scran_str_ptr")
@@ -22524,10 +22509,10 @@ impl<'ctx> CodeGen<'ctx> {
                     self.builder.position_at_end(ok_block);
                     let outer_data = self.extract_data(outer_list).unwrap();
 
-                    let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-                    let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-                    let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
-                    let ptr_ptr_type = i8_ptr_type.ptr_type(AddressSpace::default());
+                    let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
+                    let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
+                    let value_ptr_type = self.context.ptr_type(AddressSpace::default());
+                    let ptr_ptr_type = self.context.ptr_type(AddressSpace::default());
 
                     // Get outer list struct
                     let outer_struct = self
@@ -23430,7 +23415,7 @@ impl<'ctx> CodeGen<'ctx> {
 
                     // String => try parse with strtod and ensure full consumption
                     self.builder.position_at_end(string_block);
-                    let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+                    let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
                     let str_ptr = self
                         .builder
                         .build_int_to_ptr(data, i8_ptr_type, "num_str_ptr")
@@ -23444,7 +23429,7 @@ impl<'ctx> CodeGen<'ctx> {
                         let fn_type = self.types.f64_type.fn_type(
                             &[
                                 i8_ptr_type.into(),
-                                i8_ptr_type.ptr_type(AddressSpace::default()).into(),
+                                self.context.ptr_type(AddressSpace::default()).into(),
                             ],
                             false,
                         );
@@ -23670,7 +23655,7 @@ impl<'ctx> CodeGen<'ctx> {
 
                     // string => strlen == 0
                     self.builder.position_at_end(string_block);
-                    let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+                    let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
                     let str_ptr = self
                         .builder
                         .build_int_to_ptr(data, i8_ptr_type, "is_toom_str_ptr")
@@ -23718,7 +23703,7 @@ impl<'ctx> CodeGen<'ctx> {
 
                     // dict => count == 0
                     self.builder.position_at_end(dict_block);
-                    let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+                    let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
                     let payload_data = self.load_kv_payload_ptr(data, "is_toom_dict");
                     let dict_ptr = self
                         .builder
@@ -25242,7 +25227,7 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let key_val = self.compile_expr(&args[0])?;
                     let key_data = self.extract_data(key_val).unwrap();
-                    let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+                    let i8_ptr = self.context.ptr_type(AddressSpace::default());
                     let key_ptr = self
                         .builder
                         .build_int_to_ptr(key_data, i8_ptr, "getenv_key_ptr")
@@ -25662,7 +25647,7 @@ impl<'ctx> CodeGen<'ctx> {
 
                     self.builder.position_at_end(body_block);
                     // Get items array and store value at index i
-                    let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+                    let value_ptr_type = self.context.ptr_type(AddressSpace::default());
                     let mdh_list_type = self.context.struct_type(
                         &[
                             value_ptr_type.into(),
@@ -25826,7 +25811,7 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let str_val = self.compile_expr(&args[0])?;
                     let str_data = self.extract_data(str_val).unwrap();
-                    let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+                    let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
                     let str_ptr = self
                         .builder
                         .build_int_to_ptr(str_data, i8_ptr_type, "str_ptr")
@@ -27542,7 +27527,7 @@ impl<'ctx> CodeGen<'ctx> {
         after_block: inkwell::basic_block::BasicBlock<'ctx>,
     ) -> Result<(), HaversError> {
         let function = self.current_function.unwrap();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
 
         // Get string pointer
         let str_ptr = self
@@ -27683,7 +27668,7 @@ impl<'ctx> CodeGen<'ctx> {
         after_block: inkwell::basic_block::BasicBlock<'ctx>,
     ) -> Result<(), HaversError> {
         let function = self.current_function.unwrap();
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
 
         // Convert data to list struct pointer
         let list_ptr = self
@@ -27715,7 +27700,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_int_value();
 
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let items_ptr = self
             .builder
             .build_int_to_ptr(items_ptr_as_i64, value_ptr_type, "items_ptr")
@@ -28492,9 +28477,8 @@ impl<'ctx> CodeGen<'ctx> {
             .into_pointer_value();
 
         // Cast list_ptr to proper pointer types for storing fields
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let ptr_ptr_type = i8_ptr_type.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
+        let ptr_ptr_type = self.context.ptr_type(AddressSpace::default());
 
         // Store items pointer at offset 0
         let items_field_ptr = self
@@ -28545,7 +28529,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(capacity_ptr, cap_val).unwrap();
 
         // Cast items_ptr to MdhValue* for storing elements
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let elements_ptr = self
             .builder
             .build_pointer_cast(items_ptr, value_ptr_type, "elements_ptr")
@@ -28616,9 +28600,8 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_pointer_value();
 
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let ptr_ptr_type = i8_ptr_type.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
+        let ptr_ptr_type = self.context.ptr_type(AddressSpace::default());
 
         // Store items pointer at offset 0
         let items_field_ptr = self
@@ -28667,7 +28650,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(capacity_ptr, cap_val).unwrap();
 
         // Cast items_ptr to MdhValue* for storing elements
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let elements_ptr = self
             .builder
             .build_pointer_cast(items_ptr, value_ptr_type, "elements_ptr")
@@ -28814,7 +28797,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_int_to_ptr(
                             source_data,
-                            self.context.i8_type().ptr_type(AddressSpace::default()),
+                            self.context.ptr_type(AddressSpace::default()),
                             "str_ptr",
                         )
                         .unwrap();
@@ -29003,7 +28986,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_pointer_value();
 
         // Cast to i64* for storing the count
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
         let count_ptr = self
             .builder
             .build_pointer_cast(raw_ptr, i64_ptr_type, "count_ptr")
@@ -29014,7 +28997,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(count_ptr, count_val).unwrap();
 
         // Get pointer to entries array (after the count)
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
         let entries_base = unsafe {
             self.builder
                 .build_gep(
@@ -29056,7 +29039,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_pointer_cast(
                     entry_ptr,
-                    self.types.value_type.ptr_type(AddressSpace::default()),
+                    self.context.ptr_type(AddressSpace::default()),
                     &format!("key_ptr_{}", i),
                 )
                 .unwrap();
@@ -29078,7 +29061,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_pointer_cast(
                     val_ptr,
-                    self.types.value_type.ptr_type(AddressSpace::default()),
+                    self.context.ptr_type(AddressSpace::default()),
                     &format!("val_ptr_{}", i),
                 )
                 .unwrap();
@@ -29307,7 +29290,7 @@ impl<'ctx> CodeGen<'ctx> {
         index: IntValue<'ctx>,
     ) -> BasicValueEnum<'ctx> {
         // Convert data to pointer to MdhList struct
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
         let list_ptr = self
             .builder
             .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr")
@@ -29384,7 +29367,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(ok_block);
 
         // Convert items pointer to MdhValue pointer
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let items_ptr = self
             .builder
             .build_int_to_ptr(items_ptr_as_i64, value_ptr_type, "items_ptr")
@@ -29440,7 +29423,7 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         // Convert data to pointer to MdhList struct
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
         let list_ptr = self
             .builder
             .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr_fast")
@@ -29525,7 +29508,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(ok_block);
 
         // Convert items pointer to MdhValue pointer
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let items_ptr = self
             .builder
             .build_int_to_ptr(items_ptr_as_i64, value_ptr_type, "items_ptr_fast")
@@ -29722,7 +29705,7 @@ impl<'ctx> CodeGen<'ctx> {
         let idx_data = self.extract_data(idx_val).unwrap();
 
         // Convert list data to pointer to MdhList struct
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
         let list_ptr = self
             .builder
             .build_int_to_ptr(obj_data, i64_ptr_type, "list_ptr")
@@ -29798,7 +29781,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(ok_block);
 
         // Convert items pointer to MdhValue pointer
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let items_ptr = self
             .builder
             .build_int_to_ptr(items_ptr_as_i64, value_ptr_type, "items_ptr")
@@ -29922,7 +29905,7 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         // Convert data to pointer to MdhList struct
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
         let list_ptr = self
             .builder
             .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr_set_fast")
@@ -30007,7 +29990,7 @@ impl<'ctx> CodeGen<'ctx> {
         let new_val = self.compile_expr(value)?;
 
         // Convert items pointer to MdhValue pointer
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let items_ptr = self
             .builder
             .build_int_to_ptr(items_ptr_as_i64, value_ptr_type, "items_ptr_set")
@@ -30039,7 +30022,7 @@ impl<'ctx> CodeGen<'ctx> {
         index: IntValue<'ctx>,
     ) -> Result<BasicValueEnum<'ctx>, HaversError> {
         // UTF-8 aware indexing uses runtime helper to match interpreter behaviour.
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
         let str_ptr = self
             .builder
             .build_int_to_ptr(str_data, i8_ptr_type, "str_ptr")
@@ -30078,7 +30061,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(
                 timespec_ptr,
-                self.context.i8_type().ptr_type(AddressSpace::default()),
+                self.context.ptr_type(AddressSpace::default()),
                 "timespec_i8_ptr",
             )
             .unwrap();
@@ -30155,7 +30138,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(
                 timespec_ptr,
-                self.context.i8_type().ptr_type(AddressSpace::default()),
+                self.context.ptr_type(AddressSpace::default()),
                 "timespec_i8_ptr",
             )
             .unwrap();
@@ -30263,17 +30246,13 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(
                 req_ptr,
-                self.context.i8_type().ptr_type(AddressSpace::default()),
+                self.context.ptr_type(AddressSpace::default()),
                 "req_i8_ptr",
             )
             .unwrap();
 
         // Pass null for the second argument (remaining time)
-        let null = self
-            .context
-            .i8_type()
-            .ptr_type(AddressSpace::default())
-            .const_null();
+        let null = self.context.ptr_type(AddressSpace::default()).const_null();
 
         // Call nanosleep(&req, NULL)
         self.builder
@@ -30305,7 +30284,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(str_struct, 1, "str_data")
             .unwrap()
             .into_int_value();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
         let str_ptr = self
             .builder
             .build_int_to_ptr(str_data, i8_ptr_type, "str_ptr")
@@ -30490,7 +30469,7 @@ impl<'ctx> CodeGen<'ctx> {
         let sc_list_ptr = self.allocate_list(sc_list_len).unwrap();
 
         // Get items pointer for storing elements
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
         let sc_list_i64_ptr = self
             .builder
             .build_pointer_cast(sc_list_ptr, i64_ptr_type, "sc_list_i64_ptr")
@@ -30500,7 +30479,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(self.types.i64_type, sc_list_i64_ptr, "sc_items_ptr_i64")
             .unwrap()
             .into_int_value();
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let sc_items_ptr = self
             .builder
             .build_int_to_ptr(sc_items_ptr_i64, value_ptr_type, "sc_items_ptr")
@@ -31003,7 +30982,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(list_struct, 1, "list_data")
             .unwrap()
             .into_int_value();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
 
         // Extract delimiter string
         let delim_struct = delim_val.into_struct_value();
@@ -31028,7 +31007,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let mdh_list_type = self.context.struct_type(
             &[
                 value_ptr_type.into(),
@@ -31037,7 +31016,7 @@ impl<'ctx> CodeGen<'ctx> {
             ],
             false,
         );
-        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+        let mdh_list_ptr_type = self.context.ptr_type(AddressSpace::default());
         let list_struct_ptr = self
             .builder
             .build_int_to_ptr(list_data, mdh_list_ptr_type, "list_struct_ptr")
@@ -32096,10 +32075,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .into_pointer_value();
 
             // Store capacity and length in header
-            let i64_ptr_type = self
-                .types
-                .i64_type
-                .ptr_type(inkwell::AddressSpace::default());
+            let i64_ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
             let header_ptr = self
                 .builder
                 .build_pointer_cast(list_ptr, i64_ptr_type, "header_ptr")
@@ -32135,9 +32111,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_pointer_cast(
                     elem0_ptr,
-                    self.types
-                        .value_type
-                        .ptr_type(inkwell::AddressSpace::default()),
+                    self.context.ptr_type(inkwell::AddressSpace::default()),
                     "elem0_val_ptr",
                 )
                 .unwrap();
@@ -32168,9 +32142,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_pointer_cast(
                         elem_ptr,
-                        self.types
-                            .value_type
-                            .ptr_type(inkwell::AddressSpace::default()),
+                        self.context.ptr_type(inkwell::AddressSpace::default()),
                         &format!("elem{}_val_ptr", i + 1),
                     )
                     .unwrap();
@@ -32672,7 +32644,7 @@ impl<'ctx> CodeGen<'ctx> {
             .build_extract_value(func_struct, 1, "list_data")
             .unwrap()
             .into_int_value();
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
         let list_ptr = self
             .builder
             .build_int_to_ptr(list_data, i8_ptr_type, "list_ptr")
@@ -32696,7 +32668,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(
                 elem0_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
+                self.context.ptr_type(AddressSpace::default()),
                 "closure_elem0_val_ptr",
             )
             .unwrap();
@@ -32802,7 +32774,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_pointer_cast(
                             cap_ptr,
-                            self.types.value_type.ptr_type(AddressSpace::default()),
+                            self.context.ptr_type(AddressSpace::default()),
                             &format!("cap{}_val_ptr", i),
                         )
                         .unwrap();
@@ -32954,8 +32926,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Extract MdhList pointer from list value
         let list_data = self.extract_data(list_val).unwrap();
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let list_ptr = self
             .builder
             .build_int_to_ptr(list_data, i64_ptr_type, "list_ptr")
@@ -33223,7 +33195,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let mdh_list_type = self.context.struct_type(
             &[
                 value_ptr_type.into(),
@@ -33232,7 +33204,7 @@ impl<'ctx> CodeGen<'ctx> {
             ],
             false,
         );
-        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+        let mdh_list_ptr_type = self.context.ptr_type(AddressSpace::default());
 
         let list_ptr = self
             .builder
@@ -33403,7 +33375,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let mdh_list_type = self.context.struct_type(
             &[
                 value_ptr_type.into(),
@@ -33412,7 +33384,7 @@ impl<'ctx> CodeGen<'ctx> {
             ],
             false,
         );
-        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+        let mdh_list_ptr_type = self.context.ptr_type(AddressSpace::default());
 
         let list_ptr = self
             .builder
@@ -33625,7 +33597,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let mdh_list_type = self.context.struct_type(
             &[
                 value_ptr_type.into(),
@@ -33634,7 +33606,7 @@ impl<'ctx> CodeGen<'ctx> {
             ],
             false,
         );
-        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+        let mdh_list_ptr_type = self.context.ptr_type(AddressSpace::default());
 
         let list_ptr = self
             .builder
@@ -33835,7 +33807,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let mdh_list_type = self.context.struct_type(
             &[
                 value_ptr_type.into(),
@@ -33844,7 +33816,7 @@ impl<'ctx> CodeGen<'ctx> {
             ],
             false,
         );
-        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+        let mdh_list_ptr_type = self.context.ptr_type(AddressSpace::default());
 
         let list_ptr = self
             .builder
@@ -33967,7 +33939,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let mdh_list_type = self.context.struct_type(
             &[
                 value_ptr_type.into(),
@@ -33976,7 +33948,7 @@ impl<'ctx> CodeGen<'ctx> {
             ],
             false,
         );
-        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+        let mdh_list_ptr_type = self.context.ptr_type(AddressSpace::default());
 
         let list_ptr = self
             .builder
@@ -34091,7 +34063,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let mdh_list_type = self.context.struct_type(
             &[
                 value_ptr_type.into(),
@@ -34100,7 +34072,7 @@ impl<'ctx> CodeGen<'ctx> {
             ],
             false,
         );
-        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+        let mdh_list_ptr_type = self.context.ptr_type(AddressSpace::default());
 
         let list_ptr = self
             .builder
@@ -34217,7 +34189,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let mdh_list_type = self.context.struct_type(
             &[
                 value_ptr_type.into(),
@@ -34226,7 +34198,7 @@ impl<'ctx> CodeGen<'ctx> {
             ],
             false,
         );
-        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+        let mdh_list_ptr_type = self.context.ptr_type(AddressSpace::default());
 
         let list_ptr = self
             .builder
@@ -34360,7 +34332,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let mdh_list_type = self.context.struct_type(
             &[
                 value_ptr_type.into(),
@@ -34369,7 +34341,7 @@ impl<'ctx> CodeGen<'ctx> {
             ],
             false,
         );
-        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+        let mdh_list_ptr_type = self.context.ptr_type(AddressSpace::default());
 
         let list_ptr = self
             .builder
@@ -34503,7 +34475,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let mdh_list_type = self.context.struct_type(
             &[
                 value_ptr_type.into(),
@@ -34512,7 +34484,7 @@ impl<'ctx> CodeGen<'ctx> {
             ],
             false,
         );
-        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+        let mdh_list_ptr_type = self.context.ptr_type(AddressSpace::default());
 
         let list_ptr = self
             .builder
@@ -34656,7 +34628,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_int_value();
 
         // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let mdh_list_type = self.context.struct_type(
             &[
                 value_ptr_type.into(),
@@ -34665,7 +34637,7 @@ impl<'ctx> CodeGen<'ctx> {
             ],
             false,
         );
-        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+        let mdh_list_ptr_type = self.context.ptr_type(AddressSpace::default());
 
         let list_ptr = self
             .builder
@@ -34817,7 +34789,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // MdhList layout: { MdhValue* items, i64 length, i64 capacity }
         // Define MdhList type
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let mdh_list_type = self.context.struct_type(
             &[
                 value_ptr_type.into(),
@@ -34826,7 +34798,7 @@ impl<'ctx> CodeGen<'ctx> {
             ],
             false,
         );
-        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+        let mdh_list_ptr_type = self.context.ptr_type(AddressSpace::default());
 
         let list_ptr = self
             .builder
@@ -34974,7 +34946,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_int_value();
 
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let mdh_list_type = self.context.struct_type(
             &[
                 value_ptr_type.into(),
@@ -34983,7 +34955,7 @@ impl<'ctx> CodeGen<'ctx> {
             ],
             false,
         );
-        let mdh_list_ptr_type = mdh_list_type.ptr_type(AddressSpace::default());
+        let mdh_list_ptr_type = self.context.ptr_type(AddressSpace::default());
         let list_ptr = self
             .builder
             .build_int_to_ptr(list_data, mdh_list_ptr_type, "list_ptr")
@@ -36494,7 +36466,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .expect("alloca is an instruction")
                 .set_alignment(16)
                 .expect("valid jmp_buf alignment");
-            let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+            let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
             self.builder
                 .build_pointer_cast(slot, i8_ptr_type, "jmp_buf_ptr")
                 .unwrap()
@@ -36841,14 +36813,14 @@ impl<'ctx> CodeGen<'ctx> {
         // Get list struct pointer
         // MdhList format: { items_ptr: *MdhValue, length: i64, capacity: i64 }
         let list_data = self.extract_data(list_val).unwrap();
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr = self.context.ptr_type(AddressSpace::default());
         let list_struct_ptr = self
             .builder
             .build_int_to_ptr(list_data, i8_ptr, "list_struct_ptr")
             .unwrap();
 
         // Get items pointer from offset 0
-        let ptr_ptr_type = i8_ptr.ptr_type(AddressSpace::default());
+        let ptr_ptr_type = self.context.ptr_type(AddressSpace::default());
         let items_field_ptr = self
             .builder
             .build_pointer_cast(list_struct_ptr, ptr_ptr_type, "items_field_ptr")
@@ -36860,7 +36832,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_pointer_value();
 
         // Get list length from offset 8
-        let len_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let len_ptr_type = self.context.ptr_type(AddressSpace::default());
         let len_field_ptr = unsafe {
             self.builder
                 .build_gep(
@@ -37010,7 +36982,7 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         // Cast to value type pointer and load
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let value_ptr = self
             .builder
             .build_pointer_cast(elem_ptr, value_ptr_type, "value_ptr")
@@ -37067,8 +37039,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_pointer_value();
 
         // Store items_ptr at offset 0
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let ptr_ptr_type = i8_ptr_type.ptr_type(AddressSpace::default());
+        let ptr_ptr_type = self.context.ptr_type(AddressSpace::default());
         let items_field = self
             .builder
             .build_pointer_cast(new_list_struct, ptr_ptr_type, "items_field")
@@ -37076,7 +37047,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(items_field, new_items).unwrap();
 
         // Store length at offset 8
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
         let len_field = unsafe {
             self.builder
                 .build_gep(
@@ -37167,7 +37138,7 @@ impl<'ctx> CodeGen<'ctx> {
         };
 
         // Cast to value type pointer and load
-        let value_ptr_type = self.types.value_type.ptr_type(AddressSpace::default());
+        let value_ptr_type = self.context.ptr_type(AddressSpace::default());
         let value_ptr = self
             .builder
             .build_pointer_cast(elem_ptr, value_ptr_type, "value_ptr")
@@ -37431,8 +37402,8 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             // Load instance.class_name_ptr (stored as i64 at offset 0 in the instance data).
             let instance_data = self.extract_data(obj_val).unwrap();
-            let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-            let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+            let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
+            let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
             let instance_handle = self
                 .builder
                 .build_int_to_ptr(instance_data, i8_ptr_type, "get_inst_handle")
@@ -37441,7 +37412,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_pointer_cast(
                     instance_handle,
-                    i8_ptr_type.ptr_type(AddressSpace::default()),
+                    self.context.ptr_type(AddressSpace::default()),
                     "get_inst_handle_typed",
                 )
                 .unwrap();
@@ -37572,7 +37543,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_pointer_cast(
                         elem0_ptr,
-                        self.types.value_type.ptr_type(AddressSpace::default()),
+                        self.context.ptr_type(AddressSpace::default()),
                         "elem0_val_ptr",
                     )
                     .unwrap();
@@ -37595,7 +37566,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_pointer_cast(
                         elem1_ptr,
-                        self.types.value_type.ptr_type(AddressSpace::default()),
+                        self.context.ptr_type(AddressSpace::default()),
                         "elem1_val_ptr",
                     )
                     .unwrap();
@@ -37882,8 +37853,8 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_int_value();
 
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
         // Instance values store a stable handle (i8**) that points to the instance data.
         let instance_handle = self
             .builder
@@ -37893,7 +37864,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(
                 instance_handle,
-                i8_ptr_type.ptr_type(AddressSpace::default()),
+                self.context.ptr_type(AddressSpace::default()),
                 "instance_handle_typed",
             )
             .unwrap();
@@ -38010,7 +37981,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(
                 entry_key_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
+                self.context.ptr_type(AddressSpace::default()),
                 "key_value_ptr",
             )
             .unwrap();
@@ -38116,7 +38087,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(
                 value_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
+                self.context.ptr_type(AddressSpace::default()),
                 "value_typed_ptr",
             )
             .unwrap();
@@ -38197,8 +38168,8 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_int_value();
 
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
         // Instance values store a stable handle (i8**) that points to the instance data.
         let instance_handle = self
             .builder
@@ -38208,7 +38179,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(
                 instance_handle,
-                i8_ptr_type.ptr_type(AddressSpace::default()),
+                self.context.ptr_type(AddressSpace::default()),
                 "instance_handle_typed",
             )
             .unwrap();
@@ -38319,7 +38290,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(
                 entry_key_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
+                self.context.ptr_type(AddressSpace::default()),
                 "key_value_ptr",
             )
             .unwrap();
@@ -38422,7 +38393,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(
                 value_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
+                self.context.ptr_type(AddressSpace::default()),
                 "value_typed_ptr",
             )
             .unwrap();
@@ -38519,7 +38490,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(
                 new_key_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
+                self.context.ptr_type(AddressSpace::default()),
                 "new_key_typed_ptr",
             )
             .unwrap();
@@ -38560,7 +38531,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(
                 new_value_ptr,
-                self.types.value_type.ptr_type(AddressSpace::default()),
+                self.context.ptr_type(AddressSpace::default()),
                 "new_value_typed_ptr",
             )
             .unwrap();
@@ -38840,8 +38811,7 @@ impl<'ctx> CodeGen<'ctx> {
             .unwrap()
             .into_pointer_value();
 
-        let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
 
         // Store class name pointer
         let class_name_global = match self.classes.get(class_name) {
@@ -38907,7 +38877,7 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_pointer_cast(
                 handle_ptr,
-                i8_ptr_type.ptr_type(AddressSpace::default()),
+                self.context.ptr_type(AddressSpace::default()),
                 "instance_handle_ptr",
             )
             .unwrap();
@@ -39314,8 +39284,8 @@ impl<'ctx> CodeGen<'ctx> {
 
                 // Load instance.class_name_ptr (stored as i64 at offset 0 in the instance data).
                 let instance_data = self.extract_data(instance).unwrap();
-                let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
-                let i64_ptr_type = self.types.i64_type.ptr_type(AddressSpace::default());
+                let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
+                let i64_ptr_type = self.context.ptr_type(AddressSpace::default());
                 let instance_handle = self
                     .builder
                     .build_int_to_ptr(instance_data, i8_ptr_type, "inst_handle")
@@ -39324,7 +39294,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_pointer_cast(
                         instance_handle,
-                        i8_ptr_type.ptr_type(AddressSpace::default()),
+                        self.context.ptr_type(AddressSpace::default()),
                         "inst_handle_typed",
                     )
                     .unwrap();
@@ -39802,7 +39772,7 @@ impl<'ctx> CodeGen<'ctx> {
         let str_data = self.extract_data(str_val).unwrap();
         let count = self.extract_data(count_val).unwrap();
 
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr = self.context.ptr_type(AddressSpace::default());
         let str_ptr = self
             .builder
             .build_int_to_ptr(str_data, i8_ptr, "str_ptr")
@@ -40283,7 +40253,7 @@ impl<'ctx> CodeGen<'ctx> {
         let start_data = self.extract_data(start_val).unwrap();
         let end_data = self.extract_data(end_val).unwrap();
 
-        let i8_ptr_type = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr_type = self.context.ptr_type(AddressSpace::default());
         let str_ptr = self
             .builder
             .build_int_to_ptr(str_data, i8_ptr_type, "sb_str_ptr")
@@ -40442,7 +40412,7 @@ impl<'ctx> CodeGen<'ctx> {
         let str_data = self.extract_data(str_val).unwrap();
         let prefix_data = self.extract_data(prefix_val).unwrap();
 
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr = self.context.ptr_type(AddressSpace::default());
         let str_ptr = self
             .builder
             .build_int_to_ptr(str_data, i8_ptr, "str_ptr")
@@ -40512,7 +40482,7 @@ impl<'ctx> CodeGen<'ctx> {
         let str_data = self.extract_data(str_val).unwrap();
         let suffix_data = self.extract_data(suffix_val).unwrap();
 
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr = self.context.ptr_type(AddressSpace::default());
         let str_ptr = self
             .builder
             .build_int_to_ptr(str_data, i8_ptr, "str_ptr")
@@ -41368,7 +41338,7 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_store(nsec_ptr, nanoseconds).unwrap();
 
         // Call nanosleep
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+        let i8_ptr = self.context.ptr_type(AddressSpace::default());
         let timespec_i8 = self
             .builder
             .build_pointer_cast(timespec_ptr, i8_ptr, "timespec_i8")
@@ -41464,7 +41434,7 @@ impl<'ctx> CodeGen<'ctx> {
             end
         } else {
             let str_data = self.extract_data(list_val).unwrap();
-            let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
+            let i8_ptr = self.context.ptr_type(AddressSpace::default());
             let str_ptr = self
                 .builder
                 .build_int_to_ptr(str_data, i8_ptr, "slice_str_ptr")
@@ -41564,8 +41534,8 @@ impl<'ctx> CodeGen<'ctx> {
         let obj_tag = self.extract_tag(obj_val).unwrap();
         let obj_data = self.extract_data(obj_val).unwrap();
 
-        let i8_ptr = self.context.i8_type().ptr_type(AddressSpace::default());
-        let i64_ptr = self.types.i64_type.ptr_type(AddressSpace::default());
+        let i8_ptr = self.context.ptr_type(AddressSpace::default());
+        let i64_ptr = self.context.ptr_type(AddressSpace::default());
 
         // Only lists and strings support slice syntax.
         let current_fn = self
@@ -42321,7 +42291,7 @@ impl<'ctx> CodeGen<'ctx> {
             .into_pointer_value();
 
         // Store items pointer at offset 0
-        let ptr_ptr_type = i8_ptr.ptr_type(AddressSpace::default());
+        let ptr_ptr_type = self.context.ptr_type(AddressSpace::default());
         let items_field = self
             .builder
             .build_pointer_cast(new_list_struct, ptr_ptr_type, "items_field")
@@ -45711,7 +45681,6 @@ dae f() { gie 32 }
 
         let handle_ptr = codegen
             .context
-            .i8_type()
             .ptr_type(AddressSpace::default())
             .const_null();
         let instance = codegen.make_instance(handle_ptr);
@@ -47103,10 +47072,7 @@ dae f() { gie 32 }
             .variable_class_types
             .insert("x".to_string(), "A".to_string());
 
-        let null_handle = context
-            .i8_type()
-            .ptr_type(AddressSpace::default())
-            .const_null();
+        let null_handle = context.ptr_type(AddressSpace::default()).const_null();
         let instance = codegen.make_instance(null_handle);
 
         let object_expr = Expr::Variable {
@@ -47139,10 +47105,7 @@ dae f() { gie 32 }
             .class_superclasses
             .insert("B".to_string(), "A".to_string());
 
-        let null_handle = context
-            .i8_type()
-            .ptr_type(AddressSpace::default())
-            .const_null();
+        let null_handle = context.ptr_type(AddressSpace::default()).const_null();
         let instance = codegen.make_instance(null_handle);
 
         let object_expr = Expr::Literal {

@@ -136,7 +136,7 @@ pub struct RuntimeFunctions<'ctx> {
 
 impl<'ctx> RuntimeFunctions<'ctx> {
     pub fn declare(module: &Module<'ctx>, types: &MdhTypes<'ctx>) -> Self {
-        let _context = module.get_context();
+        let context = module.get_context();
         let value_type = types.value_type;
         let i8_type = types.i8_type;
         let i32_type = types.i32_type;
@@ -144,7 +144,7 @@ impl<'ctx> RuntimeFunctions<'ctx> {
         let f64_type = types.f64_type;
         let bool_type = types.bool_type;
         let void_type = types.void_type;
-        let str_ptr = i8_type.ptr_type(AddressSpace::default());
+        let str_ptr = context.ptr_type(AddressSpace::default());
 
         // Value creation functions
         let make_nil = module.add_function("__mdh_make_nil", value_type.fn_type(&[], false), None);
