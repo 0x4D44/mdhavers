@@ -501,7 +501,11 @@ blether s
     );
     assert_eq!(run.code, Some(0), "{}", run.stderr);
     assert_eq!(run.stdout, "abc\n");
-    assert!(run.stderr.contains("(counted kinds 0x0)"), "{}", run.stderr);
+    assert!(
+        run.stderr.contains("(counted kinds 0x0, freed kinds 0x0)"),
+        "{}",
+        run.stderr
+    );
 }
 
 #[test]
@@ -518,4 +522,38 @@ blether s
     assert_eq!(run.stdout, "ab\n");
     assert!(reported_live(&run.stderr, "string") >= 0, "{}", run.stderr);
     assert!(run.stderr.contains(" total="), "{}", run.stderr);
+}
+
+#[test]
+fn a_million_deep_nested_list_is_freed_without_recursing() {
+    // Stage R2 (DES F6 3.9): letting go of a 10^6-deep nest frees it in a loop, not by
+    // recursion, in FREE mode and in the R1 checker (MDH_RC_NOFREE=1) alike.
+    let src = r#"
+ken xs = ["leaf" + ""]
+ken i = 0
+whiles i < 1000000 {
+    xs = [xs]
+    i = i + 1
+}
+xs = naething
+blether "done"
+"#;
+    for (envs, freed) in [
+        (
+            &[("MDH_RC_REPORT", "1"), ("MDH_RC_FREE_KINDS", "0x1FE")][..],
+            "0xfe",
+        ),
+        (&[("MDH_RC_REPORT", "1"), ("MDH_RC_NOFREE", "1")][..], "0x0"),
+    ] {
+        let run = run_native(src, envs);
+        assert_eq!(run.code, Some(0), "{}", run.stderr);
+        assert_eq!(run.stdout, "done\n");
+        assert!(
+            run.stderr.contains(&format!("freed kinds {freed})")),
+            "{}",
+            run.stderr
+        );
+        assert_eq!(reported_live(&run.stderr, "list"), 0, "{}", run.stderr);
+        assert_eq!(reported_live(&run.stderr, "string"), 0, "{}", run.stderr);
+    }
 }

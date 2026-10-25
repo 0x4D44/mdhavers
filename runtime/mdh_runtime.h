@@ -80,7 +80,8 @@ struct MdhBytes {
  *   __mdh_obj_alloc and the kind it is. Only string payloads grow in place, with
  *   __mdh_obj_realloc (string builders, in-place append).
  * - A buffer is memory owned by exactly one object or by the runtime itself (list items,
- *   dict payloads, instance field storage, scratch). It is never a value's data.
+ *   dict payloads, instance field storage, scratch). It is never a value's data. A dead
+ *   object's buffers are freed with it (__mdh_rc_free_buffers).
  *
  * Kinds must match `ObjKind` in src/llvm/types.rs. */
 typedef enum {
@@ -128,21 +129,29 @@ typedef struct {
      (1u << MDH_KIND_BYTES) | (1u << MDH_KIND_NATIVE))
 #endif
 
+/* Counted kinds freed on reaching zero by default (stage R2); see __mdh_rc_free_kinds in
+ * gc_stub.c. Native objects are never freed. */
+#ifndef MDH_RC_DEFAULT_FREE_KINDS
+#define MDH_RC_DEFAULT_FREE_KINDS ((1u << MDH_KIND_STRING) | (1u << MDH_KIND_BYTES))
+#endif
+
 void *__mdh_obj_alloc(uint32_t kind, size_t size);
 void *__mdh_obj_realloc(void *obj, size_t size);
 char *__mdh_obj_strdup(const char *s);
 void *__mdh_buf_alloc(size_t size);
 void *__mdh_buf_realloc(void *buf, size_t size);
+void __mdh_buf_free(void *buf);
 char *__mdh_buf_strdup(const char *s);
 /* Allocations made so far of a kind (MDH_KIND_BUFFER counts buffers), or -1 when the
  * runtime was built without MDH_ALLOC_STATS. */
 int64_t __mdh_alloc_count(uint32_t kind);
 
-/* ========== Reference counting (stage R1: DEAD marking, no frees) ==========
+/* ========== Reference counting (stage R2: frees; MDH_RC_NOFREE=1 marks DEAD) ==========
  *
  * Arguments are borrowed and results owned (+1), the Python C-API convention (DES F6
  * 3.3). A function that keeps an argument retains it. Reaching zero releases the
- * object's children and marks it DEAD; touching a DEAD object aborts. */
+ * object's children and frees it; with MDH_RC_NOFREE=1 (or a kind not in
+ * __mdh_rc_free_kinds) it is marked DEAD instead, and touching a DEAD object aborts. */
 void __mdh_retain(MdhValue v);
 void __mdh_release(MdhValue v);
 /* What compiled code calls once its inline tag test found a heap tag. */
@@ -161,10 +170,13 @@ void __mdh_rc_enable(void);
 /* Read MDH_RC_REPORT; called once at program start. */
 void __mdh_rc_init(void);
 extern uint32_t __mdh_rc_kinds;
+extern uint32_t __mdh_rc_free_kinds;
 /* Hooks the allocator needs from the runtime (mdh_runtime.c): call `visit` once per
- * MdhValue the object directly holds, and the current mdhavers line. */
+ * MdhValue the object directly holds; free the buffers a dead object owns (not the
+ * object itself); and the current mdhavers line. */
 typedef void (*MdhRcVisit)(MdhValue child, void *ctx);
 void __mdh_rc_children(uint32_t kind, void *payload, MdhRcVisit visit, void *ctx);
+void __mdh_rc_free_buffers(uint32_t kind, void *payload);
 int64_t __mdh_rc_line(void);
 
 /* ========== Value Creation ========== */

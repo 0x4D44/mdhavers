@@ -2,6 +2,7 @@
 //! Reference counting, stage R1 (`wrk_docs/2026.10.25 - DES - R1 refcount insertion plan.md`):
 //! the allocator's header, retain/release, DEAD marking, the underflow and header checks,
 //! the staging mask and the MDH_RC_REPORT harness, tested on `runtime/gc_stub.c` alone.
+//! Stage R2 frees at zero; MDH_RC_NOFREE=1 keeps R1's DEAD marking for the checker tests.
 //! A small C driver links against it with stand-in runtime hooks (lists only).
 
 use std::path::{Path, PathBuf};
@@ -13,6 +14,7 @@ const DRIVER: &str = r#"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/resource.h>
 #include "mdh_runtime.h"
 
 int64_t test_line = 7;
@@ -22,6 +24,13 @@ void __mdh_rc_children(uint32_t kind, void *payload, MdhRcVisit visit, void *ctx
     if (kind != MDH_KIND_LIST) return;
     MdhList *list = (MdhList *)payload;
     for (int64_t i = 0; i < list->length; i++) visit(list->items[i], ctx);
+}
+
+/* Counts the objects the free path tore down, per kind. */
+int64_t freed[MDH_KIND_COUNT];
+void __mdh_rc_free_buffers(uint32_t kind, void *payload) {
+    freed[kind]++;
+    if (kind == MDH_KIND_LIST) __mdh_buf_free(((MdhList *)payload)->items);
 }
 
 static MdhValue str(const char *s) {
@@ -115,8 +124,9 @@ int main(int argc, char **argv) {
         __mdh_release(a); __mdh_release(b); /* the list now holds a twice and b once */
         printf("a %lld b %lld\n", (long long)count_of(a), (long long)count_of(b));
         __mdh_release(l);
-        printf("live strings %lld lists %lld\n", (long long)__mdh_rc_live(MDH_KIND_STRING),
-               (long long)__mdh_rc_live(MDH_KIND_LIST));
+        printf("live strings %lld lists %lld freed %lld %lld\n",
+               (long long)__mdh_rc_live(MDH_KIND_STRING), (long long)__mdh_rc_live(MDH_KIND_LIST),
+               (long long)freed[MDH_KIND_STRING], (long long)freed[MDH_KIND_LIST]);
         return 0;
     }
     if (strcmp(mode, "deep") == 0) {
@@ -126,7 +136,32 @@ int main(int argc, char **argv) {
             inner = list_of(1, one); /* takes the previous object's only reference */
         }
         __mdh_release(inner);
-        printf("live %lld %lld\n", (long long)__mdh_rc_live(MDH_KIND_STRING), (long long)__mdh_rc_live(MDH_KIND_LIST));
+        printf("live %lld %lld freed %lld %lld\n", (long long)__mdh_rc_live(MDH_KIND_STRING),
+               (long long)__mdh_rc_live(MDH_KIND_LIST), (long long)freed[MDH_KIND_STRING],
+               (long long)freed[MDH_KIND_LIST]);
+        return 0;
+    }
+    if (strcmp(mode, "free-kinds") == 0) {
+        printf("free kinds 0x%x\n", __mdh_rc_free_kinds);
+        return 0;
+    }
+    if (strcmp(mode, "free-reuse") == 0) {
+        /* Freed memory goes back to malloc: churning more objects than the RSS cap would
+         * hold if nothing were freed stays small, and nothing is left live. */
+        for (int k = 0; k < 2000000; k++) {
+            MdhValue items[2] = { str("churn"), str("more churn") };
+            __mdh_release(list_of(2, items));
+        }
+        struct rusage ru;
+        getrusage(RUSAGE_SELF, &ru);
+        long long peak_kb = (long long)ru.ru_maxrss;
+#ifdef __APPLE__
+        peak_kb /= 1024; /* bytes on macOS, kilobytes elsewhere */
+#endif
+        printf("live %lld %lld freed %lld %lld under 64 MB %d\n",
+               (long long)__mdh_rc_live(MDH_KIND_STRING), (long long)__mdh_rc_live(MDH_KIND_LIST),
+               (long long)freed[MDH_KIND_STRING], (long long)freed[MDH_KIND_LIST],
+               peak_kb < 64 * 1024);
         return 0;
     }
     if (strcmp(mode, "report") == 0) {
@@ -184,11 +219,15 @@ fn stderr(out: &Output) -> String {
 }
 
 const ALL: &str = "0x1FE";
+/// R1's checker: objects reaching zero are marked DEAD and kept, not freed.
+const NOFREE: &[(&str, &str)] = &[("MDH_RC_NOFREE", "1")];
+/// Free every counted kind, whatever the build's default.
+const FREE_ALL: &[(&str, &str)] = &[("MDH_RC_FREE_KINDS", ALL)];
 
 #[test]
 fn objects_are_born_at_one_and_marked_dead_at_zero() {
     let d = build_driver(ALL);
-    let out = run(&d, "counts", &[]);
+    let out = run(&d, "counts", NOFREE);
     assert!(out.status.success(), "{}", stderr(&out));
     assert_eq!(
         stdout(&out),
@@ -204,7 +243,7 @@ fn touching_a_dead_object_aborts_with_its_kind_and_death_line() {
         ("release-dead", "release"),
         ("check-dead", "blether"),
     ] {
-        let out = run(&d, mode, &[]);
+        let out = run(&d, mode, NOFREE);
         assert!(!out.status.success(), "{mode} did not abort");
         assert!(!stdout(&out).contains("not reached"), "{mode}");
         let err = stderr(&out);
@@ -239,17 +278,57 @@ fn immortal_objects_are_never_written() {
 #[test]
 fn a_dead_container_releases_its_children() {
     let d = build_driver(ALL);
-    let out = run(&d, "children", &[]);
+    let out = run(&d, "children", NOFREE);
     assert!(out.status.success(), "{}", stderr(&out));
-    assert_eq!(stdout(&out), "a 2 b 1\nlive strings 0 lists 0\n");
+    assert_eq!(stdout(&out), "a 2 b 1\nlive strings 0 lists 0 freed 0 0\n");
+    // Freeing: the list and both strings go through the free path.
+    let out = run(&d, "children", FREE_ALL);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(stdout(&out), "a 2 b 1\nlive strings 0 lists 0 freed 2 1\n");
 }
 
 #[test]
 fn releasing_a_million_deep_nest_does_not_recurse() {
     let d = build_driver(ALL);
-    let out = run(&d, "deep", &[]);
+    let out = run(&d, "deep", NOFREE);
     assert!(out.status.success(), "{}", stderr(&out));
-    assert_eq!(stdout(&out), "live 0 0\n");
+    assert_eq!(stdout(&out), "live 0 0 freed 0 0\n");
+    // DES F6 3.9: freeing a 10^6-deep nested list does not overflow the stack.
+    let out = run(&d, "deep", FREE_ALL);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(stdout(&out), "live 0 0 freed 1 1000000\n");
+}
+
+#[test]
+fn freed_objects_give_their_memory_back() {
+    // 2 million lists of two strings would be hundreds of MB if kept (MDH_RC_NOFREE=1 keeps them).
+    let d = build_driver(ALL);
+    let out = run(&d, "free-reuse", FREE_ALL);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(
+        stdout(&out),
+        "live 0 0 freed 4000000 2000000 under 64 MB 1\n"
+    );
+}
+
+#[test]
+fn the_freed_kinds_follow_the_switches() {
+    let d = build_driver(ALL);
+    let kinds = |envs: &[(&str, &str)]| stdout(&run(&d, "free-kinds", envs));
+    // Every counted kind but native objects (the tri runtime keys them by address).
+    assert_eq!(kinds(&[]), "free kinds 0x42\n");
+    assert_eq!(kinds(NOFREE), "free kinds 0x0\n");
+    assert_eq!(kinds(FREE_ALL), "free kinds 0xfe\n");
+    assert_eq!(kinds(&[("MDH_RC_FREE_KINDS", "0x4")]), "free kinds 0x4\n");
+    // Only counted kinds are freed, and MDH_RC_NOFREE wins over MDH_RC_FREE_KINDS.
+    assert_eq!(
+        kinds(&[("MDH_RC_KINDS", "0x2"), ("MDH_RC_FREE_KINDS", ALL)]),
+        "free kinds 0x2\n"
+    );
+    assert_eq!(
+        kinds(&[("MDH_RC_NOFREE", "1"), ("MDH_RC_FREE_KINDS", ALL)]),
+        "free kinds 0x0\n"
+    );
 }
 
 #[test]
@@ -258,10 +337,10 @@ fn uncounted_kinds_are_left_alone() {
     let d = build_driver("0x2");
     let out = run(&d, "children", &[]);
     assert!(out.status.success(), "{}", stderr(&out));
-    assert_eq!(stdout(&out), "a 2 b 1\nlive strings 2 lists 1\n");
+    assert_eq!(stdout(&out), "a 2 b 1\nlive strings 2 lists 1 freed 0 0\n");
     // MDH_RC_KINDS overrides the build's default.
-    let out = run(&d, "children", &[("MDH_RC_KINDS", ALL)]);
-    assert_eq!(stdout(&out), "a 2 b 1\nlive strings 0 lists 0\n");
+    let out = run(&d, "children", &[("MDH_RC_KINDS", ALL), FREE_ALL[0]]);
+    assert_eq!(stdout(&out), "a 2 b 1\nlive strings 0 lists 0 freed 2 1\n");
 }
 
 #[test]
@@ -286,6 +365,6 @@ fn rc_report_prints_live_objects_per_kind_at_exit() {
     assert_eq!(
         stderr(&out),
         "mdhavers rc: live at exit: string=1 list=0 dict=0 closure=0 instance=0 bytes=0 \
-         bound method=0 native=0 total=1 (counted kinds 0x1fe)\n"
+         bound method=0 native=0 total=1 (counted kinds 0x1fe, freed kinds 0x42)\n"
     );
 }

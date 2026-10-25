@@ -6,10 +6,11 @@
  * (wrk_docs DEC, round 2, F6 Q7): there is no garbage collector behind this file.
  *
  * Every object carries an MdhObjHeader in front of its payload (DES F6 3.2). Stage R1
- * (wrk_docs "2026.10.25 - DES - R1 refcount insertion plan"): counts are kept, and an
- * object whose count reaches zero has its children released and is then marked DEAD
- * instead of being freed. Any later retain or release of it aborts, naming the kind and
- * the line it died at, so every would-be use-after-free shows up without a crash.
+ * (wrk_docs "2026.10.25 - DES - R1 refcount insertion plan") keeps counts; stage R2 frees:
+ * an object whose count reaches zero has its children released and is then freed with
+ * the buffers it owns. MDH_RC_NOFREE=1 at run time keeps R1's checker instead: the object
+ * is marked DEAD and kept, and any later retain or release of it aborts, naming the kind
+ * and the line it died at, so every would-be use-after-free shows up without a crash.
  *
  * Per-kind counters (allocated, died) are kept while counting is on (a program compiled
  * with MDH_RC=1, see __mdh_rc_enable); MDH_RC_REPORT=1 prints the live
@@ -160,6 +161,10 @@ void *__mdh_buf_realloc(void *buf, size_t size) {
     return realloc(buf, size);
 }
 
+void __mdh_buf_free(void *buf) {
+    free(buf);
+}
+
 char *__mdh_buf_strdup(const char *s) {
     size_t n = strlen(s) + 1;
     char *out = (char *)__mdh_buf_alloc(n);
@@ -175,11 +180,25 @@ char *__mdh_buf_strdup(const char *s) {
  * references, so counting there would only kill objects it still uses. */
 uint32_t __mdh_rc_kinds = 0;
 
-/* Stage R1 turns kinds on one at a time (MDH_RC_DEFAULT_KINDS); MDH_RC_KINDS (a number,
- * 0x prefix for hex) overrides it for debugging. */
+/* Counted kinds whose objects are freed on reaching zero (stage R2); the other counted
+ * kinds are only marked DEAD, as in R1. Native objects are never freed: the tri runtime
+ * keeps them in a table keyed by address. */
+uint32_t __mdh_rc_free_kinds = 0;
+
+/* MDH_RC_DEFAULT_KINDS are counted; MDH_RC_KINDS (a number, 0x prefix for hex) overrides
+ * it for debugging. Of those, MDH_RC_DEFAULT_FREE_KINDS are freed at zero.
+ * MDH_RC_NOFREE=1 frees nothing: every object that reaches zero is marked DEAD and kept,
+ * so a later use aborts with the line it died at (R1's checker). MDH_RC_FREE_KINDS
+ * narrows the freed kinds for bisecting. */
 void __mdh_rc_enable(void) {
     const char *kinds = getenv("MDH_RC_KINDS");
     __mdh_rc_kinds = (kinds && *kinds) ? (uint32_t)strtoul(kinds, NULL, 0) : MDH_RC_DEFAULT_KINDS;
+    const char *nofree = getenv("MDH_RC_NOFREE");
+    const char *free_kinds = getenv("MDH_RC_FREE_KINDS");
+    uint32_t freed = (free_kinds && *free_kinds) ? (uint32_t)strtoul(free_kinds, NULL, 0)
+                                                 : MDH_RC_DEFAULT_FREE_KINDS;
+    if (nofree && strcmp(nofree, "1") == 0) freed = 0;
+    __mdh_rc_free_kinds = freed & __mdh_rc_kinds & ~(1u << MDH_KIND_NATIVE);
 }
 
 static int __mdh_rc_report_enabled = 0;
@@ -192,7 +211,13 @@ static void __mdh_rc_report(void) {
         total += live;
         fprintf(stderr, " %s=%lld", __mdh_rc_kind_name(kind), (long long)live);
     }
-    fprintf(stderr, " total=%lld (counted kinds 0x%x)\n", (long long)total, __mdh_rc_kinds);
+    fprintf(
+        stderr,
+        " total=%lld (counted kinds 0x%x, freed kinds 0x%x)\n",
+        (long long)total,
+        __mdh_rc_kinds,
+        __mdh_rc_free_kinds
+    );
     fflush(stderr);
 }
 
@@ -261,8 +286,9 @@ static void __mdh_rc_drop_child(MdhValue child, void *ctx) {
     if (h && --h->refcount == 0) __mdh_rc_work_push((MdhRcWork *)ctx, h);
 }
 
-/* `h` reached zero: release what it holds, then mark it (and anything that reaches zero
- * in turn) DEAD. R2 frees here instead. */
+/* `h` reached zero: release what it holds, then free it (and anything that reaches zero
+ * in turn), or mark it DEAD when its kind is not freed (see __mdh_rc_free_kinds). The
+ * work list keeps teardown iterative: a million-deep nested list frees in a loop. */
 static void __mdh_rc_kill(MdhObjHeader *h) {
     MdhRcWork w;
     w.items = w.inline_items;
@@ -272,10 +298,17 @@ static void __mdh_rc_kill(MdhObjHeader *h) {
     int64_t line = __mdh_rc_line();
     while (w.len > 0) {
         MdhObjHeader *dead = w.items[--w.len];
+        uint32_t kind = dead->kind;
+        /* DEAD before its children are released, so a miscounted path back to it aborts
+         * instead of queueing it twice. */
         dead->flags |= MDH_OBJ_DEAD;
         dead->refcount = line; /* the death line, for the abort message */
-        __atomic_fetch_add(&__mdh_rc_died[dead->kind], 1, __ATOMIC_RELAXED);
-        __mdh_rc_children(dead->kind, dead + 1, __mdh_rc_drop_child, &w);
+        __atomic_fetch_add(&__mdh_rc_died[kind], 1, __ATOMIC_RELAXED);
+        __mdh_rc_children(kind, dead + 1, __mdh_rc_drop_child, &w);
+        if (__mdh_rc_free_kinds & (1u << kind)) {
+            __mdh_rc_free_buffers(kind, dead + 1);
+            free(dead);
+        }
     }
     if (w.items != w.inline_items) free(w.items);
 }

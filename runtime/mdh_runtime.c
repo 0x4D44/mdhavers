@@ -4579,6 +4579,36 @@ typedef struct {
     int64_t *slots;
 } MdhKvIndex;
 
+/* Free the buffers a dead object owns (reference counting's free path, gc_stub.c); the
+ * object itself is freed by the caller. Same layouts as __mdh_rc_children. Payloads and
+ * indexes a dict replaced while growing are not reachable from it any more and are not
+ * freed here (a loop iterating the dict may have held them). */
+void __mdh_rc_free_buffers(uint32_t kind, void *payload) {
+    switch (kind) {
+        case MDH_KIND_LIST:
+            __mdh_buf_free(((MdhList *)payload)->items);
+            return;
+        case MDH_KIND_KV: {
+            intptr_t *handle = (intptr_t *)payload;
+            MdhKvIndex *idx = (MdhKvIndex *)(intptr_t)handle[2];
+            if (idx) {
+                __mdh_buf_free(idx->slots);
+                __mdh_buf_free(idx);
+            }
+            __mdh_buf_free((void *)(intptr_t)handle[0]);
+            return;
+        }
+        case MDH_KIND_INSTANCE:
+            __mdh_buf_free((void *)(intptr_t)((intptr_t *)payload)[0]);
+            return;
+        case MDH_KIND_BYTES:
+            __mdh_buf_free(((MdhBytes *)payload)->data);
+            return;
+        default:
+            return; /* strings, closures and bound methods own no buffers */
+    }
+}
+
 /* Below this many keys a linear scan is as quick as hashing. */
 #define MDH_KV_INDEX_MIN 8
 
