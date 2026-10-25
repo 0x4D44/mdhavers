@@ -346,6 +346,13 @@ These functions have distinctly Scottish names and personality!
 | `chan_close(chan)` | Close channel |
 | `chan_is_closed(chan)` | Check channel closed |
 
+**Sharing between threads.** Threads may share any value freely while naebody changes it:
+thread arguments, channel messages, globals and captured variables. Shared mutable
+containers need a mutex: a list, dict, creel or instance that one thread changes while
+another uses it must be locked (`mutex_lock`/`mutex_unlock`) around every access, in every
+thread. The same goes for a global or captured variable that one thread reassigns while
+another reads it. Without the lock, natively compiled programs can corrupt memory.
+
 ## TLS / DTLS / SRTP
 
 | Function | Description |
