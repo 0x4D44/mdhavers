@@ -63,7 +63,9 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     // The single allocator (runtime/gc_stub.c): raw memory, no MdhValue in or out.
     ("__mdh_buf_alloc", "-", Ret::None),
     ("__mdh_buf_realloc", "--", Ret::None),
-    ("__mdh_bytes_append", "mb", Ret::Arg), // returns bytes arg; bytes mutated in place
+    ("__mdh_builtin_error", "-", Ret::None), // never returns; declared on first use
+    ("__mdh_builtin_type_error", "-", Ret::None), // never returns; declared on first use
+    ("__mdh_bytes_append", "mb", Ret::Arg),  // returns bytes arg; bytes mutated in place
     ("__mdh_bytes_from_string", "b", Ret::Fresh),
     ("__mdh_bytes_get", "bb", Ret::None),
     ("__mdh_bytes_len", "b", Ret::None),
@@ -188,6 +190,7 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_jammy", "bb", Ret::None),
     ("__mdh_jings", "b", Ret::Fresh),
     ("__mdh_jmp_buf_size", "", Ret::None),
+    ("__mdh_join_general", "bb", Ret::Fresh),
     ("__mdh_json_parse", "b", Ret::Fresh),
     ("__mdh_json_pretty", "b", Ret::Fresh),
     ("__mdh_json_stringify", "b", Ret::Fresh),
@@ -195,6 +198,7 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_last_index_of", "bb", Ret::None),
     ("__mdh_leftpad", "bbb", Ret::Fresh), // R1: +1 on every path
     ("__mdh_lines", "b", Ret::Fresh),
+    ("__mdh_list_all_strings", "b", Ret::None),
     ("__mdh_list_clear", "m", Ret::Arg), // returns the same list
     ("__mdh_list_contains", "bb", Ret::None),
     ("__mdh_list_copy", "b", Ret::Fresh), // R1: +1 on every path
@@ -432,6 +436,8 @@ dae f(xs, n) {
     gie xs[n] / n
 }
 blether f([1, 2], 1)
+blether join(["a"], ",")
+blether aw([1], |x| x)
 "#;
 
     /// Every `__mdh_*` function declared (not defined) in a compiled module, with its

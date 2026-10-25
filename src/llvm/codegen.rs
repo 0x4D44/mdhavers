@@ -4330,6 +4330,211 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.build_unreachable().unwrap();
     }
 
+    /// An Int or Float value as an f64 (an int is converted, a float's bits are reused).
+    /// The caller has already checked the tag.
+    fn number_as_f64(&self, val: BasicValueEnum<'ctx>) -> inkwell::values::FloatValue<'ctx> {
+        let tag = self.extract_tag(val).unwrap();
+        let data = self.extract_data(val).unwrap();
+        let is_float = self
+            .builder
+            .build_int_compare(
+                IntPredicate::EQ,
+                tag,
+                self.types
+                    .i8_type
+                    .const_int(ValueTag::Float.as_u8() as u64, false),
+                "num_is_float",
+            )
+            .unwrap();
+        let as_float = self
+            .builder
+            .build_bit_cast(data, self.types.f64_type, "num_bits")
+            .unwrap()
+            .into_float_value();
+        let from_int = self
+            .builder
+            .build_signed_int_to_float(data, self.types.f64_type, "num_from_int")
+            .unwrap();
+        self.builder
+            .build_select(is_float, as_float, from_int, "num_f64")
+            .unwrap()
+            .into_float_value()
+    }
+
+    /// |v| for an i64 (i64::MIN stays negative, as with wrapping arithmetic).
+    fn abs_i64(&self, v: IntValue<'ctx>) -> IntValue<'ctx> {
+        let zero = self.types.i64_type.const_zero();
+        let neg = self.builder.build_int_neg(v, "abs_neg").unwrap();
+        let is_neg = self
+            .builder
+            .build_int_compare(IntPredicate::SLT, v, zero, "abs_is_neg")
+            .unwrap();
+        self.builder
+            .build_select(is_neg, neg, v, "abs")
+            .unwrap()
+            .into_int_value()
+    }
+
+    /// `__mdh_builtin_error(msg)` or `__mdh_builtin_type_error(msg)` (declared on first
+    /// use): they raise the interpreter's text for a builtin given an unusable argument
+    /// and never return (MDH-BUG-FLU-00143, 00144).
+    fn builtin_error_fn(&self, type_error: bool) -> FunctionValue<'ctx> {
+        let name = if type_error {
+            "__mdh_builtin_type_error"
+        } else {
+            "__mdh_builtin_error"
+        };
+        if let Some(f) = self.module.get_function(name) {
+            return f;
+        }
+        let ptr = self.context.ptr_type(AddressSpace::default());
+        let fn_type = self.types.void_type.fn_type(&[ptr.into()], false);
+        self.module
+            .add_function(name, fn_type, Some(Linkage::External))
+    }
+
+    /// Raise the builtin argument error `msg`, then `unreachable`.
+    fn emit_builtin_error(&mut self, msg: &str, type_error: bool) {
+        let f = self.builtin_error_fn(type_error);
+        let text = self
+            .builder
+            .build_global_string_ptr(msg, "builtin_err_msg")
+            .unwrap();
+        self.builder
+            .build_call(f, &[text.as_pointer_value().into()], "")
+            .unwrap();
+        self.builder.build_unreachable().unwrap();
+    }
+
+    /// Require each value's tag to be one of the tags listed beside it; otherwise raise
+    /// `msg` (a TypeError with the line when `type_error`, else the RuntimeError a native
+    /// interpreter function returns). One tag compare per allowed tag on the good path.
+    fn emit_arg_guard(
+        &mut self,
+        checks: &[(BasicValueEnum<'ctx>, &[ValueTag])],
+        msg: &str,
+        type_error: bool,
+    ) {
+        let function = self.current_function.expect("No current function");
+        let fail_block = self.context.append_basic_block(function, "arg_fail");
+        for (val, allowed) in checks {
+            let tag = self.extract_tag(*val).unwrap();
+            let mut ok: Option<IntValue<'ctx>> = None;
+            for t in allowed.iter() {
+                let c = self
+                    .builder
+                    .build_int_compare(
+                        IntPredicate::EQ,
+                        tag,
+                        self.types.i8_type.const_int(t.as_u8() as u64, false),
+                        "arg_tag_eq",
+                    )
+                    .unwrap();
+                ok = Some(match ok {
+                    None => c,
+                    Some(prev) => self.builder.build_or(prev, c, "arg_tag_or").unwrap(),
+                });
+            }
+            let next_block = self.context.append_basic_block(function, "arg_ok");
+            self.builder
+                .build_conditional_branch(ok.expect("a tag to allow"), next_block, fail_block)
+                .unwrap();
+            self.builder.position_at_end(next_block);
+        }
+        let ok_end = self.builder.get_insert_block().unwrap();
+        self.builder.position_at_end(fail_block);
+        self.emit_builtin_error(msg, type_error);
+        self.builder.position_at_end(ok_end);
+    }
+
+    /// join(list, delim) once both are known to be a list and a string: the inline loop
+    /// when every element is a string, else the runtime's `__mdh_join_general` (which
+    /// shows each element as the interpreter does).
+    fn emit_join_checked(
+        &mut self,
+        list_val: BasicValueEnum<'ctx>,
+        delim_val: BasicValueEnum<'ctx>,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let function = self.current_function.expect("No current function");
+        let all_strings_fn = match self.module.get_function("__mdh_list_all_strings") {
+            Some(f) => f,
+            None => {
+                let fn_type = self
+                    .types
+                    .i64_type
+                    .fn_type(&[self.types.value_type.into()], false);
+                self.module
+                    .add_function("__mdh_list_all_strings", fn_type, Some(Linkage::External))
+            }
+        };
+        let general_fn = match self.module.get_function("__mdh_join_general") {
+            Some(f) => f,
+            None => {
+                let fn_type = self.types.value_type.fn_type(
+                    &[self.types.value_type.into(), self.types.value_type.into()],
+                    false,
+                );
+                self.module
+                    .add_function("__mdh_join_general", fn_type, Some(Linkage::External))
+            }
+        };
+        let all = self
+            .builder
+            .build_call(all_strings_fn, &[list_val.into()], "join_all_strings")
+            .unwrap()
+            .try_as_basic_value()
+            .basic()
+            .unwrap()
+            .into_int_value();
+        let is_all = self
+            .builder
+            .build_int_compare(
+                IntPredicate::NE,
+                all,
+                self.types.i64_type.const_zero(),
+                "join_is_all",
+            )
+            .unwrap();
+        let fast_block = self.context.append_basic_block(function, "join_fast");
+        let slow_block = self.context.append_basic_block(function, "join_general");
+        let merge_block = self.context.append_basic_block(function, "join_merge");
+        self.builder
+            .build_conditional_branch(is_all, fast_block, slow_block)
+            .unwrap();
+
+        self.builder.position_at_end(fast_block);
+        let fast = self.inline_join(list_val, delim_val)?;
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let fast_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(slow_block);
+        let slow = self
+            .builder
+            .build_call(
+                general_fn,
+                &[list_val.into(), delim_val.into()],
+                "join_slow",
+            )
+            .unwrap()
+            .try_as_basic_value()
+            .basic()
+            .unwrap();
+        self.builder
+            .build_unconditional_branch(merge_block)
+            .unwrap();
+        let slow_end = self.builder.get_insert_block().unwrap();
+
+        self.builder.position_at_end(merge_block);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "join_result")
+            .unwrap();
+        phi.add_incoming(&[(&fast, fast_end), (&slow, slow_end)]);
+        Ok(phi.as_basic_value())
+    }
+
     /// The runtime's `__mdh_current_line` global (declared on first use).
     fn current_line_global(&self) -> PointerValue<'ctx> {
         let global = match self.module.get_global("__mdh_current_line") {
@@ -4641,6 +4846,7 @@ impl<'ctx> CodeGen<'ctx> {
         "apply_n",
         "assert_equal",
         "assert_that",
+        "atween",
         "compose",
         "constant",
         "coont_gin",
@@ -4653,11 +4859,15 @@ impl<'ctx> CodeGen<'ctx> {
         "first",
         "group_by",
         "hauf_by",
+        "hauld_atween",
         "ilka",
         "inspect",
         "is_baw",
         "is_braw",
         "is_hale_nummer",
+        "is_negative",
+        "is_positive",
+        "is_toom",
         "last",
         "mak_siccar_that",
         "make_range",
@@ -17868,12 +18078,33 @@ impl<'ctx> CodeGen<'ctx> {
                     let (start_arg, end_arg) = if args.len() == 2 {
                         let start_arg = self.make_int(self.types.i64_type.const_int(0, false));
                         let end_raw = self.compile_expr(&args[1])?;
+                        self.emit_arg_guard(
+                            &[(end_raw, &[ValueTag::Int, ValueTag::Float])],
+                            "scran() needs integer indices",
+                            false,
+                        );
+                        self.emit_arg_guard(
+                            &[(obj_arg, &[ValueTag::String, ValueTag::List])],
+                            "scran() expects a list or string",
+                            false,
+                        );
                         let end_i64 = self.coerce_i64(end_raw, "scran");
                         let end_arg = self.make_int(end_i64);
                         (start_arg, end_arg)
                     } else {
                         let start_raw = self.compile_expr(&args[1])?;
                         let end_raw = self.compile_expr(&args[2])?;
+                        let num = [ValueTag::Int, ValueTag::Float];
+                        self.emit_arg_guard(
+                            &[(start_raw, &num), (end_raw, &num)],
+                            "scran() needs integer indices",
+                            false,
+                        );
+                        self.emit_arg_guard(
+                            &[(obj_arg, &[ValueTag::String, ValueTag::List])],
+                            "scran() expects a list or string",
+                            false,
+                        );
                         let start_i64 = self.coerce_i64(start_raw, "scran");
                         let end_i64 = self.coerce_i64(end_raw, "scran");
                         (self.make_int(start_i64), self.make_int(end_i64))
@@ -17988,6 +18219,21 @@ impl<'ctx> CodeGen<'ctx> {
                             "starts_with expects 2 arguments (string, prefix)".to_string(),
                         ));
                     }
+                    if name.as_str() == "starts_with" {
+                        let text = self.compile_expr(&args[0])?;
+                        let part = self.compile_expr(&args[1])?;
+                        self.emit_arg_guard(
+                            &[(text, &[ValueTag::String]), (part, &[ValueTag::String])],
+                            "starts_with() needs two strings",
+                            false,
+                        );
+                        return self.build_call_basic_value(
+                            self.libc.starts_with,
+                            &[text.into(), part.into()],
+                            "starts_with_result",
+                            "starts_with returned void",
+                        );
+                    }
                     return self.compile_metadata_args(args).and_then(|call_args| {
                         self.build_call_basic_value(
                             self.libc.starts_with,
@@ -18003,6 +18249,21 @@ impl<'ctx> CodeGen<'ctx> {
                         return Err(HaversError::CompileError(
                             "ends_with expects 2 arguments (string, suffix)".to_string(),
                         ));
+                    }
+                    if name.as_str() == "ends_with" {
+                        let text = self.compile_expr(&args[0])?;
+                        let part = self.compile_expr(&args[1])?;
+                        self.emit_arg_guard(
+                            &[(text, &[ValueTag::String]), (part, &[ValueTag::String])],
+                            "ends_with() needs two strings",
+                            false,
+                        );
+                        return self.build_call_basic_value(
+                            self.libc.ends_with,
+                            &[text.into(), part.into()],
+                            "ends_with_result",
+                            "ends_with returned void",
+                        );
                     }
                     return self.compile_metadata_args(args).and_then(|call_args| {
                         self.build_call_basic_value(
@@ -18247,6 +18508,20 @@ impl<'ctx> CodeGen<'ctx> {
                     );
                 }
                 "words" => {
+                    if args.len() == 1 {
+                        let text = self.compile_expr(&args[0])?;
+                        self.emit_arg_guard(
+                            &[(text, &[ValueTag::String])],
+                            "words() needs a string",
+                            false,
+                        );
+                        return self.build_call_basic_value(
+                            self.libc.words,
+                            &[text.into()],
+                            "words_result",
+                            "words returned void",
+                        );
+                    }
                     return self.compile_runtime_call_value_with_arity_call_name(
                         self.libc.words,
                         args,
@@ -18626,7 +18901,12 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     // Compiler backend doesn't implement crash handling toggles; keep semantics.
-                    let _ = self.compile_expr(&args[0])?;
+                    let flag = self.compile_expr(&args[0])?;
+                    self.emit_arg_guard(
+                        &[(flag, &[ValueTag::Bool])],
+                        "set_crash_handling() expects a boolean",
+                        false,
+                    );
                     return Ok(self.make_nil());
                 }
                 "stopwatch" => {
@@ -18795,7 +19075,13 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let level = self.compile_expr(&args[0])?;
                     let target = if args.len() == 2 {
-                        self.compile_expr(&args[1])?
+                        let target = self.compile_expr(&args[1])?;
+                        self.emit_arg_guard(
+                            &[(target, &[ValueTag::String])],
+                            "Log target must be a string",
+                            false,
+                        );
+                        target
                     } else {
                         self.compile_string_literal("")
                     };
@@ -18891,12 +19177,24 @@ impl<'ctx> CodeGen<'ctx> {
                         self.compile_string_literal("blether")
                     };
                     let fields = if args.len() >= 3 {
-                        self.compile_expr(&args[2])?
+                        let fields = self.compile_expr(&args[2])?;
+                        self.emit_arg_guard(
+                            &[(fields, &[ValueTag::Dict])],
+                            "Expected dict for log fields",
+                            false,
+                        );
+                        fields
                     } else {
                         self.make_nil()
                     };
                     let target = if args.len() >= 4 {
-                        self.compile_expr(&args[3])?
+                        let target = self.compile_expr(&args[3])?;
+                        self.emit_arg_guard(
+                            &[(target, &[ValueTag::String])],
+                            "Log target must be a string",
+                            false,
+                        );
+                        target
                     } else {
                         self.compile_string_literal("")
                     };
@@ -19722,6 +20020,11 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let n = self.compile_expr(&args[0])?;
+                    self.emit_arg_guard(
+                        &[(n, &[ValueTag::Int])],
+                        "is_even() needs an integer",
+                        false,
+                    );
                     let data = self.extract_data(n).unwrap();
                     let two = self.types.i64_type.const_int(2, false);
                     let rem = self
@@ -19842,6 +20145,11 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let n = self.compile_expr(&args[0])?;
+                    self.emit_arg_guard(
+                        &[(n, &[ValueTag::Int])],
+                        "is_odd() needs an integer",
+                        false,
+                    );
                     let data = self.extract_data(n).unwrap();
                     let two = self.types.i64_type.const_int(2, false);
                     let rem = self
@@ -20204,6 +20512,13 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let arg = self.compile_expr(&args[0])?;
+                    if name.as_str() == "trim" {
+                        self.emit_arg_guard(
+                            &[(arg, &[ValueTag::String])],
+                            "trim() needs a string",
+                            false,
+                        );
+                    }
 
                     let tag = self.extract_tag(arg).unwrap();
                     let list_tag = self
@@ -20297,6 +20612,13 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let arg = self.compile_expr(&args[0])?;
+                    if name.as_str() == "trim_start" {
+                        self.emit_arg_guard(
+                            &[(arg, &[ValueTag::String])],
+                            "trim_start() needs a string",
+                            false,
+                        );
+                    }
                     let result = self
                         .builder
                         .build_call(self.libc.ltrim, &[arg.into()], "ltrim_result")
@@ -20315,6 +20637,13 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let arg = self.compile_expr(&args[0])?;
+                    if name.as_str() == "trim_end" {
+                        self.emit_arg_guard(
+                            &[(arg, &[ValueTag::String])],
+                            "trim_end() needs a string",
+                            false,
+                        );
+                    }
                     let result = self
                         .builder
                         .build_call(self.libc.rtrim, &[arg.into()], "rtrim_result")
@@ -20734,6 +21063,14 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let str_arg = self.compile_expr(&args[0])?;
                     let delim_arg = self.compile_expr(&args[1])?;
+                    self.emit_arg_guard(
+                        &[
+                            (str_arg, &[ValueTag::String]),
+                            (delim_arg, &[ValueTag::String]),
+                        ],
+                        "split() expects two strings",
+                        false,
+                    );
                     return self.inline_split(str_arg, delim_arg);
                 }
                 "join" | "jyne" => {
@@ -20744,7 +21081,15 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let list_arg = self.compile_expr(&args[0])?;
                     let delim_arg = self.compile_expr(&args[1])?;
-                    return self.inline_join(list_arg, delim_arg);
+                    self.emit_arg_guard(
+                        &[
+                            (list_arg, &[ValueTag::List]),
+                            (delim_arg, &[ValueTag::String]),
+                        ],
+                        "join() expects a list and a string",
+                        false,
+                    );
+                    return self.emit_join_checked(list_arg, delim_arg);
                 }
                 "sort" => {
                     if args.len() != 1 {
@@ -20910,7 +21255,14 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
                     let case_c_end = self.builder.get_insert_block().unwrap();
 
+                    // None of the accepted orders: arg0 is then taken as the list, so it must
+                    // be one (the interpreter's TypeError, instead of reading a non-list).
                     self.builder.position_at_end(default_block);
+                    self.emit_arg_guard(
+                        &[(arg0, &[ValueTag::List])],
+                        "tumble() expects a list as first argument",
+                        true,
+                    );
                     self.builder
                         .build_unconditional_branch(merge_block)
                         .unwrap();
@@ -20963,6 +21315,11 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let list_arg = self.compile_expr(&args[0])?;
+                    self.emit_arg_guard(
+                        &[(list_arg, &[ValueTag::List])],
+                        "aw() expects a list as first argument",
+                        true,
+                    );
                     if args.len() == 1 {
                         return self.inline_aw_truthy(list_arg);
                     }
@@ -21908,6 +22265,11 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let arg = self.compile_expr(&args[0])?;
+                    self.emit_arg_guard(
+                        &[(arg, &[ValueTag::Int, ValueTag::Float])],
+                        "trunc() needs a number",
+                        false,
+                    );
                     return self.inline_tae_int(arg);
                 }
                 "frac" => {
@@ -23962,6 +24324,13 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let arg = self.compile_expr(&args[0])?;
+                    if name.as_str() == "is_empty" {
+                        self.emit_arg_guard(
+                            &[(arg, &[ValueTag::String, ValueTag::List, ValueTag::Dict])],
+                            "is_empty() needs a string, list, or dict",
+                            false,
+                        );
+                    }
                     let tag = self.extract_tag(arg).unwrap();
                     let data = self.extract_data(arg).unwrap();
 
@@ -24125,6 +24494,11 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let n_val = self.compile_expr(&args[0])?;
+                    self.emit_arg_guard(
+                        &[(n_val, &[ValueTag::Int])],
+                        "is_prime() needs an integer",
+                        false,
+                    );
                     let n = self.extract_data(n_val).unwrap();
 
                     let function = self.current_function.unwrap();
@@ -24240,16 +24614,23 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let arg = self.compile_expr(&args[0])?;
-                    let data = self.extract_data(arg).unwrap();
-                    let zero = self.types.i64_type.const_int(0, false);
+                    self.emit_arg_guard(
+                        &[(arg, &[ValueTag::Int, ValueTag::Float])],
+                        "sign() needs a number",
+                        false,
+                    );
+                    // A float is compared as a float (its bits are not an integer).
+                    let as_f64 = self.number_as_f64(arg);
+                    let fzero = self.types.f64_type.const_float(0.0);
                     let is_neg = self
                         .builder
-                        .build_int_compare(inkwell::IntPredicate::SLT, data, zero, "is_neg")
+                        .build_float_compare(inkwell::FloatPredicate::OLT, as_f64, fzero, "is_neg")
                         .unwrap();
                     let is_pos = self
                         .builder
-                        .build_int_compare(inkwell::IntPredicate::SGT, data, zero, "is_pos")
+                        .build_float_compare(inkwell::FloatPredicate::OGT, as_f64, fzero, "is_pos")
                         .unwrap();
+                    let zero = self.types.i64_type.const_int(0, false);
                     let neg_one = self.types.i64_type.const_int((-1i64) as u64, true);
                     let one = self.types.i64_type.const_int(1, false);
                     let tmp = self
@@ -24426,8 +24807,16 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let a_val = self.compile_expr(&args[0])?;
                     let b_val = self.compile_expr(&args[1])?;
+                    self.emit_arg_guard(
+                        &[(a_val, &[ValueTag::Int]), (b_val, &[ValueTag::Int])],
+                        "gcd() needs two integers",
+                        false,
+                    );
+                    // The gcd is never negative, whatever the signs of the arguments.
                     let a = self.extract_data(a_val).unwrap();
                     let b = self.extract_data(b_val).unwrap();
+                    let a = self.abs_i64(a);
+                    let b = self.abs_i64(b);
 
                     let function = self.current_function.unwrap();
                     let loop_block = self.context.append_basic_block(function, "gcd_loop");
@@ -24492,8 +24881,15 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                     let a_val = self.compile_expr(&args[0])?;
                     let b_val = self.compile_expr(&args[1])?;
+                    self.emit_arg_guard(
+                        &[(a_val, &[ValueTag::Int]), (b_val, &[ValueTag::Int])],
+                        "lcm() needs two integers",
+                        false,
+                    );
                     let a = self.extract_data(a_val).unwrap();
                     let b = self.extract_data(b_val).unwrap();
+                    let a = self.abs_i64(a);
+                    let b = self.abs_i64(b);
 
                     // First compute gcd using Euclidean algorithm
                     let function = self.current_function.unwrap();
@@ -24556,9 +24952,29 @@ impl<'ctx> CodeGen<'ctx> {
                         .into_int_value();
                     // lcm = (a * b) / gcd
                     let product = self.builder.build_int_mul(a, b, "product").unwrap();
+                    // lcm(0, x) is 0; avoid dividing by the zero gcd of (0, 0).
+                    let gcd_is_zero = self
+                        .builder
+                        .build_int_compare(
+                            IntPredicate::EQ,
+                            gcd,
+                            self.types.i64_type.const_zero(),
+                            "lcm_gcd_zero",
+                        )
+                        .unwrap();
+                    let safe_gcd = self
+                        .builder
+                        .build_select(
+                            gcd_is_zero,
+                            self.types.i64_type.const_int(1, false),
+                            gcd,
+                            "lcm_safe_gcd",
+                        )
+                        .unwrap()
+                        .into_int_value();
                     let result = self
                         .builder
-                        .build_int_signed_div(product, gcd, "lcm")
+                        .build_int_signed_div(product, safe_gcd, "lcm")
                         .unwrap();
                     return Ok(self.make_int(result));
                 }
@@ -25039,6 +25455,13 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let seq_val = self.compile_expr(&args[0])?;
+                    if name.as_str() == "enumerate" {
+                        self.emit_arg_guard(
+                            &[(seq_val, &[ValueTag::List])],
+                            "enumerate() needs a list",
+                            false,
+                        );
+                    }
                     let seq_tag = self.extract_tag(seq_val).unwrap();
                     let seq_data = self.extract_data(seq_val).unwrap();
 
@@ -27017,6 +27440,15 @@ impl<'ctx> CodeGen<'ctx> {
                     let str_arg = self.compile_expr(&args[0])?;
                     let start_arg = self.compile_expr(&args[1])?;
                     let end_arg = self.compile_expr(&args[2])?;
+                    self.emit_arg_guard(
+                        &[
+                            (str_arg, &[ValueTag::String]),
+                            (start_arg, &[ValueTag::String]),
+                            (end_arg, &[ValueTag::String]),
+                        ],
+                        "substr_between() needs three strings",
+                        false,
+                    );
                     return self.inline_substr_between(str_arg, start_arg, end_arg);
                 }
                 "format" => {
@@ -27088,7 +27520,7 @@ impl<'ctx> CodeGen<'ctx> {
                     return Ok(self.compile_string_literal(""));
                 }
                 "lerp" | "linear_interpolate" => {
-                    // lerp(a, b, t) - linear interpolation: a + t * (b - a)
+                    // lerp(a, b, t) - linear interpolation: a + t * (b - a), always a float
                     if args.len() != 3 {
                         return Err(HaversError::CompileError(
                             "lerp expects 3 arguments (a, b, t)".to_string(),
@@ -27097,43 +27529,15 @@ impl<'ctx> CodeGen<'ctx> {
                     let a_val = self.compile_expr(&args[0])?;
                     let b_val = self.compile_expr(&args[1])?;
                     let t_val = self.compile_expr(&args[2])?;
-                    let a_tag = self.extract_tag(a_val).unwrap();
-                    let a_data = self.extract_data(a_val).unwrap();
-                    let b_data = self.extract_data(b_val).unwrap();
-                    let t_data = self.extract_data(t_val).unwrap();
-
-                    let float_tag = self.types.i8_type.const_int(3, false);
-                    let is_float = self
-                        .builder
-                        .build_int_compare(IntPredicate::EQ, a_tag, float_tag, "is_float")
-                        .unwrap();
-
-                    let function = self.current_function.unwrap();
-                    let float_block = self.context.append_basic_block(function, "lerp_float");
-                    let int_block = self.context.append_basic_block(function, "lerp_int");
-                    let done_block = self.context.append_basic_block(function, "lerp_done");
-
-                    self.builder
-                        .build_conditional_branch(is_float, float_block, int_block)
-                        .unwrap();
-
-                    // Float case: a + t * (b - a)
-                    self.builder.position_at_end(float_block);
-                    let a_f = self
-                        .builder
-                        .build_bit_cast(a_data, self.types.f64_type, "a_f")
-                        .unwrap()
-                        .into_float_value();
-                    let b_f = self
-                        .builder
-                        .build_bit_cast(b_data, self.types.f64_type, "b_f")
-                        .unwrap()
-                        .into_float_value();
-                    let t_f = self
-                        .builder
-                        .build_bit_cast(t_data, self.types.f64_type, "t_f")
-                        .unwrap()
-                        .into_float_value();
+                    let num = [ValueTag::Int, ValueTag::Float];
+                    self.emit_arg_guard(
+                        &[(a_val, &num), (b_val, &num), (t_val, &num)],
+                        "lerp() needs numbers",
+                        false,
+                    );
+                    let a_f = self.number_as_f64(a_val);
+                    let b_f = self.number_as_f64(b_val);
+                    let t_f = self.number_as_f64(t_val);
                     let diff_f = self.builder.build_float_sub(b_f, a_f, "diff_f").unwrap();
                     let scaled_f = self
                         .builder
@@ -27143,38 +27547,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_float_add(a_f, scaled_f, "result_f")
                         .unwrap();
-                    let float_result = self.make_float(result_f);
-                    self.builder.build_unconditional_branch(done_block).unwrap();
-                    let float_block_end = self.builder.get_insert_block().unwrap();
-
-                    // Int case: a + t * (b - a) as integers
-                    self.builder.position_at_end(int_block);
-                    let diff_i = self
-                        .builder
-                        .build_int_sub(b_data, a_data, "diff_i")
-                        .unwrap();
-                    let scaled_i = self
-                        .builder
-                        .build_int_mul(t_data, diff_i, "scaled_i")
-                        .unwrap();
-                    let result_i = self
-                        .builder
-                        .build_int_add(a_data, scaled_i, "result_i")
-                        .unwrap();
-                    let int_result = self.make_int(result_i);
-                    self.builder.build_unconditional_branch(done_block).unwrap();
-                    let int_block_end = self.builder.get_insert_block().unwrap();
-
-                    self.builder.position_at_end(done_block);
-                    let phi = self
-                        .builder
-                        .build_phi(self.types.value_type, "lerp_result")
-                        .unwrap();
-                    phi.add_incoming(&[
-                        (&float_result, float_block_end),
-                        (&int_result, int_block_end),
-                    ]);
-                    return Ok(phi.as_basic_value());
+                    return Ok(self.make_float(result_f));
                 }
                 "clamp_value" => {
                     // clamp_value(val, min, max) - clamp value between min and max
@@ -27298,7 +27671,53 @@ impl<'ctx> CodeGen<'ctx> {
                         ));
                     }
                     let n_val = self.compile_expr(&args[0])?;
+                    self.emit_arg_guard(
+                        &[(n_val, &[ValueTag::Int])],
+                        "factorial() needs an integer",
+                        false,
+                    );
                     let n = self.extract_data(n_val).unwrap();
+                    {
+                        // The interpreter refuses a negative argument and anything past 20!.
+                        let function = self.current_function.unwrap();
+                        let neg_block = self.context.append_basic_block(function, "fact_neg");
+                        let big_check = self.context.append_basic_block(function, "fact_big_check");
+                        let big_block = self.context.append_basic_block(function, "fact_big");
+                        let ok_block = self.context.append_basic_block(function, "fact_ok");
+                        let is_neg = self
+                            .builder
+                            .build_int_compare(
+                                IntPredicate::SLT,
+                                n,
+                                self.types.i64_type.const_zero(),
+                                "fact_is_neg",
+                            )
+                            .unwrap();
+                        self.builder
+                            .build_conditional_branch(is_neg, neg_block, big_check)
+                            .unwrap();
+                        self.builder.position_at_end(neg_block);
+                        self.emit_builtin_error(
+                            "Cannae calculate factorial o' negative number!",
+                            false,
+                        );
+                        self.builder.position_at_end(big_check);
+                        let is_big = self
+                            .builder
+                            .build_int_compare(
+                                IntPredicate::SGT,
+                                n,
+                                self.types.i64_type.const_int(20, false),
+                                "fact_is_big",
+                            )
+                            .unwrap();
+                        self.builder
+                            .build_conditional_branch(is_big, big_block, ok_block)
+                            .unwrap();
+                        self.builder.position_at_end(big_block);
+                        self.emit_builtin_error("Factorial too big! Max is 20", false);
+                        self.builder.position_at_end(ok_block);
+                    }
 
                     let function = self.current_function.unwrap();
                     let loop_block = self.context.append_basic_block(function, "fact_loop");

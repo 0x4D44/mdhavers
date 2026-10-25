@@ -1131,3 +1131,333 @@ fn mono_clock_counts_from_its_first_call() {
     let source = "blether mono_ms() < 1000\nblether mono_ns() < 1000000000\n";
     assert_eq!(run_ok(source), vec!["aye", "aye"]);
 }
+
+// ---------- MDH-BUG-FLU-00143 / 00144: builtins check their argument types ----------
+// Each case runs inside hae_a_bash and prints the value or the caught message, which must
+// be the interpreter's own text (a segfault, a hang or a garbage value ends the whole run).
+
+/// One `hae_a_bash` block per expression: its value, or the caught error text.
+fn caught(exprs: &[&str]) -> Vec<String> {
+    let mut source = String::from("dae idf(x) {\n    gie x\n}\n");
+    for e in exprs {
+        source.push_str(&format!(
+            "hae_a_bash {{\n    blether {e}\n}} gin_it_gangs_wrang err {{\n    blether err\n}}\n"
+        ));
+    }
+    let out = run_ok(&source);
+    assert_eq!(out.len(), exprs.len(), "one line per case: {out:?}");
+    out
+}
+
+const WRANG: &str = "Jings! Something went awfy wrang: ";
+
+#[test]
+fn join_split_substr_between_and_aw_raise_on_wrong_types() {
+    let out = caught(&[
+        "join(5, \",\")",
+        "join(naething, \",\")",
+        "join(\"ab\", \",\")",
+        "join([1], 5)",
+        "join([1], naething)",
+        "split(5, \",\")",
+        "split(naething, \",\")",
+        "split([1], \",\")",
+        "split(\"a,b\", 5)",
+        "split(\"a,b\", [1])",
+        "substr_between(5, \"[\", \"]\")",
+        "substr_between(\"a[b]\", naething, \"]\")",
+        "substr_between(\"a[b]\", \"[\", [1])",
+        "aw(5, idf)",
+        "aw(\"ab\", idf)",
+        "aw(naething, idf)",
+    ]);
+    let join = format!("{WRANG}join() expects a list and a string");
+    let split = format!("{WRANG}split() expects two strings");
+    let between = format!("{WRANG}substr_between() needs three strings");
+    for (i, got) in out.iter().enumerate().take(5) {
+        assert_eq!(got, &join, "case {i}");
+    }
+    for (i, got) in out.iter().enumerate().take(10).skip(5) {
+        assert_eq!(got, &split, "case {i}");
+    }
+    for (i, got) in out.iter().enumerate().take(13).skip(10) {
+        assert_eq!(got, &between, "case {i}");
+    }
+    for (i, got) in out.iter().enumerate().skip(13) {
+        assert!(
+            got.contains("Type error") && got.ends_with("aw() expects a list as first argument"),
+            "case {i}: {got}"
+        );
+    }
+}
+
+#[test]
+fn join_shows_non_string_elements_as_the_interpreter_does() {
+    let out = caught(&[
+        "join([1, 2.5, aye, naething, \"x\", [1, \"a\"]], \"-\")",
+        "join([], \",\")",
+        "join([\"a\", \"b\"], \"\")",
+    ]);
+    assert_eq!(out, vec!["1-2.5-aye-naething-x-[1, a]", "", "ab"]);
+}
+
+#[test]
+fn numeric_builtins_raise_on_wrong_types_and_match_the_interpreter() {
+    let out = caught(&[
+        "lerp(\"a\", 1, 0.5)",
+        "lerp(0, naething, 0.5)",
+        "lerp(0, 1, [1])",
+        "lerp(0, 10, 0.5)",
+        "lerp(2.5, 10, 0.5)",
+        "gcd(2.5, 4)",
+        "gcd(4, \"a\")",
+        "gcd(-12, -18)",
+        "gcd(0, 0)",
+        "lcm(naething, 2)",
+        "lcm(4, 2.5)",
+        "lcm(4, -6)",
+        "lcm(0, 0)",
+        "lcm(0, 5)",
+        "sign(\"a\")",
+        "sign(naething)",
+        "sign(-2.5)",
+        "sign(0.0)",
+        "trunc(aye)",
+        "trunc(\"a\")",
+        "trunc(-2.7)",
+        "is_even(2.5)",
+        "is_even(\"a\")",
+        "is_odd(2.5)",
+        "is_odd(naething)",
+        "is_prime(2.5)",
+        "is_prime(\"a\")",
+        "factorial(2.5)",
+        "factorial(\"a\")",
+        "factorial(-3)",
+        "factorial(21)",
+        "factorial(20)",
+    ]);
+    let want = vec![
+        format!("{WRANG}lerp() needs numbers"),
+        format!("{WRANG}lerp() needs numbers"),
+        format!("{WRANG}lerp() needs numbers"),
+        "5".to_string(),
+        "6.25".to_string(),
+        format!("{WRANG}gcd() needs two integers"),
+        format!("{WRANG}gcd() needs two integers"),
+        "6".to_string(),
+        "0".to_string(),
+        format!("{WRANG}lcm() needs two integers"),
+        format!("{WRANG}lcm() needs two integers"),
+        "12".to_string(),
+        "0".to_string(),
+        "0".to_string(),
+        format!("{WRANG}sign() needs a number"),
+        format!("{WRANG}sign() needs a number"),
+        "-1".to_string(),
+        "0".to_string(),
+        format!("{WRANG}trunc() needs a number"),
+        format!("{WRANG}trunc() needs a number"),
+        "-2".to_string(),
+        format!("{WRANG}is_even() needs an integer"),
+        format!("{WRANG}is_even() needs an integer"),
+        format!("{WRANG}is_odd() needs an integer"),
+        format!("{WRANG}is_odd() needs an integer"),
+        format!("{WRANG}is_prime() needs an integer"),
+        format!("{WRANG}is_prime() needs an integer"),
+        format!("{WRANG}factorial() needs an integer"),
+        format!("{WRANG}factorial() needs an integer"),
+        format!("{WRANG}Cannae calculate factorial o' negative number!"),
+        format!("{WRANG}Factorial too big! Max is 20"),
+        "2432902008176640000".to_string(),
+    ];
+    assert_eq!(out, want);
+}
+
+#[test]
+fn string_and_list_builtins_raise_on_wrong_types() {
+    let out = caught(&[
+        "starts_with(5, \"a\")",
+        "starts_with(\"abc\", 5)",
+        "ends_with(naething, \"c\")",
+        "ends_with(\"abc\", [1])",
+        "trim([1, 2])",
+        "trim_start(5)",
+        "trim_start([1])",
+        "trim_end(naething)",
+        "trim_end(2.5)",
+        "words(5)",
+        "words([1])",
+        "scran(5, 1, 3)",
+        "scran(\"abcd\", \"a\", 3)",
+        "scran(\"abcd\", 1, 3)",
+        "enumerate(5)",
+        "enumerate(\"ab\")",
+        "enumerate({\"a\": 1})",
+        "is_empty(5)",
+        "is_empty(naething)",
+        "is_empty(\"\")",
+        "starts_with(\"abc\", \"a\")",
+        "words(\" a  b \")",
+    ]);
+    let want = vec![
+        format!("{WRANG}starts_with() needs two strings"),
+        format!("{WRANG}starts_with() needs two strings"),
+        format!("{WRANG}ends_with() needs two strings"),
+        format!("{WRANG}ends_with() needs two strings"),
+        format!("{WRANG}trim() needs a string"),
+        format!("{WRANG}trim_start() needs a string"),
+        format!("{WRANG}trim_start() needs a string"),
+        format!("{WRANG}trim_end() needs a string"),
+        format!("{WRANG}trim_end() needs a string"),
+        format!("{WRANG}words() needs a string"),
+        format!("{WRANG}words() needs a string"),
+        format!("{WRANG}scran() expects a list or string"),
+        format!("{WRANG}scran() needs integer indices"),
+        "bc".to_string(),
+        format!("{WRANG}enumerate() needs a list"),
+        format!("{WRANG}enumerate() needs a list"),
+        format!("{WRANG}enumerate() needs a list"),
+        format!("{WRANG}is_empty() needs a string, list, or dict"),
+        format!("{WRANG}is_empty() needs a string, list, or dict"),
+        "aye".to_string(),
+        "aye".to_string(),
+        "[a, b]".to_string(),
+    ];
+    assert_eq!(out, want);
+}
+
+#[test]
+fn tumble_refuses_a_non_list_instead_of_reading_one() {
+    let out = caught(&[
+        "tumble(5, 0, |a, b| a + b)",
+        "tumble(naething, 0, |a, b| a + b)",
+        "tumble(\"ab\", 0, |a, b| a + b)",
+        "tumble([1, 2, 3], 0, |a, b| a + b)",
+    ]);
+    for (i, got) in out.iter().enumerate().take(3) {
+        assert!(
+            got.ends_with("tumble() expects a list as first argument"),
+            "case {i}: {got}"
+        );
+    }
+    assert_eq!(out[3], "6");
+}
+
+#[test]
+fn compiled_in_prelude_comparisons_replace_the_inline_range_helpers() {
+    // atween, hauld_atween, is_toom, is_positive and is_negative took the integer payload
+    // of any value (a float's bits, a pointer); the prelude's own definitions run instead.
+    let out = run_ok(
+        r#"blether atween(2.5, 0, 3)
+blether atween(1, 0.5, 0.75)
+blether hauld_atween(7.5, 0, 5)
+blether hauld_atween("hello", "a", "z")
+blether is_positive(2.5)
+blether is_negative(-0.5)
+blether is_toom([])
+blether is_toom("a")
+"#,
+    );
+    assert_eq!(
+        out,
+        vec!["aye", "nae", "5", "hello", "aye", "aye", "aye", "nae"]
+    );
+}
+
+#[test]
+fn log_and_crash_handling_builtins_reject_invalid_input() {
+    let out = caught(&[
+        "set_crash_handling(5)",
+        "set_log_level(\"bogus\")",
+        "set_log_level(9)",
+        "set_log_level(2.5)",
+        "log_enabled(\"bogus\")",
+        "log_enabled(aye)",
+        "log_enabled(9)",
+        "log_enabled(\"roar\", 5)",
+        "log_set_filter(5)",
+        "log_set_filter(\"a=bogus\")",
+        "log_init(5)",
+        "log_init({\"level\": \"bogus\"})",
+        "log_init({\"format\": \"bogus\"})",
+        "log_init({\"sinks\": 5})",
+        "log_init({\"sinks\": [{\"kind\": \"bogus\"}]})",
+        "log_span(5)",
+        "log_span(\"x\", \"bogus\")",
+        "log_span(\"x\", \"roar\", 5)",
+        "log_span(\"x\", \"roar\", {}, 5)",
+        "log_init({})",
+        "log_enabled(\"roar\")",
+    ]);
+    let want = vec![
+        format!("{WRANG}set_crash_handling() expects a boolean"),
+        format!(
+            "{WRANG}Invalid log level 'bogus'. Use: wheesht, roar, holler, blether, mutter, or whisper"
+        ),
+        format!("{WRANG}Invalid log level 9. Use 0-5"),
+        format!("{WRANG}set_log_level() expects a string or integer"),
+        format!("{WRANG}Invalid log level 'bogus'"),
+        format!("{WRANG}Log level must be a string or integer"),
+        format!("{WRANG}Invalid log level 9. Use 0-5"),
+        format!("{WRANG}Log target must be a string"),
+        format!("{WRANG}log_set_filter() expects a string"),
+        format!("{WRANG}log_set_filter() Invalid log level 'bogus'"),
+        format!("{WRANG}log_init() expects a dict"),
+        format!("{WRANG}Invalid log level 'bogus'"),
+        format!("{WRANG}log_init() format must be text, json, or compact"),
+        format!("{WRANG}log_init() sinks must be a list"),
+        format!("{WRANG}Unknown log sink kind 'bogus'"),
+        format!("{WRANG}log_span() name must be a string"),
+        format!("{WRANG}Invalid log level 'bogus'"),
+        format!("{WRANG}Expected dict for log fields"),
+        format!("{WRANG}Log target must be a string"),
+        "naething".to_string(),
+        "aye".to_string(),
+    ];
+    assert_eq!(out, want);
+}
+
+#[test]
+fn scrieve_returns_naething_and_raises_on_failure() {
+    let dir = tempdir().expect("temp dir");
+    let file = dir.path().join("out.txt");
+    let file = file.to_str().expect("utf-8 path").replace('\\', "/");
+    let missing = dir.path().join("no_such_dir").join("f.txt");
+    let missing = missing.to_str().expect("utf-8 path").replace('\\', "/");
+    let source = format!(
+        "blether scrieve(\"{file}\", \"hello\")\nblether read_file(\"{file}\")\nscrieve(\"{file}\", 42)\nblether read_file(\"{file}\")\nhae_a_bash {{\n    scrieve(5, \"x\")\n}} gin_it_gangs_wrang err {{\n    blether err\n}}\nhae_a_bash {{\n    scrieve(\"{missing}\", \"x\")\n}} gin_it_gangs_wrang err {{\n    blether err\n}}\n"
+    );
+    let out = run_ok(&source);
+    assert_eq!(out[0], "naething");
+    assert_eq!(out[1], "hello");
+    assert_eq!(out[2], "42");
+    assert_eq!(out[3], format!("{WRANG}scrieve() needs a file path string"));
+    assert!(
+        out[4].starts_with(&format!("{WRANG}Couldnae open '{missing}' fer writin': ")),
+        "{}",
+        out[4]
+    );
+}
+
+#[test]
+fn tls_builtins_raise_where_the_interpreter_does() {
+    let out = caught(&[
+        "tls_client_new(5)",
+        "tls_client_new(\"x\")",
+        "tls_connect(1, 5)",
+        "tls_connect(naething, 5)",
+        "tls_close(\"x\")",
+    ]);
+    assert_eq!(
+        out[0],
+        format!("{WRANG}tls_client_new() expects config dict")
+    );
+    assert_eq!(
+        out[1],
+        format!("{WRANG}tls_client_new() expects config dict")
+    );
+    assert_eq!(out[2], format!("{WRANG}Unknown socket handle"));
+    assert!(out[3].contains("tls_connect"), "{}", out[3]);
+    assert!(out[4].contains("tls_close"), "{}", out[4]);
+}

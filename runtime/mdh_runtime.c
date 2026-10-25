@@ -960,6 +960,28 @@ void __mdh_type_error(const char *op, uint8_t got1, uint8_t got2) {
     __mdh_hurl_owned(__mdh_make_string(buf));
 }
 
+/* A builtin called with an argument it cannot use: the interpreter's RuntimeError text for a
+ * native function, "Jings! Something went awfy wrang: <msg>" (MDH-BUG-FLU-00143/00144). */
+void __mdh_builtin_error(const char *msg) {
+    char buf[256];
+    snprintf(buf, sizeof(buf), "Jings! Something went awfy wrang: %s", msg);
+    __mdh_hurl_owned(__mdh_make_string(buf));
+}
+
+/* The same for a builtin the interpreter checks with a TypeError, "That's pure mince! Type
+ * error at line N: <msg>". */
+void __mdh_builtin_type_error(const char *msg) {
+    char buf[256];
+    int64_t line = __mdh_err_line();
+    if (line > 0) {
+        snprintf(buf, sizeof(buf), "That's pure mince! Type error at line %lld: %s",
+                 (long long)line, msg);
+    } else {
+        snprintf(buf, sizeof(buf), "That's pure mince! Type error: %s", msg);
+    }
+    __mdh_hurl_owned(__mdh_make_string(buf));
+}
+
 MdhValue __mdh_type_of(MdhValue a) {
     return __mdh_make_string(__mdh_type_name(a));
 }
@@ -2124,6 +2146,33 @@ MdhValue __mdh_to_string(MdhValue a) {
     return __mdh_string_from_buf(sb.buf);
 }
 
+/* 1 when every element of `list` is a string (join's inline path reads them as such). */
+int64_t __mdh_list_all_strings(MdhValue list) {
+    MdhList *l = __mdh_get_list(list);
+    for (int64_t i = 0; i < l->length; i++) {
+        if (l->items[i].tag != MDH_TAG_STRING) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/* join(list, delim) for any elements: each is shown as blether would show it. */
+MdhValue __mdh_join_general(MdhValue list, MdhValue delim) {
+    MdhList *l = __mdh_get_list(list);
+    const char *d = __mdh_get_string(delim);
+    size_t dlen = strlen(d);
+    MdhStrBuf sb;
+    __mdh_sb_init(&sb);
+    for (int64_t i = 0; i < l->length; i++) {
+        if (i > 0) {
+            __mdh_sb_append_n(&sb, d, dlen);
+        }
+        __mdh_value_to_string_sb(&sb, l->items[i]);
+    }
+    return __mdh_string_from_buf(sb.buf);
+}
+
 MdhValue __mdh_to_int(MdhValue a) {
     switch (a.tag) {
         case MDH_TAG_INT:
@@ -3150,13 +3199,19 @@ MdhValue __mdh_dns_naptr(MdhValue domain) {
 /* ========== TLS/DTLS/SRTP ========== */
 
 MdhValue __mdh_tls_client_new(MdhValue config) {
+    /* The interpreter raises for a bad config (it never returns an error result here). */
+    if (config.tag != MDH_TAG_NIL && config.tag != MDH_TAG_DICT) {
+        __mdh_builtin_error("tls_client_new() expects config dict");
+        return __mdh_make_nil();
+    }
     MdhRsResult r = __mdh_rs_tls_client_new(config);
     if (!r.ok) {
         const char *msg = __mdh_get_string(r.error);
         if (!msg || msg[0] == '\0') {
             msg = "tls_client_new failed";
         }
-        return __mdh_result_err_rs(msg, r);
+        __mdh_builtin_error(msg);
+        return __mdh_make_nil();
     }
     return __mdh_result_ok(r.value);
 }
@@ -3173,6 +3228,11 @@ MdhValue __mdh_tls_connect(MdhValue tls, MdhValue sock) {
     int fd = sock.tag == MDH_TAG_INT ? (int)sock.data : (int)__mdh_get_float(sock);
     int dup_fd = dup(fd);
     if (dup_fd < 0) {
+        if (errno == EBADF) {
+            /* Not an open socket: the interpreter raises for an unknown socket handle. */
+            __mdh_builtin_error("Unknown socket handle");
+            return __mdh_make_nil();
+        }
         return __mdh_result_errno("tls_connect dup");
     }
     MdhValue fd_val = __mdh_make_int(dup_fd);
@@ -4982,17 +5042,40 @@ MdhValue __mdh_slurp(MdhValue path) {
     return __mdh_make_string(buf);
 }
 
+/* scrieve(path, content): the interpreter's file write. The content is shown as blether
+ * would show it; a bad path or a failed open or write raises, and the result is naething. */
 MdhValue __mdh_scrieve(MdhValue path, MdhValue content) {
-    if (path.tag != MDH_TAG_STRING || content.tag != MDH_TAG_STRING) {
-        return __mdh_make_bool(false);
+    if (path.tag != MDH_TAG_STRING) {
+        __mdh_builtin_error("scrieve() needs a file path string");
+        return __mdh_make_nil();
     }
     const char *p = (const char *)(intptr_t)path.data;
-    const char *c = (const char *)(intptr_t)content.data;
+    MdhValue text = __mdh_to_string(content);
+    const char *c = __mdh_get_string(text);
+    char msg[256];
     FILE *f = fopen(p, "w");
-    if (!f) return __mdh_make_bool(false);
-    fputs(c, f);
-    fclose(f);
-    return __mdh_make_bool(true);
+    if (!f) {
+        int err = errno;
+        snprintf(msg, sizeof(msg), "Couldnae open '%s' fer writin': %s (os error %d)", p,
+                 strerror(err), err);
+        __mdh_release(text);
+        __mdh_builtin_error(msg);
+        return __mdh_make_nil();
+    }
+    size_t len = strlen(c);
+    int bad = len > 0 && fwrite(c, 1, len, f) != len;
+    int err = errno;
+    if (fclose(f) != 0) {
+        bad = 1;
+        err = errno;
+    }
+    __mdh_release(text);
+    if (bad) {
+        snprintf(msg, sizeof(msg), "Couldnae write tae '%s': %s (os error %d)", p, strerror(err),
+                 err);
+        __mdh_builtin_error(msg);
+    }
+    return __mdh_make_nil();
 }
 
 MdhValue __mdh_lines(MdhValue path) {
@@ -5071,6 +5154,8 @@ MdhValue __mdh_words(MdhValue str) {
 static int __mdh_log_level = 3;  /* Default: blether, as the interpreter */
 
 static int __mdh_log_parse_level_val(MdhValue level, int *out);
+static int __mdh_log_level_from_name(const char *s);
+static int __mdh_log_level_strict(MdhValue level);
 
 /* The interpreter answers with the level's lowercase name. */
 MdhValue __mdh_get_log_level(void) {
@@ -5081,9 +5166,28 @@ MdhValue __mdh_get_log_level(void) {
 }
 
 MdhValue __mdh_set_log_level(MdhValue level) {
-    int parsed = 0;
-    if (__mdh_log_parse_level_val(level, &parsed)) {
+    char msg[200];
+    if (level.tag == MDH_TAG_STRING) {
+        const char *name = __mdh_get_string(level);
+        int parsed = __mdh_log_level_from_name(name);
+        if (parsed < 0) {
+            snprintf(msg, sizeof(msg),
+                     "Invalid log level '%s'. Use: wheesht, roar, holler, blether, mutter, or "
+                     "whisper",
+                     name);
+            __mdh_builtin_error(msg);
+            return __mdh_make_nil();
+        }
         __mdh_log_level = parsed;
+    } else if (level.tag == MDH_TAG_INT) {
+        if (level.data < 0 || level.data > 5) {
+            snprintf(msg, sizeof(msg), "Invalid log level %lld. Use 0-5", (long long)level.data);
+            __mdh_builtin_error(msg);
+            return __mdh_make_nil();
+        }
+        __mdh_log_level = (int)level.data;
+    } else {
+        __mdh_builtin_error("set_log_level() expects a string or integer");
     }
     return __mdh_make_nil();
 }
@@ -5135,15 +5239,78 @@ static MdhNativeObject *__mdh_span_stack_pop(void) {
     return __mdh_span_stack.items[--__mdh_span_stack.len];
 }
 
-static int __mdh_log_parse_level_str(const char *s) {
-    if (!s) return 3;
+/* A level name's number, or -1 when it is not one of the six. */
+static int __mdh_log_level_from_name(const char *s) {
+    if (!s) return -1;
     if (mdh_strcasecmp(s, "wheesht") == 0) return 0;
     if (mdh_strcasecmp(s, "roar") == 0) return 1;
     if (mdh_strcasecmp(s, "holler") == 0) return 2;
     if (mdh_strcasecmp(s, "blether") == 0) return 3;
     if (mdh_strcasecmp(s, "mutter") == 0) return 4;
     if (mdh_strcasecmp(s, "whisper") == 0) return 5;
+    return -1;
+}
+
+static int __mdh_log_parse_level_str(const char *s) {
+    int level = __mdh_log_level_from_name(s);
+    return level < 0 ? 3 : level;
+}
+
+/* A level given to log_enabled, log_span or log_init: the interpreter's
+ * parse_log_level_value, which raises on anything but a level name or 0-5. */
+static int __mdh_log_level_strict(MdhValue level) {
+    char msg[200];
+    if (level.tag == MDH_TAG_STRING) {
+        const char *name = __mdh_get_string(level);
+        int parsed = __mdh_log_level_from_name(name);
+        if (parsed < 0) {
+            snprintf(msg, sizeof(msg), "Invalid log level '%s'", name);
+            __mdh_builtin_error(msg);
+        }
+        return parsed;
+    }
+    if (level.tag == MDH_TAG_INT) {
+        if (level.data < 0 || level.data > 5) {
+            snprintf(msg, sizeof(msg), "Invalid log level %lld. Use 0-5", (long long)level.data);
+            __mdh_builtin_error(msg);
+        }
+        return (int)level.data;
+    }
+    __mdh_builtin_error("Log level must be a string or integer");
     return 3;
+}
+
+/* Raise when a filter spec ("level" or "target=level", comma separated) names a bad level.
+ * `who` prefixes the message as the interpreter's callers do ("" or "log_set_filter() "). */
+static void __mdh_log_filter_check(const char *spec, const char *who) {
+    const char *p = spec;
+    while (*p) {
+        const char *end = strchr(p, ',');
+        size_t len = end ? (size_t)(end - p) : strlen(p);
+        const char *lvl = p;
+        size_t lvl_len = len;
+        const char *eq = memchr(p, '=', len);
+        if (eq) {
+            lvl = eq + 1;
+            lvl_len = len - (size_t)(lvl - p);
+        }
+        while (lvl_len > 0 && (*lvl == ' ' || *lvl == '\t')) { lvl++; lvl_len--; }
+        while (lvl_len > 0 && (lvl[lvl_len - 1] == ' ' || lvl[lvl_len - 1] == '\t')) lvl_len--;
+        if (lvl_len > 0 || eq) {
+            char name[96];
+            size_t n = lvl_len < sizeof(name) - 1 ? lvl_len : sizeof(name) - 1;
+            memcpy(name, lvl, n);
+            name[n] = '\0';
+            if (__mdh_log_level_from_name(name) < 0) {
+                char msg[200];
+                snprintf(msg, sizeof(msg), "%sInvalid log level '%s'", who, name);
+                __mdh_builtin_error(msg);
+                return;
+            }
+        }
+        if (!end) break;
+        p = end + 1;
+    }
 }
 
 static int __mdh_log_parse_level_val(MdhValue level, int *out) {
@@ -5196,6 +5363,11 @@ static int __mdh_log_enabled_raw(int level, const char *target) {
 }
 
 MdhValue __mdh_log_set_filter(MdhValue spec) {
+    if (spec.tag != MDH_TAG_STRING) {
+        __mdh_builtin_error("log_set_filter() expects a string");
+        return __mdh_make_nil();
+    }
+    __mdh_log_filter_check(__mdh_get_string(spec), "log_set_filter() ");
     if (spec.tag == MDH_TAG_STRING) {
         const char *s = __mdh_get_string(spec);
         size_t len = strlen(s);
@@ -5215,10 +5387,7 @@ MdhValue __mdh_log_get_filter(void) {
 }
 
 MdhValue __mdh_log_enabled(MdhValue level, MdhValue target) {
-    int lvl = 3;
-    if (!__mdh_log_parse_level_val(level, &lvl)) {
-        return __mdh_make_bool(0);
-    }
+    int lvl = __mdh_log_level_strict(level);
     const char *tgt = "";
     if (target.tag == MDH_TAG_STRING) {
         tgt = __mdh_get_string(target);
@@ -5426,9 +5595,10 @@ MdhValue __mdh_log_event(
 
 MdhValue __mdh_log_span_begin(MdhValue name, MdhValue level, MdhValue fields, MdhValue target) {
     if (name.tag != MDH_TAG_STRING) {
-        __mdh_type_error("log_span", name.tag, 0);
+        __mdh_builtin_error("log_span() name must be a string");
         return __mdh_make_nil();
     }
+    int lvl = __mdh_log_level_strict(level);
     MdhNativeObject *obj = (MdhNativeObject *)__mdh_obj_alloc(MDH_KIND_NATIVE, sizeof(MdhNativeObject));
     obj->kind = MDH_NATIVE_LOG_SPAN;
     obj->type_name = "log_span";
@@ -5437,8 +5607,6 @@ MdhValue __mdh_log_span_begin(MdhValue name, MdhValue level, MdhValue fields, Md
     obj->fields = __mdh_dict_set_owned(obj->fields, __mdh_make_string("name"), __mdh_retained(name));
     obj->fields = __mdh_dict_set_owned(obj->fields, __mdh_make_string("target"),
         target.tag == MDH_TAG_STRING ? __mdh_retained(target) : __mdh_make_string(""));
-    int lvl = 3;
-    __mdh_log_parse_level_val(level, &lvl);
     obj->fields = __mdh_dict_set_owned(obj->fields, __mdh_make_string("level"), __mdh_make_int(lvl));
     if (fields.tag == MDH_TAG_DICT) {
         obj->fields = __mdh_dict_set_owned(obj->fields, __mdh_make_string("fields"), __mdh_retained(fields));
@@ -5485,6 +5653,19 @@ MdhValue __mdh_log_span_in(MdhValue span, MdhValue func) {
     return result;
 }
 
+/* config[name] when the key is present (the interpreter's dict_get), else 0. */
+static int __mdh_dict_get_opt(MdhValue dict, const char *name, MdhValue *out) {
+    MdhValue key = __mdh_make_string(name);
+    int64_t found = __mdh_kv_find(dict, key);
+    __mdh_release(key);
+    if (found < 0) {
+        return 0;
+    }
+    MdhValue *entries = (MdhValue *)(__mdh_kv_payload_raw(dict) + 1);
+    *out = entries[found * 2 + 1];
+    return 1;
+}
+
 MdhValue __mdh_log_init(MdhValue config) {
     if (config.tag == MDH_TAG_NIL) {
         __mdh_log_level = 3;
@@ -5498,34 +5679,57 @@ MdhValue __mdh_log_init(MdhValue config) {
         return __mdh_make_nil();
     }
     if (config.tag != MDH_TAG_DICT) {
-        __mdh_type_error("log_init", config.tag, 0);
+        __mdh_builtin_error("log_init() expects a dict");
         return __mdh_make_nil();
     }
-    MdhValue level = __mdh_dict_get_named(config, "level");
-    if (level.tag != MDH_TAG_NIL) {
-        if (level.tag == MDH_TAG_INT) {
-            __mdh_log_level = (int)level.data;
-        } else if (level.tag == MDH_TAG_STRING) {
-            __mdh_log_level = __mdh_log_parse_level_str(__mdh_get_string(level));
-        }
+    /* Checked in the interpreter's order, so the same bad key is the one reported. */
+    MdhValue level;
+    if (__mdh_dict_get_opt(config, "level", &level)) {
+        __mdh_log_level = __mdh_log_level_strict(level);
     }
-    MdhValue filter = __mdh_dict_get_named(config, "filter");
-    if (filter.tag == MDH_TAG_STRING) {
+    MdhValue filter;
+    if (__mdh_dict_get_opt(config, "filter", &filter)) {
+        if (filter.tag != MDH_TAG_STRING) {
+            __mdh_builtin_error("log_init() filter must be a string");
+            return __mdh_make_nil();
+        }
+        __mdh_log_filter_check(__mdh_get_string(filter), "");
         __mdh_log_set_filter(filter);
     }
-    MdhValue format = __mdh_dict_get_named(config, "format");
-    if (format.tag == MDH_TAG_STRING) {
+    MdhValue format;
+    if (__mdh_dict_get_opt(config, "format", &format)) {
+        if (format.tag != MDH_TAG_STRING) {
+            __mdh_builtin_error("log_init() format must be a string");
+            return __mdh_make_nil();
+        }
         const char *fmt = __mdh_get_string(format);
-        if (strcmp(fmt, "json") == 0) __mdh_log_format = 1;
+        if (strcmp(fmt, "text") == 0) __mdh_log_format = 0;
+        else if (strcmp(fmt, "json") == 0) __mdh_log_format = 1;
         else if (strcmp(fmt, "compact") == 0) __mdh_log_format = 2;
-        else __mdh_log_format = 0;
+        else {
+            __mdh_builtin_error("log_init() format must be text, json, or compact");
+            return __mdh_make_nil();
+        }
     }
-    MdhValue timestamps = __mdh_dict_get_named(config, "timestamps");
-    if (timestamps.tag == MDH_TAG_BOOL) {
+    MdhValue color;
+    if (__mdh_dict_get_opt(config, "color", &color) && color.tag != MDH_TAG_BOOL) {
+        __mdh_builtin_error("log_init() color must be a bool");
+        return __mdh_make_nil();
+    }
+    MdhValue timestamps;
+    if (__mdh_dict_get_opt(config, "timestamps", &timestamps)) {
+        if (timestamps.tag != MDH_TAG_BOOL) {
+            __mdh_builtin_error("log_init() timestamps must be a bool");
+            return __mdh_make_nil();
+        }
         __mdh_log_timestamps = timestamps.data ? 1 : 0;
     }
-    MdhValue sinks = __mdh_dict_get_named(config, "sinks");
-    if (sinks.tag == MDH_TAG_LIST) {
+    MdhValue sinks;
+    if (__mdh_dict_get_opt(config, "sinks", &sinks)) {
+        if (sinks.tag != MDH_TAG_LIST) {
+            __mdh_builtin_error("log_init() sinks must be a list");
+            return __mdh_make_nil();
+        }
         __mdh_log_sink_stderr = 0;
         __mdh_log_sink_stdout = 0;
         __mdh_log_sink_file = 0;
@@ -5533,26 +5737,48 @@ MdhValue __mdh_log_init(MdhValue config) {
         MdhList *list = __mdh_get_list(sinks);
         for (int64_t i = 0; list && i < list->length; i++) {
             MdhValue spec = list->items[i];
-            if (spec.tag != MDH_TAG_DICT) continue;
-            MdhValue kind = __mdh_dict_get_named(spec, "kind");
-            if (kind.tag != MDH_TAG_STRING) continue;
+            if (spec.tag != MDH_TAG_DICT) {
+                __mdh_builtin_error("log_init() sink specs must be dicts");
+                return __mdh_make_nil();
+            }
+            MdhValue kind;
+            if (!__mdh_dict_get_opt(spec, "kind", &kind) || kind.tag != MDH_TAG_STRING) {
+                __mdh_builtin_error("log_init() sink kind must be a string");
+                return __mdh_make_nil();
+            }
             const char *k = __mdh_get_string(kind);
             if (strcmp(k, "stderr") == 0) {
                 __mdh_log_sink_stderr = 1;
             } else if (strcmp(k, "stdout") == 0) {
                 __mdh_log_sink_stdout = 1;
             } else if (strcmp(k, "file") == 0) {
-                MdhValue path = __mdh_dict_get_named(spec, "path");
-                if (path.tag == MDH_TAG_STRING) {
-                    const char *p = __mdh_get_string(path);
-                    __mdh_log_file = fopen(p, "a");
-                    if (__mdh_log_file) {
-                        __mdh_log_sink_file = 1;
-                    }
+                MdhValue path;
+                if (!__mdh_dict_get_opt(spec, "path", &path) || path.tag != MDH_TAG_STRING) {
+                    __mdh_builtin_error("log_init() file sink requires string path");
+                    return __mdh_make_nil();
+                }
+                MdhValue append;
+                if (__mdh_dict_get_opt(spec, "append", &append) && append.tag != MDH_TAG_BOOL) {
+                    __mdh_builtin_error("log_init() file append must be bool");
+                    return __mdh_make_nil();
+                }
+                const char *p = __mdh_get_string(path);
+                __mdh_log_file = fopen(p, "a");
+                if (__mdh_log_file) {
+                    __mdh_log_sink_file = 1;
                 }
             } else if (strcmp(k, "callback") == 0) {
-                MdhValue fn = __mdh_dict_get_named(spec, "fn");
+                MdhValue fn;
+                if (!__mdh_dict_get_opt(spec, "fn", &fn)) {
+                    __mdh_builtin_error("log_init() callback sink requires fn");
+                    return __mdh_make_nil();
+                }
                 __mdh_log_store_callback(fn);
+            } else if (strcmp(k, "memory") != 0) {
+                char msg[200];
+                snprintf(msg, sizeof(msg), "Unknown log sink kind '%s'", k);
+                __mdh_builtin_error(msg);
+                return __mdh_make_nil();
             }
         }
         if (!__mdh_log_sink_stderr && !__mdh_log_sink_stdout && !__mdh_log_sink_file) {
