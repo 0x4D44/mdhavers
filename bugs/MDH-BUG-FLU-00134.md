@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00134 — Coverage build (make coverage) fails to compile: 12 errors in coverage-only tests
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** tests
 - **Raised:** 2026-10-25T01:59:43Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261025T015951Z-30669772
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00134-run-fix-20261025T015951Z-30669772
-- **Owner base:** b20d02212f12d4cb657f2c0b63bf405159a24741
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-25T01:59:51Z
-- **Owner until:** 2026-10-25T05:59:51Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T01:59:43Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-25T01:59:43Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T02:35:19Z, deltic:auto role=fix run=fix-20261025T015951Z-30669772 branch=task/bug-MDH-BUG-FLU-00134-run-fix-20261025T015951Z-30669772 code=8e89bd6 gate=manual)
 
 ## Observation
 
