@@ -68,32 +68,32 @@ blether "Nested list depth scaling:"
 ken start = tick()
 nested = build_nested(10, 1)
 ken elapsed = tick() - start
-blether "  build_nested(10): " + tae_string(elapsed) + " us"
+blether "  build_nested(10): " + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 val = access_nested(nested, 10)
 elapsed = tick() - start
-blether "  access_nested(10): " + tae_string(elapsed) + " us, value=" + tae_string(val)
+blether "  access_nested(10): " + tae_string(elapsed / 1000) + " us, value=" + tae_string(val)
 
 start = tick()
 nested = build_nested(50, 1)
 elapsed = tick() - start
-blether "  build_nested(50): " + tae_string(elapsed) + " us"
+blether "  build_nested(50): " + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 val = access_nested(nested, 50)
 elapsed = tick() - start
-blether "  access_nested(50): " + tae_string(elapsed) + " us, value=" + tae_string(val)
+blether "  access_nested(50): " + tae_string(elapsed / 1000) + " us, value=" + tae_string(val)
 
 start = tick()
 nested = build_nested(100, 1)
 elapsed = tick() - start
-blether "  build_nested(100): " + tae_string(elapsed) + " us"
+blether "  build_nested(100): " + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 val = access_nested(nested, 100)
 elapsed = tick() - start
-blether "  access_nested(100): " + tae_string(elapsed) + " us, value=" + tae_string(val)
+blether "  access_nested(100): " + tae_string(elapsed / 1000) + " us, value=" + tae_string(val)
 
 # Matrix scaling
 blether ""
@@ -103,7 +103,7 @@ start = tick()
 ken m = make_matrix(10, 10)
 elapsed = tick() - start
 ken s = sum_matrix(m)
-blether "  10x10 matrix: build=" + tae_string(elapsed) + "us, sum=" + tae_string(s)
+blether "  10x10 matrix: build=" + tae_string(elapsed / 1000) + "us, sum=" + tae_string(s)
 
 start = tick()
 m = make_matrix(50, 50)
@@ -111,7 +111,7 @@ elapsed = tick() - start
 start = tick()
 s = sum_matrix(m)
 ken sum_time = tick() - start
-blether "  50x50 matrix: build=" + tae_string(elapsed) + "us, sum_time=" + tae_string(sum_time) + "us, sum=" + tae_string(s)
+blether "  50x50 matrix: build=" + tae_string(elapsed / 1000) + "us, sum_time=" + tae_string(sum_time / 1000) + "us, sum=" + tae_string(s)
 
 start = tick()
 m = make_matrix(100, 100)
@@ -119,7 +119,7 @@ elapsed = tick() - start
 start = tick()
 s = sum_matrix(m)
 sum_time = tick() - start
-blether "  100x100 matrix: build=" + tae_string(elapsed / 1000) + "ms, sum_time=" + tae_string(sum_time) + "us, sum=" + tae_string(s)
+blether "  100x100 matrix: build=" + tae_string(elapsed / 1000000) + "ms, sum_time=" + tae_string(sum_time / 1000) + "us, sum=" + tae_string(s)
 
 start = tick()
 m = make_matrix(200, 200)
@@ -127,7 +127,7 @@ elapsed = tick() - start
 start = tick()
 s = sum_matrix(m)
 sum_time = tick() - start
-blether "  200x200 matrix: build=" + tae_string(elapsed / 1000) + "ms, sum_time=" + tae_string(sum_time / 1000) + "ms, sum=" + tae_string(s)
+blether "  200x200 matrix: build=" + tae_string(elapsed / 1000000) + "ms, sum_time=" + tae_string(sum_time / 1000000) + "ms, sum=" + tae_string(s)
 
 blether ""
 blether "=== Nested data structures complete ==="

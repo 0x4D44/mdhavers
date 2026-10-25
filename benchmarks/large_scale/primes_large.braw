@@ -85,27 +85,27 @@ blether "Scaling tests:"
 ken start = tick()
 ken c = count_primes(10000)
 ken elapsed = tick() - start
-blether "  sieve(10K): " + tae_string(c) + " primes in " + tae_string(elapsed) + " us"
+blether "  sieve(10K): " + tae_string(c) + " primes in " + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 c = count_primes(50000)
 elapsed = tick() - start
-blether "  sieve(50K): " + tae_string(c) + " primes in " + tae_string(elapsed) + " us"
+blether "  sieve(50K): " + tae_string(c) + " primes in " + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 c = count_primes(100000)
 elapsed = tick() - start
-blether "  sieve(100K): " + tae_string(c) + " primes in " + tae_string(elapsed / 1000) + " ms"
+blether "  sieve(100K): " + tae_string(c) + " primes in " + tae_string(elapsed / 1000000) + " ms"
 
 start = tick()
 c = count_primes(500000)
 elapsed = tick() - start
-blether "  sieve(500K): " + tae_string(c) + " primes in " + tae_string(elapsed / 1000) + " ms"
+blether "  sieve(500K): " + tae_string(c) + " primes in " + tae_string(elapsed / 1000000) + " ms"
 
 start = tick()
 c = count_primes(1000000)
 elapsed = tick() - start
-blether "  sieve(1M): " + tae_string(c) + " primes in " + tae_string(elapsed / 1000) + " ms"
+blether "  sieve(1M): " + tae_string(c) + " primes in " + tae_string(elapsed / 1000000) + " ms"
 
 blether ""
 blether "=== Prime sieve large-scale complete ==="

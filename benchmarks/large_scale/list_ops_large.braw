@@ -45,22 +45,22 @@ blether "List building scaling:"
 ken start = tick()
 ken lst = make_list(1000)
 ken elapsed = tick() - start
-blether "  make_list(1000): " + tae_string(elapsed) + " us"
+blether "  make_list(1000): " + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 lst = make_list(10000)
 elapsed = tick() - start
-blether "  make_list(10000): " + tae_string(elapsed) + " us"
+blether "  make_list(10000): " + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 lst = make_list(50000)
 elapsed = tick() - start
-blether "  make_list(50000): " + tae_string(elapsed / 1000) + " ms"
+blether "  make_list(50000): " + tae_string(elapsed / 1000000) + " ms"
 
 start = tick()
 lst = make_list(100000)
 elapsed = tick() - start
-blether "  make_list(100000): " + tae_string(elapsed / 1000) + " ms"
+blether "  make_list(100000): " + tae_string(elapsed / 1000000) + " ms"
 
 # HOF scaling
 blether ""
@@ -72,17 +72,17 @@ blether "  Using 10K element list:"
 start = tick()
 ken doubled = gaun(lst, double)
 elapsed = tick() - start
-blether "    gaun(double): " + tae_string(elapsed / 1000) + " ms"
+blether "    gaun(double): " + tae_string(elapsed / 1000000) + " ms"
 
 start = tick()
 ken evens = sieve(lst, is_even)
 elapsed = tick() - start
-blether "    sieve(even): " + tae_string(elapsed / 1000) + " ms, count=" + tae_string(len(evens))
+blether "    sieve(even): " + tae_string(elapsed / 1000000) + " ms, count=" + tae_string(len(evens))
 
 start = tick()
 ken total = tumble(lst, 0, add)
 elapsed = tick() - start
-blether "    tumble(sum): " + tae_string(elapsed / 1000) + " ms, sum=" + tae_string(total)
+blether "    tumble(sum): " + tae_string(elapsed / 1000000) + " ms, sum=" + tae_string(total)
 
 # Larger HOF test
 lst = make_list(50000)
@@ -91,17 +91,17 @@ blether "  Using 50K element list:"
 start = tick()
 doubled = gaun(lst, double)
 elapsed = tick() - start
-blether "    gaun(double): " + tae_string(elapsed / 1000) + " ms"
+blether "    gaun(double): " + tae_string(elapsed / 1000000) + " ms"
 
 start = tick()
 evens = sieve(lst, is_even)
 elapsed = tick() - start
-blether "    sieve(even): " + tae_string(elapsed / 1000) + " ms, count=" + tae_string(len(evens))
+blether "    sieve(even): " + tae_string(elapsed / 1000000) + " ms, count=" + tae_string(len(evens))
 
 start = tick()
 total = tumble(lst, 0, add)
 elapsed = tick() - start
-blether "    tumble(sum): " + tae_string(elapsed / 1000) + " ms, sum=" + tae_string(total)
+blether "    tumble(sum): " + tae_string(elapsed / 1000000) + " ms, sum=" + tae_string(total)
 
 # Chained operations
 blether ""
@@ -114,7 +114,7 @@ ken step1 = gaun(lst, double)
 ken step2 = sieve(step1, is_div_by_4)
 ken step3 = tumble(step2, 0, add)
 elapsed = tick() - start
-blether "  gaun -> sieve -> tumble: " + tae_string(elapsed / 1000) + " ms, result=" + tae_string(step3)
+blether "  gaun -> sieve -> tumble: " + tae_string(elapsed / 1000000) + " ms, result=" + tae_string(step3)
 
 # Slice operations
 blether ""
@@ -124,17 +124,17 @@ lst = make_list(100000)
 start = tick()
 ken slice1 = scran(lst, 0, 1000)
 elapsed = tick() - start
-blether "  scran(100K, 0, 1000): " + tae_string(elapsed) + " us, len=" + tae_string(len(slice1))
+blether "  scran(100K, 0, 1000): " + tae_string(elapsed / 1000) + " us, len=" + tae_string(len(slice1))
 
 start = tick()
 ken slice2 = scran(lst, 50000, 60000)
 elapsed = tick() - start
-blether "  scran(100K, 50K, 60K): " + tae_string(elapsed) + " us, len=" + tae_string(len(slice2))
+blether "  scran(100K, 50K, 60K): " + tae_string(elapsed / 1000) + " us, len=" + tae_string(len(slice2))
 
 start = tick()
 ken slice3 = scran(lst, 90000, 100000)
 elapsed = tick() - start
-blether "  scran(100K, 90K, 100K): " + tae_string(elapsed) + " us, len=" + tae_string(len(slice3))
+blether "  scran(100K, 90K, 100K): " + tae_string(elapsed / 1000) + " us, len=" + tae_string(len(slice3))
 
 blether ""
 blether "=== List operations large-scale complete ==="

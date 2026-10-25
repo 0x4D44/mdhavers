@@ -2,7 +2,9 @@
 
 blether "=== Large-Scale Fibonacci Benchmark ==="
 
-# Iterative fibonacci - handles very large n
+# Iterative fibonacci - handles very large n.
+# Values are kept modulo 10^12 so the sums stay inside i64 on every backend
+# (fib(93) overflows i64). fib(n) is unchanged for n <= 58.
 dae fib_iter(n) {
     gin n < 2 {
         gie n
@@ -11,7 +13,7 @@ dae fib_iter(n) {
     ken b = 1
     ken i = 2
     whiles i <= n {
-        ken temp = a + b
+        ken temp = (a + b) % 1000000000000
         a = b
         b = temp
         i = i + 1
@@ -32,22 +34,22 @@ blether "Large-scale iterative tests:"
 ken start = tick()
 ken result = fib_iter(1000)
 ken elapsed = tick() - start
-blether "  fib_iter(1000): " + tae_string(elapsed) + " us"
+blether "  fib_iter(1000): " + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 result = fib_iter(10000)
 elapsed = tick() - start
-blether "  fib_iter(10000): " + tae_string(elapsed) + " us"
+blether "  fib_iter(10000): " + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 result = fib_iter(50000)
 elapsed = tick() - start
-blether "  fib_iter(50000): " + tae_string(elapsed) + " us"
+blether "  fib_iter(50000): " + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 result = fib_iter(100000)
 elapsed = tick() - start
-blether "  fib_iter(100000): " + tae_string(elapsed) + " us"
+blether "  fib_iter(100000): " + tae_string(elapsed / 1000) + " us"
 
 # Stress test - many iterations
 blether ""
@@ -59,7 +61,7 @@ whiles i < 10000 {
     i = i + 1
 }
 elapsed = tick() - start
-blether "  10000x fib_iter(100): " + tae_string(elapsed / 1000) + " ms"
+blether "  10000x fib_iter(100): " + tae_string(elapsed / 1000000) + " ms"
 
 blether ""
 blether "=== Fibonacci large-scale complete ==="

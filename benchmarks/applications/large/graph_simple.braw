@@ -101,42 +101,42 @@ blether "Grid graph scaling:"
 ken start = tick()
 ken g = make_grid_graph(5)
 ken elapsed = tick() - start
-blether "  5x5 grid (25 nodes): create=" + tae_string(elapsed) + " us"
+blether "  5x5 grid (25 nodes): create=" + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 bfs_dist = bfs_simple(g, 0)
 elapsed = tick() - start
-blether "    BFS: " + tae_string(elapsed) + " us, reachable=" + tae_string(count_reachable(bfs_dist))
+blether "    BFS: " + tae_string(elapsed / 1000) + " us, reachable=" + tae_string(count_reachable(bfs_dist))
 
 start = tick()
 g = make_grid_graph(10)
 elapsed = tick() - start
-blether "  10x10 grid (100 nodes): create=" + tae_string(elapsed) + " us"
+blether "  10x10 grid (100 nodes): create=" + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 bfs_dist = bfs_simple(g, 0)
 elapsed = tick() - start
-blether "    BFS: " + tae_string(elapsed) + " us, reachable=" + tae_string(count_reachable(bfs_dist))
+blether "    BFS: " + tae_string(elapsed / 1000) + " us, reachable=" + tae_string(count_reachable(bfs_dist))
 
 start = tick()
 g = make_grid_graph(20)
 elapsed = tick() - start
-blether "  20x20 grid (400 nodes): create=" + tae_string(elapsed) + " us"
+blether "  20x20 grid (400 nodes): create=" + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 bfs_dist = bfs_simple(g, 0)
 elapsed = tick() - start
-blether "    BFS: " + tae_string(elapsed / 1000) + " ms, reachable=" + tae_string(count_reachable(bfs_dist))
+blether "    BFS: " + tae_string(elapsed / 1000000) + " ms, reachable=" + tae_string(count_reachable(bfs_dist))
 
 start = tick()
 g = make_grid_graph(30)
 elapsed = tick() - start
-blether "  30x30 grid (900 nodes): create=" + tae_string(elapsed / 1000) + " ms"
+blether "  30x30 grid (900 nodes): create=" + tae_string(elapsed / 1000000) + " ms"
 
 start = tick()
 bfs_dist = bfs_simple(g, 0)
 elapsed = tick() - start
-blether "    BFS: " + tae_string(elapsed / 1000) + " ms, reachable=" + tae_string(count_reachable(bfs_dist))
+blether "    BFS: " + tae_string(elapsed / 1000000) + " ms, reachable=" + tae_string(count_reachable(bfs_dist))
 
 blether ""
 blether "=== Graph simple complete ==="

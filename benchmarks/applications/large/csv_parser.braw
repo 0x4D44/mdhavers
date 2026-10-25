@@ -87,17 +87,17 @@ blether "CSV Generation scaling:"
 ken start = tick()
 ken csv = make_csv(100, 10)
 ken elapsed = tick() - start
-blether "  100 rows x 10 cols: " + tae_string(elapsed / 1000) + " ms, len=" + tae_string(len(csv))
+blether "  100 rows x 10 cols: " + tae_string(elapsed / 1000000) + " ms, len=" + tae_string(len(csv))
 
 start = tick()
 csv = make_csv(500, 10)
 elapsed = tick() - start
-blether "  500 rows x 10 cols: " + tae_string(elapsed / 1000) + " ms, len=" + tae_string(len(csv))
+blether "  500 rows x 10 cols: " + tae_string(elapsed / 1000000) + " ms, len=" + tae_string(len(csv))
 
 start = tick()
 csv = make_csv(1000, 10)
 elapsed = tick() - start
-blether "  1000 rows x 10 cols: " + tae_string(elapsed / 1000) + " ms, len=" + tae_string(len(csv))
+blether "  1000 rows x 10 cols: " + tae_string(elapsed / 1000000) + " ms, len=" + tae_string(len(csv))
 
 # Parsing tests
 blether ""
@@ -107,19 +107,19 @@ csv = make_csv(100, 10)
 start = tick()
 parsed = parse_csv(csv)
 elapsed = tick() - start
-blether "  Parse 100 rows: " + tae_string(elapsed / 1000) + " ms"
+blether "  Parse 100 rows: " + tae_string(elapsed / 1000000) + " ms"
 
 csv = make_csv(500, 10)
 start = tick()
 parsed = parse_csv(csv)
 elapsed = tick() - start
-blether "  Parse 500 rows: " + tae_string(elapsed / 1000) + " ms"
+blether "  Parse 500 rows: " + tae_string(elapsed / 1000000) + " ms"
 
 csv = make_csv(1000, 10)
 start = tick()
 parsed = parse_csv(csv)
 elapsed = tick() - start
-blether "  Parse 1000 rows: " + tae_string(elapsed / 1000) + " ms"
+blether "  Parse 1000 rows: " + tae_string(elapsed / 1000000) + " ms"
 
 # Aggregation tests
 blether ""
@@ -128,12 +128,12 @@ blether "Aggregation operations (1000 rows):"
 start = tick()
 ken total = sum_column(parsed, 1)
 elapsed = tick() - start
-blether "  sum_column(col1): " + tae_string(elapsed) + " us, sum=" + tae_string(total)
+blether "  sum_column(col1): " + tae_string(elapsed / 1000) + " us, sum=" + tae_string(total)
 
 start = tick()
 ken count = count_where(parsed, 1, 50000)
 elapsed = tick() - start
-blether "  count_where(col1 > 50000): " + tae_string(elapsed) + " us, count=" + tae_string(count)
+blether "  count_where(col1 > 50000): " + tae_string(elapsed / 1000) + " us, count=" + tae_string(count)
 
 blether ""
 blether "=== CSV parser complete ==="

@@ -186,7 +186,7 @@ whiles j < 1000 {
     j = j + 1
 }
 ken elapsed = tick() - start
-blether "  1000x simple expr: " + tae_string(elapsed / 1000) + " ms"
+blether "  1000x simple expr: " + tae_string(elapsed / 1000000) + " ms"
 
 start = tick()
 j = 0
@@ -195,7 +195,7 @@ whiles j < 1000 {
     j = j + 1
 }
 elapsed = tick() - start
-blether "  1000x medium expr: " + tae_string(elapsed / 1000) + " ms"
+blether "  1000x medium expr: " + tae_string(elapsed / 1000000) + " ms"
 
 start = tick()
 j = 0
@@ -204,7 +204,7 @@ whiles j < 1000 {
     j = j + 1
 }
 elapsed = tick() - start
-blether "  1000x complex expr: " + tae_string(elapsed / 1000) + " ms"
+blether "  1000x complex expr: " + tae_string(elapsed / 1000000) + " ms"
 
 blether ""
 blether "=== Expression evaluator complete ==="

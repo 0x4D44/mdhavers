@@ -177,64 +177,64 @@ blether "Graph algorithm scaling:"
 ken start = tick()
 ken g = make_graph(50)
 ken elapsed = tick() - start
-blether "  Create 50-node graph: " + tae_string(elapsed) + " us"
+blether "  Create 50-node graph: " + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 bfs_result = bfs(g, 0)
 elapsed = tick() - start
-blether "  BFS 50 nodes: " + tae_string(elapsed) + " us"
+blether "  BFS 50 nodes: " + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 dfs_result = dfs(g, 0)
 elapsed = tick() - start
-blether "  DFS 50 nodes: " + tae_string(elapsed) + " us"
+blether "  DFS 50 nodes: " + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 dijk_result = dijkstra(g, 0)
 elapsed = tick() - start
-blether "  Dijkstra 50 nodes: " + tae_string(elapsed) + " us"
+blether "  Dijkstra 50 nodes: " + tae_string(elapsed / 1000) + " us"
 
 # 100 nodes
 start = tick()
 g = make_graph(100)
 elapsed = tick() - start
-blether "  Create 100-node graph: " + tae_string(elapsed) + " us"
+blether "  Create 100-node graph: " + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 bfs_result = bfs(g, 0)
 elapsed = tick() - start
-blether "  BFS 100 nodes: " + tae_string(elapsed) + " us"
+blether "  BFS 100 nodes: " + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 dfs_result = dfs(g, 0)
 elapsed = tick() - start
-blether "  DFS 100 nodes: " + tae_string(elapsed) + " us"
+blether "  DFS 100 nodes: " + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 dijk_result = dijkstra(g, 0)
 elapsed = tick() - start
-blether "  Dijkstra 100 nodes: " + tae_string(elapsed / 1000) + " ms"
+blether "  Dijkstra 100 nodes: " + tae_string(elapsed / 1000000) + " ms"
 
 # 200 nodes
 start = tick()
 g = make_graph(200)
 elapsed = tick() - start
-blether "  Create 200-node graph: " + tae_string(elapsed) + " us"
+blether "  Create 200-node graph: " + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 bfs_result = bfs(g, 0)
 elapsed = tick() - start
-blether "  BFS 200 nodes: " + tae_string(elapsed) + " us"
+blether "  BFS 200 nodes: " + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 dfs_result = dfs(g, 0)
 elapsed = tick() - start
-blether "  DFS 200 nodes: " + tae_string(elapsed) + " us"
+blether "  DFS 200 nodes: " + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 dijk_result = dijkstra(g, 0)
 elapsed = tick() - start
-blether "  Dijkstra 200 nodes: " + tae_string(elapsed / 1000) + " ms"
+blether "  Dijkstra 200 nodes: " + tae_string(elapsed / 1000000) + " ms"
 
 blether ""
 blether "=== Graph algorithms complete ==="

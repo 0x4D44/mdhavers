@@ -116,22 +116,22 @@ blether "Particle simulation scaling:"
 ken start = tick()
 result = simulate(10, 100, 0.01, 0.1)
 ken elapsed = tick() - start
-blether "  10 particles, 100 steps: " + tae_string(elapsed / 1000) + " ms"
+blether "  10 particles, 100 steps: " + tae_string(elapsed / 1000000) + " ms"
 
 start = tick()
 result = simulate(20, 100, 0.01, 0.1)
 elapsed = tick() - start
-blether "  20 particles, 100 steps: " + tae_string(elapsed / 1000) + " ms"
+blether "  20 particles, 100 steps: " + tae_string(elapsed / 1000000) + " ms"
 
 start = tick()
 result = simulate(50, 100, 0.01, 0.1)
 elapsed = tick() - start
-blether "  50 particles, 100 steps: " + tae_string(elapsed / 1000) + " ms"
+blether "  50 particles, 100 steps: " + tae_string(elapsed / 1000000) + " ms"
 
 start = tick()
 result = simulate(100, 100, 0.01, 0.1)
 elapsed = tick() - start
-blether "  100 particles, 100 steps: " + tae_string(elapsed / 1000) + " ms"
+blether "  100 particles, 100 steps: " + tae_string(elapsed / 1000000) + " ms"
 
 # More steps test
 blether ""
@@ -140,17 +140,17 @@ blether "Step count scaling (50 particles):"
 start = tick()
 result = simulate(50, 100, 0.01, 0.1)
 elapsed = tick() - start
-blether "  100 steps: " + tae_string(elapsed / 1000) + " ms"
+blether "  100 steps: " + tae_string(elapsed / 1000000) + " ms"
 
 start = tick()
 result = simulate(50, 500, 0.01, 0.1)
 elapsed = tick() - start
-blether "  500 steps: " + tae_string(elapsed / 1000) + " ms"
+blether "  500 steps: " + tae_string(elapsed / 1000000) + " ms"
 
 start = tick()
 result = simulate(50, 1000, 0.01, 0.1)
 elapsed = tick() - start
-blether "  1000 steps: " + tae_string(elapsed / 1000) + " ms"
+blether "  1000 steps: " + tae_string(elapsed / 1000000) + " ms"
 
 blether ""
 blether "=== Particle simulation complete ==="

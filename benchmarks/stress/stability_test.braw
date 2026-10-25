@@ -49,7 +49,7 @@ whiles i < 10000 {
     i = i + 1
 }
 ken elapsed = tick() - start
-blether "  10000 iterations: " + tae_string(elapsed / 1000) + " ms"
+blether "  10000 iterations: " + tae_string(elapsed / 1000000) + " ms"
 blether "  Total: " + tae_string(total)
 
 # Check for timing consistency
@@ -66,7 +66,7 @@ whiles batch < 5 {
     }
     elapsed = tick() - start
     shove(times, elapsed)
-    blether "  Batch " + tae_string(batch + 1) + ": " + tae_string(elapsed / 1000) + " ms"
+    blether "  Batch " + tae_string(batch + 1) + ": " + tae_string(elapsed / 1000000) + " ms"
     batch = batch + 1
 }
 
@@ -87,9 +87,9 @@ whiles i < 5 {
 
 blether ""
 blether "Consistency metrics:"
-blether "  Average: " + tae_string(avg / 1000) + " ms"
-blether "  Min: " + tae_string(min_time / 1000) + " ms"
-blether "  Max: " + tae_string(max_time / 1000) + " ms"
+blether "  Average: " + tae_string(avg / 1000000) + " ms"
+blether "  Min: " + tae_string(min_time / 1000000) + " ms"
+blether "  Max: " + tae_string(max_time / 1000000) + " ms"
 blether "  Variance: " + tae_string((max_time - min_time) * 100 / avg) + "%"
 
 # Memory churn test
@@ -110,7 +110,7 @@ whiles i < 1000 {
     i = i + 1
 }
 elapsed = tick() - start
-blether "  1000 churn cycles: " + tae_string(elapsed / 1000) + " ms"
+blether "  1000 churn cycles: " + tae_string(elapsed / 1000000) + " ms"
 
 # Final stability check
 blether ""
@@ -123,7 +123,7 @@ whiles i < 10000 {
     i = i + 1
 }
 elapsed = tick() - start
-blether "  10000 iterations: " + tae_string(elapsed / 1000) + " ms"
+blether "  10000 iterations: " + tae_string(elapsed / 1000000) + " ms"
 blether "  Total: " + tae_string(total)
 
 blether ""

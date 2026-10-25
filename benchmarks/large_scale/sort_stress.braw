@@ -48,7 +48,7 @@ ken gen_time = tick() - start
 start = tick()
 ken s = sort(lst)
 ken sort_time = tick() - start
-blether "  1K elements: gen=" + tae_string(gen_time) + "us, sort=" + tae_string(sort_time) + "us, valid=" + tae_string(is_sorted(s))
+blether "  1K elements: gen=" + tae_string(gen_time / 1000) + "us, sort=" + tae_string(sort_time / 1000) + "us, valid=" + tae_string(is_sorted(s))
 
 start = tick()
 lst = make_random_list(5000, 12345)
@@ -56,7 +56,7 @@ gen_time = tick() - start
 start = tick()
 s = sort(lst)
 sort_time = tick() - start
-blether "  5K elements: gen=" + tae_string(gen_time) + "us, sort=" + tae_string(sort_time / 1000) + "ms, valid=" + tae_string(is_sorted(s))
+blether "  5K elements: gen=" + tae_string(gen_time / 1000) + "us, sort=" + tae_string(sort_time / 1000000) + "ms, valid=" + tae_string(is_sorted(s))
 
 start = tick()
 lst = make_random_list(10000, 12345)
@@ -64,7 +64,7 @@ gen_time = tick() - start
 start = tick()
 s = sort(lst)
 sort_time = tick() - start
-blether "  10K elements: gen=" + tae_string(gen_time / 1000) + "ms, sort=" + tae_string(sort_time / 1000) + "ms, valid=" + tae_string(is_sorted(s))
+blether "  10K elements: gen=" + tae_string(gen_time / 1000000) + "ms, sort=" + tae_string(sort_time / 1000000) + "ms, valid=" + tae_string(is_sorted(s))
 
 start = tick()
 lst = make_random_list(50000, 12345)
@@ -72,7 +72,7 @@ gen_time = tick() - start
 start = tick()
 s = sort(lst)
 sort_time = tick() - start
-blether "  50K elements: gen=" + tae_string(gen_time / 1000) + "ms, sort=" + tae_string(sort_time / 1000) + "ms, valid=" + tae_string(is_sorted(s))
+blether "  50K elements: gen=" + tae_string(gen_time / 1000000) + "ms, sort=" + tae_string(sort_time / 1000000) + "ms, valid=" + tae_string(is_sorted(s))
 
 blether ""
 blether "=== Sort stress complete ==="

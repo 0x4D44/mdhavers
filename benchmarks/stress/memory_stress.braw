@@ -29,22 +29,22 @@ blether "Progressive allocation test:"
 ken start = tick()
 ken lst = allocate_list(10000)
 ken elapsed = tick() - start
-blether "  10K elements: " + tae_string(elapsed) + " us, len=" + tae_string(len(lst))
+blether "  10K elements: " + tae_string(elapsed / 1000) + " us, len=" + tae_string(len(lst))
 
 start = tick()
 lst = allocate_list(50000)
 elapsed = tick() - start
-blether "  50K elements: " + tae_string(elapsed / 1000) + " ms, len=" + tae_string(len(lst))
+blether "  50K elements: " + tae_string(elapsed / 1000000) + " ms, len=" + tae_string(len(lst))
 
 start = tick()
 lst = allocate_list(100000)
 elapsed = tick() - start
-blether "  100K elements: " + tae_string(elapsed / 1000) + " ms, len=" + tae_string(len(lst))
+blether "  100K elements: " + tae_string(elapsed / 1000000) + " ms, len=" + tae_string(len(lst))
 
 start = tick()
 lst = allocate_list(500000)
 elapsed = tick() - start
-blether "  500K elements: " + tae_string(elapsed / 1000) + " ms, len=" + tae_string(len(lst))
+blether "  500K elements: " + tae_string(elapsed / 1000000) + " ms, len=" + tae_string(len(lst))
 
 # Release memory
 lst = []
@@ -56,17 +56,17 @@ blether "Allocation cycle test (allocate and discard):"
 start = tick()
 allocation_cycle(1000, 100)
 elapsed = tick() - start
-blether "  100 cycles x 1K elements: " + tae_string(elapsed / 1000) + " ms"
+blether "  100 cycles x 1K elements: " + tae_string(elapsed / 1000000) + " ms"
 
 start = tick()
 allocation_cycle(10000, 100)
 elapsed = tick() - start
-blether "  100 cycles x 10K elements: " + tae_string(elapsed / 1000) + " ms"
+blether "  100 cycles x 10K elements: " + tae_string(elapsed / 1000000) + " ms"
 
 start = tick()
 allocation_cycle(1000, 1000)
 elapsed = tick() - start
-blether "  1000 cycles x 1K elements: " + tae_string(elapsed / 1000) + " ms"
+blether "  1000 cycles x 1K elements: " + tae_string(elapsed / 1000000) + " ms"
 
 # Nested list stress
 blether ""
@@ -88,17 +88,17 @@ dae make_nested_list(depth, width) {
 start = tick()
 ken nested = make_nested_list(3, 10)  # 10^3 = 1000 leaf lists
 elapsed = tick() - start
-blether "  Depth 3, width 10 (1K leaves): " + tae_string(elapsed) + " us"
+blether "  Depth 3, width 10 (1K leaves): " + tae_string(elapsed / 1000) + " us"
 
 start = tick()
 nested = make_nested_list(4, 10)  # 10^4 = 10000 leaf lists
 elapsed = tick() - start
-blether "  Depth 4, width 10 (10K leaves): " + tae_string(elapsed / 1000) + " ms"
+blether "  Depth 4, width 10 (10K leaves): " + tae_string(elapsed / 1000000) + " ms"
 
 start = tick()
 nested = make_nested_list(5, 5)  # 5^5 = 3125 leaf lists
 elapsed = tick() - start
-blether "  Depth 5, width 5 (3K leaves): " + tae_string(elapsed / 1000) + " ms"
+blether "  Depth 5, width 5 (3K leaves): " + tae_string(elapsed / 1000000) + " ms"
 
 # String memory stress
 blether ""
@@ -118,17 +118,17 @@ dae build_large_string(size) {
 start = tick()
 ken s = build_large_string(1000)
 elapsed = tick() - start
-blether "  Build 1K string: " + tae_string(elapsed) + " us, len=" + tae_string(len(s))
+blether "  Build 1K string: " + tae_string(elapsed / 1000) + " us, len=" + tae_string(len(s))
 
 start = tick()
 s = build_large_string(5000)
 elapsed = tick() - start
-blether "  Build 5K string: " + tae_string(elapsed / 1000) + " ms, len=" + tae_string(len(s))
+blether "  Build 5K string: " + tae_string(elapsed / 1000000) + " ms, len=" + tae_string(len(s))
 
 start = tick()
 s = build_large_string(10000)
 elapsed = tick() - start
-blether "  Build 10K string: " + tae_string(elapsed / 1000) + " ms, len=" + tae_string(len(s))
+blether "  Build 10K string: " + tae_string(elapsed / 1000000) + " ms, len=" + tae_string(len(s))
 
 blether ""
 blether "=== Memory stress complete ==="
