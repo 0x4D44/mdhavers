@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00147 — CLI interpreter and library interpreter disagree on prelude-overridden builtins
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** interpreter
 - **Raised:** 2026-10-25T08:13:42Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261025T184736Z-e297099e
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00147-run-fix-20261025T184736Z-e297099e
-- **Owner base:** 19f63d42cb01741fd9cedfd526714c5914eb3ae3
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-25T18:47:36Z
-- **Owner until:** 2026-10-26T02:10:50Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T08:13:42Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-25T08:13:42Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T23:04:14Z, deltic:auto role=fix run=fix-20261025T184736Z-e297099e branch=task/bug-MDH-BUG-FLU-00147-run-fix-20261025T184736Z-e297099e code=7ad654d gate=manual)
 
 ## Observation
 
