@@ -247,6 +247,70 @@ blether sl[0][0]
 }
 
 #[test]
+fn dicts_and_creels_release_removed_and_replaced_entries() {
+    // Dicts and creels counted: overwritten values, removals (tombstones, then
+    // compaction past half dead) and a creel churned through its index all let go.
+    // Default kinds: no MDH_RC_KINDS, so this also checks the default counts them.
+    let src = r#"
+ken d = {}
+ken i = 0
+whiles i < 30 {
+    d["k" + tae_string(i)] = ["v" + tae_string(i), {"inner": "x" + tae_string(i)}]
+    i = i + 1
+}
+d["k3"] = "overwritten" + "!"
+blether d["k3"]
+blether d["k4"][1]["inner"]
+i = 0
+whiles i < 25 {
+    d = dict_remove(d, "k" + tae_string(i))
+    i = i + 1
+}
+blether keys(d)
+fer k in keys(d) {
+    blether k + "=" + tae_string(len(d[k]))
+}
+ken vals = values(d)
+d = naething
+blether vals[0][0]
+ken e = {"a": "one" + "", "b": ["two" + ""]}
+ken e2 = e
+e["a"] = "uno" + ""
+blether e2["a"]
+ken c = creel(["x" + "", "y" + "", "z" + ""])
+toss_in(c, "w" + "")
+heave_oot(c, "x")
+heave_oot(c, "y")
+toss_in(c, "y" + "2")
+toss_in(c, "w" + "")
+blether len(c)
+ken big = creel([])
+i = 0
+whiles i < 40 {
+    toss_in(big, "item" + tae_string(i))
+    i = i + 1
+}
+i = 0
+whiles i < 35 {
+    heave_oot(big, "item" + tae_string(i))
+    toss_in(big, "again" + tae_string(i % 3))
+    i = i + 1
+}
+blether len(big)
+ken nested = {"l": [{"m": "deep" + ""}]}
+ken got = nested["l"][0]
+nested = {}
+blether got["m"]
+"#;
+    let run = run_native(src, &[("MDH_RC_REPORT", "1")]);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert_eq!(run.stdout, "overwritten!\nx4\n[k25, k26, k27, k28, k29]\nk25=2\nk26=2\nk27=2\nk28=2\nk29=2\nv25\nuno\n3\n8\ndeep\n");
+    assert_eq!(reported_live(&run.stderr, "string"), 0, "{}", run.stderr);
+    assert_eq!(reported_live(&run.stderr, "list"), 0, "{}", run.stderr);
+    assert_eq!(reported_live(&run.stderr, "dict"), 0, "{}", run.stderr);
+}
+
+#[test]
 fn counting_stays_off_unless_compiled_in() {
     // Off by default (counts are not atomic yet): the runtime counts nothing, even when
     // MDH_RC_KINDS asks it to.
