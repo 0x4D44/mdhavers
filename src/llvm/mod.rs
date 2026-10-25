@@ -10,6 +10,9 @@
 pub mod builtins;
 pub mod codegen;
 pub mod compiler;
+/// Owned/borrowed table of the runtime ABI; read by tests until reference counting.
+#[allow(dead_code)]
+pub mod ownership;
 #[allow(dead_code)]
 pub mod runtime;
 #[allow(dead_code)]
