@@ -122,7 +122,7 @@ typedef struct {
 
 /* Kinds counted by default (bit 1 << MdhObjKind); see __mdh_rc_kinds in gc_stub.c. */
 #ifndef MDH_RC_DEFAULT_KINDS
-#define MDH_RC_DEFAULT_KINDS (1u << MDH_KIND_STRING)
+#define MDH_RC_DEFAULT_KINDS ((1u << MDH_KIND_STRING) | (1u << MDH_KIND_LIST))
 #endif
 
 void *__mdh_obj_alloc(uint32_t kind, size_t size);

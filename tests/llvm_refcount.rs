@@ -199,6 +199,54 @@ fn static_strings_carry_the_header_magic_only_when_counting() {
 }
 
 #[test]
+fn lists_and_their_items_die_with_their_last_holder() {
+    // Lists counted (the default from stage R1 checkpoint 4): pushes, pops, index
+    // stores, nested lists, slices, map/filter/fold and sort all let go of everything.
+    // Default kinds: no MDH_RC_KINDS, so this also checks the default counts them.
+    let src = r#"
+dae mk(i) {
+    gie ["a" + tae_string(i), [i, "b" + tae_string(i)], i]
+}
+ken xs = []
+ken i = 0
+whiles i < 40 {
+    shove(xs, mk(i))
+    i = i + 1
+}
+blether yank(xs)
+yank(xs)
+xs[0] = mk(100)
+xs[1][1][1] = "replaced" + ""
+blether xs[1]
+ken ys = xs
+xs = [mk(7)]
+blether len(ys)
+blether gaun(ys, |r| r[0] + "!")[3]
+blether len(sieve(ys, |r| r[2] % 5 == 0))
+blether tumble(ys, "", |acc, r| acc + r[0])[0:6]
+ken total = 0
+fer r in ys {
+    total = total + r[2]
+}
+blether total
+ken nested = [[["deep" + "est"]]]
+ken inner = nested[0][0]
+nested = naething
+blether inner[0]
+blether sort(["pear" + "", "apple" + "", "fig" + ""])
+blether reverse([1, "two" + "", [3]])
+ken sl = ys[2:5]
+ys = naething
+blether sl[0][0]
+"#;
+    let run = run_native(src, &[("MDH_RC_REPORT", "1")]);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert_eq!(run.stdout, "[a39, [39, b39], 39]\n[a1, [1, replaced], 1]\n38\na3!\n8\na100a1\n803\ndeepest\n[apple, fig, pear]\n[[3], two, 1]\na2\n");
+    assert_eq!(reported_live(&run.stderr, "string"), 0, "{}", run.stderr);
+    assert_eq!(reported_live(&run.stderr, "list"), 0, "{}", run.stderr);
+}
+
+#[test]
 fn counting_stays_off_unless_compiled_in() {
     // Off by default (counts are not atomic yet): the runtime counts nothing, even when
     // MDH_RC_KINDS asks it to.

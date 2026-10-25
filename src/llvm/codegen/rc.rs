@@ -107,6 +107,27 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    /// `v` carries a +1 for whoever takes it (an element moved out of its container):
+    /// classify it as fresh.
+    pub(super) fn rc_mark_owned(&mut self, v: BasicValueEnum<'ctx>) {
+        if self.rc_enabled {
+            self.rc_owned_values.insert(value_id(v));
+        }
+    }
+
+    /// `v` was only used (tested, or stored by a runtime call that took its own
+    /// reference): if it is a fresh +1 nobody has taken, release it now. A plain call.
+    pub(super) fn rc_consume_fresh(&mut self, v: BasicValueEnum<'ctx>) {
+        if !self.rc_active() || !self.rc_is_value(v) {
+            return;
+        }
+        let mut roots = Vec::new();
+        if self.rc_roots(v, 0, &mut roots) == RcClass::Fresh {
+            self.rc_taken.extend(roots);
+            self.rc_release(v);
+        }
+    }
+
     /// Classify `v` (see [`RcClass`]).
     pub(super) fn rc_class(&self, v: BasicValueEnum<'ctx>) -> RcClass {
         let mut roots = Vec::new();
@@ -120,6 +141,9 @@ impl<'ctx> CodeGen<'ctx> {
     fn rc_roots(&self, v: BasicValueEnum<'ctx>, depth: u32, roots: &mut Vec<usize>) -> RcClass {
         if depth > 12 {
             return RcClass::Borrowed;
+        }
+        if self.rc_owned_values.contains(&value_id(v)) {
+            return self.rc_fresh_root(value_id(v), roots);
         }
         match v {
             BasicValueEnum::StructValue(sv) => {

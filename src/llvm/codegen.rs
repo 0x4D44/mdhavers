@@ -763,6 +763,9 @@ pub struct CodeGen<'ctx> {
     rc_owned_return_fns: HashSet<FunctionValue<'ctx>>,
     /// Per function, its statement temp slots (pinned at a try like the variables).
     rc_temp_pins: HashMap<FunctionValue<'ctx>, Vec<PointerValue<'ctx>>>,
+    /// Values codegen built that carry a +1 for their user (an element moved out of its
+    /// container), by LLVM value address (see `rc_mark_owned`).
+    rc_owned_values: HashSet<usize>,
 }
 
 #[derive(Debug)]
@@ -881,6 +884,7 @@ impl<'ctx> CodeGen<'ctx> {
             rc_taken: HashSet::new(),
             rc_owned_return_fns: HashSet::new(),
             rc_temp_pins: HashMap::new(),
+            rc_owned_values: HashSet::new(),
         }
     }
 
@@ -10521,6 +10525,8 @@ impl<'ctx> CodeGen<'ctx> {
             (&popped, nonempty_end),
             (&err_val, err_end),
         ]);
+        // The list let go of the element without releasing it: its reference moves here.
+        self.rc_mark_owned(phi.as_basic_value());
 
         Ok(phi.as_basic_value())
     }
@@ -33501,6 +33507,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Check if truthy
         let is_truthy = self.is_truthy(pred_result);
+        self.rc_consume_fresh(pred_result);
         self.builder
             .build_conditional_branch(is_truthy, keep_block, next_block)
             .unwrap();
@@ -33536,6 +33543,8 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_load(self.types.value_type, result_alloca, "final_result")
             .unwrap();
+        // make_list's reference moves to the caller.
+        self.rc_mark_owned(final_result);
         Ok(final_result)
     }
 
@@ -34036,6 +34045,8 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_alloca(self.types.value_type, "acc_alloca")
             .unwrap();
+        // The accumulator slot holds one reference: each step's result replaces the last.
+        self.rc_take(init_val);
         self.builder.build_store(acc_alloca, init_val).unwrap();
 
         let zero = self.types.i64_type.const_int(0, false);
@@ -34089,7 +34100,9 @@ impl<'ctx> CodeGen<'ctx> {
             .build_load(self.types.value_type, acc_alloca, "acc")
             .unwrap();
         let new_acc = self.call_function_value(func, &[acc, elem_val]).unwrap();
+        self.rc_take(new_acc);
         self.builder.build_store(acc_alloca, new_acc).unwrap();
+        self.rc_release(acc);
 
         // Increment index
         let next_idx = self.builder.build_int_add(idx, one, "next_idx").unwrap();
@@ -34101,6 +34114,8 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_load(self.types.value_type, acc_alloca, "final_acc")
             .unwrap();
+        // The slot's reference moves to the result.
+        self.rc_mark_owned(final_acc);
         Ok(final_acc)
     }
 
@@ -35096,6 +35111,7 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .unwrap();
+        self.rc_consume_fresh(mapped_val);
 
         // Increment and continue
         let next_idx = self.builder.build_int_add(idx, one, "next_idx").unwrap();
@@ -35108,6 +35124,8 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_load(self.types.value_type, result_alloca, "final_result")
             .unwrap();
+        // make_list's reference moves to the caller.
+        self.rc_mark_owned(final_result);
         Ok(final_result)
     }
 
