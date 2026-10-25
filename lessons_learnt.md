@@ -1,5 +1,9 @@
 # Lessons learnt
 
+- Makefile:coverage - `--cfg coverage` tests (`*_coverage_only.rs`, `src/llvm/coverage_tests.rs`) compile in no
+  focused gate, so semantic changes break them silently (the coverage build was broken 2026-10-23 to 2026-10-25). After a
+  language-semantics or Value-layout change, run `RUSTFLAGS="--cfg coverage" cargo test --no-default-features --features
+  cli,llvm,native --lib --tests --no-fail-fast` with its own CARGO_TARGET_DIR under `.scratch/`.
 - src/parser.rs:return_statement - a change to what the parser accepts breaks inline .braw in any test file; grep
   every tests/*.rs (llvm_*, *_coverage*, wasm_*) for the construct, or run the full suite, before landing. Two trunk
   breaks on 2026-10-24 came from top-level `{ gie .. }` sources in native and WASM tests no golden run touched.
