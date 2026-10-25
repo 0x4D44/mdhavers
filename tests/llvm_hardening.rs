@@ -1014,3 +1014,52 @@ fn module_function_shadowing_a_nested_imports_function_is_defined() {
     );
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "xouter");
 }
+
+// ---------- MDH-BUG-FLU-00142: prelude higher-order functions ----------
+
+#[test]
+fn prelude_higher_order_functions_match_the_interpreter() {
+    let source = r#"ken nums = [1, 5, 10]
+dae big(x) { gie x > 3 }
+dae small(x) { gie x < 8 }
+blether ilka(nums, big)
+blether ilka(nums, nae_that(big))
+dae add_one(x) { gie x + 1 }
+dae double(x) { gie x * 2 }
+ken f = compose(add_one, double)
+blether f(5)
+blether apply_n(double, 3, 1)
+blether same(7)
+ken c = constant(9)
+blether c(1)
+ken notsmall = nae_that(small)
+blether notsmall(10)
+blether notsmall(2)
+"#;
+    assert_eq!(
+        run_ok(source),
+        vec!["nae", "nae", "11", "8", "7", "9", "aye", "nae"]
+    );
+}
+
+#[test]
+fn prelude_functions_used_from_methods_lambdas_and_fstrings_are_found() {
+    let source = r#"kin Holder {
+    dae pick(x) {
+        gie same(x)
+    }
+}
+ken h = Holder()
+blether h.pick(3)
+ken twice = |v| apply_n(|n| n + 1, 2, v)
+blether twice(5)
+blether f"mak: {make_range(1, 3)}"
+"#;
+    assert_eq!(run_ok(source), vec!["3", "7", "mak: [1, 2, 3]"]);
+}
+
+#[test]
+fn user_definition_shadows_a_compiled_in_prelude_function() {
+    let source = "dae same(x) {\n    gie 42\n}\nblether same(1)\n";
+    assert_eq!(run_ok(source), vec!["42"]);
+}

@@ -708,6 +708,9 @@ pub struct CodeGen<'ctx> {
     /// Classes that exist for dispatch but are hidden from direct instantiation.
     /// These are typically introduced via aliased imports (`fetch "mod" tae m`).
     hidden_imported_classes: HashSet<String>,
+    /// While true, the free-variable scan reports every unbound name, not only names
+    /// already in `variables` (used to find the prelude functions a program needs).
+    scan_all_names: bool,
 
     /// Current 'masel' value (set during method execution)
     current_masel: Option<PointerValue<'ctx>>,
@@ -858,6 +861,7 @@ impl<'ctx> CodeGen<'ctx> {
             class_methods: HashMap::new(),
             class_defined_flags: HashMap::new(),
             hidden_imported_classes: HashSet::new(),
+            scan_all_names: false,
             current_masel: None,
             current_class: None,
             source_path: None,
@@ -4629,7 +4633,144 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Compile a complete program
+    /// Prelude functions the native backend has no faithful inline for: either it has
+    /// none at all, or only a placeholder that disagrees with `stdlib/prelude.braw`
+    /// (MDH-BUG-FLU-00142). A program that uses one without defining it gets the prelude's
+    /// own definition compiled in, so native matches the interpreter.
+    const PRELUDE_COMPILED_IN: &'static [&'static str] = &[
+        "apply_n",
+        "assert_equal",
+        "assert_that",
+        "compose",
+        "constant",
+        "coont_gin",
+        "dae_times",
+        "dinnae_fash",
+        "drap_while",
+        "efter",
+        "group_by",
+        "hauf_by",
+        "ilka",
+        "is_braw",
+        "mak_siccar_that",
+        "make_range",
+        "make_range_step",
+        "mode",
+        "nae_that",
+        "needsae_be_toom",
+        "ordinal",
+        "pure_dead_brilliant",
+        "same",
+        "scots_exclaim",
+        "scots_farewell",
+        "scots_number",
+        "spy",
+        "swatch",
+        "tak_time",
+        "tak_while",
+        "transform_an_combine",
+        "wheech",
+    ];
+
+    /// The prelude definitions `program` needs but does not define itself (transitively).
+    fn native_prelude_statements(&mut self, program: &Program) -> Vec<Stmt> {
+        self.prelude_statements_for(
+            program,
+            include_str!("../../stdlib/prelude.braw"),
+            Self::PRELUDE_COMPILED_IN,
+        )
+    }
+
+    fn prelude_statements_for(
+        &mut self,
+        program: &Program,
+        prelude_source: &str,
+        compiled_in: &[&str],
+    ) -> Vec<Stmt> {
+        let defined: HashSet<&str> = program
+            .statements
+            .iter()
+            .filter_map(|stmt| match stmt {
+                Stmt::Function { name, .. }
+                | Stmt::VarDecl { name, .. }
+                | Stmt::Class { name, .. }
+                | Stmt::Struct { name, .. } => Some(name.as_str()),
+                _ => None,
+            })
+            .collect();
+        let mut referenced = self.referenced_names(&program.statements);
+        if !compiled_in
+            .iter()
+            .any(|n| !defined.contains(n) && referenced.contains(*n))
+        {
+            return Vec::new();
+        }
+        let Ok(prelude) = crate::parser::parse(prelude_source) else {
+            return Vec::new();
+        };
+        // Last definition wins, as when the interpreter runs the prelude.
+        let mut by_name: HashMap<&str, &Stmt> = HashMap::new();
+        for stmt in &prelude.statements {
+            if let Stmt::Function { name, .. } = stmt {
+                by_name.insert(name.as_str(), stmt);
+            }
+        }
+        // Fixpoint: a prelude function that is itself pulled in may call another.
+        let mut needed: HashSet<&str> = HashSet::new();
+        loop {
+            let mut grew = false;
+            for name in compiled_in {
+                if defined.contains(name) || needed.contains(name) || !referenced.contains(*name) {
+                    continue;
+                }
+                if let Some(stmt) = by_name.get(name) {
+                    needed.insert(name);
+                    referenced.extend(self.referenced_names(std::slice::from_ref(*stmt)));
+                    grew = true;
+                }
+            }
+            if !grew {
+                break;
+            }
+        }
+        prelude
+            .statements
+            .iter()
+            .filter(|stmt| match stmt {
+                Stmt::Function { name, .. } => {
+                    needed.contains(name.as_str())
+                        && by_name
+                            .get(name.as_str())
+                            .is_some_and(|last| std::ptr::eq(*last, *stmt))
+                }
+                _ => false,
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// Every name the statements read without binding it first, via the free-variable scan.
+    fn referenced_names(&mut self, statements: &[Stmt]) -> HashSet<String> {
+        self.scan_all_names = true;
+        let mut bound = HashSet::new();
+        let mut free = HashSet::new();
+        for stmt in statements {
+            self.collect_free_vars_stmt(stmt, &mut bound, &mut free);
+        }
+        self.scan_all_names = false;
+        free
+    }
+
     pub fn compile(&mut self, program: &Program) -> Result<(), HaversError> {
+        let mut statements = self.native_prelude_statements(program);
+        if statements.is_empty() {
+            return self.compile_program(program);
+        }
+        statements.extend(program.statements.iter().cloned());
+        self.compile_program(&Program::new(statements))
+    }
+
+    fn compile_program(&mut self, program: &Program) -> Result<(), HaversError> {
         // First pass: declare all functions/struct ctors and store default parameter values
         for stmt in &program.statements {
             match stmt {
@@ -31619,7 +31760,9 @@ impl<'ctx> CodeGen<'ctx> {
     fn collect_free_vars(&self, expr: &Expr, bound: &HashSet<String>, free: &mut HashSet<String>) {
         match expr {
             Expr::Variable { name, .. } => {
-                if !bound.contains(name) && self.variables.contains_key(name) {
+                if !bound.contains(name)
+                    && (self.scan_all_names || self.variables.contains_key(name))
+                {
                     free.insert(name.clone());
                 }
             }
@@ -32036,11 +32179,19 @@ impl<'ctx> CodeGen<'ctx> {
             Stmt::Hurl { message, .. } => {
                 self.collect_free_vars(message, bound, free);
             }
+            Stmt::Class { methods, .. } => {
+                // Method bodies matter only to the name scan; capture analysis never
+                // looks inside a class.
+                if self.scan_all_names {
+                    for method in methods {
+                        self.collect_free_vars_stmt(method, &mut bound.clone(), free);
+                    }
+                }
+            }
             // Statements that don't contain expressions with variables
             Stmt::Break { .. }
             | Stmt::Continue { .. }
             | Stmt::Import { .. }
-            | Stmt::Class { .. }
             | Stmt::Struct { .. } => {}
         }
     }
@@ -43175,6 +43326,57 @@ mod tests {
 
     fn is_compile_error_containing(err: HaversError, needle: &str) -> bool {
         matches!(err, HaversError::CompileError(msg) if msg.contains(needle))
+    }
+
+    fn injected_prelude_names(user: &str, prelude: &str, compiled_in: &[&str]) -> Vec<String> {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "prelude_scan");
+        let program = crate::parser::parse(user).expect("parse user");
+        codegen
+            .prelude_statements_for(&program, prelude, compiled_in)
+            .iter()
+            .filter_map(|s| match s {
+                Stmt::Function { name, .. } => Some(name.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    // MDH-BUG-FLU-00142: a prelude function reached only through another one is pulled in.
+    #[test]
+    fn prelude_scan_follows_calls_between_compiled_in_functions() {
+        let prelude = "dae outer(x) {\n    gie inner(x)\n}\ndae inner(x) {\n    gie x\n}\ndae spare(x) {\n    gie x\n}\n";
+        let both = ["outer", "inner", "spare"];
+        assert_eq!(
+            injected_prelude_names("blether outer(1)\n", prelude, &both),
+            vec!["outer", "inner"]
+        );
+        // Not reached at all: nothing is injected.
+        assert!(injected_prelude_names("blether 1\n", prelude, &both).is_empty());
+        // A user definition wins, and a shadowing parameter is not a use.
+        assert!(injected_prelude_names(
+            "dae outer(x) { gie 2 }\nblether outer(1)\n",
+            prelude,
+            &["outer"]
+        )
+        .is_empty());
+        assert!(
+            injected_prelude_names("dae f(outer) { gie outer(1) }\n", prelude, &["outer"])
+                .is_empty()
+        );
+        // Uses inside a class method and a lambda count.
+        assert_eq!(
+            injected_prelude_names(
+                "kin K {\n    dae m() {\n        gie spare(1)\n    }\n}\n",
+                prelude,
+                &["spare"]
+            ),
+            vec!["spare"]
+        );
+        assert_eq!(
+            injected_prelude_names("ken g = |a| spare(a)\n", prelude, &["spare"]),
+            vec!["spare"]
+        );
     }
 
     #[cfg(coverage)]
