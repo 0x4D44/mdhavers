@@ -534,6 +534,24 @@ k()
     );
 }
 
+// ---------- RC prerequisite R0.6: no value aliases memory it does not own ----------
+
+// getenv returned a pointer into the environment block; BSD/macOS setenv overwrites a
+// shorter-or-equal value in place, so the earlier value changed under the program.
+#[test]
+fn getenv_value_is_a_copy_not_an_alias_of_the_environment() {
+    let out = run_ok(
+        r#"
+env_set("MDH_R06_PROBE", "one")
+ken a = getenv("MDH_R06_PROBE")
+env_set("MDH_R06_PROBE", "two")
+blether a
+blether getenv("MDH_R06_PROBE")
+"#,
+    );
+    assert_eq!(out, vec!["one", "two"]);
+}
+
 // ---------- MDH-BUG-FLU-00054: native handles are validated ----------
 
 #[test]

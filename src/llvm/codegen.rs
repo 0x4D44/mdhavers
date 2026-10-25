@@ -25192,7 +25192,18 @@ impl<'ctx> CodeGen<'ctx> {
                         .unwrap();
 
                     self.builder.position_at_end(has_val);
-                    let s = self.make_string(env_ptr);
+                    // getenv points into the environment block, which a later env_set
+                    // may overwrite in place: the value owns a copy.
+                    let env_copy = self
+                        .builder
+                        .build_call(self.libc.strdup, &[env_ptr.into()], "env_copy")
+                        .unwrap()
+                        .try_as_basic_value()
+                        .basic()
+                        .compile_ok_or("strdup returned void")
+                        .unwrap()
+                        .into_pointer_value();
+                    let s = self.make_string(env_copy);
                     self.builder.build_unconditional_branch(merge).unwrap();
                     let has_end = self.builder.get_insert_block().unwrap();
 
