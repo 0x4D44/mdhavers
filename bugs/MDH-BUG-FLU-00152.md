@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00152 — Native thread_spawn leaks its function and argument list under MDH_RC=1
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-25T10:32:08Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261025T104640Z-4d48f78c
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00152-run-fix-20261025T104640Z-4d48f78c
-- **Owner base:** 10c9002744c70fada51522cee810210d02cd2f47
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-25T10:46:40Z
-- **Owner until:** 2026-10-25T14:46:40Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T10:32:08Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-25T10:32:08Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T11:20:09Z, deltic:auto role=fix run=fix-20261025T104640Z-4d48f78c branch=task/bug-MDH-BUG-FLU-00152-run-fix-20261025T104640Z-4d48f78c code=2839ad8 gate=manual)
 
 ## Observation
 
