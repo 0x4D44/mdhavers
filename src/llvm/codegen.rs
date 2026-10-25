@@ -48067,6 +48067,7 @@ dae f() { gie 32 }
             break_block,
             continue_block,
             try_depth: 0,
+            rc_scope_depth: 0,
         });
         let dict_val = codegen
             .compile_expr(&Expr::Dict {
@@ -48980,6 +48981,7 @@ dae f() { gie 32 }
             break_block,
             continue_block: cont_block,
             try_depth: 0,
+            rc_scope_depth: 0,
         });
 
         let span = Span::new(1, 1);
