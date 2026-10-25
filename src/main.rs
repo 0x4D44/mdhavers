@@ -499,7 +499,7 @@ fn build_native(
     eprintln!("  1. Install LLVM dependencies:");
     eprintln!(
         "     {}",
-        "sudo apt install llvm-15 libpolly-15-dev lld-15 libzstd-dev".green()
+        "sudo apt install llvm-19 libpolly-19-dev lld-19 libzstd-dev".green()
     );
     eprintln!();
     eprintln!("  2. Rebuild mdhavers with LLVM:");

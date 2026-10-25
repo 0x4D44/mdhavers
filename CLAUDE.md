@@ -251,7 +251,7 @@ node fizzbuzz.js
 - Standard build tools (gcc/clang)
 
 ### Optional (auto-detected by Makefile)
-- **LLVM 15** + `libzstd-dev` - For native compilation
+- **LLVM 19** exactly + `libzstd-dev` - For native compilation (inkwell feature `llvm19-1`; point llvm-sys at it with `LLVM_SYS_191_PREFIX`, e.g. `$(brew --prefix llvm@19)` on macOS)
 - **OpenSSL** - For DTLS/SRTP support (dtls feature, Unix only)
 - **raylib dependencies** - For graphics: `cmake`, `libx11-dev`, `libxrandr-dev`, `libxinerama-dev`, `libxcursor-dev`, `libxi-dev`, `libgl1-mesa-dev`
 - **miniaudio** - For audio (no X11 needed for audio-only)

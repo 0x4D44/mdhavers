@@ -1,7 +1,7 @@
 # Cargo configuration for mdhavers
 
 [alias]
-# Build with LLVM support (requires LLVM 15 and dependencies)
+# Build with LLVM support (requires LLVM 19 and dependencies)
 build-llvm = "build --features llvm"
 test-llvm = "test --features llvm"
 run-llvm = "run --features llvm"

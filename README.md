@@ -1213,7 +1213,7 @@ cargo build --release --no-default-features --features "cli,native,graphics"
 # Build with standalone audio (no graphics)
 cargo build --release --no-default-features --features "cli,native,audio"
 
-# Build with LLVM (requires LLVM 15 installed)
+# Build with LLVM (requires LLVM 19 installed)
 cargo build --release --no-default-features --features "cli,native,llvm"
 
 # Full build with all features
@@ -1224,7 +1224,7 @@ cargo test --no-default-features --features minimal
 ```
 
 **Note:** On Windows, use `graphics` for graphics + audio (raylib's built-in audio), or
-`audio` for standalone audio (miniaudio). LLVM native compilation is supported (requires LLVM 15).
+`audio` for standalone audio (miniaudio). LLVM native compilation is best-effort on Windows (requires LLVM 19).
 
 ### Minimal Build (CI / No Optional Dependencies)
 
@@ -1242,10 +1242,10 @@ cargo build --release --no-default-features --features cli
 
 | Feature | Description | Dependencies |
 |---------|-------------|--------------|
-| `full` | All features (default) | LLVM 15, raylib deps, ALSA (Linux) |
+| `full` | All features (default) | LLVM 19, raylib deps, ALSA (Linux) |
 | `full-no-llvm` | All except LLVM | raylib deps |
 | `minimal` | CLI + native networking | None (just Rust) |
-| `llvm` | Native code compilation | LLVM 15, libzstd |
+| `llvm` | Native code compilation | LLVM 19, libzstd |
 | `graphics` | 2D/3D graphics + audio (raylib) | cmake, X11 dev libs (Linux) |
 | `audio` | Standalone audio (miniaudio) | ALSA (Linux) |
 
@@ -1256,7 +1256,9 @@ cargo build --release --no-default-features --features cli
 
 **Platform notes:**
 - **Linux/WSL**: Use `full` for all features including LLVM native compilation
-- **Windows**: Full support including LLVM. Install LLVM 15 and set `LLVM_SYS_150_PREFIX`
+- **macOS**: `brew install llvm@19` (keg-only); the Makefile finds it, or set
+  `LLVM_SYS_191_PREFIX=$(brew --prefix llvm@19)` for plain `cargo`
+- **Windows**: LLVM native compilation is best-effort. Install LLVM 19 and set `LLVM_SYS_191_PREFIX`
 
 ### Manual Dependency Installation
 
@@ -1264,8 +1266,8 @@ If you prefer to install dependencies manually:
 
 **Ubuntu/Debian (LLVM):**
 ```bash
-sudo apt install llvm-15 llvm-15-dev libpolly-15-dev lld-15 libzstd-dev
-export LLVM_SYS_150_PREFIX=/usr/lib/llvm-15
+sudo apt install llvm-19 llvm-19-dev libpolly-19-dev lld-19 libzstd-dev
+export LLVM_SYS_191_PREFIX=/usr/lib/llvm-19
 ```
 
 **Ubuntu/Debian (Graphics):**
@@ -1279,8 +1281,10 @@ sudo apt install libasound2-dev
 ```
 
 **Windows (LLVM):**
-- Install LLVM 15 from [releases.llvm.org](https://releases.llvm.org/download.html) or via `choco install llvm --version=15.0.7`
-- Set environment variable: `LLVM_SYS_150_PREFIX=C:\Program Files\LLVM`
+- Install LLVM 19 from [releases.llvm.org](https://releases.llvm.org/download.html) or via `choco install llvm --version=19.1.7`
+- Set environment variable: `LLVM_SYS_191_PREFIX=C:\Program Files\LLVM`
+- llvm-sys needs `llvm-config` and the static LLVM libraries; the official Windows installer
+  may not include them, in which case use an LLVM 19 development build
 
 **Verify LLVM detection:**
 ```bash

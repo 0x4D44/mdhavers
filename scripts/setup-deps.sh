@@ -5,7 +5,7 @@
 #
 # Options:
 #   --all       Install all optional dependencies (default)
-#   --llvm      Install LLVM 15 and related packages
+#   --llvm      Install LLVM 19 and related packages
 #   --graphics  Install raylib dependencies
 #   --audio     Install audio dependencies
 #   --help      Show this help message
@@ -53,19 +53,20 @@ detect_package_manager() {
     info "Detected package manager: $PKG_MANAGER"
 }
 
-# Install LLVM 15 and dependencies
+# Install LLVM 19 and dependencies (the inkwell feature is llvm19-1; no other major works)
 install_llvm() {
-    info "Installing LLVM 15 and dependencies..."
+    info "Installing LLVM 19 and dependencies..."
 
     case $PKG_MANAGER in
         brew)
-            $PKG_INSTALL llvm@15 cmake zstd
-            info "llvm@15 is keg-only. Build with:"
-            info "  export LLVM_SYS_150_PREFIX=\"$(brew --prefix llvm@15)\""
+            $PKG_INSTALL llvm@19 cmake zstd
+            info "llvm@19 is keg-only. The Makefile finds it; for plain cargo, build with:"
+            info "  export LLVM_SYS_191_PREFIX=\"$(brew --prefix llvm@19)\""
             ;;
         apt)
-            # Add LLVM apt repository for Ubuntu/Debian
-            if ! command -v llvm-config-15 &>/dev/null; then
+            # Ubuntu 24.04+ and Debian 13+ ship llvm-19 in their own archives. Add the
+            # apt.llvm.org repository only when the distro does not offer llvm-19-dev.
+            if ! command -v llvm-config-19 &>/dev/null && ! apt-cache show llvm-19-dev &>/dev/null; then
                 info "Adding LLVM apt repository..."
                 wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null 2>&1 || true
 
@@ -73,17 +74,8 @@ install_llvm() {
                 if [ -f /etc/os-release ]; then
                     . /etc/os-release
                     case $VERSION_CODENAME in
-                        noble|mantic)
-                            LLVM_REPO="deb http://apt.llvm.org/$VERSION_CODENAME/ llvm-toolchain-$VERSION_CODENAME-15 main"
-                            ;;
-                        jammy|kinetic|lunar)
-                            LLVM_REPO="deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main"
-                            ;;
-                        focal)
-                            LLVM_REPO="deb http://apt.llvm.org/focal/ llvm-toolchain-focal-15 main"
-                            ;;
-                        bookworm|bullseye)
-                            LLVM_REPO="deb http://apt.llvm.org/bullseye/ llvm-toolchain-bullseye-15 main"
+                        noble|jammy|focal|bookworm|bullseye)
+                            LLVM_REPO="deb http://apt.llvm.org/$VERSION_CODENAME/ llvm-toolchain-$VERSION_CODENAME-19 main"
                             ;;
                         *)
                             warn "Unknown distro version: $VERSION_CODENAME. Trying default LLVM packages."
@@ -91,30 +83,32 @@ install_llvm() {
                     esac
 
                     if [ -n "$LLVM_REPO" ]; then
-                        echo "$LLVM_REPO" | sudo tee /etc/apt/sources.list.d/llvm-15.list >/dev/null
+                        echo "$LLVM_REPO" | sudo tee /etc/apt/sources.list.d/llvm-19.list >/dev/null
                         $PKG_UPDATE
                     fi
                 fi
             fi
 
-            $PKG_INSTALL llvm-15 llvm-15-dev libpolly-15-dev lld-15 libzstd-dev
+            $PKG_INSTALL llvm-19 llvm-19-dev libpolly-19-dev lld-19 libzstd-dev
             ;;
         dnf)
-            $PKG_INSTALL llvm15 llvm15-devel lld libzstd-devel
+            $PKG_INSTALL llvm19 llvm19-devel lld libzstd-devel
             ;;
         pacman)
-            $PKG_INSTALL llvm15 lld zstd
+            $PKG_INSTALL llvm19 lld zstd
             ;;
         zypper)
-            $PKG_INSTALL llvm15 llvm15-devel lld libzstd-devel
+            $PKG_INSTALL llvm19 llvm19-devel lld libzstd-devel
             ;;
     esac
 
-    if command -v llvm-config-15 &>/dev/null || command -v llvm-config &>/dev/null \
-        || { [ "$PKG_MANAGER" = "brew" ] && [ -x "$(brew --prefix llvm@15)/bin/llvm-config" ]; }; then
-        success "LLVM installed successfully"
+    if command -v llvm-config-19 &>/dev/null \
+        || llvm-config --version 2>/dev/null | grep -q '^19\.' \
+        || { [ "$PKG_MANAGER" = "brew" ] && [ -x "$(brew --prefix llvm@19)/bin/llvm-config" ]; }; then
+        success "LLVM 19 installed successfully"
     else
-        warn "LLVM installation may have failed. Check manually with: llvm-config-15 --version"
+        warn "LLVM 19 not found on PATH. Check with: llvm-config-19 --version"
+        warn "If it is installed elsewhere: export LLVM_SYS_191_PREFIX=<dir holding bin/llvm-config>"
     fi
 }
 
@@ -213,7 +207,7 @@ show_help() {
     echo ""
     echo "Options:"
     echo "  --all       Install all optional dependencies (default)"
-    echo "  --llvm      Install LLVM 15 and related packages"
+    echo "  --llvm      Install LLVM 19 and related packages"
     echo "  --graphics  Install raylib dependencies"
     echo "  --audio     Install audio dependencies"
     echo "  --tools     Install essential build tools only"

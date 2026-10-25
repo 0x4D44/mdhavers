@@ -4,7 +4,7 @@
 #
 # Options:
 #   -All       Install all optional dependencies (default)
-#   -LLVM      Install LLVM 15
+#   -LLVM      Install LLVM 19
 #   -Graphics  Install graphics dependencies (CMake)
 #   -Help      Show this help message
 #
@@ -20,7 +20,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 # LLVM version to install
-$LLVM_VERSION = "15.0.7"
+$LLVM_VERSION = "19.1.7"
 $LLVM_INSTALL_DIR = "C:\Program Files\LLVM"
 
 function Write-Info($message) {
@@ -73,8 +73,8 @@ function Install-LLVM {
     # Check if already installed
     if (Test-Path "$LLVM_INSTALL_DIR\bin\clang.exe") {
         $version = & "$LLVM_INSTALL_DIR\bin\clang.exe" --version 2>$null | Select-String -Pattern "(\d+\.\d+\.\d+)" | ForEach-Object { $_.Matches[0].Value }
-        if ($version -like "15.*") {
-            Write-Success "LLVM 15 already installed at $LLVM_INSTALL_DIR"
+        if ($version -like "19.*") {
+            Write-Success "LLVM 19 already installed at $LLVM_INSTALL_DIR"
             Set-LLVMEnvironment
             return
         }
@@ -126,7 +126,7 @@ function Install-LLVM {
 function Set-LLVMEnvironment {
     Write-Info "Setting LLVM environment variables..."
 
-    # Set LLVM_SYS_150_PREFIX for inkwell crate
+    # Set LLVM_SYS_191_PREFIX for inkwell crate
     $llvmPath = $LLVM_INSTALL_DIR
     if (-not (Test-Path $llvmPath)) {
         # Try to find LLVM in common locations
@@ -145,11 +145,11 @@ function Set-LLVMEnvironment {
 
     if (Test-Path $llvmPath) {
         # Set for current session
-        $env:LLVM_SYS_150_PREFIX = $llvmPath
+        $env:LLVM_SYS_191_PREFIX = $llvmPath
         $env:PATH = "$llvmPath\bin;$env:PATH"
 
         # Set persistently for user
-        [Environment]::SetEnvironmentVariable("LLVM_SYS_150_PREFIX", $llvmPath, "User")
+        [Environment]::SetEnvironmentVariable("LLVM_SYS_191_PREFIX", $llvmPath, "User")
 
         # Add to PATH if not already there
         $currentPath = [Environment]::GetEnvironmentVariable("PATH", "User")
@@ -157,10 +157,10 @@ function Set-LLVMEnvironment {
             [Environment]::SetEnvironmentVariable("PATH", "$llvmPath\bin;$currentPath", "User")
         }
 
-        Write-Success "LLVM_SYS_150_PREFIX set to: $llvmPath"
+        Write-Success "LLVM_SYS_191_PREFIX set to: $llvmPath"
         Write-Info "You may need to restart your terminal for PATH changes to take effect"
     } else {
-        Write-Warning-Custom "Could not find LLVM installation. Please set LLVM_SYS_150_PREFIX manually."
+        Write-Warning-Custom "Could not find LLVM installation. Please set LLVM_SYS_191_PREFIX manually."
     }
 }
 
@@ -253,7 +253,7 @@ function Show-Help {
     Write-Host ""
     Write-Host "Options:"
     Write-Host "  -All       Install all optional dependencies (default)"
-    Write-Host "  -LLVM      Install LLVM 15"
+    Write-Host "  -LLVM      Install LLVM 19"
     Write-Host "  -Graphics  Install graphics dependencies (CMake)"
     Write-Host "  -Help      Show this help message"
     Write-Host ""
@@ -319,10 +319,10 @@ function Main {
 
     # Verify LLVM setup
     if ($All -or $LLVM) {
-        if ($env:LLVM_SYS_150_PREFIX) {
-            Write-Success "LLVM_SYS_150_PREFIX = $env:LLVM_SYS_150_PREFIX"
+        if ($env:LLVM_SYS_191_PREFIX) {
+            Write-Success "LLVM_SYS_191_PREFIX = $env:LLVM_SYS_191_PREFIX"
         } else {
-            Write-Warning-Custom "LLVM_SYS_150_PREFIX not set. You may need to set it manually."
+            Write-Warning-Custom "LLVM_SYS_191_PREFIX not set. You may need to set it manually."
         }
     }
 }

@@ -5,12 +5,12 @@
 UNAME_S := $(shell uname -s)
 
 ifeq ($(UNAME_S),Darwin)
-# macOS: Homebrew llvm@15 is keg-only, so it is not on PATH. Ask brew where it lives.
-BREW_LLVM := $(shell brew --prefix llvm@15 2>/dev/null)
+# macOS: Homebrew llvm@19 is keg-only, so it is not on PATH. Ask brew where it lives.
+BREW_LLVM := $(shell brew --prefix llvm@19 2>/dev/null)
 BREW_ZSTD := $(shell brew --prefix zstd 2>/dev/null)
 ifneq ($(wildcard $(BREW_LLVM)/bin/llvm-config),)
     LLVM_CONFIG := $(BREW_LLVM)/bin/llvm-config
-    export LLVM_SYS_150_PREFIX := $(BREW_LLVM)
+    export LLVM_SYS_191_PREFIX := $(BREW_LLVM)
 endif
 ifneq ($(wildcard $(BREW_ZSTD)/lib/libzstd.dylib)$(wildcard $(BREW_ZSTD)/lib/libzstd.a),)
     HAVE_ZSTD := yes
@@ -18,8 +18,13 @@ else
     HAVE_ZSTD := no
 endif
 else
-# Linux/other: auto-detect LLVM - check for llvm-config variants
-LLVM_CONFIG := $(shell which llvm-config-15 2>/dev/null || which llvm-config-14 2>/dev/null || which llvm-config-16 2>/dev/null || which llvm-config-17 2>/dev/null || which llvm-config-18 2>/dev/null || which llvm-config 2>/dev/null)
+# Linux/other: auto-detect LLVM 19 (the inkwell feature is llvm19-1, so no other major works).
+# Prefer the versioned llvm-config-19 (apt.llvm.org, Debian/Ubuntu); accept a bare llvm-config
+# only when it reports 19.x.
+LLVM_CONFIG := $(shell which llvm-config-19 2>/dev/null || { c=$$(which llvm-config 2>/dev/null) && $$c --version 2>/dev/null | grep -q '^19\.' && echo $$c; })
+ifneq ($(LLVM_CONFIG),)
+    export LLVM_SYS_191_PREFIX := $(shell $(LLVM_CONFIG) --prefix)
+endif
 
 # Check if we have all LLVM dependencies (including libzstd-dev for linking)
 # We need the static library or the .so symlink that -dev packages provide

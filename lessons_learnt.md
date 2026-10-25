@@ -25,7 +25,8 @@
 - build.rs:main - cc >= 1.1 names objects `<hash>-<stem>.o`; never `include_bytes!` a bare `OUT_DIR/<stem>.o`.
   The LLVM runtime embed only "worked" from a stale OUT_DIR, and the platform layer was never embedded.
   Embed the static archive that `Build::compile` produces instead (2026-10-23).
-- Cargo.toml:inkwell - the llvm feature needs LLVM 15 exactly. On macOS: `brew install llvm@15` (keg-only),
-  then `LLVM_SYS_150_PREFIX=/opt/homebrew/opt/llvm@15 cargo build`. Homebrew's default `llvm` (23) does not work (2026-10-23).
+- Cargo.toml:inkwell - the llvm feature needs LLVM 19 exactly (`llvm19-1`, since U4 2026-10-25; was 15). On macOS:
+  `brew install llvm@19` (keg-only), then `LLVM_SYS_191_PREFIX=/opt/homebrew/opt/llvm@19 cargo build`. Homebrew's
+  default `llvm` (23) does not work; the env var name tracks the llvm-sys major (191), not the LLVM version (2026-10-23).
 - src/interpreter.rs:resolve_ipv4_addr - BSD sockaddrs have `sin_len` and a u8 family; use `libc::sa_family_t`,
   never `as u16`. The suite had only ever been run on Linux `full`; run `--features minimal` too (2026-10-23).
