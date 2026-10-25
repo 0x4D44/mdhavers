@@ -360,6 +360,180 @@ blether "after"
     );
 }
 
+// ---------- RC prerequisite R0.4: slots and shadows survive the longjmp ----------
+// At -O2 a local promoted to a register lost every write made in the try body: the
+// handler (and code after it) saw the value from before the try.
+
+#[test]
+fn try_body_writes_reach_the_handler_for_every_slot_kind() {
+    let out = run_ok(
+        r#"
+dae boom() {
+    hurl "inner"
+}
+dae ints() {
+    ken x = 1
+    hae_a_bash {
+        x = x + 10
+        hurl "boom"
+    } gin_it_gangs_wrang e {
+        blether x
+    }
+}
+dae strings() {
+    ken s = "a"
+    hae_a_bash {
+        s = "b"
+        hurl "boom"
+    } gin_it_gangs_wrang e {
+        blether s
+    }
+}
+dae lists() {
+    ken xs = [1]
+    hae_a_bash {
+        xs = [2, 3]
+        hurl "boom"
+    } gin_it_gangs_wrang e {
+        blether xs
+    }
+}
+dae via_callee() {
+    ken x = 1
+    hae_a_bash {
+        x = 5
+        boom()
+    } gin_it_gangs_wrang e {
+        blether x
+    }
+}
+dae untyped(p) {
+    ken y = p
+    hae_a_bash {
+        y = 7
+        boom()
+    } gin_it_gangs_wrang e {
+        blether y
+    }
+}
+ints()
+strings()
+lists()
+via_callee()
+untyped(1)
+"#,
+    );
+    assert_eq!(out, vec!["11", "b", "[2, 3]", "5", "7"]);
+}
+
+#[test]
+fn try_body_writes_reach_the_handler_inside_a_loop() {
+    let out = run_ok(
+        r#"
+dae f() {
+    ken x = 0
+    ken i = 0
+    whiles i < 2 {
+        x = x + 1
+        hae_a_bash {
+            x = x + 10
+            hurl "boom"
+        } gin_it_gangs_wrang e {
+            blether x
+        }
+        x = x + 100
+        i = i + 1
+    }
+    blether x
+}
+f()
+"#,
+    );
+    assert_eq!(out, vec!["11", "122", "222"]);
+}
+
+#[test]
+fn try_body_writes_are_seen_after_the_handler() {
+    let out = run_ok(
+        r#"
+dae boom() {
+    hurl "inner"
+}
+dae f() {
+    ken n = 1
+    ken s = "a"
+    hae_a_bash {
+        n = 2
+        s = s + "b"
+        s = s + "c"
+        hae_a_bash {
+            n = 3
+            boom()
+        } gin_it_gangs_wrang e {
+            n = n + 10
+        }
+        boom()
+    } gin_it_gangs_wrang e {
+    }
+    blether n
+    blether s
+}
+f()
+"#,
+    );
+    assert_eq!(out, vec!["13", "abc"]);
+}
+
+// Closures share captured names through cells, and a captured name never gets shadow
+// caches (see unstable_vars_of), so these pass today; they pin that behaviour.
+#[test]
+fn closure_writes_to_a_captured_int_are_seen_by_the_enclosing_loop() {
+    let out = run_ok(
+        r#"
+dae f() {
+    ken n = 0
+    ken i = 0
+    whiles i < 3 {
+        n = n + 1
+        ken g = || { n = n + 100 }
+        g()
+        blether n
+        i = i + 1
+    }
+    blether n
+}
+dae h() {
+    ken c = 0
+    ken bump = || { c = c + 1 }
+    fer i in 0..3 {
+        bump()
+        c = c + 100
+        blether c
+    }
+}
+dae k() {
+    ken s = 0
+    ken i = 0
+    whiles i < 2 {
+        s = s + 5
+        dae peek() {
+            gie s
+        }
+        blether peek()
+        i = i + 1
+    }
+}
+f()
+h()
+k()
+"#,
+    );
+    assert_eq!(
+        out,
+        vec!["101", "202", "303", "303", "101", "202", "303", "5", "10"]
+    );
+}
+
 // ---------- MDH-BUG-FLU-00054: native handles are validated ----------
 
 #[test]

@@ -36235,6 +36235,67 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(())
     }
 
+    /// Pin every local slot of the current function (variable allocas and all shadow
+    /// slots) in memory, emitting the pins before `at`.
+    ///
+    /// A `hurl` reaches the handler by `longjmp` back to the `setjmp`, an edge LLVM does
+    /// not see. Once mem2reg promotes a slot to a register, a write made in the try body
+    /// is lost and the handler (and the code after it) reads the value from before the
+    /// try (C solves this with `volatile`). An empty inline-asm statement that takes the
+    /// slot's address and clobbers memory makes the slot escape: it stays in memory, the
+    /// try body's stores are kept, and every load after the `setjmp` re-reads it.
+    fn escape_slots_before(&mut self, at: inkwell::values::InstructionValue<'ctx>) {
+        let Some(function) = self.current_function else {
+            return;
+        };
+        let mut slots: Vec<(u8, &String, PointerValue<'ctx>)> = Vec::new();
+        for (kind, map) in [
+            &self.variables,
+            &self.int_shadows,
+            &self.list_ptr_shadows,
+            &self.string_len_shadows,
+            &self.string_cap_shadows,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            for (name, &ptr) in map {
+                // Only this function's own allocas; globals already live in memory.
+                let local = ptr
+                    .as_instruction()
+                    .and_then(|i| i.get_parent())
+                    .and_then(|b| b.get_parent())
+                    == Some(function);
+                if local {
+                    slots.push((kind as u8, name, ptr));
+                }
+            }
+        }
+        if slots.is_empty() {
+            return;
+        }
+        // Sorted, so the emitted IR does not follow HashMap order (MDH-BUG-FLU-00130).
+        slots.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
+        let ptr_type = self.context.ptr_type(AddressSpace::default());
+        let asm_type = self.types.void_type.fn_type(&[ptr_type.into()], false);
+        let asm = self.context.create_inline_asm(
+            asm_type,
+            String::new(),
+            "r,~{memory}".to_string(),
+            true,
+            false,
+            None,
+            false,
+        );
+        let builder = self.context.create_builder();
+        builder.position_before(&at);
+        for (_, _, ptr) in slots {
+            builder
+                .build_indirect_call(asm_type, asm, &[ptr.into()], "")
+                .unwrap();
+        }
+    }
+
     /// Compile try/catch statement
     /// For now, this uses a simplified implementation that just executes the try block.
     /// The catch block becomes unreachable code - proper error handling would require
@@ -36279,7 +36340,8 @@ impl<'ctx> CodeGen<'ctx> {
                 .expect("valid jmp_buf alignment");
             slot
         };
-        self.builder
+        let try_push_call = self
+            .builder
             .build_call(self.libc.try_push, &[jmp_buf.into()], "")
             .unwrap();
 
@@ -36326,6 +36388,12 @@ impl<'ctx> CodeGen<'ctx> {
         })();
         self.try_depth = saved_try_depth;
         try_compile_result?;
+        // Now that the try body has created every slot it uses, pin them all in memory
+        // before the handler is registered (see `escape_slots_before`).
+        let try_push_instr = try_push_call
+            .try_as_basic_value()
+            .expect_instruction("try_push returns void");
+        self.escape_slots_before(try_push_instr);
         if self
             .builder
             .get_insert_block()
