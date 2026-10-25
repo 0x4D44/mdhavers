@@ -601,3 +601,51 @@ blether "done"
         assert_eq!(reported_live(&run.stderr, "string"), 0, "{}", run.stderr);
     }
 }
+
+#[test]
+fn thread_spawn_releases_its_function_and_arguments() {
+    // MDH-BUG-FLU-00152: the thread record kept func and args for good. A closure and
+    // argument lists, all joined (a detached worker releases when its function returns, which
+    // can be after exit, so it is not counted on here): none stay live at exit.
+    let src = r#"
+dae sum_list(list) {
+    gie sumaw(list)
+}
+dae bump(counter, delta) {
+    atomic_add(counter, delta)
+    gie atomic_load(counter)
+}
+ken base = 5
+ken adder = |x| x + base
+ken handles = []
+fer t in [[1, 2, 3], [10, 20], [7, 8, 9]] {
+    shove(handles, thread_spawn(sum_list, [t]))
+}
+ken total = 0
+fer h in handles {
+    total = total + thread_join(h)
+}
+blether total
+ken counter = atomic_new(0)
+ken h1 = thread_spawn(bump, [counter, 3])
+ken h2 = thread_spawn(adder, [4])
+ken h3 = thread_spawn(bump, [counter, 7])
+thread_join(h1)
+blether thread_join(h2)
+thread_join(h3)
+ken h4 = thread_spawn(bump, [counter, 1])
+thread_join(h4)
+"#;
+    for _ in 0..5 {
+        for envs in [
+            &[("MDH_RC_REPORT", "1")][..],
+            &[("MDH_RC_REPORT", "1"), ("MDH_RC_NOFREE", "1")][..],
+        ] {
+            let run = run_native(src, envs);
+            assert_eq!(run.code, Some(0), "{}", run.stderr);
+            assert_eq!(run.stdout, "60\n9\n");
+            assert_eq!(reported_live(&run.stderr, "list"), 0, "{}", run.stderr);
+            assert_eq!(reported_live(&run.stderr, "closure"), 0, "{}", run.stderr);
+        }
+    }
+}

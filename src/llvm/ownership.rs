@@ -383,7 +383,7 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_term_width", "", Ret::None),
     ("__mdh_thread_detach", "b", Ret::None),
     ("__mdh_thread_join", "b", Ret::Stored), // cached t->result, returned on every join
-    ("__mdh_thread_spawn", "ss", Ret::None), // func and args kept in MdhThread; returns handle id
+    ("__mdh_thread_spawn", "ss", Ret::None), // func and args kept until the worker's function returns; returns handle id
     ("__mdh_timer_after", "bbs", Ret::None), // callback kept in MdhTimer; returns timer id
     ("__mdh_timer_cancel", "bb", Ret::None),
     ("__mdh_timer_every", "bbs", Ret::None), // callback kept in MdhTimer; returns timer id

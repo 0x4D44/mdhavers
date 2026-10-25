@@ -4039,6 +4039,13 @@ static void *__mdh_thread_entry(void *arg) {
         t->error = __mdh_retained(__mdh_get_last_error());
         t->failed = 1;
     }
+    /* The worker is finished with its function and arguments: let go of the references
+     * thread_spawn took (MDH-BUG-FLU-00152). Nothing reads them after this; thread_join
+     * and thread_detach only touch result and error. Counts are atomic by now (R3). */
+    __mdh_release(t->func);
+    __mdh_release(t->args);
+    t->func = __mdh_make_nil();
+    t->args = __mdh_make_nil();
     t->done = 1;
     return NULL;
 }
@@ -4060,6 +4067,10 @@ MdhValue __mdh_thread_spawn(MdhValue func, MdhValue args_list) {
     t->line = __mdh_thread_line;
     t->thread = mdh_thread_create(__mdh_thread_entry, t);
     if (t->thread == NULL) {
+        __mdh_release(t->func);
+        __mdh_release(t->args);
+        t->func = __mdh_make_nil();
+        t->args = __mdh_make_nil();
         __mdh_hurl_owned(__mdh_make_string("thread_spawn failed"));
         return __mdh_make_nil();
     }
