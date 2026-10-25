@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00136 — speir at end of input returns "" (same as an empty line), so input loops spin forever on EOF
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** interpreter
 - **Raised:** 2026-10-25T06:26:36Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261025T184736Z-68f41e51
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00136-run-fix-20261025T184736Z-68f41e51
-- **Owner base:** 19f63d42cb01741fd9cedfd526714c5914eb3ae3
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-25T18:47:36Z
-- **Owner until:** 2026-10-26T02:10:50Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T06:26:36Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-25T06:26:36Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T23:04:08Z, deltic:auto role=fix run=fix-20261025T184736Z-68f41e51 branch=task/bug-MDH-BUG-FLU-00136-run-fix-20261025T184736Z-68f41e51 code=1ae54b6 gate=manual)
 
 ## Observation
 
