@@ -2203,7 +2203,7 @@ MdhValue __mdh_to_int(MdhValue a) {
             }
             return __mdh_make_int((int64_t)val);
         }
-        default:
+        default: {
             const char *t = __mdh_type_name(a);
             char buf[256];
             snprintf(
@@ -2214,6 +2214,7 @@ MdhValue __mdh_to_int(MdhValue a) {
             );
             __mdh_hurl_owned(__mdh_make_string(buf));
             return __mdh_make_int(0);
+        }
     }
 }
 
@@ -2245,7 +2246,7 @@ MdhValue __mdh_to_float(MdhValue a) {
             }
             return __mdh_make_float(val);
         }
-        default:
+        default: {
             const char *t = __mdh_type_name(a);
             char buf[256];
             snprintf(
@@ -2256,6 +2257,7 @@ MdhValue __mdh_to_float(MdhValue a) {
             );
             __mdh_hurl_owned(__mdh_make_string(buf));
             return __mdh_make_float(0.0);
+        }
     }
 }
 

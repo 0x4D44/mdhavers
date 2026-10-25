@@ -7038,6 +7038,10 @@ impl<'ctx> CodeGen<'ctx> {
         self.builder.position_at_end(string_case);
         let left_str = self.inline_tae_string(left);
         let right_str = self.inline_tae_string(right);
+        // A non-string side was shown as a fresh string; a string side is the original.
+        // Make both owned so the statement releases them (MDH-BUG-FLU-00150 sweep).
+        self.rc_own_temp(left_str);
+        self.rc_own_temp(right_str);
 
         let left_str_data = self.extract_data(left_str).unwrap();
         let right_str_data = self.extract_data(right_str).unwrap();
@@ -9129,6 +9133,8 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .unwrap();
+        // The shown text is ours (+1 from __mdh_to_string): let it go (MDH-BUG-FLU-00150).
+        self.rc_release(float_str);
         self.builder.build_unconditional_branch(print_done).unwrap();
 
         // Print string
@@ -19907,6 +19913,8 @@ impl<'ctx> CodeGen<'ctx> {
                         "read_lines_result",
                         "lines returned void",
                     )?;
+                    // The file text was only read to make the lines: drop it.
+                    self.rc_consume_fresh(content);
                     return Ok(result);
                 }
                 "append_file" => {
@@ -31618,6 +31626,8 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .unwrap();
+        // list_push took its own reference; drop ours (MDH-BUG-FLU-00150).
+        self.rc_consume_fresh(token_value);
 
         // Update position to after delimiter
         let new_pos = self
@@ -31658,6 +31668,7 @@ impl<'ctx> CodeGen<'ctx> {
                 "",
             )
             .unwrap();
+        self.rc_consume_fresh(rest_value);
 
         self.builder.build_unconditional_branch(done_block).unwrap();
 

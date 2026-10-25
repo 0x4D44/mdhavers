@@ -525,6 +525,50 @@ blether s
 }
 
 #[test]
+fn showing_a_float_and_splitting_on_a_long_delimiter_leak_nothing() {
+    // MDH-BUG-FLU-00150: blether of a float and split's multi-character path each left
+    // strings live at exit.
+    let src = r#"
+blether 1.5
+ken parts = split("a--b", "--")
+blether len(parts)
+ken single = split("a,b,c", ",")
+blether len(single)
+ken shown = str(2.25)
+blether shown
+"#;
+    let run = run_native(src, &[("MDH_RC_REPORT", "1")]);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert_eq!(run.stdout, "1.5\n2\n3\n2.25\n");
+    assert_eq!(reported_live(&run.stderr, "string"), 0, "{}", run.stderr);
+}
+
+#[test]
+fn mixed_concatenation_and_read_lines_leak_nothing() {
+    // Found by the golden sweep for MDH-BUG-FLU-00150: string + non-string made a shown
+    // copy nobody released, and read_lines dropped the file text it slurped.
+    let src = r#"
+blether "a" + 1
+blether 1 + "a"
+blether [1, 2] + "x"
+blether "x" + [1, 2]
+blether "n=" + naething
+ken text = "ab" + "cd"
+text = text + 7
+blether text
+ken rows = read_lines("tests/golden/fixtures/lines_fixture.txt")
+blether len(rows)
+"#;
+    let run = run_native(src, &[("MDH_RC_REPORT", "1")]);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert!(run
+        .stdout
+        .starts_with("a1\n1a\n[1, 2]x\nx[1, 2]\nn=naething\nabcd7\n"));
+    assert_eq!(reported_live(&run.stderr, "string"), 0, "{}", run.stderr);
+    assert_eq!(reported_live(&run.stderr, "list"), 0, "{}", run.stderr);
+}
+
+#[test]
 fn a_million_deep_nested_list_is_freed_without_recursing() {
     // Stage R2 (DES F6 3.9): letting go of a 10^6-deep nest frees it in a loop, not by
     // recursion, in FREE mode and in the R1 checker (MDH_RC_NOFREE=1) alike.
