@@ -129,10 +129,10 @@ typedef struct {
      (1u << MDH_KIND_BYTES) | (1u << MDH_KIND_NATIVE))
 #endif
 
-/* Counted kinds freed on reaching zero by default (stage R2); see __mdh_rc_free_kinds in
- * gc_stub.c. Native objects are never freed. */
+/* Counted kinds freed on reaching zero by default (stage R2): all of them but native
+ * objects, which are never freed; see __mdh_rc_free_kinds in gc_stub.c. */
 #ifndef MDH_RC_DEFAULT_FREE_KINDS
-#define MDH_RC_DEFAULT_FREE_KINDS ((1u << MDH_KIND_STRING) | (1u << MDH_KIND_BYTES) | (1u << MDH_KIND_LIST) | (1u << MDH_KIND_KV) | (1u << MDH_KIND_INSTANCE))
+#define MDH_RC_DEFAULT_FREE_KINDS (MDH_RC_DEFAULT_KINDS & ~(1u << MDH_KIND_NATIVE))
 #endif
 
 void *__mdh_obj_alloc(uint32_t kind, size_t size);
