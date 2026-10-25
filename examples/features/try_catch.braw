@@ -1,5 +1,6 @@
 # try_catch.braw - Demonstrating error handling in mdhavers
 # Use hae_a_bash (have a bash/try) and gin_it_gangs_wrang (if it goes wrong/catch)
+# SKIP_NATIVE - uses an undefined name on purpose; the native backend rejects that at compile time
 
 blether "=== Error Handling in mdhavers ==="
 blether ""

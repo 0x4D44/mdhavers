@@ -63,6 +63,21 @@ mdhavers compile program.braw --output output.js
 **Options:**
 - `-o, --output <FILE>`: Output file path
 
+### build
+
+Compile mdhavers code to a native executable (needs a build with the LLVM backend).
+
+```bash
+mdhavers build program.braw -o program
+```
+
+**Native checks happen at compile time.** The native backend refuses to build a
+program that uses an undefined name or calls a builtin with the wrong number of
+arguments, and reports the error then. The interpreter only raises these when
+the line runs, so a program that does it on purpose and catches the error with
+`hae_a_bash` works under `mdhavers run` but does not build natively. Example
+programs that do this are marked `# SKIP_NATIVE`.
+
 ### check
 
 Check a file for syntax and semantic errors without running.
