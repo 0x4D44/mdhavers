@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00139 — Native tak/drap reject strings that the interpreter accepts
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Medium
 - **Area:** native
 - **Raised:** 2026-10-25T06:49:39Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261025T065500Z-6e69a66c
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00139-run-fix-20261025T065500Z-6e69a66c
-- **Owner base:** fca2255d8c3c7f66146289d70d13ec48622f0de1
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-25T06:55:00Z
-- **Owner until:** 2026-10-25T10:55:00Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T06:49:39Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-25T06:49:39Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T07:13:19Z, deltic:auto role=fix run=fix-20261025T065500Z-6e69a66c branch=task/bug-MDH-BUG-FLU-00139-run-fix-20261025T065500Z-6e69a66c code=bfaa64f gate=manual)
 
 ## Observation
 
