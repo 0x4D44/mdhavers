@@ -451,6 +451,41 @@ shout = naething
 }
 
 #[test]
+fn bytes_die_with_their_last_holder() {
+    // Bytes counted (every kind is now): appends, slices, sets, bytes in a list.
+    // Default kinds: no MDH_RC_KINDS, so this also checks the default counts them.
+    let src = r#"
+ken by = bytes_from_string("hello" + "")
+bytes_append(by, by)
+blether bytes_len(by)
+ken by2 = bytes_slice(by, 1, 4)
+by = naething
+blether bytes_len(by2)
+blether bytes_get(by2, 0)
+bytes_set(by2, 0, 65)
+blether bytes_get(by2, 0)
+ken keep = [by2, bytes(3)]
+by2 = naething
+blether bytes_len(keep[0]) + bytes_len(keep[1])
+keep = naething
+ken i = 0
+ken total = 0
+whiles i < 50 {
+    ken b = bytes_from_string("x" + tae_string(i))
+    total = total + bytes_len(b)
+    i = i + 1
+}
+blether total
+"#;
+    let run = run_native(src, &[("MDH_RC_REPORT", "1")]);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert_eq!(run.stdout, "10\n3\n101\n65\n6\n140\n");
+    assert_eq!(reported_live(&run.stderr, "string"), 0, "{}", run.stderr);
+    assert_eq!(reported_live(&run.stderr, "list"), 0, "{}", run.stderr);
+    assert_eq!(reported_live(&run.stderr, "bytes"), 0, "{}", run.stderr);
+}
+
+#[test]
 fn counting_stays_off_unless_compiled_in() {
     // Off by default (counts are not atomic yet): the runtime counts nothing, even when
     // MDH_RC_KINDS asks it to.
