@@ -378,6 +378,79 @@ holder = naething
 }
 
 #[test]
+fn closures_cells_and_bound_methods_die_with_their_last_holder() {
+    // Closures, cells and bound methods counted: a counter over a mutable capture,
+    // closures in lists and dicts, a bound method outliving its variable.
+    // Default kinds: no MDH_RC_KINDS, so this also checks the default counts them.
+    let src = r#"
+dae counter() {
+    ken n = 0
+    ken bump = || {
+        n = n + 1
+        gie "c" + tae_string(n)
+    }
+    gie bump
+}
+ken c = counter()
+c()
+c()
+blether c()
+c = naething
+dae make_adder(n) {
+    ken base = "b" + tae_string(n)
+    gie |x| base + x
+}
+ken adders = []
+fer k in 0..4 {
+    shove(adders, make_adder(k))
+}
+blether adders[2]("z")
+adders = naething
+ken fns = {"twice": |x| x + x, "neg": |x| 0 - x}
+blether fns["twice"]("ab")
+fns = naething
+kin Greeter {
+    dae init(name) {
+        masel.name = name
+    }
+    dae greet(who) {
+        gie masel.name + " greets " + who
+    }
+}
+ken g = Greeter("Hamish" + "")
+ken bound = g.greet
+g = naething
+blether bound("Morag" + "")
+ken bounds = [bound, bound]
+bound = naething
+blether bounds[1]("Ailsa")
+bounds = naething
+ken label = "lbl" + ""
+ken shout = || label + "!"
+label = "changed" + ""
+blether shout()
+shout = naething
+"#;
+    let run = run_native(src, &[("MDH_RC_REPORT", "1")]);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    assert_eq!(
+        run.stdout,
+        "c3\nb2z\nabab\nHamish greets Morag\nHamish greets Ailsa\nchanged!\n"
+    );
+    assert_eq!(reported_live(&run.stderr, "string"), 0, "{}", run.stderr);
+    assert_eq!(reported_live(&run.stderr, "list"), 0, "{}", run.stderr);
+    assert_eq!(reported_live(&run.stderr, "dict"), 0, "{}", run.stderr);
+    assert_eq!(reported_live(&run.stderr, "instance"), 0, "{}", run.stderr);
+    assert_eq!(reported_live(&run.stderr, "closure"), 0, "{}", run.stderr);
+    assert_eq!(
+        reported_live(&run.stderr, "bound method"),
+        0,
+        "{}",
+        run.stderr
+    );
+}
+
+#[test]
 fn counting_stays_off_unless_compiled_in() {
     // Off by default (counts are not atomic yet): the runtime counts nothing, even when
     // MDH_RC_KINDS asks it to.

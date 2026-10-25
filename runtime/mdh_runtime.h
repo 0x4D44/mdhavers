@@ -124,7 +124,7 @@ typedef struct {
 #ifndef MDH_RC_DEFAULT_KINDS
 #define MDH_RC_DEFAULT_KINDS                                                                 \
     ((1u << MDH_KIND_STRING) | (1u << MDH_KIND_LIST) | (1u << MDH_KIND_KV) |                 \
-     (1u << MDH_KIND_INSTANCE))
+     (1u << MDH_KIND_INSTANCE) | (1u << MDH_KIND_CLOSURE) | (1u << MDH_KIND_BOUND_METHOD))
 #endif
 
 void *__mdh_obj_alloc(uint32_t kind, size_t size);

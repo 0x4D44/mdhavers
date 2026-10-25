@@ -361,6 +361,33 @@ impl<'ctx> CodeGen<'ctx> {
         }
     }
 
+    /// `v` is an untaken phi with at least one fresh incoming value.
+    fn rc_phi_has_fresh(&self, v: BasicValueEnum<'ctx>) -> bool {
+        self.rc_phi_has_fresh_at(v, 0)
+    }
+
+    fn rc_phi_has_fresh_at(&self, v: BasicValueEnum<'ctx>, depth: u32) -> bool {
+        if depth > 4 {
+            return false;
+        }
+        let BasicValueEnum::StructValue(sv) = v else {
+            return false;
+        };
+        let Some(inst) = sv.as_instruction_value() else {
+            return false;
+        };
+        if inst.get_opcode() != InstructionOpcode::Phi || self.rc_taken.contains(&value_id(inst)) {
+            return false;
+        }
+        let phi = inkwell::values::PhiValue::try_from(inst).expect("phi");
+        (0..phi.count_incoming()).any(|i| {
+            let (iv, _) = phi.get_incoming(i).expect("incoming");
+            let mut roots = Vec::new();
+            self.rc_roots(iv, 1, &mut roots) == RcClass::Fresh
+                || self.rc_phi_has_fresh_at(iv, depth + 1)
+        })
+    }
+
     /// A borrowed phi: make it owned by taking the fresh incomings and retaining the
     /// borrowed ones at the end of their edge's block. Only when every borrowed incoming's
     /// block ends in an unconditional branch (so the retain runs only on that edge).
@@ -395,6 +422,10 @@ impl<'ctx> CodeGen<'ctx> {
             match class {
                 RcClass::Skip => {}
                 RcClass::Fresh => self.rc_taken.extend(roots),
+                // A phi of fresh and borrowed values (a property read that is a field or a
+                // new bound method): normalise it in turn, so its fresh +1s are taken.
+                RcClass::Borrowed if self.rc_phi_has_fresh(iv) && self.rc_take_phi_by_edges(iv) => {
+                }
                 RcClass::Borrowed => {
                     let term = bb.get_terminator().expect("terminator");
                     let b = self.context.create_builder();
