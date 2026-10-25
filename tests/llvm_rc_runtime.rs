@@ -316,7 +316,7 @@ fn the_freed_kinds_follow_the_switches() {
     let d = build_driver(ALL);
     let kinds = |envs: &[(&str, &str)]| stdout(&run(&d, "free-kinds", envs));
     // Every counted kind but native objects (the tri runtime keys them by address).
-    assert_eq!(kinds(&[]), "free kinds 0x42\n");
+    assert_eq!(kinds(&[]), "free kinds 0x46\n");
     assert_eq!(kinds(NOFREE), "free kinds 0x0\n");
     assert_eq!(kinds(FREE_ALL), "free kinds 0xfe\n");
     assert_eq!(kinds(&[("MDH_RC_FREE_KINDS", "0x4")]), "free kinds 0x4\n");
@@ -365,6 +365,6 @@ fn rc_report_prints_live_objects_per_kind_at_exit() {
     assert_eq!(
         stderr(&out),
         "mdhavers rc: live at exit: string=1 list=0 dict=0 closure=0 instance=0 bytes=0 \
-         bound method=0 native=0 total=1 (counted kinds 0x1fe, freed kinds 0x42)\n"
+         bound method=0 native=0 total=1 (counted kinds 0x1fe, freed kinds 0x46)\n"
     );
 }
