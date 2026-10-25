@@ -6297,7 +6297,9 @@ impl<'ctx> CodeGen<'ctx> {
     /// Called at loop exit to ensure variables are up-to-date
     fn sync_all_shadows(&mut self) {
         // Collect names first to avoid borrow issues
-        let shadow_names: Vec<String> = self.int_shadows.keys().cloned().collect();
+        // Sorted, so the emitted stores do not follow HashMap order (MDH-BUG-FLU-00130).
+        let mut shadow_names: Vec<String> = self.int_shadows.keys().cloned().collect();
+        shadow_names.sort();
 
         for name in shadow_names {
             // Only a statically-Int variable's shadow holds its value (MDH-BUG-FLU-00048).
@@ -18290,11 +18292,13 @@ impl<'ctx> CodeGen<'ctx> {
                     // Snapshot current named functions before compiling the argument.
                     // This prevents anonymous lambdas compiled as part of `args[0]` from being
                     // "named" via their generated symbol (e.g. `__lambda_0`) in the message path.
-                    let functions_snapshot: Vec<(String, FunctionValue)> = self
+                    // Sorted, so the emitted match chain does not follow HashMap order.
+                    let mut functions_snapshot: Vec<(String, FunctionValue)> = self
                         .functions
                         .iter()
                         .map(|(name, func)| (name.clone(), *func))
                         .collect();
+                    functions_snapshot.sort_by(|a, b| a.0.cmp(&b.0));
                     let arg = self.compile_expr(&args[0])?;
                     let tag = self.extract_tag(arg).unwrap();
                     let fn_tag = self
@@ -31878,6 +31882,8 @@ impl<'ctx> CodeGen<'ctx> {
             })
             .cloned()
             .collect();
+        // Sorted, so the closure's environment layout does not follow HashSet order.
+        captures.sort();
 
         // Check if lambda body uses 'masel' and we're in a method context
         let uses_masel = self.expr_uses_masel(body);
