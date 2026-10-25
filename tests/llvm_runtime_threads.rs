@@ -150,3 +150,95 @@ blether f"total={total} out={len(out)} got={got} shared={shared[3]}"
         assert_eq!(out.trim(), "total=3119994 out=240 got=54 shared=item3");
     }
 }
+
+/// DEC round 3, R3 (striped lock): two threads reassign one global string while two
+/// others read it, with no mutex. Each write releases the string it replaces, so a
+/// reader that loaded the old value just before must already hold its own reference.
+/// Without the slot lock this frees strings under readers (an abort or a crash).
+#[test]
+fn llvm_threads_reassign_shared_global_without_mutex_under_refcounting() {
+    let source = r#"
+ken g = "start"
+
+dae writer(id, n) {
+    fer i in 0..n {
+        g = f"w{id}-{i}"
+    }
+    gie 0
+}
+
+dae reader(n) {
+    ken seen = 0
+    fer i in 0..n {
+        ken s = g
+        gin len(s) > 0 {
+            seen = seen + 1
+        }
+    }
+    gie seen
+}
+
+ken n = 20000
+ken handles = [
+    thread_spawn(writer, [1, n]),
+    thread_spawn(reader, [n]),
+    thread_spawn(writer, [2, n]),
+    thread_spawn(reader, [n])
+]
+ken total = 0
+fer h in handles {
+    total = total + thread_join(h)
+}
+blether f"seen={total} last={len(g) > 0}"
+"#;
+    for envs in [&[][..], &[("MDH_RC_NOFREE", "1")][..]] {
+        for out in compile_rc_and_run(source, 5, envs) {
+            assert_eq!(out.trim(), "seen=40000 last=aye");
+        }
+    }
+}
+
+/// The same race through a captured variable: nested functions share a cell, and the
+/// threads running them reassign and read it with no mutex.
+#[test]
+fn llvm_threads_reassign_captured_variable_without_mutex_under_refcounting() {
+    let source = r#"
+dae run(n) {
+    ken c = "start"
+    dae writer(id) {
+        fer i in 0..n {
+            c = f"w{id}-{i}"
+        }
+        gie 0
+    }
+    dae reader() {
+        ken seen = 0
+        fer i in 0..n {
+            ken s = c
+            gin len(s) > 0 {
+                seen = seen + 1
+            }
+        }
+        gie seen
+    }
+    ken handles = [
+        thread_spawn(writer, [1]),
+        thread_spawn(reader, []),
+        thread_spawn(writer, [2]),
+        thread_spawn(reader, [])
+    ]
+    ken total = 0
+    fer h in handles {
+        total = total + thread_join(h)
+    }
+    gie f"seen={total} last={len(c) > 0}"
+}
+
+blether run(20000)
+"#;
+    for envs in [&[][..], &[("MDH_RC_NOFREE", "1")][..]] {
+        for out in compile_rc_and_run(source, 5, envs) {
+            assert_eq!(out.trim(), "seen=40000 last=aye");
+        }
+    }
+}

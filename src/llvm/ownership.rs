@@ -316,6 +316,10 @@ pub const RUNTIME_OWNERSHIP: &[(&str, &str, Ret)] = &[
     ("__mdh_set_args", "--", Ret::None),       // stores raw argv pointer, not an MdhValue
     ("__mdh_set_contains", "bb", Ret::None),
     ("__mdh_set_log_level", "b", Ret::None),
+    // Shared slots (globals, captured cells) once threads exist: load retains under the
+    // slot lock; store takes the caller's +1 and releases the old value (gc_stub.c).
+    ("__mdh_shared_load", "-", Ret::Fresh),
+    ("__mdh_shared_store", "-s", Ret::None),
     ("__mdh_shell", "b", Ret::Fresh),
     ("__mdh_shell_status", "b", Ret::None),
     ("__mdh_shuffle", "b", Ret::Fresh), // shares elements of arg 1

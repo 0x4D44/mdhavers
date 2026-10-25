@@ -101,6 +101,10 @@ struct LibcFunctions<'ctx> {
     rc_release_obj: FunctionValue<'ctx>,
     rc_retain: FunctionValue<'ctx>,
     rc_release: FunctionValue<'ctx>,
+    // Shared slots once threads exist (globals, captured cells): load with retain (+1) and
+    // swap-then-release, under the runtime's striped lock (DEC round 3, R3).
+    shared_load: FunctionValue<'ctx>,
+    shared_store: FunctionValue<'ctx>,
     buf_alloc: FunctionValue<'ctx>,
     buf_realloc: FunctionValue<'ctx>,
     strlen: FunctionValue<'ctx>,
@@ -1907,6 +1911,15 @@ impl<'ctx> CodeGen<'ctx> {
         let rc_release_obj = declare_rc("__mdh_rc_release_obj", rc_obj_type);
         let rc_retain = declare_rc("__mdh_retain", rc_value_type);
         let rc_release = declare_rc("__mdh_release", rc_value_type);
+        // __mdh_shared_load(MdhValue*) -> MdhValue (+1); __mdh_shared_store(MdhValue*, MdhValue)
+        let shared_load = declare_rc(
+            "__mdh_shared_load",
+            types.value_type.fn_type(&[i8_ptr.into()], false),
+        );
+        let shared_store = declare_rc(
+            "__mdh_shared_store",
+            void_type.fn_type(&[i8_ptr.into(), types.value_type.into()], false),
+        );
         // __mdh_buf_alloc(size_t) -> void*
         let buf_alloc = declare_alloc("__mdh_buf_alloc", i8_ptr.fn_type(&[i64_type.into()], false));
         // __mdh_buf_realloc(void*, size_t) -> void*
@@ -3844,6 +3857,8 @@ impl<'ctx> CodeGen<'ctx> {
             rc_release_obj,
             rc_retain,
             rc_release,
+            shared_load,
+            shared_store,
             buf_alloc,
             buf_realloc,
             strlen,
@@ -4649,6 +4664,8 @@ impl<'ctx> CodeGen<'ctx> {
             "__mdh_rc_release_obj",
             "__mdh_retain",
             "__mdh_release",
+            "__mdh_shared_load",
+            "__mdh_shared_store",
         ];
         let is_runtime_call = |module: &Module<'ctx>, call: InstructionValue<'ctx>| -> bool {
             let callee = unsafe { LLVMGetCalledValue(call.as_value_ref()) };
@@ -6834,7 +6851,7 @@ impl<'ctx> CodeGen<'ctx> {
                 // Box to MdhValue
                 let boxed = self.make_int(int_val);
                 // Store to MdhValue
-                self.builder.build_store(alloca, boxed).unwrap();
+                self.store_immediate_slot(alloca, boxed);
             }
         }
     }
@@ -9717,6 +9734,11 @@ impl<'ctx> CodeGen<'ctx> {
         let cell_data = self.extract_data(cell).unwrap();
         let zero = self.types.i64_type.const_int(0, false);
         let elem_ptr = self.get_list_element_ptr(cell_data, zero).unwrap();
+        // A cell is shared with every closure that captured it, which may run on another
+        // thread: under counting, read it as a shared slot (DEC round 3, R3).
+        if self.rc_enabled {
+            return Ok(self.rc_shared_load(elem_ptr, "box_get"));
+        }
         let val = self
             .builder
             .build_load(self.types.value_type, elem_ptr, "box_get")
@@ -9729,6 +9751,12 @@ impl<'ctx> CodeGen<'ctx> {
         let cell_data = self.extract_data(cell).unwrap();
         let zero = self.types.i64_type.const_int(0, false);
         let elem_ptr = self.get_list_element_ptr(cell_data, zero).unwrap();
+        if self.rc_enabled && self.rc_is_value(value) && self.rc_active() {
+            // A shared slot, as in `box_get`.
+            self.rc_note_write(elem_ptr);
+            self.store_shared_slot(elem_ptr, value, false);
+            return;
+        }
         self.store_slot(elem_ptr, value);
     }
 
@@ -13589,7 +13617,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 a
                             };
                             let boxed = self.make_int(int_val);
-                            self.builder.build_store(alloca, boxed).unwrap();
+                            self.store_immediate_slot(alloca, boxed);
                         } else {
                             // In loop: just ensure alloca exists
                             if !self.variables.contains_key(name) {
@@ -14177,6 +14205,10 @@ impl<'ctx> CodeGen<'ctx> {
                         let zero = self.types.i64_type.const_int(0, false);
                         self.builder.build_store(cap_shadow, zero).unwrap();
                     }
+                    // In main, top-level variables are globals that other threads read.
+                    if self.rc_enabled && self.rc_is_shared_slot(alloca) {
+                        return Ok(self.rc_shared_load(alloca, name));
+                    }
                     let val = self
                         .builder
                         .build_load(self.types.value_type, alloca, name)
@@ -14190,6 +14222,9 @@ impl<'ctx> CodeGen<'ctx> {
                             .build_load(self.types.value_type, global, &format!("{}_global", name))
                             .unwrap();
                         return self.box_get(cell);
+                    }
+                    if self.rc_enabled {
+                        return Ok(self.rc_shared_load(global, &format!("{}_global", name)));
                     }
                     let val = self
                         .builder
@@ -14613,9 +14648,9 @@ impl<'ctx> CodeGen<'ctx> {
                         // Update the boxed MdhValue.
                         let boxed = self.make_int(int_val);
                         if let Some(&alloca) = self.variables.get(name) {
-                            self.builder.build_store(alloca, boxed).unwrap();
+                            self.store_immediate_slot(alloca, boxed);
                         } else if let Some(&alloca) = self.globals.get(name) {
-                            self.builder.build_store(alloca, boxed).unwrap();
+                            self.store_immediate_slot(alloca, boxed);
                         }
                         return Ok(boxed);
                     }
@@ -14661,6 +14696,11 @@ impl<'ctx> CodeGen<'ctx> {
                         };
                         if is_self_concat {
                             if let Some(rlen) = right_literal_len {
+                                if self.rc_shadows_need_thread_check(name) {
+                                    return self.compile_global_string_self_append(
+                                        name, len_shadow, cap_shadow, value, right, rlen,
+                                    );
+                                }
                                 // OPTIMIZED PATH: s = s + "literal" with capacity-based growth
                                 return self.compile_string_self_append(
                                     name, len_shadow, cap_shadow, right, rlen,
@@ -15398,6 +15438,47 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(self.make_int(result))
     }
 
+    /// The length of string variable `name` from its length shadow; `ptr` is its current
+    /// chars. Under counting, a global's shadow is stale once other threads can write the
+    /// global, so from the first spawn on it takes strlen instead (DEC round 3, R3).
+    fn cached_string_len(
+        &mut self,
+        name: &str,
+        shadow: PointerValue<'ctx>,
+        ptr: PointerValue<'ctx>,
+        label: &str,
+    ) -> IntValue<'ctx> {
+        if !self.rc_shadows_need_thread_check(name) {
+            return self
+                .builder
+                .build_load(self.types.i64_type, shadow, label)
+                .unwrap()
+                .into_int_value();
+        }
+        let (slow, fast, done) = self.rc_branch_threaded("shadow_len");
+        self.builder.position_at_end(fast);
+        let cached = self
+            .builder
+            .build_load(self.types.i64_type, shadow, label)
+            .unwrap()
+            .into_int_value();
+        self.builder.build_unconditional_branch(done).unwrap();
+        self.builder.position_at_end(slow);
+        let measured = self
+            .builder
+            .build_call(self.libc.strlen, &[ptr.into()], label)
+            .unwrap()
+            .try_as_basic_value()
+            .basic()
+            .unwrap()
+            .into_int_value();
+        self.builder.build_unconditional_branch(done).unwrap();
+        self.builder.position_at_end(done);
+        let phi = self.builder.build_phi(self.types.i64_type, label).unwrap();
+        phi.add_incoming(&[(&cached, fast), (&measured, slow)]);
+        phi.as_basic_value().into_int_value()
+    }
+
     /// Fast path for string concatenation - skips runtime type checks
     fn compile_string_concat_fast(
         &mut self,
@@ -15423,10 +15504,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Get left length - use shadow if available, otherwise strlen
         let left_len = if let Expr::Variable { name, .. } = left {
             if let Some(&shadow) = self.string_len_shadows.get(name) {
-                self.builder
-                    .build_load(self.types.i64_type, shadow, "cached_llen")
-                    .unwrap()
-                    .into_int_value()
+                self.cached_string_len(name, shadow, left_ptr, "cached_llen")
             } else {
                 self.builder
                     .build_call(self.libc.strlen, &[left_ptr.into()], "llen_fast")
@@ -15461,10 +15539,7 @@ impl<'ctx> CodeGen<'ctx> {
             self.types.i64_type.const_int(s.len() as u64, false)
         } else if let Expr::Variable { name, .. } = right {
             if let Some(&shadow) = self.string_len_shadows.get(name) {
-                self.builder
-                    .build_load(self.types.i64_type, shadow, "cached_rlen")
-                    .unwrap()
-                    .into_int_value()
+                self.cached_string_len(name, shadow, right_ptr, "cached_rlen")
             } else {
                 self.builder
                     .build_call(self.libc.strlen, &[right_ptr.into()], "rlen_fast")
@@ -15546,6 +15621,67 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Optimized string self-append: s = s + "literal"
     /// Uses capacity-based growth with realloc for O(n) amortized instead of O(n²)
+    /// `s = s + "literal"` where `s` is a global, under counting. The in-place append
+    /// owns `s`'s buffer and trusts main's shadows, which is only sound while main is the
+    /// only thread: from the first spawn on, another thread may hold or replace the string.
+    /// So after the first spawn this compiles as an ordinary concatenation and store
+    /// (DEC round 3, R3).
+    fn compile_global_string_self_append(
+        &mut self,
+        var_name: &str,
+        len_shadow: PointerValue<'ctx>,
+        cap_shadow: PointerValue<'ctx>,
+        value: &Expr,
+        right_expr: &Expr,
+        right_len: usize,
+    ) -> Result<BasicValueEnum<'ctx>, HaversError> {
+        let (slow, fast, done) = self.rc_branch_threaded("self_append");
+        self.builder.position_at_end(fast);
+        let appended = self
+            .compile_string_self_append(var_name, len_shadow, cap_shadow, right_expr, right_len)?;
+        let fast_end = self.builder.get_insert_block().unwrap();
+        self.builder.build_unconditional_branch(done).unwrap();
+
+        self.builder.position_at_end(slow);
+        let concatenated = self.compile_expr(value)?;
+        let slot = *self
+            .variables
+            .get(var_name)
+            .or(self.globals.get(var_name))
+            .expect("shared slot checked by the caller");
+        self.store_slot_inline(slot, concatenated);
+        // Main's shadows follow the new string: not owned (capacity 0), length measured.
+        let zero = self.types.i64_type.const_int(0, false);
+        self.builder.build_store(cap_shadow, zero).unwrap();
+        let data = self.extract_data(concatenated).unwrap();
+        let chars = self
+            .builder
+            .build_int_to_ptr(
+                data,
+                self.context.ptr_type(AddressSpace::default()),
+                "appended_chars",
+            )
+            .unwrap();
+        let len = self
+            .builder
+            .build_call(self.libc.strlen, &[chars.into()], "appended_len")
+            .unwrap()
+            .try_as_basic_value()
+            .basic()
+            .unwrap();
+        self.builder.build_store(len_shadow, len).unwrap();
+        let slow_end = self.builder.get_insert_block().unwrap();
+        self.builder.build_unconditional_branch(done).unwrap();
+
+        self.builder.position_at_end(done);
+        let phi = self
+            .builder
+            .build_phi(self.types.value_type, "self_append_result")
+            .unwrap();
+        phi.add_incoming(&[(&appended, fast_end), (&concatenated, slow_end)]);
+        Ok(phi.as_basic_value())
+    }
+
     fn compile_string_self_append(
         &mut self,
         var_name: &str,

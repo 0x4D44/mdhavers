@@ -349,6 +349,88 @@ void __mdh_release(MdhValue v) {
     if (MDH_RC_HEAP_TAG(v.tag)) __mdh_rc_release_obj(v.data);
 }
 
+/* ========== Shared slots (DEC round 3, R3: striped lock) ==========
+ *
+ * A global or a captured cell can be reassigned by one thread while another reads it.
+ * A reader's load and retain must not straddle a writer's swap and release, or the
+ * reader retains a freed object. So once threads exist, both go through a small table
+ * of spinlocks keyed by the slot's address: a read is lock, load, retain, unlock; a
+ * write is lock, swap, unlock, then release the old value outside the lock (release
+ * can free a whole tree of objects). The critical sections are a few instructions and
+ * never call user code, so a spinlock suits them; it yields after a short spin in case
+ * the holder was preempted. Container elements are not covered: shared mutable
+ * containers need a mutex (docs "Sharing between threads"). */
+
+#if defined(_WIN32)
+#include <windows.h>
+#define MDH_SLOT_YIELD() SwitchToThread()
+#else
+#include <sched.h>
+#define MDH_SLOT_YIELD() sched_yield()
+#endif
+
+#define MDH_SLOT_STRIPES 64
+
+/* One lock per cache line, so threads using different stripes do not share a line. */
+typedef struct {
+    int32_t locked;
+    char pad[60];
+} MdhSlotLock;
+
+static MdhSlotLock __mdh_slot_locks[MDH_SLOT_STRIPES];
+
+static inline int32_t *__mdh_slot_lock_for(const void *slot) {
+    uintptr_t a = (uintptr_t)slot >> 4; /* MdhValue slots are 16 bytes */
+    a ^= a >> 6;
+    a ^= a >> 12;
+    return &__mdh_slot_locks[a & (MDH_SLOT_STRIPES - 1)].locked;
+}
+
+static inline void __mdh_slot_lock(int32_t *lock) {
+    unsigned spins = 0;
+    while (__atomic_exchange_n(lock, 1, __ATOMIC_ACQUIRE)) {
+        while (__atomic_load_n(lock, __ATOMIC_RELAXED)) {
+            if (++spins >= 64) {
+                spins = 0;
+                MDH_SLOT_YIELD();
+            }
+        }
+    }
+}
+
+static inline void __mdh_slot_unlock(int32_t *lock) {
+    __atomic_store_n(lock, 0, __ATOMIC_RELEASE);
+}
+
+MdhValue __mdh_shared_load(MdhValue *slot) {
+    if (!__mdh_line_threaded) {
+        MdhValue v = *slot;
+        __mdh_retain(v);
+        return v;
+    }
+    int32_t *lock = __mdh_slot_lock_for(slot);
+    __mdh_slot_lock(lock);
+    MdhValue v = *slot;
+    __mdh_retain(v);
+    __mdh_slot_unlock(lock);
+    return v;
+}
+
+void __mdh_shared_store(MdhValue *slot, MdhValue value) {
+    MdhValue old;
+    if (!__mdh_line_threaded) {
+        old = *slot;
+        *slot = value;
+    } else {
+        int32_t *lock = __mdh_slot_lock_for(slot);
+        __mdh_slot_lock(lock);
+        old = *slot;
+        *slot = value;
+        __mdh_slot_unlock(lock);
+    }
+    __mdh_release(old);
+}
+
 void __mdh_rc_check(MdhValue v, const char *op) {
     if (MDH_RC_HEAP_TAG(v.tag) && v.data != 0 && __mdh_rc_kinds != 0) {
         MdhObjHeader *h = __mdh_obj_header((const void *)(intptr_t)v.data);

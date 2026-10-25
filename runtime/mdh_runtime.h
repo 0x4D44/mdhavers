@@ -181,6 +181,12 @@ int64_t __mdh_rc_line(void);
 /* Set (never cleared) by thread_spawn before the first thread exists (mdh_runtime.c);
  * from then on counts are updated atomically. */
 extern int32_t __mdh_line_threaded;
+/* Shared slots (globals and captured cells) once threads exist (DEC round 3, R3): a
+ * striped lock keyed by the slot's address makes "load and retain" and "swap" atomic
+ * with respect to each other. Load returns +1; store takes the caller's +1 and releases
+ * the old value after unlocking. Before the first spawn both are the plain operations. */
+MdhValue __mdh_shared_load(MdhValue *slot);
+void __mdh_shared_store(MdhValue *slot, MdhValue value);
 
 /* ========== Value Creation ========== */
 

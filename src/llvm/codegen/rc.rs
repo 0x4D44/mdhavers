@@ -85,7 +85,7 @@ impl<'ctx> CodeGen<'ctx> {
         matches!(v, BasicValueEnum::StructValue(s) if s.get_type() == self.types.value_type)
     }
 
-    fn rc_active(&self) -> bool {
+    pub(super) fn rc_active(&self) -> bool {
         self.rc_enabled
             && self.current_function.is_some()
             && !self.current_block_terminated()
@@ -556,6 +556,10 @@ impl<'ctx> CodeGen<'ctx> {
             return;
         }
         self.rc_note_write(ptr);
+        if self.rc_is_shared_slot(ptr) {
+            self.store_shared_slot(ptr, v, inline);
+            return;
+        }
         let old = self
             .builder
             .build_load(self.types.value_type, ptr, "rc_old")
@@ -567,6 +571,178 @@ impl<'ctx> CodeGen<'ctx> {
         } else {
             self.rc_release(old);
         }
+    }
+
+    /// A slot other threads can reach by name: an LLVM global (user globals, module
+    /// variables). Captured cells are shared too; their element slots are handled where
+    /// they are read and written (`box_get`, `box_set`).
+    pub(super) fn rc_is_shared_slot(&self, ptr: PointerValue<'ctx>) -> bool {
+        // SAFETY: a type query on a live value of this module.
+        unsafe { !inkwell::llvm_sys::core::LLVMIsAGlobalVariable(ptr.as_value_ref()).is_null() }
+    }
+
+    /// Branch on the runtime's "a thread has been spawned" flag (`__mdh_line_threaded`,
+    /// set once and never cleared). Returns (threaded, single, done) blocks, with the
+    /// builder at the end of none of them.
+    pub(super) fn rc_branch_threaded(
+        &mut self,
+        what: &str,
+    ) -> (BasicBlock<'ctx>, BasicBlock<'ctx>, BasicBlock<'ctx>) {
+        let function = self
+            .builder
+            .get_insert_block()
+            .and_then(|b| b.get_parent())
+            .expect("rc: no insertion block");
+        let flag = match self.module.get_global("__mdh_line_threaded") {
+            Some(g) => g,
+            None => {
+                let g = self
+                    .module
+                    .add_global(self.types.i32_type, None, "__mdh_line_threaded");
+                g.set_linkage(Linkage::External);
+                g
+            }
+        }
+        .as_pointer_value();
+        let threaded = self
+            .builder
+            .build_load(self.types.i32_type, flag, "threaded")
+            .unwrap()
+            .into_int_value();
+        let is_threaded = self
+            .builder
+            .build_int_compare(
+                IntPredicate::NE,
+                threaded,
+                self.types.i32_type.const_zero(),
+                "is_threaded",
+            )
+            .unwrap();
+        let slow = self
+            .context
+            .append_basic_block(function, &format!("{what}_threaded"));
+        let fast = self
+            .context
+            .append_basic_block(function, &format!("{what}_single"));
+        let done = self
+            .context
+            .append_basic_block(function, &format!("{what}_done"));
+        self.builder
+            .build_conditional_branch(is_threaded, slow, fast)
+            .unwrap();
+        (slow, fast, done)
+    }
+
+    /// Read a shared slot (a global or a captured cell's element) as an owned (+1) value.
+    /// Before the first spawn: load and retain. After: `__mdh_shared_load`, which loads
+    /// and retains under the slot's lock, so a writer cannot release the value in
+    /// between (DEC round 3, R3). New blocks; the result is marked fresh.
+    pub(super) fn rc_shared_load(
+        &mut self,
+        ptr: PointerValue<'ctx>,
+        name: &str,
+    ) -> BasicValueEnum<'ctx> {
+        if !self.rc_active() {
+            return self
+                .builder
+                .build_load(self.types.value_type, ptr, name)
+                .unwrap();
+        }
+        let (slow, fast, done) = self.rc_branch_threaded("shared_rd");
+        self.builder.position_at_end(fast);
+        let plain = self
+            .builder
+            .build_load(self.types.value_type, ptr, name)
+            .unwrap();
+        self.rc_retain_inline(plain);
+        let fast_end = self.builder.get_insert_block().unwrap();
+        self.builder.build_unconditional_branch(done).unwrap();
+        self.builder.position_at_end(slow);
+        let locked = self
+            .builder
+            .build_call(self.libc.shared_load, &[ptr.into()], name)
+            .unwrap()
+            .try_as_basic_value()
+            .basic()
+            .unwrap();
+        self.builder.build_unconditional_branch(done).unwrap();
+        self.builder.position_at_end(done);
+        let phi = self.builder.build_phi(self.types.value_type, name).unwrap();
+        phi.add_incoming(&[(&plain, fast_end), (&locked, slow)]);
+        let v = phi.as_basic_value();
+        self.rc_mark_owned(v);
+        v
+    }
+
+    /// Store into a shared slot: take a reference to `v`, then swap it in and release the
+    /// old value. After the first spawn the swap happens under the slot's lock
+    /// (`__mdh_shared_store`). Inline: the flag test is inline and only the threaded
+    /// path calls; otherwise one call, which tests the flag itself (no new blocks).
+    pub(super) fn store_shared_slot(
+        &mut self,
+        ptr: PointerValue<'ctx>,
+        v: BasicValueEnum<'ctx>,
+        inline: bool,
+    ) {
+        self.rc_take_mode(v, inline);
+        if !inline {
+            self.builder
+                .build_call(self.libc.shared_store, &[ptr.into(), v.into()], "")
+                .unwrap();
+            return;
+        }
+        let (slow, fast, done) = self.rc_branch_threaded("shared_wr");
+        self.builder.position_at_end(fast);
+        let old = self
+            .builder
+            .build_load(self.types.value_type, ptr, "rc_old")
+            .unwrap();
+        self.builder.build_store(ptr, v).unwrap();
+        self.rc_release_inline(old);
+        self.builder.build_unconditional_branch(done).unwrap();
+        self.builder.position_at_end(slow);
+        self.builder
+            .build_call(self.libc.shared_store, &[ptr.into(), v.into()], "")
+            .unwrap();
+        self.builder.build_unconditional_branch(done).unwrap();
+        self.builder.position_at_end(done);
+    }
+
+    /// Store an immediate (an Int from a shadow) that needs no reference into `ptr`. A
+    /// shared slot under counting takes the locked swap once threads exist, so readers
+    /// never see a half-written value; otherwise a plain store, as before.
+    pub(super) fn store_immediate_slot(
+        &mut self,
+        ptr: PointerValue<'ctx>,
+        v: BasicValueEnum<'ctx>,
+    ) {
+        if !self.rc_enabled || !self.rc_active() || !self.rc_is_shared_slot(ptr) {
+            self.builder.build_store(ptr, v).unwrap();
+            return;
+        }
+        let (slow, fast, done) = self.rc_branch_threaded("shared_wr");
+        self.builder.position_at_end(fast);
+        self.builder.build_store(ptr, v).unwrap();
+        self.builder.build_unconditional_branch(done).unwrap();
+        self.builder.position_at_end(slow);
+        self.builder
+            .build_call(self.libc.shared_store, &[ptr.into(), v.into()], "")
+            .unwrap();
+        self.builder.build_unconditional_branch(done).unwrap();
+        self.builder.position_at_end(done);
+    }
+
+    /// Variable `name` lives in a shared slot and counting is on: its shadow caches (main's
+    /// string length and capacity) are only valid until the first spawn, since other
+    /// threads' writes do not update them.
+    pub(super) fn rc_shadows_need_thread_check(&self, name: &str) -> bool {
+        self.rc_enabled
+            && self.rc_active()
+            && self
+                .variables
+                .get(name)
+                .or(self.globals.get(name))
+                .is_some_and(|p| self.rc_is_shared_slot(*p))
     }
 
     /// Bind a parameter in the prologue. It stays borrowed (no reference, not released)
@@ -949,6 +1125,8 @@ impl<'ctx> CodeGen<'ctx> {
             self.libc.rc_release_obj,
             self.libc.rc_retain,
             self.libc.rc_release,
+            self.libc.shared_load,
+            self.libc.shared_store,
         ] {
             if f.as_global_value()
                 .as_pointer_value()
@@ -1062,14 +1240,13 @@ impl<'ctx> CodeGen<'ctx> {
                 self.rc_release_unknown(v);
             }
             if is_main {
+                // A thread still running may read the globals: swap each to nil (under
+                // the slot lock once threads exist) and release what it held.
                 let nil = self.make_nil();
                 for g in globals {
-                    let v = self
-                        .builder
-                        .build_load(self.types.value_type, *g, "rc_global_done")
+                    self.builder
+                        .build_call(self.libc.shared_store, &[(*g).into(), nil.into()], "")
                         .unwrap();
-                    self.builder.build_store(*g, nil).unwrap();
-                    self.rc_release_unknown(v);
                 }
             }
             match (ret_slot, ret_type) {
