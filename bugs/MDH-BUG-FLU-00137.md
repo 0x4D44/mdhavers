@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00137 — Native binaries segfault on examples/scottish/scots_fun.braw and scots_words.braw
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** High
 - **Area:** native
 - **Raised:** 2026-10-25T06:33:34Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261025T063408Z-d07563ed
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00137-run-fix-20261025T063408Z-d07563ed
-- **Owner base:** ca69315e0ea85a61d8fdd5bba98402fdee27d5a9
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-25T06:34:08Z
-- **Owner until:** 2026-10-25T10:34:08Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T06:33:34Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-25T06:33:34Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T06:54:54Z, deltic:auto role=fix run=fix-20261025T063408Z-d07563ed branch=task/bug-MDH-BUG-FLU-00137-run-fix-20261025T063408Z-d07563ed code=a262039 gate=manual)
 
 ## Observation
 
