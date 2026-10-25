@@ -1,25 +1,25 @@
 # MDH-BUG-FLU-00130 — Native codegen is nondeterministic: sync_all_shadows emits stores in HashMap order
 
-- **State:** Open
+- **State:** Fixed
 - **Priority:** Should
 - **Severity:** Low
 - **Area:** native
 - **Raised:** 2026-10-25T00:11:33Z
 - **Discovery source:** Agent
-- **Owner:** deltic:manual
-- **Owner role:** fix
-- **Owner run:** fix-20261025T003027Z-b694fe04
-- **Owner host:** flux
-- **Owner branch:** task/bug-MDH-BUG-FLU-00130-run-fix-20261025T003027Z-b694fe04
-- **Owner base:** b4dc8b9c08f44e84316a1f9d17c6f3dc6c42a217
+- **Owner:** -
+- **Owner role:** -
+- **Owner run:** -
+- **Owner host:** -
+- **Owner branch:** -
+- **Owner base:** -
 - **Owner fingerprint:** -
-- **Owner since:** 2026-10-25T00:30:27Z
-- **Owner until:** 2026-10-25T04:30:27Z
+- **Owner since:** -
+- **Owner until:** -
 - **Verify retry after:** -
 - **Held branch:** -
 - **Legacy fixed run:** -
 - **Attempts:** fix=0, doubt=0, indeterminate=0
-- **State history:** Open (2026-10-25T00:11:33Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium)
+- **State history:** Open (2026-10-25T00:11:33Z, raised via `deltic bugs new --land` model=claude-opus-5-5@medium) -> Fixed (2026-10-25T01:06:10Z, deltic:auto role=fix run=fix-20261025T003027Z-b694fe04 branch=task/bug-MDH-BUG-FLU-00130-run-fix-20261025T003027Z-b694fe04 code=55c90a7 gate=manual)
 
 ## Observation
 
