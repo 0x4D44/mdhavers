@@ -796,17 +796,27 @@ impl<'ctx> CodeGen<'ctx> {
     pub fn new_with_refcounting(context: &'ctx Context, module_name: &str, rc: bool) -> Self {
         let module = context.create_module(module_name);
 
-        // Set target triple and data layout for x86_64 Linux
-        // This ensures proper struct alignment (i64 aligned to 8 bytes)
-        use inkwell::targets::{InitializationConfig, Target, TargetTriple};
+        // Use the host triple and that target's own data layout (the same triple the native
+        // link step builds its TargetMachine from), so emitted IR and the optimiser see the
+        // real layout. Both x86_64 and arm64 are LP64 with i64 aligned to 8 bytes, which is
+        // what the C runtime's MdhValue layout relies on (MDH-BUG-FLU-00154).
+        use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
+        use inkwell::OptimizationLevel;
         Target::initialize_native(&InitializationConfig::default()).unwrap();
-        let triple = TargetTriple::create("x86_64-unknown-linux-gnu");
+        let triple = TargetMachine::get_default_triple();
         module.set_triple(&triple);
-
-        // Standard x86_64 data layout - i64 aligned to 8 bytes
-        let data_layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128";
-        module
-            .set_data_layout(&inkwell::targets::TargetData::create(data_layout).get_data_layout());
+        if let Some(machine) = Target::from_triple(&triple).ok().and_then(|target| {
+            target.create_target_machine(
+                &triple,
+                "generic",
+                "",
+                OptimizationLevel::None,
+                RelocMode::PIC,
+                CodeModel::Default,
+            )
+        }) {
+            module.set_data_layout(&machine.get_target_data().get_data_layout());
+        }
 
         let builder = context.create_builder();
         let types = MdhTypes::new(context);
